@@ -9,6 +9,14 @@ Adventure-Java/
 **/JUWEL*
 **/TI_Extended_Basic_for_the_TI-99_4_Home_Computer.pdf
 
+# Interstitial files
+**/*-M
+**/*-A
+**/*-F
+**/*-O
+**/*-S
+**/*-X
+**/*.OBJ
 # --- IDE (IntelliJ) ---
 .idea/
 .idea/workspace.xml

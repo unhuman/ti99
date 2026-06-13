@@ -6,26 +6,28 @@ moved with `CALL LOCATE` (never `MOTION`), 1-char-thick walls, and `CALL LINK("F
 rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old/`.
 
 - **Source:** `src/MSPAC.ti99`
-- **Current step:** **Step 2 — player movement** (Step 1 geometry + Ms. Pac-Man moves under
-  `CALL LOCATE`). Press **Q** to quit.
+- **Current step:** **Step 3a — data-driven maze** (autotiled thin walls + per-maze color;
+  Ms. Pac-Man navigates it). Press **Q** to quit.
 - **Status:** awaiting interpreted run + compile.
 
-## Step 2 — what you should see / test
-The Step-1 playfield (thin blue border + 3-ghost pen with red on top, white sample dots, static
-ghosts + cherry), but now **Ms. Pac-Man moves** with **E/S/D/X** (up/left/right/down) or
-**joystick 1**:
-- She **glides** smoothly (2 px/frame) and only **turns at cell boundaries** (no mid-cell turns).
-- A pressed direction is **buffered**: she keeps going until that direction opens up, then turns.
-- **Walls block her** — she stops cleanly aligned against the border and the ghost pen, never
-  overlapping into a wall bar.
-- The other sprites (ghosts, cherry) stay put; dots aren't eaten yet.
+## Step 3a — what you should see / test
+A **real maze** drawn from a `DATA` grid: **pink** thin (4px) walls (mask-autotiled so corners,
+T-junctions and crossings connect cleanly), **white dots** in every corridor, 4 bigger **power
+pellets**, and the HUD `MAZE 1 DOTS 290`. **Ms. Pac-Man** starts upper-left and drives around with
+**E/S/D/X** or **joystick 1** — gliding, turning at cells, blocked by every wall.
+- The maze takes a few seconds to draw interpreted (it decodes 22×32 cells); **instant compiled**.
+- Walls should form continuous thin lines (autotiling working); dots white vs. pink walls (color
+  split working).
+- This proves the **multi-maze architecture**: a maze = a `DATA` grid + a wall color, drawn by
+  `GOSUB 800`. Adding mazes later (incl. a TI-themed one) = another grid + color.
 
-If she's offset by a cell or doesn't line up with walls, it's the one shared centering constant
-(`-4` / `+12` in the cell↔pixel math) — tell me and I'll nudge it.
+**Deferred to Step 3b:** eating dots, score, win-on-clear, and tunnels/wrap. **Step 4** brings the
+ghosts back (with a proper pen) + flicker. (Ghost/fruit sprites are temporarily removed so 3a
+focuses on the maze.)
 
-**Deferred on purpose:** tunnel wrap (comes with the real maze, Step 3), Ms. Pac-Man facing her
-direction of travel (art polish, Step 7), and blocking her from entering the pen door (Step 4,
-when ghosts need the door).
+> Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
+> generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
+> readable source grid lives in `DESIGN.md`/the generator; the `.ti99` holds the encoded `DATA`.
 
 ## Build & run (Classic99, `JUWEL7` = DSK1)
 Same lifecycle that worked for Dot Muncher (`CLAUDE.md` §8). Reminders that bit us before:

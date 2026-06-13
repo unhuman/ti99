@@ -1,62 +1,39 @@
 100 REM ===========================================
-101 REM  MS. PAC-MAN  (disk name: MSPAC)   -- STEP 1
-102 REM  Sprite + coordinate foundation (12px art, 4px walls)
+101 REM  MS. PAC-MAN  (disk name: MSPAC)   -- STEP 3a
+102 REM  Data-driven maze (autotiled 4px walls) + per-maze color
 103 REM  XB256 + XB compiler.  See DESIGN.md / repo CLAUDE.md
-104 REM  Quit: press Q
+104 REM  Move: E/S/D/X or joystick.  Quit: Q
 105 REM ===========================================
 110 CALL LINK("SCRN2")
 115 CALL SCREEN(2)
 120 CALL CLEAR
-125 REM --- maze tiles: 4px walls (set 13, blue) + dot (set 14, white) ---
-126 CALL LINK("CHAR2",128,"0000FFFFFFFF0000")
-127 CALL LINK("CHAR2",129,"3C3C3C3C3C3C3C3C")
-128 CALL LINK("CHAR2",130,"00003F3F3F3F3C3C")
-129 CALL LINK("CHAR2",131,"0000FCFCFCFC3C3C")
-130 CALL LINK("CHAR2",132,"3C3C3F3F3F3F0000")
-131 CALL LINK("CHAR2",133,"3C3CFCFCFCFC0000")
-132 CALL LINK("CHAR2",136,"0000001818000000")
-133 CALL LINK("COLOR2",13,6,1)
-134 CALL LINK("COLOR2",14,16,1)
-135 REM --- sprites: MAGNIFY(3), ~12px art centered in 16px box (2px transparent frame) ---
-136 REM Ms Pac-Man (#1) chars 96-99
-137 CALL CHAR(96,"0000071F3F3F3F3F3F3F3F3F1F0700000000E0F8FCF0C00000C0F0FCF8E00000")
-138 REM Ghost (#2-#5) chars 100-103
-139 CALL CHAR(100,"0000071F3F33333F3F3F3F3F3F3600000000E0F8FCCCCCFCFCFCFCFCFCD80000")
-140 REM Fruit cherry (#6) chars 104-107
-141 CALL CHAR(104,"0000000001070F1F1F1F0F0700000000000060C080C0E0F0F0F0E0C000000000")
-142 CALL MAGNIFY(3)
-145 REM --- outer border (4px wall tiles) ---
-146 CALL HCHAR(2,2,128,30)
-147 CALL HCHAR(23,2,128,30)
-148 CALL VCHAR(3,1,129,20)
-149 CALL VCHAR(3,32,129,20)
-150 CALL HCHAR(2,1,130)
-151 CALL HCHAR(2,32,131)
-152 CALL HCHAR(23,1,132)
-153 CALL HCHAR(23,32,133)
-155 REM --- ghost pen (rows 10-12, cols 13-20; door gap at cols 16-17) ---
-156 CALL HCHAR(10,14,128,2)
-157 CALL HCHAR(10,18,128,2)
-158 CALL HCHAR(12,14,128,6)
-159 CALL HCHAR(11,13,129)
-160 CALL HCHAR(11,20,129)
-161 CALL HCHAR(10,13,130)
-162 CALL HCHAR(10,20,131)
-163 CALL HCHAR(12,13,132)
-164 CALL HCHAR(12,20,133)
-166 REM --- sample dots (white, one per cell) to show density + color split ---
-167 CALL HCHAR(5,4,136,10)
-168 CALL HCHAR(20,21,136,8)
-175 REM --- sprites: Y=(R-1)*8-3 X=(C-1)*8-3 (TI coords 1-based); pen+Blinky at col 16.5 ---
-176 CALL SPRITE(#1,96,11,133,117,0,0)
-177 CALL SPRITE(#2,100,9,61,121,0,0)
-178 CALL SPRITE(#3,100,14,77,105,0,0)
-179 CALL SPRITE(#4,100,8,77,121,0,0)
-180 CALL SPRITE(#5,100,10,77,137,0,0)
-181 CALL SPRITE(#6,104,9,133,181,0,0)
-185 DISPLAY AT(1,1):"MS PAC-MAN   STEP 2"
-186 SX=117 :: SY=133 :: CD=0 :: DD=0
-190 REM ===== STEP 2: player movement via LOCATE (E/S/D/X or joystick; Q quits) =====
+125 REM --- 16 autotile wall tiles 128-143 (mask 0..15) ---
+126 CALL LINK("CHAR2",128,"00003C3C3C3C0000")
+127 CALL LINK("CHAR2",129,"3C3C3C3C3C3C0000")
+128 CALL LINK("CHAR2",130,"00003F3F3F3F0000")
+129 CALL LINK("CHAR2",131,"3C3C3F3F3F3F0000")
+130 CALL LINK("CHAR2",132,"00003C3C3C3C3C3C")
+131 CALL LINK("CHAR2",133,"3C3C3C3C3C3C3C3C")
+132 CALL LINK("CHAR2",134,"00003F3F3F3F3C3C")
+133 CALL LINK("CHAR2",135,"3C3C3F3F3F3F3C3C")
+134 CALL LINK("CHAR2",136,"0000FCFCFCFC0000")
+135 CALL LINK("CHAR2",137,"3C3CFCFCFCFC0000")
+136 CALL LINK("CHAR2",138,"0000FFFFFFFF0000")
+137 CALL LINK("CHAR2",139,"3C3CFFFFFFFF0000")
+138 CALL LINK("CHAR2",140,"0000FCFCFCFC3C3C")
+139 CALL LINK("CHAR2",141,"3C3CFCFCFCFC3C3C")
+140 CALL LINK("CHAR2",142,"0000FFFFFFFF3C3C")
+141 CALL LINK("CHAR2",143,"3C3CFFFFFFFF3C3C")
+142 CALL LINK("CHAR2",144,"0000001818000000")
+143 CALL LINK("CHAR2",152,"003C7E7E7E7E3C00")
+145 REM --- Ms Pac-Man sprite (ghosts/fruit return in Step 4) ---
+146 CALL CHAR(96,"0000071F3F3F3F3F3F3F3F3F1F0700000000E0F8FCF0C00000C0F0FCF8E00000")
+150 CALL MAGNIFY(3)
+155 MZ=1 :: GOSUB 800
+160 CALL SPRITE(#1,96,11,77,21,0,0)
+165 SX=21 :: SY=77 :: CD=0 :: DD=0
+170 DISPLAY AT(1,1):"MAZE";MZ;" DOTS";DT
+190 REM ===== player movement via LOCATE (E/S/D/X or joystick; Q quits) =====
 300 CALL KEY(0,K,S)
 301 IF K=69 THEN DD=1
 302 IF K=83 THEN DD=3
@@ -95,9 +72,47 @@
 430 CALL LINK("DELAY",25)
 440 GOTO 300
 600 END
-700 REM --- wall check: sets WL=1 if cell (TR,TC) is a wall tile (128-133) ---
+700 REM --- wall check: WL=1 if cell (TR,TC) is a wall tile (128-143) ---
 701 IF TC<1 OR TC>32 THEN WL=1 :: RETURN
 702 IF TR<1 OR TR>24 THEN WL=1 :: RETURN
 703 CALL GCHAR(TR,TC,G) :: WL=0
-704 IF G>127 AND G<134 THEN WL=1
+704 IF G>127 AND G<144 THEN WL=1
 705 RETURN
+800 REM === DRAW MAZE MZ: set wall color, render to screen rows 2-23, count dots in DT ===
+801 IF MZ=1 THEN RESTORE 9001 :: WC=14
+810 CALL LINK("COLOR2",13,WC,1) :: CALL LINK("COLOR2",14,WC,1)
+811 CALL LINK("COLOR2",15,16,1) :: CALL LINK("COLOR2",16,11,1)
+815 DT=0
+820 FOR MR=1 TO 22
+821 READ A$
+822 FOR I=1 TO 32
+823 P$=SEG$(A$,I,1) :: CD=32
+824 IF P$="." THEN CD=144 :: DT=DT+1
+825 IF P$="O" THEN CD=152 :: DT=DT+1
+826 IF P$>="a" THEN CD=128+ASC(P$)-97
+827 CALL HCHAR(MR+1,I,CD)
+828 NEXT I
+829 NEXT MR
+830 RETURN
+9001 DATA "gkkkkkokkkkkokkkkkkokkkkkokkkkkm"
+9002 DATA "fO....f.....f..  ..f.....f....Of"
+9003 DATA "f.ckm.f.ckm.f.e  e.f.gki.f.gki.f"
+9004 DATA "f...f.f...f.f.f  f.f.f...f.f...f"
+9005 DATA "hki.f.dkm.b.f.b  b.f.b.gkj.f.ckn"
+9006 DATA "f...f...f...f..  ..f...f...f...f"
+9007 DATA "f.cklkm.f.gkj.e  e.dkm.f.gklki.f"
+9008 DATA "f.....f.f.f...f  f...f.f.f.....f"
+9009 DATA "hkkki.b.b.b.a.b  b.a.b.b.b.ckkkn"
+9010 DATA "f  ..........a    a..........  f"
+9011 DATA "f  ci.ckki.ci a  a ci.ckki.ci  f"
+9012 DATA "f  ..........a    a..........  f"
+9013 DATA "hkkki.e.e.e.a.e  e.a.e.e.e.ckkkn"
+9014 DATA "f.....f.f.f...f  f...f.f.f.....f"
+9015 DATA "f.ckokj.f.dkm.b  b.gkj.f.dkoki.f"
+9016 DATA "f...f...f...f..  ..f...f...f...f"
+9017 DATA "hki.f.gkj.e.f.e  e.f.e.dkm.f.ckn"
+9018 DATA "f...f.f...f.f.f  f.f.f...f.f...f"
+9019 DATA "f.ckj.f.ckj.f.b  b.f.dki.f.dki.f"
+9020 DATA "fO....f.....f..  ..f.....f....Of"
+9021 DATA "f.gooopooooopm    gpooooopooom.f"
+9022 DATA "dkllllllllllllkkkkllllllllllllkj"

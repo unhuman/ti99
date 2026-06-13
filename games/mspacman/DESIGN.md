@@ -169,3 +169,39 @@ wall collision (maze-agnostic). Validated the movement engine.
   pellet, eat-ghost, death, fruit, start jingle — via `CALL SOUND`, or compiled **sound lists**
   (`SLCOMPILER`/`PLAY`) for background music + effects. **Polish:** Ms. Pac-Man **facing +
   mouth animation** (`CALL PATTERN` swaps direction frames), the bow, ghost eyes, attract mode.
+
+## 13. Maze system (multi-maze, for changing mazes)
+
+**Authoring → offline autotile → DATA.** Each maze is a plain symbol grid (`#`=wall, `.`=dot,
+`o`=power pellet, space=empty). A generator (awk; see project history) **autotiles** each wall by
+its 4-neighbor mask (N=1,E=2,S=4,W=8) and **flood-fills**, converting any unreachable dot to a
+space (so no maze can trap dots). It emits one `DATA` string per row using this encoding:
+
+| Char in DATA | Meaning | Screen char code |
+|--------------|---------|------------------|
+| `a`–`p` | wall tile (mask 0–15) | `128 + (ASC-97)` |
+| `.` | dot | 144 |
+| `O` | power pellet | 152 |
+| space | empty path | 32 |
+
+**16 wall tiles (codes 128–143)** are line-drawing pieces: a 4px center block plus 4px arms toward
+each connected neighbor (mask 5 = vbar, 10 = hbar, 3/6/9/12 = corners, 7/11/13/14 = T, 15 = cross,
+0 = isolated). Drawn 4px-thin so the 12px sprite overhang clears them (§2).
+
+**Color (per maze).** Walls live in `COLOR2` sets 13–14, dots in set 15, pellets in set 16. A maze
+changes color by re-setting sets 13–14 only. `DRAWMAZE` (`GOSUB 800`) picks the maze: `IF MZ=n THEN
+RESTORE <line> :: WC=<color>`, then reads + renders 22 rows (screen rows 2–23) and counts dots.
+Adding a maze = a new `DATA` block + a new `IF MZ=` line. Interpreted draw takes a few seconds;
+instant compiled (optionally cache later with `COMPRESS`/`CWRITE`).
+
+**Maze 1 source grid** (left 16 cols; full row = `L + reverse(L)`, symmetric about col 16.5):
+```
+################   #.###.#.###.#.#   #.#####.#.###.#   ###.#.###.#.#.#
+#o....#.....#..    #...#.#...#.#.#   #.....#.#.#...#   #...#.#...#.#.#
+#.###.#.###.#.#    ###.#.###.#.#.#   #####.#.#.#.#.#   #.###.#.###.#.#
+#...#.#...#.#.#     #...#...#...#..   #  ..........#    #o....#.....#..
+###.#.###.#.#.#    #.#####.#.###.#   #  ##.####.##.#   #.############
+#...#...#...#..     #.....#.#.#...#   #  ..........#   ################
+#.#####.#.###.#    #####.#.#.#.#.#   #####.#.#.#.#.#
+```
+(read top-to-bottom, left-to-right = rows 1–22). Regenerate the `DATA` if this changes.
