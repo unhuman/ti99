@@ -1,0 +1,29 @@
+100 REM ===========================================
+101 REM  <GAME TITLE>   (disk name: <NAME>, <=8 chars)
+102 REM  XB256 + XB compiler.  See repo CLAUDE.md.
+103 REM  Controls: E=up S=left D=right X=down
+104 REM  NOTE: scaffold with REM placeholders - fill in before it will RUN.
+105 REM ===========================================
+106 REM ---- INIT  (line band 100-199) ----
+110 CALL LINK("SCRN2")
+120 CALL SCREEN(2)
+130 REM define chars:  CALL LINK("CHAR2",<code>,"<16 hex digits>")
+140 REM set colors:    CALL LINK("COLOR2",<set>,<fg 1-16>,<bg 1-16>)   set=INT((code-24)/8)
+150 CALL CLEAR
+160 REM seed integer state vars (short names), e.g.  SC=0 :: LV=3
+170 GOSUB 900
+180 REM ---- MAIN LOOP  (line band 200-499) ----
+200 REM 1) INPUT
+210 CALL KEY(0,K,S)
+220 REM 2) UPDATE  (integer math only; INT() around any / or SQR)
+230 REM 3) RENDER  (HCHAR / VCHAR / sprites)
+240 REM 4) PACE  -- never a bare FOR/NEXT delay
+250 CALL LINK("DELAY",40)
+260 REM 5) WIN / LOSE test -> branch to game-over band
+270 GOTO 200
+500 REM ---- GAME OVER  (line band 500-599) ----
+510 REM show result, wait for a key, END
+520 END
+900 REM ---- SUBROUTINES  (line band 900+) ----
+910 REM build the playfield, etc.
+920 RETURN
