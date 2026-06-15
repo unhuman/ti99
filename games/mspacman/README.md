@@ -6,8 +6,8 @@ moved with `CALL LOCATE` (never `MOTION`), 1-char-thick walls, and `CALL LINK("F
 rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old/`.
 
 - **Source:** `src/MSPAC.ti99`
-- **Current step:** **Step 3b — eating, score, win-on-clear** (on top of the Step 3a maze +
-  movement). Press **Q** to quit.
+- **Current step:** **Step 4 (in progress) — ghosts move + flicker** (on top of Steps 1-3).
+  Press **Q** to quit.
 - **Status:** awaiting interpreted run + compile.
 
 ## Step 3a — what you should see / test
@@ -54,7 +54,25 @@ pts) or **power pellet** (50 pts) is blanked, a short blip plays (`CALL SOUND`),
 from 224, and the HUD (`MAZE 1 DOTS nnn SCORE nnnn`) is redrawn. When `DOTS` reaches **0**,
 `MAZE CLEARED!` is shown for 3 seconds and the program ends.
 
-**Step 4:** ghosts start moving (AI) + flicker.
+## Step 4 (in progress) — ghosts move + flicker
+The movement engine is now **generalized into a shared subroutine** (`GOSUB 710`), driven by
+per-ghost state arrays `GX()/GY()/GD()`. **All 4 ghosts wander**: each frame, once cell-aligned,
+a ghost picks a random open direction (never reversing unless it's a dead end), gliding via
+`CALL LOCATE` just like Ms. Pac-Man. **Blinky (#2)** starts above the pen door at the shared
+half-cell (X=121) and drifts out into the open area; **ghosts #3-#5** start inside the 6-cell pen
+and shuffle back and forth (the pen's only exit, the door, is still sealed — see below). All four
+use the same rightward kickoff (`GD()=4`) so none of them freeze on their half-cell start.
+
+Ghosts use a **separate wall-check** (`GOSUB 760`), identical to the player's (`GOSUB 700`)
+except it drops the pen-interior exclusion (line 706) — that exclusion exists only to keep
+Ms. Pac-Man out of the ghost box, but the ghosts live there. The door itself is still blocked for
+everyone, so ghosts can't yet leave the pen.
+
+**Implemented:** shared array-driven movement engine for all 4 ghosts; open-cell turning and
+dead-end reversal; tunnel wrap; a ghost-specific wall-check.
+**Deferred (not debt — just not started yet):** scatter/chase AI (currently pure random wander);
+pen-exit-through-door sequencing; `CALL LINK("FLICK")` sprite rotation; Pac-Man↔ghost
+collision/death.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
