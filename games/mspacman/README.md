@@ -54,12 +54,21 @@ pts) or **power pellet** (50 pts) is blanked, a short blip plays (`CALL SOUND`),
 from 224, and the HUD (`MAZE 1 DOTS nnn SCORE nnnn`) is redrawn. When `DOTS` reaches **0**,
 `MAZE CLEARED!` is shown for 3 seconds and the program ends.
 
+**Instant reversal.** Ms. Pac-Man can reverse direction immediately, even mid-corridor between
+cells — lines 311-314 check whether the newly-pressed direction is the exact opposite of her
+current direction and, if so, flip `CD` and move right away, bypassing the cell-alignment/wall
+check entirely (the cell behind her is always open — she just came from it). This is the classic
+"shake the joystick" evasion move now that ghosts actively chase.
+
 ## Step 4 (in progress) — ghosts move + flicker
 The movement engine is now **generalized into a shared subroutine** (`GOSUB 710`), driven by
-per-ghost state arrays `GX()/GY()/GD()`. **All 4 ghosts wander**: each frame, once cell-aligned,
-a ghost picks a random open direction (never reversing unless it's a dead end), gliding via
-`CALL LOCATE` just like Ms. Pac-Man. All four use the same rightward kickoff (`GD()=4`) so none of
-them freeze on their half-cell start.
+per-ghost state arrays `GX()/GY()/GD()`. **All 4 ghosts chase Ms. Pac-Man**: each frame, once
+cell-aligned, a ghost looks at every open neighbor cell (`GOSUB 760`, never reversing unless it's
+a dead end) and picks the one whose squared distance to Ms. Pac-Man's current cell (`PR,PC`,
+computed once per frame at line 422) is smallest — a greedy "always close the gap" chase, the same
+target-tile approach the arcade uses before the scatter/personality layers are added. Movement
+itself is still `CALL LOCATE`, same as Ms. Pac-Man. All four use the same rightward kickoff
+(`GD()=4`) so none of them freeze on their half-cell start.
 
 **Ghost roster (pen, left to right): #4 Inky, #3 Pinky, #5 Sue**, with **#2 Blinky** already
 above the door. Pinky sits centered under the door (X=121, same column as Blinky) since she's
@@ -100,12 +109,26 @@ triggers as soon as the sprites visually overlap rather than only when they land
 cell. **Lives, respawn, and a real game-over flow are Step 7**; for now any ghost touching
 Ms. Pac-Man simply ends the run.
 
+**Sprite rotation (`FLICK`).** With 4 chasing ghosts, Ms. Pac-Man, and the fruit all sharing the
+screen, more than 4 sprites can land on the same scanline — the TMS9918A only renders 4 per line,
+so without help the 5th+ would simply vanish. `CALL LINK("FLICK")` (line 167) is called once at
+setup: it installs an interrupt-driven rotation of the sprite table so every sprite gets its turn,
+trading a slight flicker for "everyone is visible." Toggled off with `CALL LINK("FLICKX")` if ever
+needed (not currently used).
+
 **Implemented:** shared array-driven movement engine for all 4 ghosts; open-cell turning and
-dead-end reversal; tunnel wrap; a ghost-specific wall-check; dot-counter pen release; the X=121
-exit lane; basic Pac-Man↔ghost collision (ends the program — no lives yet).
+dead-end reversal; tunnel wrap (both Ms. Pac-Man and ghosts); a ghost-specific wall-check;
+dot-counter pen release; the X=121 exit lane; greedy chase AI (closest-distance turn toward
+Ms. Pac-Man's cell, no reversing except dead ends); basic Pac-Man↔ghost collision (ends the
+program — no lives yet); `CALL LINK("FLICK")` sprite rotation.
 **Deferred (not debt — just not started yet):** a **timer-based** release (in addition to the dot
-counter, per the arcade); scatter/chase AI (currently pure random wander);
-`CALL LINK("FLICK")` sprite rotation.
+counter, per the arcade); **scatter mode + the 4 distinct ghost personalities** (Pinky/Inky/Sue
+target tiles, periodic scatter-to-corners); **wrap-aware chase targeting** — `DS(DR)` (line 728)
+is plain `(TR-PR)^2+(TC-PC)^2` using screen columns 3-30, so the two tunnel mouths (C≈3 and C≈30)
+look 27 columns apart even though they're adjacent via the wrap. A ghost near one mouth therefore
+reads Ms. Pac-Man wrapping to the other mouth as "ran far away" and routes back into the maze
+instead of following through the tunnel. Fix is a wrap-aware distance term for tunnel-row
+candidates — bundle with the scatter/personality targeting rework above.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
