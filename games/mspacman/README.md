@@ -6,8 +6,8 @@ moved with `CALL LOCATE` (never `MOTION`), 1-char-thick walls, and `CALL LINK("F
 rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old/`.
 
 - **Source:** `src/MSPAC.ti99`
-- **Current step:** **Step 3a — data-driven maze** (autotiled thin walls + per-maze color;
-  Ms. Pac-Man navigates it). Press **Q** to quit.
+- **Current step:** **Step 3b — eating, score, win-on-clear** (on top of the Step 3a maze +
+  movement). Press **Q** to quit.
 - **Status:** awaiting interpreted run + compile.
 
 ## Step 3a — what you should see / test
@@ -43,8 +43,13 @@ gliding, turning at cells, blocked by every wall, wrapping through either tunnel
 
 Tunnel wrap is wired for **both** tunnel rows (Ms. Pac-Man's sprite Y = 61 and 109).
 
-**Deferred to Step 3b:** eating dots, score, win-on-clear. **Step 4:** ghosts start moving (AI) +
-flicker.
+## Step 3b — eating, score, win-on-clear
+As Ms. Pac-Man's cell-centered (`GOSUB 750`), the cell she's sitting on is checked: a **dot** (10
+pts) or **power pellet** (50 pts) is blanked, a short blip plays (`CALL SOUND`), `DOTS` ticks down
+from 224, and the HUD (`MAZE 1 DOTS nnn SCORE nnnn`) is redrawn. When `DOTS` reaches **0**,
+`MAZE CLEARED!` is shown for 3 seconds and the program ends.
+
+**Step 4:** ghosts start moving (AI) + flicker.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The

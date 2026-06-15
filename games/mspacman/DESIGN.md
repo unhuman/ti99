@@ -85,8 +85,8 @@ bow, animation frames, direction-facing) is a later step.
 
 ## 5. Game-state variables (short integers)
 `PR,PC` Pac cell; `PD` Pac direction (0=none,1=up,2=left,3=right,4=down); per-ghost `GR(),GC(),GD()`;
-`SC` score; `LV` lives; `DT` dots remaining; `K,S` input; `DR,DC` computed pixel coords; `G` GCHAR.
-(`SC` may be renamed if the assembler flags it — see `CLAUDE.md` §6 reserved prefixes.)
+`PT` score/points (`SC` is compiler-reserved — see `CLAUDE.md` §6 — so we use `PT`); `LV` lives;
+`DT` dots remaining; `K,S` input; `DR,DC` computed pixel coords; `G` GCHAR.
 
 ## 6. Sound
 Eat-dot blip, power-pellet, eat-ghost, death, fruit, level-start jingle — via `CALL SOUND`
