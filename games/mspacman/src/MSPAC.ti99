@@ -32,7 +32,7 @@
 147 CALL CHAR(100,"0000071F3F33333F3F3F3F3F3F3600000000E0F8FCCCCCFCFCFCFCFCFCD80000")
 148 CALL CHAR(104,"0000000001070F1F1F1F0F0700000000000060C080C0E0F0F0F0E0C000000000")
 150 CALL MAGNIFY(3)
-151 DIM GX(4),GY(4),GD(4),OP(4),DS(4),RT(4)
+151 DIM GX(4),GY(4),GD(4),OP(4),DS(4),RT(4),TM(4)
 152 SX=121 :: SY=141 :: DD=0 :: PT=0 :: EC=0
 155 MZ=1 :: GOSUB 800
 156 REM --- sprites: #1 Pac, #2 Blinky(out), #3 Pinky, #4 Inky, #5 Sue (in pen), #6 fruit ---
@@ -47,6 +47,7 @@
 165 RT(1)=0 :: RT(2)=10 :: RT(3)=30 :: RT(4)=60
 166 CD=4 :: CALL KEY(0,K,S) :: CALL JOYST(1,JX,JY) :: IF K=83 OR JX<0 THEN CD=3
 167 CALL LINK("FLICK")
+168 TM(1)=0 :: TM(2)=150 :: TM(3)=300 :: TM(4)=450 :: FC=0
 170 DISPLAY AT(1,1):"MAZE";MZ;" DOTS";DT;" SCORE";PT
 190 REM ===== player movement via LOCATE (E/S/D/X or joystick; Q quits) =====
 300 CALL KEY(0,K,S)
@@ -99,6 +100,7 @@
 428 IF DX<=10 AND DY<=10 THEN GOSUB 770
 429 NEXT GI
 430 CALL LINK("DELAY",25)
+431 IF FC<30000 THEN FC=FC+1
 440 GOTO 300
 600 END
 700 REM --- wall check: WL=1 if (TR,TC) is a wall tile (128-143) or the ghost-box/door ---
@@ -111,7 +113,7 @@
 707 RETURN
 710 REM --- ghost GI: chase Ms. Pac-Man's cell (greedy distance, reverse only at dead ends); released ghosts exit via X=121, centered in the door (713-714) ---
 711 BX=GX(GI) :: BY=GY(GI) :: BD=GD(GI)
-712 RL=0 :: IF EC>=RT(GI) THEN RL=1
+712 RL=0 :: IF EC>=RT(GI) OR FC>=TM(GI) THEN RL=1
 713 IF RL=1 AND BX=121 AND BY=93 THEN BD=1 :: GOTO 740
 714 IF RL=1 AND BX=121 AND BY=77 AND BD=1 THEN CALL LINK("IRND",2,PK) :: BD=PK+3 :: GOTO 740
 715 AX=BX+3 :: AY=BY+3

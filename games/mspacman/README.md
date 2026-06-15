@@ -74,8 +74,13 @@ itself is still `CALL LOCATE`, same as Ms. Pac-Man. All four use the same rightw
 above the door. Pinky sits centered under the door (X=121, same column as Blinky) since she's
 released first.
 
-**Pen-exit via dot counter.** `EC` counts dots+pellets eaten (224 total). Each ghost has a release
-threshold `RT(GI)`: Blinky `RT=0` (released immediately), Pinky `RT=10`, Inky `RT=30`, Sue `RT=60`.
+**Pen-exit via dot counter + timer fallback.** `EC` counts dots+pellets eaten (224 total). Each
+ghost has a release threshold `RT(GI)`: Blinky `RT=0` (released immediately), Pinky `RT=10`,
+Inky `RT=30`, Sue `RT=60`. A ghost is released once `EC>=RT(GI)` **or** a per-ghost frame counter
+`FC` (incremented once per main-loop pass, line 431, capped at 30000 so it can't wrap negative)
+reaches `TM(GI)` (Pinky 150, Inky 300, Sue 450) — so a ghost still emerges on a timer even if
+Ms. Pac-Man stalls and doesn't eat enough dots. `FC`/`TM` are loop-iteration counts, not real
+seconds, so the pacing will differ interpreted vs. compiled — tune `TM()` after watching both.
 
 The door is a **one-way exit lane centered on X=121**. Ghosts use a separate wall-check
 (`GOSUB 760`), identical to the player's (`GOSUB 700`) except it drops the pen-interior exclusion
@@ -118,12 +123,13 @@ needed (not currently used).
 
 **Implemented:** shared array-driven movement engine for all 4 ghosts; open-cell turning and
 dead-end reversal; tunnel wrap (both Ms. Pac-Man and ghosts); a ghost-specific wall-check;
-dot-counter pen release; the X=121 exit lane; greedy chase AI (closest-distance turn toward
-Ms. Pac-Man's cell, no reversing except dead ends); basic Pac-Man↔ghost collision (ends the
-program — no lives yet); `CALL LINK("FLICK")` sprite rotation.
-**Deferred (not debt — just not started yet):** a **timer-based** release (in addition to the dot
-counter, per the arcade); **scatter mode + the 4 distinct ghost personalities** (Pinky/Inky/Sue
-target tiles, periodic scatter-to-corners); **wrap-aware chase targeting** — `DS(DR)` (line 728)
+dot-counter + timer-fallback pen release; the X=121 exit lane; greedy chase AI (closest-distance
+turn toward Ms. Pac-Man's cell, no reversing except dead ends); basic Pac-Man↔ghost collision
+(ends the program — no lives yet); `CALL LINK("FLICK")` sprite rotation; instant-reversal for
+Ms. Pac-Man.
+**Deferred (not debt — just not started yet):** **scatter mode + the 4 distinct ghost
+personalities** (Pinky/Inky/Sue target tiles, periodic scatter-to-corners); **wrap-aware chase
+targeting** — `DS(DR)` (line 728)
 is plain `(TR-PR)^2+(TC-PC)^2` using screen columns 3-30, so the two tunnel mouths (C≈3 and C≈30)
 look 27 columns apart even though they're adjacent via the wrap. A ghost near one mouth therefore
 reads Ms. Pac-Man wrapping to the other mouth as "ran far away" and routes back into the maze
