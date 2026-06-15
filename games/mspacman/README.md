@@ -11,25 +11,40 @@ rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old
 - **Status:** awaiting interpreted run + compile.
 
 ## Step 3a — what you should see / test
-The **classic maze** (transcribed from the user-supplied reference, adapted to the TI's landscape
-screen), drawn from a `DATA` grid centered at screen cols 3–30: **pink** thin (4px) walls
-(mask-autotiled), **white dots** in the corridors, 4 corner **power pellets**, **side tunnels**
-that wrap left↔right, and a central **ghost house**. HUD `MAZE 1 DOTS 212`. The compact house has
-an **empty 2-cell door**, an **empty interior**, and a **dot-free open ring all the way around it**
-(an "open square"). **3 ghosts sit in the house with the red one (Blinky) on top of the gate**, the
-cherry just below the house in the open ring, and **Ms. Pac-Man** drives
-with **E/S/D/X** or **joystick 1** — gliding, turning at cells, blocked by every wall, wrapping
-through the tunnel.
-- **Verified** (offline flood-fill): 212 dots, no dead ends, no "double-dot" parallel lanes, no
-  sealed-off pockets, all dots reachable, and **zero dots inside the house or its surrounding ring**.
-- The reference is portrait (28×31); the TI is landscape (32×24), so height was compressed
-  (doubled wall rows + extra ghost-house rows dropped) and it's centered with 2-col tunnel-wrap
-  margins.
+The **authentic Ms. Pac-Man Maze 1** (the pink maze), drawn from a `DATA` grid occupying screen
+rows 3–24 / cols 3–30 (rows 1–2 are reserved for the score/info HUD): **pink** thin (4px) walls
+(mask-autotiled), **white dots** in the corridors, 4 corner **power pellets**, the **inset
+"waist"** with **two tunnel pairs** (that wrap left↔right), and the central **ghost house**. HUD
+`MAZE 1 DOTS 224`. **3 ghosts sit in the house with the red one (Blinky) on top of the gate**, the
+cherry just below the house, and **Ms. Pac-Man** drives with **E/S/D/X** or **joystick 1** —
+gliding, turning at cells, blocked by every wall, wrapping through either tunnel.
+- **Source of truth:** `assets/maze1-arcade.txt` (the full 28×31 arcade layout, from
+  shaunlebron/pacman-mazegen). The TI version collapses the doubled wall-rows (31→22 rows) to fit
+  the 24-row screen — the *shape is preserved exactly*, only the vertical scale changes.
+- **Verified** (offline flood-fill, straight from the encoded `DATA`): 224 dots+pellets, all 28
+  wide, **0 unreachable**, every sprite on a legal cell.
+- **Resolved (per review):** the dead-end stubs beside the ghost-house box now zigzag through to
+  the corridor above (matching the arcade), the wall gaps above the top tunnel and the lower power
+  pellets are closed, and the redundant inner wall row below the lower power pellets was collapsed
+  out (22 rows total, freeing a screen row).
+- **Resolved (per review):** the maze grid shifted down one more screen row (now rows 3–24),
+  freeing a **2-row HUD strip** at the top for score/info; dots were cleared from the entire
+  ghost-house box surround (above the gate, both flanking columns the full height of the box
+  including the diagonal corners, and the row below the box) and the tunnel mouths were widened by
+  one more cell on each side of both wrap-around rows — 262 → 224 dots+pellets.
+- **Resolved (per review):** the ghost-house gate is now drawn as a **white horizontal door tile**
+  (code 160, its own `COLOR2` set 17), and the wall-check (`GOSUB 700`) blocks Ms. Pac-Man from
+  entering the door cells or the pen interior — the ghost box is now off-limits to the player.
+- **Resolved (per review):** the pen's interior (DATA row 11, cols 12–17 — **6 cells wide**) is
+  wider than earlier drafts, so the **3 starting ghosts are now spread evenly across it** with
+  equal margins from each side wall (sprite X = 105/121/137).
 - Multi-maze architecture still holds: a maze = a `DATA` grid + a wall color via `GOSUB 800`.
 - Draws in a few seconds interpreted; **instant compiled**.
 
-**Deferred to Step 3b:** eating dots, score, win-on-clear, tunnels/wrap. **Step 4:** ghosts start
-moving (AI) + flicker.
+Tunnel wrap is wired for **both** tunnel rows (Ms. Pac-Man's sprite Y = 61 and 109).
+
+**Deferred to Step 3b:** eating dots, score, win-on-clear. **Step 4:** ghosts start moving (AI) +
+flicker.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The

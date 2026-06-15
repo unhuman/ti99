@@ -26,6 +26,7 @@
 141 CALL LINK("CHAR2",143,"FFFFFFFFFFFFFFFF")
 142 CALL LINK("CHAR2",144,"0000001818000000")
 143 CALL LINK("CHAR2",152,"003C7E7E7E7E3C00")
+144 CALL LINK("CHAR2",160,"000000FFFF000000")
 145 REM --- sprite patterns: Ms Pac (96), ghost (100), fruit (104) ---
 146 CALL CHAR(96,"0000071F3F3F3F3F3F3F3F3F1F0700000000E0F8FCF0C00000C0F0FCF8E00000")
 147 CALL CHAR(100,"0000071F3F33333F3F3F3F3F3F3600000000E0F8FCCCCCFCFCFCFCFCFCD80000")
@@ -34,11 +35,11 @@
 155 MZ=1 :: GOSUB 800
 156 REM --- sprites: 3 ghosts in pen, Blinky on top, Pac + fruit in maze ---
 157 CALL SPRITE(#1,96,11,141,117,0,0)
-158 CALL SPRITE(#2,100,9,69,121,0,0)
-159 CALL SPRITE(#3,100,14,85,111,0,0)
-160 CALL SPRITE(#4,100,8,85,121,0,0)
-161 CALL SPRITE(#5,100,10,85,131,0,0)
-162 CALL SPRITE(#6,104,9,101,121,0,0)
+158 CALL SPRITE(#2,100,9,77,121,0,0)
+159 CALL SPRITE(#3,100,14,93,105,0,0)
+160 CALL SPRITE(#4,100,8,93,121,0,0)
+161 CALL SPRITE(#5,100,10,93,137,0,0)
+162 CALL SPRITE(#6,104,9,109,121,0,0)
 165 SX=117 :: SY=141 :: CD=0 :: DD=0
 170 DISPLAY AT(1,1):"MAZE";MZ;" DOTS";DT
 190 REM ===== player movement via LOCATE (E/S/D/X or joystick; Q quits) =====
@@ -76,55 +77,58 @@
 401 IF CD=2 THEN SY=SY+2
 402 IF CD=3 THEN SX=SX-2
 403 IF CD=4 THEN SX=SX+2
-410 IF SY<>85 THEN 420
+410 IF SY<>61 AND SY<>109 THEN 420
 411 IF SX<13 THEN SX=229
 412 IF SX>229 THEN SX=13
 420 CALL LOCATE(#1,SY,SX)
 430 CALL LINK("DELAY",25)
 440 GOTO 300
 600 END
-700 REM --- wall check: WL=1 if cell (TR,TC) is a wall tile (128-143) ---
+700 REM --- wall check: WL=1 if (TR,TC) is a wall tile (128-143) or the ghost-box/door ---
 701 IF TC<1 OR TC>32 THEN WL=1 :: RETURN
 702 IF TR<1 OR TR>24 THEN WL=1 :: RETURN
 703 CALL GCHAR(TR,TC,G) :: WL=0
 704 IF G>127 AND G<144 THEN WL=1
-705 RETURN
-800 REM === DRAW MAZE MZ: set wall color, render to screen rows 2-23, count dots in DT ===
+705 IF TR=12 AND TC>15 AND TC<18 THEN WL=1
+706 IF TR=13 AND TC>13 AND TC<20 THEN WL=1
+707 RETURN
+800 REM === DRAW MAZE MZ: set wall color, render to screen rows 3-24, count dots in DT ===
 801 IF MZ=1 THEN RESTORE 9001 :: WC=14
 810 CALL LINK("COLOR2",13,WC,1) :: CALL LINK("COLOR2",14,WC,1)
 811 CALL LINK("COLOR2",15,16,1) :: CALL LINK("COLOR2",16,11,1)
+812 CALL LINK("COLOR2",17,16,1)
 815 DT=0
-820 FOR MR=1 TO 23
+820 FOR MR=1 TO 22
 821 READ A$
 822 FOR I=1 TO 28
 823 P$=SEG$(A$,I,1) :: CD=32
 824 IF P$="." THEN CD=144 :: DT=DT+1
 825 IF P$="O" THEN CD=152 :: DT=DT+1
-826 IF P$>="a" THEN CD=128+ASC(P$)-97
-827 CALL HCHAR(MR+1,I+2,CD)
-828 NEXT I
-829 NEXT MR
-830 RETURN
-9001 DATA "gkkkkkkkkkkkooookkkkkkkkkkkm"
-9002 DATA "fO..........hppn..........Of"
-9003 DATA "f.ckki.ckki.dllj.ckki.ckki.f"
-9004 DATA "f..........................f"
-9005 DATA "f.ckki.gm.ckkookki.gm.ckki.f"
-9006 DATA "f......hn....hn....hn......f"
-9007 DATA "hoooom.hn.gooppoom.hn.goooon"
-9008 DATA "hppppn.hn.dllllllj.hn.hppppn"
-9009 DATA "hppppn.hn          hn.hppppn"
-9010 DATA "dllllj.hn  gi  cm  hn.dllllj"
-9011 DATA "     ..hn  f    f  hn..     "
-9012 DATA "goooom.hn  dkkkkj  hn.goooom"
-9013 DATA "hppppn.hn          hn.hppppn"
-9014 DATA "hppppn.hn.goooooom.hn.hppppn"
-9015 DATA "hllllj.hn.dllppllj.hn.dlllln"
-9016 DATA "f......hn....hn....hn......f"
-9017 DATA "f.ckom.dlkki.dj.ckklj.goki.f"
-9018 DATA "fO..hn................hn..Of"
-9019 DATA "hki.dj.gm.ckkookki.gm.dj.ckn"
-9020 DATA "f......hn....hn....hn......f"
-9021 DATA "f.ckkkkllkki.dj.ckkllkkkki.f"
-9022 DATA "f..........................f"
-9023 DATA "dkkkkkkkkkkkkkkkkkkkkkkkkkkj"
+826 IF P$="D" THEN CD=160
+827 IF P$>="a" THEN CD=128+ASC(P$)-97
+828 CALL HCHAR(MR+2,I+2,CD)
+829 NEXT I
+830 NEXT MR
+831 RETURN
+9001 DATA "gkkkkkkookkkkkkkkkkookkkkkkm"
+9002 DATA "f......hn..........hn......f"
+9003 DATA "f.ckki.dj.ckkkkkki.dj.ckki.f"
+9004 DATA "fO........................Of"
+9005 DATA "hom.gm.gooom.gm.gooom.gm.gon"
+9006 DATA "dlj.hn.dlllj.hn.dlllj.hn.dlj"
+9007 DATA "   .hn.......hn.......hn.   "
+9008 DATA "ckm.dlkki.ckkllkki.ckklj.gki"
+9009 DATA "gmf......          ......fgm"
+9010 DATA "hpn.gokki gkiDDckm ckkom.hpn"
+9011 DATA "hpn.hn... f      f ...hn.hpn"
+9012 DATA "dlj.dj.gm dkkkkkkj gm.dj.dlj"
+9013 DATA "   ....hn          hn....   "
+9014 DATA "gom.ckkllkki.gm.ckkllkki.gom"
+9015 DATA "hpn..........hn..........hpn"
+9016 DATA "hlj.ckkki.ckkllkki.ckkki.dln"
+9017 DATA "f..........................f"
+9018 DATA "fOgoom.gokki.gm.ckkom.goomOf"
+9019 DATA "f.hppn.hn....hn....hn.hppn.f"
+9020 DATA "f.dllj.dj.ckkllkki.dj.dllj.f"
+9021 DATA "f..........................f"
+9022 DATA "dkkkkkkkkkkkkkkkkkkkkkkkkkkj"

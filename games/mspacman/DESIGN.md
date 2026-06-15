@@ -56,10 +56,10 @@ in its 8px cell leaves a 2px margin each side, which the sprite overhang falls i
 
 | Element | Codes | COLOR2 set | Color |
 |---------|-------|-----------|-------|
-| Wall tiles | 128–135 | 13 | light blue (6) |
-| Dots | 136–143 | 14 | white (16) |
-| Power pellets | 144–151 | 15 | white/pink |
-| Pen door / specials | 152–159 | 16 | pink (14) |
+| Wall tiles (16 autotile masks) | 128–143 | 13–14 | maze color `WC` (pink/magenta=14 for Maze 1) |
+| Dots | 144 | 15 | white (16) |
+| Power pellets | 152 | 16 | dark yellow (11) |
+| Pen door | 160 | 17 | white (16) |
 
 Sprites use `CALL CHAR` codes 96–107 + per-sprite colors, separate from all the above.
 
@@ -182,6 +182,7 @@ space (so no maze can trap dots). It emits one `DATA` string per row using this 
 | `a`–`p` | wall tile (mask 0–15) | `128 + (ASC-97)` |
 | `.` | dot | 144 |
 | `O` | power pellet | 152 |
+| `D` | ghost-house door | 160 |
 | space | empty path | 32 |
 
 **16 wall tiles (codes 128–143)** are line-drawing pieces: a 4px center block plus 4px arms toward
@@ -190,20 +191,23 @@ each connected neighbor (mask 5 = vbar, 10 = hbar, 3/6/9/12 = corners, 7/11/13/1
 
 **Color (per maze).** Walls live in `COLOR2` sets 13–14, dots in set 15, pellets in set 16. A maze
 changes color by re-setting sets 13–14 only. `DRAWMAZE` (`GOSUB 800`) picks the maze: `IF MZ=n THEN
-RESTORE <line> :: WC=<color>`, then reads + renders 22 rows (screen rows 2–23) and counts dots.
+RESTORE <line> :: WC=<color>`, then reads + renders 22 rows (screen rows 3–24, leaving rows 1–2 as
+a HUD strip) and counts dots.
 Adding a maze = a new `DATA` block + a new `IF MZ=` line. Interpreted draw takes a few seconds;
 instant compiled (optionally cache later with `COMPRESS`/`CWRITE`).
 
-**Maze 1 is a generated block maze** (Ms.-Pac style: thick walls, 1-wide corridors — *not* a
-braided thin-wall maze, which gives "double-dot" parallel lanes + long paths). The generator:
-1. lays **full horizontal corridors** at rows `{2,5,9,13,17,20}` (→ connectivity + no dead ends
-   for free), and between them, per-band **vertical-corridor gap columns** that **differ per band**
-   (staggered → varied, not a uniform grid), gaps ≥3 apart (→ 2-thick walls, no double lanes);
-2. stamps the **paddock** (rows 9–11, cols 13–20, 1-row interior, door cols 16–17) and clears a
-   **dot-free buffer** (rows 8–12, cols 11–22) so there's open space around it;
-3. dead-end-fills + removes isolated walls + **eliminates any 2×2 dot block** (→ a space) + 4
-   corner pellets;
-4. autotiles (mask 15 = solid) + encodes to `DATA`.
-It **verifies**: dead-ends = 0, double-dots = 0, unreachable = 0 (269 dots). Aspect note: arcade
-Ms. Pac-Man is portrait (28×31); this is a **landscape (32×21) style adaptation**. Edit the per-
-band gap sets to redesign the layout.
+**Maze 1 is the authentic arcade layout**, not generated — see `README.md` and
+`assets/maze1-arcade.txt` (the source 28×31 arcade grid, from shaunlebron/pacman-mazegen). The
+28×31 grid is collapsed to **28×22** by merging each pair of doubled wall-rows into one (shape
+preserved, only the vertical scale changes), then autotiled + encoded to `DATA` per the table
+above. It **verifies** (offline flood-fill): 224 dots+pellets, 0 unreachable, all sprites on legal
+cells.
+
+**Ghost-house pen** (DATA rows 10–12, cols 11–18): a 1-row interior (row 11, cols 12–17 — **6
+cells wide**) behind a 2-cell door (row 10, cols 14–15, drawn as the white `D` tile, code 160).
+This interior is wider than earlier draft mazes, which fits the 3 starting ghosts spread out
+evenly with equal margins from each side wall, plus Blinky positioned above the door.
+
+Additional mazes can still use a generated-block-maze approach (per-band horizontal corridors,
+staggered vertical gaps, paddock stamp, dead-end-fill, etc.) if desired — that generator is not
+part of this repo but the `DATA` encoding above is generator-agnostic.
