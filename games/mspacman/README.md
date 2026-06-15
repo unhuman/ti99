@@ -6,8 +6,8 @@ moved with `CALL LOCATE` (never `MOTION`), 1-char-thick walls, and `CALL LINK("F
 rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old/`.
 
 - **Source:** `src/MSPAC.ti99`
-- **Current step:** **Step 4 (in progress) — ghosts move + flicker** (on top of Steps 1-3).
-  Press **Q** to quit.
+- **Current step:** **Step 6 (in progress) — power pellets + frightened ghosts** (on top of
+  Steps 1-4). Press **Q** to quit.
 - **Status:** awaiting interpreted run + compile.
 
 ## Step 3a — what you should see / test
@@ -60,7 +60,7 @@ current direction and, if so, flip `CD` and move right away, bypassing the cell-
 check entirely (the cell behind her is always open — she just came from it). This is the classic
 "shake the joystick" evasion move now that ghosts actively chase.
 
-## Step 4 (in progress) — ghosts move + flicker
+## Step 4 — ghosts move + flicker
 The movement engine is now **generalized into a shared subroutine** (`GOSUB 710`), driven by
 per-ghost state arrays `GX()/GY()/GD()`. **All 4 ghosts chase Ms. Pac-Man**: each frame, once
 cell-aligned, a ghost looks at every open neighbor cell (`GOSUB 760`, never reversing unless it's
@@ -100,19 +100,18 @@ wandering.
 
 Because the wall-check always blocks the door as a target, a ghost that has exited (or Blinky, who
 starts outside) can never head back down through it via the normal turn-check — **ghosts cannot
-re-enter the pen** during normal wandering; only the dedicated X=121 lane passes through, and only
-upward. (Per the Step 6 plan: an *eaten* ghost becomes "eyes" whose target **is** the pen — that
-will need its own path back through the door, deliberately bypassing this one-way rule.)
+re-enter the pen** during normal wandering; only the dedicated X=121 lane passes through. (Step 6
+below adds the one exception: an *eaten* ghost becomes "eyes" whose target **is** the pen, and
+reuses this same lane in reverse to get back in.)
 
 **Collision ("CAUGHT!").** Each frame, after the ghosts move, Ms. Pac-Man's pixel position
 (`SX,SY`) is compared directly against every ghost's pixel position (`GX()/GY()`): `DX,DY` are the
 absolute differences, and if both are `<=10` (sprites overlapping by well over half their 16px
-box),
-`GOSUB 770` displays `CAUGHT!` and ends the program — a placeholder "loss" path mirroring the
-existing `MAZE CLEARED!` win path. This runs every frame (not gated by cell-alignment), so it
-triggers as soon as the sprites visually overlap rather than only when they land in the same
-cell. **Lives, respawn, and a real game-over flow are Step 7**; for now any ghost touching
-Ms. Pac-Man simply ends the run.
+box), `GOSUB 780` dispatches on that ghost's state (Step 6: normal ghosts still end the run via
+`GOSUB 770`/`CAUGHT!`; frightened/eyes ghosts are handled differently — see Step 6 below). This
+runs every frame (not gated by cell-alignment), so it triggers as soon as the sprites visually
+overlap rather than only when they land in the same cell. **Lives, respawn, and a real game-over
+flow are Step 7**; for now a normal ghost touching Ms. Pac-Man simply ends the run.
 
 **Sprite rotation (`FLICK`).** With 4 chasing ghosts, Ms. Pac-Man, and the fruit all sharing the
 screen, more than 4 sprites can land on the same scanline — the TMS9918A only renders 4 per line,
@@ -124,9 +123,9 @@ needed (not currently used).
 **Implemented:** shared array-driven movement engine for all 4 ghosts; open-cell turning and
 dead-end reversal; tunnel wrap (both Ms. Pac-Man and ghosts); a ghost-specific wall-check;
 dot-counter + timer-fallback pen release; the X=121 exit lane; greedy chase AI (closest-distance
-turn toward Ms. Pac-Man's cell, no reversing except dead ends); basic Pac-Man↔ghost collision
-(ends the program — no lives yet); `CALL LINK("FLICK")` sprite rotation; instant-reversal for
-Ms. Pac-Man.
+turn toward Ms. Pac-Man's cell, no reversing except dead ends); Pac-Man↔ghost collision dispatch
+(normal ghosts end the program — no lives yet; Step 6 adds frightened/eyes handling);
+`CALL LINK("FLICK")` sprite rotation; instant-reversal for Ms. Pac-Man.
 **Deferred (not debt — just not started yet):** **scatter mode + the 4 distinct ghost
 personalities** (Pinky/Inky/Sue target tiles, periodic scatter-to-corners); **wrap-aware chase
 targeting** — `DS(DR)` (line 728)
@@ -157,6 +156,51 @@ XB256's *automatic* velocity-driven sprite motion, and all our sprites are creat
 velocity and moved exclusively via `CALL LOCATE`, so there's nothing for FREEZE/THAW to batch). If
 worth chasing later: compare on real hardware or another emulator, since "in emulation" may point
 at a Classic99-specific timing quirk rather than the routine itself.
+
+## Step 6 (in progress) — power pellets + frightened ghosts
+Two new per-ghost arrays drive the new behavior: `GS()` (state — 0=chase, 1=frightened,
+2=eyes-returning) and `GC()` (each ghost's normal color, for restoring afterward), plus two shared
+scalars `FT` (frightened-timer countdown) and `EG` (combo counter for escalating scores). The
+ghost movement routine (formerly `GOSUB 710`) is generalized and relocated to **`GOSUB 1000`**.
+
+**Frighten-all trigger.** Eating a power pellet (line 752) calls `GOSUB 774`: every ghost not
+currently "eyes" is set to `GS=1` (frightened), turned dark blue (`CALL COLOR(#n,5)`), and has its
+direction reversed (mirroring the dead-end-reversal pattern at lines 1016-1017); the shared
+timer/combo are (re)set to `FT=300, EG=0`. A second pellet eaten mid-fright re-frightens,
+re-reverses, and resets the timer/combo for any already-frightened ghosts too — eyes-state ghosts
+are unaffected and keep heading home.
+
+**Half-speed + flash (1001-1005).** While `GS=1`, a ghost moves only on odd `FC` frames (half
+speed) and stays dark blue until the last 90 frames of `FT`, when it flashes blue/white every ~4
+frames (`FT mod 8 < 4`). When `FT` reaches 0, the ghost reverts to `GS=0` and its `GC()` color.
+
+**Unified pathfinding (1015-1035).** The same greedy "pick the open non-reversing neighbor closest
+to a target tile" algorithm now drives all three states via a target `(TGR,TGC)` and a sign `SG`:
+chase (`GS=0`) targets Ms. Pac-Man's cell with `SG=1` (minimize distance); frightened (`GS=1`)
+keeps that target but flips `SG=-1` (flee — maximize distance); eyes (`GS=2`) retargets the pen
+staging cell `(row 11, col 16)` with `SG=1`.
+
+**Eyes return to the pen (1008-1011).** Eyes reuse the X=121 exit lane in reverse: pathfinding
+steers toward the staging cell `BX=117,BY=77`; on arrival it's nudged right onto the never-aligned
+`X=121` half-cell (1011), then turned down through the door (1010), drifting unobstructed (no
+wall-check applies on X=121) into the pen. On reaching the pen center `BX=121,BY=93` (1008) the
+ghost respawns — `GS=0`, color restored — and immediately re-enters the existing exit logic (the
+same line also handles a freshly-released ghost's first exit), so it walks straight back out.
+
+**Eating a frightened ghost (780-798).** The collision check (line 428, now `GOSUB 780`)
+dispatches on `GS()`: `GS=0` is still `CAUGHT!` (`GOSUB 770`, unchanged); `GS=2` (eyes) has no
+effect; `GS=1` calls `GOSUB 790`, which scores 200/400/800/1600 by `EG` (incrementing it), turns
+the ghost white (`CALL COLOR(#n,16)`), sets `GS=2`, swaps its sprite pattern to a dedicated
+**eyeballs** shape (`CALL CHAR(108,...)`, via `CALL PATTERN(#n,108)`), redraws the HUD, and plays
+an eat blip. On respawn (line 1008) the pattern is swapped back to the normal ghost shape
+(`CALL PATTERN(#n,100)`) along with the color/state reset.
+
+**Implemented:** frightened/eyes ghost state machine; power-pellet-triggered fright with reversal
+and re-trigger; half-speed + blue/flash while frightened; unified chase/flee/eyes-return
+pathfinding; escalating eat-ghost scoring (200/400/800/1600) with eyes + pen respawn; dedicated
+eyeballs sprite (codes 108-111) while a ghost is "eyes".
+**Deferred:** the fright timer shrinking per level — per `DESIGN.md` §12, levels aren't
+implemented yet; revisit with Step 7.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
