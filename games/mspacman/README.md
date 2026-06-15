@@ -6,8 +6,8 @@ moved with `CALL LOCATE` (never `MOTION`), 1-char-thick walls, and `CALL LINK("F
 rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old/`.
 
 - **Source:** `src/MSPAC.ti99`
-- **Current step:** **Step 6 (in progress) — power pellets + frightened ghosts** (on top of
-  Steps 1-4). Press **Q** to quit.
+- **Current step:** **Step 7 (in progress) — lives, respawn, game over** (on top of Steps 1-4, 6).
+  Press **Q** to quit.
 - **Status:** awaiting interpreted run + compile.
 
 ## Step 3a — what you should see / test
@@ -107,11 +107,10 @@ reuses this same lane in reverse to get back in.)
 **Collision ("CAUGHT!").** Each frame, after the ghosts move, Ms. Pac-Man's pixel position
 (`SX,SY`) is compared directly against every ghost's pixel position (`GX()/GY()`): `DX,DY` are the
 absolute differences, and if both are `<=10` (sprites overlapping by well over half their 16px
-box), `GOSUB 780` dispatches on that ghost's state (Step 6: normal ghosts still end the run via
-`GOSUB 770`/`CAUGHT!`; frightened/eyes ghosts are handled differently — see Step 6 below). This
-runs every frame (not gated by cell-alignment), so it triggers as soon as the sprites visually
-overlap rather than only when they land in the same cell. **Lives, respawn, and a real game-over
-flow are Step 7**; for now a normal ghost touching Ms. Pac-Man simply ends the run.
+box), `GOSUB 780` dispatches on that ghost's state (normal ghosts trigger `GOSUB 1100`,
+"CAUGHT!" + lose a life — see Step 7; frightened/eyes ghosts are handled differently — see Step 6
+below). This runs every frame (not gated by cell-alignment), so it triggers as soon as the sprites
+visually overlap rather than only when they land in the same cell.
 
 **Sprite rotation (`FLICK`).** With 4 chasing ghosts, Ms. Pac-Man, and the fruit all sharing the
 screen, more than 4 sprites can land on the same scanline — the TMS9918A only renders 4 per line,
@@ -157,7 +156,7 @@ velocity and moved exclusively via `CALL LOCATE`, so there's nothing for FREEZE/
 worth chasing later: compare on real hardware or another emulator, since "in emulation" may point
 at a Classic99-specific timing quirk rather than the routine itself.
 
-## Step 6 (in progress) — power pellets + frightened ghosts
+## Step 6 — power pellets + frightened ghosts
 Two new per-ghost arrays drive the new behavior: `GS()` (state — 0=chase, 1=frightened,
 2=eyes-returning) and `GC()` (each ghost's normal color, for restoring afterward), plus two shared
 scalars `FT` (frightened-timer countdown) and `EG` (combo counter for escalating scores). The
@@ -180,31 +179,79 @@ chase (`GS=0`) targets Ms. Pac-Man's cell with `SG=1` (minimize distance); frigh
 keeps that target but flips `SG=-1` (flee — maximize distance); eyes (`GS=2`) retargets the pen
 staging cell `(row 11, col 16)` with `SG=1`.
 
-**Eyes return to the pen (1008-1011).** Eyes reuse the X=121 exit lane in reverse: pathfinding
-steers toward the staging cell `BX=117,BY=77`; on arrival it's nudged right onto the never-aligned
-`X=121` half-cell (1011), then turned down through the door (1010), drifting unobstructed (no
-wall-check applies on X=121) into the pen. On reaching the pen center `BX=121,BY=93` (1008) the
-ghost respawns — `GS=0`, color restored — and immediately re-enters the existing exit logic (the
-same line also handles a freshly-released ghost's first exit), so it walks straight back out.
+**Eyes return to the pen (1008-1011, 1051-1052).** Eyes reuse the X=121 exit lane in reverse:
+pathfinding steers toward the staging cell `BX=117,BY=77`; on arrival it's nudged right onto the
+never-aligned `X=121` half-cell (1011), then turned down through the door (1010), drifting
+unobstructed (no wall-check applies on X=121) into the pen. On reaching the pen center
+`BX=121,BY=93`, line 1008 jumps to **1051-1052** (placed after the routine's `RETURN` at 1050, so
+normal pathfinding's fallthrough to 1041 never touches it): eyes respawn — `GS=0`, color/pattern
+restored — the door lane is claimed (`DG=GI`), and the ghost walks straight back out (`BD=1`,
+`GOTO 1041`), the same lane a freshly-released ghost uses for its first exit.
+
+**Frightened ghosts stay confined (1008).** A ghost with `GS=1` (frightened/blue) can never
+trigger line 1008, even at the pen center while otherwise "released" — the jump condition requires
+`GS=2` (eyes) or `GS=0` (normal chase). A frightened ghost at the pen center instead falls through
+to the unified pathfinding (1012-1035) with `SG=-1` (flee); since the door tile is always blocked
+for normal pathfinding (line 765), it can never pick the door and stays inside the pen, blue,
+until `FT` reaches 0 and it reverts to `GS=0` (1001) — this is what stops a newly-frightened pen
+ghost from being force-ejected and "un-frightening" mid-exit.
+
+**One ghost through the door at a time (`DG` lock, 999/1008/1009).** A new lock variable `DG`
+("door-gate", line 169) restricts the X=121 exit lane to one ghost at a time: line 1008 additionally
+requires `DG=0` (lane free) or `DG=GI` (this ghost already owns it) before jumping to 1051-1052,
+which claims `DG=GI`. The lock holder drifts up the lane for up to 8 frames until `BY=77`, where
+line 1009 releases it (`DG=0`) as it picks its random left/right kickoff into the corridor — only
+then can the next waiting ghost claim the lane. A self-correcting check at line 999 (run for every
+ghost, every frame, before the state machine) clears `DG` early if its holder's state changes
+mid-lane (e.g. re-frightened by another pellet eaten while exiting), so the lock can never
+permanently stick. Ghosts denied the lane just keep drifting in their current direction until they
+realign and re-path, then try again.
 
 **Eating a frightened ghost (780-798).** The collision check (line 428, now `GOSUB 780`)
-dispatches on `GS()`: `GS=0` is still `CAUGHT!` (`GOSUB 770`, unchanged); `GS=2` (eyes) has no
+dispatches on `GS()`: `GS=0` is `CAUGHT!` (`GOSUB 1100` — see Step 7); `GS=2` (eyes) has no
 effect; `GS=1` calls `GOSUB 790`, which scores 200/400/800/1600 by `EG` (incrementing it), turns
 the ghost white (`CALL COLOR(#n,16)`), sets `GS=2`, swaps its sprite pattern to a dedicated
 **eyeballs** shape (`CALL CHAR(108,...)`, via `CALL PATTERN(#n,108)`), redraws the HUD, and plays
-an eat blip. On respawn (line 1008) the pattern is swapped back to the normal ghost shape
+an eat blip. On respawn (line 1051) the pattern is swapped back to the normal ghost shape
 (`CALL PATTERN(#n,100)`) along with the color/state reset.
 
 **Implemented:** frightened/eyes ghost state machine; power-pellet-triggered fright with reversal
 and re-trigger; half-speed + blue/flash while frightened; unified chase/flee/eyes-return
 pathfinding; escalating eat-ghost scoring (200/400/800/1600) with eyes + pen respawn; dedicated
-eyeballs sprite (codes 108-111) while a ghost is "eyes".
+eyeballs sprite (codes 108-111) while a ghost is "eyes"; frightened ghosts stay confined to the pen
+instead of being force-ejected; `DG` door-lane lock so released/respawned ghosts exit the pen one
+at a time, spread apart.
 **Deferred:** the fright timer shrinking per level — per `DESIGN.md` §12, levels aren't
 implemented yet; revisit with Step 7.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
 > readable source grid lives in `DESIGN.md`/the generator; the `.ti99` holds the encoded `DATA`.
+
+## Step 7 (in progress) — lives, respawn, game over
+A new scalar `LV` (lives, starts at **3**, line 152) and a shared HUD subroutine
+(`GOSUB 708`/`709`) replace the old single-row HUD: row 1 now shows `MAZE n SCORE nnnn`, row 2
+shows `DOTS nnn LIVES n` (rows 1-2 are the dedicated HUD strip, never touched by `DRAWMAZE`). All
+three places that used to redraw the HUD inline (initial setup, eat-dot, eat-ghost) now just
+`GOSUB 708`.
+
+**Caught → lose a life (`GOSUB 1100`).** Replaces the old `GOSUB 770` "CAUGHT!, then end"
+routine. On a normal-ghost collision (`GS=0`): `LV=LV-1`, the HUD rows are blanked, and either
+`GAME OVER` (if `LV<=0`, then `END`) or `CAUGHT!` (otherwise) is shown for 2 seconds.
+
+**Respawn.** If lives remain, Ms. Pac-Man and all 4 ghosts are reset to **exactly their
+game-start state** — same positions (`SX=121,SY=141` / the pen layout from lines 163-164), same
+directions (`CD=4`, `GD()=4`), `GS()=0` with colors/patterns restored (`CALL COLOR`/`CALL
+PATTERN(...,100)`), and the shared timers `FT`, `EG`, `EC`, `FC` all back to 0 — i.e. the ghost
+pen-release schedule restarts from scratch, same as a fresh game. Only `PT` (score), `DT` (dots
+remaining) and the maze itself are preserved. The HUD is redrawn (now showing the decremented
+`LIVES`) and play resumes from the main loop.
+
+**Implemented:** `LV` lives counter (HUD); `CAUGHT!`/`GAME OVER` messaging; full Pac+ghost
+respawn-to-start-state on a non-fatal catch; `GAME OVER` + `END` at 0 lives.
+**Deferred:** levels (maze refill, faster ghosts, shorter fright time), sound effects beyond the
+existing blips, and Ms. Pac-Man facing/mouth animation — per `DESIGN.md` §12, these remain for a
+later pass at Step 7.
 
 ## Build & run (Classic99, `JUWEL7` = DSK1)
 Same lifecycle that worked for Dot Muncher (`CLAUDE.md` §8). Reminders that bit us before:
