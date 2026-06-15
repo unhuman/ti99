@@ -90,11 +90,22 @@ re-enter the pen** during normal wandering; only the dedicated X=121 lane passes
 upward. (Per the Step 6 plan: an *eaten* ghost becomes "eyes" whose target **is** the pen — that
 will need its own path back through the door, deliberately bypassing this one-way rule.)
 
+**Collision ("CAUGHT!").** Each frame, after the ghosts move, Ms. Pac-Man's pixel position
+(`SX,SY`) is compared directly against every ghost's pixel position (`GX()/GY()`): `DX,DY` are the
+absolute differences, and if both are `<=10` (sprites overlapping by well over half their 16px
+box),
+`GOSUB 770` displays `CAUGHT!` and ends the program — a placeholder "loss" path mirroring the
+existing `MAZE CLEARED!` win path. This runs every frame (not gated by cell-alignment), so it
+triggers as soon as the sprites visually overlap rather than only when they land in the same
+cell. **Lives, respawn, and a real game-over flow are Step 7**; for now any ghost touching
+Ms. Pac-Man simply ends the run.
+
 **Implemented:** shared array-driven movement engine for all 4 ghosts; open-cell turning and
-dead-end reversal; tunnel wrap; a ghost-specific wall-check; dot-counter pen release.
+dead-end reversal; tunnel wrap; a ghost-specific wall-check; dot-counter pen release; the X=121
+exit lane; basic Pac-Man↔ghost collision (ends the program — no lives yet).
 **Deferred (not debt — just not started yet):** a **timer-based** release (in addition to the dot
 counter, per the arcade); scatter/chase AI (currently pure random wander);
-`CALL LINK("FLICK")` sprite rotation; Pac-Man↔ghost collision/death.
+`CALL LINK("FLICK")` sprite rotation.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
