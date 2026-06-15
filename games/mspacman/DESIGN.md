@@ -45,7 +45,15 @@ This centers the ~12px art on the actor's corridor cell; the art overhangs the *
 only ~2 px each side, landing in the wall's transparent margin (misses the bar). Dot coords are
 1..192 (row) / 1..256 (col). The movement code converts back the same way
 (`C=INT((X+11)/8)`, aligned when `(X+3) mod 8 = 0`) so display and `GCHAR` collision agree.
-Screen center is **col 16.5** — pen + Blinky are centered there (half-cell columns).
+Screen center is **col 16.5** (sprite X=121) — the pen interior, Blinky, and Ms. Pac-Man's start
+all sit here, directly stacked. Ms. Pac-Man's movement grid only *stops* (turn-checks run) at
+whole-cell positions (`SX≡5 mod 8`: 109/117/125/133...); a half-cell start needs a one-time
+**kickoff** so the alignment check is ever reached at all — `CD` is initialized to a default
+direction (4=right, or 3=left if the player is already holding left at boot) instead of 0, so she
+immediately drifts ~4px to the nearest aligned cell, where normal turn-checking takes over. (A
+sprite that starts unaligned **and** has `CD=0` would never move and never realign — `CD` would
+never update from `DD` — so this kickoff is required for *any* sprite that starts at a half-cell
+and is meant to move, including ghosts once Step 4 gives them AI.)
 
 **Walls — thin 4px bars** (not solid blocks), drawn from a small **tile set** in `CHAR2`: h-bar
 `0000FFFFFFFF0000`, v-bar `3C3C3C3C3C3C3C3C`, and 4 corners (codes 128–133). A 4px bar centered
@@ -206,7 +214,9 @@ cells.
 **Ghost-house pen** (DATA rows 10–12, cols 11–18): a 1-row interior (row 11, cols 12–17 — **6
 cells wide**) behind a 2-cell door (row 10, cols 14–15, drawn as the white `D` tile, code 160).
 This interior is wider than earlier draft mazes, which fits the 3 starting ghosts spread out
-evenly with equal margins from each side wall, plus Blinky positioned above the door.
+evenly with equal margins from each side wall, plus Blinky positioned directly above the door,
+centered at col 16.5 (sprite X=121) — Ms. Pac-Man starts at the same X, directly below him, and a
+default initial direction (§2) carries her off that half-cell start to the first aligned cell.
 
 Additional mazes can still use a generated-block-maze approach (per-band horizontal corridors,
 staggered vertical gaps, paddock stamp, dead-end-fill, etc.) if desired — that generator is not

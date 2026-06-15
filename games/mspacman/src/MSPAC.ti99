@@ -32,15 +32,16 @@
 147 CALL CHAR(100,"0000071F3F33333F3F3F3F3F3F3600000000E0F8FCCCCCFCFCFCFCFCFCD80000")
 148 CALL CHAR(104,"0000000001070F1F1F1F0F0700000000000060C080C0E0F0F0F0E0C000000000")
 150 CALL MAGNIFY(3)
+152 SX=121 :: SY=141 :: DD=0 :: PT=0
 155 MZ=1 :: GOSUB 800
 156 REM --- sprites: 3 ghosts in pen, Blinky on top, Pac + fruit in maze ---
-157 CALL SPRITE(#1,96,11,141,117,0,0)
+157 CALL SPRITE(#1,96,11,SY,SX,0,0)
 158 CALL SPRITE(#2,100,9,77,121,0,0)
 159 CALL SPRITE(#3,100,14,93,105,0,0)
 160 CALL SPRITE(#4,100,8,93,121,0,0)
 161 CALL SPRITE(#5,100,10,93,137,0,0)
 162 CALL SPRITE(#6,104,9,109,121,0,0)
-165 SX=117 :: SY=141 :: CD=0 :: DD=0 :: PT=0
+166 CD=4 :: CALL KEY(0,K,S) :: CALL JOYST(1,JX,JY) :: IF K=83 OR JX<0 THEN CD=3
 170 DISPLAY AT(1,1):"MAZE";MZ;" DOTS";DT;" SCORE";PT
 190 REM ===== player movement via LOCATE (E/S/D/X or joystick; Q quits) =====
 300 CALL KEY(0,K,S)
@@ -128,8 +129,8 @@
 9005 DATA "hom.gm.gooom.gm.gooom.gm.gon"
 9006 DATA "dlj.hn.dlllj.hn.dlllj.hn.dlj"
 9007 DATA "   .hn.......hn.......hn.   "
-9008 DATA "ckm.dlkki.ckkllkki.ckklj.gki"
-9009 DATA "gmf......          ......fgm"
+9008 DATA "gom.dlkki.ckkllkki.ckklj.gom"
+9009 DATA "hpn......          ......hpn"
 9010 DATA "hpn.gokki gkiDDckm ckkom.hpn"
 9011 DATA "hpn.hn... f      f ...hn.hpn"
 9012 DATA "dlj.dj.gm dkkkkkkj gm.dj.dlj"

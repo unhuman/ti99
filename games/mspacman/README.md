@@ -38,6 +38,11 @@ gliding, turning at cells, blocked by every wall, wrapping through either tunnel
 - **Resolved (per review):** the pen's interior (DATA row 11, cols 12–17 — **6 cells wide**) is
   wider than earlier drafts, so the **3 starting ghosts are now spread evenly across it** with
   equal margins from each side wall (sprite X = 105/121/137).
+- **Resolved (per review):** Ms. Pac-Man starts **directly below Blinky** — both sit at sprite
+  X=121, the maze's true center (screen col 16.5, directly over the pen door). Pac-Man's movement
+  grid only stops on whole-cell columns (X≡5 mod 8), so on the very first frame she's given a
+  default direction (right, or left if the player is already holding left) that carries her ~4px
+  to the nearest aligned cell before normal turn-checking takes over.
 - Multi-maze architecture still holds: a maze = a `DATA` grid + a wall color via `GOSUB 800`.
 - Draws in a few seconds interpreted; **instant compiled**.
 
