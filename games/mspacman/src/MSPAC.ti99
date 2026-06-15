@@ -32,18 +32,19 @@
 147 CALL CHAR(100,"0000071F3F33333F3F3F3F3F3F3600000000E0F8FCCCCCFCFCFCFCFCFCD80000")
 148 CALL CHAR(104,"0000000001070F1F1F1F0F0700000000000060C080C0E0F0F0F0E0C000000000")
 150 CALL MAGNIFY(3)
-151 DIM GX(4),GY(4),GD(4),OP(4),PD(4)
-152 SX=121 :: SY=141 :: DD=0 :: PT=0
+151 DIM GX(4),GY(4),GD(4),OP(4),PD(4),RT(4)
+152 SX=121 :: SY=141 :: DD=0 :: PT=0 :: EC=0
 155 MZ=1 :: GOSUB 800
-156 REM --- sprites: 3 ghosts in pen, Blinky on top, Pac + fruit in maze ---
+156 REM --- sprites: #1 Pac, #2 Blinky(out), #3 Pinky, #4 Inky, #5 Sue (in pen), #6 fruit ---
 157 CALL SPRITE(#1,96,11,SY,SX,0,0)
 158 CALL SPRITE(#2,100,9,77,121,0,0)
-159 CALL SPRITE(#3,100,14,93,105,0,0)
-160 CALL SPRITE(#4,100,8,93,121,0,0)
+159 CALL SPRITE(#3,100,14,93,121,0,0)
+160 CALL SPRITE(#4,100,8,93,105,0,0)
 161 CALL SPRITE(#5,100,10,93,137,0,0)
 162 CALL SPRITE(#6,104,9,109,121,0,0)
 163 GX(1)=121 :: GY(1)=77 :: GD(1)=4
-164 GX(2)=105 :: GY(2)=93 :: GD(2)=4 :: GX(3)=121 :: GY(3)=93 :: GD(3)=4 :: GX(4)=137 :: GY(4)=93 :: GD(4)=4
+164 GX(2)=121 :: GY(2)=93 :: GD(2)=4 :: GX(3)=105 :: GY(3)=93 :: GD(3)=4 :: GX(4)=137 :: GY(4)=93 :: GD(4)=4
+165 RT(1)=0 :: RT(2)=10 :: RT(3)=30 :: RT(4)=60
 166 CD=4 :: CALL KEY(0,K,S) :: CALL JOYST(1,JX,JY) :: IF K=83 OR JX<0 THEN CD=3
 170 DISPLAY AT(1,1):"MAZE";MZ;" DOTS";DT;" SCORE";PT
 190 REM ===== player movement via LOCATE (E/S/D/X or joystick; Q quits) =====
@@ -98,17 +99,17 @@
 705 IF TR=12 AND TC>15 AND TC<18 THEN WL=1
 706 IF TR=13 AND TC>13 AND TC<20 THEN WL=1
 707 RETURN
-710 REM --- ghost GI: wander (random turn at open cells, reverse at dead ends) ---
+710 REM --- ghost GI: wander (random turn, reverse at dead ends); released ghosts exit via X=121, centered in the door (713-714) ---
 711 BX=GX(GI) :: BY=GY(GI) :: BD=GD(GI)
-712 AX=BX+3 :: AY=BY+3
-713 IF AX-INT(AX/8)*8<>0 THEN 740
-714 IF AY-INT(AY/8)*8<>0 THEN 740
-715 C=INT((BX+11)/8) :: R=INT((BY+11)/8)
-716 REV=0
-717 IF BD=1 THEN REV=2
-718 IF BD=2 THEN REV=1
-719 IF BD=3 THEN REV=4
-720 IF BD=4 THEN REV=3
+712 RL=0 :: IF EC>=RT(GI) THEN RL=1
+713 IF RL=1 AND BX=121 AND BY=93 THEN BD=1 :: GOTO 740
+714 IF RL=1 AND BX=121 AND BY=77 AND BD=1 THEN CALL LINK("IRND",2,PK) :: BD=PK+3 :: GOTO 740
+715 AX=BX+3 :: AY=BY+3
+716 IF AX-INT(AX/8)*8<>0 THEN 740
+717 IF AY-INT(AY/8)*8<>0 THEN 740
+718 C=INT((BX+11)/8) :: R=INT((BY+11)/8) :: REV=0
+719 IF BD=1 THEN REV=2 ELSE IF BD=2 THEN REV=1
+720 IF BD=3 THEN REV=4 ELSE IF BD=4 THEN REV=3
 721 FOR DR=1 TO 4
 722 TR=R :: TC=C
 723 IF DR=1 THEN TR=R-1
@@ -137,7 +138,7 @@
 749 RETURN
 750 REM --- eat dot/pellet at (R,C): score, blip, update HUD, check win ---
 751 CALL GCHAR(R,C,G) :: IF G<>144 AND G<>152 THEN 759
-752 PT=PT+10 :: IF G=152 THEN PT=PT+40
+752 PT=PT+10 :: EC=EC+1 :: IF G=152 THEN PT=PT+40
 753 CALL HCHAR(R,C,32) :: DT=DT-1 :: CALL SOUND(40,1400,2)
 754 CALL HCHAR(1,1,32,32) :: DISPLAY AT(1,1):"MAZE";MZ;" DOTS";DT;" SCORE";PT
 755 IF DT>0 THEN 759
@@ -145,7 +146,7 @@
 757 CALL LINK("DELAY",3000)
 758 GOTO 600
 759 RETURN
-760 REM --- ghost wall check: as 700, but ghosts may sit in the pen interior (706 is player-only) ---
+760 REM --- ghost wall check: as 700, but 706 dropped (pen interior open); door (765) is always blocked here -- exit is only via the X=121 lane (713-714) ---
 761 IF TC<1 OR TC>32 THEN WL=1 :: RETURN
 762 IF TR<1 OR TR>24 THEN WL=1 :: RETURN
 763 CALL GCHAR(TR,TC,G) :: WL=0

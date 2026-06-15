@@ -58,21 +58,43 @@ from 224, and the HUD (`MAZE 1 DOTS nnn SCORE nnnn`) is redrawn. When `DOTS` rea
 The movement engine is now **generalized into a shared subroutine** (`GOSUB 710`), driven by
 per-ghost state arrays `GX()/GY()/GD()`. **All 4 ghosts wander**: each frame, once cell-aligned,
 a ghost picks a random open direction (never reversing unless it's a dead end), gliding via
-`CALL LOCATE` just like Ms. Pac-Man. **Blinky (#2)** starts above the pen door at the shared
-half-cell (X=121) and drifts out into the open area; **ghosts #3-#5** start inside the 6-cell pen
-and shuffle back and forth (the pen's only exit, the door, is still sealed — see below). All four
-use the same rightward kickoff (`GD()=4`) so none of them freeze on their half-cell start.
+`CALL LOCATE` just like Ms. Pac-Man. All four use the same rightward kickoff (`GD()=4`) so none of
+them freeze on their half-cell start.
 
-Ghosts use a **separate wall-check** (`GOSUB 760`), identical to the player's (`GOSUB 700`)
-except it drops the pen-interior exclusion (line 706) — that exclusion exists only to keep
-Ms. Pac-Man out of the ghost box, but the ghosts live there. The door itself is still blocked for
-everyone, so ghosts can't yet leave the pen.
+**Ghost roster (pen, left to right): #4 Inky, #3 Pinky, #5 Sue**, with **#2 Blinky** already
+above the door. Pinky sits centered under the door (X=121, same column as Blinky) since she's
+released first.
+
+**Pen-exit via dot counter.** `EC` counts dots+pellets eaten (224 total). Each ghost has a release
+threshold `RT(GI)`: Blinky `RT=0` (released immediately), Pinky `RT=10`, Inky `RT=30`, Sue `RT=60`.
+
+The door is a **one-way exit lane centered on X=121**. Ghosts use a separate wall-check
+(`GOSUB 760`), identical to the player's (`GOSUB 700`) except it drops the pen-interior exclusion
+(line 706 — that exists only to keep Ms. Pac-Man out of the ghost box) and **always** blocks the
+door tile (line 765) — ghosts never "decide" to step onto it via the normal turn-check.
+
+Instead, exiting is its own special case (lines 713-714), reusing the same trick that lets
+Ms. Pac-Man and Blinky start on the half-cell X=121 (the true screen-center, straddling the door's
+two cells): X=121 is never cell-aligned, so a ghost there always skips the turn-decision and just
+keeps moving in its current direction. While wandering the pen row, a **released** ghost
+(`EC>=RT(GI)`) that happens to pass through X=121 is redirected to move *up* — and because X=121
+never realigns, it keeps drifting straight up, perfectly centered in the 2-cell door, with no
+wall-check at all. Once it clears the door into the open corridor (`BY=77`), it picks a random
+left/right "kickoff" — 2 frames later it lands on an aligned cell (X=117 or 125), where it
+immediately finds the wall above the door and turns into the corridor, exactly like normal
+wandering.
+
+Because the wall-check always blocks the door as a target, a ghost that has exited (or Blinky, who
+starts outside) can never head back down through it via the normal turn-check — **ghosts cannot
+re-enter the pen** during normal wandering; only the dedicated X=121 lane passes through, and only
+upward. (Per the Step 6 plan: an *eaten* ghost becomes "eyes" whose target **is** the pen — that
+will need its own path back through the door, deliberately bypassing this one-way rule.)
 
 **Implemented:** shared array-driven movement engine for all 4 ghosts; open-cell turning and
-dead-end reversal; tunnel wrap; a ghost-specific wall-check.
-**Deferred (not debt — just not started yet):** scatter/chase AI (currently pure random wander);
-pen-exit-through-door sequencing; `CALL LINK("FLICK")` sprite rotation; Pac-Man↔ghost
-collision/death.
+dead-end reversal; tunnel wrap; a ghost-specific wall-check; dot-counter pen release.
+**Deferred (not debt — just not started yet):** a **timer-based** release (in addition to the dot
+counter, per the arcade); scatter/chase AI (currently pure random wander);
+`CALL LINK("FLICK")` sprite rotation; Pac-Man↔ghost collision/death.
 
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
