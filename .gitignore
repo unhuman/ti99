@@ -11,7 +11,9 @@ Adventure-Java/
 
 # Interstitial files
 **/*-M
+**/*-M.?
 **/*-A
+**/*-E
 **/*-F
 **/*-O
 **/*-S
