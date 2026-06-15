@@ -194,14 +194,16 @@ RESTORE <line> :: WC=<color>`, then reads + renders 22 rows (screen rows 2–23)
 Adding a maze = a new `DATA` block + a new `IF MZ=` line. Interpreted draw takes a few seconds;
 instant compiled (optionally cache later with `COMPRESS`/`CWRITE`).
 
-**Maze 1 source grid** (left 16 cols; full row = `L + reverse(L)`, symmetric about col 16.5):
-```
-################   #.###.#.###.#.#   #.#####.#.###.#   ###.#.###.#.#.#
-#o....#.....#..    #...#.#...#.#.#   #.....#.#.#...#   #...#.#...#.#.#
-#.###.#.###.#.#    ###.#.###.#.#.#   #####.#.#.#.#.#   #.###.#.###.#.#
-#...#.#...#.#.#     #...#...#...#..   #  ..........#    #o....#.....#..
-###.#.###.#.#.#    #.#####.#.###.#   #  ##.####.##.#   #.############
-#...#...#...#..     #.....#.#.#...#   #  ..........#   ################
-#.#####.#.###.#    #####.#.#.#.#.#   #####.#.#.#.#.#
-```
-(read top-to-bottom, left-to-right = rows 1–22). Regenerate the `DATA` if this changes.
+**Maze 1 is a generated block maze** (Ms.-Pac style: thick walls, 1-wide corridors — *not* a
+braided thin-wall maze, which gives "double-dot" parallel lanes + long paths). The generator:
+1. lays **full horizontal corridors** at rows `{2,5,9,13,17,20}` (→ connectivity + no dead ends
+   for free), and between them, per-band **vertical-corridor gap columns** that **differ per band**
+   (staggered → varied, not a uniform grid), gaps ≥3 apart (→ 2-thick walls, no double lanes);
+2. stamps the **paddock** (rows 9–11, cols 13–20, 1-row interior, door cols 16–17) and clears a
+   **dot-free buffer** (rows 8–12, cols 11–22) so there's open space around it;
+3. dead-end-fills + removes isolated walls + **eliminates any 2×2 dot block** (→ a space) + 4
+   corner pellets;
+4. autotiles (mask 15 = solid) + encodes to `DATA`.
+It **verifies**: dead-ends = 0, double-dots = 0, unreachable = 0 (269 dots). Aspect note: arcade
+Ms. Pac-Man is portrait (28×31); this is a **landscape (32×21) style adaptation**. Edit the per-
+band gap sets to redesign the layout.

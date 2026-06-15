@@ -23,15 +23,23 @@
 138 CALL LINK("CHAR2",140,"0000FCFCFCFC3C3C")
 139 CALL LINK("CHAR2",141,"3C3CFCFCFCFC3C3C")
 140 CALL LINK("CHAR2",142,"0000FFFFFFFF3C3C")
-141 CALL LINK("CHAR2",143,"3C3CFFFFFFFF3C3C")
+141 CALL LINK("CHAR2",143,"FFFFFFFFFFFFFFFF")
 142 CALL LINK("CHAR2",144,"0000001818000000")
 143 CALL LINK("CHAR2",152,"003C7E7E7E7E3C00")
-145 REM --- Ms Pac-Man sprite (ghosts/fruit return in Step 4) ---
+145 REM --- sprite patterns: Ms Pac (96), ghost (100), fruit (104) ---
 146 CALL CHAR(96,"0000071F3F3F3F3F3F3F3F3F1F0700000000E0F8FCF0C00000C0F0FCF8E00000")
+147 CALL CHAR(100,"0000071F3F33333F3F3F3F3F3F3600000000E0F8FCCCCCFCFCFCFCFCFCD80000")
+148 CALL CHAR(104,"0000000001070F1F1F1F0F0700000000000060C080C0E0F0F0F0E0C000000000")
 150 CALL MAGNIFY(3)
 155 MZ=1 :: GOSUB 800
-160 CALL SPRITE(#1,96,11,77,21,0,0)
-165 SX=21 :: SY=77 :: CD=0 :: DD=0
+156 REM --- sprites: 3 ghosts in pen, Blinky on top, Pac + fruit in maze ---
+157 CALL SPRITE(#1,96,11,141,117,0,0)
+158 CALL SPRITE(#2,100,9,69,121,0,0)
+159 CALL SPRITE(#3,100,14,85,111,0,0)
+160 CALL SPRITE(#4,100,8,85,121,0,0)
+161 CALL SPRITE(#5,100,10,85,131,0,0)
+162 CALL SPRITE(#6,104,9,101,121,0,0)
+165 SX=117 :: SY=141 :: CD=0 :: DD=0
 170 DISPLAY AT(1,1):"MAZE";MZ;" DOTS";DT
 190 REM ===== player movement via LOCATE (E/S/D/X or joystick; Q quits) =====
 300 CALL KEY(0,K,S)
@@ -68,6 +76,9 @@
 401 IF CD=2 THEN SY=SY+2
 402 IF CD=3 THEN SX=SX-2
 403 IF CD=4 THEN SX=SX+2
+410 IF SY<>85 THEN 420
+411 IF SX<13 THEN SX=229
+412 IF SX>229 THEN SX=13
 420 CALL LOCATE(#1,SY,SX)
 430 CALL LINK("DELAY",25)
 440 GOTO 300
@@ -83,36 +94,37 @@
 810 CALL LINK("COLOR2",13,WC,1) :: CALL LINK("COLOR2",14,WC,1)
 811 CALL LINK("COLOR2",15,16,1) :: CALL LINK("COLOR2",16,11,1)
 815 DT=0
-820 FOR MR=1 TO 22
+820 FOR MR=1 TO 23
 821 READ A$
-822 FOR I=1 TO 32
+822 FOR I=1 TO 28
 823 P$=SEG$(A$,I,1) :: CD=32
 824 IF P$="." THEN CD=144 :: DT=DT+1
 825 IF P$="O" THEN CD=152 :: DT=DT+1
 826 IF P$>="a" THEN CD=128+ASC(P$)-97
-827 CALL HCHAR(MR+1,I,CD)
+827 CALL HCHAR(MR+1,I+2,CD)
 828 NEXT I
 829 NEXT MR
 830 RETURN
-9001 DATA "gkkkkkokkkkkokkkkkkokkkkkokkkkkm"
-9002 DATA "fO....f.....f..  ..f.....f....Of"
-9003 DATA "f.ckm.f.ckm.f.e  e.f.gki.f.gki.f"
-9004 DATA "f...f.f...f.f.f  f.f.f...f.f...f"
-9005 DATA "hki.f.dkm.b.f.b  b.f.b.gkj.f.ckn"
-9006 DATA "f...f...f...f..  ..f...f...f...f"
-9007 DATA "f.cklkm.f.gkj.e  e.dkm.f.gklki.f"
-9008 DATA "f.....f.f.f...f  f...f.f.f.....f"
-9009 DATA "hkkki.b.b.b.a.b  b.a.b.b.b.ckkkn"
-9010 DATA "f  ..........a    a..........  f"
-9011 DATA "f  ci.ckki.ci a  a ci.ckki.ci  f"
-9012 DATA "f  ..........a    a..........  f"
-9013 DATA "hkkki.e.e.e.a.e  e.a.e.e.e.ckkkn"
-9014 DATA "f.....f.f.f...f  f...f.f.f.....f"
-9015 DATA "f.ckokj.f.dkm.b  b.gkj.f.dkoki.f"
-9016 DATA "f...f...f...f..  ..f...f...f...f"
-9017 DATA "hki.f.gkj.e.f.e  e.f.e.dkm.f.ckn"
-9018 DATA "f...f.f...f.f.f  f.f.f...f.f...f"
-9019 DATA "f.ckj.f.ckj.f.b  b.f.dki.f.dki.f"
-9020 DATA "fO....f.....f..  ..f.....f....Of"
-9021 DATA "f.gooopooooopm    gpooooopooom.f"
-9022 DATA "dkllllllllllllkkkkllllllllllllkj"
+9001 DATA "gkkkkkkkkkkkooookkkkkkkkkkkm"
+9002 DATA "fO..........hppn..........Of"
+9003 DATA "f.ckki.ckki.dllj.ckki.ckki.f"
+9004 DATA "f..........................f"
+9005 DATA "f.ckki.gm.ckkookki.gm.ckki.f"
+9006 DATA "f......hn....hn....hn......f"
+9007 DATA "hoooom.hn.gooppoom.hn.goooon"
+9008 DATA "hppppn.hn.dllllllj.hn.hppppn"
+9009 DATA "hppppn.hn          hn.hppppn"
+9010 DATA "dllllj.hn  gi  cm  hn.dllllj"
+9011 DATA "     ..hn  f    f  hn..     "
+9012 DATA "goooom.hn  dkkkkj  hn.goooom"
+9013 DATA "hppppn.hn          hn.hppppn"
+9014 DATA "hppppn.hn.goooooom.hn.hppppn"
+9015 DATA "hllllj.hn.dllppllj.hn.dlllln"
+9016 DATA "f......hn....hn....hn......f"
+9017 DATA "f.ckom.dlkki.dj.ckklj.goki.f"
+9018 DATA "fO..hn................hn..Of"
+9019 DATA "hki.dj.gm.ckkookki.gm.dj.ckn"
+9020 DATA "f......hn....hn....hn......f"
+9021 DATA "f.ckkkkllkki.dj.ckkllkkkki.f"
+9022 DATA "f..........................f"
+9023 DATA "dkkkkkkkkkkkkkkkkkkkkkkkkkkj"
