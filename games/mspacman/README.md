@@ -136,6 +136,28 @@ reads Ms. Pac-Man wrapping to the other mouth as "ran far away" and routes back 
 instead of following through the tunnel. Fix is a wrap-aware distance term for tunnel-row
 candidates — bundle with the scatter/personality targeting rework above.
 
+**FLICK sprite-overlap priority** — `CALL LINK("FLICK")` rotates which physical sprite slot each
+of our 6 logical sprites occupies so everyone gets a turn on-screen, but that rotation also
+reshuffles which sprite the TMS9918A draws on top when two overlap. So when, say, a ghost and
+Ms. Pac-Man overlap, which one visually covers the other can flip frame-to-frame as the rotation
+cycles — there's no way to pin "Ms. Pac-Man always on top" (or any fixed order) with this routine.
+Cosmetic quirk of the >4-sprites-per-line workaround; revisit only if a custom/priority-aware
+flicker scheme is ever justified.
+
+**FLICK-induced glitches even at ≤4 sprites/line** — per `SpriteFlickerRoutine.pdf`, FLICK's
+interrupt handler unconditionally rewrites/rotates the sprite attribute table in VDP RAM on
+*every* VBLANK, regardless of how many sprites actually share a scanline. Our main loop also
+writes that same table up to 5x/frame (`CALL LOCATE` for Ms. Pac-Man + 4 ghosts, lines 420/748).
+The VDP address pointer is a single stateful register and a multi-byte `CALL LOCATE` write isn't
+atomic — if the VBLANK interrupt lands mid-write, the interrupted write can land at the wrong VDP
+address for that frame, producing a brief glitch. This looks like an inherent property of this
+"proof of concept" interrupt routine rather than something fixable in `MSPAC.ti99` itself
+(`CALL LINK("FREEZE")`/`("THAW")` don't apply here — per `XB256.pdf` p.10 they only pause/resume
+XB256's *automatic* velocity-driven sprite motion, and all our sprites are created with `,0,0`
+velocity and moved exclusively via `CALL LOCATE`, so there's nothing for FREEZE/THAW to batch). If
+worth chasing later: compare on real hardware or another emulator, since "in emulation" may point
+at a Classic99-specific timing quirk rather than the routine itself.
+
 > Architecture note: mazes are authored as plain `#/./o` grids and **autotiled offline** (the
 > generator computes each wall's neighbor-mask → tile), so the TI just blits tile codes. The
 > readable source grid lives in `DESIGN.md`/the generator; the `.ti99` holds the encoded `DATA`.
