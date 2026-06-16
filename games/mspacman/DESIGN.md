@@ -23,11 +23,15 @@ around)** so actors look ~12px and barely overhang the thin walls — there is n
 sprite, so this is how we get the size. Each sprite is one `CALL CHAR(base,"<64 hex>")`. Roster
 (keep numbers low for flicker):
 
-| # | Sprite | Base char | Notes |
+| # | Sprite | Base char(s) | Notes |
 |---|--------|-----------|-------|
-| #1 | Ms. Pac-Man | 96 | player |
-| #2–#5 | Ghosts | 100 (shared pattern, different colors) | |
-| #6 | Fruit | 104 | |
+| #1 | Ms. Pac-Man | 96 R / 100 L / 104 U / 108 D / 112 closed | direction-facing + mouth animation (`CALL PATTERN` swaps frame each loop) |
+| #2–#5 | Ghosts | 116 frame-A / 120 frame-B / 124 eyes | shared patterns, per-sprite color; frames alternate to wiggle the feet |
+| #6 | Fruit | 128 | roaming bonus fruit, created on demand (Step 7) |
+
+All sprite art is reduced to **~10×10** centered in the 16px box (3px transparent margin each
+side), generated from ASCII grids by `assets/spritegen.pl` (quadrant-ordered TI hex). Ms. Pac-Man
+carries a small bow on her head (same color as her body — TI sprites are single-color).
 
 **Movement — `CALL LOCATE` only, never `CALL MOTION`.** All sprites are created with **zero
 velocity** (`CALL SPRITE(...,0,0)`): that registers them "in motion" so the flicker routine sees

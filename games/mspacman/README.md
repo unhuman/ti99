@@ -240,18 +240,48 @@ routine. On a normal-ghost collision (`GS=0`): `LV=LV-1`, the HUD rows are blank
 `GAME OVER` (if `LV<=0`, then `END`) or `CAUGHT!` (otherwise) is shown for 2 seconds.
 
 **Respawn.** If lives remain, Ms. Pac-Man and all 4 ghosts are reset to **exactly their
-game-start state** — same positions (`SX=121,SY=141` / the pen layout from lines 163-164), same
-directions (`CD=4`, `GD()=4`), `GS()=0` with colors/patterns restored (`CALL COLOR`/`CALL
-PATTERN(...,100)`), and the shared timers `FT`, `EG`, `EC`, `FC` all back to 0 — i.e. the ghost
-pen-release schedule restarts from scratch, same as a fresh game. Only `PT` (score), `DT` (dots
-remaining) and the maze itself are preserved. The HUD is redrawn (now showing the decremented
-`LIVES`) and play resumes from the main loop.
+game-start state** — same positions (`SX=121,SY=141` / the pen layout), same directions (`CD=4`,
+`GD()=4`), `GS()=0` with colors/patterns restored (`CALL COLOR`/`CALL PATTERN(...,116)`), the
+roaming fruit (if any) removed, and the shared timers `FT`, `EG`, `EC`, `FC` all back to 0 — i.e.
+the ghost pen-release schedule restarts from scratch, same as a fresh game. Only `PT` (score),
+`DT` (dots remaining), `FN` (fruits already spawned) and the maze itself are preserved. The HUD is
+redrawn (now showing the decremented `LIVES`) and play resumes from the main loop.
 
 **Implemented:** `LV` lives counter (HUD); `CAUGHT!`/`GAME OVER` messaging; full Pac+ghost
 respawn-to-start-state on a non-fatal catch; `GAME OVER` + `END` at 0 lives.
-**Deferred:** levels (maze refill, faster ghosts, shorter fright time), sound effects beyond the
-existing blips, and Ms. Pac-Man facing/mouth animation — per `DESIGN.md` §12, these remain for a
-later pass at Step 7.
+
+### Step 7 polish — art, animation, sound, roaming fruit
+- **~10×10 sprites + bow + directions.** All sprite art was redrawn to ~10×10 centered in the 16px
+  box (3px transparent margin, up from 2px), generated from readable ASCII grids by
+  `assets/spritegen.pl` (it emits the quadrant-ordered TI hex). Ms. Pac-Man now has **four
+  direction-facing frames** (right 96 / left 100 / up 104 / down 108) plus a **closed-mouth full
+  circle** (112); each main-loop pass picks the frame from her direction `CD` (line 421) and
+  toggles open↔closed every ~8 frames while moving (lines 423-424) for a chomp animation. She wears
+  a small **bow** on her head (same yellow as her body — TI sprites are single-color).
+- **Ghost wiggle.** Two ghost-body frames (116/120) with alternating scalloped feet; a global phase
+  `GW` (line 419) flips between them every ~8 frames, and each ghost adopts `GW` unless it's "eyes"
+  (line 1000) — so all ghosts wiggle their bottoms in sync, blue or normal. Eyes use their own
+  pattern (124).
+- **Distinct pellet sound.** A plain dot now plays a short high blip (`CALL SOUND(40,1400,2)`,
+  line 753, guarded to `G=144`); a **power pellet** plays a separate lower energizer chord
+  (`CALL SOUND(220,165,2,110,4)`, line 779) when it frightens the ghosts.
+- **Start jingle.** A short **original** arcade-style ascending fanfare (`GOSUB 710`, lines
+  711-718) plays once at boot, after the maze/sprites/HUD are up. (It's an original composition in
+  the spirit of an arcade intro, not a copy of the licensed Ms. Pac-Man tune.)
+- **Roaming fruit (replaces the static middle fruit).** Sprite #6 is no longer parked under the
+  pen; instead, when the dots-remaining count hits **154** or **54** (≈70 / 170 eaten of 224), a
+  cherry is spawned at a **random tunnel mouth** (`GOSUB 720`) and created on demand. Each frame
+  (`GOSUB 730`) it wanders the maze taking a **random open, non-reversing turn** at each
+  intersection (reusing the ghost wall-check `GOSUB 760`), and when it walks off a tunnel edge it
+  **despawns** (`CALL DELSPRITE(#6)`) — so it weaves across the screen and leaves. Eating it
+  (overlap check line 434 → `GOSUB 770`) scores **+100** and plays a chime; **dying while it's out
+  forfeits it** (the caught routine removes it, line 1101). At most **2** fruits per maze (`FN`).
+  - *Flicker caveat:* `FLICK` caches its sprite range at call time (when only #1–#5 exist), so the
+    on-demand #6 isn't flicker-rotated; it could blink only in the rare case it shares a scanline
+    with 4 other actors. No correctness impact; revisit if it's visually distracting.
+
+**Deferred:** levels (maze refill, faster ghosts, shorter fright time), background music, and a
+fruit-value table that scales by level — per `DESIGN.md` §12, these remain for a later pass.
 
 ## Build & run (Classic99, `JUWEL7` = DSK1)
 Same lifecycle that worked for Dot Muncher (`CLAUDE.md` §8). Reminders that bit us before:

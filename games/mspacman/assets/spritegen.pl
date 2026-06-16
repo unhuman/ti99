@@ -1,0 +1,241 @@
+#!/usr/bin/perl
+# Ms. Pac-Man sprite-art generator.
+# Each sprite is a 16x16 grid ('#' = lit pixel, '.'/space = transparent),
+# emitted as the 64-hex CALL CHAR string for a MAGNIFY(3) sprite.
+#
+# A MAGNIFY(3) sprite is 4 chars (base..base+3) in TI quadrant order:
+#   base   = top-left 8x8     (rows 0-7,  cols 0-7)
+#   base+1 = bottom-left 8x8  (rows 8-15, cols 0-7)
+#   base+2 = top-right 8x8    (rows 0-7,  cols 8-15)
+#   base+3 = bottom-right 8x8 (rows 8-15, cols 8-15)
+# Each 8x8 char = 8 bytes, one per row, MSB = leftmost pixel.
+#
+# Art is reduced to ~10x10 centered in the box (3px transparent margin each
+# side) per the design: actors look ~10px and clear the 4px walls easily.
+#
+# Usage: perl spritegen.pl            # render + hex for every sprite
+#        perl spritegen.pl pac_r      # just one
+
+use strict; use warnings;
+
+# ---- sprite definitions (order = roster) -------------------------------
+# Ms. Pac-Man: a 10x10 circle (rows 3-12, cols 3-12) with a wedge mouth and a
+# small bow. One open-mouth frame per direction + a closed full-circle frame
+# shared by all directions (mouth animation toggles open<->closed).
+
+my @pac_r = (
+"................",
+"....#..#........",
+"....####........",
+"....#######.....",
+"....########....",
+"...##########...",
+"...########.....",
+"...#####........",
+"...#####........",
+"...########.....",
+"...##########...",
+"....########....",
+".....######.....",
+"................",
+"................",
+"................",
+);
+
+my @pac_u = (
+"................",
+"...#..#.........",
+"...####.........",
+"...####.###.....",
+"...#########....",
+"..####...####...",
+"..###.....###...",
+"..##########....",  # filled lower
+"..##########....",
+"..##########....",
+"..##########....",
+"...########.....",
+"....######......",
+"................",
+"................",
+"................",
+);
+
+my @pac_d = (
+"................",
+"...#..#.........",
+"...####.........",
+"....######......",
+"...########.....",
+"..##########....",
+"..##########....",
+"..##########....",
+"..###.....###...",
+"..####...####...",
+"...#########....",
+"...####.###.....",
+"....####........",
+"................",
+"................",
+"................",
+);
+
+# Closed mouth = full circle (used as the alternate animation frame).
+my @pac_o = (
+"................",
+"....#..#........",
+"....####........",
+".....######.....",
+"....########....",
+"...##########...",
+"...##########...",
+"...##########...",
+"...##########...",
+"...##########...",
+"...##########...",
+"....########....",
+".....######.....",
+"................",
+"................",
+"................",
+);
+
+# Ghost: 10x10 domed body, two transparent eye-holes, scalloped feet.
+# Two frames whose feet alternate ("wiggling bottom").
+my @ghost_a = (
+"................",
+"................",
+"................",
+".....####.......",
+"...########.....",
+"..##.##.##.##...",
+"..##.##.##.##...",
+"..############..",
+"..############..",
+"..############..",
+"..############..",
+"..############..",
+"..##.##.##.##...",  # feet down at cols 2-3,5-6,8-9,11
+"...#..#..#..#...",
+"................",
+"................",
+);
+
+my @ghost_b = (
+"................",
+"................",
+"................",
+".....####.......",
+"...########.....",
+"..##.##.##.##...",
+"..##.##.##.##...",
+"..############..",
+"..############..",
+"..############..",
+"..############..",
+"..############..",
+"...##.##.##.##..",  # feet shifted right
+"..#..#..#..#....",
+"................",
+"................",
+);
+
+# Eyes only (eaten ghost returning to pen).
+my @eyes = (
+"................",
+"................",
+"................",
+"................",
+"................",
+"...##....##.....",
+"..####..####....",
+"..####..####....",
+"..####..####....",
+"...##....##.....",
+"................",
+"................",
+"................",
+"................",
+"................",
+"................",
+);
+
+# Fruit: cherry pair with stems.
+my @fruit = (
+"................",
+"................",
+".........##.....",
+"........##......",
+".......##.......",
+"......##.##.....",
+".....##...##....",
+"...###.....##...",
+"..#####...####..",
+"..######.######.",
+"..######.######.",
+"...####...####..",
+"....##.....##...",
+"................",
+"................",
+"................",
+);
+
+my %sprites = (
+  pac_r   => [\@pac_r,   96],
+  pac_u   => [\@pac_u,  104],
+  pac_d   => [\@pac_d,  108],
+  pac_o   => [\@pac_o,  112],
+  ghost_a => [\@ghost_a,116],
+  ghost_b => [\@ghost_b,120],
+  eyes    => [\@eyes,   124],
+  fruit   => [\@fruit,  128],
+);
+
+# pac_l is pac_r mirrored horizontally (bow lands top-right) - generated below.
+my @pac_l = map { scalar reverse(norm16($_)) } @pac_r;
+$sprites{pac_l} = [\@pac_l, 100];
+
+sub norm16 {            # pad/truncate a row to exactly 16 cells, '.'=off
+  my $r = shift;
+  $r =~ s/ /./g;
+  $r .= '.' x 16;
+  return substr($r,0,16);
+}
+
+sub char_hex {          # 8 rows x 8 cols -> 16 hex digits
+  my @rows = @_;        # each is an 8-char string of '#'/'.'
+  my $hex = '';
+  for my $row (@rows) {
+    my $byte = 0;
+    for my $c (0..7) {
+      $byte = ($byte<<1) | (substr($row,$c,1) eq '#' ? 1 : 0);
+    }
+    $hex .= sprintf("%02X", $byte);
+  }
+  return $hex;
+}
+
+sub to_hex {            # 16x16 grid -> 64-hex quadrant string
+  my @g = map { norm16($_) } @_;
+  push @g, ('.' x 16) while @g < 16;
+  my (@TL,@BL,@TR,@BR);
+  for my $r (0..7)  { push @TL, substr($g[$r],0,8);  push @TR, substr($g[$r],8,8); }
+  for my $r (8..15) { push @BL, substr($g[$r],0,8);  push @BR, substr($g[$r],8,8); }
+  return char_hex(@TL).char_hex(@BL).char_hex(@TR).char_hex(@BR);
+}
+
+sub render {            # pretty print for eyeballing
+  my @g = map { norm16($_) } @_;
+  push @g, ('.' x 16) while @g < 16;
+  for my $r (@g) { (my $v=$r) =~ tr/./ /; print "    |$v|\n"; }
+}
+
+my @want = @ARGV ? @ARGV : qw(pac_r pac_l pac_u pac_d pac_o ghost_a ghost_b eyes fruit);
+for my $name (@want) {
+  my $def = $sprites{$name} or die "unknown sprite $name\n";
+  my ($grid,$base) = @$def;
+  my $hex = to_hex(@$grid);
+  print "== $name (base $base) ==\n";
+  render(@$grid);
+  print "  CALL CHAR($base,\"$hex\")\n\n";
+}
