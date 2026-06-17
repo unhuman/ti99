@@ -11,12 +11,14 @@ Adventure-Java/
 
 # Interstitial files
 MSPAC
+MSPAC.TXT
 **/*-M
 **/*-M.?
 **/*-M.TXT
 **/*-A
 **/*-E
 **/*-F
+**/*-G
 **/*-O
 **/*-S
 **/*-X

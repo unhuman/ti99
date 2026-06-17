@@ -7,7 +7,7 @@ rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old
 
 - **Source:** `src/MSPAC.ti99`
 - **Current step:** **Step 7 (in progress) — lives, respawn, game over** (on top of Steps 1-4, 6).
-  Press **Q** to quit.
+  Press **fire** (or Space/Enter) to start; **Q** to quit.
 - **Status:** awaiting interpreted run + compile.
 
 ## Step 3a — what you should see / test
@@ -51,8 +51,9 @@ Tunnel wrap is wired for **both** tunnel rows (Ms. Pac-Man's sprite Y = 61 and 1
 ## Step 3b — eating, score, win-on-clear
 As Ms. Pac-Man's cell-centered (`GOSUB 750`), the cell she's sitting on is checked: a **dot** (10
 pts) or **power pellet** (50 pts) is blanked, a short blip plays (`CALL SOUND`), `DOTS` ticks down
-from 224, and the HUD (`MAZE 1 DOTS nnn SCORE nnnn`) is redrawn. When `DOTS` reaches **0**,
-`MAZE CLEARED!` is shown for 3 seconds and the program ends.
+from 224, and the HUD (`LEVEL n DOTS nnn SCORE nnnn`) is redrawn. When `DOTS` reaches **0**, the
+maze **flashes and advances to the next level** (see "Level progression" under Step 7) rather than
+ending.
 
 **Instant reversal.** Ms. Pac-Man can reverse direction immediately, even mid-corridor between
 cells — lines 311-314 check whether the newly-pressed direction is the exact opposite of her
@@ -106,11 +107,17 @@ reuses this same lane in reverse to get back in.)
 
 **Collision ("CAUGHT!").** Each frame, after the ghosts move, Ms. Pac-Man's pixel position
 (`SX,SY`) is compared directly against every ghost's pixel position (`GX()/GY()`): `DX,DY` are the
-absolute differences, and if both are `<=10` (sprites overlapping by well over half their 16px
-box), `GOSUB 780` dispatches on that ghost's state (normal ghosts trigger `GOSUB 1100`,
-"CAUGHT!" + lose a life — see Step 7; frightened/eyes ghosts are handled differently — see Step 6
-below). This runs every frame (not gated by cell-alignment), so it triggers as soon as the sprites
-visually overlap rather than only when they land in the same cell.
+absolute differences, and if **`DX+DY<8`** (a **Manhattan/diamond** test, line 428), `GOSUB 780`
+dispatches on that ghost's state (normal ghosts trigger `GOSUB 1100`, "CAUGHT!" + lose a life —
+see Step 7; frightened/eyes ghosts are handled differently — see Step 6 below). This runs every
+frame (not gated by cell-alignment), so it triggers as soon as the sprites meaningfully overlap
+rather than only when they land in the same cell.
+
+> The diamond test replaced an earlier **box** test (`DX<=10 AND DY<=10`) that was too sensitive
+> when cornering: the box's diagonal corners counted a *cell-diagonal* near-miss (`DX≈DY≈8`,
+> ~11px apart) as a hit. `DX+DY` keeps head-on behavior but tightens diagonally, so rounding a
+> corner past a ghost no longer grazes you. `8` is the single tunable "amount" (also used for
+> eating fruit at line 434); lower = less sensitive (requires more overlap before a hit).
 
 **Sprite rotation (`FLICK`).** With 4 chasing ghosts, Ms. Pac-Man, and the fruit all sharing the
 screen, more than 4 sprites can land on the same scanline — the TMS9918A only renders 4 per line,
@@ -258,29 +265,152 @@ respawn-to-start-state on a non-fatal catch; `GAME OVER` + `END` at 0 lives.
   circle** (112); each main-loop pass picks the frame from her direction `CD` (line 421) and
   toggles open↔closed every ~8 frames while moving (lines 423-424) for a chomp animation. She wears
   a small **bow** on her head (same yellow as her body — TI sprites are single-color).
-- **Ghost wiggle.** Two ghost-body frames (116/120) with alternating scalloped feet; a global phase
-  `GW` (line 419) flips between them every ~8 frames, and each ghost adopts `GW` unless it's "eyes"
-  (line 1000) — so all ghosts wiggle their bottoms in sync, blue or normal. Eyes use their own
-  pattern (124).
+- **Ghost wiggle (animated via char data, not sprite name).** All four ghosts keep the **same
+  sprite pattern (116) for their whole life**; the bottom-feet wiggle is done by **redefining the
+  two foot quadrant chars (117 + 119) in place** with `CALL CHAR` every phase change (lines
+  435-436, `FC` mod 8 = 0 → feet A, = 4 → feet B). Because the ghosts' sprite *name* never changes,
+  there is **no per-sprite `CALL PATTERN` write to race `FLICK`** (see the boot-flicker note below).
+  Eyes are the one exception (sprite name 124, set when eaten / restored to 116 on respawn).
 - **Distinct pellet sound.** A plain dot now plays a short high blip (`CALL SOUND(40,1400,2)`,
   line 753, guarded to `G=144`); a **power pellet** plays a separate lower energizer chord
   (`CALL SOUND(220,165,2,110,4)`, line 779) when it frightens the ghosts.
 - **Start jingle.** A short **original** arcade-style ascending fanfare (`GOSUB 710`, lines
   711-718) plays once at boot, after the maze/sprites/HUD are up. (It's an original composition in
-  the spirit of an arcade intro, not a copy of the licensed Ms. Pac-Man tune.)
+  the spirit of an arcade intro, not a copy of any licensed tune.)
+- **Press fire to start.** After the maze and sprites are drawn, the game shows `PRESS FIRE TO
+  START` (line 172) and idles in a tight `CALL KEY` wait — joystick fire (`CALL KEY(1)`=18) or
+  Space/Enter (lines 173-175). Only then does it draw the HUD, play the jingle, enable `FLICK`, and
+  enter the main loop. Sprites sit static during the wait (no timers run), so it reads as an attract
+  pose.
+- **Death animation.** On a fatal catch (`GOSUB 1100`), the roaming fruit is removed
+  (`CALL DELSPRITE(#6)`) and all four ghosts are made **transparent** (swapped to a blank pattern,
+  char 132) — so they vanish without deleting the sprites or touching `FLICK` (avoids the
+  delete/re-create + flicker-toggle that was crashing). Ms. Pac-Man then **spins 3 full turns**
+  clockwise (right→down→left→up frames, 12 steps) while a **deepening whirr** descends from ~860 Hz
+  to ~200 Hz (one tone per step; the paired 1-tick `CALL SOUND` blocks for timing — compiler-safe).
+  Then `CAUGHT!`/`GAME OVER` shows; on respawn the ghosts get their normal pattern/color/position
+  back and play resumes. (`FLICK` stays on throughout — Pac spins at screen row ~19, clear of the
+  pen rows, so it never collides with the transparent ghosts on a scanline.)
+- **Shrink-and-vanish.** After the 3 spins, Ms. Pac-Man **shrinks** through a closed circle (112) →
+  medium dot (136) → small dot (140) → gone (transparent 132), each step ~110 ms with the whirr
+  finishing its descent (200 → 110 Hz), so she collapses to nothing before the `CAUGHT!`/`GAME
+  OVER` message. On respawn her pattern is restored to 96.
+- **Game over → fire restarts.** When the last life is lost, `GAME OVER` + `PRESS FIRE` stay on
+  screen and the game waits for fire (`GOSUB 1120`). One press starts a **fresh game** — full
+  lives, score 0, refilled maze — going straight into play (the boot attract wait is skipped via
+  the `NG` flag). The restart is done **without `GOTO`-ing out of the nested death `GOSUB`**: the
+  game-over routine sets a `RG` (restart) flag and `RETURN`s cleanly up through the call stack and
+  out of the collision `FOR` loop; only then, at the bare main-loop level (line 437), does
+  `IF RG=1 THEN 157` jump back to the new-game init. That keeps the GOSUB/FOR control stack from
+  leaking across repeated games (a deep `GOTO` would orphan stack frames and eventually overflow).
+  `Q` still quits to `END` (line 600); a maze-clear also still ends.
+- **Boot-corruption fix.** The garbage-ghost-frame-at-boot (which "self-corrected" as play began)
+  was the **per-frame `CALL PATTERN` ghost-wiggle racing `FLICK`**. `FLICK` rewrites the sprite
+  *attribute* table every VBLANK, and it *preserves* each sprite's name byte as it rotates — so the
+  static-named ghosts of Steps 4–6 never corrupted. The Step-7 wiggle added a `CALL PATTERN` that
+  *writes* the name byte every frame; when that write collided with a `FLICK` rotation (worst at
+  boot, three ghosts clustered in the pen), the name byte landed wrong → a garbage frame until the
+  next repaint. Fix: **never change the ghost name at runtime** — keep all ghosts on 116 and animate
+  by redefining the foot chars (117/119) with `CALL CHAR`, which writes the *pattern* table that
+  `FLICK` never touches (2 small writes per phase change vs. 4 name-writes per frame). `FLICK` is
+  also enabled **last** in setup (after sprites/HUD/jingle/fire-press) so no setup write races it.
+  Pac's own direction/mouth `CALL PATTERN` is now gated to only fire when his pattern actually
+  changes (line 424). If any residual flicker still remains, it's the documented `FLICK`
+  proof-of-concept limitation rather than a pattern-write race.
 - **Roaming fruit (replaces the static middle fruit).** Sprite #6 is no longer parked under the
   pen; instead, when the dots-remaining count hits **154** or **54** (≈70 / 170 eaten of 224), a
-  cherry is spawned at a **random tunnel mouth** (`GOSUB 720`) and created on demand. Each frame
-  (`GOSUB 730`) it wanders the maze taking a **random open, non-reversing turn** at each
-  intersection (reusing the ghost wall-check `GOSUB 760`), and when it walks off a tunnel edge it
-  **despawns** (`CALL DELSPRITE(#6)`) — so it weaves across the screen and leaves. Eating it
-  (overlap check line 434 → `GOSUB 770`) scores **+100** and plays a chime; **dying while it's out
-  forfeits it** (the caught routine removes it, line 1101). At most **2** fruits per maze (`FN`).
+  **single cherry** (~10×10) is spawned at a **random tunnel mouth** (`GOSUB 720`) and created on
+  demand. It moves at **25% speed** (one 2px step every 4th frame, line 433) and each move
+  (`GOSUB 730`) wanders the maze taking a **random open, non-reversing turn** at each intersection
+  (reusing the ghost wall-check `GOSUB 760`); when it walks off a tunnel edge it **despawns**
+  (`CALL DELSPRITE(#6)`) — so it weaves across the screen and leaves. A **light, intermittent
+  bounce blip** plays as it travels (every 6th move, quiet/short, line 731). Eating it (overlap
+  check line 434 → `GOSUB 770`) scores **+100** and plays a chime; **dying while it's out forfeits
+  it** (the caught routine removes it). At most **2** fruits per maze (`FN`).
   - *Flicker caveat:* `FLICK` caches its sprite range at call time (when only #1–#5 exist), so the
     on-demand #6 isn't flicker-rotated; it could blink only in the rare case it shares a scanline
     with 4 other actors. No correctness impact; revisit if it's visually distracting.
 
-**Deferred:** levels (maze refill, faster ghosts, shorter fright time), background music, and a
+**Also implemented this pass:** press-fire-to-start attract gate; a spin + deepening-whirr death
+animation (ghosts/fruit hidden) before respawn/game-over; reduced ghost-wiggle attribute writes to
+cut FLICK boot flicker.
+
+### Speed tuning + pen-lane fix
+- **Ms. Pac-Man slows while eating.** On the frame she's cell-aligned over a dot/pellet, the eat
+  routine sets `EA=1` (line 752); the four move statements (400-403) are gated `AND EA=0`, so that
+  step's 2px move is skipped. `EA` resets each frame at line 300. Net effect: ~80% speed through
+  dot corridors (one paused frame per cell), full speed once a corridor is cleared — like the
+  arcade's eat-slowdown. (`EA` only sets when a dot/pellet is actually present, so empty corridors
+  and tunnels run full speed.)
+- **Per-ghost speed + tunnel 50%.** Ghosts now move slower than full and at **different base
+  speeds** via a frame-skip period `SP(GI)` (line 167: Blinky 6→83%, Pinky/Inky 5→80%, Clyde
+  4→75%): a `GS=0` ghost skips its move when `FC mod SP(GI)=0` (line 1007). Frightened ghosts and
+  ghosts **in a tunnel** (tunnel row + outer columns, `BX<45 OR BX>197`) drop to **50%** by
+  skipping even frames (line 1006); **eyes** returning home are exempt (full speed, arcade-style).
+  `SP()` values are the tuning knobs.
+- **Pen-lane off-screen bug fixed.** A ghost on the never-aligned `X=121` exit lane moves purely by
+  direction with no wall checks; a **frightened** ghost reversed onto that lane had no end-stop
+  (lines 1008/1009 only redirect `GS=0`/eyes), so it ran clear off the top or bottom of the screen.
+  Added a **lane clamp** (lines 1046-1047): any ghost moving vertically (`BD=1/2`) at `X=121` that
+  overshoots `[77,93]` is snapped back and reversed — so a stuck/frightened ghost **bounces in the
+  pen** until it's eligible to exit, instead of leaving the screen. (The `BD=1/2` guard means a
+  ghost merely crossing column 16 *horizontally* is unaffected.) The tunnel-wrap was folded into a
+  single nested `IF` (line 1045) to make room without renumbering the 1051/1052 jump targets.
+
+### Ghost personalities + scatter/chase modes
+The greedy "pick the open non-reversing turn that minimizes distance to a target tile" pathfinder
+is unchanged; what changed is **how each ghost's target is chosen** (`GOSUB 1180`, line 1018):
+- **Frightened** (`GS=1`) → target Ms. Pac-Man but flip the sign `SG=-1` (flee). **Eyes**
+  (`GS=2`) → the pen. These take priority over mode/personality.
+- **Mode** (`MO`, global) alternates **scatter** (0) ↔ **chase** (1) on a frame timer `MT`
+  (line 439: scatter ~7s/280 frames, chase ~20s/800). On every switch (`GOSUB 1170`) all
+  out-of-pen chasing ghosts **reverse direction** — the arcade's signature tell.
+- **Scatter** → each ghost heads for its own corner (`SR()/SC()`): Blinky top-right, Pinky
+  top-left, Inky bottom-right, Clyde bottom-left.
+- **Chase personalities** (line 1184-1193):
+  - **Blinky** (#2/`GI=1`) — Ms. Pac-Man's exact cell (direct pursuit).
+  - **Pinky** (#3/`GI=2`) — **4 tiles ahead** of her in her current direction (`CD`) — the
+    ambusher.
+  - **Inky** (#4/`GI=3`) — take the tile **2 ahead** of her, then **double the vector from
+    Blinky** through it (`2*P2 − Blinky`) — a flanker whose aim depends on Blinky's position.
+  - **Clyde** (#5/`GI=4`) — Ms. Pac-Man when **>8 tiles** away, but his own bottom-left corner
+    when within 8 (squared-distance ≤64) — shy.
+
+`MO`/`MT` reset to scatter on a new game and on each level (death/respawn leaves the timer
+running, arcade-style). All integer math; targets can sit off-map (that's fine — they're just
+distance anchors), and `BS` (line 1030) was widened to 20000 so a far target never leaves a ghost
+without a move.
+
+> **Still single-maze:** only Maze 1 exists; "levels" reuse it with faster ghosts / shorter
+> fright / new fruit. Multiple layouts and background music remain optional future steps.
+
+### Level progression
+Clearing the maze (`DOTS`→0) no longer ends the game or prints "MAZE CLEARED!". Instead the eat
+routine just flags `NX=1` (line 755); the main loop notices it at the bare top level
+(line 438 → `GOSUB 1130`) so the advance happens with a clean stack, not nested inside the eat
+`GOSUB`. The advance routine (1130-1145):
+- **Flashes the maze** — ghosts/fruit hidden, then the wall `COLOR2` sets (13-14) toggle
+  white↔maze-color **4 times** (~0.2s each, lines 1133-1136).
+- **Speeds up the ghosts** — each `SP(GI)` += 1 (fewer skip frames = faster), capped at 10 (line
+  1137).
+- **Shortens fright** — the fright base `FB` -= 40 (floor 140); power pellets now set `FT=FB`
+  (line 779) instead of a fixed 300, so blue time shrinks each level.
+- **Changes the fruit** — `GOSUB 1160` picks the roaming-fruit pattern/color by level
+  (`LE`): 1 cherry (128, red) · 2 strawberry (120, red) · 3 orange (140) · 4+ orange (recolored);
+  spawn uses `FFC`/`FFL` (line 723). New fruit shapes are generated by `assets/spritegen.pl`.
+  **Sprite char codes must stay ≤143** — `CALL CHAR` rejects higher codes (interpreted: `BAD
+  VALUE`; **compiled: no range check, so the write overflows the pattern table into the VDP sprite
+  *motion* table and gives ghosts phantom velocities**). So the new fruits reuse two freed in-range
+  slots: strawberry takes the now-dead ghost frame-B slot (120, the wiggle animates char data in
+  place instead), and orange takes the death-shrink's smallest frame (140, shrink now goes
+  full→medium→gone). A 4th distinct fruit would need another freed slot.
+- **Refills and resets** — `GOSUB 800` redraws the maze (dots back to 224, `DT` recounted),
+  Pac + ghosts return to start, timers/`FA`/`FN` cleared. `LE` shows in the HUD (`LEVEL n`).
+
+`LE`/`FB`/`SP()` reset to level-1 values only on a full game restart (the `GOTO 157` entry, which
+also clears `NX`), so they persist across lost lives within a game but start fresh after game over.
+
+**Deferred:** more maze layouts, background music, and a
 fruit-value table that scales by level — per `DESIGN.md` §12, these remain for a later pass.
 
 ## Build & run (Classic99, `JUWEL7` = DSK1)
