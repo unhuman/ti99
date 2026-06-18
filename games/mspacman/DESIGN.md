@@ -25,15 +25,16 @@ sprite, so this is how we get the size. Each sprite is one `CALL CHAR(base,"<64 
 
 | # | Sprite | Base char(s) | Notes |
 |---|--------|-----------|-------|
-| #1 | Ms. Pac-Man | 96 R / 100 L / 104 U / 108 D / 112 closed / 136 death-shrink | direction-facing + mouth animation; `CALL PATTERN` only on change |
+| #1 | Ms. Pac-Man | 96 R / 100 L / 104 U / 108 D / 112 closed / 120 left-closed / 136,140 death-shrink | direction-facing + mouth animation; `CALL PATTERN` only on change. **Left needs its own closed frame (120 = mirror of 112)** so the bow stays on the back of her head when she chomps facing left (otherwise the mirrored-bow open frame flashes against the shared closed frame) |
 | #2–#5 | Ghosts | 116 body (always) / 124 eyes / 132 blank | per-sprite color; **feet wiggle by redefining foot chars 117+119 with `CALL CHAR`** so the sprite name never changes (avoids racing `FLICK`) |
-| #6 | Fruit | 128 cherry / 120 strawberry / 140 orange (per level) | roaming bonus fruit, created on demand (Step 7) |
+| #6 | Fruit | **128 (single slot, redefined per level)** | roaming bonus fruit, created on demand. All shapes (cherry/strawberry/orange/apple/pear/banana…) share char 128; `GOSUB 1160` `CALL CHAR`s the level's shape into 128 + sets the color — so the fruit set is unlimited without consuming char slots |
 
 > **Sprite char codes must stay ≤143.** `CALL CHAR` rejects higher codes (`BAD VALUE` interpreted;
 > *silent VDP-motion-table corruption compiled* — ghosts get phantom velocities). The char table
-> 96–143 is full, so new sprites reuse freed slots (e.g. the dead ghost frame-B slot 120, the
-> death-shrink's small frame 140). `CALL LINK("CHAR2",…)` (Screen2 maze tiles) is unaffected — it
-> spans the full 0–255.
+> 96–143 is full, so distinct sprites must reuse freed slots — but **anything that's only shown one
+> at a time (like the per-level fruit) can share a single slot and be `CALL CHAR`-redefined on the
+> fly** instead of burning a slot per variant. `CALL LINK("CHAR2",…)` (Screen2 maze tiles) is
+> unaffected — it spans the full 0–255.
 
 All sprite art is reduced to **~10×10** centered in the 16px box (3px transparent margin each
 side), generated from ASCII grids by `assets/spritegen.pl` (quadrant-ordered TI hex). Ms. Pac-Man

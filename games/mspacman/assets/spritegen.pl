@@ -257,6 +257,44 @@ my @apple = (
 "................",
 );
 
+my @pear = (
+"................",
+"................",
+"......##........",
+".....##.........",
+".....###........",
+"....#####.......",
+"...#######......",
+"..########......",
+"..########......",
+"..########......",
+"...######.......",
+"....####........",
+"................",
+"................",
+"................",
+"................",
+);
+
+my @banana = (
+"................",
+"................",
+".........##.....",
+".......####.....",
+"......####......",
+".....####.......",
+".....###........",
+".....###........",
+".....####.......",
+"......####......",
+".......####.....",
+".........##.....",
+"................",
+"................",
+"................",
+"................",
+);
+
 # Fruit: a single compact cherry (~10x10) with a curved stem.
 my @fruit = (
 "................",
@@ -285,20 +323,27 @@ my %sprites = (
   ghost_a => [\@ghost_a,116],
   ghost_b => [\@ghost_b,120],
   eyes    => [\@eyes,   124],
-  fruit   => [\@fruit,  128],
   shrink_m=> [\@shrink_m,136],
   shrink_s=> [\@shrink_s,140],
-  # Per-level fruits relocated into in-range slots (CALL CHAR max code is 143):
-  # strawberry reuses the dead ghost frame-B slot (120), orange reuses shrink_s (140).
-  # apple's 152 is out of range, so it is generated for reference but unused in the game.
-  strawberry=> [\@strawberry,120],
-  orange  => [\@orange, 140],
-  apple   => [\@apple,  152],
+  # All roaming-fruit shapes share ONE char slot (128); the game CALL CHARs the
+  # right shape into 128 at each level (see fruit-select routine). So they all
+  # render at base 128 here.
+  fruit   => [\@fruit,  128],
+  strawberry=> [\@strawberry,128],
+  orange  => [\@orange, 128],
+  apple   => [\@apple,  128],
+  pear    => [\@pear,   128],
+  banana  => [\@banana, 128],
 );
 
-# pac_l is pac_r mirrored horizontally (bow lands top-right) - generated below.
+# pac_l is pac_r mirrored horizontally (bow lands top-right); pac_lc is the
+# closed circle mirrored the same way (bow top-right) = the left-facing
+# closed-mouth frame, so the bow stays on the back of her head when she chomps
+# while moving left. Both generated below.
 my @pac_l = map { scalar reverse(norm16($_)) } @pac_r;
 $sprites{pac_l} = [\@pac_l, 100];
+my @pac_lc = map { scalar reverse(norm16($_)) } @pac_o;
+$sprites{pac_lc} = [\@pac_lc, 120];
 
 sub norm16 {            # pad/truncate a row to exactly 16 cells, '.'=off
   my $r = shift;
