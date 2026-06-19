@@ -7,7 +7,7 @@ rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old
 
 - **Source:** `src/MSPAC.ti99`
 - **Current step:** **Step 7 (in progress) — lives, respawn, game over** (on top of Steps 1-4, 6).
-  Press **fire** (or Space/Enter) to start; **Q** to quit.
+  Press **fire** (or Space/Enter) to start. She starts aimed **left** and moving.
 - **Status:** awaiting interpreted run + compile.
 
 ## Step 3a — what you should see / test
@@ -291,9 +291,11 @@ shows `DOTS nnn LIVES n` (rows 1-2 are the dedicated HUD strip, never touched by
 three places that used to redraw the HUD inline (initial setup, eat-dot, eat-ghost) now just
 `GOSUB 708`.
 
-**Caught → lose a life (`GOSUB 1100`).** Replaces the old `GOSUB 770` "CAUGHT!, then end"
-routine. On a normal-ghost collision (`GS=0`): `LV=LV-1`, the HUD rows are blanked, and either
-`GAME OVER` (if `LV<=0`, then `END`) or `CAUGHT!` (otherwise) is shown for 2 seconds.
+**Caught → lose a life (`GOSUB 1100`).** On a normal-ghost collision (`GS=0`), the catching ghost
+**sits on her for ~1 s** (`CALL LINK("DELAY",1000)`) before anything else, then `LV=LV-1`, the HUD
+rows are blanked, the ghosts hide and she does the death spin. **No HUD message on a normal death**;
+only `GAME OVER` is shown (at `LV<=0`), followed by the `PRESS FIRE` restart prompt. Respawn (and
+game start) face **left**.
 
 **Respawn.** If lives remain, Ms. Pac-Man and all 4 ghosts are reset to **exactly their
 game-start state** — same positions (`SX=121,SY=141` / the pen layout), same directions (`CD=4`,
@@ -303,7 +305,7 @@ the ghost pen-release schedule restarts from scratch, same as a fresh game. Only
 `DT` (dots remaining), `FN` (fruits already spawned) and the maze itself are preserved. The HUD is
 redrawn (now showing the decremented `LIVES`) and play resumes from the main loop.
 
-**Implemented:** `LV` lives counter (HUD); `CAUGHT!`/`GAME OVER` messaging; full Pac+ghost
+**Implemented:** `LV` lives counter (HUD); `GAME OVER` messaging (no message on a normal death); full Pac+ghost
 respawn-to-start-state on a non-fatal catch; `GAME OVER` + `END` at 0 lives.
 
 **Bonus Ms. Pac-Man at 10,000 points (once per game).** Every frame the main loop checks
@@ -371,7 +373,7 @@ restart (line 157), never on level-advance or respawn — so the award is strict
   out of the collision `FOR` loop; only then, at the bare main-loop level (line 437), does
   `IF RG=1 THEN 157` jump back to the new-game init. That keeps the GOSUB/FOR control stack from
   leaking across repeated games (a deep `GOTO` would orphan stack frames and eventually overflow).
-  `Q` still quits to `END` (line 600); a maze-clear also still ends.
+  (The Q-to-quit feature was removed to save program space; a maze-clear still advances/ends.)
 - **Boot-corruption fix.** The garbage-ghost-frame-at-boot (which "self-corrected" as play began)
   was the **per-frame `CALL PATTERN` ghost-wiggle racing `FLICK`**. `FLICK` rewrites the sprite
   *attribute* table every VBLANK, and it *preserves* each sprite's name byte as it rotates — so the
