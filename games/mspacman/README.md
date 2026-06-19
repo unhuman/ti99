@@ -17,7 +17,10 @@ rows 3–24 / cols 3–30 (rows 1–2 are reserved for the score/info HUD): **pi
 "waist"** with **two tunnel pairs** (that wrap left↔right), and the central **ghost house**. HUD
 `MAZE 1 DOTS 224`. **3 ghosts sit in the house with the red one (Blinky) on top of the gate**, the
 cherry just below the house, and **Ms. Pac-Man** drives with **E/S/D/X** or **joystick 1** —
-gliding, turning at cells, blocked by every wall, wrapping through either tunnel.
+gliding, turning at cells, blocked by every wall, wrapping through either tunnel. **When she runs
+straight into a wall** with no new direction queued, she **stops** (line 342) — and **keeps facing
+the way she was last heading** (a separate `HD` heading drives the sprite frame, line 419/421, so
+stopping no longer snaps her to face right). A nudge in any open direction starts her again.
 - **Source of truth:** `assets/maze1-arcade.txt` (the full 28×31 arcade layout, from
   shaunlebron/pacman-mazegen). The TI version collapses the doubled wall-rows (31→22 rows) to fit
   the 24-row screen — the *shape is preserved exactly*, only the vertical scale changes.
@@ -43,10 +46,33 @@ gliding, turning at cells, blocked by every wall, wrapping through either tunnel
   grid only stops on whole-cell columns (X≡5 mod 8), so on the very first frame she's given a
   default direction (right, or left if the player is already holding left) that carries her ~4px
   to the nearest aligned cell before normal turn-checking takes over.
-- Multi-maze architecture still holds: a maze = a `DATA` grid + a wall color via `GOSUB 800`.
+- Multi-maze architecture: a maze = a `DATA` grid + a wall color, selected by `ON MZ GOSUB
+  8001,8002,8003,8004` inside `GOSUB 800`. **All four authentic arcade mazes are in**, each from
+  shaunlebron/pacman-mazegen ("MS. PAC-MAN (1)–(4)", `assets/maze1..4-arcade.txt`), all sharing the
+  **same ghost-house box position** (the arcade keeps the pen in place; only the corridors and
+  tunnel rows move). `MZ` is picked at level start (`MZ=1 :: IF LE>=3 THEN MZ=2 :: IF LE>=6 THEN
+  MZ=3 :: IF LE>=10 THEN MZ=4`):
+
+  | Maze | Levels | Color | Tunnels | Dots |
+  |------|--------|-------|---------|------|
+  | 1 | 1–2 | pink (14) | 2 | 224 |
+  | 2 | 3–5 | light blue (6) | 2 | 220 |
+  | 3 | 6–9 | orange (10) | **1** (single wrap) | 238 |
+  | 4 | 10+ | dark blue (5) | 2 (flank the pen) | 232 |
+
+  Maze 3 has a single tunnel (authentic), so the fruit code falls back `TY2=TY1` when only one is
+  found. `assets/mazegen.pl` autotiles + validates (symmetry, reachability); `assets/collapse2.pl`
+  collapses each 28×31 arcade source to our 28×22 (drop doubled rows, carve the fixed pen box, widen
+  tunnels, place energizers). The real arcade data was pulled via raw `curl` — the summarizing
+  web-fetch corrupts ASCII (proven by diffing). **Mazes 3 & 4 are first-pass collapses** (validated
+  & playable, but the open/wall balance is rougher than the arcade) — to be hand-refined like maze 2.
 - Draws in a few seconds interpreted; **instant compiled**.
 
-Tunnel wrap is wired for **both** tunnel rows (Ms. Pac-Man's sprite Y = 61 and 109).
+**Tunnels are generic — no per-maze constants.** Walls bound the actors everywhere *except* at the
+tunnel mouths, so one edge test (`SX<13 → 229`, and the ghost/fruit equivalents) wraps any maze
+correctly. The fruit-target tunnel rows (`TY1`/`TY2`) are **auto-detected while rendering** — any
+row with an empty column 1 is a tunnel — so Maze 1 (rows 7/13) and Maze 2 (rows 2/17) both just
+work. (Old per-row Y=61/109 hardcoding is gone.)
 
 ## Step 3b — eating, score, win-on-clear
 As Ms. Pac-Man's cell-centered (`GOSUB 750`), the cell she's sitting on is checked: a **dot** (10
@@ -116,8 +142,10 @@ rather than only when they land in the same cell.
 > The diamond test replaced an earlier **box** test (`DX<=10 AND DY<=10`) that was too sensitive
 > when cornering: the box's diagonal corners counted a *cell-diagonal* near-miss (`DX≈DY≈8`,
 > ~11px apart) as a hit. `DX+DY` keeps head-on behavior but tightens diagonally, so rounding a
-> corner past a ghost no longer grazes you. `8` is the single tunable "amount" (also used for
-> eating fruit at line 434); lower = less sensitive (requires more overlap before a hit).
+> corner past a ghost no longer grazes you. `8` is the tunable "amount"; lower = less sensitive
+> (requires more overlap before a hit). **Eating the roaming fruit uses a looser `DX+DY<14`**
+> (line 434) — the fruit weaves slowly and erratically, so the tight ghost window let it slip past
+> without registering; a reward should be easy to grab.
 
 **Sprite rotation (`FLICK`).** With 4 chasing ghosts, Ms. Pac-Man, and the fruit all sharing the
 screen, more than 4 sprites can land on the same scanline — the TMS9918A only renders 4 per line,
@@ -270,6 +298,13 @@ respawn-to-start-state on a non-fatal catch; `GAME OVER` + `END` at 0 lives.
     the bow flash side-to-side. Fix: a dedicated **left-closed frame at char 120** (the closed
     circle mirrored, bow on the right), used in place of 112 when `CD=3` (line 423) — so the bow
     stays put on the back of her head. (Centering the bow also stops the flash but looked wrong.)
+  - *Up-facing keeps the bow on the back of her head.* The up frame (`pac_u`, char 104) is the
+    **down frame flipped vertically**, so the mouth opens up and the bow rides on the *bottom* (the
+    back of her head) instead of over her mouth. There's no free slot for an up-*closed* frame, so
+    rather than flash the bow-top closed circle (112) against the bow-bottom open frame, **up-facing
+    skips the chomp toggle** — line 423 forces `PP=104` on the closed half-cycle when `CD=1`
+    (`ELSE IF CD=1 THEN PP=104`). So she glides upward with her mouth open and the bow correctly
+    behind; the other three directions still chomp.
 - **Ghost wiggle (animated via char data, not sprite name).** All four ghosts keep the **same
   sprite pattern (116) for their whole life**; the bottom-feet wiggle is done by **redefining the
   two foot quadrant chars (117 + 119) in place** with `CALL CHAR` every phase change (lines
@@ -404,10 +439,13 @@ routine just flags `NX=1` (line 755); the main loop notices it at the bare top l
 - **Shortens fright** — the fright base `FB` -= 40 (floor 140); power pellets now set `FT=FB`
   (line 779) instead of a fixed 300, so blue time shrinks each level.
 - **Changes the fruit** — all fruit shapes share **one char slot (128)**, and `GOSUB 1160` `CALL
-  CHAR`s the level's shape into 128 + sets the color: 1 cherry · 2 strawberry · 3 orange · 4 apple
-  · 5 pear · 6+ banana (spawn uses `FFC`=128/`FFL`, line 723). Because the shape is redefined on the
+  CHAR`s the level's shape into 128, sets the color (`FFL`) **and the point value (`FFP`)**:
+  1 cherry 100 · 2 strawberry 200 · 3 orange 500 · 4 pretzel 700 · 5 apple 1000 · 6 pear 2000 ·
+  7+ banana 5000 (the authentic arcade Ms. Pac-Man schedule; spawn uses `FFC`=128/`FFL`, line 723).
+  Eating it adds `FFP` (`771 PT=PT+FFP`). Because the shape is redefined on the
   fly rather than living in its own slot, the fruit set is unlimited — add a shape by adding one
-  `IF LE=… THEN CALL CHAR(128,…)` line. Shapes are generated by `assets/spritegen.pl`.
+  `IF LE=… THEN CALL CHAR(128,…) :: FFL=… :: FFP=…` line. Shapes are generated by
+  `assets/spritegen.pl`.
   (**Sprite char codes must stay ≤143** — `CALL CHAR` rejects higher codes: interpreted `BAD
   VALUE`; **compiled, no range check, the write overflows the pattern table into the VDP sprite
   *motion* table and gives ghosts phantom velocities.** Sharing one slot for the per-level fruit
@@ -419,8 +457,9 @@ routine just flags `NX=1` (line 755); the main loop notices it at the bare top l
 `LE`/`FB`/`SP()` reset to level-1 values only on a full game restart (the `GOTO 157` entry, which
 also clears `NX`), so they persist across lost lives within a game but start fresh after game over.
 
-**Deferred:** more maze layouts, background music, and a
-fruit-value table that scales by level — per `DESIGN.md` §12, these remain for a later pass.
+**Deferred:** background music — per `DESIGN.md` §12, this remains for a later pass. (The
+per-level fruit-value schedule is now implemented; a **second maze** (Maze 2) is in — see the
+multi-maze note below.)
 
 ## Build & run (Classic99, `JUWEL7` = DSK1)
 Same lifecycle that worked for Dot Muncher (`CLAUDE.md` §8). Reminders that bit us before:

@@ -206,11 +206,11 @@
 797 CALL SOUND(200,1800,3,2800,3)
 798 RETURN
 800 REM === DRAW MAZE MZ: set wall color, render to screen rows 3-24, count dots in DT ===
-801 ON MZ GOSUB 8001,8002
+801 ON MZ GOSUB 8001,8002,8003,8004
 810 CALL LINK("COLOR2",13,WC,1) :: CALL LINK("COLOR2",14,WC,1)
 811 CALL LINK("COLOR2",15,16,1) :: CALL LINK("COLOR2",16,11,1)
 812 CALL LINK("COLOR2",17,16,1) :: CALL LINK("COLOR2",18,WC,1)
-815 DT=0 :: TY1=0
+815 DT=0 :: TY1=0 :: TY2=0
 820 FOR MR=1 TO 22
 821 READ A$ :: IF SEG$(A$,1,1)=" " THEN IF TY1=0 THEN TY1=(MR+1)*8-3 ELSE TY2=(MR+1)*8-3
 822 FOR I=1 TO 28
@@ -222,9 +222,12 @@
 828 CALL HCHAR(MR+2,I+2,CD)
 829 NEXT I
 830 NEXT MR
-831 RETURN
+831 IF TY2=0 THEN TY2=TY1
+832 RETURN
 8001 RESTORE 9001 :: WC=14 :: RETURN
 8002 RESTORE 9101 :: WC=6 :: RETURN
+8003 RESTORE 9201 :: WC=10 :: RETURN
+8004 RESTORE 9301 :: WC=5 :: RETURN
 999 IF DG=GI AND GS(GI)<>0 THEN DG=0
 1000 REM --- ghost GI state machine (feet wiggle is global, via CALL CHAR 117/119 at 418-419) ---
 1001 IF GS(GI)=1 AND FT=0 THEN GS(GI)=0 :: CALL COLOR(#(GI+1),GC(GI))
@@ -307,7 +310,7 @@
 1137 FOR J=1 TO 4 :: SP(J)=SP(J)+1 :: IF SP(J)>10 THEN SP(J)=10
 1138 NEXT J
 1139 FB=FB-40 :: IF FB<140 THEN FB=140
-1140 GOSUB 1160 :: MZ=1 :: IF LE>=3 THEN MZ=2
+1140 GOSUB 1160 :: MZ=1 :: IF LE>=3 THEN MZ=2 :: IF LE>=6 THEN MZ=3 :: IF LE>=10 THEN MZ=4
 1141 GOSUB 800 :: GX(1)=121 :: GY(1)=77 :: GX(2)=121 :: GY(2)=93 :: GX(3)=105 :: GY(3)=93 :: GX(4)=137 :: GY(4)=93
 1142 FOR J=1 TO 4 :: GS(J)=0 :: GD(J)=4 :: CALL COLOR(#(J+1),GC(J)) :: CALL PATTERN(#(J+1),116) :: CALL LOCATE(#(J+1),GY(J),GX(J)) :: NEXT J
 1143 SX=121 :: SY=141 :: DD=0 :: CD=4 :: HD=4 :: CALL LOCATE(#1,SY,SX) :: CALL PATTERN(#1,96)
@@ -390,3 +393,47 @@
 9120 DATA "f.cklj.ckkki.dj.ckkki.dlki.f"
 9121 DATA "f..........................f"
 9122 DATA "dkkkkkkkkkkkkkkkkkkkkkkkkkkj"
+9201 DATA "gkkkkkkkkkookkkkookkkkkkkkkm"
+9202 DATA "f.........hn....hn.........f"
+9203 DATA "f.gokkkki.dj.gm.dj.ckkkkom.f"
+9204 DATA "fOhn.........hn.........hnOf"
+9205 DATA "f.hn.gm.ckki.dj.ckki.gm.hn.f"
+9206 DATA "dklj.hn..............hn.dlkj"
+9207 DATA "   ..h+om.goooooom.go+n..   "
+9208 DATA "e.gm.dllj.dllllllj.dllj.gm.e"
+9209 DATA "f.hn.....          .....hn.f"
+9210 DATA "f.h+om.gm gkiDDckm gm.go+n.f"
+9211 DATA "f.h+ln.hn f      f hn.hl+n.f"
+9212 DATA "f.hn.dklj dkkkkkkj dlkj.hn.f"
+9213 DATA "f.hn....................hn.f"
+9214 DATA "f.dlki.gokki.gm.ckkom.cklj.f"
+9215 DATA "f......hn....hn....hn......f"
+9216 DATA "hki.gm.dj.ckkllkki.dj.gm.ckn"
+9217 DATA "f...hn................hn...f"
+9218 DATA "f.cklj.gokki.gm.ckkom.dlki.f"
+9219 DATA "fO.....hn....hn....hn.....Of"
+9220 DATA "f.ckki.hn.ckkllkki.hn.ckki.f"
+9221 DATA "f......hn..........hn......f"
+9222 DATA "dkkkkkkllkkkkkkkkkkllkkkkkkj"
+9301 DATA "gkkkkkkkkkkkkkkkkkkkkkkkkkkm"
+9302 DATA "f..........................f"
+9303 DATA "f.gm.goom.gokkkkom.goom.gm.f"
+9304 DATA "fOhn.dllj.hn....hn.dllj.hnOf"
+9305 DATA "f.hn......hn.gm.hn......hn.f"
+9306 DATA "f.dlki.gm.dj.hn.dj.gm.cklj.f"
+9307 DATA "f......hn....hn....hn......f"
+9308 DATA "hom.ckk++kki.dj.ckk++kki.gon"
+9309 DATA "hpn....hn          hn....hpn"
+9310 DATA "dlj.gm.hn gkiDDckm hn.gm.dlj"
+9311 DATA "   .hn.hn f      f hn.hn.   "
+9312 DATA "   .hn.hn dkkkkkkj hn.hn.   "
+9313 DATA "gom.dj.hn..........hn.dj.gom"
+9314 DATA "hpn....dlkki.gm.ckklj....hpn"
+9315 DATA "hpn.gm.......hn.......gm.hpn"
+9316 DATA "hlj.dlkki.gm.dj.gm.ckklj.dln"
+9317 DATA "f.........hn....hn.........f"
+9318 DATA "f.goki.gm.dlkkkklj.gm.ckom.f"
+9319 DATA "fOhn...hn..........hn...hnOf"
+9320 DATA "f.dj.ckllkki.gm.ckkllki.dj.f"
+9321 DATA "f............hn............f"
+9322 DATA "dkkkkkkkkkkkkllkkkkkkkkkkkkj"

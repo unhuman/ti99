@@ -42,24 +42,8 @@ my @pac_r = (
 "................",
 );
 
-my @pac_u = (
-"................",
-"...#..#.........",
-"...####.........",
-"...####.###.....",
-"...#########....",
-"..####...####...",
-"..###.....###...",
-"..##########....",  # filled lower
-"..##########....",
-"..##########....",
-"..##########....",
-"...########.....",
-"....######......",
-"................",
-"................",
-"................",
-);
+# pac_u (up-facing) is pac_d flipped vertically (generated below): mouth opens
+# up, and the bow lands on the BOTTOM (the back of her head when facing up).
 
 my @pac_d = (
 "................",
@@ -295,6 +279,25 @@ my @banana = (
 "................",
 );
 
+my @pretzel = (
+"................",
+"................",
+"...##....##.....",
+"..####..####....",
+"..#..####..#....",
+"..#.#....#.#....",
+"..#..####..#....",
+"..####..####....",
+"...##....##.....",
+"....######......",
+".....####.......",
+"................",
+"................",
+"................",
+"................",
+"................",
+);
+
 # Fruit: a single compact cherry (~10x10) with a curved stem.
 my @fruit = (
 "................",
@@ -317,7 +320,6 @@ my @fruit = (
 
 my %sprites = (
   pac_r   => [\@pac_r,   96],
-  pac_u   => [\@pac_u,  104],
   pac_d   => [\@pac_d,  108],
   pac_o   => [\@pac_o,  112],
   ghost_a => [\@ghost_a,116],
@@ -334,6 +336,7 @@ my %sprites = (
   apple   => [\@apple,  128],
   pear    => [\@pear,   128],
   banana  => [\@banana, 128],
+  pretzel => [\@pretzel,128],
 );
 
 # pac_l is pac_r mirrored horizontally (bow lands top-right); pac_lc is the
@@ -344,6 +347,8 @@ my @pac_l = map { scalar reverse(norm16($_)) } @pac_r;
 $sprites{pac_l} = [\@pac_l, 100];
 my @pac_lc = map { scalar reverse(norm16($_)) } @pac_o;
 $sprites{pac_lc} = [\@pac_lc, 120];
+my @pac_u = reverse @pac_d;     # vertical flip: mouth up, bow on the bottom/back
+$sprites{pac_u} = [\@pac_u, 104];
 
 sub norm16 {            # pad/truncate a row to exactly 16 cells, '.'=off
   my $r = shift;

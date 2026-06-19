@@ -86,7 +86,13 @@ for my $r (0..$H-1) {
   my $out='';
   for my $c (0..$W-1) {
     my $x=$g[$r][$c];
-    if ($x eq '#') { my $m = iswall($r-1,$c)*1 + iswall($r,$c+1)*2 + iswall($r+1,$c)*4 + iswall($r,$c-1)*8; $out .= chr(ord('a')+$m); }
+    if ($x eq '#') { my $m = iswall($r-1,$c)*1 + iswall($r,$c+1)*2 + iswall($r+1,$c)*4 + iswall($r,$c-1)*8;
+      if ($m==15) {
+        # solid 4-way 'p' fills its corners and pokes into the maze at any open diagonal;
+        # emit the thin cross '+' (code 168) there instead. Keep 'p' only as a true wall interior.
+        my $poke = ispass($r-1,$c-1)||ispass($r-1,$c+1)||ispass($r+1,$c-1)||ispass($r+1,$c+1);
+        $out .= $poke ? '+' : 'p';
+      } else { $out .= chr(ord('a')+$m); } }
     elsif ($x eq 'o') { $out .= 'O'; }
     elsif ($x eq '.') { $out .= '.'; }
     elsif ($x eq 'D') { $out .= 'D'; }

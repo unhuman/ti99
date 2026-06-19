@@ -25,9 +25,9 @@ sprite, so this is how we get the size. Each sprite is one `CALL CHAR(base,"<64 
 
 | # | Sprite | Base char(s) | Notes |
 |---|--------|-----------|-------|
-| #1 | Ms. Pac-Man | 96 R / 100 L / 104 U / 108 D / 112 closed / 120 left-closed / 136,140 death-shrink | direction-facing + mouth animation; `CALL PATTERN` only on change. **Left needs its own closed frame (120 = mirror of 112)** so the bow stays on the back of her head when she chomps facing left (otherwise the mirrored-bow open frame flashes against the shared closed frame) |
+| #1 | Ms. Pac-Man | 96 R / 100 L / 104 U / 108 D / 112 closed / 120 left-closed / 136,140 death-shrink | direction-facing + mouth animation; `CALL PATTERN` only on change. **Left needs its own closed frame (120 = mirror of 112)** so the bow stays on the back of her head when she chomps facing left (otherwise the mirrored-bow open frame flashes against the shared closed frame). **Up-facing (104) = down-frame (108) flipped vertically** so the bow sits on the *back* (bottom) of her head, not over her mouth. There's no spare slot for an up-closed frame, so **up-facing skips the chomp toggle** (line 423 forces `PP=104` even on the closed half-cycle) — the alternative would flash the bow-top closed circle (112) against the bow-bottom open frame |
 | #2–#5 | Ghosts | 116 body (always) / 124 eyes / 132 blank | per-sprite color; **feet wiggle by redefining foot chars 117+119 with `CALL CHAR`** so the sprite name never changes (avoids racing `FLICK`) |
-| #6 | Fruit | **128 (single slot, redefined per level)** | roaming bonus fruit, created on demand. All shapes (cherry/strawberry/orange/apple/pear/banana…) share char 128; `GOSUB 1160` `CALL CHAR`s the level's shape into 128 + sets the color — so the fruit set is unlimited without consuming char slots |
+| #6 | Fruit | **128 (single slot, redefined per level)** | roaming bonus fruit, created on demand. All shapes (cherry/strawberry/orange/pretzel/apple/pear/banana) share char 128; `GOSUB 1160` `CALL CHAR`s the level's shape into 128 + sets the color (`FFL`) **and point value (`FFP`)** — so the fruit set is unlimited without consuming char slots. Arcade value schedule by level: **cherry 100, strawberry 200, orange 500, pretzel 700, apple 1000, pear 2000, banana 5000** (level 7+); eating adds `FFP` (`771 PT=PT+FFP`). Collision window is loosened to `DX+DY<14` (line 434) — the fruit weaves slowly and the tight ghost-collision window (<8) let it slip through |
 
 > **Sprite char codes must stay ≤143.** `CALL CHAR` rejects higher codes (`BAD VALUE` interpreted;
 > *silent VDP-motion-table corruption compiled* — ghosts get phantom velocities). The char table
@@ -85,6 +85,11 @@ Sprites use `CALL CHAR` codes 96–107 + per-sprite colors, separate from all th
 **Grid movement model** (steps 2+). Sprites step cell-to-cell along corridors; a turn is only
 allowed at a cell center where the perpendicular lane is open; tunnels wrap at the screen edges.
 Collisions/eating are tested on the **cell the sprite center occupies** (`GCHAR`), not pixels.
+**Stuck → stop, keep facing.** When the current direction is blocked at a cell center and no new
+direction is queued, Ms. Pac-Man **stops** (`CD=0`, line 342). Her sprite frame is driven by a
+separate **heading** `HD` (`419 IF CD<>0 THEN HD=CD`), not `CD`, so a stopped Pac **keeps facing
+the way she was last moving** instead of snapping to face right. A nudge in any open direction
+resumes movement.
 
 **Flicker / "sprite rotation"** (step 4+). `CALL LINK("FLICK")` rotates sprites so >4 on a line
 all show (flickering). Requires the highest-numbered sprite in motion — already satisfied by our
@@ -202,18 +207,82 @@ space (so no maze can trap dots). It emits one `DATA` string per row using this 
 | `.` | dot | 144 |
 | `O` | power pellet | 152 |
 | `D` | ghost-house door | 160 |
+| `+` | **thin 4-way cross** (custom hand-placed junction) | 168 |
 | space | empty path | 32 |
 
 **16 wall tiles (codes 128–143)** are line-drawing pieces: a 4px center block plus 4px arms toward
 each connected neighbor (mask 5 = vbar, 10 = hbar, 3/6/9/12 = corners, 7/11/13/14 = T, 15 = cross,
-0 = isolated). Drawn 4px-thin so the 12px sprite overhang clears them (§2).
+0 = isolated). Drawn 4px-thin so the 12px sprite overhang clears them (§2). **Note `p` (mask 15)
+is drawn *solid* on purpose** — it doubles as the interior of the 3-wide side-pocket walls (`hpn`).
+
+**Custom tiles — `CHAR2` has the whole 0–255, so we are nowhere near a limit.** When the 16
+autotile masks can't express a junction cleanly, hand-place a custom tile instead of compromising.
+The first is **`+` = a *thin* 4-way cross at code 168** (`3C3CFFFFFFFF3C3C`), used where a hollow
+box must connect to a 2-wide wall leg without the solid `p` poking a corner into the maze (maze 2,
+line 9108, cols 8 & 21). Adding a custom maze tile = **four small edits**: (1) `CALL
+LINK("CHAR2",code,pat$)` in the char-setup block; (2) give it the wall color by assigning its
+`COLOR2` set to `WC` in `DRAWMAZE` (168 is in **set 18**, currently otherwise unused); (3) a
+`IF P$="<sym>" THEN CD=code` arm in the render loop (a non-`.`/`O` symbol so it isn't counted as a
+dot); (4) place the symbol in the `DATA`. **Critical:** if the tile is a wall, its color set must
+also be toggled in the **end-of-level flash** (lines 1134/1135 set 13/14/**18** white↔`WC`), or it
+sits static while the maze flashes.
+
+`mazegen.pl` now **auto-emits `+` for any mask-15 cell with an open diagonal** (a solid `p` is the
+only tile that fills its own corners, so it pokes a pixel into the maze at an inside corner). `p` is
+kept only where all diagonals are wall — i.e. a genuine thick-wall interior like the `hpn`
+side-pockets. So new mazes are poke-free out of the autotiler.
 
 **Color (per maze).** Walls live in `COLOR2` sets 13–14, dots in set 15, pellets in set 16. A maze
-changes color by re-setting sets 13–14 only. `DRAWMAZE` (`GOSUB 800`) picks the maze: `IF MZ=n THEN
-RESTORE <line> :: WC=<color>`, then reads + renders 22 rows (screen rows 3–24, leaving rows 1–2 as
-a HUD strip) and counts dots.
-Adding a maze = a new `DATA` block + a new `IF MZ=` line. Interpreted draw takes a few seconds;
-instant compiled (optionally cache later with `COMPRESS`/`CWRITE`).
+changes color by re-setting sets 13–14 only. `DRAWMAZE` (`GOSUB 800`) picks the maze with **`ON MZ
+GOSUB 8001,8002,8003,8004`** — each tiny per-maze stub just does `RESTORE <data-line> :: WC=<color>`:
+
+| Maze | DATA block | `WC` | Color | Tunnels | Levels |
+|------|-----------|------|-------|---------|--------|
+| 1 | 9001–9022 | 14 | magenta/pink | 2 (rows 7,13) | 1–2 |
+| 2 | 9101–9122 | 6  | light blue   | 2 (rows 2,17) | 3–5 |
+| 3 | 9201–9222 | 10 | light red/orange | **1** (row 7) | 6–9 |
+| 4 | 9301–9322 | 5  | dark blue    | 2 (rows 11,12, flanking the pen) | 10+ |
+
+It reads + renders 22 rows (screen rows 3–24, leaving rows 1–2 as a HUD strip) and counts dots.
+**`MZ` is chosen at level start** (`1140`: `MZ=1 :: IF LE>=3 THEN MZ=2 :: IF LE>=6 THEN MZ=3 :: IF
+LE>=10 THEN MZ=4` — the nested `IF`s work because the thresholds are monotonic).
+Adding a maze = a new `DATA` block + one more entry in the `ON MZ GOSUB` list. Interpreted draw
+takes a few seconds; instant compiled (optionally cache later with `COMPRESS`/`CWRITE`).
+
+**Single-tunnel mazes.** The tunnel auto-detect (§ above) records the first empty-col-1 row as
+`TY1`, the second as `TY2`. Maze 3 has only **one** tunnel (authentic), so `815` resets both to 0
+and `831` falls back `IF TY2=0 THEN TY2=TY1` — roaming fruit then enters and targets the same
+tunnel row instead of reading a stale `TY2` from the previous maze.
+
+**Mazes 3 & 4 are authentic arcade layouts** (`assets/maze3-arcade.txt`, `maze4-arcade.txt`, from
+shaunlebron/pacman-mazegen "MS. PAC-MAN (3)"/"(4)" — pulled via raw `curl`, since the summarizing
+web-fetch corrupts ASCII; verified by diffing extracted mazes 1&2 byte-for-byte against the trusted
+local files). Each 28×31 source was collapsed to 28×22 by `assets/collapse2.pl` (drop doubled
+wall-rows, carve the **fixed pen box** into grid rows 9–12 cols 10–19 so the ghost house stays put,
+widen tunnels, place 4 energizers), then autotiled + validated by `mazegen.pl` (maze 3: 238
+dots+pellets; maze 4: 232; both symmetric, 0 unreachable). These are **first-pass collapses** —
+the open/wall balance is rougher than the arcade and meant to be refined by hand like maze 2.
+
+**Tunnels are generic — no per-maze hardcoding.**
+- *Wrap:* walls bound the actors everywhere except at the tunnel mouths, so a single edge test
+  (`IF SX<13 THEN SX=229 ELSE IF SX>229 THEN SX=13`, and the ghost/fruit equivalents) wraps
+  correctly for *any* maze — the only places X can reach the edge are the tunnels the author drew.
+- *Tunnel Y (for fruit targeting):* detected **while rendering** — any row whose **column 1 is
+  empty** is a tunnel row; the render loop records the first as `TY1`, the second as `TY2` (pixel
+  Y = `(MR+1)*8-3`). Roaming fruit enters at one and aims for the other (`FTR/FTC`), so fruit
+  works on a new maze with **zero** tunnel constants. Maze 1's tunnels are at DATA rows 7/13;
+  Maze 2's at rows 2/17 — handled automatically.
+
+**Tooling: `assets/mazegen.pl`.** Authoritative offline autotiler + validator (replaces the old
+awk). Input is a plain 28×22 `#/./o/D/space` grid; it emits the encoded `DATA` lines, **flood-fills
+from Ms. Pac-Man's start** (DATA row 17 col 14) clearing any unreachable dot, and **checks
+left/right symmetry** about col 16.5. Used to fix Maze 2's hand-refactored tiles deterministically.
+
+**Maze 2** (levels 3+) is the second authentic arcade layout, source `assets/maze2-arcade.txt`
+(28×31, shaunlebron/pacman-mazegen "MS. PAC-MAN (2)"), collapsed to 28×22 and adapted the same way
+as Maze 1 (same ghost-house box position — *the arcade keeps the pen in place across mazes*; only
+the surrounding corridors and tunnel rows change). Verified: 220 dots+pellets, 0 unreachable,
+symmetric. Drawn in maze color set 6 (`WC=6`).
 
 **Maze 1 is the authentic arcade layout**, not generated — see `README.md` and
 `assets/maze1-arcade.txt` (the source 28×31 arcade grid, from shaunlebron/pacman-mazegen). The
