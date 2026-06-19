@@ -81,6 +81,12 @@ from 224, and the HUD (`LEVEL n DOTS nnn SCORE nnnn`) is redrawn. When `DOTS` re
 maze **flashes and advances to the next level** (see "Level progression" under Step 7) rather than
 ending.
 
+**Score is stored ÷10 to dodge the 16-bit overflow.** The score `PT` is a TI integer (max
+**32767**); a long game (banana fruit = 5000, ghost chains = 1600, etc.) would wrap. Since *every*
+Ms. Pac-Man award is a multiple of 10, `PT` holds the value **÷10** internally (dot `+1`, pellet
+`+5`, fruit `+10…+500`, ghosts `+20/40/80/160`) and the HUD appends a trailing `0` at render time
+(`708`: `STR$(PT)&"0"`). Lossless, and it raises the real ceiling to a **327,670** displayed score.
+
 **Instant reversal.** Ms. Pac-Man can reverse direction immediately, even mid-corridor between
 cells — lines 311-314 check whether the newly-pressed direction is the exact opposite of her
 current direction and, if so, flip `CD` and move right away, bypassing the cell-alignment/wall
@@ -244,7 +250,8 @@ realign and re-path, then try again.
 
 **Eating a frightened ghost (780-798).** The collision check (line 428, now `GOSUB 780`)
 dispatches on `GS()`: `GS=0` is `CAUGHT!` (`GOSUB 1100` — see Step 7); `GS=2` (eyes) has no
-effect; `GS=1` calls `GOSUB 790`, which scores 200/400/800/1600 by `EG` (incrementing it), turns
+effect; `GS=1` calls `GOSUB 790`, which scores **200/400/800/1600** by `EG` (incrementing it) —
+stored as `+20/40/80/160` since `PT` is ÷10 (see Step 3b) — turns
 the ghost white (`CALL COLOR(#n,16)`), sets `GS=2`, swaps its sprite pattern to a dedicated
 **eyeballs** shape (`CALL CHAR(108,...)`, via `CALL PATTERN(#n,108)`), redraws the HUD, and plays
 an eat blip. On respawn (line 1051) the pattern is swapped back to the normal ghost shape
@@ -284,6 +291,13 @@ redrawn (now showing the decremented `LIVES`) and play resumes from the main loo
 
 **Implemented:** `LV` lives counter (HUD); `CAUGHT!`/`GAME OVER` messaging; full Pac+ghost
 respawn-to-start-state on a non-fatal catch; `GAME OVER` + `END` at 0 lives.
+
+**Bonus Ms. Pac-Man at 10,000 points (once per game).** Every frame the main loop checks
+`IF PT>=1000 AND BG=0` (10,000 displayed = `PT>=1000` since the score is stored ÷10) and, the first
+time it trips, `GOSUB 785`: sets the one-shot flag `BG=1`, `LV=LV+1`, redraws the HUD (`GOSUB 708`,
+so the new `LIVES` count shows immediately), then rings a **3-chime bell** (`1568 Hz` dings with
+short silent gaps via sequential blocking `CALL SOUND`s). `BG` resets to 0 only on a full game
+restart (line 157), never on level-advance or respawn — so the award is strictly once per game.
 
 ### Step 7 polish — art, animation, sound, roaming fruit
 - **~10×10 sprites + bow + directions.** All sprite art was redrawn to ~10×10 centered in the 16px
