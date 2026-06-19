@@ -187,14 +187,14 @@
 772 CALL SOUND(300,523,2,659,4)
 773 RETURN
 774 REM --- power pellet eaten: frighten all non-eyes ghosts, reverse them, reset combo ---
-775 FOR GI=1 TO 4
-776 IF GS(GI)<>2 THEN GS(GI)=1 :: CALL COLOR(#(GI+1),5)
-777 IF GS(GI)=1 AND GD(GI)=1 THEN GD(GI)=2 ELSE IF GS(GI)=1 AND GD(GI)=2 THEN GD(GI)=1
-778 IF GS(GI)=1 AND GD(GI)=3 THEN GD(GI)=4 ELSE IF GS(GI)=1 AND GD(GI)=4 THEN GD(GI)=3
-779 NEXT GI :: FT=FB :: EG=0 :: CALL SOUND(220,165,2,110,4) :: RETURN
-780 REM --- Pac/ghost overlap: GS=0 caught, GS=1 eat ghost, GS=2 eyes (no effect) ---
-781 IF GS(GI)=0 THEN GOSUB 1100
-782 IF GS(GI)=1 THEN GOSUB 790
+775 FOR GJ=1 TO 4
+776 IF GS(GJ)<>2 THEN GS(GJ)=1 :: CALL COLOR(#(GJ+1),5)
+777 IF GS(GJ)=1 AND GD(GJ)=1 THEN GD(GJ)=2 ELSE IF GS(GJ)=1 AND GD(GJ)=2 THEN GD(GJ)=1
+778 IF GS(GJ)=1 AND GD(GJ)=3 THEN GD(GJ)=4 ELSE IF GS(GJ)=1 AND GD(GJ)=4 THEN GD(GJ)=3
+779 NEXT GJ :: FT=FB :: EG=0 :: CALL SOUND(220,165,2,110,4) :: RETURN
+780 REM --- overlap: eat a power pellet under Pac FIRST (tie favors her); GS=0 caught, GS=1 eat ghost, GS=2 eyes ---
+781 IF GS(GI)=0 THEN C=INT((SX+11)/8) :: R=INT((SY+11)/8) :: CALL GCHAR(R,C,G) :: IF G=152 THEN GOSUB 750
+782 IF GS(GI)=1 THEN GOSUB 790 ELSE IF GS(GI)=0 THEN GOSUB 1100
 783 RETURN
 784 REM --- one-time bonus Ms. Pac-Man at 10000 pts (PT>=1000, score is /10): +1 life, ring bell 3x, redraw HUD ---
 785 BG=1 :: LV=LV+1 :: GOSUB 708

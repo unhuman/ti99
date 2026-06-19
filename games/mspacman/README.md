@@ -250,7 +250,13 @@ realign and re-path, then try again.
 
 **Eating a frightened ghost (780-798).** The collision check (line 428, now `GOSUB 780`)
 dispatches on `GS()`: `GS=0` is `CAUGHT!` (`GOSUB 1100` — see Step 7); `GS=2` (eyes) has no
-effect; `GS=1` calls `GOSUB 790`, which scores **200/400/800/1600** by `EG` (incrementing it) —
+effect; `GS=1` calls `GOSUB 790`. **Ties favor Ms. Pac-Man:** the pellet-eat (line 321) is
+cell-centered while the collision is pixel-based, so on the exact frame she *moves onto* a power
+pellet that a chase ghost also occupies, `321` (pre-move) would miss it and she'd be `CAUGHT`. So
+`781` re-checks her current cell first — if it's a power pellet (`GCHAR=152`) it `GOSUB 750`s to eat
+it, which frightens every ghost (`774`, now looped on `GJ` so it can't clobber the collision loop's
+`GI`); `782` then re-dispatches, eating the now-`GS=1` ghost instead of dying. Pellet-then-ghost in
+one motion. `GS=1` scores **200/400/800/1600** by `EG` (incrementing it) —
 stored as `+20/40/80/160` since `PT` is ÷10 (see Step 3b) — turns
 the ghost white (`CALL COLOR(#n,16)`), sets `GS=2`, swaps its sprite pattern to a dedicated
 **eyeballs** shape (`CALL CHAR(108,...)`, via `CALL PATTERN(#n,108)`), redraws the HUD, and plays
