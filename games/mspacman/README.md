@@ -18,9 +18,15 @@ rows 3–24 / cols 3–30 (rows 1–2 are reserved for the score/info HUD): **pi
 `MAZE 1 DOTS 224`. **3 ghosts sit in the house with the red one (Blinky) on top of the gate**, the
 cherry just below the house, and **Ms. Pac-Man** drives with **E/S/D/X** or **joystick 1** —
 gliding, turning at cells, blocked by every wall, wrapping through either tunnel. **When she runs
-straight into a wall** with no new direction queued, she **stops** (line 342) — and **keeps facing
+straight into a wall** with no new direction queued, she **stops** (line 364) — and **keeps facing
 the way she was last heading** (a separate `HD` heading drives the sprite frame, line 419/421, so
 stopping no longer snaps her to face right). A nudge in any open direction starts her again.
+- **Cornering.** Ms. Pac-Man moves in two 1px sub-steps per frame (same 2px cruise) and can
+  **cut corners**: queue a turn into an open lane and, within 2px of the intersection, she takes a
+  diagonal jump onto the new lane instead of squaring the turn at the center — the earlier you
+  commit, the bigger the head start (~3px if early, ~1px if late). The cut cell is still eaten and
+  the 1px sub-steps keep her on the grid. **Ghosts turn squarely**, so cornering is how she pulls
+  ahead in a chase (lines 315/350–392; see DESIGN "Grid movement model").
 - **Source of truth:** `assets/maze1-arcade.txt` (the full 28×31 arcade layout, from
   shaunlebron/pacman-mazegen). The TI version collapses the doubled wall-rows (31→22 rows) to fit
   the 24-row screen — the *shape is preserved exactly*, only the vertical scale changes.
@@ -57,15 +63,17 @@ stopping no longer snaps her to face right). A nudge in any open direction start
   |------|--------|-------|---------|------|
   | 1 | 1–2 | pink (14) | 2 | 224 |
   | 2 | 3–5 | light blue (6) | 2 | 220 |
-  | 3 | 6–9 | orange (10) | **1** (single wrap) | 238 |
-  | 4 | 10+ | dark blue (5) | 2 (flank the pen) | 232 |
+  | 3 | 6–9 | orange (10) | **1** (single wrap) | 246 |
+  | 4 | 10+ | dark blue (5) | 2 (rows 11 & 13, flank the pen) | 212 |
 
   Maze 3 has a single tunnel (authentic), so the fruit code falls back `TY2=TY1` when only one is
   found. `assets/mazegen.pl` autotiles + validates (symmetry, reachability); `assets/collapse2.pl`
-  collapses each 28×31 arcade source to our 28×22 (drop doubled rows, carve the fixed pen box, widen
-  tunnels, place energizers). The real arcade data was pulled via raw `curl` — the summarizing
-  web-fetch corrupts ASCII (proven by diffing). **Mazes 3 & 4 are first-pass collapses** (validated
-  & playable, but the open/wall balance is rougher than the arcade) — to be hand-refined like maze 2.
+  did the initial 28×31→28×22 collapse (drop doubled rows, carve the fixed pen box, widen tunnels,
+  place energizers). The real arcade data was pulled via raw `curl` — the summarizing web-fetch
+  corrupts ASCII (proven by diffing). **Mazes 3 & 4 have since been hand-refined** (maze 3 grew a
+  taller symmetric pen with open lanes above and below it; maze 4's tunnels were split to rows 11 &
+  13); both re-validate symmetric, 0 unreachable. `assets/maze3grid.txt`/`maze4grid.txt` are the
+  `#/./o` grids decoded from the live `DATA` (they round-trip back to it exactly through `mazegen.pl`).
 - Draws in a few seconds interpreted; **instant compiled**.
 
 **Tunnels are generic — no per-maze constants.** Walls bound the actors everywhere *except* at the

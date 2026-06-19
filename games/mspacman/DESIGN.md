@@ -82,14 +82,24 @@ in its 8px cell leaves a 2px margin each side, which the sprite overhang falls i
 
 Sprites use `CALL CHAR` codes 96–107 + per-sprite colors, separate from all the above.
 
-**Grid movement model** (steps 2+). Sprites step cell-to-cell along corridors; a turn is only
-allowed at a cell center where the perpendicular lane is open; tunnels wrap at the screen edges.
-Collisions/eating are tested on the **cell the sprite center occupies** (`GCHAR`), not pixels.
-**Stuck → stop, keep facing.** When the current direction is blocked at a cell center and no new
-direction is queued, Ms. Pac-Man **stops** (`CD=0`, line 342). Her sprite frame is driven by a
-separate **heading** `HD` (`419 IF CD<>0 THEN HD=CD`), not `CD`, so a stopped Pac **keeps facing
-the way she was last moving** instead of snapping to face right. A nudge in any open direction
-resumes movement.
+**Grid movement model** (steps 2+). Sprites step cell-to-cell along corridors; tunnels wrap at the
+screen edges. Collisions/eating are tested on the **cell the sprite center occupies** (`GCHAR`),
+not pixels. **Ghosts** turn only at a cell center where the perpendicular lane is open.
+
+**Ms. Pac-Man moves in two 1px sub-steps per frame** (lines 315/350–392 — same 2px/frame cruise,
+but 1px resolution lets her sit at any offset). Each sub-step: if she's exactly centered she eats,
+takes a square turn / wall-stop, and steps 1px; otherwise she may **corner-cut**.
+**Cornering (her edge over the ghosts).** When a perpendicular turn is buffered into an open lane
+and she is within **2px** of the upcoming center, she takes a **diagonal jump**: snap onto the new
+lane (`JD` px) *and* jump `JD` px into the new direction in one sub-step, then `CD=DD` (lines
+370–384). Head-start scales with how early you commit — `JD=2` → ~3px net gain (the early-input
+case), `JD=1` → ~1px. The jumped-over intersection cell is eaten (`381`, with `EA=0` so the cut
+keeps its speed). 1px sub-steps mean an odd-px cut still re-aligns at the next intersection (no
+grid desync — verified by simulation). Ghosts don't corner, so she pulls ahead through turns.
+**Stuck → stop, keep facing.** When her direction is blocked at a center and no new direction is
+queued, she **stops** (`CD=0`, line 364). Her sprite frame is driven by a separate **heading** `HD`
+(`419 IF CD<>0 THEN HD=CD`), not `CD`, so a stopped Pac **keeps facing the way she was last moving**
+instead of snapping to face right. A nudge in any open direction resumes movement.
 
 **Flicker / "sprite rotation"** (step 4+). `CALL LINK("FLICK")` rotates sprites so >4 on a line
 all show (flickering). Requires the highest-numbered sprite in motion — already satisfied by our
@@ -241,7 +251,7 @@ GOSUB 8001,8002,8003,8004`** — each tiny per-maze stub just does `RESTORE <dat
 | 1 | 9001–9022 | 14 | magenta/pink | 2 (rows 7,13) | 1–2 |
 | 2 | 9101–9122 | 6  | light blue   | 2 (rows 2,17) | 3–5 |
 | 3 | 9201–9222 | 10 | light red/orange | **1** (row 7) | 6–9 |
-| 4 | 9301–9322 | 5  | dark blue    | 2 (rows 11,12, flanking the pen) | 10+ |
+| 4 | 9301–9322 | 5  | dark blue    | 2 (rows 11 & 13, flanking the pen) | 10+ |
 
 It reads + renders 22 rows (screen rows 3–24, leaving rows 1–2 as a HUD strip) and counts dots.
 **`MZ` is chosen at level start** (`1140`: `MZ=1 :: IF LE>=3 THEN MZ=2 :: IF LE>=6 THEN MZ=3 :: IF
@@ -257,11 +267,14 @@ tunnel row instead of reading a stale `TY2` from the previous maze.
 **Mazes 3 & 4 are authentic arcade layouts** (`assets/maze3-arcade.txt`, `maze4-arcade.txt`, from
 shaunlebron/pacman-mazegen "MS. PAC-MAN (3)"/"(4)" — pulled via raw `curl`, since the summarizing
 web-fetch corrupts ASCII; verified by diffing extracted mazes 1&2 byte-for-byte against the trusted
-local files). Each 28×31 source was collapsed to 28×22 by `assets/collapse2.pl` (drop doubled
+local files). Each 28×31 source was first collapsed to 28×22 by `assets/collapse2.pl` (drop doubled
 wall-rows, carve the **fixed pen box** into grid rows 9–12 cols 10–19 so the ghost house stays put,
-widen tunnels, place 4 energizers), then autotiled + validated by `mazegen.pl` (maze 3: 238
-dots+pellets; maze 4: 232; both symmetric, 0 unreachable). These are **first-pass collapses** —
-the open/wall balance is rougher than the arcade and meant to be refined by hand like maze 2.
+widen tunnels, place 4 energizers), then **hand-refined** to their current form (maze 3 grew a
+taller symmetric pen with open lanes above *and* below it; maze 4's two tunnels were separated to
+rows 11 & 13) and autotiled by `mazegen.pl`. Current validated figures (decode the in-file `DATA`
+→ `mazegen.pl`): **maze 3 = 246 dots+pellets, maze 4 = 212**; both symmetric, 0 unreachable.
+`assets/maze3grid.txt`/`maze4grid.txt` are the `#/./o` grids (decoded from the live `DATA`; they
+round-trip back to it exactly through `mazegen.pl`).
 
 **Tunnels are generic — no per-maze hardcoding.**
 - *Wrap:* walls bound the actors everywhere except at the tunnel mouths, so a single edge test
