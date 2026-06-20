@@ -347,11 +347,13 @@ restart (line 157), never on level-advance or respawn — so the award is strict
 - **Start jingle.** A short **original** arcade-style ascending fanfare (`GOSUB 710`, lines
   711-718) plays once at boot, after the maze/sprites/HUD are up. (It's an original composition in
   the spirit of an arcade intro, not a copy of any licensed tune.)
-- **Press fire to start.** After the maze and sprites are drawn, the game shows `PRESS FIRE TO
-  START` (line 172) and idles in a tight `CALL KEY` wait — joystick fire (`CALL KEY(1)`=18) or
-  Space/Enter (lines 173-175). Only then does it draw the HUD, play the jingle, enable `FLICK`, and
-  enter the main loop. Sprites sit static during the wait (no timers run), so it reads as an attract
-  pose.
+- **Title screen (`GOSUB 1200`).** Boot calls the title routine before anything else (`155`): it
+  `CALL DELSPRITE(ALL)` + `CALL CLEAR`s the screen, shows `MS. PAC-MAN` / `PRESS FIRE TO START` /
+  the controls, and idles in a tight `CALL KEY` wait — joystick fire (`CALL KEY(1)`=18) or
+  Space/Enter — then clears and returns into the game setup (no more in-game press-fire prompt).
+  **When the game ends, it returns here:** the game-over path (`1120`) calls the same title routine,
+  so every game is preceded by the title and a fresh fire-press. `DELSPRITE(ALL)` clears the previous
+  game's sprites so the title screen is clean.
 - **Death animation.** On a fatal catch (`GOSUB 1100`), the roaming fruit is removed
   (`CALL DELSPRITE(#6)`) and all four ghosts are made **transparent** (swapped to a blank pattern,
   char 132) — so they vanish without deleting the sprites or touching `FLICK` (avoids the
@@ -365,10 +367,10 @@ restart (line 157), never on level-advance or respawn — so the award is strict
   medium dot (136) → small dot (140) → gone (transparent 132), each step ~110 ms with the whirr
   finishing its descent (200 → 110 Hz), so she collapses to nothing before the `CAUGHT!`/`GAME
   OVER` message. On respawn her pattern is restored to 96.
-- **Game over → fire restarts.** When the last life is lost, `GAME OVER` + `PRESS FIRE` stay on
-  screen and the game waits for fire (`GOSUB 1120`). One press starts a **fresh game** — full
-  lives, score 0, refilled maze — going straight into play (the boot attract wait is skipped via
-  the `NG` flag). The restart is done **without `GOTO`-ing out of the nested death `GOSUB`**: the
+- **Game over → title screen.** When the last life is lost, `GAME OVER` shows briefly, then the
+  game-over routine (`GOSUB 1120`) returns to the **title screen** (`GOSUB 1200`) and waits for
+  fire. One press starts a **fresh game** — full lives, score 0, refilled maze. The restart is done
+  **without `GOTO`-ing out of the nested death `GOSUB`**: the
   game-over routine sets a `RG` (restart) flag and `RETURN`s cleanly up through the call stack and
   out of the collision `FOR` loop; only then, at the bare main-loop level (line 437), does
   `IF RG=1 THEN 157` jump back to the new-game init. That keeps the GOSUB/FOR control stack from

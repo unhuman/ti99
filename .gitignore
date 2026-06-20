@@ -19,9 +19,12 @@ MSPAC.TXT
 **/*-E
 **/*-F
 **/*-G
+**/*-H
 **/*-O
+**/*-OBJ
 **/*-S
 **/*-X
+**/*-Y
 **/*.OBJ
 # --- IDE (IntelliJ) ---
 .idea/
