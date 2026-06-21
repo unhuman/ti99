@@ -277,11 +277,14 @@ GOSUB 8001,8002,8003,8004`** — each tiny per-maze stub just does `RESTORE <dat
 | 1 | 9001–9022 | 14 | magenta/pink | 2 (rows 7,13) | 1–2 |
 | 2 | 9101–9122 | 6  | light blue   | 2 (rows 2,17) | 3–5 |
 | 3 | 9201–9222 | 10 | light red/orange | **1** (row 7) | 6–9 |
-| 4 | 9301–9322 | 5  | dark blue    | 2 (rows 11 & 13, flanking the pen) | 10+ |
+| 4 | 9301–9322 | 5  | dark blue    | 2 (rows 11 & 13, flanking the pen) | 10–13 |
+| random | — | — | — | — | 14+ (one of 1–4, re-rolled each level) |
 
 It reads + renders 22 rows (screen rows 3–24, leaving rows 1–2 as a HUD strip) and counts dots.
-**`MZ` is chosen at level start** (`1140`: `MZ=1 :: IF LE>=3 THEN MZ=2 :: IF LE>=6 THEN MZ=3 :: IF
-LE>=10 THEN MZ=4` — the nested `IF`s work because the thresholds are monotonic).
+**`MZ` is chosen at level start** by a small sub (`GOSUB 1155`, from both the start `158` and the
+level-advance `1140`): the known arcade order for levels 1–13 (`MZ=1 :: IF LE>=3…>=6…>=10` — nested
+`IF`s, monotonic thresholds), then **random** for level 14+
+(`IF LE>=14 THEN CALL LINK("IRND",4,MZ) :: MZ=MZ+1`).
 Adding a maze = a new `DATA` block + one more entry in the `ON MZ GOSUB` list. Interpreted draw
 takes a few seconds; instant compiled (optionally cache later with `COMPRESS`/`CWRITE`).
 

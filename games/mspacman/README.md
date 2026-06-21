@@ -56,15 +56,17 @@ stopping no longer snaps her to face right). A nudge in any open direction start
   8001,8002,8003,8004` inside `GOSUB 800`. **All four authentic arcade mazes are in**, each from
   shaunlebron/pacman-mazegen ("MS. PAC-MAN (1)–(4)", `assets/maze1..4-arcade.txt`), all sharing the
   **same ghost-house box position** (the arcade keeps the pen in place; only the corridors and
-  tunnel rows move). `MZ` is picked at level start (`MZ=1 :: IF LE>=3 THEN MZ=2 :: IF LE>=6 THEN
-  MZ=3 :: IF LE>=10 THEN MZ=4`):
+  tunnel rows move). `MZ` is picked at level start by a small sub (`GOSUB 1155`, called from both
+  the start `158` and the level-advance `1140`): the **known arcade order for levels 1–13, then
+  random** from level 14 on (`IF LE>=14 THEN CALL LINK("IRND",4,MZ) :: MZ=MZ+1`):
 
   | Maze | Levels | Color | Tunnels | Dots |
   |------|--------|-------|---------|------|
   | 1 | 1–2 | pink (14) | 2 | 224 |
   | 2 | 3–5 | light blue (6) | 2 | 220 |
   | 3 | 6–9 | orange (10) | **1** (single wrap) | 246 |
-  | 4 | 10+ | dark blue (5) | 2 (rows 11 & 13, flank the pen) | 212 |
+  | 4 | 10–13 | dark blue (5) | 2 (rows 11 & 13, flank the pen) | 212 |
+  | random | 14+ | — | — | one of mazes 1–4, re-rolled each level |
 
   Maze 3 has a single tunnel (authentic), so the fruit code falls back `TY2=TY1` when only one is
   found. `assets/mazegen.pl` autotiles + validates (symmetry, reachability); `assets/collapse2.pl`
