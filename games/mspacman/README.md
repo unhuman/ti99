@@ -347,13 +347,35 @@ restart (line 157), never on level-advance or respawn — so the award is strict
 - **Start jingle.** A short **original** arcade-style ascending fanfare (`GOSUB 710`, lines
   711-718) plays once at boot, after the maze/sprites/HUD are up. (It's an original composition in
   the spirit of an arcade intro, not a copy of any licensed tune.)
-- **Title screen (`GOSUB 1200`).** Boot calls the title routine before anything else (`155`): it
-  `CALL DELSPRITE(ALL)` + `CALL CLEAR`s the screen, shows `MS. PAC-MAN` / `PRESS FIRE TO START` /
-  the controls, and idles in a tight `CALL KEY` wait — joystick fire (`CALL KEY(1)`=18) or
-  Space/Enter — then clears and returns into the game setup (no more in-game press-fire prompt).
-  **When the game ends, it returns here:** the game-over path (`1120`) calls the same title routine,
-  so every game is preceded by the title and a fresh fire-press. `DELSPRITE(ALL)` clears the previous
-  game's sprites so the title screen is clean.
+- **Animated title screen (`GOSUB 1200`).** Boot runs the title before anything else (`155`) and
+  game-over returns to it (`1120`), so every game starts here. It shows `MS. PAC-MAN` / `2026
+  UNHUMAN` / the controls / `PRESS FIRE TO BEGIN`, with **Ms. Pac-Man gliding left across the top and
+  four ghosts gliding across the middle**, both **frame-animated** (Pac chomps via `CALL PATTERN`,
+  the ghosts wiggle their feet via the same 117/119 `CALL CHAR` foot-swap used in-game). The wait
+  loop **drains the launch key first** (the `WT` flag ignores the key still held from launching the
+  program, then takes a fresh press) — without it the fast compiled build skipped the title. Fire
+  (`CALL KEY(1)`=18) / Space / Enter starts; on exit it `DELSPRITE(ALL)`s the title sprites, clears,
+  and returns into game setup.
+- **`8-3-8` level-select cheat.** On the title, pressing **8, 3, 8** in sequence (a tiny `CS` state
+  machine in the wait loop — keyed off `CALL KEY` *codes*, since the status `S` is unreliable after
+  mixing `CALL KEY(0)`/`CALL KEY(1)`) opens a `LEVEL: 1-0` prompt. Enter `1`–`9` (or `0` = 10) and
+  the game **starts on that level with the correct difficulty**: maze (`158`), fruit (`GOSUB 1160`),
+  ghost speed (`SP+LE-1`, `174`) and fright duration (`FB-(LE-1)*40`, `175`) are all scaled for `LE`,
+  which now flows from the title (`157` no longer resets it). The select loop **drains the held `8`**
+  first (so it isn't read as level 8), then reads a fresh digit.
+  - *Compiler land-mine this feature exposed (verified by decoding the generated `MSPAC.TXT`):* the
+    XB compiler silently **miscompiles some conditional jumps** in this tail-of-program region. A
+    single small-constant test (`IF K<1` / `IF K>0`) came out comparing the **wrong variable**
+    (`S` instead of `K`); a short backward `GOTO`/`ELSE` to **a line that immediately follows another
+    jump target** resolved to a garbage label (→ `undefined symbol`, or a silent jump into the ghost
+    code at `L1024`). Fixes, all now in the level-select: **use compound `OR` conditions**
+    (`IF K<48 OR K>57 …`), **no standalone short backward `GOTO`** (fold the loop-back into `ELSE`),
+    and **keep a loop-back target off any line sitting right after a jump target** (a buffer
+    `DISPLAY` line between the cheat's target `1230` and the drain read `1232`). Recorded in
+    CLAUDE.md §2 for future games.
+- **When the game ends it returns to the title:** the game-over path (`1120`) calls the same title
+  routine, so every game is preceded by the title and a fresh fire-press; `DELSPRITE(ALL)` clears the
+  finished game's sprites so the title is clean.
 - **Death animation.** On a fatal catch (`GOSUB 1100`), the roaming fruit is removed
   (`CALL DELSPRITE(#6)`) and all four ghosts are made **transparent** (swapped to a blank pattern,
   char 132) — so they vanish without deleting the sprites or touching `FLICK` (avoids the

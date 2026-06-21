@@ -85,6 +85,17 @@ and the TI Extended BASIC manual.
   - `CALL LINK` name must be a **string constant** — `CALL LINK(A$,…)` will not compile right.
   - Keep `PRINT` lists to **≤20 items**. No `ON GOTO`/`ON GOSUB` **inside** an `IF/THEN/ELSE`.
   - `DISPLAY ERASE ALL` (with no print list) crashes the compiler — use `CALL CLEAR`.
+  - **Jump-codegen corruption near program end** (confirmed by decoding the generated assembly):
+    close to the label-table limit, the compiler can *silently* mistranslate conditional jumps in
+    the **last** code region. Two confirmed modes: (1) a **bare single small-constant comparison**
+    jumping to a line — `IF K<1 THEN 1234`, `IF K>0 THEN 1231` — came out comparing the *wrong
+    variable* / a garbage target; the **compound `OR`** form right beside it compiled fine
+    (`IF K<48 OR K>57 THEN …`), so prefer compound conditions. (2) a **short backward `GOTO`/`ELSE`
+    to a line that immediately follows *another* jump target** resolved to a garbage label
+    (→ `undefined symbol`, or a silent jump into unrelated code). Fixes: no standalone short backward
+    `GOTO` (fold the loop-back into an `ELSE`); **put a buffer line so a loop-back target never sits
+    right after a jump target**; and shed labels by merging contiguous plain `::` lines (each source
+    line ≈ one label) to pull back from the table limit.
 - **Reserved names:** the compiler reserves ~1000 internal labels — `NC/NV/NA/SC/SV/SA…`,
   `L`+digit, and the full table on **XB Compiler.pdf p.12**. Game `SUB`/`CALL LINK` names must
   avoid these (and their 6-char truncations).

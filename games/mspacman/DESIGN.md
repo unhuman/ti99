@@ -108,7 +108,20 @@ all show (flickering). Requires the highest-numbered sprite in motion — alread
 Avoid CRAWL/CHSETD/speech/disk while flickering (possible memory conflicts per the docs).
 
 ## 3. Controls
-ESDX diamond (`E`=69 up, `S`=83 left, `D`=68 right, `X`=88 down) **and** `CALL JOYST(1,X,Y)`.
+ESDX diamond (`E`=69 up, `S`=83 left, `D`=68 right, `X`=88 down) **and** `CALL JOYST(1,X,Y)`. The
+four keyboard checks, four joystick checks, and the reversal test are each folded into one
+nested/`OR` line (`300`-`315`) to save compiler labels (≈one label per source line).
+
+**Title screen (`1200`-`1237`).** Boot (`155`) and game-over (`1120`) both `GOSUB 1200`, so play
+always opens on an **animated title** — Ms. Pac-Man glides left across the top, four ghosts glide
+across the middle (both frame-animated), over `MS. PAC-MAN` / `2026 UNHUMAN` / controls / `PRESS FIRE
+TO BEGIN`. The wait loop **drains the launch key** (`WT`) before accepting a fresh fire / Space /
+Enter (else the fast compiled build skips the title).
+
+**`8-3-8` level select (cheat).** Typing `8 3 8` on the title (`CS` state machine, `1224`-`1227`,
+keyed off `CALL KEY` *codes*) opens `LEVEL: 1-0` (`1230`-`1237`); a digit `1`-`9` / `0`(=10) starts
+that level with maze / fruit / ghost-speed / fright all scaled for `LE` (`158`, `170`, `174`-`175`).
+See README for per-feature detail and §8 for the compiler land-mines it exposed.
 
 ## 4. Sprite art (placeholder hex — refined later)
 ~12×12 art centered in the 16px box (2px transparent ring), split into the 4 quadrant chars (see
@@ -133,6 +146,19 @@ Comfortably within budget.
 ## 8. Compiler-safety
 Per `CLAUDE.md` §6: integer/fixed-point, `INT()` on `/`, `IRND`/`INT(RND*N)` for randomness,
 `DELAY`/`SYNC` timing, no trailing `::`, no block `IF`, dot-free disk names, Screen2, `-X` output.
+
+**Compiler label budget.** The XB compiler emits ≈one label per source line and has a finite table;
+near it, the *last* code region's jumps start corrupting. Merge contiguous plain (non-`IF`)
+statement lines with `::` to shed labels with zero behaviour change — that's free headroom (we used
+it on the input block, sprite/char setup, COLOR2 and the jingle).
+
+**Compiler jump-codegen hazards** (found building the `8-3-8` select; recorded in CLAUDE.md §2): this
+compiler silently miscompiles some conditional jumps near program end. A bare single small-constant
+comparison (`IF K<1` / `K>0 THEN <line>`) can come out comparing the *wrong variable*; a short
+backward `GOTO`/`ELSE` whose target line **immediately follows another jump target** resolves to a
+garbage label (→ `undefined symbol`, or a silent jump into unrelated code). Use compound `OR`
+conditions, no standalone short backward `GOTO` (fold into `ELSE`), and put a buffer line before any
+loop-back target. Verify by decoding the generated assembly (`MSPAC.TXT`, a DV80 TIFILES file).
 
 ## 9. Build & run
 Disk name **`MSPAC`**. Standard lifecycle (`CLAUDE.md` §8); see `README.md`. From step 4, the
