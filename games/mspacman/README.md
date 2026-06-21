@@ -13,7 +13,9 @@ rotation so >4 sprites on a line don't vanish. Replaces the broken `mspacman-old
 ## Step 3a — what you should see / test
 The **authentic Ms. Pac-Man Maze 1** (the pink maze), drawn from a `DATA` grid occupying screen
 rows 3–24 / cols 3–30 (rows 1–2 are reserved for the score/info HUD): **pink** thin (4px) walls
-(mask-autotiled), **white dots** in the corridors, 4 corner **power pellets**, the **inset
+(mask-autotiled), **white dots** in the corridors, 4 corner **white power pellets that blink**
+(`COLOR2` set 16 toggled white↔transparent on the `M=0`/`M=4` animation phase, lines 435-436, like
+the arcade energizers), the **inset
 "waist"** with **two tunnel pairs** (that wrap left↔right), and the central **ghost house**. HUD
 `MAZE 1 DOTS 224`. **3 ghosts sit in the house with the red one (Blinky) on top of the gate**, the
 cherry just below the house, and **Ms. Pac-Man** drives with **E/S/D/X** or **joystick 1** —
@@ -159,9 +161,8 @@ rather than only when they land in the same cell.
 > when cornering: the box's diagonal corners counted a *cell-diagonal* near-miss (`DX≈DY≈8`,
 > ~11px apart) as a hit. `DX+DY` keeps head-on behavior but tightens diagonally, so rounding a
 > corner past a ghost no longer grazes you. `8` is the tunable "amount"; lower = less sensitive
-> (requires more overlap before a hit). **Eating the roaming fruit uses a looser `DX+DY<14`**
-> (line 434) — the fruit weaves slowly and erratically, so the tight ghost window let it slip past
-> without registering; a reward should be easy to grab.
+> (requires more overlap before a hit). **The roaming fruit uses the same `DX+DY<8`** (line 434)
+> as the ghosts — the earlier looser `<14` let it be eaten from a tile away, which felt wrong.
 
 **Sprite rotation (`FLICK`).** With 4 chasing ghosts, Ms. Pac-Man, and the fruit all sharing the
 screen, more than 4 sprites can land on the same scanline — the TMS9918A only renders 4 per line,
@@ -214,11 +215,14 @@ scalars `FT` (frightened-timer countdown) and `EG` (combo counter for escalating
 ghost movement routine (formerly `GOSUB 710`) is generalized and relocated to **`GOSUB 1000`**.
 
 **Frighten-all trigger.** Eating a power pellet (line 752) calls `GOSUB 774`: every ghost not
-currently "eyes" is set to `GS=1` (frightened), turned dark blue (`CALL COLOR(#n,5)`), and has its
-direction reversed (mirroring the dead-end-reversal pattern at lines 1016-1017); the shared
-timer/combo are (re)set to `FT=300, EG=0`. A second pellet eaten mid-fright re-frightens,
-re-reverses, and resets the timer/combo for any already-frightened ghosts too — eyes-state ghosts
-are unaffected and keep heading home.
+currently "eyes" is set to `GS=1` (frightened) and turned dark blue (`CALL COLOR(#n,5)`); the shared
+timer/combo are (re)set to `FT=FB, EG=0`. **Reversal follows the arcade rule** (`775`/`776`, gated on
+`GS=0` and applied *before* the frighten at `777`): a ghost in **normal** (chase/scatter) mode turns
+180° when the pellet is eaten, but a ghost that is **already blue does not reverse again** — a second
+pellet mid-fright just refreshes the timer/combo. Eyes-state ghosts are unaffected and keep heading
+home. (The scatter/chase mode-switch reversal at `1173`/`1174` likewise only flips `GS=0` ghosts, so
+blue ghosts never reverse there either.) During frightened movement the flee logic (`SG=-1`) excludes
+the reverse direction, so blue ghosts otherwise only reverse on a dead end.
 
 **Half-speed + flash (1001-1005).** While `GS=1`, a ghost moves only on odd `FC` frames (half
 speed) and stays dark blue until the last 90 frames of `FT`, when it flashes blue/white every ~4
@@ -269,9 +273,10 @@ it, which frightens every ghost (`774`, now looped on `GJ` so it can't clobber t
 one motion. `GS=1` scores **200/400/800/1600** by `EG` (incrementing it) —
 stored as `+20/40/80/160` since `PT` is ÷10 (see Step 3b) — turns
 the ghost white (`CALL COLOR(#n,16)`), sets `GS=2`, swaps its sprite pattern to a dedicated
-**eyeballs** shape (`CALL CHAR(108,...)`, via `CALL PATTERN(#n,108)`), redraws the HUD, and plays
-an eat blip. On respawn (line 1051) the pattern is swapped back to the normal ghost shape
-(`CALL PATTERN(#n,100)`) along with the color/state reset.
+**eyeballs** shape (`CALL CHAR(108,...)`, via `CALL PATTERN(#n,108)`), redraws the HUD, and then
+**freezes the whole game for ~0.5 s** (`797`: four descending tones 1600→700 Hz + a short `DELAY`)
+with the eaten ghost held as eyes — the arcade's eat-pause. On respawn (line 1051) the pattern is
+swapped back to the normal ghost shape (`CALL PATTERN(#n,100)`) along with the color/state reset.
 
 **Implemented:** frightened/eyes ghost state machine; power-pellet-triggered fright with reversal
 and re-trigger; half-speed + blue/flash while frightened; unified chase/flee/eyes-return
@@ -287,17 +292,19 @@ implemented yet; revisit with Step 7.
 > readable source grid lives in `DESIGN.md`/the generator; the `.ti99` holds the encoded `DATA`.
 
 ## Step 7 (in progress) — lives, respawn, game over
-A new scalar `LV` (lives, starts at **3**, line 152) and a shared HUD subroutine
-(`GOSUB 708`/`709`) replace the old single-row HUD: row 1 now shows `MAZE n SCORE nnnn`, row 2
-shows `DOTS nnn LIVES n` (rows 1-2 are the dedicated HUD strip, never touched by `DRAWMAZE`). All
-three places that used to redraw the HUD inline (initial setup, eat-dot, eat-ghost) now just
-`GOSUB 708`.
+A scalar `LV` (lives, **defaulted to 3 on the title at `1200`**, overridable by the cheat) and a
+shared HUD subroutine (`GOSUB 708`/`709`) drive the HUD: row 1 shows `SCORE nnnnn0`, row 2 shows
+`LIVES n LEVEL n` (rows 1-2 are the dedicated HUD strip, never touched by `DRAWMAZE`). The places
+that used to redraw the HUD inline (initial setup, eat-dot, eat-ghost) all `GOSUB 708`.
 
 **Caught → lose a life (`GOSUB 1100`).** On a normal-ghost collision (`GS=0`), the catching ghost
-**sits on her for ~1 s** (`CALL LINK("DELAY",1000)`) before anything else, then `LV=LV-1`, the HUD
-rows are blanked, the ghosts hide and she does the death spin. **No HUD message on a normal death**;
-only `GAME OVER` is shown (at `LV<=0`), followed by the `PRESS FIRE` restart prompt. Respawn (and
-game start) face **left**.
+**sits on her for ~1 s** (`CALL LINK("DELAY",1000)`), then `LV=LV-1`, the ghosts hide and she does
+the death spin. **The HUD is left intact through the death** (no blanking) — the lives count only
+visibly drops when play resumes, where the respawn's `GOSUB 708` (`1117`) redraws it. **No message on
+a normal death.** On game over (`LV<=0`) a **centered black box** is drawn
+(`1111`: `FOR J=10 TO 14 :: CALL HCHAR(J,9,32,16)`) with `GAME OVER` in it, held **3 s** (`1112`),
+then the **title screen** takes over (which is where you press fire to restart). Respawn (and game
+start) face **left**.
 
 **Respawn.** If lives remain, Ms. Pac-Man and all 4 ghosts are reset to **exactly their
 game-start state** — same positions (`SX=121,SY=141` / the pen layout), same directions (`CD=4`,
@@ -351,7 +358,9 @@ restart (line 157), never on level-advance or respawn — so the award is strict
   the spirit of an arcade intro, not a copy of any licensed tune.)
 - **Animated title screen (`GOSUB 1200`).** Boot runs the title before anything else (`155`) and
   game-over returns to it (`1120`), so every game starts here. It shows `MS. PAC-MAN` / `2026
-  UNHUMAN` / the controls / `PRESS FIRE TO BEGIN`, with **Ms. Pac-Man gliding left across the top and
+  UNHUMAN` / the controls / `PRESS FIRE TO BEGIN`, plus the **most-recent score** drawn at
+  `DISPLAY AT(1,1)` (`1200`) — the *same row-1 position the HUD uses* (`708`), so it doesn't jump
+  when play starts; first game shows `SCORE 00` (`PT=0`). It animates **Ms. Pac-Man gliding left across the top and
   four ghosts gliding across the middle**, both **frame-animated** (Pac chomps via `CALL PATTERN`,
   the ghosts wiggle their feet via the same 117/119 `CALL CHAR` foot-swap used in-game). The wait
   loop **drains the launch key first** (the `WT` flag ignores the key still held from launching the
@@ -364,7 +373,10 @@ restart (line 157), never on level-advance or respawn — so the award is strict
   the game **starts on that level with the correct difficulty**: maze (`158`), fruit (`GOSUB 1160`),
   ghost speed (`SP+LE-1`, `174`) and fright duration (`FB-(LE-1)*40`, `175`) are all scaled for `LE`,
   which now flows from the title (`157` no longer resets it). The select loop **drains the held `8`**
-  first (so it isn't read as level 8), then reads a fresh digit.
+  first (so it isn't read as level 8), then reads a fresh digit. A **second prompt `LIVES: 1-9`**
+  (`1237`-`1242`) then sets the starting `LV` the same way (drain the held level digit, read `1`–`9`);
+  like `LE`, `LV` is defaulted on the title (`1200`) and flows into the game, so the cheat's level
+  **and** lives both carry over.
   - *Compiler land-mine this feature exposed (verified by decoding the generated `MSPAC.TXT`):* the
     XB compiler silently **miscompiles some conditional jumps** in this tail-of-program region. A
     single small-constant test (`IF K<1` / `IF K>0`) came out comparing the **wrong variable**
@@ -384,8 +396,9 @@ restart (line 157), never on level-advance or respawn — so the award is strict
   delete/re-create + flicker-toggle that was crashing). Ms. Pac-Man then **spins 3 full turns**
   clockwise (right→down→left→up frames, 12 steps) while a **deepening whirr** descends from ~860 Hz
   to ~200 Hz (one tone per step; the paired 1-tick `CALL SOUND` blocks for timing — compiler-safe).
-  Then `CAUGHT!`/`GAME OVER` shows; on respawn the ghosts get their normal pattern/color/position
-  back and play resumes. (`FLICK` stays on throughout — Pac spins at screen row ~19, clear of the
+  A **normal death shows no message** and respawns; **game over** (`LV<=0`) draws the centered
+  `GAME OVER` black box for 3 s, then the title. On respawn the ghosts get their normal
+  pattern/color/position back and play resumes. (`FLICK` stays on throughout — Pac spins at screen row ~19, clear of the
   pen rows, so it never collides with the transparent ghosts on a scanline.)
 - **Shrink-and-vanish.** After the 3 spins, Ms. Pac-Man **shrinks** through a closed circle (112) →
   medium dot (136) → small dot (140) → gone (transparent 132), each step ~110 ms with the whirr
