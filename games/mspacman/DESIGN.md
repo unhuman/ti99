@@ -26,8 +26,8 @@ sprite, so this is how we get the size. Each sprite is one `CALL CHAR(base,"<64 
 | # | Sprite | Base char(s) | Notes |
 |---|--------|-----------|-------|
 | #1 | Ms. Pac-Man | 96 R / 100 L / 104 U / 108 D / 112 closed / 120 left-closed / 136,140 death-shrink | direction-facing + mouth animation; `CALL PATTERN` only on change. **Left needs its own closed frame (120 = mirror of 112)** so the bow stays on the back of her head when she chomps facing left (otherwise the mirrored-bow open frame flashes against the shared closed frame). **Up-facing (104) = down-frame (108) flipped vertically** so the bow sits on the *back* (bottom) of her head, not over her mouth. There's no spare slot for an up-closed frame, so **up-facing skips the chomp toggle** (line 423 forces `PP=104` even on the closed half-cycle) — the alternative would flash the bow-top closed circle (112) against the bow-bottom open frame |
-| #2–#5 | Ghosts | 116 body (always) / 124 eyes / 132 blank | per-sprite color; **feet wiggle by redefining foot chars 117+119 with `CALL CHAR`** so the sprite name never changes (avoids racing `FLICK`) |
-| #6 | Fruit | **128 (single slot, redefined per level)** | roaming bonus fruit, created on demand. All shapes (cherry/strawberry/orange/pretzel/apple/pear/banana) share char 128; `GOSUB 1160` `CALL CHAR`s the level's shape into 128 + sets the color (`FFL`) **and point value (`FFP`)** — so the fruit set is unlimited without consuming char slots. Arcade value schedule by level: **cherry 100, strawberry 200, orange 500, pretzel 700, apple 1000, pear 2000, banana 5000** (level 7+); eating adds `FFP` (`771 PT=PT+FFP`). Collision window is loosened to `DX+DY<14` (line 434) — the fruit weaves slowly and the tight ghost-collision window (<8) let it slip through |
+| #2–#5 | Ghosts | 116 body (always) / 124 eyes / 132 blank | per-sprite color (`GC()`, `170`): Blinky **dark red 7** (was medium-red 9 — too close to the orange ghost), Pinky magenta 14, Inky cyan 8, Sue light-red 10; frightened dark-blue 5 (flashing white near timeout). **Feet wiggle by redefining foot chars 117+119 with `CALL CHAR`** so the sprite name never changes (avoids racing `FLICK`) |
+| #6 | Fruit | **128 (single slot, redefined per level)** | roaming bonus fruit, created on demand. All shapes (cherry/strawberry/orange/pretzel/apple/pear/banana) share char 128; `GOSUB 1160` `CALL CHAR`s the level's shape into 128 + sets the color (`FFL`) **and point value (`FFP`)** — so the fruit set is unlimited without consuming char slots. Arcade value schedule by level: **cherry 100, strawberry 200, orange 500, pretzel 700, apple 1000, pear 2000, banana 5000** (level 7+); eating adds `FFP` (`771 PT=PT+FFP`). **Past the banana (level 8+) the fruit shape+value is chosen at random** (`1160`: `CALL LINK("IRND",7,FL)`), like the arcade's post-board mix. Fruit collision uses the **same window as ghosts** (`DX+DY<8`, line 434) — the earlier loosened `<14` let it be eaten from too far away |
 
 > **Sprite char codes must stay ≤143.** `CALL CHAR` rejects higher codes (`BAD VALUE` interpreted;
 > *silent VDP-motion-table corruption compiled* — ghosts get phantom velocities). The char table
@@ -77,7 +77,7 @@ in its 8px cell leaves a 2px margin each side, which the sprite overhang falls i
 |---------|-------|-----------|-------|
 | Wall tiles (16 autotile masks) | 128–143 | 13–14 | maze color `WC` (pink/magenta=14 for Maze 1) |
 | Dots | 144 | 15 | white (16) |
-| Power pellets | 152 | 16 | dark yellow (11) |
+| Power pellets | 152 | 16 | **white (16), blinking** — set 16 fg toggled white↔transparent each ~4 frames (`435`/`436`) so the energizers pulse like the arcade |
 | Pen door | 160 | 17 | white (16) |
 
 Sprites use `CALL CHAR` codes 96–107 + per-sprite colors, separate from all the above.
@@ -112,16 +112,21 @@ ESDX diamond (`E`=69 up, `S`=83 left, `D`=68 right, `X`=88 down) **and** `CALL J
 four keyboard checks, four joystick checks, and the reversal test are each folded into one
 nested/`OR` line (`300`-`315`) to save compiler labels (≈one label per source line).
 
-**Title screen (`1200`-`1237`).** Boot (`155`) and game-over (`1120`) both `GOSUB 1200`, so play
+**Title screen (`1200`-`1243`).** Boot (`155`) and game-over (`1120`) both `GOSUB 1200`, so play
 always opens on an **animated title** — Ms. Pac-Man glides left across the top, four ghosts glide
 across the middle (both frame-animated), over `MS. PAC-MAN` / `2026 UNHUMAN` / controls / `PRESS FIRE
-TO BEGIN`. The wait loop **drains the launch key** (`WT`) before accepting a fresh fire / Space /
-Enter (else the fast compiled build skips the title).
+TO BEGIN`. The **most-recent score is drawn at `DISPLAY AT(1,1)`** (`1200`) — the *same row-1 spot the
+HUD uses* (`708`), so it doesn't jump when play starts; a fresh boot shows `SCORE 00` (`PT=0`). The
+wait loop **drains the launch key** (`WT`) before accepting a fresh fire / Space / Enter (else the
+fast compiled build skips the title).
 
 **`8-3-8` level select (cheat).** Typing `8 3 8` on the title (`CS` state machine, `1224`-`1227`,
-keyed off `CALL KEY` *codes*) opens `LEVEL: 1-0` (`1230`-`1237`); a digit `1`-`9` / `0`(=10) starts
-that level with maze / fruit / ghost-speed / fright all scaled for `LE` (`158`, `170`, `174`-`175`).
-See README for per-feature detail and §8 for the compiler land-mines it exposed.
+keyed off `CALL KEY` *codes*) opens `LEVEL: 1-0` (`1230`-`1236`); a digit `1`-`9` / `0`(=10) sets the
+start level. A **second prompt `LIVES: 1-9`** (`1237`-`1243`) then sets the starting lives the same
+way. Both `LE` and `LV` are defaulted on the title (`1200`: `LE=1, LV=3`) and flow into the game, so
+maze / fruit / ghost-speed / fright (`158`, `170`, `174`-`175`) scale for the chosen `LE` and the run
+begins with the chosen `LV`. See README for per-feature detail and §8 for the compiler land-mines it
+exposed.
 
 ## 4. Sprite art (placeholder hex — refined later)
 ~12×12 art centered in the 16px box (2px transparent ring), split into the 4 quadrant chars (see
@@ -219,16 +224,25 @@ wall collision (maze-agnostic). Validated the movement engine.
   Step 6 — power pellets are more central; fruit is lower-priority.)*
 
 ### Step 6 — Power pellets + frightened ghosts
-- Eating a power pellet flips ghosts to **frightened**: change sprite color (blue, flashing white
-  near the end), reverse + slow them, let Pac eat them for **200/400/800/1600**; an eaten ghost
-  becomes "eyes" that return to the pen and respawn. Frightened **timer**; shrinks per level.
+- Eating a power pellet flips ghosts to **frightened** (`774`): blue, flashing white near the end,
+  slowed, eaten for **200/400/800/1600**; an eaten ghost becomes "eyes" that return to the pen and
+  respawn. Frightened **timer**; shrinks per level.
+- **Reversal (arcade rule, `775`/`776`, applied *before* the frighten at `777`):** only ghosts in
+  **normal** (chase/scatter) mode turn 180° on the pellet — gated `GS=0` **and** `GX<>121`, so a
+  ghost mid-exit on the **gate column keeps climbing out** instead of being flipped back into the pen
+  and bouncing (same guard the scatter/chase mode-switch reversal at `1173`/`1174` uses). Ghosts that
+  are **already blue do not reverse again**; eyes are unaffected.
+- **Eating a ghost** freezes the game ~0.5 s with a descending warble (`797`) before play resumes,
+  like the arcade's pause on a ghost-eat.
 
 ### Step 7 — Lives, levels, sound & polish
-- **Lives** (start 3) shown on the HUD; death animation; respawn Pac + reset ghosts; **game over**
-  at 0. **Levels:** clear → refill maze, faster ghosts, shorter fright time. **Sound:** waka,
-  pellet, eat-ghost, death, fruit, start jingle — via `CALL SOUND`, or compiled **sound lists**
-  (`SLCOMPILER`/`PLAY`) for background music + effects. **Polish:** Ms. Pac-Man **facing +
-  mouth animation** (`CALL PATTERN` swaps direction frames), the bow, ghost eyes, attract mode.
+- **Lives** (start 3, or the 838-cheat value) shown on the HUD. **The HUD is left intact through a
+  death** — lives only visibly drop when play resumes (`GOSUB 708` at respawn). **Game over** (`LV<=0`)
+  shows `GAME OVER` in a **centered black box** (`1111`: `FOR J=10 TO 14 :: CALL HCHAR(J,9,32,16)`)
+  held **3 s** (`1112`), then returns to the title. **Levels:** clear → refill maze, faster ghosts,
+  shorter fright time. **Sound:** waka, pellet, eat-ghost, death, fruit, start jingle — via
+  `CALL SOUND`, or compiled **sound lists** (`SLCOMPILER`/`PLAY`). **Polish:** Ms. Pac-Man **facing +
+  mouth animation**, the bow, ghost eyes, attract mode.
 
 ## 13. Maze system (multi-maze, for changing mazes)
 

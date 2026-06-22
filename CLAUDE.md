@@ -263,3 +263,11 @@ for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.m
 5. Compiler → Assembler → Loader; save **`<NAME>-X`**.
 6. Run `<NAME>-X`; confirm it matches the interpreted behavior + the DESIGN acceptance criteria.
 7. Commit `DESIGN.md`, `README.md`, and `src/`.
+
+> **Standing rule — keep the docs in sync with the code (non-negotiable).** Any change to a game's
+> behavior, layout, colors, controls, line numbers, or asset/build details **must** update that
+> game's `DESIGN.md` *and* `README.md` in the **same change**, so the docs never describe stale
+> behavior. Treat the source, `DESIGN.md`, and `README.md` as one unit: don't consider an edit done
+> until the docs that describe it match (and the cross-referenced line numbers/labels still point at
+> the right lines). When a change exposes a new toolchain hazard or rule, also record it in the
+> relevant section of this `CLAUDE.md` (e.g. the §2 compiler land-mines) so future games inherit it.
