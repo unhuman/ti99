@@ -217,8 +217,11 @@ ghost movement routine (formerly `GOSUB 710`) is generalized and relocated to **
 **Frighten-all trigger.** Eating a power pellet (line 752) calls `GOSUB 774`: every ghost not
 currently "eyes" is set to `GS=1` (frightened) and turned dark blue (`CALL COLOR(#n,5)`); the shared
 timer/combo are (re)set to `FT=FB, EG=0`. **Reversal follows the arcade rule** (`775`/`776`, gated on
-`GS=0` and applied *before* the frighten at `777`): a ghost in **normal** (chase/scatter) mode turns
-180° when the pellet is eaten, but a ghost that is **already blue does not reverse again** — a second
+`GS=0` **and** `GX<>121` and applied *before* the frighten at `777`): a ghost in **normal**
+(chase/scatter) mode turns 180° when the pellet is eaten — *except* one on the **gate column**
+(`BX=121`), so a ghost mid-exit keeps climbing out instead of being flipped back into the pen and
+bouncing (same guard the mode-switch reversal at `1173`/`1174` uses). A ghost that is
+**already blue does not reverse again** — a second
 pellet mid-fright just refreshes the timer/combo. Eyes-state ghosts are unaffected and keep heading
 home. (The scatter/chase mode-switch reversal at `1173`/`1174` likewise only flips `GS=0` ghosts, so
 blue ghosts never reverse there either.) During frightened movement the flee logic (`SG=-1`) excludes
