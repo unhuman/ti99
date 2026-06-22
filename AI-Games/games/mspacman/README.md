@@ -496,6 +496,19 @@ checks, fruit, and the pellet-collision re-check) — every `GCHAR` is a slow VD
   out-of-bounds probe never reads a null string. This is independent of the (separate) `MOTION`
   rework still under consideration.
 
+### Performance — removed the per-frame `DELAY` floor
+Line `430` previously opened with `CALL LINK("DELAY",25)` — a fixed 25 ms wait **every frame**. On
+real hardware, frame *compute* is already the bottleneck, so that wait was pure overhead added on
+top (≈⅓–½ of frame time); it's been removed. Safe because the loop is `FC`-keyed: ghost speed
+(`FC mod SP`), pellet blink, and chomp animation all scale together, so removing the delay speeds
+the game up **uniformly** with Pac-vs-ghost balance intact, and absolute-time pauses (death,
+eat-ghost warble `797`, jingles) use `CALL SOUND` ms durations and are unaffected.
+- **Caveat:** wall-clock speed is now machine-dependent — on a fast emulator (esp. CPU-overdrive)
+  it's a blur. **Test in Classic99 at authentic (non-overdrive) speed** to gauge real-hardware feel.
+- **If still too fast on hardware:** reintroduce pacing as a frame-lock — `CALL LOAD(-1,N)` once at
+  startup + `CALL LINK("SYNC")` at the loop bottom — which pins each pass to N/60 s on every machine
+  (no added wait when compute already exceeds N/60), rather than a fixed per-frame delay.
+
 ### Ghost personalities + scatter/chase modes
 The greedy "pick the open non-reversing turn that minimizes distance to a target tile" pathfinder
 is unchanged; what changed is **how each ghost's target is chosen** (`GOSUB 1180`, line 1018):
