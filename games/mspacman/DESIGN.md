@@ -113,9 +113,11 @@ four keyboard checks, four joystick checks, and the reversal test are each folde
 nested/`OR` line (`300`-`315`) to save compiler labels (≈one label per source line).
 
 **Title screen (`1200`-`1243`).** Boot (`155`) and game-over (`1120`) both `GOSUB 1200`, so play
-always opens on an **animated title** — Ms. Pac-Man glides left across the top, four ghosts glide
-across the middle (both frame-animated), over `MS. PAC-MAN` / `2026 UNHUMAN` / controls / `PRESS FIRE
-TO BEGIN`. The **most-recent score is drawn at `DISPLAY AT(1,1)`** (`1200`) — the *same row-1 spot the
+always opens on an **animated title** — Ms. Pac-Man **bounces left↔right across the top** (reversing
+and turning to face her direction at each side wall), four ghosts **sweep back and forth across the
+middle as a pack** (reversing when the rightmost/leftmost hits an edge), both frame-animated, over
+`MS. PAC-MAN` / `2026 UNHUMAN` / controls / `PRESS FIRE TO BEGIN`. All content sits 2 rows below the
+row-1 score so nothing overlaps it; `PRESS FIRE` is pinned at the bottom row. The **most-recent score is drawn at `DISPLAY AT(1,1)`** (`1200`) — the *same row-1 spot the
 HUD uses* (`708`), so it doesn't jump when play starts; a fresh boot shows `SCORE 00` (`PT=0`). The
 wait loop **drains the launch key** (`WT`) before accepting a fresh fire / Space / Enter (else the
 fast compiled build skips the title).

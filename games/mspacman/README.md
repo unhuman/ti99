@@ -365,8 +365,11 @@ restart (line 157), never on level-advance or respawn — so the award is strict
   `DISPLAY AT(1,1)` (`1200`) — the *same row-1 position the HUD uses* (`708`), so it doesn't jump
   when play starts; first game shows `SCORE 00` (`PT=0`). All title content sits **2 rows lower than
   the score** (text rows 7/9/16/19, sprites at dot-rows 21/89) so nothing overlaps the row-1 score;
-  `PRESS FIRE TO BEGIN` stays pinned at the bottom (row 24). It animates **Ms. Pac-Man gliding left across the top and
-  four ghosts gliding across the middle**, both **frame-animated** (Pac chomps via `CALL PATTERN`,
+  `PRESS FIRE TO BEGIN` stays pinned at the bottom (row 24). It animates **Ms. Pac-Man bouncing left↔right across the top**
+  (she **reverses at each side wall** and flips to face her travel direction — left frames 100/120, right frames 96/112,
+  via `ZO`/`ZL` set at the bounce in `1209`) **and the four ghosts sweeping back and forth across the middle as a pack**
+  (shared step `ZG`; `1213` reverses the whole group when the rightmost `ZE` hits the right edge or the leftmost `ZB` hits the
+  left edge), both **frame-animated** (Pac chomps via `CALL PATTERN`,
   the ghosts wiggle their feet via the same 117/119 `CALL CHAR` foot-swap used in-game). The wait
   loop **drains the launch key first** (the `WT` flag ignores the key still held from launching the
   program, then takes a fresh press) — without it the fast compiled build skipped the title. Fire
