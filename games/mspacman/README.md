@@ -363,7 +363,9 @@ restart (line 157), never on level-advance or respawn — so the award is strict
   game-over returns to it (`1120`), so every game starts here. It shows `MS. PAC-MAN` / `2026
   UNHUMAN` / the controls / `PRESS FIRE TO BEGIN`, plus the **most-recent score** drawn at
   `DISPLAY AT(1,1)` (`1200`) — the *same row-1 position the HUD uses* (`708`), so it doesn't jump
-  when play starts; first game shows `SCORE 00` (`PT=0`). It animates **Ms. Pac-Man gliding left across the top and
+  when play starts; first game shows `SCORE 00` (`PT=0`). All title content sits **2 rows lower than
+  the score** (text rows 7/9/16/19, sprites at dot-rows 21/89) so nothing overlaps the row-1 score;
+  `PRESS FIRE TO BEGIN` stays pinned at the bottom (row 24). It animates **Ms. Pac-Man gliding left across the top and
   four ghosts gliding across the middle**, both **frame-animated** (Pac chomps via `CALL PATTERN`,
   the ghosts wiggle their feet via the same 117/119 `CALL CHAR` foot-swap used in-game). The wait
   loop **drains the launch key first** (the `WT` flag ignores the key still held from launching the
