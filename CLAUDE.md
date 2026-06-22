@@ -207,6 +207,42 @@ Default to **Screen2** (the reason we use XB256). Routines we actually use:
 
 ---
 
+## 5A. Runtime Performance Budget — design for speed from line 1
+
+The compiler makes the program *correct*, not *fast*. On **original hardware** an XB256 design that
+ignores per-frame cost can be **unplayably slow even compiled** (lesson learned the hard way:
+`games/mspacman` is correct and compiler-safe but crawls on a real TI-99). Speed is an architecture
+decision made in `DESIGN.md`, not something to optimize later. **Mental cost model:**
+
+> per-frame cost ≈ (moving actors) × (per-actor work) + (per-frame VDP round-trips)
+
+`games/mspacman` maxes out every term — and is the cautionary reference for what *not* to do:
+it repositions all 5 actors by CPU every frame (`CALL LOCATE`), runs a 4-direction pathfind for
+**each** of 4 ghosts **every frame**, and does many per-frame `CALL GCHAR` wall reads.
+
+**Levers, fastest first:**
+- **Turn-based / input-paced loops are essentially free** — the CPU mostly waits on `CALL KEY`.
+  Puzzle/board games (Tetris, Snake, Minesweeper, 2048, Reversi) have effectively unlimited speed.
+- **Prefer hardware `CALL MOTION` over per-frame `CALL LOCATE`.** A sprite given a constant velocity
+  is moved (and **edge-wrapped**) by the VDP for *free*; you only re-issue `MOTION` on a discrete
+  event (thrust, bounce, fire). `LOCATE`-every-frame is pure CPU and is the #1 thing that made
+  Ms. Pac-Man slow. (Ms. Pac-Man needed deterministic grid movement, so it couldn't — but most
+  games *can*.)
+- **Minimize per-frame VDP round-trips.** `CALL GCHAR`/`COINC`/`POSITION` each cost a VDP access;
+  doing them per-actor per-frame is brutal. Cache, check every other frame, or design them out.
+- **Avoid per-actor per-frame AI search for many actors.** N pursuers each pathfinding every frame
+  is the Ms. Pac-Man trap. Prefer scripted/constant-velocity motion or reactive (non-search) AI.
+- **Cap simultaneously-moving sprites** and redraw **only cells that changed** (don't repaint the
+  field). `FLICK` handles >4 on a scanline but doesn't make the per-frame work cheaper.
+
+**Mandate:** every `DESIGN.md` opens with a **Performance Budget** block stating: max
+simultaneously-moving sprites; `MOTION`-vs-`LOCATE` choice per entity type; a ceiling on per-frame
+`GCHAR`/`COINC` calls; and whether the loop is real-time or input-paced. Decide these *before* line 1.
+If a concept implies "many actors each thinking every frame," expect Ms. Pac-Man-class slowness and
+redesign or pick a different game.
+
+---
+
 ## 6. Compiler-Safe Coding Checklist
 
 Every game's XB source must satisfy all of these so XB and compiled behavior match:
@@ -221,6 +257,10 @@ Every game's XB source must satisfy all of these so XB and compiled behavior mat
 - [ ] No `SIN/COS/TAN/ATN/LOG/EXP/DEF/IMAGE/DISPLAY USING`; `CALL CLEAR` (not `DISPLAY ERASE ALL`).
 - [ ] `PRINT` ≤20 items; no `ON GOTO/GOSUB` inside `IF/THEN/ELSE`.
 - [ ] Default Screen2; output as `-X`.
+- [ ] **Performance budget honored (§5A):** `DESIGN.md` has a Performance Budget block; constant-velocity
+      actors use `CALL MOTION` (not per-frame `LOCATE`); per-frame `GCHAR`/`COINC` minimized; no
+      many-actor per-frame AI search.
+- [ ] **Tested on / reasoned about original-hardware speed**, not just emulator default speed.
 - [ ] Fully debugged in interpreted XB256 **before** compiling.
 
 ---
