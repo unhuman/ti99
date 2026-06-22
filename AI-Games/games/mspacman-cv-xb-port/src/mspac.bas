@@ -1,0 +1,945 @@
+	' ============================================================
+	' Ms. Pac-Man  -  CVBasic, faithful 1-shot port of the XB256
+	' game (games/mspacman/src/MSPAC.ti99). Maze DATA reused verbatim.
+	'
+	' Translation notes:
+	'  - XB M$() wall cache  -> VPEEK/VPOKE of the screen (VRAM $1800).
+	'  - CALL LOCATE/SPRITE  -> SPRITE n, sy-2, sx-1, frame, colour.
+	'  - TI colour N         -> CVBasic colour N-1.
+	'  - Ghost target distance: XB used SG*dist with a signed compare;
+	'    here a flee flag picks max (frightened) vs min (chase) distance,
+	'    and (a-b)*(a-b) is computed in 16-bit (correct mod 65536).
+	'  - Sound, title animation, the 8-3-8 cheat, the pellet blink and the
+	'    death/level shrink animations are SIMPLIFIED (noted inline).
+	'  - Sprite art is redrawn for CVBasic (the maze layouts are the
+	'    faithful part). Coordinates keep the XB sx/sy math 1:1.
+	'
+	' Build:  cvbasic --ti994a mspac.bas mspac.a99
+	' ============================================================
+
+	DEF FN scr(r, c) = $1800 + (r - 1) * 32 + (c - 1)
+
+	DEFINE CHAR 128,16,wall_tiles
+	DEFINE CHAR 144,1,dot_tile
+	DEFINE CHAR 152,1,pellet_tile
+	DEFINE CHAR 160,1,door_tile
+	DEFINE CHAR 168,1,cross_tile
+	DEFINE COLOR 128,16,wall_color
+	DEFINE COLOR 144,1,white_color
+	DEFINE COLOR 152,1,white_color
+	DEFINE COLOR 160,1,white_color
+	DEFINE COLOR 168,1,wall_color
+	DEFINE SPRITE 0,8,game_sprites
+
+	DIM gx(5), gy(5), gd(5), op(5), rt(5), tm(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5)
+	DIM #ds(5)
+
+	BORDER 1
+
+	GOSUB title
+
+boot:
+	' XB 157
+	sx = 121 : sy = 141 : dd = 0 : #pt = 0 : ec = 0 : rg = 0 : nx = 0 : bg = 0
+	GOSUB pickmaze
+	GOSUB drawmaze
+
+	' XB 165-170 ghost / state init
+	gx(1) = 121 : gy(1) = 77 : gd(1) = 4
+	gx(2) = 121 : gy(2) = 93 : gd(2) = 4
+	gx(3) = 105 : gy(3) = 93 : gd(3) = 4
+	gx(4) = 137 : gy(4) = 93 : gd(4) = 4
+	rt(1) = 0 : rt(2) = 8 : rt(3) = 16 : rt(4) = 24
+	sp(1) = 6 : sp(2) = 5 : sp(3) = 5 : sp(4) = 4
+	cd = 3 : hd = 3
+	tm(1) = 0 : tm(2) = 90 : tm(3) = 150 : tm(4) = 210 : #fc = 0
+	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' TI 7,14,8,11 -> CV 6,13,7,10
+	ft = 0 : eg = 0 : dg = 0 : fa = 0 : fn = 0 : #fb = 300 : mo = 0 : mt = 150
+	GOSUB fruitdef
+	FOR j = 1 TO 4
+		sp(j) = sp(j) + le - 1
+		IF sp(j) > 10 THEN sp(j) = 10
+	NEXT j
+	#fb = #fb - (le - 1) * 40
+	IF #fb < 140 THEN #fb = 140
+	sr(1) = 1 : sc(1) = 30 : sr(2) = 1 : sc(2) = 3
+	sr(3) = 26 : sc(3) = 30 : sr(4) = 26 : sc(4) = 3
+	GOSUB hud
+
+main:
+	WHILE 1
+		WAIT
+		ea = 0
+
+		' --- input (joystick) ---
+		IF cont1.up THEN dd = 1
+		IF cont1.down THEN dd = 2
+		IF cont1.left THEN dd = 3
+		IF cont1.right THEN dd = 4
+
+		' instant reverse (XB 311)
+		IF ((cd=1) AND (dd=2)) OR ((cd=2) AND (dd=1)) OR ((cd=3) AND (dd=4)) OR ((cd=4) AND (dd=3)) THEN cd = dd
+
+		FOR ss = 1 TO 2
+			GOSUB pacstep
+		NEXT ss
+
+		' tunnel wrap (XB 411-412)
+		IF sx < 13 THEN sx = 229
+		IF sx > 229 THEN sx = 13
+
+		IF cd <> 0 THEN hd = cd
+
+		' Pac frame (XB 421-424)
+		pf = 0
+		IF hd = 1 THEN pf = 8
+		IF hd = 2 THEN pf = 12
+		IF hd = 3 THEN pf = 4
+		IF cd <> 0 THEN IF (#fc % 8) >= 4 THEN pf = 16
+		SPRITE 0, sy - 2, sx - 1, pf, 11		' Pac, TI 12 -> CV 11
+
+		pr = (sy + 11) / 8 : pc = (sx + 11) / 8
+
+		' ghosts
+		FOR gi = 1 TO 4
+			GOSUB ghost
+		NEXT gi
+
+		' Pac <-> ghost collision (XB 426-429)
+		FOR gi = 1 TO 4
+			dx = ABS(sx - gx(gi))
+			dy = ABS(sy - gy(gi))
+			IF (dx + dy) < 8 THEN GOSUB collide
+		NEXT gi
+
+		' bonus life at 1000 pts (XB 430; PT is /10)
+		IF #pt >= 100 THEN IF bg = 0 THEN GOSUB bonuslife
+
+		IF #fc < 30000 THEN #fc = #fc + 1
+		IF ft > 0 THEN ft = ft - 1
+
+		' roaming fruit (XB 433-434)
+		IF fa = 1 THEN IF (#fc % 4) = 0 THEN GOSUB movefruit
+		IF fa = 1 THEN
+			dx = ABS(sx - fx)
+			dy = ABS(sy - fy)
+			IF (dx + dy) < 8 THEN GOSUB eatfruit
+		END IF
+
+		GOSUB hud
+
+		IF rg = 1 THEN GOTO boot
+		IF nx = 1 THEN GOSUB nextlevel
+
+		' scatter / chase mode timer (XB 439)
+		IF mt > 0 THEN
+			mt = mt - 1
+		ELSE
+			GOSUB modeswitch
+		END IF
+	WEND
+
+	' ============================================================
+	' Ms. Pac-Man one 1px sub-step (XB 350-392), with cornering.
+	' ============================================================
+pacstep:	PROCEDURE
+	ax = sx + 3 : ay = sy + 3
+	xc = ax % 8 : yc = ay % 8
+	IF xc = 0 THEN IF yc = 0 THEN GOTO ps_aligned
+	GOTO ps_corner
+
+ps_aligned:
+	c = (sx + 11) / 8 : r = (sy + 11) / 8
+	GOSUB eat
+	tr = r : tc = c
+	IF dd = 1 THEN tr = r - 1
+	IF dd = 2 THEN tr = r + 1
+	IF dd = 3 THEN tc = c - 1
+	IF dd = 4 THEN tc = c + 1
+	IF dd <> 0 THEN
+		GOSUB wallchk
+		IF wl = 0 THEN cd = dd
+	END IF
+	tr = r : tc = c
+	IF cd = 1 THEN tr = r - 1
+	IF cd = 2 THEN tr = r + 1
+	IF cd = 3 THEN tc = c - 1
+	IF cd = 4 THEN tc = c + 1
+	IF cd <> 0 THEN
+		GOSUB wallchk
+		IF wl = 1 THEN cd = 0
+	END IF
+	GOTO ps_move
+
+ps_corner:
+	prp = 0
+	IF ((cd=3) OR (cd=4)) AND ((dd=1) OR (dd=2)) THEN prp = 1
+	IF ((cd=1) OR (cd=2)) AND ((dd=3) OR (dd=4)) THEN prp = 1
+	IF prp = 0 THEN GOTO ps_move
+	jd = 8 - xc
+	IF cd = 3 THEN jd = xc
+	IF cd = 1 THEN jd = yc
+	IF cd = 2 THEN jd = 8 - yc
+	IF jd < 1 THEN GOTO ps_move
+	IF jd > 2 THEN GOTO ps_move
+	sxc = sx : syc = sy
+	IF cd = 4 THEN sxc = sx + jd
+	IF cd = 3 THEN sxc = sx - jd
+	IF cd = 2 THEN syc = sy + jd
+	IF cd = 1 THEN syc = sy - jd
+	rc = (syc + 11) / 8 : cc = (sxc + 11) / 8
+	tr = rc : tc = cc
+	IF dd = 1 THEN tr = rc - 1
+	IF dd = 2 THEN tr = rc + 1
+	IF dd = 3 THEN tc = cc - 1
+	IF dd = 4 THEN tc = cc + 1
+	GOSUB wallchk
+	IF wl = 1 THEN GOTO ps_move
+	c = cc : r = rc
+	GOSUB eat
+	ea = 0
+	IF cd = 4 THEN sx = sx + jd
+	IF cd = 3 THEN sx = sx - jd
+	IF cd = 2 THEN sy = sy + jd
+	IF cd = 1 THEN sy = sy - jd
+	IF dd = 1 THEN sy = sy - jd
+	IF dd = 2 THEN sy = sy + jd
+	IF dd = 3 THEN sx = sx - jd
+	IF dd = 4 THEN sx = sx + jd
+	cd = dd
+	RETURN
+
+ps_move:
+	IF ea = 1 THEN RETURN
+	IF cd = 0 THEN RETURN
+	IF cd = 1 THEN sy = sy - 1
+	IF cd = 2 THEN sy = sy + 1
+	IF cd = 3 THEN sx = sx - 1
+	IF cd = 4 THEN sx = sx + 1
+	END
+
+	' --- wall check incl. pen rows (XB 700) : in tr,tc out wl ---
+wallchk:	PROCEDURE
+	wl = 0
+	IF tc < 1 THEN wl = 1
+	IF tc > 32 THEN wl = 1
+	IF tr < 1 THEN wl = 1
+	IF tr > 24 THEN wl = 1
+	IF wl = 1 THEN RETURN
+	g = VPEEK(scr(tr, tc))
+	IF g > 127 THEN IF g < 144 THEN wl = 1
+	IF tr = 12 THEN IF tc > 15 THEN IF tc < 18 THEN wl = 1
+	IF tr = 13 THEN IF tc > 13 THEN IF tc < 20 THEN wl = 1
+	END
+
+	' --- wall check for ghosts (XB 760) ---
+wallchk2:	PROCEDURE
+	wl = 0
+	IF tc < 1 THEN wl = 1
+	IF tc > 32 THEN wl = 1
+	IF tr < 1 THEN wl = 1
+	IF tr > 24 THEN wl = 1
+	IF wl = 1 THEN RETURN
+	g = VPEEK(scr(tr, tc))
+	IF g > 127 THEN IF g < 144 THEN wl = 1
+	IF tr = 12 THEN IF tc > 15 THEN IF tc < 18 THEN wl = 1
+	END
+
+	' --- eat dot/pellet on cell r,c (XB 750) ---
+eat:	PROCEDURE
+	g = VPEEK(scr(r, c))
+	IF g <> 144 THEN IF g <> 152 THEN RETURN
+	ea = 1
+	#pt = #pt + 1
+	ec = ec + 1
+	IF g = 152 THEN
+		#pt = #pt + 4
+		GOSUB frighten
+	END IF
+	VPOKE scr(r, c), 32
+	dt = dt - 1
+	IF g = 144 THEN SOUND 0, 90, 13
+	IF fa = 0 THEN IF fn < 2 THEN IF (dt = 154) OR (dt = 54) THEN GOSUB spawnfruit
+	IF dt = 0 THEN nx = 1
+	END
+
+	' --- power pellet: frighten ghosts (XB 774-779) ---
+frighten:	PROCEDURE
+	FOR gj = 1 TO 4
+		IF (gs(gj)=0) AND (gx(gj)<>121) THEN
+			IF gd(gj) = 1 THEN gd(gj) = 2
+			IF gd(gj) = 2 THEN gd(gj) = 1
+			IF gd(gj) = 3 THEN gd(gj) = 4
+			IF gd(gj) = 4 THEN gd(gj) = 3
+		END IF
+		IF gs(gj) <> 2 THEN gs(gj) = 1
+	NEXT gj
+	ft = #fb
+	eg = 0
+	SOUND 0, 700, 13
+	END
+
+	' --- one ghost (XB 999-1052) : gi global ---
+ghost:	PROCEDURE
+	IF (dg = gi) AND (gs(gi) <> 0) THEN dg = 0
+	IF (gs(gi) = 1) AND (ft = 0) THEN gs(gi) = 0
+
+	bx = gx(gi) : by = gy(gi) : bd = gd(gi)
+	rl = 0
+	IF ec >= rt(gi) THEN rl = 1
+	IF #fc >= tm(gi) THEN rl = 1
+
+	' speed throttle (XB 1006-1007)
+	IF (gs(gi) = 1) OR (((by=61) OR (by=109)) AND ((bx<45) OR (bx>197))) THEN
+		IF (#fc % 2) = 0 THEN GOTO gh_draw_only
+	END IF
+	IF (gs(gi) = 0) THEN IF (#fc % sp(gi)) = 0 THEN GOTO gh_draw_only
+
+	' pen entry / exit (XB 1008-1011)
+	IF (bx=121) AND (by=93) THEN
+		IF (gs(gi)=2) OR ((rl=1) AND (gs(gi)=0) AND ((dg=0) OR (dg=gi))) THEN GOTO gh_pen
+	END IF
+	IF (rl=1) AND (gs(gi)=0) AND (bx=121) AND (by=77) AND (bd=1) THEN
+		bd = RANDOM(2) + 3
+		dg = 0
+		GOTO gh_move
+	END IF
+	IF (gs(gi)=2) AND (bx=121) AND (by=77) THEN bd = 2 : GOTO gh_move
+	IF (gs(gi)=2) AND (bx=117) AND (by=77) THEN bd = 4 : GOTO gh_move
+
+	ax = bx + 3 : ay = by + 3
+	IF (ax % 8) <> 0 THEN GOTO gh_move
+	IF (ay % 8) <> 0 THEN GOTO gh_move
+
+	' choose direction toward target (XB 1015-1035)
+	c = (bx + 11) / 8 : r = (by + 11) / 8
+	rev = 0
+	IF bd = 1 THEN rev = 2
+	IF bd = 2 THEN rev = 1
+	IF bd = 3 THEN rev = 4
+	IF bd = 4 THEN rev = 3
+	GOSUB gtarget
+	FOR dr = 1 TO 4
+		tr = r : tc = c
+		IF dr = 1 THEN tr = r - 1
+		IF dr = 2 THEN tr = r + 1
+		IF dr = 3 THEN tc = c - 1
+		IF dr = 4 THEN tc = c + 1
+		GOSUB wallchk2
+		op(dr) = 1 - wl
+		#dd1 = tr - #tgr
+		#dd2 = tc - #tgc
+		#ds(dr) = #dd1 * #dd1 + #dd2 * #dd2
+	NEXT dr
+	ct = 0
+	IF flee = 0 THEN #bs = 60000 ELSE #bs = 0
+	FOR dr = 1 TO 4
+		IF (op(dr)=1) AND (dr<>rev) THEN
+			IF flee = 0 THEN
+				IF #ds(dr) < #bs THEN
+					#bs = #ds(dr) : bd = dr : ct = 1
+				END IF
+			ELSE
+				IF #ds(dr) > #bs THEN
+					#bs = #ds(dr) : bd = dr : ct = 1
+				END IF
+			END IF
+		END IF
+	NEXT dr
+	IF (ct=0) AND (rev>0) AND (op(rev)=1) THEN bd = rev : ct = 1
+	IF ct = 0 THEN bd = 0
+
+gh_move:
+	IF bd = 1 THEN by = by - 2
+	IF bd = 2 THEN by = by + 2
+	IF bd = 3 THEN bx = bx - 2
+	IF bd = 4 THEN bx = bx + 2
+	IF bx < 13 THEN bx = 229
+	IF bx > 229 THEN bx = 13
+	IF (bx=121) AND (bd=1) AND (by<77) THEN by = 77 : bd = 2
+	IF (bx=121) AND (bd=2) AND (by>93) THEN by = 93 : bd = 1
+	gx(gi) = bx : gy(gi) = by : gd(gi) = bd
+	GOTO gh_draw
+
+gh_pen:
+	IF gs(gi) = 2 THEN gs(gi) = 0
+	dg = gi : bd = 1
+	GOTO gh_move
+
+gh_draw_only:
+	bx = gx(gi) : by = gy(gi)
+gh_draw:
+	' colour + frame from state
+	gcl(gi) = gc(gi)
+	IF gs(gi) = 1 THEN gcl(gi) = 4
+	IF gs(gi) = 1 THEN IF ft <= 90 THEN IF (ft % 8) < 4 THEN gcl(gi) = 15
+	IF gs(gi) = 2 THEN gcl(gi) = 15
+	gfr = 20
+	IF gs(gi) = 2 THEN gfr = 24
+	SPRITE gi, by - 2, bx - 1, gfr, gcl(gi)
+	END
+
+	' --- ghost target tile (XB 1180-1194) : out #tgr,#tgc,flee ---
+gtarget:	PROCEDURE
+	flee = 0
+	#tgr = pr : #tgc = pc
+	IF gs(gi) = 1 THEN flee = 1 : RETURN
+	IF gs(gi) = 2 THEN #tgr = 11 : #tgc = 16 : RETURN
+	IF mo = 0 THEN #tgr = sr(gi) : #tgc = sc(gi) : RETURN
+	IF (gi=2) AND (cd=1) THEN #tgr = pr - 4
+	IF (gi=2) AND (cd=2) THEN #tgr = pr + 4
+	IF (gi=2) AND (cd=3) THEN #tgc = pc - 4
+	IF (gi=2) AND (cd=4) THEN #tgc = pc + 4
+	IF gi = 4 THEN
+		#dd1 = r - pr : #dd2 = c - pc
+		IF (#dd1*#dd1 + #dd2*#dd2) <= 64 THEN #tgr = sr(4) : #tgc = sc(4)
+	END IF
+	IF gi <> 3 THEN RETURN
+	r2 = pr : c2 = pc
+	IF cd = 1 THEN r2 = pr - 2
+	IF cd = 2 THEN r2 = pr + 2
+	IF cd = 3 THEN c2 = pc - 2
+	IF cd = 4 THEN c2 = pc + 2
+	#tgr = 2 * r2 - (gy(1) + 11) / 8
+	#tgc = 2 * c2 - (gx(1) + 11) / 8
+	END
+
+	' --- Pac caught / ate ghost dispatch (XB 780-782) ---
+collide:	PROCEDURE
+	IF gs(gi) = 0 THEN
+		c = (sx + 11) / 8 : r = (sy + 11) / 8
+		IF VPEEK(scr(r, c)) = 152 THEN GOSUB eat
+	END IF
+	IF gs(gi) = 1 THEN
+		GOSUB eatghost
+	ELSE
+		IF gs(gi) = 0 THEN GOSUB pacdies
+	END IF
+	END
+
+	' --- eat a frightened ghost (XB 790-798) ---
+eatghost:	PROCEDURE
+	IF eg = 0 THEN #pt = #pt + 20
+	IF eg = 1 THEN #pt = #pt + 40
+	IF eg = 2 THEN #pt = #pt + 80
+	IF eg = 3 THEN #pt = #pt + 160
+	eg = eg + 1
+	gs(gi) = 2
+	GOSUB hud
+	SOUND 0, 200, 13
+	FOR dr = 1 TO 16
+		WAIT
+	NEXT dr
+	SOUND 0, , 0
+	END
+
+	' --- bonus life (XB 785-787) ---
+bonuslife:	PROCEDURE
+	bg = 1
+	lv = lv + 1
+	GOSUB hud
+	SOUND 0, 71, 13
+	FOR dr = 1 TO 10
+		WAIT
+	NEXT dr
+	SOUND 0, , 0
+	END
+
+	' --- Pac dies (XB 1100-1118) ; simplified animation ---
+pacdies:	PROCEDURE
+	SOUND 0, 400, 13
+	FOR dr = 1 TO 30
+		WAIT
+		pf = 16
+		IF (dr % 4) < 2 THEN pf = 0
+		SPRITE 0, sy - 2, sx - 1, pf, 11
+	NEXT dr
+	SOUND 0, , 0
+	IF fa = 1 THEN gosub killfruit
+	lv = lv - 1
+	IF lv > 0 THEN GOTO pd_respawn
+
+	' game over
+	PRINT AT 11 * 32 + 11, "GAME OVER"
+	#c = FRAME
+	DO
+		WAIT
+	LOOP WHILE FRAME - #c < 180
+	GOSUB title
+	rg = 1
+	RETURN
+
+pd_respawn:
+	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
+	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
+	FOR j = 1 TO 4
+		gs(j) = 0 : gd(j) = 4
+	NEXT j
+	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
+	ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0
+	GOSUB hud
+	END
+
+killfruit:	PROCEDURE
+	SPRITE 5, $d1, 0, 28, 0
+	fa = 0
+	END
+
+	' --- advance to next level (XB 1130-1145) ; simplified ---
+nextlevel:	PROCEDURE
+	nx = 0
+	le = le + 1
+	IF fa = 1 THEN GOSUB killfruit
+	FOR dr = 1 TO 40
+		WAIT
+	NEXT dr
+	FOR j = 1 TO 4
+		sp(j) = sp(j) + 1
+		IF sp(j) > 10 THEN sp(j) = 10
+	NEXT j
+	#fb = #fb - 40
+	IF #fb < 140 THEN #fb = 140
+	GOSUB fruitdef
+	GOSUB pickmaze
+	GOSUB drawmaze
+	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
+	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
+	FOR j = 1 TO 4
+		gs(j) = 0 : gd(j) = 4
+	NEXT j
+	sx = 121 : sy = 141 : dd = 0 : cd = 4 : hd = 4
+	ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : mt = 150
+	GOSUB hud
+	END
+
+	' --- scatter/chase toggle + reverse (XB 1170-1176) ---
+modeswitch:	PROCEDURE
+	mo = 1 - mo
+	mt = 800
+	IF mo = 0 THEN mt = 150
+	FOR j = 1 TO 4
+		IF (gs(j)=0) AND (gx(j)<>121) THEN
+			IF gd(j) = 1 THEN gd(j) = 2
+			IF gd(j) = 2 THEN gd(j) = 1
+			IF gd(j) = 3 THEN gd(j) = 4
+			IF gd(j) = 4 THEN gd(j) = 3
+		END IF
+	NEXT j
+	END
+
+	' --- spawn roaming fruit (XB 720-726) ---
+spawnfruit:	PROCEDURE
+	fn = fn + 1 : fa = 1 : fw = 0
+	IF RANDOM(2) = 1 THEN fy = ty2 : tg = ty1 ELSE fy = ty1 : tg = ty2
+	IF RANDOM(2) = 1 THEN fx = 229 : fd = 3 ELSE fx = 13 : fd = 4
+	ftr = (tg + 11) / 8
+	SPRITE 5, fy - 2, fx - 1, 28, ffl
+	END
+
+	' --- move roaming fruit (XB 730-743) ---
+movefruit:	PROCEDURE
+	fw = fw + 1
+	bx = fx : by = fy : bd = fd
+	ax = bx + 3 : ay = by + 3
+	IF (ax % 8) <> 0 THEN GOTO mf_step
+	IF (ay % 8) <> 0 THEN GOTO mf_step
+	c = (bx + 11) / 8 : r = (by + 11) / 8
+	rev = 0
+	IF bd = 1 THEN rev = 2
+	IF bd = 2 THEN rev = 1
+	IF bd = 3 THEN rev = 4
+	IF bd = 4 THEN rev = 3
+	nb = 0 : #bs = 60000
+	FOR dr = 1 TO 4
+		tr = r : tc = c
+		IF dr = 1 THEN tr = r - 1
+		IF dr = 2 THEN tr = r + 1
+		IF dr = 3 THEN tc = c - 1
+		IF dr = 4 THEN tc = c + 1
+		GOSUB wallchk2
+		IF (wl=0) AND (dr<>rev) THEN
+			nb = nb + 1
+			#dd1 = tr - ftr : #dd2 = tc - ftc
+			IF (#dd1*#dd1 + #dd2*#dd2) < #bs THEN #bs = #dd1*#dd1 + #dd2*#dd2 : bd = dr
+		END IF
+	NEXT dr
+	IF nb = 0 THEN bd = rev
+mf_step:
+	IF bd = 1 THEN by = by - 2
+	IF bd = 2 THEN by = by + 2
+	IF bd = 3 THEN bx = bx - 2
+	IF bd = 4 THEN bx = bx + 2
+	IF (bx<13) OR (bx>229) OR (fw>400) THEN GOSUB killfruit : RETURN
+	fx = bx : fy = by : fd = bd
+	SPRITE 5, fy - 2, fx - 1, 28, ffl
+	END
+
+	' --- eat fruit (XB 770-772) ---
+eatfruit:	PROCEDURE
+	#pt = #pt + ffp
+	GOSUB killfruit
+	GOSUB hud
+	SOUND 0, 213, 13
+	FOR dr = 1 TO 12
+		WAIT
+	NEXT dr
+	SOUND 0, , 0
+	END
+
+	' --- fruit shape + value for the level (XB 1160-1169) ---
+fruitdef:	PROCEDURE
+	ffl = 9 : ffp = 1 : fl = le
+	IF le >= 8 THEN fl = RANDOM(7) + 1
+	IF fl = 1 THEN ffp = 1
+	IF fl = 2 THEN ffp = 2
+	IF fl = 3 THEN ffl = 11 : ffp = 5
+	IF fl = 4 THEN ffl = 7 : ffp = 7
+	IF fl = 5 THEN ffl = 3 : ffp = 10
+	IF fl = 6 THEN ffl = 13 : ffp = 20
+	IF fl >= 7 THEN ffl = 12 : ffp = 50
+	END
+
+	' --- pick the maze for this level (XB 1155-1157) ---
+pickmaze:	PROCEDURE
+	mz = 1
+	IF le >= 3 THEN mz = 2
+	IF le >= 6 THEN mz = 3
+	IF le >= 10 THEN mz = 4
+	IF le >= 14 THEN mz = RANDOM(4) + 1
+	END
+
+	' --- draw maze + colours + count dots (XB 800-832) ---
+drawmaze:	PROCEDURE
+	CLS
+	IF mz = 1 THEN RESTORE maze1 : wcol = $d1	' TI 14 -> CV 13
+	IF mz = 2 THEN RESTORE maze2 : wcol = $51	' TI 6  -> CV 5
+	IF mz = 3 THEN RESTORE maze3 : wcol = $91	' TI 10 -> CV 9
+	IF mz = 4 THEN RESTORE maze4 : wcol = $41	' TI 5  -> CV 4
+	dt = 0 : ty1 = 0 : ty2 = 0
+	FOR mr = 1 TO 22
+		FOR i = 1 TO 28
+			READ BYTE p
+			cc = 32
+			IF p = 46 THEN cc = 144 : dt = dt + 1		' "."
+			IF p = 79 THEN cc = 152 : dt = dt + 1		' "O"
+			IF p = 68 THEN cc = 160				' "D"
+			IF p = 43 THEN cc = 168				' "+"
+			IF p >= 97 THEN cc = 128 + p - 97		' "a".."p"
+			IF (i = 1) AND (p = 32) THEN
+				IF ty1 = 0 THEN ty1 = (mr + 1) * 8 - 3 ELSE ty2 = (mr + 1) * 8 - 3
+			END IF
+			VPOKE $1800 + (mr + 1) * 32 + (i + 1), cc
+		NEXT i
+	NEXT mr
+	IF ty2 = 0 THEN ty2 = ty1
+	' recolour the walls + cross to this maze's colour
+	wcr = wcol
+	GOSUB setwallcolor
+	END
+
+	' recolour wall chars 128-143 + cross 168 by poking the colour table.
+	' CVBasic MODE 0 colour table base is $2000; char N rows at $2000+N*8.
+setwallcolor:	PROCEDURE
+	FOR #i = $2000 + 128 * 8 TO $2000 + 144 * 8 - 1
+		VPOKE #i, wcr
+	NEXT #i
+	FOR #i = $2000 + 168 * 8 TO $2000 + 169 * 8 - 1
+		VPOKE #i, wcr
+	NEXT #i
+	END
+
+	' --- HUD (XB 708-709) ---
+hud:	PROCEDURE
+	PRINT AT 0, "SCORE ", <5>#pt, "0"
+	PRINT AT 32, "LIVES ", lv, " LEVEL ", le
+	END
+
+	' --- title (simplified: no animation / cheat) ---
+title:	PROCEDURE
+	CLS
+	le = 1 : lv = 3
+	PRINT AT 6 * 32 + 10, "MS. PAC-MAN"
+	PRINT AT 8 * 32 + 9, "2026  UNHUMAN"
+	PRINT AT 15 * 32 + 4, "EAT DOTS - DODGE GHOSTS"
+	PRINT AT 18 * 32 + 6, "JOYSTICK 1 TO MOVE"
+	PRINT AT 21 * 32 + 6, "PRESS FIRE TO BEGIN"
+tt_wait:
+	WAIT
+	IF cont1.button = 0 THEN GOTO tt_wait
+	CLS
+	END
+
+	' ============================================================
+	' Tile + sprite data
+	' ============================================================
+
+	' 16 wall autotiles (verbatim from the XB CHAR2 defs; mask 15 solid).
+wall_tiles:
+	DATA BYTE $00,$00,$3C,$3C,$3C,$3C,$00,$00
+	DATA BYTE $3C,$3C,$3C,$3C,$3C,$3C,$00,$00
+	DATA BYTE $00,$00,$3F,$3F,$3F,$3F,$00,$00
+	DATA BYTE $3C,$3C,$3F,$3F,$3F,$3F,$00,$00
+	DATA BYTE $00,$00,$3C,$3C,$3C,$3C,$3C,$3C
+	DATA BYTE $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+	DATA BYTE $00,$00,$3F,$3F,$3F,$3F,$3C,$3C
+	DATA BYTE $3C,$3C,$3F,$3F,$3F,$3F,$3C,$3C
+	DATA BYTE $00,$00,$FC,$FC,$FC,$FC,$00,$00
+	DATA BYTE $3C,$3C,$FC,$FC,$FC,$FC,$00,$00
+	DATA BYTE $00,$00,$FF,$FF,$FF,$FF,$00,$00
+	DATA BYTE $3C,$3C,$FF,$FF,$FF,$FF,$00,$00
+	DATA BYTE $00,$00,$FC,$FC,$FC,$FC,$3C,$3C
+	DATA BYTE $3C,$3C,$FC,$FC,$FC,$FC,$3C,$3C
+	DATA BYTE $00,$00,$FF,$FF,$FF,$FF,$3C,$3C
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+
+dot_tile:
+	DATA BYTE $00,$00,$00,$18,$18,$00,$00,$00
+pellet_tile:
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+door_tile:
+	DATA BYTE $00,$00,$00,$FF,$FF,$00,$00,$00
+cross_tile:
+	DATA BYTE $3C,$3C,$FF,$FF,$FF,$FF,$3C,$3C
+
+wall_color:
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
+white_color:
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+
+	' Sprites (16x16). 0 R,1 L,2 U,3 D,4 closed, 5 ghost,6 eyes,7 fruit.
+game_sprites:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "..XXXXXXXXX....."
+	BITMAP "..XXXXXXX......."
+	BITMAP ".XXXXXXX........"
+	BITMAP ".XXXXXX........."
+	BITMAP ".XXXXXX........."
+	BITMAP ".XXXXXXX........"
+	BITMAP "..XXXXXXX......."
+	BITMAP "..XXXXXXXXX....."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "................"
+	BITMAP "................"
+
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP ".....XXXXXXXXX.."
+	BITMAP ".......XXXXXXX.."
+	BITMAP "........XXXXXXX."
+	BITMAP ".........XXXXXX."
+	BITMAP ".........XXXXXX."
+	BITMAP "........XXXXXXX."
+	BITMAP ".......XXXXXXX.."
+	BITMAP ".....XXXXXXXXX.."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "................"
+	BITMAP "................"
+
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXX..XXX...."
+	BITMAP "...XXXX..XXXX..."
+	BITMAP "..XXXXX..XXXXX.."
+	BITMAP "..XXXXX..XXXXX.."
+	BITMAP ".XXXXXX..XXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "................"
+	BITMAP "................"
+
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXX..XXXXXX."
+	BITMAP ".XXXXX....XXXXX."
+	BITMAP ".XXXXX....XXXXX."
+	BITMAP "..XXXX....XXXX.."
+	BITMAP "..XXX......XXX.."
+	BITMAP "...XX......XX..."
+	BITMAP "....X......X...."
+	BITMAP "................"
+	BITMAP "................"
+
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "................"
+	BITMAP "................"
+
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "..XX.XX.XX.XX..."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XX.XX.XX.XX.XX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XXXXXXXXXXXXXX."
+	BITMAP ".XX..XX..XX..XX."
+	BITMAP "................"
+	BITMAP "................"
+
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XX....XX...."
+	BITMAP "...XXXX..XXXX..."
+	BITMAP "...XXXX..XXXX..."
+	BITMAP "...XXXX..XXXX..."
+	BITMAP "....XX....XX...."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+
+	BITMAP "................"
+	BITMAP "........XX......"
+	BITMAP ".......XX......."
+	BITMAP "......XX........"
+	BITMAP "....XXXXX......."
+	BITMAP "...XXXXXXX......"
+	BITMAP "..XXXXXXXXX....."
+	BITMAP "..XXXXXXXXX....."
+	BITMAP "..XXXXXXXXX....."
+	BITMAP "..XXXXXXXXX....."
+	BITMAP "...XXXXXXX......"
+	BITMAP "....XXXXX......."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+
+	' ============================================================
+	' Maze data (verbatim from games/mspacman, lines 9001-9322).
+	' a-p = wall masks (->128-143), . dot, O pellet, D door, + cross.
+	' ============================================================
+maze1:
+	DATA BYTE "gkkkkkkookkkkkkkkkkookkkkkkm"
+	DATA BYTE "f......hn..........hn......f"
+	DATA BYTE "f.ckki.dj.ckkkkkki.dj.ckki.f"
+	DATA BYTE "fO........................Of"
+	DATA BYTE "hom.gm.gooom.gm.gooom.gm.gon"
+	DATA BYTE "dlj.hn.dlllj.hn.dlllj.hn.dlj"
+	DATA BYTE "   .hn.......hn.......hn.   "
+	DATA BYTE "gom.dlkki ckkllkki ckklj.gom"
+	DATA BYTE "hpn.                    .hpn"
+	DATA BYTE "hpn.gokki gkiDDckm ckkom.hpn"
+	DATA BYTE "hpn.hn    f      f    hn.hpn"
+	DATA BYTE "dlj.dj gm dkkkkkkj gm dj.dlj"
+	DATA BYTE "   .   hn          hn   .   "
+	DATA BYTE "gom.ckkllkki gm ckkllkki.gom"
+	DATA BYTE "hpn.......   hn   .......hpn"
+	DATA BYTE "hlj.ckkki.ckkllkki.ckkki.dln"
+	DATA BYTE "f..........................f"
+	DATA BYTE "fOgoom.gokki.gm.ckkom.goomOf"
+	DATA BYTE "f.hppn.hn....hn....hn.hppn.f"
+	DATA BYTE "f.dllj.dj.ckkllkki.dj.dllj.f"
+	DATA BYTE "f..........................f"
+	DATA BYTE "dkkkkkkkkkkkkkkkkkkkkkkkkkkj"
+
+maze2:
+	DATA BYTE "ckkkkkkookkkkkkkkkkookkkkkki"
+	DATA BYTE "       hn..........hn       "
+	DATA BYTE "gkkkki dj.ckkookki.dj ckkkkm"
+	DATA BYTE "fO...........hn...........Of"
+	DATA BYTE "f.gokkkki.gm.hn.gm.ckkkkom.f"
+	DATA BYTE "f.hn......hn.dj.hn......hn.f"
+	DATA BYTE "f.hn.goom hn....hn goom.hn.f"
+	DATA BYTE "f.dj.dl+n dlkkkklj h+lj.dj.f"
+	DATA BYTE "f......hn          hn......f"
+	DATA BYTE "hkkkki.hn gkiDDckm hn.ckkkkn"
+	DATA BYTE "f......dj f      f dj......f"
+	DATA BYTE "f.ckom.   dkkkkkkj   .goki.f"
+	DATA BYTE "f...hn.gm          gm.hn...f"
+	DATA BYTE "hom.dj.dlki gkkm cklj.dj.gon"
+	DATA BYTE "hpn.........f  f.........hpn"
+	DATA BYTE "dlj.ckkooki.dkkj.ckookki.dlj"
+	DATA BYTE "   ....hn..........hn....   "
+	DATA BYTE "gki.gm.dj.ckkookki.dj.gm.ckm"
+	DATA BYTE "fO..hn.......hn.......hn..Of"
+	DATA BYTE "f.cklj.ckkki.dj.ckkki.dlki.f"
+	DATA BYTE "f..........................f"
+	DATA BYTE "dkkkkkkkkkkkkkkkkkkkkkkkkkkj"
+
+maze3:
+	DATA BYTE "gkkkkkkkkkookkkkookkkkkkkkkm"
+	DATA BYTE "f.........hn....hn.........f"
+	DATA BYTE "fOgokkkki.dj.gm.dj.ckkkkomOf"
+	DATA BYTE "f.dj.........hn.........dj.f"
+	DATA BYTE "f....gm.goom.hn.goom.gm....f"
+	DATA BYTE "dkki.hn.dllj.dj.dllj.hn.ckkj"
+	DATA BYTE " ....hn..............hn.... "
+	DATA BYTE "e.gm.dlki.ckkkkkki.cklj.gm.e"
+	DATA BYTE "f.hn.....          .....hn.f"
+	DATA BYTE "f.dlki.gm gkiDDckm gm.cklj.f"
+	DATA BYTE "f......hn f      f hn......f"
+	DATA BYTE "f.gm.cklj dkkkkkkj dlki.gm.f"
+	DATA BYTE "f.hn.....          .....hn.f"
+	DATA BYTE "f.dlki.gokki.gm.ckkom.cklj.f"
+	DATA BYTE "f......hn....hn....hn......f"
+	DATA BYTE "hki.gm.dj.ckkllkki.dj.gm.ckn"
+	DATA BYTE "f...hn................hn...f"
+	DATA BYTE "f.cklj.gokki.gm.ckkom.dlki.f"
+	DATA BYTE "fO.....hn....hn....hn.....Of"
+	DATA BYTE "f.ckki.hn.ckkllkki.hn.ckki.f"
+	DATA BYTE "f......hn..........hn......f"
+	DATA BYTE "dkkkkkkllkkkkkkkkkkllkkkkkkj"
+
+maze4:
+	DATA BYTE "gkkkkkkkkkkkkkkkkkkkkkkkkkkm"
+	DATA BYTE "f..........................f"
+	DATA BYTE "f.gm.goom.gokkkkom.goom.gm.f"
+	DATA BYTE "fOhn.dllj.hn....hn.dllj.hnOf"
+	DATA BYTE "f.hn......hn.gm.hn......hn.f"
+	DATA BYTE "f.dlki.gm.dj.hn.dj.gm.cklj.f"
+	DATA BYTE "f......hn....hn....hn......f"
+	DATA BYTE "hom.ckk++kki dj ckk++kki.gon"
+	DATA BYTE "hpn....hn          hn....hpn"
+	DATA BYTE "dlj gm.hn gkiDDckm hn.gm dlj"
+	DATA BYTE "    hn.dj f      f dj.hn    "
+	DATA BYTE "ckkk+n.   dkkkkkkj   .h+kkki"
+	DATA BYTE "    hn.gm          gm.hn    "
+	DATA BYTE "gom dj.dlkki gm ckklj.dj gom"
+	DATA BYTE "hpn..........hn..........hpn"
+	DATA BYTE "hlj.ckkki.gm.dj.gm.ckkki.dln"
+	DATA BYTE "f.........hn....hn.........f"
+	DATA BYTE "f.goki.gm.dlkkkklj.gm.ckom.f"
+	DATA BYTE "fOhn...hn..........hn...hnOf"
+	DATA BYTE "f.dj.ckllkki.gm.ckkllki.dj.f"
+	DATA BYTE "f............hn............f"
+	DATA BYTE "dkkkkkkkkkkkkllkkkkkkkkkkkkj"

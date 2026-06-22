@@ -26,6 +26,13 @@ MSPAC.TXT
 **/*-X
 **/*-Y
 **/*.OBJ
+
+# CVBasic stuff 
+*.asm
+*.a99
+mspac.txt
+*.bin
+
 # --- IDE (IntelliJ) ---
 .idea/
 .idea/workspace.xml
