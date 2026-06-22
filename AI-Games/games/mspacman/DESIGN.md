@@ -55,7 +55,7 @@ Y = (R-1)*8 - 3      X = (C-1)*8 - 3        (TI dot coords are 1-based; -3, not 
 This centers the ~12px art on the actor's corridor cell; the art overhangs the **4px** walls by
 only ~2 px each side, landing in the wall's transparent margin (misses the bar). Dot coords are
 1..192 (row) / 1..256 (col). The movement code converts back the same way
-(`C=INT((X+11)/8)`, aligned when `(X+3) mod 8 = 0`) so display and `GCHAR` collision agree.
+(`C=INT((X+11)/8)`, aligned when `(X+3) mod 8 = 0`) so display and cell-cache collision agree.
 Screen center is **col 16.5** (sprite X=121) — the pen interior, Blinky, and Ms. Pac-Man's start
 all sit here, directly stacked. Ms. Pac-Man's movement grid only *stops* (turn-checks run) at
 whole-cell positions (`SX≡5 mod 8`: 109/117/125/133...); a half-cell start needs a one-time
@@ -83,8 +83,22 @@ in its 8px cell leaves a 2px margin each side, which the sprite overhang falls i
 Sprites use `CALL CHAR` codes 96–107 + per-sprite colors, separate from all the above.
 
 **Grid movement model** (steps 2+). Sprites step cell-to-cell along corridors; tunnels wrap at the
-screen edges. Collisions/eating are tested on the **cell the sprite center occupies** (`GCHAR`),
-not pixels. **Ghosts** turn only at a cell center where the perpendicular lane is open.
+screen edges. Collisions/eating are tested on the **cell the sprite center occupies**, not pixels.
+**Ghosts** turn only at a cell center where the perpendicular lane is open.
+
+**Maze cache — `M$(24)`, one char per cell (no per-frame `GCHAR`).** The rendered maze is cached in
+a string array `M$(R)`, where character position `C` equals the **screen column** (so `M$(R)` is 32
+chars: 2 leading spaces + 28 interior cells + 2 trailing). Every wall/dot/pellet probe reads the
+cache — `G=ASC(SEG$(M$(R),C,1))` — instead of `CALL GCHAR`, a VDP round-trip we were doing ~20× per
+intersection frame (4 ghosts × 4-direction wall probes + Pac + fruit + collision). This is the §5A
+"minimize per-frame VDP round-trips" lever and is the cheapest big speedup, independent of the
+`MOTION` question. **Cost ≈ 800 bytes** of string space (vs ~6600 for a numeric `W(24,32)` — XB
+numeric elements are 8 bytes each), comfortably within the ~9092-byte stack. **Sync:** the cache is
+(re)built while rendering (`820`–`830`, accumulating `RW$` alongside each `CALL HCHAR`); the only
+per-cell screen mutation during play is the dot-eat at `753`, which updates `M$(R)` in the same line
+(`M$(R)=SEG$(M$(R),1,C-1)&" "&SEG$(M$(R),C+1,32-C)` — `SEG$` needs all **three** args; a 2-arg form
+compiles to garbage, see `CLAUDE.md` §2). `GOSUB 800` rebuilds it at init and every level
+advance. Rows 1–2 (HUD) are space-filled at `820` so an out-of-bounds read never hits a null string.
 
 **Ms. Pac-Man moves in two 1px sub-steps per frame** (lines 315/350–392 — same 2px/frame cruise,
 but 1px resolution lets her sit at any offset). Each sub-step: if she's exactly centered she eats,
@@ -140,7 +154,8 @@ bow, animation frames, direction-facing) is a later step.
 ## 5. Game-state variables (short integers)
 `PR,PC` Pac cell; `PD` Pac direction (0=none,1=up,2=left,3=right,4=down); per-ghost `GR(),GC(),GD()`;
 `PT` score/points (`SC` is compiler-reserved — see `CLAUDE.md` §6 — so we use `PT`); `LV` lives;
-`DT` dots remaining; `K,S` input; `DR,DC` computed pixel coords; `G` GCHAR.
+`DT` dots remaining; `K,S` input; `DR,DC` computed pixel coords; `G` cell code (from the `M$()` cache);
+`M$(24)` maze cell cache (1 char/cell, col = screen col); `RW$` row accumulator while rendering.
 
 ## 6. Sound
 Eat-dot blip, power-pellet, eat-ghost, death, fruit, level-start jingle — via `CALL SOUND`

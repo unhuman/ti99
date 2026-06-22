@@ -85,6 +85,11 @@ and the TI Extended BASIC manual.
   - `CALL LINK` name must be a **string constant** — `CALL LINK(A$,…)` will not compile right.
   - Keep `PRINT` lists to **≤20 items**. No `ON GOTO`/`ON GOSUB` **inside** an `IF/THEN/ELSE`.
   - `DISPLAY ERASE ALL` (with no print list) crashes the compiler — use `CALL CLEAR`.
+  - **`SEG$` needs all *three* args** `SEG$(s,start,len)`. A 2-arg `SEG$(s,start)` ("to end") is
+    invalid XB — interpreted it errors, but the **compiler silently miscompiles it to garbage**
+    (corrupt string write → freeze/crash, a stray inverse char on screen), with no error at compile
+    or run time. For "rest of string," pass an explicit length (e.g. `SEG$(s,start,LEN(s)-start+1)`
+    or a constant ≥ the max remaining). Confirmed in `games/mspacman` cache update (line 753).
   - **Jump-codegen corruption near program end** (confirmed by decoding the generated assembly):
     close to the label-table limit, the compiler can *silently* mistranslate conditional jumps in
     the **last** code region. Two confirmed modes: (1) a **bare single small-constant comparison**
@@ -230,6 +235,11 @@ it repositions all 5 actors by CPU every frame (`CALL LOCATE`), runs a 4-directi
   games *can*.)
 - **Minimize per-frame VDP round-trips.** `CALL GCHAR`/`COINC`/`POSITION` each cost a VDP access;
   doing them per-actor per-frame is brutal. Cache, check every other frame, or design them out.
+  **Concrete win (applied in `games/mspacman`):** mirror a static/slow-changing screen in a
+  **string array, one char per cell, indexed so char position = screen column** (`M$(R)`), then
+  replace `CALL GCHAR(R,C,G)` with `G=ASC(SEG$(M$(R),C,1))` — a CPU/value-space read, no VDP
+  access. Build it while rendering; patch the one cell you change (e.g. an eaten dot) in the same
+  line. Costs ~1 byte/cell (a numeric array costs 8×), so a full 24×32 field is ~800 bytes vs ~6600.
 - **Avoid per-actor per-frame AI search for many actors.** N pursuers each pathfinding every frame
   is the Ms. Pac-Man trap. Prefer scripted/constant-velocity motion or reactive (non-search) AI.
 - **Cap simultaneously-moving sprites** and redraw **only cells that changed** (don't repaint the

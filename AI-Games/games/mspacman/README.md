@@ -270,7 +270,7 @@ dispatches on `GS()`: `GS=0` is `CAUGHT!` (`GOSUB 1100` — see Step 7); `GS=2` 
 effect; `GS=1` calls `GOSUB 790`. **Ties favor Ms. Pac-Man:** the pellet-eat (line 321) is
 cell-centered while the collision is pixel-based, so on the exact frame she *moves onto* a power
 pellet that a chase ghost also occupies, `321` (pre-move) would miss it and she'd be `CAUGHT`. So
-`781` re-checks her current cell first — if it's a power pellet (`GCHAR=152`) it `GOSUB 750`s to eat
+`781` re-checks her current cell first — if it's a power pellet (cell-cache `M$`=152, see Performance) it `GOSUB 750`s to eat
 it, which frightens every ghost (`774`, now looped on `GJ` so it can't clobber the collision loop's
 `GI`); `782` then re-dispatches, eating the now-`GS=1` ghost instead of dying. Pellet-then-ghost in
 one motion. `GS=1` scores **200/400/800/1600** by `EG` (incrementing it) —
@@ -476,6 +476,25 @@ cut FLICK boot flicker.
   pen** until it's eligible to exit, instead of leaving the screen. (The `BD=1/2` guard means a
   ghost merely crossing column 16 *horizontally* is unaffected.) The tunnel-wrap was folded into a
   single nested `IF` (line 1045) to make room without renumbering the 1051/1052 jump targets.
+
+### Performance — maze cell cache (no per-frame `GCHAR`)
+The game was unplayably slow on real hardware (`CLAUDE.md` §5A). The first speedup attacks the
+biggest term: **per-frame VDP round-trips.** We were calling `CALL GCHAR` ~20× on every
+intersection frame (each of 4 ghosts probes 4 directions for walls, plus Ms. Pac-Man's wall/eat
+checks, fruit, and the pellet-collision re-check) — every `GCHAR` is a slow VDP access.
+- **Cache:** `M$(24)`, one character per cell, where char position `C` = the **screen column**
+  (built at `820`–`830` while the maze renders, accumulating `RW$` next to each `CALL HCHAR`).
+- **Reads:** every wall/dot/pellet probe is now `G=ASC(SEG$(M$(R),C,1))` (lines `703`, `750`,
+  `763`, `780`) — a string read in CPU/value space, no VDP access. Wall (`G` 128–143), dot
+  (`144`), pellet (`152`) logic is unchanged.
+- **Writes stay in sync:** the only per-cell screen change during play is the dot-eat at `753`,
+  which now also patches the cache (`M$(R)=SEG$(M$(R),1,C-1)&" "&SEG$(M$(R),C+1,32-C)` — `SEG$`
+  takes all three args; a 2-arg `SEG$` compiles to garbage and freezes, see `CLAUDE.md` §2). `GOSUB 800`
+  rebuilds the whole cache at init and each level advance.
+- **Cost:** ~800 bytes of string space (a numeric `W(24,32)` would be ~6600 — XB stores each
+  numeric element as 8 bytes), well within the ~9092-byte stack. Rows 1–2 are space-filled so an
+  out-of-bounds probe never reads a null string. This is independent of the (separate) `MOTION`
+  rework still under consideration.
 
 ### Ghost personalities + scatter/chase modes
 The greedy "pick the open non-reversing turn that minimizes distance to a target tile" pathfinder
