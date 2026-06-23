@@ -29,12 +29,13 @@
 	DEFINE COLOR 152,1,white_color
 	DEFINE COLOR 160,1,white_color
 	DEFINE COLOR 168,1,wall_color
-	DEFINE SPRITE 0,8,game_sprites
+	DEFINE SPRITE 0,10,game_sprites
 
 	DIM gx(5), gy(5), gd(5), op(5), rt(5), tm(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5)
 	DIM #ds(5)
 
 	BORDER 1
+	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' needed by the title too
 
 	GOSUB title
 
@@ -54,7 +55,7 @@ boot:
 	cd = 3 : hd = 3
 	tm(1) = 0 : tm(2) = 90 : tm(3) = 150 : tm(4) = 210 : #fc = 0
 	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' TI 7,14,8,11 -> CV 6,13,7,10
-	ft = 0 : eg = 0 : dg = 0 : fa = 0 : fn = 0 : #fb = 300 : mo = 0 : mt = 150
+	#ft = 0 : eg = 0 : dg = 0 : fa = 0 : fn = 0 : #fb = 180 : mo = 0 : #mt = 150
 	GOSUB fruitdef
 	FOR j = 1 TO 4
 		sp(j) = sp(j) + le - 1
@@ -95,7 +96,11 @@ main:
 		IF hd = 1 THEN pf = 8
 		IF hd = 2 THEN pf = 12
 		IF hd = 3 THEN pf = 4
-		IF cd <> 0 THEN IF (#fc % 8) >= 4 THEN pf = 16
+		chmp = 0
+		IF cd <> 0 THEN IF (#fc % 8) >= 4 THEN chmp = 1
+		IF chmp = 1 THEN pf = 16			' closed (right/down)
+		IF (chmp = 1) AND (hd = 3) THEN pf = 32		' left-closed (bow stays)
+		IF (chmp = 1) AND (hd = 1) THEN pf = 36		' up-closed (bow stays at bottom)
 		SPRITE 0, sy - 2, sx - 1, pf, 11		' Pac, TI 12 -> CV 11
 
 		pr = (sy + 11) / 8 : pc = (sx + 11) / 8
@@ -107,23 +112,24 @@ main:
 
 		' Pac <-> ghost collision (XB 426-429)
 		FOR gi = 1 TO 4
-			dx = ABS(sx - gx(gi))
-			dy = ABS(sy - gy(gi))
-			IF (dx + dy) < 8 THEN GOSUB collide
+			IF sx >= gx(gi) THEN dx = sx - gx(gi) ELSE dx = gx(gi) - sx
+			IF sy >= gy(gi) THEN dy = sy - gy(gi) ELSE dy = gy(gi) - sy
+			' gate each axis first so dx+dy can't overflow 8-bit (false hits)
+			IF dx < 8 THEN IF dy < 8 THEN IF (dx + dy) < 8 THEN GOSUB collide
 		NEXT gi
 
 		' bonus life at 1000 pts (XB 430; PT is /10)
 		IF #pt >= 100 THEN IF bg = 0 THEN GOSUB bonuslife
 
 		IF #fc < 30000 THEN #fc = #fc + 1
-		IF ft > 0 THEN ft = ft - 1
+		IF #ft > 0 THEN #ft = #ft - 1
 
 		' roaming fruit (XB 433-434)
 		IF fa = 1 THEN IF (#fc % 4) = 0 THEN GOSUB movefruit
 		IF fa = 1 THEN
-			dx = ABS(sx - fx)
-			dy = ABS(sy - fy)
-			IF (dx + dy) < 8 THEN GOSUB eatfruit
+			IF sx >= fx THEN dx = sx - fx ELSE dx = fx - sx
+			IF sy >= fy THEN dy = sy - fy ELSE dy = fy - sy
+			IF dx < 8 THEN IF dy < 8 THEN IF (dx + dy) < 8 THEN GOSUB eatfruit
 		END IF
 
 		GOSUB hud
@@ -132,8 +138,8 @@ main:
 		IF nx = 1 THEN GOSUB nextlevel
 
 		' scatter / chase mode timer (XB 439)
-		IF mt > 0 THEN
-			mt = mt - 1
+		IF #mt > 0 THEN
+			#mt = #mt - 1
 		ELSE
 			GOSUB modeswitch
 		END IF
@@ -266,15 +272,13 @@ eat:	PROCEDURE
 	' --- power pellet: frighten ghosts (XB 774-779) ---
 frighten:	PROCEDURE
 	FOR gj = 1 TO 4
-		IF (gs(gj)=0) AND (gx(gj)<>121) THEN
-			IF gd(gj) = 1 THEN gd(gj) = 2
-			IF gd(gj) = 2 THEN gd(gj) = 1
-			IF gd(gj) = 3 THEN gd(gj) = 4
-			IF gd(gj) = 4 THEN gd(gj) = 3
+		' reverse ghosts in chase/scatter (not already scared, not eyes)
+		IF (gs(gj) = 0) AND (gx(gj) <> 121) THEN
+			IF gd(gj)=1 THEN gd(gj)=2 ELSE IF gd(gj)=2 THEN gd(gj)=1 ELSE IF gd(gj)=3 THEN gd(gj)=4 ELSE gd(gj)=3
 		END IF
 		IF gs(gj) <> 2 THEN gs(gj) = 1
 	NEXT gj
-	ft = #fb
+	#ft = #fb
 	eg = 0
 	SOUND 0, 700, 13
 	END
@@ -282,7 +286,7 @@ frighten:	PROCEDURE
 	' --- one ghost (XB 999-1052) : gi global ---
 ghost:	PROCEDURE
 	IF (dg = gi) AND (gs(gi) <> 0) THEN dg = 0
-	IF (gs(gi) = 1) AND (ft = 0) THEN gs(gi) = 0
+	IF (gs(gi) = 1) AND (#ft = 0) THEN gs(gi) = 0
 
 	bx = gx(gi) : by = gy(gi) : bd = gd(gi)
 	rl = 0
@@ -346,7 +350,7 @@ ghost:	PROCEDURE
 			END IF
 		END IF
 	NEXT dr
-	IF (ct=0) AND (rev>0) AND (op(rev)=1) THEN bd = rev : ct = 1
+	IF (ct=0) AND (rev>0) AND (op(rev)=1) AND (flee=0) THEN bd = rev : ct = 1
 	IF ct = 0 THEN bd = 0
 
 gh_move:
@@ -372,7 +376,7 @@ gh_draw:
 	' colour + frame from state
 	gcl(gi) = gc(gi)
 	IF gs(gi) = 1 THEN gcl(gi) = 4
-	IF gs(gi) = 1 THEN IF ft <= 90 THEN IF (ft % 8) < 4 THEN gcl(gi) = 15
+	IF gs(gi) = 1 THEN IF #ft <= 90 THEN IF (#ft % 8) < 4 THEN gcl(gi) = 15
 	IF gs(gi) = 2 THEN gcl(gi) = 15
 	gfr = 20
 	IF gs(gi) = 2 THEN gfr = 24
@@ -391,7 +395,7 @@ gtarget:	PROCEDURE
 	IF (gi=2) AND (cd=3) THEN #tgc = pc - 4
 	IF (gi=2) AND (cd=4) THEN #tgc = pc + 4
 	IF gi = 4 THEN
-		#dd1 = r - pr : #dd2 = c - pc
+		#dd1 = r : #dd1 = #dd1 - pr : #dd2 = c : #dd2 = #dd2 - pc
 		IF (#dd1*#dd1 + #dd2*#dd2) <= 64 THEN #tgr = sr(4) : #tgc = sc(4)
 	END IF
 	IF gi <> 3 THEN RETURN
@@ -447,14 +451,20 @@ bonuslife:	PROCEDURE
 
 	' --- Pac dies (XB 1100-1118) ; simplified animation ---
 pacdies:	PROCEDURE
-	SOUND 0, 400, 13
-	FOR dr = 1 TO 30
-		WAIT
-		pf = 16
-		IF (dr % 4) < 2 THEN pf = 0
+	' death: hide the ghosts, spin Ms. Pac-Man with a descending tone, vanish
+	FOR j = 1 TO 4 : SPRITE j, $d1, 0, 0, 0 : NEXT j
+	FOR dr = 0 TO 23
+		WAIT : WAIT
+		pf = 0
+		m = dr % 4
+		IF m = 1 THEN pf = 12
+		IF m = 2 THEN pf = 4
+		IF m = 3 THEN pf = 8
 		SPRITE 0, sy - 2, sx - 1, pf, 11
+		SOUND 0, 120 + dr * 24, 13
 	NEXT dr
 	SOUND 0, , 0
+	SPRITE 0, $d1, 0, 0, 0
 	IF fa = 1 THEN gosub killfruit
 	lv = lv - 1
 	IF lv > 0 THEN GOTO pd_respawn
@@ -476,7 +486,7 @@ pd_respawn:
 		gs(j) = 0 : gd(j) = 4
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
-	ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0
+	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0
 	GOSUB hud
 	END
 
@@ -490,8 +500,13 @@ nextlevel:	PROCEDURE
 	nx = 0
 	le = le + 1
 	IF fa = 1 THEN GOSUB killfruit
-	FOR dr = 1 TO 40
-		WAIT
+	GOSUB clearsprites		' remove all sprites before the flash
+	' flash the cleared maze walls (white <-> normal) a few times
+	FOR dr = 1 TO 4
+		DEFINE COLOR 128,16,wall_white
+		FOR j = 1 TO 8 : WAIT : NEXT j
+		DEFINE COLOR 128,16,wall_color
+		FOR j = 1 TO 8 : WAIT : NEXT j
 	NEXT dr
 	FOR j = 1 TO 4
 		sp(j) = sp(j) + 1
@@ -508,21 +523,18 @@ nextlevel:	PROCEDURE
 		gs(j) = 0 : gd(j) = 4
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 4 : hd = 4
-	ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : mt = 150
+	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : #mt = 150
 	GOSUB hud
 	END
 
 	' --- scatter/chase toggle + reverse (XB 1170-1176) ---
 modeswitch:	PROCEDURE
 	mo = 1 - mo
-	mt = 800
-	IF mo = 0 THEN mt = 150
+	#mt = 800
+	IF mo = 0 THEN #mt = 150
 	FOR j = 1 TO 4
 		IF (gs(j)=0) AND (gx(j)<>121) THEN
-			IF gd(j) = 1 THEN gd(j) = 2
-			IF gd(j) = 2 THEN gd(j) = 1
-			IF gd(j) = 3 THEN gd(j) = 4
-			IF gd(j) = 4 THEN gd(j) = 3
+			IF gd(j)=1 THEN gd(j)=2 ELSE IF gd(j)=2 THEN gd(j)=1 ELSE IF gd(j)=3 THEN gd(j)=4 ELSE gd(j)=3
 		END IF
 	NEXT j
 	END
@@ -531,7 +543,7 @@ modeswitch:	PROCEDURE
 spawnfruit:	PROCEDURE
 	fn = fn + 1 : fa = 1 : fw = 0
 	IF RANDOM(2) = 1 THEN fy = ty2 : tg = ty1 ELSE fy = ty1 : tg = ty2
-	IF RANDOM(2) = 1 THEN fx = 229 : fd = 3 ELSE fx = 13 : fd = 4
+	IF RANDOM(2) = 1 THEN fx = 229 : fd = 3 : ftc = 3 ELSE fx = 13 : fd = 4 : ftc = 30
 	ftr = (tg + 11) / 8
 	SPRITE 5, fy - 2, fx - 1, 28, ffl
 	END
@@ -559,8 +571,9 @@ movefruit:	PROCEDURE
 		GOSUB wallchk2
 		IF (wl=0) AND (dr<>rev) THEN
 			nb = nb + 1
-			#dd1 = tr - ftr : #dd2 = tc - ftc
-			IF (#dd1*#dd1 + #dd2*#dd2) < #bs THEN #bs = #dd1*#dd1 + #dd2*#dd2 : bd = dr
+			#dd1 = tr : #dd1 = #dd1 - ftr : #dd2 = tc : #dd2 = #dd2 - ftc
+			#qd = #dd1*#dd1 + #dd2*#dd2
+			IF #qd < #bs THEN #bs = #qd : bd = dr
 		END IF
 	NEXT dr
 	IF nb = 0 THEN bd = rev
@@ -571,7 +584,13 @@ mf_step:
 	IF bd = 4 THEN bx = bx + 2
 	IF (bx<13) OR (bx>229) OR (fw>400) THEN GOSUB killfruit : RETURN
 	fx = bx : fy = by : fd = bd
-	SPRITE 5, fy - 2, fx - 1, 28, ffl
+	' vertical bob while moving horizontally (XB WB), kept non-negative
+	fwb = fy - 2
+	IF (bd = 3) OR (bd = 4) THEN
+		m = fw % 8
+		IF m >= 4 THEN fwb = fy - 4 + (m - 4) ELSE fwb = fy - 4 + (4 - m)
+	END IF
+	SPRITE 5, fwb, fx - 1, 28, ffl
 	END
 
 	' --- eat fruit (XB 770-772) ---
@@ -588,15 +607,36 @@ eatfruit:	PROCEDURE
 
 	' --- fruit shape + value for the level (XB 1160-1169) ---
 fruitdef:	PROCEDURE
-	ffl = 9 : ffp = 1 : fl = le
+	fl = le
 	IF le >= 8 THEN fl = RANDOM(7) + 1
-	IF fl = 1 THEN ffp = 1
-	IF fl = 2 THEN ffp = 2
-	IF fl = 3 THEN ffl = 11 : ffp = 5
-	IF fl = 4 THEN ffl = 7 : ffp = 7
-	IF fl = 5 THEN ffl = 3 : ffp = 10
-	IF fl = 6 THEN ffl = 13 : ffp = 20
-	IF fl >= 7 THEN ffl = 12 : ffp = 50
+	IF fl = 1 THEN
+		DEFINE SPRITE 7,1,fruit_cherry
+		ffl = 8 : ffp = 1
+	END IF
+	IF fl = 2 THEN
+		DEFINE SPRITE 7,1,fruit_straw
+		ffl = 8 : ffp = 2
+	END IF
+	IF fl = 3 THEN
+		DEFINE SPRITE 7,1,fruit_orange
+		ffl = 10 : ffp = 5
+	END IF
+	IF fl = 4 THEN
+		DEFINE SPRITE 7,1,fruit_pretzel
+		ffl = 6 : ffp = 7
+	END IF
+	IF fl = 5 THEN
+		DEFINE SPRITE 7,1,fruit_apple
+		ffl = 8 : ffp = 10
+	END IF
+	IF fl = 6 THEN
+		DEFINE SPRITE 7,1,fruit_pear
+		ffl = 2 : ffp = 20
+	END IF
+	IF fl >= 7 THEN
+		DEFINE SPRITE 7,1,fruit_banana
+		ffl = 11 : ffp = 50
+	END IF
 	END
 
 	' --- pick the maze for this level (XB 1155-1157) ---
@@ -611,10 +651,10 @@ pickmaze:	PROCEDURE
 	' --- draw maze + colours + count dots (XB 800-832) ---
 drawmaze:	PROCEDURE
 	CLS
-	IF mz = 1 THEN RESTORE maze1 : wcol = $d1	' TI 14 -> CV 13
-	IF mz = 2 THEN RESTORE maze2 : wcol = $51	' TI 6  -> CV 5
-	IF mz = 3 THEN RESTORE maze3 : wcol = $91	' TI 10 -> CV 9
-	IF mz = 4 THEN RESTORE maze4 : wcol = $41	' TI 5  -> CV 4
+	IF mz = 1 THEN RESTORE maze1
+	IF mz = 2 THEN RESTORE maze2
+	IF mz = 3 THEN RESTORE maze3
+	IF mz = 4 THEN RESTORE maze4
 	dt = 0 : ty1 = 0 : ty2 = 0
 	FOR mr = 1 TO 22
 		FOR i = 1 TO 28
@@ -632,20 +672,6 @@ drawmaze:	PROCEDURE
 		NEXT i
 	NEXT mr
 	IF ty2 = 0 THEN ty2 = ty1
-	' recolour the walls + cross to this maze's colour
-	wcr = wcol
-	GOSUB setwallcolor
-	END
-
-	' recolour wall chars 128-143 + cross 168 by poking the colour table.
-	' CVBasic MODE 0 colour table base is $2000; char N rows at $2000+N*8.
-setwallcolor:	PROCEDURE
-	FOR #i = $2000 + 128 * 8 TO $2000 + 144 * 8 - 1
-		VPOKE #i, wcr
-	NEXT #i
-	FOR #i = $2000 + 168 * 8 TO $2000 + 169 * 8 - 1
-		VPOKE #i, wcr
-	NEXT #i
 	END
 
 	' --- HUD (XB 708-709) ---
@@ -654,19 +680,83 @@ hud:	PROCEDURE
 	PRINT AT 32, "LIVES ", lv, " LEVEL ", le
 	END
 
-	' --- title (simplified: no animation / cheat) ---
+	' --- animated title (XB 1200-1218; no 8-3-8 cheat) ---
 title:	PROCEDURE
+	GOSUB clearsprites		' avoid pollution from a finished game
 	CLS
 	le = 1 : lv = 3
+	PRINT AT 0, "SCORE ", <5>#pt, "0"		' last/most-recent score
 	PRINT AT 6 * 32 + 10, "MS. PAC-MAN"
 	PRINT AT 8 * 32 + 9, "2026  UNHUMAN"
 	PRINT AT 15 * 32 + 4, "EAT DOTS - DODGE GHOSTS"
 	PRINT AT 18 * 32 + 6, "JOYSTICK 1 TO MOVE"
 	PRINT AT 21 * 32 + 6, "PRESS FIRE TO BEGIN"
-tt_wait:
+	#za = 228 : #zb = 20 : #zc = 52 : #zd = 84 : #ze = 116
+	zdir = 0 : gdir = 1 : af = 0 : ac = 0 : cs = 0 : ck = 15
+tt_loop:
 	WAIT
-	IF cont1.button = 0 THEN GOTO tt_wait
+	IF zdir = 0 THEN #za = #za - 2 ELSE #za = #za + 2
+	IF #za < 5 THEN zdir = 1 : #za = 5
+	IF #za > 243 THEN zdir = 0 : #za = 243
+	IF gdir = 1 THEN
+		#zb = #zb + 2 : #zc = #zc + 2 : #zd = #zd + 2 : #ze = #ze + 2
+	ELSE
+		#zb = #zb - 2 : #zc = #zc - 2 : #zd = #zd - 2 : #ze = #ze - 2
+	END IF
+	IF #ze > 243 THEN gdir = 0
+	IF #zb < 5 THEN gdir = 1
+	ac = ac + 1
+	IF ac >= 3 THEN ac = 0 : af = 1 - af
+	pf = 0
+	IF zdir = 0 THEN pf = 4		' moving left -> left-facing
+	IF af = 1 THEN pf = 16		' chomp closed (right)
+	IF (af = 1) AND (zdir = 0) THEN pf = 32	' left-closed (bow stays)
+	SPRITE 0, 19, #za - 1, pf, 11
+	SPRITE 1, 87, #zb - 1, 20, gc(1)
+	SPRITE 2, 87, #zc - 1, 20, gc(2)
+	SPRITE 3, 87, #zd - 1, 20, gc(3)
+	SPRITE 4, 87, #ze - 1, 20, gc(4)
+	' 8-3-8 cheat -> level/lives select
+	k = cont1.key
+	IF k <> ck THEN
+		ck = k
+		IF (k = 8) AND (cs = 2) THEN GOTO cheat_sel
+		IF (k = 8) AND (cs = 0) THEN cs = 1
+		IF (k = 3) AND (cs = 1) THEN cs = 2
+		IF (k <> 8) AND (k <> 3) AND (k <> 15) THEN cs = 0
+	END IF
+	IF cont1.button THEN GOTO tt_done
+	GOTO tt_loop
+cheat_sel:
+	GOSUB clearsprites
 	CLS
+	PRINT AT 12 * 32 + 10, "LEVEL 1-0"
+	GOSUB readdig
+	le = dg
+	IF le = 0 THEN le = 10
+	CLS
+	PRINT AT 12 * 32 + 10, "LIVES 1-9"
+	GOSUB readdig
+	lv = dg
+	IF lv = 0 THEN lv = 1
+	CLS
+	END
+tt_done:
+	GOSUB clearsprites
+	CLS
+	END
+
+	' wait for a released key, then return the next digit (0-9) in dg
+readdig:	PROCEDURE
+	DO : WAIT : LOOP WHILE cont1.key <> 15
+	DO : WAIT : dg = cont1.key : LOOP WHILE dg > 9
+	END
+
+	' hide sprites 0-5 (Y in the invisible range)
+clearsprites:	PROCEDURE
+	FOR i = 0 TO 5
+		SPRITE i, $d1, 0, 0, 0
+	NEXT i
 	END
 
 	' ============================================================
@@ -701,147 +791,203 @@ door_tile:
 cross_tile:
 	DATA BYTE $3C,$3C,$FF,$FF,$FF,$FF,$3C,$3C
 
+	' DEFINE COLOR 128,16 needs 16 chars x 8 rows = 128 colour bytes.
+	' All wall tiles: blue (5) on black (1).  (Per-maze colour is a TODO.)
 wall_color:
-	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51,$51
 white_color:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	' 16 wall chars x 8 rows, all white -- used for the level-clear flash
+wall_white:
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
-	' Sprites (16x16). 0 R,1 L,2 U,3 D,4 closed, 5 ghost,6 eyes,7 fruit.
+	' Sprites (16x16) as BITMAP (CVBasic arranges them into VRAM order).
+	' Real TI art, from the XB CALL CHAR quadrant hex rebuilt as visual rows.
+	' Order: 0 R, 1 L, 2 U, 3 D, 4 closed, 5 ghost, 6 eyes, 7 fruit.
 game_sprites:
+	' Pac right
 	BITMAP "................"
-	BITMAP "................"
+	BITMAP "....X..X........"
+	BITMAP "....XXXX........"
+	BITMAP "....XXXXXXX....."
 	BITMAP "....XXXXXXXX...."
 	BITMAP "...XXXXXXXXXX..."
-	BITMAP "..XXXXXXXXX....."
-	BITMAP "..XXXXXXX......."
-	BITMAP ".XXXXXXX........"
-	BITMAP ".XXXXXX........."
-	BITMAP ".XXXXXX........."
-	BITMAP ".XXXXXXX........"
-	BITMAP "..XXXXXXX......."
-	BITMAP "..XXXXXXXXX....."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "...XXXXX........"
+	BITMAP "...XXXXX........"
+	BITMAP "...XXXXXXXX....."
 	BITMAP "...XXXXXXXXXX..."
 	BITMAP "....XXXXXXXX...."
+	BITMAP ".....XXXXXX....."
 	BITMAP "................"
 	BITMAP "................"
-
 	BITMAP "................"
+	' Pac left
 	BITMAP "................"
+	BITMAP "........X..X...."
+	BITMAP "........XXXX...."
+	BITMAP ".....XXXXXXX...."
 	BITMAP "....XXXXXXXX...."
 	BITMAP "...XXXXXXXXXX..."
-	BITMAP ".....XXXXXXXXX.."
-	BITMAP ".......XXXXXXX.."
-	BITMAP "........XXXXXXX."
-	BITMAP ".........XXXXXX."
-	BITMAP ".........XXXXXX."
-	BITMAP "........XXXXXXX."
-	BITMAP ".......XXXXXXX.."
-	BITMAP ".....XXXXXXXXX.."
+	BITMAP ".....XXXXXXXX..."
+	BITMAP "........XXXXX..."
+	BITMAP "........XXXXX..."
+	BITMAP ".....XXXXXXXX..."
 	BITMAP "...XXXXXXXXXX..."
 	BITMAP "....XXXXXXXX...."
+	BITMAP ".....XXXXXX....."
 	BITMAP "................"
 	BITMAP "................"
-
+	BITMAP "................"
+	' Pac up
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "....XXX..XXX...."
-	BITMAP "...XXXX..XXXX..."
-	BITMAP "..XXXXX..XXXXX.."
-	BITMAP "..XXXXX..XXXXX.."
-	BITMAP ".XXXXXX..XXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP "...XXXXXXXXXX..."
-	BITMAP "....XXXXXXXX...."
+	BITMAP "................"
+	BITMAP "....XXXX........"
+	BITMAP "...XXXX.XXX....."
+	BITMAP "...XXXXXXXXX...."
+	BITMAP "..XXXX...XXXX..."
+	BITMAP "..XXX.....XXX..."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "....XXXXXX......"
+	BITMAP "...XXXX........."
+	BITMAP "...X..X........."
+	BITMAP "................"
+	' Pac down
+	BITMAP "................"
+	BITMAP "...X..X........."
+	BITMAP "...XXXX........."
+	BITMAP "....XXXXXX......"
+	BITMAP "...XXXXXXXX....."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXX.....XXX..."
+	BITMAP "..XXXX...XXXX..."
+	BITMAP "...XXXXXXXXX...."
+	BITMAP "...XXXX.XXX....."
+	BITMAP "....XXXX........"
 	BITMAP "................"
 	BITMAP "................"
-
 	BITMAP "................"
+	' Pac closed
 	BITMAP "................"
-	BITMAP "....XXXXXXXX...."
-	BITMAP "...XXXXXXXXXX..."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXX..XXXXXX."
-	BITMAP ".XXXXX....XXXXX."
-	BITMAP ".XXXXX....XXXXX."
-	BITMAP "..XXXX....XXXX.."
-	BITMAP "..XXX......XXX.."
-	BITMAP "...XX......XX..."
-	BITMAP "....X......X...."
-	BITMAP "................"
-	BITMAP "................"
-
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "....XXXXXXXX...."
-	BITMAP "...XXXXXXXXXX..."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP "...XXXXXXXXXX..."
-	BITMAP "....XXXXXXXX...."
-	BITMAP "................"
-	BITMAP "................"
-
-	BITMAP "................"
-	BITMAP "................"
+	BITMAP "....X..X........"
+	BITMAP "....XXXX........"
+	BITMAP ".....XXXXXX....."
 	BITMAP "....XXXXXXXX...."
 	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "....XXXXXXXX...."
+	BITMAP ".....XXXXXX....."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	' ghost
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".....XXXX......."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "..XX.XX.XX.XX..."
 	BITMAP "..XX.XX.XX.XX..."
 	BITMAP "..XXXXXXXXXXXX.."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XX.XX.XX.XX.XX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XXXXXXXXXXXXXX."
-	BITMAP ".XX..XX..XX..XX."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XX.XX.XX.XX..."
+	BITMAP "...X..X..X..X..."
 	BITMAP "................"
 	BITMAP "................"
-
+	' eyes
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "....XX....XX...."
-	BITMAP "...XXXX..XXXX..."
-	BITMAP "...XXXX..XXXX..."
-	BITMAP "...XXXX..XXXX..."
-	BITMAP "....XX....XX...."
 	BITMAP "................"
 	BITMAP "................"
+	BITMAP "...XX....XX....."
+	BITMAP "..XXXX..XXXX...."
+	BITMAP "..XXXX..XXXX...."
+	BITMAP "..XXXX..XXXX...."
+	BITMAP "...XX....XX....."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-
+	' fruit
 	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".........XX....."
 	BITMAP "........XX......"
 	BITMAP ".......XX......."
 	BITMAP "......XX........"
-	BITMAP "....XXXXX......."
-	BITMAP "...XXXXXXX......"
-	BITMAP "..XXXXXXXXX....."
-	BITMAP "..XXXXXXXXX....."
-	BITMAP "..XXXXXXXXX....."
-	BITMAP "..XXXXXXXXX....."
-	BITMAP "...XXXXXXX......"
-	BITMAP "....XXXXX......."
+	BITMAP ".....XXXX......."
+	BITMAP "....XXXXXX......"
+	BITMAP "...XXXXXXXX....."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "....XXXXXX......"
+	BITMAP ".....XXXX......."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
+	' Pac left-closed (def 8, f=32) -- keeps the bow on the back when chomping left
+	BITMAP "................"
+	BITMAP "........X..X...."
+	BITMAP "........XXXX...."
+	BITMAP ".....XXXXXX....."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "....XXXXXXXX...."
+	BITMAP ".....XXXXXX....."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	' Pac up-closed (def 9, f=36) -- up-open with the mouth filled, bow at bottom
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXX........"
+	BITMAP "...XXXX.XXX....."
+	BITMAP "...XXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "....XXXXXX......"
+	BITMAP "...XXXX........."
+	BITMAP "...X..X........."
 	BITMAP "................"
 
 	' ============================================================
@@ -943,3 +1089,126 @@ maze4:
 	DATA BYTE "f.dj.ckllkki.gm.ckkllki.dj.f"
 	DATA BYTE "f............hn............f"
 	DATA BYTE "dkkkkkkkkkkkkllkkkkkkkkkkkkj"
+
+	' ============================================================
+	' Per-level fruit shapes (16x16), loaded into sprite 7 by fruitdef.
+	' ============================================================
+fruit_cherry:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".........XX....."
+	BITMAP "........XX......"
+	BITMAP ".......XX......."
+	BITMAP "......XX........"
+	BITMAP ".....XXXX......."
+	BITMAP "....XXXXXX......"
+	BITMAP "...XXXXXXXX....."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "....XXXXXX......"
+	BITMAP ".....XXXX......."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+fruit_straw:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXX......"
+	BITMAP "...XXXXXXXX....."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "....XXXXXX......"
+	BITMAP "....XXXXXX......"
+	BITMAP ".....XXXX......."
+	BITMAP "......XX........"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+fruit_orange:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "......XX........"
+	BITMAP "....XXXXXX......"
+	BITMAP "...XXXXXXXX....."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "....XXXXXX......"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+fruit_pretzel:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "...XX....XX....."
+	BITMAP "..XXXX..XXXX...."
+	BITMAP "..X..XXXX..X...."
+	BITMAP "..X.X....X.X...."
+	BITMAP "..X..XXXX..X...."
+	BITMAP "..XXXX..XXXX...."
+	BITMAP "...XX....XX....."
+	BITMAP "....XXXXXX......"
+	BITMAP ".....XXXX......."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+fruit_apple:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".......X........"
+	BITMAP ".....XX........."
+	BITMAP "...XX.XXXX......"
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "..XXXXXXXXXX...."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "....XXXXXX......"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+fruit_pear:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "......XX........"
+	BITMAP ".....XX........."
+	BITMAP ".....XXX........"
+	BITMAP "....XXXXX......."
+	BITMAP "...XXXXXXX......"
+	BITMAP "..XXXXXXXX......"
+	BITMAP "..XXXXXXXX......"
+	BITMAP "..XXXXXXXX......"
+	BITMAP "...XXXXXX......."
+	BITMAP "....XXXX........"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+fruit_banana:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".........XX....."
+	BITMAP ".......XXXX....."
+	BITMAP "......XXXX......"
+	BITMAP ".....XXXX......."
+	BITMAP ".....XXX........"
+	BITMAP ".....XXX........"
+	BITMAP ".....XXXX......."
+	BITMAP "......XXXX......"
+	BITMAP ".......XXXX....."
+	BITMAP ".........XX....."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
