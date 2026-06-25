@@ -29,19 +29,24 @@
 	DEFINE COLOR 152,1,white_color
 	DEFINE COLOR 160,1,white_color
 	DEFINE COLOR 168,1,wall_color
-	DEFINE SPRITE 0,10,game_sprites
+	DEFINE SPRITE 0,11,game_sprites		' 0-9 Pac/ghost/eyes/fruit; 10 = ghost walk frame 2
 
 	DIM gx(5), gy(5), gd(5), op(5), rt(5), tm(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5)
 	DIM #ds(5)
+	DIM mc(768)		' RAM mirror of maze cells -> wall/dot checks avoid VPEEK
+	DIM spc(5)		' per-ghost speed caps (fixed Blinky>Pinky>Inky>Clyde ranking)
 
 	BORDER 1
+	SPRITE FLICKER ON		' rotate sprites so >4 on a scanline degrade gracefully (no full vanish)
 	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' needed by the title too
+	spc(1) = 40 : spc(2) = 16 : spc(3) = 12 : spc(4) = 10	' caps: Blinky 100%, Pinky ~94%, Inky ~92%, Clyde ~90%
 
 	GOSUB title
 
 boot:
 	' XB 157
 	sx = 121 : sy = 141 : dd = 0 : #pt = 0 : ec = 0 : rg = 0 : nx = 0 : bg = 0
+	SOUND 0, , 0 : SOUND 1, , 0 : SOUND 2, , 0 : sfx = 0	' silence any leftover sound on (re)start
 	GOSUB pickmaze
 	GOSUB drawmaze
 
@@ -51,25 +56,28 @@ boot:
 	gx(3) = 105 : gy(3) = 93 : gd(3) = 4
 	gx(4) = 137 : gy(4) = 93 : gd(4) = 4
 	rt(1) = 0 : rt(2) = 8 : rt(3) = 16 : rt(4) = 24
-	sp(1) = 6 : sp(2) = 5 : sp(3) = 5 : sp(4) = 4
+	sp(1) = 9 : sp(2) = 8 : sp(3) = 7 : sp(4) = 6	' base speeds, distinct ranking (capped per ghost by spc())
 	cd = 3 : hd = 3
 	tm(1) = 0 : tm(2) = 90 : tm(3) = 150 : tm(4) = 210 : #fc = 0
 	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' TI 7,14,8,11 -> CV 6,13,7,10
 	#ft = 0 : eg = 0 : dg = 0 : fa = 0 : fn = 0 : #fb = 180 : mo = 0 : #mt = 150
 	GOSUB fruitdef
 	FOR j = 1 TO 4
-		sp(j) = sp(j) + le - 1
-		IF sp(j) > 10 THEN sp(j) = 10
+		sp(j) = sp(j) + (le - 1) * 4
+		IF sp(j) > spc(j) THEN sp(j) = spc(j)	' per-ghost cap (Blinky reaches 40=100%, others lower)
 	NEXT j
-	#fb = #fb - (le - 1) * 40
-	IF #fb < 140 THEN #fb = 140
+	#fb = 200 - (le - 1) * 16		' fright shrinks ~16 frames/level (200 -> 40)
+	IF #fb < 40 THEN #fb = 40
 	sr(1) = 1 : sc(1) = 30 : sr(2) = 1 : sc(2) = 3
 	sr(3) = 26 : sc(3) = 30 : sr(4) = 26 : sc(4) = 3
 	GOSUB hud
+	GOSUB startjingle
+	GOSUB ready
 
 main:
 	WHILE 1
 		WAIT
+		FOR dk = ng + 1 TO 4 : SPRITE dk, $d1, 0, 0, 0 : NEXT dk	' hide ghosts above ng (set via 8-3-8)
 		ea = 0
 
 		' --- input (joystick) ---
@@ -105,34 +113,70 @@ main:
 
 		pr = (sy + 11) / 8 : pc = (sx + 11) / 8
 
-		' ghosts
-		FOR gi = 1 TO 4
+		' ghosts (DIAG: ng = active count, keys 1-4)
+		FOR gi = 1 TO ng
 			GOSUB ghost
 		NEXT gi
 
-		' Pac <-> ghost collision (XB 426-429)
-		FOR gi = 1 TO 4
-			IF sx >= gx(gi) THEN dx = sx - gx(gi) ELSE dx = gx(gi) - sx
-			IF sy >= gy(gi) THEN dy = sy - gy(gi) ELSE dy = gy(gi) - sy
-			' gate each axis first so dx+dy can't overflow 8-bit (false hits)
-			IF dx < 8 THEN IF dy < 8 THEN IF (dx + dy) < 8 THEN GOSUB collide
+		' dead-ghost eyes return to the pen at double speed
+		xp = 2
+		FOR gi = 1 TO ng
+			IF gs(gi) = 2 THEN GOSUB ghost
 		NEXT gi
+		xp = 0
+
+		' ghost overdrive: extra move pass at high levels (faster than Ms. Pac-Man)
+		IF le > 9 THEN
+			ov = ov + (le - 9) * 2
+			IF ov >= 16 THEN
+				ov = 0
+				xp = 1
+				FOR gi = 1 TO ng : GOSUB ghost : NEXT gi
+				xp = 0
+			END IF
+		END IF
+
+		' Cruise Elroy: Blinky (ghost 1) closes in as the maze empties
+		IF dt < 30 THEN
+			xp = 1
+			gi = 1
+			IF dt < 10 THEN
+				GOSUB ghost
+			ELSE
+				IF (#fc % 2) = 0 THEN GOSUB ghost
+			END IF
+			xp = 0
+		END IF
+
+		' Pac <-> ghost collision is now folded into the ghost routine (see gh_draw)
 
 		' bonus life at 1000 pts (XB 430; PT is /10)
-		IF #pt >= 100 THEN IF bg = 0 THEN GOSUB bonuslife
+		IF #pt >= 1000 THEN IF bg = 0 THEN GOSUB bonuslife	' extra life at 10000 points
 
 		IF #fc < 30000 THEN #fc = #fc + 1
+		' transient sound-effect timer (CVBasic SOUND plays until silenced)
+		IF sfx > 0 THEN
+			sfx = sfx - 1
+			IF sfx = 0 THEN SOUND 0, , 0
+		END IF
+		' eye 'pew' sweep on channel 1
+		IF pew > 0 THEN
+			pew = pew - 1
+			IF pew = 0 THEN SOUND 1, , 0 ELSE SOUND 1, 40 + (8 - pew) * 15, 11
+		END IF
 		IF #ft > 0 THEN #ft = #ft - 1
+		' blink the energizers (power pellets, char 152)
+		IF (#fc % 16) = 0 THEN DEFINE CHAR 152,1,pellet_tile
+		IF (#fc % 16) = 8 THEN DEFINE CHAR 152,1,blank_tile
 
 		' roaming fruit (XB 433-434)
 		IF fa = 1 THEN IF (#fc % 4) = 0 THEN GOSUB movefruit
 		IF fa = 1 THEN
+			SPRITE 5, fwb, fx - 1, 28, ffl		' re-issue every frame so it doesn't strobe
 			IF sx >= fx THEN dx = sx - fx ELSE dx = fx - sx
 			IF sy >= fy THEN dy = sy - fy ELSE dy = fy - sy
 			IF dx < 8 THEN IF dy < 8 THEN IF (dx + dy) < 8 THEN GOSUB eatfruit
 		END IF
-
-		GOSUB hud
 
 		IF rg = 1 THEN GOTO boot
 		IF nx = 1 THEN GOSUB nextlevel
@@ -232,7 +276,7 @@ wallchk:	PROCEDURE
 	IF tr < 1 THEN wl = 1
 	IF tr > 24 THEN wl = 1
 	IF wl = 1 THEN RETURN
-	g = VPEEK(scr(tr, tc))
+	g = mc((tr - 1) * 32 + (tc - 1))
 	IF g > 127 THEN IF g < 144 THEN wl = 1
 	IF tr = 12 THEN IF tc > 15 THEN IF tc < 18 THEN wl = 1
 	IF tr = 13 THEN IF tc > 13 THEN IF tc < 20 THEN wl = 1
@@ -246,14 +290,14 @@ wallchk2:	PROCEDURE
 	IF tr < 1 THEN wl = 1
 	IF tr > 24 THEN wl = 1
 	IF wl = 1 THEN RETURN
-	g = VPEEK(scr(tr, tc))
+	g = mc((tr - 1) * 32 + (tc - 1))
 	IF g > 127 THEN IF g < 144 THEN wl = 1
 	IF tr = 12 THEN IF tc > 15 THEN IF tc < 18 THEN wl = 1
 	END
 
 	' --- eat dot/pellet on cell r,c (XB 750) ---
 eat:	PROCEDURE
-	g = VPEEK(scr(r, c))
+	g = mc((r - 1) * 32 + (c - 1))
 	IF g <> 144 THEN IF g <> 152 THEN RETURN
 	ea = 1
 	#pt = #pt + 1
@@ -262,54 +306,72 @@ eat:	PROCEDURE
 		#pt = #pt + 4
 		GOSUB frighten
 	END IF
-	VPOKE scr(r, c), 32
+	VPOKE scr(r, c), 32 : mc((r - 1) * 32 + (c - 1)) = 32
 	dt = dt - 1
-	IF g = 144 THEN SOUND 0, 90, 13
+	IF g = 144 THEN
+		wk = 1 - wk
+		IF wk = 0 THEN SOUND 0, 150, 6 ELSE SOUND 0, 200, 6
+		sfx = 1
+	END IF
 	IF fa = 0 THEN IF fn < 2 THEN IF (dt = 154) OR (dt = 54) THEN GOSUB spawnfruit
 	IF dt = 0 THEN nx = 1
+	GOSUB hud			' refresh score only when it changes
 	END
 
 	' --- power pellet: frighten ghosts (XB 774-779) ---
 frighten:	PROCEDURE
 	FOR gj = 1 TO 4
 		' reverse ghosts in chase/scatter (not already scared, not eyes)
-		IF (gs(gj) = 0) AND (gx(gj) <> 121) THEN
+		IF (gs(gj) = 0) AND (gx(gj) <> 121) AND (gy(gj) <> 77) THEN
 			IF gd(gj)=1 THEN gd(gj)=2 ELSE IF gd(gj)=2 THEN gd(gj)=1 ELSE IF gd(gj)=3 THEN gd(gj)=4 ELSE gd(gj)=3
 		END IF
 		IF gs(gj) <> 2 THEN gs(gj) = 1
 	NEXT gj
 	#ft = #fb
 	eg = 0
-	SOUND 0, 700, 13
+	' power-pellet 'power up' rising sweep
+	FOR dr = 1 TO 10
+		SOUND 0, 210 - dr * 11, 13
+		WAIT
+	NEXT dr
+	SOUND 0, , 0
 	END
 
 	' --- one ghost (XB 999-1052) : gi global ---
 ghost:	PROCEDURE
+	IF rg = 1 THEN RETURN		' game over: don't move/draw ghosts (sprites stay cleared)
 	IF (dg = gi) AND (gs(gi) <> 0) THEN dg = 0
 	IF (gs(gi) = 1) AND (#ft = 0) THEN gs(gi) = 0
+	gsi = gs(gi)			' cache state in a scalar for the hot per-frame paths
 
 	bx = gx(gi) : by = gy(gi) : bd = gd(gi)
-	rl = 0
-	IF ec >= rt(gi) THEN rl = 1
-	IF #fc >= tm(gi) THEN rl = 1
-
+	' overdrive extra pass: only chasing ghosts in the open (not fright/eyes/tunnel)
+	IF xp = 1 THEN
+		IF gsi <> 0 THEN GOTO gh_draw_only
+		IF ((by = ty1) OR (by = ty2)) AND ((bx < 45) OR (bx > 197)) THEN GOTO gh_draw_only
+	END IF
 	' speed throttle (XB 1006-1007)
-	IF (gs(gi) = 1) OR (((by=61) OR (by=109)) AND ((bx<45) OR (bx>197))) THEN
+	IF (gsi = 1) OR (((by=ty1) OR (by=ty2)) AND ((bx<45) OR (bx>197))) THEN
 		IF (#fc % 2) = 0 THEN GOTO gh_draw_only
 	END IF
-	IF (gs(gi) = 0) THEN IF (#fc % sp(gi)) = 0 THEN GOTO gh_draw_only
+	IF (gsi = 0) THEN IF sp(gi) < 40 THEN IF (#fc % sp(gi)) = 0 THEN GOTO gh_draw_only
 
-	' pen entry / exit (XB 1008-1011)
-	IF (bx=121) AND (by=93) THEN
-		IF (gs(gi)=2) OR ((rl=1) AND (gs(gi)=0) AND ((dg=0) OR (dg=gi))) THEN GOTO gh_pen
+	' pen entry / exit (XB 1008-1011) -- only ever fires on the two pen rows
+	IF (by = 77) OR (by = 93) THEN
+		rl = 0
+		IF ec >= rt(gi) THEN rl = 1
+		IF #fc >= tm(gi) THEN rl = 1
+		IF (bx=121) AND (by=93) THEN
+			IF (gs(gi)=2) OR ((rl=1) AND (gs(gi)=0) AND ((dg=0) OR (dg=gi))) THEN GOTO gh_pen
+		END IF
+		IF (rl=1) AND ((gs(gi)=0) OR (dg=gi)) AND (bx=121) AND (by=77) AND (bd=1) THEN
+			bd = RANDOM(2) + 3
+			dg = 0
+			GOTO gh_move
+		END IF
+		IF (gs(gi)=2) AND (bx=121) AND (by=77) THEN bd = 2 : GOTO gh_move
+		IF (gs(gi)=2) AND (bx=117) AND (by=77) THEN bd = 4 : GOTO gh_move
 	END IF
-	IF (rl=1) AND (gs(gi)=0) AND (bx=121) AND (by=77) AND (bd=1) THEN
-		bd = RANDOM(2) + 3
-		dg = 0
-		GOTO gh_move
-	END IF
-	IF (gs(gi)=2) AND (bx=121) AND (by=77) THEN bd = 2 : GOTO gh_move
-	IF (gs(gi)=2) AND (bx=117) AND (by=77) THEN bd = 4 : GOTO gh_move
 
 	ax = bx + 3 : ay = by + 3
 	IF (ax % 8) <> 0 THEN GOTO gh_move
@@ -323,50 +385,57 @@ ghost:	PROCEDURE
 	IF bd = 3 THEN rev = 4
 	IF bd = 4 THEN rev = 3
 	GOSUB gtarget
-	FOR dr = 1 TO 4
-		tr = r : tc = c
-		IF dr = 1 THEN tr = r - 1
-		IF dr = 2 THEN tr = r + 1
-		IF dr = 3 THEN tc = c - 1
-		IF dr = 4 THEN tc = c + 1
-		GOSUB wallchk2
-		op(dr) = 1 - wl
-		#dd1 = tr - #tgr
-		#dd2 = tc - #tgc
-		#ds(dr) = #dd1 * #dd1 + #dd2 * #dd2
-	NEXT dr
 	ct = 0
 	IF flee = 0 THEN #bs = 60000 ELSE #bs = 0
 	FOR dr = 1 TO 4
-		IF (op(dr)=1) AND (dr<>rev) THEN
-			IF flee = 0 THEN
-				IF #ds(dr) < #bs THEN
-					#bs = #ds(dr) : bd = dr : ct = 1
-				END IF
-			ELSE
-				IF #ds(dr) > #bs THEN
-					#bs = #ds(dr) : bd = dr : ct = 1
+		IF dr <> rev THEN
+			tr = r : tc = c
+			IF dr = 1 THEN tr = r - 1
+			IF dr = 2 THEN tr = r + 1
+			IF dr = 3 THEN tc = c - 1
+			IF dr = 4 THEN tc = c + 1
+			GOSUB wallchk2
+			IF wl = 0 THEN
+				#dd1 = tr - #tgr : #dd2 = tc - #tgc
+				#qd = #dd1 * #dd1 + #dd2 * #dd2		' squared Euclidean
+				IF flee = 0 THEN
+					IF #qd < #bs THEN #bs = #qd : bd = dr : ct = 1
+				ELSE
+					IF #qd > #bs THEN #bs = #qd : bd = dr : ct = 1
 				END IF
 			END IF
 		END IF
 	NEXT dr
-	IF (ct=0) AND (rev>0) AND (op(rev)=1) AND (flee=0) THEN bd = rev : ct = 1
+	' dead-end: only non-reverse option blocked -> reverse (chase only)
+	IF (ct = 0) AND (rev > 0) AND (flee = 0) THEN
+		tr = r : tc = c
+		IF rev = 1 THEN tr = r - 1
+		IF rev = 2 THEN tr = r + 1
+		IF rev = 3 THEN tc = c - 1
+		IF rev = 4 THEN tc = c + 1
+		GOSUB wallchk2
+		IF wl = 0 THEN bd = rev : ct = 1
+	END IF
 	IF ct = 0 THEN bd = 0
 
 gh_move:
-	IF bd = 1 THEN by = by - 2
-	IF bd = 2 THEN by = by + 2
-	IF bd = 3 THEN bx = bx - 2
-	IF bd = 4 THEN bx = bx + 2
+	IF bd = 1 THEN by = by - 2 ELSE IF bd = 2 THEN by = by + 2 ELSE IF bd = 3 THEN bx = bx - 2 ELSE IF bd = 4 THEN bx = bx + 2
 	IF bx < 13 THEN bx = 229
 	IF bx > 229 THEN bx = 13
-	IF (bx=121) AND (bd=1) AND (by<77) THEN by = 77 : bd = 2
-	IF (bx=121) AND (bd=2) AND (by>93) THEN by = 93 : bd = 1
+	IF bx = 121 THEN
+		IF (gsi <> 1) OR (dg = gi) THEN
+			IF (bd=1) AND (by<77) THEN by = 77 : bd = 2		' normal/eyes/exiter: climb to the door
+		ELSE
+			IF (bd=1) AND (by<89) THEN by = 89 : bd = 2		' frightened waiter: bounce low, in the pen
+		END IF
+		IF (bd=2) AND (by>93) THEN by = 93 : bd = 1
+	END IF
+	IF (gsi = 2) AND (bd <> gd(gi)) THEN pew = 8	' eye changed direction -> 'pew'
 	gx(gi) = bx : gy(gi) = by : gd(gi) = bd
 	GOTO gh_draw
 
 gh_pen:
-	IF gs(gi) = 2 THEN gs(gi) = 0
+	IF gs(gi) = 2 THEN gs(gi) = 0 : gsi = 0
 	dg = gi : bd = 1
 	GOTO gh_move
 
@@ -374,13 +443,20 @@ gh_draw_only:
 	bx = gx(gi) : by = gy(gi)
 gh_draw:
 	' colour + frame from state
-	gcl(gi) = gc(gi)
-	IF gs(gi) = 1 THEN gcl(gi) = 4
-	IF gs(gi) = 1 THEN IF #ft <= 90 THEN IF (#ft % 8) < 4 THEN gcl(gi) = 15
-	IF gs(gi) = 2 THEN gcl(gi) = 15
-	gfr = 20
-	IF gs(gi) = 2 THEN gfr = 24
-	SPRITE gi, by - 2, bx - 1, gfr, gcl(gi)
+	gcx = gc(gi) : gfr = 20
+	IF (#fc % 8) >= 4 THEN gfr = 40		' ghost walk-cycle: alternate frame
+	IF gsi = 1 THEN
+		gcx = 4
+		IF #ft <= 48 THEN IF (#ft % 8) < 4 THEN gcx = 15
+	END IF
+	IF gsi = 2 THEN gcx = 15 : gfr = 24
+	SPRITE gi, by - 2, bx - 1, gfr, gcx
+	' Pac <-> ghost collision, folded in here (normal pass only; uses bx/by scalars)
+	IF xp = 0 THEN
+		IF sx >= bx THEN dx = sx - bx ELSE dx = bx - sx
+		IF sy >= by THEN dy = sy - by ELSE dy = by - sy
+		IF dx < 8 THEN IF dy < 8 THEN IF (dx + dy) < 8 THEN GOSUB collide
+	END IF
 	END
 
 	' --- ghost target tile (XB 1180-1194) : out #tgr,#tgc,flee ---
@@ -412,7 +488,7 @@ gtarget:	PROCEDURE
 collide:	PROCEDURE
 	IF gs(gi) = 0 THEN
 		c = (sx + 11) / 8 : r = (sy + 11) / 8
-		IF VPEEK(scr(r, c)) = 152 THEN GOSUB eat
+		IF mc((r - 1) * 32 + (c - 1)) = 152 THEN GOSUB eat
 	END IF
 	IF gs(gi) = 1 THEN
 		GOSUB eatghost
@@ -430,9 +506,9 @@ eatghost:	PROCEDURE
 	eg = eg + 1
 	gs(gi) = 2
 	GOSUB hud
-	SOUND 0, 200, 13
-	FOR dr = 1 TO 16
-		WAIT
+	FOR dr = 1 TO 8			' descending "ate a ghost" sweep
+		SOUND 0, 60 + dr * 14, 13
+		WAIT : WAIT
 	NEXT dr
 	SOUND 0, , 0
 	END
@@ -442,15 +518,19 @@ bonuslife:	PROCEDURE
 	bg = 1
 	lv = lv + 1
 	GOSUB hud
-	SOUND 0, 71, 13
-	FOR dr = 1 TO 10
-		WAIT
-	NEXT dr
-	SOUND 0, , 0
+	FOR i = 1 TO 3				' three bells for the extra life
+		SOUND 0, 96, 13
+		FOR dr = 1 TO 5 : WAIT : NEXT dr
+		SOUND 0, , 0
+		FOR dr = 1 TO 3 : WAIT : NEXT dr
+	NEXT i
 	END
 
 	' --- Pac dies (XB 1100-1118) ; simplified animation ---
 pacdies:	PROCEDURE
+	' capture: silence sound, freeze ~1s showing the actors, THEN run the death sequence
+	SOUND 0, , 0 : SOUND 1, , 0 : SOUND 2, , 0
+	GOSUB ready
 	' death: hide the ghosts, spin Ms. Pac-Man with a descending tone, vanish
 	FOR j = 1 TO 4 : SPRITE j, $d1, 0, 0, 0 : NEXT j
 	FOR dr = 0 TO 23
@@ -470,7 +550,9 @@ pacdies:	PROCEDURE
 	IF lv > 0 THEN GOTO pd_respawn
 
 	' game over
-	PRINT AT 11 * 32 + 11, "GAME OVER"
+	PRINT AT 10 * 32 + 10, "           "
+	PRINT AT 11 * 32 + 10, " GAME OVER "
+	PRINT AT 12 * 32 + 10, "           "
 	#c = FRAME
 	DO
 		WAIT
@@ -488,6 +570,7 @@ pd_respawn:
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
 	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0
 	GOSUB hud
+	GOSUB ready
 	END
 
 killfruit:	PROCEDURE
@@ -499,6 +582,7 @@ killfruit:	PROCEDURE
 nextlevel:	PROCEDURE
 	nx = 0
 	le = le + 1
+	SOUND 0, , 0 : SOUND 1, , 0 : SOUND 2, , 0 : sfx = 0	' kill any ongoing sound (no beep during the flash)
 	IF fa = 1 THEN GOSUB killfruit
 	GOSUB clearsprites		' remove all sprites before the flash
 	' flash the cleared maze walls (white <-> normal) a few times
@@ -509,11 +593,11 @@ nextlevel:	PROCEDURE
 		FOR j = 1 TO 8 : WAIT : NEXT j
 	NEXT dr
 	FOR j = 1 TO 4
-		sp(j) = sp(j) + 1
-		IF sp(j) > 10 THEN sp(j) = 10
+		sp(j) = sp(j) + 4
+		IF sp(j) > spc(j) THEN sp(j) = spc(j)	' per-ghost cap (Blinky reaches 40=100%, others lower)
 	NEXT j
-	#fb = #fb - 40
-	IF #fb < 140 THEN #fb = 140
+	#fb = 200 - (le - 1) * 16		' fright shrinks ~16 frames/level (200 -> 40)
+	IF #fb < 40 THEN #fb = 40
 	GOSUB fruitdef
 	GOSUB pickmaze
 	GOSUB drawmaze
@@ -533,7 +617,7 @@ modeswitch:	PROCEDURE
 	#mt = 800
 	IF mo = 0 THEN #mt = 150
 	FOR j = 1 TO 4
-		IF (gs(j)=0) AND (gx(j)<>121) THEN
+		IF (gs(j)=0) AND (gx(j)<>121) AND (gy(j)<>77) THEN
 			IF gd(j)=1 THEN gd(j)=2 ELSE IF gd(j)=2 THEN gd(j)=1 ELSE IF gd(j)=3 THEN gd(j)=4 ELSE gd(j)=3
 		END IF
 	NEXT j
@@ -541,16 +625,21 @@ modeswitch:	PROCEDURE
 
 	' --- spawn roaming fruit (XB 720-726) ---
 spawnfruit:	PROCEDURE
-	fn = fn + 1 : fa = 1 : fw = 0
+	fn = fn + 1 : fa = 1 : #fw = 0
 	IF RANDOM(2) = 1 THEN fy = ty2 : tg = ty1 ELSE fy = ty1 : tg = ty2
 	IF RANDOM(2) = 1 THEN fx = 229 : fd = 3 : ftc = 3 ELSE fx = 13 : fd = 4 : ftc = 30
 	ftr = (tg + 11) / 8
+	fwb = fy - 2				' init draw-Y so the per-frame draw is valid pre-move
 	SPRITE 5, fy - 2, fx - 1, 28, ffl
 	END
 
 	' --- move roaming fruit (XB 730-743) ---
 movefruit:	PROCEDURE
-	fw = fw + 1
+	#fw = #fw + 1
+	IF (#fw % 6) = 0 THEN
+		SOUND 0, 186, 7			' soft blip as the fruit roams
+		sfx = 2
+	END IF
 	bx = fx : by = fy : bd = fd
 	ax = bx + 3 : ay = by + 3
 	IF (ax % 8) <> 0 THEN GOTO mf_step
@@ -582,15 +671,15 @@ mf_step:
 	IF bd = 2 THEN by = by + 2
 	IF bd = 3 THEN bx = bx - 2
 	IF bd = 4 THEN bx = bx + 2
-	IF (bx<13) OR (bx>229) OR (fw>400) THEN GOSUB killfruit : RETURN
+	IF (bx<13) OR (bx>229) OR (#fw>400) THEN GOSUB killfruit : RETURN
 	fx = bx : fy = by : fd = bd
 	' vertical bob while moving horizontally (XB WB), kept non-negative
 	fwb = fy - 2
 	IF (bd = 3) OR (bd = 4) THEN
-		m = fw % 8
+		m = #fw % 8
 		IF m >= 4 THEN fwb = fy - 4 + (m - 4) ELSE fwb = fy - 4 + (4 - m)
 	END IF
-	SPRITE 5, fwb, fx - 1, 28, ffl
+	SPRITE 5, fwb, fx - 1, 28, ffl		' fruit on slot 5 (lowest priority, after ghosts)
 	END
 
 	' --- eat fruit (XB 770-772) ---
@@ -598,11 +687,47 @@ eatfruit:	PROCEDURE
 	#pt = #pt + ffp
 	GOSUB killfruit
 	GOSUB hud
-	SOUND 0, 213, 13
-	FOR dr = 1 TO 12
-		WAIT
-	NEXT dr
+	SOUND 0, 214, 13			' fruit chime (523 Hz then 659 Hz)
+	FOR dr = 1 TO 6 : WAIT : NEXT dr
+	SOUND 0, 170, 13
+	FOR dr = 1 TO 6 : WAIT : NEXT dr
 	SOUND 0, , 0
+	END
+
+	' --- short start jingle, played once when a game begins (C-E-G-C arpeggio) ---
+startjingle:	PROCEDURE
+	RESTORE jingle_data
+	FOR i = 1 TO 8
+		READ BYTE v
+		READ BYTE h1
+		READ BYTE h2
+		READ BYTE dn
+		SOUND 0, v, 13			' melody
+		SOUND 1, h1, 10			' harmony
+		SOUND 2, h2, 8			' bass
+		FOR dr = 1 TO dn : WAIT : NEXT dr
+	NEXT i
+	SOUND 0, , 0 : SOUND 1, , 0 : SOUND 2, , 0
+	END
+
+	' Original 3-voice jingle: melody(ch0), harmony(ch1), bass(ch2), duration(frames).
+	' Triads over the progression  C  C  F  G  C  Am  G  C.
+jingle_data:
+	DATA BYTE 143,170,214,8
+	DATA BYTE 107,143,170,8
+	DATA BYTE 127,160,214,8
+	DATA BYTE 113,143,191,8
+	DATA BYTE 107,143,170,8
+	DATA BYTE 85,107,127,8
+	DATA BYTE 95,113,143,8
+	DATA BYTE 107,143,214,18
+
+	' --- 'get ready' pause: show the actors in place, hold ~1 second ---
+ready:	PROCEDURE
+	DEFINE CHAR 152,1,pellet_tile		' energizers solid during the pause
+	SPRITE 0, sy - 2, sx - 1, 16, 11
+	FOR j = 1 TO 4 : SPRITE j, gy(j) - 2, gx(j) - 1, 20, gc(j) : NEXT j
+	FOR dr = 1 TO 60 : WAIT : NEXT dr
 	END
 
 	' --- fruit shape + value for the level (XB 1160-1169) ---
@@ -611,31 +736,31 @@ fruitdef:	PROCEDURE
 	IF le >= 8 THEN fl = RANDOM(7) + 1
 	IF fl = 1 THEN
 		DEFINE SPRITE 7,1,fruit_cherry
-		ffl = 8 : ffp = 1
+		ffl = 8 : ffp = 10		' 100 pts
 	END IF
 	IF fl = 2 THEN
 		DEFINE SPRITE 7,1,fruit_straw
-		ffl = 8 : ffp = 2
+		ffl = 8 : ffp = 20		' 200 pts
 	END IF
 	IF fl = 3 THEN
 		DEFINE SPRITE 7,1,fruit_orange
-		ffl = 10 : ffp = 5
+		ffl = 10 : ffp = 50		' 500 pts
 	END IF
 	IF fl = 4 THEN
 		DEFINE SPRITE 7,1,fruit_pretzel
-		ffl = 6 : ffp = 7
+		ffl = 6 : ffp = 70		' 700 pts
 	END IF
 	IF fl = 5 THEN
 		DEFINE SPRITE 7,1,fruit_apple
-		ffl = 8 : ffp = 10
+		ffl = 8 : ffp = 100		' 1000 pts
 	END IF
 	IF fl = 6 THEN
 		DEFINE SPRITE 7,1,fruit_pear
-		ffl = 2 : ffp = 20
+		ffl = 2 : ffp = 200		' 2000 pts
 	END IF
 	IF fl >= 7 THEN
 		DEFINE SPRITE 7,1,fruit_banana
-		ffl = 11 : ffp = 50
+		ffl = 11 : ffp = 500		' 5000 pts
 	END IF
 	END
 
@@ -669,6 +794,7 @@ drawmaze:	PROCEDURE
 				IF ty1 = 0 THEN ty1 = (mr + 1) * 8 - 3 ELSE ty2 = (mr + 1) * 8 - 3
 			END IF
 			VPOKE $1800 + (mr + 1) * 32 + (i + 1), cc
+			mc((mr + 1) * 32 + (i + 1)) = cc
 		NEXT i
 	NEXT mr
 	IF ty2 = 0 THEN ty2 = ty1
@@ -680,11 +806,12 @@ hud:	PROCEDURE
 	PRINT AT 32, "LIVES ", lv, " LEVEL ", le
 	END
 
-	' --- animated title (XB 1200-1218; no 8-3-8 cheat) ---
+	' --- animated title (XB 1200-1218; 8-3-8 cheat enabled) ---
 title:	PROCEDURE
 	GOSUB clearsprites		' avoid pollution from a finished game
+	SOUND 0, , 0 : SOUND 1, , 0 : SOUND 2, , 0 : sfx = 0	' silence any leftover game sound
 	CLS
-	le = 1 : lv = 3
+	le = 1 : lv = 3 : ng = 4		' ng = ghost count (4); 8-3-8 can override
 	PRINT AT 0, "SCORE ", <5>#pt, "0"		' last/most-recent score
 	PRINT AT 6 * 32 + 10, "MS. PAC-MAN"
 	PRINT AT 8 * 32 + 9, "2026  UNHUMAN"
@@ -692,19 +819,23 @@ title:	PROCEDURE
 	PRINT AT 18 * 32 + 6, "JOYSTICK 1 TO MOVE"
 	PRINT AT 21 * 32 + 6, "PRESS FIRE TO BEGIN"
 	#za = 228 : #zb = 20 : #zc = 52 : #zd = 84 : #ze = 116
-	zdir = 0 : gdir = 1 : af = 0 : ac = 0 : cs = 0 : ck = 15
+	zdir = 0 : gdir = 1 : af = 0 : ac = 0 : cs = 0 : ck = 15 : ts = 0
 tt_loop:
 	WAIT
-	IF zdir = 0 THEN #za = #za - 2 ELSE #za = #za + 2
-	IF #za < 5 THEN zdir = 1 : #za = 5
-	IF #za > 243 THEN zdir = 0 : #za = 243
-	IF gdir = 1 THEN
-		#zb = #zb + 2 : #zc = #zc + 2 : #zd = #zd + 2 : #ze = #ze + 2
-	ELSE
-		#zb = #zb - 2 : #zc = #zc - 2 : #zd = #zd - 2 : #ze = #ze - 2
+	ts = ts + 1
+	IF ts >= 4 THEN ts = 0		' skip 1 frame in 4 -> title motion 25% slower
+	IF ts <> 0 THEN
+		IF zdir = 0 THEN #za = #za - 2 ELSE #za = #za + 2
+		IF #za < 5 THEN zdir = 1 : #za = 5
+		IF #za > 243 THEN zdir = 0 : #za = 243
+		IF gdir = 1 THEN
+			#zb = #zb + 2 : #zc = #zc + 2 : #zd = #zd + 2 : #ze = #ze + 2
+		ELSE
+			#zb = #zb - 2 : #zc = #zc - 2 : #zd = #zd - 2 : #ze = #ze - 2
+		END IF
+		IF #ze > 243 THEN gdir = 0
+		IF #zb < 5 THEN gdir = 1
 	END IF
-	IF #ze > 243 THEN gdir = 0
-	IF #zb < 5 THEN gdir = 1
 	ac = ac + 1
 	IF ac >= 3 THEN ac = 0 : af = 1 - af
 	pf = 0
@@ -740,7 +871,12 @@ cheat_sel:
 	lv = dg
 	IF lv = 0 THEN lv = 1
 	CLS
-	END
+	PRINT AT 12 * 32 + 10, "GHOSTS 1-4"
+	GOSUB readdig
+	ng = dg
+	IF (ng < 1) OR (ng > 4) THEN ng = 4
+	CLS
+	' fall through into tt_done (shared exit; avoids a 2nd END in this PROCEDURE)
 tt_done:
 	GOSUB clearsprites
 	CLS
@@ -786,6 +922,8 @@ dot_tile:
 	DATA BYTE $00,$00,$00,$18,$18,$00,$00,$00
 pellet_tile:
 	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+blank_tile:
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 door_tile:
 	DATA BYTE $00,$00,$00,$FF,$FF,$00,$00,$00
 cross_tile:
@@ -988,6 +1126,23 @@ game_sprites:
 	BITMAP "....XXXXXX......"
 	BITMAP "...XXXX........."
 	BITMAP "...X..X........."
+	BITMAP "................"
+	' ghost frame 2 (def 10, f=40) -- walk cycle: body 1px taller, feet 1px lower
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".....XXXX......."
+	BITMAP "...XXXXXXXX....."
+	BITMAP "..XX.XX.XX.XX..."
+	BITMAP "..XX.XX.XX.XX..."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XXXXXXXXXXXX.."
+	BITMAP "..XX.XX.XX.XX..."
+	BITMAP "...X..X..X..X..."
 	BITMAP "................"
 
 	' ============================================================
