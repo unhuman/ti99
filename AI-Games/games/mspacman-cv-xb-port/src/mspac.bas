@@ -609,7 +609,7 @@ nextlevel:	PROCEDURE
 	FOR j = 1 TO 4
 		gs(j) = 0 : gd(j) = 4
 	NEXT j
-	sx = 121 : sy = 141 : dd = 0 : cd = 4 : hd = 4
+	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
 	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : #mt = 150
 	GOSUB hud
 	END
