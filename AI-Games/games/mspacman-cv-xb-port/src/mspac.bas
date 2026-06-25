@@ -113,17 +113,20 @@ main:
 
 		pr = (sy + 11) / 8 : pc = (sx + 11) / 8
 
-		' ghosts (DIAG: ng = active count, keys 1-4)
+		' ghosts (ne is set inside the routine if any ghost is 'eyes')
+		ne = 0
 		FOR gi = 1 TO ng
 			GOSUB ghost
 		NEXT gi
 
-		' dead-ghost eyes return to the pen at double speed
-		xp = 2
-		FOR gi = 1 TO ng
-			IF gs(gi) = 2 THEN GOSUB ghost
-		NEXT gi
-		xp = 0
+		' dead-ghost eyes return to the pen at double speed -- only run when some exist
+		IF ne = 1 THEN
+			xp = 2
+			FOR gi = 1 TO ng
+				IF gs(gi) = 2 THEN GOSUB ghost
+			NEXT gi
+			xp = 0
+		END IF
 
 		' ghost overdrive: extra move pass at high levels (faster than Ms. Pac-Man)
 		IF le > 9 THEN
@@ -170,7 +173,7 @@ main:
 		IF (#fc % 16) = 8 THEN DEFINE CHAR 152,1,blank_tile
 
 		' roaming fruit (XB 433-434)
-		IF fa = 1 THEN IF (#fc % 4) = 0 THEN GOSUB movefruit
+		IF fa = 1 THEN IF (#fc % 3) = 0 THEN GOSUB movefruit
 		IF fa = 1 THEN
 			SPRITE 5, fwb, fx - 1, 28, ffl		' re-issue every frame so it doesn't strobe
 			IF sx >= fx THEN dx = sx - fx ELSE dx = fx - sx
@@ -449,7 +452,7 @@ gh_draw:
 		gcx = 4
 		IF #ft <= 48 THEN IF (#ft % 8) < 4 THEN gcx = 15
 	END IF
-	IF gsi = 2 THEN gcx = 15 : gfr = 24
+	IF gsi = 2 THEN gcx = 15 : gfr = 24 : ne = 1	' ne flags that eyes exist this frame
 	SPRITE gi, by - 2, bx - 1, gfr, gcx
 	' Pac <-> ghost collision, folded in here (normal pass only; uses bx/by scalars)
 	IF xp = 0 THEN
@@ -589,7 +592,7 @@ nextlevel:	PROCEDURE
 	FOR dr = 1 TO 4
 		DEFINE COLOR 128,16,wall_white
 		FOR j = 1 TO 8 : WAIT : NEXT j
-		DEFINE COLOR 128,16,wall_color
+		GOSUB setwc
 		FOR j = 1 TO 8 : WAIT : NEXT j
 	NEXT dr
 	FOR j = 1 TO 4
@@ -697,7 +700,7 @@ eatfruit:	PROCEDURE
 	' --- short start jingle, played once when a game begins (C-E-G-C arpeggio) ---
 startjingle:	PROCEDURE
 	RESTORE jingle_data
-	FOR i = 1 TO 8
+	FOR i = 1 TO 12
 		READ BYTE v
 		READ BYTE h1
 		READ BYTE h2
@@ -719,6 +722,10 @@ jingle_data:
 	DATA BYTE 113,143,191,8
 	DATA BYTE 107,143,170,8
 	DATA BYTE 85,107,127,8
+	DATA BYTE 95,113,143,8
+	DATA BYTE 107,143,170,8
+	DATA BYTE 127,160,214,8
+	DATA BYTE 113,143,191,8
 	DATA BYTE 95,113,143,8
 	DATA BYTE 107,143,214,18
 
@@ -776,6 +783,7 @@ pickmaze:	PROCEDURE
 	' --- draw maze + colours + count dots (XB 800-832) ---
 drawmaze:	PROCEDURE
 	CLS
+	GOSUB setwc			' colour first, so walls paint in the right colour (no recolour flash)
 	IF mz = 1 THEN RESTORE maze1
 	IF mz = 2 THEN RESTORE maze2
 	IF mz = 3 THEN RESTORE maze3
@@ -798,6 +806,14 @@ drawmaze:	PROCEDURE
 		NEXT i
 	NEXT mr
 	IF ty2 = 0 THEN ty2 = ty1
+	END
+
+	' per-maze wall + cross colour, copied from the XB original (WC: 14,6,10,5 -> CV 13,5,9,4)
+setwc:	PROCEDURE
+	IF mz = 1 THEN DEFINE COLOR 128,16,wall_c1 : DEFINE COLOR 168,1,wall_c1
+	IF mz = 2 THEN DEFINE COLOR 128,16,wall_color : DEFINE COLOR 168,1,wall_color
+	IF mz = 3 THEN DEFINE COLOR 128,16,wall_c3 : DEFINE COLOR 168,1,wall_c3
+	IF mz = 4 THEN DEFINE COLOR 128,16,wall_c4 : DEFINE COLOR 168,1,wall_c4
 	END
 
 	' --- HUD (XB 708-709) ---
@@ -952,6 +968,37 @@ wall_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+
+	' maze1 walls: magenta (XB WC=14 -> CV 13) on black
+wall_c1:
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	' maze3 walls: light red (XB WC=10 -> CV 9) on black
+wall_c3:
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91,$91
+	' maze4 walls: dark blue (XB WC=5 -> CV 4) on black
+wall_c4:
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41,$41
 
 	' Sprites (16x16) as BITMAP (CVBasic arranges them into VRAM order).
 	' Real TI art, from the XB CALL CHAR quadrant hex rebuilt as visual rows.

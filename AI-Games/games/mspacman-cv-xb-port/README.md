@@ -18,21 +18,21 @@ Compiles clean: `cvbasic --ti994a mspac.bas mspac.a99` (then `xas99` + `linktica
 
 ## Known simplifications (not yet faithful)
 - **Sound** uses an SFX-duration timer (CVBasic `SOUND` plays until silenced): dot waka, frighten
-  warble, descending ghost-eat sweep, fruit chime + roam blip, and a short start jingle (C-E-G-C)
-  played once when a game begins.
+  warble, descending ghost-eat sweep, fruit chime + roam blip, an eye "pew" on turns, and a 3-voice
+  original start jingle (12 chords, melody + harmony + bass) played once when a game begins.
 - **Scoring** (HUD appends a `0`, so score = `#pt`×10): dot 10, power pellet 50, ghosts
   200/400/800/1600, fruit 100/200/500/700/1000/2000/5000, extra life at 10000 (three-bell sound).
 - **Presentation:** data-driven start tune (`jingle_data`), 1-second "get ready" hold (`ready`)
   after a respawn and after the tune, blinking energizers (char 152 toggled), and a 2-frame ghost
   walk animation (sprite defs 5 and 10, alternated by `#fc`). Game over clears all sprites.
-- **Per-maze wall colour** — all mazes render in one colour. (Recolouring needs four
-  `DEFINE COLOR` tables or a verified colour-table address; the earlier VRAM-poke hack corrupted
-  the display and was removed.)
 - Sprite draw offset (`sy-2, sx-1`) may need a ±1 tweak after eyeballing on hardware.
 
 ## Implemented since the first port
 - Per-level **fruit shapes** (cherry…banana) via runtime `DEFINE SPRITE`; **level-clear flash**
   (sprites + sound cleared first); **death spin** animation; **8-3-8** title cheat (LEVEL/LIVES select).
+- **Per-maze wall colour** (`setwc` + four `DEFINE COLOR` tables, walls 128–143 and the `+` cross):
+  maze 1 magenta, 2 light blue, 3 light red, 4 dark blue — the XB `WC` palette (TI 14/6/10/5 →
+  CV 13/5/9/4). Applied in `drawmaze` and restored during the level-clear flash.
 - Ghosts: **reverse-on-energizer** (except already-scared), no reverse while scared, no reverse
   while exiting the pen (`gx<>121 AND gy<>77`).
 - Ghost speed: distinct **Blinky > Pinky > Inky > Clyde** ranking via per-ghost caps `spc()`
