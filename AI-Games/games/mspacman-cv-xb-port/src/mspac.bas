@@ -343,9 +343,9 @@ frighten:	PROCEDURE
 	' --- one ghost (XB 999-1052) : gi global ---
 ghost:	PROCEDURE
 	IF rg = 1 THEN RETURN		' game over: don't move/draw ghosts (sprites stay cleared)
-	IF (dg = gi) AND (gs(gi) <> 0) THEN dg = 0
-	IF (gs(gi) = 1) AND (#ft = 0) THEN gs(gi) = 0
-	gsi = gs(gi)			' cache state in a scalar for the hot per-frame paths
+	gsi = gs(gi)			' load this ghost's state into a scalar ONCE; hot path reads gsi, not gs(gi)
+	IF (dg = gi) AND (gsi <> 0) THEN dg = 0
+	IF (gsi = 1) AND (#ft = 0) THEN gs(gi) = 0 : gsi = 0
 
 	bx = gx(gi) : by = gy(gi) : bd = gd(gi)
 	' overdrive extra pass: only chasing ghosts in the open (not fright/eyes/tunnel)
@@ -365,15 +365,15 @@ ghost:	PROCEDURE
 		IF ec >= rt(gi) THEN rl = 1
 		IF #fc >= tm(gi) THEN rl = 1
 		IF (bx=121) AND (by=93) THEN
-			IF (gs(gi)=2) OR ((rl=1) AND (gs(gi)=0) AND ((dg=0) OR (dg=gi))) THEN GOTO gh_pen
+			IF (gsi=2) OR ((rl=1) AND (gsi=0) AND ((dg=0) OR (dg=gi))) THEN GOTO gh_pen
 		END IF
-		IF (rl=1) AND ((gs(gi)=0) OR (dg=gi)) AND (bx=121) AND (by=77) AND (bd=1) THEN
+		IF (rl=1) AND ((gsi=0) OR (dg=gi)) AND (bx=121) AND (by=77) AND (bd=1) THEN
 			bd = RANDOM(2) + 3
 			dg = 0
 			GOTO gh_move
 		END IF
-		IF (gs(gi)=2) AND (bx=121) AND (by=77) THEN bd = 2 : GOTO gh_move
-		IF (gs(gi)=2) AND (bx=117) AND (by=77) THEN bd = 4 : GOTO gh_move
+		IF (gsi=2) AND (bx=121) AND (by=77) THEN bd = 2 : GOTO gh_move
+		IF (gsi=2) AND (bx=117) AND (by=77) THEN bd = 4 : GOTO gh_move
 	END IF
 
 	ax = bx + 3 : ay = by + 3
@@ -438,7 +438,7 @@ gh_move:
 	GOTO gh_draw
 
 gh_pen:
-	IF gs(gi) = 2 THEN gs(gi) = 0 : gsi = 0
+	IF gsi = 2 THEN gs(gi) = 0 : gsi = 0
 	dg = gi : bd = 1
 	GOTO gh_move
 
@@ -466,8 +466,8 @@ gh_draw:
 gtarget:	PROCEDURE
 	flee = 0
 	#tgr = pr : #tgc = pc
-	IF gs(gi) = 1 THEN flee = 1 : RETURN
-	IF gs(gi) = 2 THEN #tgr = 11 : #tgc = 16 : RETURN
+	IF gsi = 1 THEN flee = 1 : RETURN
+	IF gsi = 2 THEN #tgr = 11 : #tgc = 16 : RETURN
 	IF mo = 0 THEN #tgr = sr(gi) : #tgc = sc(gi) : RETURN
 	IF (gi=2) AND (cd=1) THEN #tgr = pr - 4
 	IF (gi=2) AND (cd=2) THEN #tgr = pr + 4
