@@ -180,7 +180,8 @@ bow, animation frames, direction-facing) is a later step.
 `M$(24)` maze cell cache (1 char/cell, col = screen col); `RW$` row accumulator while rendering;
 `P$(24)`/`H$(24)` per-cell open-exits masks (Pac / ghost+fruit, both loaded from one baked `DATA`
 table, `'A'`–`'P'` = mask `+65`); `MK` mask read for decode; `OP(0..4)` decoded open flags per
-direction (`OP(0)` unused, stays 0); `LMZ` last-loaded maze (skip reload when unchanged).
+direction (`OP(0)` unused, stays 0); `LMZ` last-loaded maze (skip reload when unchanged);
+`GST` scalar cache of `GS(GI)` for the ghost movement loop (set at `999`, kept in sync at `1001`/`1051`).
 
 ## 6. Sound
 Eat-dot blip, power-pellet, eat-ghost, death, fruit, level-start jingle — via `CALL SOUND`

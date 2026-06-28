@@ -177,14 +177,17 @@ dot-counter + timer-fallback pen release; the X=121 exit lane; greedy chase AI (
 turn toward Ms. Pac-Man's cell, no reversing except dead ends); Pac-Man↔ghost collision dispatch
 (normal ghosts end the program — no lives yet; Step 6 adds frightened/eyes handling);
 `CALL LINK("FLICK")` sprite rotation; instant-reversal for Ms. Pac-Man.
-**Deferred (not debt — just not started yet):** **scatter mode + the 4 distinct ghost
-personalities** (Pinky/Inky/Sue target tiles, periodic scatter-to-corners); **wrap-aware chase
-targeting** — `DS(DR)` (line 728)
-is plain `(TR-PR)^2+(TC-PC)^2` using screen columns 3-30, so the two tunnel mouths (C≈3 and C≈30)
-look 27 columns apart even though they're adjacent via the wrap. A ghost near one mouth therefore
-reads Ms. Pac-Man wrapping to the other mouth as "ran far away" and routes back into the maze
-instead of following through the tunnel. Fix is a wrap-aware distance term for tunnel-row
-candidates — bundle with the scatter/personality targeting rework above.
+**Since implemented:** scatter mode + the 4 distinct ghost personalities (Pinky/Inky/Sue target
+tiles, periodic scatter-to-corners) — see "Ghost personalities + scatter/chase modes" below.
+
+**Intentionally *not* wrap-aware (this is correct arcade behavior, not a bug):** the targeting
+distance `DS(DR)` (line `1028`) is plain `(TR-TGR)^2+(TC-TGC)^2` in screen-column space, with **no
+knowledge of the tunnel wrap** — so a ghost treats Ms. Pac-Man at the *opposite* tunnel mouth as
+"far away" and won't dive through the tunnel after her. That matches the original arcade exactly: the
+real ghosts use straight-line distance to the target tile with no pathfinding and no wrap awareness
+(see the Pac-Man Dossier). Tunnels are an escape because ghosts **slow to 50% inside them**
+(line `1006`), not because the AI refuses to chase — and making the distance wrap-aware would make
+our ghosts *smarter than the arcade*. So this is deliberately left naïve; do **not** "fix" it.
 
 **FLICK sprite-overlap priority** — `CALL LINK("FLICK")` rotates which physical sprite slot each
 of our 6 logical sprites occupies so everyone gets a turn on-screen, but that rotation also
@@ -578,6 +581,23 @@ write moved out of the loop to a single post-loop call. (The title attract loop'
 - **Behaviorally identical:** collision (`427`) reads the `GX()/GY()` arrays, not sprite positions,
   and the batched LOCATE runs at the same point in the frame (after all movement, before collision),
   so display is pixel-for-pixel the same as the per-sprite version.
+
+### Performance — scalar-cached ghost state in the movement loop
+Another cheung tip: **array element access is slower than a scalar** in compiled XB (each `GS(GI)`
+recomputes an index + bounds before the load). The ghost's *position* was already scalar-cached
+(`1005 BX=GX(GI)::BY=GY(GI)::BD=GD(GI)`, stored back at `1048`); the remaining attribute read many
+times per ghost per frame is its **state** `GS()`. So the movement routine now reads `GST=GS(GI)`
+**once** at entry (`999`) and uses the scalar `GST` for all the state tests (`1001`–`1011`, plus the
+personality sub `1180` at `1182`/`1183`, which is only reached from inside this routine). The two
+places that *change* state here (`1001` fright-expiry, `1051` eyes-respawn) write both `GS(GI)` **and**
+`GST` so they stay in sync. Behavior-identical.
+- **Scope matters:** only the movement routine (`GOSUB 999`) and `1180` use `GST`. The collision
+  dispatch (`780`/`782`/`795`), the pellet-frighten loop (`775`–`777`, `GS(GJ)`), the scatter/chase
+  reversal (`1173`/`1174`, `GS(J)`) and the reset loops (`1115`/`1142`) run in **different passes**
+  with a different actor index, so they correctly keep `GS(...)` — `GST` would be stale there.
+- **Magnitude:** small (a micro-opt, not a lever like `MOTION`/`GCHAR`/load) — the big wins were
+  batched `LOCATE`, the baked openness `DATA`, and the position scalars already in place. This just
+  trims the most-repeated remaining array read.
 
 ### Ghost personalities + scatter/chase modes
 The greedy "pick the open non-reversing turn that minimizes distance to a target tile" pathfinder
