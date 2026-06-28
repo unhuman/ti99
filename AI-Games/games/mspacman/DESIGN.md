@@ -43,7 +43,11 @@ carries a small bow on her head (same color as her body — TI sprites are singl
 **Movement — `CALL LOCATE` only, never `CALL MOTION`.** All sprites are created with **zero
 velocity** (`CALL SPRITE(...,0,0)`): that registers them "in motion" so the flicker routine sees
 them, but they never drift. We set position every frame with `CALL LOCATE(#n,dotrow,dotcol)` —
-fully deterministic, no runaway sprites.
+fully deterministic, no runaway sprites. **All five actors are repositioned in a single batched
+`CALL LOCATE`** (one call, five `#sprite,row,col` triplets) at the end of the ghost loop (line
+`425`), not per-sprite — fewer per-frame `CALL` round-trips (§5A), and fewer non-atomic writes for
+FLICK to interleave with. Pattern/colour are left as their existing change-gated writes (see
+README "batched per-frame `CALL LOCATE`").
 
 **Coordinate mapping.** Maze cell `(R,C)` in screen char coords → sprite top-left in dot (pixel)
 coords:
@@ -100,6 +104,24 @@ per-cell screen mutation during play is the dot-eat at `753`, which updates `M$(
 compiles to garbage, see `CLAUDE.md` §2). `GOSUB 800` rebuilds it at init and every level
 advance. Rows 1–2 (HUD) are space-filled at `820` so an out-of-bounds read never hits a null string.
 
+**Openness cache — `P$(24)`/`H$(24)`, one open-exits mask per cell (4 wall probes → 1 lookup).**
+Layered on `M$()`: instead of probing four neighbors at each intersection, each cell stores a 4-bit
+mask of its legal exits (bit0=up,1=down,2=left,3=right; `1`=enterable). The masks are **precomputed
+offline** by `assets/gen_openness.py` (replicates the `GOSUB 700`/`760` wall rules over each maze,
+emits one `'A'`–`'P'` char per cell = mask `+65`) and stored as `DATA` (`9401`–`9496`, 24 rows ×
+4 mazes). Maze load is a pure `READ` (`832`–`835`: `ON MZ GOSUB 8011…8014` to `RESTORE` the block,
+then `READ P$(R) :: H$(R)=P$(R)`) — no per-cell computation, instant. **One table for both:** the
+generator verified that Pac's mask (door + pen excluded) and the ghosts' (door only) are identical
+for every cell an actor can occupy (the only differences are walls/door/pen-interior cells Pac never
+stands on — the pen is fully enclosed, so rule `706` is redundant), so we bake just the ghost mask
+into both `P$` and `H$`. `700`/`760` are kept only as the human-readable spec the generator mirrors;
+they have no callers. Earlier this table was *built* at runtime (GOSUB-per-probe → inline →
+row-buffered) but even the fastest build stalled the interpreted load, hence the offline bake.
+Per frame a probe is `MK=ASC(SEG$(P$(R)/H$(R),C,1)) :: GOSUB 768` (`768` subtracts the `65` offset,
+then unpacks `OP(1..4)`), used by Pac (`360`/`362`/`364`/`380`), the ghost pathfinder (`1019`) and
+fruit (`735`/`737`). Static after load. Re-run the generator and repaste the `9401`+ block whenever a
+maze's walls change. See README "Performance — directional-openness cache" for full rationale.
+
 **Ms. Pac-Man moves in two 1px sub-steps per frame** (lines 315/350–392 — same 2px/frame cruise,
 but 1px resolution lets her sit at any offset). Each sub-step: if she's exactly centered she eats,
 takes a square turn / wall-stop, and steps 1px; otherwise she may **corner-cut**.
@@ -155,7 +177,10 @@ bow, animation frames, direction-facing) is a later step.
 `PR,PC` Pac cell; `PD` Pac direction (0=none,1=up,2=left,3=right,4=down); per-ghost `GR(),GC(),GD()`;
 `PT` score/points (`SC` is compiler-reserved — see `CLAUDE.md` §6 — so we use `PT`); `LV` lives;
 `DT` dots remaining; `K,S` input; `DR,DC` computed pixel coords; `G` cell code (from the `M$()` cache);
-`M$(24)` maze cell cache (1 char/cell, col = screen col); `RW$` row accumulator while rendering.
+`M$(24)` maze cell cache (1 char/cell, col = screen col); `RW$` row accumulator while rendering;
+`P$(24)`/`H$(24)` per-cell open-exits masks (Pac / ghost+fruit, both loaded from one baked `DATA`
+table, `'A'`–`'P'` = mask `+65`); `MK` mask read for decode; `OP(0..4)` decoded open flags per
+direction (`OP(0)` unused, stays 0); `LMZ` last-loaded maze (skip reload when unchanged).
 
 ## 6. Sound
 Eat-dot blip, power-pellet, eat-ghost, death, fruit, level-start jingle — via `CALL SOUND`

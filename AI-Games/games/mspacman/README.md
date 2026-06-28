@@ -197,10 +197,13 @@ flicker scheme is ever justified.
 **FLICK-induced glitches even at ≤4 sprites/line** — per `SpriteFlickerRoutine.pdf`, FLICK's
 interrupt handler unconditionally rewrites/rotates the sprite attribute table in VDP RAM on
 *every* VBLANK, regardless of how many sprites actually share a scanline. Our main loop also
-writes that same table up to 5x/frame (`CALL LOCATE` for Ms. Pac-Man + 4 ghosts, lines 420/748).
-The VDP address pointer is a single stateful register and a multi-byte `CALL LOCATE` write isn't
-atomic — if the VBLANK interrupt lands mid-write, the interrupted write can land at the wrong VDP
-address for that frame, producing a brief glitch. This looks like an inherent property of this
+writes that same table — now in **one batched `CALL LOCATE`** per frame that positions all five
+actors at once (Ms. Pac-Man + 4 ghosts, end of line `425`; see "Performance — batched per-frame
+`CALL LOCATE`" below). The VDP address pointer is a single stateful register and a multi-byte
+`CALL LOCATE` write isn't atomic — if the VBLANK interrupt lands mid-write, the interrupted write
+can land at the wrong VDP address for that frame, producing a brief glitch (batching into one call
+reduces the number of separate writes the interrupt can interleave with, but doesn't make the write
+atomic). This looks like an inherent property of this
 "proof of concept" interrupt routine rather than something fixable in `MSPAC.ti99` itself
 (`CALL LINK("FREEZE")`/`("THAW")` don't apply here — per `XB256.pdf` p.10 they only pause/resume
 XB256's *automatic* velocity-driven sprite motion, and all our sprites are created with `,0,0`
@@ -496,6 +499,50 @@ checks, fruit, and the pellet-collision re-check) — every `GCHAR` is a slow VD
   out-of-bounds probe never reads a null string. This is independent of the (separate) `MOTION`
   rework still under consideration.
 
+### Performance — directional-openness cache (4 wall probes → 1 lookup)
+Per a TI-community tip (cheung): instead of probing the four neighbor cells for walls at every
+intersection, **encode each cell's legal exits once** so an actor reads its options in a single
+lookup — a string-array cache (no `GCHAR`), with the masks **precomputed offline and baked into
+`DATA`** so maze load is a pure `READ`.
+One **open-exits mask** per cell: a char whose low 4 bits are bit0=up, bit1=down, bit2=left,
+bit3=right (`1` = that neighbour is enterable). `P$(24)` (Ms. Pac-Man) and `H$(24)` (ghosts/fruit)
+mirror `M$()` — char position `C` = screen column.
+
+- **Baked into `DATA` offline, not computed at runtime.** Earlier versions *built* the tables at
+  each maze load — first by calling `GOSUB 700`/`760` per cell×direction (~6 K `GOSUB`s, a
+  multi-second stall), then inlined, then with rolling row-buffers. Even the fastest build was too
+  slow interpreted, so the masks are now **precomputed offline** by `assets/gen_openness.py` (reads
+  the maze `DATA`, replicates the exact `700`/`760` wall rules, emits one `'A'`–`'P'` char per cell =
+  mask `+65`) and stored as 96 `DATA` lines: `9401`–`9424` (maze 1), `9425`–`9448` (2), `9449`–`9472`
+  (3), `9473`–`9496` (4). **Load is now a pure `READ`** (`832`–`835`): `ON MZ GOSUB 8011…8014`
+  `RESTORE`s the right block, then `FOR R=1 TO 24 :: READ P$(R) :: H$(R)=P$(R)`. No per-cell
+  computation at all — effectively instant interpreted *and* compiled. (`MZ=LMZ` still short-circuits
+  same-maze reloads; the per-frame decode `768` subtracts the `65` offset before unpacking.)
+- **One table serves both Pac and ghosts.** The generator confirmed (run it — it prints the diff)
+  that the Pac mask `P` (door + pen-interior excluded) and ghost mask `H` (door only) are
+  **identical for every cell any actor can occupy**, in all 4 mazes: the only `P≠H` cells are the
+  ~20 per maze that are walls, the door, or pen-interior — none of which Pac ever stands on (the pen
+  is fully enclosed, so no corridor is adjacent to it; rule `706` is redundant). So we bake just the
+  ghost mask `H` and load it into both `P$` and `H$`. `GOSUB 700`/`760` are kept only as the
+  human-readable spec the generator mirrors — they now have **no callers**.
+- **Per-frame reads → one `SEG$` + a decode.** Each hot path does `MK=ASC(SEG$(P$(R)/H$(R),C,1))`
+  then `GOSUB 768`, which subtracts `65` and unpacks the four bits into `OP(1..4)`:
+  - Ms. Pac-Man turn/continue (`360`/`362`/`364`) and corner-cut (`380`) — `OP(DD)`/`OP(CD)`,
+  - ghost pathfinder (`1019`, replacing the per-direction `GOSUB 760` at the old `1027`),
+  - roaming fruit (`735`/`737`).
+  The guards are written compound (`IF DD<>0 AND OP(DD)=1 …`), which is also the §2-preferred form;
+  they read `OP(0)` when the direction is `0`, which is safe because the program is `OPTION BASE 0`
+  (so `OP(0)` exists and stays `0`).
+- **Net:** the four-ghost intersection frame drops from ~16 `GOSUB 760` (each a `SEG$`+several
+  `IF`s) to **4 single-`SEG$` lookups + 4 decodes**; Pac's two probes/sub-step likewise collapse.
+- **Cost:** ~1.6 KB of string space for the two (identical) tables, plus ~3–4 KB of program space
+  for the 96 `DATA` lines (offset by deleting the runtime build + its `PW/UA/CA/DA` arrays). If the
+  compiled `-X` ever overruns the program budget, reclaim it by deleting the dead `700`/`760` (~0.4
+  KB) or by dropping `P$` and pointing Pac's reads at `H$` (the tables are identical).
+- **Regenerating:** if a maze's walls change, re-run `assets/gen_openness.py` (Windows Python —
+  e.g. `C:\cygwin64\bin\python3.9.exe gen_openness.py` from PowerShell) and paste its `9401`+ `DATA`
+  block over the old one. The maze `DATA` and the openness `DATA` must stay in sync.
+
 ### Performance — removed the per-frame `DELAY` floor
 Line `430` previously opened with `CALL LINK("DELAY",25)` — a fixed 25 ms wait **every frame**. On
 real hardware, frame *compute* is already the bottleneck, so that wait was pure overhead added on
@@ -508,6 +555,29 @@ eat-ghost warble `797`, jingles) use `CALL SOUND` ms durations and are unaffecte
 - **If still too fast on hardware:** reintroduce pacing as a frame-lock — `CALL LOAD(-1,N)` once at
   startup + `CALL LINK("SYNC")` at the loop bottom — which pins each pass to N/60 s on every machine
   (no added wait when compute already exceeds N/60), rather than a fixed per-frame delay.
+
+### Performance — batched per-frame `CALL LOCATE` (one call, five sprites)
+Per a TI-community tip (cheung, from Pacman++): **grouping per-frame sprite-table writes into a
+single `CALL` cuts overhead.** XB's `CALL LOCATE` accepts multiple `#sprite,row,col` triplets in one
+call, so the five separate per-frame position writes — Ms. Pac-Man's (was line `420`) plus the four
+ghosts' (was the in-loop `CALL LOCATE(#(GI+1),…)` at the old `1049`) — are now **one** call appended
+to the ghost loop at line `425`:
+`CALL LOCATE(#1,SY,SX,#2,GY(1),GX(1),#3,GY(2),GX(2),#4,GY(3),GX(3),#5,GY(4),GX(4))`. The ghost AI
+still updates `GX()/GY()/GD()` inside the `GOSUB 999` loop exactly as before; only the *display*
+write moved out of the loop to a single post-loop call. (The title attract loop's five LOCATEs at
+`1217` were likewise folded into one.)
+- **Why `CALL LOCATE`, not a per-frame `CALL SPRITE`** (the stronger form of the tip): our
+  patterns/colors are already **change-gated** — Pac's pattern writes only when it changes (`LP`
+  cache, `424`), ghost *names* stay `116` (feet animated by redefining chars 117/119, never a
+  per-frame `CALL PATTERN`), and ghost colors change only on state transitions. A per-frame
+  `CALL SPRITE` would re-write pattern+color for all five every frame — *adding* writes that today
+  almost never fire. The genuine every-frame cost is the five position writes, so batching those is
+  the win without disturbing the documented FLICK-race fixes.
+- **FLICK interaction:** fewer separate (non-atomic) attribute writes for the VBLANK interrupt to
+  interleave with — strictly better for the race described above, though still not atomic.
+- **Behaviorally identical:** collision (`427`) reads the `GX()/GY()` arrays, not sprite positions,
+  and the batched LOCATE runs at the same point in the frame (after all movement, before collision),
+  so display is pixel-for-pixel the same as the per-sprite version.
 
 ### Ghost personalities + scatter/chase modes
 The greedy "pick the open non-reversing turn that minimizes distance to a target tile" pathfinder
