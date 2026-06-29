@@ -8,7 +8,16 @@ Compiles clean: `cvbasic --ti994a mspac.bas mspac.a99` (then `xas99` + `linktica
 `../mspacman-cv/README.md` for the full build chain).
 
 ## Translation map (XB → CVBasic)
-- `M$()` wall cache → `VPEEK`/`VPOKE` of the screen (VRAM `$1800`); `scr(r,c)` = `DEF FN`.
+- `M$()` wall cache → `mc(768)` RAM mirror (one byte/cell), kept in sync with `VPOKE`s to the
+  screen (VRAM `$1800`, `scr(r,c)` = `DEF FN`); wall/dot probes read `mc()`, never `VPEEK`.
+- `P$()`/`H$()` openness cache → `om(768)`, a 4-bit per-cell mask (1=up 2=down 4=left 8=right
+  passable). The ghost and roaming-fruit direction loops read `om()` once per decision and
+  bit-test it, instead of calling `wallchk2` four times. Pac-Man stays on `wallchk` (it carries an
+  extra row-13 pen rule the ghost mask doesn't). The mask is built inline in `drawmaze` by
+  iterating the 22×28 maze cells with direct `mc[]` reads (no PROCEDURE calls) — fast enough to
+  be imperceptible. An offline generator `assets/gen_open_cv.py` exists for cross-checking; the
+  baked DATA BYTE approach was abandoned because it used ~2.5 KB of ROM that pushed the
+  4-bank 32 KB cart over its limit and truncated the fruit sprite BITMAPs.
 - `CALL LOCATE/SPRITE` → `SPRITE n, sy-2, sx-1, frame, colour`; TI colour N → CVBasic N-1.
 - `::` → `:`; XB block `IF` clauses → CVBasic `IF…THEN`/`END IF`.
 - Ghost target distance: XB's `SG*dist` signed-compare → a `flee` flag (max vs min distance);

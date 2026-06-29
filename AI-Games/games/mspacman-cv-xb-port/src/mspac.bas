@@ -34,6 +34,7 @@
 	DIM gx(5), gy(5), gd(5), op(5), rt(5), tm(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5)
 	DIM #ds(5)
 	DIM mc(768)		' RAM mirror of maze cells -> wall/dot checks avoid VPEEK
+	DIM om(768)		' per-cell openness mask (1=up 2=down 4=left 8=right open) for ghosts/fruit
 	DIM spc(5)		' per-ghost speed caps (fixed Blinky>Pinky>Inky>Clyde ranking)
 
 	BORDER 1
@@ -390,6 +391,8 @@ ghost:	PROCEDURE
 	GOSUB gtarget
 	ct = 0
 	IF flee = 0 THEN #bs = 60000 ELSE #bs = 0
+	mk = om((r - 1) * 32 + (c - 1))		' openness mask: 1 read replaces 4 wallchk2 calls
+	bv = 1					' bit value for the current dr (1,2,4,8); doubles each pass
 	FOR dr = 1 TO 4
 		IF dr <> rev THEN
 			tr = r : tc = c
@@ -397,7 +400,8 @@ ghost:	PROCEDURE
 			IF dr = 2 THEN tr = r + 1
 			IF dr = 3 THEN tc = c - 1
 			IF dr = 4 THEN tc = c + 1
-			GOSUB wallchk2
+			wl = 1
+			IF (mk AND bv) <> 0 THEN wl = 0
 			IF wl = 0 THEN
 				#dd1 = tr - #tgr : #dd2 = tc - #tgc
 				#qd = #dd1 * #dd1 + #dd2 * #dd2		' squared Euclidean
@@ -408,16 +412,15 @@ ghost:	PROCEDURE
 				END IF
 			END IF
 		END IF
+		bv = bv * 2
 	NEXT dr
 	' dead-end: only non-reverse option blocked -> reverse (chase only)
 	IF (ct = 0) AND (rev > 0) AND (flee = 0) THEN
-		tr = r : tc = c
-		IF rev = 1 THEN tr = r - 1
-		IF rev = 2 THEN tr = r + 1
-		IF rev = 3 THEN tc = c - 1
-		IF rev = 4 THEN tc = c + 1
-		GOSUB wallchk2
-		IF wl = 0 THEN bd = rev : ct = 1
+		bvr = 1
+		IF rev = 2 THEN bvr = 2
+		IF rev = 3 THEN bvr = 4
+		IF rev = 4 THEN bvr = 8
+		IF (mk AND bvr) <> 0 THEN bd = rev : ct = 1
 	END IF
 	IF ct = 0 THEN bd = 0
 
@@ -654,19 +657,23 @@ movefruit:	PROCEDURE
 	IF bd = 3 THEN rev = 4
 	IF bd = 4 THEN rev = 3
 	nb = 0 : #bs = 60000
+	mk = om((r - 1) * 32 + (c - 1))		' same openness mask as the ghosts (fruit shares wallchk2 rules)
+	bv = 1
 	FOR dr = 1 TO 4
 		tr = r : tc = c
 		IF dr = 1 THEN tr = r - 1
 		IF dr = 2 THEN tr = r + 1
 		IF dr = 3 THEN tc = c - 1
 		IF dr = 4 THEN tc = c + 1
-		GOSUB wallchk2
+		wl = 1
+		IF (mk AND bv) <> 0 THEN wl = 0
 		IF (wl=0) AND (dr<>rev) THEN
 			nb = nb + 1
 			#dd1 = tr : #dd1 = #dd1 - ftr : #dd2 = tc : #dd2 = #dd2 - ftc
 			#qd = #dd1*#dd1 + #dd2*#dd2
 			IF #qd < #bs THEN #bs = #qd : bd = dr
 		END IF
+		bv = bv * 2
 	NEXT dr
 	IF nb = 0 THEN bd = rev
 mf_step:
@@ -806,6 +813,33 @@ drawmaze:	PROCEDURE
 		NEXT i
 	NEXT mr
 	IF ty2 = 0 THEN ty2 = ty1
+	' openness mask: inline build from mc[] (wallchk2 rule: walls 128-143, pen at row 12 cols 16-17)
+	FOR mr = 1 TO 22
+		FOR i = 1 TO 28
+			r = mr + 2 : c = i + 2
+			mk = 0
+			g = mc((r - 1) * 32 + (c - 1))
+			IF (g < 128) OR (g > 143) THEN
+				g = mc((r - 2) * 32 + (c - 1))
+				IF (g < 128) OR (g > 143) THEN
+					IF (r <> 13) OR (c <= 15) OR (c >= 18) THEN mk = 1
+				END IF
+				g = mc(r * 32 + (c - 1))
+				IF (g < 128) OR (g > 143) THEN
+					IF (r <> 11) OR (c <= 15) OR (c >= 18) THEN mk = mk + 2
+				END IF
+				g = mc((r - 1) * 32 + (c - 2))
+				IF (g < 128) OR (g > 143) THEN
+					IF (r <> 12) OR (c <= 16) OR (c >= 19) THEN mk = mk + 4
+				END IF
+				g = mc((r - 1) * 32 + c)
+				IF (g < 128) OR (g > 143) THEN
+					IF (r <> 12) OR (c <= 14) OR (c >= 17) THEN mk = mk + 8
+				END IF
+			END IF
+			om((r - 1) * 32 + (c - 1)) = mk
+		NEXT i
+	NEXT mr
 	END
 
 	' per-maze wall + cross colour, copied from the XB original (WC: 14,6,10,5 -> CV 13,5,9,4)

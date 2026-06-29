@@ -121,6 +121,13 @@ Per frame a probe is `MK=ASC(SEG$(P$(R)/H$(R),C,1)) :: GOSUB 768` (`768` subtrac
 then unpacks `OP(1..4)`), used by Pac (`360`/`362`/`364`/`380`), the ghost pathfinder (`1019`) and
 fruit (`735`/`737`). Static after load. Re-run the generator and repaste the `9401`+ block whenever a
 maze's walls change. See README "Performance — directional-openness cache" for full rationale.
+The **CVBasic port mirrors this** as `om(768)` — the same 4-bit mask (1=up 2=down 4=left 8=right).
+Its ghost and roaming-fruit loops read `om()` once and bit-test it instead of four `wallchk2` calls;
+Pac-Man stays on `wallchk` (it keeps the extra row-13 pen rule). The masks are built **inline in
+`drawmaze`** by iterating the 22×28 cells with direct `mc[]` reads (no PROCEDURE calls) — fast
+enough to be imperceptible. An offline generator `mspacman-cv-xb-port/assets/gen_open_cv.py`
+exists for cross-checking. A baked `DATA BYTE` approach was tried but abandoned: the ~2.5 KB of
+DATA overflowed the 4-bank 32 KB cart limit, truncating the fruit sprite BITMAPs.
 
 **Ms. Pac-Man moves in two 1px sub-steps per frame** (lines 315/350–392 — same 2px/frame cruise,
 but 1px resolution lets her sit at any offset). Each sub-step: if she's exactly centered she eats,
