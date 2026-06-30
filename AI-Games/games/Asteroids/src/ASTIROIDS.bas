@@ -33,7 +33,7 @@
 	' NOTE: CVBasic DIM x(N) allocates N elements 0..N-1. Add 1 so max index N is in bounds.
 	DIM #ax(25),#ay(25),#avx(25),#avy(25)
 	DIM #bx(5),#by(5),#bvx(5),#bvy(5)
-	DIM #sin_t(16),#cos_t(16)
+	DIM #sin_t(16),#cos_t(16),#bv_t(16)
 
 	' 8-bit arrays
 	DIM asiz(25),aact(25),afr(25),aft(25)
@@ -50,10 +50,24 @@
 	#cos_t(8)=-64 : #cos_t(9)=-57 : #cos_t(10)=-45: #cos_t(11)=-25
 	#cos_t(12)=0  : #cos_t(13)=25 : #cos_t(14)=45 : #cos_t(15)=57
 
+	' Bullet velocity table = sin_t/16 (signed) = ~4 px/frame unit vector.
+	' Used for the UFO bullet, whose position is in whole pixels. NEVER derive
+	' it as #sin_t*4/64 at runtime: CVBasic's 16-bit divide is UNSIGNED, so a
+	' negative component becomes a huge positive (bullet flies off instantly).
+	#bv_t(0)=0   : #bv_t(1)=1  : #bv_t(2)=2  : #bv_t(3)=3
+	#bv_t(4)=4   : #bv_t(5)=3  : #bv_t(6)=2  : #bv_t(7)=1
+	#bv_t(8)=0   : #bv_t(9)=-1 : #bv_t(10)=-2: #bv_t(11)=-3
+	#bv_t(12)=-4 : #bv_t(13)=-3: #bv_t(14)=-2: #bv_t(15)=-1
+
 	acolor(1)=6 : acolor(2)=11 : acolor(3)=15
 
 	' Score + session high score (persist across games; shown on the title).
 	#score=0 : #hiscore=0
+	' Sound engine state (see sfx_t): noise channel free, thrust not playing.
+	noi_t=0 : thr_was=0 : award=1
+	' Stall-watchdog clocks and the start-of-game settings (overridden by the
+	' 838 setup screen; default to 3 ships / level 1).
+	#wage=0 : #nokill=0 : start_lives=3 : start_wave=1
 
 	GOTO title
 
@@ -74,7 +88,11 @@ title:
 	PRINT AT 15*32+10,"2026 UNHUMAN"
 	PRINT AT 23*32+6,"PRESS FIRE TO BEGIN"
 	hbeat_rate=120 : hbeat_timer=120 : hbeat_step=0
-	sfx0=0 : sfx1=0 : sfx2=0 : sfx3=0
+	' The title screen is silent: kill every channel + mixer state and don't
+	' tick the heartbeat/sfx mixer in the loop below.
+	GOSUB snd_off
+	' Default start settings; the 8-3-8 code (below) opens the setup screen.
+	start_lives=3 : start_wave=1 : code_st=0 : lastk=15
 	ship_st=3 : utype=0 : ubact=0 : uexp=0 : thr_on=0
 	FOR ti=1 TO 4
 		bact(ti)=0
@@ -103,10 +121,72 @@ title_loop:
 	WAIT
 	GOSUB upd_ast
 	GOSUB render
-	GOSUB hbeat
-	GOSUB sfx_t
+	' Secret setup: type 8,3,8 on the keyboard (CONT1.KEY: digit=value,
+	' 15=none). Debounced on key-down so a held key registers once.
+	k=cont1.key
+	IF k<>15 THEN
+		IF k<>lastk THEN
+			IF k=8 THEN
+				IF code_st=2 THEN GOTO setup838
+				code_st=1
+			ELSE
+				IF k=3 AND code_st=1 THEN
+					code_st=2
+				ELSE
+					code_st=0
+				END IF
+			END IF
+		END IF
+	END IF
+	lastk=k
 	IF cont1.button THEN GOTO game_init
 	GOTO title_loop
+
+	' ============================================================
+	' 838 SETUP SCREEN (silent): pick ships + starting level
+	' ============================================================
+setup838:
+	GOSUB snd_off
+	GOSUB scr_clear
+	ship_st=3 : utype=0 : ubact=0 : uexp=0 : thr_on=0
+	set_lives=3 : set_wave=1 : field=0 : lastk=15 : btn_rel=0
+	PRINT AT 3*32+11,"838 SETUP"
+	PRINT AT 7*32+9,"SHIPS:"
+	PRINT AT 9*32+9,"LEVEL:"
+	PRINT AT 13*32+8,"NUMBER KEYS"
+	PRINT AT 14*32+8,"SET 1-9"
+	PRINT AT 17*32+6,"PRESS FIRE TO BEGIN"
+	GOSUB setup_draw
+setup_loop:
+	WAIT
+	GOSUB upd_ast
+	GOSUB render
+	' First number key sets SHIPS (cursor moves to LEVEL); the next sets LEVEL.
+	k=cont1.key
+	IF k<>15 THEN
+		IF k<>lastk THEN
+			IF k>=1 THEN
+				IF k<=9 THEN
+					IF field=0 THEN
+						set_lives=k : field=1
+					ELSE
+						set_wave=k
+					END IF
+					GOSUB setup_draw
+				END IF
+			END IF
+		END IF
+	END IF
+	lastk=k
+	' Require FIRE to be released once so a held button can't auto-start.
+	IF cont1.button=0 THEN btn_rel=1
+	IF cont1.button THEN
+		IF btn_rel THEN
+			start_lives=set_lives : start_wave=set_wave
+			GOTO game_init
+		END IF
+	END IF
+	GOTO setup_loop
 
 	' ============================================================
 	' GAME INIT
@@ -114,12 +194,18 @@ title_loop:
 game_init:
 	GOSUB scr_clear
 	' Note: #hiscore is NOT reset here -- it persists across games this session.
-	lives=3 : wave=1 : #score=0 : last_extra=0
+	' lives/wave come from start_lives/start_wave (set to 3/1 normally, or by
+	' the 838 setup screen). Clamp to the supported 1..9 range.
+	lives=start_lives : wave=start_wave : #score=0 : last_extra=0
+	IF wave<1 THEN wave=1
+	IF wave>9 THEN wave=9
+	IF lives<1 THEN lives=1
+	IF lives>9 THEN lives=9
 	FOR ti=0 TO 31
 		SPRITE ti,$d1,0,0,0
 	NEXT ti
-	utype=0 : #utimer=600 : ubact=0 : uexp=0
-	thr_on=0 : uw_ph=0 : rot_cd=0 : wave_gap=0
+	utype=0 : #utimer=450 : ubact=0 : uexp=0
+	thr_on=0 : uw_ph=0 : rot_cd=0 : wave_gap=0 : #wage=0 : #nokill=0
 	FOR ti=1 TO 4
 		bact(ti)=0
 	NEXT ti
@@ -163,7 +249,8 @@ main_loop:
 					wave=wave+1
 					IF wave>9 THEN wave=9
 					SOUND 0,,0 : SOUND 1,,0 : SOUND 2,,0 : SOUND 3,,0
-					#utimer=600 : utype=0 : ubact=0 : uexp=0
+					sfx0=0 : sfx1=0 : sfx2=0 : noi_t=0 : thr_was=0
+					#utimer=450 : utype=0 : ubact=0 : uexp=0
 					FOR ti=1 TO 4
 						bact(ti)=0
 					NEXT ti
@@ -194,6 +281,8 @@ END
 	' SPAWN WAVE
 	' ============================================================
 spawn_wave: PROCEDURE
+	' New wave -> reset the stall watchdog clocks (see upd_ufo).
+	#wage=0 : #nokill=0
 	num_lg=wave+2
 	IF num_lg>6 THEN num_lg=6
 	slot=1
@@ -303,7 +392,6 @@ handle_in: PROCEDURE
 					IF #svy>294 THEN #svy=294
 				END IF
 			END IF
-			IF sfx3=0 THEN SOUND 3,3,6 : sfx3=4
 		END IF
 		' Hyperspace (debounced so a held DOWN can't spam-teleport)
 		IF hyp_cd>0 THEN hyp_cd=hyp_cd-1
@@ -338,7 +426,8 @@ handle_in: PROCEDURE
 						#bvx(fi)=#sin_t(sangle)*8+#svx
 						#bvy(fi)=-#cos_t(sangle)*8+#svy
 						fire_cd=12
-						SOUND 1,900,12 : sfx1=8
+						' "Pew" = fast descending zap on channel 1.
+						#f1=1400 : #d1=-180 : v1=13 : sfx1=7
 						fi=5
 					END IF
 					fi=fi+1
@@ -356,9 +445,12 @@ upd_ship: PROCEDURE
 		#spx=#spx+#svx
 		#spy=#spy+#svy
 		' Wrap the ship so its 32px sprite box is ALWAYS fully on-screen and
-		' POPS to the opposite edge (no straddle / gradual slide-in). The box
-		' top-left must stay 0..224 (X) and 0..160 (Y), so the center is kept
-		' in X 16..240 (#spx 1024..15360) and Y 16..176 (#spy 1024..11264).
+		' POPS to the opposite edge (no straddle / gradual slide-in). X center
+		' kept in 16..240 (#spx 1024..15360, band 14336). Y center kept in
+		' 16..176 (#spy 1024..11264, band 10240): box top reaches screen y=0,
+		' the highest the ship can go before the VDP vertical dead zone (sprite
+		' Y past the top wraps to ~240 and the sprite vanishes). At the very top
+		' the nose can graze the score row -- accepted for the extra height.
 		IF #spx>=32768 THEN
 			#spx=#spx+14336
 		ELSE
@@ -453,35 +545,54 @@ END
 	' UPDATE UFO
 	' ============================================================
 upd_ufo: PROCEDURE
+	' Stall watchdog clocks (capped well under the 32768 unsigned boundary):
+	' #wage = frames since this wave started, #nokill = frames since a rock
+	' was last destroyed. Both pull the next saucer in sooner (see below).
+	IF #wage<30000 THEN #wage=#wage+1
+	IF #nokill<30000 THEN #nokill=#nokill+1
 	' Exploding: cycle explosion frames 27-30 in place, then clear the UFO.
 	IF uexp>0 THEN
 		uexp=uexp-1
 		uefr=(27+(20-uexp)/5)*4
 		IF uefr>120 THEN uefr=120
-		IF uexp=0 THEN utype=0 : SPRITE 6,$d1,0,0,0
+		IF uexp=0 THEN utype=0 : SPRITE 6,$d1,0,0,0 : SOUND 2,,0 : sfx2=0
 	ELSE
 	IF utype=0 THEN
 		IF #utimer>0 THEN
-			#utimer=#utimer-1
+			' Count down faster while the player is stalling: no rock destroyed
+			' for ~7 s, or the wave uncleared for ~30 s -> saucers ~4x sooner.
+			udec=1
+			IF #nokill>420 THEN udec=4
+			IF #wage>1800 THEN udec=4
+			IF #utimer>udec THEN #utimer=#utimer-udec ELSE #utimer=0
 		ELSE
 			IF wave<4 THEN
 				utype=1
 			ELSE
 				IF random(10)<4 THEN utype=2 ELSE utype=1
 			END IF
-			IF random(2)=0 THEN ux=16 : uvx=2 ELSE ux=239 : uvx=-2
+			' Small saucers move faster across the screen than large ones.
+			IF random(2)=0 THEN udir=1 ELSE udir=-1
+			IF utype=2 THEN uspd=3 ELSE uspd=2
+			IF udir=1 THEN ux=16 : uvx=uspd ELSE ux=239 : uvx=0-uspd
 			uy=random(160)+20
-			uvy=0 : ufire=90 : uwarble=0 : ubact=0
-			IF wave<4 THEN #utimer=1200 ELSE #utimer=900
+			uvy=0 : ufire=45 : uwarble=0 : ubact=0
+			IF wave<4 THEN #utimer=900 ELSE #utimer=600
 		END IF
 	ELSE
 		ux=ux+uvx
 		uwarble=uwarble+1
-		IF uwarble>=20 THEN
+		' Small saucers change heading more often and by more (jumpier).
+		IF utype=2 THEN uwthr=12 ELSE uwthr=20
+		IF uwarble>=uwthr THEN
 			uwarble=0
 			IF uy<36 THEN uvy=1
 			IF uy>170 THEN uvy=-1
-			IF random(4)=0 THEN uvy=random(3)-1
+			IF utype=2 THEN
+				uvy=random(5)-2
+			ELSE
+				IF random(4)=0 THEN uvy=random(3)-1
+			END IF
 		END IF
 		uy=uy+uvy
 		IF uy<16 THEN uy=16
@@ -497,22 +608,39 @@ upd_ufo: PROCEDURE
 		IF utype>0 THEN
 			ufire=ufire-1
 			IF ufire=0 THEN
-				ubact=1 : ublife=120 : ubx=ux : uby=uy
-				IF utype=2 THEN
-					dx=#spx/64-ux : dy=#spy/64-uy
+				' Saucers fire a steady stream as they cross. Large aims at
+				' the ship 20% of the time, small 40%; otherwise random.
+				ubact=1 : ublife=80 : ubx=ux : uby=uy
+				IF utype=1 THEN aimpct=2 ELSE aimpct=4
+				IF random(10)<aimpct THEN
+					#dx=#spx/64-ux : #dy=#spy/64-uy
 					GOSUB ufo_aim
 				ELSE
 					aim_ang=random(16)
-					ubvx=#sin_t(aim_ang)*4/64
-					ubvy=-#cos_t(aim_ang)*4/64
+					ubvx=#bv_t(aim_ang)
+					ubvy=0-#bv_t((aim_ang+4) AND 15)
 				END IF
-				IF utype=1 THEN ufire=90 ELSE ufire=60
-				SOUND 2,500,10 : sfx2=6
+				IF utype=1 THEN ufire=70 ELSE ufire=45
+				' UFO shot "pew" (small saucer = higher pitch), over the hum.
+				IF utype=1 THEN
+					#f2=700 : #d2=-110 : v2=13 : sfx2=5
+				ELSE
+					#f2=1600 : #d2=-220 : v2=13 : sfx2=5
+				END IF
 			END IF
 			IF ubact=1 THEN
 				ubx=ubx+ubvx : uby=uby+ubvy
+				' Wrap around the screen instead of dying at the edges. ubx is
+				' 8-bit so X wraps at 256 (= screen width) for free; wrap uby
+				' into 0..191: after a small (+/-4) step a value >=224 underflowed
+				' past the top, else 192..195 ran off the bottom.
+				IF uby>=224 THEN
+					uby=uby-64
+				ELSE
+					IF uby>=192 THEN uby=uby-192
+				END IF
 				ublife=ublife-1
-				IF ublife=0 OR ubx<0 OR ubx>255 OR uby<0 OR uby>191 THEN ubact=0
+				IF ublife=0 THEN ubact=0
 			END IF
 		END IF
 	END IF
@@ -520,23 +648,27 @@ upd_ufo: PROCEDURE
 END
 
 ufo_aim: PROCEDURE
-	mag=ABS(dx)+ABS(dy)
-	IF mag=0 THEN
-		aim_ang=random(16)
-	ELSE
-		IF mag>64 THEN
-			dx=dx*64/mag
-			dy=dy*64/mag
-		END IF
-		best_a=0 : best_d=-32000
-		FOR aa=0 TO 15
-			td=dx*#sin_t(aa)/64-dy*#cos_t(aa)/64
-			IF td>best_d THEN best_d=td : best_a=aa
-		NEXT aa
-		aim_ang=best_a
-	END IF
-	ubvx=#sin_t(aim_ang)*4/64
-	ubvy=-#cos_t(aim_ang)*4/64
+	' Target vector (ship - ufo) arrives in #dx,#dy as signed 16-bit pixels.
+	' Reduce its magnitude SIGN-SAFELY (halving, not unsigned divide) so the
+	' per-angle dot products below can't overflow 16 bits.
+	#adx=#dx : IF #adx>=32768 THEN #adx=0-#adx
+	#ady=#dy : IF #ady>=32768 THEN #ady=0-#ady
+	WHILE #adx>63 OR #ady>63
+		#adx=#adx/2 : #ady=#ady/2
+	WEND
+	IF #dx>=32768 THEN #dx=0-#adx ELSE #dx=#adx
+	IF #dy>=32768 THEN #dy=0-#ady ELSE #dy=#ady
+	' Pick the 16-step heading whose unit vector best matches (dx,-dy).
+	' +16384 keeps every dot product positive so the unsigned > behaves
+	' like a signed compare (all CVBasic compares are unsigned).
+	best_a=0 : #best_d=0
+	FOR aa=0 TO 15
+		#td=#dx*#sin_t(aa)-#dy*#cos_t(aa)+16384
+		IF #td>#best_d THEN #best_d=#td : best_a=aa
+	NEXT aa
+	aim_ang=best_a
+	ubvx=#bv_t(aim_ang)
+	ubvy=0-#bv_t((aim_ang+4) AND 15)
 END
 
 	' ============================================================
@@ -561,7 +693,7 @@ chk_coll: PROCEDURE
 					IF ABS(#cdx)<hradius THEN
 						IF ABS(#cdy)<hradius THEN
 							bact(bi)=0
-							GOSUB ast_hit
+							award=1 : GOSUB ast_hit
 							' One bullet hits one thing: stop scanning so it
 							' can't also strike the just-spawned child pieces.
 							ai=25
@@ -586,13 +718,61 @@ chk_coll: PROCEDURE
 						' Start the UFO explosion (cleared in upd_ufo).
 						uexp=20 : uefr=108 : ubact=0
 						SPRITE 7,$d1,0,0,0
-						SOUND 0,300,12 : sfx0=20
-						SOUND 3,3,12  : sfx3=15
+						' Explosion: descending thump + noise burst.
+						#f0=420 : #d0=-9 : v0=12 : sfx0=24
+						noi_n=4 : noi_v=14 : noi_t=18 : noi_dv=1
 						bi=5
 					END IF
 				END IF
 			END IF
 		NEXT bi
+	END IF
+	END IF
+	' UFO bullet can shatter asteroids too (no points to the player).
+	IF ubact=1 THEN
+		ai=1
+		WHILE ai<=24
+			IF aact(ai)=1 THEN
+				IF asiz(ai)=1 THEN hradius=15
+				IF asiz(ai)=2 THEN hradius=11
+				IF asiz(ai)=3 THEN hradius=8
+				#cdx=ubx-#ax(ai)/64
+				#cdy=uby-#ay(ai)/64
+				IF ABS(#cdx)<hradius THEN
+					IF ABS(#cdy)<hradius THEN
+						ubact=0 : SPRITE 7,$d1,0,0,0
+						award=0 : GOSUB ast_hit
+						ai=25
+					END IF
+				END IF
+			END IF
+			ai=ai+1
+		WEND
+	END IF
+	' UFO can crash into an asteroid: both destroyed, no player points.
+	IF utype>0 THEN
+	IF uexp=0 THEN
+		ai=1
+		WHILE ai<=24
+			IF aact(ai)=1 THEN
+				IF asiz(ai)=1 THEN sradius=18
+				IF asiz(ai)=2 THEN sradius=14
+				IF asiz(ai)=3 THEN sradius=11
+				#cdx=ux-#ax(ai)/64
+				#cdy=uy-#ay(ai)/64
+				IF ABS(#cdx)<sradius THEN
+					IF ABS(#cdy)<sradius THEN
+						uexp=20 : uefr=108 : ubact=0
+						SPRITE 7,$d1,0,0,0
+						#f0=420 : #d0=-9 : v0=12 : sfx0=24
+						noi_n=4 : noi_v=13 : noi_t=16 : noi_dv=1
+						award=0 : GOSUB ast_hit
+						ai=25
+					END IF
+				END IF
+			END IF
+			ai=ai+1
+		WEND
 	END IF
 	END IF
 	' Ship-vs-* only when the ship is live and vulnerable (ship_st=0).
@@ -609,7 +789,7 @@ chk_coll: PROCEDURE
 				#cdy=#spy/64-#ay(ai)/64
 				IF ABS(#cdx)<sradius THEN
 					IF ABS(#cdy)<sradius THEN
-						GOSUB ast_hit
+						award=1 : GOSUB ast_hit
 						GOSUB ship_die
 						ai=25
 					END IF
@@ -625,6 +805,20 @@ chk_coll: PROCEDURE
 				IF ABS(#cdy)<8 THEN GOSUB ship_die
 			END IF
 		END IF
+		' Ship vs UFO body: you can crash into the saucer (both destroyed).
+		IF utype>0 THEN
+		IF uexp=0 THEN
+			#cdx=#spx/64-ux
+			#cdy=#spy/64-uy
+			IF ABS(#cdx)<14 THEN
+				IF ABS(#cdy)<12 THEN
+					uexp=20 : uefr=108 : ubact=0
+					SPRITE 7,$d1,0,0,0
+					GOSUB ship_die
+				END IF
+			END IF
+		END IF
+		END IF
 	END IF
 END
 
@@ -632,13 +826,21 @@ END
 	' ASTEROID HIT (global ai = pool index)
 	' ============================================================
 ast_hit: PROCEDURE
-	IF asiz(ai)=1 THEN #score=#score+2
-	IF asiz(ai)=2 THEN #score=#score+5
-	IF asiz(ai)=3 THEN #score=#score+10
-	GOSUB hud_draw
-	IF asiz(ai)=1 THEN SOUND 3,3,12 : sfx3=20
-	IF asiz(ai)=2 THEN SOUND 3,3,10 : sfx3=12
-	IF asiz(ai)=3 THEN SOUND 3,3,8  : sfx3=6
+	' A rock just died -> reset the "no kill" stall clock (see upd_ufo).
+	#nokill=0
+	' award=0 when something other than the player's shot breaks the rock
+	' (UFO shot/crash), so no points are credited.
+	IF award THEN
+		IF asiz(ai)=1 THEN #score=#score+2
+		IF asiz(ai)=2 THEN #score=#score+5
+		IF asiz(ai)=3 THEN #score=#score+10
+		GOSUB hud_draw
+	END IF
+	' Explosion = white-noise burst (channel 3) with a fast volume decay,
+	' louder/longer for bigger rocks (see sfx_t for the envelope).
+	IF asiz(ai)=1 THEN noi_n=4 : noi_v=14 : noi_t=16 : noi_dv=1
+	IF asiz(ai)=2 THEN noi_n=4 : noi_v=12 : noi_t=12 : noi_dv=1
+	IF asiz(ai)=3 THEN noi_n=4 : noi_v=9  : noi_t=8  : noi_dv=1
 	ast_count=ast_count-1
 	old_siz=asiz(ai)
 	aact(ai)=2 : afr(ai)=108 : aft(ai)=20
@@ -686,9 +888,9 @@ ship_die: PROCEDURE
 	' through the explosion; game-over is decided when the explosion ends.
 	lives=lives-1
 	GOSUB lives_draw
-	SOUND 0,300,14 : sfx0=30
-	SOUND 1,150,12 : sfx1=25
-	SOUND 3,3,14   : sfx3=30
+	' Death = long descending tone (ch0) over a big noise rumble (ch3).
+	#f0=500 : #d0=-11 : v0=13 : sfx0=44
+	noi_n=4 : noi_v=15 : noi_t=24 : noi_dv=1
 END
 
 	' ============================================================
@@ -702,6 +904,9 @@ ship_tick: PROCEDURE
 	IF ship_st=2 THEN
 		ship_tmr=ship_tmr-1
 		IF ship_tmr=0 THEN
+			' Explosion finished: kill any lingering death/explosion sound so
+			' nothing keeps playing through the respawn/reset.
+			GOSUB snd_off
 			' lives already decremented in ship_die
 			IF lives=0 THEN
 				GOSUB game_over
@@ -728,8 +933,8 @@ xlife_chk: PROCEDURE
 	IF #score/1000>last_extra THEN
 		last_extra=last_extra+1
 		lives=lives+1
-		SOUND 0,500,13 : sfx0=8
-		SOUND 1,400,13 : sfx1=6
+		' Rising chime on channel 0.
+		#f0=600 : #d0=40 : v0=12 : sfx0=12
 		GOSUB lives_draw
 	END IF
 END
@@ -738,30 +943,83 @@ END
 	' HEARTBEAT (tempo driven by asteroid count)
 	' ============================================================
 hbeat: PROCEDURE
-	IF hbeat_timer>0 THEN
-		hbeat_timer=hbeat_timer-1
-	ELSE
-		IF hbeat_step=0 THEN
-			SOUND 0,1100,8 : sfx0=8
-			hbeat_step=1
+	' Silent during the ship-death explosion so it doesn't fight that sound.
+	IF ship_st<>2 THEN
+		IF hbeat_timer>0 THEN
+			hbeat_timer=hbeat_timer-1
 		ELSE
-			SOUND 0,860,8 : sfx0=8
-			hbeat_step=0
+			IF hbeat_step=0 THEN
+				#f0=1100 : #d0=0 : v0=8 : sfx0=8
+				hbeat_step=1
+			ELSE
+				#f0=860 : #d0=0 : v0=8 : sfx0=8
+				hbeat_step=0
+			END IF
+			hbeat_rate=120-ast_count*4
+			IF hbeat_rate<30 THEN hbeat_rate=30
+			hbeat_timer=hbeat_rate
 		END IF
-		hbeat_rate=120-ast_count*4
-		IF hbeat_rate<30 THEN hbeat_rate=30
-		hbeat_timer=hbeat_rate
 	END IF
 END
 
 	' ============================================================
 	' SFX TICK
 	' ============================================================
+	' ============================================================
+	' SILENCE EVERYTHING (channels + all mixer state)
+	' ============================================================
+snd_off: PROCEDURE
+	SOUND 0,,0 : SOUND 1,,0 : SOUND 2,,0 : SOUND 3,,0
+	sfx0=0 : sfx1=0 : sfx2=0 : noi_t=0 : thr_was=0
+END
+
+	' Each tone channel (0,1,2) plays a frequency-sweep envelope: #fN is the
+	' current frequency, #dN the per-frame step (0 = steady tone), vN the
+	' volume, sfxN the frames left. Channel 3 (noise) plays explosion bursts
+	' with a volume decay, and hisses the thrust rocket when otherwise free.
+	' Sweep clamp note: CVBasic compares are UNSIGNED, so a descending sweep
+	' that underflows past 0 wraps to ~65000 -- catch that (>=32768) FIRST and
+	' pin to the 90 Hz floor before the ordinary range checks.
 sfx_t: PROCEDURE
-	IF sfx0>0 THEN sfx0=sfx0-1 : IF sfx0=0 THEN SOUND 0,,0
-	IF sfx1>0 THEN sfx1=sfx1-1 : IF sfx1=0 THEN SOUND 1,,0
-	IF sfx2>0 THEN sfx2=sfx2-1 : IF sfx2=0 THEN SOUND 2,,0
-	IF sfx3>0 THEN sfx3=sfx3-1 : IF sfx3=0 THEN SOUND 3,,0
+	IF sfx0>0 THEN
+		#f0=#f0+#d0
+		IF #f0>=32768 THEN #f0=90
+		IF #f0>8000 THEN #f0=8000
+		IF #f0<90 THEN #f0=90
+		sfx0=sfx0-1
+		IF sfx0=0 THEN SOUND 0,,0 ELSE SOUND 0,#f0,v0
+	END IF
+	IF sfx1>0 THEN
+		#f1=#f1+#d1
+		IF #f1>=32768 THEN #f1=90
+		IF #f1>8000 THEN #f1=8000
+		IF #f1<90 THEN #f1=90
+		sfx1=sfx1-1
+		IF sfx1=0 THEN SOUND 1,,0 ELSE SOUND 1,#f1,v1
+	END IF
+	IF sfx2>0 THEN
+		#f2=#f2+#d2
+		IF #f2>=32768 THEN #f2=90
+		IF #f2>8000 THEN #f2=8000
+		IF #f2<90 THEN #f2=90
+		sfx2=sfx2-1
+		IF sfx2=0 THEN SOUND 2,,0 ELSE SOUND 2,#f2,v2
+	END IF
+	' Channel 3: explosions own it (with a fading volume); thrust uses it when
+	' free. noi_v underflow past 0 wraps high in 8-bit -> guard with >15.
+	IF noi_t>0 THEN
+		noi_t=noi_t-1
+		noi_v=noi_v-noi_dv
+		IF noi_v>15 THEN noi_v=0
+		IF noi_t=0 THEN SOUND 3,,0 ELSE SOUND 3,noi_n,noi_v
+	ELSE
+		IF thr_on THEN
+			SOUND 3,6,8
+		ELSE
+			IF thr_was THEN SOUND 3,,0
+		END IF
+		thr_was=thr_on
+	END IF
 END
 
 	' ============================================================
@@ -811,7 +1069,7 @@ render: PROCEDURE
 	FOR bi=1 TO 4
 		IF bact(bi) THEN
 			bpy=#by(bi)/64 : bpx=#bx(bi)/64
-			IF bpy<16 OR bpx<16 OR bpx>239 THEN
+			IF bpy<4 OR bpy>188 THEN
 				SPRITE bi+1,$d1,0,0,0
 			ELSE
 				SPRITE bi+1,bpy-16,bpx-16,72,15
@@ -830,13 +1088,19 @@ render: PROCEDURE
 			ELSE
 				SPRITE 6,uy-16,ux-16,104,13
 			END IF
+			' Engine warble on channel 2: two alternating tones. Only re-issued
+			' when channel 2 is free (sfx2=0) so a UFO fire "pew" plays over it.
 			uw_ph=uw_ph+1
 			IF uw_ph>=15 THEN
 				uw_ph=0
-				IF utype=1 THEN
-					SOUND 2,600,7 : sfx2=16
-				ELSE
-					SOUND 2,1200,7 : sfx2=16
+				IF sfx2=0 THEN
+					uw_tog=uw_tog XOR 1
+					IF utype=1 THEN
+						IF uw_tog THEN #f2=560 ELSE #f2=470
+					ELSE
+						IF uw_tog THEN #f2=1050 ELSE #f2=900
+					END IF
+					#d2=0 : v2=6 : sfx2=16
 				END IF
 			END IF
 		ELSE
@@ -853,8 +1117,10 @@ render: PROCEDURE
 	FOR ai=1 TO 24
 		IF aact(ai)>0 THEN
 			apx=#ax(ai)/64 : apy=#ay(ai)/64
-			' Render guard: hide near edges to prevent VDP dead-zone glitch
-			IF apy>=16 AND apx>=16 AND apx<=239 THEN
+			' Render guard: hide only in the top/bottom dead band (4 px) so
+			' rocks stay drawn right out to the left/right edges. Symmetric
+			' top<->bottom: hidden when apy<4 or apy>188.
+			IF apy>=4 AND apy<=188 THEN
 				IF aact(ai)=2 THEN
 					SPRITE ai+7,apy-16,apx-16,afr(ai),15
 				ELSE
@@ -900,10 +1166,26 @@ lives_draw: PROCEDURE
 END
 
 	' ============================================================
+	' 838 SETUP FIELD DRAW (value + active-field cursor)
+	' ============================================================
+setup_draw: PROCEDURE
+	PRINT AT 7*32+16,<1>set_lives
+	PRINT AT 9*32+16,<1>set_wave
+	IF field=0 THEN
+		PRINT AT 7*32+7,">"
+		PRINT AT 9*32+7," "
+	ELSE
+		PRINT AT 7*32+7," "
+		PRINT AT 9*32+7,">"
+	END IF
+END
+
+	' ============================================================
 	' GAME OVER
 	' ============================================================
 game_over: PROCEDURE
 	SOUND 0,,0 : SOUND 1,,0 : SOUND 2,,0 : SOUND 3,,0
+	sfx0=0 : sfx1=0 : sfx2=0 : noi_t=0 : thr_was=0
 	FOR ti=0 TO 31
 		SPRITE ti,$d1,0,0,0
 	NEXT ti
