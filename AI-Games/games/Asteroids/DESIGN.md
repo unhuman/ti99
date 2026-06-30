@@ -38,8 +38,10 @@ for the `8 3 8` setup code and the number-key field entry (see §11).
 
 - **Mode:** CVBasic TI-99 bitmap mode (TMS9918A, 256×192, 32×24 character grid). Black background (`BORDER 1`).
 - **VDP 2× sprite magnification** is enabled at startup via a single inline-ASM write to VDP
-  register 1 (`>E3`: 16×16 sprites, MAG on). Every 16×16 sprite renders **32×32** on screen; the
-  sprite-box center offset is therefore **16 px**.
+  register 1 (`>E3`: 16×16 sprites, MAG on). Every 16×16 sprite renders **32×32** on screen; a
+  cell-centered art uses a **16 px** sprite-box offset. The **ship** instead anchors its art toward
+  the cell's top-left (see §5) and renders at offset **11**, so its hardware coordinate stays
+  non-negative at the top/left edges.
 - **`SPRITE FLICKER ON`** — when >4 sprites share a scanline (late waves), CVBasic rotates priority
   so they flicker instead of vanishing.
 
@@ -74,13 +76,13 @@ for the `8 3 8` setup code and the number-key field entry (see §11).
 
 | Def(s) | Name(s) | Contents |
 |---|---|---|
-| 0–15 | 0–60 | Ship: 16 rotation frames, 22.5° each, nose-up at def 0. Cardinals (0/4/8/12) are a symmetric flaring triangle (≈7×8 art); diagonals hand-drawn. |
+| 0–15 | 0–60 | Ship: 16 rotation frames, 22.5° each, nose-up at def 0. Cardinals (0/4/8/12) are a symmetric flaring triangle to a 1-px point (≈7×8 art); diagonals hand-drawn. All 16 frames shifted **−2,−2** in-cell (top-left anchored) for the offset-11 render (see §5). |
 | 16–17 | 64–68 | Thrust flame, 2 frames |
 | 18 | 72 | Bullet — single art pixel (→ 2×2 magnified) |
 | 19–21 | 76/80/84 | Asteroid large, 3 tumble frames (recentered in cell) |
 | 22–23 | 88/92 | Asteroid medium, 2 tumble frames |
 | 24 | 96 | Asteroid small, 1 frame |
-| 25 | 100 | UFO large |
+| 25 | 100 | UFO large (skirt 10px wide — trimmed 1 art-col/side) |
 | 26 | 104 | UFO small |
 | 27–30 | 108–120 | Explosion, 4 frames (shared by ship / asteroids / UFO, played in place) |
 | 31 | 124 | (spare; HUD ship icon is char 128, not a sprite) |
@@ -114,20 +116,36 @@ All positions are 16-bit (`#`) variables scaled ×64: pixel = value/64. Screen 2
 ### Ship velocity & wrap
 
 - `#svx, #svy` accumulate thrust; capped at ±294. Applied to position every frame.
-- **The ship pops fully across edges (no straddle/slide-in).** Its 32-px sprite box is kept
-  entirely on-screen, so the center is wrapped within **X 16..240** (`#spx` 1024..15360) and
-  **Y 16..176** (`#spy` 1024..11264, band 10240). Reaching one limit jumps it to the opposite
-  limit, fully visible. The top floor (Y 16, box top **y=0**) is the **highest the ship can go** —
-  any higher puts the sprite's Y into the VDP vertical dead zone (wraps to ~240, sprite vanishes).
-  At the very top the nose can graze the score row; accepted in exchange for the extra height.
-- **Why the ship "pops" short of the side edges:** the art sits centered in the 32-px magnified box
-  with ~6 px of transparent margin, and the clamp keeps the *box* on-screen, so the *visible* ship
-  reaches its pop point ~6–10 px before the physical edge. Getting closer would push the box off-
-  screen into the same VDP horizontal dead zone, so the inset is intentional.
+- **The ship pops fully across edges (no straddle/slide-in).** The center is wrapped within
+  **X 11..245** (`#spx` 704..15680, band 14976) and **Y 11..181** (`#spy` 704..11584, band 10880).
+  Reaching one limit jumps it to the opposite limit, fully visible.
+- **Top-left art anchoring kills most of the "pop."** The ship art is shifted **−2,−2** within its
+  cell (`assets/sprites.bas`, applied uniformly to all 16 frames so the rotation orbit is preserved)
+  so the rotation pivot sits at cell (5.5, 5.5) = box **11**, and the live ship renders at
+  **offset 11** instead of 16 (`SPRITE 0,spy-11,spx-11`; the thrust flame and in-place explosion
+  stay at 16 because their art is cell-centered and their visual center is still `(spx,spy)`). With
+  the empty magnification margin pushed off the **bottom-right** (clipped harmlessly), the hardware
+  coordinate `center-11` stays ≥0 at the top/left edges — no negative coord, no VDP dead zone — so
+  the nose now grazes **y=0** at the top, **y=192** at the bottom, and the ship reaches the side
+  edges with only its inherent (narrow-orientation) margin instead of the old ~6–10 px box inset.
+  Collision (`chk_coll`), UFO aiming, and child-asteroid spawn are unchanged: stored position is
+  still the visual center, so they keep working center-to-center.
 
 ### Rotation
 
 16 steps. Sin/cos tables (×64, signed) in `#sin_t`/`#cos_t`; ship frame = `sangle*4`.
+
+### Thrust flame (slot 1)
+
+Anchored just behind each frame's **actual rear edge** (the engine), on the ship axis, via a
+**per-frame pixel-offset table** `#fdx_t`/`#fdy_t` (16 entries each): `fpx=spx+#fdx_t(sangle)`,
+`fpy=spy+#fdy_t(sangle)`. The flame art centers on cell (row 8, col 7), so it renders at
+`SPRITE 1,fpy-16,fpx-14`. A single fixed distance can't work — the rotation pivot (cell 5.5,5.5)
+sits ~3 px from the tail on cardinals but ~7 px on the (larger) diagonal frames, so a constant
+offset floats on cardinals and embeds on diagonals. The table is precomputed from the real art by
+`tools/flame_offsets.py` (rear-edge centroid + a small gap along the −nose axis); re-run it if the
+ship art changes. It is **addition-only** (no per-frame divide), sidestepping the unsigned-divide
+trap entirely.
 
 ### Asteroids
 
@@ -158,6 +176,10 @@ it just spawned). Same render-guard rule as asteroids: shown to the L/R edges, h
 A life is consumed in `ship_die` (so the HUD reserve is correct through the explosion);
 game-over is decided when the explosion ends. Respawn re-centers the ship.
 
+**Game over** silences sound and prints `GAME OVER` over the **frozen final frame** — it does *not*
+wipe the sprites, so the last asteroid field stays on screen behind the text. The sprites are
+cleared (and a fresh title field rebuilt) only when control returns to the `title` routine.
+
 ---
 
 ## 7. Waves
@@ -185,8 +207,9 @@ game-over is decided when the explosion ends. Respawn re-centers the ship.
   (direction-aware test — `ux` is 8-bit, so the old `<0`/`>255` tests were dead code and the UFO
   never left). **Small saucers are faster and jumpier:** ±3 px/frame (large ±2), and they re-pick
   a vertical step of −2..+2 every 12 frames vs the large UFO's occasional ±1 every 20.
-- **Fire (continuous):** the saucer fires a steady stream as it crosses — large every 70 frames,
-  small every 45. Each shot either **aims at the ship** (closest of 16 headings via `ufo_aim`) or
+- **Fire (rapid, no waiting):** the saucer fires a steady stream as it crosses — large every 16
+  frames, small every 12 (first shot 14 frames after it appears). Each shot either **aims at the
+  ship** (closest of 16 headings via `ufo_aim`) or
   goes in a random direction: **large aims 20% of shots, small aims 40%.** One UFO bullet at a
   time; it's cleared when the UFO leaves or dies (no stranded dot). The UFO bullet also **shatters
   asteroids** it strikes (no points to the player). It **wraps around the screen** (X via the 8-bit
@@ -280,7 +303,10 @@ breaks signed logic. These bit this game repeatedly and the fixes are load-beari
 - **Unsigned compare** → speed caps, split-velocity caps, and all screen wraps split at 32768
   (`IF #v>=32768` detects "negative") instead of testing `<0`.
 - **Unsigned divide** → never `#signed/2`; thrust is halved by applying it every other frame, not
-  by dividing the sin/cos table.
+  by dividing the sin/cos table. The thrust-flame offset hit this first as `#cos_t*8/64` (flame flew
+  to garbage where cos<0); if you must divide, fold the signed term into an always-positive sum
+  first, `(#spy+8*#cos_t(sangle))/64` (parens required, or `/` binds first). The flame ultimately
+  went **table-driven** (`#fdx_t`/`#fdy_t`, addition-only) — the most reliable escape from the trap.
 - **`ABS(a-b)` on 8-bit vars is wrong** (the byte subtract underflows and `abs` can't recover the
   sign) → collision deltas are computed in 16-bit (`#cdx = #bx/64 - #ax/64`) so `ABS` is signed.
 - **Sprite edges:** the VDP gives no clean per-pixel horizontal wrap and a vertical dead zone, so
@@ -316,7 +342,7 @@ are git-ignored.
 - [x] Heartbeat tempo rises as the field thins
 - [x] Score shows ×10 with trailing 0; extra life every 10,000; high score persists in session
 - [x] Hyperspace teleports with no protection, debounced
-- [x] Ship reaches the top screen edge (max height before the VDP dead zone); pops across edges; N/S/E/W frames symmetric
+- [x] Ship nose reaches all four screen edges (top-left art anchoring, render offset 11); pops across edges; rotation doesn't wobble; N/S/E/W frames symmetric with a crisp 1-px point
 - [x] UFO bullets wrap around the screen (don't die at an edge)
 - [x] Asteroids/bullets show to the L/R edges, hide only in the symmetric 4-px top/bottom band
 - [x] `8 3 8` opens setup; number keys set ships (1–9) and starting level (1–9); FIRE starts with them; plain FIRE = 3 ships / level 1

@@ -34,6 +34,7 @@
 	DIM #ax(25),#ay(25),#avx(25),#avy(25)
 	DIM #bx(5),#by(5),#bvx(5),#bvy(5)
 	DIM #sin_t(16),#cos_t(16),#bv_t(16)
+	DIM #fdx_t(16),#fdy_t(16)
 
 	' 8-bit arrays
 	DIM asiz(25),aact(25),afr(25),aft(25)
@@ -58,6 +59,20 @@
 	#bv_t(4)=4   : #bv_t(5)=3  : #bv_t(6)=2  : #bv_t(7)=1
 	#bv_t(8)=0   : #bv_t(9)=-1 : #bv_t(10)=-2: #bv_t(11)=-3
 	#bv_t(12)=-4 : #bv_t(13)=-3: #bv_t(14)=-2: #bv_t(15)=-1
+
+	' Thrust-flame offset from the ship center (px), per rotation frame, placing
+	' the flame just behind that frame's actual rear edge (engine) and on the
+	' ship's axis. Precomputed from the art (scratchpad/flame_offsets.py) because
+	' the pivot-to-tail distance varies per frame (cardinals ~3px, diagonals
+	' ~7px) -- a single distance would float on cardinals and embed on diagonals.
+	#fdx_t(0)=1  : #fdx_t(1)=-6 : #fdx_t(2)=-7 : #fdx_t(3)=-9
+	#fdx_t(4)=-6 : #fdx_t(5)=-9 : #fdx_t(6)=-7 : #fdx_t(7)=-6
+	#fdx_t(8)=-1 : #fdx_t(9)=6  : #fdx_t(10)=7 : #fdx_t(11)=9
+	#fdx_t(12)=6 : #fdx_t(13)=9 : #fdx_t(14)=7 : #fdx_t(15)=6
+	#fdy_t(0)=6  : #fdy_t(1)=9  : #fdy_t(2)=7  : #fdy_t(3)=6
+	#fdy_t(4)=1  : #fdy_t(5)=-6 : #fdy_t(6)=-7 : #fdy_t(7)=-9
+	#fdy_t(8)=-6 : #fdy_t(9)=-9 : #fdy_t(10)=-7: #fdy_t(11)=-6
+	#fdy_t(12)=-1: #fdy_t(13)=6 : #fdy_t(14)=7 : #fdy_t(15)=9
 
 	acolor(1)=6 : acolor(2)=11 : acolor(3)=15
 
@@ -445,28 +460,30 @@ upd_ship: PROCEDURE
 		#spx=#spx+#svx
 		#spy=#spy+#svy
 		' Wrap the ship so its 32px sprite box is ALWAYS fully on-screen and
-		' POPS to the opposite edge (no straddle / gradual slide-in). X center
-		' kept in 16..240 (#spx 1024..15360, band 14336). Y center kept in
-		' 16..176 (#spy 1024..11264, band 10240): box top reaches screen y=0,
-		' the highest the ship can go before the VDP vertical dead zone (sprite
-		' Y past the top wraps to ~240 and the sprite vanishes). At the very top
-		' the nose can graze the score row -- accepted for the extra height.
+		' POPS to the opposite edge (no straddle / gradual slide-in). The ship
+		' art is anchored toward the cell's top-left (sprites.bas, shifted -2,-2)
+		' and rendered at offset 11 (pivot at cell 5.5 = box 11), so the hardware
+		' sprite coord (center-11) stays >=0 at the top/left edges -- no negative
+		' coord, no VDP vertical dead zone -- and the empty box margin hangs off
+		' the harmless bottom-right. Center kept in X 11..245 (#spx 704..15680,
+		' band 14976) and Y 11..181 (#spy 704..11584, band 10880); the nose then
+		' grazes screen y=0 at the top and y=192 at the bottom.
 		IF #spx>=32768 THEN
-			#spx=#spx+14336
+			#spx=#spx+14976
 		ELSE
-			IF #spx<1024 THEN
-				#spx=#spx+14336
+			IF #spx<704 THEN
+				#spx=#spx+14976
 			ELSE
-				IF #spx>=15360 THEN #spx=#spx-14336
+				IF #spx>=15680 THEN #spx=#spx-14976
 			END IF
 		END IF
 		IF #spy>=32768 THEN
-			#spy=#spy+10240
+			#spy=#spy+10880
 		ELSE
-			IF #spy<1024 THEN
-				#spy=#spy+10240
+			IF #spy<704 THEN
+				#spy=#spy+10880
 			ELSE
-				IF #spy>=11264 THEN #spy=#spy-10240
+				IF #spy>=11584 THEN #spy=#spy-10880
 			END IF
 		END IF
 	END IF
@@ -576,7 +593,7 @@ upd_ufo: PROCEDURE
 			IF utype=2 THEN uspd=3 ELSE uspd=2
 			IF udir=1 THEN ux=16 : uvx=uspd ELSE ux=239 : uvx=0-uspd
 			uy=random(160)+20
-			uvy=0 : ufire=45 : uwarble=0 : ubact=0
+			uvy=0 : ufire=14 : uwarble=0 : ubact=0
 			IF wave<4 THEN #utimer=900 ELSE #utimer=600
 		END IF
 	ELSE
@@ -620,7 +637,7 @@ upd_ufo: PROCEDURE
 					ubvx=#bv_t(aim_ang)
 					ubvy=0-#bv_t((aim_ang+4) AND 15)
 				END IF
-				IF utype=1 THEN ufire=70 ELSE ufire=45
+				IF utype=1 THEN ufire=16 ELSE ufire=12
 				' UFO shot "pew" (small saucer = higher pitch), over the hum.
 				IF utype=1 THEN
 					#f2=700 : #d2=-110 : v2=13 : sfx2=5
@@ -810,7 +827,9 @@ chk_coll: PROCEDURE
 		IF uexp=0 THEN
 			#cdx=#spx/64-ux
 			#cdy=#spy/64-uy
-			IF ABS(#cdx)<14 THEN
+			' Kill-box trimmed to the narrower large-UFO art (skirt now 10px
+			' wide) so you don't die ~2px before visually touching the saucer.
+			IF ABS(#cdx)<12 THEN
 				IF ABS(#cdy)<12 THEN
 					uexp=20 : uefr=108 : ubact=0
 					SPRITE 7,$d1,0,0,0
@@ -1042,13 +1061,16 @@ render: PROCEDURE
 			SPRITE 0,$d1,0,0,0
 			SPRITE 1,$d1,0,0,0
 		ELSE
-			SPRITE 0,spy-16,spx-16,sangle*4,15
+			' Ship art is top-left-anchored: render at offset 11, not 16.
+			SPRITE 0,spy-11,spx-11,sangle*4,15
 			IF thr_on THEN
-				' Flame 8px behind ship center (rear wings ~5px from center at 2x)
-				fpy=spy+#cos_t(sangle)*8/64
-				fpx=spx-#sin_t(sangle)*8/64
+				' Flame placed by the per-frame offset table (engine-anchored,
+				' on the ship axis). spx/spy are the visual center; the flame art
+				' centers on cell col 7 row 8, so render at x-14, y-16.
+				fpx=spx+#fdx_t(sangle)
+				fpy=spy+#fdy_t(sangle)
 				thr_frame=thr_frame XOR 4
-				SPRITE 1,fpy-16,fpx-16,thr_frame,11
+				SPRITE 1,fpy-16,fpx-14,thr_frame,11
 			ELSE
 				SPRITE 1,$d1,0,0,0
 			END IF
@@ -1186,9 +1208,8 @@ END
 game_over: PROCEDURE
 	SOUND 0,,0 : SOUND 1,,0 : SOUND 2,,0 : SOUND 3,,0
 	sfx0=0 : sfx1=0 : sfx2=0 : noi_t=0 : thr_was=0
-	FOR ti=0 TO 31
-		SPRITE ti,$d1,0,0,0
-	NEXT ti
+	' Leave the sprites frozen on screen behind the GAME OVER text -- the title
+	' routine clears all 32 and rebuilds its own field when we return there.
 	PRINT AT 11*32+11,"GAME OVER"
 	FOR ti=1 TO 180
 		WAIT
