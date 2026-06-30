@@ -1,0 +1,4 @@
+# Generated build artifacts (cvbasic -> xas99 -> linkticart)
+ASTIROIDS.a99
+*.bin
+*.txt
