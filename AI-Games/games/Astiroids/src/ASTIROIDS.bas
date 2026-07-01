@@ -12,7 +12,11 @@
 	ASM MOVB R0,@>8C02
 
 	BORDER 1
-	SPRITE FLICKER ON
+	' CVBasic's built-in flicker rotates ALL 32 sprites (the ship too). We want
+	' the ship pinned as top priority, so turn it OFF (VDP then honors slot order:
+	' ship=slot 0 is always drawn) and run our OWN flicker on just the asteroid
+	' pool by rotating their slot assignments each frame (see render / astrot).
+	SPRITE FLICKER OFF
 
 	' Sprite pattern definitions (see DESIGN.md sprite-table)
 	DEFINE SPRITE 0,16,ship_sprites
@@ -925,6 +929,10 @@ END
 ship_die: PROCEDURE
 	ship_st=2 : ship_tmr=60
 	#svx=0 : #svy=0
+	' Stop thrusting: handle_in won't run while dead (ship_st>=2), so without
+	' this thr_on stays 1 and the channel-3 hiss resumes once the death-explosion
+	' noise fades. Clearing it lets the thrust branch silence the channel instead.
+	thr_on=0
 	' Consume a ship now (at death) so the HUD reserve count is correct
 	' through the explosion; game-over is decided when the explosion ends.
 	lives=lives-1
@@ -1068,8 +1076,16 @@ END
 	' ============================================================
 render: PROCEDURE
 	' All sprites render as 32x32 (16x16 art at 2x magnification).
-	' Center offset = 16. Valid position range: spy 16..207, spx 16..271.
-	' Ship (slot 0) and thrust flame (slot 1)
+	' OUR OWN FLICKER (CVBasic's global flicker is OFF): the ship is pinned to
+	' slot 0 (always drawn); EVERY other sprite's physical slot is rotated by srot
+	' each frame -- p = L + srot wrapped into 1..31 (a bijection, so no two sprites
+	' collide on a slot). When >4 share a scanline the VDP then drops a different
+	' sprite each frame (flicker) instead of the same ones losing every time.
+	srot=srot+1
+	IF srot>=31 THEN srot=0
+	fslot=1+srot
+	uslot=6+srot : IF uslot>31 THEN uslot=uslot-31
+	ubslot=7+srot : IF ubslot>31 THEN ubslot=ubslot-31
 	IF ship_st=0 OR ship_st=1 THEN
 		spx=#spx/64 : spy=#spy/64
 		' Always draw the ship. X wraps via the VDP's horizontal sprite wrap;
@@ -1081,7 +1097,7 @@ render: PROCEDURE
 		END IF
 		IF shide THEN
 			SPRITE 0,$d1,0,0,0
-			SPRITE 1,$d1,0,0,0
+			SPRITE fslot,$d1,0,0,0
 		ELSE
 			' Ship art is top-left-anchored: render at offset 11, not 16.
 			SPRITE 0,spy-11,spx-11,sangle*4,15
@@ -1092,9 +1108,9 @@ render: PROCEDURE
 				fpx=spx+#fdx_t(sangle)
 				fpy=spy+#fdy_t(sangle)
 				thr_frame=thr_frame XOR 4
-				SPRITE 1,fpy-16,fpx-14,thr_frame,11
+				SPRITE fslot,fpy-16,fpx-14,thr_frame,11
 			ELSE
-				SPRITE 1,$d1,0,0,0
+				SPRITE fslot,$d1,0,0,0
 			END IF
 		END IF
 	ELSE
@@ -1103,34 +1119,36 @@ render: PROCEDURE
 			exp_fr=27+(60-ship_tmr)/15
 			IF exp_fr>30 THEN exp_fr=30
 			SPRITE 0,spy-16,spx-16,exp_fr*4,15
-			SPRITE 1,$d1,0,0,0
+			SPRITE fslot,$d1,0,0,0
 		ELSE
 			SPRITE 0,$d1,0,0,0
-			SPRITE 1,$d1,0,0,0
+			SPRITE fslot,$d1,0,0,0
 		END IF
 	END IF
 	' Bullets (slots 2-5): positions in x64 units; 32x32 rendered at 2x
 	FOR bi=1 TO 4
+		bslot=bi+1+srot
+		IF bslot>31 THEN bslot=bslot-31
 		IF bact(bi) THEN
 			bpy=#by(bi)/64 : bpx=#bx(bi)/64
 			IF bpy<4 OR bpy>188 THEN
-				SPRITE bi+1,$d1,0,0,0
+				SPRITE bslot,$d1,0,0,0
 			ELSE
-				SPRITE bi+1,bpy-16,bpx-16,72,15
+				SPRITE bslot,bpy-16,bpx-16,72,15
 			END IF
 		ELSE
-			SPRITE bi+1,$d1,0,0,0
+			SPRITE bslot,$d1,0,0,0
 		END IF
 	NEXT bi
 	' UFO (slot 6): ux,uy are screen pixel coords
 	IF uexp>0 THEN
-		SPRITE 6,uy-16,ux-16,uefr,15
+		SPRITE uslot,uy-16,ux-16,uefr,15
 	ELSE
 		IF utype>0 THEN
 			IF utype=1 THEN
-				SPRITE 6,uy-16,ux-16,100,9
+				SPRITE uslot,uy-16,ux-16,100,9
 			ELSE
-				SPRITE 6,uy-16,ux-16,104,13
+				SPRITE uslot,uy-16,ux-16,104,13
 			END IF
 			' Engine warble on channel 2: two alternating tones. Only re-issued
 			' when channel 2 is free (sfx2=0) so a UFO fire "pew" plays over it.
@@ -1148,17 +1166,21 @@ render: PROCEDURE
 				END IF
 			END IF
 		ELSE
-			SPRITE 6,$d1,0,0,0
+			SPRITE uslot,$d1,0,0,0
 		END IF
 	END IF
 	' UFO bullet (slot 7): ubx,uby are screen pixel coords
 	IF ubact THEN
-		SPRITE 7,uby-16,ubx-16,72,9
+		SPRITE ubslot,uby-16,ubx-16,72,9
 	ELSE
-		SPRITE 7,$d1,0,0,0
+		SPRITE ubslot,$d1,0,0,0
 	END IF
-	' Asteroids (slots 8-31 = pool 1-24)
+	' Asteroids (pool 1-24). Physical slot rotated by the same srot as everything
+	' else (see render top), so rocks share the one flicker rotation with the
+	' bullets/UFO and never collide with them on a slot.
 	FOR ai=1 TO 24
+		aslot=ai+7+srot
+		IF aslot>31 THEN aslot=aslot-31
 		IF aact(ai)>0 THEN
 			apx=#ax(ai)/64 : apy=#ay(ai)/64
 			' Render guard: hide only in the top/bottom dead band (4 px) so
@@ -1166,15 +1188,15 @@ render: PROCEDURE
 			' top<->bottom: hidden when apy<4 or apy>188.
 			IF apy>=4 AND apy<=188 THEN
 				IF aact(ai)=2 THEN
-					SPRITE ai+7,apy-16,apx-16,afr(ai),15
+					SPRITE aslot,apy-16,apx-16,afr(ai),15
 				ELSE
-					SPRITE ai+7,apy-16,apx-16,afr(ai),acolor(asiz(ai))
+					SPRITE aslot,apy-16,apx-16,afr(ai),acolor(asiz(ai))
 				END IF
 			ELSE
-				SPRITE ai+7,$d1,0,0,0
+				SPRITE aslot,$d1,0,0,0
 			END IF
 		ELSE
-			SPRITE ai+7,$d1,0,0,0
+			SPRITE aslot,$d1,0,0,0
 		END IF
 	NEXT ai
 END

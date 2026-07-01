@@ -35,7 +35,9 @@ ROM** (not an XB256/compiler game). Full spec in [`DESIGN.md`](DESIGN.md).
 ## How it's built
 
 - **VDP 2× magnification** — 16×16 sprite art renders 32×32; all 32 hardware sprite slots used
-  (ship + flame + 4 bullets + UFO + UFO bullet + 24-asteroid pool). `SPRITE FLICKER ON`.
+  (ship + flame + 4 bullets + UFO + UFO bullet + 24-asteroid pool). Custom flicker: the ship is
+  pinned to slot 0 (never flickers); every other sprite's slot is rotated each frame so the crowd
+  flickers instead of the same ones vanishing.
 - **Fixed-point ×64** positions for sub-pixel inertia; 16-step rotation via a sin/cos table.
 - **Explosions in place** — a dead entity's slot plays the shared 4-frame blast, then frees itself.
 - Per-frame software movement (no `CALL MOTION` in CVBasic); native TMS9900 speed handles it.
@@ -50,7 +52,7 @@ scoring, extra lives, persistent session high score.
 ## Build
 
 ```
-bash .claude/skills/build-cvbasic-game/build.sh games/Asteroids/src/ASTIROIDS.bas "ASTIROIDS"
+bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.bas "ASTIROIDS"
 ```
 
 Produces `src/ASTIROIDS_8.bin` — load it in **Classic99** or **js99er** as a cartridge ROM.

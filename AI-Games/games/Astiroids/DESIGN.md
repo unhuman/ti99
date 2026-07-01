@@ -42,8 +42,16 @@ for the `8 3 8` setup code and the number-key field entry (see §11).
   cell-centered art uses a **16 px** sprite-box offset. The **ship** instead anchors its art toward
   the cell's top-left (see §5) and renders at offset **11**, so its hardware coordinate stays
   non-negative at the top/left edges.
-- **`SPRITE FLICKER ON`** — when >4 sprites share a scanline (late waves), CVBasic rotates priority
-  so they flicker instead of vanishing.
+- **Custom sprite flicker (ship pinned).** The TMS9918 shows at most **4 sprites per scanline**;
+  with 2× magnification (32px-tall sprites) that limit is hit constantly in busy waves. CVBasic's
+  built-in flicker is turned **OFF** because it rotates *all 32* sprites (the ship would blink too).
+  Instead the **ship is pinned to slot 0** (top priority, always drawn) and `render` rotates **every
+  other** sprite's physical slot each frame: `p = L + srot` wrapped into **1..31** (`srot` cycles
+  0..30). That map is a bijection over the 31 non-ship sprites, so no two ever share a slot, and the
+  VDP drops a *different* sprite each frame when a scanline is crowded — bullets, asteroids, the UFO
+  and its bullet all flicker, the ship never does. (Fixed-slot `SPRITE 6/7,$d1` hides still sit in
+  the UFO update/collision code; harmless because `render` runs last each frame and rewrites all 31
+  rotated slots from entity state.)
 
 **HUD (top row, drawn by `hud_draw` / `lives_draw`):**
 
@@ -326,7 +334,7 @@ breaks signed logic. These bit this game repeatedly and the fixes are load-beari
 ## 13. Build & run
 
 ```
-bash .claude/skills/build-cvbasic-game/build.sh games/Asteroids/src/ASTIROIDS.bas "ASTIROIDS"
+bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.bas "ASTIROIDS"
 ```
 
 (Equivalent: `cvbasic --ti994a … ASTIROIDS.a99 "<CVBASIC_DIR>/"` → `xas99 -b -R` → `linkticart.py …
