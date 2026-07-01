@@ -7,12 +7,13 @@ ROM** (not an XB256/compiler game). Full spec in [`DESIGN.md`](DESIGN.md).
 ## Play
 
 - Large → 2 medium → 2 small → gone. Clear the wave to advance (one more rock each wave, cap 6).
-- A **UFO** appears periodically and fires a steady stream as it crosses. The large saucer aims at
-  you 20% of the time, the small one 40% (small saucers are faster and jumpier). Shoot it for
+- A **UFO** appears periodically and shoots as it crosses — one bullet at a time, each flying the
+  full width before it reloads. The large saucer aims at you 20% of the time, the small one 40%
+  (small saucers are faster and jumpier, and their bullets fly faster too). Shoot it for
   200 / 1,000 points; it explodes when hit. Its bullets — and the saucer itself — can also shatter
   asteroids. **Don't fly into it:** crashing into the saucer kills you (and destroys it).
-- Saucers appear often and fire continuously; if you stop shooting or stall on a wave, the
-  **stall watchdog** brings them out even faster to pressure you.
+- Saucers appear often; if you stop shooting or stall on a wave, the **stall watchdog** brings them
+  out even faster to pressure you.
 - Bullets carry the ship's momentum (forward shots are faster). 3 lives; extra life every 10,000
   points. High score persists for the session.
 - Clearing a wave gives a couple seconds of free flight (ship not re-centered) to reposition

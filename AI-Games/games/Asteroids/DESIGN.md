@@ -26,7 +26,7 @@ This document describes the game **as built**. Source of truth is `src/ASTIROIDS
 |---|---|---|
 | Rotate left / right | `cont1.left` / `cont1.right` | `sangle` ±1 mod 16. Step cooldown alternates 2/3 frames (avg 2.5). |
 | Thrust | `cont1.up` | Adds the facing vector to velocity **every other frame** (gentle ramp). Pure inertia, no friction. Top speed ±294 (≈4.6 px/frame). |
-| Fire | `cont1.button` | Up to 4 bullets; `fire_cd=12` between shots. Bullet velocity = facing·8 **plus the ship's current velocity** (inertia). Lifetime 25 frames. |
+| Fire | `cont1.button` | Up to 4 bullets; `fire_cd=12` between shots. Bullet velocity = facing·8 **plus the ship's current velocity** (inertia). Lifetime 20 frames. |
 | Hyperspace | `cont1.down` | Teleport to a random spot. **No invincibility** — you reappear live and vulnerable. Debounced (`hyp_cd=45`) so a held DOWN can't spam-jump. |
 
 In-game play is joystick-only. The **keyboard** is read (via `CONT1.KEY`) only on the title screen,
@@ -76,7 +76,7 @@ for the `8 3 8` setup code and the number-key field entry (see §11).
 
 | Def(s) | Name(s) | Contents |
 |---|---|---|
-| 0–15 | 0–60 | Ship: 16 rotation frames, 22.5° each, nose-up at def 0. Cardinals (0/4/8/12) are a symmetric flaring triangle to a 1-px point (≈7×8 art); diagonals hand-drawn. All 16 frames shifted **−2,−2** in-cell (top-left anchored) for the offset-11 render (see §5). |
+| 0–15 | 0–60 | Ship: 16 rotation frames, 22.5° each, nose-up at def 0. Cardinals (0/4/8/12) are a symmetric flaring triangle to a 2-px point, **9 cells long** to match the diagonals (were 8 → looked squat); east/down/west are exact 90/180/270 rotations of up (`tools/gen_cardinals.py`). Diagonals hand-drawn. All 16 frames shifted **−2,−2** in-cell (top-left anchored) for the offset-11 render (see §5). |
 | 16–17 | 64–68 | Thrust flame, 2 frames |
 | 18 | 72 | Bullet — single art pixel (→ 2×2 magnified) |
 | 19–21 | 76/80/84 | Asteroid large, 3 tumble frames (recentered in cell) |
@@ -140,9 +140,9 @@ All positions are 16-bit (`#`) variables scaled ×64: pixel = value/64. Screen 2
 Anchored just behind each frame's **actual rear edge** (the engine), on the ship axis, via a
 **per-frame pixel-offset table** `#fdx_t`/`#fdy_t` (16 entries each): `fpx=spx+#fdx_t(sangle)`,
 `fpy=spy+#fdy_t(sangle)`. The flame art centers on cell (row 8, col 7), so it renders at
-`SPRITE 1,fpy-16,fpx-14`. A single fixed distance can't work — the rotation pivot (cell 5.5,5.5)
-sits ~3 px from the tail on cardinals but ~7 px on the (larger) diagonal frames, so a constant
-offset floats on cardinals and embeds on diagonals. The table is precomputed from the real art by
+`SPRITE 1,fpy-16,fpx-14`. A single fixed distance can't work — the pivot-to-tail gap varies by
+frame (the tail sits farther back on some rotations than others), so a constant offset floats on
+some and embeds on others. The table is precomputed from the real art by
 `tools/flame_offsets.py` (rear-edge centroid + a small gap along the −nose axis); re-run it if the
 ship art changes. It is **addition-only** (no per-frame divide), sidestepping the unsigned-divide
 trap entirely.
@@ -157,7 +157,7 @@ display fully rather than blinking out early.)
 
 ### Bullets
 
-4 slots. Velocity inherits ship inertia. Lifetime 25 frames (~200 px). A bullet that hits
+4 slots. Velocity inherits ship inertia. Lifetime 20 frames (~160 px). A bullet that hits
 something **stops scanning that frame** (one bullet = one hit; it can't also catch the fragments
 it just spawned). Same render-guard rule as asteroids: shown to the L/R edges, hidden only in the
 4-px top/bottom band.
@@ -207,18 +207,23 @@ cleared (and a fresh title field rebuilt) only when control returns to the `titl
   (direction-aware test — `ux` is 8-bit, so the old `<0`/`>255` tests were dead code and the UFO
   never left). **Small saucers are faster and jumpier:** ±3 px/frame (large ±2), and they re-pick
   a vertical step of −2..+2 every 12 frames vs the large UFO's occasional ±1 every 20.
-- **Fire (rapid, no waiting):** the saucer fires a steady stream as it crosses — large every 16
-  frames, small every 12 (first shot 14 frames after it appears). Each shot either **aims at the
-  ship** (closest of 16 headings via `ufo_aim`) or
-  goes in a random direction: **large aims 20% of shots, small aims 40%.** One UFO bullet at a
-  time; it's cleared when the UFO leaves or dies (no stranded dot). The UFO bullet also **shatters
-  asteroids** it strikes (no points to the player). It **wraps around the screen** (X via the 8-bit
-  256-px width, Y folded into 0..191) for its whole `ublife=80`, rather than dying at an edge.
+- **Fire (one bullet at a time, full flight):** exactly **one** UFO bullet exists at a time. The
+  saucer reloads only after the previous shot **clears** (`ubact=0`) — `ufire` is a short post-clear
+  delay (large 6, small 4; first shot 14 frames after it appears), *not* a fixed refire cadence, so
+  each bullet flies its full `ublife=40` across the screen instead of being reset mid-flight (the
+  old fixed timer cut every shot short). Each shot either **aims at the ship** (closest of 16
+  headings via `ufo_aim`) or goes random: **large aims 20% of shots, small aims 40%.** The bullet
+  also **shatters asteroids** it strikes (no points to the player) and **wraps around the screen**
+  (X via the 8-bit 256-px width, Y folded into 0..191) for its whole life, rather than dying at an
+  edge. It's cleared when the UFO leaves or dies (no stranded dot).
+- **Bullet speed (per size):** velocity comes from a precomputed signed table selected by saucer
+  size — `#bvl_t` (large, peak 5 px/frame) or `#bvs_t` (small, peak 7). **Small saucers shoot
+  faster** (closer to the player's ~8). Never derive these as `sin*N/64` at runtime — CVBasic's
+  unsigned divide turns negative components into huge values.
 - **Aiming (`ufo_aim`):** the target vector is reduced to magnitude ≤63 by **sign-safe halving**
   (not unsigned divide), then the best of 16 headings is chosen by an argmax of `dx·sin − dy·cos`
-  **offset by +16384** so the comparison stays in the unsigned-safe positive range. UFO-bullet
-  velocity comes from a precomputed signed `#bv_t` table (= sin/16), never `sin*4/64` at runtime
-  (that unsigned divide turned negative components into huge values — a prior latent bug).
+  **offset by +16384** so the comparison stays in the unsigned-safe positive range. `ufo_aim`
+  returns only the heading index; the caller sets velocity from the size-specific table.
 - **Collisions:** the saucer is destroyed (no player points) if it **crashes into an asteroid**
   (the rock breaks up too) or **into the ship** (which also kills the ship). When shot by the
   player it scores once.
@@ -286,6 +291,9 @@ Typing **`8 3 8`** on the keyboard at the title (read via `CONT1.KEY`: a digit k
 value, 15 = nothing pressed; a small `code_st` state machine, debounced on key-down with `lastk`,
 watches for the sequence) opens a **silent** setup screen (`setup838`):
 
+- On entry, a **key-release drain** (`setup_drain`: loop while `cont1.key<>15`) waits for all keys
+  to come up before reading input — otherwise the still-held `8` that opened the screen is
+  immediately eaten as the ship count.
 - **`SHIPS:`** and **`LEVEL:`** fields with a `>` cursor on the active one. The **first** number key
   `1–9` sets ships (cursor moves to LEVEL); the next sets the starting level. **FIRE** begins
   (debounced so a held button can't auto-start).
@@ -331,7 +339,7 @@ are git-ignored.
 ## 14. Acceptance criteria
 
 - [x] 16-step rotation; inertial thrust that tracks the aimed direction; ±294 top speed
-- [x] ≤4 bullets, inherit ship inertia, expire ~200 px; one bullet hits one thing
+- [x] ≤4 bullets, inherit ship inertia, expire ~160 px; one bullet hits one thing
 - [x] Large→2 medium→2 small→gone; explosion plays in place; 24-slot pool never leaks
 - [x] Collisions register from any direction (16-bit ABS); ship dies on rock / UFO-bullet / UFO-body contact
 - [x] UFO appears (~7.5 s), moves, despawns at the far edge, fires continuously, explodes when shot

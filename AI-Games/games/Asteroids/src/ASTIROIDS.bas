@@ -33,7 +33,7 @@
 	' NOTE: CVBasic DIM x(N) allocates N elements 0..N-1. Add 1 so max index N is in bounds.
 	DIM #ax(25),#ay(25),#avx(25),#avy(25)
 	DIM #bx(5),#by(5),#bvx(5),#bvy(5)
-	DIM #sin_t(16),#cos_t(16),#bv_t(16)
+	DIM #sin_t(16),#cos_t(16),#bvl_t(16),#bvs_t(16)
 	DIM #fdx_t(16),#fdy_t(16)
 
 	' 8-bit arrays
@@ -51,27 +51,32 @@
 	#cos_t(8)=-64 : #cos_t(9)=-57 : #cos_t(10)=-45: #cos_t(11)=-25
 	#cos_t(12)=0  : #cos_t(13)=25 : #cos_t(14)=45 : #cos_t(15)=57
 
-	' Bullet velocity table = sin_t/16 (signed) = ~4 px/frame unit vector.
-	' Used for the UFO bullet, whose position is in whole pixels. NEVER derive
-	' it as #sin_t*4/64 at runtime: CVBasic's 16-bit divide is UNSIGNED, so a
-	' negative component becomes a huge positive (bullet flies off instantly).
-	#bv_t(0)=0   : #bv_t(1)=1  : #bv_t(2)=2  : #bv_t(3)=3
-	#bv_t(4)=4   : #bv_t(5)=3  : #bv_t(6)=2  : #bv_t(7)=1
-	#bv_t(8)=0   : #bv_t(9)=-1 : #bv_t(10)=-2: #bv_t(11)=-3
-	#bv_t(12)=-4 : #bv_t(13)=-3: #bv_t(14)=-2: #bv_t(15)=-1
+	' UFO-bullet velocity tables (signed, whole px/frame), one per saucer size:
+	' large peaks at 5, small at 7 (small shoots faster). Position is in whole
+	' pixels; NEVER derive these as #sin_t*N/64 at runtime -- CVBasic's 16-bit
+	' divide is UNSIGNED, so a negative component becomes a huge positive.
+	#bvl_t(0)=0  : #bvl_t(1)=2  : #bvl_t(2)=4  : #bvl_t(3)=4
+	#bvl_t(4)=5  : #bvl_t(5)=4  : #bvl_t(6)=4  : #bvl_t(7)=2
+	#bvl_t(8)=0  : #bvl_t(9)=-2 : #bvl_t(10)=-4: #bvl_t(11)=-4
+	#bvl_t(12)=-5: #bvl_t(13)=-4: #bvl_t(14)=-4: #bvl_t(15)=-2
+	#bvs_t(0)=0  : #bvs_t(1)=3  : #bvs_t(2)=5  : #bvs_t(3)=6
+	#bvs_t(4)=7  : #bvs_t(5)=6  : #bvs_t(6)=5  : #bvs_t(7)=3
+	#bvs_t(8)=0  : #bvs_t(9)=-3 : #bvs_t(10)=-5: #bvs_t(11)=-6
+	#bvs_t(12)=-7: #bvs_t(13)=-6: #bvs_t(14)=-5: #bvs_t(15)=-3
 
 	' Thrust-flame offset from the ship center (px), per rotation frame, placing
 	' the flame just behind that frame's actual rear edge (engine) and on the
-	' ship's axis. Precomputed from the art (scratchpad/flame_offsets.py) because
-	' the pivot-to-tail distance varies per frame (cardinals ~3px, diagonals
-	' ~7px) -- a single distance would float on cardinals and embed on diagonals.
+	' ship's axis. Precomputed from the art (tools/flame_offsets.py); re-run it if
+	' the ship art changes. A single distance can't work: the pivot-to-tail gap
+	' varies per frame, so a fixed offset floats on some frames and embeds on
+	' others.
 	#fdx_t(0)=1  : #fdx_t(1)=-6 : #fdx_t(2)=-7 : #fdx_t(3)=-9
-	#fdx_t(4)=-6 : #fdx_t(5)=-9 : #fdx_t(6)=-7 : #fdx_t(7)=-6
+	#fdx_t(4)=-8 : #fdx_t(5)=-9 : #fdx_t(6)=-7 : #fdx_t(7)=-6
 	#fdx_t(8)=-1 : #fdx_t(9)=6  : #fdx_t(10)=7 : #fdx_t(11)=9
-	#fdx_t(12)=6 : #fdx_t(13)=9 : #fdx_t(14)=7 : #fdx_t(15)=6
-	#fdy_t(0)=6  : #fdy_t(1)=9  : #fdy_t(2)=7  : #fdy_t(3)=6
+	#fdx_t(12)=8 : #fdx_t(13)=9 : #fdx_t(14)=7 : #fdx_t(15)=6
+	#fdy_t(0)=8  : #fdy_t(1)=9  : #fdy_t(2)=7  : #fdy_t(3)=6
 	#fdy_t(4)=1  : #fdy_t(5)=-6 : #fdy_t(6)=-7 : #fdy_t(7)=-9
-	#fdy_t(8)=-6 : #fdy_t(9)=-9 : #fdy_t(10)=-7: #fdy_t(11)=-6
+	#fdy_t(8)=-8 : #fdy_t(9)=-9 : #fdy_t(10)=-7: #fdy_t(11)=-6
 	#fdy_t(12)=-1: #fdy_t(13)=6 : #fdy_t(14)=7 : #fdy_t(15)=9
 
 	acolor(1)=6 : acolor(2)=11 : acolor(3)=15
@@ -172,6 +177,15 @@ setup838:
 	PRINT AT 14*32+8,"SET 1-9"
 	PRINT AT 17*32+6,"PRESS FIRE TO BEGIN"
 	GOSUB setup_draw
+	' Debounce: the '8' that opened this screen may still be held. Wait for all
+	' keys to be released before reading input, or that 8 is eaten as the ship
+	' count. (The asteroid field keeps drifting while we wait.)
+setup_drain:
+	WAIT
+	GOSUB upd_ast
+	GOSUB render
+	IF cont1.key<>15 THEN GOTO setup_drain
+	lastk=15
 setup_loop:
 	WAIT
 	GOSUB upd_ast
@@ -429,8 +443,8 @@ handle_in: PROCEDURE
 				WHILE fi<=4
 					IF bact(fi)=0 THEN
 						bact(fi)=1
-						' ~8 px/frame * 25 = ~200 px before expiring
-						blife(fi)=25
+						' ~8 px/frame * 20 = ~160 px before expiring (20% shorter)
+						blife(fi)=20
 						' Art nose at row 4 of 16x16 frame; at 2x magnification
 						' that's 8px above center.  Spawn 9px out to clear hull.
 						#bx(fi)=#spx+9*#sin_t(sangle)
@@ -623,34 +637,43 @@ upd_ufo: PROCEDURE
 			IF ux<=16 THEN utype=0 : ubact=0 : SPRITE 6,$d1,0,0,0 : SPRITE 7,$d1,0,0,0
 		END IF
 		IF utype>0 THEN
-			ufire=ufire-1
-			IF ufire=0 THEN
-				' Saucers fire a steady stream as they cross. Large aims at
-				' the ship 20% of the time, small 40%; otherwise random.
-				ubact=1 : ublife=80 : ubx=ux : uby=uy
-				IF utype=1 THEN aimpct=2 ELSE aimpct=4
-				IF random(10)<aimpct THEN
-					#dx=#spx/64-ux : #dy=#spy/64-uy
-					GOSUB ufo_aim
-				ELSE
-					aim_ang=random(16)
-					ubvx=#bv_t(aim_ang)
-					ubvy=0-#bv_t((aim_ang+4) AND 15)
-				END IF
-				IF utype=1 THEN ufire=16 ELSE ufire=12
-				' UFO shot "pew" (small saucer = higher pitch), over the hum.
-				IF utype=1 THEN
-					#f2=700 : #d2=-110 : v2=13 : sfx2=5
-				ELSE
-					#f2=1600 : #d2=-220 : v2=13 : sfx2=5
+			' One bullet at a time: only reload once the previous shot has cleared
+			' (ubact=0), so each bullet flies its FULL life across the screen
+			' instead of being reset mid-flight (which cut it short). ufire is the
+			' post-clear reload delay, not a fixed refire cadence.
+			IF ubact=0 THEN
+				ufire=ufire-1
+				IF ufire=0 THEN
+					' Large aims at the ship 20% of the time, small 40%; else random.
+					ubact=1 : ublife=40 : ubx=ux : uby=uy
+					IF utype=1 THEN aimpct=2 ELSE aimpct=4
+					IF random(10)<aimpct THEN
+						#dx=#spx/64-ux : #dy=#spy/64-uy
+						GOSUB ufo_aim
+					ELSE
+						aim_ang=random(16)
+					END IF
+					' Velocity from the per-size speed table (small shoots faster).
+					IF utype=1 THEN
+						ubvx=#bvl_t(aim_ang) : ubvy=0-#bvl_t((aim_ang+4) AND 15)
+					ELSE
+						ubvx=#bvs_t(aim_ang) : ubvy=0-#bvs_t((aim_ang+4) AND 15)
+					END IF
+					IF utype=1 THEN ufire=6 ELSE ufire=4
+					' UFO shot "pew" (small saucer = higher pitch), over the hum.
+					IF utype=1 THEN
+						#f2=700 : #d2=-110 : v2=13 : sfx2=5
+					ELSE
+						#f2=1600 : #d2=-220 : v2=13 : sfx2=5
+					END IF
 				END IF
 			END IF
 			IF ubact=1 THEN
 				ubx=ubx+ubvx : uby=uby+ubvy
 				' Wrap around the screen instead of dying at the edges. ubx is
 				' 8-bit so X wraps at 256 (= screen width) for free; wrap uby
-				' into 0..191: after a small (+/-4) step a value >=224 underflowed
-				' past the top, else 192..195 ran off the bottom.
+				' into 0..191: after a small step (up to +/-7) a value >=224
+				' underflowed past the top, else 192..198 ran off the bottom.
 				IF uby>=224 THEN
 					uby=uby-64
 				ELSE
@@ -683,9 +706,8 @@ ufo_aim: PROCEDURE
 		#td=#dx*#sin_t(aa)-#dy*#cos_t(aa)+16384
 		IF #td>#best_d THEN #best_d=#td : best_a=aa
 	NEXT aa
+	' Return only the heading; the caller sets velocity from the per-size table.
 	aim_ang=best_a
-	ubvx=#bv_t(aim_ang)
-	ubvy=0-#bv_t((aim_ang+4) AND 15)
 END
 
 	' ============================================================
