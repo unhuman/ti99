@@ -63,13 +63,27 @@ strings), and the movement + ghost-AI logic is ported line-for-line.
   fruit-timeout (`fw>400`, never true) timers when ported from XB.
 
 ## Cross-platform timing
-The main loop is **frame-locked to ~24Hz** (`#pacef`/`pcyc`) — measured with a temporary
-on-screen loop counter, not guessed: the TI-99 naturally runs this loop at **22–24fps** (the
-per-frame sprite + `VPEEK` work spills past two 60Hz frames), while ColecoVision (faster Z80) holds
-60fps. A first guess of a flat 30Hz cap left Coleco ~30% too fast. Since 60fps doesn't divide evenly
-into the TI's 22–24 range, the loop alternates waiting 2 and 3 VDP frames per step (`pcyc` toggles
-0/1, wait threshold `2 + pcyc`) for an average of 2.5 frames/step = 24Hz, landing inside the TI's
-own measured range. Capping both machines this way matches the tuned TI feel, sounds included.
+The main loop is **frame-locked to ~24Hz** (`#pacef`/`pcyc`), measured with a temporary on-screen
+loop counter, not guessed. Since 60fps doesn't divide evenly into 24, the loop alternates waiting 2
+and 3 VDP frames per step (`pcyc` toggles 0/1, wait threshold `2 + pcyc`) for an average of 2.5
+frames/step = 24Hz.
+
+**TI-99 speed was raised, not just capped.** CVBasic compiles every `%` (modulo) — even by a
+compile-time-constant power of 2 — to a genuine `DIV` instruction, one of the slowest ops on the
+TMS9900; there's no compiler-side conversion to a bitwise AND. The hot path (Pac-Man movement, all
+4 ghosts, every tick) did several of these unconditionally, including `#fc % sp(gi)` — a division
+by a *runtime variable* (impossible to convert to AND), running up to 3×/tick for the whole game
+(the ghost speed throttle). Fixed by: converting every power-of-2 `%` to `AND` (`% 8`→`AND 7`,
+`% 16`→`AND 15`, `% 2`→`AND 1`); computing `#fc AND 7`/`#fc AND 1` **once** per tick and reusing
+them (was recomputed via `DIV` up to 5×/tick for the identical value — Pac's chomp frame, plus once
+per ghost's walk-cycle check); and replacing the variable-divisor ghost speed throttle with a
+per-ghost countdown counter (`spcd()`) that reproduces the exact same skip-1-tick-in-`sp(gi)` rate
+using only a decrement + compare, no division at all.
+
+Measured effect: the TI-99's native loop rate went from **fluctuating 22–24fps to a solid, stable
+24fps** — the same optimization also benefits ColecoVision, which now hits a full uncapped 60fps
+(previously not re-measured after this pass). 24Hz remains the shared target since it's the TI's
+now-stable ceiling; capping both machines to it keeps the tuned TI feel, sounds included.
 
 ## Status
 One-shot port; compiles for **both** TI-99/4A (`mspac_8.bin`, 225 RAM bytes) and ColecoVision

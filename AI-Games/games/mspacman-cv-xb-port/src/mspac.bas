@@ -35,7 +35,7 @@
 	DEFINE COLOR 168,1,wall_color
 	DEFINE SPRITE 0,11,game_sprites		' 0-9 Pac/ghost/eyes/fruit; 10 = ghost walk frame 2
 
-	DIM gx(5), gy(5), gd(5), op(5), rt(5), tm(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5)
+	DIM gx(5), gy(5), gd(5), op(5), rt(5), tm(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5), spcd(5)
 	DIM #ds(5)
 	DIM spc(5)		' per-ghost speed caps (fixed Blinky>Pinky>Inky>Clyde ranking)
 
@@ -60,6 +60,7 @@ boot:
 	gx(4) = 137 : gy(4) = 93 : gd(4) = 4
 	rt(1) = 0 : rt(2) = 8 : rt(3) = 16 : rt(4) = 24
 	sp(1) = 9 : sp(2) = 8 : sp(3) = 7 : sp(4) = 6	' base speeds, distinct ranking (capped per ghost by spc())
+	spcd(1) = 1 : spcd(2) = 1 : spcd(3) = 1 : spcd(4) = 1
 	cd = 3 : hd = 3
 	tm(1) = 0 : tm(2) = 90 : tm(3) = 150 : tm(4) = 210 : #fc = 0
 	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' TI 7,14,8,11 -> CV 6,13,7,10
@@ -81,14 +82,24 @@ main:
 	#pacef = FRAME : pcyc = 0
 	WHILE 1
 		WAIT
-		' Frame-pace to ~24Hz, matching the TI-99's measured loop rate (not a
-		' guess -- an on-screen counter showed the TI naturally running this loop
-		' at 22-24fps; a fixed 30Hz cap left ColecoVision ~30% too fast). 60fps
-		' doesn't divide evenly into that range, so alternate waiting 2 and 3 VDP
-		' frames per step (avg 2.5 -> 24Hz) to land inside the TI's own range.
+		' Frame-pace to ~24Hz, matching the TI-99's measured loop rate. After
+		' the DIV-to-AND optimization pass (see the fc8/fc2/spcd notes below),
+		' re-measured with a temporary on-screen counter: TI now holds a
+		' solid 24fps (was fluctuating 22-24fps before the optimization),
+		' ColecoVision hits a full 60fps uncapped. 60fps doesn't divide evenly
+		' into 24, so alternate waiting 2 and 3 VDP frames per step (avg 2.5
+		' -> 24Hz) to land exactly on the TI's now-stable rate.
 		pcyc = 1 - pcyc
 		IF (FRAME - #pacef) < (2 + pcyc) THEN WAIT
 		#pacef = FRAME
+		' TMS9900 has no fast divide: CVBasic compiles EVERY "%" (even by a
+		' constant power of 2) to a real DIV instruction, one of the slowest
+		' ops on this CPU -- there's no compiler-side AND-conversion. #fc%8 and
+		' #fc%16 were each being recomputed via DIV up to 5x/tick (Pac's chomp
+		' frame, plus once per ghost's walk-cycle/pellet-blink checks) for the
+		' SAME #fc value (unchanged until the increment near the end of this
+		' tick). Compute both ONCE here as cheap ANDs and reuse below.
+		fc8 = #fc AND 7 : fc2 = #fc AND 1
 		FOR dk = ng + 1 TO 4 : SPRITE dk, $d1, 0, 0, 0 : NEXT dk	' hide ghosts above ng (set via 8-3-8)
 		ea = 0
 
@@ -117,7 +128,7 @@ main:
 		IF hd = 2 THEN pf = 12
 		IF hd = 3 THEN pf = 4
 		chmp = 0
-		IF cd <> 0 THEN IF (#fc % 8) >= 4 THEN chmp = 1
+		IF cd <> 0 THEN IF fc8 >= 4 THEN chmp = 1
 		IF chmp = 1 THEN pf = 16			' closed (right/down)
 		IF (chmp = 1) AND (hd = 3) THEN pf = 32		' left-closed (bow stays)
 		IF (chmp = 1) AND (hd = 1) THEN pf = 36		' up-closed (bow stays at bottom)
@@ -158,7 +169,7 @@ main:
 			IF dt < 10 THEN
 				GOSUB ghost
 			ELSE
-				IF (#fc % 2) = 0 THEN GOSUB ghost
+				IF fc2 = 0 THEN GOSUB ghost
 			END IF
 			xp = 0
 		END IF
@@ -180,9 +191,13 @@ main:
 			IF pew = 0 THEN SOUND 1, , 0 ELSE SOUND 1, 40 + (8 - pew) * 15, 11
 		END IF
 		IF #ft > 0 THEN #ft = #ft - 1
-		' blink the energizers (power pellets, char 152)
-		IF (#fc % 16) = 0 THEN DEFINE CHAR 152,1,pellet_tile
-		IF (#fc % 16) = 8 THEN DEFINE CHAR 152,1,blank_tile
+		' blink the energizers (power pellets, char 152). #fc was JUST
+		' incremented above, so this reads the post-increment value (a fresh
+		' AND, not fc8/fc2 from the top of the tick, which are pre-increment)
+		' -- same DIV-avoidance, exact original phase preserved.
+		fc16b = #fc AND 15
+		IF fc16b = 0 THEN DEFINE CHAR 152,1,pellet_tile
+		IF fc16b = 8 THEN DEFINE CHAR 152,1,blank_tile
 
 		' roaming fruit (XB 433-434)
 		IF fa = 1 THEN IF (#fc % 3) = 0 THEN GOSUB movefruit
@@ -209,7 +224,7 @@ main:
 	' ============================================================
 pacstep:	PROCEDURE
 	ax = sx + 3 : ay = sy + 3
-	xc = ax % 8 : yc = ay % 8
+	xc = ax AND 7 : yc = ay AND 7
 	IF xc = 0 THEN IF yc = 0 THEN GOTO ps_aligned
 	GOTO ps_corner
 
@@ -389,11 +404,26 @@ ghost:	PROCEDURE
 		IF gsi <> 0 THEN GOTO gh_draw_only
 		IF ((by = ty1) OR (by = ty2)) AND ((bx < 45) OR (bx > 197)) THEN GOTO gh_draw_only
 	END IF
-	' speed throttle (XB 1006-1007)
+	' speed throttle (XB 1006-1007). fc2 reuses the pre-increment #fc AND 1
+	' computed once at the top of the tick (ghost: always runs before #fc is
+	' incremented, so it's the same value the original "#fc % 2" would read).
 	IF (gsi = 1) OR (((by=ty1) OR (by=ty2)) AND ((bx<45) OR (bx>197))) THEN
-		IF (#fc % 2) = 0 THEN GOTO gh_draw_only
+		IF fc2 = 0 THEN GOTO gh_draw_only
 	END IF
-	IF (gsi = 0) THEN IF sp(gi) < 40 THEN IF (#fc % sp(gi)) = 0 THEN GOTO gh_draw_only
+	' Was "IF (#fc % sp(gi)) = 0 THEN skip" -- a DIVISION BY A VARIABLE
+	' (sp(gi) isn't a compile-time constant, so it can't become an AND) done
+	' on the TMS9900's slow DIV instruction, up to 3x/tick (every non-Blinky
+	' ghost, every tick they're in normal chase/scatter state -- the common
+	' case). Replaced with a per-ghost countdown that reproduces the exact
+	' same rate (skip exactly 1 tick out of every sp(gi)) using only a
+	' decrement + compare: no division at all, regardless of sp(gi)'s value.
+	IF (gsi = 0) AND (sp(gi) < 40) THEN
+		spcd(gi) = spcd(gi) - 1
+		IF spcd(gi) <= 0 THEN
+			spcd(gi) = sp(gi)
+			GOTO gh_draw_only
+		END IF
+	END IF
 
 	' pen entry / exit (XB 1008-1011) -- only ever fires on the two pen rows
 	IF (by = 77) OR (by = 93) THEN
@@ -413,8 +443,8 @@ ghost:	PROCEDURE
 	END IF
 
 	ax = bx + 3 : ay = by + 3
-	IF (ax % 8) <> 0 THEN GOTO gh_move
-	IF (ay % 8) <> 0 THEN GOTO gh_move
+	IF (ax AND 7) <> 0 THEN GOTO gh_move
+	IF (ay AND 7) <> 0 THEN GOTO gh_move
 
 	' choose direction toward target (XB 1015-1035)
 	c = (bx + 11) / 8 : r = (by + 11) / 8
@@ -485,10 +515,10 @@ gh_draw_only:
 gh_draw:
 	' colour + frame from state
 	gcx = gc(gi) : gfr = 20
-	IF (#fc % 8) >= 4 THEN gfr = 40		' ghost walk-cycle: alternate frame
+	IF fc8 >= 4 THEN gfr = 40		' ghost walk-cycle: alternate frame (fc8 reused from top of tick)
 	IF gsi = 1 THEN
 		gcx = 4
-		IF #ft <= 48 THEN IF (#ft % 8) < 4 THEN gcx = 15
+		IF #ft <= 48 THEN IF (#ft AND 7) < 4 THEN gcx = 15
 	END IF
 	IF gsi = 2 THEN gcx = 15 : gfr = 24 : ne = 1	' ne flags that eyes exist this frame
 	SPRITE gi, by - 2, bx - 1, gfr, gcx
@@ -606,7 +636,7 @@ pd_respawn:
 	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
 	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
 	FOR j = 1 TO 4
-		gs(j) = 0 : gd(j) = 4
+		gs(j) = 0 : gd(j) = 4 : spcd(j) = 1
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
 	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0
@@ -645,7 +675,7 @@ nextlevel:	PROCEDURE
 	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
 	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
 	FOR j = 1 TO 4
-		gs(j) = 0 : gd(j) = 4
+		gs(j) = 0 : gd(j) = 4 : spcd(j) = 1
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
 	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : #mt = 150
@@ -683,8 +713,8 @@ movefruit:	PROCEDURE
 	END IF
 	bx = fx : by = fy : bd = fd
 	ax = bx + 3 : ay = by + 3
-	IF (ax % 8) <> 0 THEN GOTO mf_step
-	IF (ay % 8) <> 0 THEN GOTO mf_step
+	IF (ax AND 7) <> 0 THEN GOTO mf_step
+	IF (ay AND 7) <> 0 THEN GOTO mf_step
 	c = (bx + 11) / 8 : r = (by + 11) / 8
 	rev = 0
 	IF bd = 1 THEN rev = 2
@@ -721,7 +751,7 @@ mf_step:
 	' vertical bob while moving horizontally (XB WB), kept non-negative
 	fwb = fy - 2
 	IF (bd = 3) OR (bd = 4) THEN
-		m = #fw % 8
+		m = #fw AND 7
 		IF m >= 4 THEN fwb = fy - 4 + (m - 4) ELSE fwb = fy - 4 + (4 - m)
 	END IF
 	SPRITE 5, fwb, fx - 1, 28, ffl		' fruit on slot 5 (lowest priority, after ghosts)
