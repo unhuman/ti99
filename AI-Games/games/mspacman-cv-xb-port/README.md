@@ -106,6 +106,28 @@ smoothness instead of just idling at the TI's pace.
   the `hz/sec` its `NUM/DEN` math assumes — worked out by hand to a ~2.5× slowdown on Coleco.
   Fixed by evaluating both throttles independently every tick (`skip1`/`skip2` flags, no early
   jump) so each accumulator always advances at its own correct rate.
+- **Ghosts almost never actually throttled in the real tunnel** (found while diagnosing the above
+  with an on-screen moves/sec counter): `ty1`/`ty2` (the tunnel rows' Y-coordinates, computed once
+  while parsing the maze) used the formula `(mr+1)*8-3`, but every other place in this file converts
+  a Y position to its grid row via `(y+11)/8` — solving that backwards for which Y maps to row
+  `mr+1` gives `(mr+1)*8-11`, not `-3`. Confirmed by computing `(oldTy1+11)/8 = mr+2`, one row past
+  intended. So the tunnel-slow throttle's exact-equality check (`by=ty1`) matched ghosts one row
+  *below* the true tunnel (usually not a walkable corridor there), while ghosts genuinely in the
+  tunnel were never throttled at all — full speed through the real tunnel, every time, on **both**
+  platforms (not a Coleco-specific bug, just more noticeable once the other rate issues were fixed).
+  Also silently miscalculated the roaming fruit's tunnel-approach target row (`spawnfruit`'s
+  `ftr=(tg+11)/8` uses the same `ty1`/`ty2`) — fixed as a side effect.
+- **Ghost "eyes" (a caught ghost returning to the pen) returned way too fast on Coleco, with a
+  broken-sounding 'pew'.** Eyes (`gsi=2`) matched neither `skip1`'s condition (`gsi=1`) nor
+  `skip2`'s (`gsi=0`) — they moved **completely unthrottled**, every tick, on both the normal ghost
+  pass and the separate "double speed" extra pass, i.e. 2 full moves/tick unconditionally = raw
+  `hz`-dependent speed with zero scaling. 2.5× too fast on Coleco, and since the eye 'pew' sound
+  fires on every direction change, 2.5× the movement rate also meant 2.5× the pew rate — explaining
+  the "wrong sound" as a direct symptom, not a separate bug. Fixed with the same accumulator
+  approach, targeting a flat 24 fires/sec (the TI's "always move" baseline) — exact identity at
+  `hz=24` (fires every tick, matching the old unthrottled TI behavior), correctly rate-limited at
+  any other `hz`. Separate accumulators for the normal pass and the double-speed pass so together
+  they reproduce the original "moves twice per tick, every tick" baseline.
 - **TI-99 speed was raised, not just capped.** CVBasic compiles every `%` (modulo) — even by a
   compile-time-constant power of 2 — to a genuine `DIV` instruction, one of the slowest ops on the
   TMS9900, with no compiler-side conversion to `AND`. Converted every power-of-2 `%` to `AND`
@@ -119,8 +141,8 @@ playtest on both targets to confirm ghost speed and Pac-Man's movement feel righ
 compiles.
 
 ## Status
-One-shot port; compiles for **both** TI-99/4A (`mspac_8.bin`, 251 RAM bytes) and ColecoVision
-(`mspac.rom`, 16 KB, 232 RAM bytes) from one source. TI runtime-tested by the user; the
+One-shot port; compiles for **both** TI-99/4A (`mspac_8.bin`, 265 RAM bytes) and ColecoVision
+(`mspac.rom`, 16 KB, 245 RAM bytes) from one source. TI runtime-tested by the user; the
 ColecoVision build needs an emulator pass (keypad 8-3-8, joystick, sound, and Z80 speed with the
 per-frame `VPEEK` maze probes). Fixed after first run: real sprite art,
 animated title (Pac + ghosts), sprites hidden on title entry/exit (no more game-over pollution),

@@ -63,6 +63,7 @@
 
 	DIM gx(5), gy(5), gd(5), op(5), rt(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5)
 	DIM #spcd(5)	' 16-bit: rate-accumulator values reach into the thousands at hz=60
+	DIM eya1(5), eya2(5)	' 8-bit: eyes-return rate accumulators (NUM=24,DEN<=hz<=60, fits 8-bit)
 	DIM #tm(5)		' widened to 16-bit: rescaled Coleco values (up to ~525) exceed 8-bit
 	DIM #ds(5)
 	DIM spc(5)		' per-ghost speed caps (fixed Blinky>Pinky>Inky>Clyde ranking)
@@ -89,6 +90,8 @@ boot:
 	rt(1) = 0 : rt(2) = 8 : rt(3) = 16 : rt(4) = 24
 	sp(1) = 9 : sp(2) = 8 : sp(3) = 7 : sp(4) = 6	' base speeds, distinct ranking (capped per ghost by spc())
 	#spcd(1) = 0 : #spcd(2) = 0 : #spcd(3) = 0 : #spcd(4) = 0
+	eya1(1) = 0 : eya1(2) = 0 : eya1(3) = 0 : eya1(4) = 0
+	eya2(1) = 0 : eya2(2) = 0 : eya2(3) = 0 : eya2(4) = 0
 	cd = 3 : hd = 3
 	#tm(1) = 0 : #tm(2) = cd90 : #tm(3) = #cd150 : #tm(4) = #cd210 : #fc = 0
 	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' TI 7,14,8,11 -> CV 6,13,7,10
@@ -515,7 +518,32 @@ ghost:	PROCEDURE
 			#spcd(gi) = #spcd(gi) - #gd
 		END IF
 	END IF
-	IF (skip1 = 1) OR (skip2 = 1) THEN GOTO gh_draw_only
+	' Eyes (gsi=2, a caught ghost returning to the pen) matched NEITHER
+	' skip1's condition (gsi=1) NOR skip2's (gsi=0) -- meaning they moved
+	' completely unthrottled, every single tick, on both the normal pass AND
+	' the separate "double speed" extra pass below (main:, IF ne=1 THEN...).
+	' That's 2 full 2px moves/tick unconditionally = hz-dependent speed (not
+	' scaled at all), 2.5x too fast on Coleco -- matches "eyes return WAY too
+	' fast" exactly, and explains the wrong-sounding eye 'pew' sound too (it
+	' fires on every direction change, so 2.5x the movement rate means 2.5x
+	' the pew rate). Fix: same accumulator idea as the sp(gi) throttle, but
+	' targeting a flat 24 fires/sec (TI's "always move" baseline) instead of
+	' a variable ratio -- exact identity at hz=24 (fires every tick, matching
+	' the old unthrottled behavior exactly), correctly rate-limited at any
+	' other hz. Separate accumulators for the normal pass (eya1) and the
+	' extra double-speed pass (eya2, xp=2) so together they reproduce the
+	' original "moves twice per tick, every tick" = 48px/sec baseline.
+	skip3 = 0
+	IF gsi = 2 THEN
+		IF xp = 2 THEN
+			eya2(gi) = eya2(gi) + 24
+			IF eya2(gi) < hz THEN skip3 = 1 ELSE eya2(gi) = eya2(gi) - hz
+		ELSE
+			eya1(gi) = eya1(gi) + 24
+			IF eya1(gi) < hz THEN skip3 = 1 ELSE eya1(gi) = eya1(gi) - hz
+		END IF
+	END IF
+	IF (skip1 = 1) OR (skip2 = 1) OR (skip3 = 1) THEN GOTO gh_draw_only
 
 	' pen entry / exit (XB 1008-1011) -- only ever fires on the two pen rows
 	IF (by = 77) OR (by = 93) THEN
@@ -728,7 +756,7 @@ pd_respawn:
 	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
 	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
 	FOR j = 1 TO 4
-		gs(j) = 0 : gd(j) = 4 : #spcd(j) = 0
+		gs(j) = 0 : gd(j) = 4 : #spcd(j) = 0 : eya1(j) = 0 : eya2(j) = 0
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
 	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0
@@ -773,7 +801,7 @@ nextlevel:	PROCEDURE
 	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
 	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
 	FOR j = 1 TO 4
-		gs(j) = 0 : gd(j) = 4 : #spcd(j) = 0
+		gs(j) = 0 : gd(j) = 4 : #spcd(j) = 0 : eya1(j) = 0 : eya2(j) = 0
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
 	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : #mt = #cd150
@@ -969,7 +997,20 @@ drawmaze:	PROCEDURE
 			IF p = 43 THEN cc = 168				' "+"
 			IF p >= 97 THEN cc = 128 + p - 97		' "a".."p"
 			IF (i = 1) AND (p = 32) THEN
-				IF ty1 = 0 THEN ty1 = (mr + 1) * 8 - 3 ELSE ty2 = (mr + 1) * 8 - 3
+				' Was "(mr+1)*8-3" -- off by a full row (8px) from the Y a
+				' ghost/Pac actually occupies in that row: every OTHER place
+				' in this file converts a Y position to its grid row via
+				' "(y+11)/8" (e.g. spawnfruit's "ftr=(tg+11)/8" on this same
+				' ty1/ty2 value), and solving that backwards for which Y maps
+				' to row (mr+1) gives (mr+1)*8-11, not -3. Confirmed by
+				' computing (oldTy1+11)/8 = mr+2, one row past the intended
+				' mr+1 -- so the tunnel-row EXACT-EQUALITY checks ("by=ty1")
+				' used for the tunnel-slow throttle actually matched ghosts
+				' one row BELOW the true tunnel row (usually not a walkable
+				' corridor there), while ghosts genuinely in the tunnel were
+				' never throttled at all -- full speed through the real
+				' tunnel, every time.
+				IF ty1 = 0 THEN ty1 = (mr + 1) * 8 - 11 ELSE ty2 = (mr + 1) * 8 - 11
 			END IF
 			VPOKE $1800 + (mr + 1) * 32 + (i + 1), cc
 		NEXT i
