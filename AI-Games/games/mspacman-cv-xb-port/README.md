@@ -62,6 +62,14 @@ strings), and the movement + ghost-AI logic is ported line-for-line.
   vars wrap at 256, which silently broke the scatter/chase (`mt=800→32`), fright (`fb=300→44`), and
   fruit-timeout (`fw>400`, never true) timers when ported from XB.
 
+## Cross-platform timing
+The main loop is **frame-locked to 30Hz** (`#pacef`, 2 VDP frames per step). The TI-99 already
+runs the loop near 30fps — the per-frame sprite + `VPEEK` work spills past one 60Hz frame — while
+ColecoVision (faster Z80) holds 60fps. Uncapped, the Coleco build ran ~2× faster and frame-timed
+sounds were half as long (the 1-frame dot *waka* was inaudible). Capping both machines to 30fps
+makes the Coleco build match the tuned TI feel, sounds included. (Change the `< 2` to `< 1` for
+60Hz, or `< 3` for 20Hz.)
+
 ## Status
 One-shot port; compiles for **both** TI-99/4A (`mspac_8.bin`, 225 RAM bytes) and ColecoVision
 (`mspac.rom`, 16 KB, 209 RAM bytes) from one source. TI runtime-tested by the user; the

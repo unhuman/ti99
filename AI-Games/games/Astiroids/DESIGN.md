@@ -337,6 +337,12 @@ breaks signed logic. These bit this game repeatedly and the fixes are load-beari
 TMS9900 inline ASM), so the same `ASTIROIDS.bas` builds for both machines — only the toolchain back
 end differs.
 
+**Cross-platform timing.** The main loop is frame-locked to **30Hz** (`#pacef`, waits for 2 VDP
+frames per step). The TI-99 already runs the loop at ~30fps — the heavy per-frame sprite work spills
+past one 60Hz frame — while ColecoVision (faster Z80) holds a solid 60fps. Uncapped, the Coleco
+build ran ~2× faster and every frame-timed sound was half as long; capping both to 30fps makes
+Coleco match the tuned TI feel. Change the `< 2` to `< 1` for 60Hz.
+
 **TI-99/4A:**
 ```
 bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.bas "ASTIROIDS"

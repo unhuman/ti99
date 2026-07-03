@@ -41,6 +41,10 @@ ROM** (not an XB256/compiler game). Full spec in [`DESIGN.md`](DESIGN.md).
 - **Fixed-point ×64** positions for sub-pixel inertia; 16-step rotation via a sin/cos table.
 - **Explosions in place** — a dead entity's slot plays the shared 4-frame blast, then frees itself.
 - Per-frame software movement (no `CALL MOTION` in CVBasic); native TMS9900 speed handles it.
+- **30Hz frame-lock** (`#pacef`, main loop): the TI-99 already runs the loop at ~30fps because
+  the heavy per-frame sprite work spills past one 60Hz frame, but ColecoVision holds a solid 60fps.
+  Without a cap, the Coleco build runs ~2× faster and every frame-timed sound is half as long, so
+  the loop waits for 2 VDP frames per step on both — Coleco then matches the TI feel.
 - Watch the CVBasic traps documented in `DESIGN.md` §12 (unsigned 16-bit compare **and** divide,
   `ABS` on 8-bit, sprite edge wrap, 8-byte bitmap char colors).
 
