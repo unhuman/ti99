@@ -84,6 +84,6 @@ Both scripts pass a **required** `-Dpacen=N` build-time constant (3 for TI, 2 fo
 `.claude/skills/build-cvbasic-game/build.sh`, which doesn't pass it (compile fails loudly if
 `pacen` is missing, rather than risking a silent runtime divide-by-zero). The Coleco path compiles
 with the default CVBasic target (no `--ti994a`) and assembles with `gasm80` (nanochess's Z80
-assembler) straight to a 16 KB `.rom`. It fits ColecoVision's 1 KB RAM (693 of 814 bytes used).
+assembler) straight to a 16 KB `.rom`. It fits ColecoVision's 1 KB RAM (757 of 814 bytes used).
 All generated artifacts (`.a99`/`.bin`/`.txt`/`_8.bin` for TI, `.asm`/`.rom`/`.lst`/`.sym` for
 Coleco) are git-ignored.

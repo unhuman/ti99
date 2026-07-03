@@ -99,6 +99,7 @@
 	DIM #bx(5),#by(5),#bvx(5),#bvy(5)
 	DIM #sin_t(16),#cos_t(16),#bvl_t(16),#bvs_t(16)
 	DIM #fdx_t(16),#fdy_t(16)
+	DIM #ndx_t(16),#ndy_t(16)
 
 	' 8-bit arrays
 	DIM asiz(25),aact(25),afr(25),aft(25)
@@ -146,6 +147,22 @@
 	#fdy_t(4)=1  : #fdy_t(5)=-6 : #fdy_t(6)=-7 : #fdy_t(7)=-9
 	#fdy_t(8)=-8 : #fdy_t(9)=-9 : #fdy_t(10)=-7: #fdy_t(11)=-6
 	#fdy_t(12)=-1: #fdy_t(13)=6 : #fdy_t(14)=7 : #fdy_t(15)=9
+
+	' Bullet-spawn (nose) offset from the ship center, per rotation frame, in
+	' screen px. NOT "9*sin/9*cos": the render pivot sits at cell (5.5,5.5) --
+	' a deliberately off-center point chosen so the nose can reach the screen
+	' edge (see render offset 11 below), not the art's geometric centroid, so
+	' the true nose isn't exactly 9px along the facing axis from center on
+	' every frame. Precomputed from the actual art the same way as the flame
+	' offset (tools/nose_offsets.py); re-run it if the ship art changes.
+	#ndx_t(0)=1 : #ndx_t(1)=3 : #ndx_t(2)=6 : #ndx_t(3)=8
+	#ndx_t(4)=12 : #ndx_t(5)=8 : #ndx_t(6)=6 : #ndx_t(7)=3
+	#ndx_t(8)=-1 : #ndx_t(9)=-3 : #ndx_t(10)=-6 : #ndx_t(11)=-8
+	#ndx_t(12)=-12 : #ndx_t(13)=-8 : #ndx_t(14)=-6 : #ndx_t(15)=-3
+	#ndy_t(0)=-12 : #ndy_t(1)=-8 : #ndy_t(2)=-6 : #ndy_t(3)=-3
+	#ndy_t(4)=1 : #ndy_t(5)=3 : #ndy_t(6)=6 : #ndy_t(7)=8
+	#ndy_t(8)=12 : #ndy_t(9)=8 : #ndy_t(10)=6 : #ndy_t(11)=3
+	#ndy_t(12)=-1 : #ndy_t(13)=-3 : #ndy_t(14)=-6 : #ndy_t(15)=-8
 
 	acolor(1)=6 : acolor(2)=11 : acolor(3)=15
 
@@ -527,10 +544,13 @@ handle_in: PROCEDURE
 						bact(fi)=1
 						' ~8 px/tick * 20 ticks = ~160 px before expiring (20% shorter)
 						blife(fi)=cd20
-						' Art nose at row 4 of 16x16 frame; at 2x magnification
-						' that's 8px above center.  Spawn 9px out to clear hull.
-						#bx(fi)=#spx+9*#sin_t(sangle)
-						#by(fi)=#spy-9*#cos_t(sangle)
+						' Spawn exactly at the nose tip (+ a small hull-clearance
+						' gap), per the precomputed per-frame offset table above
+						' -- NOT a fixed "9px along facing", which put the bullet
+						' up to 1-2px off the true tip on some frames (the render
+						' pivot is off-center by design; see the table comment).
+						#bx(fi)=#spx+64*#ndx_t(sangle)
+						#by(fi)=#spy+64*#ndy_t(sangle)
 						' Bullet ~8 px/frame in the facing direction PLUS the
 						' ship's current velocity (inertia): forward shots are
 						' faster, shots fired backward while moving are slower.

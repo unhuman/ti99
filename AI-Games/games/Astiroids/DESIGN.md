@@ -155,6 +155,18 @@ some and embeds on others. The table is precomputed from the real art by
 ship art changes. It is **addition-only** (no per-frame divide), sidestepping the unsigned-divide
 trap entirely.
 
+**Bullet spawn point** uses the same table-driven technique, for the same underlying reason: a
+per-frame offset table `#ndx_t`/`#ndy_t` (16 entries each, screen px from ship center), applied as
+`#bx(fi)=#spx+64*#ndx_t(sangle)`, `#by(fi)=#spy+64*#ndy_t(sangle)` (the `*64` converts the plain-px
+table into the bullet's ×64 fixed-point position). This **replaced** an earlier `9*sin/9*cos`
+formula that assumed the nose sits exactly 9px along the facing axis from the ship center — true
+only if the render pivot were the art's geometric centroid. It isn't: the pivot deliberately sits
+at the off-center cell (5.5, 5.5) — see render offset 11 above, chosen so the nose can reach the
+screen edge — so the true nose position relative to center varies per frame (up to ±3px off from
+what a symmetric formula assumes) and needs the same table-driven fix as the flame. Precomputed by
+`tools/nose_offsets.py` (nose-tip centroid + a small gap along the +nose axis); re-run it if the
+ship art changes.
+
 ### Asteroids
 
 `#avx/#avy` velocities; **wrap the full screen** (0..16384 / 0..12288) with a signed-safe
@@ -352,7 +364,8 @@ real-world game speed matches regardless:
   CONST"), not silently at runtime. The main-loop pace check is `IF (FRAME-#pacef) < pacen THEN WAIT`.
 - Every value originally hand-tuned assuming `pacen=3` (the TI reference) is rescaled by one of two
   formulas, both exact at `pacen=3` so the TI build is byte-identical to before this change
-  (confirmed: TI RAM usage unchanged at 707 bytes):
+  (confirmed: TI RAM usage unaffected by pacen=3, before the later nose-offset table added 64
+  bytes independently — see §13 build output):
   - **Duration** (ticks until something happens — cooldown, lifetime, timer): `cdN = (N*3+1)/pacen`
     — needs *more* ticks at a faster tick rate to cover the same real time.
   - **Increment** (an amount added or capped once per tick — velocity, a sound sweep step):
@@ -388,7 +401,7 @@ bash games/Astiroids/build-coleco.sh
 ```
 (`cvbasic -Dpacen=2 … astiroids_col.asm "<CVBASIC_DIR>/"` with the **default** target →
 `gasm80 … astiroids.rom`.) Load `astiroids.rom` in **CoolCV** / **blueMSX**. Fits Coleco's 1 KB RAM
-(**693 of 814 bytes**). `gasm80` (nanochess's Z80 assembler) lives at
+(**757 of 814 bytes**). `gasm80` (nanochess's Z80 assembler) lives at
 `nanochess/gasm80/gasm80.exe` (cloned + `gcc`-built).
 
 **Do not** build `ASTIROIDS.bas` with the generic shared `.claude/skills/build-cvbasic-game/build.sh`
@@ -405,6 +418,7 @@ Coleco) are git-ignored.
 
 - [x] 16-step rotation; inertial thrust that tracks the aimed direction; ±294 top speed
 - [x] ≤4 bullets, inherit ship inertia, expire ~160 px; one bullet hits one thing
+- [x] Bullets spawn exactly at the ship's nose tip on every rotation frame (table-driven, §5)
 - [x] Large→2 medium→2 small→gone; explosion plays in place; 24-slot pool never leaks
 - [x] Collisions register from any direction (16-bit ABS); ship dies on rock / UFO-bullet / UFO-body contact
 - [x] UFO appears (~7.5 s), moves, despawns at the far edge, fires continuously, explodes when shot
