@@ -461,12 +461,27 @@ ghost:	PROCEDURE
 		IF gsi <> 0 THEN GOTO gh_draw_only
 		IF ((by = ty1) OR (by = ty2)) AND ((bx < 45) OR (bx > 197)) THEN GOTO gh_draw_only
 	END IF
-	' speed throttle (XB 1006-1007): half-speed in fright/tunnel. gtslow
-	' reuses the tick-global rate flag computed once at the top of the tick
-	' (see main:) -- fires at 12/sec regardless of hz, replacing the old flat
-	' "#fc even" check that only gave 12/sec at the TI's reference 24Hz.
+	' speed throttle (XB 1006-1007): half-speed in fright/tunnel, AND a
+	' separate sp(gi)-based cap in the open. The original ran these as two
+	' SEQUENTIAL checks, the second only reached if the first didn't already
+	' jump to gh_draw_only -- meaning a tunnel ghost's sp(gi) accumulator only
+	' got a chance to advance on the ~half of ticks gtslow already let through.
+	' That's harmless at a FIXED hz (both throttles ride the same #fc clock,
+	' so whatever compounded rate results is self-consistently "the tunnel
+	' speed" on that one machine) but breaks hz-invariance: gtslow's absolute
+	' fire rate is a hz-independent 12/sec by design, so gating the sp(gi)
+	' accumulator's INCREMENT behind it makes that accumulator fill at 12/sec
+	' instead of hz/sec -- a mismatch with the NUM/DEN math below (which
+	' assumes hz/sec increments), making tunnel ghosts ~2.5x SLOWER on Coleco
+	' than intended (confirmed: worked out by hand, matches the reported "very
+	' slow, more so on CV" symptom exactly). Fix: evaluate BOTH throttles
+	' independently every tick (skip1/skip2 flags, no early GOTO), so each
+	' accumulator always advances at its own correct rate regardless of
+	' whether the other one currently blocks movement; only jump away once,
+	' after both are known.
+	skip1 = 0
 	IF (gsi = 1) OR (((by=ty1) OR (by=ty2)) AND ((bx<45) OR (bx>197))) THEN
-		IF gtslow = 0 THEN GOTO gh_draw_only
+		IF gtslow = 0 THEN skip1 = 1
 	END IF
 	' Was "IF (#fc % sp(gi)) = 0 THEN skip" -- move on (sp(gi)-1) ticks out of
 	' every sp(gi), i.e. real-world speed = 24*(sp(gi)-1)/sp(gi) at the TI's
@@ -479,25 +494,28 @@ ghost:	PROCEDURE
 	' Correct fix: a per-ghost rate accumulator with NUM=24*(sp(gi)-1),
 	' DEN=hz*sp(gi) -- algebraically NUM/DEN=(sp(gi)-1)/sp(gi) exactly at
 	' hz=24 (the 24 cancels), so this is an EXACT identity on the TI; at any
-	' other hz it reproduces the SAME real-world moves/sec by construction.
-	' #gn/#gd are computed via 16-bit-forced multiplies (cheap MPY, not a
-	' slow DIV) fresh each check -- sp(gi) rarely changes (once per level),
-	' so this is far cheaper than the division it replaces either way. (The
-	' original had a "sp(gi)<40 skip the check entirely" bypass at the
-	' 100%-speed cap, purely to dodge the DIV it no longer needs to dodge --
-	' removed so max-speed Blinky is ALSO correctly hz-scaled on Coleco;
-	' the accumulator's 39/40 fire rate at sp=40 is indistinguishable from
-	' the old "always move" bypass on the TI anyway.)
+	' other hz it reproduces the SAME real-world moves/sec by construction --
+	' but ONLY if it advances every tick (see the note above), not just the
+	' ticks gtslow happens to allow. #gn/#gd are computed via 16-bit-forced
+	' multiplies (cheap MPY, not a slow DIV) fresh each check -- sp(gi)
+	' rarely changes (once per level), so this is far cheaper than the
+	' division it replaces either way. (The original had a "sp(gi)<40 skip
+	' the check entirely" bypass at the 100%-speed cap, purely to dodge the
+	' DIV it no longer needs to dodge -- removed so max-speed Blinky is ALSO
+	' correctly hz-scaled on Coleco; the accumulator's 39/40 fire rate at
+	' sp=40 is indistinguishable from the old "always move" bypass on the TI.)
+	skip2 = 0
 	IF gsi = 0 THEN
 		#gn = sp(gi) : #gn = (#gn - 1) * 24
 		#gd = sp(gi) : #gd = #gd * hz
 		#spcd(gi) = #spcd(gi) + #gn
 		IF #spcd(gi) < #gd THEN
-			GOTO gh_draw_only
+			skip2 = 1
 		ELSE
 			#spcd(gi) = #spcd(gi) - #gd
 		END IF
 	END IF
+	IF (skip1 = 1) OR (skip2 = 1) THEN GOTO gh_draw_only
 
 	' pen entry / exit (XB 1008-1011) -- only ever fires on the two pen rows
 	IF (by = 77) OR (by = 93) THEN

@@ -96,6 +96,16 @@ smoothness instead of just idling at the TI's pace.
   real-world moves/sec at any other `hz`. The old "`sp(gi)<40` skip the check, always move" bypass
   (a micro-optimization to dodge a division CVBasic no longer needs dodging, via the accumulator)
   was removed so max-speed Blinky is also correctly scaled on Coleco.
+- **Tunnel ghosts were ~2.5× too slow on Coleco** (found after playtesting the above): the tunnel/
+  fright half-speed throttle (`gtslow`) and the `sp(gi)` accumulator were sequential checks, the
+  second only reached if the first didn't already jump away — so a tunnel ghost's `sp(gi)`
+  accumulator only advanced on the ~half of ticks `gtslow` let through. Harmless at one fixed `hz`
+  (both throttles ride the same clock, so whatever compounded rate results is self-consistent on
+  that machine), but `gtslow`'s absolute fire rate is a hz-independent 12/sec by design, so gating
+  the `sp(gi)` accumulator's *increment* behind it made that accumulator fill at 12/sec instead of
+  the `hz/sec` its `NUM/DEN` math assumes — worked out by hand to a ~2.5× slowdown on Coleco.
+  Fixed by evaluating both throttles independently every tick (`skip1`/`skip2` flags, no early
+  jump) so each accumulator always advances at its own correct rate.
 - **TI-99 speed was raised, not just capped.** CVBasic compiles every `%` (modulo) — even by a
   compile-time-constant power of 2 — to a genuine `DIV` instruction, one of the slowest ops on the
   TMS9900, with no compiler-side conversion to `AND`. Converted every power-of-2 `%` to `AND`
