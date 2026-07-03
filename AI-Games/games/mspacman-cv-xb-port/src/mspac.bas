@@ -245,10 +245,25 @@ main:
 			sfx = sfx - 1
 			IF sfx = 0 THEN SOUND 0, , 0
 		END IF
-		' eye 'pew' sweep on channel 1
+		' eye 'pew' sweep on channel 1. pew counts down from cd8pew (8 on TI,
+		' but e.g. 20 on Coleco -- rescaled so the sweep's real-world duration
+		' matches, see the cd8pew comment up top). The frequency formula used
+		' to hardcode the OLD fixed magnitude "8" ("40+(8-pew)*15"), which
+		' only made sense when pew's range was exactly 0..8: at hz=60, with
+		' pew freshly set to 20, that computed 40+(8-20)*15 = a NEGATIVE
+		' frequency (garbage once it wraps through CVBasic's unsigned SOUND
+		' arg) for most of the sweep. Fixed by scaling the step proportionally
+		' to cd8pew's actual range instead of the stale literal 8, so the
+		' sweep still spans 40..160 Hz over WHATEVER pew's real duration is.
+		' Forces 16-bit (elapsed*120 can reach ~2280, overflows 8-bit).
 		IF pew > 0 THEN
 			pew = pew - 1
-			IF pew = 0 THEN SOUND 1, , 0 ELSE SOUND 1, 40 + (8 - pew) * 15, 11
+			IF pew = 0 THEN
+				SOUND 1, , 0
+			ELSE
+				#dd1 = cd8pew - pew : #dd1 = #dd1 * 120 : #dd1 = #dd1 / cd8pew
+				SOUND 1, 40 + #dd1, 11
+			END IF
 		END IF
 		IF #ft > 0 THEN #ft = #ft - 1
 		' blink the energizers (power pellets, char 152). #fc was JUST
