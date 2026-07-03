@@ -199,8 +199,20 @@ main:
 		IF fc16b = 0 THEN DEFINE CHAR 152,1,pellet_tile
 		IF fc16b = 8 THEN DEFINE CHAR 152,1,blank_tile
 
-		' roaming fruit (XB 433-434)
-		IF fa = 1 THEN IF (#fc % 3) = 0 THEN GOSUB movefruit
+		' roaming fruit (XB 433-434). Was "IF (#fc % 3) = 0" -- #fc is a
+		' 16-bit DIV (~92-124 TMS9900 cycles) done every tick regardless of
+		' whether fruit is even active. Replaced with a countdown (same
+		' proven pattern as spcd(), the ghost speed throttle): decrements
+		' every tick to preserve the original "fires on a fixed 3-tick global
+		' cadence" behavior (the exact PHASE within that cadence doesn't
+		' matter for gameplay -- same reasoning already validated elsewhere
+		' in this file), firing costs only a decrement + compare (~35-50
+		' cycles) instead of a division.
+		frcd = frcd - 1
+		IF frcd <= 0 THEN
+			frcd = 3
+			IF fa = 1 THEN GOSUB movefruit
+		END IF
 		IF fa = 1 THEN
 			SPRITE 5, fwb, fx - 1, 28, ffl		' re-issue every frame so it doesn't strobe
 			IF sx >= fx THEN dx = sx - fx ELSE dx = fx - sx
@@ -690,7 +702,7 @@ modeswitch:	PROCEDURE
 
 	' --- spawn roaming fruit (XB 720-726) ---
 spawnfruit:	PROCEDURE
-	fn = fn + 1 : fa = 1 : #fw = 0
+	fn = fn + 1 : fa = 1 : #fw = 0 : frbcd = 6
 	IF RANDOM(2) = 1 THEN fy = ty2 : tg = ty1 ELSE fy = ty1 : tg = ty2
 	IF RANDOM(2) = 1 THEN fx = 229 : fd = 3 : ftc = 3 ELSE fx = 13 : fd = 4 : ftc = 30
 	ftr = (tg + 11) / 8
@@ -701,7 +713,14 @@ spawnfruit:	PROCEDURE
 	' --- move roaming fruit (XB 730-743) ---
 movefruit:	PROCEDURE
 	#fw = #fw + 1
-	IF (#fw % 6) = 0 THEN
+	' Was "IF (#fw % 6) = 0" -- another 16-bit DIV, same fix as the movefruit
+	' trigger above: frbcd decrements once per movefruit call (same rate #fw
+	' itself increments at), reset to 6 at spawn (spawnfruit) so it starts in
+	' the same phase "#fw=0" implied, then fires every 6th call exactly like
+	' the original modulo did.
+	frbcd = frbcd - 1
+	IF frbcd <= 0 THEN
+		frbcd = 6
 		SOUND 0, 186, 7			' soft blip as the fruit roams
 		sfx = 2
 	END IF

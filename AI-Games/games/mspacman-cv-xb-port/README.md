@@ -99,12 +99,16 @@ now-stable ceiling; capping both machines to it keeps the tuned TI feel, sounds 
 - `dr % 4` (in the death-spin animation) → `dr AND 3` — same DIV-avoidance as the rest of the file;
   cold path (only runs during Pac-Man's death sequence), so negligible speed impact, but free and
   consistent with the rest of the pass.
-- **Deliberately left alone:** `#fc % 3` (roaming-fruit trigger) and `#fw % 6` (fruit roam-blip
-  cadence) are still real `DIV`s and not power-of-2, so they *could* become a countdown like
-  `spcd()` — but both are gated behind `fa=1` (only costs anything while fruit is actively roaming,
-  a minority of play), and after the recent tunnel/eyes debugging saga this pass intentionally
-  stopped at changes provably identical in behavior rather than "should be harmless." Worth
-  revisiting if TI speed is ever revisited again, with the same rigor.
+- `#fc % 3` (roaming-fruit trigger) and `#fw % 6` (fruit roam-blip cadence) — the two remaining
+  16-bit `DIV`s (~92–124 TMS9900 cycles each) — converted to countdowns (`frcd`, `frbcd`) using the
+  same proven pattern as the ghost speed throttle's `spcd()`: `frcd` decrements every tick
+  unconditionally (preserving the original "fires on a fixed 3-tick global cadence" — only the
+  *phase* within that cadence changes, which doesn't affect gameplay, same reasoning already
+  validated elsewhere in this file); `frbcd` decrements once per `movefruit` call (the same rate
+  `#fw` itself already advances at) and is reset to 6 at spawn. Estimated savings: each conversion
+  trades a ~92–124 cycle `DIV` for a ~35–50 cycle decrement+compare, but both only ever run while
+  `fa=1` (fruit actively roaming, a minority of play) — a real but proportionally small win compared
+  to the ghost-speed throttle fix above, which ran far more often across the whole game.
 
 **Reverted experiment (2026-07):** a later pass tried letting ColecoVision run at its own native
 60fps instead of being capped to match the TI, rescaling every duration/movement rate from a
