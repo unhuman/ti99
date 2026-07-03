@@ -4,20 +4,30 @@ A direct CVBasic translation of `games/mspacman/src/MSPAC.ti99` (XB256), as oppo
 ground-up `games/mspacman-cv` rewrite. The **maze layouts are reused verbatim** (the four `DATA`
 strings), and the movement + ghost-AI logic is ported line-for-line.
 
-Compiles clean: `cvbasic --ti994a mspac.bas mspac.a99` (then `xas99` + `linkticart.py`; see
-`../mspacman-cv/README.md` for the full build chain).
+**Dual target, one source.** The same `mspac.bas` builds for the TI-99/4A *and* the ColecoVision
+(shared TMS9918A VDP + SN76489 sound); only the toolchain back end differs:
+
+- **TI-99/4A** (→ `src/mspac_8.bin`, Classic99 / js99er):
+  `bash .claude/skills/build-cvbasic-game/build.sh games/mspacman-cv-xb-port/src/mspac.bas "MS PACMAN"`
+  (`cvbasic --ti994a` → `xas99` → `linkticart.py`).
+- **ColecoVision** (→ `src/mspac.rom`, CoolCV / blueMSX):
+  `bash games/mspacman-cv-xb-port/build-coleco.sh`
+  (`cvbasic` default target → `gasm80`). Fits Coleco's 1 KB RAM (**209 of 814 bytes**).
 
 ## Translation map (XB → CVBasic)
-- `M$()` wall cache → `mc(768)` RAM mirror (one byte/cell), kept in sync with `VPOKE`s to the
-  screen (VRAM `$1800`, `scr(r,c)` = `DEF FN`); wall/dot probes read `mc()`, never `VPEEK`.
-- `P$()`/`H$()` openness cache → `om(768)`, a 4-bit per-cell mask (1=up 2=down 4=left 8=right
-  passable). The ghost and roaming-fruit direction loops read `om()` once per decision and
-  bit-test it, instead of calling `wallchk2` four times. Pac-Man stays on `wallchk` (it carries an
-  extra row-13 pen rule the ghost mask doesn't). The mask is built inline in `drawmaze` by
-  iterating the 22×28 maze cells with direct `mc[]` reads (no PROCEDURE calls) — fast enough to
-  be imperceptible. An offline generator `assets/gen_open_cv.py` exists for cross-checking; the
-  baked DATA BYTE approach was abandoned because it used ~2.5 KB of ROM that pushed the
-  4-bank 32 KB cart over its limit and truncated the fruit sprite BITMAPs.
+- `M$()` wall cache → the maze is read **straight from VRAM** (`VPEEK` of `scr(r,c)`, `scr` =
+  `DEF FN`, VRAM `$1800`); dots are eaten with `VPOKE`. Wall/dot probes call `VPEEK` on demand —
+  **no RAM mirror.** (An earlier revision cached the maze in an `mc(768)` RAM array to save VPEEKs;
+  that was 768 bytes and, with the `om(768)` openness cache, blew past ColecoVision's 1 KB RAM by
+  ~930 bytes. In *compiled* CVBasic a `VPEEK` is a few inline instructions — not the slow
+  *interpreted* GCHAR the XB perf doctrine warns about — and the maze is probed only ~10–15×/frame,
+  so dropping the mirrors costs almost nothing and lets one source fit both machines.)
+- `P$()`/`H$()` openness cache → `om(768)` is gone too; the per-cell openness mask (1=up 2=down
+  4=left 8=right passable) is computed **on demand** by `openmask`, which `VPEEK`s the four
+  neighbours using the same wall rule the old mask-build loop used (walls 128–143, plus the pen
+  exceptions at rows 11–13). The ghost and roaming-fruit direction loops `GOSUB openmask` once per
+  decision and bit-test `mk`. Pac-Man stays on `wallchk` (it carries an extra row-13 pen rule the
+  ghost mask doesn't).
 - `CALL LOCATE/SPRITE` → `SPRITE n, sy-2, sx-1, frame, colour`; TI colour N → CVBasic N-1.
 - `::` → `:`; XB block `IF` clauses → CVBasic `IF…THEN`/`END IF`.
 - Ghost target distance: XB's `SG*dist` signed-compare → a `flee` flag (max vs min distance);
@@ -53,7 +63,10 @@ Compiles clean: `cvbasic --ti994a mspac.bas mspac.a99` (then `xas99` + `linktica
   fruit-timeout (`fw>400`, never true) timers when ported from XB.
 
 ## Status
-One-shot port; compiles. Runtime-tested by the user. Fixed after first run: real sprite art,
+One-shot port; compiles for **both** TI-99/4A (`mspac_8.bin`, 225 RAM bytes) and ColecoVision
+(`mspac.rom`, 16 KB, 209 RAM bytes) from one source. TI runtime-tested by the user; the
+ColecoVision build needs an emulator pass (keypad 8-3-8, joystick, sound, and Z80 speed with the
+per-frame `VPEEK` maze probes). Fixed after first run: real sprite art,
 animated title (Pac + ghosts), sprites hidden on title entry/exit (no more game-over pollution),
 removed the colour-table poke that corrupted the screen, and corrected collision/AI distance math
 (CVBasic 8-bit subtraction wraps — `ABS()` over it and squaring negative diffs were both wrong).
