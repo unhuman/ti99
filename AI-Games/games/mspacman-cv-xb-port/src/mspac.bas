@@ -348,7 +348,7 @@ eat:	PROCEDURE
 	dt = dt - 1
 	IF g = 144 THEN
 		wk = 1 - wk
-		IF wk = 0 THEN SOUND 0, 150, 6 ELSE SOUND 0, 200, 6
+		IF wk = 0 THEN SOUND 0, 150, 9 ELSE SOUND 0, 200, 9
 		sfx = 1
 	END IF
 	IF fa = 0 THEN IF fn < 2 THEN IF (dt = 154) OR (dt = 54) THEN GOSUB spawnfruit
