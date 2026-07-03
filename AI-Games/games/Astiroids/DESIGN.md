@@ -287,7 +287,7 @@ Channels 0–2 are tone, channel 3 is noise. The mixer lives in `sfx_t` (run eve
 
 ## 11. Title screen & 838 setup
 
-Centered: `* * * ASTIROIDS * * *`, `TI-99/4A CVBASIC`, the control list (labels padded to 6 chars
+Centered: `* * * ASTIROIDS * * *`, the control list (labels padded to 6 chars
 so the colons align), `2026 UNHUMAN`, and `PRESS FIRE TO BEGIN` on the bottom row. Score +
 high-score show at the top via `hud_draw`. Six asteroids drift/tumble behind the text (reusing
 `upd_ast` + `render`). The screen is **silent** — no heartbeat or mixer tick. FIRE starts a normal
@@ -333,14 +333,28 @@ breaks signed logic. These bit this game repeatedly and the fixes are load-beari
 
 ## 13. Build & run
 
+**Dual target from one source.** Sprite magnification is set with the portable `VDP(1)=$E3` (not
+TMS9900 inline ASM), so the same `ASTIROIDS.bas` builds for both machines — only the toolchain back
+end differs.
+
+**TI-99/4A:**
 ```
 bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.bas "ASTIROIDS"
 ```
+(`cvbasic --ti994a … ASTIROIDS.a99 "<CVBASIC_DIR>/"` → `xas99 -b -R` → `linkticart.py … ASTIROIDS_8.bin`.)
+Load `ASTIROIDS_8.bin` in **Classic99** / **js99er**.
 
-(Equivalent: `cvbasic --ti994a … ASTIROIDS.a99 "<CVBASIC_DIR>/"` → `xas99 -b -R` → `linkticart.py …
-ASTIROIDS_8.bin "ASTIROIDS"`.) The skill builds and compile-checks only; load `ASTIROIDS_8.bin`
-in **Classic99** / **js99er** as a cartridge to play. Generated artifacts (`.a99/.bin/.txt/_8.bin`)
-are git-ignored.
+**ColecoVision:**
+```
+bash games/Astiroids/build-coleco.sh
+```
+(`cvbasic … astiroids_col.asm "<CVBASIC_DIR>/"` with the **default** target → `gasm80 … astiroids.rom`.)
+Load `astiroids.rom` in **CoolCV** / **blueMSX**. Fits Coleco's 1 KB RAM (**692 of 814 bytes**); the
+16-bit sin/cos + velocity + flame tables stay small enough that no move to ROM `DATA` was needed.
+`gasm80` (nanochess's Z80 assembler) lives at `nanochess/gasm80/gasm80.exe` (cloned + `gcc`-built).
+
+Both paths compile-check only; play them in the respective emulator. Generated artifacts
+(`.a99/.bin/.txt/_8.bin` for TI, `.asm/.rom/.lst/.sym` for Coleco) are git-ignored.
 
 ---
 

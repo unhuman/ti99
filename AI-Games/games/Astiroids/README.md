@@ -51,9 +51,22 @@ scoring, extra lives, persistent session high score.
 
 ## Build
 
+One `.bas` source, two targets — sprite magnification is set with the portable `VDP(1)=$E3`, so
+nothing in the source is TI- vs Coleco-specific.
+
+**TI-99/4A** (→ `src/ASTIROIDS_8.bin`, load in **Classic99** / **js99er**):
+
 ```
 bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.bas "ASTIROIDS"
 ```
 
-Produces `src/ASTIROIDS_8.bin` — load it in **Classic99** or **js99er** as a cartridge ROM.
-(Generated `.a99`/`.bin`/`.txt`/`_8.bin` artifacts are git-ignored.)
+**ColecoVision** (→ `src/astiroids.rom`, load in **CoolCV** / **blueMSX**):
+
+```
+bash games/Astiroids/build-coleco.sh
+```
+
+The Coleco path compiles with the default CVBasic target (no `--ti994a`) and assembles with
+`gasm80` (nanochess's Z80 assembler) straight to a 16 KB `.rom`. It fits ColecoVision's 1 KB RAM
+(692 of 814 bytes used). All generated artifacts (`.a99`/`.bin`/`.txt`/`_8.bin` for TI,
+`.asm`/`.rom`/`.lst`/`.sym` for Coleco) are git-ignored.

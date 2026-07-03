@@ -3,13 +3,11 @@
 	' cvbasic --ti994a src/ASTIROIDS.bas build/ASTIROIDS.a99
 	' ============================================================
 
-	' Enable 2x sprite magnification: VDP R1 bit 0 = MAG.
-	' CVBasic sets R1=>E2 (SI=1=16x16, MAG=0); we add MAG=1 -> >E3.
-	' Sprites render as 32x32 pixels. Center offset = 16.
-	ASM LI   R0,>E381
-	ASM MOVB R0,@>8C02
-	ASM SWPB R0
-	ASM MOVB R0,@>8C02
+	' Enable 2x sprite magnification: VDP R1 = >E3 (SI=1=16x16 + MAG=1), so
+	' sprites render as 32x32 (center offset 16). VDP()= is CVBasic's portable
+	' register write -- works on both TI-99 (--ti994a) and ColecoVision (default
+	' target), so this stays target-agnostic (was TMS9900-only inline ASM).
+	VDP(1) = $E3
 
 	BORDER 1
 	' CVBasic's built-in flicker rotates ALL 32 sprites (the ship too). We want
@@ -104,7 +102,6 @@ title:
 	GOSUB hud_draw
 	' Centered layout. Control labels padded to 6 chars so the colons line up.
 	PRINT AT 3*32+5,"* * * ASTIROIDS * * *"
-	PRINT AT 5*32+7,"TI-99/4A  CVBASIC"
 	PRINT AT 9*32+6,"ROTATE : LEFT/RIGHT"
 	PRINT AT 10*32+6,"THRUST : UP"
 	PRINT AT 11*32+6,"FIRE   : BUTTON"
