@@ -221,8 +221,17 @@ title:
 		IF asiz(ti)=3 THEN afr(ti)=96
 		aft(ti)=random(15)
 	NEXT ti
+	#pacef=FRAME
 title_loop:
 	WAIT
+	' Same cross-platform pacing as main_loop (see pacen block up top): the
+	' decorative title asteroids use pacen-scaled velocities (ci128/ci24
+	' above), so this loop must also tick at pacen VDP-frames/step, or
+	' Coleco's faster raw frame rate makes them drift visibly faster than on
+	' the TI. This loop's render() cost is the same as gameplay's (it always
+	' walks all 32 sprite slots), so it needed the same fix.
+	IF (FRAME - #pacef) < pacen THEN GOTO title_loop
+	#pacef=FRAME
 	GOSUB upd_ast
 	GOSUB render
 	' Secret setup: type 8,3,8 on the keyboard (CONT1.KEY: digit=value,
@@ -264,14 +273,20 @@ setup838:
 	' Debounce: the '8' that opened this screen may still be held. Wait for all
 	' keys to be released before reading input, or that 8 is eaten as the ship
 	' count. (The asteroid field keeps drifting while we wait.)
+	#pacef=FRAME
 setup_drain:
 	WAIT
+	' Same cross-platform pacing as title_loop/main_loop -- see pacen block.
+	IF (FRAME - #pacef) < pacen THEN GOTO setup_drain
+	#pacef=FRAME
 	GOSUB upd_ast
 	GOSUB render
 	IF cont1.key<>15 THEN GOTO setup_drain
 	lastk=15
 setup_loop:
 	WAIT
+	IF (FRAME - #pacef) < pacen THEN GOTO setup_loop
+	#pacef=FRAME
 	GOSUB upd_ast
 	GOSUB render
 	' First number key sets SHIPS (cursor moves to LEVEL); the next sets LEVEL.

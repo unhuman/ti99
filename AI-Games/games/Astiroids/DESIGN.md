@@ -387,6 +387,13 @@ real-world game speed matches regardless:
   - One accepted approximation: the noise-channel volume decay (`noi_dv`, always 1/tick) is not
     rescaled, so explosion "crunch" completes slightly faster in real time on Coleco than on TI —
     a minor, secondary audible effect, not worth the added complexity of a fractional decay.
+  - **The pacing cap must be applied everywhere a loop calls `upd_ast`+`render` repeatedly, not just
+    `main_loop`.** Missed initially: `title_loop` and `setup838`'s `setup_drain`/`setup_loop` also
+    loop on a raw per-VDP-frame `WAIT`, animating the title screen's decorative asteroids (which use
+    the pacen-scaled `ci128`/`ci24` velocities) via the SAME expensive `render()` (always walks all
+    32 sprite slots, so costs the same whether 6 or 24 asteroids are active) — so they have the
+    identical TI/Coleco speed mismatch as gameplay did, just never fixed. All three now gate on
+    `#pacef`/`pacen` the same way `main_loop` does.
 
 **TI-99/4A:**
 ```
