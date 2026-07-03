@@ -78,15 +78,16 @@ boot:
 	GOSUB ready
 
 main:
-	#pacef = FRAME
+	#pacef = FRAME : pcyc = 0
 	WHILE 1
 		WAIT
-		' Frame-pace to 30Hz (2 VDP frames/step). The TI-99 already runs this loop
-		' at ~30fps (heavy per-frame sprite + VPEEK work spills past one 60Hz frame);
-		' ColecoVision holds 60fps, so cap it to match -- otherwise Coleco runs ~2x
-		' faster and frame-timed sounds (e.g. the 1-frame dot 'waka') are too short
-		' to hear. Capping both to 30Hz makes Coleco match the TI feel. (2->1 = 60Hz.)
-		IF (FRAME - #pacef) < 2 THEN WAIT
+		' Frame-pace to ~24Hz, matching the TI-99's measured loop rate (not a
+		' guess -- an on-screen counter showed the TI naturally running this loop
+		' at 22-24fps; a fixed 30Hz cap left ColecoVision ~30% too fast). 60fps
+		' doesn't divide evenly into that range, so alternate waiting 2 and 3 VDP
+		' frames per step (avg 2.5 -> 24Hz) to land inside the TI's own range.
+		pcyc = 1 - pcyc
+		IF (FRAME - #pacef) < (2 + pcyc) THEN WAIT
 		#pacef = FRAME
 		FOR dk = ng + 1 TO 4 : SPRITE dk, $d1, 0, 0, 0 : NEXT dk	' hide ghosts above ng (set via 8-3-8)
 		ea = 0
