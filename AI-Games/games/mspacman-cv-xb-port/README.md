@@ -9,15 +9,14 @@ strings), and the movement + ghost-AI logic is ported line-for-line.
 
 - **TI-99/4A** (→ `src/mspac_8.bin`, Classic99 / js99er):
   `bash games/mspacman-cv-xb-port/build-ti.sh`
-  (`cvbasic --ti994a -Dhz=24` → `xas99` → `linkticart.py`).
+  (`cvbasic --ti994a` → `xas99` → `linkticart.py`).
 - **ColecoVision** (→ `src/mspac.rom`, CoolCV / blueMSX):
   `bash games/mspacman-cv-xb-port/build-coleco.sh`
-  (`cvbasic -Dhz=60` default target → `gasm80`). Fits Coleco's 1 KB RAM (**232 of 814 bytes**).
+  (`cvbasic` default target → `gasm80`). Fits Coleco's 1 KB RAM (**220 of 814 bytes**).
 
-Both scripts pass a **required** `-Dhz=N` build-time constant (24 TI, 60 Coleco — each machine's
-measured native main-loop rate); don't build `mspac.bas` with the generic shared
-`.claude/skills/build-cvbasic-game/build.sh`, which doesn't pass it (compile fails loudly if `hz`
-is missing, rather than risking a silent runtime divide-by-zero).
+Both build scripts pass a `-Dhz=N` flag left over from an earlier, reverted experiment (see
+"Cross-platform timing, reverted" below) — this source doesn't reference `hz` at all, so the flag
+is silently unused; harmless, but safe to remove from the scripts if it's ever confusing.
 
 ## Translation map (XB → CVBasic)
 - `M$()` wall cache → the maze is read **straight from VRAM** (`VPEEK` of `scr(r,c)`, `scr` =
@@ -67,82 +66,43 @@ is missing, rather than risking a silent runtime divide-by-zero).
   vars wrap at 256, which silently broke the scatter/chase (`mt=800→32`), fright (`fb=300→44`), and
   fruit-timeout (`fw>400`, never true) timers when ported from XB.
 
-## Cross-platform timing — each machine runs its OWN native rate, rescaled to match
-Earlier revisions capped ColecoVision's main loop down to match the TI-99's measured rate (a flat
-frame-pace check). The current design instead lets **each machine tick at whatever its own hardware
-naturally sustains** — TI-99 measured a stable **24fps** (its own per-frame cost, not a throttle);
-ColecoVision (faster Z80) hits a full uncapped **60fps** — and **rescales every duration and
-movement rate** so real-world game speed matches regardless. This gives Coleco genuine extra
-smoothness instead of just idling at the TI's pace.
+## Cross-platform timing
+The main loop is **frame-locked to ~24Hz** (`#pacef`/`pcyc`), measured with a temporary on-screen
+loop counter, not guessed. Since 60fps doesn't divide evenly into 24, the loop alternates waiting 2
+and 3 VDP frames per step (`pcyc` toggles 0/1, wait threshold `2 + pcyc`) for an average of 2.5
+frames/step = 24Hz.
 
-- **`hz`** is a **required** compile-time constant (`-Dhz=24` TI / `-Dhz=60` Coleco, passed by
-  `build-ti.sh` / `build-coleco.sh`) — this machine's native ticks/sec. Never declared with `CONST`
-  in the source (would collide with `-D` and fail to compile); a forgotten flag fails **loudly**
-  at the first derived-constant line, not silently at runtime.
-- **Plain durations** (ghost pen-release timers, fright duration, scatter/chase mode timer, eye-pew
-  sweep, fruit despawn/roam-blip timers) use `cdN = (N*hz+12)/24` — exact identity at `hz=24` so the
-  TI build is unaffected; more ticks needed to cover the same real time at a faster rate.
-- **Pac-Man's movement** was previously "always run 2 fixed 1px sub-steps every tick" — fine at the
-  TI's 24 ticks/sec (48 sub-steps/sec), but 2.5× too fast at Coleco's 60 ticks/sec if left alone. A
-  phase accumulator (`pacacc`) spreads the *same* 48 sub-steps/sec across however many ticks/sec the
-  machine has: exactly 2 sub-steps every tick at `hz=24` (identity), ~0.8 sub-steps/tick at `hz=60`
-  — same average speed, but genuinely smoother 1px-at-a-time motion on Coleco instead of the TI's
-  2px hops.
-- **Ghost speed** was "skip 1 tick out of every `sp(gi)`" — a *discrete, nonlinear* throttle that
-  does **not** scale by simply multiplying `sp(gi)` by the tick-rate ratio (verified by hand: for
-  `sp=8`, naive scaling left Coleco ghosts at ~57 moves/sec against an intended ~21). Replaced with
-  a per-ghost rate accumulator (`#spcd()`), `NUM=24*(sp(gi)-1)`, `DEN=hz*sp(gi)` — algebraically
-  identical to the original ratio at `hz=24` (the 24 cancels), and correctly reproduces the same
-  real-world moves/sec at any other `hz`. The old "`sp(gi)<40` skip the check, always move" bypass
-  (a micro-optimization to dodge a division CVBasic no longer needs dodging, via the accumulator)
-  was removed so max-speed Blinky is also correctly scaled on Coleco.
-- **Tunnel ghosts were ~2.5× too slow on Coleco** (found after playtesting the above): the tunnel/
-  fright half-speed throttle (`gtslow`) and the `sp(gi)` accumulator were sequential checks, the
-  second only reached if the first didn't already jump away — so a tunnel ghost's `sp(gi)`
-  accumulator only advanced on the ~half of ticks `gtslow` let through. Harmless at one fixed `hz`
-  (both throttles ride the same clock, so whatever compounded rate results is self-consistent on
-  that machine), but `gtslow`'s absolute fire rate is a hz-independent 12/sec by design, so gating
-  the `sp(gi)` accumulator's *increment* behind it made that accumulator fill at 12/sec instead of
-  the `hz/sec` its `NUM/DEN` math assumes — worked out by hand to a ~2.5× slowdown on Coleco.
-  Fixed by evaluating both throttles independently every tick (`skip1`/`skip2` flags, no early
-  jump) so each accumulator always advances at its own correct rate.
-- **Ghosts almost never actually throttled in the real tunnel** (found while diagnosing the above
-  with an on-screen moves/sec counter): `ty1`/`ty2` (the tunnel rows' Y-coordinates, computed once
-  while parsing the maze) used the formula `(mr+1)*8-3`, but every other place in this file converts
-  a Y position to its grid row via `(y+11)/8` — solving that backwards for which Y maps to row
-  `mr+1` gives `(mr+1)*8-11`, not `-3`. Confirmed by computing `(oldTy1+11)/8 = mr+2`, one row past
-  intended. So the tunnel-slow throttle's exact-equality check (`by=ty1`) matched ghosts one row
-  *below* the true tunnel (usually not a walkable corridor there), while ghosts genuinely in the
-  tunnel were never throttled at all — full speed through the real tunnel, every time, on **both**
-  platforms (not a Coleco-specific bug, just more noticeable once the other rate issues were fixed).
-  Also silently miscalculated the roaming fruit's tunnel-approach target row (`spawnfruit`'s
-  `ftr=(tg+11)/8` uses the same `ty1`/`ty2`) — fixed as a side effect.
-- **Ghost "eyes" (a caught ghost returning to the pen) returned way too fast on Coleco, with a
-  broken-sounding 'pew'.** Eyes (`gsi=2`) matched neither `skip1`'s condition (`gsi=1`) nor
-  `skip2`'s (`gsi=0`) — they moved **completely unthrottled**, every tick, on both the normal ghost
-  pass and the separate "double speed" extra pass, i.e. 2 full moves/tick unconditionally = raw
-  `hz`-dependent speed with zero scaling. 2.5× too fast on Coleco, and since the eye 'pew' sound
-  fires on every direction change, 2.5× the movement rate also meant 2.5× the pew rate — explaining
-  the "wrong sound" as a direct symptom, not a separate bug. Fixed with the same accumulator
-  approach, targeting a flat 24 fires/sec (the TI's "always move" baseline) — exact identity at
-  `hz=24` (fires every tick, matching the old unthrottled TI behavior), correctly rate-limited at
-  any other `hz`. Separate accumulators for the normal pass and the double-speed pass so together
-  they reproduce the original "moves twice per tick, every tick" baseline.
-- **TI-99 speed was raised, not just capped.** CVBasic compiles every `%` (modulo) — even by a
-  compile-time-constant power of 2 — to a genuine `DIV` instruction, one of the slowest ops on the
-  TMS9900, with no compiler-side conversion to `AND`. Converted every power-of-2 `%` to `AND`
-  throughout the hot path, deduplicated `#fc AND 7` (was recomputed via `DIV` up to 5×/tick for the
-  identical value), and eliminated the ghost speed throttle's division-by-a-runtime-variable
-  entirely (folded into the rate accumulator above). Measured effect (temporary on-screen counter):
-  TI-99's native rate went from fluctuating 22–24fps to a solid, stable 24fps.
+**TI-99 speed was raised, not just capped.** CVBasic compiles every `%` (modulo) — even by a
+compile-time-constant power of 2 — to a genuine `DIV` instruction, one of the slowest ops on the
+TMS9900; there's no compiler-side conversion to a bitwise AND. The hot path (Pac-Man movement, all
+4 ghosts, every tick) did several of these unconditionally, including `#fc % sp(gi)` — a division
+by a *runtime variable* (impossible to convert to AND), running up to 3×/tick for the whole game
+(the ghost speed throttle). Fixed by: converting every power-of-2 `%` to `AND` (`% 8`→`AND 7`,
+`% 16`→`AND 15`, `% 2`→`AND 1`); computing `#fc AND 7`/`#fc AND 1` **once** per tick and reusing
+them (was recomputed via `DIV` up to 5×/tick for the identical value — Pac's chomp frame, plus once
+per ghost's walk-cycle check); and replacing the variable-divisor ghost speed throttle with a
+per-ghost countdown counter (`spcd()`) that reproduces the exact same skip-1-tick-in-`sp(gi)` rate
+using only a decrement + compare, no division at all.
 
-This is a bigger, less mechanically-obvious change than a simple pacing cap — it needs an emulator
-playtest on both targets to confirm ghost speed and Pac-Man's movement feel right, not just that it
-compiles.
+Measured effect: the TI-99's native loop rate went from **fluctuating 22–24fps to a solid, stable
+24fps** — the same optimization also benefits ColecoVision, which now hits a full uncapped 60fps
+(previously not re-measured after this pass). 24Hz remains the shared target since it's the TI's
+now-stable ceiling; capping both machines to it keeps the tuned TI feel, sounds included.
+
+**Reverted experiment (2026-07):** a later pass tried letting ColecoVision run at its own native
+60fps instead of being capped to match the TI, rescaling every duration/movement rate from a
+`-Dhz=N` build constant so real-world game speed would still match. It repeatedly introduced new,
+hard-to-pin-down bugs in ghost tunnel behaviour and ghost-eyes speed across several rounds of
+fixes that each seemed to work in isolation but didn't hold up in play. Rather than keep
+iterating, that whole approach was reverted back to this simpler "throttle Coleco down to the
+TI's rate" design, which is the version actually confirmed working. If native-Coleco-speed is
+revisited later, budget for a much more careful, incremental verification pass — ideally with
+real emulator/hardware access during development, not indirect user-relayed testing across many
+back-and-forth rounds.
 
 ## Status
-One-shot port; compiles for **both** TI-99/4A (`mspac_8.bin`, 265 RAM bytes) and ColecoVision
-(`mspac.rom`, 16 KB, 245 RAM bytes) from one source. TI runtime-tested by the user; the
+One-shot port; compiles for **both** TI-99/4A (`mspac_8.bin`, 239 RAM bytes) and ColecoVision
+(`mspac.rom`, 16 KB, 220 RAM bytes) from one source. TI runtime-tested by the user; the
 ColecoVision build needs an emulator pass (keypad 8-3-8, joystick, sound, and Z80 speed with the
 per-frame `VPEEK` maze probes). Fixed after first run: real sprite art,
 animated title (Pac + ghosts), sprites hidden on title entry/exit (no more game-over pollution),

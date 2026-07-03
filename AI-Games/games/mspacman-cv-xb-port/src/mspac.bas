@@ -23,32 +23,6 @@
 
 	DEF FN scr(r, c) = $1800 + (r - 1) * 32 + (c - 1)
 
-	' ============================================================
-	' CROSS-PLATFORM SPEED: `hz` is the current machine's measured native main-
-	' loop rate in ticks/sec -- REQUIRED at compile time (-Dhz=24 for TI-99,
-	' -Dhz=60 for ColecoVision; see build.sh / build-coleco.sh). It is NEVER
-	' declared with CONST in this source (that would collide with -D and fail
-	' to compile) -- a build that forgets the flag fails LOUDLY at the first
-	' cdN formula below ("not a constant expression in CONST"), not silently
-	' at runtime.
-	'
-	' TI-99 measured 24fps (stable, after the DIV-to-AND pass below); Coleco
-	' measured a full uncapped 60fps. Rather than throttle Coleco DOWN to
-	' match the TI (the earlier approach), each machine now ticks at its own
-	' native rate, and every duration originally tuned assuming hz=24 (the TI
-	' reference) is rescaled: cdN = (N*hz+12)/24 -- MORE ticks needed to cover
-	' the same real time at a faster tick rate. Exact identity at hz=24 (24
-	' cancels), so the TI build is unaffected. Movement (Pac's sub-stepping,
-	' ghost speed) isn't a simple duration -- see the accumulators in main:
-	' and ghost: below.
-	CONST cd90=(90*hz+12)/24         : CONST #cd150=(150*hz+12)/24
-	CONST #cd210=(210*hz+12)/24      : CONST #cd200=(200*hz+12)/24
-	CONST cd16fb=(16*hz+12)/24       : CONST cd40=(40*hz+12)/24
-	CONST cd8pew=(8*hz+12)/24        : CONST #cd800=(800*hz+12)/24
-	CONST #cd400=(400*hz+12)/24      : CONST cd6=(6*hz+12)/24
-	CONST cd1=(1*hz+12)/24           : CONST cd2=(2*hz+12)/24
-	CONST #cd180=(180*hz+12)/24
-
 	DEFINE CHAR 128,16,wall_tiles
 	DEFINE CHAR 144,1,dot_tile
 	DEFINE CHAR 152,1,pellet_tile
@@ -61,10 +35,7 @@
 	DEFINE COLOR 168,1,wall_color
 	DEFINE SPRITE 0,11,game_sprites		' 0-9 Pac/ghost/eyes/fruit; 10 = ghost walk frame 2
 
-	DIM gx(5), gy(5), gd(5), op(5), rt(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5)
-	DIM #spcd(5)	' 16-bit: rate-accumulator values reach into the thousands at hz=60
-	DIM eya1(5), eya2(5)	' 8-bit: eyes-return rate accumulators (NUM=24,DEN<=hz<=60, fits 8-bit)
-	DIM #tm(5)		' widened to 16-bit: rescaled Coleco values (up to ~525) exceed 8-bit
+	DIM gx(5), gy(5), gd(5), op(5), rt(5), tm(5), gs(5), gc(5), sp(5), sr(5), sc(5), gcl(5), spcd(5)
 	DIM #ds(5)
 	DIM spc(5)		' per-ghost speed caps (fixed Blinky>Pinky>Inky>Clyde ranking)
 
@@ -89,26 +60,18 @@ boot:
 	gx(4) = 137 : gy(4) = 93 : gd(4) = 4
 	rt(1) = 0 : rt(2) = 8 : rt(3) = 16 : rt(4) = 24
 	sp(1) = 9 : sp(2) = 8 : sp(3) = 7 : sp(4) = 6	' base speeds, distinct ranking (capped per ghost by spc())
-	#spcd(1) = 0 : #spcd(2) = 0 : #spcd(3) = 0 : #spcd(4) = 0
-	eya1(1) = 0 : eya1(2) = 0 : eya1(3) = 0 : eya1(4) = 0
-	eya2(1) = 0 : eya2(2) = 0 : eya2(3) = 0 : eya2(4) = 0
+	spcd(1) = 1 : spcd(2) = 1 : spcd(3) = 1 : spcd(4) = 1
 	cd = 3 : hd = 3
-	#tm(1) = 0 : #tm(2) = cd90 : #tm(3) = #cd150 : #tm(4) = #cd210 : #fc = 0
+	tm(1) = 0 : tm(2) = 90 : tm(3) = 150 : tm(4) = 210 : #fc = 0
 	gc(1) = 6 : gc(2) = 13 : gc(3) = 7 : gc(4) = 10	' TI 7,14,8,11 -> CV 6,13,7,10
-	#ft = 0 : eg = 0 : dg = 0 : fa = 0 : fn = 0 : #fb = #cd180 : mo = 0 : #mt = #cd150
+	#ft = 0 : eg = 0 : dg = 0 : fa = 0 : fn = 0 : #fb = 180 : mo = 0 : #mt = 150
 	GOSUB fruitdef
 	FOR j = 1 TO 4
 		sp(j) = sp(j) + (le - 1) * 4
 		IF sp(j) > spc(j) THEN sp(j) = spc(j)	' per-ghost cap (Blinky reaches 40=100%, others lower)
 	NEXT j
-	' Force 16-bit: (le-1)*cd16fb can reach ~800 at hz=60, which would
-	' silently truncate if computed as an 8-bit multiply (le and cd16fb both
-	' fit 8 bits individually) -- assign to a 16-bit scratch var FIRST so the
-	' multiply itself runs in 16-bit space (same pattern used for #dd1/#dd2
-	' elsewhere in this file).
-	#dd1 = le - 1 : #dd1 = #dd1 * cd16fb
-	#fb = #cd200 - #dd1		' fright shrinks per level (rescaled)
-	IF #fb < cd40 THEN #fb = cd40
+	#fb = 200 - (le - 1) * 16		' fright shrinks ~16 frames/level (200 -> 40)
+	IF #fb < 40 THEN #fb = 40
 	sr(1) = 1 : sc(1) = 30 : sr(2) = 1 : sc(2) = 3
 	sr(3) = 26 : sc(3) = 30 : sr(4) = 26 : sc(4) = 3
 	GOSUB hud
@@ -116,35 +79,27 @@ boot:
 	GOSUB ready
 
 main:
+	#pacef = FRAME : pcyc = 0
 	WHILE 1
 		WAIT
-		' No artificial pacing cap: each machine ticks at whatever its own
-		' hardware naturally sustains for this workload -- TI-99 lands at a
-		' measured, stable 24fps (its own per-frame cost, not a throttle);
-		' ColecoVision (faster Z80) hits a full uncapped 60fps. Earlier
-		' revisions capped Coleco down to match the TI's rate; now every
-		' frame-counted duration/movement rate is instead rescaled from `hz`
-		' (see the CONST block and the pacacc/gtacc/#spcd accumulators below)
-		' so real-world game speed matches while Coleco keeps its own native,
-		' smoother tick rate.
+		' Frame-pace to ~24Hz, matching the TI-99's measured loop rate. After
+		' the DIV-to-AND optimization pass (see the fc8/fc2/spcd notes below),
+		' re-measured with a temporary on-screen counter: TI now holds a
+		' solid 24fps (was fluctuating 22-24fps before the optimization),
+		' ColecoVision hits a full 60fps uncapped. 60fps doesn't divide evenly
+		' into 24, so alternate waiting 2 and 3 VDP frames per step (avg 2.5
+		' -> 24Hz) to land exactly on the TI's now-stable rate.
+		pcyc = 1 - pcyc
+		IF (FRAME - #pacef) < (2 + pcyc) THEN WAIT
+		#pacef = FRAME
 		' TMS9900 has no fast divide: CVBasic compiles EVERY "%" (even by a
 		' constant power of 2) to a real DIV instruction, one of the slowest
-		' ops on this CPU -- there's no compiler-side AND-conversion. #fc%8
-		' was being recomputed via DIV up to 5x/tick (Pac's chomp frame, plus
-		' once per ghost's walk-cycle check) for the SAME #fc value (unchanged
-		' until the increment near the end of this tick). Compute it ONCE
-		' here as a cheap AND and reuse below.
-		fc8 = #fc AND 7
-		' Ghost "half speed" rate (tunnel throttle + Cruise Elroy bonus pass)
-		' was "fire when #fc is even" -- a flat 50%-of-ticks rate, correct
-		' only at the TI's reference 24Hz. Same phase-accumulator idea as
-		' Pac's sub-stepping above, but computed ONCE per tick (not per ghost,
-		' or it would drift 4x faster) and shared by both call sites below,
-		' matching the original design where every ghost read the SAME
-		' tick-global fc2 signal. Target rate = 12/sec (half of 24) at any hz.
-		gtacc = gtacc + 12
-		gtslow = 0
-		IF gtacc >= hz THEN gtacc = gtacc - hz : gtslow = 1
+		' ops on this CPU -- there's no compiler-side AND-conversion. #fc%8 and
+		' #fc%16 were each being recomputed via DIV up to 5x/tick (Pac's chomp
+		' frame, plus once per ghost's walk-cycle/pellet-blink checks) for the
+		' SAME #fc value (unchanged until the increment near the end of this
+		' tick). Compute both ONCE here as cheap ANDs and reuse below.
+		fc8 = #fc AND 7 : fc2 = #fc AND 1
 		FOR dk = ng + 1 TO 4 : SPRITE dk, $d1, 0, 0, 0 : NEXT dk	' hide ghosts above ng (set via 8-3-8)
 		ea = 0
 
@@ -157,24 +112,9 @@ main:
 		' instant reverse (XB 311)
 		IF ((cd=1) AND (dd=2)) OR ((cd=2) AND (dd=1)) OR ((cd=3) AND (dd=4)) OR ((cd=4) AND (dd=3)) THEN cd = dd
 
-		' Was "always run 2 pacstep (1px) sub-steps every tick" -- fine on the
-		' TI (24 ticks/sec * 2 = 48 sub-steps/sec, matching Pac's classic
-		' speed), but on Coleco's 60 ticks/sec that would make Pac move 2.5x
-		' too fast. Rather than THROTTLE Coleco down to 24 ticks/sec (which
-		' would just reproduce the TI's 2px-every-~2.5-ticks choppiness at a
-		' technically higher rate -- no real smoothness gain), a phase
-		' accumulator spreads the SAME 48 sub-steps/sec across however many
-		' ticks/sec this machine actually has: acc+=48 each tick, fire one
-		' pacstep (1px) per hz consumed. At hz=24 this fires exactly twice
-		' every tick (48>=24 twice), reproducing the original TI behavior
-		' exactly. At hz=60 it fires ~0.8 times/tick (mostly 1 sub-step per
-		' tick, occasionally 0) -- same 48px/sec average speed, but genuinely
-		' smoother 1px-at-a-time motion instead of TI's 2px hops.
-		pacacc = pacacc + 48
-		WHILE pacacc >= hz
-			pacacc = pacacc - hz
+		FOR ss = 1 TO 2
 			GOSUB pacstep
-		WEND
+		NEXT ss
 
 		' tunnel wrap (XB 411-412)
 		IF sx < 13 THEN sx = 229
@@ -229,7 +169,7 @@ main:
 			IF dt < 10 THEN
 				GOSUB ghost
 			ELSE
-				IF gtslow = 1 THEN GOSUB ghost
+				IF fc2 = 0 THEN GOSUB ghost
 			END IF
 			xp = 0
 		END IF
@@ -245,25 +185,10 @@ main:
 			sfx = sfx - 1
 			IF sfx = 0 THEN SOUND 0, , 0
 		END IF
-		' eye 'pew' sweep on channel 1. pew counts down from cd8pew (8 on TI,
-		' but e.g. 20 on Coleco -- rescaled so the sweep's real-world duration
-		' matches, see the cd8pew comment up top). The frequency formula used
-		' to hardcode the OLD fixed magnitude "8" ("40+(8-pew)*15"), which
-		' only made sense when pew's range was exactly 0..8: at hz=60, with
-		' pew freshly set to 20, that computed 40+(8-20)*15 = a NEGATIVE
-		' frequency (garbage once it wraps through CVBasic's unsigned SOUND
-		' arg) for most of the sweep. Fixed by scaling the step proportionally
-		' to cd8pew's actual range instead of the stale literal 8, so the
-		' sweep still spans 40..160 Hz over WHATEVER pew's real duration is.
-		' Forces 16-bit (elapsed*120 can reach ~2280, overflows 8-bit).
+		' eye 'pew' sweep on channel 1
 		IF pew > 0 THEN
 			pew = pew - 1
-			IF pew = 0 THEN
-				SOUND 1, , 0
-			ELSE
-				#dd1 = cd8pew - pew : #dd1 = #dd1 * 120 : #dd1 = #dd1 / cd8pew
-				SOUND 1, 40 + #dd1, 11
-			END IF
+			IF pew = 0 THEN SOUND 1, , 0 ELSE SOUND 1, 40 + (8 - pew) * 15, 11
 		END IF
 		IF #ft > 0 THEN #ft = #ft - 1
 		' blink the energizers (power pellets, char 152). #fc was JUST
@@ -440,7 +365,7 @@ eat:	PROCEDURE
 	IF g = 144 THEN
 		wk = 1 - wk
 		IF wk = 0 THEN SOUND 0, 150, 9 ELSE SOUND 0, 200, 9
-		sfx = cd1
+		sfx = 1
 	END IF
 	IF fa = 0 THEN IF fn < 2 THEN IF (dt = 154) OR (dt = 54) THEN GOSUB spawnfruit
 	IF dt = 0 THEN nx = 1
@@ -479,92 +404,32 @@ ghost:	PROCEDURE
 		IF gsi <> 0 THEN GOTO gh_draw_only
 		IF ((by = ty1) OR (by = ty2)) AND ((bx < 45) OR (bx > 197)) THEN GOTO gh_draw_only
 	END IF
-	' speed throttle (XB 1006-1007): half-speed in fright/tunnel, AND a
-	' separate sp(gi)-based cap in the open. The original ran these as two
-	' SEQUENTIAL checks, the second only reached if the first didn't already
-	' jump to gh_draw_only -- meaning a tunnel ghost's sp(gi) accumulator only
-	' got a chance to advance on the ~half of ticks gtslow already let through.
-	' That's harmless at a FIXED hz (both throttles ride the same #fc clock,
-	' so whatever compounded rate results is self-consistently "the tunnel
-	' speed" on that one machine) but breaks hz-invariance: gtslow's absolute
-	' fire rate is a hz-independent 12/sec by design, so gating the sp(gi)
-	' accumulator's INCREMENT behind it makes that accumulator fill at 12/sec
-	' instead of hz/sec -- a mismatch with the NUM/DEN math below (which
-	' assumes hz/sec increments), making tunnel ghosts ~2.5x SLOWER on Coleco
-	' than intended (confirmed: worked out by hand, matches the reported "very
-	' slow, more so on CV" symptom exactly). Fix: evaluate BOTH throttles
-	' independently every tick (skip1/skip2 flags, no early GOTO), so each
-	' accumulator always advances at its own correct rate regardless of
-	' whether the other one currently blocks movement; only jump away once,
-	' after both are known.
-	skip1 = 0
+	' speed throttle (XB 1006-1007). fc2 reuses the pre-increment #fc AND 1
+	' computed once at the top of the tick (ghost: always runs before #fc is
+	' incremented, so it's the same value the original "#fc % 2" would read).
 	IF (gsi = 1) OR (((by=ty1) OR (by=ty2)) AND ((bx<45) OR (bx>197))) THEN
-		IF gtslow = 0 THEN skip1 = 1
+		IF fc2 = 0 THEN GOTO gh_draw_only
 	END IF
-	' Was "IF (#fc % sp(gi)) = 0 THEN skip" -- move on (sp(gi)-1) ticks out of
-	' every sp(gi), i.e. real-world speed = 24*(sp(gi)-1)/sp(gi) at the TI's
-	' reference 24Hz. Naive fixes both fail: (a) a DIV by sp(gi) (a runtime
-	' variable, can't become an AND) is one of the slowest TMS9900 ops, done
-	' up to 3x/tick; (b) just scaling sp(gi) by hz/24 barely moves the skip
-	' FRACTION (already close to 1) while the raw tick rate itself already
-	' tripled -- verified by hand this leaves Coleco's ghosts far too fast
-	' (e.g. sp=8: 21 moves/sec intended vs ~57 actual with naive scaling).
-	' Correct fix: a per-ghost rate accumulator with NUM=24*(sp(gi)-1),
-	' DEN=hz*sp(gi) -- algebraically NUM/DEN=(sp(gi)-1)/sp(gi) exactly at
-	' hz=24 (the 24 cancels), so this is an EXACT identity on the TI; at any
-	' other hz it reproduces the SAME real-world moves/sec by construction --
-	' but ONLY if it advances every tick (see the note above), not just the
-	' ticks gtslow happens to allow. #gn/#gd are computed via 16-bit-forced
-	' multiplies (cheap MPY, not a slow DIV) fresh each check -- sp(gi)
-	' rarely changes (once per level), so this is far cheaper than the
-	' division it replaces either way. (The original had a "sp(gi)<40 skip
-	' the check entirely" bypass at the 100%-speed cap, purely to dodge the
-	' DIV it no longer needs to dodge -- removed so max-speed Blinky is ALSO
-	' correctly hz-scaled on Coleco; the accumulator's 39/40 fire rate at
-	' sp=40 is indistinguishable from the old "always move" bypass on the TI.)
-	skip2 = 0
-	IF gsi = 0 THEN
-		#gn = sp(gi) : #gn = (#gn - 1) * 24
-		#gd = sp(gi) : #gd = #gd * hz
-		#spcd(gi) = #spcd(gi) + #gn
-		IF #spcd(gi) < #gd THEN
-			skip2 = 1
-		ELSE
-			#spcd(gi) = #spcd(gi) - #gd
+	' Was "IF (#fc % sp(gi)) = 0 THEN skip" -- a DIVISION BY A VARIABLE
+	' (sp(gi) isn't a compile-time constant, so it can't become an AND) done
+	' on the TMS9900's slow DIV instruction, up to 3x/tick (every non-Blinky
+	' ghost, every tick they're in normal chase/scatter state -- the common
+	' case). Replaced with a per-ghost countdown that reproduces the exact
+	' same rate (skip exactly 1 tick out of every sp(gi)) using only a
+	' decrement + compare: no division at all, regardless of sp(gi)'s value.
+	IF (gsi = 0) AND (sp(gi) < 40) THEN
+		spcd(gi) = spcd(gi) - 1
+		IF spcd(gi) <= 0 THEN
+			spcd(gi) = sp(gi)
+			GOTO gh_draw_only
 		END IF
 	END IF
-	' Eyes (gsi=2, a caught ghost returning to the pen) matched NEITHER
-	' skip1's condition (gsi=1) NOR skip2's (gsi=0) -- meaning they moved
-	' completely unthrottled, every single tick, on both the normal pass AND
-	' the separate "double speed" extra pass below (main:, IF ne=1 THEN...).
-	' That's 2 full 2px moves/tick unconditionally = hz-dependent speed (not
-	' scaled at all), 2.5x too fast on Coleco -- matches "eyes return WAY too
-	' fast" exactly, and explains the wrong-sounding eye 'pew' sound too (it
-	' fires on every direction change, so 2.5x the movement rate means 2.5x
-	' the pew rate). Fix: same accumulator idea as the sp(gi) throttle, but
-	' targeting a flat 24 fires/sec (TI's "always move" baseline) instead of
-	' a variable ratio -- exact identity at hz=24 (fires every tick, matching
-	' the old unthrottled behavior exactly), correctly rate-limited at any
-	' other hz. Separate accumulators for the normal pass (eya1) and the
-	' extra double-speed pass (eya2, xp=2) so together they reproduce the
-	' original "moves twice per tick, every tick" = 48px/sec baseline.
-	skip3 = 0
-	IF gsi = 2 THEN
-		IF xp = 2 THEN
-			eya2(gi) = eya2(gi) + 24
-			IF eya2(gi) < hz THEN skip3 = 1 ELSE eya2(gi) = eya2(gi) - hz
-		ELSE
-			eya1(gi) = eya1(gi) + 24
-			IF eya1(gi) < hz THEN skip3 = 1 ELSE eya1(gi) = eya1(gi) - hz
-		END IF
-	END IF
-	IF (skip1 = 1) OR (skip2 = 1) OR (skip3 = 1) THEN GOTO gh_draw_only
 
 	' pen entry / exit (XB 1008-1011) -- only ever fires on the two pen rows
 	IF (by = 77) OR (by = 93) THEN
 		rl = 0
 		IF ec >= rt(gi) THEN rl = 1
-		IF #fc >= #tm(gi) THEN rl = 1
+		IF #fc >= tm(gi) THEN rl = 1
 		IF (bx=121) AND (by=93) THEN
 			IF (gsi=2) OR ((rl=1) AND (gsi=0) AND ((dg=0) OR (dg=gi))) THEN GOTO gh_pen
 		END IF
@@ -636,7 +501,7 @@ gh_move:
 		END IF
 		IF (bd=2) AND (by>93) THEN by = 93 : bd = 1
 	END IF
-	IF (gsi = 2) AND (bd <> gd(gi)) THEN pew = cd8pew	' eye changed direction -> 'pew'
+	IF (gsi = 2) AND (bd <> gd(gi)) THEN pew = 8	' eye changed direction -> 'pew'
 	gx(gi) = bx : gy(gi) = by : gd(gi) = bd
 	GOTO gh_draw
 
@@ -771,7 +636,7 @@ pd_respawn:
 	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
 	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
 	FOR j = 1 TO 4
-		gs(j) = 0 : gd(j) = 4 : #spcd(j) = 0 : eya1(j) = 0 : eya2(j) = 0
+		gs(j) = 0 : gd(j) = 4 : spcd(j) = 1
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
 	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0
@@ -802,32 +667,26 @@ nextlevel:	PROCEDURE
 		sp(j) = sp(j) + 4
 		IF sp(j) > spc(j) THEN sp(j) = spc(j)	' per-ghost cap (Blinky reaches 40=100%, others lower)
 	NEXT j
-	' Force 16-bit: (le-1)*cd16fb can reach ~800 at hz=60, which would
-	' silently truncate if computed as an 8-bit multiply (le and cd16fb both
-	' fit 8 bits individually) -- assign to a 16-bit scratch var FIRST so the
-	' multiply itself runs in 16-bit space (same pattern used for #dd1/#dd2
-	' elsewhere in this file).
-	#dd1 = le - 1 : #dd1 = #dd1 * cd16fb
-	#fb = #cd200 - #dd1		' fright shrinks per level (rescaled)
-	IF #fb < cd40 THEN #fb = cd40
+	#fb = 200 - (le - 1) * 16		' fright shrinks ~16 frames/level (200 -> 40)
+	IF #fb < 40 THEN #fb = 40
 	GOSUB fruitdef
 	GOSUB pickmaze
 	GOSUB drawmaze
 	gx(1) = 121 : gy(1) = 77 : gx(2) = 121 : gy(2) = 93
 	gx(3) = 105 : gy(3) = 93 : gx(4) = 137 : gy(4) = 93
 	FOR j = 1 TO 4
-		gs(j) = 0 : gd(j) = 4 : #spcd(j) = 0 : eya1(j) = 0 : eya2(j) = 0
+		gs(j) = 0 : gd(j) = 4 : spcd(j) = 1
 	NEXT j
 	sx = 121 : sy = 141 : dd = 0 : cd = 3 : hd = 3
-	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : #mt = #cd150
+	#ft = 0 : eg = 0 : ec = 0 : #fc = 0 : dg = 0 : fa = 0 : fn = 0 : mo = 0 : #mt = 150
 	GOSUB hud
 	END
 
 	' --- scatter/chase toggle + reverse (XB 1170-1176) ---
 modeswitch:	PROCEDURE
 	mo = 1 - mo
-	#mt = #cd800
-	IF mo = 0 THEN #mt = #cd150
+	#mt = 800
+	IF mo = 0 THEN #mt = 150
 	FOR j = 1 TO 4
 		IF (gs(j)=0) AND (gx(j)<>121) AND (gy(j)<>77) THEN
 			IF gd(j)=1 THEN gd(j)=2 ELSE IF gd(j)=2 THEN gd(j)=1 ELSE IF gd(j)=3 THEN gd(j)=4 ELSE gd(j)=3
@@ -848,9 +707,9 @@ spawnfruit:	PROCEDURE
 	' --- move roaming fruit (XB 730-743) ---
 movefruit:	PROCEDURE
 	#fw = #fw + 1
-	IF (#fw % cd6) = 0 THEN
+	IF (#fw % 6) = 0 THEN
 		SOUND 0, 186, 7			' soft blip as the fruit roams
-		sfx = cd2
+		sfx = 2
 	END IF
 	bx = fx : by = fy : bd = fd
 	ax = bx + 3 : ay = by + 3
@@ -887,7 +746,7 @@ mf_step:
 	IF bd = 2 THEN by = by + 2
 	IF bd = 3 THEN bx = bx - 2
 	IF bd = 4 THEN bx = bx + 2
-	IF (bx<13) OR (bx>229) OR (#fw>#cd400) THEN GOSUB killfruit : RETURN
+	IF (bx<13) OR (bx>229) OR (#fw>400) THEN GOSUB killfruit : RETURN
 	fx = bx : fy = by : fd = bd
 	' vertical bob while moving horizontally (XB WB), kept non-negative
 	fwb = fy - 2
@@ -1012,20 +871,7 @@ drawmaze:	PROCEDURE
 			IF p = 43 THEN cc = 168				' "+"
 			IF p >= 97 THEN cc = 128 + p - 97		' "a".."p"
 			IF (i = 1) AND (p = 32) THEN
-				' Was "(mr+1)*8-3" -- off by a full row (8px) from the Y a
-				' ghost/Pac actually occupies in that row: every OTHER place
-				' in this file converts a Y position to its grid row via
-				' "(y+11)/8" (e.g. spawnfruit's "ftr=(tg+11)/8" on this same
-				' ty1/ty2 value), and solving that backwards for which Y maps
-				' to row (mr+1) gives (mr+1)*8-11, not -3. Confirmed by
-				' computing (oldTy1+11)/8 = mr+2, one row past the intended
-				' mr+1 -- so the tunnel-row EXACT-EQUALITY checks ("by=ty1")
-				' used for the tunnel-slow throttle actually matched ghosts
-				' one row BELOW the true tunnel row (usually not a walkable
-				' corridor there), while ghosts genuinely in the tunnel were
-				' never throttled at all -- full speed through the real
-				' tunnel, every time.
-				IF ty1 = 0 THEN ty1 = (mr + 1) * 8 - 11 ELSE ty2 = (mr + 1) * 8 - 11
+				IF ty1 = 0 THEN ty1 = (mr + 1) * 8 - 3 ELSE ty2 = (mr + 1) * 8 - 3
 			END IF
 			VPOKE $1800 + (mr + 1) * 32 + (i + 1), cc
 		NEXT i
