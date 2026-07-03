@@ -337,31 +337,67 @@ breaks signed logic. These bit this game repeatedly and the fixes are load-beari
 TMS9900 inline ASM), so the same `ASTIROIDS.bas` builds for both machines — only the toolchain back
 end differs.
 
-**Cross-platform timing.** The main loop is frame-locked to **20Hz** (`#pacef`, waits for 3 VDP
-frames per step) — measured with a temporary on-screen loop counter, not guessed: the TI-99
-naturally runs the loop at 20fps (heavy per-frame sprite work spills past two 60Hz frames), while
-ColecoVision (faster Z80) holds a solid 60fps. Uncapped, the Coleco build ran 3× too fast (and
-frame-timed sounds were a third as long); capping both to 20fps makes Coleco match the TI's real
-speed. Change the `< 3` to `< 2` for 30Hz, `< 1` for 60Hz.
+**Cross-platform timing — each machine runs its OWN native rate, rescaled to match.** The TI-99
+naturally runs the main loop at **20fps** (measured with a temporary on-screen loop counter; heavy
+per-frame sprite work spills past two 60Hz frames); ColecoVision (faster Z80) holds a solid
+**30fps**. Earlier revisions throttled Coleco down to the TI's rate (a flat `< 3` frame-pace check,
+20Hz on both) — simple, but wastes Coleco's real headroom. The current design instead lets each
+machine tick at its own measured native rate and **rescales every frame-counted quantity** so
+real-world game speed matches regardless:
+
+- `pacen` is a **required** compile-time constant (`-Dpacen=3` TI / `-Dpacen=2` Coleco, passed by
+  `build-ti.sh` / `build-coleco.sh`) — VDP frames per logic tick. It is *never* declared with
+  `CONST` in the source (that would collide with `-D` and fail to compile); a build that forgets
+  the flag fails **loudly** at the first derived-constant line ("not a constant expression in
+  CONST"), not silently at runtime. The main-loop pace check is `IF (FRAME-#pacef) < pacen THEN WAIT`.
+- Every value originally hand-tuned assuming `pacen=3` (the TI reference) is rescaled by one of two
+  formulas, both exact at `pacen=3` so the TI build is byte-identical to before this change
+  (confirmed: TI RAM usage unchanged at 707 bytes):
+  - **Duration** (ticks until something happens — cooldown, lifetime, timer): `cdN = (N*3+1)/pacen`
+    — needs *more* ticks at a faster tick rate to cover the same real time.
+  - **Increment** (an amount added or capped once per tick — velocity, a sound sweep step):
+    `ciN = (N*pacen+1)/3` — needs a *smaller* per-tick amount at a faster tick rate so the
+    real-world rate of change matches. (The two formulas are inverses: for anything whose real
+    effect is duration×increment — e.g. a sound's total Hz swept, or a scaled duration's real-time
+    span — the product is pacen-invariant by construction.)
+  - Both constant families live in one block at the top of `ASTIROIDS.bas`, named by their
+    original (pacen=3) magnitude (`cd20`, `ci8`, `#cd450`, `#ci294`, …) so every usage site still
+    reads like the old literal. ~35 constants cover every bullet/UFO/explosion/heartbeat/sound
+    timer and every velocity cap/spawn-speed/kick constant in the file; spatial constants (hitbox
+    radii, screen-wrap bands, sprite pattern indices, bullet spawn offset) are deliberately **not**
+    rescaled — they're geometry, not time.
+  - Two genuine **duty-cycle cadences** (thrust ramp, rotation step) aren't simple durations — they
+    fire *some fraction of ticks*, previously via an ad-hoc 2-value toggle. These use a small
+    **phase accumulator** instead (`acc=acc+rate : IF acc>=threshold THEN acc=acc-threshold : fire`)
+    which reproduces the original TI cadence exactly at `pacen=3` and generalizes correctly to any
+    tick rate without needing a hand-picked pattern.
+  - One accepted approximation: the noise-channel volume decay (`noi_dv`, always 1/tick) is not
+    rescaled, so explosion "crunch" completes slightly faster in real time on Coleco than on TI —
+    a minor, secondary audible effect, not worth the added complexity of a fractional decay.
 
 **TI-99/4A:**
 ```
-bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.bas "ASTIROIDS"
+bash games/Astiroids/build-ti.sh
 ```
-(`cvbasic --ti994a … ASTIROIDS.a99 "<CVBASIC_DIR>/"` → `xas99 -b -R` → `linkticart.py … ASTIROIDS_8.bin`.)
-Load `ASTIROIDS_8.bin` in **Classic99** / **js99er**.
+(`cvbasic --ti994a -Dpacen=3 … ASTIROIDS.a99 "<CVBASIC_DIR>/"` → `xas99 -b -R` → `linkticart.py …
+ASTIROIDS_8.bin`.) Load `ASTIROIDS_8.bin` in **Classic99** / **js99er**.
 
 **ColecoVision:**
 ```
 bash games/Astiroids/build-coleco.sh
 ```
-(`cvbasic … astiroids_col.asm "<CVBASIC_DIR>/"` with the **default** target → `gasm80 … astiroids.rom`.)
-Load `astiroids.rom` in **CoolCV** / **blueMSX**. Fits Coleco's 1 KB RAM (**692 of 814 bytes**); the
-16-bit sin/cos + velocity + flame tables stay small enough that no move to ROM `DATA` was needed.
-`gasm80` (nanochess's Z80 assembler) lives at `nanochess/gasm80/gasm80.exe` (cloned + `gcc`-built).
+(`cvbasic -Dpacen=2 … astiroids_col.asm "<CVBASIC_DIR>/"` with the **default** target →
+`gasm80 … astiroids.rom`.) Load `astiroids.rom` in **CoolCV** / **blueMSX**. Fits Coleco's 1 KB RAM
+(**693 of 814 bytes**). `gasm80` (nanochess's Z80 assembler) lives at
+`nanochess/gasm80/gasm80.exe` (cloned + `gcc`-built).
 
-Both paths compile-check only; play them in the respective emulator. Generated artifacts
-(`.a99/.bin/.txt/_8.bin` for TI, `.asm/.rom/.lst/.sym` for Coleco) are git-ignored.
+**Do not** build `ASTIROIDS.bas` with the generic shared `.claude/skills/build-cvbasic-game/build.sh`
+— it doesn't pass `-Dpacen` (a compile error results, per the loud-failure design above).
+
+Both paths compile-check only; play them in the respective emulator — the Coleco native-30fps
+rescale in particular needs an emulator playtest to confirm feel, since it can't be verified by
+compiling alone. Generated artifacts (`.a99/.bin/.txt/_8.bin` for TI, `.asm/.rom/.lst/.sym` for
+Coleco) are git-ignored.
 
 ---
 

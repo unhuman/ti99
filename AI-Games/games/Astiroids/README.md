@@ -41,10 +41,19 @@ ROM** (not an XB256/compiler game). Full spec in [`DESIGN.md`](DESIGN.md).
 - **Fixed-point ×64** positions for sub-pixel inertia; 16-step rotation via a sin/cos table.
 - **Explosions in place** — a dead entity's slot plays the shared 4-frame blast, then frees itself.
 - Per-frame software movement (no `CALL MOTION` in CVBasic); native TMS9900 speed handles it.
-- **20Hz frame-lock** (`#pacef`, main loop): measured with an on-screen loop counter, not guessed
-  — the TI-99 naturally runs the loop at **20fps** (heavy per-frame sprite work spills past two
-  60Hz frames), while ColecoVision holds a solid 60fps. Without a cap the Coleco build ran 3× too
-  fast; the loop now waits for 3 VDP frames per step on both, so Coleco matches the TI's real speed.
+- **Cross-platform pacing, per-machine native rate:** the TI-99 naturally runs the main loop at
+  **20fps** (measured with an on-screen loop counter; heavy per-frame sprite work spills past two
+  60Hz frames), while ColecoVision holds a solid **30fps**. Rather than throttling Coleco down to
+  the TI's rate, each machine runs its *own* native tick rate (`pacen`: 3 VDP frames/tick on TI,
+  2 on Coleco -- a **required** compile-time constant, `-Dpacen=N`; see `build-ti.sh` /
+  `build-coleco.sh`), and every frame-counted duration and per-tick velocity/cap in the game is
+  rescaled from `pacen` so real-world game speed matches on both. Two formulas, both exact at
+  `pacen=3` (so the TI build is unaffected): a *duration* (cooldown, lifetime, timer) scales by
+  `*3/pacen`; a *per-tick increment* (velocity, a cap, a sound sweep step) scales by `*pacen/3`.
+  Two genuine duty-cycle cadences (the thrust ramp, the rotation step) use a small phase
+  accumulator instead of a scaled constant, since they're "how often", not "how much". Coleco now
+  gets real benefit from its extra headroom (smoother motion) instead of just idling. Full
+  derivation in `DESIGN.md` §14.
 - Watch the CVBasic traps documented in `DESIGN.md` §12 (unsigned 16-bit compare **and** divide,
   `ABS` on 8-bit, sprite edge wrap, 8-byte bitmap char colors).
 
@@ -61,7 +70,7 @@ nothing in the source is TI- vs Coleco-specific.
 **TI-99/4A** (→ `src/ASTIROIDS_8.bin`, load in **Classic99** / **js99er**):
 
 ```
-bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.bas "ASTIROIDS"
+bash games/Astiroids/build-ti.sh
 ```
 
 **ColecoVision** (→ `src/astiroids.rom`, load in **CoolCV** / **blueMSX**):
@@ -70,7 +79,11 @@ bash .claude/skills/build-cvbasic-game/build.sh games/Astiroids/src/ASTIROIDS.ba
 bash games/Astiroids/build-coleco.sh
 ```
 
-The Coleco path compiles with the default CVBasic target (no `--ti994a`) and assembles with
-`gasm80` (nanochess's Z80 assembler) straight to a 16 KB `.rom`. It fits ColecoVision's 1 KB RAM
-(692 of 814 bytes used). All generated artifacts (`.a99`/`.bin`/`.txt`/`_8.bin` for TI,
-`.asm`/`.rom`/`.lst`/`.sym` for Coleco) are git-ignored.
+Both scripts pass a **required** `-Dpacen=N` build-time constant (3 for TI, 2 for Coleco -- see
+"How it's built" above); don't build `ASTIROIDS.bas` with the generic shared
+`.claude/skills/build-cvbasic-game/build.sh`, which doesn't pass it (compile fails loudly if
+`pacen` is missing, rather than risking a silent runtime divide-by-zero). The Coleco path compiles
+with the default CVBasic target (no `--ti994a`) and assembles with `gasm80` (nanochess's Z80
+assembler) straight to a 16 KB `.rom`. It fits ColecoVision's 1 KB RAM (693 of 814 bytes used).
+All generated artifacts (`.a99`/`.bin`/`.txt`/`_8.bin` for TI, `.asm`/`.rom`/`.lst`/`.sym` for
+Coleco) are git-ignored.

@@ -9,6 +9,68 @@
 	' target), so this stays target-agnostic (was TMS9900-only inline ASM).
 	VDP(1) = $E3
 
+	' ============================================================
+	' CROSS-PLATFORM PACING (see main_loop): the logic loop is capped to a
+	' fixed real-world tick rate, matched to each machine's MEASURED native
+	' speed (not guessed) -- TI-99 runs it at 20fps (pacen=3, i.e. 3 VDP
+	' frames/tick), ColecoVision at 30fps (pacen=2). `pacen` is supplied at
+	' compile time (-Dpacen=3 / -Dpacen=2, see build-ti.sh / build-coleco.sh)
+	' -- it is NEVER declared with CONST in this source (that would collide
+	' with the -D value and fail to compile), so a build that forgets -D
+	' fails LOUDLY at the first CONST formula below (pacen unresolved ->
+	' "not a constant expression in CONST") rather than silently dividing by
+	' zero at runtime.
+	'
+	' Every frame-counted constant below was originally hand-tuned assuming
+	' pacen=3 (the TI reference). Two kinds of quantity, two formulas (both
+	' round-to-nearest, exact at pacen=3 so the TI build is byte-identical
+	' to before this change):
+	'   DURATION  (ticks until something happens -- cooldown, lifetime,
+	'              timer) needs MORE ticks at a faster tick rate to cover the
+	'              same real time:      cdN = (N*3+1)/pacen
+	'   INCREMENT (an amount added/capped once per tick -- velocity, a sweep
+	'              step) needs a SMALLER per-tick amount at a faster tick
+	'              rate so the real-world rate of change matches:
+	'                                   ciN = (N*pacen+1)/3
+	' Constant names encode the ORIGINAL (pacen=3) magnitude N so each usage
+	' site below reads as "the old literal N, now cross-platform". A few
+	' magnitudes are reused verbatim across unrelated sites (e.g. cd12 backs
+	' both fire_cd and the asteroid tumble cadence) -- that's fine, it's the
+	' same transform either way, not a semantic link.
+	CONST cd4=(4*3+1)/pacen     : CONST cd6=(6*3+1)/pacen
+	CONST cd7=(7*3+1)/pacen     : CONST cd8=(8*3+1)/pacen
+	CONST cd5=(5*3+1)/pacen     : CONST cd12=(12*3+1)/pacen
+	CONST cd14=(14*3+1)/pacen
+	CONST cd15=(15*3+1)/pacen   : CONST cd16=(16*3+1)/pacen
+	CONST cd18=(18*3+1)/pacen   : CONST cd20=(20*3+1)/pacen
+	CONST cd20d4=cd20/4         : CONST cd24=(24*3+1)/pacen
+	CONST cd30=(30*3+1)/pacen   : CONST cd40=(40*3+1)/pacen
+	CONST cd44=(44*3+1)/pacen   : CONST cd45=(45*3+1)/pacen
+	CONST cd60=(60*3+1)/pacen   : CONST cd60d4=cd60/4
+	CONST cd90=(90*3+1)/pacen   : CONST cd120=(120*3+1)/pacen
+	CONST cd150=(150*3+1)/pacen
+	CONST #cd420=(420*3+1)/pacen   : CONST #cd450=(450*3+1)/pacen
+	CONST #cd600=(600*3+1)/pacen   : CONST #cd900=(900*3+1)/pacen
+	CONST #cd1800=(1800*3+1)/pacen
+
+	CONST ci2=(2*pacen+1)/3    : CONST ci3=(3*pacen+1)/3
+	CONST ci4=(4*pacen+1)/3    : CONST ci5=(5*pacen+1)/3
+	CONST ci6=(6*pacen+1)/3    : CONST ci7=(7*pacen+1)/3
+	CONST ci8=(8*pacen+1)/3    : CONST ci12=(12*pacen+1)/3
+	CONST ci24=(24*pacen+1)/3  : CONST ci64=(64*pacen+1)/3
+	CONST ci96=(96*pacen+1)/3  : CONST ci128=(128*pacen+1)/3
+	CONST ci160=(160*pacen+1)/3
+	' Sound sweep-step magnitudes (#dN, Hz added per tick) -- same increment
+	' formula: a faster tick rate needs a smaller per-tick Hz step so the
+	' sweep still completes over the same real time (its cdN-scaled duration
+	' already grows to compensate, so the two changes cancel and the TOTAL
+	' Hz swept stays exactly the same regardless of pacen).
+	CONST ci9=(9*pacen+1)/3    : CONST ci11=(11*pacen+1)/3
+	CONST ci40=(40*pacen+1)/3  : CONST ci110=(110*pacen+1)/3
+	CONST ci180=(180*pacen+1)/3
+	CONST ci220=(220*pacen+1)/3
+	CONST #ci256=(256*pacen+1)/3   : CONST #ci294=(294*pacen+1)/3
+
 	BORDER 1
 	' CVBasic's built-in flicker rotates ALL 32 sprites (the ship too). We want
 	' the ship pinned as top priority, so turn it OFF (VDP then honors slot order:
@@ -57,14 +119,18 @@
 	' large peaks at 5, small at 7 (small shoots faster). Position is in whole
 	' pixels; NEVER derive these as #sin_t*N/64 at runtime -- CVBasic's 16-bit
 	' divide is UNSIGNED, so a negative component becomes a huge positive.
-	#bvl_t(0)=0  : #bvl_t(1)=2  : #bvl_t(2)=4  : #bvl_t(3)=4
-	#bvl_t(4)=5  : #bvl_t(5)=4  : #bvl_t(6)=4  : #bvl_t(7)=2
-	#bvl_t(8)=0  : #bvl_t(9)=-2 : #bvl_t(10)=-4: #bvl_t(11)=-4
-	#bvl_t(12)=-5: #bvl_t(13)=-4: #bvl_t(14)=-4: #bvl_t(15)=-2
-	#bvs_t(0)=0  : #bvs_t(1)=3  : #bvs_t(2)=5  : #bvs_t(3)=6
-	#bvs_t(4)=7  : #bvs_t(5)=6  : #bvs_t(6)=5  : #bvs_t(7)=3
-	#bvs_t(8)=0  : #bvs_t(9)=-3 : #bvs_t(10)=-5: #bvs_t(11)=-6
-	#bvs_t(12)=-7: #bvs_t(13)=-6: #bvs_t(14)=-5: #bvs_t(15)=-3
+	' Table entries are pacen-scaled (ciN, same increment formula as the speed
+	' cap above) so UFO bullets move at the same real-world speed on both
+	' targets; magnitudes match the ORIGINAL (pacen=3) values in the comment
+	' at each row's start.
+	#bvl_t(0)=0     : #bvl_t(1)=ci2    : #bvl_t(2)=ci4    : #bvl_t(3)=ci4
+	#bvl_t(4)=ci5   : #bvl_t(5)=ci4    : #bvl_t(6)=ci4    : #bvl_t(7)=ci2
+	#bvl_t(8)=0     : #bvl_t(9)=0-ci2  : #bvl_t(10)=0-ci4 : #bvl_t(11)=0-ci4
+	#bvl_t(12)=0-ci5: #bvl_t(13)=0-ci4 : #bvl_t(14)=0-ci4 : #bvl_t(15)=0-ci2
+	#bvs_t(0)=0     : #bvs_t(1)=ci3    : #bvs_t(2)=ci5    : #bvs_t(3)=ci6
+	#bvs_t(4)=ci7   : #bvs_t(5)=ci6    : #bvs_t(6)=ci5    : #bvs_t(7)=ci3
+	#bvs_t(8)=0     : #bvs_t(9)=0-ci3  : #bvs_t(10)=0-ci5 : #bvs_t(11)=0-ci6
+	#bvs_t(12)=0-ci7: #bvs_t(13)=0-ci6 : #bvs_t(14)=0-ci5 : #bvs_t(15)=0-ci3
 
 	' Thrust-flame offset from the ship center (px), per rotation frame, placing
 	' the flame just behind that frame's actual rear edge (engine) and on the
@@ -108,7 +174,7 @@ title:
 	PRINT AT 12*32+6,"HYPER  : DOWN"
 	PRINT AT 15*32+10,"2026 UNHUMAN"
 	PRINT AT 23*32+6,"PRESS FIRE TO BEGIN"
-	hbeat_rate=120 : hbeat_timer=120 : hbeat_step=0
+	hbeat_rate=cd120 : hbeat_timer=cd120 : hbeat_step=0
 	' The title screen is silent: kill every channel + mixer state and don't
 	' tick the heartbeat/sfx mixer in the loop below.
 	GOSUB snd_off
@@ -131,8 +197,8 @@ title:
 		asiz(ti)=random(3)+1
 		#ax(ti)=random(14336)+1024
 		#ay(ti)=random(10240)+1024
-		IF random(2) THEN #avx(ti)=random(128)+24 ELSE #avx(ti)=-(random(128)+24)
-		IF random(2) THEN #avy(ti)=random(128)+24 ELSE #avy(ti)=-(random(128)+24)
+		IF random(2) THEN #avx(ti)=random(ci128)+ci24 ELSE #avx(ti)=-(random(ci128)+ci24)
+		IF random(2) THEN #avy(ti)=random(ci128)+ci24 ELSE #avy(ti)=-(random(ci128)+ci24)
 		IF asiz(ti)=1 THEN afr(ti)=76
 		IF asiz(ti)=2 THEN afr(ti)=88
 		IF asiz(ti)=3 THEN afr(ti)=96
@@ -234,8 +300,8 @@ game_init:
 	FOR ti=0 TO 31
 		SPRITE ti,$d1,0,0,0
 	NEXT ti
-	utype=0 : #utimer=450 : ubact=0 : uexp=0
-	thr_on=0 : uw_ph=0 : rot_cd=0 : wave_gap=0 : #wage=0 : #nokill=0
+	utype=0 : #utimer=#cd450 : ubact=0 : uexp=0
+	thr_on=0 : uw_ph=0 : rotacc=0 : thracc=0 : wave_gap=0 : #wage=0 : #nokill=0
 	FOR ti=1 TO 4
 		bact(ti)=0
 	NEXT ti
@@ -260,12 +326,13 @@ main_loop:
 	#pacef = FRAME
 	WHILE 1
 		WAIT
-		' Frame-pace to 20Hz (3 VDP frames per step) -- measured, not guessed: an
-		' on-screen loop counter showed the TI-99 naturally runs this loop at 20fps
-		' (the heavy per-frame sprite work spills past two 60Hz frames), while
-		' ColecoVision (faster Z80) held a solid 60fps -- 3x too fast uncapped.
-		' Capping both to 20Hz makes Coleco match the TI's real speed exactly.
-		IF (FRAME - #pacef) < 3 THEN WAIT
+		' Frame-pace to each machine's measured native rate (pacen VDP frames
+		' per tick -- see the pacen/cdN/ciN block up top): TI-99 measured 20fps
+		' (pacen=3), ColecoVision measured 30fps uncapped (pacen=2). Every
+		' frame-counted constant in the file is rescaled by the same pacen, so
+		' Coleco now runs its OWN native tick rate with equivalent real-world
+		' game speed, instead of being throttled down to the TI's rate.
+		IF (FRAME - #pacef) < pacen THEN WAIT
 		#pacef = FRAME
 		GOSUB handle_in
 		GOSUB upd_ship
@@ -288,7 +355,7 @@ main_loop:
 					IF wave>9 THEN wave=9
 					SOUND 0,,0 : SOUND 1,,0 : SOUND 2,,0 : SOUND 3,,0
 					sfx0=0 : sfx1=0 : sfx2=0 : noi_t=0 : thr_was=0
-					#utimer=450 : utype=0 : ubact=0 : uexp=0
+					#utimer=#cd450 : utype=0 : ubact=0 : uexp=0
 					FOR ti=1 TO 4
 						bact(ti)=0
 					NEXT ti
@@ -301,7 +368,7 @@ main_loop:
 				END IF
 			ELSE
 				' Wave just cleared (only start the gap if the ship is alive)
-				IF ship_st<2 THEN wave_gap=150
+				IF ship_st<2 THEN wave_gap=cd150
 			END IF
 		END IF
 	WEND
@@ -342,9 +409,9 @@ spawn_wave: PROCEDURE
 			#ax(slot)=random(14336)+1024
 			IF si AND 2 THEN #ay(slot)=1024 ELSE #ay(slot)=12224
 		END IF
-		' Speed: 64=1px/fr base, +12 per wave, cap 160
-		spd=64+wave*12
-		IF spd>160 THEN spd=160
+		' Speed: base 1px/tick, +wave increment, cap -- all pacen-scaled (ciN)
+		spd=ci64+wave*ci12
+		IF spd>ci160 THEN spd=ci160
 		IF random(2) THEN
 			#avx(slot)=random(spd)+64
 		ELSE
@@ -381,8 +448,8 @@ ready_scr: PROCEDURE
 	PRINT AT 11*32+11,"         "
 	#spx=8192 : #spy=6144
 	#svx=0 : #svy=0
-	sangle=0 : ship_st=1 : ship_tmr=90
-	thr_on=0 : thr_frame=64 : fire_cd=0 : rot_cd=0
+	sangle=0 : ship_st=1 : ship_tmr=cd90
+	thr_on=0 : thr_frame=64 : fire_cd=0 : rotacc=0 : thracc=0
 	GOSUB lives_draw
 	GOSUB render
 END
@@ -392,42 +459,48 @@ END
 	' ============================================================
 handle_in: PROCEDURE
 	IF ship_st<2 THEN
-		' Rotation: alternate 2/3 frames per step (avg 2.5 = ~25% slower)
-		IF rot_cd>0 THEN rot_cd=rot_cd-1
-		IF rot_cd=0 THEN
-			IF cont1.left THEN
-				sangle=(sangle+15) AND 15
-				rot_cd=2 : IF rot_alt THEN rot_cd=3
-				rot_alt=rot_alt XOR 1
-			END IF
-			IF cont1.right THEN
-				sangle=(sangle+1) AND 15
-				rot_cd=2 : IF rot_alt THEN rot_cd=3
-				rot_alt=rot_alt XOR 1
-			END IF
+		' Rotation cadence: a phase accumulator, not a fixed countdown -- this
+		' is a DUTY-CYCLE rate (steps per real second), so it needs different
+		' treatment than the cdN/ciN one-shot constants above. Was a hardcoded
+		' 2/3-tick alternation (avg 2.5 ticks/step) at the TI's pacen=3; the
+		' accumulator reproduces that EXACTLY at pacen=3 (step+=2*3=6/tick,
+		' fires at 6,12(f),18(f)... period 2) and generalizes to any pacen
+		' (avg period 15/(2*pacen) ticks, chosen so steps/real-second matches).
+		rotacc=rotacc+2*pacen
+		IF rotacc>=15 THEN
+			rotacc=rotacc-15
+			IF cont1.left THEN sangle=(sangle+15) AND 15
+			IF cont1.right THEN sangle=(sangle+1) AND 15
 		END IF
 		' Thrust: accumulate velocity; released = inertial drift
 		thr_on=0
 		IF cont1.up THEN
 			thr_on=1
-			' Slower ramp = apply full thrust every OTHER frame. Do NOT divide
-			' the signed sin/cos by 2: CVBasic's 16-bit divide is UNSIGNED and
-			' turns a negative component into a huge positive (wrong heading).
-			thr_acc=thr_acc XOR 1
-			IF thr_acc THEN
+			' Same phase-accumulator idea as rotation above, tuned so thrust
+			' fires every 2 ticks at pacen=3 (matching the old "every OTHER
+			' frame" ramp: step+=pacen=3/tick, fires at 3,6(f)... period 2) and
+			' every 3 ticks at pacen=2 (period 6/pacen=3) -- the SAME real-world
+			' accel rate at any tick rate. Do NOT divide the signed sin/cos by
+			' anything: CVBasic's 16-bit divide is UNSIGNED and turns a negative
+			' component into a huge positive (wrong heading) -- scaling the
+			' RATE, not the per-fire amount, avoids ever dividing a signed value.
+			thracc=thracc+pacen
+			IF thracc>=6 THEN
+				thracc=thracc-6
 				#svx=#svx+#sin_t(sangle)
 				#svy=#svy-#cos_t(sangle)
-				' Speed cap: +/-294 (~15% above the previous 256). Unsigned
-				' compares -> split at 32767 to use each correct half-range.
+				' Speed cap: #ci294 scales the original +/-294 cap for pacen (a
+				' faster tick rate needs a smaller per-tick cap so real-world
+				' top speed matches). Unsigned compares -> split at 32767.
 				IF #svx>32767 THEN
-					IF #svx<-294 THEN #svx=-294
+					IF #svx<0-#ci294 THEN #svx=0-#ci294
 				ELSE
-					IF #svx>294 THEN #svx=294
+					IF #svx>#ci294 THEN #svx=#ci294
 				END IF
 				IF #svy>32767 THEN
-					IF #svy<-294 THEN #svy=-294
+					IF #svy<0-#ci294 THEN #svy=0-#ci294
 				ELSE
-					IF #svy>294 THEN #svy=294
+					IF #svy>#ci294 THEN #svy=#ci294
 				END IF
 			END IF
 		END IF
@@ -441,7 +514,7 @@ handle_in: PROCEDURE
 				' No invincibility after a jump: you reappear live and
 				' vulnerable (classic hyperspace risk).
 				ship_st=0
-				hyp_cd=45
+				hyp_cd=cd45
 			END IF
 		END IF
 		' Fire: bullet spawns at ship nose (~6 px ahead of center)
@@ -452,8 +525,8 @@ handle_in: PROCEDURE
 				WHILE fi<=4
 					IF bact(fi)=0 THEN
 						bact(fi)=1
-						' ~8 px/frame * 20 = ~160 px before expiring (20% shorter)
-						blife(fi)=20
+						' ~8 px/tick * 20 ticks = ~160 px before expiring (20% shorter)
+						blife(fi)=cd20
 						' Art nose at row 4 of 16x16 frame; at 2x magnification
 						' that's 8px above center.  Spawn 9px out to clear hull.
 						#bx(fi)=#spx+9*#sin_t(sangle)
@@ -461,11 +534,11 @@ handle_in: PROCEDURE
 						' Bullet ~8 px/frame in the facing direction PLUS the
 						' ship's current velocity (inertia): forward shots are
 						' faster, shots fired backward while moving are slower.
-						#bvx(fi)=#sin_t(sangle)*8+#svx
-						#bvy(fi)=-#cos_t(sangle)*8+#svy
-						fire_cd=12
+						#bvx(fi)=#sin_t(sangle)*ci8+#svx
+						#bvy(fi)=-#cos_t(sangle)*ci8+#svy
+						fire_cd=cd12
 						' "Pew" = fast descending zap on channel 1.
-						#f1=1400 : #d1=-180 : v1=13 : sfx1=7
+						#f1=1400 : #d1=0-ci180 : v1=13 : sfx1=cd7
 						fi=5
 					END IF
 					fi=fi+1
@@ -547,7 +620,7 @@ upd_ast: PROCEDURE
 			IF aft(ai)=0 THEN
 				aact(ai)=0
 			ELSE
-				afr(ai)=(27+(20-aft(ai))/5)*4
+				afr(ai)=(27+(cd20-aft(ai))/cd20d4)*4
 				IF afr(ai)>120 THEN afr(ai)=120
 			END IF
 		END IF
@@ -566,7 +639,7 @@ upd_ast: PROCEDURE
 				IF #ay(ai)>=12288 THEN #ay(ai)=#ay(ai)-12288
 			END IF
 			aft(ai)=aft(ai)+1
-			IF aft(ai)>=12 THEN
+			IF aft(ai)>=cd12 THEN
 				aft(ai)=0
 				IF asiz(ai)=1 THEN
 					afr(ai)=afr(ai)+4
@@ -593,7 +666,7 @@ upd_ufo: PROCEDURE
 	' Exploding: cycle explosion frames 27-30 in place, then clear the UFO.
 	IF uexp>0 THEN
 		uexp=uexp-1
-		uefr=(27+(20-uexp)/5)*4
+		uefr=(27+(cd20-uexp)/cd20d4)*4
 		IF uefr>120 THEN uefr=120
 		IF uexp=0 THEN utype=0 : SPRITE 6,$d1,0,0,0 : SOUND 2,,0 : sfx2=0
 	ELSE
@@ -602,8 +675,8 @@ upd_ufo: PROCEDURE
 			' Count down faster while the player is stalling: no rock destroyed
 			' for ~7 s, or the wave uncleared for ~30 s -> saucers ~4x sooner.
 			udec=1
-			IF #nokill>420 THEN udec=4
-			IF #wage>1800 THEN udec=4
+			IF #nokill>#cd420 THEN udec=4
+			IF #wage>#cd1800 THEN udec=4
 			IF #utimer>udec THEN #utimer=#utimer-udec ELSE #utimer=0
 		ELSE
 			IF wave<4 THEN
@@ -613,17 +686,17 @@ upd_ufo: PROCEDURE
 			END IF
 			' Small saucers move faster across the screen than large ones.
 			IF random(2)=0 THEN udir=1 ELSE udir=-1
-			IF utype=2 THEN uspd=3 ELSE uspd=2
+			IF utype=2 THEN uspd=ci3 ELSE uspd=ci2
 			IF udir=1 THEN ux=16 : uvx=uspd ELSE ux=239 : uvx=0-uspd
 			uy=random(160)+20
-			uvy=0 : ufire=14 : uwarble=0 : ubact=0
-			IF wave<4 THEN #utimer=900 ELSE #utimer=600
+			uvy=0 : ufire=cd14 : uwarble=0 : ubact=0
+			IF wave<4 THEN #utimer=#cd900 ELSE #utimer=#cd600
 		END IF
 	ELSE
 		ux=ux+uvx
 		uwarble=uwarble+1
 		' Small saucers change heading more often and by more (jumpier).
-		IF utype=2 THEN uwthr=12 ELSE uwthr=20
+		IF utype=2 THEN uwthr=cd12 ELSE uwthr=cd20
 		IF uwarble>=uwthr THEN
 			uwarble=0
 			IF uy<36 THEN uvy=1
@@ -654,7 +727,7 @@ upd_ufo: PROCEDURE
 				ufire=ufire-1
 				IF ufire=0 THEN
 					' Large aims at the ship 20% of the time, small 40%; else random.
-					ubact=1 : ublife=40 : ubx=ux : uby=uy
+					ubact=1 : ublife=cd40 : ubx=ux : uby=uy
 					IF utype=1 THEN aimpct=2 ELSE aimpct=4
 					IF random(10)<aimpct THEN
 						#dx=#spx/64-ux : #dy=#spy/64-uy
@@ -668,12 +741,12 @@ upd_ufo: PROCEDURE
 					ELSE
 						ubvx=#bvs_t(aim_ang) : ubvy=0-#bvs_t((aim_ang+4) AND 15)
 					END IF
-					IF utype=1 THEN ufire=6 ELSE ufire=4
+					IF utype=1 THEN ufire=cd6 ELSE ufire=cd4
 					' UFO shot "pew" (small saucer = higher pitch), over the hum.
 					IF utype=1 THEN
-						#f2=700 : #d2=-110 : v2=13 : sfx2=5
+						#f2=700 : #d2=0-ci110 : v2=13 : sfx2=cd5
 					ELSE
-						#f2=1600 : #d2=-220 : v2=13 : sfx2=5
+						#f2=1600 : #d2=0-ci220 : v2=13 : sfx2=cd5
 					END IF
 				END IF
 			END IF
@@ -764,11 +837,11 @@ chk_coll: PROCEDURE
 						IF utype=1 THEN #score=#score+20 ELSE #score=#score+100
 						GOSUB hud_draw
 						' Start the UFO explosion (cleared in upd_ufo).
-						uexp=20 : uefr=108 : ubact=0
+						uexp=cd20 : uefr=108 : ubact=0
 						SPRITE 7,$d1,0,0,0
 						' Explosion: descending thump + noise burst.
-						#f0=420 : #d0=-9 : v0=12 : sfx0=24
-						noi_n=4 : noi_v=14 : noi_t=18 : noi_dv=1
+						#f0=420 : #d0=0-ci9 : v0=12 : sfx0=cd24
+						noi_n=4 : noi_v=14 : noi_t=cd18 : noi_dv=1
 						bi=5
 					END IF
 				END IF
@@ -810,10 +883,10 @@ chk_coll: PROCEDURE
 				#cdy=uy-#ay(ai)/64
 				IF ABS(#cdx)<sradius THEN
 					IF ABS(#cdy)<sradius THEN
-						uexp=20 : uefr=108 : ubact=0
+						uexp=cd20 : uefr=108 : ubact=0
 						SPRITE 7,$d1,0,0,0
-						#f0=420 : #d0=-9 : v0=12 : sfx0=24
-						noi_n=4 : noi_v=13 : noi_t=16 : noi_dv=1
+						#f0=420 : #d0=0-ci9 : v0=12 : sfx0=cd24
+						noi_n=4 : noi_v=13 : noi_t=cd16 : noi_dv=1
 						award=0 : GOSUB ast_hit
 						ai=25
 					END IF
@@ -862,7 +935,7 @@ chk_coll: PROCEDURE
 			' wide) so you don't die ~2px before visually touching the saucer.
 			IF ABS(#cdx)<12 THEN
 				IF ABS(#cdy)<12 THEN
-					uexp=20 : uefr=108 : ubact=0
+					uexp=cd20 : uefr=108 : ubact=0
 					SPRITE 7,$d1,0,0,0
 					GOSUB ship_die
 				END IF
@@ -888,12 +961,12 @@ ast_hit: PROCEDURE
 	END IF
 	' Explosion = white-noise burst (channel 3) with a fast volume decay,
 	' louder/longer for bigger rocks (see sfx_t for the envelope).
-	IF asiz(ai)=1 THEN noi_n=4 : noi_v=14 : noi_t=16 : noi_dv=1
-	IF asiz(ai)=2 THEN noi_n=4 : noi_v=12 : noi_t=12 : noi_dv=1
-	IF asiz(ai)=3 THEN noi_n=4 : noi_v=9  : noi_t=8  : noi_dv=1
+	IF asiz(ai)=1 THEN noi_n=4 : noi_v=14 : noi_t=cd16 : noi_dv=1
+	IF asiz(ai)=2 THEN noi_n=4 : noi_v=12 : noi_t=cd12 : noi_dv=1
+	IF asiz(ai)=3 THEN noi_n=4 : noi_v=9  : noi_t=cd8  : noi_dv=1
 	ast_count=ast_count-1
 	old_siz=asiz(ai)
-	aact(ai)=2 : afr(ai)=108 : aft(ai)=20
+	aact(ai)=2 : afr(ai)=108 : aft(ai)=cd20
 	IF old_siz<3 THEN
 		kids=0
 		FOR ci=1 TO 24
@@ -903,7 +976,7 @@ ast_hit: PROCEDURE
 				asiz(ci)=old_siz+1
 				ast_count=ast_count+1
 				#ax(ci)=#ax(ai) : #ay(ci)=#ay(ai)
-				IF old_siz=1 THEN ckick=96 ELSE ckick=128
+				IF old_siz=1 THEN ckick=ci96 ELSE ckick=ci128
 				IF kids=1 THEN
 					#avx(ci)=#avx(ai)+ckick : #avy(ci)=#avy(ai)-ckick/2
 				ELSE
@@ -911,14 +984,14 @@ ast_hit: PROCEDURE
 				END IF
 				' Signed cap (same split-at-32767 fix as thrust cap)
 				IF #avx(ci)>32767 THEN
-					IF #avx(ci)<-256 THEN #avx(ci)=-256
+					IF #avx(ci)<0-#ci256 THEN #avx(ci)=0-#ci256
 				ELSE
-					IF #avx(ci)>256 THEN #avx(ci)=256
+					IF #avx(ci)>#ci256 THEN #avx(ci)=#ci256
 				END IF
 				IF #avy(ci)>32767 THEN
-					IF #avy(ci)<-256 THEN #avy(ci)=-256
+					IF #avy(ci)<0-#ci256 THEN #avy(ci)=0-#ci256
 				ELSE
-					IF #avy(ci)>256 THEN #avy(ci)=256
+					IF #avy(ci)>#ci256 THEN #avy(ci)=#ci256
 				END IF
 				IF asiz(ci)=2 THEN afr(ci)=88 ELSE afr(ci)=96
 				aft(ci)=0
@@ -932,7 +1005,7 @@ END
 	' SHIP DIE
 	' ============================================================
 ship_die: PROCEDURE
-	ship_st=2 : ship_tmr=60
+	ship_st=2 : ship_tmr=cd60
 	#svx=0 : #svy=0
 	' Stop thrusting: handle_in won't run while dead (ship_st>=2), so without
 	' this thr_on stays 1 and the channel-3 hiss resumes once the death-explosion
@@ -943,8 +1016,8 @@ ship_die: PROCEDURE
 	lives=lives-1
 	GOSUB lives_draw
 	' Death = long descending tone (ch0) over a big noise rumble (ch3).
-	#f0=500 : #d0=-11 : v0=13 : sfx0=44
-	noi_n=4 : noi_v=15 : noi_t=24 : noi_dv=1
+	#f0=500 : #d0=0-ci11 : v0=13 : sfx0=cd44
+	noi_n=4 : noi_v=15 : noi_t=cd24 : noi_dv=1
 END
 
 	' ============================================================
@@ -965,7 +1038,7 @@ ship_tick: PROCEDURE
 			IF lives=0 THEN
 				GOSUB game_over
 			ELSE
-				ship_st=3 : ship_tmr=90
+				ship_st=3 : ship_tmr=cd90
 			END IF
 		END IF
 	END IF
@@ -974,7 +1047,7 @@ ship_tick: PROCEDURE
 		IF ship_tmr=0 THEN
 			#spx=8192 : #spy=6144
 			#svx=0 : #svy=0
-			sangle=0 : ship_st=1 : ship_tmr=90
+			sangle=0 : ship_st=1 : ship_tmr=cd90
 			GOSUB lives_draw
 		END IF
 	END IF
@@ -988,7 +1061,7 @@ xlife_chk: PROCEDURE
 		last_extra=last_extra+1
 		lives=lives+1
 		' Rising chime on channel 0.
-		#f0=600 : #d0=40 : v0=12 : sfx0=12
+		#f0=600 : #d0=ci40 : v0=12 : sfx0=cd12
 		GOSUB lives_draw
 	END IF
 END
@@ -1003,14 +1076,14 @@ hbeat: PROCEDURE
 			hbeat_timer=hbeat_timer-1
 		ELSE
 			IF hbeat_step=0 THEN
-				#f0=1100 : #d0=0 : v0=8 : sfx0=8
+				#f0=1100 : #d0=0 : v0=8 : sfx0=cd8
 				hbeat_step=1
 			ELSE
-				#f0=860 : #d0=0 : v0=8 : sfx0=8
+				#f0=860 : #d0=0 : v0=8 : sfx0=cd8
 				hbeat_step=0
 			END IF
-			hbeat_rate=120-ast_count*4
-			IF hbeat_rate<30 THEN hbeat_rate=30
+			hbeat_rate=cd120-ast_count*cd4
+			IF hbeat_rate<cd30 THEN hbeat_rate=cd30
 			hbeat_timer=hbeat_rate
 		END IF
 	END IF
@@ -1121,7 +1194,7 @@ render: PROCEDURE
 	ELSE
 		IF ship_st=2 THEN
 			spx=#spx/64 : spy=#spy/64
-			exp_fr=27+(60-ship_tmr)/15
+			exp_fr=27+(cd60-ship_tmr)/cd60d4
 			IF exp_fr>30 THEN exp_fr=30
 			SPRITE 0,spy-16,spx-16,exp_fr*4,15
 			SPRITE fslot,$d1,0,0,0
@@ -1158,7 +1231,7 @@ render: PROCEDURE
 			' Engine warble on channel 2: two alternating tones. Only re-issued
 			' when channel 2 is free (sfx2=0) so a UFO fire "pew" plays over it.
 			uw_ph=uw_ph+1
-			IF uw_ph>=15 THEN
+			IF uw_ph>=cd15 THEN
 				uw_ph=0
 				IF sfx2=0 THEN
 					uw_tog=uw_tog XOR 1
@@ -1167,7 +1240,7 @@ render: PROCEDURE
 					ELSE
 						IF uw_tog THEN #f2=1050 ELSE #f2=900
 					END IF
-					#d2=0 : v2=6 : sfx2=16
+					#d2=0 : v2=6 : sfx2=cd16
 				END IF
 			END IF
 		ELSE
