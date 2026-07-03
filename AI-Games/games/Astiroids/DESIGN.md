@@ -167,6 +167,18 @@ what a symmetric formula assumes) and needs the same table-driven fix as the fla
 `tools/nose_offsets.py` (nose-tip centroid + a small gap along the +nose axis); re-run it if the
 ship art changes.
 
+**Bullet render offset is 14, not 16 — a second, independent bug found after the table above still
+looked off in play.** `bullet_sprite`'s single lit pixel sits at local (row 7, col 7), one unit
+short of its 16×16 pattern's exact center (8, 8); at 2× magnification that's a built-in **−2, −2
+screen-px bias** between the bullet's logical position (`#bx,#by`, what collision and the spawn
+table target) and where its dot actually renders, for the bullet's *entire* flight — not just at
+spawn. Rendering at offset 14 (`SPRITE bslot,bpy-14,bpx-14,72,15`, was 16) cancels it, so the dot
+lands exactly on the logical/collision position. This bug pre-dates the `#ndx_t`/`#ndy_t` table
+(the render offset never changed) and was masked by the old, cruder `9*sin/9*cos` spawn formula's
+own errors partly overlapping it — fixing the spawn math in isolation made this pre-existing
+rendering bug fully visible instead of accidentally cancelling part of it. Same fix applied to the
+UFO bullet (`SPRITE ubslot,uby-14,ubx-14,72,9`, same pattern, same bias).
+
 ### Asteroids
 
 `#avx/#avy` velocities; **wrap the full screen** (0..16384 / 0..12288) with a signed-safe

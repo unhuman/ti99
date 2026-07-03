@@ -1247,7 +1247,14 @@ render: PROCEDURE
 			IF bpy<4 OR bpy>188 THEN
 				SPRITE bslot,$d1,0,0,0
 			ELSE
-				SPRITE bslot,bpy-16,bpx-16,72,15
+				' Render offset 14, not 16: the bullet's single lit pixel sits
+				' at local (row7,col7), one unit short of this 16x16 pattern's
+				' exact center (8,8) -- at 2x magnification that's a built-in
+				' -2,-2 screen px bias between the logical (bpx,bpy) and the
+				' visible dot. Offset 14 (=16-2) cancels it so the dot lands
+				' exactly on the logical/collision position (and, at spawn, on
+				' the true nose tip from the #ndx_t/#ndy_t table).
+				SPRITE bslot,bpy-14,bpx-14,72,15
 			END IF
 		ELSE
 			SPRITE bslot,$d1,0,0,0
@@ -1284,7 +1291,9 @@ render: PROCEDURE
 	END IF
 	' UFO bullet (slot 7): ubx,uby are screen pixel coords
 	IF ubact THEN
-		SPRITE ubslot,uby-16,ubx-16,72,9
+		' Offset 14, not 16 -- see the player-bullet render comment above
+		' (same bullet_sprite pattern, same -2,-2 local-pixel bias to cancel).
+		SPRITE ubslot,uby-14,ubx-14,72,9
 	ELSE
 		SPRITE ubslot,$d1,0,0,0
 	END IF
