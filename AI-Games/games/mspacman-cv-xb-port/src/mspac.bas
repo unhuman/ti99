@@ -312,19 +312,6 @@ wallchk:	PROCEDURE
 	IF tr = 13 THEN IF tc > 13 THEN IF tc < 20 THEN wl = 1
 	END
 
-	' --- wall check for ghosts (XB 760) ---
-wallchk2:	PROCEDURE
-	wl = 0
-	IF tc < 1 THEN wl = 1
-	IF tc > 32 THEN wl = 1
-	IF tr < 1 THEN wl = 1
-	IF tr > 24 THEN wl = 1
-	IF wl = 1 THEN RETURN
-	g = VPEEK(scr(tr, tc))
-	IF g > 127 THEN IF g < 144 THEN wl = 1
-	IF tr = 12 THEN IF tc > 15 THEN IF tc < 18 THEN wl = 1
-	END
-
 	' --- openness mask at r,c, read from VRAM (was om[]; XB wallchk2 rule) ---
 openmask:	PROCEDURE
 	mk = 0
@@ -399,15 +386,22 @@ ghost:	PROCEDURE
 	IF (gsi = 1) AND (#ft = 0) THEN gs(gi) = 0 : gsi = 0
 
 	bx = gx(gi) : by = gy(gi) : bd = gd(gi)
+	' "In the tunnel" (same exact condition the xp=1 check and the speed
+	' throttle below both need) was being evaluated twice, identically, per
+	' call -- computed once here and reused. Pure common-subexpression
+	' elimination: the condition itself is UNCHANGED, this only avoids
+	' redundantly re-evaluating it a moment later.
+	intun = 0
+	IF ((by = ty1) OR (by = ty2)) AND ((bx < 45) OR (bx > 197)) THEN intun = 1
 	' overdrive extra pass: only chasing ghosts in the open (not fright/eyes/tunnel)
 	IF xp = 1 THEN
 		IF gsi <> 0 THEN GOTO gh_draw_only
-		IF ((by = ty1) OR (by = ty2)) AND ((bx < 45) OR (bx > 197)) THEN GOTO gh_draw_only
+		IF intun = 1 THEN GOTO gh_draw_only
 	END IF
 	' speed throttle (XB 1006-1007). fc2 reuses the pre-increment #fc AND 1
 	' computed once at the top of the tick (ghost: always runs before #fc is
 	' incremented, so it's the same value the original "#fc % 2" would read).
-	IF (gsi = 1) OR (((by=ty1) OR (by=ty2)) AND ((bx<45) OR (bx>197))) THEN
+	IF (gsi = 1) OR (intun = 1) THEN
 		IF fc2 = 0 THEN GOTO gh_draw_only
 	END IF
 	' Was "IF (#fc % sp(gi)) = 0 THEN skip" -- a DIVISION BY A VARIABLE
@@ -607,7 +601,7 @@ pacdies:	PROCEDURE
 	FOR dr = 0 TO 23
 		WAIT : WAIT
 		pf = 0
-		m = dr % 4
+		m = dr AND 3
 		IF m = 1 THEN pf = 12
 		IF m = 2 THEN pf = 4
 		IF m = 3 THEN pf = 8

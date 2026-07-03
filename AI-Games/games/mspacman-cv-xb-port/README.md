@@ -89,6 +89,23 @@ Measured effect: the TI-99's native loop rate went from **fluctuating 22–24fps
 (previously not re-measured after this pass). 24Hz remains the shared target since it's the TI's
 now-stable ceiling; capping both machines to it keeps the tuned TI feel, sounds included.
 
+**Follow-up cleanup pass (deliberately conservative, no timing/behavior changes):**
+- Removed `wallchk2` — provably dead code (confirmed via search: never called anywhere), left over
+  from before `openmask` replaced its 4-calls-per-decision usage. Zero behavior risk; it never ran.
+- `ghost:` was evaluating the exact same "is this ghost in the tunnel" condition twice, back to
+  back (once for the overdrive exclusion, once for the speed throttle) — computed once into `intun`
+  and reused. Pure common-subexpression elimination: the condition itself is byte-for-byte
+  unchanged, this only removes a redundant re-evaluation a few lines later.
+- `dr % 4` (in the death-spin animation) → `dr AND 3` — same DIV-avoidance as the rest of the file;
+  cold path (only runs during Pac-Man's death sequence), so negligible speed impact, but free and
+  consistent with the rest of the pass.
+- **Deliberately left alone:** `#fc % 3` (roaming-fruit trigger) and `#fw % 6` (fruit roam-blip
+  cadence) are still real `DIV`s and not power-of-2, so they *could* become a countdown like
+  `spcd()` — but both are gated behind `fa=1` (only costs anything while fruit is actively roaming,
+  a minority of play), and after the recent tunnel/eyes debugging saga this pass intentionally
+  stopped at changes provably identical in behavior rather than "should be harmless." Worth
+  revisiting if TI speed is ever revisited again, with the same rigor.
+
 **Reverted experiment (2026-07):** a later pass tried letting ColecoVision run at its own native
 60fps instead of being capped to match the TI, rescaling every duration/movement rate from a
 `-Dhz=N` build constant so real-world game speed would still match. It repeatedly introduced new,
