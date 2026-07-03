@@ -260,12 +260,12 @@ main_loop:
 	#pacef = FRAME
 	WHILE 1
 		WAIT
-		' Frame-pace to 30Hz (2 VDP frames per step). The TI-99 already runs this
-		' loop at ~30fps because the heavy per-frame sprite work spills past one
-		' 60Hz frame; ColecoVision (a faster Z80) holds a solid 60fps, so without
-		' this cap it runs ~2x faster and every frame-timed sound is half as long.
-		' Capping both to 30Hz makes Coleco match the TI feel. (2->1 = 60Hz.)
-		IF (FRAME - #pacef) < 2 THEN WAIT
+		' Frame-pace to 20Hz (3 VDP frames per step) -- measured, not guessed: an
+		' on-screen loop counter showed the TI-99 naturally runs this loop at 20fps
+		' (the heavy per-frame sprite work spills past two 60Hz frames), while
+		' ColecoVision (faster Z80) held a solid 60fps -- 3x too fast uncapped.
+		' Capping both to 20Hz makes Coleco match the TI's real speed exactly.
+		IF (FRAME - #pacef) < 3 THEN WAIT
 		#pacef = FRAME
 		GOSUB handle_in
 		GOSUB upd_ship
