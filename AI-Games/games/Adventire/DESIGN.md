@@ -59,7 +59,7 @@ cave, gray black castle, dark-red dungeon, white castle 15.
 | 2 | White key | R7 maze south (red dragon) | 15 |
 | 3 | Sword | R3 corridor | 7 |
 | 4 | Bridge | R12 white castle hall | 13 |
-| 5 | Chalice | R10 dungeon | shimmers (FRAME-cycled 8–15); the largest object icon — a full cup+stem+base filling most of its 16×16 art |
+| 5 | Chalice | R10 dungeon | shimmers (FRAME-cycled 8–15); the classic cup silhouette (walls, tapered bowl, stem, base) at double size — 14×14 of its 16×16 art |
 
 - **Carry one object.** Touch picks up (swapping drops the old one on the spot, 10-tick
   cooldown); **FIRE drops** (edge-triggered).

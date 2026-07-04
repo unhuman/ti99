@@ -2,7 +2,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      **** ****     > adventire.a99
 0001               	; CVBasic compiler v0.9.2 Mar/12/2026
 0002               	; Command: /cygdrive/c/Users/Howie/github.git/nanochess/CVBasic/cvbasic --ti994a adventire.bas adventire.a99 C:/Users/Howie/github.git/nanochess/CVBasic/
-0003               	; Created: Fri Jul  3 20:48:22 2026
+0003               	; Created: Sat Jul  4 08:26:32 2026
 0004               
 0005      0000     COLECO:	equ 0
 0006      0000     SG1000:	equ 0
@@ -8920,37 +8920,37 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      D502 0000     
      D504 0000     
 7017               	;
-7018               	; 	BITMAP "______XXXX______"
-7019               	; 	BITMAP "_____XXXXXX_____"
-7020               	; 	BITMAP "____XXXXXXXX____"
-7021               	; 	BITMAP "____X______X____"
-7022               	; 	BITMAP "____X______X____"
-7023               	; 	BITMAP "_____X____X_____"
-7024               	; 	BITMAP "______XXXX______"
-7025               	; 	BITMAP "_______XX_______"
+7018               	; 	BITMAP "_XX__________XX_"
+7019               	; 	BITMAP "_XX__________XX_"
+7020               	; 	BITMAP "_XX__________XX_"
+7021               	; 	BITMAP "_XX__________XX_"
+7022               	; 	BITMAP "___XX______XX___"
+7023               	; 	BITMAP "___XX______XX___"
+7024               	; 	BITMAP "_____XXXXXX_____"
+7025               	; 	BITMAP "_____XXXXXX_____"
 7026               	; 	BITMAP "_______XX_______"
 7027               	; 	BITMAP "_______XX_______"
-7028               	; 	BITMAP "______XXXX______"
-7029               	; 	BITMAP "_____XXXXXX_____"
-7030               	; 	BITMAP "____XXXXXXXX____"
+7028               	; 	BITMAP "_______XX_______"
+7029               	; 	BITMAP "_______XX_______"
+7030               	; 	BITMAP "___XXXXXXXXXX___"
 7031               	; 	BITMAP "___XXXXXXXXXX___"
 7032               	; 	BITMAP "________________"
 7033               	; 	BITMAP "________________"
-7034 D506 0307     	byte >03,>07,>0f,>08,>08,>04,>03,>01
-     D508 0F08     
-     D50A 0804     
-     D50C 0301     
-7035 D50E 0101     	byte >01,>01,>03,>07,>0f,>1f,>00,>00
-     D510 0307     
-     D512 0F1F     
+7034 D506 6060     	byte >60,>60,>60,>60,>18,>18,>07,>07
+     D508 6060     
+     D50A 1818     
+     D50C 0707     
+7035 D50E 0101     	byte >01,>01,>01,>01,>1f,>1f,>00,>00
+     D510 0101     
+     D512 1F1F     
      D514 0000     
-7036 D516 C0E0     	byte >c0,>e0,>f0,>10,>10,>20,>c0,>80
-     D518 F010     
-     D51A 1020     
-     D51C C080     
-7037 D51E 8080     	byte >80,>80,>c0,>e0,>f0,>f8,>00,>00
-     D520 C0E0     
-     D522 F0F8     
+7036 D516 0606     	byte >06,>06,>06,>06,>18,>18,>e0,>e0
+     D518 0606     
+     D51A 1818     
+     D51C E0E0     
+7037 D51E 8080     	byte >80,>80,>80,>80,>f8,>f8,>00,>00
+     D520 8080     
+     D522 F8F8     
      D524 0000     
 7038               	;
 7039               	; 	BITMAP "XXX__________XXX"
