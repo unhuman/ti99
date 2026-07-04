@@ -1,32 +1,40 @@
 # Adventire
 
-An Atari-2600-*Adventure*-style quest (original code/art/maps) for **TI-99/4A** and
+An Atari-2600-*Adventure*-style quest (original code/art/room data) for **TI-99/4A** and
 **ColecoVision**, written in CVBasic — one source, both machines.
 
-**Quest:** open the gold castle, take the sword, win the white key from the red dragon's maze,
-fetch the **bridge** from the white castle, bridge into the sealed cave chamber for the black
-key, brave the black castle, and carry the chalice back **inside the gold castle** — alive.
-Three castles, three dragons, a thieving bat.
+**Four games** on the title screen (UP/DOWN + FIRE):
+
+1. **INTRO KINGDOM** — our original 13-room map: a gentle introduction.
+2. **SMALL KINGDOM** — compact kingdom: gold + black castles, blue maze, two dragons.
+3. **FULL KINGDOM** — the big map: three castles, dark catacombs and black-castle maze
+   (fog of war), red maze, magnet, bat, and a hidden secret room.
+4. **RANDOM KINGDOM** — the full kingdom with object locations scrambled each game.
+
+**Quest (all games):** find keys, open castles, get the sword past the dragons, and carry the
+chalice home **inside the gold castle** — alive.
 
 ## Controls
 
 - **Joystick** — move (8-way, walls slide)
 - **Touch an object** — pick it up (you carry one; touching another swaps). It rides at the
-  spot where you grabbed it — grab the sword on your left to fight dragons on your left.
+  spot where you grabbed it.
 - **FIRE** — drop what you're carrying
 - Touch a gate while carrying its key to open it; walk up into the open archway to enter.
-- The sword kills dragons on contact, carried or lying — keep it between you and the dragon.
-- The **bridge**: drop it across a wall and walk through its dark channel (it snaps to the
-  wall grid when dropped). Grab it by the **rails** — the channel is for walking, so crossing
-  never picks it back up. Only way into the sealed cave chamber. You can't pick it up while
-  standing inside a wall.
-- The **bat** steals things — even out of your hands. Chase it and snatch them back.
-- Swallowed? Press FIRE for a fresh game (full reset, like the console switch).
+- The **sword** kills dragons on contact, carried or lying. The red dragon is faster.
+- The **bridge**: grab by the rails, drop across a wall (snaps to the grid), walk the dark
+  channel. The only way into sealed chambers.
+- The **magnet** drags every loose object in the room toward it — through walls.
+- The **bat** steals things — even from your hands. Chase it and snatch them back.
+- **Dark rooms** (games 3/4) reveal walls only near you.
+- Somewhere in the black castle's maze hides an **invisible dot**… the east end of the
+  corridor row rewards the curious.
+- Swallowed or victorious → back to the title. Every start is a fresh kingdom.
 
 ## Status
 
-🎮 Playable — three castles / three dragons / bat / bridge version. Compiles clean for both
-targets; needs an emulator gameplay pass.
+🎮 Playable — 4-game version (intro map + documented-structure kingdom with magnet, dot,
+fog, bat). Compiles clean for both targets; needs an emulator gameplay pass.
 
 ## Build
 
@@ -39,4 +47,4 @@ bash games/Adventire/build-coleco.sh    # -> src/adventire.rom    (CoolCV / blue
 games/Adventire/src/adventire.bas ADVENTIRE` — note cvbasic.exe needs `C:\cygwin64\bin`
 reachable for `cygwin1.dll`; run the stages from PowerShell if Git Bash's PATH fights cygwin.)
 
-See `DESIGN.md` for the map, rules, and engine notes.
+See `DESIGN.md` for the world map, per-game object tables, and engine notes.
