@@ -139,6 +139,13 @@ sprite layer.
 - Room bitmaps (dispatched by a 39-label `ON rn GOTO` ladder to per-room `RESTORE`s), links,
   and colors are ROM `DATA`; player links cached per room (`pn/pe/ps/pw`), bat looks links up on
   demand.
+- **Doorway assist** (`vassist`/`hassist`): 3px steps make lining the 8px square up with a
+  16px gap fiddly, so a blocked move nudges the player up to 4px onto the 8px cell grid when
+  that clears the way — pressing toward a doorway just works.
+- The swallow "in the belly" sprite flashes black/white so it reads against any dragon or
+  room color (a yellow dragon in the yellow corridor used to hide it completely).
+- Returning to the title clears all sprite slots and requires the FIRE button quiet for ~2/3s
+  before the select loop arms, so the press that ended a game can't start the next one.
 - E/W arrivals snap to the rows-5/6 doorway if the landing spot is inside a wall, then pull
   one block inward if still stuck (`ewsnap`). Every E-link must target a room whose **west**
   edge opens at rows 5–6 (and W-links an open **east** edge) — blue maze 23's east link goes

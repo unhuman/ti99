@@ -209,6 +209,7 @@ mvleft: PROCEDURE
 	x0 = px - 3 : y0 = py : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
+	IF bf = 1 THEN GOSUB hassist
 	IF bf = 0 THEN px = x0
 	END
 
@@ -218,6 +219,7 @@ mvright: PROCEDURE
 	x0 = px + 3 : y0 = py : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
+	IF bf = 1 THEN GOSUB hassist
 	IF bf = 0 THEN px = x0
 	END
 
@@ -227,6 +229,7 @@ mvup: PROCEDURE
 	x0 = px : y0 = py - 3 : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
+	IF bf = 1 THEN GOSUB vassist
 	IF bf = 0 THEN py = y0
 	END
 
@@ -236,7 +239,35 @@ mvdown: PROCEDURE
 	x0 = px : y0 = py + 3 : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
+	IF bf = 1 THEN GOSUB vassist
 	IF bf = 0 THEN py = y0
+	END
+
+	' ------------------------------------------------------------
+	' doorway assist: 3px steps make lining an 8px square up with
+	' a 16px gap fiddly, so when a move is blocked we nudge the
+	' player (max 4px) onto the cell grid if that clears the way
+	' ------------------------------------------------------------
+vassist: PROCEDURE
+	t = (px + 4) AND 248
+	IF t = px THEN RETURN
+	IF t > px THEN t2 = t - px ELSE t2 = px - t
+	IF t2 > 4 THEN RETURN
+	x0 = t
+	GOSUB chkbox
+	IF bf = 1 THEN x0 = px : RETURN
+	px = t
+	END
+
+hassist: PROCEDURE
+	t = (py + 4) AND 248
+	IF t = py THEN RETURN
+	IF t > py THEN t2 = t - py ELSE t2 = py - t
+	IF t2 > 4 THEN RETURN
+	y0 = t
+	GOSUB chkbox
+	IF bf = 1 THEN y0 = py : RETURN
+	py = t
 	END
 
 brchk: PROCEDURE
@@ -627,11 +658,23 @@ eatenrt: PROCEDURE
 	FOR i = 1 TO 56
 	WAIT
 	SOUND 0, 200 + i * 14, 13
-	SPRITE 0, ddy(e) + 27, ddx(e) + 11, 0, pcol
+	GOSUB eatflash
 	NEXT i
 	SOUND 0, , 0
-ewt1:	WAIT : IF cont1.button > 0 THEN GOTO ewt1
-ewt2:	WAIT : IF cont1.button = 0 THEN GOTO ewt2
+ewt1:	WAIT
+	GOSUB eatflash
+	IF cont1.button > 0 THEN GOTO ewt1
+ewt2:	WAIT
+	GOSUB eatflash
+	IF cont1.button = 0 THEN GOTO ewt2
+	END
+
+	' in the belly: flash black/white so the player is visible
+	' whatever colour the dragon (or the room) happens to be
+eatflash: PROCEDURE
+	t2 = 1
+	IF (FRAME AND 8) > 0 THEN t2 = 15
+	SPRITE 0, ddy(e) + 27, ddx(e) + 11, 0, t2
 	END
 
 	' ------------------------------------------------------------
@@ -989,6 +1032,8 @@ ww2:	WAIT : IF cont1.button = 0 THEN GOTO ww2
 	' ------------------------------------------------------------
 title: PROCEDURE
 	CLS
+	' clear every sprite left over from the game just played
+	FOR i = 0 TO 16 : SPRITE i, $d1, 0, 0, 0 : NEXT i
 	BORDER 1
 	t = 11 * 16 + 1
 	FOR i = 0 TO 7
@@ -1012,7 +1057,13 @@ title: PROCEDURE
 	PRINT AT 32 * 15 + 7, "GAME 3  FULL KINGDOM"
 	PRINT AT 32 * 17 + 7, "GAME 4  RANDOM KINGDOM"
 	PRINT AT 32 * 21 + 6, "PRESS FIRE TO START"
-	udl = 0
+	' debounce: the press that ended the last game must not start
+	' the next one - require the button quiet for ~2/3 second
+	udl = 0 : t2 = 20
+tdb:	WAIT
+	IF cont1.button > 0 THEN t2 = 20 : GOTO tdb
+	t2 = t2 - 1
+	IF t2 > 0 THEN GOTO tdb
 tsel:
 	WAIT
 	IF udl > 0 THEN udl = udl - 1
