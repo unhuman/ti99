@@ -312,8 +312,9 @@ ewsnap: PROCEDURE
 	py = 84
 	x0 = px : y0 = py
 	GOSUB chkbox
-	IF bf = 0 THEN RETURN
-	IF px > 128 THEN px = 224 ELSE px = 20
+	IF bf = 1 THEN IF px > 128 THEN px = 224 ELSE px = 20
+	' the snap moved us after fogenter drew - recentre the lamp
+	IF fon = 1 THEN GOSUB fogwipe : GOSUB fogenter
 	END
 
 gonorth: PROCEDURE
@@ -923,15 +924,79 @@ fogenter: PROCEDURE
 	END
 
 fogupd: PROCEDURE
+	' differential update: the player crosses at most one cell
+	' boundary per axis per tick, so only the trailing edge is
+	' erased and the leading edge drawn (a full window wipe+draw
+	' every crossing dragged the TI-99 below 30Hz in dark rooms)
 	t = (py + 4) / 8 : t2 = (px + 4) / 8
-	IF t = fpr THEN IF t2 = fpc THEN RETURN
-	GOSUB fogwipe
-	fpr = t : fpc = t2
-	GOSUB fogdraw
+	IF t2 <> fpc THEN GOSUB foghz
+	IF t <> fpr THEN GOSUB fogvt
+	END
+
+foghz: PROCEDURE
+	IF t2 > fpc THEN fc = fpc - 5 : fl = t2 + 5 ELSE fc = fpc + 5 : fl = t2 - 5
+	GOSUB fogecol
+	fpc = t2
+	fc = fl
+	GOSUB fogdcol
+	END
+
+fogvt: PROCEDURE
+	IF t > fpr THEN fc = fpr - 5 : fl = t + 5 ELSE fc = fpr + 5 : fl = t - 5
+	GOSUB fogerow
+	fpr = t
+	fc = fl
+	GOSUB fogdrow
+	END
+
+fogecol: PROCEDURE
+	IF fc > 31 THEN RETURN
+	r0f = 0 : IF fpr > 5 THEN r0f = fpr - 5
+	r1f = fpr + 5 : IF r1f > 23 THEN r1f = 23
+	#ad = $1800 + r0f * 32 + fc
+	FOR r = r0f TO r1f
+	VPOKE #ad, 32
+	#ad = #ad + 32
+	NEXT r
+	END
+
+fogdcol: PROCEDURE
+	IF fc > 31 THEN RETURN
+	r0f = 0 : IF fpr > 5 THEN r0f = fpr - 5
+	r1f = fpr + 5 : IF r1f > 23 THEN r1f = 23
+	i2 = fc / 8 : f = msk(fc AND 7)
+	#ad = $1800 + r0f * 32 + fc
+	FOR r = r0f TO r1f
+	IF (rm(r * 4 + i2) AND f) > 0 THEN VPOKE #ad, 128
+	#ad = #ad + 32
+	NEXT r
+	END
+
+fogerow: PROCEDURE
+	IF fc > 23 THEN RETURN
+	c0f = 0 : IF fpc > 5 THEN c0f = fpc - 5
+	c1f = fpc + 5 : IF c1f > 31 THEN c1f = 31
+	#ad = $1800 + fc * 32 + c0f
+	FOR c2 = c0f TO c1f
+	VPOKE #ad, 32
+	#ad = #ad + 1
+	NEXT c2
+	END
+
+fogdrow: PROCEDURE
+	IF fc > 23 THEN RETURN
+	c0f = 0 : IF fpc > 5 THEN c0f = fpc - 5
+	c1f = fpc + 5 : IF c1f > 31 THEN c1f = 31
+	i2 = fc * 4
+	#ad = $1800 + fc * 32 + c0f
+	FOR c2 = c0f TO c1f
+	IF (rm(i2 + (c2 / 8)) AND msk(c2 AND 7)) > 0 THEN VPOKE #ad, 128
+	#ad = #ad + 1
+	NEXT c2
 	END
 
 fogwipe: PROCEDURE
-	' blank the old window (4-cell radius = 32px lamplight)
+	' blank the whole window (room entry / arrival snaps only)
 	GOSUB fogbnd
 	FOR r = r0f TO r1f
 	#ad = $1800 + r * 32 + c0f
@@ -954,10 +1019,11 @@ fogdraw: PROCEDURE
 	END
 
 fogbnd: PROCEDURE
-	r0f = 0 : IF fpr > 4 THEN r0f = fpr - 4
-	r1f = fpr + 4 : IF r1f > 23 THEN r1f = 23
-	c0f = 0 : IF fpc > 4 THEN c0f = fpc - 4
-	c1f = fpc + 4 : IF c1f > 31 THEN c1f = 31
+	' 5-cell radius = 40px lamplight
+	r0f = 0 : IF fpr > 5 THEN r0f = fpr - 5
+	r1f = fpr + 5 : IF r1f > 23 THEN r1f = 23
+	c0f = 0 : IF fpc > 5 THEN c0f = fpc - 5
+	c1f = fpc + 5 : IF c1f > 31 THEN c1f = 31
 	END
 
 dsafe: PROCEDURE

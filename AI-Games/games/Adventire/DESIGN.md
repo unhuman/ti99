@@ -124,10 +124,17 @@ show a south door that led nowhere and trapped the player).
 ## Dark rooms (fog of war)
 
 Rooms flagged dark (black maze 26–28, catacombs 29–31): the room draws **nothing**; wall
-cells within a 4-cell (32px) Chebyshev window of the player are drawn, and the window is
-wiped and redrawn whenever the player crosses an 8px cell boundary (`fogenter`/`fogupd`/
-`fogwipe`/`fogdraw`). Sprites (dragons, bat, objects) remain visible, like the original's
-sprite layer.
+cells within a 5-cell (40px) Chebyshev window of the player are drawn. Updates are
+**differential**: the player crosses at most one cell boundary per axis per tick, so only
+the trailing edge strip is erased and the leading edge drawn (≤44 cell ops on a diagonal vs
+~240 for a full wipe+redraw — the full version dragged the TI-99 below 30 Hz and made the
+catacombs look broken because the lamp lagged the player). Full wipe/draw remains only for
+room entry and arrival snaps (`fogenter`/`fogwipe`/`fogdraw`; strips in `foghz`/`fogvt`).
+Sprites (dragons, bat, objects) remain visible, like the original's sprite layer.
+
+Catacombs route (games 3/4): corridor E (17) →S→ 29 → 30 → 31 →W→ white castle (32) or →E→
+side rooms (36); 29's west edge hyperspaces straight to 31 as a shortcut. Every wall band in
+every dark room has at least one doorway, so the mazes are always traversable.
 
 ## Engine notes (CVBasic specifics)
 
