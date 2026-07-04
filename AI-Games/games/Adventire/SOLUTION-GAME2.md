@@ -32,28 +32,36 @@ lead to the cross room. From the cross room, NORTH goes to the west branch, whos
 EAST both reach the **top screen**; the top screen's NORTH is the black castle — but leaving
 the top screen SOUTH or EAST drops you into the *mid* screen, not where you came from.
 
-## Step by step
+## Step by step (each move = one screen)
 
-1. **Gold key.** From the castle go SOUTH into the green corridor, then WEST into the
-   **dark-green corridor**: the **gold/yellow key** lies there.
-2. **Open the gold castle, take the sword.** Carry the key EAST then NORTH to the gate,
-   touch it (opens for good), walk up through the archway. The **sword** is in the hall.
-   Drop the key inside — you won't need it again.
-3. **Slay both dragons.** Sword in hand, head down and WEST into the blue maze
-   (Corridor W's west edge). Work upward: entry → NORTH to the mid screen → NORTH to the
-   top screen, where the **yellow dragon** charges — let it hit the blade. Continue NORTH
-   to the black castle grounds and slay the **green dragon** the same way. (If a dragon
-   chases you across rooms, just hold the sword facing it.)
-4. **Black key.** Drop the sword and fetch the **black key** from the maze's cross room
-   (from the entry screen, WEST hyperspaces straight there). Carry it up to the black
-   castle: cross room NORTH → west branch NORTH → top screen NORTH → the gate. Open it.
-5. **The chalice.** Inside the hall sit the **chalice** and the **magnet** (the magnet
-   drags every loose object in its room toward it — handy if something ends up somewhere
-   awkward, but you won't normally need it).
-6. **Carry it home.** With the chalice: hall SOUTH → grounds SOUTH into the top screen →
-   SOUTH lands you in the *mid* screen → SOUTH again to the entry screen → EAST to
-   Corridor W → EAST to the corridor mid → NORTH through the open gold gate into the hall.
-   Color flash — the chalice is home.
+Start: standing below the yellow gold castle.
+
+1. **Gold key.**
+   DOWN 1 (green corridor) → LEFT 1 (dark-green corridor): take the **gold/yellow key**.
+2. **Open the gold castle, take the sword.**
+   RIGHT 1 (green corridor) → UP 1 (gold castle): touch the gate with the key — it opens
+   for good. Walk UP into the archway (hall): touch the **sword** to take it (the key
+   drops here; you're done with it).
+3. **Slay both dragons** (they stay dead all game). Sword in hand:
+   Walk DOWN through the hall's bottom doorway (outside the castle) → DOWN 1 (green
+   corridor) → LEFT 1 (dark-green corridor) → LEFT 1 (dark-blue maze entry) → UP 1 (maze
+   mid) → UP 1 (maze top): the **yellow dragon** charges — let it hit the blade.
+   UP 1 (black castle grounds): the **green dragon** dies the same way. DROP the sword
+   here, by the black gate.
+4. **Black key** (mind the hyperspace links).
+   DOWN 1 — this lands you in the maze *mid* screen, not the top screen you climbed
+   through. LEFT 1 (the cross room): take the **black key**.
+5. **Open the black castle → chalice.**
+   UP 1 (the maze's west branch) → UP 1 (maze top) → UP 1 (black castle grounds): touch
+   the gate with the key — it opens. Walk UP into the archway (hall): take the
+   **chalice** (the key drops; done with it). The **magnet** also sits in this hall —
+   it drags every loose object in its room toward it; you won't normally need it.
+6. **Carry it home.**
+   Walk DOWN through the hall's bottom doorway (black castle grounds) →
+   DOWN 1 (maze top) → DOWN 1 (lands in the maze *mid* screen — hyperspace again) →
+   DOWN 1 (maze entry) → RIGHT 1 (dark-green corridor) → RIGHT 1 (green corridor) →
+   UP 1 (gold castle) → walk UP through the open gate into the hall. Color flash — the
+   chalice is home.
 
 ## Notes
 
