@@ -5,17 +5,22 @@ the **chalice** into the **gold castle hall**. One object at a time (touch to pi
 to drop). Dragons ignore walls and **pursue you between rooms** (~1.3s behind); a slain
 dragon stays dead, so clear them with the sword before ferrying keys.
 
-## The map
+## The map (with each room's on-screen wall color)
 
 ```
-[GOLD CASTLE  (start; SWORD inside; WIN in the hall)]
+[GOLD CASTLE  (yellow; start; SWORD inside; WIN in the hall)]
       |
-[Corridor W (GOLD KEY)]--[Corridor mid]--[Corridor E (dead end)]
+[Corridor W]--------------[Corridor mid]-----[Corridor E]
+ (DARK GREEN:              (green; below      (yellow; dead
+  GOLD/YELLOW KEY here)     the castle)        end this game)
       |
-[Blue Maze: 5 twisting screens ... BLACK KEY in the cross room]
+[Blue Maze: 5 twisting DARK-BLUE screens ... BLACK KEY in the cross room]
       |  (top screen)
-[BLACK CASTLE (green dragon at the gate; CHALICE + MAGNET in the hall)]
+[BLACK CASTLE (black walls; green dragon at the gate; CHALICE + MAGNET in the hall)]
 ```
+
+There is **no red room in this game** — the gold/yellow key sits in the **dark-green
+corridor** west of the castle's green corridor.
 
 The **yellow dragon** patrols the blue maze's top screen (the black castle approach); the
 **green dragon** waits on the black castle grounds.
@@ -29,8 +34,8 @@ the top screen SOUTH or EAST drops you into the *mid* screen, not where you came
 
 ## Step by step
 
-1. **Gold key.** From the castle go SOUTH into the corridor, then WEST: the **gold key**
-   lies in Corridor W.
+1. **Gold key.** From the castle go SOUTH into the green corridor, then WEST into the
+   **dark-green corridor**: the **gold/yellow key** lies there.
 2. **Open the gold castle, take the sword.** Carry the key EAST then NORTH to the gate,
    touch it (opens for good), walk up through the archway. The **sword** is in the hall.
    Drop the key inside — you won't need it again.

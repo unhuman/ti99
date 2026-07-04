@@ -5,19 +5,25 @@ object (touch to pick up, FIRE to drop), so the game is a series of ferry trips.
 ignore walls and **pursue you from room to room** (~1.3s behind) — but a slain dragon stays
 dead for the whole game, so killing all three early with the sword makes everything easier.
 
-## The map
+## The map (with each room's on-screen wall color)
 
 ```
                  [White Castle]--[N Meadow]--[Red Corridor]--[Blue Maze N]
-                  (BRIDGE inside)     |          (SWORD)          |
-                                 [GOLD CASTLE]                    |
-                                  (start/WIN)                     |
-                                      |                           |
-                 [S Meadow (GOLD KEY)]--[Purple Cave]--[Blue Maze S]--[Black Castle]
-                                        (sealed chamber:  (WHITE KEY,    (yellow dragon;
-                                         BLACK KEY;        red dragon)    hall -> DUNGEON
-                                         green dragon)                    with CHALICE)
+                  (white walls;   (green)      (RED walls:     (light blue)
+                   BRIDGE inside)     |          SWORD)             |
+                                 [GOLD CASTLE]                      |
+                                  (yellow; start/WIN)               |
+                                      |                             |
+              [S Meadow]-----------[Purple Cave]------[Blue Maze S]--[Black Castle]
+              (LIGHT GREEN:         (purple; sealed     (dark blue:    (black walls;
+               GOLD/YELLOW KEY       chamber with        WHITE KEY,     yellow dragon;
+               lies here)            BLACK KEY;          red dragon)    hall -> dark-red
+                                     green dragon)                      DUNGEON: CHALICE)
 ```
+
+Note the two easy-to-confuse rooms: the **sword** is in the **red** corridor (east of the
+green North Meadow); the **gold/yellow key** is in the **light-green South Meadow** — not
+in any corridor.
 
 Dragons: **red** (fast) guards the white key in Blue Maze S; **green** prowls the Purple
 Cave; **yellow** holds the Black Castle grounds. The **bat** starts in Blue Maze N and
@@ -46,9 +52,9 @@ snatch it back.
    the sword; otherwise dodge. Route: cave EAST → Blue Maze S EAST to the Black Castle.
    Open the gate with the black key, enter the hall, go EAST into the Dungeon: the
    shimmering **chalice**.
-7. **Open the gold castle.** The **gold key** lies in the South Meadow (unguarded). Carry
-   it to the gold castle gate and open it. (Do this before hauling the chalice, so the last
-   trip is nonstop.)
+7. **Open the gold castle.** The **gold/yellow key** lies in the **light-green South
+   Meadow** (unguarded). Carry it to the gold castle gate and open it. (Do this before
+   hauling the chalice, so the last trip is nonstop.)
 8. **Bring the chalice home.** Carry the chalice: Dungeon WEST → hall SOUTH → Black Castle
    grounds WEST → Blue Maze S WEST → Cave WEST → South Meadow NORTH → Meadow NORTH → through
    the open gold gate into the hall. Color flash — the chalice is home.
