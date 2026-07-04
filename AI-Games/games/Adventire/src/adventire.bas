@@ -55,7 +55,7 @@
 	VDP(1) = $E3
 	DEFINE CHAR 128, 2, wallchar
 	DEFINE COLOR 128, 2, wallcol
-	DEFINE SPRITE 0, 12, gsprites
+	DEFINE SPRITE 0, 13, gsprites
 
 	RESTORE mskdat
 	FOR i = 0 TO 7 : READ BYTE msk(i) : NEXT i
@@ -81,7 +81,6 @@ newgame:
 	IF gm = 4 THEN GOSUB rndobj
 	ocl(0) = 11 : ocl(1) = 1 : ocl(2) = 15 : ocl(3) = 7
 	ocl(4) = 13 : ocl(5) = 15 : ocl(6) = 6 : ocl(7) = 0
-	IF gm = 1 THEN ocl(1) = 14
 	gop(0) = 0 : gop(1) = 0 : gop(2) = 0
 	btc = 255 : btcd = 90 : bfx = 0 : bfy = 1
 	cr = 255 : pkcd = 0 : btnp = 1 : rmch = 0 : eflag = 0 : tk = 0
@@ -143,18 +142,29 @@ mainloop:
 	IF eflag > 0 THEN GOSUB eatenrt : GOTO restart
 
 drawframe:
-	SPRITE 0, py - 1, px, 0, 15
+	SPRITE 0, py - 1, px, 0, pcol
+	' dragons are TWO stacked 32x32 sprites (32x64 shown)
 	FOR d = 0 TO 2
-	IF drm(d) = rn THEN SPRITE 1 + d, ddy(d) - 1, ddx(d), 4 + dst(d) * 4, dcl(d) ELSE SPRITE 1 + d, $d1, 0, 0, 0
+	IF drm(d) = rn THEN GOSUB drawdrg ELSE SPRITE 1 + d + d, $d1, 0, 0, 0 : SPRITE 2 + d + d, $d1, 0, 0, 0
 	NEXT d
 	FOR i = 0 TO 7
-	IF orm(i) = rn THEN GOSUB drawobj ELSE SPRITE 4 + i, $d1, 0, 0, 0
+	IF orm(i) = rn THEN GOSUB drawobj ELSE SPRITE 7 + i, $d1, 0, 0, 0
 	NEXT i
-	IF btr = rn THEN SPRITE 12, bty - 1, btx, 28 + ((tk AND 2) * 2), 1 ELSE SPRITE 12, $d1, 0, 0, 0
+	IF btr = rn THEN SPRITE 15, bty - 1, btx, 32 + ((tk AND 2) * 2), 1 ELSE SPRITE 15, $d1, 0, 0, 0
 	' the bridge channel gets a black fill sprite so it reads as
 	' an opening in the wall it spans (rails sprite lies on top)
-	IF orm(4) = rn THEN SPRITE 13, oby(4) - 1, obx(4), 36, 1 ELSE SPRITE 13, $d1, 0, 0, 0
+	IF orm(4) = rn THEN SPRITE 16, oby(4) - 1, obx(4), 40, 1 ELSE SPRITE 16, $d1, 0, 0, 0
 	GOTO mainloop
+
+	' ------------------------------------------------------------
+	' dragon body: def1 (head/neck) above def2 (body/legs);
+	' slain dragons collapse to the belly-up def3 at ground level
+	' ------------------------------------------------------------
+drawdrg: PROCEDURE
+	IF dst(d) = 1 THEN SPRITE 1 + d + d, $d1, 0, 0, 0 : SPRITE 2 + d + d, ddy(d) + 31, ddx(d), 12, dcl(d) : RETURN
+	SPRITE 1 + d + d, ddy(d) - 1, ddx(d), 4, dcl(d)
+	SPRITE 2 + d + d, ddy(d) + 31, ddx(d), 8, dcl(d)
+	END
 
 	' ------------------------------------------------------------
 	' drop: the bridge snaps to the 16px block grid vertically so
@@ -171,13 +181,13 @@ dodrop: PROCEDURE
 	' ------------------------------------------------------------
 drawobj: PROCEDURE
 	t = ocl(i)
-	f = 12
-	IF i = 3 THEN f = 16
-	IF i = 4 THEN f = 24
-	IF i = 5 THEN f = 20 : t = (FRAME AND 7) + 8
-	IF i = 6 THEN f = 40
-	IF i = 7 THEN f = 44 : t = cb
-	SPRITE 4 + i, oby(i) - 1, obx(i), f, t
+	f = 16
+	IF i = 3 THEN f = 20
+	IF i = 4 THEN f = 28
+	IF i = 5 THEN f = 24 : t = (FRAME AND 7) + 8
+	IF i = 6 THEN f = 44
+	IF i = 7 THEN f = 48 : t = cb
+	SPRITE 7 + i, oby(i) - 1, obx(i), f, t
 	END
 
 	' ------------------------------------------------------------
@@ -254,10 +264,16 @@ goeast: PROCEDURE
 
 ewsnap: PROCEDURE
 	' a full-height corridor edge can exit at a row where the
-	' next room's edge is walled - snap to its rows-5/6 doorway
+	' next room's edge is walled - snap to its rows-5/6 doorway,
+	' and if even that is walled, pull one block inward
 	x0 = px : y0 = py : bw = 7 : bh = 7
 	GOSUB chkbox
-	IF bf = 1 THEN py = 84
+	IF bf = 0 THEN RETURN
+	py = 84
+	x0 = px : y0 = py
+	GOSUB chkbox
+	IF bf = 0 THEN RETURN
+	IF px > 128 THEN px = 224 ELSE px = 20
 	END
 
 gonorth: PROCEDURE
@@ -543,13 +559,13 @@ dragondo: PROCEDURE
 	IF m = 0 THEN IF #dx >= #cx THEN GOSUB dmovy ELSE GOSUB dmovx
 	GOSUB swordchk
 	IF dst(d) = 1 THEN RETURN
-	' bite: dragon centre (32x32 shown) vs player centre
+	' bite: dragon centre (32x64 shown) vs player centre
 	#ax = ddx(d) + 16 : #bx = px + 4
 	GOSUB adiff
 	IF #cx > 14 THEN RETURN
-	#ax = ddy(d) + 16 : #bx = py + 4
+	#ax = ddy(d) + 32 : #bx = py + 4
 	GOSUB adiff
-	IF #cx > 16 THEN RETURN
+	IF #cx > 24 THEN RETURN
 	eflag = d + 1
 	END
 
@@ -558,7 +574,7 @@ dmovx: PROCEDURE
 	IF tpx > ddx(d) THEN t = ddx(d) + ds ELSE t = ddx(d) - ds
 	IF t < 4 THEN RETURN
 	IF t > 220 THEN RETURN
-	x0 = t + 12 : y0 = ddy(d) + 8 : bw = 7 : bh = 15
+	x0 = t + 12 : y0 = ddy(d) + 24 : bw = 7 : bh = 15
 	GOSUB chkbox
 	IF bf = 0 THEN ddx(d) = t : m = 1
 	END
@@ -567,8 +583,8 @@ dmovy: PROCEDURE
 	IF ddy(d) = tpy THEN RETURN
 	IF tpy > ddy(d) THEN t = ddy(d) + ds ELSE t = ddy(d) - ds
 	IF t < 4 THEN RETURN
-	IF t > 156 THEN RETURN
-	x0 = ddx(d) + 12 : y0 = t + 8 : bw = 7 : bh = 15
+	IF t > 124 THEN RETURN
+	x0 = ddx(d) + 12 : y0 = t + 24 : bw = 7 : bh = 15
 	GOSUB chkbox
 	IF bf = 0 THEN ddy(d) = t : m = 1
 	END
@@ -579,9 +595,9 @@ swordchk: PROCEDURE
 	#ax = obx(3) + 12 : #bx = ddx(d) + 16
 	GOSUB adiff
 	IF #cx > 17 THEN RETURN
-	#ax = oby(3) + 7 : #bx = ddy(d) + 16
+	#ax = oby(3) + 7 : #bx = ddy(d) + 32
 	GOSUB adiff
-	IF #cx > 16 THEN RETURN
+	IF #cx > 26 THEN RETURN
 	dst(d) = 1 : sfx = 4 : sfc = 14
 	END
 
@@ -595,7 +611,7 @@ eatenrt: PROCEDURE
 	FOR i = 1 TO 56
 	WAIT
 	SOUND 0, 200 + i * 14, 13
-	SPRITE 0, ddy(e) + 15, ddx(e) + 11, 0, 15
+	SPRITE 0, ddy(e) + 27, ddx(e) + 11, 0, pcol
 	NEXT i
 	SOUND 0, , 0
 ewt1:	WAIT : IF cont1.button > 0 THEN GOTO ewt1
@@ -668,7 +684,7 @@ getlnk: PROCEDURE
 	' gate, fog window, secret-room text, dragons
 	' ------------------------------------------------------------
 enterroom: PROCEDURE
-	FOR i = 1 TO 13 : SPRITE i, $d1, 0, 0, 0 : NEXT i
+	FOR i = 1 TO 16 : SPRITE i, $d1, 0, 0, 0 : NEXT i
 	' bitmap: one big table, skip rn*24 bytes
 	RESTORE roomdata
 	i2 = rn
@@ -685,12 +701,17 @@ enterroom: PROCEDURE
 	i2 = i2 - 1
 	WEND
 	READ BYTE cw : READ BYTE cb : READ BYTE drk
-	' wall char 128 + portcullis 129: fg=wall, bg=room bg
+	' wall char 128: fg=wall, bg=room bg;
+	' portcullis 129: castle doors are always BLACK
 	t = cw * 16 + cb
+	t2 = 16 + cb
 	FOR i = 0 TO 7
 	VPOKE $2400 + i, t : VPOKE $2C00 + i, t : VPOKE $3400 + i, t
-	VPOKE $2408 + i, t : VPOKE $2C08 + i, t : VPOKE $3408 + i, t
+	VPOKE $2408 + i, t2 : VPOKE $2C08 + i, t2 : VPOKE $3408 + i, t2
 	NEXT i
+	' the player square must never match the walls
+	pcol = 15
+	IF cw = 15 THEN pcol = 1
 	' empty cells (char 32) show the background colour
 	FOR i = 0 TO 7
 	VPOKE $2100 + i, cb : VPOKE $2900 + i, cb : VPOKE $3100 + i, cb
@@ -792,7 +813,7 @@ dsafe: PROCEDURE
 	#ax = ddy(d) : #bx = py
 	GOSUB adiff
 	IF #cx > 40 THEN RETURN
-	ddx(d) = 108 : ddy(d) = 72
+	ddx(d) = 108 : ddy(d) = 64
 	END
 
 	' ------------------------------------------------------------
@@ -941,7 +962,7 @@ lnkb:	' game 2 - small kingdom (rooms 13-38; sealed = 255)
 	DATA BYTE 23, 21, 19, 21	' 20 blue maze
 	DATA BYTE 22, 20, 19, 20	' 21 blue maze
 	DATA BYTE 23, 23, 21, 255	' 22 blue maze
-	DATA BYTE 24, 22, 20, 22	' 23 blue maze top
+	DATA BYTE 24, 20, 20, 22	' 23 blue maze top
 	DATA BYTE 255, 255, 23, 255	' 24 black grounds
 	DATA BYTE 255, 255, 24, 255	' 25 black hall (chalice+magnet)
 	DATA BYTE 255, 255, 255, 255	' 26
@@ -969,7 +990,9 @@ lnka:	' games 3/4 - full kingdom (rooms 13-38)
 	DATA BYTE 23, 21, 19, 21	' 20 blue maze (hyperspace W)
 	DATA BYTE 22, 20, 19, 20	' 21 blue maze
 	DATA BYTE 23, 23, 21, 255	' 22 blue maze (hyperspace E)
-	DATA BYTE 24, 22, 20, 22	' 23 blue maze top -> black castle
+	DATA BYTE 24, 20, 20, 22	' 23 blue maze top -> black castle
+	'   (23 E goes to 20, whose west edge is open; 22's west
+	'   edge is walled, so an E-link into it would trap you)
 	DATA BYTE 255, 255, 23, 255	' 24 black grounds
 	DATA BYTE 255, 26, 24, 255	' 25 black hall -> dark maze
 	DATA BYTE 27, 27, 255, 25	' 26 black maze (dark)
@@ -989,20 +1012,21 @@ lnka:	' games 3/4 - full kingdom (rooms 13-38)
 	' ------------------------------------------------------------
 	' colours: (wall, background, dark) per room
 	' ------------------------------------------------------------
-colc:	' game 1 custom map: coloured walls on black
-	DATA BYTE 11, 1, 0
-	DATA BYTE 2, 1, 0
-	DATA BYTE 10, 1, 0
-	DATA BYTE 8, 1, 0
-	DATA BYTE 3, 1, 0
-	DATA BYTE 5, 1, 0
-	DATA BYTE 13, 1, 0
-	DATA BYTE 4, 1, 0
-	DATA BYTE 14, 1, 0
-	DATA BYTE 14, 1, 0
-	DATA BYTE 6, 1, 0
-	DATA BYTE 15, 1, 0
-	DATA BYTE 15, 1, 0
+colc:	' game 1 custom map: coloured walls on GRAY (so the black
+	' bat reads everywhere); its black castle is black too
+	DATA BYTE 11, 14, 0
+	DATA BYTE 2, 14, 0
+	DATA BYTE 10, 14, 0
+	DATA BYTE 8, 14, 0
+	DATA BYTE 3, 14, 0
+	DATA BYTE 5, 14, 0
+	DATA BYTE 13, 14, 0
+	DATA BYTE 4, 14, 0
+	DATA BYTE 1, 14, 0
+	DATA BYTE 1, 14, 0
+	DATA BYTE 6, 14, 0
+	DATA BYTE 15, 14, 0
+	DATA BYTE 15, 14, 0
 
 cola:	' rooms 13-38: coloured walls on GRAY, except the dark
 	' mazes (gray walls on black) - the black castle is BLACK
@@ -1070,17 +1094,17 @@ objd2:	' GAME 2 small kingdom: two castles, two dragons, no bat
 	DATA BYTE 13, 14
 
 objd3:	' GAMES 3/4 full kingdom
-	DATA BYTE 30, 116, 120
+	DATA BYTE 30, 116, 88
 	DATA BYTE 35, 116, 88
 	DATA BYTE 21, 36, 40
 	DATA BYTE 16, 60, 88
-	DATA BYTE 31, 180, 120
+	DATA BYTE 31, 180, 88
 	DATA BYTE 28, 60, 88
-	DATA BYTE 27, 116, 120
+	DATA BYTE 27, 116, 152
 	DATA BYTE 28, 184, 24
 	DATA BYTE 17, 48, 88, 11, 0
-	DATA BYTE 29, 104, 72, 2, 0
-	DATA BYTE 20, 104, 88, 8, 1
+	DATA BYTE 29, 104, 64, 2, 0
+	DATA BYTE 20, 104, 60, 8, 1
 	DATA BYTE 19, 120, 60
 	DATA BYTE 13, 14
 
@@ -1339,66 +1363,66 @@ roomdata:
 	' --- 19 blue maze SE (E to corridor, N, W-hyper) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $BF, $C1
-	DATA BYTE $BF, $C1
 	DATA BYTE $80, $01
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
 	DATA BYTE $FF, $FF
-	' --- 20 blue maze mid ---
+	' --- 20 blue maze mid (straight N channel) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
+	DATA BYTE $FE, $7F
+	DATA BYTE $FE, $7F
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $01
-	DATA BYTE $BF, $C1
-	DATA BYTE $BF, $C1
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 21 blue maze cross ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 22 blue maze W branch (E only + N/S) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $BF, $C1
-	DATA BYTE $BF, $C1
 	DATA BYTE $80, $01
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $00
 	DATA BYTE $80, $00
+	DATA BYTE $FE, $7F
+	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 23 blue maze top (N to the black castle) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 24 BLACK castle grounds (S to the blue maze) ---
@@ -1430,27 +1454,27 @@ roomdata:
 	' --- 26 black maze (dark) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $FE, $7F
+	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $BF, $C1
-	DATA BYTE $BF, $C1
 	DATA BYTE $80, $01
 	DATA BYTE $FF, $FF
 	' --- 27 black maze (dark) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 28 black maze end: sealed dot chamber (dark) ---
@@ -1462,47 +1486,47 @@ roomdata:
 	DATA BYTE $00, $01
 	DATA BYTE $00, $01
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 29 catacombs (dark) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 30 catacombs (dark) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $BF, $C1
-	DATA BYTE $BF, $C1
 	DATA BYTE $80, $01
+	DATA BYTE $FE, $7F
+	DATA BYTE $FE, $7F
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 31 catacombs south (dark; W white castle, E side rooms) ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $FE, $7F
+	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $BF, $C1
-	DATA BYTE $BF, $C1
 	DATA BYTE $80, $01
 	DATA BYTE $FF, $FF
 	' --- 32 white castle grounds (E to catacombs) ---
@@ -1534,27 +1558,27 @@ roomdata:
 	' --- 34 red maze ---
 	DATA BYTE $FE, $7F
 	DATA BYTE $80, $01
-	DATA BYTE $BF, $C1
-	DATA BYTE $BF, $C1
 	DATA BYTE $80, $01
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $00, $00
 	DATA BYTE $00, $00
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
 	DATA BYTE $FF, $FF
 	' --- 35 red maze end (black key) ---
 	DATA BYTE $FF, $FF
 	DATA BYTE $80, $01
-	DATA BYTE $8F, $F1
-	DATA BYTE $8F, $F1
 	DATA BYTE $80, $01
+	DATA BYTE $E7, $E7
+	DATA BYTE $E7, $E7
 	DATA BYTE $00, $01
 	DATA BYTE $00, $01
+	DATA BYTE $CF, $F3
+	DATA BYTE $CF, $F3
 	DATA BYTE $80, $01
-	DATA BYTE $83, $FD
-	DATA BYTE $83, $FD
 	DATA BYTE $80, $01
 	DATA BYTE $FE, $7F
 	' --- 36 purple side room ---
@@ -1624,9 +1648,10 @@ wallcol:
 
 	' ------------------------------------------------------------
 	' sprites (16x16 art, shown 32x32 = 4x4 characters):
-	' 0 player (kept 8x8 on screen), 1 dragon, 2 slain dragon,
-	' 3 key, 4 sword, 5 chalice, 6 bridge, 7 bat A, 8 bat B,
-	' 9 bridge channel fill, 10 magnet, 11 dot
+	' 0 player (kept 8x8 on screen), 1 dragon top half (head/
+	' neck), 2 dragon bottom half (body/legs) - together 32x64,
+	' 3 slain dragon, 4 key, 5 sword, 6 chalice, 7 bridge,
+	' 8 bat A, 9 bat B, 10 bridge channel fill, 11 magnet, 12 dot
 	' ------------------------------------------------------------
 gsprites:
 	BITMAP "XXXX____________"
@@ -1646,22 +1671,39 @@ gsprites:
 	BITMAP "________________"
 	BITMAP "________________"
 
-	BITMAP "____XX__________"
-	BITMAP "___XXXX_________"
-	BITMAP "___XX_X_________"
-	BITMAP "___XXXX_________"
-	BITMAP "____XX_____X____"
-	BITMAP "____XX____XX____"
-	BITMAP "___XXXXX__XX____"
+	BITMAP "_____XXX________"
+	BITMAP "____XXXXX_______"
+	BITMAP "____XX_XX_______"
+	BITMAP "____XXXXX_______"
+	BITMAP "____XXX_________"
+	BITMAP "_____XX_________"
+	BITMAP "_____XX_________"
+	BITMAP "_____XXX________"
+	BITMAP "_____XXX________"
+	BITMAP "____XXXX____X___"
+	BITMAP "____XXXX___XX___"
+	BITMAP "___XXXXX__XXX___"
+	BITMAP "___XXXXXX_XX____"
+	BITMAP "__XXXXXXXXXX____"
 	BITMAP "__XXXXXXXXXX____"
 	BITMAP "_XXXXXXXXXXX____"
-	BITMAP "XX_XXXXXXXXX____"
-	BITMAP "X__XXXXXXXX_____"
-	BITMAP "___XXXXXXXX_____"
+
+	BITMAP "_XXXXXXXXXX_____"
+	BITMAP "XXXXXXXXXXX_____"
+	BITMAP "XX_XXXXXXXX_____"
+	BITMAP "X__XXXXXXX______"
+	BITMAP "___XXXXXXX______"
+	BITMAP "___XXXXXXX______"
+	BITMAP "__XXXXXXXX______"
 	BITMAP "__XXX__XXXX_____"
 	BITMAP "__XX____XX______"
 	BITMAP "__XX____XX______"
+	BITMAP "__XX____XX______"
 	BITMAP "_XXX____XXX_____"
+	BITMAP "_XX______XX_____"
+	BITMAP "XXX______XXX____"
+	BITMAP "________________"
+	BITMAP "________________"
 
 	BITMAP "________________"
 	BITMAP "________________"

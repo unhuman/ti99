@@ -23,9 +23,12 @@ is a full world reset.
 - **Moving sprites:** typically 3–4 per frame (player, ≤1 live dragon per room, bat, carried
   object). 14 sprite slots (player, 3 dragons, 8 objects, bat, bridge-fill); off-room actors
   parked at Y=$d1. The bat simulates globally every tick (one actor, no wall tests).
-- **Sprite magnification:** `VDP(1)=$E3` — 16×16 art renders 32×32 (4×4 characters). Dragons,
-  bridge, and bat use the full pattern; the player square stays 4×4 art (8×8 on screen) to
-  thread 16px corridors.
+- **Sprite magnification:** `VDP(1)=$E3` — 16×16 art renders 32×32 (4×4 characters).
+  **Dragons are TWO stacked sprites (32×64 shown)**: def 1 head/neck over def 2 body/legs
+  (slots 1–6, two per dragon); slain dragons collapse to the single belly-up def 3 at ground
+  level. Bridge and bat use full single patterns; the player square stays 4×4 art (8×8 on
+  screen) to thread 16px corridors. Dragon wall box is the central 8×16 (y+24..39); bite/sword
+  centers are at (x+16, y+32).
 - **Loop pacing:** fixed 30 Hz (two `WAIT`s per tick) on both machines; no `pacen` constant.
 - **Zero per-frame VRAM reads**; collision is a RAM bit test on the 24-byte room bitmap.
 - **Per-frame VRAM writes:** sprite attributes, plus (only when active) the 8-cell secret-wall
@@ -59,10 +62,17 @@ is a full world reset.
 - Castle halls have no inbound edge links (gate warps only), so the bat can never carry loot
   into a locked castle.
 
-**Colors:** rooms 13–38 are colored walls on a **gray background** (per-room `(wall,bg,dark)`
-triplets; BORDER + char-32 + wall-char colors set on entry) — so the **black castle is
-actually black** and the **bat is black**. Dark rooms invert: gray walls on black. Game 1
-keeps its original colored-walls-on-black look.
+**Colors:** ALL lit rooms — including Game 1's — are colored walls on a **gray background**
+(per-room `(wall,bg,dark)` triplets; BORDER + char-32 + wall-char colors set on entry), so
+the **black castles are actually black** and the **black bat reads everywhere**. Dark rooms
+invert: gray walls on black. **Castle doors (portcullis char) are always black.** The player
+square is white, flipping to black in white-walled rooms so it never matches the walls.
+
+**Maze style:** maze rooms are built from full-width open path bands (rows 1–2, 5–6, 9–10)
+crossed by 2-row-thick wall bands pierced by staggered 2-block doorways — center (`FE 7F`),
+inner cols 3–4/11–12 (`E7 E7`), outer cols 2–3/12–13 (`CF F3`) — mirrored left/right for the
+chunky winding look of the original's mazes, with every path 2 blocks (32px) wide so the big
+dragons and the bridge fit.
 
 ## Objects (8) and creatures
 
@@ -108,8 +118,11 @@ redrawn whenever the player crosses a block boundary (`fogenter`/`fogupd`/`fogwi
 - Room bitmaps, links, and colors are ROM `DATA` read via `RESTORE` + dummy-`READ` skip loops
   (`enterroom`, `getlnk`); player links cached per room (`pn/pe/ps/pw`), bat looks links up on
   demand.
-- E/W arrivals snap to the rows-5/6 doorway if the landing spot is inside a wall (`ewsnap`) —
-  full-height corridor edges can otherwise exit at a walled row of the next room.
+- E/W arrivals snap to the rows-5/6 doorway if the landing spot is inside a wall, then pull
+  one block inward if still stuck (`ewsnap`). Every E-link must target a room whose **west**
+  edge opens at rows 5–6 (and W-links an open **east** edge) — blue maze 23's east link goes
+  to 20, not 22, because 22's west edge is walled (that mismatch could strand the player
+  inside a wall).
 - No modulo (only `AND` masks); unsigned-safe compares via `adiff`; soft tick counter `tk`
   (FRAME parity never changes at 30 Hz); all `GOSUB` targets are `PROCEDURE`s and no `GOTO`
   escapes one (swallow restart is flagged out to main level).
