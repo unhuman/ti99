@@ -22,7 +22,8 @@ chalice home **inside the gold castle** — alive.
 - **FIRE** — drop what you're carrying
 - Touch a gate while carrying its key to open it; walk up into the open archway to enter.
 - The **sword** kills dragons on contact, carried or lying. The red dragon is faster.
-  Dragons now stand two sprites tall (32×64) — they tower over you, as they should.
+  Dragons stand two sprites tall (32×64), **ignore walls, and chase you from room to
+  room** — escaping a dragon only buys you about a second.
 - The **bridge**: grab by the rails, drop across a wall (snaps to the grid), walk the dark
   channel. The only way into sealed chambers.
 - The **magnet** drags every loose object in the room toward it — through walls.

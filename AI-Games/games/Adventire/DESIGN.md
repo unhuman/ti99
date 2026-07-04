@@ -66,13 +66,23 @@ is a full world reset.
 (per-room `(wall,bg,dark)` triplets; BORDER + char-32 + wall-char colors set on entry), so
 the **black castles are actually black** and the **black bat reads everywhere**. Dark rooms
 invert: gray walls on black. **Castle doors (portcullis char) are always black.** The player
-square is white, flipping to black in white-walled rooms so it never matches the walls.
+square wears the **current room's wall color**, exactly like the original avatar (walls
+always contrast with the background, so it stays visible); the invisible dot is drawn in the
+wall color too, like the original's wall-gray speck.
 
-**Maze style:** maze rooms are built from full-width open path bands (rows 1–2, 5–6, 9–10)
-crossed by 2-row-thick wall bands pierced by staggered 2-block doorways — center (`FE 7F`),
-inner cols 3–4/11–12 (`E7 E7`), outer cols 2–3/12–13 (`CF F3`) — mirrored left/right for the
-chunky winding look of the original's mazes, with every path 2 blocks (32px) wide so the big
-dragons and the bridge fit.
+**Room format ("quarter characters"):** rooms are 32×24 grids of **8px cells** (one character
+per cell), 4 bytes per row × 24 rows = 96 bytes. Custom rooms 0–12 are the old block layouts
+mechanically bit-doubled (game 1 is pixel-identical); kingdom rooms 13–38 are fine-grid
+originals. Thin 8px walls with 16px paths give the kingdom mazes the winding, multi-route
+look of the cartridge: serpentine wall bands with staggered 2-cell doorways, vertical spur
+posts, all mirrored left/right. Every wall band always has ≥1 doorway; E/W exits open at cell
+rows 10–13 (y80–111), N/S gaps at cols 14–17 (x112–143) — the same pixel zones as before, so
+links/warps/gates are unchanged.
+
+**Doorway sealing:** on room entry, any doorway whose exit link is 255 *in the selected game*
+is sealed in the RAM bitmap before drawing, so collision and visuals always agree (game 2
+shares screens with the full kingdom but links fewer of them — its corridor-east room used to
+show a south door that led nowhere and trapped the player).
 
 ## Objects (8) and creatures
 
@@ -93,13 +103,18 @@ dragons and the bridge fit.
   the dot out of the sealed chamber).
 - **Bridge:** rails-only grab, grid-snapped drop, dark channel-fill sprite; only way *into*
   sealed chambers.
-- **Dot + secret room (games 3/4):** the dot is drawn in the room's background color
-  (invisible; silent pickup). Bring it to corridor E (17) with **2+ other objects** present
-  and the east wall flickers (chars toggle each tick) and becomes passable → the SECRET room
-  (18): "ADVENTIRE" / "2026 UNHUMAN AND CLAUDE" with rippling glyph colors (one glyph's color
-  table row rewritten per tick; the title screen restores them).
+- **Dot + secret room (games 3/4):** the dot is drawn in the room's **wall color** (near-
+  invisible, like the original's wall-gray speck; silent pickup). Bring it to corridor E (17)
+  with **2+ other objects** present and the east wall flickers (chars toggle each tick) and
+  becomes passable → the SECRET room (18): "ADVENTIRE" / "2026 UNHUMAN AND CLAUDE" with
+  rippling glyph colors (one glyph's color table row rewritten per tick; the title screen
+  restores them).
 - **Dragons:** yellow (corridor E / blue maze top), green (catacombs / black grounds), red =
-  fast (blue maze, games 3/4 only). Same chase/sword/swallow rules as before; swallowed → 
+  fast (blue maze, games 3/4 only). **They ignore walls entirely** (greedy longer-axis chase
+  straight at you — the maze never protects you, only the sword does) and **pursue between
+  rooms**: a live dragon in a room you leave bursts into your new room ~1.3s later (`fdl()`
+  timers scheduled by `dchase` in `enterroom`), arriving at room center with a roar — both
+  matching the cartridge's relentless dragons. Sword/swallow rules unchanged; swallowed →
   title.
 - **Bat (games 1, 3, 4):** black, 32×32, flies through walls, roams via the link tables,
   steals objects (even carried ones; snatch them back). Softlock guards: never enters the
@@ -109,14 +124,20 @@ dragons and the bridge fit.
 ## Dark rooms (fog of war)
 
 Rooms flagged dark (black maze 26–28, catacombs 29–31): the room draws **nothing**; wall
-blocks within a 2-block Chebyshev window of the player are drawn, and the window is wiped and
-redrawn whenever the player crosses a block boundary (`fogenter`/`fogupd`/`fogwipe`/
-`fogdraw`). Sprites (dragons, bat, objects) remain visible, like the original's sprite layer.
+cells within a 4-cell (32px) Chebyshev window of the player are drawn, and the window is
+wiped and redrawn whenever the player crosses an 8px cell boundary (`fogenter`/`fogupd`/
+`fogwipe`/`fogdraw`). Sprites (dragons, bat, objects) remain visible, like the original's
+sprite layer.
 
 ## Engine notes (CVBasic specifics)
 
-- Room bitmaps, links, and colors are ROM `DATA` read via `RESTORE` + dummy-`READ` skip loops
-  (`enterroom`, `getlnk`); player links cached per room (`pn/pe/ps/pw`), bat looks links up on
+- **CVBasic pitfall:** 16-wide `BITMAP` lines are emitted in VDP **sprite column order**
+  (every 16 lines: all left-half bytes, then all right-half bytes) — fine for `DEFINE
+  SPRITE`, garbage for sequential `READ`. Room rows are therefore `DATA BYTE` with the
+  32-cell art kept as a trailing comment (generated by `scratchpad/fixbitmap.py`-style
+  conversion; hand-edit the hex + comment together).
+- Room bitmaps (dispatched by a 39-label `ON rn GOTO` ladder to per-room `RESTORE`s), links,
+  and colors are ROM `DATA`; player links cached per room (`pn/pe/ps/pw`), bat looks links up on
   demand.
 - E/W arrivals snap to the rows-5/6 doorway if the landing spot is inside a wall, then pull
   one block inward if still stuck (`ewsnap`). Every E-link must target a room whose **west**
