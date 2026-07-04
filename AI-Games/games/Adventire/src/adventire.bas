@@ -1900,7 +1900,7 @@ rd22:	' --- 22 blue maze W branch (E only + N/S) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
@@ -1925,7 +1925,7 @@ rd23:	' --- 23 blue maze top (N to the black castle) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
@@ -2075,7 +2075,7 @@ rd29:	' --- 29 catacombs (dark) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
@@ -2203,7 +2203,7 @@ rd34:	' --- 34 red maze ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $00, $00, $00, $00	' ________________________________
 	DATA BYTE $00, $00, $00, $00	' ________________________________
@@ -2225,7 +2225,7 @@ rd35:	' --- 35 red maze end (black key) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
