@@ -173,7 +173,10 @@ every dark room has at least one doorway, so the mazes are always traversable.
   (FRAME parity never changes at 30 Hz); all `GOSUB` targets are `PROCEDURE`s and no `GOTO`
   escapes one (swallow restart is flagged out to main level).
 - Gate rooms: 0/8/11 (game 1) and 13/24/32 (games 2–4) map to keys 0–2; warp targets and the
-  hall→grounds return are room-pair special cases in `gwarp`/`gosouth`.
+  hall→grounds return are room-pair special cases in `gwarp`/`gosouth`. Opening a gate plays
+  a **portcullis-raising animation**: the opening appears at the bottom and grows upward one
+  character row at a time (7 ticks per row, a rising clank per row); the gate stays solid
+  until it is fully up.
 - Sound: SN76489 channel 0 blips/sweeps (pickup, drop, gate, roar, bat squeak), channel 3
   noise for a slain dragon; swallow wail and win fanfare inline.
 

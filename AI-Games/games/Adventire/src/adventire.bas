@@ -386,11 +386,18 @@ gatelogic: PROCEDURE
 	IF px < 100 THEN RETURN
 	IF px > 148 THEN RETURN
 	IF py > 70 THEN RETURN
-	gop(gz - 1) = 1 : gopn = 1
-	FOR r = 4 TO 7
-	FOR c2 = 14 TO 17 : VPOKE $1800 + r * 32 + c2, 32 : NEXT c2
+	gop(gz - 1) = 1
+	' the portcullis RISES: the opening appears at the bottom and
+	' grows upward, one row at a time, with a rising clank per row
+	' (the gate stays solid until it is fully up)
+	FOR r = 7 TO 4 STEP -1
+	VPOKE $1800 + r * 32 + 14, 32 : VPOKE $1800 + r * 32 + 15, 32
+	VPOKE $1800 + r * 32 + 16, 32 : VPOKE $1800 + r * 32 + 17, 32
+	SOUND 0, 200 + r * 60, 11
+	FOR i = 1 TO 7 : WAIT : NEXT i
 	NEXT r
-	sfx = 3 : sfc = 24 : #sfq = 700
+	SOUND 0, , 0
+	gopn = 1
 	RETURN
 gwarp:
 	IF py > 34 THEN RETURN
