@@ -13,7 +13,7 @@ Wikipedia, walkthroughs). Nothing is copied from the Atari game.
 | 1 | INTRO KINGDOM | Our original 13-room map (rooms 0–12): 3 castles, 3 dragons, bat, bridge + sealed chamber. A gentle introduction. |
 | 2 | SMALL KINGDOM | Compact kingdom in the spirit of the cartridge's first game: gold + black castles, corridor row, blue maze, two dragons. No bat, no dark rooms, no white castle. |
 | 3 | FULL KINGDOM | The big map (rooms 13–38): 3 castles, corridor row, blue maze, **dark** catacombs and black-castle maze (fog of war), red maze, magnet, bat, and the hidden-dot **secret room**. |
-| 4 | RANDOM KINGDOM | Game 3 with the objects scattered anew each game (`RANDOM`, white key barred from the red maze so it can't seal itself away). |
+| 4 | RANDOM KINGDOM | Game 3 with the objects scattered anew each game (`RANDOM`; white key barred from the red maze so it can't seal itself away; the black key is never scrambled — it stays in its sealed chamber so the bridge is always required). |
 
 Swallowed or victorious → back to the title (game select, same game highlighted). Every start
 is a full world reset.
@@ -89,7 +89,7 @@ show a south door that led nowhere and trapped the player).
 | # | Object | Game 2 | Games 3/4 (game 4 scrambles 0–6) |
 |---|--------|--------|-----------------------------------|
 | 0 | Gold key | corridor W (15) | catacombs (30) |
-| 1 | Black key | blue maze (21) | red maze end (35) |
+| 1 | Black key | blue maze (21) | **sealed chamber** in red maze end (35) — bridge required (the magnet that could pull it out sits inside the black castle, behind the door this key opens) |
 | 2 | White key | — | blue maze (21) |
 | 3 | Sword | gold hall (14) | corridor mid (16) |
 | 4 | Bridge | — | catacombs (31) |
@@ -103,8 +103,9 @@ show a south door that led nowhere and trapped the player).
   the dot out of the sealed chamber).
 - **Bridge:** rails-only grab, grid-snapped drop, dark channel-fill sprite; only way *into*
   sealed chambers.
-- **Dot + secret room (games 3/4):** the dot is drawn in the room's **wall color** (near-
-  invisible, like the original's wall-gray speck; silent pickup). Bring it to corridor E (17)
+- **Dot + secret room (games 3/4):** the dot is drawn in the room's **background color**
+  (truly invisible; silent pickup — possession is confirmed only by the corridor wall
+  flickering). Bring it to corridor E (17)
   with **2+ other objects** present and the east wall flickers (chars toggle each tick) and
   becomes passable → the SECRET room (18): "ADVENTIRE" / "2026 UNHUMAN AND CLAUDE" with
   rippling glyph colors (one glyph's color table row rewritten per tick; the title screen
@@ -118,8 +119,9 @@ show a south door that led nowhere and trapped the player).
   title.
 - **Bat (games 1, 3, 4):** black, 32×32, flies through walls, roams via the link tables,
   steals objects (even carried ones; snatch them back). Softlock guards: never enters the
-  secret room, never takes the bridge out of a chamber room (6/28), never swap-drops inside a
-  sealed chamber.
+  secret room, never takes the bridge out of a chamber room (6/28/35), never swap-drops
+  inside a sealed chamber. (It *can* pluck a chamber's contents out while empty-handed —
+  chaotic, occasionally helpful, always retrievable.)
 
 ## Dark rooms (fog of war)
 

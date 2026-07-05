@@ -195,7 +195,7 @@ drawobj: PROCEDURE
 	IF i = 4 THEN f = 28
 	IF i = 5 THEN f = 24 : t = (FRAME AND 7) + 8
 	IF i = 6 THEN f = 44
-	IF i = 7 THEN f = 48 : t = cw
+	IF i = 7 THEN f = 48 : t = cb
 	SPRITE 7 + i, oby(i) - 1, obx(i), f, t
 	END
 
@@ -567,11 +567,10 @@ bgchk: PROCEDURE
 	GOSUB adiff
 	IF #cx > 10 THEN RETURN
 	' anti-softlock guards:
-	' never take the bridge out of a chamber room, and never
-	' swap-drop a carried object inside a sealed chamber
-	IF i = 4 THEN IF btr = 6 THEN RETURN
-	IF i = 4 THEN IF btr = 28 THEN RETURN
-	IF btc < 8 THEN IF (btr = 6) OR (btr = 28) THEN IF obx(i) > 160 THEN IF obx(i) < 216 THEN IF oby(i) < 64 THEN RETURN
+	' never take the bridge out of a chamber room (6/28/35), and
+	' never swap-drop a carried object inside a sealed chamber
+	IF i = 4 THEN IF (btr = 6) OR (btr = 28) OR (btr = 35) THEN RETURN
+	IF btc < 8 THEN IF (btr = 6) OR (btr = 28) OR (btr = 35) THEN IF obx(i) > 160 THEN IF obx(i) < 216 THEN IF oby(i) < 64 THEN RETURN
 	' steal it out of the player's hands if need be
 	IF i = cr THEN cr = 255 : pkcd = 10
 	t = btc : btc = i
@@ -1040,16 +1039,20 @@ dsafe: PROCEDURE
 	' ------------------------------------------------------------
 	' game 4: scramble the objects across the open kingdom.
 	' The white key must not land inside the white castle's own
-	' red maze (rooms 34/35) - that would seal it away.
+	' red maze (rooms 34/35) - that would seal it away. The BLACK
+	' key (o=1) is never scrambled: it stays sealed in the red-maze
+	' chamber so the bridge is always required.
 	' ------------------------------------------------------------
 rndobj: PROCEDURE
 	FOR o = 0 TO 6
+	IF o = 1 THEN GOTO rnxt
 rrty:	t2 = RANDOM(16)
 	RESTORE rndrm
 	WHILE t2 > 0 : READ BYTE t : t2 = t2 - 1 : WEND
 	READ BYTE t
 	IF o = 2 THEN IF (t = 34) OR (t = 35) THEN GOTO rrty
 	orm(o) = t : obx(o) = 96 + o * 8 : oby(o) = 88
+rnxt:
 	NEXT o
 	END
 
@@ -1324,7 +1327,7 @@ objd2:	' GAME 2 small kingdom: two castles, two dragons, no bat
 
 objd3:	' GAMES 3/4 full kingdom
 	DATA BYTE 30, 116, 88
-	DATA BYTE 35, 116, 88
+	DATA BYTE 35, 184, 32
 	DATA BYTE 21, 36, 40
 	DATA BYTE 16, 60, 88
 	DATA BYTE 31, 180, 88
@@ -2219,28 +2222,30 @@ rd34:	' --- 34 red maze ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd35:	' --- 35 red maze end (black key) ---
+rd35:	' --- 35 red maze end: BLACK KEY sealed in a chamber ---
+	' (bridge required: the magnet that could pull it out sits
+	' inside the black castle, behind the door this key opens)
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
+	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
+	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
+	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
+	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
+	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FC, $3F, $CF	' XXXX__XXXXXXXX____XXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
+	DATA BYTE $CF, $FC, $3F, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX

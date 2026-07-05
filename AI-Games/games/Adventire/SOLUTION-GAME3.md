@@ -24,7 +24,8 @@ dragons stay dead all game, so the sword sweep comes first.
                                                - 30 (GOLD KEY) - 31 (BRIDGE)]
                                                     |                    \
                             [WHITE CASTLE (white)]--+          [side rooms: purple ->
-                             (gate)->[hall]->[red maze 34 -> 35: BLACK KEY]  cyan -> rose]
+                             (gate)->[hall]->[red maze 34 -> 35:             cyan -> rose]
+                              BLACK KEY sealed in a chamber - BRIDGE REQUIRED]
 ```
 
 Dark rooms (26–28 black maze, 29–31 catacombs) show only a lamplight window around you;
@@ -48,34 +49,43 @@ Start: standing below the yellow gold castle.
 6. **White castle.** DOWN 1 (maze entry) → RIGHT 1 (dark-green corridor) → RIGHT 1 (green
    corridor) → RIGHT 1 (yellow corridor) → DOWN 1 (dark catacombs) → DOWN 1 (second dark
    screen — the **gold key** lies here; remember it) → DOWN 1 (third dark screen — the
-   **bridge** leans here) → LEFT 1 (WHITE castle). Touch the gate with the key, walk UP
-   into the archway (hall). Drop the white key — done with it.
-7. **Black key.** RIGHT 1 (red maze) → UP 1 (red maze end): take the **black key**.
-8. **Black castle.** DOWN 1 (hyperspace — you land back in the first red-maze screen) →
+   **bridge** leans here; remember it too) → LEFT 1 (WHITE castle). Touch the gate with
+   the key, walk UP into the archway (hall). Drop the white key — done with it.
+7. **Fetch the bridge.** Walk DOWN through the hall's bottom doorway (white castle
+   grounds) → RIGHT 1 (third dark catacombs screen): grab the **bridge** by a side rail.
+   LEFT 1 (white castle grounds) → walk UP through the open archway (hall) → RIGHT 1
+   (red maze) → UP 1 (red maze end).
+8. **Black key — bridge the chamber.** The **black key** is sealed inside the doorless
+   chamber at the TOP RIGHT of this room. Stand below the chamber's bottom wall, position
+   the bridge over that wall, press FIRE — it snaps into place. Walk UP through the dark
+   channel, take the **black key**, walk back DOWN out. (The bridge stays here; the
+   magnet cannot help you instead — it is locked inside the black castle, behind the very
+   door this key opens.)
+9. **Black castle.** DOWN 1 (hyperspace — you land back in the first red-maze screen) →
    LEFT 1 (white hall) → walk DOWN through the bottom doorway (white castle grounds) →
    RIGHT 1 (dark catacombs south) → UP 1 → UP 1 → UP 1 (yellow corridor) → LEFT 1 (green
    corridor) → LEFT 1 (dark-green corridor) → LEFT 1 (maze entry) → UP 1 (maze mid) →
    UP 1 (maze top) → UP 1 (BLACK castle). Touch the gate with the black key, walk UP into
    the archway (black hall).
-9. **Chalice.** RIGHT 1 (dark black maze) → UP 1 (second dark screen — the **magnet**
-   lies here) → UP 1 (dark maze end): touch the shimmering **chalice** (the black key
-   drops here; done with it).
-10. **Park the chalice, fetch the gold key.** Carrying the chalice:
+10. **Chalice.** RIGHT 1 (dark black maze) → UP 1 (second dark screen — the **magnet**
+    lies here) → UP 1 (dark maze end): touch the shimmering **chalice** (the black key
+    drops here; done with it).
+11. **Park the chalice, fetch the gold key.** Carrying the chalice:
     DOWN 1 → DOWN 1 → LEFT 1 (black hall) → walk DOWN through the doorway (black castle
     grounds) → DOWN 1 (maze top) → DOWN 1 (hyperspace — lands in maze *mid*) → DOWN 1
     (maze entry) → RIGHT 1 (dark-green corridor) → RIGHT 1 (green corridor). DROP the
     chalice here, right below the gold castle.
     RIGHT 1 (yellow corridor) → DOWN 1 → DOWN 1 (second dark catacombs screen): take the
     **gold/yellow key** by lamplight.
-11. **Open the gold castle.** UP 1 → UP 1 (yellow corridor) → LEFT 1 (green corridor) →
+12. **Open the gold castle.** UP 1 → UP 1 (yellow corridor) → LEFT 1 (green corridor) →
     UP 1 (gold castle): touch the gate — it opens. Drop the key.
-12. **Bring the chalice home.** DOWN 1 (green corridor): take the **chalice** → UP 1 →
+13. **Bring the chalice home.** DOWN 1 (green corridor): take the **chalice** → UP 1 →
     walk UP through the open gate into the hall. Color flash — the chalice is home.
 
 ## Bonus: the secret room (each move = one screen)
 
 Do this **before** carrying the chalice in — winning ends the game. Starting point: the
-end of step 11 above — you are at the **gold castle** with the spent **gold key** lying at
+end of step 12 above — you are at the **gold castle** with the spent **gold key** lying at
 your feet, the **chalice parked in the green corridor** one screen below, the gold gate
 open, all three dragons dead, the black castle gate already open, the **sword** still in
 the maze cross room, and the **black key** lying where the chalice was. The rule you are
@@ -97,11 +107,13 @@ open its east wall.
    (black hall) → RIGHT 1 (dark maze) → UP 1 (middle dark screen): take the **magnet** →
    UP 1 (dark maze end — the sealed chamber is the box at the top right; the black key
    you abandoned lies here too).
-   DROP the magnet on the open floor a little LEFT of and BELOW the chamber. Stand back a
-   few seconds: every loose object in the room creeps toward it, and the **dot slides out
-   through the chamber wall** — in this dark room it shows as a tiny GRAY speck crossing
-   the black floor. Walk onto the speck to pick it up. The pickup is **silent** and the
-   dot is invisible in your hands — trust that you have it (the speck is gone).
+   DROP the magnet on the open floor a little LEFT of and BELOW the chamber. Wait a few
+   seconds: every loose object in the room creeps toward the magnet and stops just beside
+   it — including the **dot**, which slides out **through the chamber wall**. The dot is
+   completely **invisible** and its pickup is **silent**, so you cannot see any of this:
+   after the wait, walk slowly over the floor hugging the magnet's left and upper edges
+   (a small circle around it) — the dot will end up in your hands. Your only confirmation
+   comes later, when the corridor wall flickers.
 4. **Carry the dot to the yellow corridor.**
    DOWN 1 → DOWN 1 (dark maze back to its first screen) → LEFT 1 (black hall) → walk DOWN
    through the bottom doorway (black castle grounds) → DOWN 1 (maze top) → DOWN 1
@@ -114,11 +126,13 @@ open its east wall.
 6. **Now go win.** LEFT 1 (green corridor): swap the dot for the **chalice** → UP 1 (gold
    castle) → walk UP through the open gate into the hall. Color flash.
 
-If the wall does not flicker when you arrive in step 4, the **bat** has probably stolen
-the key or sword while you were away — hunt it down and snatch the object back, or ferry
-any substitute object in (the magnet or black key from the dark maze both count).
-Prefer engineering to magnetism? The **bridge** (third catacombs screen) laid across the
-chamber's bottom wall gets you the dot the classical way.
+If the wall does not flicker when you arrive in step 4, either the **bat** stole the key
+or sword while you were away (hunt it down and snatch the object back, or ferry in any
+substitute — the magnet or black key from the dark maze both count), or you missed the
+invisible dot at the magnet — go back and circle the magnet again.
+Prefer engineering to magnetism? The **bridge** (lying in the red maze end, where the
+main quest used it) laid across the dot chamber's bottom wall gets you in the classical
+way — though it is a long haul from the white castle to the black maze.
 
 ## Notes
 
