@@ -91,7 +91,7 @@ newgame:
 	ocl(4) = 13 : ocl(5) = 15 : ocl(6) = 6 : ocl(7) = 0
 	gop(0) = 0 : gop(1) = 0 : gop(2) = 0
 	btc = 255 : btcd = 90 : bfx = 0 : bfy = 1
-	cr = 255 : pkcd = 0 : btnp = 1 : rmch = 0 : eflag = 0 : tk = 0
+	cr = 255 : pkcd = 0 : btnp = 1 : rmch = 0 : eflag = 0 : tk = 0 : qht = 0
 	sfx = 0 : sfc = 0 : #crx = 64 : #cry = 64 : eggon = 0
 	SOUND 0, , 0 : SOUND 3, , 0
 	px = 120 : py = 160
@@ -122,6 +122,13 @@ mainloop:
 	b = cont1.button
 	IF b > 0 THEN IF btnp = 0 THEN IF cr < 8 THEN GOSUB dodrop
 	btnp = b
+
+	' --- hold FIRE 4s to abandon the quest (back to the title);
+	' a rising tone arms for the final 2s, release cancels ---
+	IF b = 0 THEN IF qht > 60 THEN SOUND 0, , 0
+	IF b = 0 THEN qht = 0
+	IF b > 0 THEN qht = qht + 1 : IF qht > 60 THEN SOUND 0, 840 - qht * 4, 10
+	IF qht >= 120 THEN SOUND 0, , 0 : GOTO restart
 
 	' --- carried object keeps the offset where it was grabbed ---
 	IF cr < 8 THEN GOSUB carrypos

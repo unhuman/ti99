@@ -164,6 +164,11 @@ every dark room has at least one doorway, so the mazes are always traversable.
   room color (a yellow dragon in the yellow corridor used to hide it completely).
 - Returning to the title clears all sprite slots and requires the FIRE button quiet for ~2/3s
   before the select loop arms, so the press that ended a game can't start the next one.
+- **Mid-game quit:** holding FIRE counts up `qht`; past 60 ticks (2 s) a rising tone arms
+  (divider ~596→364), and at 120 ticks (4 s) the game jumps to `restart` (title + full
+  reset). Releasing early silences the tone and zeroes the counter; tap-FIRE (drop) is
+  edge-triggered and unaffected. The initial press of the hold drops any carried object,
+  which is harmless since the quit resets the world.
 - E/W arrivals snap to the rows-5/6 doorway if the landing spot is inside a wall, then pull
   one block inward if still stuck (`ewsnap`). Every E-link must target a room whose **west**
   edge opens at rows 5–6 (and W-links an open **east** edge) — blue maze 23's east link goes

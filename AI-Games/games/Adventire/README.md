@@ -31,6 +31,8 @@ chalice home **inside the gold castle** — alive.
 - **Dark rooms** (games 3/4) reveal walls only near you.
 - Somewhere in the black castle's maze hides an **invisible dot**… the east end of the
   corridor row rewards the curious.
+- **Hold FIRE for 4 seconds** to abandon the quest and return to the title (a rising tone
+  warns during the final 2 seconds; release to cancel).
 - Swallowed or victorious → back to the title. Every start is a fresh kingdom.
 
 ## Status
