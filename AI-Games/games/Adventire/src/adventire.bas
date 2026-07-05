@@ -292,35 +292,24 @@ gowest: PROCEDURE
 	IF pw = 255 THEN RETURN
 	rn = pw : px = 244 : rmch = 1
 	GOSUB enterroom
-	GOSUB ewsnap
+	ax = 1
+	GOSUB arrsnap
 	END
 
 goeast: PROCEDURE
 	IF pe = 255 THEN RETURN
 	rn = pe : px = 4 : rmch = 1
 	GOSUB enterroom
-	GOSUB ewsnap
-	END
-
-ewsnap: PROCEDURE
-	' a full-height corridor edge can exit at a row where the
-	' next room's edge is walled - snap to its rows-5/6 doorway,
-	' and if even that is walled, pull one block inward
-	x0 = px : y0 = py : bw = 7 : bh = 7
-	GOSUB chkbox
-	IF bf = 0 THEN RETURN
-	py = 84
-	x0 = px : y0 = py
-	GOSUB chkbox
-	IF bf = 1 THEN IF px > 128 THEN px = 224 ELSE px = 20
-	' the snap moved us after fogenter drew - recentre the lamp
-	IF fon = 1 THEN GOSUB fogwipe : GOSUB fogenter
+	ax = 1
+	GOSUB arrsnap
 	END
 
 gonorth: PROCEDURE
 	IF pn = 255 THEN RETURN
 	rn = pn : py = 180 : rmch = 1
 	GOSUB enterroom
+	ax = 0
+	GOSUB arrsnap
 	END
 
 gosouth: PROCEDURE
@@ -334,10 +323,56 @@ gosouth: PROCEDURE
 	IF ps = 255 THEN RETURN
 	rn = ps : py = 4 : rmch = 1
 	GOSUB enterroom
+	ax = 0
+	GOSUB arrsnap
 	RETURN
 gsw:
 	px = 120 : py = 66 : rmch = 1
 	GOSUB enterroom
+	END
+
+	' ------------------------------------------------------------
+	' arrival snap: screens deliberately do NOT line up (multiple,
+	' offset gaps per edge, like the original) - if the arrival
+	' spot is walled, slide along the edge to the NEAREST opening.
+	' ax=0: slide px (N/S arrivals); ax=1: slide py (E/W arrivals)
+	' ------------------------------------------------------------
+arrsnap: PROCEDURE
+	x0 = px : y0 = py : bw = 7 : bh = 7
+	GOSUB chkbox
+	IF bf = 0 THEN RETURN
+	IF ax = 0 THEN snb = (px + 4) AND 248 ELSE snb = (py + 4) AND 248
+	FOR sfd = 8 TO 240 STEP 8
+	GOSUB artry
+	IF bf = 0 THEN GOTO arrs2
+	NEXT sfd
+arrs2:
+	' the snap moved us after fogenter drew - recentre the lamp
+	IF fon = 1 THEN GOSUB fogwipe : GOSUB fogenter
+	END
+
+artry: PROCEDURE
+	IF snb >= sfd THEN GOSUB artrym : IF bf = 0 THEN RETURN
+	GOSUB artryp
+	END
+
+artrym: PROCEDURE
+	t2 = snb - sfd
+	IF ax = 0 THEN x0 = t2 ELSE y0 = t2
+	GOSUB chkbox
+	IF bf = 1 THEN RETURN
+	IF ax = 0 THEN px = t2 ELSE py = t2
+	END
+
+artryp: PROCEDURE
+	#aw = snb + sfd
+	IF ax = 0 THEN IF #aw > 240 THEN RETURN
+	IF ax = 1 THEN IF #aw > 176 THEN RETURN
+	t2 = snb + sfd
+	IF ax = 0 THEN x0 = t2 ELSE y0 = t2
+	GOSUB chkbox
+	IF bf = 1 THEN RETURN
+	IF ax = 0 THEN px = t2 ELSE py = t2
 	END
 
 	' ------------------------------------------------------------
@@ -862,8 +897,8 @@ rbl:
 	' seal any doorway whose exit leads nowhere in THIS game, so
 	' collision and visuals agree (game 2 shares screens with the
 	' full kingdom but links fewer of them)
-	IF pn = 255 THEN rm(1) = rm(1) OR 3 : rm(2) = rm(2) OR $C0 : rm(5) = rm(5) OR 3 : rm(6) = rm(6) OR $C0
-	IF ps = 255 THEN rm(89) = rm(89) OR 3 : rm(90) = rm(90) OR $C0 : rm(93) = rm(93) OR 3 : rm(94) = rm(94) OR $C0
+	IF pn = 255 THEN rm(0) = 255 : rm(1) = 255 : rm(2) = 255 : rm(3) = 255
+	IF ps = 255 THEN rm(92) = 255 : rm(93) = 255 : rm(94) = 255 : rm(95) = 255
 	IF pe = 255 THEN FOR i = 0 TO 23 : rm(i * 4 + 3) = rm(i * 4 + 3) OR 3 : NEXT i
 	IF pw = 255 THEN FOR i = 0 TO 23 : rm(i * 4) = rm(i * 4) OR $C0 : NEXT i
 	CLS
@@ -1312,7 +1347,7 @@ objd1:	' GAME 1 custom intro map
 
 objd2:	' GAME 2 small kingdom: two castles, two dragons, no bat
 	DATA BYTE 15, 60, 88
-	DATA BYTE 21, 180, 120
+	DATA BYTE 21, 180, 108
 	DATA BYTE 255, 0, 0
 	DATA BYTE 14, 120, 120
 	DATA BYTE 255, 0, 0
@@ -1822,131 +1857,131 @@ rd18:	' --- 18 SECRET room ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd19:	' --- 19 blue maze SE (E to corridor, N, W-hyper) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+rd19:	' --- 19 blue maze SE (N/E/W; twin N gaps, dead-end nook) ---
+	DATA BYTE $FC, $FF, $FF, $F3	' XXXXXX__XXXXXXXXXXXXXXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
+	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $CF, $CF, $FF, $FF	' XX__XXXXXX__XXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FF, $FF, $FC, $FF	' XXXXXXXXXXXXXXXXXXXXXX__XXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $3F, $FF, $FF	' XXXXXXXX__XXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
 	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd20:	' --- 20 blue maze mid ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $9F, $F9, $F3	' XX__XXXXX__XXXXXXXXXX__XXXXX__XX
-	DATA BYTE $80, $10, $08, $01	' X__________X________X__________X
-	DATA BYTE $80, $10, $08, $01	' X__________X________X__________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd21:	' --- 21 blue maze cross ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
+rd20:	' --- 20 blue maze mid (all sides; twin W doors, twin S gaps) ---
+	DATA BYTE $FF, $CF, $FF, $FF	' XXXXXXXXXX__XXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
+	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
+	DATA BYTE $CF, $FF, $FF, $F3	' XX__XXXXXXXXXXXXXXXXXXXXXXXX__XX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $81, $00, $00, $81	' X______X________________X______X
+	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $F3, $FF, $FF, $FF	' XXXX__XXXXXXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
+	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
+	DATA BYTE $FF, $FF, $F3, $F3	' XXXXXXXXXXXXXXXXXXXX__XXXXXX__XX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $81, $80, $03, $01	' X______XX_____________XX_______X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FC, $FF, $FF, $CF	' XXXXXX__XXXXXXXXXXXXXXXXXX__XXXX
+rd21:	' --- 21 blue maze cross (all sides; twin N gaps, twin E doors) ---
+	DATA BYTE $F3, $FF, $FF, $3F	' XXXX__XXXXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
+	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
+	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
+	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
+	DATA BYTE $CF, $FF, $FF, $CF	' XX__XXXXXXXXXXXXXXXXXXXXXX__XXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FF, $F3, $FC, $FF	' XXXXXXXXXXXX__XXXXXXXX__XXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $F3, $FF, $FF, $F3	' XXXX__XXXXXXXXXXXXXXXXXXXXXX__XX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FF, $CF, $CF, $FF	' XXXXXXXXXX__XXXXXX__XXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $FF, $FF, $CF, $FF	' XXXXXXXXXXXXXXXXXX__XXXXXXXXXXXX
+rd22:	' --- 22 blue maze W branch (N/E/S; twin N gaps, pockets) ---
+	DATA BYTE $FF, $3F, $FC, $FF	' XXXXXXXX__XXXXXXXXXXXX__XXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd22:	' --- 22 blue maze W branch (E only + N/S) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
+	DATA BYTE $FF, $CF, $FF, $FF	' XXXXXXXXXX__XXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $08, $01	' X___________________X__________X
+	DATA BYTE $80, $00, $08, $01	' X___________________X__________X
+	DATA BYTE $FF, $FC, $FF, $3F	' XXXXXXXXXXXXXX__XXXXXXXX__XXXXXX
 	DATA BYTE $80, $00, $00, $00	' X_______________________________
 	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
+	DATA BYTE $CF, $FF, $FF, $FF	' XX__XXXXXXXXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FF, $F3, $FF, $FF	' XXXXXXXXXXXX__XXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $FC, $FF, $FF, $CF	' XXXXXX__XXXXXXXXXXXXXXXXXX__XXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FC, $3F, $CF	' XXXX__XXXXXXXX____XXXXXXXX__XXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FF, $F3, $FF, $FF	' XXXXXXXXXXXX__XXXXXXXXXXXXXXXXXX
+rd23:	' --- 23 blue maze top (all sides; N to the black castle) ---
+	DATA BYTE $F3, $FF, $FF, $3F	' XXXX__XXXXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd23:	' --- 23 blue maze top (N to the black castle) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
+	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
+	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
+	DATA BYTE $CF, $FF, $FF, $CF	' XX__XXXXXXXXXXXXXXXXXXXXXX__XXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FF, $F3, $FC, $FF	' XXXXXXXXXXXX__XXXXXXXX__XXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $F3, $FF, $FF, $F3	' XXXX__XXXXXXXXXXXXXXXXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
+	DATA BYTE $FF, $CF, $CF, $FF	' XXXXXXXXXX__XXXXXX__XXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FC, $3F, $CF	' XXXX__XXXXXXXX____XXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $FF, $FF, $CF, $FF	' XXXXXXXXXXXXXXXXXX__XXXXXXXXXXXX
 rd24:	' --- 24 BLACK castle grounds (S to the blue maze) ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
@@ -1997,155 +2032,155 @@ rd25:	' --- 25 black castle hall (E to the dark maze) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd26:	' --- 26 black maze (dark) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+rd26:	' --- 26 black maze (dark; N/E/W) ---
+	DATA BYTE $FC, $FF, $FF, $F3	' XXXXXX__XXXXXXXXXXXXXXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $CF, $CF, $FF, $FF	' XX__XXXXXX__XXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FF, $FF, $FC, $FF	' XXXXXXXXXXXXXXXXXXXXXX__XXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $3F, $FF, $FF	' XXXXXXXX__XXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $9F, $F9, $F3	' XX__XXXXX__XXXXXXXXXX__XXXXX__XX
-	DATA BYTE $80, $10, $08, $01	' X__________X________X__________X
-	DATA BYTE $80, $10, $08, $01	' X__________X________X__________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd27:	' --- 27 black maze (dark) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
 	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd28:	' --- 28 black maze end: sealed dot chamber (dark) ---
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+rd27:	' --- 27 black maze (dark; all sides) ---
+	DATA BYTE $FF, $CF, $FF, $FF	' XXXXXXXXXX__XXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $00, $00, $00, $01	' _______________________________X
 	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
+	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
+	DATA BYTE $CF, $FF, $FF, $F3	' XX__XXXXXXXXXXXXXXXXXXXXXXXX__XX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $81, $00, $00, $81	' X______X________________X______X
+	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $F3, $FF, $FF, $FF	' XXXX__XXXXXXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
+	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
+	DATA BYTE $FF, $FF, $F3, $F3	' XXXXXXXXXXXXXXXXXXXX__XXXXXX__XX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $81, $80, $03, $01	' X______XX_____________XX_______X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FC, $FF, $FF, $CF	' XXXXXX__XXXXXXXXXXXXXXXXXX__XXXX
+rd28:	' --- 28 black maze end: sealed DOT chamber (dark; S/W) ---
+	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
+	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
+	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
+	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
+	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
+	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $FC, $FF, $3F	' XXXXXXXXXXXXXX__XXXXXXXX__XXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $82, $00, $00, $41	' X_____X__________________X_____X
+	DATA BYTE $82, $00, $00, $41	' X_____X__________________X_____X
 	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FF, $F3, $FF, $3F	' XXXXXXXXXXXX__XXXXXXXXXX__XXXXXX
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
+rd29:	' --- 29 catacombs (dark; all sides) ---
+	DATA BYTE $F3, $FF, $FF, $3F	' XXXX__XXXXXXXXXXXXXXXXXX__XXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
+	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
+	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
+	DATA BYTE $CF, $FF, $FF, $CF	' XX__XXXXXXXXXXXXXXXXXXXXXX__XXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FF, $F3, $FC, $FF	' XXXXXXXXXXXX__XXXXXXXX__XXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $F3, $FF, $FF, $F3	' XXXX__XXXXXXXXXXXXXXXXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
+	DATA BYTE $FF, $CF, $CF, $FF	' XXXXXXXXXX__XXXXXX__XXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd29:	' --- 29 catacombs (dark) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
+	DATA BYTE $FF, $FF, $CF, $FF	' XXXXXXXXXXXXXXXXXX__XXXXXXXXXXXX
+rd30:	' --- 30 catacombs (dark; all sides) ---
+	DATA BYTE $FF, $CF, $FF, $FF	' XXXXXXXXXX__XXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $20, $04, $01	' X_________X__________X_________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
+	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
+	DATA BYTE $CF, $FF, $FF, $F3	' XX__XXXXXXXXXXXXXXXXXXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $81, $00, $00, $81	' X______X________________X______X
+	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $F3, $FF, $FF, $FF	' XXXX__XXXXXXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
+	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
+	DATA BYTE $FF, $FF, $F3, $F3	' XXXXXXXXXXXXXXXXXXXX__XXXXXX__XX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $81, $80, $03, $01	' X______XX_____________XX_______X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FC, $3F, $CF	' XXXX__XXXXXXXX____XXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd30:	' --- 30 catacombs (dark) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $9F, $F9, $F3	' XX__XXXXX__XXXXXXXXXX__XXXXX__XX
-	DATA BYTE $80, $10, $08, $01	' X__________X________X__________X
-	DATA BYTE $80, $10, $08, $01	' X__________X________X__________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $FC, $FF, $FF, $CF	' XXXXXX__XXXXXXXXXXXXXXXXXX__XXXX
 rd31:	' --- 31 catacombs south (dark; W white castle, E side rooms) ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $FC, $FF, $FF, $F3	' XXXXXX__XXXXXXXXXXXXXXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
+	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $CF, $CF, $FF, $FF	' XX__XXXXXX__XXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FF, $FF, $FC, $FF	' XXXXXXXXXXXXXXXXXXXXXX__XXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $3F, $FF, $FF	' XXXXXXXX__XXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
 	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 rd32:	' --- 32 white castle grounds (E to catacombs) ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -2197,58 +2232,56 @@ rd33:	' --- 33 white castle hall (E to the red maze) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd34:	' --- 34 red maze ---
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+rd34:	' --- 34 red maze (N/E/W) ---
+	DATA BYTE $FC, $FF, $FF, $F3	' XXXXXX__XXXXXXXXXXXXXXXXXXXX__XX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
+	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
+	DATA BYTE $CF, $CF, $FF, $FF	' XX__XXXXXX__XXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $80, $00, $00, $00	' X_______________________________
+	DATA BYTE $FF, $FF, $FC, $FF	' XXXXXXXXXXXXXXXXXXXXXX__XXXXXXXX
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $3F, $FF, $FF	' XXXXXXXX__XXXXXXXXXXXXXXXXXXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
+	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $80, $01, $01	' X_______X______________X_______X
+	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $00, $00, $00, $00	' ________________________________
-	DATA BYTE $FF, $9F, $F9, $FF	' XXXXXXXXX__XXXXXXXXXX__XXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FC, $3F, $CF	' XXXX__XXXXXXXX____XXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $84, $00, $00, $21	' X____X____________________X____X
-	DATA BYTE $CF, $F3, $CF, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
+	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd35:	' --- 35 red maze end: BLACK KEY sealed in a chamber ---
-	' (bridge required: the magnet that could pull it out sits
-	' inside the black castle, behind the door this key opens)
+rd35:	' --- 35 red maze end: BLACK KEY sealed in a chamber (S/W) ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
 	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
+	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
+	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
+	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
 	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
+	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
 	DATA BYTE $00, $00, $00, $01	' _______________________________X
 	DATA BYTE $00, $00, $00, $01	' _______________________________X
+	DATA BYTE $FF, $FC, $FF, $3F	' XXXXXXXXXXXXXX__XXXXXXXX__XXXXXX
+	DATA BYTE $80, $00, $00, $01	' X______________________________X
+	DATA BYTE $82, $00, $00, $41	' X_____X__________________X_____X
+	DATA BYTE $82, $00, $00, $41	' X_____X__________________X_____X
 	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $CF, $FC, $3F, $F3	' XX__XXXXXXXX__XXXX__XXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
+	DATA BYTE $FF, $F3, $FF, $3F	' XXXXXXXXXXXX__XXXXXXXXXX__XXXXXX
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
+	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
 rd36:	' --- 36 purple side room ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X

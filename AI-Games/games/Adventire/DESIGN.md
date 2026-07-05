@@ -73,11 +73,19 @@ wall color too, like the original's wall-gray speck.
 **Room format ("quarter characters"):** rooms are 32×24 grids of **8px cells** (one character
 per cell), 4 bytes per row × 24 rows = 96 bytes. Custom rooms 0–12 are the old block layouts
 mechanically bit-doubled (game 1 is pixel-identical); kingdom rooms 13–38 are fine-grid
-originals. Thin 8px walls with 16px paths give the kingdom mazes the winding, multi-route
-look of the cartridge: serpentine wall bands with staggered 2-cell doorways, vertical spur
-posts, all mirrored left/right. Every wall band always has ≥1 doorway; E/W exits open at cell
-rows 10–13 (y80–111), N/S gaps at cols 14–17 (x112–143) — the same pixel zones as before, so
-links/warps/gates are unchanged.
+originals with thin 8px walls and 16px paths.
+
+**Maze character (authentic to the cartridge):** the 13 kingdom maze rooms use five original
+asymmetric layouts (A/B for four-exit rooms, C for three-exit, D for room 22, E for the two
+chamber rooms) featuring **multiple gaps per screen edge** (all leading to the same
+neighbor), **offset entrances/exits that don't line up between neighbors**, full-height spur
+walls that partition corridors, and **reachable dead-end pockets**. Edge openings can sit at
+ANY column/row now; on arrival, if the preserved coordinate lands in a wall, `arrsnap` slides
+the player along the edge to the **nearest opening** (`ax`=0 slides px for N/S arrivals, 1
+slides py for E/W) — deliberately reproducing the original's "screens don't line up" feel.
+Doorways whose exit link is 255 are sealed by filling the entire border row/column. The BFS
+audit (`scratchpad/audit.py`, full-edge doorway scan) verifies every linked side of every
+room reaches every other linked side.
 
 **Doorway sealing:** on room entry, any doorway whose exit link is 255 *in the selected game*
 is sealed in the RAM bitmap before drawing, so collision and visuals always agree (game 2
@@ -150,7 +158,8 @@ every dark room has at least one doorway, so the mazes are always traversable.
   demand.
 - **Doorway assist** (`vassist`/`hassist`): 3px steps make lining the 8px square up with a
   16px gap fiddly, so a blocked move nudges the player up to 4px onto the 8px cell grid when
-  that clears the way — pressing toward a doorway just works.
+  that clears the way — pressing toward a doorway just works. (Arrival mismatches are handled
+  separately by `arrsnap`, which scans the whole edge.)
 - The swallow "in the belly" sprite flashes black/white so it reads against any dragon or
   room color (a yellow dragon in the yellow corridor used to hide it completely).
 - Returning to the title clears all sprite slots and requires the FIRE button quiet for ~2/3s

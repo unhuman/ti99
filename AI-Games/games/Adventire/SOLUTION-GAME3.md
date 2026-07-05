@@ -136,6 +136,11 @@ way — though it is a long haul from the white castle to the black maze.
 
 ## Notes
 
+- Maze screens now behave like the cartridge's: edges can have **two openings** (both lead
+  to the same neighbor), openings **don't line up between screens** (crossing an edge can
+  slide you sideways to the nearest gap on the far side), and several corridors are
+  **dead-end pockets** — if a passage stubs out, back up and try another gap in the same
+  wall. The screen-level directions above are unchanged by any of this.
 - The dark zones are where you'll get lost: the catacombs stack DOWN from the yellow
   corridor (29 → 30 → 31), and 29's WEST edge hyperspaces straight to 31 as a shortcut.
   The black maze runs RIGHT then UP twice from the black hall.
