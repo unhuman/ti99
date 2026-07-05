@@ -50,7 +50,9 @@ Start: standing below the yellow gold castle.
    here, by the black gate.
 4. **Black key** (mind the hyperspace links).
    DOWN 1 — this lands you in the maze *mid* screen, not the top screen you climbed
-   through. LEFT 1 (the cross room): take the **black key**.
+   through. LEFT 1 (the cross room). Inside: you arrive by one of the two right-hand
+   doors; from the LOWER right door, take the first gap UP (just left of the door) and
+   the **black key** sits a step to the RIGHT, in that corridor band.
 5. **Open the black castle → chalice.**
    UP 1 (the maze's west branch) → UP 1 (maze top) → UP 1 (black castle grounds): touch
    the gate with the key — it opens. Walk UP into the archway (hall): take the
@@ -65,6 +67,11 @@ Start: standing below the yellow gold castle.
 
 ## Notes
 
+- The maze screens behave like the cartridge's: an edge can have **two openings** (both
+  lead to the same neighboring screen), openings **don't line up between screens**
+  (crossing an edge can slide you sideways to the nearest gap on the far side), and some
+  corridors are **dead-end pockets** — if a passage stubs out, back up and try another
+  gap in the same wall. The screen-level directions above are unaffected.
 - Corridor E is a dead end in this game (its doors to the wider kingdom only exist in
   Games 3/4).
 - Swallowed? FIRE returns to the title for a fresh start — dragons revive, objects reset.

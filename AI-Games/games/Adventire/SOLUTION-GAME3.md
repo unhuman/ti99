@@ -44,8 +44,10 @@ Start: standing below the yellow gold castle.
 4. **Slay the red dragon.** UP 1 (yellow corridor) → LEFT 1 (green corridor) → LEFT 1
    (dark-green corridor) → LEFT 1 (blue maze entry) → UP 1 (maze mid): the fast red dragon
    dies like the others. All three are now gone for the rest of the game.
-5. **White key.** LEFT 1 (maze cross room): DROP the sword and take the **white key** —
-   it lies in the room's upper-left quarter.
+5. **White key.** LEFT 1 (maze cross room): DROP the sword. The **white key** hides in a
+   small compartment at the room's UPPER LEFT: from either right-hand door, work LEFT
+   along the corridor, go UP through the gap at the FAR LEFT of each wall band, and enter
+   the compartment from below (its own little wall splits it from the rest of its band).
 6. **White castle.** DOWN 1 (maze entry) → RIGHT 1 (dark-green corridor) → RIGHT 1 (green
    corridor) → RIGHT 1 (yellow corridor) → DOWN 1 (dark catacombs) → DOWN 1 (second dark
    screen — the **gold key** lies here; remember it) → DOWN 1 (third dark screen — the
