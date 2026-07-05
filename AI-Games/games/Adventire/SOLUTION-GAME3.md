@@ -72,24 +72,53 @@ Start: standing below the yellow gold castle.
 12. **Bring the chalice home.** DOWN 1 (green corridor): take the **chalice** → UP 1 →
     walk UP through the open gate into the hall. Color flash — the chalice is home.
 
-## Bonus: the secret room (before you win, if you want to see it)
+## Bonus: the secret room (each move = one screen)
 
-The **dot** is invisible, silent to pick up, and sealed inside the doorless chamber at the
-top-right of the dark maze's last screen (where the chalice was). Two ways in:
+Do this **before** carrying the chalice in — winning ends the game. Starting point: the
+end of step 11 above — you are at the **gold castle** with the spent **gold key** lying at
+your feet, the **chalice parked in the green corridor** one screen below, the gold gate
+open, all three dragons dead, the black castle gate already open, the **sword** still in
+the maze cross room, and the **black key** lying where the chalice was. The rule you are
+working toward: the **dot plus two other objects** together in the **yellow corridor**
+open its east wall.
 
-- **Magnet (easy):** take the **magnet** from the middle dark-maze screen, carry it UP 1
-  to the last screen, and drop it on the open floor left of the chamber. Every loose
-  object in the room creeps toward it — the dot slides out **through the chamber wall**.
-  Walk over the floor near the magnet until the (barely visible, wall-gray) dot is in
-  your hands.
-- **Bridge:** fetch the **bridge** from the third catacombs screen, drop it spanning the
-  chamber's bottom wall, and walk up through its dark channel.
+1. **First companion object — the gold key** (it's done working; make it a paperweight).
+   Pick it up. DOWN 1 (green corridor — wave to the chalice) → RIGHT 1 (yellow corridor).
+   DROP the key here.
+2. **Second companion object — the sword.**
+   LEFT 1 (green corridor) → LEFT 1 (dark-green corridor) → LEFT 1 (blue maze entry) →
+   LEFT 1 again (hyperspace — this jumps straight to the maze **cross room**): take the
+   **sword** you left in step 5.
+   Back: DOWN 1 (maze entry) → RIGHT 1 (dark-green) → RIGHT 1 (green) → RIGHT 1 (yellow
+   corridor). DROP the sword. Two objects staged.
+3. **Fetch the dot.**
+   LEFT 1 (green) → LEFT 1 (dark-green) → LEFT 1 (maze entry) → UP 1 (maze mid) → UP 1
+   (maze top) → UP 1 (black castle — its gate is already open) → walk UP into the archway
+   (black hall) → RIGHT 1 (dark maze) → UP 1 (middle dark screen): take the **magnet** →
+   UP 1 (dark maze end — the sealed chamber is the box at the top right; the black key
+   you abandoned lies here too).
+   DROP the magnet on the open floor a little LEFT of and BELOW the chamber. Stand back a
+   few seconds: every loose object in the room creeps toward it, and the **dot slides out
+   through the chamber wall** — in this dark room it shows as a tiny GRAY speck crossing
+   the black floor. Walk onto the speck to pick it up. The pickup is **silent** and the
+   dot is invisible in your hands — trust that you have it (the speck is gone).
+4. **Carry the dot to the yellow corridor.**
+   DOWN 1 → DOWN 1 (dark maze back to its first screen) → LEFT 1 (black hall) → walk DOWN
+   through the bottom doorway (black castle grounds) → DOWN 1 (maze top) → DOWN 1
+   (hyperspace — lands in maze *mid*) → DOWN 1 (maze entry) → RIGHT 1 (dark-green) →
+   RIGHT 1 (green) → RIGHT 1 (yellow corridor).
+   The instant you arrive — dot in hand, key and sword on the floor — the **east wall
+   starts flickering**.
+5. **Walk RIGHT through the flickering wall.** The SECRET room: "ADVENTIRE — 2026 UNHUMAN
+   AND CLAUDE" rippling through the colors. The wall stays passable; walk LEFT to return.
+6. **Now go win.** LEFT 1 (green corridor): swap the dot for the **chalice** → UP 1 (gold
+   castle) → walk UP through the open gate into the hall. Color flash.
 
-Then bring the dot to the **yellow corridor** (east of the gold castle's green corridor)
-and drop it there, and ferry **two more objects** into the same room (the sword and a
-spent key work fine). When the dot plus at least two other objects are present, the east
-wall **flickers** — walk RIGHT through it into the SECRET room: "ADVENTIRE — 2026 UNHUMAN
-AND CLAUDE" in rippling colors. The wall stays passable afterward; walk LEFT to come back.
+If the wall does not flicker when you arrive in step 4, the **bat** has probably stolen
+the key or sword while you were away — hunt it down and snatch the object back, or ferry
+any substitute object in (the magnet or black key from the dark maze both count).
+Prefer engineering to magnetism? The **bridge** (third catacombs screen) laid across the
+chamber's bottom wall gets you the dot the classical way.
 
 ## Notes
 
