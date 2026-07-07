@@ -246,8 +246,9 @@ init_level:
 	PY = SHAFT_H * 8 - 2
 	GOSUB draw_borders
 	' Sidebar labels (values are refreshed by draw_hud).
-	PRINT AT CPOS(3,1),"LEVEL"
-	PRINT AT CPOS(6,1),"CLEAR"
+	PRINT AT CPOS(1,1),"SCORE"
+	PRINT AT CPOS(4,1),"LEVEL"
+	PRINT AT CPOS(7,1),"CLEAR"
 	GOSUB draw_hud
 	RETURN
 
@@ -269,9 +270,9 @@ draw_hud:
 	' free even at the level-1 width): score in the top-left corner,
 	' LEVEL and CLEAR blocks below it. Labels are printed once by
 	' init_level; this refreshes only the values.
-	PRINT AT CPOS(1,1),<5>#score
-	PRINT AT CPOS(4,2),<2>LV
-	PRINT AT CPOS(7,1),<2>RD,"/",<2>RG
+	PRINT AT CPOS(2,1),<5>#score
+	PRINT AT CPOS(5,2),<2>LV
+	PRINT AT CPOS(8,1),<2>RD,"/",<2>RG
 	RETURN
 
 	'
