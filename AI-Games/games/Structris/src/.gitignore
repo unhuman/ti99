@@ -1,0 +1,10 @@
+# Generated build artifacts
+# TI-99:  cvbasic -> xas99 -> linkticart
+STRUCTRS.a99
+*.bin
+*.txt
+# ColecoVision:  cvbasic -> gasm80
+*.asm
+*.rom
+*.lst
+*.sym
