@@ -172,6 +172,7 @@ title_wait:
 new_game:
 	LV = stlv
 	RD = 0
+	#score = 0
 	GOSUB init_level
 
 main_loop:
@@ -262,7 +263,7 @@ draw_borders:
 
 draw_hud:
 	' HUD lives BELOW the shaft (row 18) -- the top row is playfield now.
-	PRINT AT CPOS(18,0),"LV",<2>LV,"  CLR",<2>RD,"/",<2>RG,"   "
+	PRINT AT CPOS(18,0),"LV",<2>LV," CLR",<2>RD,"/",<2>RG," SC",<5>#score
 	RETURN
 
 	'
@@ -660,6 +661,8 @@ advance_pieces:
 					nact = nact - 1
 					SPRITE 1 + p,$D1,0,0,0
 					landed = 1
+					' Scoring: 1 point per landed piece.
+					#score = #score + 1
 				ELSE
 					' Sprite top = piece bottom - 32 (bottom-aligned art
 					' in a 32px box); the VDP Y arg is one less, and the
@@ -672,6 +675,7 @@ advance_pieces:
 		IF landed THEN
 			SOUND 1,600,12
 			snd1 = 4
+			GOSUB draw_hud
 		END IF
 	END IF
 
@@ -757,6 +761,17 @@ check_rowclear:
 			IF pact(p) <> 0 THEN ptpx(p) = ptpx(p) + k
 		NEXT p
 		RD = RD + m
+		' Scoring: line-clear bonus by SIMULTANEOUS rows -- 10 for 1,
+		' 50 for 2, 100 for 3. m can never exceed 3: clears run after
+		' every landing, so m is capped by what the LOWEST column can
+		' gain in one frame -- one bar, height <= 3. (A second piece's
+		' bar in the same column always lands >= PGAP px of travel
+		' later -- the stream gap is constant and >= 11 px > max dy --
+		' so same-column same-frame landings are impossible. The >= is
+		' just belt-and-braces.)
+		IF m = 1 THEN #score = #score + 10
+		IF m = 2 THEN #score = #score + 50
+		IF m >= 3 THEN #score = #score + 100
 		GOSUB draw_hud
 		SOUND 2,300,12
 		snd2 = 8
@@ -860,6 +875,7 @@ win_screen:
 	PRINT AT CPOS(9,8),"CONGRATULATIONS!"
 	PRINT AT CPOS(12,3),"YOU SURVIVED ALL 10 LEVELS."
 	PRINT AT CPOS(14,5),"THE MACHINE GIVES UP."
+	PRINT AT CPOS(16,8),"SCORE ",<5>#score
 	PRINT AT CPOS(19,11),"PRESS FIRE"
 win_rel:
 	WAIT

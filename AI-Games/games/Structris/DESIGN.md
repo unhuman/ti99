@@ -285,6 +285,13 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
 - `RG = 5 + LV*2` rows required to advance — 7 at level 1, rising by 2 per level to 25 at
   level 10.
+- **Scoring** (`#score`, 16-bit, reset at `new_game` so it spans all 10 levels): **1 point per
+  landed piece**, plus a line-clear bonus by *simultaneous* rows — **10** for 1 row, **50** for 2,
+  **100** for 3. Three is the true maximum: clears run after every landing, so the bonus is capped
+  by what the *lowest* column can gain in one frame — one bar, height ≤ 3 (a second piece's bar in
+  the same column always lands ≥ `PGAP` = 11 px of travel later than the first's, and 11 px > the
+  max per-frame fall of 4 px, so same-column same-frame landings are impossible). Shown on the HUD
+  (`SC`), updated at every landing/clear, and repeated on the win banner.
 - After a piece lands, `newmin = MIN(H(1..W))`. If `newmin > 0`: `RD = RD + newmin`, then
   subtract `newmin` from every `H(c)` (the completed rows "fall away" — direct nod to the
   original's help-screen wording). On screen, each column's cells are shifted down `newmin` rows
