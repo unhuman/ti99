@@ -29,7 +29,8 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 - Rows needed per level: 7 at level 1, +2 each level (25 at level 10).
 - Scoring: 1 point per landed piece; clearing lines pays 10 (single), 50 (double), or 100
   (triple — the maximum, since a clear is capped by one bar's height) — the bonus rewards
-  *simultaneous* rows. The HUD shows it as `SC`; the score spans the whole game (all levels).
+  *simultaneous* rows. The score, level, and clear progress live in a **left sidebar** (score
+  top-left, `LEVEL` and `CLEAR` blocks under it); the score spans the whole game (all levels).
 - Every column built up past a shared height threshold "falls away" (the completed rows compact
   out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows
   (14 columns at level 1 down to 5 at level 10, the original's widths), pieces come faster.

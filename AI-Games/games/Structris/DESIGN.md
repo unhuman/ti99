@@ -110,8 +110,11 @@ along a surface while climbing or ducking. The move blip is throttled to one per
   (the VDP's $E0–$FF "negative Y" band) instead of popping out from under a text row.
 - **Row 16:** floor border plus one column of vertical border tile on each side of the shaft,
   redrawn whenever the shaft width changes at a level-up.
-- **Row 18 (HUD):** `LV 03  CLR 05/09` — current level, rows cleared / rows needed this level.
-  The HUD lives *below* the shaft because the top row is playfield now.
+- **HUD = a left sidebar** (the shaft is centered, so columns 0–8 are free even at the level-1
+  width), inset one row/column from the corner for breathing room: the **score** (5 digits) at
+  row 1 col 1, then `LEVEL` at row 3 with the level number under it (row 4), then `CLEAR` at
+  row 6 with the cleared/needed fraction under it (row 7). Labels print once per level
+  (`init_level`); `draw_hud` refreshes only the values.
 - **Rows 19–23:** message area — level-up banner, "OOPS!" / game-over stats, win screen, title
   screen help text. Reuses the same rows so nothing needs to be laid out twice.
 
@@ -290,8 +293,8 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   **100** for 3. Three is the true maximum: clears run after every landing, so the bonus is capped
   by what the *lowest* column can gain in one frame — one bar, height ≤ 3 (a second piece's bar in
   the same column always lands ≥ `PGAP` = 11 px of travel later than the first's, and 11 px > the
-  max per-frame fall of 4 px, so same-column same-frame landings are impossible). Shown on the HUD
-  (`SC`), updated at every landing/clear, and repeated on the win banner.
+  max per-frame fall of 4 px, so same-column same-frame landings are impossible). Shown in the
+  sidebar's top-left corner, updated at every landing/clear, and repeated on the win banner.
 - After a piece lands, `newmin = MIN(H(1..W))`. If `newmin > 0`: `RD = RD + newmin`, then
   subtract `newmin` from every `H(c)` (the completed rows "fall away" — direct nod to the
   original's help-screen wording). On screen, each column's cells are shifted down `newmin` rows

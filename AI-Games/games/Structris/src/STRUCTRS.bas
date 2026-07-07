@@ -245,6 +245,9 @@ init_level:
 	PX = (ML + W / 2) * 8 + 2
 	PY = SHAFT_H * 8 - 2
 	GOSUB draw_borders
+	' Sidebar labels (values are refreshed by draw_hud).
+	PRINT AT CPOS(3,1),"LEVEL"
+	PRINT AT CPOS(6,1),"CLEAR"
 	GOSUB draw_hud
 	RETURN
 
@@ -262,8 +265,13 @@ draw_borders:
 	RETURN
 
 draw_hud:
-	' HUD lives BELOW the shaft (row 18) -- the top row is playfield now.
-	PRINT AT CPOS(18,0),"LV",<2>LV," CLR",<2>RD,"/",<2>RG," SC",<5>#score
+	' HUD is a LEFT SIDEBAR (the shaft is centered, so columns 0-8 are
+	' free even at the level-1 width): score in the top-left corner,
+	' LEVEL and CLEAR blocks below it. Labels are printed once by
+	' init_level; this refreshes only the values.
+	PRINT AT CPOS(1,1),<5>#score
+	PRINT AT CPOS(4,2),<2>LV
+	PRINT AT CPOS(7,1),<2>RD,"/",<2>RG
 	RETURN
 
 	'
