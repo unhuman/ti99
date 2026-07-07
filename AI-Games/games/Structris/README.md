@@ -11,15 +11,18 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 
 ## Play
 
-- You stand on top of the block stack. Pieces (1-3 columns wide) fall from the ceiling, aimed at
-  wherever you're standing, and permanently add to the stack's height where they land.
-- Move left/right along the skyline, climb up into open shaft, or duck down into a valley between
-  taller neighbors — whatever it takes to not be under a piece when it lands, or under the row a
-  neighbor's build-up cell reaches.
-- If a piece reaches your cell and there's nowhere left to climb, you're buried: game over.
+- You stand on top of the block stack. A continuous **stream** of pieces (1-3 columns wide, up to
+  6 in the shaft at once with ~1 clear row between them) falls from the ceiling, each aimed at
+  wherever you're standing when it spawns, permanently adding to the stack where it lands.
+- Move left/right along the skyline, climb into open shaft, or duck into a valley between taller
+  neighbors — falling pieces block movement just like settled blocks, so weave through the gaps.
+- A piece descending into your cell **forces you down**; when the cell below you is blocked (the
+  stack, the floor, or another piece), you're **smashed**: game over. You can't ride a piece out —
+  step aside before it reaches you.
 - Every column built up past a shared height threshold "falls away" (the completed rows compact
-  out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows,
-  pieces come faster. Survive all 10 levels to win.
+  out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows
+  (14 columns at level 1 down to 5 at level 10, the original's widths), pieces come faster.
+  Survive all 10 levels to win.
 
 ## Controls (joystick 1)
 
@@ -41,9 +44,11 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   rigid tetromino-like shape (all columns sharing a single fall counter) and slots flush onto the
   skyline in one landing. See `DESIGN.md` §5–6 for the full table and what got reinterpreted
   (the Apple II renderer's continuous hardware scroll has no TI-99 equivalent).
-- A single push-or-die rule covers both "a piece falls through your row" and "a piece lands on your
-  feet": every frame, if the player's cell is occupied, try to bump them up one row; no room left
-  means game over.
+- **Height forecasting** makes the stream land correctly: targeting/shape selection read a
+  forecast array (settled heights + every in-flight piece's booking), so a later piece aims at and
+  fits the surface as it *will* be — the original books heights at emission time the same way.
+- The smash rule is the original's collision verbatim: an occupied player cell forces the player
+  down one row; a blocked cell below means death.
 - **No cross-platform pacing tricks** (unlike `games/Astiroids`' `pacen`): the main loop's per-frame
   work is trivial (one sprite, a few scalar updates), so both machines finish it comfortably inside
   one 60Hz NTSC vblank and a plain `WAIT` gives the same real-world speed on both — same approach
@@ -56,8 +61,9 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 
 ## Status
 
-**TI-99 build verified playing in Classic99** (scripted emulator run: title → fire → pieces fall
-with per-piece colors, joystick movement, push-up rule, idle player eventually buried → OOPS).
+**TI-99 build verified playing in Classic99** (scripted emulator run: title → fire → up to 5
+pieces streaming simultaneously as rigid shapes with per-piece colors, joystick weaving, smash
+rule kills a player caught under a landing piece → OOPS → fire restarts).
 ColecoVision build compiles clean and shares all the same game logic; needs a CoolCV pass.
 
 Two toolchain landmines were found (and are documented in `DESIGN.md`'s header): CVBasic's

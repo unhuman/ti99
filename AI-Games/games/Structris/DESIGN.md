@@ -64,22 +64,26 @@ This port is a **faithful reinterpretation**, not a transliteration:
 
 ## 1. Concept & Objective
 
-- Columns of blocks grow from the floor, one piece at a time, aimed at wherever you're standing.
+- Columns of blocks grow from the floor, a continuous **stream** of pieces (up to `MAXP = 6` in
+  flight at once, `PGAP = 1` clear row between them — the original emits pieces 4 scan lines
+  apart at 3 scan lines per cell row, ≈1.33 rows, so 1 is the closest cell-grid match) aimed at
+  wherever you're standing.
 - You stand on top of the stack and move along its ragged skyline: left/right to change columns,
   up to climb higher into the open shaft, down to duck into a valley between taller neighbors.
-- A piece that lands on your cell buries you — unless there's room to climb up and out of its way,
-  which happens automatically. If there's nowhere to climb to, you're crushed: game over.
+- A piece descending into your cell **forces you down**; when the cell below you is blocked (the
+  stack, the floor, or another piece), you're **smashed**: game over. You cannot ride a piece out
+  from underneath — move *aside* before it reaches you.
 - Clear enough rows (every column built up past a shared threshold, which then "falls away" and
   compacts the stack back down) to advance a level. Ten levels, each with a narrower shaft and
-  faster, more frequent pieces. Clear level 10 and you win.
+  faster pieces. Clear level 10 and you win.
 
 ## 2. Controls (joystick 1)
 
 | Action | Input | Behavior |
 |---|---|---|
-| Move left / right | `cont1.left` / `cont1.right` | Step one column, only if that column isn't taller than your current row (can't walk through rock). |
-| Climb up | `cont1.up` | Step one row up the shaft (always legal while not at the ceiling). |
-| Duck down | `cont1.down` | Step one row down, only while still above your column's stack top. |
+| Move left / right | `cont1.left` / `cont1.right` | Step one column, only if the destination cell is empty (settled stack **and** falling pieces block movement — the original tests `SCRN`, which sees both). |
+| Climb up | `cont1.up` | Step one row up, if the cell above is empty. |
+| Duck down | `cont1.down` | Step one row down, if the cell below is empty. |
 | Start / restart | `cont1.button` | Starts the game from the title screen; restarts (level 1) from the game-over or win screen. |
 
 Movement is debounced to one step per ~6 frames so repeated taps feel controllable rather than
@@ -101,19 +105,21 @@ countdown (`move_cd`).
 
 ## 4. Playfield & Column Model
 
-- `W` = shaft width in columns, `W = MAX(5, 11 - LV)` (10 at level 1, floors at 5 from level 6 on).
+- `W` = shaft width in columns, `W = MAX(5, 15 - LV)` — **14 at level 1** (the original's
+  `W = 15 - LV` exactly), narrowing one column per level to 5 at level 10.
   Shaft is centered: left margin `ML = (32 - W) / 2`; column `c` (1..W) occupies text column
   `ML + c`.
 - `SHAFT_H = 16` (fixed — only width shrinks with level, not height; two knobs shrinking at once
   made early playtesting math confusing, and width alone already scales difficulty well).
-- `H(1..W)`: current stack height of each column, in rows, counted from the floor. A cell at row
-  `r` in column `c` is filled when `r > SHAFT_H - H(c)`. The lowest empty row (where a piece —or
-  the player— can rest) is `SHAFT_H - H(c)`.
-- `MH = SHAFT_H - 3` — a column at or above this height is "topped out" and skipped by the
-  targeting logic (§5) so pieces don't pile past the ceiling.
-- Player position `(PCOL, PROW)`: `PCOL` in `1..W`, `PROW` in `1..SHAFT_H`. Never below its
-  column's surface (`PROW <= SHAFT_H - H(PCOL)`), enforced by the movement rules in §2 and the
-  push rule in §6.
+- **Two height arrays.** `H(1..W)` is the *settled* stack; `HF(1..W)` is the *forecast* — settled
+  plus every in-flight piece's booking. Targeting and shape selection read `HF`, so a piece
+  spawned while others are mid-flight aims at and fits the surface as it *will* be; landing moves
+  the booking from `HF` into `H`. (The original updates its `H()` at emission time for exactly
+  this reason.) A cell at row `r` in column `c` is settled-filled when `r > SHAFT_H - H(c)`.
+- `MH = SHAFT_H - 3` — a column whose *forecast* is at or above this is "topped out" and skipped
+  by the targeting logic (§5) so pieces don't pile past the ceiling.
+- Player position `(PCOL, PROW)`: `PCOL` in `1..W`, `PROW` in `1..SHAFT_H`. Movement into any
+  occupied cell is blocked (`cell_test`: settled stack + all falling bars).
 
 ## 5. Piece Catalog & Targeting AI (ported from the original)
 
@@ -122,7 +128,8 @@ Every piece is 1–3 adjacent columns (`X-1, X, X0` — wait: `X-1, X, X+1`) rec
 purely from how its two neighbors compare to it — this is what makes the game feel like it's
 "aiming" at your gaps.
 
-**Targeting:** `X` starts at the player's own column, clamped to `1..W`. If `H(X) >= MH`, scan
+**Targeting:** `X` starts at the player's own column, clamped to `1..W`. If `HF(X) >= MH` (all
+height reads in targeting and shape lookup use the **forecast** `HF`, §4), scan
 outward (`X+1, X-1, X+2, …`) for the nearest column still under `MH`. At the edges (`X=1` or
 `X=W`), there's no real neighbor on that side — rather than reading a sentinel array slot (the
 original's `H(0)=H(W+1)=-9` trick, which drifts over a long game since nothing ever resets it),
@@ -167,40 +174,42 @@ and the code ever drift.)
 Colors `c1..c7` map to seven distinct background-tile colors (§7); `c7` pieces are always either
 pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
-## 6. Falling, Collision, and the Push Rule
+## 6. The Stream, Falling, and the Smash Rule
 
-- **The piece falls as a rigid unit.** Its up-to-3 bars share one fall counter (`plead`,
-  advancing one row per `FRAMES_PER_ROW = MAX(2, 8 - LV/2)` frames — faster at higher levels) and
-  all land **simultaneously** the moment the piece bottom (the center bar) reaches the center
-  column's surface (`ptarget = SHAFT_H - H(X)`). Each side bar rides `baroff` rows higher — exactly
-  its column's height advantage (`hl`/`hr`), which is the same number the shape was *selected*
-  against (§5) — so at landing every bar is flush with its own column's surface at the same
-  instant: the piece slots into the terrain like a pre-fit tetromino, never "compacting" against
-  it bar-by-bar. This works because the shape table guarantees a side gets a bar **only** when its
-  true height difference is 0–3 (a clamped-to-3 side always has a 0 delta), so a rigid perfect fit
-  always exists. The staggered *entry* from the ceiling (side bars appearing `baroff` rows behind
-  the center) is the direct analogue of the original's `SL`/`SR` scan-line delay counters.
+- **A continuous stream of rigid pieces.** Up to `MAXP = 6` pieces fall at once, all advancing on
+  the same cadence (one row per `FRAMES_PER_ROW = MAX(2, 8 - LV/2)` frames — faster at higher
+  levels), so their separations never change. A new piece spawns (re-aimed at the player's current
+  column) the moment the newest one has fully entered plus `PGAP = 1` clear rows; the first piece
+  after a lull waits out a short `spawn_timer`. This mirrors the original's back-to-back emission
+  (its state machine restarts the instant a piece finishes emitting, giving a ~1.33-row gap).
+- **Each piece falls as a rigid unit.** Its up-to-3 bars share the piece's fall counter
+  (`plead(p)`) and all land **simultaneously** the moment the piece bottom (the center bar)
+  reaches the center column's *booked* surface (`ptarget(p) = SHAFT_H - HF(X)` at spawn). Each
+  side bar rides `baroff` rows higher — exactly its column's height advantage (`hl`/`hr`), the
+  same number the shape was *selected* against (§5) — so at landing every bar is flush with its
+  own column's surface at the same instant: the piece slots into the terrain like a pre-fit
+  tetromino, never "compacting" against it bar-by-bar. This works because the shape table
+  guarantees a side gets a bar **only** when its true height difference is 0–3 (a clamped-to-3
+  side always has a 0 delta), so a rigid perfect fit always exists. The staggered *entry* from
+  the ceiling (side bars appearing `baroff` rows behind the center) is the direct analogue of the
+  original's `SL`/`SR` scan-line delay counters. Two pieces can share a column (the later one is
+  booked to land on top of the earlier one via `HF`), so the falling-bar redraw merges all of a
+  column's bars into one repaint pass per fall step.
 - An earlier draft dropped each bar independently onto its own column (each with its own landing
   row) — pieces visibly broke apart mid-fall and "squished" onto the stack one column at a time.
   If piece behavior ever regresses to that, this shared-counter design is what got lost.
-- **Every frame**, after advancing animation, check whether the player's cell `(PCOL, PROW)` is
-  currently filled — by settled stack (`PROW > SHAFT_H - H(PCOL)`) or by a falling bar passing
-  through this frame. If so:
-  - If `PROW > 1` and row `PROW-1` is clear, push the player up one row (`PROW = PROW - 1`) and
-    re-check (a fast piece can require more than one push in a frame).
-  - If no row remains above (`PROW` would go below 1), it's **game over** ("OOPS!").
-- **`H(c)` is hard-capped at `SHAFT_H`** the moment a landing would push it over (`IF H(cc) >
-  SHAFT_H THEN H(cc) = SHAFT_H`). This isn't cosmetic: `H` is a plain (8-bit **unsigned**, CVBasic's
-  default variable size) column, and `bartarget = SHAFT_H - H(neighbor)` is computed for a bar's
-  *neighbor* column, which — unlike the target column itself — is never gated by `MH` and can in
-  principle keep absorbing `BL`/`BR` hits past `SHAFT_H`. Without the cap, that subtraction goes
-  negative and wraps to a huge unsigned value (~250), which `barlead` (which only ever counts up to
-  ~`SHAFT_H`) can never reach — that one bar animates forever, `busy` never clears, and no further
-  piece ever spawns. Found by simulating the (fixed) logic in Python outside the CVBasic toolchain
-  after an initial playtest reported the TI build going fully unresponsive after a few pieces.
-- This single rule covers both "a piece falls through the row you're standing in" (mid-fall
-  collision, the primary way the original kills you) and "a piece lands and its final height
-  reaches your feet" (post-landing collision) — no special-casing needed for the two cases.
+- **Forced down and smashed.** Every frame, if the player's cell is occupied (`cell_test`:
+  settled stack or any falling bar), the player is pushed **down** one row; if the cell below is
+  blocked — stack, floor, or another bar — they are **smashed**: game over ("OOPS!"). This is the
+  original's rule verbatim (Structris.asb 125–135: cell filled → below filled means death, else
+  `CY = CY + 1`). You cannot ride a piece out from underneath, and standing on the surface when a
+  piece lands on your column is instant death — the only escape is stepping *aside* before it
+  arrives. (An earlier draft pushed the player *up*, letting them surf descending pieces — far
+  too forgiving, and backwards from the original.)
+- **`H(c)`/`HF(c)` are hard-capped at `SHAFT_H`** the moment a booking or landing would push them
+  over. This isn't cosmetic: heights are plain 8-bit **unsigned** values and `SHAFT_H - H` row
+  math would wrap to ~250 if a neighbor column (never gated by `MH`) grew past the top — an
+  uncatchable landing target that froze the whole piece pipeline in an early build.
 
 ## 7. Colors & Tiles
 
@@ -238,7 +247,8 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   subtract `newmin` from every `H(c)` (the completed rows "fall away" — direct nod to the
   original's help-screen wording). On screen, each column's cells are shifted down `newmin` rows
   with `VPEEK`/`VPOKE` (preserving per-piece cell colors, §7) and the vacated top rows blanked.
-  A piece still in flight gets `ptarget += newmin` so it lands on the compacted surface instead
+  Every piece still in flight gets `ptarget(p) += newmin` (and `HF` drops with `H`) so it lands
+  on the compacted surface instead
   of floating. The player's `PROW` doesn't change (they don't fall with the compaction — they were
   standing above the cleared rows, not on them), which reads on screen as the player gaining
   clearance, a small reward beat for clearing rows.
@@ -276,8 +286,9 @@ either platform).
       driven + screenshotted via the scripted harness; CV pending user verification.)
 - [x] Pieces visibly fall, target the player's column, keep per-piece colors/shapes on the
       stack, and use the shape/color catalog from §5. (TI verified in Classic99.)
-- [x] Player sprite moves with the joystick; push-up rule works (player rides a bar falling
-      through their column and ends standing on it). (TI verified in Classic99.)
+- [x] Player sprite moves with the joystick; the smash rule kills a player who stays under a
+      descending piece; up to 6 pieces stream simultaneously with ~1-row gaps. (TI verified in
+      Classic99.)
 - [ ] Rows compact and count toward level-up; level-up narrows the shaft and speeds up play.
       (Code-verified + simulated; not yet observed in emulator.)
 - [ ] Reaching level 11 shows the win screen; getting buried shows "OOPS!" with a restart prompt.
