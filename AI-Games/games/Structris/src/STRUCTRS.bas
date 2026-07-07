@@ -95,9 +95,12 @@
 	DEFINE CHAR 133,1,filled_bitmap
 	DEFINE CHAR 134,1,filled_bitmap		' char 134 = piece color 7
 	DEFINE CHAR 135,1,filled_bitmap		' char 135 = border/floor
-	DEFINE COLOR 128,8,tile_colors
+	DEFINE CHAR 136,1,filled_bitmap		' char 136 = shaft-interior BLACK
+	DEFINE COLOR 128,9,tile_colors
 
 	DEFINE SPRITE 0,1,player_bitmap
+	DEFINE SPRITE 7,4,expl_bitmap		' death explosion: defs 7-10 =
+						' 4-frame expansion animation
 
 	' Piece color index -> VDP sprite color (same hues as tile_colors).
 	colv(1) = 8
@@ -211,10 +214,18 @@ init_level:
 	' Rows required: 7 at level 1, +2 per level (25 at level 10).
 	RG = 5 + LV * 2
 	' Clear the whole screen (not just the shaft rows) so title/game-over
-	' text in the message rows 18-23 doesn't linger into the new level.
+	' text in the message rows 18-23 doesn't linger into the new level,
+	' then fill the shaft INTERIOR with the dedicated black tile (136) --
+	' not space -- so the playfield background stays black under the
+	' win/game-over text recolors.
 	FOR r = 0 TO 23
 		FOR cx = 0 TO 31
 			VPOKE $1800 + r * 32 + cx,32
+		NEXT cx
+	NEXT r
+	FOR r = 1 TO SHAFT_H
+		FOR cx = 1 TO W
+			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
 		NEXT cx
 	NEXT r
 	FOR cc = 1 TO W
@@ -761,7 +772,7 @@ check_rowclear:
 			END IF
 			k = SHAFT_H - H(cc)
 			FOR r = k - m + 1 TO k
-				VPOKE $1800 + (r - 1) * 32 + ML + cc,32
+				VPOKE $1800 + (r - 1) * 32 + ML + cc,136
 			NEXT r
 		NEXT cc
 		' Every piece still falling now has m more rows to travel.
@@ -816,6 +827,56 @@ game_over:
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
+	' EXPLOSION first: the player vanishes in a noise blast as four
+	' debris sprites (slots 7-10, shared def 7, 2x-magnified shrapnel)
+	' fly outward diagonally, flashing white -> yellow -> red -> dark
+	' red. Only THEN does the screen turn red. Sprites 1-6 (frozen
+	' pieces) are untouched; the blinking buried marker resumes after.
+	SPRITE 0,$D1,0,0,0
+	' Anchor the 32x32 debris boxes so their CENTERS start on the
+	' player (box center = +16,+16 from the sprite origin).
+	ex0 = PX - 14
+	IF PY >= 15 THEN
+		ey0 = PY - 15
+	ELSE
+		ey0 = 0
+	END IF
+	SOUND 3,5,13
+	' 40 frames. The EXPANSION is the 4-frame def animation (defs
+	' 7-10, one every 10 frames: tight nucleus -> small burst -> mid
+	' spread -> full shrapnel); the four sprites themselves barely
+	' drift (1 px every 5 frames, 8 px total) so the cloud stays in
+	' place and reads as ONE cohesive explosion.
+	FOR i = 1 TO 40
+		WAIT
+		k = i / 5
+		ef = 28 + ((i - 1) / 10) * 4
+		IF i < 10 THEN
+			ec = 15
+		ELSEIF i < 20 THEN
+			ec = 11
+		ELSEIF i < 30 THEN
+			ec = 8
+		ELSE
+			ec = 6
+		END IF
+		IF ey0 >= k THEN
+			SPRITE 7,ey0 - k - 1,ex0 + k,ef,ec
+			SPRITE 8,ey0 - k - 1,ex0 - k,ef,ec
+		ELSE
+			SPRITE 7,$D1,0,0,0
+			SPRITE 8,$D1,0,0,0
+		END IF
+		SPRITE 9,ey0 + k - 1,ex0 + k,ef,ec
+		SPRITE 10,ey0 + k - 1,ex0 - k,ef,ec
+		IF i = 14 THEN SOUND 3,6,11
+		IF i = 28 THEN SOUND 3,7,8
+	NEXT i
+	SOUND 3,,0
+	SPRITE 7,$D1,0,0,0
+	SPRITE 8,$D1,0,0,0
+	SPRITE 9,$D1,0,0,0
+	SPRITE 10,$D1,0,0,0
 	DEFINE COLOR 32,16,txt_red
 	WAIT
 	DEFINE COLOR 48,16,txt_red
@@ -953,9 +1014,86 @@ player_bitmap:
 	BITMAP "................"
 	BITMAP "................"
 
-	' Per-row colors (fg*16+bg) for chars 128-135: the 7 piece colors
-	' (red, lt green, yellow, cyan, blue, dk red, gray) then the white
-	' border/floor tile. Solid tiles, so all 8 rows of each are the same.
+	' Death-explosion debris: FOUR 16x16 defs (2x-magnified), a real
+	' expansion animation played in sequence -- the particles start as
+	' a tight nucleus and spread further apart in each frame. The four
+	' sprites barely move; the animation IS the explosion.
+	' Frame 1 (def 7): solid nucleus.
+expl_bitmap:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "......XX........"
+	BITMAP ".....XXXX......."
+	BITMAP ".....XXXX......."
+	BITMAP "......XX........"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	' Frame 2 (def 8): small burst, particles just separating.
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "......X.X......."
+	BITMAP ".....X...X......"
+	BITMAP "....X..X..X....."
+	BITMAP "......X.X......."
+	BITMAP ".....X...X......"
+	BITMAP "....X..X..X....."
+	BITMAP "......X.X......."
+	BITMAP ".....X.X........"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	' Frame 3 (def 9): mid spread.
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....X.....X....."
+	BITMAP "..X....X........"
+	BITMAP ".....X......X..."
+	BITMAP "...X....X......."
+	BITMAP ".X........X....."
+	BITMAP "......X......X.."
+	BITMAP "...X.....X......"
+	BITMAP ".X....X.....X..."
+	BITMAP ".....X....X....."
+	BITMAP "..X......X......"
+	BITMAP "....X..X....X..."
+	BITMAP "..X.....X......."
+	BITMAP "................"
+	BITMAP "................"
+	' Frame 4 (def 10): full shrapnel field.
+	BITMAP "X......X........"
+	BITMAP "....X.......X..."
+	BITMAP ".X........X....."
+	BITMAP "......X........X"
+	BITMAP "...X.......X...."
+	BITMAP "X.....X........."
+	BITMAP ".........X....X."
+	BITMAP "..X.....X......."
+	BITMAP ".......X....X..."
+	BITMAP "X...X..........X"
+	BITMAP "......X..X......"
+	BITMAP "...X.......X...."
+	BITMAP ".X.....X......X."
+	BITMAP "....X......X...."
+	BITMAP "X........X......"
+	BITMAP "......X......X.."
+
+	' Per-row colors (fg*16+bg) for chars 128-136: the 7 piece colors
+	' (red, lt green, yellow, cyan, blue, dk red, gray), the white
+	' border/floor tile, then the black-on-black shaft-interior tile
+	' (char 136: empty playfield cells use it instead of space, so the
+	' shaft background stays BLACK when the win/game-over themes recolor
+	' the ASCII set). Solid tiles, so all 8 rows of each are the same.
 	' Text (ASCII 32-95) color tables, applied 16 chars per DEFINE COLOR
 	' (the repo's proven runtime-recolor size; 4 calls with WAITs cover
 	' the set). Every row byte is the same, so ONE 128-byte table serves
@@ -1022,6 +1160,7 @@ tile_colors:
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
 
 	'
 	' Shape catalog: for each of the 16 (HL,HR) buckets (index = HL*4+HR),

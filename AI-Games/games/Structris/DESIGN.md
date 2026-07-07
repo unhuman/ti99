@@ -259,11 +259,14 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
 ## 7. Colors & Tiles
 
-- Eight consecutive solid tiles, chars **128–135**: chars 128–134 are the seven piece colors
+- Nine consecutive solid tiles, chars **128–136**: chars 128–134 are the seven piece colors
   `c1..c7` (red, light green, yellow, cyan, blue, dark red, gray on black), char 135 is the
-  white-on-black border/floor tile. All eight share one `filled_bitmap` pattern; colors come from
-  one `DEFINE COLOR 128,8,tile_colors` block (8 per-row color bytes per char, `fg*16+bg`), same as
-  every other CVBasic game in this repo. A cell's char code is simply `128 + colorindex - 1`.
+  white-on-black border/floor tile, and char **136 is a black-on-black tile used for every empty
+  shaft-interior cell** (instead of space) so the playfield background stays black when the
+  win/game-over themes recolor the ASCII set. All nine share one `filled_bitmap` pattern; colors
+  come from one `DEFINE COLOR 128,9,tile_colors` block (8 per-row color bytes per char,
+  `fg*16+bg`), same as every other CVBasic game in this repo. A cell's char code is simply
+  `128 + colorindex - 1`.
 - **Per-cell colors — the screen is the color model.** There is no per-column color variable:
   when a piece lands, only its *newly added* cells are painted in the piece's color, so every
   settled cell permanently keeps the color of the piece that created it (pieces visibly hold their
@@ -310,7 +313,13 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 - **Terminal screens** — both recolor the ASCII set (chars 32–95) in four 16-char `DEFINE COLOR`
   chunks (16 is the repo's proven runtime-recolor size, from Ms. Pac-Man's maze recolor; all rows
   are one byte, so a single 128-byte table serves all four chunks), both prompt just
-  **"PRESS FIRE"** (no reason given), and fire → **title** from both. Game over: text goes
+  **"PRESS FIRE"** (no reason given), and fire → **title** from both. Game over opens with an
+  **explosion centered on the player**: the player sprite vanishes and four debris sprites
+  (slots 7–10) play a **4-frame expansion animation** (defs 7–10, one per 10 frames over ~0.7 s:
+  tight nucleus → small burst → mid spread → full shrapnel field — the particles start packed
+  together and spread apart *within* the defs). The sprites themselves barely drift (1 px every
+  5 frames, 8 px total) so the cloud stays anchored and reads as one cohesive blast, with a
+  white→yellow→red→dark-red ramp and a three-pulse noise burst. Only then does the text go
   **white-on-dark-red** (`txt_red`, `$F6`) — the HUD/message area and the field around the shaft
   turn red while the board keeps its piece colors and the buried player keeps blinking. Win: a
   full **dark-green victory banner** (`txt_green`, `$FC`) — the board is cleared and the message
