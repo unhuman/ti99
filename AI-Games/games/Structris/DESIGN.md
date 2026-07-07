@@ -321,11 +321,18 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   5 frames, 8 px total) so the cloud stays anchored and reads as one cohesive blast, with a
   white→yellow→red→dark-red ramp and a three-pulse noise burst. Only then does the text go
   **white-on-dark-red** (`txt_red`, `$F6`) — the HUD/message area and the field around the shaft
-  turn red while the board keeps its piece colors and the buried player keeps blinking. Win: a
-  full **dark-green victory banner** (`txt_green`, `$FC`) — the board is cleared and the message
+  turn red while the board keeps its piece colors and the buried player keeps blinking. Win:
+  first **fireworks over the right side of the still-black screen** — five rockets, each a
+  rising white spark (with a rising whistle) that pops into the same 4-frame expansion animation
+  (reusing defs 7–10, four tightly-overlapped sprites per shell) in its own color
+  (yellow/green/red/blue/white) with a noise pop — and only then the full **dark-green victory
+  banner** (`txt_green`, `$FC`): the board is cleared and the message (with the final score)
   prints on the solid green field (the old version printed over leftover playfield tiles and read
   as garbage). The **title screen restores** the normal white-on-black text colors (`txt_white`,
-  `$F1`) before printing anything, and hides all 7 sprites.
+  `$F1`) before printing anything, hides all 7 sprites, and shows the **last score in the
+  top-left corner, digits only** (`00000` on the initial title; `#score` isn't reset until a
+  game starts) plus the **session high score top-right, right-justified** (`HI XXXXX`, `#hi` —
+  updated at every game over/win, persists until power-off like Astiroids' high score).
 
 ## 9. Sound (SN76489)
 

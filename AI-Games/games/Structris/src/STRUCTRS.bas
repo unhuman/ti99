@@ -130,6 +130,11 @@ title_screen:
 	DEFINE COLOR 80,16,txt_white
 	WAIT
 	CLS
+	' The last score lives in the top-left corner, digits only (00000
+	' on the initial title; #score isn't reset until a game starts).
+	' The session high score sits top-right, right-justified.
+	PRINT AT CPOS(0,0),<5>#score
+	PRINT AT CPOS(0,24),"HI ",<5>#hi
 	PRINT AT CPOS(2,8),"S T R U C T R I S"
 	PRINT AT CPOS(5,3),"THE MACHINE BUILDS THE"
 	PRINT AT CPOS(6,3),"STRUCTURE.  YOU DODGE IT."
@@ -818,6 +823,7 @@ level_up:
 	' ---- Terminal screens ----
 	'
 game_over:
+	IF #score > #hi THEN #hi = #score
 	' The smashed player stays on screen, BLINKING at the spot where
 	' they were buried (don't hide the sprite -- it marks the death).
 	' Defeat theme, the mirror of the win banner's green: the ASCII set
@@ -921,15 +927,71 @@ blink_player:
 	RETURN
 
 win_screen:
-	' Victory banner: repaint the ASCII set white-on-DARK-GREEN and
-	' clear the board -- the screen becomes a solid green banner with
-	' white text (the old version printed over leftover playfield tiles
-	' and read as garbage). The title screen restores the normal text
-	' colors before anything else is printed. The player's sprite stays
-	' visible, steady -- they survived.
+	IF #score > #hi THEN #hi = #score
+	' Victory: first FIREWORKS over the right side of the (still black)
+	' screen -- five rockets, each a rising white spark that pops into
+	' the 4-frame expansion animation (reusing the death-explosion defs
+	' 7-10) in its own color, with a rising launch whistle and a noise
+	' pop. Only then the banner: repaint the ASCII set white-on-DARK-
+	' GREEN and clear the board (the old version printed over leftover
+	' playfield tiles and read as garbage). The title screen restores
+	' the normal text colors before anything else is printed. The
+	' player's sprite stays visible, steady -- they survived.
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
+	' Rockets alternate RIGHT and LEFT of the shaft. The 32-px burst
+	' boxes (plus their +/-3 px sprite offsets) are clamped clear of
+	' the shaft borders -- fireworks may overlap the sidebar/HUD but
+	' NEVER the game area (bounds computed from this level's ML/W).
+	rx = (ML + W + 2) * 8 + 3
+	lx = ML * 8 - 35
+	FOR fw = 1 TO 6
+		IF (fw AND 1) THEN
+			bx = rx + RANDOM(221 - rx)
+		ELSE
+			bx = 3 + RANDOM(lx - 2)
+		END IF
+		' Burst height: at least 60% up the screen (by <= 77) and high
+		' enough that the whole 32-px burst box keeps an 8-px margin
+		' from the screen top (box top = by-4, so by >= 12).
+		by = 12 + RANDOM(66)
+		IF fw = 1 THEN ec = 11
+		IF fw = 2 THEN ec = 3
+		IF fw = 3 THEN ec = 9
+		IF fw = 4 THEN ec = 5
+		IF fw = 5 THEN ec = 15
+		IF fw = 6 THEN ec = 7
+		' Launch: the spark climbs from below the floor line to the
+		' burst point with a rising whistle.
+		k = 150
+		WHILE k > by
+			WAIT
+			SPRITE 7,k - 1,bx,28,15
+			#fq = k
+			#fq = 900 - #fq * 4
+			SOUND 0,#fq,9
+			k = k - 3
+		WEND
+		SOUND 0,,0
+		SOUND 3,5,12
+		' Pop: same 4-frame expansion as the death explosion, four
+		' tightly-overlapped sprites so the burst reads as one shell.
+		FOR i = 1 TO 28
+			WAIT
+			ef = 28 + ((i - 1) / 7) * 4
+			SPRITE 7,by - 4,bx + 3,ef,ec
+			SPRITE 8,by - 4,bx - 3,ef,ec
+			SPRITE 9,by + 2,bx + 3,ef,ec
+			SPRITE 10,by + 2,bx - 3,ef,ec
+			IF i = 20 THEN SOUND 3,6,7
+		NEXT i
+		SOUND 3,,0
+		SPRITE 7,$D1,0,0,0
+		SPRITE 8,$D1,0,0,0
+		SPRITE 9,$D1,0,0,0
+		SPRITE 10,$D1,0,0,0
+	NEXT fw
 	FOR p = 0 TO MAXP - 1
 		SPRITE 1 + p,$D1,0,0,0
 	NEXT p
@@ -945,7 +1007,7 @@ win_screen:
 	PRINT AT CPOS(9,8),"CONGRATULATIONS!"
 	PRINT AT CPOS(12,3),"YOU SURVIVED ALL 10 LEVELS."
 	PRINT AT CPOS(14,5),"THE MACHINE GIVES UP."
-	PRINT AT CPOS(16,8),"SCORE ",<5>#score
+	PRINT AT CPOS(16,10),"SCORE ",<5>#score
 	PRINT AT CPOS(19,11),"PRESS FIRE"
 win_rel:
 	WAIT
