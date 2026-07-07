@@ -7,12 +7,17 @@
 > apply here too. Sibling CVBasic projects: `games/Astiroids`, `games/Adventire`,
 > `games/mspacman-cv-xb-port`.
 >
-> **No cross-platform pacing tricks needed** (unlike Astiroids' `pacen`): the main loop does
-> trivial per-frame work (one sprite, a handful of scalar updates), so both machines finish it well
-> within a single 60Hz NTSC vblank and a plain `WAIT` gives the same real-world tick rate on both —
-> same pattern as `games/Adventire`. The $1800 name table (written directly by
-> `redraw_col`/`draw_borders`) is the standard CVBasic screen layout on both targets, so no
-> platform `#IF` branching was needed anywhere in the source.
+> **TI-99 frame budget & time-based pacing.** The TMS9900 backend is slow enough that the naive
+> per-frame loop missed vblanks (the TI ran ~20% slower than ColecoVision and stuttered). Two
+> answers, both in the source: (1) hot paths precompute everything at spawn/landing (`bpx0/bpx1`
+> per-bar pixel bounds, `sh1` per-column surface pixels, `pfr/pcv/ptpx/pgate` per-piece constants,
+> a maintained `nact` count, row-clear only on landing frames, banded row-clear shift), so
+> `rect_test` and the per-frame piece loop are compares/adds only; and (2) the fall accumulator is
+> scaled by the elapsed `FRAME` delta (clamped to 4), so any frame that still slips becomes a 1-px
+> catch-up step instead of a slowdown — both machines run the same real-world speed by
+> construction. No platform `#IF` branching is needed anywhere in the source. (Verified in
+> Classic99: the near-idle game-over loop blinks at exactly 60Hz — 532.8ms vs 533.3 expected — and
+> gameplay fall rate measures ~60 game-px/s within screenshot-timing error.)
 >
 > **Do not use CVBasic `MODE 2` (hard-won lesson).** The first cut of this game used `MODE 2` with
 > group colors poked at `$2010+`, exactly as the CVBasic manual describes. It compiled clean on
@@ -57,17 +62,18 @@ This port is a **faithful reinterpretation**, not a transliteration:
   "row cleared" detection into hardware-specific low-res color reads. The TI-99 has no equivalent
   primitive, and CVBasic gives us a plain 32×24 tile grid instead — so this port models the
   structure directly as **per-column integer heights** (matching the original's own `H(I)` array),
-  animates each piece as 1–3 bars **falling from the top of the shaft to their landing row**, and
-  turns "row cleared" into an explicit compaction step. The original's help text ("FINISHED ROWS
+  animates each piece as **one magnified sprite falling pixel-by-pixel from above the shaft to its
+  landing row** (converted to background characters on landing), and turns "row cleared" into an
+  explicit compaction step. The original's help text ("FINISHED ROWS
   FALL AWAY") describes exactly this outcome, so the reinterpretation matches the stated design
   even though the mechanism differs.
 
 ## 1. Concept & Objective
 
 - Columns of blocks grow from the floor, a continuous **stream** of pieces (up to `MAXP = 6` in
-  flight at once, `PGAP = 1` clear row between them — the original emits pieces 4 scan lines
-  apart at 3 scan lines per cell row, ≈1.33 rows, so 1 is the closest cell-grid match) aimed at
-  wherever you're standing.
+  flight at once, `PGAP = 11` clear *pixels* between them — the original emits pieces 4 scan
+  lines apart at 3 scan lines per cell row, ≈1.33 rows ≈ 11 px at 8 px/row) aimed at wherever
+  you're standing. Falling pieces are **sprites descending 1 pixel at a time** (§6).
 - You stand on top of the stack and move along its ragged skyline: left/right to change columns,
   up to climb higher into the open shaft, down to duck into a valley between taller neighbors.
 - A piece descending into your cell **forces you down**; when the cell below you is blocked (the
@@ -81,26 +87,32 @@ This port is a **faithful reinterpretation**, not a transliteration:
 
 | Action | Input | Behavior |
 |---|---|---|
-| Move left / right | `cont1.left` / `cont1.right` | Step one column, only if the destination cell is empty (settled stack **and** falling pieces block movement — the original tests `SCRN`, which sees both). |
-| Climb up | `cont1.up` | Step one row up, if the cell above is empty. |
-| Duck down | `cont1.down` | Step one row down, if the cell below is empty. |
-| Start / restart | `cont1.button` | Starts the game from the title screen; restarts (level 1) from the game-over or win screen. |
+| Move left / right | `cont1.left` / `cont1.right` | Slide `PSPD = 2` px per frame, only into free space (settled stack **and** falling pieces block, pixel-exact — the original tests `SCRN`, which sees both). |
+| Climb up | `cont1.up` | Slide 2 px/frame upward, if the space above is free. |
+| Duck down | `cont1.down` | Slide 2 px/frame downward, if the space below is free. |
+| Start | `cont1.button` | Starts the game from the title screen. From the game-over or win screen, fire returns to the **title** (not straight into a new game). |
+| 838 setup | keys `8`,`3`,`8` on the title | Opens the setup screen (same hidden convention as Astiroids): press `1`–`9` for the starting level, or `0` for level 10 — the game begins immediately. The choice persists for later games this session. Room is reserved for more 838 options later. |
 
-Movement is debounced to one step per ~6 frames so repeated taps feel controllable rather than
-input-mashy; CVBasic has no built-in key-repeat delay, so this game rolls its own via a per-frame
-countdown (`move_cd`).
+**Movement is smooth pixels, like the falling pieces** — the player is a free `(PX,PY)` pixel
+rect, not a cell occupant; horizontal and vertical axes are independent so the player can slide
+along a surface while climbing or ducking. The move blip is throttled to one per 8 frames
+(`move_cd`) so continuous movement doesn't buzz.
 
 ## 3. Screen & HUD
 
 - **Mode:** CVBasic **default startup mode** (no `MODE` statement — see the header warning about
   `MODE 2`) — 32×24 text grid at VRAM `$1800`, 8×8 background tiles with per-row `DEFINE COLOR`
-  colors, ASCII font preloaded, sprite plane independent of the tile colors.
-- **Row 0 (HUD):** `LV 03  CLR 05/09` — current level, rows cleared / rows needed this level.
-- **Rows 1–16:** the shaft. Row 1 is the ceiling; row 16 is the lowest playable row (directly above
-  the floor).
-- **Row 17:** floor border (`HLIN`-equivalent solid row) plus one column of vertical border tile on
-  each side of the shaft, redrawn whenever the shaft width changes at a level-up.
-- **Rows 19–22:** message area — level-up banner, "OOPS!" / game-over stats, win screen, title
+  colors, ASCII font preloaded, sprite plane independent of the tile colors. Plus `VDP(1) = $E3`
+  + `SPRITE FLICKER OFF`: **2× sprite magnification** (16×16 defs render 32×32), the same setup
+  as `games/Astiroids`.
+- **Rows 0–15 (screen):** the shaft — shaft row `r` (1..16) renders at screen row `r-1`, so the
+  shaft **ceiling is the screen top**: a piece sprite slides in smoothly from above the display
+  (the VDP's $E0–$FF "negative Y" band) instead of popping out from under a text row.
+- **Row 16:** floor border plus one column of vertical border tile on each side of the shaft,
+  redrawn whenever the shaft width changes at a level-up.
+- **Row 18 (HUD):** `LV 03  CLR 05/09` — current level, rows cleared / rows needed this level.
+  The HUD lives *below* the shaft because the top row is playfield now.
+- **Rows 19–23:** message area — level-up banner, "OOPS!" / game-over stats, win screen, title
   screen help text. Reuses the same rows so nothing needs to be laid out twice.
 
 ## 4. Playfield & Column Model
@@ -118,8 +130,10 @@ countdown (`move_cd`).
   this reason.) A cell at row `r` in column `c` is settled-filled when `r > SHAFT_H - H(c)`.
 - `MH = SHAFT_H - 3` — a column whose *forecast* is at or above this is "topped out" and skipped
   by the targeting logic (§5) so pieces don't pile past the ceiling.
-- Player position `(PCOL, PROW)`: `PCOL` in `1..W`, `PROW` in `1..SHAFT_H`. Movement into any
-  occupied cell is blocked (`cell_test`: settled stack + all falling bars).
+- Player position `(PX, PY)`: **free pixels** (bar left edge / top, shaft-pixel space = screen
+  space), clamped to the shaft interior. Movement into any occupied space is blocked pixel-exactly
+  (`rect_test`: settled stack + all falling bars vs. the 4×2 player rect). Piece targeting reads
+  the column under the bar's center pixel.
 
 ## 5. Piece Catalog & Targeting AI (ported from the original)
 
@@ -176,36 +190,64 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
 ## 6. The Stream, Falling, and the Smash Rule
 
-- **A continuous stream of rigid pieces.** Up to `MAXP = 6` pieces fall at once, all advancing on
-  the same cadence (one row per `FRAMES_PER_ROW = MAX(2, 8 - LV/2)` frames — faster at higher
-  levels), so their separations never change. A new piece spawns (re-aimed at the player's current
-  column) the moment the newest one has fully entered plus `PGAP = 1` clear rows; the first piece
-  after a lull waits out a short `spawn_timer`. This mirrors the original's back-to-back emission
-  (its state machine restarts the instant a piece finishes emitting, giving a ~1.33-row gap).
-- **Each piece falls as a rigid unit.** Its up-to-3 bars share the piece's fall counter
-  (`plead(p)`) and all land **simultaneously** the moment the piece bottom (the center bar)
-  reaches the center column's *booked* surface (`ptarget(p) = SHAFT_H - HF(X)` at spawn). Each
-  side bar rides `baroff` rows higher — exactly its column's height advantage (`hl`/`hr`), the
-  same number the shape was *selected* against (§5) — so at landing every bar is flush with its
-  own column's surface at the same instant: the piece slots into the terrain like a pre-fit
-  tetromino, never "compacting" against it bar-by-bar. This works because the shape table
-  guarantees a side gets a bar **only** when its true height difference is 0–3 (a clamped-to-3
-  side always has a 0 delta), so a rigid perfect fit always exists. The staggered *entry* from
-  the ceiling (side bars appearing `baroff` rows behind the center) is the direct analogue of the
-  original's `SL`/`SR` scan-line delay counters. Two pieces can share a column (the later one is
-  booked to land on top of the earlier one via `HF`), so the falling-bar redraw merges all of a
-  column's bars into one repaint pass per fall step.
+- **Every falling piece is ONE 2×-magnified sprite, falling 1 pixel at a time.** The enabling
+  invariant, verified against the whole shape table: **every piece fits a 3×3-cell box**
+  (`baroff + barht ≤ 3` for all ~19 variants — the original's shape comments are all 3-row
+  pictures), i.e. ≤24×24 px, inside one 32×32 magnified sprite (16×16 def, one cell = 4 def px).
+  At spawn the piece's def (`1+p`, 32 bytes at `$3800 + (1+p)*32`) is composed directly in VRAM:
+  columns `x-1`/`x`/`x+1` at def-x 0–3/4–7/8–11 (left byte = `$F0`/`$0F` nibbles, right byte =
+  `$F0`), art **bottom-aligned** so a bar `(off,ht)` covers def rows `16-(off+ht)*4 .. 15-off*4`.
+  Sprite X = the left-*neighbor* column's edge (`psx(p) = (ML+x-1)*8`; that third of the def is
+  transparent when `x = 1`); sprite Y = `ppy(p) - 33` (piece bottom minus the 32-px box, minus
+  the VDP's off-by-one), whose 8-bit wrap gives the smooth partial entry from above the screen
+  top. While falling the piece touches **no tiles at all**; when it lands the sprite is hidden
+  (`Y = $D1`) and its cells are painted as background characters in the same frame. Sprite
+  budget: player (slot/def 0) + 6 pieces = 7; the ≥11-px gap means two pieces' 32-px boxes never
+  share a scanline, so the worst case is 2 sprites on a line (one piece + the player) — no
+  flicker rotation needed (`SPRITE FLICKER OFF`, repo convention).
+- **Fall speed.** All pieces advance by the same per-frame pixel delta, dealt by an accumulator
+  (`acc += 8` per frame; while `acc >= fpr` move 1 px) — i.e. 8 px (one row) every
+  `fpr = MAX(2, 8 - LV/2)` frames, the exact average speed of the old one-row-per-`fpr`-frames
+  step (level 1: exactly 1 px/frame). Because every piece moves the same `dy`, separations never
+  change. A new piece spawns (re-aimed at the player's current column) the moment the newest one
+  has fully entered plus `PGAP = 11` clear pixels; the first piece after a lull waits out a short
+  `spawn_timer`. This mirrors the original's back-to-back emission (its state machine restarts
+  the instant a piece finishes emitting, giving a ~1.33-row ≈ 11-px gap).
+- **Each piece falls as a rigid unit.** Its up-to-3 bars share the piece's pixel position
+  (`ppy(p)` = piece bottom, shaft top = 0) and all land **simultaneously** the moment the piece
+  bottom reaches the center column's *booked* surface (`ppy >= ptarget(p)*8`, with
+  `ptarget(p) = SHAFT_H - HF(X)` at spawn). Each side bar rides `baroff` rows higher — exactly
+  its column's height advantage (`hl`/`hr`), the same number the shape was *selected* against
+  (§5) — so at landing every bar is flush with its own column's surface at the same instant: the
+  piece slots into the terrain like a pre-fit tetromino, never "compacting" against it
+  bar-by-bar. This works because the shape table guarantees a side gets a bar **only** when its
+  true height difference is 0–3 (a clamped-to-3 side always has a 0 delta), so a rigid perfect
+  fit always exists. `rect_test` (movement blocking + the smash rule) is **pixel-exact**: bar
+  `(off,ht)` occupies shaft pixels `[ppy-(off+ht)*8, ppy-off*8)`, tested for overlap against the
+  player's 4×2 rect (each subtraction guarded against unsigned wrap). It also reports the deepest
+  overlapping bar bottom (`rbb`), which drives the push-down.
 - An earlier draft dropped each bar independently onto its own column (each with its own landing
   row) — pieces visibly broke apart mid-fall and "squished" onto the stack one column at a time.
   If piece behavior ever regresses to that, this shared-counter design is what got lost.
-- **Forced down and smashed.** Every frame, if the player's cell is occupied (`cell_test`:
-  settled stack or any falling bar), the player is pushed **down** one row; if the cell below is
-  blocked — stack, floor, or another bar — they are **smashed**: game over ("OOPS!"). This is the
-  original's rule verbatim (Structris.asb 125–135: cell filled → below filled means death, else
-  `CY = CY + 1`). You cannot ride a piece out from underneath, and standing on the surface when a
-  piece lands on your column is instant death — the only escape is stepping *aside* before it
-  arrives. (An earlier draft pushed the player *up*, letting them surf descending pieces — far
-  too forgiving, and backwards from the original.)
+- **Forced down and smashed — pixel-exact.** Every frame, if a falling bar overlaps the player's
+  4×2 rect, the player's top is snapped **down** to the deepest overlapping bar's bottom; if the
+  pushed rect no longer fits — past the floor, into the settled stack, or into another piece —
+  they are **smashed**: game over ("OOPS!"). This is the original's rule (Structris.asb 125–135:
+  cell filled → below filled means death, else `CY = CY + 1`), made survivable at pixel scale:
+  the 2-px-tall bar **rides down inside a stream gap** (~11 px of air) and can still slip out
+  sideways — being confined is an escape opportunity, not instant death — but the gap between a
+  landing piece and the surface closes to nothing, so standing under a landing is still fatal.
+  (An earlier draft pushed the player *up*, letting them surf descending pieces — far too
+  forgiving, and backwards from the original.) On the game-over screen the player sprite is
+  **not removed** — it stays where they were buried, **blinking** (~half-second period,
+  `blink_player`) until fire returns to the title; on the win screen it stays visible, steady.
+- **Buried in settled cells is also death.** At fall speeds above 1 px/frame (level 2+, `dy` up
+  to 4) a piece can jump from just-above-the-player straight to its landing in one step: it
+  converts to background characters *while overlapping the player*, and no falling bar remains to
+  push them. `check_player` therefore also smashes a player whose rect overlaps the **settled**
+  stack (`qf` set with `rbb = 0`). Without this, the player was silently trapped alive inside the
+  stack — unable to move, immune to every later piece (their column tops out and is skipped by
+  targeting), riding level completions all the way to a free win (seen in play).
 - **`H(c)`/`HF(c)` are hard-capped at `SHAFT_H`** the moment a booking or landing would push them
   over. This isn't cosmetic: heights are plain 8-bit **unsigned** values and `SHAFT_H - H` row
   math would wrap to ~250 if a neighbor column (never gated by `MH`) grew past the top — an
@@ -219,41 +261,51 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   one `DEFINE COLOR 128,8,tile_colors` block (8 per-row color bytes per char, `fg*16+bg`), same as
   every other CVBasic game in this repo. A cell's char code is simply `128 + colorindex - 1`.
 - **Per-cell colors — the screen is the color model.** There is no per-column color variable:
-  when a bar lands, only its *newly added* cells are painted in the piece's color, so every settled
-  cell permanently keeps the color of the piece that created it (pieces visibly hold their shape
-  instead of the whole column repainting — the original's look). The falling-bar animation repaints
-  only the *empty* region above the settled stack, and row-clear compaction shifts cells down with
-  `VPEEK`/`VPOKE` so colors move with their cells.
-- **Landing erases before it paints.** The bar's last animation frame sits one row above its
-  landing cells; landing first blanks the whole empty region above the new stack top, *then*
-  paints the new cells — otherwise every landed bar leaves a floating ghost cell that compaction
-  later shifts into the stack (seen in play-testing). Related quirk: **CVBasic `FOR` checks its
-  limit at the bottom**, so an empty range (`FOR r = 1 TO 0`) still runs once — both landing loops
-  and the compaction shift are guarded with IFs for the column-full / full-clear edge cases.
+  when a piece lands, only its *newly added* cells are painted in the piece's color, so every
+  settled cell permanently keeps the color of the piece that created it (pieces visibly hold their
+  shape instead of the whole column repainting — the original's look). Falling pieces never touch
+  the tiles (they're sprites, §6), so there is nothing to erase at landing — the old tile-animation
+  ghost-cell problem is gone by construction. Row-clear compaction shifts cells down with
+  `VPEEK`/`VPOKE` so colors move with their cells. Sprite colors for the falling pieces come from
+  a small `colv(1..7)` map holding the same seven hues as the tiles.
+- **CVBasic `FOR` checks its limit at the bottom**, so an empty range (`FOR r = 1 TO 0`) still
+  runs once — the landing paint loop and the compaction shift are guarded with IFs for the
+  column-full / full-clear edge cases.
 - The standard preloaded ASCII font (chars 32–127) covers all HUD/message text — no `DEFINE CHAR`
   needed for text.
-- Player sprite art is a full **16×16 `BITMAP` block** (climber in the top-left 8×8, rest
-  transparent): CVBasic sprite definitions are always 32 bytes, so an 8-row bitmap would make
-  `DEFINE SPRITE` read on into the following data (visible as garbage pixels beside the player —
-  seen in emulator testing).
-- Player: single 8×8 sprite (no magnification — a shaft column is exactly one 8px tile wide, and
-  magnifying the player would make it wider than the column it stands in), solid white, transparent
-  background. Independent of the tile color budget (sprite plane rule, CLAUDE.md §4).
+- Player sprite art is a full **16×16 `BITMAP` block** (rest transparent): CVBasic sprite
+  definitions are always 32 bytes, so an 8-row bitmap would make `DEFINE SPRITE` read on into the
+  following data (visible as garbage pixels beside the player — seen in emulator testing).
+- Player: a **bar, 2×1 def px** in the def's top-left corner — **4×2 screen px** under the global
+  2× magnification — solid white, at its free pixel position (`SPRITE 0, PY-1, PX`). The squeeze
+  is the design: 2 px tall fits through the ~11-px stream gaps (§6). Independent of the tile
+  color budget (sprite plane rule, CLAUDE.md §4).
 
 ## 8. Row Clearing & Leveling
 
-- `RG = 4 + LV` rows required to advance (5 at level 1, up to 14 at level 10).
+- `RG = 5 + LV*2` rows required to advance — 7 at level 1, rising by 2 per level to 25 at
+  level 10.
 - After a piece lands, `newmin = MIN(H(1..W))`. If `newmin > 0`: `RD = RD + newmin`, then
   subtract `newmin` from every `H(c)` (the completed rows "fall away" — direct nod to the
   original's help-screen wording). On screen, each column's cells are shifted down `newmin` rows
   with `VPEEK`/`VPOKE` (preserving per-piece cell colors, §7) and the vacated top rows blanked.
   Every piece still in flight gets `ptarget(p) += newmin` (and `HF` drops with `H`) so it lands
   on the compacted surface instead
-  of floating. The player's `PROW` doesn't change (they don't fall with the compaction — they were
+  of floating. The player's `PY` doesn't change (they don't fall with the compaction — they were
   standing above the cleared rows, not on them), which reads on screen as the player gaining
   clearance, a small reward beat for clearing rows.
 - When `RD >= RG`: level-up banner, `LV = LV + 1`, `RD = 0`, all `H(c) = 0`, shaft re-centered for
   the new (possibly narrower) `W`, player recentered at the new floor. If `LV > 10`: win screen.
+- **Terminal screens** — both recolor the ASCII set (chars 32–95) in four 16-char `DEFINE COLOR`
+  chunks (16 is the repo's proven runtime-recolor size, from Ms. Pac-Man's maze recolor; all rows
+  are one byte, so a single 128-byte table serves all four chunks), both prompt just
+  **"PRESS FIRE"** (no reason given), and fire → **title** from both. Game over: text goes
+  **white-on-dark-red** (`txt_red`, `$F6`) — the HUD/message area and the field around the shaft
+  turn red while the board keeps its piece colors and the buried player keeps blinking. Win: a
+  full **dark-green victory banner** (`txt_green`, `$FC`) — the board is cleared and the message
+  prints on the solid green field (the old version printed over leftover playfield tiles and read
+  as garbage). The **title screen restores** the normal white-on-black text colors (`txt_white`,
+  `$F1`) before printing anything, and hides all 7 sprites.
 
 ## 9. Sound (SN76489)
 
@@ -284,13 +336,23 @@ either platform).
       ColecoVision (`build-coleco.sh` → `structrs.rom`).
 - [x] Title screen shows controls/help; FIRE starts level 1. (TI verified in Classic99 —
       driven + screenshotted via the scripted harness; CV pending user verification.)
-- [x] Pieces visibly fall, target the player's column, keep per-piece colors/shapes on the
-      stack, and use the shape/color catalog from §5. (TI verified in Classic99.)
-- [x] Player sprite moves with the joystick; the smash rule kills a player who stays under a
-      descending piece; up to 6 pieces stream simultaneously with ~1-row gaps. (TI verified in
-      Classic99.)
+- [x] Pieces fall as **single magnified sprites, 1 px at a time** (sub-cell offsets visible
+      between snapshots; smooth entry from above the screen top), target the player's column,
+      convert flush to per-piece colored characters on landing, and use the shape/color catalog
+      from §5. (TI verified in Classic99.)
+- [x] Player renders as a 4×2 bar moving **smoothly in pixels** (2 px/frame, independent axes,
+      pixel-exact blocking) and can survive inside the gaps between falling pieces; the smash
+      rule still kills a player who stays under a landing piece; up to 6 pieces stream
+      simultaneously with ~11-px gaps. (TI verified in Classic99: smooth climb/slide, player
+      alive mid-stream between pieces, AFK player buried → OOPS.)
 - [ ] Rows compact and count toward level-up; level-up narrows the shaft and speeds up play.
       (Code-verified + simulated; not yet observed in emulator.)
-- [ ] Reaching level 11 shows the win screen; getting buried shows "OOPS!" with a restart prompt.
-      (OOPS observed; win screen not yet.)
-- [ ] TI-99 and ColecoVision builds feel the same speed (no pacing drift between platforms).
+- [x] Getting buried shows "OOPS!" with a blinking player; fire returns to the **title**. The
+      win screen is a dark-green banner with white text, and the title restores normal colors
+      after it. (TI verified in Classic99 — the win screen via a scratch probe build that jumps
+      straight to it; a full played-through win has not been performed.)
+- [x] 838 on the title opens the setup screen; a digit picks the starting level (0 = 10) and the
+      game begins at once — verified starting at level 5 (LV05, CLR00/09, 10-column shaft).
+- [x] TI-99 and ColecoVision run the same real-world speed: the fall is FRAME-delta paced, and
+      Classic99 measurements confirm 60Hz (blink probe 532.8ms/533.3 expected; fall rate ~60px/s
+      within measurement error). CV still needs its user-side CoolCV pass.

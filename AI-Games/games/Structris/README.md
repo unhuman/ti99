@@ -12,13 +12,21 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 ## Play
 
 - You stand on top of the block stack. A continuous **stream** of pieces (1-3 columns wide, up to
-  6 in the shaft at once with ~1 clear row between them) falls from the ceiling, each aimed at
-  wherever you're standing when it spawns, permanently adding to the stack where it lands.
-- Move left/right along the skyline, climb into open shaft, or duck into a valley between taller
-  neighbors — falling pieces block movement just like settled blocks, so weave through the gaps.
-- A piece descending into your cell **forces you down**; when the cell below you is blocked (the
-  stack, the floor, or another piece), you're **smashed**: game over. You can't ride a piece out —
-  step aside before it reaches you.
+  6 in the shaft at once with ~1.3 rows of air between them) falls smoothly from above the screen
+  top, each aimed at wherever you're standing when it spawns, permanently adding to the stack
+  where it lands.
+- You move **smoothly, 2 pixels per frame** (like the pieces fall), and you're a squeezed 4×2-px
+  bar rather than a full-cell character: slide along the skyline, climb into open shaft, duck into
+  a valley — falling pieces block movement just like settled blocks, pixel-exact, and being only
+  2 px tall you can **squeeze through the ~11-px gaps** in the stream.
+- A piece descending onto you **forces you down**, pixel by pixel; when there's no room left below
+  (the stack, the floor, or another piece), you're **smashed**: game over. You can ride down
+  inside a gap between pieces and slip out sideways — but a piece landing on you closes the gap to
+  nothing, so get out from under it — a piece that lands *on* you buries you even at the fastest
+  fall speeds. When you're buried, your bar stays on screen **blinking** at the spot where it
+  happened and the HUD/backdrop turns dark red; fire returns to the title. Surviving all 10
+  levels earns a dark-green victory banner instead.
+- Rows needed per level: 7 at level 1, +2 each level (25 at level 10).
 - Every column built up past a shared height threshold "falls away" (the completed rows compact
   out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows
   (14 columns at level 1 down to 5 at level 10, the original's widths), pieces come faster.
@@ -28,31 +36,40 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 
 | Action | Input |
 |---|---|
-| Move column | Joystick left / right |
-| Climb / duck | Joystick up / down |
-| Start / restart | Button |
+| Slide left / right (2 px/frame) | Joystick left / right |
+| Climb / duck (2 px/frame) | Joystick up / down |
+| Start (title) / back to title (game over, win) | Button |
+| Setup: pick starting level | Type `8` `3` `8` on the title, then `1`–`9` (or `0` for level 10) — the game starts immediately |
 
 ## How it's built
 
 - CVBasic **default video mode** (no `MODE` call — `MODE 2` compiles but renders broken on both
   machines; see `DESIGN.md` header) with 8 solid tiles at chars 128–135: seven piece colors plus
   the white border, colored per-character via `DEFINE COLOR` like every other CVBasic game in this
-  repo. Player is a single un-magnified 8×8 sprite (a shaft column is exactly one tile wide).
+  repo — plus **2× sprite magnification** (`VDP(1) = $E3`, as in Astiroids).
+- **Every falling piece is ONE magnified sprite descending 1 pixel per frame** (every shape in
+  the catalog fits a 3×3-cell box, so a 32×32 magnified sprite holds any piece; its 16×16 def is
+  composed in VRAM at spawn). On landing the sprite is hidden and the piece is converted to
+  background characters in place. The player is a sprite too: a 4×2-px white bar at a free pixel
+  position, moving 2 px/frame with pixel-exact collision (the squeeze is what lets it slip
+  through the stream gaps). The shaft ceiling sits at the screen top so pieces enter smoothly
+  from above the display.
 - The **piece catalog and targeting AI are ported directly** from the original's
   `ON HL*4+HR+1 GOTO …` table: pieces are picked by comparing a target column's height to its two
-  neighbors, so every piece **fits the terrain perfectly** — it falls from the ceiling as one
-  rigid tetromino-like shape (all columns sharing a single fall counter) and slots flush onto the
-  skyline in one landing. See `DESIGN.md` §5–6 for the full table and what got reinterpreted
+  neighbors, so every piece **fits the terrain perfectly** — it falls as one rigid
+  tetromino-like shape (all columns sharing a single pixel fall position) and slots flush onto
+  the skyline in one landing. See `DESIGN.md` §5–6 for the full table and what got reinterpreted
   (the Apple II renderer's continuous hardware scroll has no TI-99 equivalent).
 - **Height forecasting** makes the stream land correctly: targeting/shape selection read a
   forecast array (settled heights + every in-flight piece's booking), so a later piece aims at and
   fits the surface as it *will* be — the original books heights at emission time the same way.
 - The smash rule is the original's collision verbatim: an occupied player cell forces the player
   down one row; a blocked cell below means death.
-- **No cross-platform pacing tricks** (unlike `games/Astiroids`' `pacen`): the main loop's per-frame
-  work is trivial (one sprite, a few scalar updates), so both machines finish it comfortably inside
-  one 60Hz NTSC vblank and a plain `WAIT` gives the same real-world speed on both — same approach
-  as `games/Adventire`. No `#IF` platform branching needed anywhere in `STRUCTRS.bas`.
+- **Same real-world speed on both machines.** The TMS9900 backend is slower than the Z80's, so the
+  hot paths precompute everything at spawn/landing (pure compares/adds per frame) and the fall is
+  paced by the elapsed `FRAME` delta — a slipped frame becomes a 1-px catch-up step instead of a
+  slowdown. Measured at 60Hz in Classic99 (see `DESIGN.md` header). No `#IF` platform branching
+  needed anywhere in `STRUCTRS.bas`.
 
 ## Build
 
@@ -61,9 +78,13 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 
 ## Status
 
-**TI-99 build verified playing in Classic99** (scripted emulator run: title → fire → up to 5
-pieces streaming simultaneously as rigid shapes with per-piece colors, joystick weaving, smash
-rule kills a player caught under a landing piece → OOPS → fire restarts).
+**TI-99 build verified playing in Classic99** (scripted emulator runs: title → fire → pieces
+streaming as single magnified sprites falling pixel-by-pixel with ~11-px gaps, smooth entry from
+above the screen top, landings converting flush to per-piece colored tiles, the player bar
+sliding/climbing smoothly in pixels and surviving mid-stream between pieces, smash rule kills a
+player caught under a landing piece → OOPS with blinking player → fire returns to the title;
+838 → level 5 start verified; the green win banner and its color restore verified via a probe
+build; 60Hz timing confirmed by blink-period and fall-rate measurement).
 ColecoVision build compiles clean and shares all the same game logic; needs a CoolCV pass.
 
 Two toolchain landmines were found (and are documented in `DESIGN.md`'s header): CVBasic's

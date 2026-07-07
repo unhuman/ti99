@@ -15,12 +15,12 @@
 
 	CONST SHAFT_H = 16	' playable rows, 1 (ceiling) .. SHAFT_H (floor-adjacent)
 	CONST MH = SHAFT_H - 3	' a column at/above this height is "topped out"
-	CONST MOVE_DELAY = 6	' frames of debounce between player steps
+	CONST PSPD = 2		' player speed, pixels per frame per axis
 	CONST MAXP = 6		' max pieces in flight at once (the stream)
-	CONST PGAP = 1		' clear rows between one piece's top and the next
-				' piece's bottom. The original emits pieces 4 scan
-				' lines apart with 3 scan lines per cell row, so its
-				' gap is ~1.33 rows -- 1 is the closest match.
+	CONST PGAP = 11		' clear PIXELS between one piece's top and the
+				' next piece's bottom. The original emits pieces 4
+				' scan lines apart with 3 scan lines per cell row =
+				' 1.33 rows; at 8 px/row that's ~11 px.
 
 	DIM H(15)		' SETTLED column heights, index 1..W (0 unused)
 	DIM HF(15)		' FORECAST heights: settled + booked in-flight
@@ -37,24 +37,37 @@
 	DIM VBR(27)		' shape table: variant -> right column delta
 	DIM VCI(27)		' shape table: variant -> color index
 
-	' Up to MAXP rigid pieces fall at once, all on the same cadence, so
-	' their vertical separation never changes. Each piece p owns bar slots
-	' p*3 .. p*3+2. A piece's bars share its ONE fall counter (plead(p))
-	' and land together when the piece bottom reaches the center column's
-	' booked surface. Each side bar rides baroff rows higher -- exactly
-	' its column's height advantage, which the shape table selected the
-	' piece to fit -- so every bar lands flush simultaneously.
+	' Up to MAXP rigid pieces fall at once, all moving the same number of
+	' pixels per frame, so their vertical separation never changes. Each
+	' piece is ONE 2x-magnified 16x16 sprite (32x32 on screen = 4x4 cells;
+	' every shape in the catalog fits a 3x3-cell box, baroff+barht <= 3),
+	' composed into sprite def 1+p at spawn and converted to background
+	' characters when it lands. Each piece p owns bar slots p*3 .. p*3+2;
+	' its bars share ONE pixel fall position (ppy(p) = piece bottom) and
+	' land together when it reaches the center column's booked surface.
+	' Each side bar rides baroff rows higher -- exactly its column's
+	' height advantage, which the shape table selected the piece to fit --
+	' so every bar lands flush simultaneously.
+	' TI-99 performance: the TMS9900 backend is slow enough that per-frame
+	' multiplies/rescans here missed vblank (the game ran ~20% slow and
+	' stuttered while ColecoVision was fine). Everything a hot loop needs
+	' is therefore PRECOMPUTED at spawn/landing into the arrays below;
+	' rect_test and the per-frame piece loop do compares/adds only.
 	DIM barcol(18)		' bar -> column (0 = inactive)
 	DIM barht(18)		' bar -> height (1-3)
 	DIM baroff(18)		' bar -> rows ABOVE its piece's bottom (0-3)
+	DIM bpx0(18)		' bar -> baroff*8 (pixel gap below the bar)
+	DIM bpx1(18)		' bar -> (baroff+barht)*8 (pixel top offset)
 	DIM pact(6)		' piece -> active flag
-	DIM plead(6)		' piece -> bottom row of its center bar
-	DIM ptarget(6)		' piece -> landing row of its center bar
+	DIM ppy(6)		' piece -> pixel Y of piece bottom (shaft top = 0)
+	DIM ptpx(6)		' piece -> landing pixel of the piece bottom
 	DIM pci(6)		' piece -> color index (1-7)
-	DIM pext(6)		' piece -> total entry extent, max(baroff+barht)
-	DIM tt(6)		' per-column draw merge: bar top rows
-	DIM tb(6)		' per-column draw merge: bar bottom rows
-	DIM tc(6)		' per-column draw merge: bar color indexes
+	DIM pgate(6)		' piece -> spawn-gate pixel: entry extent*8 + PGAP
+	DIM psx(6)		' piece -> sprite X (left-neighbor column edge)
+	DIM pfr(6)		' piece -> sprite frame arg, (1+p)*4
+	DIM pcv(6)		' piece -> VDP sprite color (colv(pci) at spawn)
+	DIM colv(8)		' color index -> VDP sprite color
+	DIM sh1(15)		' column -> settled surface pixel, (SHAFT_H-H)*8
 
 	DEF FN CPOS(r,c) = r * 32 + c
 
@@ -69,6 +82,11 @@
 	CLS
 	BORDER 1
 
+	' 2x sprite magnification: 16x16 defs render 32x32 on screen (4x4
+	' cells), so one sprite holds any piece. Same setup as Astiroids.
+	VDP(1) = $E3
+	SPRITE FLICKER OFF
+
 	DEFINE CHAR 128,1,filled_bitmap		' char 128 = piece color 1
 	DEFINE CHAR 129,1,filled_bitmap		' char 129 = piece color 2
 	DEFINE CHAR 130,1,filled_bitmap		' ...
@@ -81,10 +99,33 @@
 
 	DEFINE SPRITE 0,1,player_bitmap
 
+	' Piece color index -> VDP sprite color (same hues as tile_colors).
+	colv(1) = 8
+	colv(2) = 3
+	colv(3) = 10
+	colv(4) = 7
+	colv(5) = 5
+	colv(6) = 6
+	colv(7) = 14
+
 	GOSUB setup_shapes
+	stlv = 1
 
 title_screen:
-	SPRITE 0,$D1,0,0,0
+	' Hide the player AND any piece sprites left frozen by a game-over/
+	' win screen, and restore the normal text colors (the win screen
+	' repaints the ASCII set white-on-dark-green).
+	FOR i = 0 TO MAXP
+		SPRITE i,$D1,0,0,0
+	NEXT i
+	DEFINE COLOR 32,16,txt_white
+	WAIT
+	DEFINE COLOR 48,16,txt_white
+	WAIT
+	DEFINE COLOR 64,16,txt_white
+	WAIT
+	DEFINE COLOR 80,16,txt_white
+	WAIT
 	CLS
 	PRINT AT CPOS(2,8),"S T R U C T R I S"
 	PRINT AT CPOS(5,3),"THE MACHINE BUILDS THE"
@@ -98,15 +139,38 @@ title_screen:
 	PRINT AT CPOS(17,3),"NARROWER, MEANER."
 	PRINT AT CPOS(20,4),"FIRE TO BEGIN THE TORTURE"
 	PRINT AT CPOS(23,2),"BY MARTIN HAYE, TI-99 PORT"
+	code_st = 0
+	lastk = 15
 title_rel:
 	WAIT
 	IF cont1.button THEN GOTO title_rel
 title_wait:
 	WAIT
+	' Secret setup: type 8,3,8 (CONT1.KEY: digit = value, 15 = none;
+	' same convention as Astiroids). Debounced on key-down. Nested
+	' single-comparison IFs only -- see the DESIGN.md header.
+	k = cont1.key
+	IF k <> 15 THEN
+		IF k <> lastk THEN
+			IF k = 8 THEN
+				IF code_st = 2 THEN GOTO setup838
+				code_st = 1
+			ELSEIF k = 3 THEN
+				IF code_st = 1 THEN
+					code_st = 2
+				ELSE
+					code_st = 0
+				END IF
+			ELSE
+				code_st = 0
+			END IF
+		END IF
+	END IF
+	lastk = k
 	IF cont1.button = 0 THEN GOTO title_wait
 
 new_game:
-	LV = 1
+	LV = stlv
 	RD = 0
 	GOSUB init_level
 
@@ -116,7 +180,10 @@ main_loop:
 	GOSUB advance_pieces
 	IF gameend = 1 THEN GOTO game_over
 	IF gameend = 2 THEN GOTO win_screen
-	SPRITE 0,PROW * 8 - 1,(ML + PCOL) * 8 - 1,0,15
+	' Player: a 4x2-px bar (2x1 def px, magnified) at free pixel position
+	' (PX,PY) -- it moves as smoothly as the falling pieces and, being
+	' only 2 px tall, can squeeze through the ~11-px gaps between them.
+	SPRITE 0,PY - 1,PX,0,15
 	' Sound effects stay on for a few frames, then these counters
 	' silence them (a SOUND ...,,0 in the same frame would be inaudible).
 	IF snd0 > 0 THEN
@@ -140,7 +207,8 @@ init_level:
 	W = 15 - LV
 	IF W < 5 THEN W = 5
 	ML = (32 - W) / 2
-	RG = 4 + LV
+	' Rows required: 7 at level 1, +2 per level (25 at level 10).
+	RG = 5 + LV * 2
 	' Clear the whole screen (not just the shaft rows) so title/game-over
 	' text in the message rows 18-23 doesn't linger into the new level.
 	FOR r = 0 TO 23
@@ -151,37 +219,50 @@ init_level:
 	FOR cc = 1 TO W
 		H(cc) = 0
 		HF(cc) = 0
+		sh1(cc) = SHAFT_H * 8
 	NEXT cc
 	FOR p = 0 TO MAXP - 1
 		pact(p) = 0
+		SPRITE 1 + p,$D1,0,0,0
 	NEXT p
 	FOR i = 0 TO MAXP * 3 - 1
 		barcol(i) = 0
 	NEXT i
+	nact = 0
 	pnew = 0
 	spawn_timer = 20
-	fall_cd = 1
+	' Fall speed: 8 px (one row) every fpr frames, spread 1 px at a time
+	' by an accumulator in advance_pieces (LV 1: fpr = 8 -> 1 px/frame).
+	fpr = 8 - LV / 2
+	IF fpr < 2 THEN fpr = 2
+	acc = 0
+	#lf = FRAME
 	move_cd = 0
 	gameend = 0
-	PCOL = W / 2
-	IF PCOL < 1 THEN PCOL = 1
-	PROW = SHAFT_H
+	' Player position is free pixels: PX = bar left edge, PY = bar top.
+	' Start centered on the floor (bar rows 126-127, flush on the floor).
+	PX = (ML + W / 2) * 8 + 2
+	PY = SHAFT_H * 8 - 2
 	GOSUB draw_borders
 	GOSUB draw_hud
 	RETURN
 
 draw_borders:
+	' Shaft row r renders at screen row r-1: the ceiling is the screen
+	' top, so a piece sprite slides in from above the display ($E0-$FF
+	' Y band) instead of popping out from under a text row.
 	FOR r = 1 TO SHAFT_H
-		VPOKE $1800 + r * 32 + ML,135
-		VPOKE $1800 + r * 32 + ML + W + 1,135
+		VPOKE $1800 + (r - 1) * 32 + ML,135
+		VPOKE $1800 + (r - 1) * 32 + ML + W + 1,135
 	NEXT r
 	FOR cx = ML TO ML + W + 1
-		VPOKE $1800 + (SHAFT_H + 1) * 32 + cx,135
+		VPOKE $1800 + SHAFT_H * 32 + cx,135
 	NEXT cx
 	RETURN
 
 draw_hud:
-	PRINT AT 0,"LV",<2>LV,"  CLR",<2>RD,"/",<2>RG,"   "
+	' HUD lives BELOW the shaft (row 18) -- the top row is playfield now.
+	PRINT AT CPOS(18,0),"LV",<2>LV,"  CLR",<2>RD,"/",<2>RG,"   "
 	RETURN
 
 	'
@@ -208,86 +289,126 @@ setup_shapes:
 	' ---- Player input ----
 	'
 handle_input:
-	IF move_cd > 0 THEN
-		move_cd = move_cd - 1
-		RETURN
-	END IF
-	' Movement is blocked by ANY occupied cell -- the settled stack AND
-	' falling pieces (the original tests SCRN, which sees both). Each
-	' direction computes its destination cell and asks cell_test.
+	' Smooth pixel movement, PSPD px per frame per axis; horizontal and
+	' vertical are independent so the player can slide along a surface.
+	' A move happens only if the destination rect is free (settled stack
+	' and falling pieces block, PIXEL-exact -- the 2-px-tall bar fits
+	' through the ~11-px gaps between pieces in the stream).
 	moved = 0
 	IF cont1.left THEN
-		IF PCOL > 1 THEN
-			qc = PCOL - 1
-			qr = PROW
-			GOSUB cell_test
+		qx = PX - PSPD
+		IF qx < (ML + 1) * 8 THEN qx = (ML + 1) * 8
+		IF qx <> PX THEN
+			qy = PY
+			GOSUB rect_test
 			IF qf = 0 THEN
-				PCOL = PCOL - 1
+				PX = qx
 				moved = 1
 			END IF
 		END IF
 	ELSEIF cont1.right THEN
-		IF PCOL < W THEN
-			qc = PCOL + 1
-			qr = PROW
-			GOSUB cell_test
+		qx = PX + PSPD
+		IF qx > (ML + W) * 8 + 4 THEN qx = (ML + W) * 8 + 4
+		IF qx <> PX THEN
+			qy = PY
+			GOSUB rect_test
 			IF qf = 0 THEN
-				PCOL = PCOL + 1
+				PX = qx
 				moved = 1
 			END IF
 		END IF
-	ELSEIF cont1.up THEN
-		IF PROW > 1 THEN
-			qc = PCOL
-			qr = PROW - 1
-			GOSUB cell_test
+	END IF
+	IF cont1.up THEN
+		IF PY < PSPD THEN
+			qy = 0
+		ELSE
+			qy = PY - PSPD
+		END IF
+		IF qy <> PY THEN
+			qx = PX
+			GOSUB rect_test
 			IF qf = 0 THEN
-				PROW = PROW - 1
+				PY = qy
 				moved = 1
 			END IF
 		END IF
 	ELSEIF cont1.down THEN
-		IF PROW < SHAFT_H THEN
-			qc = PCOL
-			qr = PROW + 1
-			GOSUB cell_test
+		qy = PY + PSPD
+		IF qy > SHAFT_H * 8 - 2 THEN qy = SHAFT_H * 8 - 2
+		IF qy <> PY THEN
+			qx = PX
+			GOSUB rect_test
 			IF qf = 0 THEN
-				PROW = PROW + 1
+				PY = qy
 				moved = 1
 			END IF
 		END IF
 	END IF
+	' Move blip, throttled (continuous movement would retrigger the
+	' sound every frame and turn it into a buzz).
+	IF move_cd > 0 THEN move_cd = move_cd - 1
 	IF moved THEN
-		move_cd = MOVE_DELAY
-		SOUND 0,224,10
-		snd0 = 2
+		IF move_cd = 0 THEN
+			SOUND 0,224,10
+			snd0 = 2
+			move_cd = 8
+		END IF
 	END IF
 	RETURN
 
 	'
-	' ---- Cell occupancy: (qc,qr) filled by stack or a falling bar -> qf ----
+	' ---- Pixel-rect occupancy for the 4x2 player bar at (qx,qy) ----
+	' Sets qf = 1 if the rect hits the settled stack or any falling bar,
+	' and rbb = the deepest bottom pixel of any overlapping falling bar
+	' (0 = none) -- check_player uses rbb to push the player down.
 	'
-cell_test:
+rect_test:
+	' HOT PATH (up to 4 calls/frame): compares, adds and precomputed
+	' array reads only -- no multiplies (bpx0/bpx1 were computed at
+	' spawn, sh1 at landing/rowclear). Recomputing these here is what
+	' made the TI-99 miss vblank.
 	qf = 0
-	IF qr > SHAFT_H - H(qc) THEN qf = 1
+	rbb = 0
+	qc1 = qx / 8 - ML
+	qc2 = (qx + 3) / 8 - ML
+	IF qy + 1 >= sh1(qc1) THEN qf = 1
+	IF qc2 <> qc1 THEN
+		IF qy + 1 >= sh1(qc2) THEN qf = 1
+	END IF
+	' A falling bar (off,ht) of piece p occupies shaft pixels
+	' [ppy-bpx1, ppy-bpx0). Overlap with the player's two pixel rows
+	' [qy, qy+1]. Unsigned-safe: each subtract is guarded by the IF
+	' just above it.
+	j = 0
 	FOR p = 0 TO MAXP - 1
 		IF pact(p) <> 0 THEN
+			py1 = ppy(p)
 			FOR b = 0 TO 2
-				j = p * 3 + b
-				IF barcol(j) = qc THEN
-					IF plead(p) > baroff(j) THEN
-						thi = plead(p) - baroff(j)
-						IF thi < barht(j) THEN
-							tlo = 1
+				hit = 0
+				IF barcol(j) = qc1 THEN hit = 1
+				IF barcol(j) = qc2 THEN hit = 1
+				IF hit THEN
+					k = bpx0(j)
+					IF py1 > k THEN
+						bb = py1 - k
+						k = bpx1(j)
+						IF py1 > k THEN
+							bt = py1 - k
 						ELSE
-							tlo = thi - barht(j) + 1
+							bt = 0
 						END IF
-						IF qr >= tlo THEN
-							IF qr <= thi THEN qf = 1
+						IF qy < bb THEN
+							IF qy + 2 > bt THEN
+								qf = 1
+								IF bb > rbb THEN rbb = bb
+							END IF
 						END IF
 					END IF
 				END IF
+				j = j + 1
 			NEXT b
+		ELSE
+			j = j + 3
 		END IF
 	NEXT p
 	RETURN
@@ -308,7 +429,8 @@ spawn_piece:
 	NEXT p
 	IF s = 255 THEN RETURN
 
-	x = PCOL
+	' Target the column under the player bar's center pixel.
+	x = (PX + 2) / 8 - ML
 	IF x < 1 THEN x = 1
 	IF x > W THEN x = W
 	xo = x
@@ -371,6 +493,8 @@ spawn_piece:
 			barcol(j + n2) = x - 1
 			barht(j + n2) = pbl
 			baroff(j + n2) = hl
+			bpx0(j + n2) = hl * 8
+			bpx1(j + n2) = (hl + pbl) * 8
 			IF hl + pbl > e THEN e = hl + pbl
 			HF(x - 1) = HF(x - 1) + pbl
 			IF HF(x - 1) > SHAFT_H THEN HF(x - 1) = SHAFT_H
@@ -381,6 +505,8 @@ spawn_piece:
 		barcol(j + n2) = x
 		barht(j + n2) = pb0
 		baroff(j + n2) = 0
+		bpx0(j + n2) = 0
+		bpx1(j + n2) = pb0 * 8
 		IF pb0 > e THEN e = pb0
 		n2 = n2 + 1
 	END IF
@@ -389,6 +515,8 @@ spawn_piece:
 			barcol(j + n2) = x + 1
 			barht(j + n2) = pbr
 			baroff(j + n2) = hr
+			bpx0(j + n2) = hr * 8
+			bpx1(j + n2) = (hr + pbr) * 8
 			IF hr + pbr > e THEN e = hr + pbr
 			HF(x + 1) = HF(x + 1) + pbr
 			IF HF(x + 1) > SHAFT_H THEN HF(x + 1) = SHAFT_H
@@ -399,178 +527,196 @@ spawn_piece:
 		barcol(j + n2) = 0
 		n2 = n2 + 1
 	WEND
-	plead(s) = 0
-	ptarget(s) = SHAFT_H - HF(x)
+	ppy(s) = 0
+	ptpx(s) = (SHAFT_H - HF(x)) * 8
 	HF(x) = HF(x) + pb0
 	IF HF(x) > SHAFT_H THEN HF(x) = SHAFT_H
 	pci(s) = VCI(pick)
-	pext(s) = e
+	pgate(s) = e * 8 + PGAP
+	pfr(s) = (1 + s) * 4
+	pcv(s) = colv(VCI(pick))
 	pact(s) = 1
+	nact = nact + 1
 	pnew = s
+	' Compose the whole piece into sprite def 1+s (32 bytes at
+	' $3800 + (1+s)*32). In def space one cell = 4 def px (2x magnified
+	' to 8 screen px): columns x-1/x/x+1 sit at def-x 0-3/4-7/8-11 (left
+	' byte = $F0/$0F nibbles, right byte = $F0), art bottom-aligned so a
+	' bar (off,ht) covers def rows 16-(off+ht)*4 .. 15-off*4. Every
+	' shape fits (baroff+barht <= 3 across the whole catalog).
+	c0f = 0
+	c2f = 0
+	IF x > 1 THEN
+		IF pbl > 0 THEN
+			c0f = 1
+			c0t = 16 - (hl + pbl) * 4
+			c0b = 15 - hl * 4
+		END IF
+	END IF
+	IF x < W THEN
+		IF pbr > 0 THEN
+			c2f = 1
+			c2t = 16 - (hr + pbr) * 4
+			c2b = 15 - hr * 4
+		END IF
+	END IF
+	FOR k = 0 TO 15
+		b1 = 0
+		b2 = 0
+		IF c0f THEN
+			IF k >= c0t THEN
+				IF k <= c0b THEN b1 = $F0
+			END IF
+		END IF
+		IF pb0 > 0 THEN
+			IF k >= 16 - pb0 * 4 THEN b1 = b1 OR $0F
+		END IF
+		IF c2f THEN
+			IF k >= c2t THEN
+				IF k <= c2b THEN b2 = $F0
+			END IF
+		END IF
+		VPOKE $3800 + (1 + s) * 32 + k,b1
+		VPOKE $3800 + (1 + s) * 32 + 16 + k,b2
+	NEXT k
+	' Sprite X: the def's left cell is column x-1, so the sprite sits
+	' one column left of the target (transparent there when x = 1).
+	psx(s) = (ML + x - 1) * 8
 	RETURN
 
 	'
 	' ---- Per-frame piece spawn / fall / land ----
 	'
 advance_pieces:
-	nact = 0
-	FOR p = 0 TO MAXP - 1
-		IF pact(p) <> 0 THEN nact = nact + 1
-	NEXT p
-
+	landed = 0
+	' TIME-based pacing: heavy frames (spawn compose, landing paint,
+	' row-clear shift) can make the TMS9900 miss a vblank; scaling the
+	' fall by the elapsed FRAME count turns a missed frame into a 1-px
+	' catch-up step instead of a slowdown, so the TI-99 runs the same
+	' real-world speed as ColecoVision. Clamped so a long pause (level
+	' banner) can't teleport pieces.
+	#fd = FRAME - #lf
+	#lf = FRAME
+	IF #fd > 4 THEN #fd = 4
 	' Spawning: the shaft carries a continuous STREAM. The first piece of
 	' a lull waits out spawn_timer; after that a new piece spawns as soon
-	' as the newest one has fully entered plus PGAP clear rows -- so up to
-	' MAXP pieces fall at once with a constant navigation gap between
-	' them, like the original's back-to-back emission.
+	' as the newest one has fully entered plus PGAP clear pixels -- so up
+	' to MAXP pieces fall at once with a constant navigation gap between
+	' them, like the original's back-to-back emission. nact is maintained
+	' by spawn_piece (+1) and landing (-1), never rescanned.
 	IF nact = 0 THEN
 		IF spawn_timer > 0 THEN
 			spawn_timer = spawn_timer - 1
 		ELSE
 			GOSUB spawn_piece
 			spawn_timer = 12
-			fpr = 8 - LV / 2
-			IF fpr < 2 THEN fpr = 2
-			fall_cd = fpr
-			nact = 1
 		END IF
 	ELSE
 		IF nact < MAXP THEN
-			IF plead(pnew) >= pext(pnew) + PGAP THEN
+			IF ppy(pnew) >= pgate(pnew) THEN
 				GOSUB spawn_piece
-				nact = nact + 1
 			END IF
 		END IF
 	END IF
 
 	IF nact > 0 THEN
-		fall_cd = fall_cd - 1
-		IF fall_cd <= 0 THEN
-			fpr = 8 - LV / 2
-			IF fpr < 2 THEN fpr = 2
-			fall_cd = fpr
-			' All pieces advance on the same cadence, one row per step,
-			' so their separation never changes. Each rigid piece lands
-			' as a unit when its bottom reaches its booked surface.
-			landed = 0
-			FOR p = 0 TO MAXP - 1
-				IF pact(p) <> 0 THEN
-					plead(p) = plead(p) + 1
-					IF plead(p) >= ptarget(p) THEN
-						FOR b = 0 TO 2
-							j = p * 3 + b
-							IF barcol(j) <> 0 THEN
-								cc = barcol(j)
-								' Settle: paint only the newly-added cells so
-								' settled cells keep their piece colors, then
-								' blank the single ghost row left by the bar's
-								' last animation frame (one row above the new
-								' top; never overlaps another piece -- see
-								' DESIGN.md). Loops guarded: CVBasic FOR checks
-								' at the BOTTOM, so an empty range would still
-								' run once.
-								hold = H(cc)
-								H(cc) = H(cc) + barht(j)
-								IF H(cc) > SHAFT_H THEN H(cc) = SHAFT_H
-								IF H(cc) > hold THEN
-									FOR r = SHAFT_H - H(cc) + 1 TO SHAFT_H - hold
-										VPOKE $1800 + r * 32 + ML + cc,128 + pci(p) - 1
-									NEXT r
-								END IF
-								k = baroff(j) + barht(j)
-								IF ptarget(p) > k THEN
-									r = ptarget(p) - k
-									VPOKE $1800 + r * 32 + ML + cc,32
-								END IF
-								barcol(j) = 0
+		' Smooth fall: 8 px (one row) every fpr frames, spread 1 px at a
+		' time by an accumulator -- the same average speed as the old
+		' one-row-per-fpr-frames step. All pieces advance by the same dy,
+		' so their separation never changes. Each rigid piece lands as a
+		' unit when its bottom pixel reaches its booked surface, and only
+		' THEN touches the tile grid (falling pieces are pure sprites).
+		acc = acc + 8 * #fd
+		dy = 0
+		WHILE acc >= fpr
+			dy = dy + 1
+			acc = acc - fpr
+		WEND
+		FOR p = 0 TO MAXP - 1
+			IF pact(p) <> 0 THEN
+				ppy(p) = ppy(p) + dy
+				IF ppy(p) >= ptpx(p) THEN
+					FOR b = 0 TO 2
+						j = p * 3 + b
+						IF barcol(j) <> 0 THEN
+							cc = barcol(j)
+							' Settle: paint only the newly-added cells so
+							' settled cells keep their piece colors. Loop
+							' guarded: CVBasic FOR checks at the BOTTOM,
+							' so an empty range would still run once.
+							hold = H(cc)
+							H(cc) = H(cc) + barht(j)
+							IF H(cc) > SHAFT_H THEN H(cc) = SHAFT_H
+							sh1(cc) = (SHAFT_H - H(cc)) * 8
+							IF H(cc) > hold THEN
+								FOR r = SHAFT_H - H(cc) + 1 TO SHAFT_H - hold
+									VPOKE $1800 + (r - 1) * 32 + ML + cc,128 + pci(p) - 1
+								NEXT r
 							END IF
-						NEXT b
-						pact(p) = 0
-						landed = 1
-					END IF
+							barcol(j) = 0
+						END IF
+					NEXT b
+					pact(p) = 0
+					nact = nact - 1
+					SPRITE 1 + p,$D1,0,0,0
+					landed = 1
+				ELSE
+					' Sprite top = piece bottom - 32 (bottom-aligned art
+					' in a 32px box); the VDP Y arg is one less, and the
+					' 8-bit wrap puts small ppy in the $E0-$FF "above the
+					' screen top" band for a smooth entry.
+					SPRITE 1 + p,ppy(p) - 33,psx(p),pfr(p),pcv(p)
 				END IF
-			NEXT p
-			IF landed THEN
-				SOUND 1,600,12
-				snd1 = 4
 			END IF
-			' Redraw falling bars COLUMN-wise: two pieces can share a
-			' column, so all of a column's bars must be merged into one
-			' repaint pass or the second would erase the first.
-			FOR cc = 1 TO W
-				nb = 0
-				FOR p = 0 TO MAXP - 1
-					IF pact(p) <> 0 THEN
-						FOR b = 0 TO 2
-							j = p * 3 + b
-							IF barcol(j) = cc THEN
-								IF plead(p) > baroff(j) THEN
-									tb(nb) = plead(p) - baroff(j)
-									IF tb(nb) < barht(j) THEN
-										tt(nb) = 1
-									ELSE
-										tt(nb) = tb(nb) - barht(j) + 1
-									END IF
-									tc(nb) = pci(p)
-									nb = nb + 1
-								END IF
-							END IF
-						NEXT b
-					END IF
-				NEXT p
-				IF nb > 0 THEN
-					' Repaint only the EMPTY region above the settled
-					' stack (settled cells keep their piece colors).
-					FOR r = 1 TO SHAFT_H - H(cc)
-						code = 32
-						FOR b = 0 TO nb - 1
-							IF r >= tt(b) THEN
-								IF r <= tb(b) THEN code = 128 + tc(b) - 1
-							END IF
-						NEXT b
-						VPOKE $1800 + r * 32 + ML + cc,code
-					NEXT r
-				END IF
-			NEXT cc
+		NEXT p
+		IF landed THEN
+			SOUND 1,600,12
+			snd1 = 4
 		END IF
 	END IF
 
 	GOSUB check_player
-	IF gameend = 0 THEN GOSUB check_rowclear
+	' Row clears can only happen when a piece has just landed -- don't
+	' rescan every column every frame (TI-99 frame budget).
+	IF gameend = 0 THEN
+		IF landed THEN GOSUB check_rowclear
+	END IF
 	RETURN
 
 	'
 	' ---- Push-or-die collision ----
 	'
 check_player:
-	' A piece entering the player's cell forces them DOWN; if the cell
-	' below is blocked (stack, floor, or another bar), they are SMASHED --
-	' game over. This is the original's rule (Structris.asb lines 125-135:
-	' cell filled -> below filled means death, else CY = CY + 1): you
-	' cannot ride a piece out; you must move ASIDE before it reaches you.
-	pushes = 0
-	WHILE pushes <= SHAFT_H
-		qc = PCOL
-		qr = PROW
-		GOSUB cell_test
-		IF qf = 0 THEN
-			RETURN
-		END IF
-		IF PROW >= SHAFT_H THEN
-			gameend = 1
-			RETURN
-		END IF
-		qc = PCOL
-		qr = PROW + 1
-		GOSUB cell_test
-		IF qf <> 0 THEN
-			gameend = 1
-			RETURN
-		END IF
-		PROW = PROW + 1
-		pushes = pushes + 1
-	WEND
-	gameend = 1
+	' A piece descending into the player forces them DOWN, pixel-exact:
+	' the player's top snaps to the deepest overlapping bar's bottom. If
+	' the pushed bar no longer fits -- past the floor, into the settled
+	' stack, or into another piece -- they are SMASHED: game over. This
+	' is the original's rule (Structris.asb lines 125-135: cell filled ->
+	' below filled means death, else CY = CY + 1), but because the player
+	' is only 2 px tall, riding down inside a stream gap is survivable
+	' until the gap closes -- being confined leaves room to slip out
+	' sideways.
+	qx = PX
+	qy = PY
+	GOSUB rect_test
+	IF rbb = 0 THEN
+		' Not under a falling bar -- but if the rect overlaps SETTLED
+		' cells, a fast piece (dy >= 2 at level 2+) just landed ON the
+		' player: it converted to tiles in the same step that would
+		' have pushed them. Buried in the stack is death, not a safe
+		' hole (this was the "trapped forever, wins for free" bug).
+		IF qf <> 0 THEN gameend = 1
+		RETURN
+	END IF
+	IF rbb > SHAFT_H * 8 - 2 THEN
+		gameend = 1
+		RETURN
+	END IF
+	PY = rbb
+	qx = PX
+	qy = PY
+	GOSUB rect_test
+	IF qf <> 0 THEN gameend = 1
 	RETURN
 
 	'
@@ -585,24 +731,30 @@ check_rowclear:
 		FOR cc = 1 TO W
 			H(cc) = H(cc) - m
 			HF(cc) = HF(cc) - m
+			sh1(cc) = (SHAFT_H - H(cc)) * 8
 		NEXT cc
-		' Completed rows fall away: shift every column's cells down m rows
-		' on screen (VPEEK preserves each cell's per-piece color), blank
-		' the vacated top rows.
+		' Completed rows fall away: shift each column's OCCUPIED band
+		' down m rows on screen (VPEEK preserves each cell's per-piece
+		' color), then blank the m vacated rows above it. Only rows that
+		' hold cells move -- shifting the full shaft height was a
+		' visible multi-frame hitch on the TI-99. Loops guarded: CVBasic
+		' FOR checks its limit at the BOTTOM.
 		FOR cc = 1 TO W
-			IF m < SHAFT_H THEN
-				FOR r = SHAFT_H TO m + 1 STEP -1
-					code = VPEEK($1800 + (r - m) * 32 + ML + cc)
-					VPOKE $1800 + r * 32 + ML + cc,code
+			IF H(cc) > 0 THEN
+				FOR r = SHAFT_H TO SHAFT_H - H(cc) + 1 STEP -1
+					code = VPEEK($1800 + (r - m - 1) * 32 + ML + cc)
+					VPOKE $1800 + (r - 1) * 32 + ML + cc,code
 				NEXT r
 			END IF
-			FOR r = 1 TO m
-				VPOKE $1800 + r * 32 + ML + cc,32
+			k = SHAFT_H - H(cc)
+			FOR r = k - m + 1 TO k
+				VPOKE $1800 + (r - 1) * 32 + ML + cc,32
 			NEXT r
 		NEXT cc
 		' Every piece still falling now has m more rows to travel.
+		k = m * 8
 		FOR p = 0 TO MAXP - 1
-			IF pact(p) <> 0 THEN ptarget(p) = ptarget(p) + m
+			IF pact(p) <> 0 THEN ptpx(p) = ptpx(p) + k
 		NEXT p
 		RD = RD + m
 		GOSUB draw_hud
@@ -631,45 +783,115 @@ level_up:
 	' ---- Terminal screens ----
 	'
 game_over:
-	SPRITE 0,$D1,0,0,0
+	' The smashed player stays on screen, BLINKING at the spot where
+	' they were buried (don't hide the sprite -- it marks the death).
+	' Defeat theme, the mirror of the win banner's green: the ASCII set
+	' goes white-on-DARK-RED, so the HUD/message area (and every empty
+	' cell) turns red while the final board keeps its piece colors. The
+	' title screen restores the normal colors.
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
+	DEFINE COLOR 32,16,txt_red
+	WAIT
+	DEFINE COLOR 48,16,txt_red
+	WAIT
+	DEFINE COLOR 64,16,txt_red
+	WAIT
+	DEFINE COLOR 80,16,txt_red
+	WAIT
 	PRINT AT CPOS(19,13),"OOPS!"
 	PRINT AT CPOS(21,7),"BURIED AT LEVEL ",LV
-	PRINT AT CPOS(23,6),"FIRE FOR A NEW GAME"
+	PRINT AT CPOS(23,11),"PRESS FIRE"
+	blink = 0
 	' Audible descending "you died" tone (sound must persist across
 	' frames -- an immediate SOUND ...,,0 in the same frame is silent).
 	FOR i = 1 TO 30
 		SOUND 0,400 + i * 20,13
 		WAIT
+		GOSUB blink_player
 	NEXT i
 	SOUND 0,,0
 	' Require fire to be released first, so a press held from gameplay
 	' doesn't instantly restart.
 game_over_rel:
 	WAIT
+	GOSUB blink_player
 	IF cont1.button THEN GOTO game_over_rel
 game_over_wait:
 	WAIT
+	GOSUB blink_player
 	IF cont1.button = 0 THEN GOTO game_over_wait
-	GOTO new_game
+	GOTO title_screen
+
+	' ~half-second blink: visible for 16 frames, hidden for 16. Single
+	' comparison only (never <cmp> AND <cmp> -- see the DESIGN.md header).
+blink_player:
+	blink = blink + 1
+	IF (blink AND 16) = 0 THEN
+		SPRITE 0,PY - 1,PX,0,15
+	ELSE
+		SPRITE 0,$D1,0,0,0
+	END IF
+	RETURN
 
 win_screen:
-	SPRITE 0,$D1,0,0,0
+	' Victory banner: repaint the ASCII set white-on-DARK-GREEN and
+	' clear the board -- the screen becomes a solid green banner with
+	' white text (the old version printed over leftover playfield tiles
+	' and read as garbage). The title screen restores the normal text
+	' colors before anything else is printed. The player's sprite stays
+	' visible, steady -- they survived.
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
-	PRINT AT CPOS(10,4),"CONGRATULATIONS!"
-	PRINT AT CPOS(12,2),"YOU SURVIVED ALL 10 LEVELS"
-	PRINT AT CPOS(14,3),"THANKS FOR PLAYING STRUCTRIS"
-	PRINT AT CPOS(23,6),"FIRE FOR A NEW GAME"
+	FOR p = 0 TO MAXP - 1
+		SPRITE 1 + p,$D1,0,0,0
+	NEXT p
+	DEFINE COLOR 32,16,txt_green
+	WAIT
+	DEFINE COLOR 48,16,txt_green
+	WAIT
+	DEFINE COLOR 64,16,txt_green
+	WAIT
+	DEFINE COLOR 80,16,txt_green
+	WAIT
+	CLS
+	PRINT AT CPOS(9,8),"CONGRATULATIONS!"
+	PRINT AT CPOS(12,3),"YOU SURVIVED ALL 10 LEVELS."
+	PRINT AT CPOS(14,5),"THE MACHINE GIVES UP."
+	PRINT AT CPOS(19,11),"PRESS FIRE"
 win_rel:
 	WAIT
 	IF cont1.button THEN GOTO win_rel
 win_wait:
 	WAIT
 	IF cont1.button = 0 THEN GOTO win_wait
+	GOTO title_screen
+
+	'
+	' ---- 838 setup: pick the starting level (typed 8,3,8 on the title) ----
+	' Room here for more options later; today a single digit picks the
+	' level and starts the game immediately.
+	'
+setup838:
+	CLS
+	PRINT AT CPOS(4,11),"838 SETUP"
+	PRINT AT CPOS(9,3),"PRESS 1-9 FOR START LEVEL"
+	PRINT AT CPOS(11,3),"OR 0 TO START AT LEVEL 10"
+	PRINT AT CPOS(15,3),"THE GAME BEGINS AT ONCE"
+	' Drain: the 8 that opened this screen may still be held -- require
+	' all keys released before reading the level digit.
+setup_drain:
+	WAIT
+	IF cont1.key <> 15 THEN GOTO setup_drain
+setup_wait:
+	WAIT
+	k = cont1.key
+	IF k = 15 THEN GOTO setup_wait
+	IF k > 9 THEN GOTO setup_wait
+	stlv = k
+	IF stlv = 0 THEN stlv = 10
 	GOTO new_game
 
 	'
@@ -685,17 +907,18 @@ filled_bitmap:
 	BITMAP "XXXXXXXX"
 	BITMAP "XXXXXXXX"
 
-	' 16x16 sprite (CVBasic sprites are always 32 bytes); the little
-	' climber lives in the top-left 8x8, the rest is transparent.
+	' 16x16 sprite (CVBasic sprites are always 32 bytes); the player is
+	' a 2x1-def-px bar in the top-left corner -- 4x2 screen px under the
+	' 2x magnification -- the rest is transparent.
 player_bitmap:
-	BITMAP "...XX..........."
-	BITMAP "...XX..........."
-	BITMAP "..XXXX.........."
-	BITMAP ".XXXXXX........."
-	BITMAP "...XX..........."
-	BITMAP "..X..X.........."
-	BITMAP "..X..X.........."
-	BITMAP ".X....X........."
+	BITMAP "XX.............."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
@@ -708,6 +931,63 @@ player_bitmap:
 	' Per-row colors (fg*16+bg) for chars 128-135: the 7 piece colors
 	' (red, lt green, yellow, cyan, blue, dk red, gray) then the white
 	' border/floor tile. Solid tiles, so all 8 rows of each are the same.
+	' Text (ASCII 32-95) color tables, applied 16 chars per DEFINE COLOR
+	' (the repo's proven runtime-recolor size; 4 calls with WAITs cover
+	' the set). Every row byte is the same, so ONE 128-byte table serves
+	' all four 16-char chunks. txt_white = white on black (gameplay/
+	' title); txt_green = white on dark green (the win banner).
+txt_white:
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+txt_red:
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+txt_green:
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+
 tile_colors:
 	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81
 	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31
