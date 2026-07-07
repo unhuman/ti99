@@ -823,9 +823,9 @@ game_over:
 	WAIT
 	DEFINE COLOR 80,16,txt_red
 	WAIT
-	PRINT AT CPOS(19,13),"OOPS!"
-	PRINT AT CPOS(21,7),"BURIED AT LEVEL ",LV
-	PRINT AT CPOS(23,11),"PRESS FIRE"
+	PRINT AT CPOS(18,13),"OOPS!"
+	PRINT AT CPOS(20,7),"BURIED AT LEVEL ",LV
+	PRINT AT CPOS(22,11),"PRESS FIRE"
 	blink = 0
 	' Audible descending "you died" tone (sound must persist across
 	' frames -- an immediate SOUND ...,,0 in the same frame is silent).

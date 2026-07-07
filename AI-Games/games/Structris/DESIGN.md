@@ -115,7 +115,8 @@ along a surface while climbing or ducking. The move blip is throttled to one per
   row 1 col 1, then `LEVEL` at row 3 with the level number under it (row 4), then `CLEAR` at
   row 6 with the cleared/needed fraction under it (row 7). Labels print once per level
   (`init_level`); `draw_hud` refreshes only the values.
-- **Rows 19–23:** message area — level-up banner, "OOPS!" / game-over stats, win screen, title
+- **Rows 18–22:** message area — level-up banner (row 19), game-over "OOPS!"/stats/prompt (rows
+  18/20/22, leaving row 23 as bottom breathing room), win screen, title
   screen help text. Reuses the same rows so nothing needs to be laid out twice.
 
 ## 4. Playfield & Column Model
