@@ -357,7 +357,8 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   direct sound effect in this game lives on channel 2** (free in SIMPLE mode) with noise on
   channel 3 (free with NO DRUMS).
 - Move: short blip (channel 2, throttled). Piece landing: low thud (channel 2). Row(s)
-  cleared: jingle (channel 2).
+  cleared: a **crunch** — low 140 Hz thump (channel 2) under a white-noise burst (channel 3)
+  whose tail switches noise type mid-decay for a rougher texture.
 - Level up: the wall-animation rising runs (articulated per step — the note is cut mid-step,
   otherwise the run smears into one continuous beep) + a two-note ta-da (channel 2).
 - Game over: explosion noise (channel 3) + descending tone (channel 2). Fireworks: rising

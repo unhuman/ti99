@@ -206,6 +206,13 @@ main_loop:
 		snd2 = snd2 - 1
 		IF snd2 = 0 THEN SOUND 2,,0
 	END IF
+	' Row-clear crunch tail: switch noise type mid-decay for a rougher
+	' texture, then silence.
+	IF snd3 > 0 THEN
+		snd3 = snd3 - 1
+		IF snd3 = 3 THEN SOUND 3,6,9
+		IF snd3 = 0 THEN SOUND 3,,0
+	END IF
 	GOTO main_loop
 
 	'
@@ -799,6 +806,14 @@ check_rowclear:
 			IF pact(p) <> 0 THEN ptpx(p) = ptpx(p) + k
 		NEXT p
 		RD = RD + m
+		' CRUNCH: rows collapsing = a low thump (ch 2) under a white-
+		' noise burst (ch 3, free during gameplay with NO DRUMS). The
+		' snd3 countdown roughens the tail by switching noise type
+		' mid-decay.
+		SOUND 2,140,13
+		snd2 = 6
+		SOUND 3,5,13
+		snd3 = 7
 		' Scoring: line-clear bonus by SIMULTANEOUS rows -- 10 for 1,
 		' 50 for 2, 100 for 3. m can never exceed 3: clears run after
 		' every landing, so m is capped by what the LOWEST column can
@@ -811,8 +826,6 @@ check_rowclear:
 		IF m = 2 THEN #score = #score + 50
 		IF m >= 3 THEN #score = #score + 100
 		GOSUB draw_hud
-		SOUND 2,300,12
-		snd2 = 8
 		IF RD >= RG THEN GOSUB level_up
 	END IF
 	RETURN
@@ -825,7 +838,17 @@ level_up:
 	' on 3), which SIMPLE mode leaves alone.
 	PLAY OFF
 	PRINT AT CPOS(19,10),"LEVEL UP!"
-	FOR i = 1 TO 30
+	' The landing thud / row-clear crunch counters don't tick inside
+	' this sequence (main_loop is paused) -- give them their natural
+	' ring, then hard-silence channels 2+3 before the wall animation.
+	FOR i = 1 TO 8
+		WAIT
+	NEXT i
+	SOUND 2,,0
+	SOUND 3,,0
+	snd2 = 0
+	snd3 = 0
+	FOR i = 1 TO 22
 		WAIT
 	NEXT i
 	LV = LV + 1
@@ -969,6 +992,8 @@ game_over:
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
+	snd2 = 0
+	snd3 = 0
 	' EXPLOSION first: the player vanishes in a noise blast as four
 	' debris sprites (slots 7-10, shared def 7, 2x-magnified shrapnel)
 	' fly outward diagonally, flashing white -> yellow -> red -> dark
