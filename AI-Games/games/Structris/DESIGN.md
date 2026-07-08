@@ -110,11 +110,13 @@ along a surface while climbing or ducking. The move blip is throttled to one per
   (the VDP's $E0–$FF "negative Y" band) instead of popping out from under a text row.
 - **Row 16:** floor border plus one column of vertical border tile on each side of the shaft,
   redrawn whenever the shaft width changes at a level-up.
-- **HUD = a left sidebar** (the shaft is centered, so columns 0–8 are free even at the level-1
-  width), inset one row/column from the corner for breathing room — three labeled blocks:
+- **HUD = sidebars** (the shaft is centered, so columns 0–8 / 25–31 are free even at the level-1
+  width), inset one row/column from the corners for breathing room. Left: three labeled blocks —
   `SCORE` at row 1 with the 5-digit value under it (row 2), `LEVEL` at row 4 with the level
   number under it (row 5), `CLEAR` at row 7 with the cleared/needed fraction under it (row 8).
-  Labels print once per level (`init_level`); `draw_hud` refreshes only the values.
+  Right: a mirrored `HIGH` block (rows 1–2, right-aligned) with the session high score. Labels
+  print once per level (`init_level`, which also prints the `HIGH` value — it only changes at a
+  game over/win); `draw_hud` refreshes only the left-side values.
 - **Rows 18–22:** message area — level-up banner (row 19), game-over "OOPS!"/stats/prompt (rows
   18/20/22, leaving row 23 as bottom breathing room), win screen, title
   screen help text. Reuses the same rows so nothing needs to be laid out twice.
@@ -308,8 +310,13 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   of floating. The player's `PY` doesn't change (they don't fall with the compaction — they were
   standing above the cleared rows, not on them), which reads on screen as the player gaining
   clearance, a small reward beat for clearing rows.
-- When `RD >= RG`: level-up banner, `LV = LV + 1`, `RD = 0`, all `H(c) = 0`, shaft re-centered for
-  the new (possibly narrower) `W`, player recentered at the new floor. If `LV > 10`: win screen.
+- When `RD >= RG`: level-up banner, then (unless `LV > 10` → win screen) the **wall animation**:
+  sprites hide, the cleared shaft blanks, both walls march inward column-by-column until they
+  meet in the middle over a rising run of notes, pause, then march back **out to the next
+  level's narrower, re-centered positions** with a second rising run and a two-note ta-da —
+  the walls visibly move in for the new level. `init_level` then redraws the fresh level over
+  the animation's end state (identical border columns, so the hand-off is seamless), with
+  `LV = LV + 1`, `RD = 0`, all `H(c) = 0`, player recentered at the new floor.
 - **Terminal screens** — both recolor the ASCII set (chars 32–95) in four 16-char `DEFINE COLOR`
   chunks (16 is the repo's proven runtime-recolor size, from Ms. Pac-Man's maze recolor; all rows
   are one byte, so a single 128-byte table serves all four chunks), both prompt just

@@ -181,6 +181,7 @@ new_game:
 	LV = stlv
 	RD = 0
 	#score = 0
+	frsh = 1
 	GOSUB init_level
 
 main_loop:
@@ -218,16 +219,22 @@ init_level:
 	ML = (32 - W) / 2
 	' Rows required: 7 at level 1, +2 per level (25 at level 10).
 	RG = 5 + LV * 2
-	' Clear the whole screen (not just the shaft rows) so title/game-over
-	' text in the message rows 18-23 doesn't linger into the new level,
-	' then fill the shaft INTERIOR with the dedicated black tile (136) --
-	' not space -- so the playfield background stays black under the
-	' win/game-over text recolors.
-	FOR r = 0 TO 23
-		FOR cx = 0 TO 31
-			VPOKE $1800 + r * 32 + cx,32
-		NEXT cx
-	NEXT r
+	' Full-screen clear only for a FRESH game (title text lingers in
+	' the message rows). Between levels the wall animation has already
+	' left the screen in exactly the right state -- borders, floor and
+	' a black interior at the NEW positions, sidebars untouched -- so
+	' skipping the clear avoids a full-screen flicker. The interior
+	' fill uses the dedicated black tile (136), not space, so the
+	' playfield background stays black under the win/game-over text
+	' recolors.
+	IF frsh THEN
+		FOR r = 0 TO 23
+			FOR cx = 0 TO 31
+				VPOKE $1800 + r * 32 + cx,32
+			NEXT cx
+		NEXT r
+	END IF
+	frsh = 0
 	FOR r = 1 TO SHAFT_H
 		FOR cx = 1 TO W
 			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
@@ -261,8 +268,13 @@ init_level:
 	PX = (ML + W / 2) * 8 + 2
 	PY = SHAFT_H * 8 - 2
 	GOSUB draw_borders
-	' Sidebar labels (values are refreshed by draw_hud).
+	' Sidebar labels (values are refreshed by draw_hud). The HIGH
+	' block mirrors SCORE on the RIGHT side of the shaft (right-
+	' aligned, inset one column from the screen edge); #hi only
+	' changes at a game over/win, so its value is printed here once.
 	PRINT AT CPOS(1,1),"SCORE"
+	PRINT AT CPOS(1,27),"HIGH"
+	PRINT AT CPOS(2,26),<5>#hi
 	PRINT AT CPOS(4,1),"LEVEL"
 	PRINT AT CPOS(7,1),"CLEAR"
 	GOSUB draw_hud
@@ -806,17 +818,129 @@ check_rowclear:
 
 level_up:
 	PRINT AT CPOS(19,10),"LEVEL UP!"
-	FOR i = 1 TO 60
+	FOR i = 1 TO 30
 		WAIT
 	NEXT i
-	PRINT AT CPOS(19,10),"         "
 	LV = LV + 1
 	IF LV > 10 THEN
 		gameend = 2
 		RETURN
 	END IF
+	GOSUB wall_anim
+	PRINT AT CPOS(19,10),"         "
 	RD = 0
 	GOSUB init_level
+	RETURN
+
+	'
+	' ---- Level-up wall animation + ditty ----
+	' The cleared shaft's walls CLOSE to the center with a rising run
+	' of notes, then OPEN back out to the next level's (narrower,
+	' re-centered) positions with a second rising run and a two-note
+	' ta-da -- the walls visibly move in for the new level. Sprites
+	' are hidden first; init_level redraws the fresh level over the
+	' animation's end state, so the hand-off is seamless.
+	'
+wall_anim:
+	FOR i = 0 TO MAXP
+		SPRITE i,$D1,0,0,0
+	NEXT i
+	FOR r = 1 TO SHAFT_H
+		FOR cx = 1 TO W
+			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
+		NEXT cx
+	NEXT r
+	' Close: both walls march inward until they meet in the middle.
+	' The FLOOR tracks the walls -- its end cells are wiped as each
+	' wall passes, so the floor is never wider than the shaft and
+	' nothing snaps when init_level redraws the new level.
+	dmax = W / 2
+	FOR d = 1 TO dmax
+		FOR i = 1 TO 4
+			WAIT
+		NEXT i
+		vch = 135
+		vc = ML + d
+		GOSUB vcol
+		vc = ML + W + 1 - d
+		GOSUB vcol
+		vch = 136
+		vc = ML + d - 1
+		GOSUB vcol
+		VPOKE $1800 + SHAFT_H * 32 + ML + d - 1,32
+		vc = ML + W + 2 - d
+		GOSUB vcol
+		VPOKE $1800 + SHAFT_H * 32 + ML + W + 2 - d,32
+		#fq = 400 + d * 80
+		SOUND 0,#fq,9
+	NEXT d
+	SOUND 0,,0
+	FOR i = 1 TO 10
+		WAIT
+	NEXT i
+	' Open: the walls march back OUT to the next level's border
+	' columns (width W-1, re-centered), continuing the rising run.
+	lc = ML + dmax
+	rc = ML + W + 1 - dmax
+	ml2 = (32 - W + 1) / 2
+	mr2 = ml2 + W
+	cnt2 = 0
+	moved2 = 1
+	WHILE moved2
+		moved2 = 0
+		FOR i = 1 TO 3
+			WAIT
+		NEXT i
+		IF lc > ml2 THEN
+			vch = 135
+			vc = lc - 1
+			GOSUB vcol
+			VPOKE $1800 + SHAFT_H * 32 + lc - 1,135
+			vch = 136
+			vc = lc
+			GOSUB vcol
+			VPOKE $1800 + SHAFT_H * 32 + lc,135
+			lc = lc - 1
+			moved2 = 1
+		END IF
+		IF rc < mr2 THEN
+			vch = 135
+			vc = rc + 1
+			GOSUB vcol
+			VPOKE $1800 + SHAFT_H * 32 + rc + 1,135
+			vch = 136
+			vc = rc
+			GOSUB vcol
+			VPOKE $1800 + SHAFT_H * 32 + rc,135
+			rc = rc + 1
+			moved2 = 1
+		END IF
+		IF moved2 THEN
+			cnt2 = cnt2 + 1
+			#fq = 600 + cnt2 * 70
+			SOUND 0,#fq,9
+		END IF
+	WEND
+	' Ta-da!
+	SOUND 0,659,10
+	SOUND 1,523,10
+	FOR i = 1 TO 8
+		WAIT
+	NEXT i
+	SOUND 0,784,9
+	SOUND 1,659,9
+	FOR i = 1 TO 16
+		WAIT
+	NEXT i
+	SOUND 0,,0
+	SOUND 1,,0
+	RETURN
+
+	' Paint char vch down the full shaft height at absolute column vc.
+vcol:
+	FOR r = 1 TO SHAFT_H
+		VPOKE $1800 + (r - 1) * 32 + vc,vch
+	NEXT r
 	RETURN
 
 	'
