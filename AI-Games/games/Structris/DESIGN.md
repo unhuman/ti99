@@ -341,13 +341,27 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   game starts) plus the **session high score top-right, right-justified** (`HI XXXXX`, `#hi` —
   updated at every game over/win, persists until power-off like Astiroids' high score).
 
-## 9. Sound (SN76489)
+## 9. Sound & Music (SN76489)
 
-- Move: short blip (channel 0).
-- Piece landing: low thud per bar (channel 1).
-- Row(s) cleared: short ascending jingle scaled by rows cleared.
-- Level up: fanfare (channels 0+1).
-- Game over: descending tone + noise channel hit.
+- **Background music during gameplay**: CVBasic's interrupt-driven player in `PLAY SIMPLE NO
+  DRUMS` mode. The tune (`game_tune`) is an **original** 16-bar loop in A minor — a brisk
+  Slavic-folk-dance feel in the spirit of (but not copying) the Tetris tradition —
+  piano-voiced melody over a pumping root–fifth bass, eighth-note rows at 10 ticks (~150 BPM),
+  form A-phrase / answer / B-lift / resolve, `MUSIC REPEAT` to loop. It (re)starts from the
+  top at every level (`init_level`) and stops (`PLAY OFF`) at level-up, game over, and win.
+- **Hard-won lesson: once `PLAY SIMPLE`/`FULL` is selected, the interrupt player rewrites its
+  channels (0+1 for SIMPLE) EVERY frame forever — even after `PLAY OFF`** (confirmed in
+  `cvbasic_9900_prologue.asm`: `music_hardware` is gated only on `music_mode`, which no
+  statement clears). Any direct `SOUND 0`/`SOUND 1` write gets stomped within a frame and can
+  latch into a stuck high-pitched tone (heard during the wall animation). Therefore **every
+  direct sound effect in this game lives on channel 2** (free in SIMPLE mode) with noise on
+  channel 3 (free with NO DRUMS).
+- Move: short blip (channel 2, throttled). Piece landing: low thud (channel 2). Row(s)
+  cleared: jingle (channel 2).
+- Level up: the wall-animation rising runs (articulated per step — the note is cut mid-step,
+  otherwise the run smears into one continuous beep) + a two-note ta-da (channel 2).
+- Game over: explosion noise (channel 3) + descending tone (channel 2). Fireworks: rising
+  whistle (channel 2) + noise pops (channel 3).
 
 ## 10. Build & Run
 

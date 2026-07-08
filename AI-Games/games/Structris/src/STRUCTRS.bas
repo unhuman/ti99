@@ -111,6 +111,11 @@
 	colv(6) = 6
 	colv(7) = 14
 
+	' Background music: CVBasic's interrupt-driven player in SIMPLE
+	' mode (channels 0+1 only) with NO DRUMS, leaving SOUND 2 for the
+	' gameplay effects and SOUND 3 (noise) for explosions/fireworks.
+	PLAY SIMPLE NO DRUMS
+
 	GOSUB setup_shapes
 	stlv = 1
 
@@ -194,16 +199,9 @@ main_loop:
 	' (PX,PY) -- it moves as smoothly as the falling pieces and, being
 	' only 2 px tall, can squeeze through the ~11-px gaps between them.
 	SPRITE 0,PY - 1,PX,0,15
-	' Sound effects stay on for a few frames, then these counters
-	' silence them (a SOUND ...,,0 in the same frame would be inaudible).
-	IF snd0 > 0 THEN
-		snd0 = snd0 - 1
-		IF snd0 = 0 THEN SOUND 0,,0
-	END IF
-	IF snd1 > 0 THEN
-		snd1 = snd1 - 1
-		IF snd1 = 0 THEN SOUND 1,,0
-	END IF
+	' Sound effects (all on channel 2 -- the music owns 0+1) stay on
+	' for a few frames, then this counter silences them (a SOUND ...,,0
+	' in the same frame would be inaudible).
 	IF snd2 > 0 THEN
 		snd2 = snd2 - 1
 		IF snd2 = 0 THEN SOUND 2,,0
@@ -278,6 +276,8 @@ init_level:
 	PRINT AT CPOS(4,1),"LEVEL"
 	PRINT AT CPOS(7,1),"CLEAR"
 	GOSUB draw_hud
+	' Gameplay music (re)starts from the top each level.
+	PLAY game_tune
 	RETURN
 
 draw_borders:
@@ -387,8 +387,9 @@ handle_input:
 	IF move_cd > 0 THEN move_cd = move_cd - 1
 	IF moved THEN
 		IF move_cd = 0 THEN
-			SOUND 0,224,10
-			snd0 = 2
+			' Channel 2: the only tone channel free of the music.
+			SOUND 2,224,10
+			snd2 = 2
 			move_cd = 8
 		END IF
 	END IF
@@ -710,8 +711,8 @@ advance_pieces:
 			END IF
 		NEXT p
 		IF landed THEN
-			SOUND 1,600,12
-			snd1 = 4
+			SOUND 2,600,12
+			snd2 = 4
 			GOSUB draw_hud
 		END IF
 	END IF
@@ -817,6 +818,12 @@ check_rowclear:
 	RETURN
 
 level_up:
+	' Stop the tune. NOTE: once PLAY SIMPLE is selected, the interrupt
+	' player rewrites channels 0+1 EVERY frame forever (even after
+	' PLAY OFF) -- direct SOUND 0/1 writes get stomped into a stuck
+	' tone. All effect sounds therefore live on channel 2 (and noise
+	' on 3), which SIMPLE mode leaves alone.
+	PLAY OFF
 	PRINT AT CPOS(19,10),"LEVEL UP!"
 	FOR i = 1 TO 30
 		WAIT
@@ -853,12 +860,16 @@ wall_anim:
 	' Close: both walls march inward until they meet in the middle.
 	' The FLOOR tracks the walls -- its end cells are wiped as each
 	' wall passes, so the floor is never wider than the shaft and
-	' nothing snaps when init_level redraws the new level.
+	' nothing snaps when init_level redraws the new level. Each step
+	' plays a short ARTICULATED note on channel 2 (silenced mid-step,
+	' or the run smears into one long beep).
 	dmax = W / 2
 	FOR d = 1 TO dmax
-		FOR i = 1 TO 4
-			WAIT
-		NEXT i
+		WAIT
+		WAIT
+		SOUND 2,,0
+		WAIT
+		WAIT
 		vch = 135
 		vc = ML + d
 		GOSUB vcol
@@ -872,10 +883,12 @@ wall_anim:
 		GOSUB vcol
 		VPOKE $1800 + SHAFT_H * 32 + ML + W + 2 - d,32
 		#fq = 400 + d * 80
-		SOUND 0,#fq,9
+		SOUND 2,#fq,9
 	NEXT d
-	SOUND 0,,0
-	FOR i = 1 TO 10
+	WAIT
+	WAIT
+	SOUND 2,,0
+	FOR i = 1 TO 8
 		WAIT
 	NEXT i
 	' Open: the walls march back OUT to the next level's border
@@ -888,9 +901,10 @@ wall_anim:
 	moved2 = 1
 	WHILE moved2
 		moved2 = 0
-		FOR i = 1 TO 3
-			WAIT
-		NEXT i
+		WAIT
+		WAIT
+		SOUND 2,,0
+		WAIT
 		IF lc > ml2 THEN
 			vch = 135
 			vc = lc - 1
@@ -918,22 +932,19 @@ wall_anim:
 		IF moved2 THEN
 			cnt2 = cnt2 + 1
 			#fq = 600 + cnt2 * 70
-			SOUND 0,#fq,9
+			SOUND 2,#fq,9
 		END IF
 	WEND
-	' Ta-da!
-	SOUND 0,659,10
-	SOUND 1,523,10
+	' Ta-da! (channel 2 only -- see the note at level_up)
+	SOUND 2,659,10
 	FOR i = 1 TO 8
 		WAIT
 	NEXT i
-	SOUND 0,784,9
-	SOUND 1,659,9
+	SOUND 2,880,9
 	FOR i = 1 TO 16
 		WAIT
 	NEXT i
-	SOUND 0,,0
-	SOUND 1,,0
+	SOUND 2,,0
 	RETURN
 
 	' Paint char vch down the full shaft height at absolute column vc.
@@ -947,6 +958,7 @@ vcol:
 	' ---- Terminal screens ----
 	'
 game_over:
+	PLAY OFF
 	IF #score > #hi THEN #hi = #score
 	' The smashed player stays on screen, BLINKING at the spot where
 	' they were buried (don't hide the sprite -- it marks the death).
@@ -1019,14 +1031,15 @@ game_over:
 	PRINT AT CPOS(20,7),"BURIED AT LEVEL ",LV
 	PRINT AT CPOS(22,11),"PRESS FIRE"
 	blink = 0
-	' Audible descending "you died" tone (sound must persist across
-	' frames -- an immediate SOUND ...,,0 in the same frame is silent).
+	' Audible descending "you died" tone (channel 2 -- see the note at
+	' level_up; sound must persist across frames, an immediate
+	' SOUND ...,,0 in the same frame is silent).
 	FOR i = 1 TO 30
-		SOUND 0,400 + i * 20,13
+		SOUND 2,400 + i * 20,13
 		WAIT
 		GOSUB blink_player
 	NEXT i
-	SOUND 0,,0
+	SOUND 2,,0
 	' Require fire to be released first, so a press held from gameplay
 	' doesn't instantly restart.
 game_over_rel:
@@ -1051,6 +1064,7 @@ blink_player:
 	RETURN
 
 win_screen:
+	PLAY OFF
 	IF #score > #hi THEN #hi = #score
 	' Victory: first FIREWORKS over the right side of the (still black)
 	' screen -- five rockets, each a rising white spark that pops into
@@ -1087,17 +1101,18 @@ win_screen:
 		IF fw = 5 THEN ec = 15
 		IF fw = 6 THEN ec = 7
 		' Launch: the spark climbs from below the floor line to the
-		' burst point with a rising whistle.
+		' burst point with a rising whistle (channel 2 -- see the note
+		' at level_up).
 		k = 150
 		WHILE k > by
 			WAIT
 			SPRITE 7,k - 1,bx,28,15
 			#fq = k
 			#fq = 900 - #fq * 4
-			SOUND 0,#fq,9
+			SOUND 2,#fq,9
 			k = k - 3
 		WEND
-		SOUND 0,,0
+		SOUND 2,,0
 		SOUND 3,5,12
 		' Pop: same 4-frame expansion as the death explosion, four
 		' tightly-overlapped sprites so the burst reads as one shell.
@@ -1347,6 +1362,146 @@ tile_colors:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
+
+	'
+	' Background tune: an ORIGINAL 16-bar loop in A minor -- a brisk
+	' Slavic-folk-dance feel in the spirit of (but not copying) the
+	' Tetris tradition. Two channels (PLAY SIMPLE): piano melody (W)
+	' over a pumping root-fifth bass (Z, sounds two octaves down).
+	' Each MUSIC row is an eighth note at 10 ticks (~150 BPM), 8 rows
+	' per bar. Form: A phrase, answer, B lift, resolve -- then REPEAT.
+	'
+game_tune:
+	DATA BYTE 10
+	MUSIC A4W,A5Z
+	MUSIC S,S
+	MUSIC C5,E5
+	MUSIC S,S
+	MUSIC E5,A5
+	MUSIC S,S
+	MUSIC D5,E5
+	MUSIC C5,S
+	MUSIC B4,G5
+	MUSIC S,S
+	MUSIC D5,D5
+	MUSIC S,S
+	MUSIC G4,G5
+	MUSIC S,S
+	MUSIC B4,D5
+	MUSIC S,S
+	MUSIC A4,A5
+	MUSIC S,S
+	MUSIC C5,E5
+	MUSIC S,S
+	MUSIC E5,A5
+	MUSIC S,S
+	MUSIC G5,E5
+	MUSIC E5,S
+	MUSIC D5,E5
+	MUSIC C5,S
+	MUSIC B4,B5
+	MUSIC S,S
+	MUSIC A4,A5
+	MUSIC S,S
+	MUSIC S,E5
+	MUSIC S,S
+	MUSIC C5,C5
+	MUSIC S,S
+	MUSIC E5,G5
+	MUSIC S,S
+	MUSIC A5,C5
+	MUSIC S,S
+	MUSIC G5,G5
+	MUSIC E5,S
+	MUSIC F5,F5
+	MUSIC S,S
+	MUSIC E5,C6
+	MUSIC S,S
+	MUSIC D5,F5
+	MUSIC S,S
+	MUSIC C5,C6
+	MUSIC S,S
+	MUSIC B4,G5
+	MUSIC S,S
+	MUSIC D5,D5
+	MUSIC S,S
+	MUSIC F5,G5
+	MUSIC S,S
+	MUSIC E5,D5
+	MUSIC D5,S
+	MUSIC C5,A5
+	MUSIC B4,S
+	MUSIC A4,E5
+	MUSIC S,S
+	MUSIC A4,A5
+	MUSIC S,S
+	MUSIC S,E5
+	MUSIC S,S
+	MUSIC E5,C5
+	MUSIC S,S
+	MUSIC E5,G5
+	MUSIC D5,S
+	MUSIC C5,C5
+	MUSIC S,S
+	MUSIC C5,G5
+	MUSIC B4,S
+	MUSIC A4,A5
+	MUSIC S,S
+	MUSIC A4,E5
+	MUSIC S,S
+	MUSIC B4,A5
+	MUSIC S,S
+	MUSIC C5,E5
+	MUSIC D5,S
+	MUSIC E5,C5
+	MUSIC S,S
+	MUSIC E5,G5
+	MUSIC D5,S
+	MUSIC C5,C5
+	MUSIC S,S
+	MUSIC E5,G5
+	MUSIC S,S
+	MUSIC A5,A5
+	MUSIC S,S
+	MUSIC G5,E5
+	MUSIC E5,S
+	MUSIC D5,A5
+	MUSIC C5,S
+	MUSIC B4,E5
+	MUSIC S,S
+	MUSIC C5,A5
+	MUSIC S,S
+	MUSIC A4,E5
+	MUSIC S,S
+	MUSIC E5,A5
+	MUSIC S,S
+	MUSIC C5,E5
+	MUSIC S,S
+	MUSIC D5,G5
+	MUSIC S,S
+	MUSIC B4,D5
+	MUSIC S,S
+	MUSIC G5,G5
+	MUSIC S,S
+	MUSIC D5,D5
+	MUSIC S,S
+	MUSIC C5,A5
+	MUSIC D5,S
+	MUSIC E5,E5
+	MUSIC C5,S
+	MUSIC A4,A5
+	MUSIC B4,S
+	MUSIC C5,E5
+	MUSIC A4,S
+	MUSIC A4,A5
+	MUSIC S,S
+	MUSIC S,E5
+	MUSIC S,S
+	MUSIC -,A5
+	MUSIC -,S
+	MUSIC -,-
+	MUSIC -,-
+	MUSIC REPEAT
 
 	'
 	' Shape catalog: for each of the 16 (HL,HR) buckets (index = HL*4+HR),

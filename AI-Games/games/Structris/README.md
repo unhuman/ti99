@@ -75,6 +75,12 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   slowdown. Measured at 60Hz in Classic99 (see `DESIGN.md` header). No `#IF` platform branching
   needed anywhere in `STRUCTRS.bas`.
 
+## Music
+
+An original 16-bar A-minor loop (folk-dance energy in the Tetris spirit, not the Tetris song)
+plays during gameplay via CVBasic's interrupt music player — melody + bass on channels 0/1,
+effects on channel 2, noise reserved for explosions and fireworks.
+
 ## Build
 
 - **TI-99/4A:** `bash build-ti.sh` → `src/STRUCTRS_8.bin` (load in Classic99 or js99er).
