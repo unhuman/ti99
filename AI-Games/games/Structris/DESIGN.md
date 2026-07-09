@@ -91,7 +91,7 @@ This port is a **faithful reinterpretation**, not a transliteration:
 | Climb up | `cont1.up` | Slide 2 px/frame upward, if the space above is free. |
 | Duck down | `cont1.down` | Slide 2 px/frame downward, if the space below is free. |
 | Start | `cont1.button` | Starts the game from the title screen. From the game-over or win screen, fire returns to the **title** (not straight into a new game). |
-| 838 setup | keys `8`,`3`,`8` on the title | Opens the setup screen (same hidden convention as Astiroids): press `1`–`9` for the starting level, or `0` for level 10 — the game begins immediately. The choice persists for later games this session. Room is reserved for more 838 options later. |
+| 838 setup | keys `8`,`3`,`8` on the title | Opens the setup screen (same hidden convention as Astiroids): press `1`–`9` for the starting level, or `0` for level 10 — the game begins immediately. The choice lasts **one game only** — every return to the title resets the starting level to 1, so re-enter 838 to pick again. Room is reserved for more 838 options later. |
 
 **Movement is smooth pixels, like the falling pieces** — the player is a free `(PX,PY)` pixel
 rect, not a cell occupant; horizontal and vertical axes are independent so the player can slide
@@ -127,8 +127,39 @@ along a surface while climbing or ducking. The move blip is throttled to one per
   `W = 15 - LV` exactly), narrowing one column per level to 5 at level 10.
   Shaft is centered: left margin `ML = (32 - W) / 2`; column `c` (1..W) occupies text column
   `ML + c`.
-- `SHAFT_H = 16` (fixed — only width shrinks with level, not height; two knobs shrinking at once
-  made early playtesting math confusing, and width alone already scales difficulty well).
+- **The STAGE** (per the original): the game lives on a black-and-white checkered platform
+  (4×4-px squares, chars 137/138) shaped like a **flared pedestal** — narrow at the top (one lip
+  column beyond each wall, where the walls stand and the stack rests) and **fanning outward one
+  column per row** into a wider base. It is only **three rows tall** (`sh … sh+2`, clamped to row
+  17), so on higher levels it sits high with black below rather than filling as a solid rectangle.
+  The stage **rises half a character per level**, shortening the fall. The playable height
+  `sh = SHAFT_H - LV/2` loses a full row on each even level (16 rows at level 1 down to 11 at
+  level 10), and on **even levels the whole floor is additionally shifted down half a character**
+  (`hoff = 4` px, folded into `sh1`, landing targets `ptpx`, and the player clamps — pieces and
+  player genuinely get the extra half-row of fall). The stage's top row on even levels is a
+  half-checker tile (char 138, top 4 px empty, phase-opposed so the pattern continues into the
+  full tiles below), and the two wall-base columns use the **wall-seam tile (char 202: white top
+  half over the checker's bottom half)** so the white walls meet the checker with no black gap;
+  `SHAFT_H = 16` is just the level-1 maximum, `mh = sh - 3` the per-level top-out threshold.
+  `draw_stage` renders the whole flare; the per-column `scol` (used by the wall animation) draws
+  the identical shape one column at a time.
+- **Half-shifted stack rendering (even levels): landed cells are architecturally split across
+  two character rows.** Char row `j` shows cell `j`'s color in its top half over cell `j+1`'s in
+  its bottom half. All 56 combinations live in chars **139–194** (one shared solid pattern;
+  per-ROW color bytes provide the split — top value A ∈ {empty, 7 colors} × bottom B ∈ {7
+  colors}), with the char code itself encoding both colors (`139 + A*7 + B-1`), so landing
+  paint and row-clear shifting decode neighbors straight from VPEEK — **no RAM mirror**. Chars
+  **195–201** are the stage-seam tiles (piece color over the checker's top half). Row-clear on
+  even levels is still a plain char copy (shifting `(cell j, cell j+1)` pairs down `m` rows is
+  shifting chars) except the seam row, which is rebuilt by decoding the char that lands there
+  (read *before* the copy clobbers it). Odd levels keep the simple one-cell-one-char path.
+- During the level-transition wall animation the old shaft **closes** (old geometry), the play
+  band is wiped, `calc_geom` switches to the new level, and the walls **open** to the new
+  positions while the new (raised, flared) stage is **revealed column by column behind the growing
+  gap** — so the new layer eases in instead of snapping when `init_level` repaints it. Vacated
+  columns are erased with **true spaces** (not the black interior tile) so the win/game-over
+  full-screen recolors show no leftover black artifacts; the wipe clears the tower band (rows
+  0–17) plus the old stage's flared wings (stage rows only, so the sidebar HUD is never touched).
 - **Two height arrays.** `H(1..W)` is the *settled* stack; `HF(1..W)` is the *forecast* — settled
   plus every in-flight piece's booking. Targeting and shape selection read `HF`, so a piece
   spawned while others are mid-flight aims at and fits the surface as it *will* be; landing moves
@@ -261,14 +292,14 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
 ## 7. Colors & Tiles
 
-- Nine consecutive solid tiles, chars **128–136**: chars 128–134 are the seven piece colors
-  `c1..c7` (red, light green, yellow, cyan, blue, dark red, gray on black), char 135 is the
-  white-on-black border/floor tile, and char **136 is a black-on-black tile used for every empty
-  shaft-interior cell** (instead of space) so the playfield background stays black when the
-  win/game-over themes recolor the ASCII set. All nine share one `filled_bitmap` pattern; colors
-  come from one `DEFINE COLOR 128,9,tile_colors` block (8 per-row color bytes per char,
-  `fg*16+bg`), same as every other CVBasic game in this repo. A cell's char code is simply
-  `128 + colorindex - 1`.
+- Tile inventory: chars **128–134** are the seven piece colors `c1..c7` (red, light green,
+  yellow, cyan, blue, dark red, gray on black; a cell's char code is `128 + colorindex - 1` on
+  odd levels), char **135** the white border tile, char **136 a black-on-black tile for every
+  empty shaft-interior cell** (instead of space, so the playfield stays black under the
+  win/game-over recolors), chars **137/138** the stage checker (full/half), chars **139–194**
+  the even-level split-pair tiles, **195–201** the stage-seam tiles, and char **202** the
+  wall-seam tile (white top over checker, for the even-level wall base) (§4). Colors are per-row
+  `DEFINE COLOR` bytes (`fg*16+bg`), same as every other CVBasic game in this repo.
 - **Per-cell colors — the screen is the color model.** There is no per-column color variable:
   when a piece lands, only its *newly added* cells are painted in the piece's color, so every
   settled cell permanently keeps the color of the piece that created it (pieces visibly hold their
@@ -313,10 +344,12 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 - When `RD >= RG`: level-up banner, then (unless `LV > 10` → win screen) the **wall animation**:
   sprites hide, the cleared shaft blanks, both walls march inward column-by-column until they
   meet in the middle over a rising run of notes, pause, then march back **out to the next
-  level's narrower, re-centered positions** with a second rising run and a two-note ta-da —
-  the walls visibly move in for the new level. `init_level` then redraws the fresh level over
-  the animation's end state (identical border columns, so the hand-off is seamless), with
-  `LV = LV + 1`, `RD = 0`, all `H(c) = 0`, player recentered at the new floor.
+  level's narrower, re-centered positions** with a second rising run and a two-note ta-da. As the
+  walls open, the new (raised, flared) **stage is revealed column by column behind the growing
+  gap** (`scol` per column), so the new layer eases in rather than snapping. `init_level` then
+  redraws the fresh level over the animation's end state (identical geometry, so the hand-off is
+  seamless), with `LV = LV + 1`, `RD = 0`, all `H(c) = 0`, and the player's 4-px bar **recentered
+  between the walls** at the new floor.
 - **Terminal screens** — both recolor the ASCII set (chars 32–95) in four 16-char `DEFINE COLOR`
   chunks (16 is the repo's proven runtime-recolor size, from Ms. Pac-Man's maze recolor; all rows
   are one byte, so a single 128-byte table serves all four chunks), both prompt just
@@ -401,7 +434,15 @@ either platform).
       after it. (TI verified in Classic99 — the win screen via a scratch probe build that jumps
       straight to it; a full played-through win has not been performed.)
 - [x] 838 on the title opens the setup screen; a digit picks the starting level (0 = 10) and the
-      game begins at once — verified starting at level 5 (LV05, CLR00/09, 10-column shaft).
+      game begins at once — the choice lasts **one game only** (every return to the title resets to
+      level 1). Verified in Classic99: 838→4 starts at level 4, and after being buried, fire →
+      title → fire starts a fresh game at **level 1**.
+- [x] The **stage is a flared pedestal** — narrow top under the walls, fanning out to a wider
+      base, only three rows tall (thin on high levels, not a solid rectangle); the white walls meet
+      the checker with no black gap on even levels (wall-seam char 202). During a level-up the new
+      stage is revealed as the walls open, with no snap. The player's bar starts **centered between
+      the walls**, and the OOPS!/LEVEL UP! messages are centered under the tower. (TI verified in
+      Classic99 at levels 1/4/6 and across chained level-ups.)
 - [x] TI-99 and ColecoVision run the same real-world speed: the fall is FRAME-delta paced, and
       Classic99 measurements confirm 60Hz (blink probe 532.8ms/533.3 expected; fall rate ~60px/s
       within measurement error). CV still needs its user-side CoolCV pass.

@@ -33,7 +33,11 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   top-left, `LEVEL` and `CLEAR` blocks under it); the score spans the whole game (all levels).
 - Every column built up past a shared height threshold "falls away" (the completed rows compact
   out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows
-  (14 columns at level 1 down to 5 at level 10, the original's widths), pieces come faster.
+  (14 columns at level 1 down to 5 at level 10, the original's widths), pieces come faster, and
+  the checkered **stage** the game stands on (per the original — a flared pedestal, narrow at the
+  top under the walls and fanning out to a wider base) rises half a character — shortening the
+  fall from 16 rows at level 1 to 11 at level 10. The raised stage is revealed column by column as
+  the walls slide open between levels.
   Survive all 10 levels to win.
 
 ## Controls (joystick 1)
@@ -43,7 +47,7 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 | Slide left / right (2 px/frame) | Joystick left / right |
 | Climb / duck (2 px/frame) | Joystick up / down |
 | Start (title) / back to title (game over, win) | Button |
-| Setup: pick starting level | Type `8` `3` `8` on the title, then `1`–`9` (or `0` for level 10) — the game starts immediately |
+| Setup: pick starting level | Type `8` `3` `8` on the title, then `1`–`9` (or `0` for level 10) — the game starts immediately. Lasts one game only; the title always resets to level 1. |
 
 ## How it's built
 
@@ -93,8 +97,12 @@ streaming as single magnified sprites falling pixel-by-pixel with ~11-px gaps, s
 above the screen top, landings converting flush to per-piece colored tiles, the player bar
 sliding/climbing smoothly in pixels and surviving mid-stream between pieces, smash rule kills a
 player caught under a landing piece → OOPS with blinking player → fire returns to the title;
-838 → level 5 start verified; the green win banner and its color restore verified via a probe
-build; 60Hz timing confirmed by blink-period and fall-rate measurement).
+838 → level 4 start verified, and the starting level resets to 1 after a game (fire → title →
+fire starts level 1); the flared pedestal stage renders cleanly at levels 1/4/6 with the walls
+meeting the checker (no black gap) and reveals column-by-column across chained level-ups; the
+player bar starts centered and the OOPS!/LEVEL UP! messages sit centered under the tower; the
+green win banner and its color restore verified via a probe build; 60Hz timing confirmed by
+blink-period and fall-rate measurement).
 ColecoVision build compiles clean and shares all the same game logic; needs a CoolCV pass.
 
 Two toolchain landmines were found (and are documented in `DESIGN.md`'s header): CVBasic's

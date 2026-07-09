@@ -13,8 +13,14 @@
 	' 2026 UNHUMAN AND CLAUDE
 	'
 
-	CONST SHAFT_H = 16	' playable rows, 1 (ceiling) .. SHAFT_H (floor-adjacent)
-	CONST MH = SHAFT_H - 3	' a column at/above this height is "topped out"
+	CONST SHAFT_H = 16	' playable rows at LEVEL 1. The game lives on a
+				' STAGE (checkered platform, per the original)
+				' that rises half a character per level -- tiles
+				' can't hold half-row stacks, so the playable
+				' floor (variable sh) drops a full row every
+				' second level, and on even levels the visible
+				' stage top is a half-checker tile. mh = sh - 3
+				' is the per-level "topped out" threshold.
 	CONST PSPD = 2		' player speed, pixels per frame per axis
 	CONST MAXP = 6		' max pieces in flight at once (the stream)
 	CONST PGAP = 11		' clear PIXELS between one piece's top and the
@@ -67,7 +73,7 @@
 	DIM pfr(6)		' piece -> sprite frame arg, (1+p)*4
 	DIM pcv(6)		' piece -> VDP sprite color (colv(pci) at spawn)
 	DIM colv(8)		' color index -> VDP sprite color
-	DIM sh1(15)		' column -> settled surface pixel, (SHAFT_H-H)*8
+	DIM sh1(15)		' column -> settled surface pixel, (sh-H)*8
 
 	DEF FN CPOS(r,c) = r * 32 + c
 
@@ -96,7 +102,31 @@
 	DEFINE CHAR 134,1,filled_bitmap		' char 134 = piece color 7
 	DEFINE CHAR 135,1,filled_bitmap		' char 135 = border/floor
 	DEFINE CHAR 136,1,filled_bitmap		' char 136 = shaft-interior BLACK
-	DEFINE COLOR 128,9,tile_colors
+	DEFINE CHAR 137,2,stage_bitmap		' 137 = stage checker, 138 = half
+	DEFINE COLOR 128,11,tile_colors
+	' HALF-SHIFTED STACK tiles for even levels (the stage has risen an
+	' extra half character, so every settled cell straddles two char
+	' rows). Chars 139-194: solid "pair" tiles, top half color A (0 =
+	' empty/black, 1-7 = piece colors) over bottom half color B (1-7);
+	' code = 139 + A*7 + (B-1), so the char code itself encodes both
+	' cell colors (decoded with VPEEK -- no RAM mirror). Chars 195-201:
+	' stage-seam tiles, top half color 1-7 over the checker's top half.
+	DEFINE CHAR 139,16,solid_ff
+	DEFINE CHAR 155,16,solid_ff
+	DEFINE CHAR 171,16,solid_ff
+	DEFINE CHAR 187,8,solid_ff
+	DEFINE CHAR 195,7,bnd_pat
+	DEFINE COLOR 139,16,pcc1
+	DEFINE COLOR 155,16,pcc2
+	DEFINE COLOR 171,16,pcc3
+	DEFINE COLOR 187,8,pcc4
+	DEFINE COLOR 195,7,bnd_colors
+	' Wall-seam tile (202): white top half over the checker's bottom
+	' half. On even levels the floor sits half a character low, so the
+	' white walls end 4 px into the stage's top row -- this tile fills
+	' that half so the wall meets the checker with no black gap.
+	DEFINE CHAR 202,1,wallseam_pat
+	DEFINE COLOR 202,1,wallseam_col
 
 	DEFINE SPRITE 0,1,player_bitmap
 	DEFINE SPRITE 7,4,expl_bitmap		' death explosion: defs 7-10 =
@@ -123,6 +153,10 @@ title_screen:
 	' Hide the player AND any piece sprites left frozen by a game-over/
 	' win screen, and restore the normal text colors (the win screen
 	' repaints the ASCII set white-on-dark-green).
+	' The 838 starting-level choice lasts for ONE game only: every return
+	' to the title resets it, so the next FIRE starts at level 1 unless
+	' 838 is entered again.
+	stlv = 1
 	FOR i = 0 TO MAXP
 		SPRITE i,$D1,0,0,0
 	NEXT i
@@ -216,14 +250,35 @@ main_loop:
 	GOTO main_loop
 
 	'
-	' ---- Level setup ----
+	' ---- Level geometry (pure function of LV) ----
+	' Shaft width/margin, playable height, top-out threshold, even-level
+	' half-shift, row goal. Called by init_level AND by the level-up wall
+	' animation, which needs the NEW level's geometry to draw the raised
+	' stage as the walls open.
 	'
-init_level:
+calc_geom:
 	W = 15 - LV
 	IF W < 5 THEN W = 5
 	ML = (32 - W) / 2
+	' The stage rises half a character per level: the playable height sh
+	' loses a full row on each EVEN level (16 at level 1, 15 at 2-3, 14
+	' at 4-5, ... 11 at 10); even levels also drop the visible stage top
+	' a half character (hoff = 4 px), so landed cells render as split
+	' "pair" tiles straddling two char rows and the floor/player clamps
+	' shift down 4 px.
+	sh = SHAFT_H - LV / 2
+	mh = sh - 3
+	hoff = 0
+	IF (LV AND 1) = 0 THEN hoff = 4
 	' Rows required: 7 at level 1, +2 per level (25 at level 10).
 	RG = 5 + LV * 2
+	RETURN
+
+	'
+	' ---- Level setup ----
+	'
+init_level:
+	GOSUB calc_geom
 	' Full-screen clear only for a FRESH game (title text lingers in
 	' the message rows). Between levels the wall animation has already
 	' left the screen in exactly the right state -- borders, floor and
@@ -240,7 +295,7 @@ init_level:
 		NEXT r
 	END IF
 	frsh = 0
-	FOR r = 1 TO SHAFT_H
+	FOR r = 1 TO sh
 		FOR cx = 1 TO W
 			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
 		NEXT cx
@@ -248,7 +303,7 @@ init_level:
 	FOR cc = 1 TO W
 		H(cc) = 0
 		HF(cc) = 0
-		sh1(cc) = SHAFT_H * 8
+		sh1(cc) = sh * 8 + hoff
 	NEXT cc
 	FOR p = 0 TO MAXP - 1
 		pact(p) = 0
@@ -269,9 +324,10 @@ init_level:
 	move_cd = 0
 	gameend = 0
 	' Player position is free pixels: PX = bar left edge, PY = bar top.
-	' Start centered on the floor (bar rows 126-127, flush on the floor).
-	PX = (ML + W / 2) * 8 + 2
-	PY = SHAFT_H * 8 - 2
+	' Start the 4-px bar centered between the walls (midpoint of its X
+	' travel range) and flush on the floor.
+	PX = (2 * ML + W + 1) * 4 + 2
+	PY = sh * 8 + hoff - 2
 	GOSUB draw_borders
 	' Sidebar labels (values are refreshed by draw_hud). The HIGH
 	' block mirrors SCORE on the RIGHT side of the shaft (right-
@@ -291,13 +347,46 @@ draw_borders:
 	' Shaft row r renders at screen row r-1: the ceiling is the screen
 	' top, so a piece sprite slides in from above the display ($E0-$FF
 	' Y band) instead of popping out from under a text row.
-	FOR r = 1 TO SHAFT_H
+	FOR r = 1 TO sh
 		VPOKE $1800 + (r - 1) * 32 + ML,135
 		VPOKE $1800 + (r - 1) * 32 + ML + W + 1,135
 	NEXT r
-	FOR cx = ML TO ML + W + 1
-		VPOKE $1800 + SHAFT_H * 32 + cx,135
-	NEXT cx
+	GOSUB draw_stage
+	RETURN
+
+	' THE STAGE: the checkered platform everything stands on. Per the
+	' original it is a trapezoid FLARING OUTWARD as it descends -- narrow
+	' at the top (one lip column beyond each wall), one column wider on
+	' each side per row down into a fatter base, only three rows tall so
+	' it reads as a thin angled pedestal (higher levels sit it high with
+	' black below, never a solid rectangle). On even levels the top row
+	' sits a half character low: it uses the half-checker tile (138), and
+	' the two wall-base columns use the wall-seam tile (202, white top
+	' over checker) so the white walls meet the checker with no black gap.
+draw_stage:
+	botr = sh + 2
+	IF botr > 17 THEN botr = 17
+	li = ML - 1
+	ri = ML + W + 2
+	FOR r = sh TO botr
+		lo = li
+		IF lo < 1 THEN lo = 1
+		ro = ri
+		IF ro > 30 THEN ro = 30
+		FOR cx = lo TO ro
+			code = 137
+			IF r = sh THEN
+				IF hoff THEN
+					code = 138
+					IF cx = ML THEN code = 202
+					IF cx = ML + W + 1 THEN code = 202
+				END IF
+			END IF
+			VPOKE $1800 + r * 32 + cx,code
+		NEXT cx
+		li = li - 1
+		ri = ri + 1
+	NEXT r
 	RETURN
 
 draw_hud:
@@ -379,7 +468,7 @@ handle_input:
 		END IF
 	ELSEIF cont1.down THEN
 		qy = PY + PSPD
-		IF qy > SHAFT_H * 8 - 2 THEN qy = SHAFT_H * 8 - 2
+		IF qy > sh * 8 + hoff - 2 THEN qy = sh * 8 + hoff - 2
 		IF qy <> PY THEN
 			qx = PX
 			GOSUB rect_test
@@ -481,7 +570,7 @@ spawn_piece:
 	IF x > W THEN x = W
 	xo = x
 	found = 0
-	IF HF(x) < MH THEN found = 1
+	IF HF(x) < mh THEN found = 1
 	' Nested single-condition IFs throughout: the CVBasic 0.9.2 TI-99
 	' backend miscompiles comparison-AND-comparison (see DESIGN.md).
 	IF found = 0 THEN
@@ -489,7 +578,7 @@ spawn_piece:
 			IF found = 0 THEN
 				t = xo + d
 				IF t <= W THEN
-					IF HF(t) < MH THEN
+					IF HF(t) < mh THEN
 						x = t
 						found = 1
 					END IF
@@ -498,7 +587,7 @@ spawn_piece:
 			IF found = 0 THEN
 				IF xo > d THEN
 					t = xo - d
-					IF HF(t) < MH THEN
+					IF HF(t) < mh THEN
 						x = t
 						found = 1
 					END IF
@@ -543,7 +632,7 @@ spawn_piece:
 			bpx1(j + n2) = (hl + pbl) * 8
 			IF hl + pbl > e THEN e = hl + pbl
 			HF(x - 1) = HF(x - 1) + pbl
-			IF HF(x - 1) > SHAFT_H THEN HF(x - 1) = SHAFT_H
+			IF HF(x - 1) > sh THEN HF(x - 1) = sh
 			n2 = n2 + 1
 		END IF
 	END IF
@@ -565,7 +654,7 @@ spawn_piece:
 			bpx1(j + n2) = (hr + pbr) * 8
 			IF hr + pbr > e THEN e = hr + pbr
 			HF(x + 1) = HF(x + 1) + pbr
-			IF HF(x + 1) > SHAFT_H THEN HF(x + 1) = SHAFT_H
+			IF HF(x + 1) > sh THEN HF(x + 1) = sh
 			n2 = n2 + 1
 		END IF
 	END IF
@@ -574,9 +663,9 @@ spawn_piece:
 		n2 = n2 + 1
 	WEND
 	ppy(s) = 0
-	ptpx(s) = (SHAFT_H - HF(x)) * 8
+	ptpx(s) = (sh - HF(x)) * 8 + hoff
 	HF(x) = HF(x) + pb0
-	IF HF(x) > SHAFT_H THEN HF(x) = SHAFT_H
+	IF HF(x) > sh THEN HF(x) = sh
 	pci(s) = VCI(pick)
 	pgate(s) = e * 8 + PGAP
 	pfr(s) = (1 + s) * 4
@@ -692,12 +781,36 @@ advance_pieces:
 							' so an empty range would still run once.
 							hold = H(cc)
 							H(cc) = H(cc) + barht(j)
-							IF H(cc) > SHAFT_H THEN H(cc) = SHAFT_H
-							sh1(cc) = (SHAFT_H - H(cc)) * 8
+							IF H(cc) > sh THEN H(cc) = sh
+							sh1(cc) = (sh - H(cc)) * 8 + hoff
 							IF H(cc) > hold THEN
-								FOR r = SHAFT_H - H(cc) + 1 TO SHAFT_H - hold
-									VPOKE $1800 + (r - 1) * 32 + ML + cc,128 + pci(p) - 1
-								NEXT r
+								IF hoff THEN
+									' Half-shifted level: cells straddle two
+									' char rows. Paint the upper seam (empty
+									' over color), the interior pairs, and
+									' the lower seam (color over the old top
+									' decoded from its char, or the stage).
+									r1 = sh - H(cc) + 1
+									r2 = sh - hold
+									VPOKE $1800 + (r1 - 1) * 32 + ML + cc,139 + pci(p) - 1
+									IF r2 > r1 THEN
+										FOR r = r1 TO r2 - 1
+											VPOKE $1800 + r * 32 + ML + cc,139 + pci(p) * 7 + pci(p) - 1
+										NEXT r
+									END IF
+									IF r2 = sh THEN
+										VPOKE $1800 + sh * 32 + ML + cc,195 + pci(p) - 1
+									ELSE
+										c2 = VPEEK($1800 + r2 * 32 + ML + cc)
+										b2 = c2 - 139
+										b2 = b2 - (b2 / 7) * 7 + 1
+										VPOKE $1800 + r2 * 32 + ML + cc,139 + pci(p) * 7 + b2 - 1
+									END IF
+								ELSE
+									FOR r = sh - H(cc) + 1 TO sh - hold
+										VPOKE $1800 + (r - 1) * 32 + ML + cc,128 + pci(p) - 1
+									NEXT r
+								END IF
 							END IF
 							barcol(j) = 0
 						END IF
@@ -757,7 +870,7 @@ check_player:
 		IF qf <> 0 THEN gameend = 1
 		RETURN
 	END IF
-	IF rbb > SHAFT_H * 8 - 2 THEN
+	IF rbb > sh * 8 + hoff - 2 THEN
 		gameend = 1
 		RETURN
 	END IF
@@ -780,7 +893,7 @@ check_rowclear:
 		FOR cc = 1 TO W
 			H(cc) = H(cc) - m
 			HF(cc) = HF(cc) - m
-			sh1(cc) = (SHAFT_H - H(cc)) * 8
+			sh1(cc) = (sh - H(cc)) * 8 + hoff
 		NEXT cc
 		' Completed rows fall away: shift each column's OCCUPIED band
 		' down m rows on screen (VPEEK preserves each cell's per-piece
@@ -789,16 +902,45 @@ check_rowclear:
 		' visible multi-frame hitch on the TI-99. Loops guarded: CVBasic
 		' FOR checks its limit at the BOTTOM.
 		FOR cc = 1 TO W
-			IF H(cc) > 0 THEN
-				FOR r = SHAFT_H TO SHAFT_H - H(cc) + 1 STEP -1
-					code = VPEEK($1800 + (r - m - 1) * 32 + ML + cc)
-					VPOKE $1800 + (r - 1) * 32 + ML + cc,code
+			IF hoff THEN
+				' Half-shifted level: char row j shows (cell j over
+				' cell j+1), so a plain char copy shifts everything
+				' EXCEPT the stage-seam row, which is rebuilt from the
+				' new bottom cell's color (decoded from the char that
+				' lands there -- read BEFORE the copy clobbers it).
+				c2 = VPEEK($1800 + (sh - m) * 32 + ML + cc)
+				IF H(cc) > 0 THEN
+					FOR r = sh - 1 TO sh - H(cc) STEP -1
+						code = VPEEK($1800 + (r - m) * 32 + ML + cc)
+						VPOKE $1800 + r * 32 + ML + cc,code
+					NEXT r
+				END IF
+				k = sh - H(cc)
+				FOR r = k - m TO k - 1
+					VPOKE $1800 + r * 32 + ML + cc,136
+				NEXT r
+				IF c2 = 136 THEN
+					VPOKE $1800 + sh * 32 + ML + cc,138
+				ELSE
+					b2 = (c2 - 139) / 7
+					IF b2 = 0 THEN
+						VPOKE $1800 + sh * 32 + ML + cc,138
+					ELSE
+						VPOKE $1800 + sh * 32 + ML + cc,195 + b2 - 1
+					END IF
+				END IF
+			ELSE
+				IF H(cc) > 0 THEN
+					FOR r = sh TO sh - H(cc) + 1 STEP -1
+						code = VPEEK($1800 + (r - m - 1) * 32 + ML + cc)
+						VPOKE $1800 + (r - 1) * 32 + ML + cc,code
+					NEXT r
+				END IF
+				k = sh - H(cc)
+				FOR r = k - m + 1 TO k
+					VPOKE $1800 + (r - 1) * 32 + ML + cc,136
 				NEXT r
 			END IF
-			k = SHAFT_H - H(cc)
-			FOR r = k - m + 1 TO k
-				VPOKE $1800 + (r - 1) * 32 + ML + cc,136
-			NEXT r
 		NEXT cc
 		' Every piece still falling now has m more rows to travel.
 		k = m * 8
@@ -837,7 +979,7 @@ level_up:
 	' tone. All effect sounds therefore live on channel 2 (and noise
 	' on 3), which SIMPLE mode leaves alone.
 	PLAY OFF
-	PRINT AT CPOS(19,10),"LEVEL UP!"
+	PRINT AT CPOS(19,12),"LEVEL UP!"
 	' The landing thud / row-clear crunch counters don't tick inside
 	' this sequence (main_loop is paused) -- give them their natural
 	' ring, then hard-silence channels 2+3 before the wall animation.
@@ -857,35 +999,36 @@ level_up:
 		RETURN
 	END IF
 	GOSUB wall_anim
-	PRINT AT CPOS(19,10),"         "
+	PRINT AT CPOS(19,12),"         "
 	RD = 0
 	GOSUB init_level
 	RETURN
 
 	'
 	' ---- Level-up wall animation + ditty ----
-	' The cleared shaft's walls CLOSE to the center with a rising run
-	' of notes, then OPEN back out to the next level's (narrower,
-	' re-centered) positions with a second rising run and a two-note
-	' ta-da -- the walls visibly move in for the new level. Sprites
-	' are hidden first; init_level redraws the fresh level over the
-	' animation's end state, so the hand-off is seamless.
+	' The finished level's walls CLOSE to the center with a rising run of
+	' notes (old geometry); then the play band is wiped, calc_geom
+	' switches to the NEW level, and the walls OPEN back out to the new
+	' (narrower, re-centered) positions with a second rising run and a
+	' two-note ta-da. As the walls open, the NEW raised stage is drawn
+	' column by column behind the growing gap -- so the new layer eases
+	' in instead of snapping when init_level repaints it afterward.
 	'
 wall_anim:
 	FOR i = 0 TO MAXP
 		SPRITE i,$D1,0,0,0
 	NEXT i
-	FOR r = 1 TO SHAFT_H
+	' --- CLOSE (old geometry) ---
+	vsh = sh
+	FOR r = 1 TO sh
 		FOR cx = 1 TO W
 			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
 		NEXT cx
 	NEXT r
-	' Close: both walls march inward until they meet in the middle.
-	' The FLOOR tracks the walls -- its end cells are wiped as each
-	' wall passes, so the floor is never wider than the shaft and
-	' nothing snaps when init_level redraws the new level. Each step
-	' plays a short ARTICULATED note on channel 2 (silenced mid-step,
-	' or the run smears into one long beep).
+	' Both walls march inward until they meet in the middle; the stage
+	' lip is erased as each wall passes. Each step plays a short
+	' ARTICULATED note on channel 2 (silenced mid-step, or the run
+	' smears into one long beep).
 	dmax = W / 2
 	FOR d = 1 TO dmax
 		WAIT
@@ -898,13 +1041,18 @@ wall_anim:
 		GOSUB vcol
 		vc = ML + W + 1 - d
 		GOSUB vcol
-		vch = 136
+		' Vacated columns are OUTSIDE the shaft now: erase with SPACE
+		' (32), not the black interior tile -- 136 stays black under the
+		' win/game-over recolors and left visible artifacts there.
+		vch = 32
 		vc = ML + d - 1
 		GOSUB vcol
-		VPOKE $1800 + SHAFT_H * 32 + ML + d - 1,32
+		vc = ML + d - 2
+		GOSUB scol0
 		vc = ML + W + 2 - d
 		GOSUB vcol
-		VPOKE $1800 + SHAFT_H * 32 + ML + W + 2 - d,32
+		vc = ML + W + 3 - d
+		GOSUB scol0
 		#fq = 400 + d * 80
 		SOUND 2,#fq,9
 	NEXT d
@@ -914,12 +1062,38 @@ wall_anim:
 	FOR i = 1 TO 8
 		WAIT
 	NEXT i
-	' Open: the walls march back OUT to the next level's border
-	' columns (width W-1, re-centered), continuing the rising run.
-	lc = ML + dmax
-	rc = ML + W + 1 - dmax
-	ml2 = (32 - W + 1) / 2
-	mr2 = ml2 + W
+	' Wipe the old play band to space, then switch to the NEW level's
+	' geometry. The open phase redraws stage + walls from scratch, so
+	' nothing outside the new band lingers as an artifact on a later
+	' win/lose screen. Two loops: the tower column band (rows 0..17), and
+	' the old stage's flared wings (stage rows only, so the HUD in the top
+	' rows is never touched by the wider erase).
+	oML = ML
+	oW = W
+	osh = sh
+	FOR r = 0 TO 17
+		FOR cx = oML - 1 TO oML + oW + 2
+			VPOKE $1800 + r * 32 + cx,32
+		NEXT cx
+	NEXT r
+	FOR r = osh TO 17
+		VPOKE $1800 + r * 32 + oML - 2,32
+		VPOKE $1800 + r * 32 + oML - 3,32
+		VPOKE $1800 + r * 32 + oML + oW + 3,32
+		VPOKE $1800 + r * 32 + oML + oW + 4,32
+	NEXT r
+	GOSUB calc_geom
+	vsh = sh
+	' --- OPEN (new geometry): walls march OUT to the new border columns;
+	' the new stage is revealed column by column behind the growing span.
+	' The span runs lc-3 .. rc+3 so the flared wings (up to 2 cols beyond
+	' each lip) reveal with the walls: scol draws the flared stage under
+	' every column, walls sit at lc/rc, black interior fills between, and
+	' the lips/wings are left clear above the stage. ---
+	lc = oML + oW / 2
+	rc = oML + oW + 1 - oW / 2
+	ml2 = ML
+	mr2 = ML + W + 1
 	cnt2 = 0
 	moved2 = 1
 	WHILE moved2
@@ -929,29 +1103,33 @@ wall_anim:
 		SOUND 2,,0
 		WAIT
 		IF lc > ml2 THEN
-			vch = 135
-			vc = lc - 1
-			GOSUB vcol
-			VPOKE $1800 + SHAFT_H * 32 + lc - 1,135
-			vch = 136
-			vc = lc
-			GOSUB vcol
-			VPOKE $1800 + SHAFT_H * 32 + lc,135
 			lc = lc - 1
 			moved2 = 1
 		END IF
 		IF rc < mr2 THEN
-			vch = 135
-			vc = rc + 1
-			GOSUB vcol
-			VPOKE $1800 + SHAFT_H * 32 + rc + 1,135
-			vch = 136
-			vc = rc
-			GOSUB vcol
-			VPOKE $1800 + SHAFT_H * 32 + rc,135
 			rc = rc + 1
 			moved2 = 1
 		END IF
+		lo2 = lc - 3
+		IF lo2 < 1 THEN lo2 = 1
+		ro2 = rc + 3
+		IF ro2 > 30 THEN ro2 = 30
+		FOR cx = lo2 TO ro2
+			vc = cx
+			GOSUB scol
+			IF cx = lc THEN
+				vch = 135
+				GOSUB vcol
+			ELSEIF cx = rc THEN
+				vch = 135
+				GOSUB vcol
+			ELSEIF cx > lc THEN
+				IF cx < rc THEN
+					vch = 136
+					GOSUB vcol
+				END IF
+			END IF
+		NEXT cx
 		IF moved2 THEN
 			cnt2 = cnt2 + 1
 			#fq = 600 + cnt2 * 70
@@ -970,11 +1148,45 @@ wall_anim:
 	SOUND 2,,0
 	RETURN
 
-	' Paint char vch down the full shaft height at absolute column vc.
+	' Paint char vch down the shaft height (rows 1..vsh) at column vc.
 vcol:
-	FOR r = 1 TO SHAFT_H
+	FOR r = 1 TO vsh
 		VPOKE $1800 + (r - 1) * 32 + vc,vch
 	NEXT r
+	RETURN
+
+	' Erase a stage column (space) down the OLD stage rows (vsh..17) at
+	' column vc -- used while the old shaft narrows in the close phase.
+scol0:
+	FOR r = vsh TO 17
+		VPOKE $1800 + r * 32 + vc,32
+	NEXT r
+	RETURN
+
+	' Draw ONE new-stage column vc, flared like draw_stage: inside the top
+	' (lip) width it runs from row sh; in the flared wings beyond the lip
+	' it starts e rows lower (so the base fans out). Even-level half top /
+	' wall-seam handling matches draw_stage.
+scol:
+	e = 0
+	IF vc < ML - 1 THEN e = ML - 1 - vc
+	IF vc > ML + W + 2 THEN e = vc - ML - W - 2
+	topr = sh + e
+	botr = sh + 2
+	IF botr > 17 THEN botr = 17
+	IF topr <= botr THEN
+		FOR r = topr TO botr
+			code = 137
+			IF r = sh THEN
+				IF hoff THEN
+					code = 138
+					IF vc = ML THEN code = 202
+					IF vc = ML + W + 1 THEN code = 202
+				END IF
+			END IF
+			VPOKE $1800 + r * 32 + vc,code
+		NEXT r
+	END IF
 	RETURN
 
 	'
@@ -1052,8 +1264,8 @@ game_over:
 	WAIT
 	DEFINE COLOR 80,16,txt_red
 	WAIT
-	PRINT AT CPOS(18,13),"OOPS!"
-	PRINT AT CPOS(20,7),"BURIED AT LEVEL ",LV
+	PRINT AT CPOS(18,14),"OOPS!"
+	PRINT AT CPOS(20,8),"BURIED AT LEVEL ",LV
 	PRINT AT CPOS(22,11),"PRESS FIRE"
 	blink = 0
 	' Audible descending "you died" tone (channel 2 -- see the note at
@@ -1314,7 +1526,142 @@ expl_bitmap:
 	BITMAP "X........X......"
 	BITMAP "......X......X.."
 
-	' Per-row colors (fg*16+bg) for chars 128-136: the 7 piece colors
+	' Stage checker: 4x4-px alternating white/black squares. Char 137 =
+	' full tile; char 138 = HALF tile (top 4 px empty) for the visible
+	' half-character stage rise on even levels -- its lower half is
+	' phase-opposed so the checker continues into the full tile below.
+stage_bitmap:
+	BITMAP "XXXX...."
+	BITMAP "XXXX...."
+	BITMAP "XXXX...."
+	BITMAP "XXXX...."
+	BITMAP "....XXXX"
+	BITMAP "....XXXX"
+	BITMAP "....XXXX"
+	BITMAP "....XXXX"
+	BITMAP "........"
+	BITMAP "........"
+	BITMAP "........"
+	BITMAP "........"
+	BITMAP "....XXXX"
+	BITMAP "....XXXX"
+	BITMAP "....XXXX"
+	BITMAP "....XXXX"
+
+	' Solid 8x8 pattern shared by all 56 "pair" tiles (139-194) -- the
+	' split colors come entirely from each char's per-row color bytes.
+solid_ff:
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+
+	' Wall-seam tile (202): solid white top half over the checker's
+	' bottom-half phase (matches the half-stage tile 138), so on even
+	' levels the white wall continues 4 px down to meet the checker.
+wallseam_pat:
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+wallseam_col:
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+
+	' Stage-seam tiles (195-201): solid top half over the checker's
+	' top-half phase (matches the half-stage tile 138).
+bnd_pat:
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+
+	' Pair-tile colors: for A = 0..7 (0 = black, then the 7 piece
+	' colors) and B = 1..7, rows 0-3 = A's color byte, rows 4-7 = B's.
+	' Color bytes: black $11, then $81,$31,$A1,$71,$51,$61,$E1.
+pcc1:
+	DATA BYTE $11,$11,$11,$11,$81,$81,$81,$81
+	DATA BYTE $11,$11,$11,$11,$31,$31,$31,$31
+	DATA BYTE $11,$11,$11,$11,$A1,$A1,$A1,$A1
+	DATA BYTE $11,$11,$11,$11,$71,$71,$71,$71
+	DATA BYTE $11,$11,$11,$11,$51,$51,$51,$51
+	DATA BYTE $11,$11,$11,$11,$61,$61,$61,$61
+	DATA BYTE $11,$11,$11,$11,$E1,$E1,$E1,$E1
+	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81
+	DATA BYTE $81,$81,$81,$81,$31,$31,$31,$31
+	DATA BYTE $81,$81,$81,$81,$A1,$A1,$A1,$A1
+	DATA BYTE $81,$81,$81,$81,$71,$71,$71,$71
+	DATA BYTE $81,$81,$81,$81,$51,$51,$51,$51
+	DATA BYTE $81,$81,$81,$81,$61,$61,$61,$61
+	DATA BYTE $81,$81,$81,$81,$E1,$E1,$E1,$E1
+	DATA BYTE $31,$31,$31,$31,$81,$81,$81,$81
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31
+pcc2:
+	DATA BYTE $31,$31,$31,$31,$A1,$A1,$A1,$A1
+	DATA BYTE $31,$31,$31,$31,$71,$71,$71,$71
+	DATA BYTE $31,$31,$31,$31,$51,$51,$51,$51
+	DATA BYTE $31,$31,$31,$31,$61,$61,$61,$61
+	DATA BYTE $31,$31,$31,$31,$E1,$E1,$E1,$E1
+	DATA BYTE $A1,$A1,$A1,$A1,$81,$81,$81,$81
+	DATA BYTE $A1,$A1,$A1,$A1,$31,$31,$31,$31
+	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+	DATA BYTE $A1,$A1,$A1,$A1,$71,$71,$71,$71
+	DATA BYTE $A1,$A1,$A1,$A1,$51,$51,$51,$51
+	DATA BYTE $A1,$A1,$A1,$A1,$61,$61,$61,$61
+	DATA BYTE $A1,$A1,$A1,$A1,$E1,$E1,$E1,$E1
+	DATA BYTE $71,$71,$71,$71,$81,$81,$81,$81
+	DATA BYTE $71,$71,$71,$71,$31,$31,$31,$31
+	DATA BYTE $71,$71,$71,$71,$A1,$A1,$A1,$A1
+	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
+pcc3:
+	DATA BYTE $71,$71,$71,$71,$51,$51,$51,$51
+	DATA BYTE $71,$71,$71,$71,$61,$61,$61,$61
+	DATA BYTE $71,$71,$71,$71,$E1,$E1,$E1,$E1
+	DATA BYTE $51,$51,$51,$51,$81,$81,$81,$81
+	DATA BYTE $51,$51,$51,$51,$31,$31,$31,$31
+	DATA BYTE $51,$51,$51,$51,$A1,$A1,$A1,$A1
+	DATA BYTE $51,$51,$51,$51,$71,$71,$71,$71
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
+	DATA BYTE $51,$51,$51,$51,$61,$61,$61,$61
+	DATA BYTE $51,$51,$51,$51,$E1,$E1,$E1,$E1
+	DATA BYTE $61,$61,$61,$61,$81,$81,$81,$81
+	DATA BYTE $61,$61,$61,$61,$31,$31,$31,$31
+	DATA BYTE $61,$61,$61,$61,$A1,$A1,$A1,$A1
+	DATA BYTE $61,$61,$61,$61,$71,$71,$71,$71
+	DATA BYTE $61,$61,$61,$61,$51,$51,$51,$51
+	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
+pcc4:
+	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$81,$81,$81,$81
+	DATA BYTE $E1,$E1,$E1,$E1,$31,$31,$31,$31
+	DATA BYTE $E1,$E1,$E1,$E1,$A1,$A1,$A1,$A1
+	DATA BYTE $E1,$E1,$E1,$E1,$71,$71,$71,$71
+	DATA BYTE $E1,$E1,$E1,$E1,$51,$51,$51,$51
+	DATA BYTE $E1,$E1,$E1,$E1,$61,$61,$61,$61
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+
+	' Stage-seam colors: piece color over white-on-black checker rows.
+bnd_colors:
+	DATA BYTE $81,$81,$81,$81,$F1,$F1,$F1,$F1
+	DATA BYTE $31,$31,$31,$31,$F1,$F1,$F1,$F1
+	DATA BYTE $A1,$A1,$A1,$A1,$F1,$F1,$F1,$F1
+	DATA BYTE $71,$71,$71,$71,$F1,$F1,$F1,$F1
+	DATA BYTE $51,$51,$51,$51,$F1,$F1,$F1,$F1
+	DATA BYTE $61,$61,$61,$61,$F1,$F1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$F1,$F1
+
+	' Per-row colors (fg*16+bg) for chars 128-138: the 7 piece colors
 	' (red, lt green, yellow, cyan, blue, dk red, gray), the white
 	' border/floor tile, then the black-on-black shaft-interior tile
 	' (char 136: empty playfield cells use it instead of space, so the
@@ -1387,6 +1734,8 @@ tile_colors:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
 	'
 	' Background tune: an ORIGINAL 16-bar loop in A minor -- a brisk
