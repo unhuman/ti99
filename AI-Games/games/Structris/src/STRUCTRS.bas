@@ -266,8 +266,10 @@ main_loop:
 	' stage as the walls open.
 	'
 calc_geom:
-	W = 15 - LV
-	IF W < 5 THEN W = 5
+	' Shaft interior width: 15 columns at level 1, one narrower per level,
+	' down to 6 at level 10 (never below 6). ML centers it on the screen.
+	W = 16 - LV
+	IF W < 6 THEN W = 6
 	ML = (32 - W) / 2
 	' The stage rises half a character per level: the playable height sh
 	' loses a full row on each EVEN level (16 at level 1, 15 at 2-3, 14
@@ -424,21 +426,22 @@ draw_borders:
 	GOSUB draw_stage
 	RETURN
 
-	' THE STAGE: the checkered platform everything stands on. Per the
-	' original it is a trapezoid FLARING OUTWARD as it descends -- narrow
-	' at the top (one lip column beyond each wall), one column wider on
-	' each side per row down into a fatter base, only three rows tall so
-	' it reads as a thin angled pedestal (higher levels sit it high with
-	' black below, never a solid rectangle). On even levels the top row
-	' sits a half character low: it uses the half-checker tile (138), and
-	' the two wall-base columns use the wall-seam tile (202, white top
+	' THE STAGE: the checkered MOUNTAIN everything stands on. It flares
+	' OUTWARD one column per side on EVERY row as it descends -- narrow at
+	' the top (one lip column beyond each wall) down to a wide base at the
+	' floor (row 17), a full triangular mountain. As the shaft shortens
+	' each level (sh rises) the mountain GROWS TALLER (and its base wider),
+	' filling the space below instead of floating up as a thin pedestal
+	' with black beneath it. The level-up wing-erase and reveal span are
+	' driven by the same per-row flare (17 - sh cols beyond the lip at the
+	' base), so they track this width at any level. On even levels the top
+	' row sits a half character low: it uses the half-checker tile (138),
+	' and the two wall-base columns use the wall-seam tile (202, white top
 	' over checker) so the white walls meet the checker with no black gap.
 draw_stage:
-	botr = sh + 2
-	IF botr > 17 THEN botr = 17
 	li = ML - 1
 	ri = ML + W + 2
-	FOR r = sh TO botr
+	FOR r = sh TO 17
 		lo = li
 		IF lo < 1 THEN lo = 1
 		ro = ri
@@ -454,14 +457,16 @@ draw_stage:
 			END IF
 			VPOKE $1800 + r * 32 + cx,code
 		NEXT cx
+		' Flare one column wider on each side every row, all the way down.
 		li = li - 1
 		ri = ri + 1
 	NEXT r
 	RETURN
 
 draw_hud:
-	' HUD is a LEFT SIDEBAR (the shaft is centered, so columns 0-8 are
-	' free even at the level-1 width): score in the top-left corner,
+	' HUD is a LEFT SIDEBAR: labels/values sit in columns 1-5, and the
+	' shaft is centered (left wall at ML = 8 at the widest level-1 width),
+	' so the sidebar never collides with it. Score in the top-left corner,
 	' LEVEL and CLEAR blocks below it. Labels are printed once by
 	' init_level; this refreshes only the values.
 	PRINT AT CPOS(2,1),<5>#score
@@ -1105,16 +1110,29 @@ level_up:
 	'
 wall_anim:
 	GOSUB hide_sprites
-	' Clear the old flared stage WINGS (the angled cells OUTSIDE the walls)
-	' up front, before the collapse: the close phase only tracks the lip as
-	' the walls march in, so without this the wings sat there as leftover
-	' artifacts during the collapse. Stage rows only (sh..17), so the top-
-	' row sidebar HUD is untouched.
+	' Clear the old flared mountain WINGS (the angled cells OUTSIDE the
+	' walls) up front, before the collapse: the close phase only tracks the
+	' lip as the walls march in, so without this the wings sat there as
+	' leftover artifacts during the collapse. The mountain flares one column
+	' per row, so the wings form a triangle (widest at the floor) -- walk
+	' li/ri outward per row exactly like draw_stage. Stage rows only
+	' (sh..17), and the triangle is narrow at the top, so the sidebar HUD
+	' is untouched.
+	li = ML - 2
+	ri = ML + W + 3
 	FOR r = sh TO 17
-		VPOKE $1800 + r * 32 + ML - 2,32
-		VPOKE $1800 + r * 32 + ML - 3,32
-		VPOKE $1800 + r * 32 + ML + W + 3,32
-		VPOKE $1800 + r * 32 + ML + W + 4,32
+		lo = li
+		IF lo < 1 THEN lo = 1
+		FOR cx = lo TO ML - 2
+			VPOKE $1800 + r * 32 + cx,32
+		NEXT cx
+		ro = ri
+		IF ro > 30 THEN ro = 30
+		FOR cx = ML + W + 3 TO ro
+			VPOKE $1800 + r * 32 + cx,32
+		NEXT cx
+		li = li - 1
+		ri = ri + 1
 	NEXT r
 	' --- CLOSE (old geometry) ---
 	vsh = sh
@@ -1170,20 +1188,32 @@ wall_anim:
 			VPOKE $1800 + r * 32 + cx,32
 		NEXT cx
 	NEXT r
+	li = oML - 2
+	ri = oML + oW + 3
 	FOR r = osh TO 17
-		VPOKE $1800 + r * 32 + oML - 2,32
-		VPOKE $1800 + r * 32 + oML - 3,32
-		VPOKE $1800 + r * 32 + oML + oW + 3,32
-		VPOKE $1800 + r * 32 + oML + oW + 4,32
+		lo = li
+		IF lo < 1 THEN lo = 1
+		FOR cx = lo TO oML - 2
+			VPOKE $1800 + r * 32 + cx,32
+		NEXT cx
+		ro = ri
+		IF ro > 30 THEN ro = 30
+		FOR cx = oML + oW + 3 TO ro
+			VPOKE $1800 + r * 32 + cx,32
+		NEXT cx
+		li = li - 1
+		ri = ri + 1
 	NEXT r
 	GOSUB calc_geom
 	vsh = sh
 	' --- OPEN (new geometry): walls march OUT to the new border columns;
-	' the new stage is revealed column by column behind the growing span.
-	' The span runs lc-3 .. rc+3 so the flared wings (up to 2 cols beyond
-	' each lip) reveal with the walls: scol draws the flared stage under
-	' every column, walls sit at lc/rc, black interior fills between, and
-	' the lips/wings are left clear above the stage. ---
+	' the new mountain is revealed column by column behind the growing span.
+	' The span reaches wdep + 1 columns beyond each wall (wdep = 17 - sh is
+	' the mountain's flare depth at the floor) so the full triangular wings
+	' reveal with the walls: scol draws the flared stage under every column
+	' (and no-ops past the flare tip), walls sit at lc/rc, black interior
+	' fills between, and the lips/wings are left clear above the stage. ---
+	wdep = 17 - sh + 1
 	lc = oML + oW / 2
 	rc = oML + oW + 1 - oW / 2
 	ml2 = ML
@@ -1204,9 +1234,9 @@ wall_anim:
 			rc = rc + 1
 			moved2 = 1
 		END IF
-		lo2 = lc - 3
+		lo2 = lc - wdep
 		IF lo2 < 1 THEN lo2 = 1
-		ro2 = rc + 3
+		ro2 = rc + wdep
 		IF ro2 > 30 THEN ro2 = 30
 		FOR cx = lo2 TO ro2
 			vc = cx
@@ -1276,16 +1306,16 @@ hide_sprites:
 	RETURN
 
 	' Draw ONE new-stage column vc, flared like draw_stage: inside the top
-	' (lip) width it runs from row sh; in the flared wings beyond the lip
-	' it starts e rows lower (so the base fans out). Even-level half top /
-	' wall-seam handling matches draw_stage.
+	' (lip) width it runs from row sh; a column e steps beyond the lip
+	' starts e rows lower (sh + e) so the mountain fans out one column per
+	' row, and every column fills down to the floor (row 17). Even-level
+	' half top / wall-seam handling matches draw_stage.
 scol:
 	e = 0
 	IF vc < ML - 1 THEN e = ML - 1 - vc
 	IF vc > ML + W + 2 THEN e = vc - ML - W - 2
 	topr = sh + e
-	botr = sh + 2
-	IF botr > 17 THEN botr = 17
+	botr = 17
 	IF topr <= botr THEN
 		FOR r = topr TO botr
 			code = 137

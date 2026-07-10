@@ -33,12 +33,13 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   top-left, `LEVEL` and `CLEAR` blocks under it); the score spans the whole game (all levels).
 - Every column built up past a shared height threshold "falls away" (the completed rows compact
   out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows
-  (14 columns at level 1 down to 5 at level 10, the original's widths) and the row goal climbs,
+  (15 columns at level 1 down to 6 at level 10) and the row goal climbs,
   but the **fall speed stays constant** (a faster fall made high levels unplayable — the challenge
   comes from the row requirement and the narrowing shaft, not from speed). The
-  checkered **stage** the game stands on (per the original — a flared pedestal, narrow at the
-  top under the walls and fanning out to a wider base) rises half a character — shortening the
-  fall from 16 rows at level 1 to 11 at level 10. The raised stage is revealed column by column as
+  checkered **mountain** the game stands on (narrow at the top under the walls, flaring one column
+  per side every row down to a wide base at the floor) rises half a character each level — so it
+  grows taller and wider as the shaft shrinks, shortening the fall from 16 rows at level 1 to 11 at
+  level 10. The mountain is revealed column by column as
   the walls slide open between levels.
   Survive all 10 levels to win.
 
@@ -108,8 +109,9 @@ above the screen top, landings converting flush to per-piece colored tiles, the 
 sliding/climbing smoothly in pixels and surviving mid-stream between pieces, smash rule kills a
 player caught under a landing piece → OOPS with blinking player → fire returns to the title;
 838 → level 4 start verified, and the starting level resets to 1 after a game (fire → title →
-fire starts level 1); the flared pedestal stage renders cleanly at levels 1/4/6 with the walls
-meeting the checker (no black gap) and reveals column-by-column across chained level-ups; the
+fire starts level 1); the flared **mountain** stage renders cleanly (verified at levels 1/7/10 and
+across forced level-up transitions) with the walls meeting the checker (no black gap) and reveals
+column-by-column across chained level-ups; the
 player bar starts centered and the OOPS!/LEVEL UP! messages sit centered under the tower; the
 green win banner and its color restore verified via a probe build; 60Hz timing confirmed by
 blink-period and fall-rate measurement).

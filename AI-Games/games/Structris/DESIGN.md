@@ -123,16 +123,17 @@ along a surface while climbing or ducking. The move blip is throttled to one per
 
 ## 4. Playfield & Column Model
 
-- `W` = shaft width in columns, `W = MAX(5, 15 - LV)` — **14 at level 1** (the original's
-  `W = 15 - LV` exactly), narrowing one column per level to 5 at level 10.
+- `W` = shaft width in columns, `W = MAX(6, 16 - LV)` — **15 at level 1**, narrowing one column
+  per level to **6 at level 10** (one wider than the original at both ends, for fairer play).
   Shaft is centered: left margin `ML = (32 - W) / 2`; column `c` (1..W) occupies text column
   `ML + c`.
-- **The STAGE** (per the original): the game lives on a black-and-white checkered platform
-  (4×4-px squares, chars 137/138) shaped like a **flared pedestal** — narrow at the top (one lip
-  column beyond each wall, where the walls stand and the stack rests) and **fanning outward one
-  column per row** into a wider base. It is only **three rows tall** (`sh … sh+2`, clamped to row
-  17), so on higher levels it sits high with black below rather than filling as a solid rectangle.
-  The stage **rises half a character per level**, shortening the fall. The playable height
+- **The STAGE** (per the original): the game lives on a black-and-white checkered **mountain**
+  (4×4-px squares, chars 137/138) — narrow at the top (one lip column beyond each wall, where the
+  walls stand and the stack rests) and **flaring outward one column per side on every row** all the
+  way down to the floor (row 17), a full triangle. As the shaft shortens each level (`sh` rises)
+  the mountain **grows taller and its base wider**, filling the space below instead of floating up
+  as a thin pedestal with black beneath it. The stage top **rises half a character per level**,
+  shortening the fall. The playable height
   `sh = SHAFT_H - LV/2` loses a full row on each even level (16 rows at level 1 down to 11 at
   level 10), and on **even levels the whole floor is additionally shifted down half a character**
   (`hoff = 4` px, folded into `sh1`, landing targets `ptpx`, and the player clamps — pieces and
@@ -474,11 +475,13 @@ ROM (see `.claude/skills/verify` guidance).
       game begins at once — the choice lasts **one game only** (every return to the title resets to
       level 1). Verified in Classic99: 838→4 starts at level 4, and after being buried, fire →
       title → fire starts a fresh game at **level 1**.
-- [x] The **stage is a flared pedestal** — narrow top under the walls, fanning out to a wider
-      base, only three rows tall (thin on high levels, not a solid rectangle); the white walls meet
-      the checker with no black gap on even levels (wall-seam char 202). During a level-up the new
-      stage is revealed as the walls open, with no snap. The player's bar starts **centered between
-      the walls, one cell (8 px) up off the floor**, and the OOPS!/LEVEL UP! messages are centered
+- [x] The **stage is a flared mountain** — narrow top under the walls, flaring one column per side
+      every row down to a wide base at the floor, so it grows taller/wider each level (verified at
+      levels 7 and 10 and across forced level-up transitions with no wing artifacts); the white
+      walls meet the checker with no black gap on even levels (wall-seam char 202). During a
+      level-up the new mountain is revealed as the walls open, with no snap. The player's bar starts
+      **centered between the walls, one cell (8 px) up off the floor**, and the OOPS!/LEVEL UP!
+      messages are centered
       under the tower. (TI verified in
       Classic99 at levels 1/4/6 and across chained level-ups.)
 - [x] A game starts with a **3-2-1 countdown** (rising beeps, centered over the shaft); when the
