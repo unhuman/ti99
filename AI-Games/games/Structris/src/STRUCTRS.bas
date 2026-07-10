@@ -816,6 +816,7 @@ spawn_piece:
 	'
 advance_pieces:
 	landed = 0
+	nland = 0
 	' #fd (elapsed-frame count) is computed once per pass in main_loop and
 	' shared by both the player (handle_input) and the fall below, so they
 	' scale identically when the TMS9900 misses a vblank.
@@ -909,8 +910,11 @@ advance_pieces:
 					nact = nact - 1
 					SPRITE 1 + p,$D1,0,0,0
 					landed = 1
-					' Scoring: 1 point per landed piece.
-					#score = #score + 1
+					' Scoring: 1 point per landed piece -- but DEFERRED (see
+					' below): only banked once check_player confirms the
+					' player survived the pass, so a piece that crushes them
+					' against the base as it lands awards nothing.
+					nland = nland + 1
 				ELSE
 					' Sprite top = piece bottom - 32 (bottom-aligned art
 					' in a 32px box); the VDP Y arg is one less, and the
@@ -920,18 +924,23 @@ advance_pieces:
 				END IF
 			END IF
 		NEXT p
-		IF landed THEN
-			SOUND 2,600,12
-			snd2 = 4
-			GOSUB draw_hud
-		END IF
 	END IF
 
 	GOSUB check_player
-	' Row clears can only happen when a piece has just landed -- don't
-	' rescan every column every frame (TI-99 frame budget).
+	' A piece only truly LANDS -- banking its point, its blip, and a
+	' row-clear scan -- once check_player confirms the player SURVIVED the
+	' pass. If a landing piece crushed them against the base, gameend is now
+	' set and the piece awards nothing and makes no sound (it "never landed"
+	' from the player's point of view). Row clears can only happen when a
+	' piece just landed, so they stay gated on that.
 	IF gameend = 0 THEN
-		IF landed THEN GOSUB check_rowclear
+		IF landed THEN
+			#score = #score + nland
+			SOUND 2,600,12
+			snd2 = 4
+			GOSUB draw_hud
+			GOSUB check_rowclear
+		END IF
 	END IF
 	RETURN
 
