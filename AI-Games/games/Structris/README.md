@@ -81,9 +81,13 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 
 ## Music
 
-An original 16-bar A-minor loop (folk-dance energy in the Tetris spirit, not the Tetris song)
-plays during gameplay via CVBasic's interrupt music player — melody + bass on channels 0/1,
-effects on channel 2, noise reserved for explosions and fireworks.
+**Every level has its own tune** (`tune1`..`tune10`) — ten original loops that get faster and
+darker as you climb: level 1 is a 16-bar A-minor folk dance, levels 2–10 are shorter loops in
+different keys/modes (D minor, E phrygian, G major, C dorian, A harmonic minor, F# minor, B
+phrygian, E harmonic minor, A minor) at rising tempos. They play via CVBasic's interrupt music
+player — melody + bass on channels 0/1, effects on channel 2, noise reserved for explosions and
+fireworks. A game starts with a **3-2-1 countdown** (rising beeps, one per second, centered over
+the shaft); when the "1" clears, the level's tune and the piece stream begin together.
 
 ## Build
 

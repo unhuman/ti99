@@ -222,6 +222,10 @@ new_game:
 	#score = 0
 	frsh = 1
 	GOSUB init_level
+	' Ready? 3-2-1 countdown with beeps, then the tune starts and the
+	' piece stream begins on the next main-loop pass.
+	GOSUB countdown
+	GOSUB start_music
 
 main_loop:
 	WAIT
@@ -339,8 +343,59 @@ init_level:
 	PRINT AT CPOS(4,1),"LEVEL"
 	PRINT AT CPOS(7,1),"CLEAR"
 	GOSUB draw_hud
-	' Gameplay music (re)starts from the top each level.
-	PLAY game_tune
+	' Music is started by the caller (start_music, per-level tune) AFTER
+	' the game-start countdown -- not here -- so the 3-2-1 beeps play
+	' over silence and the tune kicks in exactly when gameplay begins.
+	RETURN
+
+	' ---- Get-ready countdown (game start only) ----
+	' A "3", "2", "1" over the middle of the shaft, one second each with a
+	' rising beep; when the "1" clears, gameplay + music begin. The player
+	' bar is shown so its start position reads before pieces fall.
+countdown:
+	SPRITE 0,PY - 1,PX,0,15
+	PRINT AT CPOS(9,16),"3"
+	cdf = 400
+	GOSUB cd_beat
+	PRINT AT CPOS(9,16),"2"
+	cdf = 500
+	GOSUB cd_beat
+	PRINT AT CPOS(9,16),"1"
+	cdf = 640
+	GOSUB cd_beat
+	' Clear the digit back to the black interior tile (char 136, not a
+	' space) so the shaft stays black under the win/lose recolors.
+	VPOKE $1800 + CPOS(9,16),136
+	RETURN
+
+	' One countdown second: a short beep (channel 2 -- the music player
+	' owns channels 0+1) then silence for the rest of ~60 frames.
+cd_beat:
+	SOUND 2,cdf,13
+	FOR cdi = 1 TO 10
+		WAIT
+	NEXT cdi
+	SOUND 2,,0
+	FOR cdi = 1 TO 50
+		WAIT
+	NEXT cdi
+	RETURN
+
+	' ---- Per-level background tune ----
+	' Each level has its own tune (tune1..tune10); PLAY needs a constant
+	' label, so select with a single-comparison IF chain (called once per
+	' level, never per frame).
+start_music:
+	IF LV = 1 THEN PLAY tune1
+	IF LV = 2 THEN PLAY tune2
+	IF LV = 3 THEN PLAY tune3
+	IF LV = 4 THEN PLAY tune4
+	IF LV = 5 THEN PLAY tune5
+	IF LV = 6 THEN PLAY tune6
+	IF LV = 7 THEN PLAY tune7
+	IF LV = 8 THEN PLAY tune8
+	IF LV = 9 THEN PLAY tune9
+	IF LV = 10 THEN PLAY tune10
 	RETURN
 
 draw_borders:
@@ -1002,6 +1057,9 @@ level_up:
 	PRINT AT CPOS(19,12),"         "
 	RD = 0
 	GOSUB init_level
+	' New level, new tune (no countdown between levels -- the wall
+	' animation already gives the "get ready" beat).
+	GOSUB start_music
 	RETURN
 
 	'
@@ -1738,14 +1796,15 @@ tile_colors:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
 	'
-	' Background tune: an ORIGINAL 16-bar loop in A minor -- a brisk
-	' Slavic-folk-dance feel in the spirit of (but not copying) the
-	' Tetris tradition. Two channels (PLAY SIMPLE): piano melody (W)
-	' over a pumping root-fifth bass (Z, sounds two octaves down).
-	' Each MUSIC row is an eighth note at 10 ticks (~150 BPM), 8 rows
-	' per bar. Form: A phrase, answer, B lift, resolve -- then REPEAT.
+	' Per-level background tunes (tune1..tune10). Each is an ORIGINAL loop
+	' for PLAY SIMPLE (two channels: melody + bass Z, which sounds two
+	' octaves down); a MUSIC row is one eighth note, 8 rows per bar. The
+	' tunes get faster and darker as the levels climb (start_music picks
+	' one by LV). tune1 is the level-1 A-minor folk-dance loop; tune2..10
+	' are shorter distinct loops generated from chord progressions.
 	'
-game_tune:
+	' tune1 -- level 1: A minor, brisk folk-dance, 16 bars, ~150 BPM.
+tune1:
 	DATA BYTE 10
 	MUSIC A4W,A5Z
 	MUSIC S,S
@@ -1875,6 +1934,627 @@ game_tune:
 	MUSIC -,S
 	MUSIC -,-
 	MUSIC -,-
+	MUSIC REPEAT
+
+	' tune2 -- level 2: D minor, folk lilt.
+tune2:
+	DATA BYTE 10
+	MUSIC D4Y,D5Z
+	MUSIC F4,S
+	MUSIC A4,A5
+	MUSIC D5,S
+	MUSIC A4,D5
+	MUSIC F4,S
+	MUSIC D4,A5
+	MUSIC S,S
+	MUSIC A4#,A5#
+	MUSIC F5,S
+	MUSIC D5,F6
+	MUSIC A5#,S
+	MUSIC S,A5#
+	MUSIC F5,S
+	MUSIC D5,F6
+	MUSIC A4#,S
+	MUSIC F4,F5
+	MUSIC A4,S
+	MUSIC C5,C6
+	MUSIC F5,S
+	MUSIC C5,F5
+	MUSIC A4,S
+	MUSIC F4,C6
+	MUSIC S,S
+	MUSIC A4,A5
+	MUSIC -,S
+	MUSIC E5,E6
+	MUSIC -,S
+	MUSIC A5,A5
+	MUSIC E5,S
+	MUSIC C5,E6
+	MUSIC S,S
+	MUSIC D4,D5
+	MUSIC F4,S
+	MUSIC A4,A5
+	MUSIC D5,S
+	MUSIC A4,D5
+	MUSIC F4,S
+	MUSIC D4,A5
+	MUSIC S,S
+	MUSIC A4#,A5#
+	MUSIC F5,S
+	MUSIC D5,F6
+	MUSIC A5#,S
+	MUSIC S,A5#
+	MUSIC F5,S
+	MUSIC D5,F6
+	MUSIC A4#,S
+	MUSIC C4,C5
+	MUSIC E4,S
+	MUSIC G4,G5
+	MUSIC C5,S
+	MUSIC G4,C5
+	MUSIC E4,S
+	MUSIC C4,G5
+	MUSIC S,S
+	MUSIC D4,D5
+	MUSIC -,S
+	MUSIC A4,A5
+	MUSIC -,S
+	MUSIC D5,D5
+	MUSIC A4,S
+	MUSIC F4,A5
+	MUSIC S,S
+	MUSIC REPEAT
+
+	' tune3 -- level 3: E phrygian, brooding.
+tune3:
+	DATA BYTE 9
+	MUSIC E4X,E5Z
+	MUSIC -,S
+	MUSIC B4,B5
+	MUSIC -,S
+	MUSIC E5,E5
+	MUSIC B4,S
+	MUSIC G4,B5
+	MUSIC S,S
+	MUSIC F4,F5
+	MUSIC A4,S
+	MUSIC C5,C6
+	MUSIC S,S
+	MUSIC F5,F5
+	MUSIC C5,S
+	MUSIC S,C6
+	MUSIC A4,S
+	MUSIC D4,D5
+	MUSIC -,S
+	MUSIC A4,A5
+	MUSIC -,S
+	MUSIC D5,D5
+	MUSIC A4,S
+	MUSIC F4,A5
+	MUSIC S,S
+	MUSIC E4,E5
+	MUSIC G4,S
+	MUSIC B4,B5
+	MUSIC E5,S
+	MUSIC B4,E5
+	MUSIC G4,S
+	MUSIC E4,B5
+	MUSIC S,S
+	MUSIC C4,C5
+	MUSIC -,S
+	MUSIC G4,G5
+	MUSIC -,S
+	MUSIC C5,C5
+	MUSIC G4,S
+	MUSIC E4,G5
+	MUSIC S,S
+	MUSIC F4,F5
+	MUSIC A4,S
+	MUSIC C5,C6
+	MUSIC S,S
+	MUSIC F5,F5
+	MUSIC C5,S
+	MUSIC S,C6
+	MUSIC A4,S
+	MUSIC B4,B5
+	MUSIC -,S
+	MUSIC F5,F6
+	MUSIC -,S
+	MUSIC B5,B5
+	MUSIC F5,S
+	MUSIC D5,F6
+	MUSIC S,S
+	MUSIC E4,E5
+	MUSIC G4,S
+	MUSIC B4,B5
+	MUSIC E5,S
+	MUSIC B4,E5
+	MUSIC G4,S
+	MUSIC E4,B5
+	MUSIC S,S
+	MUSIC REPEAT
+
+	' tune4 -- level 4: G major, bright drive.
+tune4:
+	DATA BYTE 9
+	MUSIC G4W,G4Z
+	MUSIC D5,S
+	MUSIC B4,D5
+	MUSIC G5,S
+	MUSIC S,G4
+	MUSIC D5,S
+	MUSIC B4,D5
+	MUSIC G4,S
+	MUSIC D4,D4
+	MUSIC F4#,S
+	MUSIC A4,A4
+	MUSIC D5,S
+	MUSIC A4,D4
+	MUSIC F4#,S
+	MUSIC D4,A4
+	MUSIC S,S
+	MUSIC E4,E4
+	MUSIC B4,S
+	MUSIC G4,B4
+	MUSIC E5,S
+	MUSIC S,E4
+	MUSIC B4,S
+	MUSIC G4,B4
+	MUSIC E4,S
+	MUSIC C4,C4
+	MUSIC E4,S
+	MUSIC G4,G4
+	MUSIC S,S
+	MUSIC C5,C4
+	MUSIC G4,S
+	MUSIC S,G4
+	MUSIC E4,S
+	MUSIC A4,A4
+	MUSIC E5,S
+	MUSIC C5,E5
+	MUSIC A5,S
+	MUSIC S,A4
+	MUSIC E5,S
+	MUSIC C5,E5
+	MUSIC A4,S
+	MUSIC D4,D4
+	MUSIC F4#,S
+	MUSIC A4,A4
+	MUSIC D5,S
+	MUSIC A4,D4
+	MUSIC F4#,S
+	MUSIC D4,A4
+	MUSIC S,S
+	MUSIC G4,G4
+	MUSIC D5,S
+	MUSIC B4,D5
+	MUSIC G5,S
+	MUSIC S,G4
+	MUSIC D5,S
+	MUSIC B4,D5
+	MUSIC G4,S
+	MUSIC D4,D4
+	MUSIC F4#,S
+	MUSIC A4,A4
+	MUSIC S,S
+	MUSIC D5,D4
+	MUSIC A4,S
+	MUSIC S,A4
+	MUSIC F4#,S
+	MUSIC REPEAT
+
+	' tune5 -- level 5: C dorian, groovy.
+tune5:
+	DATA BYTE 8
+	MUSIC C4Y,C5Z
+	MUSIC D4#,S
+	MUSIC G4,G5
+	MUSIC C5,S
+	MUSIC G4,C5
+	MUSIC D4#,S
+	MUSIC C4,G5
+	MUSIC S,S
+	MUSIC F4,F5
+	MUSIC -,S
+	MUSIC C5,C6
+	MUSIC -,S
+	MUSIC F5,F5
+	MUSIC C5,S
+	MUSIC A4,C6
+	MUSIC S,S
+	MUSIC A4#,A5#
+	MUSIC F5,S
+	MUSIC D5,F6
+	MUSIC A5#,S
+	MUSIC S,A5#
+	MUSIC F5,S
+	MUSIC D5,F6
+	MUSIC A4#,S
+	MUSIC G4,C5
+	MUSIC D4#,S
+	MUSIC C4,G5
+	MUSIC D4#,S
+	MUSIC G4,C5
+	MUSIC C5,S
+	MUSIC G4,G5
+	MUSIC S,S
+	MUSIC A4,A5
+	MUSIC C5,S
+	MUSIC D5#,D6#
+	MUSIC A5,S
+	MUSIC D5#,A5
+	MUSIC C5,S
+	MUSIC A4,D6#
+	MUSIC S,S
+	MUSIC F4,F5
+	MUSIC -,S
+	MUSIC C5,C6
+	MUSIC -,S
+	MUSIC F5,F5
+	MUSIC C5,S
+	MUSIC A4,C6
+	MUSIC S,S
+	MUSIC G4,G5
+	MUSIC D5,S
+	MUSIC A4#,D6
+	MUSIC G5,S
+	MUSIC S,G5
+	MUSIC D5,S
+	MUSIC A4#,D6
+	MUSIC G4,S
+	MUSIC G4,C5
+	MUSIC D4#,S
+	MUSIC C4,G5
+	MUSIC D4#,S
+	MUSIC G4,C5
+	MUSIC C5,S
+	MUSIC G4,G5
+	MUSIC S,S
+	MUSIC REPEAT
+
+	' tune6 -- level 6: A harmonic minor, tense.
+tune6:
+	DATA BYTE 8
+	MUSIC A4X,A5Z
+	MUSIC C5,S
+	MUSIC E5,E6
+	MUSIC S,S
+	MUSIC A5,A5
+	MUSIC E5,S
+	MUSIC S,E6
+	MUSIC C5,S
+	MUSIC E4,E5
+	MUSIC -,S
+	MUSIC B4,B5
+	MUSIC -,S
+	MUSIC E5,E5
+	MUSIC B4,S
+	MUSIC G4#,B5
+	MUSIC S,S
+	MUSIC F4,F5
+	MUSIC A4,S
+	MUSIC C5,C6
+	MUSIC F5,S
+	MUSIC C5,F5
+	MUSIC A4,S
+	MUSIC F4,C6
+	MUSIC S,S
+	MUSIC E4,E5
+	MUSIC B4,S
+	MUSIC G4#,B5
+	MUSIC E5,S
+	MUSIC S,E5
+	MUSIC B4,S
+	MUSIC G4#,B5
+	MUSIC E4,S
+	MUSIC A4,A5
+	MUSIC C5,S
+	MUSIC E5,E6
+	MUSIC S,S
+	MUSIC A5,A5
+	MUSIC E5,S
+	MUSIC S,E6
+	MUSIC C5,S
+	MUSIC D4,D5
+	MUSIC -,S
+	MUSIC A4,A5
+	MUSIC -,S
+	MUSIC D5,D5
+	MUSIC A4,S
+	MUSIC F4,A5
+	MUSIC S,S
+	MUSIC G4#,G5#
+	MUSIC B4,S
+	MUSIC D5,D6
+	MUSIC G5#,S
+	MUSIC D5,G5#
+	MUSIC B4,S
+	MUSIC G4#,D6
+	MUSIC S,S
+	MUSIC A4,A5
+	MUSIC E5,S
+	MUSIC C5,E6
+	MUSIC A5,S
+	MUSIC S,A5
+	MUSIC E5,S
+	MUSIC C5,E6
+	MUSIC A4,S
+	MUSIC REPEAT
+
+	' tune7 -- level 7: F# minor, urgent.
+tune7:
+	DATA BYTE 7
+	MUSIC F4#W,F4#Z
+	MUSIC C5#,S
+	MUSIC A4,C5#
+	MUSIC F5#,S
+	MUSIC S,F4#
+	MUSIC C5#,S
+	MUSIC A4,C5#
+	MUSIC F4#,S
+	MUSIC B4,E4
+	MUSIC G4#,S
+	MUSIC E4,B4
+	MUSIC G4#,S
+	MUSIC B4,E4
+	MUSIC E5,S
+	MUSIC B4,B4
+	MUSIC S,S
+	MUSIC D4,D4
+	MUSIC -,S
+	MUSIC A4,A4
+	MUSIC -,S
+	MUSIC D5,D4
+	MUSIC A4,S
+	MUSIC F4#,A4
+	MUSIC S,S
+	MUSIC C4#,C4#
+	MUSIC E4,S
+	MUSIC G4#,G4#
+	MUSIC C5#,S
+	MUSIC G4#,C4#
+	MUSIC E4,S
+	MUSIC C4#,G4#
+	MUSIC S,S
+	MUSIC B4,B4
+	MUSIC F5#,S
+	MUSIC D5,F5#
+	MUSIC B5,S
+	MUSIC S,B4
+	MUSIC F5#,S
+	MUSIC D5,F5#
+	MUSIC B4,S
+	MUSIC B4,E4
+	MUSIC G4#,S
+	MUSIC E4,B4
+	MUSIC G4#,S
+	MUSIC B4,E4
+	MUSIC E5,S
+	MUSIC B4,B4
+	MUSIC S,S
+	MUSIC F4#,F4#
+	MUSIC -,S
+	MUSIC C5#,C5#
+	MUSIC -,S
+	MUSIC F5#,F4#
+	MUSIC C5#,S
+	MUSIC A4,C5#
+	MUSIC S,S
+	MUSIC C4#,C4#
+	MUSIC E4,S
+	MUSIC G4#,G4#
+	MUSIC C5#,S
+	MUSIC G4#,C4#
+	MUSIC E4,S
+	MUSIC C4#,G4#
+	MUSIC S,S
+	MUSIC REPEAT
+
+	' tune8 -- level 8: B phrygian, ominous.
+tune8:
+	DATA BYTE 7
+	MUSIC B4Y,B5Z
+	MUSIC -,S
+	MUSIC F5#,F6#
+	MUSIC -,S
+	MUSIC B5,B5
+	MUSIC F5#,S
+	MUSIC D5,F6#
+	MUSIC S,S
+	MUSIC C4,C5
+	MUSIC E4,S
+	MUSIC G4,G5
+	MUSIC C5,S
+	MUSIC G4,C5
+	MUSIC E4,S
+	MUSIC C4,G5
+	MUSIC S,S
+	MUSIC A4,A5
+	MUSIC C5,S
+	MUSIC E5,E6
+	MUSIC S,S
+	MUSIC A5,A5
+	MUSIC E5,S
+	MUSIC S,E6
+	MUSIC C5,S
+	MUSIC G4,G5
+	MUSIC D5,S
+	MUSIC B4,D6
+	MUSIC G5,S
+	MUSIC S,G5
+	MUSIC D5,S
+	MUSIC B4,D6
+	MUSIC G4,S
+	MUSIC B4,B5
+	MUSIC -,S
+	MUSIC F5#,F6#
+	MUSIC -,S
+	MUSIC B5,B5
+	MUSIC F5#,S
+	MUSIC D5,F6#
+	MUSIC S,S
+	MUSIC C4,C5
+	MUSIC E4,S
+	MUSIC G4,G5
+	MUSIC C5,S
+	MUSIC G4,C5
+	MUSIC E4,S
+	MUSIC C4,G5
+	MUSIC S,S
+	MUSIC F4#,F5#
+	MUSIC A4,S
+	MUSIC C5,C6
+	MUSIC S,S
+	MUSIC F5#,F5#
+	MUSIC C5,S
+	MUSIC S,C6
+	MUSIC A4,S
+	MUSIC B4,B5
+	MUSIC F5#,S
+	MUSIC D5,F6#
+	MUSIC B5,S
+	MUSIC S,B5
+	MUSIC F5#,S
+	MUSIC D5,F6#
+	MUSIC B4,S
+	MUSIC REPEAT
+
+	' tune9 -- level 9: E harmonic minor, frantic.
+tune9:
+	DATA BYTE 6
+	MUSIC B4X,E5Z
+	MUSIC G4,S
+	MUSIC E4,B5
+	MUSIC G4,S
+	MUSIC B4,E5
+	MUSIC E5,S
+	MUSIC B4,B5
+	MUSIC S,S
+	MUSIC B4,B5
+	MUSIC D5#,S
+	MUSIC F5#,F6#
+	MUSIC S,S
+	MUSIC B5,B5
+	MUSIC F5#,S
+	MUSIC S,F6#
+	MUSIC D5#,S
+	MUSIC D4#,D5#
+	MUSIC -,S
+	MUSIC A4,A5
+	MUSIC -,S
+	MUSIC D5#,D5#
+	MUSIC A4,S
+	MUSIC F4#,A5
+	MUSIC S,S
+	MUSIC B4,B5
+	MUSIC D5#,S
+	MUSIC F5#,F6#
+	MUSIC B5,S
+	MUSIC F5#,B5
+	MUSIC D5#,S
+	MUSIC B4,F6#
+	MUSIC S,S
+	MUSIC B4,E5
+	MUSIC G4,S
+	MUSIC E4,B5
+	MUSIC G4,S
+	MUSIC B4,E5
+	MUSIC E5,S
+	MUSIC B4,B5
+	MUSIC S,S
+	MUSIC C4,C5
+	MUSIC E4,S
+	MUSIC G4,G5
+	MUSIC S,S
+	MUSIC C5,C5
+	MUSIC G4,S
+	MUSIC S,G5
+	MUSIC E4,S
+	MUSIC A4,A5
+	MUSIC -,S
+	MUSIC E5,E6
+	MUSIC -,S
+	MUSIC A5,A5
+	MUSIC E5,S
+	MUSIC C5,E6
+	MUSIC S,S
+	MUSIC B4,B5
+	MUSIC D5#,S
+	MUSIC F5#,F6#
+	MUSIC B5,S
+	MUSIC F5#,B5
+	MUSIC D5#,S
+	MUSIC B4,F6#
+	MUSIC S,S
+	MUSIC REPEAT
+
+	' tune10 -- level 10: A minor, breakneck.
+tune10:
+	DATA BYTE 6
+	MUSIC A4W,A4Z
+	MUSIC E5,S
+	MUSIC C5,E5
+	MUSIC A5,S
+	MUSIC S,A4
+	MUSIC E5,S
+	MUSIC C5,E5
+	MUSIC A4,S
+	MUSIC G4,G4
+	MUSIC B4,S
+	MUSIC D5,D5
+	MUSIC S,S
+	MUSIC G5,G4
+	MUSIC D5,S
+	MUSIC S,D5
+	MUSIC B4,S
+	MUSIC C5,F4
+	MUSIC A4,S
+	MUSIC F4,C5
+	MUSIC A4,S
+	MUSIC C5,F4
+	MUSIC F5,S
+	MUSIC C5,C5
+	MUSIC S,S
+	MUSIC G4,G4
+	MUSIC -,S
+	MUSIC D5,D5
+	MUSIC -,S
+	MUSIC G5,G4
+	MUSIC D5,S
+	MUSIC B4,D5
+	MUSIC S,S
+	MUSIC A4,A4
+	MUSIC E5,S
+	MUSIC C5,E5
+	MUSIC A5,S
+	MUSIC S,A4
+	MUSIC E5,S
+	MUSIC C5,E5
+	MUSIC A4,S
+	MUSIC E4,E4
+	MUSIC G4,S
+	MUSIC B4,B4
+	MUSIC S,S
+	MUSIC E5,E4
+	MUSIC B4,S
+	MUSIC S,B4
+	MUSIC G4,S
+	MUSIC A4,D4
+	MUSIC F4,S
+	MUSIC D4,A4
+	MUSIC F4,S
+	MUSIC A4,D4
+	MUSIC D5,S
+	MUSIC A4,A4
+	MUSIC S,S
+	MUSIC E4,E4
+	MUSIC -,S
+	MUSIC B4,B4
+	MUSIC -,S
+	MUSIC E5,E4
+	MUSIC B4,S
+	MUSIC G4,B4
+	MUSIC S,S
 	MUSIC REPEAT
 
 	'

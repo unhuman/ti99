@@ -376,12 +376,23 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
 ## 9. Sound & Music (SN76489)
 
-- **Background music during gameplay**: CVBasic's interrupt-driven player in `PLAY SIMPLE NO
-  DRUMS` mode. The tune (`game_tune`) is an **original** 16-bar loop in A minor — a brisk
-  Slavic-folk-dance feel in the spirit of (but not copying) the Tetris tradition —
-  piano-voiced melody over a pumping root–fifth bass, eighth-note rows at 10 ticks (~150 BPM),
-  form A-phrase / answer / B-lift / resolve, `MUSIC REPEAT` to loop. It (re)starts from the
-  top at every level (`init_level`) and stops (`PLAY OFF`) at level-up, game over, and win.
+- **Per-level background music**: CVBasic's interrupt-driven player in `PLAY SIMPLE NO DRUMS`
+  mode. **Each level has its own original tune** (`tune1`..`tune10`); `start_music` selects one
+  by `LV` with a single-comparison `IF` chain (`PLAY` needs a constant label). `tune1` (level 1)
+  is a 16-bar A-minor folk-dance loop — piano melody over a pumping root–fifth bass, eighth-note
+  rows at 10 ticks (~150 BPM), `MUSIC REPEAT`. `tune2`..`tune10` are 8-bar loops built from chord
+  progressions (arpeggiated melody + om-pah bass) in escalating keys/modes (D minor, E phrygian,
+  G major, C dorian, A harmonic minor, F# minor, B phrygian, E harmonic minor, A minor) at rising
+  tempos (10 → 6 ticks), so the score gets faster and darker as levels climb. A `MUSIC` row is a
+  fixed 4 bytes, so the ten tunes cost ~2.8 KB of ROM — the TI cart stays 32 KB and the Coleco
+  ROM grows to 24 KB (both well within a standard cart). **CVBasic note syntax puts the sharp
+  AFTER the octave** (`A4#`, not `A#4` — cvbasic.c note parser), octaves 2–6 (plus C7).
+  `start_music` is called after the countdown at game start and again at each level-up; music
+  stops (`PLAY OFF`) at level-up, game over, and win.
+- **Get-ready countdown** (game start only, `countdown`): a "3", "2", "1" centered over the shaft
+  (one second each) with a rising beep on channel 2; when the "1" clears, `start_music` plays the
+  level's tune and the piece stream begins on the next main-loop pass. Between levels there is no
+  countdown — the wall animation already provides the "get ready" beat.
 - **Hard-won lesson: once `PLAY SIMPLE`/`FULL` is selected, the interrupt player rewrites its
   channels (0+1 for SIMPLE) EVERY frame forever — even after `PLAY OFF`** (confirmed in
   `cvbasic_9900_prologue.asm`: `music_hardware` is gated only on `music_mode`, which no
@@ -443,6 +454,10 @@ either platform).
       stage is revealed as the walls open, with no snap. The player's bar starts **centered between
       the walls**, and the OOPS!/LEVEL UP! messages are centered under the tower. (TI verified in
       Classic99 at levels 1/4/6 and across chained level-ups.)
+- [x] A game starts with a **3-2-1 countdown** (rising beeps, centered over the shaft); when the
+      "1" clears, the level's tune and the piece stream begin. **Each level plays its own tune**
+      (`tune1`..`tune10`). (TI verified in Classic99: countdown 3→2→1→gameplay; both builds compile
+      with all ten tunes — TI 32 KB cart, Coleco 24 KB ROM.)
 - [x] TI-99 and ColecoVision run the same real-world speed: the fall is FRAME-delta paced, and
       Classic99 measurements confirm 60Hz (blink probe 532.8ms/533.3 expected; fall rate ~60px/s
       within measurement error). CV still needs its user-side CoolCV pass.
