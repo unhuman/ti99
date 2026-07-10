@@ -93,15 +93,13 @@
 	VDP(1) = $E3
 	SPRITE FLICKER OFF
 
-	DEFINE CHAR 128,1,filled_bitmap		' char 128 = piece color 1
-	DEFINE CHAR 129,1,filled_bitmap		' char 129 = piece color 2
-	DEFINE CHAR 130,1,filled_bitmap		' ...
-	DEFINE CHAR 131,1,filled_bitmap
-	DEFINE CHAR 132,1,filled_bitmap
-	DEFINE CHAR 133,1,filled_bitmap
-	DEFINE CHAR 134,1,filled_bitmap		' char 134 = piece color 7
-	DEFINE CHAR 135,1,filled_bitmap		' char 135 = border/floor
-	DEFINE CHAR 136,1,filled_bitmap		' char 136 = shaft-interior BLACK
+	' Chars 128-136 are ALL the same solid 8x8 tile (piece colors 1-7 =
+	' 128-134, border/floor = 135, shaft-interior black = 136); their
+	' colors come from DEFINE COLOR 128,11,tile_colors below. One call
+	' defines all nine from the existing solid_ff table (reused by the
+	' pair tiles 139-194) -- cheaper than nine separate DEFINE CHARs, and
+	' filled_bitmap is no longer needed.
+	DEFINE CHAR 128,9,solid_ff
 	DEFINE CHAR 137,2,stage_bitmap		' 137 = stage checker, 138 = half
 	DEFINE COLOR 128,11,tile_colors
 	' HALF-SHIFTED STACK tiles for even levels (the stage has risen an
@@ -125,7 +123,7 @@
 	' half. On even levels the floor sits half a character low, so the
 	' white walls end 4 px into the stage's top row -- this tile fills
 	' that half so the wall meets the checker with no black gap.
-	DEFINE CHAR 202,1,wallseam_pat
+	DEFINE CHAR 202,1,bnd_pat
 	DEFINE COLOR 202,1,wallseam_col
 
 	DEFINE SPRITE 0,1,player_bitmap
@@ -157,9 +155,7 @@ title_screen:
 	' to the title resets it, so the next FIRE starts at level 1 unless
 	' 838 is entered again.
 	stlv = 1
-	FOR i = 0 TO MAXP
-		SPRITE i,$D1,0,0,0
-	NEXT i
+	GOSUB hide_sprites
 	DEFINE COLOR 32,16,txt_white
 	WAIT
 	DEFINE COLOR 48,16,txt_white
@@ -229,6 +225,15 @@ new_game:
 
 main_loop:
 	WAIT
+	' TIME-based pacing shared by the player and the falling pieces: heavy
+	' frames (spawn compose, landing paint, row-clear shift) can make the
+	' TMS9900 miss a vblank; #fd = elapsed FRAME count turns a missed frame
+	' into a catch-up step instead of a slowdown, so both the cursor and the
+	' pieces run the same real-world speed as ColecoVision (where #fd is
+	' always 1). Clamped so a long pause (level banner) can't teleport.
+	#fd = FRAME - #lf
+	#lf = FRAME
+	IF #fd > 4 THEN #fd = 4
 	GOSUB handle_input
 	GOSUB advance_pieces
 	IF gameend = 1 THEN GOTO game_over
@@ -299,11 +304,7 @@ init_level:
 		NEXT r
 	END IF
 	frsh = 0
-	FOR r = 1 TO sh
-		FOR cx = 1 TO W
-			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
-		NEXT cx
-	NEXT r
+	GOSUB fill_interior
 	FOR cc = 1 TO W
 		H(cc) = 0
 		HF(cc) = 0
@@ -332,9 +333,9 @@ init_level:
 	gameend = 0
 	' Player position is free pixels: PX = bar left edge, PY = bar top.
 	' Start the 4-px bar centered between the walls (midpoint of its X
-	' travel range) and flush on the floor.
+	' travel range), one cell (8 px) up off the floor.
 	PX = (2 * ML + W + 1) * 4 + 2
-	PY = sh * 8 + hoff - 2
+	PY = sh * 8 + hoff - 10
 	GOSUB draw_borders
 	' Sidebar labels (values are refreshed by draw_hud). The HIGH
 	' block mirrors SCORE on the RIGHT side of the shaft (right-
@@ -498,8 +499,16 @@ handle_input:
 	' and falling pieces block, PIXEL-exact -- the 2-px-tall bar fits
 	' through the ~11-px gaps between pieces in the stream).
 	moved = 0
+	' Player step scales with #fd so the cursor keeps ColecoVision real-time
+	' speed when the TMS9900 drops a frame -- but the delta is capped at 2
+	' (step <= 4 px) so a heavy-load frame never teleports the bar a whole
+	' cell past a piece. Single destination rect_test as before -- no
+	' per-pixel loop, so no added per-frame load.
+	pfd = #fd
+	IF pfd > 2 THEN pfd = 2
+	pmv = PSPD * pfd
 	IF cont1.left THEN
-		qx = PX - PSPD
+		qx = PX - pmv
 		IF qx < (ML + 1) * 8 THEN qx = (ML + 1) * 8
 		IF qx <> PX THEN
 			qy = PY
@@ -510,7 +519,7 @@ handle_input:
 			END IF
 		END IF
 	ELSEIF cont1.right THEN
-		qx = PX + PSPD
+		qx = PX + pmv
 		IF qx > (ML + W) * 8 + 4 THEN qx = (ML + W) * 8 + 4
 		IF qx <> PX THEN
 			qy = PY
@@ -522,10 +531,10 @@ handle_input:
 		END IF
 	END IF
 	IF cont1.up THEN
-		IF PY < PSPD THEN
+		IF PY < pmv THEN
 			qy = 0
 		ELSE
-			qy = PY - PSPD
+			qy = PY - pmv
 		END IF
 		IF qy <> PY THEN
 			qx = PX
@@ -536,7 +545,7 @@ handle_input:
 			END IF
 		END IF
 	ELSEIF cont1.down THEN
-		qy = PY + PSPD
+		qy = PY + pmv
 		IF qy > sh * 8 + hoff - 2 THEN qy = sh * 8 + hoff - 2
 		IF qy <> PY THEN
 			qx = PX
@@ -670,12 +679,21 @@ spawn_piece:
 	IF x > 1 THEN
 		hl = HF(x - 1) - h0
 		IF hl > 3 THEN hl = 3
+		' A negative diff (neighbor column is LOWER than the target) has no
+		' flush-resting side bar; clamp to 3 -- the hl=3 shape group carries
+		' a 0 delta on that side, i.e. no left bar. WITHOUT this clamp g goes
+		' negative and GSTART(g)/GCOUNT(g)/VCI(pick) read out of bounds, which
+		' yields garbage shapes ("bars fill the screen") and VCI=0 -> char 127
+		' bowtie corruption. (CVBasic vars are unsigned; the OOB result also
+		' shifts with unrelated code, which is why it looked like a memory bug.)
+		IF hl < 0 THEN hl = 3
 	ELSE
 		hl = 3
 	END IF
 	IF x < W THEN
 		hr = HF(x + 1) - h0
 		IF hr > 3 THEN hr = 3
+		IF hr < 0 THEN hr = 3
 	ELSE
 		hr = 3
 	END IF
@@ -793,15 +811,9 @@ spawn_piece:
 	'
 advance_pieces:
 	landed = 0
-	' TIME-based pacing: heavy frames (spawn compose, landing paint,
-	' row-clear shift) can make the TMS9900 miss a vblank; scaling the
-	' fall by the elapsed FRAME count turns a missed frame into a 1-px
-	' catch-up step instead of a slowdown, so the TI-99 runs the same
-	' real-world speed as ColecoVision. Clamped so a long pause (level
-	' banner) can't teleport pieces.
-	#fd = FRAME - #lf
-	#lf = FRAME
-	IF #fd > 4 THEN #fd = 4
+	' #fd (elapsed-frame count) is computed once per pass in main_loop and
+	' shared by both the player (handle_input) and the fall below, so they
+	' scale identically when the TMS9900 misses a vblank.
 	' Spawning: the shaft carries a continuous STREAM. The first piece of
 	' a lull waits out spawn_timer; after that a new piece spawns as soon
 	' as the newest one has fully entered plus PGAP clear pixels -- so up
@@ -848,6 +860,10 @@ advance_pieces:
 							' settled cells keep their piece colors. Loop
 							' guarded: CVBasic FOR checks at the BOTTOM,
 							' so an empty range would still run once.
+							' mc/pcp hoist the column address base and the
+							' piece color index (both reused many times below).
+							mc = ML + cc
+							pcp = pci(p)
 							hold = H(cc)
 							H(cc) = H(cc) + barht(j)
 							IF H(cc) > sh THEN H(cc) = sh
@@ -861,23 +877,23 @@ advance_pieces:
 									' decoded from its char, or the stage).
 									r1 = sh - H(cc) + 1
 									r2 = sh - hold
-									VPOKE $1800 + (r1 - 1) * 32 + ML + cc,139 + pci(p) - 1
+									VPOKE $1800 + (r1 - 1) * 32 + mc,139 + pcp - 1
 									IF r2 > r1 THEN
 										FOR r = r1 TO r2 - 1
-											VPOKE $1800 + r * 32 + ML + cc,139 + pci(p) * 7 + pci(p) - 1
+											VPOKE $1800 + r * 32 + mc,139 + pcp * 7 + pcp - 1
 										NEXT r
 									END IF
 									IF r2 = sh THEN
-										VPOKE $1800 + sh * 32 + ML + cc,195 + pci(p) - 1
+										VPOKE $1800 + sh * 32 + mc,195 + pcp - 1
 									ELSE
-										c2 = VPEEK($1800 + r2 * 32 + ML + cc)
+										c2 = VPEEK($1800 + r2 * 32 + mc)
 										b2 = c2 - 139
 										b2 = b2 - (b2 / 7) * 7 + 1
-										VPOKE $1800 + r2 * 32 + ML + cc,139 + pci(p) * 7 + b2 - 1
+										VPOKE $1800 + r2 * 32 + mc,139 + pcp * 7 + b2 - 1
 									END IF
 								ELSE
 									FOR r = sh - H(cc) + 1 TO sh - hold
-										VPOKE $1800 + (r - 1) * 32 + ML + cc,128 + pci(p) - 1
+										VPOKE $1800 + (r - 1) * 32 + mc,128 + pcp - 1
 									NEXT r
 								END IF
 							END IF
@@ -971,43 +987,44 @@ check_rowclear:
 		' visible multi-frame hitch on the TI-99. Loops guarded: CVBasic
 		' FOR checks its limit at the BOTTOM.
 		FOR cc = 1 TO W
+			mc = ML + cc
 			IF hoff THEN
 				' Half-shifted level: char row j shows (cell j over
 				' cell j+1), so a plain char copy shifts everything
 				' EXCEPT the stage-seam row, which is rebuilt from the
 				' new bottom cell's color (decoded from the char that
 				' lands there -- read BEFORE the copy clobbers it).
-				c2 = VPEEK($1800 + (sh - m) * 32 + ML + cc)
+				c2 = VPEEK($1800 + (sh - m) * 32 + mc)
 				IF H(cc) > 0 THEN
 					FOR r = sh - 1 TO sh - H(cc) STEP -1
-						code = VPEEK($1800 + (r - m) * 32 + ML + cc)
-						VPOKE $1800 + r * 32 + ML + cc,code
+						code = VPEEK($1800 + (r - m) * 32 + mc)
+						VPOKE $1800 + r * 32 + mc,code
 					NEXT r
 				END IF
 				k = sh - H(cc)
 				FOR r = k - m TO k - 1
-					VPOKE $1800 + r * 32 + ML + cc,136
+					VPOKE $1800 + r * 32 + mc,136
 				NEXT r
 				IF c2 = 136 THEN
-					VPOKE $1800 + sh * 32 + ML + cc,138
+					VPOKE $1800 + sh * 32 + mc,138
 				ELSE
 					b2 = (c2 - 139) / 7
 					IF b2 = 0 THEN
-						VPOKE $1800 + sh * 32 + ML + cc,138
+						VPOKE $1800 + sh * 32 + mc,138
 					ELSE
-						VPOKE $1800 + sh * 32 + ML + cc,195 + b2 - 1
+						VPOKE $1800 + sh * 32 + mc,195 + b2 - 1
 					END IF
 				END IF
 			ELSE
 				IF H(cc) > 0 THEN
 					FOR r = sh TO sh - H(cc) + 1 STEP -1
-						code = VPEEK($1800 + (r - m - 1) * 32 + ML + cc)
-						VPOKE $1800 + (r - 1) * 32 + ML + cc,code
+						code = VPEEK($1800 + (r - m - 1) * 32 + mc)
+						VPOKE $1800 + (r - 1) * 32 + mc,code
 					NEXT r
 				END IF
 				k = sh - H(cc)
 				FOR r = k - m + 1 TO k
-					VPOKE $1800 + (r - 1) * 32 + ML + cc,136
+					VPOKE $1800 + (r - 1) * 32 + mc,136
 				NEXT r
 			END IF
 		NEXT cc
@@ -1087,9 +1104,7 @@ level_up:
 	' in instead of snapping when init_level repaints it afterward.
 	'
 wall_anim:
-	FOR i = 0 TO MAXP
-		SPRITE i,$D1,0,0,0
-	NEXT i
+	GOSUB hide_sprites
 	' Clear the old flared stage WINGS (the angled cells OUTSIDE the walls)
 	' up front, before the collapse: the close phase only tracks the lip as
 	' the walls march in, so without this the wings sat there as leftover
@@ -1103,11 +1118,7 @@ wall_anim:
 	NEXT r
 	' --- CLOSE (old geometry) ---
 	vsh = sh
-	FOR r = 1 TO sh
-		FOR cx = 1 TO W
-			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
-		NEXT cx
-	NEXT r
+	GOSUB fill_interior
 	' Both walls march inward until they meet in the middle; the stage
 	' lip is erased as each wall passes. Each step plays a short
 	' ARTICULATED note on channel 2 (silenced mid-step, or the run
@@ -1244,6 +1255,24 @@ scol0:
 	FOR r = vsh TO 17
 		VPOKE $1800 + r * 32 + vc,32
 	NEXT r
+	RETURN
+
+	' Paint the whole shaft interior (rows 1..sh, cols 1..W) with the black
+	' interior tile 136. Shared by init_level and the wall_anim CLOSE phase.
+fill_interior:
+	FOR r = 1 TO sh
+		FOR cx = 1 TO W
+			VPOKE $1800 + (r - 1) * 32 + ML + cx,136
+		NEXT cx
+	NEXT r
+	RETURN
+
+	' Hide every sprite (player + all piece slots). Shared by title_screen
+	' and the wall_anim level transition.
+hide_sprites:
+	FOR i = 0 TO MAXP
+		SPRITE i,$D1,0,0,0
+	NEXT i
 	RETURN
 
 	' Draw ONE new-stage column vc, flared like draw_stage: inside the top
@@ -1504,15 +1533,8 @@ setup_wait:
 	'
 	' ---- Graphics data ----
 	'
-filled_bitmap:
-	BITMAP "XXXXXXXX"
-	BITMAP "XXXXXXXX"
-	BITMAP "XXXXXXXX"
-	BITMAP "XXXXXXXX"
-	BITMAP "XXXXXXXX"
-	BITMAP "XXXXXXXX"
-	BITMAP "XXXXXXXX"
-	BITMAP "XXXXXXXX"
+	' (Solid 8x8 tile chars 128-136 reuse the solid_ff table below, so no
+	' separate filled_bitmap is needed.)
 
 	' 16x16 sprite (CVBasic sprites are always 32 bytes); the player is
 	' a 2x1-def-px bar in the top-left corner -- 4x2 screen px under the
@@ -1654,8 +1676,8 @@ solid_ff:
 	' Wall-seam tile (202): solid white top half over the checker's
 	' bottom-half phase (matches the half-stage tile 138), so on even
 	' levels the white wall continues 4 px down to meet the checker.
-wallseam_pat:
-	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
+	' (char 202's pattern is the same $FF..$0F seam row as bnd_pat below,
+	' so char 202 reads bnd_pat -- no separate wallseam_pat needed.)
 wallseam_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 

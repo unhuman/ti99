@@ -46,8 +46,8 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 
 | Action | Input |
 |---|---|
-| Slide left / right (2 px/frame) | Joystick left / right |
-| Climb / duck (2 px/frame) | Joystick up / down |
+| Slide left / right (2 px/frame, frame-paced so TI matches Coleco speed under load) | Joystick left / right |
+| Climb / duck (same frame-paced step) | Joystick up / down |
 | Start (title) / back to title (game over, win) | Button |
 | Setup: pick starting level | Type `8` `3` `8` on the title, then `1`–`9` (or `0` for level 10) — the game starts immediately. Lasts one game only; the title always resets to level 1. |
 
@@ -95,6 +95,10 @@ the shaft); when the "1" clears, the level's tune and the piece stream begin tog
 
 - **TI-99/4A:** `bash build-ti.sh` → `src/STRUCTRS_8.bin` (load in Classic99 or js99er).
 - **ColecoVision:** `bash build-coleco.sh` → `src/structrs.rom` (load in CoolCV or blueMSX).
+
+> **TI-99 program budget is a hard 24,336 bytes** (single-bank; not the 32 KB cart size). Past it,
+> `linkticart` silently truncates the tail → visual corruption. Report free bytes after every build
+> and reclaim from code (not the ~2.8 KB of music) first. See DESIGN §10.
 
 ## Status
 

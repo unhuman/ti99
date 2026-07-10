@@ -87,9 +87,9 @@ This port is a **faithful reinterpretation**, not a transliteration:
 
 | Action | Input | Behavior |
 |---|---|---|
-| Move left / right | `cont1.left` / `cont1.right` | Slide `PSPD = 2` px per frame, only into free space (settled stack **and** falling pieces block, pixel-exact — the original tests `SCRN`, which sees both). |
-| Climb up | `cont1.up` | Slide 2 px/frame upward, if the space above is free. |
-| Duck down | `cont1.down` | Slide 2 px/frame downward, if the space below is free. |
+| Move left / right | `cont1.left` / `cont1.right` | Slide `PSPD = 2` px per frame **× `#fd`** (frame-delta paced, capped at ×2 → max 4 px/step), only into free space (settled stack **and** falling pieces block, pixel-exact — the original tests `SCRN`, which sees both). The `#fd` scaling keeps the cursor at ColecoVision real-time speed when the TMS9900 drops a frame (see §6); a single destination check per axis, no per-pixel loop. |
+| Climb up | `cont1.up` | Slide up at the same `PSPD × #fd` step, if the space above is free. |
+| Duck down | `cont1.down` | Slide down at the same `PSPD × #fd` step, if the space below is free. |
 | Start | `cont1.button` | Starts the game from the title screen. From the game-over or win screen, fire returns to the **title** (not straight into a new game). |
 | 838 setup | keys `8`,`3`,`8` on the title | Opens the setup screen (same hidden convention as Astiroids): press `1`–`9` for the starting level, or `0` for level 10 — the game begins immediately. The choice lasts **one game only** — every return to the title resets the starting level to 1, so re-enter 838 to pick again. Room is reserved for more 838 options later. |
 
@@ -250,7 +250,11 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   dropping faster than the player can escape), so difficulty comes only from the rising row goal
   (`RG`) and the narrowing shaft. Pieces advance by the same per-frame pixel delta, dealt by an
   accumulator (`acc += 8 * #fd` per pass, `#fd` = elapsed-frame count; while `acc >= fpr` move
-  1 px) — scaling by `#fd` keeps the same real-world speed when the TMS9900 drops a frame. Because
+  1 px) — scaling by `#fd` keeps the same real-world speed when the TMS9900 drops a frame. **`#fd`
+  is computed once per pass in `main_loop`** (`FRAME - #lf`, clamped ≤ 4) and shared by both the
+  falling pieces and the player cursor (§2), so the two scale identically under load — without this
+  the pieces stayed frame-paced but the fixed-step cursor slowed down, making TI scenarios
+  unescapable that ColecoVision (no frame drops) could clear. Because
   every piece moves the same `dy`, separations never
   change. A new piece spawns (re-aimed at the player's current column) the moment the newest one
   has fully entered plus `PGAP = 11` clear pixels; the first piece after a lull waits out a short
@@ -391,8 +395,10 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   progressions (arpeggiated melody + om-pah bass) in escalating keys/modes (D minor, E phrygian,
   G major, C dorian, A harmonic minor, F# minor, B phrygian, E harmonic minor, A minor) at rising
   tempos (10 → 6 ticks), so the score gets faster and darker as levels climb. A `MUSIC` row is a
-  fixed 4 bytes, so the ten tunes cost ~2.8 KB of ROM — the TI cart stays 32 KB and the Coleco
-  ROM grows to 24 KB (both well within a standard cart). **CVBasic note syntax puts the sharp
+  fixed 4 bytes, so the ten tunes cost ~2.8 KB of ROM. **This is a big chunk of the single-bank
+  budget** (see §10 — the TI-99 single-bank ceiling is 24,336 B, not the 32 KB cart size): the
+  program sits ~200 B under the line, so **the tunes are not to be shortened without explicit
+  approval, and every build must report free bytes** (§10). **CVBasic note syntax puts the sharp
   AFTER the octave** (`A4#`, not `A#4` — cvbasic.c note parser), octaves 2–6 (plus C7).
   `start_music` is called after the countdown at game start and again at each level-up; music
   stops (`PLAY OFF`) at level-up, game over, and win.
@@ -428,9 +434,20 @@ Same `src/STRUCTRS.bas` builds both targets; only the toolchain differs.
   `--ti994a`) → `gasm80` → `src/structrs.rom`. Load in CoolCV or blueMSX. Compiles with 216 of 814
   RAM bytes used — comfortable headroom on Coleco's 1KB.
 
+- **TI-99 single-bank ROM ceiling — 24,336 bytes (HARD, silently enforced).** CVBasic's TI-99
+  runtime copies the whole program into the 24 KB RAM bank at `>A000` at startup, so a non-banked
+  cart holds exactly **3 loader pages × 8112 = 24,336 B**. `linkticart.py` writes those three pages
+  and **silently discards any excess with no error** — the truncated tail is real char/sprite/DATA
+  bytes, which shows up as sprites that don't display and severe visual corruption (and it shifts
+  with *any* code change, so it masquerades as a random/heisenbug). **Always report free bytes after
+  a build:** `24336 - (len(open('STRUCTRS.bin','rb').read()) - 16384)` must be ≥ 0 (target ≥ ~200 B
+  margin). The program currently sits ~200 B under. To reclaim space, cut **code / non-music DATA**
+  first (the 128–136 tiles share one `DEFINE CHAR`; `fill_interior`/`hide_sprites` GOSUBs; char 202
+  reuses `bnd_pat`; paint code hoists `mc`/`pcp`); the ~2.8 KB of tunes are **off-limits without
+  explicit approval**. (32 KB is the *cart* size — headers + padding — NOT the usable program size.)
+
 Compiling only proves the source is well-formed; gameplay must be verified by actually running the
-ROM (see `.claude/skills/verify` guidance — this game has not yet been played in an emulator on
-either platform).
+ROM (see `.claude/skills/verify` guidance).
 
 ## 11. Acceptance Criteria
 
@@ -461,7 +478,8 @@ either platform).
       base, only three rows tall (thin on high levels, not a solid rectangle); the white walls meet
       the checker with no black gap on even levels (wall-seam char 202). During a level-up the new
       stage is revealed as the walls open, with no snap. The player's bar starts **centered between
-      the walls**, and the OOPS!/LEVEL UP! messages are centered under the tower. (TI verified in
+      the walls, one cell (8 px) up off the floor**, and the OOPS!/LEVEL UP! messages are centered
+      under the tower. (TI verified in
       Classic99 at levels 1/4/6 and across chained level-ups.)
 - [x] A game starts with a **3-2-1 countdown** (rising beeps, centered over the shaft); when the
       "1" clears, the level's tune and the piece stream begin. **Each level plays its own tune**
