@@ -28,8 +28,8 @@
 				' scan lines apart with 3 scan lines per cell row =
 				' 1.33 rows; at 8 px/row that's ~11 px.
 
-	DIM H(15)		' SETTLED column heights, index 1..W (0 unused)
-	DIM HF(15)		' FORECAST heights: settled + booked in-flight
+	DIM H(16)		' SETTLED column heights, index 1..W (0 unused; W<=15)
+	DIM HF(16)		' FORECAST heights: settled + booked in-flight
 				' pieces. Targeting/shape selection uses HF, so a
 				' later piece aims and fits correctly even while an
 				' earlier piece is still falling beneath it (the
@@ -73,7 +73,7 @@
 	DIM pfr(6)		' piece -> sprite frame arg, (1+p)*4
 	DIM pcv(6)		' piece -> VDP sprite color (colv(pci) at spawn)
 	DIM colv(8)		' color index -> VDP sprite color
-	DIM sh1(15)		' column -> settled surface pixel, (sh-H)*8
+	DIM sh1(16)		' column -> settled surface pixel, (sh-H)*8 (index 1..W, W<=15)
 
 	DEF FN CPOS(r,c) = r * 32 + c
 

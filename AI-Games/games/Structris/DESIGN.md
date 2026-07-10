@@ -169,6 +169,12 @@ along a surface while climbing or ducking. The move blip is throttled to one per
   spawned while others are mid-flight aims at and fits the surface as it *will* be; landing moves
   the booking from `HF` into `H`. (The original updates its `H()` at emission time for exactly
   this reason.) A cell at row `r` in column `c` is settled-filled when `r > SHAFT_H - H(c)`.
+  These column-indexed arrays (`H`, `HF`, and the surface-pixel `sh1`) must be dimensioned for the
+  **maximum** width, `W = 15` at level 1 — i.e. `DIM …(16)` (indices 0..15, 0 unused). Sizing them
+  to a smaller max (they were `DIM …(15)` when `W` topped out at 14) makes the level-1 init loop and
+  the `HF(x+1)` neighbour read write **one element past** the array. On the TI's roomy RAM that
+  overflow is absorbed silently; on the ColecoVision's **781-byte** RAM it clobbers adjacent state
+  and the ROM boots to a **black screen** — the regression from widening the shaft to `16 - LV`.
 - `MH = SHAFT_H - 3` — a column whose *forecast* is at or above this is "topped out" and skipped
   by the targeting logic (§5) so pieces don't pile past the ceiling.
 - Player position `(PX, PY)`: **free pixels** (bar left edge / top, shaft-pixel space = screen
