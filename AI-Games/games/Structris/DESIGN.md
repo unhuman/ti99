@@ -80,8 +80,8 @@ This port is a **faithful reinterpretation**, not a transliteration:
   stack, the floor, or another piece), you're **smashed**: game over. You cannot ride a piece out
   from underneath — move *aside* before it reaches you.
 - Clear enough rows (every column built up past a shared threshold, which then "falls away" and
-  compacts the stack back down) to advance a level. Ten levels, each with a narrower shaft and
-  faster pieces. Clear level 10 and you win.
+  compacts the stack back down) to advance a level. Ten levels, each with a narrower shaft and a
+  higher row goal (the fall speed stays constant). Clear level 10 and you win.
 
 ## 2. Controls (joystick 1)
 
@@ -156,10 +156,13 @@ along a surface while climbing or ducking. The move blip is throttled to one per
 - During the level-transition wall animation the old shaft **closes** (old geometry), the play
   band is wiped, `calc_geom` switches to the new level, and the walls **open** to the new
   positions while the new (raised, flared) stage is **revealed column by column behind the growing
-  gap** — so the new layer eases in instead of snapping when `init_level` repaints it. Vacated
-  columns are erased with **true spaces** (not the black interior tile) so the win/game-over
-  full-screen recolors show no leftover black artifacts; the wipe clears the tower band (rows
-  0–17) plus the old stage's flared wings (stage rows only, so the sidebar HUD is never touched).
+  gap** — so the new layer eases in instead of snapping when `init_level` repaints it. The old
+  stage's **flared wings** (the angled cells outside the walls) are erased UP FRONT, before the
+  collapse — the close phase only tracks the lip as the walls march in, so without this the wings
+  lingered as leftover angled artifacts during the collapse. Vacated columns are erased with **true
+  spaces** (not the black interior tile) so the win/game-over full-screen recolors show no leftover
+  black artifacts; the wipe clears the tower band (rows 0–17) plus the wings (stage rows only, so
+  the sidebar HUD is never touched).
 - **Two height arrays.** `H(1..W)` is the *settled* stack; `HF(1..W)` is the *forecast* — settled
   plus every in-flight piece's booking. Targeting and shape selection read `HF`, so a piece
   spawned while others are mid-flight aims at and fits the surface as it *will* be; landing moves
@@ -242,10 +245,13 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   budget: player (slot/def 0) + 6 pieces = 7; the ≥11-px gap means two pieces' 32-px boxes never
   share a scanline, so the worst case is 2 sprites on a line (one piece + the player) — no
   flicker rotation needed (`SPRITE FLICKER OFF`, repo convention).
-- **Fall speed.** All pieces advance by the same per-frame pixel delta, dealt by an accumulator
-  (`acc += 8` per frame; while `acc >= fpr` move 1 px) — i.e. 8 px (one row) every
-  `fpr = MAX(2, 8 - LV/2)` frames, the exact average speed of the old one-row-per-`fpr`-frames
-  step (level 1: exactly 1 px/frame). Because every piece moves the same `dy`, separations never
+- **Fall speed is CONSTANT across all levels** (`fpr = 8` → 1 px/frame). Speed progression is
+  deliberately disabled: ramping the fall made the high levels literally impossible (pieces
+  dropping faster than the player can escape), so difficulty comes only from the rising row goal
+  (`RG`) and the narrowing shaft. Pieces advance by the same per-frame pixel delta, dealt by an
+  accumulator (`acc += 8 * #fd` per pass, `#fd` = elapsed-frame count; while `acc >= fpr` move
+  1 px) — scaling by `#fd` keeps the same real-world speed when the TMS9900 drops a frame. Because
+  every piece moves the same `dy`, separations never
   change. A new piece spawns (re-aimed at the player's current column) the moment the newest one
   has fully entered plus `PGAP = 11` clear pixels; the first piece after a lull waits out a short
   `spawn_timer`. This mirrors the original's back-to-back emission (its state machine restarts
@@ -293,7 +299,8 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 ## 7. Colors & Tiles
 
 - Tile inventory: chars **128–134** are the seven piece colors `c1..c7` (red, light green,
-  yellow, cyan, blue, dark red, gray on black; a cell's char code is `128 + colorindex - 1` on
+  yellow, cyan, blue, dark red, **magenta** on black — c7/magenta is the "straight bar" piece,
+  `$D1` tile / VDP colour 13; a cell's char code is `128 + colorindex - 1` on
   odd levels), char **135** the white border tile, char **136 a black-on-black tile for every
   empty shaft-interior cell** (instead of space, so the playfield stays black under the
   win/game-over recolors), chars **137/138** the stage checker (full/half), chars **139–194**
@@ -389,10 +396,12 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   AFTER the octave** (`A4#`, not `A#4` — cvbasic.c note parser), octaves 2–6 (plus C7).
   `start_music` is called after the countdown at game start and again at each level-up; music
   stops (`PLAY OFF`) at level-up, game over, and win.
-- **Get-ready countdown** (game start only, `countdown`): a "3", "2", "1" centered over the shaft
-  (one second each) with a rising beep on channel 2; when the "1" clears, `start_music` plays the
-  level's tune and the piece stream begins on the next main-loop pass. Between levels there is no
-  countdown — the wall animation already provides the "get ready" beat.
+- **Get-ready countdown** (game start only, `countdown`): a "3", "2", "1" centered on the **tower's
+  pixel centre** (cell `ML + (W+2)/2`, row `sh/2`) — the game window, not the screen column, so it
+  no longer drifts a column left on some widths — one second each with a rising beep on channel 2.
+  When the "1" clears, `start_music` plays the level's tune and the piece stream begins on the next
+  main-loop pass (the fall pacer's `#lf` frame stamp is reset first, so the wait doesn't cause a
+  catch-up jump). Between levels there is no countdown — the wall animation is the "get ready" beat.
 - **Hard-won lesson: once `PLAY SIMPLE`/`FULL` is selected, the interrupt player rewrites its
   channels (0+1 for SIMPLE) EVERY frame forever — even after `PLAY OFF`** (confirmed in
   `cvbasic_9900_prologue.asm`: `music_hardware` is gated only on `music_mode`, which no

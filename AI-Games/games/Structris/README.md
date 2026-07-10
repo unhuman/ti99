@@ -33,8 +33,10 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   top-left, `LEVEL` and `CLEAR` blocks under it); the score spans the whole game (all levels).
 - Every column built up past a shared height threshold "falls away" (the completed rows compact
   out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows
-  (14 columns at level 1 down to 5 at level 10, the original's widths), pieces come faster, and
-  the checkered **stage** the game stands on (per the original — a flared pedestal, narrow at the
+  (14 columns at level 1 down to 5 at level 10, the original's widths) and the row goal climbs,
+  but the **fall speed stays constant** (a faster fall made high levels unplayable — the challenge
+  comes from the row requirement and the narrowing shaft, not from speed). The
+  checkered **stage** the game stands on (per the original — a flared pedestal, narrow at the
   top under the walls and fanning out to a wider base) rises half a character — shortening the
   fall from 16 rows at level 1 to 11 at level 10. The raised stage is revealed column by column as
   the walls slide open between levels.

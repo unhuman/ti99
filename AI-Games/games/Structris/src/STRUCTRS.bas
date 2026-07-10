@@ -139,7 +139,7 @@
 	colv(4) = 7
 	colv(5) = 5
 	colv(6) = 6
-	colv(7) = 14
+	colv(7) = 13
 
 	' Background music: CVBasic's interrupt-driven player in SIMPLE
 	' mode (channels 0+1 only) with NO DRUMS, leaving SOUND 2 for the
@@ -319,10 +319,13 @@ init_level:
 	nact = 0
 	pnew = 0
 	spawn_timer = 20
-	' Fall speed: 8 px (one row) every fpr frames, spread 1 px at a time
-	' by an accumulator in advance_pieces (LV 1: fpr = 8 -> 1 px/frame).
-	fpr = 8 - LV / 2
-	IF fpr < 2 THEN fpr = 2
+	' Fall speed is CONSTANT across all levels (8 px = one row every fpr=8
+	' frames, spread 1 px at a time by the accumulator in advance_pieces =
+	' 1 px/frame). Speed progression is DELIBERATELY disabled: the game
+	' gets harder only through the rising row requirement (RG) and the
+	' narrowing shaft -- ramping the fall speed made high levels literally
+	' impossible (pieces dropping faster than the player can escape).
+	fpr = 8
 	acc = 0
 	#lf = FRAME
 	move_cd = 0
@@ -349,23 +352,34 @@ init_level:
 	RETURN
 
 	' ---- Get-ready countdown (game start only) ----
-	' A "3", "2", "1" over the middle of the shaft, one second each with a
-	' rising beep; when the "1" clears, gameplay + music begin. The player
-	' bar is shown so its start position reads before pieces fall.
+	' A "3", "2", "1" over the middle of the SHAFT (the game window, not
+	' the whole screen), one second each with a rising beep; when the "1"
+	' clears, gameplay + music begin. The player bar is shown so its start
+	' position reads before pieces fall. cdc = the cell holding the tower's
+	' pixel center (walls at ML and ML+W+1) -- (2*ML+W+2)*4 / 8 -- so the
+	' digit sits dead-centre between the walls at any shaft width instead
+	' of a fixed screen column (which drifted a column left on some levels).
+	' cdr centers it vertically in the shaft.
 countdown:
+	cdc = ML + (W + 2) / 2
+	cdr = sh / 2
 	SPRITE 0,PY - 1,PX,0,15
-	PRINT AT CPOS(9,16),"3"
+	PRINT AT CPOS(cdr,cdc),"3"
 	cdf = 400
 	GOSUB cd_beat
-	PRINT AT CPOS(9,16),"2"
+	PRINT AT CPOS(cdr,cdc),"2"
 	cdf = 500
 	GOSUB cd_beat
-	PRINT AT CPOS(9,16),"1"
+	PRINT AT CPOS(cdr,cdc),"1"
 	cdf = 640
 	GOSUB cd_beat
 	' Clear the digit back to the black interior tile (char 136, not a
 	' space) so the shaft stays black under the win/lose recolors.
-	VPOKE $1800 + CPOS(9,16),136
+	VPOKE $1800 + CPOS(cdr,cdc),136
+	' Reset the fall pacer's frame stamp so the first gameplay pass sees a
+	' 1-frame delta (not the whole 3-second countdown, which would clamp
+	' to a single 4-px catch-up jump).
+	#lf = FRAME
 	RETURN
 
 	' One countdown second: a short beep (channel 2 -- the music player
@@ -1076,6 +1090,17 @@ wall_anim:
 	FOR i = 0 TO MAXP
 		SPRITE i,$D1,0,0,0
 	NEXT i
+	' Clear the old flared stage WINGS (the angled cells OUTSIDE the walls)
+	' up front, before the collapse: the close phase only tracks the lip as
+	' the walls march in, so without this the wings sat there as leftover
+	' artifacts during the collapse. Stage rows only (sh..17), so the top-
+	' row sidebar HUD is untouched.
+	FOR r = sh TO 17
+		VPOKE $1800 + r * 32 + ML - 2,32
+		VPOKE $1800 + r * 32 + ML - 3,32
+		VPOKE $1800 + r * 32 + ML + W + 3,32
+		VPOKE $1800 + r * 32 + ML + W + 4,32
+	NEXT r
 	' --- CLOSE (old geometry) ---
 	vsh = sh
 	FOR r = 1 TO sh
@@ -1647,7 +1672,8 @@ bnd_pat:
 
 	' Pair-tile colors: for A = 0..7 (0 = black, then the 7 piece
 	' colors) and B = 1..7, rows 0-3 = A's color byte, rows 4-7 = B's.
-	' Color bytes: black $11, then $81,$31,$A1,$71,$51,$61,$E1.
+	' Color bytes: black $11, then $81,$31,$A1,$71,$51,$61,$D1 (last =
+	' magenta, the "straight bar" piece color 7).
 pcc1:
 	DATA BYTE $11,$11,$11,$11,$81,$81,$81,$81
 	DATA BYTE $11,$11,$11,$11,$31,$31,$31,$31
@@ -1655,14 +1681,14 @@ pcc1:
 	DATA BYTE $11,$11,$11,$11,$71,$71,$71,$71
 	DATA BYTE $11,$11,$11,$11,$51,$51,$51,$51
 	DATA BYTE $11,$11,$11,$11,$61,$61,$61,$61
-	DATA BYTE $11,$11,$11,$11,$E1,$E1,$E1,$E1
+	DATA BYTE $11,$11,$11,$11,$D1,$D1,$D1,$D1
 	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81
 	DATA BYTE $81,$81,$81,$81,$31,$31,$31,$31
 	DATA BYTE $81,$81,$81,$81,$A1,$A1,$A1,$A1
 	DATA BYTE $81,$81,$81,$81,$71,$71,$71,$71
 	DATA BYTE $81,$81,$81,$81,$51,$51,$51,$51
 	DATA BYTE $81,$81,$81,$81,$61,$61,$61,$61
-	DATA BYTE $81,$81,$81,$81,$E1,$E1,$E1,$E1
+	DATA BYTE $81,$81,$81,$81,$D1,$D1,$D1,$D1
 	DATA BYTE $31,$31,$31,$31,$81,$81,$81,$81
 	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31
 pcc2:
@@ -1670,14 +1696,14 @@ pcc2:
 	DATA BYTE $31,$31,$31,$31,$71,$71,$71,$71
 	DATA BYTE $31,$31,$31,$31,$51,$51,$51,$51
 	DATA BYTE $31,$31,$31,$31,$61,$61,$61,$61
-	DATA BYTE $31,$31,$31,$31,$E1,$E1,$E1,$E1
+	DATA BYTE $31,$31,$31,$31,$D1,$D1,$D1,$D1
 	DATA BYTE $A1,$A1,$A1,$A1,$81,$81,$81,$81
 	DATA BYTE $A1,$A1,$A1,$A1,$31,$31,$31,$31
 	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
 	DATA BYTE $A1,$A1,$A1,$A1,$71,$71,$71,$71
 	DATA BYTE $A1,$A1,$A1,$A1,$51,$51,$51,$51
 	DATA BYTE $A1,$A1,$A1,$A1,$61,$61,$61,$61
-	DATA BYTE $A1,$A1,$A1,$A1,$E1,$E1,$E1,$E1
+	DATA BYTE $A1,$A1,$A1,$A1,$D1,$D1,$D1,$D1
 	DATA BYTE $71,$71,$71,$71,$81,$81,$81,$81
 	DATA BYTE $71,$71,$71,$71,$31,$31,$31,$31
 	DATA BYTE $71,$71,$71,$71,$A1,$A1,$A1,$A1
@@ -1685,14 +1711,14 @@ pcc2:
 pcc3:
 	DATA BYTE $71,$71,$71,$71,$51,$51,$51,$51
 	DATA BYTE $71,$71,$71,$71,$61,$61,$61,$61
-	DATA BYTE $71,$71,$71,$71,$E1,$E1,$E1,$E1
+	DATA BYTE $71,$71,$71,$71,$D1,$D1,$D1,$D1
 	DATA BYTE $51,$51,$51,$51,$81,$81,$81,$81
 	DATA BYTE $51,$51,$51,$51,$31,$31,$31,$31
 	DATA BYTE $51,$51,$51,$51,$A1,$A1,$A1,$A1
 	DATA BYTE $51,$51,$51,$51,$71,$71,$71,$71
 	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
 	DATA BYTE $51,$51,$51,$51,$61,$61,$61,$61
-	DATA BYTE $51,$51,$51,$51,$E1,$E1,$E1,$E1
+	DATA BYTE $51,$51,$51,$51,$D1,$D1,$D1,$D1
 	DATA BYTE $61,$61,$61,$61,$81,$81,$81,$81
 	DATA BYTE $61,$61,$61,$61,$31,$31,$31,$31
 	DATA BYTE $61,$61,$61,$61,$A1,$A1,$A1,$A1
@@ -1700,14 +1726,14 @@ pcc3:
 	DATA BYTE $61,$61,$61,$61,$51,$51,$51,$51
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 pcc4:
-	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$81,$81,$81,$81
-	DATA BYTE $E1,$E1,$E1,$E1,$31,$31,$31,$31
-	DATA BYTE $E1,$E1,$E1,$E1,$A1,$A1,$A1,$A1
-	DATA BYTE $E1,$E1,$E1,$E1,$71,$71,$71,$71
-	DATA BYTE $E1,$E1,$E1,$E1,$51,$51,$51,$51
-	DATA BYTE $E1,$E1,$E1,$E1,$61,$61,$61,$61
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $61,$61,$61,$61,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$81,$81,$81,$81
+	DATA BYTE $D1,$D1,$D1,$D1,$31,$31,$31,$31
+	DATA BYTE $D1,$D1,$D1,$D1,$A1,$A1,$A1,$A1
+	DATA BYTE $D1,$D1,$D1,$D1,$71,$71,$71,$71
+	DATA BYTE $D1,$D1,$D1,$D1,$51,$51,$51,$51
+	DATA BYTE $D1,$D1,$D1,$D1,$61,$61,$61,$61
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
 
 	' Stage-seam colors: piece color over white-on-black checker rows.
 bnd_colors:
@@ -1717,10 +1743,10 @@ bnd_colors:
 	DATA BYTE $71,$71,$71,$71,$F1,$F1,$F1,$F1
 	DATA BYTE $51,$51,$51,$51,$F1,$F1,$F1,$F1
 	DATA BYTE $61,$61,$61,$61,$F1,$F1,$F1,$F1
-	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$F1,$F1
+	DATA BYTE $D1,$D1,$D1,$D1,$F1,$F1,$F1,$F1
 
 	' Per-row colors (fg*16+bg) for chars 128-138: the 7 piece colors
-	' (red, lt green, yellow, cyan, blue, dk red, gray), the white
+	' (red, lt green, yellow, cyan, blue, dk red, magenta), the white
 	' border/floor tile, then the black-on-black shaft-interior tile
 	' (char 136: empty playfield cells use it instead of space, so the
 	' shaft background stays BLACK when the win/game-over themes recolor
@@ -1789,7 +1815,7 @@ tile_colors:
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
 	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
