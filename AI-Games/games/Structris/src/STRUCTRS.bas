@@ -1098,6 +1098,7 @@ level_up:
 		gameend = 2
 		RETURN
 	END IF
+	GOSUB flush_level
 	GOSUB wall_anim
 	PRINT AT CPOS(19,12),"         "
 	RD = 0
@@ -1119,6 +1120,11 @@ level_up:
 	'
 wall_anim:
 	GOSUB hide_sprites
+	' Conditional compilation: build-ti.sh passes -DTI994A=1 so TI994A is a
+	' defined non-zero constant on the TI build; build-coleco.sh passes no -D
+	' so TI994A is undefined (0) there. Requires the forked cvbasic at
+	' unhuman/CVBasic (it implements #if/#else/#endif); the stock nanochess
+	' v0.9.2 does NOT -- it errors here, treating #if as a #-prefixed variable.
 	' Clear the old flared mountain WINGS (the angled cells OUTSIDE the
 	' walls) up front, before the collapse: the close phase only tracks the
 	' lip as the walls march in, so without this the wings sat there as
@@ -1183,6 +1189,7 @@ wall_anim:
 	FOR i = 1 TO 8
 		WAIT
 	NEXT i
+
 	' Wipe the old play band to space, then switch to the NEW level's
 	' geometry. The open phase redraws stage + walls from scratch, so
 	' nothing outside the new band lingers as an artifact on a later
@@ -1312,6 +1319,66 @@ hide_sprites:
 	FOR i = 0 TO MAXP
 		SPRITE i,$D1,0,0,0
 	NEXT i
+	RETURN
+
+	' ---- Level-complete FLUSH ----
+	' Runs at level_up, before the wall animation switches geometry, on the
+	' COMPLETED level's geometry (W/ML/sh not yet re-run through calc_geom).
+	' 1) clear the player; 2) snap each still-falling piece DOWN onto the
+	' character grid and bake its bars into solid piece-colour tiles
+	' (128 + colourindex - 1) where it hangs -- no H() update, these are just
+	' frozen decorations; 3) drain the whole shaft strip down and out the
+	' bottom until it is empty black interior.
+flush_level:
+#if TI994A
+	' TI-99: skip flush
+#else
+	SPRITE 0,$D1,0,0,0
+	FOR p = 0 TO MAXP - 1
+		IF pact(p) <> 0 THEN
+			pcp = pci(p)
+			' Bottom pixel of the bottom-aligned sprite art is ppy-1; the
+			' char row it lands in bakes the piece onto the grid.
+			pbb = (ppy(p) - 1) / 8
+			FOR b = 0 TO 2
+				j = p * 3 + b
+				IF barcol(j) <> 0 THEN
+					mc = ML + barcol(j)
+					r2 = pbb - baroff(j)
+					r1 = r2 - barht(j) + 1
+					FOR r = r1 TO r2
+						IF r >= 0 THEN
+							IF r <= sh - 1 THEN VPOKE $1800 + r * 32 + mc,128 + pcp - 1
+						END IF
+					NEXT r
+				END IF
+			NEXT b
+			pact(p) = 0
+			SPRITE 1 + p,$D1,0,0,0
+		END IF
+	NEXT p
+	' Shift ONLY the shaft interior above the mountain (cols ML+1..ML+W, rows
+	' 0..sh-1) down one row per step; the bottom interior row (sh-1) is
+	' overwritten each step, so content disappears just above the mountain top
+	' (row sh). The foundation (rows sh..17) is never touched. Black interior
+	' (136) feeds in at the top until the shaft is empty.
+	FOR f = 1 TO sh
+		' Descending tone as the stack drains (channel 2 -- music is OFF here):
+		' pitch steps DOWN one notch per drained row.
+		#fq = 200 + (sh - f) * 50
+		SOUND 2,#fq,10
+		FOR r = sh - 1 TO 1 STEP -1
+			FOR cx = 1 TO W
+				VPOKE $1800 + r * 32 + ML + cx,VPEEK($1800 + (r - 1) * 32 + ML + cx)
+			NEXT cx
+		NEXT r
+		FOR cx = 1 TO W
+			VPOKE $1800 + ML + cx,136
+		NEXT cx
+		WAIT
+	NEXT f
+	SOUND 2,,0
+#endif
 	RETURN
 
 	' Draw ONE new-stage column vc, flared like draw_stage: inside the top

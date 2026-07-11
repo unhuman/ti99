@@ -17,7 +17,7 @@
 # If this script fails under bash, fall back to running the three stages
 # directly from PowerShell -- see .claude/skills/build-cvbasic-game/SKILL.md.
 
-CVBASIC_DIR="${CVBASIC_DIR:-/cygdrive/c/Users/Howie/github.git/nanochess/CVBasic}"
+CVBASIC_DIR="${CVBASIC_DIR:-/cygdrive/c/Users/Howie/github.git/unhuman/CVBasic}"
 XDT99_DIR="${XDT99_DIR:-/cygdrive/c/Users/Howie/github.git/endlos99/xdt99}"
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
 [ -d "$XDT99_DIR" ]   || XDT99_DIR="${XDT99_DIR/#\/cygdrive\/c\//\/c\/}"
@@ -38,7 +38,12 @@ cd "$(dirname "$0")/src" || die "cannot find src/"
 
 echo "[1/3] cvbasic    $NAME.bas -> $NAME.a99"
 rm -f "$NAME.a99"
-"$CVBASIC_DIR/cvbasic.exe" --ti994a "$NAME.bas" "$NAME.a99" "$CVBASIC_DIR/" \
+# -DTI994A=1 defines the constant the source's #if TI994A tests, so the
+# TI-only branch of wall_anim compiles (skipping the walls-close beat) and the
+# #else block is excluded. The Coleco build (build-coleco.sh) passes no -D, so
+# TI994A is undefined there and the #else (full walls-close) compiles instead.
+# Explicit -D rather than relying on the fork auto-defining the machine name.
+"$CVBASIC_DIR/cvbasic.exe" --ti994a -DTI994A=1 "$NAME.bas" "$NAME.a99" "$CVBASIC_DIR/" \
     || die "CVBasic compile failed (see messages above)"
 [ -s "$NAME.a99" ] || die "CVBasic produced no/empty $NAME.a99"
 
