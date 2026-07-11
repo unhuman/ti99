@@ -393,8 +393,9 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   **ColecoVision** first **bakes** each still-falling piece into piece-colour tiles (`128 + colour −
   1`) where it hangs so it drains with the stack, then **drains** the whole interior down one row per
   frame; the **TI-99** does a lighter **wipe** — blank the interior one row at a time top-of-mountain
-  upward (no VPEEK row-shift), because the full drain's per-frame VDP round-trips crawl on the
-  TMS9900 (and the bake would overflow the TI cart). Same tone on both.
+  upward (no VPEEK row-shift), each row held ~3 frames for a comfortable pace, because the full
+  drain's per-frame VDP round-trips crawl on the TMS9900 (and the bake would overflow the TI cart).
+  Same tone on both.
 - Then the **wall animation**:
   sprites hide, the cleared shaft blanks, both walls march inward column-by-column until they
   meet in the middle over a rising run of notes, pause, then march back **out to the next

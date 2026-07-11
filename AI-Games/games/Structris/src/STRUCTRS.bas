@@ -1328,6 +1328,10 @@ flush_level:
 		FOR cx = 1 TO W
 			VPOKE $1800 + (sh - f) * 32 + ML + cx,136
 		NEXT cx
+		' Hold each cleared row 3 frames so the wipe reads at a comfortable
+		' pace (one WAIT/frame per row was too fast).
+		WAIT
+		WAIT
 		WAIT
 	NEXT f
 #else
