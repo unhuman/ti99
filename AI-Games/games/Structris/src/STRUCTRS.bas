@@ -114,10 +114,9 @@
 	DEFINE CHAR 171,16,solid_ff
 	DEFINE CHAR 187,8,solid_ff
 	DEFINE CHAR 195,7,bnd_pat
-	DEFINE COLOR 139,16,pcc1
-	DEFINE COLOR 155,16,pcc2
-	DEFINE COLOR 171,16,pcc3
-	DEFINE COLOR 187,8,pcc4
+	' pcc1..pcc4 are one contiguous 56-entry table, so one call colours all of
+	' chars 139-194 (was four calls).
+	DEFINE COLOR 139,56,pcc1
 	DEFINE COLOR 195,7,bnd_colors
 	' Wall-seam tile (202): white top half over the checker's bottom
 	' half. On even levels the floor sits half a character low, so the
@@ -439,28 +438,13 @@ draw_borders:
 	' and the two wall-base columns use the wall-seam tile (202, white top
 	' over checker) so the white walls meet the checker with no black gap.
 draw_stage:
-	li = ML - 1
-	ri = ML + W + 2
-	FOR r = sh TO 17
-		lo = li
-		IF lo < 1 THEN lo = 1
-		ro = ri
-		IF ro > 30 THEN ro = 30
-		FOR cx = lo TO ro
-			code = 137
-			IF r = sh THEN
-				IF hoff THEN
-					code = 138
-					IF cx = ML THEN code = 202
-					IF cx = ML + W + 1 THEN code = 202
-				END IF
-			END IF
-			VPOKE $1800 + r * 32 + cx,code
-		NEXT cx
-		' Flare one column wider on each side every row, all the way down.
-		li = li - 1
-		ri = ri + 1
-	NEXT r
+	' Draw the flared mountain column-by-column via the per-column `scol`
+	' (which the wall animation already uses) instead of duplicating the flare
+	' logic here -- scol(vc) draws column vc from its flared top row down to the
+	' floor, so looping it over the whole width paints the identical mountain.
+	FOR vc = 1 TO 30
+		GOSUB scol
+	NEXT vc
 	RETURN
 
 draw_hud:
@@ -1331,7 +1315,22 @@ hide_sprites:
 	' bottom until it is empty black interior.
 flush_level:
 #if TI994A
-	' TI-99: skip flush
+	' TI-99: the Coleco full flush (per-piece bake + VPEEK row-shift drain)
+	' overflows the 24,336-byte cart, so TI gets a lighter WIPE -- blank the
+	' shaft interior one row at a time from just above the mountain upward,
+	' under the same descending tone. In-flight pieces are simply hidden
+	' (sprites); the settled stack dissolves. The foundation (rows sh..17) is
+	' never touched. init_level resets H/HF/pact/nact afterward.
+	GOSUB hide_sprites
+	FOR f = 1 TO sh
+		#fq = 200 + (sh - f) * 50
+		SOUND 2,#fq,10
+		FOR cx = 1 TO W
+			VPOKE $1800 + (sh - f) * 32 + ML + cx,136
+		NEXT cx
+		WAIT
+	NEXT f
+	SOUND 2,,0
 #else
 	SPRITE 0,$D1,0,0,0
 	FOR p = 0 TO MAXP - 1
