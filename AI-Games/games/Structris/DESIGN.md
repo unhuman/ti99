@@ -19,21 +19,24 @@
 > Classic99: the near-idle game-over loop blinks at exactly 60Hz — 532.8ms vs 533.3 expected — and
 > gameplay fall rate measures ~60 game-px/s within screenshot-timing error.)
 >
-> **Per-target level-up flush (`#if NOT TI994A`).** `flush_level` hides the player + pieces, then
-> **drains the shaft** down and out just above the mountain under a descending tone — this whole
-> drain is **shared** by both targets. The one divergence is the **bake**: baking each still-falling
-> piece into tiles first (so it drains *with* the stack) costs ~414 bytes the TI-99 can't spare, so
-> that block alone is wrapped `#if NOT TI994A`:
-> - **ColecoVision** bakes then drains — falling pieces convert to their colours and ride the stack
->   down.
-> - **TI-99** skips the bake — its in-flight pieces just vanish (already hidden) and only the settled
->   stack drains. Everything else, including the descending tone, is the same code.
+> **Per-target level-up flush (`#if TI994A` wipe / `#else` bake+drain).** `flush_level` hides the
+> player + pieces (shared), then clears the shaft interior under a descending tone — but the clear
+> itself diverges by target, for a **speed** reason, not just size:
+> - **ColecoVision** does the full **drain**: it first **bakes** each still-falling piece into
+>   piece-colour tiles (`128 + colour − 1`) where it hangs so the piece rides down *with* the stack,
+>   then shifts the whole shaft interior down one row per frame so everything vanishes just above the
+>   mountain. The per-frame row-shift is a VPEEK+VPOKE of every interior cell (~sh·sh·W VDP
+>   round-trips) — cheap on the Z80.
+> - **TI-99** does a lighter **wipe**: blank the interior one row at a time from the mountain top
+>   upward (no shift, no VPEEK), under the same descending tone. In-flight pieces just vanish (already
+>   hidden). The full drain crawls on the slower TMS9900 (too many VDP round-trips per frame), so TI
+>   takes the cheap wipe instead; it also keeps the bake out of the TI cart, which it can't spare.
 >
-> Only the bake is conditional, keeping the divergence minimal. The TI build fits (~114 B free) after
-> two behaviour-preserving size opts: `draw_stage` loops the per-column `scol` instead of duplicating
-> the flare logic, and the four pair-tile `DEFINE COLOR` calls merge into one `DEFINE COLOR
-> 139,56,pcc1` (the fork accepts a colour count > 16 — verified: char 194 colours correctly). The
-> game-over text is a single line to save more.
+> The shared `hide_sprites` before and `SOUND 2,,0` + `RETURN` after keep the divergence to just the
+> clear body. The TI build fits (~114 B free) with two behaviour-preserving size opts: `draw_stage`
+> loops the per-column `scol` instead of duplicating the flare logic, and the four pair-tile
+> `DEFINE COLOR` calls merge into one `DEFINE COLOR 139,56,pcc1` (the fork accepts a colour count > 16
+> — verified: char 194 colours correctly). The game-over text is a single line to save more.
 >
 > Both keep the walls-collapse afterward. This split needs the **forked cvbasic**
 > (`unhuman/CVBasic`), which adds `#if/#elif/#else/#endif` keyed on a constant and **auto-defines a
@@ -383,14 +386,15 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   standing above the cleared rows, not on them), which reads on screen as the player gaining
   clearance, a small reward beat for clearing rows.
 - When `RD >= RG`: level-up banner, then (unless `LV > 10` → win screen) the **level-up flush**
-  (`flush_level`) followed by the **wall animation**. The flush hides the player + pieces and
-  **drains the shaft interior downward** one row per step — content disappearing just above the
-  mountain top (rows `0..sh−1`; the foundation `sh..17` is never touched) under a **descending tone**
-  (channel 2, `#fq = 200 + (sh−f)·50`) that silences when the shaft is empty. **ColecoVision** first
-  **bakes** each still-falling piece into piece-colour tiles (`128 + colour − 1`) where it hangs so
-  it drains with the stack; the **TI-99** skips that bake (`#if NOT TI994A`, ~414 B it can't spare)
-  so its in-flight pieces just vanish and only the settled stack drains. The drain and tone are the
-  same shared code on both.
+  (`flush_level`) followed by the **wall animation**. The flush hides the player + pieces (shared),
+  then clears the shaft interior under a **descending tone** (channel 2, `#fq = 200 + (sh−f)·50`)
+  that silences when done — content clearing just above the mountain top (rows `0..sh−1`; the
+  foundation `sh..17` is never touched). The clear itself is per-target (`#if TI994A` / `#else`):
+  **ColecoVision** first **bakes** each still-falling piece into piece-colour tiles (`128 + colour −
+  1`) where it hangs so it drains with the stack, then **drains** the whole interior down one row per
+  frame; the **TI-99** does a lighter **wipe** — blank the interior one row at a time top-of-mountain
+  upward (no VPEEK row-shift), because the full drain's per-frame VDP round-trips crawl on the
+  TMS9900 (and the bake would overflow the TI cart). Same tone on both.
 - Then the **wall animation**:
   sprites hide, the cleared shaft blanks, both walls march inward column-by-column until they
   meet in the middle over a rising run of notes, pause, then march back **out to the next
@@ -466,8 +470,8 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
 Same `src/STRUCTRS.bas` builds both targets; only the toolchain differs. **Both use the forked
 `cvbasic` at `unhuman/CVBasic`** — it adds the `#if/#elif/#else/#endif` preprocessor and
-auto-defines a machine-name constant, which the source relies on to run the level-up flush on
-ColecoVision only (`#if TI994A`, see the header note). `--ti994a` sets `TI994A=1`; the Coleco build
+auto-defines a machine-name constant, which the source relies on to pick the level-up clear per
+target — TI wipe / ColecoVision bake+drain (`#if TI994A`, see the header note). `--ti994a` sets `TI994A=1`; the Coleco build
 leaves it undefined; **no `-D` is passed** (the auto-define would just "constant redefined"). Stock
 nanochess CVBasic has no preprocessor and cannot build this source.
 
@@ -528,13 +532,14 @@ ROM (see `.claude/skills/verify` guidance).
       messages are centered
       under the tower. (TI verified in
       Classic99 at levels 1/4/6 and across chained level-ups.)
-- [x] **Level-up flush (shared drain; bake `#if NOT TI994A`):** both targets **drain** the shaft
-      down and out just above the mountain under a descending tone; ColecoVision additionally bakes
-      the still-falling pieces into their colors first so they drain with the stack, while TI-99
-      skips the bake (in-flight pieces vanish, settled stack drains). Foundation never disturbed,
-      walls collapse after. (Coleco verified in CoolCV across many fast level-ups with no freeze — an
-      8-bit underflow that hung it at "LEVEL UP" is fixed. TI verified in Classic99: mountain, solid +
-      pair-tile colors at levels 1/2, 114 B free; drain is the same proven code as Coleco's.)
+- [x] **Level-up flush (per-target clear, `#if TI994A` wipe / `#else` bake+drain):** both clear the
+      shaft interior just above the mountain under a descending tone; **ColecoVision** bakes the
+      still-falling pieces into their colors then **drains** the whole stack down and out, while the
+      **TI-99** does a lighter **wipe** (blank one row at a time, no VPEEK row-shift) because the full
+      drain crawls on the TMS9900. Foundation never disturbed, walls collapse after. (Coleco verified
+      in CoolCV across many fast level-ups with no freeze — an 8-bit underflow that hung it at "LEVEL
+      UP" is fixed. TI verified in Classic99: mountain, solid +
+      pair-tile colors at levels 1/2, 114 B free.)
 - [x] A game starts with a **3-2-1 countdown** (rising beeps, centered over the shaft); when the
       "1" clears, the level's tune and the piece stream begin. **Each level plays its own tune**
       (`tune1`..`tune10`). (TI verified in Classic99: countdown 3→2→1→gameplay; both builds compile

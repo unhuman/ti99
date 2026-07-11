@@ -1316,13 +1316,25 @@ hide_sprites:
 flush_level:
 	' Hide the player and every piece sprite up front (both targets).
 	GOSUB hide_sprites
-#if NOT TI994A
-	' ColecoVision only: BAKE each still-falling piece into solid piece-colour
-	' tiles (128 + colour - 1) where it currently hangs, so it drains WITH the
-	' stack below. The TI-99 can't afford this (~414 B over the 24,336-byte
-	' cart), so on TI the in-flight pieces just vanish (already hidden above)
-	' and only the settled stack drains -- everything below this block is shared.
-	' No H() update: these are throwaway decorations the drain carries off.
+#if TI994A
+	' TI-99: the drain does a full VPEEK row-shift of the WHOLE shaft every frame
+	' (~sh*sh*W VDP round-trips) -- too slow on the TMS9900, it crawls. So TI runs
+	' a cheap WIPE instead: blank the interior one row at a time from just above
+	' the mountain upward (no shift, no VPEEK) under the same descending tone.
+	' In-flight pieces just vanish (hidden above). The foundation is untouched.
+	FOR f = 1 TO sh
+		#fq = 200 + (sh - f) * 50
+		SOUND 2,#fq,10
+		FOR cx = 1 TO W
+			VPOKE $1800 + (sh - f) * 32 + ML + cx,136
+		NEXT cx
+		WAIT
+	NEXT f
+#else
+	' ColecoVision: BAKE each still-falling piece into solid piece-colour tiles
+	' (128 + colour - 1) where it hangs so it drains WITH the stack, then DRAIN
+	' the shaft down and out (fast enough on the Z80). No H() update -- these are
+	' throwaway decorations the drain carries off.
 	FOR p = 0 TO MAXP - 1
 		IF pact(p) <> 0 THEN
 			pcp = pci(p)
@@ -1355,8 +1367,7 @@ flush_level:
 			pact(p) = 0
 		END IF
 	NEXT p
-#endif
-	' Shared DRAIN: shift the shaft interior above the mountain (cols ML+1..ML+W, rows
+	' DRAIN (ColecoVision): shift the shaft interior above the mountain (cols ML+1..ML+W, rows
 	' 0..sh-1) down one row per step; the bottom interior row (sh-1) is
 	' overwritten each step, so content disappears just above the mountain top
 	' (row sh). The foundation (rows sh..17) is never touched. Black interior
@@ -1376,6 +1387,7 @@ flush_level:
 		NEXT cx
 		WAIT
 	NEXT f
+#endif
 	SOUND 2,,0
 	RETURN
 

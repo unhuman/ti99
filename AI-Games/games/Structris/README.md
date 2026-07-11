@@ -42,12 +42,14 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   level 10. The mountain is revealed column by column as
   the walls slide open between levels.
   Survive all 10 levels to win.
-- **Between levels:** a **flush** plays first — the stack **drains down and vanishes just above the
-  mountain** under a descending tone — then the walls slide to the new width. On **ColecoVision** any
-  pieces still falling first snap onto the grid in their colors so they drain with the stack; on the
-  **TI-99** those in-flight pieces just vanish (baking them into tiles cost more ROM than the
-  cartridge had) and the settled stack drains. Same drain, same tone on both — only whether the last
-  falling pieces ride down or blink out differs.
+- **Between levels:** a **flush** plays first — the shaft interior clears under a descending tone —
+  then the walls slide to the new width. The two targets clear it differently for speed reasons:
+  **ColecoVision** does the full drain (any pieces still falling first snap onto the grid in their
+  colors, then the whole stack slides down and vanishes just above the mountain — cheap on the Z80),
+  while the **TI-99** does a lighter **wipe** (blank the interior one row at a time, top-of-mountain
+  upward), because the full row-shift drain does far too many VDP round-trips per frame to run
+  smoothly on the slower TMS9900. Same descending tone on both; the mountain foundation is never
+  touched either way.
 
 ## Controls (joystick 1)
 
@@ -104,9 +106,9 @@ the shaft); when the "1" clears, the level's tune and the piece stream begin tog
 - **ColecoVision:** `bash build-coleco.sh` → `src/structrs.rom` (load in CoolCV or blueMSX).
 
 > **Requires the forked `cvbasic`** (`unhuman/CVBasic`). The source uses `#if TI994A … #else …
-> #endif` to run the level-up flush on ColecoVision only; the fork adds those directives and
-> auto-defines `TI994A=1` on `--ti994a`. Stock nanochess CVBasic has no preprocessor and will not
-> build it. No `-D` flags are needed. See DESIGN header + §10.
+> #endif` to pick the level-up clear per target (TI wipe / ColecoVision bake+drain); the fork adds
+> those directives and auto-defines `TI994A=1` on `--ti994a`. Stock nanochess CVBasic has no
+> preprocessor and will not build it. No `-D` flags are needed. See DESIGN header + §10.
 
 > **TI-99 program budget is a hard 24,336 bytes** (single-bank; not the 32 KB cart size). Past it,
 > `linkticart` silently truncates the tail → visual corruption. Report free bytes after every build
