@@ -136,9 +136,10 @@ along a surface while climbing or ducking. The move blip is throttled to one per
   Right: a mirrored `HIGH` block (rows 1–2, right-aligned) with the session high score. Labels
   print once per level (`init_level`, which also prints the `HIGH` value — it only changes at a
   game over/win); `draw_hud` refreshes only the left-side values.
-- **Rows 18–22:** message area — level-up banner (row 19), game-over "OOPS!"/stats/prompt (rows
-  18/20/22, leaving row 23 as bottom breathing room), win screen, title
-  screen help text. Reuses the same rows so nothing needs to be laid out twice.
+- **Rows 18–22:** message area — level-up banner (row 19), game-over "OOPS!  BURIED!" (single line,
+  row 19) + "PRESS FIRE" (row 22), win screen, title screen help text. The game-over line carries no
+  level number (the `LEVEL` HUD already shows it). Reuses the same rows so nothing needs to be laid
+  out twice.
 
 ## 4. Playfield & Column Model
 
@@ -506,7 +507,8 @@ ROM (see `.claude/skills/verify` guidance).
       alive mid-stream between pieces, AFK player buried → OOPS.)
 - [ ] Rows compact and count toward level-up; level-up narrows the shaft and speeds up play.
       (Code-verified + simulated; not yet observed in emulator.)
-- [x] Getting buried shows "OOPS!" with a blinking player; fire returns to the **title**. The
+- [x] Getting buried shows "OOPS!  BURIED!" (single line, no level number) with a blinking player;
+      fire returns to the **title**. The
       win screen is a dark-green banner with white text, and the title restores normal colors
       after it. (TI verified in Classic99 — the win screen via a scratch probe build that jumps
       straight to it; a full played-through win has not been performed.)
