@@ -15,9 +15,19 @@
 > `rect_test` and the per-frame piece loop are compares/adds only; and (2) the fall accumulator is
 > scaled by the elapsed `FRAME` delta (clamped to 4), so any frame that still slips becomes a 1-px
 > catch-up step instead of a slowdown — both machines run the same real-world speed by
-> construction. No platform `#IF` branching is needed anywhere in the source. (Verified in
+> construction. (Verified in
 > Classic99: the near-idle game-over loop blinks at exactly 60Hz — 532.8ms vs 533.3 expected — and
 > gameplay fall rate measures ~60 game-px/s within screenshot-timing error.)
+>
+> **Per-target level-up flush (`#if TI994A`).** The level-up **flush** (`flush_level`) — clear the
+> player, bake the falling pieces onto the grid, drain the shaft under a descending tone — runs on
+> **ColecoVision only**. On the TI-99 it added ~700 bytes that overflowed the 24,336-byte cart
+> ceiling (§10), and it is redundant next to the walls-collapse there, so it is compiled OUT with
+> `#if TI994A … #else … #endif` (the flush lives in the `#else`; the TI `#if` branch is empty).
+> This needs the **forked cvbasic** (`unhuman/CVBasic`), which adds `#if/#elif/#else/#endif` keyed
+> on a constant and **auto-defines a machine-name constant**, so `--ti994a` sets `TI994A = 1` and
+> ColecoVision leaves it undefined — no `-D` needed (`build-ti.sh` passes only `--ti994a`). Stock
+> nanochess CVBasic has no preprocessor and will not build this source.
 >
 > **Do not use CVBasic `MODE 2` (hard-won lesson).** The first cut of this game used `MODE 2` with
 > group colors poked at `$2010+`, exactly as the CVBasic manual describes. It compiled clean on
@@ -359,7 +369,14 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   of floating. The player's `PY` doesn't change (they don't fall with the compaction — they were
   standing above the cleared rows, not on them), which reads on screen as the player gaining
   clearance, a small reward beat for clearing rows.
-- When `RD >= RG`: level-up banner, then (unless `LV > 10` → win screen) the **wall animation**:
+- When `RD >= RG`: level-up banner, then (unless `LV > 10` → win screen) the **level-up flush**
+  (`flush_level`, **ColecoVision only** — see the per-target note below) followed by the **wall
+  animation**. The flush clears the player, snaps every still-falling piece down onto the character
+  grid and bakes its bars into solid piece-colour tiles (`128 + colour − 1`) where it hangs, then
+  **drains the shaft interior downward** one row per step — content disappearing just above the
+  mountain top (rows `0..sh−1` only; the foundation rows `sh..17` are never touched) — under a
+  **descending tone** (channel 2, `#fq = 200 + (sh−f)·50`) that silences when the shaft is empty.
+- Then the **wall animation**:
   sprites hide, the cleared shaft blanks, both walls march inward column-by-column until they
   meet in the middle over a rising run of notes, pause, then march back **out to the next
   level's narrower, re-centered positions** with a second rising run and a two-note ta-da. As the
@@ -432,7 +449,12 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
 
 ## 10. Build & Run
 
-Same `src/STRUCTRS.bas` builds both targets; only the toolchain differs.
+Same `src/STRUCTRS.bas` builds both targets; only the toolchain differs. **Both use the forked
+`cvbasic` at `unhuman/CVBasic`** — it adds the `#if/#elif/#else/#endif` preprocessor and
+auto-defines a machine-name constant, which the source relies on to run the level-up flush on
+ColecoVision only (`#if TI994A`, see the header note). `--ti994a` sets `TI994A=1`; the Coleco build
+leaves it undefined; **no `-D` is passed** (the auto-define would just "constant redefined"). Stock
+nanochess CVBasic has no preprocessor and cannot build this source.
 
 - **TI-99/4A:** `bash build-ti.sh` — `cvbasic --ti994a` → `xas99` → `linkticart` →
   `src/STRUCTRS_8.bin`. Load in Classic99 or js99er. (Equivalently:
@@ -490,6 +512,12 @@ ROM (see `.claude/skills/verify` guidance).
       messages are centered
       under the tower. (TI verified in
       Classic99 at levels 1/4/6 and across chained level-ups.)
+- [x] **ColecoVision level-up flush:** at each level-up the player clears, falling pieces bake into
+      their colors on the grid, and the shaft drains down and vanishes just above the mountain (the
+      foundation is never disturbed) under a descending tone, before the walls open. Compiled OUT on
+      TI-99 (`#if TI994A`). (Verified on ColecoVision in CoolCV, including across many fast
+      level-ups with no freeze — an 8-bit underflow in the bake that hung Coleco at "LEVEL UP" is
+      fixed; see the header/§10 notes.)
 - [x] A game starts with a **3-2-1 countdown** (rising beeps, centered over the shaft); when the
       "1" clears, the level's tune and the piece stream begin. **Each level plays its own tune**
       (`tune1`..`tune10`). (TI verified in Classic99: countdown 3→2→1→gameplay; both builds compile

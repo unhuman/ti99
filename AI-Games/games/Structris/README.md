@@ -42,6 +42,11 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   level 10. The mountain is revealed column by column as
   the walls slide open between levels.
   Survive all 10 levels to win.
+- **Between levels (ColecoVision):** a **flush** plays first — the player clears, any pieces still
+  falling snap onto the grid in their colors, and the whole stack **drains down and vanishes just
+  above the mountain** under a descending tone — then the walls slide to the new width. On the
+  **TI-99 the flush is omitted** (it overflowed the cartridge and is redundant with the wall
+  slide), so the TI goes straight to the wall animation; the walls-narrowing looks the same on both.
 
 ## Controls (joystick 1)
 
@@ -96,6 +101,11 @@ the shaft); when the "1" clears, the level's tune and the piece stream begin tog
 
 - **TI-99/4A:** `bash build-ti.sh` → `src/STRUCTRS_8.bin` (load in Classic99 or js99er).
 - **ColecoVision:** `bash build-coleco.sh` → `src/structrs.rom` (load in CoolCV or blueMSX).
+
+> **Requires the forked `cvbasic`** (`unhuman/CVBasic`). The source uses `#if TI994A … #else …
+> #endif` to run the level-up flush on ColecoVision only; the fork adds those directives and
+> auto-defines `TI994A=1` on `--ti994a`. Stock nanochess CVBasic has no preprocessor and will not
+> build it. No `-D` flags are needed. See DESIGN header + §10.
 
 > **TI-99 program budget is a hard 24,336 bytes** (single-bank; not the 32 KB cart size). Past it,
 > `linkticart` silently truncates the tail → visual corruption. Report free bytes after every build
