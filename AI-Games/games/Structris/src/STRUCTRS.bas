@@ -1308,31 +1308,21 @@ hide_sprites:
 	' ---- Level-complete FLUSH ----
 	' Runs at level_up, before the wall animation switches geometry, on the
 	' COMPLETED level's geometry (W/ML/sh not yet re-run through calc_geom).
-	' 1) clear the player; 2) snap each still-falling piece DOWN onto the
-	' character grid and bake its bars into solid piece-colour tiles
-	' (128 + colourindex - 1) where it hangs -- no H() update, these are just
-	' frozen decorations; 3) drain the whole shaft strip down and out the
-	' bottom until it is empty black interior.
+	' Hide the player + pieces, then drain the shaft down and out the bottom
+	' just above the mountain until it is empty. ColecoVision additionally BAKES
+	' the still-falling pieces into tiles first (#if NOT TI994A) so they drain
+	' with the stack; the TI-99 omits that (~414 B it can't spare) -- its
+	' in-flight pieces simply vanish and only the settled stack drains.
 flush_level:
-#if TI994A
-	' TI-99: the Coleco full flush (per-piece bake + VPEEK row-shift drain)
-	' overflows the 24,336-byte cart, so TI gets a lighter WIPE -- blank the
-	' shaft interior one row at a time from just above the mountain upward,
-	' under the same descending tone. In-flight pieces are simply hidden
-	' (sprites); the settled stack dissolves. The foundation (rows sh..17) is
-	' never touched. init_level resets H/HF/pact/nact afterward.
+	' Hide the player and every piece sprite up front (both targets).
 	GOSUB hide_sprites
-	FOR f = 1 TO sh
-		#fq = 200 + (sh - f) * 50
-		SOUND 2,#fq,10
-		FOR cx = 1 TO W
-			VPOKE $1800 + (sh - f) * 32 + ML + cx,136
-		NEXT cx
-		WAIT
-	NEXT f
-	SOUND 2,,0
-#else
-	SPRITE 0,$D1,0,0,0
+#if NOT TI994A
+	' ColecoVision only: BAKE each still-falling piece into solid piece-colour
+	' tiles (128 + colour - 1) where it currently hangs, so it drains WITH the
+	' stack below. The TI-99 can't afford this (~414 B over the 24,336-byte
+	' cart), so on TI the in-flight pieces just vanish (already hidden above)
+	' and only the settled stack drains -- everything below this block is shared.
+	' No H() update: these are throwaway decorations the drain carries off.
 	FOR p = 0 TO MAXP - 1
 		IF pact(p) <> 0 THEN
 			pcp = pci(p)
@@ -1363,10 +1353,10 @@ flush_level:
 				END IF
 			NEXT b
 			pact(p) = 0
-			SPRITE 1 + p,$D1,0,0,0
 		END IF
 	NEXT p
-	' Shift ONLY the shaft interior above the mountain (cols ML+1..ML+W, rows
+#endif
+	' Shared DRAIN: shift the shaft interior above the mountain (cols ML+1..ML+W, rows
 	' 0..sh-1) down one row per step; the bottom interior row (sh-1) is
 	' overwritten each step, so content disappears just above the mountain top
 	' (row sh). The foundation (rows sh..17) is never touched. Black interior
@@ -1387,7 +1377,6 @@ flush_level:
 		WAIT
 	NEXT f
 	SOUND 2,,0
-#endif
 	RETURN
 
 	' Draw ONE new-stage column vc, flared like draw_stage: inside the top

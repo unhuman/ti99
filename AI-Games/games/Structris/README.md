@@ -42,12 +42,12 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   level 10. The mountain is revealed column by column as
   the walls slide open between levels.
   Survive all 10 levels to win.
-- **Between levels:** a **flush** plays first, then the walls slide to the new width. On
-  **ColecoVision** the player clears, any pieces still falling snap onto the grid in their colors,
-  and the whole stack **drains down and vanishes just above the mountain** under a descending tone.
-  The **TI-99** runs a lighter **wipe** — the shaft blanks out a row at a time under the same
-  descending tone (the full drain overflowed the cartridge) — so both machines get an animated,
-  sounded transition into the narrower level; only the effect differs (Coleco drains, TI wipes).
+- **Between levels:** a **flush** plays first — the stack **drains down and vanishes just above the
+  mountain** under a descending tone — then the walls slide to the new width. On **ColecoVision** any
+  pieces still falling first snap onto the grid in their colors so they drain with the stack; on the
+  **TI-99** those in-flight pieces just vanish (baking them into tiles cost more ROM than the
+  cartridge had) and the settled stack drains. Same drain, same tone on both — only whether the last
+  falling pieces ride down or blink out differs.
 
 ## Controls (joystick 1)
 
