@@ -38,12 +38,13 @@ cd "$(dirname "$0")/src" || die "cannot find src/"
 
 echo "[1/3] cvbasic    $NAME.bas -> $NAME.a99"
 rm -f "$NAME.a99"
-# -DTI994A=1 defines the constant the source's #if TI994A tests, so the
-# TI-only branch of wall_anim compiles (skipping the walls-close beat) and the
-# #else block is excluded. The Coleco build (build-coleco.sh) passes no -D, so
-# TI994A is undefined there and the #else (full walls-close) compiles instead.
-# Explicit -D rather than relying on the fork auto-defining the machine name.
-"$CVBASIC_DIR/cvbasic.exe" --ti994a -DTI994A=1 "$NAME.bas" "$NAME.a99" "$CVBASIC_DIR/" \
+# The forked cvbasic (unhuman/CVBasic) auto-defines a constant named after the
+# machine, so --ti994a makes TI994A=1. The source's `#if TI994A` uses that to
+# compile OUT the level-up flush on TI (it overflowed the 24,336-byte cart and
+# is redundant with the walls-collapse there); ColecoVision leaves TI994A
+# undefined, so its `#else` keeps the full flush. No explicit -DTI994A is passed
+# -- it would just "constant redefined" over the auto-define.
+"$CVBASIC_DIR/cvbasic.exe" --ti994a "$NAME.bas" "$NAME.a99" "$CVBASIC_DIR/" \
     || die "CVBasic compile failed (see messages above)"
 [ -s "$NAME.a99" ] || die "CVBasic produced no/empty $NAME.a99"
 

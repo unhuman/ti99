@@ -1344,13 +1344,23 @@ flush_level:
 				j = p * 3 + b
 				IF barcol(j) <> 0 THEN
 					mc = ML + barcol(j)
-					r2 = pbb - baroff(j)
-					r1 = r2 - barht(j) + 1
-					FOR r = r1 TO r2
-						IF r >= 0 THEN
+					' Guard an 8-bit unsigned UNDERFLOW that hard-freezes the
+					' Coleco at level-up: a piece still HIGH in the shaft (small
+					' pbb) with a side bar riding baroff rows up makes
+					' r2 = pbb - baroff wrap to ~255. FOR r = r1 TO 255 then
+					' NEVER exits (r wraps 255->0, never exceeds 255) -- an
+					' infinite loop that first smears the piece colour up the
+					' whole column (a tall bar) then locks up. Only bake a bar
+					' whose bottom sits at/below the shaft top; one above it has
+					' nothing visible to draw. (The old IF r >= 0 was a no-op --
+					' r is unsigned, never negative.)
+					IF pbb >= baroff(j) THEN
+						r2 = pbb - baroff(j)
+						r1 = r2 - barht(j) + 1
+						FOR r = r1 TO r2
 							IF r <= sh - 1 THEN VPOKE $1800 + r * 32 + mc,128 + pcp - 1
-						END IF
-					NEXT r
+						NEXT r
+					END IF
 				END IF
 			NEXT b
 			pact(p) = 0
