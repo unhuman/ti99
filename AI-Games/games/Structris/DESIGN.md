@@ -27,8 +27,8 @@
 >   then shifts the whole shaft interior down one row per frame so everything vanishes just above the
 >   mountain. The per-frame row-shift is a VPEEK+VPOKE of every interior cell (~sh·sh·W VDP
 >   round-trips) — cheap on the Z80.
-> - **TI-99** does a lighter **wipe**: blank the interior one row at a time from the mountain top
->   upward (no shift, no VPEEK), under the same descending tone. In-flight pieces just vanish (already
+> - **TI-99** does a lighter **wipe**: blank the interior one row at a time from the top downward
+>   (no shift, no VPEEK), under the same descending tone. In-flight pieces just vanish (already
 >   hidden). The full drain crawls on the slower TMS9900 (too many VDP round-trips per frame), so TI
 >   takes the cheap wipe instead; it also keeps the bake out of the TI cart, which it can't spare.
 >
@@ -392,8 +392,9 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   foundation `sh..17` is never touched). The clear itself is per-target (`#if TI994A` / `#else`):
   **ColecoVision** first **bakes** each still-falling piece into piece-colour tiles (`128 + colour −
   1`) where it hangs so it drains with the stack, then **drains** the whole interior down one row per
-  frame; the **TI-99** does a lighter **wipe** — blank the interior one row at a time top-of-mountain
-  upward (no VPEEK row-shift), each row held ~3 frames for a comfortable pace, because the full
+  frame; the **TI-99** does a lighter **wipe** — blank the interior one row at a time from the top
+  downward (no VPEEK row-shift), each row held ~4–5 frames (alternating, avg 4.5) for a comfortable
+  pace, because the full
   drain's per-frame VDP round-trips crawl on the TMS9900 (and the bake would overflow the TI cart).
   Same tone on both.
 - Then the **wall animation**:

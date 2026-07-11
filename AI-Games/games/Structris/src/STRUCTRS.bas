@@ -1319,20 +1319,23 @@ flush_level:
 #if TI994A
 	' TI-99: the drain does a full VPEEK row-shift of the WHOLE shaft every frame
 	' (~sh*sh*W VDP round-trips) -- too slow on the TMS9900, it crawls. So TI runs
-	' a cheap WIPE instead: blank the interior one row at a time from just above
-	' the mountain upward (no shift, no VPEEK) under the same descending tone.
-	' In-flight pieces just vanish (hidden above). The foundation is untouched.
+	' a cheap WIPE instead: blank the interior one row at a time from the TOP
+	' downward (no shift, no VPEEK) under the same descending tone. In-flight
+	' pieces just vanish (hidden above). The foundation is untouched.
+	wodd = 0
 	FOR f = 1 TO sh
 		#fq = 200 + (sh - f) * 50
 		SOUND 2,#fq,10
 		FOR cx = 1 TO W
-			VPOKE $1800 + (sh - f) * 32 + ML + cx,136
+			VPOKE $1800 + (f - 1) * 32 + ML + cx,136
 		NEXT cx
-		' Hold each cleared row 3 frames so the wipe reads at a comfortable
-		' pace (one WAIT/frame per row was too fast).
-		WAIT
-		WAIT
-		WAIT
+		' Hold each cleared row 4 or 5 frames (alternating, avg 4.5) -- 50%
+		' longer than the flat 3-frame hold. wodd toggles the extra frame.
+		FOR wt = 1 TO 4
+			WAIT
+		NEXT wt
+		wodd = 1 - wodd
+		IF wodd = 0 THEN WAIT
 	NEXT f
 #else
 	' ColecoVision: BAKE each still-falling piece into solid piece-colour tiles

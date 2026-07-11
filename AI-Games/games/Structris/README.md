@@ -46,8 +46,8 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   then the walls slide to the new width. The two targets clear it differently for speed reasons:
   **ColecoVision** does the full drain (any pieces still falling first snap onto the grid in their
   colors, then the whole stack slides down and vanishes just above the mountain — cheap on the Z80),
-  while the **TI-99** does a lighter **wipe** (blank the interior one row at a time, top-of-mountain
-  upward), because the full row-shift drain does far too many VDP round-trips per frame to run
+  while the **TI-99** does a lighter **wipe** (blank the interior one row at a time from the top
+  downward), because the full row-shift drain does far too many VDP round-trips per frame to run
   smoothly on the slower TMS9900. Same descending tone on both; the mountain foundation is never
   touched either way.
 
