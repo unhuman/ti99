@@ -21,9 +21,11 @@ chalice home **inside the gold castle** — alive.
   spot where you grabbed it.
 - **FIRE** — drop what you're carrying
 - Touch a gate while carrying its key to open it; walk up into the open archway to enter.
-- The **sword** kills dragons on contact, carried or lying. The red dragon is faster.
-  Dragons stand two sprites tall (32×64), **ignore walls, and chase you from room to
-  room** — escaping a dragon only buys you about a second.
+- The **sword** kills dragons on contact, carried or lying. Dragons stand two sprites tall
+  (32×64), **ignore walls, and chase you from room to room**. They **hesitate a moment** when
+  they first spot you, and you're a touch faster than the green/yellow ones — so you *can*
+  outrun them in the open. The **red dragon keeps your pace**, though: outrunning it isn't
+  really an option, so use the sword.
 - The **bridge**: grab by the rails, drop across a wall (snaps to the grid), walk the dark
   channel. The only way into sealed chambers.
 - The **magnet** drags every loose object in the room toward it — through walls.
@@ -39,6 +41,13 @@ chalice home **inside the gold castle** — alive.
 
 🎮 Playable — 4-game version (intro map + documented-structure kingdom with magnet, dot,
 fog, bat). Compiles clean for both targets; needs an emulator gameplay pass.
+
+> **TI-99 memory note:** the fixed program lives in the 24K expansion RAM and `linkticart`
+> silently discards anything past **24,336 bytes** of program region, which corrupts the tail
+> graphics tables with no build error. Space-savers (room-bitmap dedup 960 B + collapsed loader
+> blocks ~120 B, per-room colour byte ~63 B, trimmed game-2 link table 52 B) keep it in budget:
+> the current program region is 24,329 B (7 B clear — essentially full). **Every build must keep
+> `len(src/adventire.bin) − 16384 ≤ 24,336`** — see DESIGN.md "24K RAM ceiling."
 
 ## Build
 

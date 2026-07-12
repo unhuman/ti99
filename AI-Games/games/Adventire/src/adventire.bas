@@ -54,7 +54,7 @@
 	' 4 bytes per row x 24 rows = 96 bytes, MSB = leftmost cell
 	DIM rm(96), msk(8)
 	DIM orm(8), obx(8), oby(8), ocl(8)
-	DIM drm(3), ddx(3), ddy(3), dst(3), dcl(3), dsp(3), gop(3), fdl(3)
+	DIM drm(3), ddx(3), ddy(3), dst(3), dcl(3), dsp(3), gop(3), fdl(3), drc(3), dpd(3)
 
 	BORDER 1
 	' 2x sprite magnification: SI=1 (16x16 patterns) + MAG=1 -> sprites
@@ -85,11 +85,11 @@ newgame:
 	NEXT i
 	READ BYTE btr : READ BYTE btx : READ BYTE bty
 	READ BYTE rn : READ BYTE winrm
-	fdl(0) = 0 : fdl(1) = 0 : fdl(2) = 0 : prn = 255
-	IF gm = 4 THEN GOSUB rndobj
-	ocl(0) = 11 : ocl(1) = 1 : ocl(2) = 15 : ocl(3) = 7
-	ocl(4) = 13 : ocl(5) = 15 : ocl(6) = 6 : ocl(7) = 0
+	fdl(0) = 0 : fdl(1) = 0 : fdl(2) = 0 : prn = 255 : gdir = 255
 	gop(0) = 0 : gop(1) = 0 : gop(2) = 0
+	IF gm = 4 THEN GOSUB rndobj
+	RESTORE ocldat
+	FOR i = 0 TO 7 : READ BYTE ocl(i) : NEXT i
 	btc = 255 : btcd = 90 : bfx = 0 : bfy = 1
 	cr = 255 : pkcd = 0 : btnp = 1 : rmch = 0 : eflag = 0 : tk = 0 : qht = 0
 	sfx = 0 : sfc = 0 : #crx = 64 : #cry = 64 : eggon = 0
@@ -101,6 +101,9 @@ mainloop:
 	WAIT
 	WAIT
 	tk = tk + 1
+	' player glides 3.5 px/frame (alternating 3 and 4) - a touch
+	' faster than a normal dragon so open ground can be outrun
+	pstep = 3 + (tk AND 1)
 	GOSUB dosfx
 	IF pkcd > 0 THEN pkcd = pkcd - 1
 
@@ -212,8 +215,8 @@ drawobj: PROCEDURE
 	' ------------------------------------------------------------
 mvleft: PROCEDURE
 	IF rmch = 1 THEN RETURN
-	IF px < 3 THEN GOSUB gowest : RETURN
-	x0 = px - 3 : y0 = py : bw = 7 : bh = 7
+	IF px < pstep THEN GOSUB gowest : RETURN
+	x0 = px - pstep : y0 = py : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
 	IF bf = 1 THEN GOSUB hassist
@@ -223,7 +226,7 @@ mvleft: PROCEDURE
 mvright: PROCEDURE
 	IF rmch = 1 THEN RETURN
 	IF px > 244 THEN GOSUB goeast : RETURN
-	x0 = px + 3 : y0 = py : bw = 7 : bh = 7
+	x0 = px + pstep : y0 = py : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
 	IF bf = 1 THEN GOSUB hassist
@@ -232,8 +235,8 @@ mvright: PROCEDURE
 
 mvup: PROCEDURE
 	IF rmch = 1 THEN RETURN
-	IF py < 3 THEN GOSUB gonorth : RETURN
-	x0 = px : y0 = py - 3 : bw = 7 : bh = 7
+	IF py < pstep THEN GOSUB gonorth : RETURN
+	x0 = px : y0 = py - pstep : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
 	IF bf = 1 THEN GOSUB vassist
@@ -243,7 +246,7 @@ mvup: PROCEDURE
 mvdown: PROCEDURE
 	IF rmch = 1 THEN RETURN
 	IF py > 181 THEN GOSUB gosouth : RETURN
-	x0 = px : y0 = py + 3 : bw = 7 : bh = 7
+	x0 = px : y0 = py + pstep : bw = 7 : bh = 7
 	GOSUB chkbox
 	IF bf = 1 THEN GOSUB brchk : IF brf = 1 THEN bf = 0
 	IF bf = 1 THEN GOSUB vassist
@@ -297,6 +300,7 @@ brchk: PROCEDURE
 
 gowest: PROCEDURE
 	IF pw = 255 THEN RETURN
+	gdir = 0 : dpc = py
 	rn = pw : px = 244 : rmch = 1
 	GOSUB enterroom
 	ax = 1
@@ -305,6 +309,7 @@ gowest: PROCEDURE
 
 goeast: PROCEDURE
 	IF pe = 255 THEN RETURN
+	gdir = 1 : dpc = py
 	rn = pe : px = 4 : rmch = 1
 	GOSUB enterroom
 	ax = 1
@@ -313,6 +318,7 @@ goeast: PROCEDURE
 
 gonorth: PROCEDURE
 	IF pn = 255 THEN RETURN
+	gdir = 2 : dpc = px
 	rn = pn : py = 180 : rmch = 1
 	GOSUB enterroom
 	ax = 0
@@ -328,12 +334,14 @@ gosouth: PROCEDURE
 	IF rn = 25 THEN rn = 24 : GOTO gsw
 	IF rn = 33 THEN rn = 32 : GOTO gsw
 	IF ps = 255 THEN RETURN
+	gdir = 3 : dpc = px
 	rn = ps : py = 4 : rmch = 1
 	GOSUB enterroom
 	ax = 0
 	GOSUB arrsnap
 	RETURN
 gsw:
+	gdir = 255
 	px = 120 : py = 66 : rmch = 1
 	GOSUB enterroom
 	END
@@ -417,6 +425,7 @@ gwarp:
 	IF rn = 24 THEN rn = 25 : GOTO gwin
 	rn = 33
 gwin:
+	gdir = 255
 	px = 120 : py = 156 : rmch = 1
 	GOSUB enterroom
 	END
@@ -634,8 +643,14 @@ bgchk: PROCEDURE
 	' ------------------------------------------------------------
 dragondo: PROCEDURE
 	IF dst(d) = 1 THEN RETURN
+	' reaction time: a freshly-engaged dragon hesitates (drc ticks)
+	' before it moves or bites - you can still slay it while it winds
+	' up, so a room entry / arrival gives a real head start
+	IF drc(d) > 0 THEN drc(d) = drc(d) - 1 : GOSUB swordchk : RETURN
 	tpx = px : IF tpx > 12 THEN tpx = tpx - 12
 	tpy = py : IF tpy > 12 THEN tpy = tpy - 12
+	' normal dragons average 2.5 px/frame (alternating 2/3); the red
+	' dragon (dsp=1) is faster at a steady 3
 	ds = 2 + (tk AND 1)
 	IF dsp(d) = 1 THEN ds = 3
 	#ax = ddx(d) : #bx = tpx
@@ -643,6 +658,9 @@ dragondo: PROCEDURE
 	#dx = #cx
 	#ax = ddy(d) : #bx = tpy
 	GOSUB adiff
+	' remember how far it is from you this frame, so the room-to-room
+	' pursuit (dchase) can scale its catch-up delay by that distance
+	dpd(d) = #dx + #cx
 	m = 0
 	IF #dx >= #cx THEN GOSUB dmovx ELSE GOSUB dmovy
 	IF m = 0 THEN IF #dx >= #cx THEN GOSUB dmovy ELSE GOSUB dmovx
@@ -676,12 +694,29 @@ dmovy: PROCEDURE
 	ddy(d) = t : m = 1
 	END
 
-	' a live dragon left behind bursts into your room a beat later
+	' a live dragon left behind pursues you through the same doorway
+	' a beat later: it slides in from the edge you fled through (gdir)
+	' at your crossing offset, then dragondo chases this same tick
 dfollow: PROCEDURE
 	fdl(d) = fdl(d) - 1
 	IF fdl(d) > 0 THEN RETURN
 	IF dst(d) = 1 THEN RETURN
-	drm(d) = rn : ddx(d) = 108 : ddy(d) = 64
+	drm(d) = rn
+	' arrive through the doorway the player last used: the far edge
+	' on the travel axis, their crossing offset (dpc) on the cross
+	' axis - captured a beat ago in go*, so the player has since
+	' moved off it (no spawning on top). Clamp dpc into the dragon's
+	' mobile range (dmovx<=220, dmovy<=124) or it would sit stuck.
+	IF dpc < 4 THEN dpc = 4
+	dhi = 220 : IF gdir < 2 THEN dhi = 124
+	IF dpc > dhi THEN dpc = dhi
+	dex = 108 : dey = 64
+	IF gdir = 0 THEN dex = 220 : dey = dpc
+	IF gdir = 1 THEN dex = 8 : dey = dpc
+	IF gdir = 2 THEN dey = 120 : dex = dpc
+	IF gdir = 3 THEN dey = 8 : dex = dpc
+	ddx(d) = dex : ddy(d) = dey
+	drc(d) = 12
 	sfx = 5 : sfc = 20
 	END
 
@@ -799,7 +834,10 @@ enterroom: PROCEDURE
 	prn = rn
 	' room bitmap: 96 bytes, dispatched by label (skip-reading
 	' rn*96 bytes would stall room entry)
-	ON rn GOTO rb0, rb1, rb2, rb3, rb4, rb5, rb6, rb7, rb8, rb9, rb10, rb11, rb12, rb13, rb14, rb15, rb16, rb17, rb18, rb19, rb20, rb21, rb22, rb23, rb24, rb25, rb26, rb27, rb28, rb29, rb30, rb31, rb32, rb33, rb34, rb35, rb36, rb37, rb38
+	' rooms 23-35 whose bitmap duplicates an earlier room jump
+	' straight to that room's loader (no separate block) - see the
+	' bitmap-dedup note in DESIGN.md
+	ON rn GOTO rb0, rb1, rb2, rb3, rb4, rb5, rb6, rb7, rb8, rb9, rb10, rb11, rb12, rb13, rb14, rb15, rb16, rb17, rb18, rb19, rb20, rb21, rb22, rb21, rb13, rb25, rb19, rb20, rb28, rb21, rb20, rb19, rb32, rb25, rb19, rb28, rb36, rb37, rb38
 rb0:	RESTORE rd0
 	GOTO rbl
 rb1:	RESTORE rd1
@@ -846,31 +884,11 @@ rb21:	RESTORE rd21
 	GOTO rbl
 rb22:	RESTORE rd22
 	GOTO rbl
-rb23:	RESTORE rd23
-	GOTO rbl
-rb24:	RESTORE rd24
-	GOTO rbl
 rb25:	RESTORE rd25
-	GOTO rbl
-rb26:	RESTORE rd26
-	GOTO rbl
-rb27:	RESTORE rd27
 	GOTO rbl
 rb28:	RESTORE rd28
 	GOTO rbl
-rb29:	RESTORE rd29
-	GOTO rbl
-rb30:	RESTORE rd30
-	GOTO rbl
-rb31:	RESTORE rd31
-	GOTO rbl
 rb32:	RESTORE rd32
-	GOTO rbl
-rb33:	RESTORE rd33
-	GOTO rbl
-rb34:	RESTORE rd34
-	GOTO rbl
-rb35:	RESTORE rd35
 	GOTO rbl
 rb36:	RESTORE rd36
 	GOTO rbl
@@ -879,14 +897,15 @@ rb37:	RESTORE rd37
 rb38:	RESTORE rd38
 rbl:
 	FOR i = 0 TO 95 : READ BYTE rm(i) : NEXT i
-	' colours: (wall, bg, dark) per room
+	' wall colour per room (1 byte); bg + dark are computed - every
+	' room is on GRAY (14) in the light, and only the six contiguous
+	' dark rooms 26-31 (games 3/4) use black bg + fog
 	IF gm = 1 THEN RESTORE colc ELSE RESTORE cola
 	i2 = rn : IF gm > 1 THEN i2 = rn - 13
-	WHILE i2 > 0
-	READ BYTE t : READ BYTE t : READ BYTE t
-	i2 = i2 - 1
-	WEND
-	READ BYTE cw : READ BYTE cb : READ BYTE drk
+	WHILE i2 > 0 : READ BYTE t : i2 = i2 - 1 : WEND
+	READ BYTE cw
+	cb = 14 : drk = 0
+	IF gm > 2 THEN IF rn > 25 THEN IF rn < 32 THEN cb = 1 : drk = 1
 	' wall char 128: fg=wall, bg=room bg;
 	' portcullis 129: castle doors are always BLACK
 	t = cw * 16 + cb
@@ -925,19 +944,31 @@ rbl:
 	IF rn = 24 THEN gz = 2
 	IF rn = 11 THEN gz = 3
 	IF rn = 32 THEN gz = 3
-	IF gz > 0 THEN gopn = gop(gz - 1)
-	IF gz > 0 THEN IF gopn = 0 THEN GOSUB drawgate
+	IF gz > 0 THEN gopn = gop(gz - 1) : IF gopn = 0 THEN GOSUB drawgate
 	IF rn = 18 THEN PRINT AT 32 * 10 + 11, "ADVENTIRE" : PRINT AT 32 * 13 + 4, "2026 UNHUMAN AND CLAUDE"
 	FOR d = 0 TO 2
-	IF drm(d) = rn THEN IF dst(d) = 0 THEN GOSUB dsafe : sfx = 5 : sfc = 20
+	IF drm(d) = rn THEN IF dst(d) = 0 THEN GOSUB dsafe : drc(d) = 12 : sfx = 5 : sfc = 20
 	NEXT d
 	END
 
 dchase: PROCEDURE
-	' schedule pursuit for live dragons in the abandoned room
+	' schedule pursuit for live dragons in the room just left, but
+	' scale the catch-up delay by how far the dragon was BEHIND the
+	' door you used - lead one far enough (~half a screen) and it
+	' gives up (you escaped), instead of every dragon teleporting to
+	' your heels a fixed beat later
 	FOR d = 0 TO 2
-	IF drm(d) = prn THEN IF dst(d) = 0 THEN fdl(d) = 40
+	IF drm(d) = prn THEN IF dst(d) = 0 THEN GOSUB dsched
 	NEXT d
+	END
+
+dsched: PROCEDURE
+	' dpd = how far this dragon was from you on its last chase frame
+	' (set in dragondo). Lead it more than ~half a screen (Manhattan)
+	' and it GIVES UP - no pursuit, you escaped. Otherwise it follows
+	' after a short beat (fdl) and re-enters at the doorway you used.
+	IF dpd(d) > 120 THEN RETURN
+	fdl(d) = 32
 	END
 
 drawroom: PROCEDURE
@@ -1202,6 +1233,10 @@ tw2:	WAIT : IF cont1.button > 0 THEN GOTO tw2
 mskdat:
 	DATA BYTE $80, $40, $20, $10, $08, $04, $02, $01
 
+	' object sprite colours (gold key..dot), loaded per game
+ocldat:
+	DATA BYTE 11, 1, 15, 7, 13, 15, 6, 0
+
 	' secret-room glyphs whose colours ripple (16 codes)
 eggch:
 	DATA BYTE 65, 68, 86, 69, 78, 84, 73, 82
@@ -1246,19 +1281,9 @@ lnkb:	' game 2 - small kingdom (rooms 13-38; sealed = 255)
 	DATA BYTE 24, 20, 20, 22	' 23 blue maze top
 	DATA BYTE 255, 255, 23, 255	' 24 black grounds
 	DATA BYTE 255, 255, 24, 255	' 25 black hall (chalice+magnet)
-	DATA BYTE 255, 255, 255, 255	' 26
-	DATA BYTE 255, 255, 255, 255	' 27
-	DATA BYTE 255, 255, 255, 255	' 28
-	DATA BYTE 255, 255, 255, 255	' 29
-	DATA BYTE 255, 255, 255, 255	' 30
-	DATA BYTE 255, 255, 255, 255	' 31
-	DATA BYTE 255, 255, 255, 255	' 32
-	DATA BYTE 255, 255, 255, 255	' 33
-	DATA BYTE 255, 255, 255, 255	' 34
-	DATA BYTE 255, 255, 255, 255	' 35
-	DATA BYTE 255, 255, 255, 255	' 36
-	DATA BYTE 255, 255, 255, 255	' 37
-	DATA BYTE 255, 255, 255, 255	' 38
+	' game 2 never leaves rooms 13-25 (no bat; dragons in 23/24; 25
+	' is a dead-end hall), so entries for 26-38 are omitted - getlnk
+	' is only ever called with lkr <= 25 here
 
 lnka:	' games 3/4 - full kingdom (rooms 13-38)
 	DATA BYTE 255, 255, 16, 255	' 13 gold grounds
@@ -1293,50 +1318,19 @@ lnka:	' games 3/4 - full kingdom (rooms 13-38)
 	' ------------------------------------------------------------
 	' colours: (wall, background, dark) per room
 	' ------------------------------------------------------------
+	' wall colour per room (bg=14/dark=0 everywhere except the six
+	' computed dark rooms 26-31 - see the rbl colour read)
 colc:	' game 1 custom map: coloured walls on GRAY (so the black
 	' bat reads everywhere); its black castle is black too
-	DATA BYTE 11, 14, 0
-	DATA BYTE 2, 14, 0
-	DATA BYTE 10, 14, 0
-	DATA BYTE 8, 14, 0
-	DATA BYTE 3, 14, 0
-	DATA BYTE 5, 14, 0
-	DATA BYTE 13, 14, 0
-	DATA BYTE 4, 14, 0
-	DATA BYTE 1, 14, 0
-	DATA BYTE 1, 14, 0
-	DATA BYTE 6, 14, 0
-	DATA BYTE 15, 14, 0
-	DATA BYTE 15, 14, 0
+	DATA BYTE 11, 2, 10, 8, 3, 5, 13, 4, 1, 1, 6, 15, 15
 
-cola:	' rooms 13-38: coloured walls on GRAY, except the dark
-	' mazes (gray walls on black) - the black castle is BLACK
-	DATA BYTE 11, 14, 0	' 13 gold grounds
-	DATA BYTE 10, 14, 0	' 14 gold hall
-	DATA BYTE 12, 14, 0	' 15 corridor W (olive)
-	DATA BYTE 2, 14, 0	' 16 corridor mid (green)
-	DATA BYTE 11, 14, 0	' 17 corridor E (yellow)
-	DATA BYTE 13, 14, 0	' 18 secret room (purple)
-	DATA BYTE 4, 14, 0	' 19 blue maze
-	DATA BYTE 4, 14, 0	' 20
-	DATA BYTE 4, 14, 0	' 21
-	DATA BYTE 4, 14, 0	' 22
-	DATA BYTE 4, 14, 0	' 23
-	DATA BYTE 1, 14, 0	' 24 BLACK castle on gray
-	DATA BYTE 1, 14, 0	' 25 black hall
-	DATA BYTE 14, 1, 1	' 26 black maze: dark
-	DATA BYTE 14, 1, 1	' 27
-	DATA BYTE 14, 1, 1	' 28
-	DATA BYTE 14, 1, 1	' 29 catacombs: dark
-	DATA BYTE 14, 1, 1	' 30
-	DATA BYTE 14, 1, 1	' 31
-	DATA BYTE 15, 14, 0	' 32 white castle
-	DATA BYTE 15, 14, 0	' 33 white hall
-	DATA BYTE 8, 14, 0	' 34 red maze
-	DATA BYTE 8, 14, 0	' 35
-	DATA BYTE 13, 14, 0	' 36 purple room
-	DATA BYTE 7, 14, 0	' 37 cyan room
-	DATA BYTE 9, 14, 0	' 38 rose room
+cola:	' rooms 13-38: coloured walls (dark rooms 26-31 use wall 14)
+	DATA BYTE 11, 10, 12, 2, 11, 13	' 13-18 gold/corridors/secret
+	DATA BYTE 4, 4, 4, 4, 4		' 19-23 blue maze
+	DATA BYTE 1, 1			' 24-25 black castle/hall
+	DATA BYTE 14, 14, 14, 14, 14, 14	' 26-31 dark maze/catacombs
+	DATA BYTE 15, 15, 8, 8		' 32-35 white castle/hall/red maze
+	DATA BYTE 13, 7, 9		' 36-38 purple/cyan/rose rooms
 
 	' ------------------------------------------------------------
 	' per-game world: 8 objects (room,x,y) in order gold key,
@@ -1971,56 +1965,6 @@ rd22:	' --- 22 blue maze W branch (N/E/S; twin N gaps, pockets) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $F3, $FF, $FF	' XXXXXXXXXXXX__XXXXXXXXXXXXXXXXXX
-rd23:	' --- 23 blue maze top (all sides; N to the black castle) ---
-	DATA BYTE $F3, $FF, $FF, $3F	' XXXX__XXXXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
-	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
-	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
-	DATA BYTE $CF, $FF, $FF, $CF	' XX__XXXXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FF, $F3, $FC, $FF	' XXXXXXXXXXXX__XXXXXXXX__XXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $F3, $FF, $FF, $F3	' XXXX__XXXXXXXXXXXXXXXXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $CF, $CF, $FF	' XXXXXXXXXX__XXXXXX__XXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
-	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
-	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
-	DATA BYTE $FF, $FF, $CF, $FF	' XXXXXXXXXXXXXXXXXX__XXXXXXXXXXXX
-rd24:	' --- 24 BLACK castle grounds (S to the blue maze) ---
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $9B, $6C, $36, $D9	' X__XX_XX_XX_XX____XX_XX_XX_XX__X
-	DATA BYTE $9F, $FF, $FF, $F9	' X__XXXXXXXXXXXXXXXXXXXXXXXXXX__X
-	DATA BYTE $9F, $FC, $3F, $F9	' X__XXXXXXXXXXX____XXXXXXXXXXX__X
-	DATA BYTE $9F, $FC, $3F, $F9	' X__XXXXXXXXXXX____XXXXXXXXXXX__X
-	DATA BYTE $9F, $FC, $3F, $F9	' X__XXXXXXXXXXX____XXXXXXXXXXX__X
-	DATA BYTE $9F, $FC, $3F, $F9	' X__XXXXXXXXXXX____XXXXXXXXXXX__X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 rd25:	' --- 25 black castle hall (E to the dark maze) ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
@@ -2046,56 +1990,6 @@ rd25:	' --- 25 black castle hall (E to the dark maze) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
 	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd26:	' --- 26 black maze (dark; N/E/W) ---
-	DATA BYTE $FC, $FF, $FF, $F3	' XXXXXX__XXXXXXXXXXXXXXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
-	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
-	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
-	DATA BYTE $CF, $CF, $FF, $FF	' XX__XXXXXX__XXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FF, $FF, $FC, $FF	' XXXXXXXXXXXXXXXXXXXXXX__XXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $FF, $3F, $FF, $FF	' XXXXXXXX__XXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
-	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
-	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
-	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd27:	' --- 27 black maze (dark; all sides) ---
-	DATA BYTE $FF, $CF, $FF, $FF	' XXXXXXXXXX__XXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
-	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
-	DATA BYTE $CF, $FF, $FF, $F3	' XX__XXXXXXXXXXXXXXXXXXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $81, $00, $00, $81	' X______X________________X______X
-	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $F3, $FF, $FF, $FF	' XXXX__XXXXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
-	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
-	DATA BYTE $FF, $FF, $F3, $F3	' XXXXXXXXXXXXXXXXXXXX__XXXXXX__XX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $81, $80, $03, $01	' X______XX_____________XX_______X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $CF	' XXXXXX__XXXXXXXXXXXXXXXXXX__XXXX
 rd28:	' --- 28 black maze end: sealed DOT chamber (dark; S/W) ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
@@ -2121,81 +2015,6 @@ rd28:	' --- 28 black maze end: sealed DOT chamber (dark; S/W) ---
 	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
 	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
 	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
-rd29:	' --- 29 catacombs (dark; all sides) ---
-	DATA BYTE $F3, $FF, $FF, $3F	' XXXX__XXXXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
-	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
-	DATA BYTE $80, $02, $00, $01	' X_____________X________________X
-	DATA BYTE $CF, $FF, $FF, $CF	' XX__XXXXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FF, $F3, $FC, $FF	' XXXXXXXXXXXX__XXXXXXXX__XXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $F3, $FF, $FF, $F3	' XXXX__XXXXXXXXXXXXXXXXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $CF, $CF, $FF	' XXXXXXXXXX__XXXXXX__XXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
-	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
-	DATA BYTE $80, $20, $08, $01	' X_________X_________X__________X
-	DATA BYTE $FF, $FF, $CF, $FF	' XXXXXXXXXXXXXXXXXX__XXXXXXXXXXXX
-rd30:	' --- 30 catacombs (dark; all sides) ---
-	DATA BYTE $FF, $CF, $FF, $FF	' XXXXXXXXXX__XXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $3F	' XXXXXX__XXXXXXXXXXXXXXXX__XXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
-	DATA BYTE $80, $00, $00, $09	' X___________________________X__X
-	DATA BYTE $CF, $FF, $FF, $F3	' XX__XXXXXXXXXXXXXXXXXXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $81, $00, $00, $81	' X______X________________X______X
-	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $F3, $FF, $FF, $FF	' XXXX__XXXXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
-	DATA BYTE $80, $00, $00, $21	' X_________________________X____X
-	DATA BYTE $FF, $FF, $F3, $F3	' XXXXXXXXXXXXXXXXXXXX__XXXXXX__XX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $81, $80, $03, $01	' X______XX_____________XX_______X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FC, $FF, $FF, $CF	' XXXXXX__XXXXXXXXXXXXXXXXXX__XXXX
-rd31:	' --- 31 catacombs south (dark; W white castle, E side rooms) ---
-	DATA BYTE $FC, $FF, $FF, $F3	' XXXXXX__XXXXXXXXXXXXXXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
-	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
-	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
-	DATA BYTE $CF, $CF, $FF, $FF	' XX__XXXXXX__XXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FF, $FF, $FC, $FF	' XXXXXXXXXXXXXXXXXXXXXX__XXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $FF, $3F, $FF, $FF	' XXXXXXXX__XXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
-	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
-	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
-	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 rd32:	' --- 32 white castle grounds (E to catacombs) ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
@@ -2221,81 +2040,6 @@ rd32:	' --- 32 white castle grounds (E to catacombs) ---
 	DATA BYTE $80, $00, $00, $01	' X______________________________X
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd33:	' --- 33 white castle hall (E to the red maze) ---
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $83, $C0, $03, $C1	' X_____XXXX____________XXXX_____X
-	DATA BYTE $83, $C0, $03, $C1	' X_____XXXX____________XXXX_____X
-	DATA BYTE $83, $C0, $03, $C0	' X_____XXXX____________XXXX______
-	DATA BYTE $83, $C0, $03, $C0	' X_____XXXX____________XXXX______
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-	DATA BYTE $FF, $FC, $3F, $FF	' XXXXXXXXXXXXXX____XXXXXXXXXXXXXX
-rd34:	' --- 34 red maze (N/E/W) ---
-	DATA BYTE $FC, $FF, $FF, $F3	' XXXXXX__XXXXXXXXXXXXXXXXXXXX__XX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $F3, $F3, $FF	' XXXXXXXXXXXX__XXXXXX__XXXXXXXXXX
-	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
-	DATA BYTE $84, $00, $00, $01	' X____X_________________________X
-	DATA BYTE $CF, $CF, $FF, $FF	' XX__XXXXXX__XXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $80, $00, $00, $00	' X_______________________________
-	DATA BYTE $FF, $FF, $FC, $FF	' XXXXXXXXXXXXXXXXXXXXXX__XXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $FF, $3F, $FF, $FF	' XXXXXXXX__XXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
-	DATA BYTE $80, $10, $40, $01	' X__________X_____X_____________X
-	DATA BYTE $FF, $FC, $FF, $FF	' XXXXXXXXXXXXXX__XXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
-	DATA BYTE $80, $40, $01, $01	' X________X_____________X_______X
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-rd35:	' --- 35 red maze end: BLACK KEY sealed in a chamber (S/W) ---
-	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
-	DATA BYTE $80, $00, $08, $11	' X___________________X______X___X
-	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
-	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
-	DATA BYTE $90, $00, $08, $11	' X__X________________X______X___X
-	DATA BYTE $80, $00, $0F, $F1	' X___________________XXXXXXXX___X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $3F, $F3, $FF	' XXXXXXXX__XXXXXXXXXX__XXXXXXXXXX
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $00, $00, $00, $01	' _______________________________X
-	DATA BYTE $FF, $FC, $FF, $3F	' XXXXXXXXXXXXXX__XXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $82, $00, $00, $41	' X_____X__________________X_____X
-	DATA BYTE $82, $00, $00, $41	' X_____X__________________X_____X
-	DATA BYTE $F3, $FF, $FF, $CF	' XXXX__XXXXXXXXXXXXXXXXXXXX__XXXX
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $80, $00, $00, $01	' X______________________________X
-	DATA BYTE $FF, $F3, $FF, $3F	' XXXXXXXXXXXX__XXXXXXXXXX__XXXXXX
-	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
-	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
-	DATA BYTE $80, $00, $02, $01	' X_____________________X________X
-	DATA BYTE $FC, $FF, $FF, $FF	' XXXXXX__XXXXXXXXXXXXXXXXXXXXXXXX
 rd36:	' --- 36 purple side room ---
 	DATA BYTE $FF, $FF, $FF, $FF	' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 	DATA BYTE $80, $00, $00, $01	' X______________________________X

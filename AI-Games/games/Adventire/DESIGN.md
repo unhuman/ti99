@@ -29,14 +29,28 @@ is a full world reset.
   level. Bridge and bat use full single patterns; the player square stays 4×4 art (8×8 on
   screen) to thread 16px corridors. Dragon wall box is the central 8×16 (y+24..39); bite/sword
   centers are at (x+16, y+32).
-- **Loop pacing:** fixed 30 Hz (two `WAIT`s per tick) on both machines; no `pacen` constant.
-- **Zero per-frame VRAM reads**; collision is a RAM bit test on the 24-byte room bitmap.
+- **Loop pacing:** fixed 30 Hz (two `WAIT`s per tick) on both machines; no `pacen` constant. The
+  player moves 3.5 px/frame (`pstep` alternates 3/4 by tick parity); dragons 2.5 (normal,
+  alternating 2/3) / 3 (red).
+- **Zero per-frame VRAM reads**; collision is a RAM bit test on the 96-byte room bitmap.
 - **Per-frame VRAM writes:** sprite attributes, plus (only when active) the 8-cell secret-wall
   flicker, one 8-byte glyph recolor in the secret room, and the fog window redraw on block
   crossings (≤ ~200 VPOKEs, well inside a 30 Hz tick).
-- **ROM-resident tables:** room bitmaps (39 × 24 bytes), per-game link tables, and color
-  triplets are read on demand with RESTORE + skip-loops — no RAM arrays for them (RAM use
-  went *down* vs. the single-map version: 182 bytes TI / 171 Coleco).
+- **ROM-resident tables:** room bitmaps (96 bytes each), per-game link tables, and a per-room
+  wall-colour byte are read on demand with RESTORE + skip-loops — no RAM arrays for them (RAM use
+  went *down* vs. the single-map version: 182 bytes TI / 171 Coleco). Space-savers that keep the
+  build under the 24K ceiling (see the note below):
+  - **Bitmap dedup:** 10 of the 39 rooms have wall bitmaps byte-identical to an earlier room, so
+    they share one ROM copy (29 distinct bitmaps stored) — reclaimed 960 bytes. Those 10 rooms
+    also have no loader block of their own — their `ON rn GOTO` slot jumps to the canonical
+    room's `rb` — reclaimed ~120 more bytes.
+  - **Colour byte, not triplet:** every room is on GRAY (bg 14) in the light with no fog; only the
+    six *contiguous* dark rooms 26–31 (games 3/4) use black bg + fog. So the colour tables store
+    **one wall byte per room** and `rbl` computes `cb`/`drk` (`cb=14,drk=0`, overridden to `1,1`
+    when `gm>2 AND 25<rn<32`) — reclaimed ~63 bytes.
+  - **Game-2 link table trimmed:** `lnkb` covers only rooms 13–25; game 2 never leaves them
+    (no bat, dragons in 23/24, dead-end hall at 25), so the sealed 26–38 rows are omitted —
+    reclaimed 52 bytes.
 
 ## World structure (rooms 13–38, games 2–4)
 
@@ -120,11 +134,24 @@ show a south door that led nowhere and trapped the player).
   restores them).
 - **Dragons:** yellow (corridor E / blue maze top), green (catacombs / black grounds), red =
   fast (blue maze, games 3/4 only). **They ignore walls entirely** (greedy longer-axis chase
-  straight at you — the maze never protects you, only the sword does) and **pursue between
-  rooms**: a live dragon in a room you leave bursts into your new room ~1.3s later (`fdl()`
-  timers scheduled by `dchase` in `enterroom`), arriving at room center with a roar — both
-  matching the cartridge's relentless dragons. Sword/swallow rules unchanged; swallowed →
-  title.
+  straight at you — the maze never protects you, only the sword does; faithful to the cartridge,
+  where dragons take wall shortcuts you can't). **Speed & balance:** normal dragons average **2.5
+  px/frame** (`ds`, alternating 2/3), the red dragon **3** (`dsp=1`) — the player glides **3.5**
+  (`pstep`, an alternating 3/4), so you *can* outrun the normal ones on open ground but only the
+  sword stops red (nearly your speed). On engagement (room entry or pursuit arrival) a dragon
+  **hesitates ~0.4 s** (`drc()` reaction counter — it can still be slain while winding up), which
+  gives a real head start. And they **pursue between
+  rooms** — but leading a dragon now pays off: `dragondo` records each dragon's distance to you
+  every chase frame (`dpd()`), and when you leave, `dchase`/`dsched` check it. **Lead it more than
+  ~half a screen (`dpd > 120`, Manhattan) and it gives up entirely — no pursuit, you escaped.**
+  Otherwise it follows after a short beat (`fdl = 32` ticks) and re-enters **through the doorway you
+  fled through** — `go*` records the travel direction (`gdir`) and your crossing offset (`dpc`), and
+  `dfollow` slides the dragon in from that far edge at that offset (clamped into the dragon's
+  mobile range), so it comes from where you ran, not the room center. `dragondo` takes over the chase the same tick,
+  (A distance-*scaled* follow delay and a "wait until you've cleared the door" gate would preserve
+  the exact gap, but don't fit the ROM budget — see the 24K ceiling note.)
+  with a roar. Gate warps fall back to a center entry (`gdir=255`). Both match the cartridge's
+  relentless dragons. Sword/swallow rules unchanged; swallowed → title.
 - **Bat (games 1, 3, 4):** black, 32×32, flies through walls, roams via the link tables,
   steals objects (even carried ones; snatch them back). Softlock guards: never enters the
   secret room, never takes the bridge out of a chamber room (6/28/35), never swap-drops
@@ -153,13 +180,39 @@ every dark room has at least one doorway, so the mazes are always traversable.
   SPRITE`, garbage for sequential `READ`. Room rows are therefore `DATA BYTE` with the
   32-cell art kept as a trailing comment (generated by `scratchpad/fixbitmap.py`-style
   conversion; hand-edit the hex + comment together).
-- Room bitmaps (dispatched by a 39-label `ON rn GOTO` ladder to per-room `RESTORE`s), links,
+- Room bitmaps (dispatched by a 39-slot `ON rn GOTO` ladder to per-room `RESTORE`s), links,
   and colors are ROM `DATA`; player links cached per room (`pn/pe/ps/pw`), bat looks links up on
-  demand.
-- **Doorway assist** (`vassist`/`hassist`): 3px steps make lining the 8px square up with a
+  demand. Ten rooms whose wall bitmaps are byte-identical to an earlier room have **no loader
+  block of their own**: their `ON rn GOTO` slot jumps straight to the canonical room's `rb`
+  (`rn 24→rb13`, `26/31/34→rb19`, `27/30→rb20`, `23/29→rb21`, `33→rb25`, `35→rb28`), which
+  `RESTORE`s the shared `DATA`. Because colors/gates/objects come from the *separate* per-room
+  tables (indexed by `rn`), shared-bitmap rooms still look and play differently — only the wall
+  geometry is shared.
+- **24K RAM ceiling (why the space-savers matter):** the CVBasic TI-99 backend copies a *fixed*
+  program into the console's 24K expansion RAM (`aorg >a000`), with the sprite/char graphics
+  tables at its tail. There are **two** ceilings and the tighter one binds:
+  1. **`linkticart` 24,336 B (the real limit):** it emits the program as three 8,112-byte loader
+     pages and *silently discards* anything past **24,336 B** (`ram[16224:24336]` in
+     `linkticart.py`, "any excess is discarded"). **Check every build:** program region =
+     `len(adventire.bin) − 16384` must be **≤ 24,336** (the current build is 24,329, only 7 B
+     clear — essentially full; any new feature needs a reclaim first).
+  2. **FFFF address wrap (24,576 B):** if the fixed program runs past address FFFF, `xas99` lets
+     it wrap toward 0000 too. Secondary check: the highest address in `adventire.txt` must stay
+     ≤ FFFF (a 5-digit `10xxx` address means overflow).
+  Either overflow chops the tail graphics tables → *corrupted graphics, no build error*. The
+  original build overflowed by ~495 B; the reclaims — bitmap dedup (960 B), collapsed loader
+  blocks for the shared rooms (~120 B), colour-byte (~63 B), `lnkb` trim (52 B) — kept the
+  doorway-chase and dragon-balance features inside both ceilings.
+- **Doorway assist** (`vassist`/`hassist`): the 3.5px steps (alternating 3/4) make lining the 8px square up with a
   16px gap fiddly, so a blocked move nudges the player up to 4px onto the 8px cell grid when
   that clears the way — pressing toward a doorway just works. (Arrival mismatches are handled
   separately by `arrsnap`, which scans the whole edge.)
+- **Edge guards must match `pstep`:** the low-edge exits test `IF px < pstep` / `IF py < pstep`
+  (not a fixed `< 3`). With the variable 3/4 step, a fixed `< 3` guard let `x0 = px - pstep`
+  underflow at `px=3, pstep=4` → `-1` wraps to **255** (the opposite border), teleporting the
+  player into the far wall and wedging them. `px` is unsigned 8-bit, so any `px - step` needs
+  `px >= step` first. (High edges add and can't underflow; missing-link sealing walls cols
+  0-1/30-31, so the overshoot can't strand you there.)
 - The swallow "in the belly" sprite flashes black/white so it reads against any dragon or
   room color (a yellow dragon in the yellow corridor used to hide it completely).
 - Returning to the title clears all sprite slots and requires the FIRE button quiet for ~2/3s
