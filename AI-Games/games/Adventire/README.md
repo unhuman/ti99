@@ -44,10 +44,10 @@ fog, bat). Compiles clean for both targets; needs an emulator gameplay pass.
 
 > **TI-99 memory note:** the fixed program lives in the 24K expansion RAM and `linkticart`
 > silently discards anything past **24,336 bytes** of program region, which corrupts the tail
-> graphics tables with no build error. Space-savers (room-bitmap dedup 960 B + collapsed loader
-> blocks ~120 B, per-room colour byte ~63 B, trimmed game-2 link table 52 B) keep it in budget:
-> the current program region is 24,329 B (7 B clear — essentially full). **Every build must keep
-> `len(src/adventire.bin) − 16384 ≤ 24,336`** — see DESIGN.md "24K RAM ceiling."
+> graphics tables with no build error. Space-savers (row-dictionary room bitmaps ~1,800 B, dedup
+> 960 B + collapsed loader blocks ~120 B, per-room colour byte ~63 B, trimmed game-2 link table
+> 52 B) keep it in budget: the current program region is 22,699 B (1,637 B clear). **Every build
+> must keep `len(src/adventire.bin) − 16384 ≤ 24,336`** — see DESIGN.md "24K RAM ceiling."
 
 ## Build
 
