@@ -154,9 +154,21 @@ show a south door that led nowhere and trapped the player).
   `dfollow` slides the dragon in from that far edge at that offset (clamped into the dragon's
   mobile range), so it comes from where you ran, not the room center. `dragondo` takes over the chase the same tick,
   with a roar. Gate warps fall back to a center entry (`gdir=255`). Both match the cartridge's
-  relentless dragons. Sword/swallow rules unchanged; swallowed → title. (A distance-*scaled* follow
-  delay and a "wait until you've cleared the door" gate would preserve the *exact* gap; the
-  row-dictionary reclaim freed enough ROM to add them if the current escape+delay feels off.)
+  relentless dragons. Sword/swallow rules unchanged; swallowed → title.
+
+  > **Deferred upgrade — robust room-to-room chase (not yet implemented; ~1,637 B ROM free for it).**
+  > The current handoff is good but has one edge case: a dragon you *barely* outran reappears after
+  > the same fixed `fdl = 32` beat as one that was right on your heels, so a hard-won lead can look
+  > like it teleported back to you. Two refinements would preserve the *exact* gap you earned:
+  > 1. **Distance-scaled follow delay** — replace the flat `fdl = 32` (line ~984, `dsched`) with a
+  >    delay proportional to `dpd(d)` (near → re-enters almost immediately, far → lags more). Higher
+  >    value, low risk (a few bytes + one `#`-var divide).
+  > 2. **"Cleared the door" gate** — hold the pursuing dragon at the doorway in `dfollow` until the
+  >    player has stepped a minimum distance into the new room, so it re-enters *behind* you and can't
+  >    materialize on top of you if you dawdle at the entrance. More logic; watch the edge case of a
+  >    dragon that never re-enters if you hug the doorway.
+  >
+  > Do the distance-scaled delay first (it's the higher-value half); the gate is optional polish.
 - **Bat (games 1, 3, 4):** black, 32×32, flies through walls, roams via the link tables,
   steals objects (even carried ones; snatch them back). Softlock guards: never enters the
   secret room, never takes the bridge out of a chamber room (6/28/35), never swap-drops
