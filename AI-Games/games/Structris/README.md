@@ -24,8 +24,11 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   inside a gap between pieces and slip out sideways — but a piece landing on you closes the gap to
   nothing, so get out from under it — a piece that lands *on* you buries you even at the fastest
   fall speeds. When you're buried, your bar stays on screen **blinking** at the spot where it
-  happened and the HUD/backdrop turns dark red; fire returns to the title. Surviving all 10
-  levels earns a dark-green victory banner instead.
+  happened and the HUD/backdrop turns dark red; fire returns to the title. Surviving all 10 levels
+  instead shows **"YOU WIN"** and **collapses the game area** (the shaft closes and vanishes, same
+  mechanic as the level-up wall animation but with no reopen — your score/HUD sidebar stays put),
+  sets off **fireworks across the whole screen**, then shows a dark-green victory banner with your
+  bar **reappearing, blinking, centered and a bit above screen-middle**.
 - Rows needed per level: 7 at level 1, +2 each level (25 at level 10).
 - Scoring: 1 point per landed piece; clearing lines pays 10 (single), 50 (double), or 100
   (triple — the maximum, since a clear is capped by one bar's height) — the bonus rewards
@@ -114,9 +117,11 @@ the shaft); when the "1" clears, the level's tune and the piece stream begin tog
 
 > **TI-99 program budget is a hard 24,336 bytes** (single-bank; not the 32 KB cart size). Past it,
 > `linkticart` silently truncates the tail → visual corruption. Report free bytes after every build
-> and reclaim from code (not the ~2.8 KB of music) first. **Currently 54 B free** (the slow-cursor
-> hold + title hint, then the per-level speed ramp, spent most of the old margin) — reclaim before
-> adding new code. See DESIGN §10.
+> and reclaim from code (not the ~2.8 KB of music) first. **Currently 124 B free** (the slow-cursor
+> hold + title hint and the per-level speed ramp had driven this to 54 B; the win-screen
+> collapse-then-fireworks change net reclaimed space — a removed clamp and a redundant sprite-hide
+> loop outweighed the new code — before the "YOU WIN" banner-text branch spent some of it back) —
+> still reclaim before adding more. See DESIGN §10.
 
 ## Status
 

@@ -326,7 +326,11 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   (An earlier draft pushed the player *up*, letting them surf descending pieces — far too
   forgiving, and backwards from the original.) On the game-over screen the player sprite is
   **not removed** — it stays where they were buried, **blinking** (~half-second period,
-  `blink_player`) until fire returns to the title; on the win screen it stays visible, steady.
+  `blink_player`) until fire returns to the title. On the win screen the player sprite is hidden
+  during the game-area collapse and fireworks (see below), then **reappears blinking, horizontally
+  centered and 6 rows above vertical center** (`blink_player` reused, `PX`/`PY` reassigned to
+  `126`/`47`) once the
+  "CONGRATULATIONS" banner is up, until fire returns to the title.
 - **Buried in settled cells is also death.** At fall speeds above 1 px/frame (level 2+, `dy` up
   to 4) a piece can jump from just-above-the-player straight to its landing in one step: it
   converts to background characters *while overlapping the player*, and no falling bar remains to
@@ -391,7 +395,10 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   of floating. The player's `PY` doesn't change (they don't fall with the compaction — they were
   standing above the cleared rows, not on them), which reads on screen as the player gaining
   clearance, a small reward beat for clearing rows.
-- When `RD >= RG`: level-up banner, then (unless `LV > 10` → win screen) the **level-up flush**
+- When `RD >= RG`: level-up banner — **"LEVEL UP!"**, except beating level 10 (`LV = 10` checked
+  *before* the `LV = LV + 1` that decides the win path) shows **"YOU WIN"** instead, since that
+  transition skips straight to the win screen rather than a normal level-up — then (unless
+  `LV > 10` → win screen) the **level-up flush**
   (`flush_level`) followed by the **wall animation**. The flush hides the player + pieces (shared),
   then clears the shaft interior under a **descending tone** (channel 2, `#fq = 200 + (sh−f)·50`)
   that silences when done — content clearing just above the mountain top (rows `0..sh−1`; the
@@ -423,13 +430,24 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   5 frames, 8 px total) so the cloud stays anchored and reads as one cohesive blast, with a
   white→yellow→red→dark-red ramp and a three-pulse noise burst. Only then does the text go
   **white-on-dark-red** (`txt_red`, `$F6`) — the HUD/message area and the field around the shaft
-  turn red while the board keeps its piece colors and the buried player keeps blinking. Win:
-  first **fireworks over the right side of the still-black screen** — five rockets, each a
+  turn red while the board keeps its piece colors and the buried player keeps blinking. Win: the
+  **game area collapses first** — `GOSUB wall_close` (the level-up wall animation's close phase,
+  extracted into its own subroutine and reused here with no reopen): walls march to center over
+  the mountain, the flared wings/lip erase, and the whole shaft wipes to blank — while the **HUD
+  sidebar (SCORE/HIGH/LEVEL/CLEAR + values) is left completely untouched**, and there is **no
+  full-screen `CLS`** at this point (`wall_close` only ever touches the shaft/wing columns, by
+  construction of the same `li`/`ri` margins it's always used with at level-up). The player sprite
+  is hidden along with the piece sprites (`wall_close`'s `hide_sprites` call) — it does not stay
+  visible through this phase. Then **fireworks span the full screen width** — five rockets, each a
   rising white spark (with a rising whistle) that pops into the same 4-frame expansion animation
   (reusing defs 7–10, four tightly-overlapped sprites per shell) in its own color
-  (yellow/green/red/blue/white) with a noise pop — and only then the full **dark-green victory
-  banner** (`txt_green`, `$FC`): the board is cleared and the message (with the final score)
-  prints on the solid green field (the old version printed over leftover playfield tiles and read
+  (yellow/green/red/blue/white) with a noise pop; with the shaft gone there is no exclusion zone to
+  dodge, so burst positions are drawn from the whole visible width. Only then the full **dark-green
+  victory banner** (`txt_green`, `$FC`): `CLS` (the *only* full clear in the sequence, and the first
+  point anything other than the collapse has touched the sidebar) and the message (with the final
+  score) prints on the solid green field, followed by the player sprite reappearing, **blinking,
+  horizontally centered and 6 character rows above vertical center** (`PX = 126`, `PY = 47`, tuned
+  to clear the banner text) (the old version printed over leftover playfield tiles and read
   as garbage). The **title screen restores** the normal white-on-black text colors (`txt_white`,
   `$F1`) before printing anything, hides all 7 sprites, and shows the **last score in the
   top-left corner, digits only** (`00000` on the initial title; `#score` isn't reset until a
@@ -448,11 +466,13 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   tempos (10 → 6 ticks), so the score gets faster and darker as levels climb. A `MUSIC` row is a
   fixed 4 bytes, so the ten tunes cost ~2.8 KB of ROM. **This is a big chunk of the single-bank
   budget** (see §10 — the TI-99 single-bank ceiling is 24,336 B, not the 32 KB cart size): the
-  program sits **54 B** under the line (the slow-cursor hold + its title hint, then the per-level
-  speed ramp, took the old ~200 B margin down to this), so **the tunes are not to be shortened
-  without explicit approval, every build must report free bytes** (§10), **and there is now
-  almost no room for new code without reclaiming space first** —
-  reclaim before adding. **CVBasic note syntax puts the sharp
+  program sits **124 B** under the line (after the slow-cursor hold + title hint and the per-level
+  speed ramp spent most of the original ~200 B margin, the win-screen collapse-then-fireworks
+  change net *reclaimed* space — removing the shaft-avoidance clamp and a now-redundant sprite-hide
+  loop saved more than the new `wall_close` split/call and center-blink code cost — and the
+  level-10 "YOU WIN" banner text spent some of it back), so **the tunes are not to be shortened
+  without explicit approval, and every build must report free bytes** (§10).
+  **CVBasic note syntax puts the sharp
   AFTER the octave** (`A4#`, not `A#4` — cvbasic.c note parser), octaves 2–6 (plus C7).
   `start_music` is called after the countdown at game start and again at each level-up; music
   stops (`PLAY OFF`) at level-up, game over, and win.
@@ -500,9 +520,12 @@ nanochess CVBasic has no preprocessor and cannot build this source.
   bytes, which shows up as sprites that don't display and severe visual corruption (and it shifts
   with *any* code change, so it masquerades as a random/heisenbug). **Always report free bytes after
   a build:** `24336 - (len(open('STRUCTRS.bin','rb').read()) - 16384)` must be ≥ 0 (target ≥ ~200 B
-  margin). The program currently sits **54 B** under (the slow-cursor hold + title hint, then the
-  per-level speed ramp, spent most of the old ~200 B margin), so it is now **well below** the
-  ~200 B target — reclaim before adding new code. To reclaim space, cut **code / non-music DATA**
+  margin). The program currently sits **124 B** under (the slow-cursor hold + title hint and the
+  per-level speed ramp had driven this down to 54 B; the win-screen collapse-then-fireworks change
+  net reclaimed space — a removed shaft-avoidance clamp and a redundant sprite-hide loop outweighed
+  the new `wall_close` split/call and center-blink code — before the "YOU WIN" banner-text branch
+  spent some of that back), still **below** the ~200 B target — reclaim before adding new code. To
+  reclaim space, cut **code / non-music DATA**
   first (the 128–136 tiles share one `DEFINE CHAR`; `fill_interior`/`hide_sprites` GOSUBs; char 202
   reuses `bnd_pat`; paint code hoists `mc`/`pcp`); the ~2.8 KB of tunes are **off-limits without
   explicit approval**. (32 KB is the *cart* size — headers + padding — NOT the usable program size.)
@@ -522,7 +545,20 @@ ROM (see `.claude/skills/verify` guidance).
       game-over screen into a new game. (Code-verified + builds clean; not yet observed in emulator.)
 - [ ] **Piece fall speed ramps 1→10**: level 1 falls at half the level-10 speed, easing up level by
       level to the (unchanged) level-10 speed by level 9, holding there at level 10. (Code-verified
-      + builds clean at 54 B free; not yet observed in emulator.)
+      + builds clean; not yet observed in emulator.)
+- [x] **Beating level 10 collapses the game area (`wall_close`, no reopen) before the fireworks**:
+      walls march to center, mountain/wings erase, shaft wipes blank — HUD sidebar and score
+      untouched, no `CLS` at this point; the level-up banner shows **"YOU WIN"** in place of
+      "LEVEL UP!" for this transition. Fireworks then burst across the **full screen width** (no
+      shaft to dodge). Player sprite reappears **blinking, horizontally centered and 6 rows above
+      vertical center** once the "CONGRATULATIONS" banner is up. (TI verified in Classic99 via a
+      scratch probe build that jumps straight to `level_up`/`win_screen` at level 10: confirmed the
+      "YOU WIN" text, the shaft/walls/mountain fully collapsing with the HUD sidebar untouched, and
+      fireworks launching across the full width with no exclusion zone; the emulator process
+      exited partway through a later run before the final banner+blink frame was captured, so that
+      exact frame is unconfirmed — not yet established whether this was a real bug or an unrelated
+      emulator/automation flake. Level-up's `wall_anim` behavior after the `wall_close` split has
+      not yet been directly re-verified in the emulator.)
 - [x] Pieces fall as **single magnified sprites, 1 px at a time** (sub-cell offsets visible
       between snapshots; smooth entry from above the screen top), target the player's column,
       convert flush to per-piece colored characters on landing, and use the shape/color catalog
@@ -536,9 +572,11 @@ ROM (see `.claude/skills/verify` guidance).
       (Code-verified + simulated; not yet observed in emulator.)
 - [x] Getting buried shows "OOPS!  BURIED!" (single line, no level number) with a blinking player;
       fire returns to the **title**. The
-      win screen is a dark-green banner with white text, and the title restores normal colors
-      after it. (TI verified in Classic99 — the win screen via a scratch probe build that jumps
-      straight to it; a full played-through win has not been performed.)
+      win screen collapses the game area, runs fireworks, then shows a dark-green banner with
+      white text and a blinking centered player, and the title restores normal colors after it.
+      (TI verified in Classic99 — the win screen via a scratch probe build that jumps straight to
+      it, prior to the game-area-collapse change; a full played-through win with the collapse has
+      not been performed.)
 - [x] 838 on the title opens the setup screen; a digit picks the starting level (0 = 10) and the
       game begins at once — the choice lasts **one game only** (every return to the title resets to
       level 1). Verified in Classic99: 838→4 starts at level 4, and after being buried, fire →

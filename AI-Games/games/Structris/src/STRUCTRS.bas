@@ -1079,7 +1079,14 @@ level_up:
 	' tone. All effect sounds therefore live on channel 2 (and noise
 	' on 3), which SIMPLE mode leaves alone.
 	PLAY OFF
-	PRINT AT CPOS(19,12),"LEVEL UP!"
+	' Beating level 10 shows "YOU WIN" here instead of "LEVEL UP!" -- checked
+	' BEFORE the LV = LV + 1 below, since that's what decides whether the
+	' win path (gameend = 2, no wall_anim/flush) is about to trigger.
+	IF LV = 10 THEN
+		PRINT AT CPOS(19,13),"YOU WIN"
+	ELSE
+		PRINT AT CPOS(19,12),"LEVEL UP!"
+	END IF
 	' The landing thud / row-clear crunch counters don't tick inside
 	' this sequence (main_loop is paused) -- give them their natural
 	' ring, then hard-silence channels 2+3 before the wall animation.
@@ -1109,16 +1116,16 @@ level_up:
 	RETURN
 
 	'
-	' ---- Level-up wall animation + ditty ----
-	' The finished level's walls CLOSE to the center with a rising run of
-	' notes (old geometry); then the play band is wiped, calc_geom
-	' switches to the NEW level, and the walls OPEN back out to the new
-	' (narrower, re-centered) positions with a second rising run and a
-	' two-note ta-da. As the walls open, the NEW raised stage is drawn
-	' column by column behind the growing gap -- so the new layer eases
-	' in instead of snapping when init_level repaints it afterward.
+	' ---- Game-area collapse (shared: level-up close phase AND win screen) ----
+	' Walls CLOSE to the center with a rising run of notes, erasing the flared
+	' mountain wings/lip as they go, then the play band is wiped to blank.
+	' Purely mechanical and level-agnostic (uses only the CURRENT ML/W/sh) --
+	' no dependency on there being a "next" level, so win_screen can call this
+	' alone to collapse the game area WITHOUT reopening it. Never touches the
+	' HUD sidebar (li/ri stay clear of columns 1-5/26-32 by construction) and
+	' never CLS's -- the sidebar and any on-screen messages are untouched.
 	'
-wall_anim:
+wall_close:
 	GOSUB hide_sprites
 	' Conditional compilation: build-ti.sh passes -DTI994A=1 so TI994A is a
 	' defined non-zero constant on the TI build; build-coleco.sh passes no -D
@@ -1220,6 +1227,17 @@ wall_anim:
 		li = li - 1
 		ri = ri + 1
 	NEXT r
+	RETURN
+
+	' ---- Level-up wall animation + ditty ----
+	' The finished level's walls CLOSE (wall_close, above) with a rising run
+	' of notes; then calc_geom switches to the NEW level, and the walls OPEN
+	' back out to the new (narrower, re-centered) positions with a second
+	' rising run and a two-note ta-da. As the walls open, the NEW raised
+	' stage is drawn column by column behind the growing gap -- so the new
+	' layer eases in instead of snapping when init_level repaints it after.
+wall_anim:
+	GOSUB wall_close
 	GOSUB calc_geom
 	vsh = sh
 	' --- OPEN (new geometry): walls march OUT to the new border columns;
@@ -1553,30 +1571,27 @@ blink_player:
 win_screen:
 	PLAY OFF
 	IF #score > #hi THEN #hi = #score
-	' Victory: first FIREWORKS over the right side of the (still black)
-	' screen -- five rockets, each a rising white spark that pops into
-	' the 4-frame expansion animation (reusing the death-explosion defs
+	' Victory: the game area COLLAPSES first (wall_close -- same mechanic as
+	' the level-up wall animation, but no reopen), so the fireworks that
+	' follow can burst anywhere the shaft used to be. wall_close never
+	' touches the HUD sidebar or CLS's -- SCORE/HIGH/LEVEL/CLEAR stay put.
+	' Then FIREWORKS -- five rockets, each a rising white spark that pops
+	' into the 4-frame expansion animation (reusing the death-explosion defs
 	' 7-10) in its own color, with a rising launch whistle and a noise
 	' pop. Only then the banner: repaint the ASCII set white-on-DARK-
 	' GREEN and clear the board (the old version printed over leftover
 	' playfield tiles and read as garbage). The title screen restores
 	' the normal text colors before anything else is printed. The
-	' player's sprite stays visible, steady -- they survived.
+	' player's sprite is hidden along with the pieces by wall_close's
+	' hide_sprites -- it collapses away with the game area.
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
-	' Rockets alternate RIGHT and LEFT of the shaft. The 32-px burst
-	' boxes (plus their +/-3 px sprite offsets) are clamped clear of
-	' the shaft borders -- fireworks may overlap the sidebar/HUD but
-	' NEVER the game area (bounds computed from this level's ML/W).
-	rx = (ML + W + 2) * 8 + 3
-	lx = ML * 8 - 35
+	GOSUB wall_close
+	' No shaft to dodge anymore -- bursts land anywhere across the full
+	' screen width.
 	FOR fw = 1 TO 6
-		IF (fw AND 1) THEN
-			bx = rx + RANDOM(221 - rx)
-		ELSE
-			bx = 3 + RANDOM(lx - 2)
-		END IF
+		bx = 3 + RANDOM(219)
 		' Burst height: at least 60% up the screen (by <= 77) and high
 		' enough that the whole 32-px burst box keeps an 8-px margin
 		' from the screen top (box top = by-4, so by >= 12).
@@ -1618,9 +1633,7 @@ win_screen:
 		SPRITE 9,$D1,0,0,0
 		SPRITE 10,$D1,0,0,0
 	NEXT fw
-	FOR p = 0 TO MAXP - 1
-		SPRITE 1 + p,$D1,0,0,0
-	NEXT p
+	' Piece sprites are already hidden by wall_close's hide_sprites, above.
 	DEFINE COLOR 32,16,txt_green
 	WAIT
 	DEFINE COLOR 48,16,txt_green
@@ -1635,11 +1648,19 @@ win_screen:
 	PRINT AT CPOS(14,5),"THE MACHINE GIVES UP."
 	PRINT AT CPOS(16,10),"SCORE ",<5>#score
 	PRINT AT CPOS(19,11),"PRESS FIRE"
+	' The player reappears blinking at screen center (reusing blink_player,
+	' the same routine the OOPS screen uses) -- a calmer victory pose than
+	' mid-shaft, now that the shaft itself is gone.
+	PX = 126
+	PY = 47
+	blink = 0
 win_rel:
 	WAIT
+	GOSUB blink_player
 	IF cont1.button THEN GOTO win_rel
 win_wait:
 	WAIT
+	GOSUB blink_player
 	IF cont1.button = 0 THEN GOTO win_wait
 	GOTO title_screen
 
