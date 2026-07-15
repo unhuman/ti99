@@ -190,8 +190,11 @@ along a surface while climbing or ducking. The move blip is throttled to one per
   collapse — the close phase only tracks the lip as the walls march in, so without this the wings
   lingered as leftover angled artifacts during the collapse. Vacated columns are erased with **true
   spaces** (not the black interior tile) so the win/game-over full-screen recolors show no leftover
-  black artifacts; the wipe clears the tower band (rows 0–17) plus the wings (stage rows only, so
-  the sidebar HUD is never touched).
+  black artifacts. The final wipe (before `calc_geom` switches to the new level) only needs to clear
+  the tower band (rows 0–17, between the walls) — the wings do **not** get a second erase there: the
+  up-front pre-clear plus the close phase's own `vcol`/`scol0` sweep (as the walls march to
+  `d = 1..dmax`) already blank every wing column with no gap at the seam, so a second pass would be
+  dead duplicate work (removed; ~318 B reclaimed on the TI-99 build, see §10).
 - **Two height arrays.** `H(1..W)` is the *settled* stack; `HF(1..W)` is the *forecast* — settled
   plus every in-flight piece's booking. Targeting and shape selection read `HF`, so a piece
   spawned while others are mid-flight aims at and fits the surface as it *will* be; landing moves
@@ -438,11 +441,18 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   full-screen `CLS`** at this point (`wall_close` only ever touches the shaft/wing columns, by
   construction of the same `li`/`ri` margins it's always used with at level-up). The player sprite
   is hidden along with the piece sprites (`wall_close`'s `hide_sprites` call) — it does not stay
-  visible through this phase. Then **fireworks span the full screen width** — five rockets, each a
-  rising white spark (with a rising whistle) that pops into the same 4-frame expansion animation
-  (reusing defs 7–10, four tightly-overlapped sprites per shell) in its own color
-  (yellow/green/red/blue/white) with a noise pop; with the shaft gone there is no exclusion zone to
-  dodge, so burst positions are drawn from the whole visible width. Only then the full **dark-green
+  visible through this phase. Then **up to 2 fireworks launch concurrently at staggered, randomized
+  intervals** (a small state machine — `fw_loop`/`fw_spawn`, slot arrays `fwst`/`fwbx`/`fwby`/
+  `fwec`/`fwk`/`fwi` — rather than the old one-at-a-time sequential loop), 10 total per show, each a
+  rising spark (with a rising whistle, shared/blended across overlapping launches since only one
+  tone channel is free) that pops into the same 4-frame expansion animation (reusing defs 7–10,
+  four tightly-overlapped sprites per shell, at hardware sprite group `fs*4+7` — 7–10 for slot 0,
+  11–14 for slot 1, no new `DEFINE SPRITE` needed) in a color drawn from the existing `colv()`
+  piece palette; with the shaft gone there is no exclusion zone to dodge, so burst positions are
+  drawn from the whole visible width. `SPRITE FLICKER` is switched **ON** for this phase only (the
+  player sprite is already hidden, so there's nothing to lose letting the VDP's >4-per-scanline
+  rotation cover the extra concurrent sprites) and back **OFF** afterward so gameplay's
+  player-pinning is unaffected. Only then the full **dark-green
   victory banner** (`txt_green`, `$FC`): `CLS` (the *only* full clear in the sequence, and the first
   point anything other than the collapse has touched the sidebar) and the message (with the final
   score) prints on the solid green field, followed by the player sprite reappearing, **blinking,
@@ -466,12 +476,20 @@ pure horizontal (`1,1,1`) or pure vertical (`0,3,0`) bars.
   tempos (10 → 6 ticks), so the score gets faster and darker as levels climb. A `MUSIC` row is a
   fixed 4 bytes, so the ten tunes cost ~2.8 KB of ROM. **This is a big chunk of the single-bank
   budget** (see §10 — the TI-99 single-bank ceiling is 24,336 B, not the 32 KB cart size): the
-  program sits **124 B** under the line (after the slow-cursor hold + title hint and the per-level
-  speed ramp spent most of the original ~200 B margin, the win-screen collapse-then-fireworks
-  change net *reclaimed* space — removing the shaft-avoidance clamp and a now-redundant sprite-hide
-  loop saved more than the new `wall_close` split/call and center-blink code cost — and the
-  level-10 "YOU WIN" banner text spent some of it back), so **the tunes are not to be shortened
-  without explicit approval, and every build must report free bytes** (§10).
+  program sits **6 B** under the line — essentially zero margin. History: the slow-cursor hold +
+  title hint and the per-level speed ramp spent most of the original ~200 B margin down to 84 B;
+  the win-screen collapse-then-fireworks change (§ above) net *reclaimed* space up to 178 B
+  (shaft-avoidance clamp + a redundant sprite-hide loop removed); the level-10 "YOU WIN" banner
+  text spent some back (124 B); then the **overlapping-fireworks state machine** (2 concurrent
+  rocket slots, `fw_loop`/`fw_spawn`) cost far more than it saved on its own (measured ~458 B over
+  budget for an initial 3-slot version) — it only fits because of an *independent* discovery: a
+  genuinely dead duplicate wing-erase loop inside `wall_close` (see above) reclaimed ~318 B on its
+  own, and several small control-flow trims (2 slots instead of 3, a single secondary sound cue
+  dropped, unrolling two trivial 2-element scans instead of looping them) closed the rest, landing
+  at 6 B free. **A 3-concurrent-slot version was also measured and confirmed NOT to fit (-18 B)** —
+  kept at 2 slots. **There is effectively no room for any further code** without reclaiming first;
+  the tunes remain off-limits without explicit approval, and every build must report free bytes
+  (§10).
   **CVBasic note syntax puts the sharp
   AFTER the octave** (`A4#`, not `A#4` — cvbasic.c note parser), octaves 2–6 (plus C7).
   `start_music` is called after the countdown at game start and again at each level-up; music
@@ -520,12 +538,12 @@ nanochess CVBasic has no preprocessor and cannot build this source.
   bytes, which shows up as sprites that don't display and severe visual corruption (and it shifts
   with *any* code change, so it masquerades as a random/heisenbug). **Always report free bytes after
   a build:** `24336 - (len(open('STRUCTRS.bin','rb').read()) - 16384)` must be ≥ 0 (target ≥ ~200 B
-  margin). The program currently sits **124 B** under (the slow-cursor hold + title hint and the
-  per-level speed ramp had driven this down to 54 B; the win-screen collapse-then-fireworks change
-  net reclaimed space — a removed shaft-avoidance clamp and a redundant sprite-hide loop outweighed
-  the new `wall_close` split/call and center-blink code — before the "YOU WIN" banner-text branch
-  spent some of that back), still **below** the ~200 B target — reclaim before adding new code. To
-  reclaim space, cut **code / non-music DATA**
+  margin). The program currently sits **6 B** under — effectively zero margin. Full history in the
+  music-budget note above; the short version: the overlapping-fireworks state machine (2 concurrent
+  rocket slots) only fits because removing a genuinely dead duplicate loop in `wall_close`
+  (~318 B — see the wall animation section above) happened to free enough room; a 3-slot version
+  was measured and does NOT fit (-18 B). **Reclaim bytes before adding any new code** — there is
+  currently no slack at all. To reclaim space, cut **code / non-music DATA**
   first (the 128–136 tiles share one `DEFINE CHAR`; `fill_interior`/`hide_sprites` GOSUBs; char 202
   reuses `bnd_pat`; paint code hoists `mc`/`pcp`); the ~2.8 KB of tunes are **off-limits without
   explicit approval**. (32 KB is the *cart* size — headers + padding — NOT the usable program size.)
@@ -549,16 +567,23 @@ ROM (see `.claude/skills/verify` guidance).
 - [x] **Beating level 10 collapses the game area (`wall_close`, no reopen) before the fireworks**:
       walls march to center, mountain/wings erase, shaft wipes blank — HUD sidebar and score
       untouched, no `CLS` at this point; the level-up banner shows **"YOU WIN"** in place of
-      "LEVEL UP!" for this transition. Fireworks then burst across the **full screen width** (no
-      shaft to dodge). Player sprite reappears **blinking, horizontally centered and 6 rows above
-      vertical center** once the "CONGRATULATIONS" banner is up. (TI verified in Classic99 via a
-      scratch probe build that jumps straight to `level_up`/`win_screen` at level 10: confirmed the
-      "YOU WIN" text, the shaft/walls/mountain fully collapsing with the HUD sidebar untouched, and
-      fireworks launching across the full width with no exclusion zone; the emulator process
-      exited partway through a later run before the final banner+blink frame was captured, so that
-      exact frame is unconfirmed — not yet established whether this was a real bug or an unrelated
-      emulator/automation flake. Level-up's `wall_anim` behavior after the `wall_close` split has
-      not yet been directly re-verified in the emulator.)
+      "LEVEL UP!" for this transition. **Up to 2 fireworks then launch concurrently at staggered,
+      randomized intervals** (10 total per show; `SPRITE FLICKER` ON for this phase only, OFF again
+      before returning to title), bursting across the **full screen width** (no shaft to dodge).
+      Player sprite reappears **blinking, horizontally centered and 6 rows above vertical center**
+      once the "CONGRATULATIONS" banner is up. (TI verified in Classic99 via a scratch probe build
+      that jumps straight to `level_up`/`win_screen` at level 10, across 3 separate clean runs:
+      confirmed the "YOU WIN" text, the shaft/walls/mountain fully collapsing with the HUD sidebar
+      untouched, and the sequence completing all the way through to the final banner + centered
+      blinking player with no crash — resolving an earlier single-run emulator exit as an
+      automation flake, not a reproducible bug. The overlapping/concurrent nature of the fireworks
+      itself was not visually confirmed frame-by-frame — Classic99's turbo/overdrive speed setting
+      finishes the whole show in well under half a second of wall-clock automation time, faster
+      than screenshot polling could catch a mid-show frame with 2 bursts visibly in flight at once;
+      confidence instead comes from the code reasoning (a runtime FSM identical in structure to the
+      existing per-piece slot arrays) and the absence of any hang/corruption on the way to a
+      correct final frame. Level-up's `wall_anim` (collapse + reopen) behavior after the
+      `wall_close` split has not yet been directly re-verified in the emulator.)
 - [x] Pieces fall as **single magnified sprites, 1 px at a time** (sub-cell offsets visible
       between snapshots; smooth entry from above the screen top), target the player's column,
       convert flush to per-piece colored characters on landing, and use the shape/color catalog

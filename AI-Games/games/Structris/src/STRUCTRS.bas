@@ -75,6 +75,18 @@
 	DIM colv(8)		' color index -> VDP sprite color
 	DIM sh1(16)		' column -> settled surface pixel, (sh-H)*8 (index 1..W, W<=15)
 
+	' Win-screen fireworks: up to 2 concurrent rockets (win_screen only).
+	' fs-indexed 0..1; sprite group for slot fs is fs*4+7 (7-10, 11-14),
+	' reusing the shared explosion pattern defs 7-10 -- no new DEFINE
+	' SPRITE needed, just more hardware sprite NUMBERS pointed at the
+	' same patterns.
+	DIM fwst(2)		' slot -> state: 0 idle, 1 launching, 2 popping
+	DIM fwbx(2)		' slot -> burst X
+	DIM fwby(2)		' slot -> burst Y
+	DIM fwec(2)		' slot -> burst color
+	DIM fwk(2)		' slot -> launch height (climbs down to fwby)
+	DIM fwi(2)		' slot -> pop frame counter
+
 	DEF FN CPOS(r,c) = r * 32 + c
 
 	'
@@ -1197,35 +1209,23 @@ wall_close:
 		WAIT
 	NEXT i
 
-	' Wipe the old play band to space, then switch to the NEW level's
-	' geometry. The open phase redraws stage + walls from scratch, so
-	' nothing outside the new band lingers as an artifact on a later
-	' win/lose screen. Two loops: the tower column band (rows 0..17), and
-	' the old stage's flared wings (stage rows only, so the HUD in the top
-	' rows is never touched by the wider erase).
+	' Wipe the old play band (tower column band, rows 0..17) to space, then
+	' switch to the NEW level's geometry. The open phase redraws stage +
+	' walls from scratch, so nothing outside the new band lingers as an
+	' artifact on a later win/lose screen. The wing triangle does NOT need
+	' a second erase here: the pre-clear above plus this close phase's
+	' vcol/scol0 sweep (as the walls marched to d=1..dmax) already blanked
+	' every wing column between the far triangular tips and the meeting
+	' point at center, with no gap at the seam (pre-clear reaches column
+	' ML-2/ML+W+3; the d=1 sweep starts at ML-1/ML+W+2) -- re-erasing it
+	' here was dead duplicate work. oML/oW are still captured: the OPEN
+	' phase below (wall_anim) needs them after calc_geom overwrites ML/W.
 	oML = ML
 	oW = W
-	osh = sh
 	FOR r = 0 TO 17
 		FOR cx = oML - 1 TO oML + oW + 2
 			VPOKE $1800 + r * 32 + cx,32
 		NEXT cx
-	NEXT r
-	li = oML - 2
-	ri = oML + oW + 3
-	FOR r = osh TO 17
-		lo = li
-		IF lo < 1 THEN lo = 1
-		FOR cx = lo TO oML - 2
-			VPOKE $1800 + r * 32 + cx,32
-		NEXT cx
-		ro = ri
-		IF ro > 30 THEN ro = 30
-		FOR cx = oML + oW + 3 TO ro
-			VPOKE $1800 + r * 32 + cx,32
-		NEXT cx
-		li = li - 1
-		ri = ri + 1
 	NEXT r
 	RETURN
 
@@ -1588,51 +1588,64 @@ win_screen:
 	SOUND 1,,0
 	SOUND 2,,0
 	GOSUB wall_close
-	' No shaft to dodge anymore -- bursts land anywhere across the full
-	' screen width.
-	FOR fw = 1 TO 6
-		bx = 3 + RANDOM(219)
-		' Burst height: at least 60% up the screen (by <= 77) and high
-		' enough that the whole 32-px burst box keeps an 8-px margin
-		' from the screen top (box top = by-4, so by >= 12).
-		by = 12 + RANDOM(66)
-		IF fw = 1 THEN ec = 11
-		IF fw = 2 THEN ec = 3
-		IF fw = 3 THEN ec = 9
-		IF fw = 4 THEN ec = 5
-		IF fw = 5 THEN ec = 15
-		IF fw = 6 THEN ec = 7
-		' Launch: the spark climbs from below the floor line to the
-		' burst point with a rising whistle (channel 2 -- see the note
-		' at level_up).
-		k = 150
-		WHILE k > by
-			WAIT
-			SPRITE 7,k - 1,bx,28,15
-			#fq = k
-			#fq = 900 - #fq * 4
+	' BIGGER SHOW: up to 2 rockets in flight at once, launching at
+	' staggered/random intervals instead of one at a time. SPRITE FLICKER
+	' is ON for this phase only -- the player sprite is hidden the whole
+	' time (wall_close's hide_sprites), so there's nothing to lose letting
+	' the VDP's >4-per-scanline rotation cover the extra sprites; turned
+	' back OFF below so the next game's player-pinning is unaffected.
+	SPRITE FLICKER ON
+	fwst(0) = 0
+	fwst(1) = 0
+	fwcnt = 0
+	fwdone = 0
+	fwnext = 0
+fw_loop:
+	WAIT
+	IF fwnext > 0 THEN
+		fwnext = fwnext - 1
+	ELSE
+		IF fwcnt < 10 THEN GOSUB fw_spawn
+	END IF
+	FOR fs = 0 TO 1
+		fb = fs * 4 + 7
+		IF fwst(fs) = 1 THEN
+			' Launch: the spark climbs with a rising whistle (channel 2 --
+			' shared by all in-flight sparks, so overlapping launches blend
+			' into one another rather than playing separately; channel 2 is
+			' the only tone channel free of the music, see the level_up note).
+			SPRITE fb,fwk(fs) - 1,fwbx(fs),28,15
+			#fq = 900 - fwk(fs) * 4
 			SOUND 2,#fq,9
-			k = k - 3
-		WEND
-		SOUND 2,,0
-		SOUND 3,5,12
-		' Pop: same 4-frame expansion as the death explosion, four
-		' tightly-overlapped sprites so the burst reads as one shell.
-		FOR i = 1 TO 28
-			WAIT
-			ef = 28 + ((i - 1) / 7) * 4
-			SPRITE 7,by - 4,bx + 3,ef,ec
-			SPRITE 8,by - 4,bx - 3,ef,ec
-			SPRITE 9,by + 2,bx + 3,ef,ec
-			SPRITE 10,by + 2,bx - 3,ef,ec
-			IF i = 20 THEN SOUND 3,6,7
-		NEXT i
-		SOUND 3,,0
-		SPRITE 7,$D1,0,0,0
-		SPRITE 8,$D1,0,0,0
-		SPRITE 9,$D1,0,0,0
-		SPRITE 10,$D1,0,0,0
-	NEXT fw
+			fwk(fs) = fwk(fs) - 3
+			IF fwk(fs) <= fwby(fs) THEN
+				SOUND 2,,0
+				SOUND 3,5,12
+				fwst(fs) = 2
+				fwi(fs) = 0
+			END IF
+		ELSEIF fwst(fs) = 2 THEN
+			' Pop: same 4-frame expansion as the death explosion, four
+			' tightly-overlapped sprites so the burst reads as one shell.
+			fwi(fs) = fwi(fs) + 1
+			ef = 28 + ((fwi(fs) - 1) / 7) * 4
+			SPRITE fb,fwby(fs) - 4,fwbx(fs) + 3,ef,fwec(fs)
+			SPRITE fb + 1,fwby(fs) - 4,fwbx(fs) - 3,ef,fwec(fs)
+			SPRITE fb + 2,fwby(fs) + 2,fwbx(fs) + 3,ef,fwec(fs)
+			SPRITE fb + 3,fwby(fs) + 2,fwbx(fs) - 3,ef,fwec(fs)
+			IF fwi(fs) >= 28 THEN
+				SOUND 3,,0
+				SPRITE fb,$D1,0,0,0
+				SPRITE fb + 1,$D1,0,0,0
+				SPRITE fb + 2,$D1,0,0,0
+				SPRITE fb + 3,$D1,0,0,0
+				fwst(fs) = 0
+				fwdone = fwdone + 1
+			END IF
+		END IF
+	NEXT fs
+	IF fwdone < 10 THEN GOTO fw_loop
+	SPRITE FLICKER OFF
 	' Piece sprites are already hidden by wall_close's hide_sprites, above.
 	DEFINE COLOR 32,16,txt_green
 	WAIT
@@ -1663,6 +1676,28 @@ win_wait:
 	GOSUB blink_player
 	IF cont1.button = 0 THEN GOTO win_wait
 	GOTO title_screen
+
+	' Claim the first idle firework slot (if any) for a new rocket: random
+	' burst position/color (colv() reused -- the same 7-entry palette the
+	' falling pieces use, no separate table needed), and a random 8-22
+	' frame delay before the next spawn attempt, for a staggered show.
+fw_spawn:
+	fs2 = 0
+	IF fwst(0) <> 0 THEN
+		IF fwst(1) <> 0 THEN RETURN
+		fs2 = 1
+	END IF
+	fwbx(fs2) = 3 + RANDOM(219)
+	' Burst height: at least 60% up the screen (by <= 77) and high enough
+	' that the whole 32-px burst box keeps an 8-px margin from the screen
+	' top (box top = by-4, so by >= 12).
+	fwby(fs2) = 12 + RANDOM(66)
+	fwec(fs2) = colv(1 + RANDOM(7))
+	fwk(fs2) = 150
+	fwst(fs2) = 1
+	fwcnt = fwcnt + 1
+	fwnext = 8 + RANDOM(15)
+	RETURN
 
 	'
 	' ---- 838 setup: pick the starting level (typed 8,3,8 on the title) ----
