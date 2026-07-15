@@ -170,17 +170,18 @@ title_screen:
 	PRINT AT CPOS(0,0),<5>#score
 	PRINT AT CPOS(0,24),"HI ",<5>#hi
 	PRINT AT CPOS(2,8),"S T R U C T R I S"
-	PRINT AT CPOS(4,2),"MARTIN HAYE, UNHUMAN, CLAUDE"
-	PRINT AT CPOS(7,3),"THE MACHINE BUILDS THE"
-	PRINT AT CPOS(8,3),"STRUCTURE.  YOU DODGE IT."
-	PRINT AT CPOS(11,3),"JOYSTICK: MOVE ALONG THE"
-	PRINT AT CPOS(12,3),"SKYLINE OF BLOCKS. UP TO"
-	PRINT AT CPOS(13,3),"CLIMB, DOWN TO DUCK INTO"
-	PRINT AT CPOS(14,3),"A GAP. DON'T GET BURIED."
-	PRINT AT CPOS(17,3),"CLEAR ENOUGH ROWS TO REACH"
-	PRINT AT CPOS(18,3),"THE NEXT LEVEL -- SHORTER,"
-	PRINT AT CPOS(19,3),"NARROWER, MEANER."
-	PRINT AT CPOS(22,4),"FIRE TO BEGIN THE TORTURE"
+	PRINT AT CPOS(5,2),"MARTIN HAYE, UNHUMAN, CLAUDE"
+	PRINT AT CPOS(9,3),"THE MACHINE BUILDS THE"
+	PRINT AT CPOS(10,3),"STRUCTURE.  YOU DODGE IT."
+	PRINT AT CPOS(12,3),"JOYSTICK: MOVE ALONG THE"
+	PRINT AT CPOS(13,3),"SKYLINE OF BLOCKS. UP TO"
+	PRINT AT CPOS(14,3),"CLIMB, DOWN TO DUCK INTO"
+	PRINT AT CPOS(15,3),"A GAP.  DON'T GET BURIED."
+	PRINT AT CPOS(17,3),"HOLD FIRE: SLOW CURSOR"
+	PRINT AT CPOS(19,3),"CLEAR ENOUGH ROWS TO REACH"
+	PRINT AT CPOS(20,3),"THE NEXT LEVEL - SHORTER,"
+	PRINT AT CPOS(21,3),"NARROWER, MEANER."
+	PRINT AT CPOS(23,4),"FIRE TO BEGIN THE TORTURE"
 	code_st = 0
 	lastk = 15
 title_rel:
@@ -282,6 +283,11 @@ calc_geom:
 	IF (LV AND 1) = 0 THEN hoff = 4
 	' Rows required: 7 at level 1, +2 per level (25 at level 10).
 	RG = 5 + LV * 2
+	' Fall speed ramps from slower at level 1 up to the tuned level-10 speed
+	' (fpr=8, unchanged). Only levels BELOW 10 get slower than before -- level
+	' 10 itself is untouched, so this can't reintroduce the "high levels
+	' literally impossible" problem a prior full-range ramp hit (see below).
+	fpr = 8 + (10 - LV) * 8 / 9
 	RETURN
 
 	'
@@ -321,13 +327,8 @@ init_level:
 	nact = 0
 	pnew = 0
 	spawn_timer = 20
-	' Fall speed is CONSTANT across all levels (8 px = one row every fpr=8
-	' frames, spread 1 px at a time by the accumulator in advance_pieces =
-	' 1 px/frame). Speed progression is DELIBERATELY disabled: the game
-	' gets harder only through the rising row requirement (RG) and the
-	' narrowing shaft -- ramping the fall speed made high levels literally
-	' impossible (pieces dropping faster than the player can escape).
-	fpr = 8
+	' Fall speed: fpr px-per-row-interval, set by calc_geom above (ramps
+	' 1->10, unchanged at level 10 -- see the comment there).
 	acc = 0
 	#lf = FRAME
 	move_cd = 0
@@ -494,6 +495,21 @@ handle_input:
 	' cell past a piece. Single destination rect_test as before -- no
 	' per-pixel loop, so no added per-frame load.
 	pfd = #fd
+	' PRECISION MODE: hold FIRE to move the CURSOR at half speed (the
+	' pieces are untouched -- they key off #fd back in main_loop, this only
+	' scales the player step). Lets you thread a narrow gap without
+	' overshooting. smrem carries the dropped odd frame so it's EXACTLY
+	' half, not a lossy 2-of-3: pfd=1 alternates 0,1,0,1... = the bar steps
+	' every other frame. Releasing FIRE snaps back to full speed. FIRE also
+	' dismisses the terminal screens, but game_over_rel/win_rel wait for a
+	' release first, so a held button can't skip them.
+	IF cont1.button THEN
+		pfd = pfd + smrem
+		smrem = pfd AND 1
+		pfd = pfd / 2
+	ELSE
+		smrem = 0
+	END IF
 	IF pfd > 2 THEN pfd = 2
 	pmv = PSPD * pfd
 	IF cont1.left THEN

@@ -33,9 +33,10 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
   top-left, `LEVEL` and `CLEAR` blocks under it); the score spans the whole game (all levels).
 - Every column built up past a shared height threshold "falls away" (the completed rows compact
   out) and counts toward the level. Clear enough rows and the level advances: the shaft narrows
-  (15 columns at level 1 down to 6 at level 10) and the row goal climbs,
-  but the **fall speed stays constant** (a faster fall made high levels unplayable — the challenge
-  comes from the row requirement and the narrowing shaft, not from speed). The
+  (15 columns at level 1 down to 6 at level 10), the row goal climbs, and pieces **fall faster**
+  (level 1 falls at half the level-10 speed, ramping up level by level to the level-10 speed, which
+  is unchanged from before — the challenge also comes from the row requirement and the narrowing
+  shaft, not from speed alone). The
   checkered **mountain** the game stands on (narrow at the top under the walls, flaring one column
   per side every row down to a wide base at the floor) rises half a character each level — so it
   grows taller and wider as the shaft shrinks, shortening the fall from 16 rows at level 1 to 11 at
@@ -57,7 +58,8 @@ Original concept, piece catalog, and neighbor-height targeting AI: **Martin Haye
 |---|---|
 | Slide left / right (2 px/frame, frame-paced so TI matches Coleco speed under load) | Joystick left / right |
 | Climb / duck (same frame-paced step) | Joystick up / down |
-| Start (title) / back to title (game over, win) | Button |
+| **Slow cursor** — hold to halve the cursor speed for precise gap-threading (pieces keep full speed) | **Hold** button during play |
+| Start (title) / back to title (game over, win) | Button (terminal screens wait for a release first, so a held slow-cursor button can't skip them) |
 | Setup: pick starting level | Type `8` `3` `8` on the title, then `1`–`9` (or `0` for level 10) — the game starts immediately. Lasts one game only; the title always resets to level 1. |
 
 ## How it's built
@@ -112,7 +114,9 @@ the shaft); when the "1" clears, the level's tune and the piece stream begin tog
 
 > **TI-99 program budget is a hard 24,336 bytes** (single-bank; not the 32 KB cart size). Past it,
 > `linkticart` silently truncates the tail → visual corruption. Report free bytes after every build
-> and reclaim from code (not the ~2.8 KB of music) first. See DESIGN §10.
+> and reclaim from code (not the ~2.8 KB of music) first. **Currently 54 B free** (the slow-cursor
+> hold + title hint, then the per-level speed ramp, spent most of the old margin) — reclaim before
+> adding new code. See DESIGN §10.
 
 ## Status
 
