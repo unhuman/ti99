@@ -931,6 +931,11 @@ elev_move:
 	'
 beam_move:
 	IF bmon = 0 THEN RETURN
+	' Advance 1 px every 3 loops (still smooth 1-px steps, but slow enough
+	' that the beam lingers at each tier long enough to jump onto it).
+	bmsp = bmsp + 1
+	IF bmsp < 3 THEN RETURN
+	bmsp = 0
 	IF bmd = 0 THEN
 		bmy = bmy - 1
 		IF bmy <= 48 THEN bmd = 1
