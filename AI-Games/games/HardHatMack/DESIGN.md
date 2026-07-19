@@ -200,12 +200,19 @@ hop down the building (left-only, one bounce per floor, passing through after ea
 contact kills. Vandal patrols the 4th floor (2–12); OSHA patrols the 1st floor's left side
 (4–20, homing in Mack's band). Mack spawns on the **right side of the 1st floor** (21,25).
 
-### Level 2 — "Lunch Break" (M4)
-Top platform pair flanking a center magnet pole (magnet head sprite above); 3 side tiers per
-side, lunchbox at each outer end (6 total); staggered ladders; springboards ground→tier-3;
-crane beam (4-col RIDE platform) oscillating on the right; horizontal conveyors bottom-left /
-top-right (flagged simplification of the Apple II diagonals); **incinerator** hazard chars
-bottom center. All 6 boxes → magnet arms (blinks); contact while armed → RIDE up → complete.
+### Level 2 — "Lunch Break" (M4 — layout drawn, mechanics in progress)
+**Drawn (verified in Classic99, transcribed from `assets/HHM-CV-Level2.png`):** a central
+**crane pole** down col 16 (art) with the **electromagnet head** (2-char, chars 176–177) on top
+at row 2; girder-variant (129) platforms on tiers rows **5/9/13/17/21** — a top-center crane
+platform (r5), left/right platforms on r9/r13/r17, a center platform crossing the pole (r13),
+r21 platforms, and the **ground** (row 23); **6 lunch pails** (char 183) on the r9/r13/r17
+platforms (cols 4 and 27); two **diagonal conveyors** (char 156, drawn by the new **op 6**
+diagonal run — upper-right escalator, lower-left belt); the **incinerator** pot (hazard char
+164) bottom-center on the ground; a vandal patrolling r13. Traversal is via **two long side
+chains** (cols 6 and 25) — a simplification; the authentic conveyor/springboard traversal and
+the crane are a later pass. Collecting all 6 pails (`ob_pail` → `nlbr` → `lvdone`) clears it.
+**Still to do:** magnet endgame (ride up off a top platform when armed), functional/moving
+conveyors, springboards, refined traversal, and enemy tuning.
 
 ### Level 3 — "Rivet Works" (M5)
 Orange girders. Full-width top girder; top-left conveyor running **left into a grinder**
@@ -256,8 +263,10 @@ user-tuned across several play rounds (chains, button elevator, bottom trampolin
 jump, per-art hit boxes, airborne pose) · **M3 ✅ Level 1 player-verified working** (2026-07-19:
 fill/rivet/deaths/scoring/extra life/brick-restore/game over, plus 12-px characters, rounded
 apex-11 jump, no-button elevator, bottom trampoline, 3/4 pace with equal player/enemy speed —
-all confirmed in play; polish items may follow) · M4 🔨 level 2 phase 1 coded (layout, lunch
-pails, incinerator, chains; magnet endgame + conveyors next) · M5 level 3 · M6 title/sound/loop/docs.
+all confirmed in play; polish items may follow) · **M4 🔨 Level 2 LAYOUT drawn + verified**
+(2026-07-19: crane pole + magnet, tiered platforms, 6 lunch pails, 2 diagonal conveyors via new
+op 6, incinerator, side chains; L1 still renders clean at 18,008 B — magnet endgame + moving
+conveyors + traversal next) · M5 level 3 · M6 title/sound/loop/docs.
 **Blocker note:** builds whose TI program exceeds **16,224 bytes** (into cart bank 3) fail
 to boot when launched via `classic99 -rom` (QI399.087) — the cart image itself is verified
 byte-correct, and even Structris's July-15 verified 3-bank cart now black-screens the same

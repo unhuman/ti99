@@ -45,12 +45,14 @@
 	CONST T_CHAIN  = 152	'   hanging chain (THE climbing element)
 	CONST T_LADD1  = 155
 	CONST T_CONV0  = 156	' 156-163: conveyor belts (L/R x 2 anim frames)
+	CONST T_CONVB  = 156	'   conveyor belt tile (level 2)
 	CONST T_CONV1  = 163
 	CONST T_HAZ0   = 164	' 164-171: touch = death
 	CONST T_HAZ1   = 171
 	' 172+: pass-through decoration and pickups
 	CONST T_PILLAR = 174	' support pillar (art only -- NOT solid)
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
+	CONST T_MAGNET = 176	' 176-177: electromagnet head (level 2, top of crane)
 	CONST T_LBOXL  = 183	' lunchbox (2 cells, level 2)
 	CONST T_LBOXR  = 184
 	CONST T_BRICK  = 185	' loose girder piece: 1-cell red brick stack
@@ -138,11 +140,15 @@
 	DEFINE COLOR T_PILLAR,2,pillar_col
 	DEFINE CHAR T_BRICK,4,item_pat			' 185-188 brick/wrench/can/hat
 	DEFINE COLOR T_BRICK,4,item_col
-	' SIZE TEST: L2-only pail/incinerator char defs temporarily removed.
-	' DEFINE CHAR T_LBOXL,1,pail_pat
-	' DEFINE COLOR T_LBOXL,1,pail_col
-	' DEFINE CHAR T_HAZ0,3,haz_pat
-	' DEFINE COLOR T_HAZ0,3,haz_col
+	' Level 2 tiles: lunch pail, incinerator/flame, conveyor belt, magnet.
+	DEFINE CHAR T_LBOXL,1,pail_pat
+	DEFINE COLOR T_LBOXL,1,pail_col
+	DEFINE CHAR T_HAZ0,3,haz_pat
+	DEFINE COLOR T_HAZ0,3,haz_col
+	DEFINE CHAR T_CONVB,1,conv_pat
+	DEFINE COLOR T_CONVB,1,conv_col
+	DEFINE CHAR T_MAGNET,2,mag_pat
+	DEFINE COLOR T_MAGNET,2,mag_col
 
 	' HUD/text: white on transparent for the whole ASCII range.
 	DEFINE COLOR 32,16,txt_white
@@ -1489,13 +1495,58 @@ lv_parse:
 		ch = T_PED
 		GOTO lv_vrun
 	END IF
+	IF op = 6 THEN
+		' Diagonal conveyor run: n cells of the belt char, stepping by the
+		' direction t (0 down-right, 1 down-left, 2 up-right, 3 up-left).
+		READ BYTE r
+		READ BYTE c
+		READ BYTE n
+		READ BYTE t
+		FOR i = 1 TO n
+			#va = VADDR(r,c)
+			ch = T_CONVB
+			VPOKE #va,ch
+			IF t = 0 THEN
+				r = r + 1
+				c = c + 1
+			END IF
+			IF t = 1 THEN
+				r = r + 1
+				c = c - 1
+			END IF
+			IF t = 2 THEN
+				r = r - 1
+				c = c + 1
+			END IF
+			IF t = 3 THEN
+				r = r - 1
+				c = c - 1
+			END IF
+		NEXT i
+		GOTO lv_parse
+	END IF
 	' op = 5: object entry. Dispatched with ON GOTO -- a long ELSEIF
 	' chain here miscompiled on the TI backend (the parse died at a
 	' build-address-dependent entry; see DESIGN.md).
 	READ BYTE t
 	' CVBasic ON GOTO is 0-BASED (value 0 = first label).
 	t = t - 1
-	ON t GOTO ob_gap,ob_brick,ob_jack,ob_bonus,lv_parse,ob_elev,ob_sprng,ob_pail,lv_parse,lv_parse,ob_vand,ob_osha,ob_spawn,ob_bolt
+	ON t GOTO ob_gap,ob_brick,ob_jack,ob_bonus,lv_parse,ob_elev,ob_sprng,ob_pail,ob_magnet,lv_parse,ob_vand,ob_osha,ob_spawn,ob_bolt
+	GOTO lv_parse
+
+ob_magnet:
+	' Electromagnet head at the top of the crane (level 2). Two chars wide;
+	' its cell is remembered (mgr/mgc) for the endgame lift.
+	READ BYTE r
+	READ BYTE c
+	mgr = r
+	mgc = c
+	#va = VADDR(r,c)
+	ch = T_MAGNET
+	VPOKE #va,ch
+	#va = #va + 1
+	ch = T_MAGNET + 1
+	VPOKE #va,ch
 	GOTO lv_parse
 
 ob_pail:
@@ -1757,18 +1808,51 @@ level1_data:
 
 	'
 	' ---- Level 2: "Lunch Break" -- the construction site ----
-	' Per assets/HHM-CV-Level2.png (phase 1: layout + lunchboxes +
-	' incinerator; magnet endgame and conveyors follow after layout
-	' review). Tiers rows 8/12/16 both sides, top platforms row 5,
-	' center platform row 19, ground row 23. Crane pole down the middle
-	' (cols 15-16). Collect all 6 lunch pails to clear. The incinerator
-	' burns at cols 10-11 on the ground. Long chains link the ground to
-	' the 3rd tier; short chains link the tiers above.
+	' Transcribed from assets/HHM-CV-Level2.png: a central CRANE POLE down
+	' the middle (col 16) with the ELECTROMAGNET on top (row 2), stepped
+	' girder platforms left/right on tiers 5/9/13/17/21 (ground row 23), two
+	' diagonal CONVEYORS (upper-right escalator, lower-left belt), a right-
+	' side CHAIN, and the INCINERATOR pot bottom-center. Collect all 6 lunch
+	' pails to clear (magnet endgame is a later pass).
 	'
 level2_data:
-	' NOTE: L2 body stubbed to hold headroom under the codegen-corruption
-	' size cliff while finishing L1. The full L2 layout is preserved in
-	' the plan/DESIGN and re-added once the 3-bank codegen issue is fixed.
+	' Crane pole (art) + side climbing chains first, so platforms cross in
+	' front. The two long chains let Mack climb between all the tiers (the
+	' authentic conveyor/spring traversal is a later pass).
+	DATA BYTE 3, 16,3,18		' pole col 16, rows 3-20
+	DATA BYTE 2, 6,6,15		' left chain col 6, rows 6-20
+	DATA BYTE 2, 25,6,15		' right chain col 25, rows 6-20
+	' Platforms (girder2 = type 1).
+	DATA BYTE 1, 5,11,10,1		' top-center crane platform (cols 11-20)
+	DATA BYTE 1, 9,2,9,1		' r9 left  (cols 2-10)
+	DATA BYTE 1, 9,21,9,1		' r9 right (cols 21-29)
+	DATA BYTE 1, 13,2,8,1		' r13 left (cols 2-9)
+	DATA BYTE 1, 13,13,7,1		' r13 center (cols 13-19, crosses pole)
+	DATA BYTE 1, 13,22,8,1		' r13 right (cols 22-29)
+	DATA BYTE 1, 17,2,9,1		' r17 left (cols 2-10)
+	DATA BYTE 1, 17,21,9,1		' r17 right (cols 21-29)
+	DATA BYTE 1, 21,2,7,1		' r21 left (cols 2-8)
+	DATA BYTE 1, 21,12,8,1		' r21 center (cols 12-19)
+	DATA BYTE 1, 21,23,7,1		' r21 right (cols 23-29)
+	DATA BYTE 1, 23,1,30,2		' ground (cols 1-30, type 2)
+	' Diagonal conveyors (op 6: row,col,len,dir; 2=up-right, 1=down-left).
+	DATA BYTE 6, 12,20,5,2		' top-right escalator (r12c20 -> r8c24)
+	DATA BYTE 6, 18,9,5,1		' bottom-left belt (r18c9 -> r22c5)
+	' Electromagnet head on top of the crane.
+	DATA BYTE 5,9, 2,15		' magnet row 2, cols 15-16
+	' Incinerator pot on the ground, bottom-center.
+	DATA BYTE 1, 22,15,2,4		' pot row 22 cols 15-16 (hazard)
+	' Six lunch pails on the platforms.
+	DATA BYTE 5,8, 9,4
+	DATA BYTE 5,8, 9,27
+	DATA BYTE 5,8, 13,4
+	DATA BYTE 5,8, 13,27
+	DATA BYTE 5,8, 17,4
+	DATA BYTE 5,8, 17,27
+	' Vandal patrols the r13 right platform.
+	DATA BYTE 5,11, 13,22,28
+	' Mack spawns bottom-left.
+	DATA BYTE 5,13, 21,4
 	DATA BYTE 0
 
 jump_data:
@@ -1879,6 +1963,20 @@ haz_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $B1,$91,$91,$B1,$91,$B1,$91,$61
+conv_pat:
+	' 156 conveyor belt: solid edges, diagonal motion stripes
+	DATA BYTE $FF,$92,$24,$49,$92,$24,$49,$FF
+conv_col:
+	' dark-yellow belt on a black gap
+	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+mag_pat:
+	' 176/177 electromagnet head: solid rounded top, two legs (U-magnet)
+	DATA BYTE $0F,$3F,$7F,$7F,$78,$78,$78,$00
+	DATA BYTE $F0,$FC,$FE,$FE,$1E,$1E,$1E,$00
+mag_col:
+	' red body, gray legs
+	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$11
+	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$11
 txt_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
