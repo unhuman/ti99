@@ -244,6 +244,7 @@ main_loop:
 		NEXT s8
 		IF #hd > 0 THEN GOSUB actors_move
 		GOSUB bolt_move
+		IF #hd > 0 THEN GOSUB beam_move
 	END IF
 	IF #hd > 0 THEN GOSUB elev_move
 	IF lvdone = 1 THEN GOTO level_complete
@@ -317,6 +318,14 @@ main_loop:
 		SPRITE 6,by - 1,bx,20,15
 	ELSE
 		SPRITE 6,209,0,0,0
+	END IF
+	' L2 crane beam: 3 slabs (pattern 8 = elev_bitmap) spanning cols 11-16.
+	' Drawn last so it overrides the L1-only sprites (slots 2/3/6) it reuses.
+	IF bmon = 1 THEN
+		bsy = bmy - 1
+		SPRITE 2,bsy,88,8,15
+		SPRITE 3,bsy,104,8,15
+		SPRITE 6,bsy,120,8,15
 	END IF
 	' SFX timeout counters (music owns ch 0+1; effects live on 2, noise 3).
 	IF snd2 > 0 THEN
@@ -394,6 +403,7 @@ st_walk:
 		st = S_JUMP
 		jix = 0
 		spr2 = 0
+		bonbeam = 0		' leaving the crane beam -- stop being carried
 		jhz = 1
 		IF jl THEN jhz = 0
 		IF jr THEN jhz = 2
@@ -436,7 +446,8 @@ st_walk:
 		mdir = 1
 		IF mx < 240 THEN mx = mx + 1
 	END IF
-	' Still supported?
+	' Still supported? (bonbeam clears here; the beam branch below re-sets it)
+	bonbeam = 0
 	GOSUB foot_probe
 	IF sup = 0 THEN
 		' Off the right edge toward the trampoline channel: a generous
@@ -447,6 +458,14 @@ st_walk:
 			GOSUB tramp_in
 			RETURN
 		END IF
+		' Standing on the L2 crane beam? Stay put, carried by beam_move.
+		GOSUB beam_sup
+		IF bsup = 1 THEN
+			bonbeam = 1
+			my = bmy - 16
+			RETURN
+		END IF
+		bonbeam = 0
 		GOSUB elev_sup
 		IF esup = 1 THEN
 			st = S_RIDE
@@ -723,6 +742,14 @@ st_jump:
 				st = S_RIDE
 				RETURN
 			END IF
+			' Landing on the L2 crane beam (a sprite, so pixel-checked).
+			GOSUB beam_sup
+			IF bsup = 1 THEN
+				st = S_WALK
+				bonbeam = 1
+				my = bmy - 16
+				RETURN
+			END IF
 		NEXT t8
 	END IF
 jump_adv:
@@ -771,6 +798,14 @@ st_fall:
 		END IF
 		GOSUB elev_sup
 		IF esup = 1 THEN GOTO fall_land
+		' The L2 crane beam catches a fall too (a safe landing).
+		GOSUB beam_sup
+		IF bsup = 1 THEN
+			my = bmy - 16
+			bonbeam = 1
+			st = S_WALK
+			RETURN
+		END IF
 	NEXT t8
 	RETURN
 fall_land:
@@ -885,6 +920,41 @@ elev_move:
 		END IF
 	END IF
 	IF st = S_RIDE THEN my = ely - 16
+	RETURN
+
+	'
+	' ---- Level 2: the crane BEAM that rides SMOOTHLY up and down ----
+	' A 48-px sprite platform (3 sprites at cols 11-16). It moves 1 px/frame
+	' so the ride is smooth; when Mack is on it (bonbeam) he is carried with
+	' it. He gets on/off by JUMPING across the 1-cell gaps to the side tiers.
+	' Travel: surface pixel-y 48 (row 6) .. 160 (row 20).
+	'
+beam_move:
+	IF bmon = 0 THEN RETURN
+	IF bmd = 0 THEN
+		bmy = bmy - 1
+		IF bmy <= 48 THEN bmd = 1
+	ELSE
+		bmy = bmy + 1
+		IF bmy >= 160 THEN bmd = 0
+	END IF
+	IF bonbeam = 1 THEN my = bmy - 16
+	RETURN
+
+beam_sup:
+	' bsup = 1 if Mack's feet rest on the beam surface and his centre is over
+	' its 48-px span (cols 11-16 => pixels 88..135).
+	bsup = 0
+	IF bmon = 0 THEN RETURN
+	fy = my + 16
+	IF fy >= bmy - 2 THEN
+		IF fy <= bmy + 2 THEN
+			cx = mx + 8
+			IF cx >= 88 THEN
+				IF cx <= 135 THEN bsup = 1
+			END IF
+		END IF
+	END IF
 	RETURN
 
 	'
@@ -1451,6 +1521,8 @@ init_level:
 	rvt = 0
 	von = 0
 	oon = 0
+	bmon = 0		' crane beam off unless this level's data arms it
+	bonbeam = 0
 	vroute = 0
 	jhtk = 1
 	bon = 0
@@ -1538,7 +1610,17 @@ lv_parse:
 	READ BYTE t
 	' CVBasic ON GOTO is 0-BASED (value 0 = first label).
 	t = t - 1
-	ON t GOTO ob_gap,ob_brick,ob_jack,ob_bonus,lv_parse,ob_elev,ob_sprng,ob_pail,ob_magnet,lv_parse,ob_vand,ob_osha,ob_spawn,ob_bolt
+	ON t GOTO ob_gap,ob_brick,ob_jack,ob_bonus,lv_parse,ob_elev,ob_sprng,ob_pail,ob_magnet,ob_beam,ob_vand,ob_osha,ob_spawn,ob_bolt
+	GOTO lv_parse
+
+ob_beam:
+	' Crane beam (level 2): a 48-px SPRITE platform (3 sprites, cols 11-16)
+	' that rides SMOOTHLY up and down the shaft (1 px/frame). bmy = its
+	' surface pixel-y; Mack jumps on/off across the 1-cell side gaps.
+	READ BYTE r
+	bmy = r * 8		' surface pixel-y (feet rest here)
+	bmd = 0			' 0 = rising, 1 = falling
+	bmon = 1
 	GOTO lv_parse
 
 ob_magnet:
@@ -1823,15 +1905,13 @@ level1_data:
 	' pails to clear (magnet endgame is a later pass).
 	'
 level2_data:
-	' Positions measured EXACTLY from the ColecoVision reference
-	' (assets/HHM-CV-Level2.png, analysed at its 32x24 cell grid): platforms
-	' are cols 2-9 (left) and 18-25 (right) on tiers rows 9/13/17, a top
-	' crane platform cols 11-17 (r5), a centre-bottom platform cols 11-15
-	' (r20), ground r23. Thin cable col 14 with the magnet on top; climbing
-	' chains at the inner edges (cols 9 & 22) for traversal.
-	DATA BYTE 7, 14,3,17		' cable col 14, rows 3-19
-	DATA BYTE 2, 9,10,13		' left  chain col 9,  rows 10-22
-	DATA BYTE 2, 22,10,13		' right chain col 22, rows 10-22
+	' Positions measured from the ColecoVision reference (32x24 cell grid).
+	' Platforms are cols 2-9 (left) and 18-25 (right) on tiers rows 9/13/17,
+	' a top crane platform cols 11-17 (r5), ground r23. The CENTRE is the
+	' moving CRANE BEAM (op 5 sub 10, cols 11-16) that rides up and down --
+	' Mack JUMPS on and off it to reach the side tiers (NO chains). A short
+	' cable + the magnet sit above it.
+	DATA BYTE 7, 14,3,2		' cable stub col 14, rows 3-4 (holds the magnet)
 	DATA BYTE 1, 5,11,7,1		' top crane platform (cols 11-17)
 	DATA BYTE 1, 9,2,8,1		' left  upper (cols 2-9)
 	DATA BYTE 1, 9,18,8,1		' right upper (cols 18-25)
@@ -1839,16 +1919,16 @@ level2_data:
 	DATA BYTE 1, 13,18,8,1		' right mid   (cols 18-25)
 	DATA BYTE 1, 17,2,8,1		' left  lower (cols 2-9)
 	DATA BYTE 1, 17,18,8,1		' right lower (cols 18-25)
-	DATA BYTE 1, 20,11,5,1		' centre-bottom platform (cols 11-15)
 	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29, type 2)
 	' Diagonal CONVEYORS (op 6: row,col,len,dir; 2 = up-right).
 	DATA BYTE 6, 9,18,5,2		' upper-right escalator (r9c18 -> r5c22)
 	DATA BYTE 6, 22,3,4,2		' lower-left belt (r22c3 -> r19c6)
-	' Electromagnet head on top of the cable.
+	' Electromagnet head above the shaft; moving crane beam starts at r13.
 	DATA BYTE 5,9, 2,13
+	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
 	' Incinerator pot bottom-centre on the ground (hazard).
 	DATA BYTE 1, 22,12,2,4
-	' Six lunch pails on the side tiers (on their inner ends, per reference).
+	' Six lunch pails on the side tiers.
 	DATA BYTE 5,8, 9,4
 	DATA BYTE 5,8, 9,20
 	DATA BYTE 5,8, 13,4
@@ -1857,8 +1937,8 @@ level2_data:
 	DATA BYTE 5,8, 17,20
 	' Vandal patrols the right mid tier.
 	DATA BYTE 5,11, 13,18,25
-	' Mack spawns bottom-left on the ground.
-	DATA BYTE 5,13, 23,3
+	' Mack spawns on the left lower tier, ready to board the beam.
+	DATA BYTE 5,13, 17,7
 	DATA BYTE 0
 
 jump_data:

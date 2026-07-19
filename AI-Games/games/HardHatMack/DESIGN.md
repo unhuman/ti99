@@ -206,13 +206,15 @@ CV image is 384×288 = 12 px/cell — so tile columns/rows are exact, not eyebal
 crane cable** (char 178, op 7) down **col 14** with the **electromagnet head** (chars 176–177) on
 top. Platforms (girder2 = char 129): a **top crane platform** cols **11–17** (r5); three **side
 tiers** per wall at rows **9/13/17**, left **cols 2–9** / right **cols 18–25** (a narrow center
-gap, not a full-width grid); a **center-bottom platform** cols **11–15** (r20) where the cable
-ends; **ground** r23. Two diagonal **conveyors** (char 156, **op 6**): upper-right escalator
-(r9c18→r5c22), lower-left belt (r22c3→r19c6). **6 lunch pails** on the tiers; **incinerator** pot
-(hazard char 164) bottom-center; vandal on the right mid tier. Climbing chains at cols **9 & 22**
-for traversal. Collecting all 6 pails (`ob_pail` → `nlbr` → `lvdone`) clears it. **Still to do:**
-magnet endgame, functional/moving conveyors + springboards, and replacing the traversal chains
-with the authentic conveyor/spring routes.
+gap, not a full-width grid); **ground** r23. Two diagonal **conveyors** (char 156, **op 6**):
+upper-right escalator (r9c18→r5c22), lower-left belt (r22c3→r19c6). **6 lunch pails** on the tiers;
+**incinerator** pot (hazard char 164) bottom-center; vandal on the right mid tier.
+**The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** a 48-px **sprite** platform
+(3 slabs, pattern 8, at cols 11–16) that rides **smoothly** up and down the shaft (`beam_move`,
+`bmy` = surface pixel-y, 1 px/frame, rows 6↔20). Mack **jumps on and off** it across the 1-cell
+side gaps; `beam_sup` (pixel check, x 88–135) provides support and `bonbeam` carries him with the
+beam (cleared on jump). Collecting all 6 pails (`ob_pail` → `nlbr` → `lvdone`) clears it. **Still
+to do:** magnet endgame, functional conveyors, and play-verifying the beam ride/boarding feel + speed.
 
 ### Level 3 — "Rivet Works" (M5)
 Orange girders. Full-width top girder; top-left conveyor running **left into a grinder**
