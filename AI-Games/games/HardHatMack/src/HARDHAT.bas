@@ -53,6 +53,7 @@
 	CONST T_PILLAR = 174	' support pillar (art only -- NOT solid)
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
 	CONST T_MAGNET = 176	' 176-177: electromagnet head (level 2, top of crane)
+	CONST T_CABLE  = 178	' 178: thin crane cable (level 2 centre pole, art)
 	CONST T_LBOXL  = 183	' lunchbox (2 cells, level 2)
 	CONST T_LBOXR  = 184
 	CONST T_BRICK  = 185	' loose girder piece: 1-cell red brick stack
@@ -149,6 +150,8 @@
 	DEFINE COLOR T_CONVB,1,conv_col
 	DEFINE CHAR T_MAGNET,2,mag_pat
 	DEFINE COLOR T_MAGNET,2,mag_col
+	DEFINE CHAR T_CABLE,1,cable_pat
+	DEFINE COLOR T_CABLE,1,cable_col
 
 	' HUD/text: white on transparent for the whole ASCII range.
 	DEFINE COLOR 32,16,txt_white
@@ -1495,6 +1498,10 @@ lv_parse:
 		ch = T_PED
 		GOTO lv_vrun
 	END IF
+	IF op = 7 THEN
+		ch = T_CABLE
+		GOTO lv_vrun
+	END IF
 	IF op = 6 THEN
 		' Diagonal conveyor run: n cells of the belt char, stepping by the
 		' direction t (0 down-right, 1 down-left, 2 up-right, 3 up-left).
@@ -1816,43 +1823,42 @@ level1_data:
 	' pails to clear (magnet endgame is a later pass).
 	'
 level2_data:
-	' Crane pole (art) + side climbing chains first, so platforms cross in
-	' front. The two long chains let Mack climb between all the tiers (the
-	' authentic conveyor/spring traversal is a later pass).
-	DATA BYTE 3, 16,3,18		' pole col 16, rows 3-20
-	DATA BYTE 2, 6,6,15		' left chain col 6, rows 6-20
-	DATA BYTE 2, 25,6,15		' right chain col 25, rows 6-20
-	' Platforms (girder2 = type 1).
-	DATA BYTE 1, 5,11,10,1		' top-center crane platform (cols 11-20)
-	DATA BYTE 1, 9,2,9,1		' r9 left  (cols 2-10)
-	DATA BYTE 1, 9,21,9,1		' r9 right (cols 21-29)
-	DATA BYTE 1, 13,2,8,1		' r13 left (cols 2-9)
-	DATA BYTE 1, 13,13,7,1		' r13 center (cols 13-19, crosses pole)
-	DATA BYTE 1, 13,22,8,1		' r13 right (cols 22-29)
-	DATA BYTE 1, 17,2,9,1		' r17 left (cols 2-10)
-	DATA BYTE 1, 17,21,9,1		' r17 right (cols 21-29)
-	DATA BYTE 1, 21,2,7,1		' r21 left (cols 2-8)
-	DATA BYTE 1, 21,12,8,1		' r21 center (cols 12-19)
-	DATA BYTE 1, 21,23,7,1		' r21 right (cols 23-29)
+	' Thin crane CABLE down the centre (op 7) + climbing chains first, so the
+	' platforms paint over them. The centre stays OPEN (just the cable) --
+	' the platforms are SHORT and hug the left/right walls, per the reference
+	' (not a full-width grid).
+	DATA BYTE 7, 16,3,17		' cable col 16, rows 3-19
+	DATA BYTE 2, 8,10,13		' left  chain col 8,  rows 10-22
+	DATA BYTE 2, 28,10,7		' right chain col 28, rows 10-16
+	' Platforms (girder2 = type 1): a top crane platform crossing the cable,
+	' three SHORT side tiers per wall, a centre platform where the cable ends.
+	DATA BYTE 1, 5,11,10,1		' top crane platform (cols 11-20)
+	DATA BYTE 1, 9,1,9,1		' left  upper (cols 1-9)
+	DATA BYTE 1, 9,22,9,1		' right upper (cols 22-30)
+	DATA BYTE 1, 13,1,9,1		' left  mid   (cols 1-9)
+	DATA BYTE 1, 13,22,9,1		' right mid   (cols 22-30)
+	DATA BYTE 1, 17,1,9,1		' left  lower (cols 1-9)
+	DATA BYTE 1, 17,22,9,1		' right lower (cols 22-30)
+	DATA BYTE 1, 20,12,8,1		' centre-bottom platform (cols 12-19)
 	DATA BYTE 1, 23,1,30,2		' ground (cols 1-30, type 2)
-	' Diagonal conveyors (op 6: row,col,len,dir; 2=up-right, 1=down-left).
-	DATA BYTE 6, 12,20,5,2		' top-right escalator (r12c20 -> r8c24)
-	DATA BYTE 6, 18,9,5,1		' bottom-left belt (r18c9 -> r22c5)
-	' Electromagnet head on top of the crane.
-	DATA BYTE 5,9, 2,15		' magnet row 2, cols 15-16
-	' Incinerator pot on the ground, bottom-center.
-	DATA BYTE 1, 22,15,2,4		' pot row 22 cols 15-16 (hazard)
-	' Six lunch pails on the platforms.
-	DATA BYTE 5,8, 9,4
+	' Two prominent diagonal CONVEYORS (op 6: row,col,len,dir; 2 = up-right).
+	DATA BYTE 6, 13,18,5,2		' upper-right escalator (r13c18 -> r9c22)
+	DATA BYTE 6, 22,2,4,2		' lower-left belt (r22c2 -> r19c5)
+	' Electromagnet head on top of the cable.
+	DATA BYTE 5,9, 2,15
+	' Incinerator pot bottom-centre on the ground (hazard).
+	DATA BYTE 1, 22,14,2,4
+	' Six lunch pails on the side tiers.
+	DATA BYTE 5,8, 9,3
 	DATA BYTE 5,8, 9,27
-	DATA BYTE 5,8, 13,4
+	DATA BYTE 5,8, 13,3
 	DATA BYTE 5,8, 13,27
-	DATA BYTE 5,8, 17,4
+	DATA BYTE 5,8, 17,3
 	DATA BYTE 5,8, 17,27
-	' Vandal patrols the r13 right platform.
-	DATA BYTE 5,11, 13,22,28
-	' Mack spawns bottom-left.
-	DATA BYTE 5,13, 21,4
+	' Vandal patrols the right mid platform.
+	DATA BYTE 5,11, 13,22,29
+	' Mack spawns bottom-left on the ground.
+	DATA BYTE 5,13, 23,3
 	DATA BYTE 0
 
 jump_data:
@@ -1977,6 +1983,12 @@ mag_col:
 	' red body, gray legs
 	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$11
 	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$11
+cable_pat:
+	' 178 thin crane cable: a 2-px centered vertical line
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+cable_col:
+	' light-blue cable
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
 txt_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1

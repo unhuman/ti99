@@ -200,19 +200,18 @@ hop down the building (left-only, one bounce per floor, passing through after ea
 contact kills. Vandal patrols the 4th floor (2–12); OSHA patrols the 1st floor's left side
 (4–20, homing in Mack's band). Mack spawns on the **right side of the 1st floor** (21,25).
 
-### Level 2 — "Lunch Break" (M4 — layout drawn, mechanics in progress)
-**Drawn (verified in Classic99, transcribed from `assets/HHM-CV-Level2.png`):** a central
-**crane pole** down col 16 (art) with the **electromagnet head** (2-char, chars 176–177) on top
-at row 2; girder-variant (129) platforms on tiers rows **5/9/13/17/21** — a top-center crane
-platform (r5), left/right platforms on r9/r13/r17, a center platform crossing the pole (r13),
-r21 platforms, and the **ground** (row 23); **6 lunch pails** (char 183) on the r9/r13/r17
-platforms (cols 4 and 27); two **diagonal conveyors** (char 156, drawn by the new **op 6**
-diagonal run — upper-right escalator, lower-left belt); the **incinerator** pot (hazard char
-164) bottom-center on the ground; a vandal patrolling r13. Traversal is via **two long side
-chains** (cols 6 and 25) — a simplification; the authentic conveyor/springboard traversal and
-the crane are a later pass. Collecting all 6 pails (`ob_pail` → `nlbr` → `lvdone`) clears it.
-**Still to do:** magnet endgame (ride up off a top platform when armed), functional/moving
-conveyors, springboards, refined traversal, and enemy tuning.
+### Level 2 — "Lunch Break" (M4 — layout drawn to the reference, mechanics in progress)
+**Drawn (verified in Classic99, transcribed from `assets/HHM-CV-Level2.png`):** a **thin crane
+cable** (char 178, op 7) down col 16 — the center stays **open** — with the **electromagnet
+head** (chars 176–177) on top at row 2. Platforms (girder2 = char 129) are **short and hug the
+walls** (not a full-width grid): a **top crane platform** crossing the cable (r5), three short
+**side tiers** per wall (r9/r13/r17, cols 1–9 left / 22–30 right), a **center-bottom platform**
+where the cable ends (r20), and the **ground** (r23). Two **prominent diagonal conveyors** (char
+156, new **op 6** diagonal run) — the upper-right escalator and lower-left belt. **6 lunch pails**
+(char 183) on the side tiers; the **incinerator** pot (hazard char 164) bottom-center; a vandal
+on the right mid tier. Traversal (for now) is a left chain (col 8) + short right chain (col 28).
+Collecting all 6 pails (`ob_pail` → `nlbr` → `lvdone`) clears it. **Still to do:** magnet endgame
+(ride up when armed), functional/moving conveyors + springboards, refined traversal, enemy tuning.
 
 ### Level 3 — "Rivet Works" (M5)
 Orange girders. Full-width top girder; top-left conveyor running **left into a grinder**
