@@ -1823,40 +1823,40 @@ level1_data:
 	' pails to clear (magnet endgame is a later pass).
 	'
 level2_data:
-	' Thin crane CABLE down the centre (op 7) + climbing chains first, so the
-	' platforms paint over them. The centre stays OPEN (just the cable) --
-	' the platforms are SHORT and hug the left/right walls, per the reference
-	' (not a full-width grid).
-	DATA BYTE 7, 16,3,17		' cable col 16, rows 3-19
-	DATA BYTE 2, 8,10,13		' left  chain col 8,  rows 10-22
-	DATA BYTE 2, 28,10,7		' right chain col 28, rows 10-16
-	' Platforms (girder2 = type 1): a top crane platform crossing the cable,
-	' three SHORT side tiers per wall, a centre platform where the cable ends.
-	DATA BYTE 1, 5,11,10,1		' top crane platform (cols 11-20)
-	DATA BYTE 1, 9,1,9,1		' left  upper (cols 1-9)
-	DATA BYTE 1, 9,22,9,1		' right upper (cols 22-30)
-	DATA BYTE 1, 13,1,9,1		' left  mid   (cols 1-9)
-	DATA BYTE 1, 13,22,9,1		' right mid   (cols 22-30)
-	DATA BYTE 1, 17,1,9,1		' left  lower (cols 1-9)
-	DATA BYTE 1, 17,22,9,1		' right lower (cols 22-30)
-	DATA BYTE 1, 20,12,8,1		' centre-bottom platform (cols 12-19)
-	DATA BYTE 1, 23,1,30,2		' ground (cols 1-30, type 2)
-	' Two prominent diagonal CONVEYORS (op 6: row,col,len,dir; 2 = up-right).
-	DATA BYTE 6, 13,18,5,2		' upper-right escalator (r13c18 -> r9c22)
-	DATA BYTE 6, 22,2,4,2		' lower-left belt (r22c2 -> r19c5)
+	' Positions measured EXACTLY from the ColecoVision reference
+	' (assets/HHM-CV-Level2.png, analysed at its 32x24 cell grid): platforms
+	' are cols 2-9 (left) and 18-25 (right) on tiers rows 9/13/17, a top
+	' crane platform cols 11-17 (r5), a centre-bottom platform cols 11-15
+	' (r20), ground r23. Thin cable col 14 with the magnet on top; climbing
+	' chains at the inner edges (cols 9 & 22) for traversal.
+	DATA BYTE 7, 14,3,17		' cable col 14, rows 3-19
+	DATA BYTE 2, 9,10,13		' left  chain col 9,  rows 10-22
+	DATA BYTE 2, 22,10,13		' right chain col 22, rows 10-22
+	DATA BYTE 1, 5,11,7,1		' top crane platform (cols 11-17)
+	DATA BYTE 1, 9,2,8,1		' left  upper (cols 2-9)
+	DATA BYTE 1, 9,18,8,1		' right upper (cols 18-25)
+	DATA BYTE 1, 13,2,8,1		' left  mid   (cols 2-9)
+	DATA BYTE 1, 13,18,8,1		' right mid   (cols 18-25)
+	DATA BYTE 1, 17,2,8,1		' left  lower (cols 2-9)
+	DATA BYTE 1, 17,18,8,1		' right lower (cols 18-25)
+	DATA BYTE 1, 20,11,5,1		' centre-bottom platform (cols 11-15)
+	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29, type 2)
+	' Diagonal CONVEYORS (op 6: row,col,len,dir; 2 = up-right).
+	DATA BYTE 6, 9,18,5,2		' upper-right escalator (r9c18 -> r5c22)
+	DATA BYTE 6, 22,3,4,2		' lower-left belt (r22c3 -> r19c6)
 	' Electromagnet head on top of the cable.
-	DATA BYTE 5,9, 2,15
+	DATA BYTE 5,9, 2,13
 	' Incinerator pot bottom-centre on the ground (hazard).
-	DATA BYTE 1, 22,14,2,4
-	' Six lunch pails on the side tiers.
-	DATA BYTE 5,8, 9,3
-	DATA BYTE 5,8, 9,27
-	DATA BYTE 5,8, 13,3
-	DATA BYTE 5,8, 13,27
-	DATA BYTE 5,8, 17,3
-	DATA BYTE 5,8, 17,27
-	' Vandal patrols the right mid platform.
-	DATA BYTE 5,11, 13,22,29
+	DATA BYTE 1, 22,12,2,4
+	' Six lunch pails on the side tiers (on their inner ends, per reference).
+	DATA BYTE 5,8, 9,4
+	DATA BYTE 5,8, 9,20
+	DATA BYTE 5,8, 13,4
+	DATA BYTE 5,8, 13,20
+	DATA BYTE 5,8, 17,4
+	DATA BYTE 5,8, 17,20
+	' Vandal patrols the right mid tier.
+	DATA BYTE 5,11, 13,18,25
 	' Mack spawns bottom-left on the ground.
 	DATA BYTE 5,13, 23,3
 	DATA BYTE 0
