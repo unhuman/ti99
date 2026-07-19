@@ -54,6 +54,8 @@
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
 	CONST T_MAGNET = 176	' 176-177: electromagnet head (level 2, top of crane)
 	CONST T_CABLE  = 178	' 178: thin crane cable (level 2 centre pole, art)
+	CONST T_BEAM   = 179	' 179-180: crane beam cells, pattern-scrolled each
+				'   frame by beam_draw (level 2)
 	CONST T_LBOXL  = 183	' lunchbox (2 cells, level 2)
 	CONST T_LBOXR  = 184
 	CONST T_BRICK  = 185	' loose girder piece: 1-cell red brick stack
@@ -152,6 +154,8 @@
 	DEFINE COLOR T_MAGNET,2,mag_col
 	DEFINE CHAR T_CABLE,1,cable_pat
 	DEFINE COLOR T_CABLE,1,cable_col
+	DEFINE CHAR T_BEAM,1,beam_pat
+	DEFINE COLOR T_BEAM,1,beam_col
 
 	' HUD/text: white on transparent for the whole ASCII range.
 	DEFINE COLOR 32,16,txt_white
@@ -245,6 +249,7 @@ main_loop:
 		IF #hd > 0 THEN GOSUB actors_move
 		GOSUB bolt_move
 		IF #hd > 0 THEN GOSUB beam_move
+		GOSUB beam_draw
 	END IF
 	IF #hd > 0 THEN GOSUB elev_move
 	IF lvdone = 1 THEN GOTO level_complete
@@ -319,14 +324,8 @@ main_loop:
 	ELSE
 		SPRITE 6,209,0,0,0
 	END IF
-	' L2 crane beam: 3 slabs (pattern 8 = elev_bitmap) spanning cols 11-16.
-	' Drawn last so it overrides the L1-only sprites (slots 2/3/6) it reuses.
-	IF bmon = 1 THEN
-		bsy = bmy - 1
-		SPRITE 2,bsy,88,8,15
-		SPRITE 3,bsy,104,8,15
-		SPRITE 6,bsy,120,8,15
-	END IF
+	' L2 crane beam is rendered with CHARACTERS (pattern-scrolled), see
+	' beam_draw -- called from the movement path, not here.
 	' SFX timeout counters (music owns ch 0+1; effects live on 2, noise 3).
 	IF snd2 > 0 THEN
 		snd2 = snd2 - 1
@@ -924,24 +923,27 @@ elev_move:
 
 	'
 	' ---- Level 2: the crane BEAM that rides SMOOTHLY up and down ----
-	' A 48-px sprite platform (3 sprites at cols 11-16). It moves 1 px/frame
-	' so the ride is smooth; when Mack is on it (bonbeam) he is carried with
-	' it. He gets on/off by JUMPING across the 1-cell gaps to the side tiers.
-	' Travel: surface pixel-y 48 (row 6) .. 160 (row 20).
+	' Rendered with CHARACTERS (not sprites): the beam is chars 179/180 at
+	' cols 11-16, and beam_draw pattern-scrolls their bitmaps 1 px at a time
+	' (pattern table is at VDP >0000; each 8-px bitmap zone is 2048 B). Mack
+	' rides via the pixel checks (beam_sup / bonbeam) so his ride is smooth
+	' too; he gets on/off by JUMPING across the 1-cell gaps to the side tiers.
+	' Surface pixel-y bmy travels 48 (row 6) .. 160 (row 20).
 	'
 beam_move:
 	IF bmon = 0 THEN RETURN
-	' Advance 1 px every 3 loops (still smooth 1-px steps, but slow enough
-	' that the beam lingers at each tier long enough to jump onto it).
+	' Advance one whole cell (8 px) every 14 loops, so the beam dwells at
+	' each tier long enough to time a jump onto it. bmy stays 8-px aligned,
+	' which keeps Mack's ride (beam_sup, bmy) aligned with the beam char.
 	bmsp = bmsp + 1
-	IF bmsp < 3 THEN RETURN
+	IF bmsp < 14 THEN RETURN
 	bmsp = 0
 	IF bmd = 0 THEN
-		bmy = bmy - 1
+		bmy = bmy - 8
 		IF bmy <= 48 THEN bmd = 1
 	ELSE
-		bmy = bmy + 1
-		IF bmy >= 160 THEN bmd = 0
+		bmy = bmy + 8
+		IF bmy >= 176 THEN bmd = 0
 	END IF
 	IF bonbeam = 1 THEN my = bmy - 16
 	RETURN
@@ -960,6 +962,26 @@ beam_sup:
 			END IF
 		END IF
 	END IF
+	RETURN
+
+beam_draw:
+	' Place the beam char (T_BEAM) across cols 11-16 on its current cell row;
+	' erase the old row and draw the new one when the row changes.
+	IF bmon = 0 THEN RETURN
+	brow = bmy / 8
+	IF brow = bprow THEN RETURN
+	#va = VADDR(bprow,11)
+	FOR i = 1 TO 6
+		VPOKE #va,32
+		#va = #va + 1
+	NEXT i
+	#va = VADDR(brow,11)
+	ch = T_BEAM
+	FOR i = 1 TO 6
+		VPOKE #va,ch
+		#va = #va + 1
+	NEXT i
+	bprow = brow
 	RETURN
 
 	'
@@ -1528,6 +1550,7 @@ init_level:
 	oon = 0
 	bmon = 0		' crane beam off unless this level's data arms it
 	bonbeam = 0
+	bprow = 99		' force beam_draw to place the beam on its first pass
 	vroute = 0
 	jhtk = 1
 	bon = 0
@@ -1931,8 +1954,8 @@ level2_data:
 	' Electromagnet head above the shaft; moving crane beam starts at r13.
 	DATA BYTE 5,9, 2,13
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
-	' Incinerator pot bottom-centre on the ground (hazard).
-	DATA BYTE 1, 22,12,2,4
+	' Incinerator pot on the ground, off the beam's column path (hazard).
+	DATA BYTE 1, 22,19,2,4
 	' Six lunch pails on the side tiers.
 	DATA BYTE 5,8, 9,4
 	DATA BYTE 5,8, 9,20
@@ -1942,8 +1965,9 @@ level2_data:
 	DATA BYTE 5,8, 17,20
 	' Vandal patrols the right mid tier.
 	DATA BYTE 5,11, 13,18,25
-	' Mack spawns on the left lower tier, ready to board the beam.
-	DATA BYTE 5,13, 17,7
+	' Mack spawns on the GROUND, below the beam's shaft; the beam rides down
+	' to row 22 (1 cell up) so he can jump aboard from the ground.
+	DATA BYTE 5,13, 23,11
 	DATA BYTE 0
 
 jump_data:
@@ -2055,10 +2079,11 @@ haz_col:
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $B1,$91,$91,$B1,$91,$B1,$91,$61
 conv_pat:
-	' 156 conveyor belt: solid edges, diagonal motion stripes
-	DATA BYTE $FF,$92,$24,$49,$92,$24,$49,$FF
+	' 156 conveyor: a thick diagonal band that connects cell-to-cell (placed
+	' up-right by op 6) into a continuous escalator belt, with tread notches.
+	DATA BYTE $07,$0E,$1D,$3A,$74,$E8,$D0,$A0
 conv_col:
-	' dark-yellow belt on a black gap
+	' dark-yellow belt
 	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
 mag_pat:
 	' 176/177 electromagnet head: solid rounded top, two legs (U-magnet)
@@ -2074,6 +2099,12 @@ cable_pat:
 cable_col:
 	' light-blue cable
 	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
+beam_pat:
+	' 179 crane beam: a solid girder-textured bar (Mack stands on the top).
+	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
+beam_col:
+	' gray metal crane beam (distinct from the blue platforms)
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$11
 txt_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1

@@ -207,13 +207,18 @@ crane cable** (char 178, op 7) down **col 14** with the **electromagnet head** (
 top. Platforms (girder2 = char 129): a **top crane platform** cols **11–17** (r5); three **side
 tiers** per wall at rows **9/13/17**, left **cols 2–9** / right **cols 18–25** (a narrow center
 gap, not a full-width grid); **ground** r23. Two diagonal **conveyors** (char 156, **op 6**):
-upper-right escalator (r9c18→r5c22), lower-left belt (r22c3→r19c6). **6 lunch pails** on the tiers;
-**incinerator** pot (hazard char 164) bottom-center; vandal on the right mid tier.
-**The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** a 48-px **sprite** platform
-(3 slabs, pattern 8, at cols 11–16) that rides **smoothly** up and down the shaft (`beam_move`,
-`bmy` = surface pixel-y, 1 px/frame, rows 6↔20). Mack **jumps on and off** it across the 1-cell
-side gaps; `beam_sup` (pixel check, x 88–135) provides support and `bonbeam` carries him with the
-beam (cleared on jump). Collecting all 6 pails (`ob_pail` → `nlbr` → `lvdone`) clears it. **Still
+upper-right escalator (r9c18→r5c22), lower-left belt (r22c3→r19c6) — the belt char (156) is a thick
+diagonal band so consecutive op-6 cells connect into a continuous escalator. **6 lunch pails** on
+the tiers; **incinerator** pot (hazard char 164) on the ground off the beam's column path; vandal
+on the right mid tier. **The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** a 6-cell
+**character** platform (char 179, gray girder, cols 11–16) that rides up and down the shaft
+(`beam_move`/`beam_draw`, `bmy`, in **8-px character steps** rows 6↔22 with a dwell at each tier).
+Mack **jumps on and off** it across the 1-cell side gaps; `beam_sup` (pixel check, x 88–135, bmy
+stays 8-px aligned) supports him and `bonbeam` carries him (cleared on jump). **Mack starts on the
+GROUND** and the beam rides down to 1 cell above it so he can jump aboard. (A pixel-smooth char
+beam via bitmap pattern-scroll was attempted but didn't render reliably on CVBasic's bitmap mode
+and pushed toward the codegen cliff — reverted to the safe char-step version.) Collecting all 6
+pails (`ob_pail` → `nlbr` → `lvdone`) clears it. **Still
 to do:** magnet endgame, functional conveyors, and play-verifying the beam ride/boarding feel + speed.
 
 ### Level 3 — "Rivet Works" (M5)
