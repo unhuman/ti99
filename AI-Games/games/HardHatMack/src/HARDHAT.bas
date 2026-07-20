@@ -964,35 +964,59 @@ beam_sup:
 	RETURN
 
 beam_draw:
-	' SMOOTH character beam: the 4-px bar lives in up to TWO cell rows (chars
-	' 179 upper / 180 lower). Each frame we rewrite those two chars' bitmaps
-	' so the bar sits at sub-row boff -- giving 1-px motion from characters.
-	' The pattern table is at VDP >0000 in three 2048-B bitmap zones; char C
-	' in zone Z reads from Z*2048 + C*8. #bz MUST be 16-bit (2048 overflows
-	' an 8-bit var -> that was the earlier "invisible beam" bug).
+	' SMOOTH MULTICOLOR character beam: an 8-px GIRDER bar (red top 2px / blue
+	' body 4px / red bottom 2px) that lives in up to TWO cell rows (chars 179
+	' upper / 180 lower). Each frame we rewrite those two chars' BITMAPS *and*
+	' COLOR-table entries so both the shape and the red/blue/red bands slide
+	' with the bar at sub-row boff -- 1-px motion, and it stays a proper girder
+	' at every offset (color must travel with the bar; per-cell color alone
+	' can't). Pattern table is at VDP >0000, color table at >2000 (8192), each
+	' in three 2048-B bitmap zones; char C in zone Z is at Z*2048 + C*8. All
+	' VDP addresses MUST be 16-bit (#) -- 2048 overflows an 8-bit var (that was
+	' the earlier "invisible beam" bug).
 	IF bmon = 0 THEN RETURN
 	boff = bmy AND 7
 	brow = bmy / 8
 	#bz = brow / 8
 	#bz = #bz * 2048
-	#bz = #bz + 1432		' 179*8, upper cell (char 179), current zone
+	#bz = #bz + 1432		' 179*8, upper cell pattern
+	#bc = #bz + 8192		' upper cell color
 	br3 = brow + 1
 	#bz2 = br3 / 8
 	#bz2 = #bz2 * 2048
-	#bz2 = #bz2 + 1440		' 180*8, lower cell (char 180)
-	bhi = boff + 3
+	#bz2 = #bz2 + 1440		' 180*8, lower cell pattern
+	#bc2 = #bz2 + 8192		' lower cell color
+	bhi = boff + 7			' 8-px girder bar
 	FOR i = 0 TO 7
+		' --- upper cell (char 179), bar row = i ---
 		bt = 0
+		bcl = $11
 		IF i >= boff THEN
-			IF i <= bhi THEN bt = 231
+			bt = $FF
+			bp = i - boff
+			bcl = $51
+			IF bp < 2 THEN bcl = $61
+			IF bp > 5 THEN bcl = $61
 		END IF
 		#va = #bz + i
 		VPOKE #va,bt
+		#va = #bc + i
+		VPOKE #va,bcl
+		' --- lower cell (char 180), bar row = i+8 ---
 		bb = 0
+		bcl2 = $11
 		bj = i + 8
-		IF bj <= bhi THEN bb = 231
+		IF bj <= bhi THEN
+			bb = $FF
+			bp = bj - boff
+			bcl2 = $51
+			IF bp < 2 THEN bcl2 = $61
+			IF bp > 5 THEN bcl2 = $61
+		END IF
 		#va = #bz2 + i
 		VPOKE #va,bb
+		#va = #bc2 + i
+		VPOKE #va,bcl2
 	NEXT i
 	' Move the two beam cells in the name table when the cell row changes.
 	IF brow = bprow THEN RETURN
@@ -2023,16 +2047,17 @@ tile_pat:
 	' 128 girder: red stripe top AND bottom, blue body with black dash
 	' holes (the ColecoVision look)
 	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
-	' 129 girder variant (level 2; colors differ)
-	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
+	' 129 girder variant (level 2): SOLID full-height bar (reference is a solid
+	' red/blue/red girder, no dash-holes, fills the whole cell)
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	' 130 girder orange (level 3; colors differ)
 	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
 	' 131 FILLED gap: plain body, no rivet holes yet
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
 	' 132 RIVETED gap: bright rivet dots
 	DATA BYTE $FF,$FF,$A5,$FF,$A5,$FF,$FF,$00
-	' 133 ground strip (levels 2/3)
-	DATA BYTE $FF,$FF,$FF,$55,$00,$00,$00,$00
+	' 133 ground strip (levels 2/3): solid grass band (top 4 px), black below
+	DATA BYTE $FF,$FF,$FF,$FF,$00,$00,$00,$00
 	' 134 (spare solid)
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	' 135/136 elevator platform chars (reserved; the L1 elevator is a sprite)
@@ -2045,16 +2070,18 @@ tile_pat:
 tile_col:
 	' 128: red stripes, dark-blue body
 	DATA BYTE $61,$41,$41,$41,$41,$41,$61,$11
-	' 129: red stripes, light-blue body (L2)
-	DATA BYTE $61,$51,$51,$51,$51,$51,$61,$11
+	' 129 (L2): 2px red top edge, 4px blue body, 2px red bottom edge -- the
+	' measured reference girder (red a9433f / blue 706bdf)
+	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61
 	' 130: white stripes, dark-red body (L3)
 	DATA BYTE $F1,$61,$61,$61,$61,$61,$F1,$11
 	' 131 FILLED: all dark-blue
 	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$11
 	' 132 RIVETED: red stripes, white rivet dots punch the body
 	DATA BYTE $61,$F1,$F1,$F1,$F1,$F1,$61,$11
-	' 133 ground: green over dark green (L2/L3)
-	DATA BYTE $31,$31,$C1,$C1,$11,$11,$11,$11
+	' 133 ground: green grass (top 2 px) over yellow-olive dirt (measured
+	' reference: 3aaf40 green / a0a94a olive)
+	DATA BYTE $31,$31,$A1,$A1,$11,$11,$11,$11
 	' 134 spare: gray
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	' 135/136 elevator chars: white
@@ -2144,9 +2171,10 @@ beam_pat:
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 beam_col:
-	' gray metal crane beam (distinct from the blue platforms), both cells
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	' initial only -- beam_draw rewrites the color table every frame so the
+	' red/blue/red girder bands scroll WITH the bar (red $61 edges, blue $51)
+	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61
+	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61
 txt_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1

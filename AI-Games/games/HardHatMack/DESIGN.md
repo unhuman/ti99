@@ -217,12 +217,19 @@ tread band (`conv_col`, not the old dark-yellow belt); the **magnet** (chars 176
 **white horseshoe** with red pole tips on a light-blue cable (`mag_pat`/`mag_col`). **Incinerator**
 pot (hazard char 164) sits on the ground off the beam's column path; vandal on the right mid tier.
 
-**The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** a bar drawn with **characters**
-(179 upper / 180 lower) whose **bitmaps are rewritten every frame** so it glides **1 px at a time**
-up and down the shaft — smooth sub-cell motion from characters, no sprite (`beam_move` steps `bmy`
-1 px/3 frames over rows 48↔176; `beam_draw` pattern-scrolls the 4-px bar across up to two cell rows).
-The earlier "invisible beam" was a bug: the bitmap-zone offset `zone*2048` overflowed an **8-bit**
-variable and always wrote zone 0 — fixed by holding the VDP address in a **16-bit (`#`) var**. Mack
+**Element art matched to the reference (girders):** each platform (girder2 = char 129) is a
+**SOLID full-height red(2px)/blue(4px)/red(2px)** girder — no dash-holes (the measured reference
+girder is red a9433f / blue 706bdf, solid); **ground** (char 133) is green grass over yellow-olive.
+
+**The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** an 8-px **girder** bar drawn with
+**characters** (179 upper / 180 lower) whose **bitmaps AND color-table entries are rewritten every
+frame** so it glides **1 px at a time** up/down the shaft as a proper **red/blue/red girder at every
+sub-pixel offset** — the color bands travel with the bar (per-cell color alone can't do this), no
+sprite. `beam_move` steps `bmy` 1 px/3 frames over rows 48↔176; `beam_draw` pattern-scrolls the bar
+across up to two cell rows, writing the pattern table at VDP >0000 and the color table at >2000
+(8192), both in the three 2048-B bitmap zones. The earlier "invisible beam" was a bug: the bitmap-zone
+offset `zone*2048` overflowed an **8-bit** variable and always wrote zone 0 — fixed by holding every
+VDP address in a **16-bit (`#`) var**. Mack
 **jumps on and off** the beam across the 1-cell side gaps; `beam_sup` (pixel check, x 88–135,
 `bmy`±2) supports him and `bonbeam` carries him (cleared on jump). **Mack starts on the GROUND** and
 the beam rides down near it so he can jump aboard. Collecting all 6 pails (`ob_pail` → `nlbr` →
