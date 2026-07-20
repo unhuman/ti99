@@ -201,6 +201,10 @@
 
 main_loop:
 	WAIT
+	' Redraw the crane beam FIRST, inside vblank -- its VDP pattern/color
+	' writes must land before the scan-out or the bar tears. It uses the
+	' position computed on the previous pass (1-frame latency, invisible).
+	GOSUB beam_draw
 	' FRAME-delta pacing (shared convention with Structris): a missed
 	' vblank becomes a catch-up step, not a slowdown. #fd is the number
 	' of real frames since the last pass, clamped so a pause can't
@@ -249,7 +253,6 @@ main_loop:
 		IF #hd > 0 THEN GOSUB actors_move
 		GOSUB bolt_move
 		IF #hd > 0 THEN GOSUB beam_move
-		GOSUB beam_draw
 	END IF
 	IF #hd > 0 THEN GOSUB elev_move
 	IF lvdone = 1 THEN GOTO level_complete
@@ -932,17 +935,21 @@ elev_move:
 	'
 beam_move:
 	IF bmon = 0 THEN RETURN
-	' Advance 1 px every 3 loops -- SMOOTH (beam_draw pattern-scrolls the two
-	' beam chars to match), slow enough to time a jump onto it.
-	bmsp = bmsp + 1
-	IF bmsp < 3 THEN RETURN
-	bmsp = 0
+	' Advance 2 px/pass -- brisk but still smooth (beam_draw pattern-scrolls
+	' the two beam chars to match). Range rows 6..21 (48..168): the lower beam
+	' cell stays above the ground row (23) so it never blanks the grass.
 	IF bmd = 0 THEN
-		bmy = bmy - 1
-		IF bmy <= 48 THEN bmd = 1
+		bmy = bmy - 2
+		IF bmy <= 48 THEN
+			bmy = 48
+			bmd = 1
+		END IF
 	ELSE
-		bmy = bmy + 1
-		IF bmy >= 176 THEN bmd = 0
+		bmy = bmy + 2
+		IF bmy >= 168 THEN
+			bmy = 168
+			bmd = 0
+		END IF
 	END IF
 	IF bonbeam = 1 THEN my = bmy - 16
 	RETURN
@@ -975,6 +982,9 @@ beam_draw:
 	' VDP addresses MUST be 16-bit (#) -- 2048 overflows an 8-bit var (that was
 	' the earlier "invisible beam" bug).
 	IF bmon = 0 THEN RETURN
+	' Nothing to do while the bar is parked at the same pixel (dwell frames).
+	IF bmy = bmyd THEN RETURN
+	bmyd = bmy
 	boff = bmy AND 7
 	brow = bmy / 8
 	#bz = brow / 8
@@ -1611,6 +1621,7 @@ init_level:
 	bmon = 0		' crane beam off unless this level's data arms it
 	bonbeam = 0
 	bprow = 99		' force beam_draw to place the beam on its first pass
+	bmyd = 255		' last-drawn beam y (!= any real bmy -> draw on 1st pass)
 	vroute = 0
 	jhtk = 1
 	bon = 0
@@ -2143,9 +2154,11 @@ haz_col:
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $B1,$91,$91,$B1,$91,$B1,$91,$61
 conv_pat:
-	' 156 conveyor: a thick diagonal band that connects cell-to-cell (placed
-	' up-right by op 6) into a continuous escalator belt, with tread notches.
-	DATA BYTE $07,$0E,$1D,$3A,$74,$E8,$D0,$A0
+	' 156 conveyor: an escalator STEP -- a tread (horizontal run) + riser,
+	' repeating. Placed up-right cell-to-cell by op 6, the steps tile into a
+	' continuous climbing staircase (the reference conveyor is stepped, not a
+	' plain ramp).
+	DATA BYTE $07,$04,$1C,$10,$70,$40,$C0,$80
 conv_col:
 	' white escalator treads (the reference conveyor is a white stepped band,
 	' not a yellow belt)

@@ -207,8 +207,8 @@ crane cable** (char 178, op 7) down **col 14** with the **electromagnet head** (
 top. Platforms (girder2 = char 129): a **top crane platform** cols **11–17** (r5); three **side
 tiers** per wall at rows **9/13/17**, left **cols 2–9** / right **cols 18–25** (a narrow center
 gap, not a full-width grid); **ground** r23. Two diagonal **conveyors** (char 156, **op 6**):
-upper-right escalator (r9c18→r5c22), lower-left belt (r22c3→r19c6) — the belt char (156) is a thick
-diagonal band so consecutive op-6 cells connect into a continuous escalator.
+upper-right escalator (r9c18→r5c22), lower-left belt (r22c3→r19c6) — the belt char (156) is an
+escalator STEP (tread + riser) so consecutive op-6 cells tile into a continuous climbing staircase.
 
 **Element art matched to the reference (patterns/colors extracted from the PNG at TI-pixel
 resolution, not eyeballed):** the **6 lunch pails** are a domed **white** lid + gray latch band over
@@ -225,9 +225,12 @@ girder is red a9433f / blue 706bdf, solid); **ground** (char 133) is green grass
 **characters** (179 upper / 180 lower) whose **bitmaps AND color-table entries are rewritten every
 frame** so it glides **1 px at a time** up/down the shaft as a proper **red/blue/red girder at every
 sub-pixel offset** — the color bands travel with the bar (per-cell color alone can't do this), no
-sprite. `beam_move` steps `bmy` 1 px/3 frames over rows 48↔176; `beam_draw` pattern-scrolls the bar
-across up to two cell rows, writing the pattern table at VDP >0000 and the color table at >2000
-(8192), both in the three 2048-B bitmap zones. The earlier "invisible beam" was a bug: the bitmap-zone
+sprite. `beam_move` steps `bmy` **2 px/frame** over rows 48↔168 (kept above the ground row so it
+never blanks the grass); `beam_draw` pattern-scrolls the bar across up to two cell rows, writing the
+pattern table at VDP >0000 and the color table at >2000 (8192), both in the three 2048-B bitmap zones.
+**`beam_draw` runs FIRST in the loop, inside vblank** (right after `WAIT`, using the previous pass's
+`bmy` — 1-frame latency, invisible) so its ~32 VDP-table writes land before scan-out; drawing it late
+(mid-active-display) tore the bar. It also skips entirely on dwell frames (`bmy = bmyd`). The earlier "invisible beam" was a bug: the bitmap-zone
 offset `zone*2048` overflowed an **8-bit** variable and always wrote zone 0 — fixed by holding every
 VDP address in a **16-bit (`#`) var**. Mack
 **jumps on and off** the beam across the 1-cell side gaps; `beam_sup` (pixel check, x 88–135,
