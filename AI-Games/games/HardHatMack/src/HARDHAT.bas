@@ -148,8 +148,8 @@
 	DEFINE COLOR T_LBOXL,1,pail_col
 	DEFINE CHAR T_HAZ0,3,haz_pat
 	DEFINE COLOR T_HAZ0,3,haz_col
-	DEFINE CHAR T_CONVB,1,conv_pat
-	DEFINE COLOR T_CONVB,1,conv_col
+	DEFINE CHAR T_CONV0,4,conv_pat		' 156-159 belt-lo/belt-hi/drum/post
+	DEFINE COLOR T_CONV0,4,conv_col
 	DEFINE CHAR T_MAGNET,2,mag_pat
 	DEFINE COLOR T_MAGNET,2,mag_col
 	DEFINE CHAR T_CABLE,1,cable_pat
@@ -1637,33 +1637,39 @@ lv_parse:
 		GOTO lv_vrun
 	END IF
 	IF op = 6 THEN
-		' Diagonal conveyor run: n cells of the belt char, stepping by the
-		' direction t (0 down-right, 1 down-left, 2 up-right, 3 up-left).
+		' Conveyor MACHINE, up-right at a shallow 2:1 slope: a cyan roller drum
+		' at the bottom-left, n belt cells rising 1 row every 2 cells (belt-lo
+		' then belt-hi), a cyan drum at the top-right, and a yellow support post
+		' from under the top drum down to the platform. r,c = bottom drum cell.
 		READ BYTE r
 		READ BYTE c
 		READ BYTE n
-		READ BYTE t
+		#va = VADDR(r,c)
+		ch = 158			' bottom roller drum
+		VPOKE #va,ch
+		rr = r
+		cc = c
 		FOR i = 1 TO n
-			#va = VADDR(r,c)
-			ch = T_CONVB
+			cc = cc + 1
+			IF (i AND 1) = 1 THEN
+				ch = 156		' belt-lo (first of the pair)
+			ELSE
+				ch = 157		' belt-hi (second, then step up)
+			END IF
+			#va = VADDR(rr,cc)
 			VPOKE #va,ch
-			IF t = 0 THEN
-				r = r + 1
-				c = c + 1
-			END IF
-			IF t = 1 THEN
-				r = r + 1
-				c = c - 1
-			END IF
-			IF t = 2 THEN
-				r = r - 1
-				c = c + 1
-			END IF
-			IF t = 3 THEN
-				r = r - 1
-				c = c - 1
-			END IF
+			IF (i AND 1) = 0 THEN rr = rr - 1
 		NEXT i
+		cc = cc + 1
+		#va = VADDR(rr,cc)
+		ch = 158			' top roller drum
+		VPOKE #va,ch
+		' Yellow support post down to the platform the bottom drum stands on.
+		FOR pr = rr + 1 TO r
+			#va = VADDR(pr,cc)
+			ch = 159
+			VPOKE #va,ch
+		NEXT pr
 		GOTO lv_parse
 	END IF
 	' op = 5: object entry. Dispatched with ON GOTO -- a long ELSEIF
@@ -1982,9 +1988,10 @@ level2_data:
 	DATA BYTE 1, 17,2,8,1		' left  lower (cols 2-9)
 	DATA BYTE 1, 17,18,8,1		' right lower (cols 18-25)
 	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29, type 2)
-	' Diagonal CONVEYORS (op 6: row,col,len,dir; 2 = up-right).
-	DATA BYTE 6, 9,18,5,2		' upper-right escalator (r9c18 -> r5c22)
-	DATA BYTE 6, 22,3,4,2		' lower-left belt (r22c3 -> r19c6)
+	' Conveyor MACHINES (op 6: bottom-drum row,col, belt-cell count). Shallow
+	' 2:1 up-right belt with cyan drums at both ends + a yellow support post.
+	DATA BYTE 6, 8,19,5		' right conveyor: drum (8,19) -> top drum ~(6,25)
+	DATA BYTE 6, 22,3,4		' left conveyor: drum (22,3) -> top drum ~(20,8)
 	' Electromagnet head above the shaft; moving crane beam starts at r13.
 	DATA BYTE 5,9, 2,13
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
@@ -2117,15 +2124,23 @@ haz_col:
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $B1,$91,$91,$B1,$91,$B1,$91,$61
 conv_pat:
-	' 156 conveyor: an escalator STEP -- a tread (horizontal run) + riser,
-	' repeating. Placed up-right cell-to-cell by op 6, the steps tile into a
-	' continuous climbing staircase (the reference conveyor is stepped, not a
-	' plain ramp).
-	DATA BYTE $07,$04,$1C,$10,$70,$40,$C0,$80
+	' Conveyor MACHINE (4 chars, 156-159), matched to the reference: a shallow
+	' 2:1 white belt with dark oval holes, cyan roller drums at both ends, and
+	' a yellow support post. op 6 assembles these into the escalator.
+	' 156 belt-low: thick white band, bottom-left -> mid-right (with a hole)
+	DATA BYTE $00,$00,$03,$0F,$3F,$E7,$FE,$FC
+	' 157 belt-high: continues mid-left -> top-right (with a hole)
+	DATA BYTE $03,$0F,$3F,$E7,$FE,$FC,$F0,$C0
+	' 158 roller drum: a cyan cylinder end-cap
+	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
+	' 159 support post: a vertical yellow strut
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
 conv_col:
-	' white escalator treads (the reference conveyor is a white stepped band,
-	' not a yellow belt)
+	' belt white, belt white, drum cyan, post yellow
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
 	' hanging down to grab Mack -- matches the reference's white/red magnet.

@@ -207,8 +207,12 @@ crane cable** (char 178, op 7) down **col 14** with the **electromagnet head** (
 top. Platforms (girder2 = char 129): a **top crane platform** cols **11–17** (r5); three **side
 tiers** per wall at rows **9/13/17**, left **cols 2–9** / right **cols 18–25** (a narrow center
 gap, not a full-width grid); **ground** r23. Two diagonal **conveyors** (char 156, **op 6**):
-upper-right escalator (r9c18→r5c22), lower-left belt (r22c3→r19c6) — the belt char (156) is an
-escalator STEP (tread + riser) so consecutive op-6 cells tile into a continuous climbing staircase.
+Two conveyor **machines** (op 6, bottom-drum row,col,belt-cells) built from 4 chars (156-159):
+**cyan roller drums** at both ends, a **white belt with dark oval holes** (belt-lo 156 / belt-hi 157
+alternating) rising at a shallow **2:1** slope (up 1 row every 2 cells), and a **yellow support post**
+(159) under the top drum down to the platform — matched to the reference machine, not a plain ramp.
+Right machine drum (8,19); left machine drum (22,3). **TODO: belt RIDE physics** (stand on the belt →
+carried up-and-right to the top). 
 
 **Element art matched to the reference (patterns/colors extracted from the PNG at TI-pixel
 resolution, not eyeballed):** the **6 lunch pails** are a domed **white** lid + gray latch band over
