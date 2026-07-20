@@ -154,8 +154,8 @@
 	DEFINE COLOR T_MAGNET,2,mag_col
 	DEFINE CHAR T_CABLE,1,cable_pat
 	DEFINE COLOR T_CABLE,1,cable_col
-	DEFINE CHAR T_BEAM,1,beam_pat
-	DEFINE COLOR T_BEAM,1,beam_col
+	DEFINE CHAR T_BEAM,2,beam_pat
+	DEFINE COLOR T_BEAM,2,beam_col
 
 	' HUD/text: white on transparent for the whole ASCII range.
 	DEFINE COLOR 32,16,txt_white
@@ -932,17 +932,16 @@ elev_move:
 	'
 beam_move:
 	IF bmon = 0 THEN RETURN
-	' Advance one whole cell (8 px) every 14 loops, so the beam dwells at
-	' each tier long enough to time a jump onto it. bmy stays 8-px aligned,
-	' which keeps Mack's ride (beam_sup, bmy) aligned with the beam char.
+	' Advance 1 px every 3 loops -- SMOOTH (beam_draw pattern-scrolls the two
+	' beam chars to match), slow enough to time a jump onto it.
 	bmsp = bmsp + 1
-	IF bmsp < 14 THEN RETURN
+	IF bmsp < 3 THEN RETURN
 	bmsp = 0
 	IF bmd = 0 THEN
-		bmy = bmy - 8
+		bmy = bmy - 1
 		IF bmy <= 48 THEN bmd = 1
 	ELSE
-		bmy = bmy + 8
+		bmy = bmy + 1
 		IF bmy >= 176 THEN bmd = 0
 	END IF
 	IF bonbeam = 1 THEN my = bmy - 16
@@ -965,20 +964,57 @@ beam_sup:
 	RETURN
 
 beam_draw:
-	' Place the beam char (T_BEAM) across cols 11-16 on its current cell row;
-	' erase the old row and draw the new one when the row changes.
+	' SMOOTH character beam: the 4-px bar lives in up to TWO cell rows (chars
+	' 179 upper / 180 lower). Each frame we rewrite those two chars' bitmaps
+	' so the bar sits at sub-row boff -- giving 1-px motion from characters.
+	' The pattern table is at VDP >0000 in three 2048-B bitmap zones; char C
+	' in zone Z reads from Z*2048 + C*8. #bz MUST be 16-bit (2048 overflows
+	' an 8-bit var -> that was the earlier "invisible beam" bug).
 	IF bmon = 0 THEN RETURN
+	boff = bmy AND 7
 	brow = bmy / 8
+	#bz = brow / 8
+	#bz = #bz * 2048
+	#bz = #bz + 1432		' 179*8, upper cell (char 179), current zone
+	br3 = brow + 1
+	#bz2 = br3 / 8
+	#bz2 = #bz2 * 2048
+	#bz2 = #bz2 + 1440		' 180*8, lower cell (char 180)
+	bhi = boff + 3
+	FOR i = 0 TO 7
+		bt = 0
+		IF i >= boff THEN
+			IF i <= bhi THEN bt = 231
+		END IF
+		#va = #bz + i
+		VPOKE #va,bt
+		bb = 0
+		bj = i + 8
+		IF bj <= bhi THEN bb = 231
+		#va = #bz2 + i
+		VPOKE #va,bb
+	NEXT i
+	' Move the two beam cells in the name table when the cell row changes.
 	IF brow = bprow THEN RETURN
 	#va = VADDR(bprow,11)
 	FOR i = 1 TO 6
 		VPOKE #va,32
 		#va = #va + 1
 	NEXT i
-	#va = VADDR(brow,11)
-	ch = T_BEAM
+	bpr2 = bprow + 1
+	#va = VADDR(bpr2,11)
 	FOR i = 1 TO 6
-		VPOKE #va,ch
+		VPOKE #va,32
+		#va = #va + 1
+	NEXT i
+	#va = VADDR(brow,11)
+	FOR i = 1 TO 6
+		VPOKE #va,179
+		#va = #va + 1
+	NEXT i
+	#va = VADDR(br3,11)
+	FOR i = 1 TO 6
+		VPOKE #va,180
 		#va = #va + 1
 	NEXT i
 	bprow = brow
@@ -2100,11 +2136,14 @@ cable_col:
 	' light-blue cable
 	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
 beam_pat:
-	' 179 crane beam: a solid girder-textured bar (Mack stands on the top).
-	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
+	' 179/180 crane beam: placeholder ($00). beam_draw rewrites both chars'
+	' bitmaps every frame to slide the bar 1 px at a time (pattern-scroll).
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 beam_col:
-	' gray metal crane beam (distinct from the blue platforms)
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$11
+	' gray metal crane beam (distinct from the blue platforms), both cells
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 txt_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
