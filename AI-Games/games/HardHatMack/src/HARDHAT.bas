@@ -54,8 +54,8 @@
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
 	CONST T_MAGNET = 176	' 176-177: electromagnet head (level 2, top of crane)
 	CONST T_CABLE  = 178	' 178: thin crane cable (level 2 centre pole, art)
-	CONST T_BEAM   = 179	' 179-180: crane beam cells, pattern-scrolled each
-				'   frame by beam_draw (level 2)
+	CONST T_BEAM   = 192	' 192-207: 16 pre-shifted crane-beam girder slices
+				'   placed by beam_draw, name-table only (level 2)
 	CONST T_LBOXL  = 183	' lunchbox (2 cells, level 2)
 	CONST T_LBOXR  = 184
 	CONST T_BRICK  = 185	' loose girder piece: 1-cell red brick stack
@@ -154,8 +154,13 @@
 	DEFINE COLOR T_MAGNET,2,mag_col
 	DEFINE CHAR T_CABLE,1,cable_pat
 	DEFINE COLOR T_CABLE,1,cable_col
-	DEFINE CHAR T_BEAM,2,beam_pat
-	DEFINE COLOR T_BEAM,2,beam_col
+	' Crane beam: 16 PRE-SHIFTED girder slices (chars 192-207) -- upper cell
+	' 192-199 (bar top at sub-row 0..7), lower cell 200-207. beam_draw just
+	' places these in the name table (no per-frame pattern/color rewriting ->
+	' no tearing/fragments). DEFINE triple-copies to all 3 bitmap zones so the
+	' beam looks identical at any screen height.
+	DEFINE CHAR 192,16,beamshift_pat
+	DEFINE COLOR 192,16,beamshift_col
 
 	' HUD/text: white on transparent for the whole ASCII range.
 	DEFINE COLOR 32,16,txt_white
@@ -971,87 +976,45 @@ beam_sup:
 	RETURN
 
 beam_draw:
-	' SMOOTH MULTICOLOR character beam: an 8-px GIRDER bar (red top 2px / blue
-	' body 4px / red bottom 2px) that lives in up to TWO cell rows (chars 179
-	' upper / 180 lower). Each frame we rewrite those two chars' BITMAPS *and*
-	' COLOR-table entries so both the shape and the red/blue/red bands slide
-	' with the bar at sub-row boff -- 1-px motion, and it stays a proper girder
-	' at every offset (color must travel with the bar; per-cell color alone
-	' can't). Pattern table is at VDP >0000, color table at >2000 (8192), each
-	' in three 2048-B bitmap zones; char C in zone Z is at Z*2048 + C*8. All
-	' VDP addresses MUST be 16-bit (#) -- 2048 overflows an 8-bit var (that was
-	' the earlier "invisible beam" bug).
+	' GLITCH-FREE character beam: the bar is 16 pre-defined girder slices
+	' (chars 192-207); moving it is pure NAME-TABLE placement -- no pattern or
+	' color-table writes at runtime, so nothing can spill past vblank and tear.
+	' The bar top sits at sub-row boff: place upper slice (192+boff) on cell
+	' row brow and lower slice (200+boff) on brow+1, uniform across cols 11-16.
 	IF bmon = 0 THEN RETURN
-	' Nothing to do while the bar is parked at the same pixel (dwell frames).
-	IF bmy = bmyd THEN RETURN
+	IF bmy = bmyd THEN RETURN		' parked -- nothing to redraw
 	bmyd = bmy
 	boff = bmy AND 7
 	brow = bmy / 8
-	#bz = brow / 8
-	#bz = #bz * 2048
-	#bz = #bz + 1432		' 179*8, upper cell pattern
-	#bc = #bz + 8192		' upper cell color
 	br3 = brow + 1
-	#bz2 = br3 / 8
-	#bz2 = #bz2 * 2048
-	#bz2 = #bz2 + 1440		' 180*8, lower cell pattern
-	#bc2 = #bz2 + 8192		' lower cell color
-	bhi = boff + 7			' 8-px girder bar
-	FOR i = 0 TO 7
-		' --- upper cell (char 179), bar row = i ---
-		bt = 0
-		bcl = $11
-		IF i >= boff THEN
-			bt = $FF
-			bp = i - boff
-			bcl = $51
-			IF bp < 2 THEN bcl = $61
-			IF bp > 5 THEN bcl = $61
-		END IF
-		#va = #bz + i
-		VPOKE #va,bt
-		#va = #bc + i
-		VPOKE #va,bcl
-		' --- lower cell (char 180), bar row = i+8 ---
-		bb = 0
-		bcl2 = $11
-		bj = i + 8
-		IF bj <= bhi THEN
-			bb = $FF
-			bp = bj - boff
-			bcl2 = $51
-			IF bp < 2 THEN bcl2 = $61
-			IF bp > 5 THEN bcl2 = $61
-		END IF
-		#va = #bz2 + i
-		VPOKE #va,bb
-		#va = #bc2 + i
-		VPOKE #va,bcl2
-	NEXT i
-	' Move the two beam cells in the name table when the cell row changes.
-	IF brow = bprow THEN RETURN
-	#va = VADDR(bprow,11)
-	FOR i = 1 TO 6
-		VPOKE #va,32
-		#va = #va + 1
-	NEXT i
-	bpr2 = bprow + 1
-	#va = VADDR(bpr2,11)
-	FOR i = 1 TO 6
-		VPOKE #va,32
-		#va = #va + 1
-	NEXT i
+	uc = 192 + boff
+	lc = 200 + boff
+	' On a cell-row change, blank the two rows the beam just vacated first.
+	IF brow <> bprow THEN
+		#va = VADDR(bprow,11)
+		FOR i = 1 TO 6
+			VPOKE #va,32
+			#va = #va + 1
+		NEXT i
+		bpr2 = bprow + 1
+		#va = VADDR(bpr2,11)
+		FOR i = 1 TO 6
+			VPOKE #va,32
+			#va = #va + 1
+		NEXT i
+		bprow = brow
+	END IF
+	' Draw the two beam rows.
 	#va = VADDR(brow,11)
 	FOR i = 1 TO 6
-		VPOKE #va,179
+		VPOKE #va,uc
 		#va = #va + 1
 	NEXT i
 	#va = VADDR(br3,11)
 	FOR i = 1 TO 6
-		VPOKE #va,180
+		VPOKE #va,lc
 		#va = #va + 1
 	NEXT i
-	bprow = brow
 	RETURN
 
 	'
@@ -2178,16 +2141,46 @@ cable_pat:
 cable_col:
 	' light-blue cable
 	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
-beam_pat:
-	' 179/180 crane beam: placeholder ($00). beam_draw rewrites both chars'
-	' bitmaps every frame to slide the bar 1 px at a time (pattern-scroll).
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-beam_col:
-	' initial only -- beam_draw rewrites the color table every frame so the
-	' red/blue/red girder bands scroll WITH the bar (red $61 edges, blue $51)
-	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61
-	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61
+beamshift_pat:
+	' 8 UPPER-cell slices (192-199): a solid girder bar whose TOP is at sub-row
+	' boff (0..7); rows above the bar are empty.
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF	' 192 boff0 (full girder)
+	DATA BYTE $00,$FF,$FF,$FF,$FF,$FF,$FF,$FF	' 193 boff1
+	DATA BYTE $00,$00,$FF,$FF,$FF,$FF,$FF,$FF	' 194 boff2
+	DATA BYTE $00,$00,$00,$FF,$FF,$FF,$FF,$FF	' 195 boff3
+	DATA BYTE $00,$00,$00,$00,$FF,$FF,$FF,$FF	' 196 boff4
+	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF	' 197 boff5
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF	' 198 boff6
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$FF	' 199 boff7
+	' 8 LOWER-cell slices (200-207): the bottom boff rows of the bar spill into
+	' the cell below; rest empty. 200 (boff0) is blank.
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00	' 200 boff0 (blank)
+	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00	' 201 boff1
+	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00	' 202 boff2
+	DATA BYTE $FF,$FF,$FF,$00,$00,$00,$00,$00	' 203 boff3
+	DATA BYTE $FF,$FF,$FF,$FF,$00,$00,$00,$00	' 204 boff4
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00	' 205 boff5
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$00,$00	' 206 boff6
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00	' 207 boff7
+beamshift_col:
+	' Girder banding red($61) top2 / blue($51) mid4 / red top2, sliced to match
+	' each pattern so the bands travel WITH the bar. $11 = black (empty rows).
+	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61	' 192
+	DATA BYTE $11,$61,$61,$51,$51,$51,$51,$61	' 193
+	DATA BYTE $11,$11,$61,$61,$51,$51,$51,$51	' 194
+	DATA BYTE $11,$11,$11,$61,$61,$51,$51,$51	' 195
+	DATA BYTE $11,$11,$11,$11,$61,$61,$51,$51	' 196
+	DATA BYTE $11,$11,$11,$11,$11,$61,$61,$51	' 197
+	DATA BYTE $11,$11,$11,$11,$11,$11,$61,$61	' 198
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$61	' 199
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11	' 200 (blank)
+	DATA BYTE $61,$11,$11,$11,$11,$11,$11,$11	' 201
+	DATA BYTE $61,$61,$11,$11,$11,$11,$11,$11	' 202
+	DATA BYTE $51,$61,$61,$11,$11,$11,$11,$11	' 203
+	DATA BYTE $51,$51,$61,$61,$11,$11,$11,$11	' 204
+	DATA BYTE $51,$51,$51,$61,$61,$11,$11,$11	' 205
+	DATA BYTE $51,$51,$51,$51,$61,$61,$11,$11	' 206
+	DATA BYTE $61,$51,$51,$51,$51,$61,$61,$11	' 207
 txt_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
