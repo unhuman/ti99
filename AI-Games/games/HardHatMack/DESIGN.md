@@ -208,18 +208,26 @@ top. Platforms (girder2 = char 129): a **top crane platform** cols **11–17** (
 tiers** per wall at rows **9/13/17**, left **cols 2–9** / right **cols 18–25** (a narrow center
 gap, not a full-width grid); **ground** r23. Two diagonal **conveyors** (char 156, **op 6**):
 upper-right escalator (r9c18→r5c22), lower-left belt (r22c3→r19c6) — the belt char (156) is a thick
-diagonal band so consecutive op-6 cells connect into a continuous escalator. **6 lunch pails** on
-the tiers; **incinerator** pot (hazard char 164) on the ground off the beam's column path; vandal
-on the right mid tier. **The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** a 6-cell
-**character** platform (char 179, gray girder, cols 11–16) that rides up and down the shaft
-(`beam_move`/`beam_draw`, `bmy`, in **8-px character steps** rows 6↔22 with a dwell at each tier).
-Mack **jumps on and off** it across the 1-cell side gaps; `beam_sup` (pixel check, x 88–135, bmy
-stays 8-px aligned) supports him and `bonbeam` carries him (cleared on jump). **Mack starts on the
-GROUND** and the beam rides down to 1 cell above it so he can jump aboard. (A pixel-smooth char
-beam via bitmap pattern-scroll was attempted but didn't render reliably on CVBasic's bitmap mode
-and pushed toward the codegen cliff — reverted to the safe char-step version.) Collecting all 6
-pails (`ob_pail` → `nlbr` → `lvdone`) clears it. **Still
-to do:** magnet endgame, functional conveyors, and play-verifying the beam ride/boarding feel + speed.
+diagonal band so consecutive op-6 cells connect into a continuous escalator.
+
+**Element art matched to the reference (patterns/colors extracted from the PNG at TI-pixel
+resolution, not eyeballed):** the **6 lunch pails** are a domed **white** lid + gray latch band over
+a **red** body (`pail_pat`/`pail_col`, char 183); the **conveyor** is a **white** diagonal escalator
+tread band (`conv_col`, not the old dark-yellow belt); the **magnet** (chars 176–177) is a classic
+**white horseshoe** with red pole tips on a light-blue cable (`mag_pat`/`mag_col`). **Incinerator**
+pot (hazard char 164) sits on the ground off the beam's column path; vandal on the right mid tier.
+
+**The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** a bar drawn with **characters**
+(179 upper / 180 lower) whose **bitmaps are rewritten every frame** so it glides **1 px at a time**
+up and down the shaft — smooth sub-cell motion from characters, no sprite (`beam_move` steps `bmy`
+1 px/3 frames over rows 48↔176; `beam_draw` pattern-scrolls the 4-px bar across up to two cell rows).
+The earlier "invisible beam" was a bug: the bitmap-zone offset `zone*2048` overflowed an **8-bit**
+variable and always wrote zone 0 — fixed by holding the VDP address in a **16-bit (`#`) var**. Mack
+**jumps on and off** the beam across the 1-cell side gaps; `beam_sup` (pixel check, x 88–135,
+`bmy`±2) supports him and `bonbeam` carries him (cleared on jump). **Mack starts on the GROUND** and
+the beam rides down near it so he can jump aboard. Collecting all 6 pails (`ob_pail` → `nlbr` →
+`lvdone`) clears it. **Still to do:** magnet endgame, functional conveyors, and play-verifying the
+beam ride/boarding feel + speed.
 
 ### Level 3 — "Rivet Works" (M5)
 Orange girders. Full-width top girder; top-left conveyor running **left into a grinder**

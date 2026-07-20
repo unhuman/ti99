@@ -2098,11 +2098,12 @@ item_col:
 	' hat: yellow
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
 pail_pat:
-	' Lunch pail: domed lid over a stout body.
-	DATA BYTE $00,$3C,$42,$7E,$7E,$7E,$7E,$00
+	' Lunch pail (from the reference): domed white lid, latch band, red body,
+	' white base -- a stout lunchbox.
+	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$FF,$7E
 pail_col:
-	' White lid, red body.
-	DATA BYTE $11,$F1,$F1,$61,$61,$61,$61,$11
+	' white dome+lid, gray latch band, red body, red base
+	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
 haz_pat:
 	' 164 incinerator pot (white outline)
 	DATA BYTE $FF,$81,$81,$81,$81,$81,$FF,$7E
@@ -2119,16 +2120,18 @@ conv_pat:
 	' up-right by op 6) into a continuous escalator belt, with tread notches.
 	DATA BYTE $07,$0E,$1D,$3A,$74,$E8,$D0,$A0
 conv_col:
-	' dark-yellow belt
-	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
+	' white escalator treads (the reference conveyor is a white stepped band,
+	' not a yellow belt)
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 mag_pat:
-	' 176/177 electromagnet head: solid rounded top, two legs (U-magnet)
-	DATA BYTE $0F,$3F,$7F,$7F,$78,$78,$78,$00
-	DATA BYTE $F0,$FC,$FE,$FE,$1E,$1E,$1E,$00
+	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
+	' hanging down to grab Mack -- matches the reference's white/red magnet.
+	DATA BYTE $1F,$3F,$3C,$38,$38,$38,$38,$3C
+	DATA BYTE $F8,$FC,$3C,$1C,$1C,$1C,$1C,$3C
 mag_col:
-	' red body, gray legs
-	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$11
-	DATA BYTE $61,$61,$61,$61,$E1,$E1,$E1,$11
+	' white arch, red pole tips (classic horseshoe magnet)
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$61,$61
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$61,$61
 cable_pat:
 	' 178 thin crane cable: a 2-px centered vertical line
 	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
