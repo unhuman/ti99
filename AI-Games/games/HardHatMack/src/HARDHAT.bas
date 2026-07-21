@@ -454,6 +454,7 @@ st_walk:
 		IF mx < 240 THEN mx = mx + 1
 	END IF
 	' Still supported? (bonbeam clears here; the beam branch below re-sets it)
+	obonb = bonbeam			' were we riding the beam last frame?
 	bonbeam = 0
 	GOSUB foot_probe
 	IF sup = 0 THEN
@@ -471,6 +472,19 @@ st_walk:
 			bonbeam = 1
 			my = bmy - 16
 			RETURN
+		END IF
+		' STICKY: if he was on the beam and his centre is still over its span,
+		' keep him on it even though the tight y-check missed (the beam moves
+		' 2 px/frame, so a strict y-window drops -- and kills -- him for nothing).
+		IF obonb = 1 THEN
+			cx = mx + 8
+			IF cx >= 88 THEN
+				IF cx <= 135 THEN
+					bonbeam = 1
+					my = bmy - 16
+					RETURN
+				END IF
+			END IF
 		END IF
 		bonbeam = 0
 		' On a conveyor belt? It supports him AND carries him up the incline.
@@ -980,8 +994,10 @@ beam_sup:
 	bsup = 0
 	IF bmon = 0 THEN RETURN
 	fy = my + 16
-	IF fy >= bmy - 2 THEN
-		IF fy <= bmy + 2 THEN
+	' +-4 px window: the beam moves 2 px/frame and Mack falls up to 3, so a
+	' tighter window can be skipped in one step (falling THROUGH the beam).
+	IF fy >= bmy - 4 THEN
+		IF fy <= bmy + 4 THEN
 			cx = mx + 8
 			IF cx >= 88 THEN
 				IF cx <= 135 THEN bsup = 1
@@ -2176,13 +2192,14 @@ conv_pat:
 	' Conveyor MACHINE (4 chars, 156-159), matched to the reference: a shallow
 	' 2:1 white belt with dark oval holes, cyan roller drums at both ends, and
 	' a yellow support post. op 6 assembles these into the escalator.
-	' 156 belt-low: a uniform white belt band rising 2:1 across the lower part
-	' of the cell, with a dark segment-hole punched in it (the belt's rollers).
-	DATA BYTE $00,$03,$0F,$3F,$E7,$FE,$F8,$F0
+	' 156 belt-low: a bright white belt band rising 2:1 across the lower part
+	' of the cell.
+	DATA BYTE $00,$03,$0F,$3F,$FF,$FE,$F8,$F0
 	' 157 belt-high: same band 4 px higher so the pair tiles into one continuous
-	' belt at the 2:1 slope, with its own segment-hole.
-	DATA BYTE $E7,$FE,$F8,$E0,$80,$00,$00,$00
-	' 158 roller drum: a cyan cylinder end-cap
+	' belt at the 2:1 slope.
+	DATA BYTE $FF,$FE,$F8,$E0,$80,$00,$00,$00
+	' 158 roller drum: a big cyan cylinder end-cap (fills the cell -- the
+	' reference drums are large, prominent cylinders, not small dots)
 	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
 	' 159 support post: a vertical yellow strut
 	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
