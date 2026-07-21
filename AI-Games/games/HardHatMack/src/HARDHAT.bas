@@ -473,6 +473,9 @@ st_walk:
 			RETURN
 		END IF
 		bonbeam = 0
+		' On a conveyor belt? It supports him AND carries him up the incline.
+		GOSUB conv_sup
+		IF csup = 1 THEN RETURN
 		GOSUB elev_sup
 		IF esup = 1 THEN
 			st = S_RIDE
@@ -757,6 +760,12 @@ st_jump:
 				my = bmy - 16
 				RETURN
 			END IF
+			' Landing on a conveyor belt -> start riding it up.
+			GOSUB conv_sup
+			IF csup = 1 THEN
+				st = S_WALK
+				RETURN
+			END IF
 		NEXT t8
 	END IF
 jump_adv:
@@ -810,6 +819,12 @@ st_fall:
 		IF bsup = 1 THEN
 			my = bmy - 16
 			bonbeam = 1
+			st = S_WALK
+			RETURN
+		END IF
+		' A conveyor belt catches a fall -> ride up.
+		GOSUB conv_sup
+		IF csup = 1 THEN
 			st = S_WALK
 			RETURN
 		END IF
@@ -972,6 +987,26 @@ beam_sup:
 				IF cx <= 135 THEN bsup = 1
 			END IF
 		END IF
+	END IF
+	RETURN
+
+conv_sup:
+	' csup = 1 if Mack's feet are on a conveyor BELT cell (156/157). The belt
+	' both HOLDS him up and CARRIES him up-and-right along the 2:1 incline
+	' (mx +1/frame, my -1 every other frame) -- ride to the top, then FIRE to
+	' jump off onto the crane beam. (Drums/post 158/159 do not carry.)
+	csup = 0
+	fy = my + 16
+	IF fy > 191 THEN RETURN
+	ch = TILE(mx + 8,fy)
+	IF ch = 156 THEN csup = 1
+	IF ch = 157 THEN csup = 1
+	IF csup = 0 THEN RETURN
+	IF mx < 240 THEN mx = mx + 1
+	convtog = convtog + 1
+	IF convtog >= 2 THEN
+		convtog = 0
+		my = my - 1
 	END IF
 	RETURN
 
@@ -1585,6 +1620,7 @@ init_level:
 	bonbeam = 0
 	bprow = 99		' force beam_draw to place the beam on its first pass
 	bmyd = 255		' last-drawn beam y (!= any real bmy -> draw on 1st pass)
+	convtog = 0		' conveyor-belt 2:1 rise toggle
 	vroute = 0
 	jhtk = 1
 	bon = 0
@@ -1991,7 +2027,8 @@ level2_data:
 	' Conveyor MACHINES (op 6: bottom-drum row,col, belt-cell count). Shallow
 	' 2:1 up-right belt with cyan drums at both ends + a yellow support post.
 	DATA BYTE 6, 8,19,5		' right conveyor: drum (8,19) -> top drum ~(6,25)
-	DATA BYTE 6, 22,3,4		' left conveyor: drum (22,3) -> top drum ~(20,8)
+	DATA BYTE 6, 22,5,4		' left conveyor: drum (22,5) -> top drum ~(20,10),
+					' delivering up-right to the beam shaft (cols 11-16)
 	' Electromagnet head above the shaft; moving crane beam starts at r13.
 	DATA BYTE 5,9, 2,13
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
@@ -2008,7 +2045,7 @@ level2_data:
 	DATA BYTE 5,11, 13,18,25
 	' Mack spawns on the GROUND, below the beam's shaft; the beam rides down
 	' to row 22 (1 cell up) so he can jump aboard from the ground.
-	DATA BYTE 5,13, 23,11
+	DATA BYTE 5,13, 23,7
 	DATA BYTE 0
 
 jump_data:

@@ -211,8 +211,13 @@ Two conveyor **machines** (op 6, bottom-drum row,col,belt-cells) built from 4 ch
 **cyan roller drums** at both ends, a **white belt with dark oval holes** (belt-lo 156 / belt-hi 157
 alternating) rising at a shallow **2:1** slope (up 1 row every 2 cells), and a **yellow support post**
 (159) under the top drum down to the platform — matched to the reference machine, not a plain ramp.
-Right machine drum (8,19); left machine drum (22,3). **TODO: belt RIDE physics** (stand on the belt →
-carried up-and-right to the top). 
+Right machine drum (8,19); left machine drum (22,5, delivering up-right toward the beam shaft).
+**Belt RIDE** (`conv_sup`, hooked wherever `beam_sup` is — walk/jump-land/fall-land): standing on a
+belt cell (156/157) both holds Mack up and carries him **up-and-right** along the 2:1 incline (mx
++1/frame, my −1 every other frame); FIRE jumps off onto the crane beam. **Open flow issue:** riding
+off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top → beam handoff (a landing
+ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
+low point (row 21, cols 11-16) is the intended catch. 
 
 **Element art matched to the reference (patterns/colors extracted from the PNG at TI-pixel
 resolution, not eyeballed):** the **6 lunch pails** are a domed **white** lid + gray latch band over
