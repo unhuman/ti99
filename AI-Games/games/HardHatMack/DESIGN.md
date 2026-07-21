@@ -223,8 +223,10 @@ rotated up 1 px/phase (the belt scrolls up the incline) **and the roller drum (1
 rotated to match (the rollers spin)** — so the WHOLE conveyor moves, not just the belt. 8 phases = one
 full rotation = a seamless loop (a shorter cycle shook because the center dot makes the belt pattern
 non-periodic below 8 rows). The post (159) stays static (a support strut). At each row-step the belt
-also fills the **corner cell** (an extra belt-lo at the step) so the 1-cell-wide diagonal has no empty
-gaps — the band reads as continuous, and the fill cells animate with the rest. **Open flow issue:** riding
+also fills the **corner cell** (an extra belt-lo at the step). Crucially the belt pattern itself is now
+two diagonal rails that **tile continuously** — belt-hi is exactly belt-lo rotated up 4, so the rails
+join unbroken across every cell seam (an earlier pattern broke at the seams and read as disconnected
+dashes; verified gap-free in a tiling sim before building). **Open flow issue:** riding
 off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top → beam handoff (a landing
 ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
 low point (row 21, cols 11-16) is the intended catch. 

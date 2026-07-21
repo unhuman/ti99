@@ -2243,13 +2243,12 @@ conv_pat:
 	' Conveyor MACHINE (4 chars, 156-159), matched to the reference: a shallow
 	' 2:1 white belt with dark oval holes, cyan roller drums at both ends, and
 	' a yellow support post. op 6 assembles these into the escalator.
-	' 156 belt-low: the belt is TWO thin white rails (top+bottom edge) with a
-	' dark interior and a white centre DOT -- the reference's ladder-like belt.
-	' Lower half of the cell, rising 2:1.
-	DATA BYTE $00,$03,$0C,$30,$D3,$0C,$30,$C0
-	' 157 belt-high: same two-rail belt 4 px higher (with its own centre dot) so
-	' the pair tiles into one continuous belt at the 2:1 slope.
-	DATA BYTE $D3,$0C,$30,$C0,$00,$03,$0C,$30
+	' 156 belt-low: two 2-px-apart diagonal white rails. This pattern tiles
+	' CONTINUOUSLY -- belt-hi is exactly belt-lo rotated up 4, so the rails join
+	' unbroken across every cell seam (verified in a tiling sim); no gaps.
+	DATA BYTE $00,$01,$06,$19,$66,$98,$60,$80
+	' 157 belt-high: belt-lo rotated up 4 (the rails continue up the incline).
+	DATA BYTE $66,$98,$60,$80,$00,$01,$06,$19
 	' 158 roller drum: a big cyan cylinder end-cap (fills the cell -- the
 	' reference drums are large, prominent cylinders, not small dots)
 	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
@@ -2267,36 +2266,36 @@ conv_col:
 	' phase. Cycling 0->1->...->7->0 scrolls the belt up 1 px/step and spins the
 	' rollers; 8 phases = one full rotation, so it loops seamlessly (no shake).
 belt_anim0:
-	DATA BYTE $00,$03,$0C,$30,$D3,$0C,$30,$C0
-	DATA BYTE $D3,$0C,$30,$C0,$00,$03,$0C,$30
+	DATA BYTE $00,$01,$06,$19,$66,$98,$60,$80
+	DATA BYTE $66,$98,$60,$80,$00,$01,$06,$19
 	DATA BYTE $18,$7E,$7E,$00,$00,$7E,$7E,$18
 belt_anim1:
-	DATA BYTE $03,$0C,$30,$D3,$0C,$30,$C0,$00
-	DATA BYTE $0C,$30,$C0,$00,$03,$0C,$30,$D3
+	DATA BYTE $01,$06,$19,$66,$98,$60,$80,$00
+	DATA BYTE $98,$60,$80,$00,$01,$06,$19,$66
 	DATA BYTE $18,$7E,$1E,$07,$E0,$78,$7E,$18
 belt_anim2:
-	DATA BYTE $0C,$30,$D3,$0C,$30,$C0,$00,$03
-	DATA BYTE $30,$C0,$00,$03,$0C,$30,$D3,$0C
+	DATA BYTE $06,$19,$66,$98,$60,$80,$00,$01
+	DATA BYTE $60,$80,$00,$01,$06,$19,$66,$98
 	DATA BYTE $18,$1E,$0E,$C7,$E3,$70,$78,$18
 belt_anim3:
-	DATA BYTE $30,$D3,$0C,$30,$C0,$00,$03,$0C
-	DATA BYTE $C0,$00,$03,$0C,$30,$D3,$0C,$30
+	DATA BYTE $19,$66,$98,$60,$80,$00,$01,$06
+	DATA BYTE $80,$00,$01,$06,$19,$66,$98,$60
 	DATA BYTE $08,$4E,$4E,$E7,$E7,$72,$72,$10
 belt_anim4:
-	DATA BYTE $D3,$0C,$30,$C0,$00,$03,$0C,$30
-	DATA BYTE $00,$03,$0C,$30,$D3,$0C,$30,$C0
+	DATA BYTE $66,$98,$60,$80,$00,$01,$06,$19
+	DATA BYTE $00,$01,$06,$19,$66,$98,$60,$80
 	DATA BYTE $00,$66,$66,$E7,$E7,$66,$66,$00
 belt_anim5:
-	DATA BYTE $0C,$30,$C0,$00,$03,$0C,$30,$D3
-	DATA BYTE $03,$0C,$30,$D3,$0C,$30,$C0,$00
+	DATA BYTE $98,$60,$80,$00,$01,$06,$19,$66
+	DATA BYTE $01,$06,$19,$66,$98,$60,$80,$00
 	DATA BYTE $10,$72,$72,$E7,$E7,$4E,$4E,$08
 belt_anim6:
-	DATA BYTE $30,$C0,$00,$03,$0C,$30,$D3,$0C
-	DATA BYTE $0C,$30,$D3,$0C,$30,$C0,$00,$03
+	DATA BYTE $60,$80,$00,$01,$06,$19,$66,$98
+	DATA BYTE $06,$19,$66,$98,$60,$80,$00,$01
 	DATA BYTE $18,$78,$70,$E3,$C7,$0E,$1E,$18
 belt_anim7:
-	DATA BYTE $C0,$00,$03,$0C,$30,$D3,$0C,$30
-	DATA BYTE $30,$D3,$0C,$30,$C0,$00,$03,$0C
+	DATA BYTE $80,$00,$01,$06,$19,$66,$98,$60
+	DATA BYTE $19,$66,$98,$60,$80,$00,$01,$06
 	DATA BYTE $18,$7E,$78,$E0,$07,$1E,$7E,$18
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
