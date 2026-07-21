@@ -217,9 +217,11 @@ stored as a **pixel SURFACE line** from `(cvx0,cvy0)` up to `(cvx1,cvy1)` (recor
 near that line both holds Mack up and carries him **up-and-right** (mx +1/frame, `my` snapped to the
 line each frame); FIRE jumps off onto the crane beam. This replaced tile-probing, which dropped him
 through the gaps between the diagonally-staggered belt cells — the pixel line has no gaps. The belt is
-drawn as the reference's two-rail ladder (thin rails + center dots) and **animates**: every 8 frames
-the two belt chars (156/157) advance through 4 patterns each 1 px higher (`belt_anim1..3`), so the
-belt scrolls up the incline (period 4 px = seamless). **Open flow issue:** riding
+drawn as the reference's two-rail ladder (thin rails + center dots) and **animates**: every 2 frames
+the two belt chars (156/157) advance through **8 rotation phases** each 1 px higher (`belt_anim1..7`),
+so the belt scrolls up the incline. 8 phases = one full char rotation = a truly seamless loop (a
+shorter cycle jumped back to phase 0 and read as a shake, since the center dot makes the pattern
+non-periodic below 8 rows). **Open flow issue:** riding
 off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top → beam handoff (a landing
 ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
 low point (row 21, cols 11-16) is the intended catch. 

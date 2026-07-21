@@ -216,17 +216,22 @@ main_loop:
 	' writes must land before the scan-out or the bar tears. It uses the
 	' position computed on the previous pass (1-frame latency, invisible).
 	GOSUB beam_draw
-	' Animate the conveyor belts: every 8 frames advance the two belt chars
-	' (156/157) through 4 patterns each 1 px higher, so every belt cell scrolls
-	' up the incline together (period 4 px = seamless loop).
+	' Animate the conveyor belts: every 2 frames advance the two belt chars
+	' (156/157) by 1 px up through 8 rotation phases, so every belt cell scrolls
+	' up the incline together. 8 phases = a full char rotation = a seamless loop
+	' (no jump-back "shake").
 	IF cvn > 0 THEN
-		IF (FRAME AND 7) = 0 THEN
+		IF (FRAME AND 1) = 0 THEN
 			cvaf = cvaf + 1
-			IF cvaf >= 4 THEN cvaf = 0
+			IF cvaf >= 8 THEN cvaf = 0
 			IF cvaf = 0 THEN DEFINE CHAR 156,2,conv_pat
 			IF cvaf = 1 THEN DEFINE CHAR 156,2,belt_anim1
 			IF cvaf = 2 THEN DEFINE CHAR 156,2,belt_anim2
 			IF cvaf = 3 THEN DEFINE CHAR 156,2,belt_anim3
+			IF cvaf = 4 THEN DEFINE CHAR 156,2,belt_anim4
+			IF cvaf = 5 THEN DEFINE CHAR 156,2,belt_anim5
+			IF cvaf = 6 THEN DEFINE CHAR 156,2,belt_anim6
+			IF cvaf = 7 THEN DEFINE CHAR 156,2,belt_anim7
 		END IF
 	END IF
 	' FRAME-delta pacing (shared convention with Structris): a missed
@@ -2246,9 +2251,10 @@ conv_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
-	' Belt scroll frames 1-3: conv_pat's belt chars shifted up 1/2/3 px. Cycling
-	' conv_pat -> 1 -> 2 -> 3 -> conv_pat scrolls the belt up 1 px/step (the
-	' pattern repeats every 4 px, so frame 3 -> frame 0 is seamless).
+	' Belt scroll phases 1-7: conv_pat's two belt chars ROTATED up 1..7 px
+	' (both chars by the same amount so they keep tiling). Cycling conv_pat ->
+	' 1 -> ... -> 7 -> conv_pat scrolls the belt up 1 px/step; 8 phases = one
+	' full char rotation, so it loops seamlessly (no jump-back shake).
 belt_anim1:
 	DATA BYTE $03,$0C,$30,$D3,$0C,$30,$C0,$00
 	DATA BYTE $0C,$30,$C0,$00,$03,$0C,$30,$D3
@@ -2258,6 +2264,18 @@ belt_anim2:
 belt_anim3:
 	DATA BYTE $30,$D3,$0C,$30,$C0,$00,$03,$0C
 	DATA BYTE $C0,$00,$03,$0C,$30,$D3,$0C,$30
+belt_anim4:
+	DATA BYTE $D3,$0C,$30,$C0,$00,$03,$0C,$30
+	DATA BYTE $00,$03,$0C,$30,$D3,$0C,$30,$C0
+belt_anim5:
+	DATA BYTE $0C,$30,$C0,$00,$03,$0C,$30,$D3
+	DATA BYTE $03,$0C,$30,$D3,$0C,$30,$C0,$00
+belt_anim6:
+	DATA BYTE $30,$C0,$00,$03,$0C,$30,$D3,$0C
+	DATA BYTE $0C,$30,$D3,$0C,$30,$C0,$00,$03
+belt_anim7:
+	DATA BYTE $C0,$00,$03,$0C,$30,$D3,$0C,$30
+	DATA BYTE $30,$D3,$0C,$30,$C0,$00,$03,$0C
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
 	' hanging down to grab Mack -- matches the reference's white/red magnet.
