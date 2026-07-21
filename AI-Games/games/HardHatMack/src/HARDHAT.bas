@@ -2192,12 +2192,13 @@ conv_pat:
 	' Conveyor MACHINE (4 chars, 156-159), matched to the reference: a shallow
 	' 2:1 white belt with dark oval holes, cyan roller drums at both ends, and
 	' a yellow support post. op 6 assembles these into the escalator.
-	' 156 belt-low: a bright white belt band rising 2:1 across the lower part
-	' of the cell.
-	DATA BYTE $00,$03,$0F,$3F,$FF,$FE,$F8,$F0
-	' 157 belt-high: same band 4 px higher so the pair tiles into one continuous
-	' belt at the 2:1 slope.
-	DATA BYTE $FF,$FE,$F8,$E0,$80,$00,$00,$00
+	' 156 belt-low: the belt is TWO thin white rails (top+bottom edge) with a
+	' dark interior and a white centre DOT -- the reference's ladder-like belt.
+	' Lower half of the cell, rising 2:1.
+	DATA BYTE $00,$03,$0C,$30,$D3,$0C,$30,$C0
+	' 157 belt-high: same two-rail belt 4 px higher (with its own centre dot) so
+	' the pair tiles into one continuous belt at the 2:1 slope.
+	DATA BYTE $D3,$0C,$30,$C0,$00,$03,$0C,$30
 	' 158 roller drum: a big cyan cylinder end-cap (fills the cell -- the
 	' reference drums are large, prominent cylinders, not small dots)
 	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
