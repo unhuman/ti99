@@ -998,9 +998,21 @@ conv_sup:
 	csup = 0
 	fy = my + 16
 	IF fy > 191 THEN RETURN
+	' Probe LEFT, CENTRE and RIGHT of his feet -- the belt cells are staggered
+	' diagonally, so a single centre probe drops into the seams between them.
 	ch = TILE(mx + 8,fy)
 	IF ch = 156 THEN csup = 1
 	IF ch = 157 THEN csup = 1
+	IF csup = 0 THEN
+		ch = TILE(mx + 3,fy)
+		IF ch = 156 THEN csup = 1
+		IF ch = 157 THEN csup = 1
+	END IF
+	IF csup = 0 THEN
+		ch = TILE(mx + 13,fy)
+		IF ch = 156 THEN csup = 1
+		IF ch = 157 THEN csup = 1
+	END IF
 	IF csup = 0 THEN RETURN
 	IF mx < 240 THEN mx = mx + 1
 	convtog = convtog + 1
@@ -2164,10 +2176,12 @@ conv_pat:
 	' Conveyor MACHINE (4 chars, 156-159), matched to the reference: a shallow
 	' 2:1 white belt with dark oval holes, cyan roller drums at both ends, and
 	' a yellow support post. op 6 assembles these into the escalator.
-	' 156 belt-low: thick white band, bottom-left -> mid-right (with a hole)
-	DATA BYTE $00,$00,$03,$0F,$3F,$E7,$FE,$FC
-	' 157 belt-high: continues mid-left -> top-right (with a hole)
-	DATA BYTE $03,$0F,$3F,$E7,$FE,$FC,$F0,$C0
+	' 156 belt-low: a uniform white belt band rising 2:1 across the lower part
+	' of the cell, with a dark segment-hole punched in it (the belt's rollers).
+	DATA BYTE $00,$03,$0F,$3F,$E7,$FE,$F8,$F0
+	' 157 belt-high: same band 4 px higher so the pair tiles into one continuous
+	' belt at the 2:1 slope, with its own segment-hole.
+	DATA BYTE $E7,$FE,$F8,$E0,$80,$00,$00,$00
 	' 158 roller drum: a cyan cylinder end-cap
 	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
 	' 159 support post: a vertical yellow strut

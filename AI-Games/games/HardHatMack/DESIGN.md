@@ -214,7 +214,10 @@ alternating) rising at a shallow **2:1** slope (up 1 row every 2 cells), and a *
 Right machine drum (8,19); left machine drum (22,5, delivering up-right toward the beam shaft).
 **Belt RIDE** (`conv_sup`, hooked wherever `beam_sup` is — walk/jump-land/fall-land): standing on a
 belt cell (156/157) both holds Mack up and carries him **up-and-right** along the 2:1 incline (mx
-+1/frame, my −1 every other frame); FIRE jumps off onto the crane beam. **Open flow issue:** riding
++1/frame, my −1 every other frame); FIRE jumps off onto the crane beam. `conv_sup` probes LEFT,
+CENTRE and RIGHT of his feet (mx+3/+8/+13) so he doesn't slip through the staggered diagonal seams.
+The belt is a clean white band with dark segment-holes (the earlier hollow-rail attempt rendered as
+two dashed lines — rejected). **Open flow issue:** riding
 off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top → beam handoff (a landing
 ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
 low point (row 21, cols 11-16) is the intended catch. 
