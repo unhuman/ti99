@@ -98,6 +98,12 @@
 	DIM itk(MAXITEM)	' item -> kind: 0 brick, 1 wrench, 2 spray can
 	DIM bcol(MAXBOLTC)	' bolt drop columns
 	DIM jtab(15)		' jump arc: 128+dy per step (unsigned-safe)
+	' Conveyor belts as pixel SURFACES (bottom pixel x0,y0 -> top pixel x1,y1),
+	' so Mack rides a continuous line and never drops into the cell gaps.
+	DIM cvx0(3)
+	DIM cvy0(3)
+	DIM cvx1(3)
+	DIM cvy1(3)
 
 	' DEF FN substitutes arguments TEXTUALLY (no implicit parens): an
 	' expression argument like VADDR(r + 1,c) would expand to
@@ -210,6 +216,19 @@ main_loop:
 	' writes must land before the scan-out or the bar tears. It uses the
 	' position computed on the previous pass (1-frame latency, invisible).
 	GOSUB beam_draw
+	' Animate the conveyor belts: every 8 frames advance the two belt chars
+	' (156/157) through 4 patterns each 1 px higher, so every belt cell scrolls
+	' up the incline together (period 4 px = seamless loop).
+	IF cvn > 0 THEN
+		IF (FRAME AND 7) = 0 THEN
+			cvaf = cvaf + 1
+			IF cvaf >= 4 THEN cvaf = 0
+			IF cvaf = 0 THEN DEFINE CHAR 156,2,conv_pat
+			IF cvaf = 1 THEN DEFINE CHAR 156,2,belt_anim1
+			IF cvaf = 2 THEN DEFINE CHAR 156,2,belt_anim2
+			IF cvaf = 3 THEN DEFINE CHAR 156,2,belt_anim3
+		END IF
+	END IF
 	' FRAME-delta pacing (shared convention with Structris): a missed
 	' vblank becomes a catch-up step, not a slowdown. #fd is the number
 	' of real frames since the last pass, clamped so a pause can't
@@ -1007,35 +1026,43 @@ beam_sup:
 	RETURN
 
 conv_sup:
-	' csup = 1 if Mack's feet are on a conveyor BELT cell (156/157). The belt
-	' both HOLDS him up and CARRIES him up-and-right along the 2:1 incline
-	' (mx +1/frame, my -1 every other frame) -- ride to the top, then FIRE to
-	' jump off onto the crane beam. (Drums/post 158/159 do not carry.)
+	' csup = 1 if Mack's feet rest on a conveyor belt SURFACE. Each belt is a
+	' pixel line from (cvx0,cvy0) up to (cvx1,cvy1); we test his foot against
+	' that line (no tile probing, so the staggered cell gaps can't drop him),
+	' snap him to it, and carry him up-and-right. Ride to the top, FIRE to jump
+	' off onto the crane beam.
 	csup = 0
+	IF cvn = 0 THEN RETURN
+	fx = mx + 8
 	fy = my + 16
-	IF fy > 191 THEN RETURN
-	' Probe LEFT, CENTRE and RIGHT of his feet -- the belt cells are staggered
-	' diagonally, so a single centre probe drops into the seams between them.
-	ch = TILE(mx + 8,fy)
-	IF ch = 156 THEN csup = 1
-	IF ch = 157 THEN csup = 1
-	IF csup = 0 THEN
-		ch = TILE(mx + 3,fy)
-		IF ch = 156 THEN csup = 1
-		IF ch = 157 THEN csup = 1
-	END IF
-	IF csup = 0 THEN
-		ch = TILE(mx + 13,fy)
-		IF ch = 156 THEN csup = 1
-		IF ch = 157 THEN csup = 1
-	END IF
-	IF csup = 0 THEN RETURN
-	IF mx < 240 THEN mx = mx + 1
-	convtog = convtog + 1
-	IF convtog >= 2 THEN
-		convtog = 0
-		my = my - 1
-	END IF
+	FOR ci = 0 TO cvn - 1
+		kx0 = cvx0(ci)
+		kx1 = cvx1(ci)
+		IF fx >= kx0 THEN
+			IF fx <= kx1 THEN
+				ky0 = cvy0(ci)
+				kdy = ky0 - cvy1(ci)
+				kdx = kx1 - kx0
+				#cvt = fx - kx0
+				#cvt = #cvt * kdy
+				#cvt = #cvt / kdx
+				srf = ky0 - #cvt
+				IF fy >= srf - 4 THEN
+					IF fy <= srf + 5 THEN
+						csup = 1
+						IF mx < 240 THEN mx = mx + 1
+						fx = mx + 8
+						#cvt = fx - kx0
+						#cvt = #cvt * kdy
+						#cvt = #cvt / kdx
+						srf = ky0 - #cvt
+						my = srf - 16
+						RETURN
+					END IF
+				END IF
+			END IF
+		END IF
+	NEXT ci
 	RETURN
 
 beam_draw:
@@ -1649,6 +1676,8 @@ init_level:
 	bprow = 99		' force beam_draw to place the beam on its first pass
 	bmyd = 255		' last-drawn beam y (!= any real bmy -> draw on 1st pass)
 	convtog = 0		' conveyor-belt 2:1 rise toggle
+	cvn = 0			' number of conveyor belts this level
+	cvaf = 0		' belt animation frame toggle
 	vroute = 0
 	jhtk = 1
 	bon = 0
@@ -1734,6 +1763,13 @@ lv_parse:
 			ch = 159
 			VPOKE #va,ch
 		NEXT pr
+		' Record the belt as a pixel SURFACE line: bottom (at the low drum) to
+		' top (at the high drum). conv_sup rides this line -- no cell gaps.
+		cvx0(cvn) = c * 8
+		cvy0(cvn) = r * 8 + 2
+		cvx1(cvn) = cc * 8 + 7
+		cvy1(cvn) = rr * 8 + 2
+		cvn = cvn + 1
 		GOTO lv_parse
 	END IF
 	' op = 5: object entry. Dispatched with ON GOTO -- a long ELSEIF
@@ -2210,6 +2246,18 @@ conv_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+	' Belt scroll frames 1-3: conv_pat's belt chars shifted up 1/2/3 px. Cycling
+	' conv_pat -> 1 -> 2 -> 3 -> conv_pat scrolls the belt up 1 px/step (the
+	' pattern repeats every 4 px, so frame 3 -> frame 0 is seamless).
+belt_anim1:
+	DATA BYTE $03,$0C,$30,$D3,$0C,$30,$C0,$00
+	DATA BYTE $0C,$30,$C0,$00,$03,$0C,$30,$D3
+belt_anim2:
+	DATA BYTE $0C,$30,$D3,$0C,$30,$C0,$00,$03
+	DATA BYTE $30,$C0,$00,$03,$0C,$30,$D3,$0C
+belt_anim3:
+	DATA BYTE $30,$D3,$0C,$30,$C0,$00,$03,$0C
+	DATA BYTE $C0,$00,$03,$0C,$30,$D3,$0C,$30
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
 	' hanging down to grab Mack -- matches the reference's white/red magnet.

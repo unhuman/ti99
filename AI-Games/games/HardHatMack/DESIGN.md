@@ -212,12 +212,14 @@ Two conveyor **machines** (op 6, bottom-drum row,col,belt-cells) built from 4 ch
 alternating) rising at a shallow **2:1** slope (up 1 row every 2 cells), and a **yellow support post**
 (159) under the top drum down to the platform — matched to the reference machine, not a plain ramp.
 Right machine drum (8,19); left machine drum (22,5, delivering up-right toward the beam shaft).
-**Belt RIDE** (`conv_sup`, hooked wherever `beam_sup` is — walk/jump-land/fall-land): standing on a
-belt cell (156/157) both holds Mack up and carries him **up-and-right** along the 2:1 incline (mx
-+1/frame, my −1 every other frame); FIRE jumps off onto the crane beam. `conv_sup` probes LEFT,
-CENTRE and RIGHT of his feet (mx+3/+8/+13) so he doesn't slip through the staggered diagonal seams.
-The belt is a clean white band with dark segment-holes (the earlier hollow-rail attempt rendered as
-two dashed lines — rejected). **Open flow issue:** riding
+**Belt RIDE** (`conv_sup`, hooked wherever `beam_sup` is — walk/jump-land/fall-land): each belt is
+stored as a **pixel SURFACE line** from `(cvx0,cvy0)` up to `(cvx1,cvy1)` (recorded by op 6). Standing
+near that line both holds Mack up and carries him **up-and-right** (mx +1/frame, `my` snapped to the
+line each frame); FIRE jumps off onto the crane beam. This replaced tile-probing, which dropped him
+through the gaps between the diagonally-staggered belt cells — the pixel line has no gaps. The belt is
+drawn as the reference's two-rail ladder (thin rails + center dots) and **animates**: every 8 frames
+the two belt chars (156/157) advance through 4 patterns each 1 px higher (`belt_anim1..3`), so the
+belt scrolls up the incline (period 4 px = seamless). **Open flow issue:** riding
 off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top → beam handoff (a landing
 ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
 low point (row 21, cols 11-16) is the intended catch. 
