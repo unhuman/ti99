@@ -224,14 +224,17 @@ main_loop:
 		IF (FRAME AND 1) = 0 THEN
 			cvaf = cvaf + 1
 			IF cvaf >= 8 THEN cvaf = 0
-			IF cvaf = 0 THEN DEFINE CHAR 156,2,conv_pat
-			IF cvaf = 1 THEN DEFINE CHAR 156,2,belt_anim1
-			IF cvaf = 2 THEN DEFINE CHAR 156,2,belt_anim2
-			IF cvaf = 3 THEN DEFINE CHAR 156,2,belt_anim3
-			IF cvaf = 4 THEN DEFINE CHAR 156,2,belt_anim4
-			IF cvaf = 5 THEN DEFINE CHAR 156,2,belt_anim5
-			IF cvaf = 6 THEN DEFINE CHAR 156,2,belt_anim6
-			IF cvaf = 7 THEN DEFINE CHAR 156,2,belt_anim7
+			' Redefine 3 chars: belt-lo, belt-hi (scroll up) AND the drum (158,
+			' a spinning roller) so the WHOLE conveyor -- belt and rollers --
+			' moves. The post (159) stays static (it's a support strut).
+			IF cvaf = 0 THEN DEFINE CHAR 156,3,belt_anim0
+			IF cvaf = 1 THEN DEFINE CHAR 156,3,belt_anim1
+			IF cvaf = 2 THEN DEFINE CHAR 156,3,belt_anim2
+			IF cvaf = 3 THEN DEFINE CHAR 156,3,belt_anim3
+			IF cvaf = 4 THEN DEFINE CHAR 156,3,belt_anim4
+			IF cvaf = 5 THEN DEFINE CHAR 156,3,belt_anim5
+			IF cvaf = 6 THEN DEFINE CHAR 156,3,belt_anim6
+			IF cvaf = 7 THEN DEFINE CHAR 156,3,belt_anim7
 		END IF
 	END IF
 	' FRAME-delta pacing (shared convention with Structris): a missed
@@ -2251,31 +2254,43 @@ conv_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
-	' Belt scroll phases 1-7: conv_pat's two belt chars ROTATED up 1..7 px
-	' (both chars by the same amount so they keep tiling). Cycling conv_pat ->
-	' 1 -> ... -> 7 -> conv_pat scrolls the belt up 1 px/step; 8 phases = one
-	' full char rotation, so it loops seamlessly (no jump-back shake).
+	' Belt scroll phases 0-7: three chars each -- belt-lo, belt-hi (conv_pat's
+	' two belt chars ROTATED up 0..7 px, both by the same amount so they keep
+	' tiling) AND the roller drum (158) with a spoke rotated to the matching
+	' phase. Cycling 0->1->...->7->0 scrolls the belt up 1 px/step and spins the
+	' rollers; 8 phases = one full rotation, so it loops seamlessly (no shake).
+belt_anim0:
+	DATA BYTE $00,$03,$0C,$30,$D3,$0C,$30,$C0
+	DATA BYTE $D3,$0C,$30,$C0,$00,$03,$0C,$30
+	DATA BYTE $18,$7E,$7E,$00,$00,$7E,$7E,$18
 belt_anim1:
 	DATA BYTE $03,$0C,$30,$D3,$0C,$30,$C0,$00
 	DATA BYTE $0C,$30,$C0,$00,$03,$0C,$30,$D3
+	DATA BYTE $18,$7E,$1E,$07,$E0,$78,$7E,$18
 belt_anim2:
 	DATA BYTE $0C,$30,$D3,$0C,$30,$C0,$00,$03
 	DATA BYTE $30,$C0,$00,$03,$0C,$30,$D3,$0C
+	DATA BYTE $18,$1E,$0E,$C7,$E3,$70,$78,$18
 belt_anim3:
 	DATA BYTE $30,$D3,$0C,$30,$C0,$00,$03,$0C
 	DATA BYTE $C0,$00,$03,$0C,$30,$D3,$0C,$30
+	DATA BYTE $08,$4E,$4E,$E7,$E7,$72,$72,$10
 belt_anim4:
 	DATA BYTE $D3,$0C,$30,$C0,$00,$03,$0C,$30
 	DATA BYTE $00,$03,$0C,$30,$D3,$0C,$30,$C0
+	DATA BYTE $00,$66,$66,$E7,$E7,$66,$66,$00
 belt_anim5:
 	DATA BYTE $0C,$30,$C0,$00,$03,$0C,$30,$D3
 	DATA BYTE $03,$0C,$30,$D3,$0C,$30,$C0,$00
+	DATA BYTE $10,$72,$72,$E7,$E7,$4E,$4E,$08
 belt_anim6:
 	DATA BYTE $30,$C0,$00,$03,$0C,$30,$D3,$0C
 	DATA BYTE $0C,$30,$D3,$0C,$30,$C0,$00,$03
+	DATA BYTE $18,$78,$70,$E3,$C7,$0E,$1E,$18
 belt_anim7:
 	DATA BYTE $C0,$00,$03,$0C,$30,$D3,$0C,$30
 	DATA BYTE $30,$D3,$0C,$30,$C0,$00,$03,$0C
+	DATA BYTE $18,$7E,$78,$E0,$07,$1E,$7E,$18
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
 	' hanging down to grab Mack -- matches the reference's white/red magnet.
