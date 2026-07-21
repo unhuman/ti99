@@ -1759,7 +1759,14 @@ lv_parse:
 			END IF
 			#va = VADDR(rr,cc)
 			VPOKE #va,ch
-			IF (i AND 1) = 0 THEN rr = rr - 1
+			IF (i AND 1) = 0 THEN
+				rr = rr - 1
+				' The belt steps up a row here; fill the corner cell above this
+				' column with belt-lo so the diagonal band has NO empty gap at
+				' the staircase step (and it animates like the rest).
+				#va = VADDR(rr,cc)
+				VPOKE #va,156
+			END IF
 		NEXT i
 		cc = cc + 1
 		#va = VADDR(rr,cc)
