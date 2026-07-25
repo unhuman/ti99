@@ -321,3 +321,13 @@ for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.m
 > until the docs that describe it match (and the cross-referenced line numbers/labels still point at
 > the right lines). When a change exposes a new toolchain hazard or rule, also record it in the
 > relevant section of this `CLAUDE.md` (e.g. the §2 compiler land-mines) so future games inherit it.
+
+> **Standing rule — leave the emulator running when you hand work back (continuous development).**
+> Finish every work session by launching the **newest** build in Classic99 (kill any older instance
+> first, so exactly one window is up, running the cart you just built) and **leave that window open**
+> for review. Intermediate probes — screenshot captures, A/B comparisons — may open and close freely;
+> the rule governs the final hand-back state. If the change is in a later level, build a separate
+> level-start cart (e.g. `NAME_L2_8.bin`) so the reviewer doesn't have to replay earlier levels, and
+> keep the committed source at its normal starting level. **Verify the open window is running the new
+> cart** — an emulator left open from an earlier build shows stale behavior and reads as "your fix
+> didn't work."

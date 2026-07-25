@@ -216,12 +216,15 @@ main_loop:
 	' writes must land before the scan-out or the bar tears. It uses the
 	' position computed on the previous pass (1-frame latency, invisible).
 	GOSUB beam_draw
-	' Animate the conveyor belts: every 2 frames advance the two belt chars
-	' (156/157) by 1 px up through 8 rotation phases, so every belt cell scrolls
-	' up the incline together. 8 phases = a full char rotation = a seamless loop
-	' (no jump-back "shake").
+	' Animate the conveyor belts: advance one phase every 2 LOOP PASSES. The
+	' gate must be a pass counter, NOT a bit of FRAME: on a slow pass FRAME
+	' advances 2+, so a `FRAME AND 1` test can sit stuck on the odd value and
+	' the belt freezes until the timing happens to drift (the "animation
+	' sometimes stops" bug). A pass counter always ticks.
 	IF cvn > 0 THEN
-		IF (FRAME AND 1) = 0 THEN
+		cvtk = cvtk + 1
+		IF cvtk >= 2 THEN
+			cvtk = 0
 			cvaf = cvaf + 1
 			IF cvaf >= 8 THEN cvaf = 0
 			' Redefine 4 chars: the three belt slices (full/bottom/top --
@@ -1685,7 +1688,8 @@ init_level:
 	bmyd = 255		' last-drawn beam y (!= any real bmy -> draw on 1st pass)
 	convtog = 0		' conveyor-belt 2:1 rise toggle
 	cvn = 0			' number of conveyor belts this level
-	cvaf = 0		' belt animation frame toggle
+	cvaf = 0		' belt animation phase (0-7)
+	cvtk = 0		' belt animation pass counter (see main_loop)
 	vroute = 0
 	jhtk = 1
 	bon = 0
