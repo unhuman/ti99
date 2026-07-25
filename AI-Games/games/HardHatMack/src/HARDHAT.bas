@@ -1061,8 +1061,18 @@ conv_sup:
 				IF fy >= srf - 4 THEN
 					IF fy <= srf + 5 THEN
 						csup = 1
-						IF mx < 240 THEN mx = mx + 1
+						' STOP conveying at the top drum -- he rides up and
+						' then STANDS there. Carrying him off the end threw
+						' him into a 3-cell (fatal) fall with no chance to
+						' react, and he could walk right back on: a death
+						' loop. From the top he CHOOSES to jump (onto the
+						' crane beam).
+						ktp = kx1 - 6
+						IF fx < ktp THEN
+							IF mx < 240 THEN mx = mx + 1
+						END IF
 						fx = mx + 8
+						IF fx > kx1 THEN fx = kx1
 						#cvt = fx - kx0
 						#cvt = #cvt * kdy
 						#cvt = #cvt / kdx
@@ -1641,6 +1651,15 @@ dead_tick:
 		mx = msc * 8 - 4
 		my = msr * 8 - 16
 		st = S_WALK
+		' Clear every ride/fall flag: a stale one (still "on the beam", or a
+		' fall origin from the previous life) makes the fresh life die
+		' instantly "for no reason".
+		bonbeam = 0
+		obonb = 0
+		csup = 0
+		convtog = 0
+		fcy = my
+		fct = 0
 	END IF
 	RETURN
 
