@@ -154,8 +154,8 @@
 	DEFINE COLOR T_LBOXL,1,pail_col
 	DEFINE CHAR T_HAZ0,3,haz_pat
 	DEFINE COLOR T_HAZ0,3,haz_col
-	DEFINE CHAR T_CONV0,4,conv_pat		' 156-159 belt-lo/belt-hi/drum/post
-	DEFINE COLOR T_CONV0,4,conv_col
+	DEFINE CHAR T_CONV0,5,conv_pat		' 156-160 full/bottom/top/drum/post
+	DEFINE COLOR T_CONV0,5,conv_col
 	DEFINE CHAR T_MAGNET,2,mag_pat
 	DEFINE COLOR T_MAGNET,2,mag_col
 	DEFINE CHAR T_CABLE,1,cable_pat
@@ -224,17 +224,17 @@ main_loop:
 		IF (FRAME AND 1) = 0 THEN
 			cvaf = cvaf + 1
 			IF cvaf >= 8 THEN cvaf = 0
-			' Redefine 3 chars: belt-lo, belt-hi (scroll up) AND the drum (158,
-			' a spinning roller) so the WHOLE conveyor -- belt and rollers --
-			' moves. The post (159) stays static (it's a support strut).
-			IF cvaf = 0 THEN DEFINE CHAR 156,3,belt_anim0
-			IF cvaf = 1 THEN DEFINE CHAR 156,3,belt_anim1
-			IF cvaf = 2 THEN DEFINE CHAR 156,3,belt_anim2
-			IF cvaf = 3 THEN DEFINE CHAR 156,3,belt_anim3
-			IF cvaf = 4 THEN DEFINE CHAR 156,3,belt_anim4
-			IF cvaf = 5 THEN DEFINE CHAR 156,3,belt_anim5
-			IF cvaf = 6 THEN DEFINE CHAR 156,3,belt_anim6
-			IF cvaf = 7 THEN DEFINE CHAR 156,3,belt_anim7
+			' Redefine 4 chars: the three belt slices (full/bottom/top --
+			' their cleats travel along the band) AND the drum (159, spinning
+			' roller), so the WHOLE conveyor moves. Post (160) stays static.
+			IF cvaf = 0 THEN DEFINE CHAR 156,4,belt_anim0
+			IF cvaf = 1 THEN DEFINE CHAR 156,4,belt_anim1
+			IF cvaf = 2 THEN DEFINE CHAR 156,4,belt_anim2
+			IF cvaf = 3 THEN DEFINE CHAR 156,4,belt_anim3
+			IF cvaf = 4 THEN DEFINE CHAR 156,4,belt_anim4
+			IF cvaf = 5 THEN DEFINE CHAR 156,4,belt_anim5
+			IF cvaf = 6 THEN DEFINE CHAR 156,4,belt_anim6
+			IF cvaf = 7 THEN DEFINE CHAR 156,4,belt_anim7
 		END IF
 	END IF
 	' FRAME-delta pacing (shared convention with Structris): a missed
@@ -1738,52 +1738,60 @@ lv_parse:
 		GOTO lv_vrun
 	END IF
 	IF op = 6 THEN
-		' Conveyor MACHINE, up-right at a shallow 2:1 slope: a cyan roller drum
-		' at the bottom-left, n belt cells rising 1 row every 2 cells (belt-lo
-		' then belt-hi), a cyan drum at the top-right, and a yellow support post
-		' from under the top drum down to the platform. r,c = bottom drum cell.
+		' Conveyor MACHINE at TRUE 2:1: bottom roller drum (r,c), belt rising h
+		' rows over exactly 2h cols to a top drum at (r-h, c+2h) -- so the drums
+		' are 2h cols / h rows apart = 1 up per 2 right, matching the reference.
+		' Each belt cell is placed on the EXACT 2:1 line (band-centre pixel yb),
+		' picking belt-hi (band high) or belt-lo (band low) by its sub-cell
+		' offset, so the belt lines up with both drums (no drift, no gaps). A
+		' yellow support post drops from the top drum to the platform.
 		READ BYTE r
 		READ BYTE c
-		READ BYTE n
+		READ BYTE h
 		#va = VADDR(r,c)
-		ch = 158			' bottom roller drum
+		ch = 159			' bottom roller drum
 		VPOKE #va,ch
-		rr = r
-		cc = c
-		FOR i = 1 TO n
-			cc = cc + 1
-			IF (i AND 1) = 1 THEN
-				ch = 156		' belt-lo (first of the pair)
-			ELSE
-				ch = 157		' belt-hi (second, then step up)
-			END IF
-			#va = VADDR(rr,cc)
-			VPOKE #va,ch
-			IF (i AND 1) = 0 THEN
-				rr = rr - 1
-				' The belt steps up a row here; fill the corner cell above this
-				' column with belt-lo so the diagonal band has NO empty gap at
-				' the staircase step (and it animates like the rest).
-				#va = VADDR(rr,cc)
+		ne = h + h
+		ne = ne - 1
+		FOR i = 1 TO ne
+			col = c + i
+			yb = r * 8
+			yb = yb + 4
+			ic = i * 4
+			yb = yb - ic		' band-centre pixel on the 2:1 line
+			cr = yb / 8
+			su = yb AND 7
+			IF su = 4 THEN
+				' Band sits wholly inside this cell.
+				#va = VADDR(cr,col)
 				VPOKE #va,156
+			ELSE
+				' Band straddles the boundary above this cell: draw BOTH
+				' halves so nothing is clipped (this was the gap).
+				cr2 = cr - 1
+				#va = VADDR(cr2,col)
+				VPOKE #va,157		' upper half, along that cell's bottom
+				#va = VADDR(cr,col)
+				VPOKE #va,158		' lower half, along this cell's top
 			END IF
 		NEXT i
-		cc = cc + 1
-		#va = VADDR(rr,cc)
-		ch = 158			' top roller drum
+		tr = r - h
+		tc = c + ne
+		tc = tc + 1			' top drum col = c + 2h
+		#va = VADDR(tr,tc)
+		ch = 159			' top roller drum
 		VPOKE #va,ch
 		' Yellow support post down to the platform the bottom drum stands on.
-		FOR pr = rr + 1 TO r
-			#va = VADDR(pr,cc)
-			ch = 159
+		FOR pr = tr + 1 TO r
+			#va = VADDR(pr,tc)
+			ch = 160
 			VPOKE #va,ch
 		NEXT pr
-		' Record the belt as a pixel SURFACE line: bottom (at the low drum) to
-		' top (at the high drum). conv_sup rides this line -- no cell gaps.
+		' Record the belt as a pixel SURFACE line for conv_sup (drum to drum).
 		cvx0(cvn) = c * 8
 		cvy0(cvn) = r * 8 + 2
-		cvx1(cvn) = cc * 8 + 7
-		cvy1(cvn) = rr * 8 + 2
+		cvx1(cvn) = tc * 8 + 7
+		cvy1(cvn) = tr * 8 + 2
 		cvn = cvn + 1
 		GOTO lv_parse
 	END IF
@@ -2103,10 +2111,10 @@ level2_data:
 	DATA BYTE 1, 17,2,8,1		' left  lower (cols 2-9)
 	DATA BYTE 1, 17,18,8,1		' right lower (cols 18-25)
 	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29, type 2)
-	' Conveyor MACHINES (op 6: bottom-drum row,col, belt-cell count). Shallow
-	' 2:1 up-right belt with cyan drums at both ends + a yellow support post.
-	DATA BYTE 6, 8,19,5		' right conveyor: drum (8,19) -> top drum ~(6,25)
-	DATA BYTE 6, 22,5,4		' left conveyor: drum (22,5) -> top drum ~(20,10),
+	' Conveyor MACHINES (op 6: bottom-drum row,col, ROWS-to-rise h). True 2:1:
+	' drums 2h cols apart, belt drawn on the exact line between them.
+	DATA BYTE 6, 8,21,2		' right conveyor: drum (8,21) -> top drum (6,25)
+	DATA BYTE 6, 22,5,2		' left conveyor: drum (22,5) -> top drum (20,9),
 					' delivering up-right to the beam shaft (cols 11-16)
 	' Electromagnet head above the shaft; moving crane beam starts at r13.
 	DATA BYTE 5,9, 2,13
@@ -2243,19 +2251,23 @@ conv_pat:
 	' Conveyor MACHINE (4 chars, 156-159), matched to the reference: a shallow
 	' 2:1 white belt with dark oval holes, cyan roller drums at both ends, and
 	' a yellow support post. op 6 assembles these into the escalator.
-	' 156 belt-low: two 2-px-apart diagonal white rails. This pattern tiles
-	' CONTINUOUSLY -- belt-hi is exactly belt-lo rotated up 4, so the rails join
-	' unbroken across every cell seam (verified in a tiling sim); no gaps.
-	DATA BYTE $00,$01,$06,$19,$66,$98,$60,$80
-	' 157 belt-high: belt-lo rotated up 4 (the rails continue up the incline).
-	DATA BYTE $66,$98,$60,$80,$00,$01,$06,$19
-	' 158 roller drum: a big cyan cylinder end-cap (fills the cell -- the
-	' reference drums are large, prominent cylinders, not small dots)
-	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C
-	' 159 support post: a vertical yellow strut
+	' THREE belt chars, so the 2:1 band is never clipped. The band drops 4 px
+	' across a cell, so on alternate columns its centre lands ON a cell
+	' boundary; with only two chars that half fell outside the cell and was
+	' lost -- those were the gaps. Now a straddling column draws BOTH halves.
+	' 156 belt-FULL: band centred in the cell (column centre lands mid-cell)
+	DATA BYTE $00,$03,$07,$37,$77,$74,$70,$40
+	' 157 belt-BOTTOM: the band's upper half, along this cell's bottom edge
+	DATA BYTE $00,$00,$00,$00,$00,$03,$07,$37
+	' 158 belt-TOP: the band's lower half, along this cell's top edge
+	DATA BYTE $77,$74,$70,$40,$00,$00,$00,$00
+	' 159 roller drum: a cyan cylinder with a spoke (spins via the animation)
+	DATA BYTE $18,$7E,$7E,$00,$00,$7E,$7E,$18
+	' 160 support post: a vertical yellow strut
 	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
 conv_col:
-	' belt white, belt white, drum cyan, post yellow
+	' belt full / bottom / top white, drum cyan, post yellow
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
@@ -2265,37 +2277,48 @@ conv_col:
 	' tiling) AND the roller drum (158) with a spoke rotated to the matching
 	' phase. Cycling 0->1->...->7->0 scrolls the belt up 1 px/step and spins the
 	' rollers; 8 phases = one full rotation, so it loops seamlessly (no shake).
+	' Each phase is 4 chars: belt full / bottom / top (the dark cleats travel
+	' along the band -- the band itself is invariant, so only the cleats move,
+	' which is what selling belt motion needs) + the drum spoke rotated.
 belt_anim0:
-	DATA BYTE $00,$01,$06,$19,$66,$98,$60,$80
-	DATA BYTE $66,$98,$60,$80,$00,$01,$06,$19
+	DATA BYTE $00,$03,$07,$37,$77,$74,$70,$40
+	DATA BYTE $00,$00,$00,$00,$00,$03,$07,$37
+	DATA BYTE $77,$74,$70,$40,$00,$00,$00,$00
 	DATA BYTE $18,$7E,$7E,$00,$00,$7E,$7E,$18
 belt_anim1:
-	DATA BYTE $01,$06,$19,$66,$98,$60,$80,$00
-	DATA BYTE $98,$60,$80,$00,$01,$06,$19,$66
+	DATA BYTE $00,$02,$0E,$2E,$EE,$EC,$E0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$02,$0E,$2E
+	DATA BYTE $EE,$EC,$E0,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$7E,$1E,$07,$E0,$78,$7E,$18
 belt_anim2:
-	DATA BYTE $06,$19,$66,$98,$60,$80,$00,$01
-	DATA BYTE $60,$80,$00,$01,$06,$19,$66,$98
+	DATA BYTE $00,$01,$0D,$1D,$DD,$DC,$D0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$01,$0D,$1D
+	DATA BYTE $DD,$DC,$D0,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$1E,$0E,$C7,$E3,$70,$78,$18
 belt_anim3:
-	DATA BYTE $19,$66,$98,$60,$80,$00,$01,$06
-	DATA BYTE $80,$00,$01,$06,$19,$66,$98,$60
+	DATA BYTE $00,$03,$0B,$3B,$BB,$B8,$B0,$80
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0B,$3B
+	DATA BYTE $BB,$B8,$B0,$80,$00,$00,$00,$00
 	DATA BYTE $08,$4E,$4E,$E7,$E7,$72,$72,$10
 belt_anim4:
-	DATA BYTE $66,$98,$60,$80,$00,$01,$06,$19
-	DATA BYTE $00,$01,$06,$19,$66,$98,$60,$80
+	DATA BYTE $00,$03,$07,$37,$77,$74,$70,$40
+	DATA BYTE $00,$00,$00,$00,$00,$03,$07,$37
+	DATA BYTE $77,$74,$70,$40,$00,$00,$00,$00
 	DATA BYTE $00,$66,$66,$E7,$E7,$66,$66,$00
 belt_anim5:
-	DATA BYTE $98,$60,$80,$00,$01,$06,$19,$66
-	DATA BYTE $01,$06,$19,$66,$98,$60,$80,$00
+	DATA BYTE $00,$02,$0E,$2E,$EE,$EC,$E0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$02,$0E,$2E
+	DATA BYTE $EE,$EC,$E0,$C0,$00,$00,$00,$00
 	DATA BYTE $10,$72,$72,$E7,$E7,$4E,$4E,$08
 belt_anim6:
-	DATA BYTE $60,$80,$00,$01,$06,$19,$66,$98
-	DATA BYTE $06,$19,$66,$98,$60,$80,$00,$01
+	DATA BYTE $00,$01,$0D,$1D,$DD,$DC,$D0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$01,$0D,$1D
+	DATA BYTE $DD,$DC,$D0,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$78,$70,$E3,$C7,$0E,$1E,$18
 belt_anim7:
-	DATA BYTE $80,$00,$01,$06,$19,$66,$98,$60
-	DATA BYTE $19,$66,$98,$60,$80,$00,$01,$06
+	DATA BYTE $00,$03,$0B,$3B,$BB,$B8,$B0,$80
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0B,$3B
+	DATA BYTE $BB,$B8,$B0,$80,$00,$00,$00,$00
 	DATA BYTE $18,$7E,$78,$E0,$07,$1E,$7E,$18
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs

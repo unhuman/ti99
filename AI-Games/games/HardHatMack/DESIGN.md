@@ -222,11 +222,16 @@ drawn as the reference's two-rail ladder (thin rails + center dots) and **animat
 rotated up 1 px/phase (the belt scrolls up the incline) **and the roller drum (158) with a spoke
 rotated to match (the rollers spin)** — so the WHOLE conveyor moves, not just the belt. 8 phases = one
 full rotation = a seamless loop (a shorter cycle shook because the center dot makes the belt pattern
-non-periodic below 8 rows). The post (159) stays static (a support strut). At each row-step the belt
-also fills the **corner cell** (an extra belt-lo at the step). Crucially the belt pattern itself is now
-two diagonal rails that **tile continuously** — belt-hi is exactly belt-lo rotated up 4, so the rails
-join unbroken across every cell seam (an earlier pattern broke at the seams and read as disconnected
-dashes; verified gap-free in a tiling sim before building). **Open flow issue:** riding
+non-periodic below 8 rows). The post (159) stays static (a support strut). **Geometry (measured from the reference, not guessed):** the reference conveyor is exactly **2:1
+(26°)** with its drums **4 cols / 2 rows apart** (col 21→25, row 8→6). op 6 takes `(row, col, h)` and
+puts the top drum at `(r−h, c+2h)`, then draws each belt cell on the **exact line between the two
+drums**, so belt and drums can't disagree.
+
+**Three belt chars, so the band is never clipped:** the band drops 4 px per cell, so on alternate
+columns its centre lands *on* a cell boundary. With only two chars that half fell outside the cell and
+vanished — those were the visible gaps. Now `156` = band centred in the cell, and a straddling column
+draws **both** halves: `157` (upper half, along the cell above's bottom edge) + `158` (lower half,
+along this cell's top edge). Verified gap-free in a tiling simulation before building. **Open flow issue:** riding
 off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top → beam handoff (a landing
 ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
 low point (row 21, cols 11-16) is the intended catch. 
