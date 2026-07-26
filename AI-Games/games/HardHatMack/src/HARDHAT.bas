@@ -303,6 +303,13 @@ main_loop:
 		GOSUB mag_catch
 	END IF
 	IF #hd > 0 THEN GOSUB elev_move
+	' Deferred fatal landing: land_chk only RAISES ded, because it runs inside
+	' the jump/fall inner loops where calling mack_die would unbalance the
+	' GOSUB return stack. Resolve it here, at top level, outside every loop.
+	IF ded = 1 THEN
+		ded = 0
+		GOSUB mack_die
+	END IF
 	IF lvdone = 1 THEN GOTO level_complete
 	' Mack: hidden (row 209) while dead-blinking handles its own draw.
 	' Airborne states use the spread-legs jump pose.
@@ -791,7 +798,10 @@ st_jump:
 					' underside at the apex, so every level-1
 			IF ch >= T_SOLID0 THEN
 				IF ch <= T_BUMP1 THEN
-					jix = 8
+						' jix = 8  <-- REMOVED: rewinding the arc here made the jump
+						' restart near its apex forever (verified: still ST2 3s after
+						' one press). Just end the ascent instead.
+						jix = 15
 					GOTO jump_adv
 				END IF
 			END IF
@@ -1056,10 +1066,7 @@ land_chk:
 	' FATALFALL. That killed every upward landing on the belt.
 	IF my > fcy THEN
 		fd2 = my - fcy
-		IF fd2 > FATALFALL THEN
-			GOSUB mack_die
-			ded = 1
-		END IF
+		IF fd2 > FATALFALL THEN ded = 1
 	END IF
 	RETURN
 
