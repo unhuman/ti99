@@ -800,7 +800,8 @@ st_jump:
 					' Without this, jumping off a high ledge was always
 					' safe while merely walking off a low one was fatal --
 					' the inconsistency at the conveyor.
-					fd2 = my - fcy
+					fd2 = 0
+					IF my > fcy THEN fd2 = my - fcy
 					IF fd2 > FATALFALL THEN
 						GOSUB mack_die
 					ELSE
@@ -904,7 +905,10 @@ st_fall:
 	NEXT t8
 	RETURN
 fall_land:
-	fd2 = my - fcy
+	' Same unsigned guard as land_chk: a catch that snaps Mack UPWARD
+	' (elevator rising into him) would otherwise wrap the subtraction.
+	fd2 = 0
+	IF my > fcy THEN fd2 = my - fcy
 	IF fd2 > FATALFALL THEN
 		GOSUB mack_die
 	ELSE
@@ -972,10 +976,16 @@ land_chk:
 	' ground used to be checked, so a long fall onto the moving girder or a
 	' belt was a free save from ANY height.
 	ded = 0
-	fd2 = my - fcy
-	IF fd2 > FATALFALL THEN
-		GOSUB mack_die
-		ded = 1
+	' UNSIGNED GUARD (CVBasic has no negative math): landing HIGHER than
+	' the apex -- jumping UP onto a conveyor/beam from beside or below --
+	' makes my < fcy, and my - fcy wraps to a huge value that sails past
+	' FATALFALL. That killed every upward landing on the belt.
+	IF my > fcy THEN
+		fd2 = my - fcy
+		IF fd2 > FATALFALL THEN
+			GOSUB mack_die
+			ded = 1
+		END IF
 	END IF
 	RETURN
 
@@ -1145,15 +1155,22 @@ beam_draw:
 	lc = 200 + boff
 	' On a cell-row change, blank the two rows the beam just vacated first.
 	IF brow <> bprow THEN
+		' Vacated cells go back to EMPTY -- except col 14, which carries the
+		' crane cable the beam rides on; blanking it chewed a moving hole in
+		' the cable.
 		#va = VADDR(bprow,11)
 		FOR i = 1 TO 6
-			VPOKE #va,32
+			bc9 = 32
+			IF i = 4 THEN bc9 = T_CABLE
+			VPOKE #va,bc9
 			#va = #va + 1
 		NEXT i
 		bpr2 = bprow + 1
 		#va = VADDR(bpr2,11)
 		FOR i = 1 TO 6
-			VPOKE #va,32
+			bc9 = 32
+			IF i = 4 THEN bc9 = T_CABLE
+			VPOKE #va,bc9
 			#va = #va + 1
 		NEXT i
 		bprow = brow
@@ -2176,7 +2193,8 @@ level2_data:
 	' moving CRANE BEAM (op 5 sub 10, cols 11-16) that rides up and down --
 	' Mack JUMPS on and off it to reach the side tiers (NO chains). A short
 	' cable + the magnet sit above it.
-	DATA BYTE 7, 14,3,2		' cable stub col 14, rows 3-4 (holds the magnet)
+	DATA BYTE 7, 14,3,17		' crane cable col 14, rows 3-19: in the reference it
+					' runs the WHOLE shaft, the beam rides it
 	DATA BYTE 1, 5,11,7,1		' top crane platform (cols 11-17)
 	DATA BYTE 1, 9,2,8,1		' left  upper (cols 2-9)
 	DATA BYTE 1, 9,18,8,1		' right upper (cols 18-25)
