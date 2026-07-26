@@ -1016,8 +1016,13 @@ mag_move:
 	RETURN
 
 mag_catch:
-	' Caught? Airborne only, armed only: Mack's head must reach the magnet's
-	' underside with his centre beneath its 2-cell span.
+	' Caught? Only on a level that HAS a magnet, only once armed, only while
+	' airborne: Mack's head must reach the magnet's underside with his centre
+	' beneath its 2-cell span.
+	' mgon is essential: without it, level 1 (no magnet, so mgr/mgc are never
+	' set) put this catch box over the far-LEFT columns, and jumping there
+	' completed the level -- warping the player straight to level 3.
+	IF mgon = 0 THEN RETURN
 	IF mgarm = 0 THEN RETURN
 	IF st = S_WALK THEN RETURN
 	IF st = S_DEAD THEN RETURN
@@ -1281,7 +1286,9 @@ take_item:
 						' All prizes claimed: the magnet comes ALIVE and starts
 						' tracking across the top. The level is won by being
 						' caught by it, not by the last pickup.
-						IF nlbr = 0 THEN mgarm = 1
+						IF mgon = 1 THEN
+							IF nlbr = 0 THEN mgarm = 1
+						END IF
 					ELSE
 						' Bonus tool (wrench/spray can): +200.
 						#score = #score + 200
