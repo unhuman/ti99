@@ -360,3 +360,12 @@ girder, crane beam, conveyor belt, elevator. Three bugs came out of not having t
 `FATALFALL = 26` px, chosen to sit between two real distances in the level geometry: **22 px** (off
 the top of a conveyor onto the platform its own drum stands on — must survive, it's the only way off)
 and **32 px** (a whole storey, tiers/floors being 4 rows apart — must stay fatal).
+
+#### Level 2 endgame — the electromagnet (2026-07-25)
+
+The magnet is the win condition, not the last pickup. It hangs **dead** at the top of the crane until
+every prize is claimed (`nlbr` reaches 0 → `mgarm = 1`); then it **tracks back and forth along the top**
+(`mag_move`, cols 10↔24, 1 cell / 3 passes). Riding the upper conveyor to its top drum and **jumping
+into the magnet** as it passes gets Mack caught (`mag_catch`: airborne only, head reaching the magnet's
+underside with his centre beneath its 2-cell span) → `lvdone`. The magnet's row is clear of the crane
+cable, so moving it needs no cable restore (unlike the beam, which does).

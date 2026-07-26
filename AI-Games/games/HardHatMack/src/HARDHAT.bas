@@ -296,6 +296,8 @@ main_loop:
 		IF #hd > 0 THEN GOSUB actors_move
 		GOSUB bolt_move
 		IF #hd > 0 THEN GOSUB beam_move
+		GOSUB mag_move
+		GOSUB mag_catch
 	END IF
 	IF #hd > 0 THEN GOSUB elev_move
 	IF lvdone = 1 THEN GOTO level_complete
@@ -969,6 +971,54 @@ st_ride:
 	'
 	' ---- Probes ----
 	'
+mag_move:
+	' The electromagnet hangs dead until every prize is claimed (mgarm), then
+	' tracks back and forth along the top of the crane. Jumping into it from
+	' the top of the upper conveyor is how level 2 is won.
+	IF mgon = 0 THEN RETURN
+	IF mgarm = 0 THEN RETURN
+	mgtk = mgtk + 1
+	IF mgtk < 3 THEN RETURN
+	mgtk = 0
+	' Erase the two cells it occupies (its row is clear of the crane cable).
+	#va = VADDR(mgr,mgc)
+	VPOKE #va,32
+	#va = #va + 1
+	VPOKE #va,32
+	IF mgd = 0 THEN
+		mgc = mgc - 1
+		IF mgc <= 10 THEN mgd = 1
+	ELSE
+		mgc = mgc + 1
+		IF mgc >= 24 THEN mgd = 0
+	END IF
+	#va = VADDR(mgr,mgc)
+	ch = T_MAGNET
+	VPOKE #va,ch
+	#va = #va + 1
+	ch = T_MAGNET + 1
+	VPOKE #va,ch
+	RETURN
+
+mag_catch:
+	' Caught? Airborne only, armed only: Mack's head must reach the magnet's
+	' underside with his centre beneath its 2-cell span.
+	IF mgarm = 0 THEN RETURN
+	IF st = S_WALK THEN RETURN
+	IF st = S_DEAD THEN RETURN
+	hy = my + 4
+	mgy = mgr * 8
+	mgy = mgy + 12
+	IF hy <= mgy THEN
+		cx = mx + 8
+		mgl = mgc * 8
+		mgq = mgl + 15
+		IF cx >= mgl THEN
+			IF cx <= mgq THEN lvdone = 1
+		END IF
+	END IF
+	RETURN
+
 land_chk:
 	' ONE landing rule for EVERY surface. A landing reached from a jump or a
 	' fall is fatal when the drop from the apex (fcy) exceeds FATALFALL --
@@ -1213,7 +1263,10 @@ take_item:
 						SOUND 2,180,10
 						snd2 = 8
 						nlbr = nlbr - 1
-						IF nlbr = 0 THEN lvdone = 1
+						' All prizes claimed: the magnet comes ALIVE and starts
+						' tracking across the top. The level is won by being
+						' caught by it, not by the last pickup.
+						IF nlbr = 0 THEN mgarm = 1
 					ELSE
 						' Bonus tool (wrench/spray can): +200.
 						#score = #score + 200
@@ -1765,6 +1818,10 @@ init_level:
 	bonbeam = 0
 	bprow = 99		' force beam_draw to place the beam on its first pass
 	bmyd = 255		' last-drawn beam y (!= any real bmy -> draw on 1st pass)
+	mgon = 0		' electromagnet present on this level?
+	mgarm = 0		' armed once every prize is claimed -> it starts moving
+	mgtk = 0
+	mgd = 1			' magnet travel direction
 	convtog = 0		' conveyor-belt 2:1 rise toggle
 	cvn = 0			' number of conveyor belts this level
 	cvaf = 0		' belt animation phase (0-7)
@@ -1904,6 +1961,7 @@ ob_magnet:
 	READ BYTE c
 	mgr = r
 	mgc = c
+	mgon = 1
 	#va = VADDR(r,c)
 	ch = T_MAGNET
 	VPOKE #va,ch
@@ -2204,6 +2262,7 @@ level2_data:
 	DATA BYTE 1, 13,18,9,1		' right mid   (cols 18-25)
 	DATA BYTE 1, 17,2,9,1		' left  lower (cols 2-9)
 	DATA BYTE 1, 17,18,9,1		' right lower (cols 18-25)
+	DATA BYTE 2, 23,18,5		' right-side chain (col 23, rows 18-22)
 	DATA BYTE 1, 18,2,4,1		' lower-left ledge (cols 2-5), per the reference
 	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29, type 2)
 	' Conveyor MACHINES (op 6: bottom-drum row,col, ROWS-to-rise h). True 2:1:
