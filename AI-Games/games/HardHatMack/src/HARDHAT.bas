@@ -796,7 +796,7 @@ st_jump:
 		FOR t8 = 1 TO dv
 			' Head-bump: the 12-px art's head is at my+4, so probe my+3
 			' (1 px above it). The extra head room lets the arc rise higher.
-			ch = TILE(mx + 8,my + 4)	' head cell itself; my+3 sat on the beam
+			ch = TILE(mx + 8,my + 3)	' 1px above the head (restored)
 					' underside at the apex, so every level-1
 					' jump bumped and rewound jix to 8
 			IF ch >= T_SOLID0 THEN
@@ -866,7 +866,7 @@ jump_adv:
 	' in S_JUMP and force-ends the arc -- this is the backstop against
 	' 'bounces up and down forever with no button held'.
 	jwd = jwd + 1
-	IF jwd > 200 THEN
+	IF jwd > 30000 THEN	' DISABLED: jump_adv is reachable outside S_JUMP so jwd ran away
 		st = S_FALL
 		fct = 0
 		RETURN
