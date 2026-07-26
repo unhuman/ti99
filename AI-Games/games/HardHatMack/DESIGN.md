@@ -11,6 +11,18 @@
 >   (`IF a > b THEN d = a - b ELSE d = b - a`).
 > - **`%` compiles to a real DIV** even for powers of 2 — use `AND` masks.
 > - **8-bit `FOR` with bound 255 wraps forever**; guard bounds built from unsigned subtraction.
+> - **`DIM n(N)` declares N elements, indices `0..N-1`** — size every array to its **largest
+>   index plus one**. `DIM jtab(15)` for the 16-step jump arc is the single most expensive bug in
+>   this game's history: the arc's last step (`jtab(15)`, taken on **every** jump) read one byte
+>   past the array, i.e. whatever variable the compiler placed next in RAM. That byte is usually
+>   ≥128 and reads as a harmless small downward `dy`, so most jumps looked fine; when it was
+>   small, `dv = 128 - v` became huge and the ascent branch ran dozens of pixels **in a single
+>   sub-step** — Mack rocketing from the bottom beam to the top of the screen, "seizing" in
+>   mid-air, or dying on an impossible landing. Because the culprit is a *neighbouring variable*,
+>   the symptom **changed character every time an unrelated edit shifted the variable layout**,
+>   which is exactly what made it look like a physics bug and sent several plausible-but-wrong
+>   fixes (jump watchdog, fire-button cooldown, head-bump changes) into the code and back out
+>   again. Suspect array sizing first whenever behaviour moves when you edit something unrelated.
 > - **Array out-of-bounds is Coleco-FATAL** (781 free RAM bytes) — size arrays exactly.
 > - **`SPRITE FLICKER` is all-or-nothing** (rotates the player too) — roll our own slot rotation.
 > - **`DEF FN` substitutes arguments TEXTUALLY, with no implicit parens.** `VADDR(r + 1,c)`
@@ -191,8 +203,19 @@ Mack locked aboard, and parks. It arms on boarding, clears when a trip starts, a
 after he steps off and fully back on (the FAQ's exit-to-re-activate rule), so it never makes an
 immediate return trip; the shaft is an open pit when the platform is elsewhere. **Right side:
 every floor (cols 3–26) ends at a 2-cell jumpable gap (cols 27–28) before the trampoline
-channel (cols 29–30). The trampoline is ONE character tall** (a low cap on the 1st floor — jumpable-over),
-with a generous catch (any part of Mack over the channel counts); entry rows round to real
+channel (cols 29–30). The trampoline is ONE character tall** (a low cap on the 1st floor — jumpable-over).
+
+**The catch zone starts exactly where the floor stops.** Both the walk-off catch (`st_walk`) and
+the fall catch (`st_fall`) test Mack's **centre** (`mx+8`) against `trxl = trx − 16`, the same x at
+which `foot_probe` stops finding floor. Keying the catch off `trx` itself instead left a 10-px band
+(mx 208–217) with no floor *and* no trampoline: walking right off the bottom beam fell straight
+through to the "off the world" death every time, and the respawn put Mack back on beam 1 — which
+reads as *"he teleports, falls from up high, and lands right back where he started."* The fall
+catch additionally requires Mack to be genuinely **below the bottom beam** (`fy > trmy = trby − 8`)
+so a jump arc merely passing over the channel is not captured mid-air (being snapped to the channel
+centre with steering locked reads as a second, uncontrollable jump bolted onto the first).
+
+Entry rows round to real
 floor rows so the bounce delivers **exactly one level above the floor you came from** (top
 floor → rides down to the 1st floor). As Mack drifts left out of the channel onto the floor he
 **flips to face left** (the way he's going) so he doesn't moon-walk off the trampoline. **Rivets** are thrown from above at Mack's position and
@@ -286,6 +309,13 @@ complete + remaining BONUS. BONUS starts 4600 (L1) / 5000 (L2/L3) and drops 100 
 tick (floor 0). 3 lives; extra life at 10,000 (one-time). Death = tumble + jingle, respawn at
 the level spawn **with level state intact**; 0 lives → GAME OVER → hi-score (session RAM) →
 title.
+
+**On death the roamers reset to their opening mark.** Both the vandal (`vx0/vy0/vb0`, route step
+and direction cleared) and the drill (`jhx0/jhy0/jhb0`) return to where the level data placed
+them, so a fresh life always starts from the same picture. Without it a villain parked on or next
+to the spawn point could kill the new life the instant it appeared. Level *progress* (filled and
+riveted gaps, claimed prizes) is still kept — only the moving actors rewind; anything Mack was
+carrying returns to its original cell as before.
 
 ## §9 Sound (M6)
 

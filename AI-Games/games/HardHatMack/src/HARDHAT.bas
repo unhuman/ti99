@@ -13,6 +13,9 @@
 	'   - all #var comparisons are UNSIGNED -- branch-first deltas
 	'   - % compiles to a real DIV -- use AND masks
 	'   - 8-bit FOR with bound 255 wraps forever
+	'   - DIM n(N) is N elements, indices 0..N-1 -- size it to the LARGEST
+	'     INDEX PLUS ONE (DIM jtab(15) for a 16-step arc cost days: the last
+	'     step of every jump read a neighbouring variable as its dy)
 	'   - array out-of-bounds is Coleco-FATAL -- exact sizes
 	'   - TI single-bank cart cap 24,336 B -- build-ti.sh guards it
 	'
@@ -98,7 +101,11 @@
 	DIM itst(MAXITEM)	' item -> 0 present / 1 taken
 	DIM itk(MAXITEM)	' item -> kind: 0 brick, 1 wrench, 2 spray can
 	DIM bcol(MAXBOLTC)	' bolt drop columns
-	DIM jtab(15)		' jump arc: 128+dy per step (unsigned-safe)
+	' 16 ELEMENTS for 16 arc steps: CVBasic DIM n(N) is indices 0..N-1, so
+	' DIM jtab(15) stopped at 14 and the last step of every jump read (and
+	' the init loop wrote) one byte past the end -- a neighbouring variable.
+	' See the jump-arc note in the header.
+	DIM jtab(16)		' jump arc: 128+dy per step (unsigned-safe)
 	' Conveyor belts as pixel SURFACES (bottom pixel x0,y0 -> top pixel x1,y1),
 	' so Mack rides a continuous line and never drops into the cell gaps.
 	DIM cvx0(3)
@@ -517,8 +524,8 @@ st_walk:
 		' bottom floor killed him every time). Only on levels that HAVE a
 		' trampoline -- otherwise this fired on garbage trby.
 		IF tron = 1 THEN
-			cx = mx + 14
-			IF cx >= trx THEN
+			cx = mx + 8
+			IF cx >= trxl THEN
 				GOSUB tramp_in
 				RETURN
 			END IF
@@ -795,19 +802,17 @@ st_jump:
 		FOR t8 = 1 TO dv
 			' Head-bump: the 12-px art's head is at my+4, so probe my+3
 			' (1 px above it). The extra head room lets the arc rise higher.
-			ch = TILE(mx + 8,my + 3)	' 1px above the head (restored)
-					' underside at the apex, so every level-1
+			' It ends the ASCENT and hands over to the descent -- it must never
+			' REWIND jix (an earlier 'jix = 8' restarted the arc near its apex,
+			' so a bump could keep re-arming itself), and it fires at most once
+			' per jump (bmp1) so a head still touching the beam cannot re-trigger.
+			ch = TILE(mx + 8,my + 3)
 			IF ch >= T_SOLID0 THEN
-				IF ch <= 0 THEN	' HEAD BUMP DISABLED: it was the only thing that perturbed the arc mid-flight
-						' Head bump: end the ASCENT and descend normally from here. Two rules
-						' matter. (1) Never REWIND jix -- the old 'jix = 8' restarted the arc
-						' near its apex and, because level 1's beams are 32px apart so every
-						' apex bumps, the jump never terminated. (2) Only bump ONCE per jump
-						' (bmp1), so a head still touching the beam cannot re-trigger it.
-						IF bmp1 = 0 THEN
-							bmp1 = 1
-							IF jix < 8 THEN jix = 8
-						END IF
+				IF ch <= T_BUMP1 THEN
+					IF bmp1 = 0 THEN
+						bmp1 = 1
+						IF jix < 8 THEN jix = 8
+					END IF
 					GOTO jump_adv
 				END IF
 			END IF
@@ -878,16 +883,20 @@ jump_adv:
 	RETURN
 
 st_fall:
-	' Falling into the trampoline channel is a catch, not a death -- but ONLY
-	' a fall that has actually dropped below the bottom beam. Without the
-	' height test any jump arc near the channel got captured, snapped to
-	' trx+4 with steering locked: it looked like a second, uncontrollable
-	' jump bolted onto the first.
+	' Falling into the trampoline channel is a catch, not a death. Two tests,
+	' and both matter:
+	'   x  -- from trxl, the SAME place foot_probe stops finding floor. Keying
+	'         the catch off trx instead left a 10-px band with no floor and no
+	'         trampoline, and walking right off the bottom beam died there.
+	'   y  -- only once he is genuinely below the bottom beam (trmy). Without
+	'         it, any jump arc passing over the channel got captured mid-air
+	'         and snapped to trx+4 with steering locked, which read as a
+	'         second, uncontrollable jump bolted onto the first.
 	IF tron = 1 THEN
 		fy = my + 16
-		IF fy > 176 THEN
-			cx = mx + 14
-			IF cx >= trx THEN
+		IF fy > trmy THEN
+			cx = mx + 8
+			IF cx >= trxl THEN
 				GOSUB tramp_in2
 				RETURN
 			END IF
@@ -1796,8 +1805,21 @@ dead_tick:
 		END IF
 		lives = lives - 1
 		GOSUB hud_lives
-		' Items are NOT retained on death -- whatever Mack carried
-		' returns to where it originally was.
+		' The level resets around him: both roamers go back to their opening
+		' mark (a vandal parked on the spawn point killed the fresh life
+		' instantly), and whatever Mack carried returns to where it was.
+		vx = vx0
+		vy = vy0
+		vb = vb0
+		vp = 0
+		vdr = 1
+		vf = 1
+		jhb = jhb0
+		jhx = jhx0
+		jhy = jhy0
+		jhp = 0
+		jhd = 1
+		jhf = 1
 		IF carry = 1 THEN
 			' Brick: back on its original cell.
 			itst(cidx) = 0
@@ -1805,16 +1827,9 @@ dead_tick:
 			ch = T_BRICK
 			VPOKE #va,ch
 		END IF
-		IF carry = 2 THEN
-			' Jackhammer: back to its original roaming start.
-			jhtk = 0
-			jhb = jhb0
-			jhx = jhx0
-			jhy = jhy0
-			jhp = 0
-			jhd = 1
-			jhf = 1
-		END IF
+		' Dropping the drill just makes it roamable again; its position was
+		' already restored with the rest of the level above.
+		IF carry = 2 THEN jhtk = 0
 		carry = 0
 		' Fresh life: the bonus clock refills to 5000 (authentic).
 		#bonus = 5000
@@ -1892,6 +1907,8 @@ init_level:
 	btk = 120
 	emov = 0
 	trx = 240
+	trxl = 224	' channel left edge (trx - 16)
+	trmy = 176	' committed-to-the-channel depth
 	trby = 184
 	tron = 0		' no trampoline unless this level's data defines one
 	IF lv = 3 THEN
@@ -2143,6 +2160,12 @@ ob_sprng:
 	READ BYTE c
 	trx = c * 8
 	trby = r * 8
+	' Left edge of the fall channel: two cells left of the trampoline, which
+	' is where the building's floors stop. Catching from here (not from trx)
+	' is what keeps the gap between the floor end and the trampoline from
+	' being a death pit -- see the comment in st_fall.
+	trxl = trx - 16
+	trmy = trby - 8
 	tron = 1
 	#va = VADDR(r,c)
 	ch = T_SPRTOP
@@ -2158,6 +2181,9 @@ ob_vand:
 	' L2 patrol vars (used only when vroute = 0).
 	vy = r * 8 - 16
 	vx = c * 8
+	' Opening mark, so a death can put the vandal back where he began.
+	vy0 = vy
+	vx0 = vx
 	vmn = c * 8
 	vmx = n * 8
 	vd = 1
@@ -2167,6 +2193,7 @@ ob_vand:
 	vp = 0
 	vdr = 1
 	vf = 1
+	vb0 = vb
 	IF lv = 1 THEN
 		vroute = 1
 	ELSE

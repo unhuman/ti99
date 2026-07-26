@@ -20,7 +20,15 @@ walking, chain climbing, rounded jump, no-button elevator, bottom trampoline, va
 roaming jackhammer on fixed routes, bolts, gap-fill + rivet — all laid out from the
 **ColecoVision version** (same VDP). **Level 2** is laid out cell-for-cell from the reference:
 tiered beams, split top platform, full-height crane cable, two conveyor machines, six distinct
-prizes, and the moving-magnet endgame. Next: **Level 3**, title screen, music. See `DESIGN.md` §11.
+prizes, and the moving-magnet endgame. **Level 3** has a first-pass layout (pater-noster shaft,
+six steel boxes, two IN hoppers) but has not been played through yet. Next: verify Level 3,
+title screen, music. See `DESIGN.md` §11.
+
+The **jump** is fixed as of 2026-07-26. Every "the jump is a mess" symptom — Mack rocketing to
+the top of the screen, seizing in mid-air, dying on landing, or teleporting and reappearing a
+floor lower — came from one line: `DIM jtab(15)` for a 16-step arc, so the last step of every
+jump read a neighbouring variable as its `dy`. See the `DIM n(N)` note in `DESIGN.md`'s lessons
+header; it is the reason the symptom kept changing shape whenever unrelated code moved.
 
 ## Build
 
