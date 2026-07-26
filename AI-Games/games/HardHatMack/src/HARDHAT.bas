@@ -796,7 +796,9 @@ st_jump:
 		FOR t8 = 1 TO dv
 			' Head-bump: the 12-px art's head is at my+4, so probe my+3
 			' (1 px above it). The extra head room lets the arc rise higher.
-			ch = TILE(mx + 8,my + 3)
+			ch = TILE(mx + 8,my + 4)	' head cell itself; my+3 sat on the beam
+					' underside at the apex, so every level-1
+					' jump bumped and rewound jix to 8
 			IF ch >= T_SOLID0 THEN
 				IF ch <= T_BUMP1 THEN
 					jix = 8
@@ -859,6 +861,16 @@ st_jump:
 		NEXT t8
 	END IF
 jump_adv:
+	' A jump MUST terminate. jix can be REWOUND (the head bump sets it back
+	' to 8), so arc steps alone are not a bound. jwd counts every step taken
+	' in S_JUMP and force-ends the arc -- this is the backstop against
+	' 'bounces up and down forever with no button held'.
+	jwd = jwd + 1
+	IF jwd > 40 THEN
+		st = S_FALL
+		fct = 0
+		RETURN
+	END IF
 	jix = jix + 1
 	IF jix > 15 THEN
 		' Arc exhausted without landing: keep falling. fcy still holds the
@@ -1869,6 +1881,7 @@ init_level:
 	mgtk = 0
 	mgd = 1			' magnet travel direction
 	convtog = 0		' conveyor-belt 2:1 rise toggle
+	jwd = 0			' jump watchdog (see jump_adv)
 	cvn = 0			' number of conveyor belts this level
 	cvaf = 0		' belt animation phase (0-7)
 	cvtk = 0		' belt animation pass counter (see main_loop)
