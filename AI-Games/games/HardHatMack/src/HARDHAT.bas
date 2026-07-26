@@ -160,6 +160,8 @@
 	' Level 2 tiles: lunch pail, incinerator/flame, conveyor belt, magnet.
 	DEFINE CHAR T_LBOXL,2,pail_pat	' 183 lunch pail, 184 toolbox
 	DEFINE COLOR T_LBOXL,2,pail_col
+	DEFINE CHAR 189,2,mixer_pat	' cement mixer (decor)
+	DEFINE COLOR 189,2,mixer_col
 	DEFINE CHAR T_HAZ0,3,haz_pat
 	DEFINE COLOR T_HAZ0,3,haz_col
 	DEFINE CHAR T_CONV0,5,conv_pat		' 156-160 full/bottom/top/drum/post
@@ -980,11 +982,17 @@ mag_move:
 	mgtk = mgtk + 1
 	IF mgtk < 3 THEN RETURN
 	mgtk = 0
-	' Erase the two cells it occupies (its row is clear of the crane cable).
+	' Erase the two cells it occupies, RESTORING the crane cable in col 14 --
+	' the magnet's row crosses it and blanking would chew a hole in the cable.
 	#va = VADDR(mgr,mgc)
-	VPOKE #va,32
-	#va = #va + 1
-	VPOKE #va,32
+	mc9 = 32
+	IF mgc = 14 THEN mc9 = T_CABLE
+	VPOKE #va,mc9
+	mgc2 = mgc + 1
+	#va = VADDR(mgr,mgc2)
+	mc9 = 32
+	IF mgc2 = 14 THEN mc9 = T_CABLE
+	VPOKE #va,mc9
 	IF mgd = 0 THEN
 		mgc = mgc - 1
 		IF mgc <= 10 THEN mgd = 1
@@ -1854,6 +1862,8 @@ lv_parse:
 		IF t = 3 THEN ch = T_GIRDO
 		IF t = 4 THEN ch = T_HAZ0
 		IF t = 5 THEN ch = T_HAZ0 + 2
+	IF t = 6 THEN ch = 189		' cement mixer, left half (decor)
+	IF t = 7 THEN ch = 190		' cement mixer, right half (decor)
 		#va = VADDR(r,c)
 		FOR i = 1 TO n
 			VPOKE #va,ch
@@ -2271,20 +2281,24 @@ level2_data:
 	DATA BYTE 6, 22,5,2		' left conveyor: drum (22,5) -> top drum (20,9),
 					' delivering up-right to the beam shaft (cols 11-16)
 	' Electromagnet head above the shaft; moving crane beam starts at r13.
-	DATA BYTE 5,9, 2,13
+	DATA BYTE 5,9, 4,12		' electromagnet at the reference's row 4
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
+	' Bottom-row machinery from the reference: the cement mixer stands just
+	' right of the lower conveyor's support post. Decor only (pass-through).
+	DATA BYTE 1, 22,10,1,6		' mixer, left half
+	DATA BYTE 1, 22,11,1,7		' mixer, right half
 	' Incinerator pot on the ground, off the beam's column path (hazard).
 	DATA BYTE 1, 22,19,2,4
 	' Six PRIZES, one per beam end, each a DIFFERENT item (kind 0-5). They sit
 	' one row ABOVE the beam (rows 8/12/16, beams are 9/13/17) so they rest ON
 	' the girder instead of punching a hole in it -- and so take_item's torso
 	' probe can actually reach them (at the beam row they were uncollectable).
-	DATA BYTE 5,8, 8,4,0
-	DATA BYTE 5,8, 8,20,1
-	DATA BYTE 5,8, 12,4,2
-	DATA BYTE 5,8, 12,20,3
-	DATA BYTE 5,8, 16,4,4
-	DATA BYTE 5,8, 16,20,5
+	DATA BYTE 5,8, 8,6,0		' upper-left tier
+	DATA BYTE 5,8, 12,4,1		' mid-left tier
+	DATA BYTE 5,8, 12,19,2		' mid-right tier
+	DATA BYTE 5,8, 16,5,3		' lower-left tier
+	DATA BYTE 5,8, 16,19,4		' lower-right tier
+	DATA BYTE 5,8, 22,3,5		' on the ground, bottom left
 	' Vandal patrols the right mid tier.
 	DATA BYTE 5,11, 13,18,25
 	' Mack spawns on the GROUND, below the beam's shaft; the beam rides down
@@ -2398,6 +2412,14 @@ pail_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
 	' toolbox: gray handle, dark-yellow chest
 	DATA BYTE $E1,$E1,$11,$A1,$A1,$A1,$A1,$A1
+mixer_pat:
+	' 189/190 cement mixer: a round white drum on a stand (reference prop)
+	DATA BYTE $07,$1F,$3F,$7F,$7F,$3F,$1F,$0C
+	DATA BYTE $E0,$F8,$FC,$FE,$FE,$FC,$F8,$30
+mixer_col:
+	' white drum, gray stand
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$E1,$E1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$E1,$E1
 haz_pat:
 	' 164 incinerator pot (white outline)
 	DATA BYTE $FF,$81,$81,$81,$81,$81,$FF,$7E
