@@ -798,7 +798,7 @@ st_jump:
 			ch = TILE(mx + 8,my + 3)	' 1px above the head (restored)
 					' underside at the apex, so every level-1
 			IF ch >= T_SOLID0 THEN
-				IF ch <= T_BUMP1 THEN
+				IF ch <= 0 THEN	' HEAD BUMP DISABLED: it was the only thing that perturbed the arc mid-flight
 						' Head bump: end the ASCENT and descend normally from here. Two rules
 						' matter. (1) Never REWIND jix -- the old 'jix = 8' restarted the arc
 						' near its apex and, because level 1's beams are 32px apart so every
@@ -878,13 +878,19 @@ jump_adv:
 	RETURN
 
 st_fall:
-	' Falling into the trampoline channel is a catch, not a death (any part
-	' of Mack over the channel counts) -- but only where one exists.
+	' Falling into the trampoline channel is a catch, not a death -- but ONLY
+	' a fall that has actually dropped below the bottom beam. Without the
+	' height test any jump arc near the channel got captured, snapped to
+	' trx+4 with steering locked: it looked like a second, uncontrollable
+	' jump bolted onto the first.
 	IF tron = 1 THEN
-		cx = mx + 14
-		IF cx >= trx THEN
-			GOSUB tramp_in2
-			RETURN
+		fy = my + 16
+		IF fy > 176 THEN
+			cx = mx + 14
+			IF cx >= trx THEN
+				GOSUB tramp_in2
+				RETURN
+			END IF
 		END IF
 	END IF
 	dv = 3
