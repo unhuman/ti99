@@ -501,13 +501,18 @@ st_walk:
 	bonbeam = 0
 	GOSUB foot_probe
 	IF sup = 0 THEN
-		' Off the right edge toward the trampoline channel: a generous
-		' catch (anything past the floor's end) so the hop onto the
-		' trampoline doesn't demand pixel-perfect timing.
-		cx = mx + 14
-		IF cx >= trx THEN
-			GOSUB tramp_in
-			RETURN
+		' Off the right edge into the trampoline channel. The catch must be
+		' generous: mx+14 only fired once his RIGHT EDGE passed trx, but he
+		' loses support ~8 px before that, and the gap between the floor's
+		' end and the catch dropped him to his death (walking right off the
+		' bottom floor killed him every time). Only on levels that HAVE a
+		' trampoline -- otherwise this fired on garbage trby.
+		IF tron = 1 THEN
+			cx = mx + 24
+			IF cx >= trx THEN
+				GOSUB tramp_in
+				RETURN
+			END IF
 		END IF
 		' Standing on the L2 crane beam? Stay put, carried by beam_move.
 		GOSUB beam_sup
@@ -853,12 +858,14 @@ jump_adv:
 	RETURN
 
 st_fall:
-	' Falling into the trampoline channel is a catch, not a death
-	' (generous: any part of Mack over the channel counts).
-	cx = mx + 14
-	IF cx >= trx THEN
-		GOSUB tramp_in2
-		RETURN
+	' Falling into the trampoline channel is a catch, not a death (any part
+	' of Mack over the channel counts) -- but only where one exists.
+	IF tron = 1 THEN
+		cx = mx + 24
+		IF cx >= trx THEN
+			GOSUB tramp_in2
+			RETURN
+		END IF
 	END IF
 	dv = 3
 	IF fct < 4 THEN dv = 1
@@ -1842,6 +1849,7 @@ init_level:
 	emov = 0
 	trx = 240
 	trby = 184
+	tron = 0		' no trampoline unless this level's data defines one
 	IF lv = 2 THEN
 		RESTORE level2_data
 	ELSE
@@ -2085,6 +2093,7 @@ ob_sprng:
 	READ BYTE c
 	trx = c * 8
 	trby = r * 8
+	tron = 1
 	#va = VADDR(r,c)
 	ch = T_SPRTOP
 	VPOKE #va,ch
