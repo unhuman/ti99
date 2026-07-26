@@ -280,16 +280,6 @@ main_loop:
 		IF jbold = 0 THEN jbe = 1
 	END IF
 	jbold = jb
-	' Jump cooldown: a HELD fire key auto-repeats at the OS/emulator level,
-	' producing a stream of press/release edges, so Mack relaunched the
-	' instant he landed and bounced forever off one held press. Swallow new
-	' jump edges for a few passes after a jump begins.
-	IF jcd > 0 THEN
-		jcd = jcd - 1
-		jbe = 0
-	END IF
-	' Long HOLD of FIRE (~0.75 s of real frames, pace-independent) drops the
-	' carried jackhammer and warps it back to its start with its route reset.
 	IF jb THEN
 		jbhc = jbhc + 1
 	ELSE
@@ -461,8 +451,6 @@ st_walk:
 		' direction HELD: none = straight up-and-down (jhz 1), left = jhz 0,
 		' right = jhz 2. So a standing jump lands in place.
 		st = S_JUMP
-		jbe = 0		' consume this press
-		jcd = 12	' ignore auto-repeat edges for a few passes
 		jix = 0
 		spr2 = 0
 		fcy = my		' fall origin: tracks the arc's apex while rising
@@ -808,7 +796,6 @@ st_jump:
 			' (1 px above it). The extra head room lets the arc rise higher.
 			ch = TILE(mx + 8,my + 3)	' 1px above the head (restored)
 					' underside at the apex, so every level-1
-					' jump bumped and rewound jix to 8
 			IF ch >= T_SOLID0 THEN
 				IF ch <= T_BUMP1 THEN
 					jix = 8
@@ -871,16 +858,7 @@ st_jump:
 		NEXT t8
 	END IF
 jump_adv:
-	' A jump MUST terminate. jix can be REWOUND (the head bump sets it back
-	' to 8), so arc steps alone are not a bound. jwd counts every step taken
-	' in S_JUMP and force-ends the arc -- this is the backstop against
 	' 'bounces up and down forever with no button held'.
-	jwd = jwd + 1
-	IF jwd > 30000 THEN	' DISABLED: jump_adv is reachable outside S_JUMP so jwd ran away
-		st = S_FALL
-		fct = 0
-		RETURN
-	END IF
 	jix = jix + 1
 	IF jix > 15 THEN
 		' Arc exhausted without landing: keep falling. fcy still holds the
@@ -1891,8 +1869,6 @@ init_level:
 	mgtk = 0
 	mgd = 1			' magnet travel direction
 	convtog = 0		' conveyor-belt 2:1 rise toggle
-	jcd = 0			' jump cooldown (kills fire-key auto-repeat)
-	jwd = 0			' jump watchdog (see jump_adv)
 	cvn = 0			' number of conveyor belts this level
 	cvaf = 0		' belt animation phase (0-7)
 	cvtk = 0		' belt animation pass counter (see main_loop)
