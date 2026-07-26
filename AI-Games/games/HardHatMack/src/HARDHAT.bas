@@ -866,7 +866,7 @@ jump_adv:
 	' in S_JUMP and force-ends the arc -- this is the backstop against
 	' 'bounces up and down forever with no button held'.
 	jwd = jwd + 1
-	IF jwd > 40 THEN
+	IF jwd > 200 THEN
 		st = S_FALL
 		fct = 0
 		RETURN
