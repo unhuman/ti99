@@ -280,6 +280,14 @@ main_loop:
 		IF jbold = 0 THEN jbe = 1
 	END IF
 	jbold = jb
+	' Jump cooldown: a HELD fire key auto-repeats at the OS/emulator level,
+	' producing a stream of press/release edges, so Mack relaunched the
+	' instant he landed and bounced forever off one held press. Swallow new
+	' jump edges for a few passes after a jump begins.
+	IF jcd > 0 THEN
+		jcd = jcd - 1
+		jbe = 0
+	END IF
 	' Long HOLD of FIRE (~0.75 s of real frames, pace-independent) drops the
 	' carried jackhammer and warps it back to its start with its route reset.
 	IF jb THEN
@@ -453,6 +461,8 @@ st_walk:
 		' direction HELD: none = straight up-and-down (jhz 1), left = jhz 0,
 		' right = jhz 2. So a standing jump lands in place.
 		st = S_JUMP
+		jbe = 0		' consume this press
+		jcd = 12	' ignore auto-repeat edges for a few passes
 		jix = 0
 		spr2 = 0
 		fcy = my		' fall origin: tracks the arc's apex while rising
@@ -1881,6 +1891,7 @@ init_level:
 	mgtk = 0
 	mgd = 1			' magnet travel direction
 	convtog = 0		' conveyor-belt 2:1 rise toggle
+	jcd = 0			' jump cooldown (kills fire-key auto-repeat)
 	jwd = 0			' jump watchdog (see jump_adv)
 	cvn = 0			' number of conveyor belts this level
 	cvaf = 0		' belt animation phase (0-7)
