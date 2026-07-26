@@ -2195,13 +2195,16 @@ level2_data:
 	' cable + the magnet sit above it.
 	DATA BYTE 7, 14,3,17		' crane cable col 14, rows 3-19: in the reference it
 					' runs the WHOLE shaft, the beam rides it
-	DATA BYTE 1, 5,11,7,1		' top crane platform (cols 11-17)
-	DATA BYTE 1, 9,2,8,1		' left  upper (cols 2-9)
-	DATA BYTE 1, 9,18,8,1		' right upper (cols 18-25)
-	DATA BYTE 1, 13,2,8,1		' left  mid   (cols 2-9)
-	DATA BYTE 1, 13,18,8,1		' right mid   (cols 18-25)
-	DATA BYTE 1, 17,2,8,1		' left  lower (cols 2-9)
-	DATA BYTE 1, 17,18,8,1		' right lower (cols 18-25)
+	DATA BYTE 1, 5,11,3,1		' top crane platform, LEFT half (cols 11-13)
+	DATA BYTE 1, 5,15,3,1		' top crane platform, RIGHT half (cols 15-17)
+					' -- the reference splits it around the cable
+	DATA BYTE 1, 9,2,9,1		' left  upper (cols 2-9)
+	DATA BYTE 1, 9,18,9,1		' right upper (cols 18-25)
+	DATA BYTE 1, 13,2,9,1		' left  mid   (cols 2-9)
+	DATA BYTE 1, 13,18,9,1		' right mid   (cols 18-25)
+	DATA BYTE 1, 17,2,9,1		' left  lower (cols 2-9)
+	DATA BYTE 1, 17,18,9,1		' right lower (cols 18-25)
+	DATA BYTE 1, 18,2,4,1		' lower-left ledge (cols 2-5), per the reference
 	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29, type 2)
 	' Conveyor MACHINES (op 6: bottom-drum row,col, ROWS-to-rise h). True 2:1:
 	' drums 2h cols apart, belt drawn on the exact line between them.
@@ -2247,9 +2250,10 @@ tile_pat:
 	' 128 girder: red stripe top AND bottom, blue body with black dash
 	' holes (the ColecoVision look)
 	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
-	' 129 girder variant (level 2): SOLID full-height bar (reference is a solid
-	' red/blue/red girder, no dash-holes, fills the whole cell)
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	' 129 girder (level 2): full-height red/blue/red bar with RIVET DASHES in
+	' the blue band, as the reference draws it. (These dashes are texture, not
+	' gaps -- nothing falls through a girder.)
+	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$FF
 	' 130 girder orange (level 3; colors differ)
 	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
 	' 131 FILLED gap: plain body, no rivet holes yet
