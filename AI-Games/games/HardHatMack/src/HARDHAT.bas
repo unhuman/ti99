@@ -458,6 +458,7 @@ st_walk:
 		' direction HELD: none = straight up-and-down (jhz 1), left = jhz 0,
 		' right = jhz 2. So a standing jump lands in place.
 		st = S_JUMP
+		bmp1 = 0	' head-bump allowed once per jump
 		jix = 0
 		spr2 = 0
 		fcy = my		' fall origin: tracks the arc's apex while rising
@@ -798,10 +799,15 @@ st_jump:
 					' underside at the apex, so every level-1
 			IF ch >= T_SOLID0 THEN
 				IF ch <= T_BUMP1 THEN
-						' jix = 8  <-- REMOVED: rewinding the arc here made the jump
-						' restart near its apex forever (verified: still ST2 3s after
-						' one press). Just end the ascent instead.
-						jix = 15
+						' Head bump: end the ASCENT and descend normally from here. Two rules
+						' matter. (1) Never REWIND jix -- the old 'jix = 8' restarted the arc
+						' near its apex and, because level 1's beams are 32px apart so every
+						' apex bumps, the jump never terminated. (2) Only bump ONCE per jump
+						' (bmp1), so a head still touching the beam cannot re-trigger it.
+						IF bmp1 = 0 THEN
+							bmp1 = 1
+							IF jix < 8 THEN jix = 8
+						END IF
 					GOTO jump_adv
 				END IF
 			END IF
