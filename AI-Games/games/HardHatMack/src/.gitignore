@@ -9,3 +9,4 @@ HARDHAT.a99
 *.lst
 *.sym
 src/hardhat_l2.rom
+_*.py
