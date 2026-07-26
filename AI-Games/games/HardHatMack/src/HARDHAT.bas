@@ -509,7 +509,7 @@ st_walk:
 		' bottom floor killed him every time). Only on levels that HAVE a
 		' trampoline -- otherwise this fired on garbage trby.
 		IF tron = 1 THEN
-			cx = mx + 24
+			cx = mx + 14
 			IF cx >= trx THEN
 				GOSUB tramp_in
 				RETURN
@@ -681,14 +681,7 @@ st_tramp:
 	mdir = 0
 	mx = mx - 1
 	GOSUB foot_probe
-	IF sup = 1 THEN
-		' Only hand control back once he is CLEAR of the channel mouth. He used
-		' to be set down at mx~207, one pixel outside the catch that starts at
-		' 208, so holding right re-entered instantly and he bounced forever --
-		' looking like the jump button had stopped responding.
-		cx = mx + 24
-		IF cx < trx THEN st = S_WALK
-	END IF
+	IF sup = 1 THEN st = S_WALK
 	RETURN
 
 st_climb:
@@ -872,7 +865,7 @@ st_fall:
 	' Falling into the trampoline channel is a catch, not a death (any part
 	' of Mack over the channel counts) -- but only where one exists.
 	IF tron = 1 THEN
-		cx = mx + 24
+		cx = mx + 14
 		IF cx >= trx THEN
 			GOSUB tramp_in2
 			RETURN
