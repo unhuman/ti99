@@ -385,3 +385,24 @@ layout references come from, so "match the reference exactly" is native there.
   `lv` so a reviewer doesn't replay earlier levels; the committed source keeps `lv = 1`.
 - **Emulator note:** both ColEm and CoolCV render at a fixed zoom that crops the bottom rows in a
   small window — maximize to see rows 20-23.
+
+### Level 3 — "Rivet Works" (M5, first pass 2026-07-26)
+
+Layout transcribed from `assets/HHM-Level3.png` at its cell grid (the reference is the Apple II
+shot; playfield cols 2-29, beam rows 5/9/13/17, ground 23 — the same 4-row spacing as level 1).
+Beams are **orange** (op 1 type 3). Drawn: top beam cols 2-29; upper-right beam 21-29; mid beams
+2-10 and 21-29; **split** lower beams 2-4 / 7-10 and 21-25 / 27-29; ground 2-29; the top-left
+conveyor machine; chains off the beams at cols 4, 9, 28, 29.
+
+**Pater-noster (simplification, flagged):** the reference's vertical loop-lift is drawn as a twin
+shaft at cols 15-16 and made **climbable** (chain band), which delivers the same vertical traversal
+without a whole new ride state. Worth revisiting if it should carry the player automatically.
+
+**Objective:** six **steel boxes** (carryables, counted by `nbox` in `ob_brick`) must each be carried
+to either **IN hopper** (char 191, op 1 type 8) at the bottom — cols 4-7 and 24-27. Walking onto a
+hopper while carrying delivers it (`deliver_box`, +500); six delivered sets `lvdone`. Clearing L3
+loops back to level 1.
+
+**Not yet done:** the grinder at the conveyor's end (riding it to the end should kill), the central
+processor door as decor, IN-hopper "chomp" animation, and a play-through to confirm every box is
+reachable.

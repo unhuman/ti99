@@ -52,6 +52,7 @@
 	' 172+: pass-through decoration and pickups
 	CONST T_PILLAR = 174	' support pillar (art only -- NOT solid)
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
+	CONST T_INM    = 191	' level-3 IN hopper: deliver a steel box here
 	CONST T_MAGNET = 176	' 176-177: electromagnet head (level 2, top of crane)
 	CONST T_CABLE  = 178	' 178: thin crane cable (level 2 centre pole, art)
 	CONST T_BEAM   = 192	' 192-207: 16 pre-shifted crane-beam girder slices
@@ -160,6 +161,8 @@
 	' Level 2 tiles: lunch pail, incinerator/flame, conveyor belt, magnet.
 	DEFINE CHAR T_LBOXL,2,pail_pat	' 183 lunch pail, 184 toolbox
 	DEFINE COLOR T_LBOXL,2,pail_col
+	DEFINE CHAR T_INM,1,inm_pat	' 191 level-3 IN hopper
+	DEFINE COLOR T_INM,1,inm_col
 	DEFINE CHAR 189,2,mixer_pat	' cement mixer (decor)
 	DEFINE COLOR 189,2,mixer_col
 	DEFINE CHAR T_HAZ0,3,haz_pat
@@ -403,7 +406,7 @@ level_complete:
 		PRINT AT CPOS(0,18),<5>#hi
 	END IF
 	lv = lv + 1
-	IF lv > 2 THEN lv = 1
+	IF lv > 3 THEN lv = 1
 	carry = 0
 	GOSUB init_level
 	#lf = FRAME
@@ -582,6 +585,7 @@ st_walk:
 	END IF
 	IF ch = T_SPRTOP THEN GOTO walk_tramp
 	IF ch = T_SPRBSE THEN GOTO walk_tramp
+	IF ch = T_INM THEN GOSUB deliver_box
 	IF ch = T_LBOXL THEN GOSUB take_item
 	IF ch = T_BRICK THEN GOSUB take_item
 	IF ch = T_WRENCH THEN GOSUB take_item
@@ -1261,6 +1265,19 @@ beam_draw:
 	'
 	' ---- Level 1 objective: pieces, gaps, riveting ----
 	'
+deliver_box:
+	' Level 3: walking onto an IN hopper with a steel box feeds the machine.
+	' Six delivered clears the level.
+	IF carry <> 1 THEN RETURN
+	carry = 0
+	nbox = nbox - 1
+	#score = #score + 500
+	GOSUB hud_score
+	SOUND 2,140,12
+	snd2 = 8
+	IF nbox = 0 THEN lvdone = 1
+	RETURN
+
 take_item:
 	' Torso cell hit a pickup char. Bricks need free hands; wrench and
 	' spray can are instant bonus points.
@@ -1848,6 +1865,7 @@ init_level:
 	cvn = 0			' number of conveyor belts this level
 	cvaf = 0		' belt animation phase (0-7)
 	cvtk = 0		' belt animation pass counter (see main_loop)
+	nbox = 0		' level-3 steel boxes still to deliver
 	vroute = 0
 	jhtk = 1
 	bon = 0
@@ -1857,10 +1875,14 @@ init_level:
 	trx = 240
 	trby = 184
 	tron = 0		' no trampoline unless this level's data defines one
-	IF lv = 2 THEN
-		RESTORE level2_data
+	IF lv = 3 THEN
+		RESTORE level3_data
 	ELSE
-		RESTORE level1_data
+		IF lv = 2 THEN
+			RESTORE level2_data
+		ELSE
+			RESTORE level1_data
+		END IF
 	END IF
 lv_parse:
 	READ BYTE op
@@ -1879,6 +1901,7 @@ lv_parse:
 		IF t = 5 THEN ch = T_HAZ0 + 2
 	IF t = 6 THEN ch = 189		' cement mixer, left half (decor)
 	IF t = 7 THEN ch = 190		' cement mixer, right half (decor)
+	IF t = 8 THEN ch = T_INM	' level-3 IN hopper (delivery zone)
 		#va = VADDR(r,c)
 		FOR i = 1 TO n
 			VPOKE #va,ch
@@ -2035,6 +2058,7 @@ ob_gap:
 ob_brick:
 	READ BYTE r
 	READ BYTE c
+	nbox = nbox + 1	' level 3 counts these as steel boxes to deliver
 	itr(nitem) = r
 	itc(nitem) = c
 	itst(nitem) = 0
@@ -2322,6 +2346,50 @@ level2_data:
 	DATA BYTE 5,13, 23,7
 	DATA BYTE 0
 
+	'
+	' ---- LEVEL 3: "Rivet Works" -------------------------------------
+	' Transcribed from assets/HHM-Level3.png at its cell grid. Beams are
+	' ORANGE here (type 3). The centre column is the pater-noster: drawn as
+	' a green shaft and made CLIMBABLE, which gives the vertical traversal
+	' the real lift provides without a whole new ride state.
+	' Carry each steel box to either IN hopper at the bottom; six clears it.
+	'
+level3_data:
+	DATA BYTE 1, 5,2,28,3		' top beam (cols 2-29)
+	DATA BYTE 1, 9,21,9,3		' upper-right beam (cols 21-29)
+	DATA BYTE 1, 13,2,9,3		' mid-left beam (cols 2-10)
+	DATA BYTE 1, 13,21,9,3		' mid-right beam (cols 21-29)
+	DATA BYTE 1, 17,2,3,3		' lower-left beam A (cols 2-4)
+	DATA BYTE 1, 17,7,4,3		' lower-left beam B (cols 7-10)
+	DATA BYTE 1, 17,21,5,3		' lower-right beam A (cols 21-25)
+	DATA BYTE 1, 17,27,3,3		' lower-right beam B (cols 27-29)
+	DATA BYTE 1, 23,2,28,2		' ground
+	' Pater-noster shaft down the centre (climbable), cols 15-16.
+	DATA BYTE 2, 15,7,11
+	DATA BYTE 2, 16,7,11
+	' Chains hanging off the beams, as the reference draws them.
+	DATA BYTE 2, 4,6,7		' top beam -> upper conveyor level
+	DATA BYTE 2, 28,6,7		' top beam -> upper-right beam
+	DATA BYTE 2, 29,14,3		' mid-right -> lower-right
+	DATA BYTE 2, 9,14,3		' mid-left -> lower-left
+	' Top-left conveyor (op 6: bottom drum row,col, rows to rise).
+	DATA BYTE 6, 9,3,2
+	' The two IN hoppers at the bottom (op 1 type 8).
+	DATA BYTE 1, 22,4,4,8		' left IN machine (cols 4-7)
+	DATA BYTE 1, 22,24,4,8		' right IN machine (cols 24-27)
+	' Six steel boxes to carry, one row above their beam.
+	DATA BYTE 5,2, 4,8		' on the top beam
+	DATA BYTE 5,2, 12,4		' mid-left beam
+	DATA BYTE 5,2, 12,23		' mid-right beam
+	DATA BYTE 5,2, 16,9		' lower-left beam B
+	DATA BYTE 5,2, 16,22		' lower-right beam A
+	DATA BYTE 5,2, 8,25		' upper-right beam
+	' Enemies guard the mid beams, as in the reference.
+	DATA BYTE 5,11, 13,21,29
+	DATA BYTE 5,12, 17,2,10
+	DATA BYTE 5,13, 23,14		' Mack starts on the ground, centre
+	DATA BYTE 0
+
 jump_data:
 	' 128+dy: a ROUND parabola, apex 11 px (the ceiling max now the
 	' characters are 12 px -- head at my+4, probe my+3 clears row 18). Steep
@@ -2428,6 +2496,13 @@ pail_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
 	' toolbox: gray handle, dark-yellow chest
 	DATA BYTE $E1,$E1,$11,$A1,$A1,$A1,$A1,$A1
+inm_pat:
+	' 191 IN hopper (level 3): a wide chute mouth -- walk in carrying a
+	' steel box to feed the machine. Decor band, so it is pass-through.
+	DATA BYTE $FF,$81,$42,$24,$18,$18,$18,$3C
+inm_col:
+	' white rim over a green throat
+	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$31
 mixer_pat:
 	' 189/190 cement mixer: a round white drum on a stand (reference prop)
 	DATA BYTE $07,$1F,$3F,$7F,$7F,$3F,$1F,$0C
