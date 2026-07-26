@@ -683,7 +683,14 @@ st_tramp:
 	mdir = 0
 	mx = mx - 1
 	GOSUB foot_probe
-	IF sup = 1 THEN st = S_WALK
+	IF sup = 1 THEN
+		' Only hand control back once he is CLEAR of the channel mouth. He used
+		' to be set down at mx~207, one pixel outside the catch that starts at
+		' 208, so holding right re-entered instantly and he bounced forever --
+		' looking like the jump button had stopped responding.
+		cx = mx + 24
+		IF cx < trx THEN st = S_WALK
+	END IF
 	RETURN
 
 st_climb:
@@ -2364,9 +2371,14 @@ level3_data:
 	DATA BYTE 1, 17,21,5,3		' lower-right beam A (cols 21-25)
 	DATA BYTE 1, 17,27,3,3		' lower-right beam B (cols 27-29)
 	DATA BYTE 1, 23,2,28,2		' ground
-	' Pater-noster shaft down the centre (climbable), cols 15-16.
-	DATA BYTE 2, 15,7,11
-	DATA BYTE 2, 16,7,11
+	' Pater-noster shaft down the centre (climbable), cols 15-16, running
+	' from just under the top beam all the way to the ground. It MUST reach
+	' both ends: Mack spawns on the ground, and every beam stops 4 cells
+	' short of the shaft, which no 2-cell jump can bridge. Route: ground ->
+	' shaft -> full-width top beam -> side chains down to the mid and lower
+	' beams -> back down the shaft to the IN hoppers.
+	DATA BYTE 2, 15,6,17
+	DATA BYTE 2, 16,6,17
 	' Chains hanging off the beams, as the reference draws them.
 	DATA BYTE 2, 4,6,7		' top beam -> upper conveyor level
 	DATA BYTE 2, 28,6,7		' top beam -> upper-right beam
@@ -2374,6 +2386,10 @@ level3_data:
 	DATA BYTE 2, 9,14,3		' mid-left -> lower-left
 	' Top-left conveyor (op 6: bottom drum row,col, rows to rise).
 	DATA BYTE 6, 9,3,2
+	' Grinder at the low end of the top-left conveyor -- touching it kills.
+	' (The reference belt runs LEFT into this; ours conveys up-right, so the
+	' grinder is a hazard you can walk into rather than be carried into.)
+	DATA BYTE 1, 9,2,1,4
 	' The two IN hoppers at the bottom (op 1 type 8).
 	DATA BYTE 1, 22,4,4,8		' left IN machine (cols 4-7)
 	DATA BYTE 1, 22,24,4,8		' right IN machine (cols 24-27)
