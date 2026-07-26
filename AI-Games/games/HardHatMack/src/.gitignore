@@ -8,3 +8,4 @@ HARDHAT.a99
 *.rom
 *.lst
 *.sym
+src/hardhat_l2.rom

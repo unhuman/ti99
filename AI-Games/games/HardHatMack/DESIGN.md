@@ -369,3 +369,19 @@ every prize is claimed (`nlbr` reaches 0 → `mgarm = 1`); then it **tracks back
 into the magnet** as it passes gets Mack caught (`mag_catch`: airborne only, head reaching the magnet's
 underside with his centre beneath its 2-cell span) → `lvdone`. The magnet's row is clear of the crane
 cable, so moving it needs no cable restore (unlike the beam, which does).
+
+## §13 Target change — ColecoVision only (2026-07-26)
+
+Development is now **ColecoVision-only**. The TI-99/4A build was hitting its **24,336-byte
+single-bank cart ceiling** (2,185 bytes free with level 3, the title screen, and music still
+unwritten — roughly 3 KB of work that does not fit), so every change was being fought against the
+byte counter. The Coleco ROM has room to finish the game properly, and it is also the machine the
+layout references come from, so "match the reference exactly" is native there.
+
+- **Build:** `bash build-coleco.sh` → `src/hardhat.rom` (load in ColEm or CoolCV).
+- `build-ti.sh` still exists and the source is still free of TI-specific constructs, but the TI
+  build is **no longer verified each change** and will stop fitting; treat it as retired.
+- **Review loop:** a level-start ROM (e.g. `src/hardhat_l2.rom`, gitignored) is built by flipping
+  `lv` so a reviewer doesn't replay earlier levels; the committed source keeps `lv = 1`.
+- **Emulator note:** both ColEm and CoolCV render at a fixed zoom that crops the bottom rows in a
+  small window — maximize to see rows 20-23.
