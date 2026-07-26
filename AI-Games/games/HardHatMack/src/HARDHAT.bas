@@ -123,7 +123,15 @@
 	CONST S_RIDE  = 4	' standing on the elevator platform
 	CONST S_DEAD  = 5
 	CONST S_TRAMP = 6	' riding the right-side trampoline channel
-	CONST FATALFALL = 20	' pixels of drop that break Mack's neck
+	' Pixels of drop that break Mack's neck. Must sit BETWEEN two real
+	' distances in the level geometry:
+	'   22 px = stepping off the top of a conveyor onto the platform that
+	'           machine stands on (upper: row 6 -> row 9; lower: row 20 ->
+	'           ground). This MUST be survivable -- at 20 it killed you for
+	'           riding a conveyor to its end, with no other way off.
+	'   32 px = falling a whole storey (tiers/floors are 4 rows apart). This
+	'           MUST stay fatal -- it's the classic Hard Hat Mack hazard.
+	CONST FATALFALL = 26
 
 	'
 	' One-time setup. Default video mode (do NOT use MODE 2 -- it renders
@@ -150,8 +158,8 @@
 	DEFINE CHAR T_BRICK,4,item_pat			' 185-188 brick/wrench/can/hat
 	DEFINE COLOR T_BRICK,4,item_col
 	' Level 2 tiles: lunch pail, incinerator/flame, conveyor belt, magnet.
-	DEFINE CHAR T_LBOXL,1,pail_pat
-	DEFINE COLOR T_LBOXL,1,pail_col
+	DEFINE CHAR T_LBOXL,2,pail_pat	' 183 lunch pail, 184 toolbox
+	DEFINE COLOR T_LBOXL,2,pail_col
 	DEFINE CHAR T_HAZ0,3,haz_pat
 	DEFINE COLOR T_HAZ0,3,haz_col
 	DEFINE CHAR T_CONV0,5,conv_pat		' 156-160 full/bottom/top/drum/post
@@ -440,6 +448,7 @@ st_walk:
 		st = S_JUMP
 		jix = 0
 		spr2 = 0
+		fcy = my		' fall origin: tracks the arc's apex while rising
 		bonbeam = 0		' leaving the crane beam -- stop being carried
 		jhz = 1
 		IF jl THEN jhz = 0
@@ -775,6 +784,7 @@ st_jump:
 				END IF
 			END IF
 			my = my - 1
+			fcy = my	' rising: hold the fall origin at the apex
 		NEXT t8
 	ELSE
 		dv = v - 128
@@ -785,7 +795,17 @@ st_jump:
 			IF (fy AND 7) = 0 THEN
 				GOSUB foot_probe
 				IF sup = 1 THEN
-					st = S_WALK
+					' A jump landing is judged by the SAME rule as any
+					' other fall: drop measured from the arc's APEX (fcy).
+					' Without this, jumping off a high ledge was always
+					' safe while merely walking off a low one was fatal --
+					' the inconsistency at the conveyor.
+					fd2 = my - fcy
+					IF fd2 > FATALFALL THEN
+						GOSUB mack_die
+					ELSE
+						st = S_WALK
+					END IF
 					RETURN
 				END IF
 			END IF
@@ -793,21 +813,26 @@ st_jump:
 			' so its catch runs every pixel (no VPEEK -- cheap).
 			GOSUB elev_sup
 			IF esup = 1 THEN
-				st = S_RIDE
+				GOSUB land_chk
+				IF ded = 0 THEN st = S_RIDE
 				RETURN
 			END IF
 			' Landing on the L2 crane beam (a sprite, so pixel-checked).
 			GOSUB beam_sup
 			IF bsup = 1 THEN
-				st = S_WALK
-				bonbeam = 1
 				my = bmy - 16
+				GOSUB land_chk
+				IF ded = 0 THEN
+					st = S_WALK
+					bonbeam = 1
+				END IF
 				RETURN
 			END IF
 			' Landing on a conveyor belt -> start riding it up.
 			GOSUB conv_sup
 			IF csup = 1 THEN
-				st = S_WALK
+				GOSUB land_chk
+				IF ded = 0 THEN st = S_WALK
 				RETURN
 			END IF
 		NEXT t8
@@ -815,9 +840,9 @@ st_jump:
 jump_adv:
 	jix = jix + 1
 	IF jix > 15 THEN
-		' Arc exhausted without landing: free fall, measured from here.
+		' Arc exhausted without landing: keep falling. fcy still holds the
+		' arc's APEX, so the drop is measured from the true high point.
 		st = S_FALL
-		fcy = my
 		fct = 0
 	END IF
 	RETURN
@@ -862,14 +887,18 @@ st_fall:
 		GOSUB beam_sup
 		IF bsup = 1 THEN
 			my = bmy - 16
-			bonbeam = 1
-			st = S_WALK
+			GOSUB land_chk
+			IF ded = 0 THEN
+				bonbeam = 1
+				st = S_WALK
+			END IF
 			RETURN
 		END IF
 		' A conveyor belt catches a fall -> ride up.
 		GOSUB conv_sup
 		IF csup = 1 THEN
-			st = S_WALK
+			GOSUB land_chk
+			IF ded = 0 THEN st = S_WALK
 			RETURN
 		END IF
 	NEXT t8
@@ -936,6 +965,20 @@ st_ride:
 	'
 	' ---- Probes ----
 	'
+land_chk:
+	' ONE landing rule for EVERY surface. A landing reached from a jump or a
+	' fall is fatal when the drop from the apex (fcy) exceeds FATALFALL --
+	' solid girder, crane beam, conveyor, elevator alike. Only plain solid
+	' ground used to be checked, so a long fall onto the moving girder or a
+	' belt was a free save from ANY height.
+	ded = 0
+	fd2 = my - fcy
+	IF fd2 > FATALFALL THEN
+		GOSUB mack_die
+		ded = 1
+	END IF
+	RETURN
+
 foot_probe:
 	' ch = tile under Mack's feet; sup = 1 if it holds him up.
 	sup = 0
@@ -1853,18 +1896,26 @@ ob_magnet:
 	GOTO lv_parse
 
 ob_pail:
-	' Lunchbox (level 2): a 1-cell pickup; collecting all of them
-	' clears the level.
+	' Level-2 PRIZE: a 1-cell pickup that sits ON TOP of a beam, never IN it.
+	' Drawing it into the beam row punched a hole in the girder *and* put it
+	' one row below take_item's torso probe, so it could never be collected.
+	' Each beam carries a DIFFERENT prize (kind 0-5); all count toward nlbr.
 	READ BYTE r
 	READ BYTE c
+	READ BYTE k
 	itr(nitem) = r
 	itc(nitem) = c
 	itst(nitem) = 0
 	itk(nitem) = 3
 	nitem = nitem + 1
 	nlbr = nlbr + 1
+	ch = T_LBOXL			' 0 lunch pail
+	IF k = 1 THEN ch = 184		' toolbox
+	IF k = 2 THEN ch = 186		' wrench
+	IF k = 3 THEN ch = 187		' spray can
+	IF k = 4 THEN ch = 188		' hard hat
+	IF k = 5 THEN ch = 185		' brick
 	#va = VADDR(r,c)
-	ch = T_LBOXL
 	VPOKE #va,ch
 	GOTO lv_parse
 
@@ -2144,13 +2195,16 @@ level2_data:
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
 	' Incinerator pot on the ground, off the beam's column path (hazard).
 	DATA BYTE 1, 22,19,2,4
-	' Six lunch pails on the side tiers.
-	DATA BYTE 5,8, 9,4
-	DATA BYTE 5,8, 9,20
-	DATA BYTE 5,8, 13,4
-	DATA BYTE 5,8, 13,20
-	DATA BYTE 5,8, 17,4
-	DATA BYTE 5,8, 17,20
+	' Six PRIZES, one per beam end, each a DIFFERENT item (kind 0-5). They sit
+	' one row ABOVE the beam (rows 8/12/16, beams are 9/13/17) so they rest ON
+	' the girder instead of punching a hole in it -- and so take_item's torso
+	' probe can actually reach them (at the beam row they were uncollectable).
+	DATA BYTE 5,8, 8,4,0
+	DATA BYTE 5,8, 8,20,1
+	DATA BYTE 5,8, 12,4,2
+	DATA BYTE 5,8, 12,20,3
+	DATA BYTE 5,8, 16,4,4
+	DATA BYTE 5,8, 16,20,5
 	' Vandal patrols the right mid tier.
 	DATA BYTE 5,11, 13,18,25
 	' Mack spawns on the GROUND, below the beam's shaft; the beam rides down
@@ -2256,9 +2310,13 @@ pail_pat:
 	' Lunch pail (from the reference): domed white lid, latch band, red body,
 	' white base -- a stout lunchbox.
 	DATA BYTE $3C,$7E,$FF,$FF,$FF,$FF,$FF,$7E
+	' 184 toolbox: carry handle over a squat chest (2nd L2 prize)
+	DATA BYTE $18,$3C,$00,$7E,$FF,$FF,$FF,$7E
 pail_col:
 	' white dome+lid, gray latch band, red body, red base
 	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
+	' toolbox: gray handle, dark-yellow chest
+	DATA BYTE $E1,$E1,$11,$A1,$A1,$A1,$A1,$A1
 haz_pat:
 	' 164 incinerator pot (white outline)
 	DATA BYTE $FF,$81,$81,$81,$81,$81,$FF,$7E

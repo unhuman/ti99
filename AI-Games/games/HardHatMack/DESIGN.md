@@ -236,8 +236,14 @@ off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top �
 ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
 low point (row 21, cols 11-16) is the intended catch. 
 
+**Prizes — one per beam end, each DIFFERENT** (`ob_pail` takes a `kind` byte 0-5 → lunch pail 183,
+toolbox 184, wrench 186, spray can 187, hard hat 188, brick 185). They are placed one row **above**
+the beam (rows 8/12/16 for beams 9/13/17) so they rest **on** the girder: drawing them into the beam
+row punched a hole in the girder *and* sat a row below `take_item`'s torso probe, which made them
+**uncollectable**. All six count toward `nlbr`.
+
 **Element art matched to the reference (patterns/colors extracted from the PNG at TI-pixel
-resolution, not eyeballed):** the **6 lunch pails** are a domed **white** lid + gray latch band over
+resolution, not eyeballed):** the lunch pail is a domed **white** lid + gray latch band over
 a **red** body (`pail_pat`/`pail_col`, char 183); the **conveyor** is a **white** diagonal escalator
 tread band (`conv_col`, not the old dark-yellow belt); the **magnet** (chars 176–177) is a classic
 **white horseshoe** with red pole tips on a light-blue cable (`mag_pat`/`mag_col`). **Incinerator**
@@ -337,3 +343,20 @@ way. Runtime-test 3-bank builds by loading the cart through Classic99's **Cartri
 - [ ] Loop past level 3 is faster with aimed bolts and the same enemy count.
 - [ ] Title screen with credits + 8-3-8 level select; hi-score persists for the session.
 - [ ] Both targets verified in emulators (Classic99 / CoolCV).
+
+#### Falling — one rule for every surface (fixed 2026-07-25)
+
+`land_chk` is the single landing verdict: a landing reached from a **jump or a fall** is fatal when
+the drop from the arc's **apex** (`fcy`) exceeds `FATALFALL`. It is applied to *every* catch — solid
+girder, crane beam, conveyor belt, elevator. Three bugs came out of not having this:
+
+- Only plain solid ground was checked, so riding a long fall down onto the **moving crane beam** (or
+  onto a belt) was a free save from any height.
+- A **jump** landing was never checked at all, so jumping off a high ledge was safe while merely
+  walking off a low one was fatal — the conveyor inconsistency.
+- `fcy` was reset when the jump arc ran out, so a long drop was measured only from that point and
+  undercounted. It now holds the apex: set at takeoff and tracked while rising.
+
+`FATALFALL = 26` px, chosen to sit between two real distances in the level geometry: **22 px** (off
+the top of a conveyor onto the platform its own drum stands on — must survive, it's the only way off)
+and **32 px** (a whole storey, tiers/floors being 4 rows apart — must stay fatal).
