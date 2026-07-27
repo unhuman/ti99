@@ -38,6 +38,8 @@
 	CONST T_RIVET  = 132	'   gap RIVETED (bright rivet dots)
 	CONST T_GROUND = 133	'   ground strip (levels 2/3)
 	CONST T_ELEV   = 135	'   elevator platform chars (reserved)
+	CONST T_PAD    = 139	'   level-3 trampoline pad: stand on it and be
+				'   launched a whole beam upward (spr2 arc)
 	CONST T_SPRTOP = 137	'   springboard top plate
 	CONST T_SPRBSE = 138	'   springboard coil (solid: you stand in it)
 	CONST T_SOLID1 = 151
@@ -49,12 +51,14 @@
 	CONST T_LADD1  = 155
 	CONST T_CONV0  = 156	' 156-163: conveyor belts (L/R x 2 anim frames)
 	CONST T_CONVB  = 156	'   conveyor belt tile (level 2)
+	CONST T_CONVH  = 161	'   FLAT belt tile (level 3's horizontal machine)
 	CONST T_CONV1  = 163
 	CONST T_HAZ0   = 164	' 164-171: touch = death
 	CONST T_HAZ1   = 171
 	' 172+: pass-through decoration and pickups
 	CONST T_PLANK  = 172	' 172: stack of planks (level 2 decor, pass-through)
 	CONST T_MACH   = 180	' 180-181: the right-hand machine cabinet (level 2)
+	CONST T_DOOR   = 182	' 182: level-3 processor door panel (decor)
 	CONST T_PILLAR = 174	' support pillar (art only -- NOT solid)
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
 	CONST T_INM    = 191	' level-3 IN hopper: deliver a steel box here
@@ -110,6 +114,7 @@
 	DIM jtab(16)		' jump arc: 128+dy per step (unsigned-safe)
 	' Conveyor belts as pixel SURFACES (bottom pixel x0,y0 -> top pixel x1,y1),
 	' so Mack rides a continuous line and never drops into the cell gaps.
+	DIM cvdir(3)	' 0 = carries right/up, 1 = carries LEFT
 	DIM cvx0(3)
 	DIM cvy0(3)
 	DIM cvx1(3)
@@ -172,6 +177,12 @@
 	DEFINE COLOR T_LBOXL,2,pail_col
 	DEFINE CHAR T_INM,1,inm_pat	' 191 level-3 IN hopper
 	DEFINE COLOR T_INM,1,inm_col
+	DEFINE CHAR T_PAD,1,pad_pat	' 139 level-3 trampoline pad
+	DEFINE COLOR T_PAD,1,pad_col
+	DEFINE CHAR T_CONVH,1,convh_pat	' 161 flat conveyor belt
+	DEFINE COLOR T_CONVH,1,convh_col
+	DEFINE CHAR T_DOOR,1,door_pat	' 182 processor door
+	DEFINE COLOR T_DOOR,1,door_col
 	DEFINE CHAR T_PLANK,1,plank_pat	' 172 plank stack (level 2 decor)
 	DEFINE COLOR T_PLANK,1,plank_col
 	DEFINE CHAR T_MACH,2,mach_pat	' 180-181 machine cabinet (level 2)
@@ -569,9 +580,22 @@ st_walk:
 			END IF
 		END IF
 		bonbeam = 0
-		' On a conveyor belt? It supports him AND carries him up the incline.
+		' On a conveyor belt? It supports him AND carries him along it. The
+		' belt path returns early, so the torso checks that the normal walk
+		' does further down have to happen HERE too -- otherwise level 3's
+		' grinder at the end of the belt could not kill and the box riding
+		' the belt could not be picked up.
 		GOSUB conv_sup
-		IF csup = 1 THEN RETURN
+		IF csup = 1 THEN
+			ch = TILE(mx + 8,my + 8)
+			IF ch >= T_HAZ0 THEN
+				IF ch <= T_HAZ1 THEN GOSUB mack_die
+			END IF
+			IF ch >= T_LBOXL THEN
+				IF ch <= T_HAT THEN GOSUB take_item
+			END IF
+			RETURN
+		END IF
 		GOSUB elev_sup
 		IF esup = 1 THEN
 			st = S_RIDE
@@ -604,6 +628,22 @@ st_walk:
 	' frame and crosses the 8-px plug in ~4 frames).
 	IF ch = T_FILLED THEN
 		IF carry = 2 THEN GOSUB rivet_gap
+	END IF
+	' Level-3 trampoline pad, under his FEET: launch immediately with the
+	' spr2 arc, which clears a whole beam. Hold a direction to steer -- the
+	' pads sit two cells out from the beam they serve.
+	IF ch = T_PAD THEN
+		st = S_JUMP
+		bmp1 = 0
+		jix = 0
+		spr2 = 1
+		fcy = my
+		jhz = 1
+		IF jl THEN jhz = 0
+		IF jr THEN jhz = 2
+		SOUND 2,300,10
+		snd2 = 5
+		RETURN
 	END IF
 	' Pickups sit one row above their floor, at Mack's torso; walking
 	' into the trampoline pedestal on the ground floor bounces.
@@ -820,7 +860,7 @@ st_jump:
 	v = jtab(jix)
 	IF v < 128 THEN
 		dv = 128 - v
-		IF spr2 = 1 THEN dv = dv * 3
+		IF spr2 = 1 THEN dv = dv * 5
 		FOR t8 = 1 TO dv
 			' Head-bump: the 12-px art's head is at my+4, so probe my+3
 			' (1 px above it). The extra head room lets the arc rise higher.
@@ -843,7 +883,7 @@ st_jump:
 		NEXT t8
 	ELSE
 		dv = v - 128
-		IF spr2 = 1 THEN dv = dv * 3
+		IF spr2 = 1 THEN dv = dv * 5
 		FOR t8 = 1 TO dv
 			my = my + 1
 			fy = my + 16
@@ -857,6 +897,9 @@ st_jump:
 					' the inconsistency at the conveyor.
 					fd2 = 0
 					IF my > fcy THEN fd2 = my - fcy
+					' A pad launch rises ~55 px, so coming back down on
+					' one would read as a fatal drop. Pads bounce.
+					IF ch = T_PAD THEN fd2 = 0
 					IF fd2 > FATALFALL THEN
 						GOSUB mack_die
 					ELSE
@@ -979,6 +1022,7 @@ fall_land:
 	' (elevator rising into him) would otherwise wrap the subtraction.
 	fd2 = 0
 	IF my > fcy THEN fd2 = my - fcy
+	IF ch = T_PAD THEN fd2 = 0	' pads bounce, they never break your legs
 	IF fd2 > FATALFALL THEN
 		GOSUB mack_die
 	ELSE
@@ -1259,7 +1303,11 @@ conv_sup:
 						' be tipped over the roller into the bins below. An
 						' earlier version stopped him dead at the top, which
 						' made the whole ride passive and safe.
-						IF mx < 240 THEN mx = mx + 1
+						IF cvdir(ci) = 0 THEN
+							IF mx < 240 THEN mx = mx + 1
+						ELSE
+							IF mx > 0 THEN mx = mx - 1
+						END IF
 						fx = mx + 8
 						IF fx > kx1 THEN fx = kx1
 						#cvt = fx - kx0
@@ -1991,6 +2039,36 @@ lv_parse:
 		NEXT i
 		GOTO lv_parse
 	END IF
+	IF op = 9 THEN
+		' FLAT conveyor: row, col, length, direction (0 = right, 1 = LEFT).
+		' Level 3's top-left machine is horizontal and runs INTO the grinder,
+		' which the diagonal op-6 machine cannot express.
+		READ BYTE r
+		READ BYTE c
+		READ BYTE n
+		READ BYTE t
+		#va = VADDR(r,c)
+		ch = 159		' left roller
+		VPOKE #va,ch
+		#va = #va + 1
+		ch = T_CONVH
+		FOR i = 2 TO n - 1
+			VPOKE #va,ch
+			#va = #va + 1
+		NEXT i
+		ch = 159		' right roller
+		VPOKE #va,ch
+		' Flat surface line: cvy0 = cvy1, so conv_sup's slope term is zero.
+		cvx0(cvn) = c * 8
+		cvy0(cvn) = r * 8 + 2
+		tc = c + n
+		tc = tc - 1
+		cvx1(cvn) = tc * 8 + 7
+		cvy1(cvn) = r * 8 + 2
+		cvdir(cvn) = t
+		cvn = cvn + 1
+		GOTO lv_parse
+	END IF
 	IF op = 8 THEN
 		' Raw character run: row, col, count, CHAR CODE. For decor that needs
 		' no collision class of its own -- the code IS the payload, so props
@@ -2077,6 +2155,7 @@ lv_parse:
 		cvy0(cvn) = r * 8 + 2
 		cvx1(cvn) = tc * 8 + 7
 		cvy1(cvn) = tr * 8 + 2
+		cvdir(cvn) = 0		' the diagonal machines carry up-and-RIGHT
 		cvn = cvn + 1
 		GOTO lv_parse
 	END IF
@@ -2477,48 +2556,78 @@ level2_data:
 	' Carry each steel box to either IN hopper at the bottom; six clears it.
 	'
 level3_data:
+	' Transcribed from assets/HHM-Level3.png at the 32x24 cell grid (playfield
+	' rect x 98..1086, y 41..708 of the 1280x720 capture; beams land on rows
+	' 5/9/13/17 with the ground at 23, exactly like levels 1 and 2). Measured:
+	'   top beam        row 5, cols 2-29 (full width)
+	'   flat conveyor   row 9, cols 2-11, running LEFT into the grinder
+	'   grinder         cols 2-3, at torso height over the belt's end
+	'   upper-right     row 9, cols 21-29
+	'   mid beams       row 13, cols 2-10 and 21-29
+	'   lower beams     row 17, cols 2-4, 7-10, 21-24, 27-29
+	'   pater-noster    cols 15-16, with step-off stubs at rows 10/12/14/16
+	'   ground          row 23, cols 2-29
+	'   IN machines     cols 3-7 and 24-28; door cols 14-17; pads cols 11 & 20
 	DATA BYTE 1, 5,2,28,3		' top beam (cols 2-29)
 	DATA BYTE 1, 9,21,9,3		' upper-right beam (cols 21-29)
-	DATA BYTE 1, 13,2,9,3		' mid-left beam (cols 2-10)
+	DATA BYTE 1, 13,2,9,3		' mid-left beam  (cols 2-10)
 	DATA BYTE 1, 13,21,9,3		' mid-right beam (cols 21-29)
-	DATA BYTE 1, 17,2,3,3		' lower-left beam A (cols 2-4)
-	DATA BYTE 1, 17,7,4,3		' lower-left beam B (cols 7-10)
-	DATA BYTE 1, 17,21,5,3		' lower-right beam A (cols 21-25)
-	DATA BYTE 1, 17,27,3,3		' lower-right beam B (cols 27-29)
-	DATA BYTE 1, 23,2,28,2		' ground
-	' Pater-noster shaft down the centre (climbable), cols 15-16, running
-	' from just under the top beam all the way to the ground. It MUST reach
-	' both ends: Mack spawns on the ground, and every beam stops 4 cells
-	' short of the shaft, which no 2-cell jump can bridge. Route: ground ->
-	' shaft -> full-width top beam -> side chains down to the mid and lower
-	' beams -> back down the shaft to the IN hoppers.
-	DATA BYTE 2, 15,6,17
-	DATA BYTE 2, 16,6,17
-	' Chains hanging off the beams, as the reference draws them.
-	DATA BYTE 2, 4,6,7		' top beam -> upper conveyor level
-	DATA BYTE 2, 28,6,7		' top beam -> upper-right beam
-	DATA BYTE 2, 29,14,3		' mid-right -> lower-right
-	DATA BYTE 2, 9,14,3		' mid-left -> lower-left
-	' Top-left conveyor (op 6: bottom drum row,col, rows to rise).
-	DATA BYTE 6, 9,3,2
-	' Grinder at the low end of the top-left conveyor -- touching it kills.
-	' (The reference belt runs LEFT into this; ours conveys up-right, so the
-	' grinder is a hazard you can walk into rather than be carried into.)
-	DATA BYTE 1, 9,2,1,4
-	' The two IN hoppers at the bottom (op 1 type 8).
-	DATA BYTE 1, 22,4,4,8		' left IN machine (cols 4-7)
-	DATA BYTE 1, 22,24,4,8		' right IN machine (cols 24-27)
-	' Six steel boxes to carry, one row above their beam.
-	DATA BYTE 5,2, 4,8		' on the top beam
+	DATA BYTE 1, 17,2,3,3		' lower-left  A (cols 2-4)
+	DATA BYTE 1, 17,7,4,3		' lower-left  B (cols 7-10)
+	DATA BYTE 1, 17,21,4,3		' lower-right A (cols 21-24)
+	DATA BYTE 1, 17,27,3,3		' lower-right B (cols 27-29)
+	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29)
+	' The pater-noster. The reference runs it rows 8-17 between two cars; ours
+	' is a CLIMBABLE shaft (the flagged simplification -- the function of the
+	' lift without moving cars) and it is carried down to the ground so the
+	' player can enter it from below, then up to the full-width top beam.
+	DATA BYTE 2, 15,6,17		' left rail,  cols 15, rows 6-22
+	DATA BYTE 2, 16,6,17		' right rail, cols 16, rows 6-22
+	' Step-off stubs either side of the shaft, where the reference draws the
+	' lift's paddles. They are real ledges: the shaft is how you change floor.
+	DATA BYTE 1, 10,17,2,3		' right stub, cols 17-18
+	DATA BYTE 1, 12,13,2,3		' left  stub, cols 13-14
+	DATA BYTE 1, 14,17,2,3		' right stub, cols 17-18
+	DATA BYTE 1, 16,13,2,3		' left  stub, cols 13-14
+	' Top-left machine: a FLAT belt (op 9) carrying everything LEFT into the
+	' grinder. Ride it to the end and you die -- get off, or grab the box.
+	DATA BYTE 9, 9,2,10,1		' row 9, cols 2-11, direction 1 = left
+	DATA BYTE 1, 8,2,2,4		' grinder, cols 2-3, at torso height on the belt
+	' Chains, where the reference hangs them.
+	DATA BYTE 2, 4,6,2		' top beam -> the conveyor level (col 4)
+	DATA BYTE 2, 24,6,2		' top beam -> upper-right beam (col 24)
+	DATA BYTE 2, 9,14,3		' mid-left -> lower-left  (col 9)
+	DATA BYTE 2, 29,14,3		' mid-right -> lower-right (col 29)
+	' Ground machinery. The two IN hoppers eat the steel boxes; the processor
+	' door in the centre is decor; the two pads are trampolines that throw you
+	' a whole beam up (hold a direction to steer onto the ledge you want).
+	DATA BYTE 1, 22,3,5,8		' left IN machine  (cols 3-7)
+	DATA BYTE 1, 22,24,5,8		' right IN machine (cols 24-28)
+	DATA BYTE 8, 19,14,4,182	' processor door lintel (cols 14-17)
+	DATA BYTE 8, 20,14,1,182	' door frame, left column
+	DATA BYTE 8, 21,14,1,182
+	DATA BYTE 8, 22,14,1,182
+	DATA BYTE 8, 20,17,1,182	' door frame, right column
+	DATA BYTE 8, 21,17,1,182
+	DATA BYTE 8, 22,17,1,182
+	' The pads go IN the ground row, not on top of it: Mack walks the ground
+	' with his feet on row 23, so a pad drawn at row 22 sits at his waist and
+	' he strolls straight through it. The foot probe is what triggers a pad.
+	DATA BYTE 8, 23,11,1,139	' left  trampoline pad (col 11)
+	DATA BYTE 8, 23,20,1,139	' right trampoline pad (col 20)
+	' Six steel boxes, one per beam, each resting ON the girder (one row above
+	' it) so the torso probe can reach them. The conveyor one rides at belt
+	' height and has to be grabbed before the grinder gets it.
+	DATA BYTE 5,2, 4,12		' on the top beam
+	DATA BYTE 5,2, 8,7		' on the flat conveyor
 	DATA BYTE 5,2, 12,4		' mid-left beam
-	DATA BYTE 5,2, 12,23		' mid-right beam
-	DATA BYTE 5,2, 16,9		' lower-left beam B
+	DATA BYTE 5,2, 12,28		' mid-right beam
+	DATA BYTE 5,2, 16,8		' lower-left beam B
 	DATA BYTE 5,2, 16,22		' lower-right beam A
-	DATA BYTE 5,2, 8,25		' upper-right beam
-	' Enemies guard the mid beams, as in the reference.
-	DATA BYTE 5,11, 13,21,29
-	DATA BYTE 5,12, 17,2,10
-	DATA BYTE 5,13, 23,14		' Mack starts on the ground, centre
+	' Enemies guard the mid beams, as the reference draws them.
+	DATA BYTE 5,11, 17,2,10		' vandal on the lower-left beams
+	DATA BYTE 5,12, 17,21,29	' OSHA man on the lower-right beams
+	DATA BYTE 5,13, 23,12		' Mack starts on the ground by the left pad
 	DATA BYTE 0
 
 jump_data:
@@ -2542,8 +2651,9 @@ tile_pat:
 	' the blue band, as the reference draws it. (These dashes are texture, not
 	' gaps -- nothing falls through a girder.)
 	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$FF
-	' 130 girder orange (level 3; colors differ)
-	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$00
+	' 130 girder (level 3): same full-height bar as 129, coloured to the
+	' reference's orange-striped blue beam
+	DATA BYTE $FF,$FF,$DB,$FF,$DB,$FF,$FF,$FF
 	' 131 FILLED gap: plain body, no rivet holes yet
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
 	' 132 RIVETED gap: bright rivet dots
@@ -2565,8 +2675,10 @@ tile_col:
 	' 129 (L2): 2px red top edge, 4px blue body, 2px red bottom edge -- the
 	' measured reference girder (red a9433f / blue 706bdf)
 	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61
-	' 130: white stripes, dark-red body (L3)
-	DATA BYTE $F1,$61,$61,$61,$61,$61,$F1,$11
+	' 130 (L3): the reference draws level 3's beams as an ORANGE-striped blue
+	' bar (not the red-striped one of levels 1-2). Dark yellow is the closest
+	' the TMS9918 gets to that orange.
+	DATA BYTE $A1,$A1,$51,$51,$51,$51,$A1,$A1
 	' 131 FILLED: all dark-blue
 	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$11
 	' 132 RIVETED: red stripes, white rivet dots punch the body
@@ -2627,6 +2739,25 @@ pail_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
 	' toolbox: gray handle, dark-yellow chest
 	DATA BYTE $E1,$E1,$11,$A1,$A1,$A1,$A1,$A1
+pad_pat:
+	' 139 trampoline pad: a green bounce plate on a pinched magenta stand.
+	' SOLID, so Mack stands on it -- and st_walk launches him straight off
+	' again with the spr2 arc, one whole beam up.
+	DATA BYTE $FF,$FF,$00,$3C,$18,$18,$3C,$7E
+pad_col:
+	DATA BYTE $31,$31,$11,$D1,$D1,$D1,$D1,$D1
+convh_pat:
+	' 161 flat conveyor belt: a white band with two lugs, surface on the
+	' cell's top edge to match cvy0 = row*8+2.
+	DATA BYTE $FF,$99,$99,$FF,$00,$00,$00,$00
+convh_col:
+	DATA BYTE $F1,$F1,$F1,$F1,$11,$11,$11,$11
+door_pat:
+	' 182 the processor door under the pater-noster: a blue frame around a
+	' dark-yellow panel.
+	DATA BYTE $FF,$81,$BD,$BD,$BD,$BD,$81,$FF
+door_col:
+	DATA BYTE $51,$51,$A1,$A1,$A1,$A1,$51,$51
 plank_pat:
 	' 172 stack of planks: white boards banded with the light-blue shadow
 	' between them. Decor band, so it is pass-through -- in the reference

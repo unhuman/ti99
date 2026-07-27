@@ -367,13 +367,62 @@ to throw them.
 **Still to do:** the magnet endgame has never been observed to fire, and the full six-prize clear has
 not been played end to end.
 
-### Level 3 — "Rivet Works" (M5)
-Orange girders. Full-width top girder; top-left conveyor running **left into a grinder**
-(escape = ladder above it; a steel box rides the belt); central **pater-noster** as an
-escalator field (up zone / down zone, ledge exits — flagged simplification of the moving
-cars); mid + lower tiers; two **IN** hoppers flanking a decorative processor door at the
-bottom; springboard stools. 6 boxes carried one at a time to either hopper. Vandal guards the
-left-tier box; OSHA patrols the right tier.
+### Level 3 — "Rivet Works" (M5 — transcribed from the reference 2026-07-26)
+
+**Measured, not eyeballed.** `assets/HHM-Level3.png` is a 1280×720 capture; the playfield rect is
+x 98…1086, y 41…708, which lands the beams on rows **5 / 9 / 13 / 17** with the ground at 23 —
+the same lattice as levels 1 and 2. Every coordinate below came from classifying the dominant
+colour of each cell on that grid and then zooming individual props to the pixel.
+
+| Element | Cells (row, col) |
+|---|---|
+| Top beam | row 5, cols 2–29 (full width) |
+| Flat conveyor | row 9, cols 2–11, running **LEFT** |
+| Grinder | row 8, cols 2–3 (torso height over the belt's end) |
+| Upper-right beam | row 9, cols 21–29 |
+| Mid beams | row 13, cols 2–10 and 21–29 |
+| Lower beams | row 17, cols 2–4, 7–10, 21–24, 27–29 |
+| Pater-noster shaft | cols 15–16 |
+| Step-off stubs | (10, 17–18) (12, 13–14) (14, 17–18) (16, 13–14) |
+| Chains | col 4 and col 24 rows 6–7; col 9 and col 29 rows 14–16 |
+| Ground | row 23, cols 2–29 |
+| IN machines | rows 22, cols 3–7 and 24–28 |
+| Processor door | cols 14–17, rows 19–22 (decor) |
+| Trampoline pads | **row 23**, cols 11 and 20 |
+| Steel boxes | (4,12) (8,7 — on the belt) (12,4) (12,28) (16,8) (16,22) |
+
+**Girder colour:** level 3's beams are an **orange-striped blue** bar in the reference, not the
+red-striped one of levels 1–2. Char 130 is now the same full-height shape as 129 with dark-yellow
+stripes (the closest the TMS9918 gets to that orange). It used to render as a solid red slab.
+
+**The flat conveyor (op 9)** is new: `row, col, length, direction`. The op-6 machine is inherently
+diagonal and could not express this belt, which is horizontal and runs **into** the grinder.
+`cvdir()` carries the direction per belt, so `conv_sup` pushes left or right accordingly; the
+surface line is recorded flat (`cvy0 = cvy1`), which makes the slope term zero and needs no other
+change. **Riding to the end kills you** — the grinder sits at torso height over the belt's left
+end. Because the belt path returns early from `st_walk`, the hazard *and* pickup probes are
+repeated inside it; without that the grinder could not kill and the box riding the belt could not
+be grabbed.
+
+**The trampoline pads (T_PAD, char 139)** are how you get up from the ground. They are **solid and
+sit IN the ground row** — drawn one row higher they'd be at Mack's waist and he would walk straight
+through them, since it is the *foot* probe that triggers a pad. Standing on one launches him
+immediately with the `spr2` arc (now ×5, ~55 px — ×3 fell short of a beam), steerable by holding a
+direction at the moment of launch; the pads sit two cells out from the beam they serve. Landing on
+a pad is **never** fatal, or the ~55 px descent would read as a killing fall. Verified: step on the
+left pad holding left → lands on the lower-left beam (feet row 17).
+
+**The pater-noster** stays the flagged simplification — a climbable shaft rather than moving cars —
+with the reference's step-off stubs built as real ledges. **Deviation:** the reference runs it
+rows 8–17 between two cars and expects the pads to be the only way off the ground; ours is carried
+down through the processor door to the ground so the shaft is also enterable from below, and up to
+the full-width top beam. It reads as the lift descending into the machine.
+
+6 boxes carried one at a time to either **IN** hopper. Vandal patrols the lower-left beams, OSHA
+the lower-right.
+
+**Not yet done:** the flat belt does not animate (the diagonal ones do), the grinder is a plain
+hazard block rather than the reference's sparking teeth, and no full clear has been played.
 
 ## §8 Scoring, lives, bonus
 
