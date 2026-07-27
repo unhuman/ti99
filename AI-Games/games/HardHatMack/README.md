@@ -20,7 +20,8 @@ walking, chain climbing, rounded jump, no-button elevator, bottom trampoline, va
 roaming jackhammer on fixed routes, bolts, gap-fill + rivet — all laid out from the
 **ColecoVision version** (same VDP). **Level 2** is laid out cell-for-cell from the reference:
 tiered beams, split top platform, full-height crane cable, two conveyor machines, six distinct
-prizes, and the moving-magnet endgame. **Level 3** has a first-pass layout (pater-noster shaft,
+prizes, and the moving-magnet endgame — re-checked cell-by-cell against the reference on
+2026-07-26 (see the corrections list in `DESIGN.md` §7). **Level 3** has a first-pass layout (pater-noster shaft,
 six steel boxes, two IN hoppers) but has not been played through yet. Next: verify Level 3,
 title screen, music. See `DESIGN.md` §11.
 

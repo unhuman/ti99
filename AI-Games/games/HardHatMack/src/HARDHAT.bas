@@ -53,6 +53,8 @@
 	CONST T_HAZ0   = 164	' 164-171: touch = death
 	CONST T_HAZ1   = 171
 	' 172+: pass-through decoration and pickups
+	CONST T_PLANK  = 172	' 172: stack of planks (level 2 decor, pass-through)
+	CONST T_MACH   = 180	' 180-181: the right-hand machine cabinet (level 2)
 	CONST T_PILLAR = 174	' support pillar (art only -- NOT solid)
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
 	CONST T_INM    = 191	' level-3 IN hopper: deliver a steel box here
@@ -170,6 +172,10 @@
 	DEFINE COLOR T_LBOXL,2,pail_col
 	DEFINE CHAR T_INM,1,inm_pat	' 191 level-3 IN hopper
 	DEFINE COLOR T_INM,1,inm_col
+	DEFINE CHAR T_PLANK,1,plank_pat	' 172 plank stack (level 2 decor)
+	DEFINE COLOR T_PLANK,1,plank_col
+	DEFINE CHAR T_MACH,2,mach_pat	' 180-181 machine cabinet (level 2)
+	DEFINE COLOR T_MACH,2,mach_col
 	DEFINE CHAR 189,2,mixer_pat	' cement mixer (decor)
 	DEFINE COLOR 189,2,mixer_col
 	DEFINE CHAR T_HAZ0,3,haz_pat
@@ -517,19 +523,10 @@ st_walk:
 	bonbeam = 0
 	GOSUB foot_probe
 	IF sup = 0 THEN
-		' Off the right edge into the trampoline channel. The catch must be
-		' generous: mx+14 only fired once his RIGHT EDGE passed trx, but he
-		' loses support ~8 px before that, and the gap between the floor's
-		' end and the catch dropped him to his death (walking right off the
-		' bottom floor killed him every time). Only on levels that HAVE a
-		' trampoline -- otherwise this fired on garbage trby.
-		IF tron = 1 THEN
-			cx = mx + 8
-			IF cx >= trxl THEN
-				GOSUB tramp_in
-				RETURN
-			END IF
-		END IF
+		' NOTE: walking off the right edge is NOT a free ride to the
+		' trampoline. There is no catch here -- he simply falls, and st_fall
+		' decides whether he was far enough out to land on the pad. Reaching
+		' the trampoline is a JUMP you can miss.
 		' Standing on the L2 crane beam? Stay put, carried by beam_move.
 		GOSUB beam_sup
 		IF bsup = 1 THEN
@@ -542,7 +539,7 @@ st_walk:
 		' 2 px/frame, so a strict y-window drops -- and kills -- him for nothing).
 		IF obonb = 1 THEN
 			cx = mx + 8
-			IF cx >= 88 THEN
+			IF cx >= 96 THEN
 				IF cx <= 135 THEN
 					bonbeam = 1
 					my = bmy - 16
@@ -607,7 +604,10 @@ st_walk:
 	IF carry = 1 THEN GOSUB try_fill
 	RETURN
 walk_tramp:
-	GOSUB tramp_in
+	' Walked onto the trampoline cap itself: bounce from the row he is
+	' standing on (tramp_in2 measures the entry floor from fcy).
+	fcy = my
+	GOSUB tramp_in2
 	RETURN
 
 chain_at:
@@ -639,14 +639,11 @@ chain_at:
 	END IF
 	RETURN
 
-tramp_in:
-	' Enter the trampoline channel. Remember the floor we came from:
-	' the bounce delivers one level HIGHER -- except from the top
-	' floor, which rides all the way down to the bottom floor.
-	ery = (my + 16) / 8
-	GOTO tramp_go
 tramp_in2:
-	' Entry from a jump/fall: measure from where the arc started.
+	' Landed on the trampoline. The bounce delivers one floor HIGHER than the
+	' one he left, so measure from where the arc started (fcy holds the apex
+	' for a jump, the floor row for a plain fall) -- except from the top
+	' floor, which rides all the way down to the bottom floor.
 	ery = (fcy + 16) / 8
 tramp_go:
 	st = S_TRAMP
@@ -883,19 +880,21 @@ jump_adv:
 	RETURN
 
 st_fall:
-	' Falling into the trampoline channel is a catch, not a death. Two tests,
-	' and both matter:
-	'   x  -- from trxl, the SAME place foot_probe stops finding floor. Keying
-	'         the catch off trx instead left a 10-px band with no floor and no
-	'         trampoline, and walking right off the bottom beam died there.
+	' The trampoline catches a fall -- but you have to actually REACH it.
+	'   x  -- Mack's art (mx+2..mx+13) must overlap the pad, allowing 4 px of
+	'         grace (trxl = trx-4). Walking off the beam edge leaves him well
+	'         short, so getting to the trampoline is a JUMP, taken late enough,
+	'         and jumping too early misses it and kills you. An earlier version
+	'         caught him anywhere in the channel, which made the whole right
+	'         side risk-free.
 	'   y  -- only once he is genuinely below the bottom beam (trmy). Without
-	'         it, any jump arc passing over the channel got captured mid-air
-	'         and snapped to trx+4 with steering locked, which read as a
-	'         second, uncontrollable jump bolted onto the first.
+	'         it, a jump arc passing over the channel got captured mid-air and
+	'         snapped to the pad with steering locked, which read as a second,
+	'         uncontrollable jump bolted onto the first.
 	IF tron = 1 THEN
 		fy = my + 16
 		IF fy > trmy THEN
-			cx = mx + 8
+			cx = mx + 13
 			IF cx >= trxl THEN
 				GOSUB tramp_in2
 				RETURN
@@ -1175,7 +1174,7 @@ beam_move:
 
 beam_sup:
 	' bsup = 1 if Mack's feet rest on the beam surface and his centre is over
-	' its 48-px span (cols 11-16 => pixels 88..135).
+	' its 40-px span (cols 12-16 => pixels 96..135).
 	bsup = 0
 	IF bmon = 0 THEN RETURN
 	fy = my + 16
@@ -1184,7 +1183,7 @@ beam_sup:
 	IF fy >= bmy - 4 THEN
 		IF fy <= bmy + 4 THEN
 			cx = mx + 8
-			IF cx >= 88 THEN
+			IF cx >= 96 THEN
 				IF cx <= 135 THEN bsup = 1
 			END IF
 		END IF
@@ -1246,7 +1245,7 @@ beam_draw:
 	' (chars 192-207); moving it is pure NAME-TABLE placement -- no pattern or
 	' color-table writes at runtime, so nothing can spill past vblank and tear.
 	' The bar top sits at sub-row boff: place upper slice (192+boff) on cell
-	' row brow and lower slice (200+boff) on brow+1, uniform across cols 11-16.
+	' row brow and lower slice (200+boff) on brow+1, uniform across cols 12-16.
 	IF bmon = 0 THEN RETURN
 	IF bmy = bmyd THEN RETURN		' parked -- nothing to redraw
 	bmyd = bmy
@@ -1260,31 +1259,31 @@ beam_draw:
 		' Vacated cells go back to EMPTY -- except col 14, which carries the
 		' crane cable the beam rides on; blanking it chewed a moving hole in
 		' the cable.
-		#va = VADDR(bprow,11)
-		FOR i = 1 TO 6
+		#va = VADDR(bprow,12)
+		FOR i = 1 TO 5
 			bc9 = 32
-			IF i = 4 THEN bc9 = T_CABLE
+			IF i = 3 THEN bc9 = T_CABLE
 			VPOKE #va,bc9
 			#va = #va + 1
 		NEXT i
 		bpr2 = bprow + 1
-		#va = VADDR(bpr2,11)
-		FOR i = 1 TO 6
+		#va = VADDR(bpr2,12)
+		FOR i = 1 TO 5
 			bc9 = 32
-			IF i = 4 THEN bc9 = T_CABLE
+			IF i = 3 THEN bc9 = T_CABLE
 			VPOKE #va,bc9
 			#va = #va + 1
 		NEXT i
 		bprow = brow
 	END IF
 	' Draw the two beam rows.
-	#va = VADDR(brow,11)
-	FOR i = 1 TO 6
+	#va = VADDR(brow,12)
+	FOR i = 1 TO 5
 		VPOKE #va,uc
 		#va = #va + 1
 	NEXT i
-	#va = VADDR(br3,11)
-	FOR i = 1 TO 6
+	#va = VADDR(br3,12)
+	FOR i = 1 TO 5
 		VPOKE #va,lc
 		#va = #va + 1
 	NEXT i
@@ -1907,7 +1906,7 @@ init_level:
 	btk = 120
 	emov = 0
 	trx = 240
-	trxl = 224	' channel left edge (trx - 16)
+	trxl = 236	' trampoline pad left edge, less 4 px of grace
 	trmy = 176	' committed-to-the-channel depth
 	trby = 184
 	tron = 0		' no trampoline unless this level's data defines one
@@ -1938,6 +1937,21 @@ lv_parse:
 	IF t = 6 THEN ch = 189		' cement mixer, left half (decor)
 	IF t = 7 THEN ch = 190		' cement mixer, right half (decor)
 	IF t = 8 THEN ch = T_INM	' level-3 IN hopper (delivery zone)
+		#va = VADDR(r,c)
+		FOR i = 1 TO n
+			VPOKE #va,ch
+			#va = #va + 1
+		NEXT i
+		GOTO lv_parse
+	END IF
+	IF op = 8 THEN
+		' Raw character run: row, col, count, CHAR CODE. For decor that needs
+		' no collision class of its own -- the code IS the payload, so props
+		' can be placed without adding a type number for each one.
+		READ BYTE r
+		READ BYTE c
+		READ BYTE n
+		READ BYTE ch
 		#va = VADDR(r,c)
 		FOR i = 1 TO n
 			VPOKE #va,ch
@@ -2029,7 +2043,8 @@ lv_parse:
 	GOTO lv_parse
 
 ob_beam:
-	' Crane beam (level 2): a 48-px SPRITE platform (3 sprites, cols 11-16)
+	' Crane beam (level 2): a 40-px platform (cols 12-16), centred on the
+	' cable at col 14 exactly as the reference draws it
 	' that rides SMOOTHLY up and down the shaft (1 px/frame). bmy = its
 	' surface pixel-y; Mack jumps on/off across the 1-cell side gaps.
 	READ BYTE r
@@ -2160,11 +2175,9 @@ ob_sprng:
 	READ BYTE c
 	trx = c * 8
 	trby = r * 8
-	' Left edge of the fall channel: two cells left of the trampoline, which
-	' is where the building's floors stop. Catching from here (not from trx)
-	' is what keeps the gap between the floor end and the trampoline from
-	' being a death pit -- see the comment in st_fall.
-	trxl = trx - 16
+	' Catch line: the trampoline pad's OWN left edge, less 4 px of grace --
+	' deliberately not the whole channel, so the jump can be missed.
+	trxl = trx - 4
 	trmy = trby - 8
 	tron = 1
 	#va = VADDR(r,c)
@@ -2341,55 +2354,62 @@ level1_data:
 	' pails to clear (magnet endgame is a later pass).
 	'
 level2_data:
-	' Positions measured from the ColecoVision reference (32x24 cell grid).
-	' Platforms are cols 2-9 (left) and 18-25 (right) on tiers rows 9/13/17,
-	' a top crane platform cols 11-17 (r5), ground r23. The CENTRE is the
-	' moving CRANE BEAM (op 5 sub 10, cols 11-16) that rides up and down --
-	' Mack JUMPS on and off it to reach the side tiers (NO chains). A short
-	' cable + the magnet sit above it.
-	DATA BYTE 7, 14,3,17		' crane cable col 14, rows 3-19: in the reference it
-					' runs the WHOLE shaft, the beam rides it
+	' Transcribed cell-for-cell from assets/HHM-CV-Level2.png (32x24 grid,
+	' dominant colour per cell). Reference coordinates, verified:
+	'   tier beams       rows 9/13/17, cols 2-10 (left) and 18-26 (right)
+	'   top platform     row 5, cols 11-13 and 15-17 (split by the cable)
+	'   crane cable      col 14, rows 3-19; the beam rides it, cols 12-16
+	'   conveyors        drums (8,21)->(6,25) and (22,5)->(20,9), both 2:1
+	'   chain            col 23, rows 18-21
+	'   ground           row 23, cols 2-29
+	DATA BYTE 7, 14,3,17		' crane cable, col 14 rows 3-19 (beam rides it)
 	DATA BYTE 1, 5,11,3,1		' top crane platform, LEFT half (cols 11-13)
 	DATA BYTE 1, 5,15,3,1		' top crane platform, RIGHT half (cols 15-17)
-					' -- the reference splits it around the cable
-	DATA BYTE 1, 9,2,9,1		' left  upper (cols 2-9)
-	DATA BYTE 1, 9,18,9,1		' right upper (cols 18-25)
-	DATA BYTE 1, 13,2,9,1		' left  mid   (cols 2-9)
-	DATA BYTE 1, 13,18,9,1		' right mid   (cols 18-25)
-	DATA BYTE 1, 17,2,9,1		' left  lower (cols 2-9)
-	DATA BYTE 1, 17,18,9,1		' right lower (cols 18-25)
-	DATA BYTE 2, 23,18,5		' right-side chain (col 23, rows 18-22)
-	DATA BYTE 1, 18,2,4,1		' lower-left ledge (cols 2-5), per the reference
-	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29, type 2)
+	DATA BYTE 1, 9,2,9,1		' upper-left tier  (cols 2-10)
+	DATA BYTE 1, 9,18,9,1		' upper-right tier (cols 18-26)
+	DATA BYTE 1, 13,2,9,1		' mid-left tier    (cols 2-10)
+	DATA BYTE 1, 13,18,9,1		' mid-right tier   (cols 18-26)
+	DATA BYTE 1, 17,2,9,1		' lower-left tier  (cols 2-10)
+	DATA BYTE 1, 17,18,9,1		' lower-right tier (cols 18-26)
+	DATA BYTE 2, 23,18,4		' right-side chain, col 23 rows 18-21
+	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29)
 	' Conveyor MACHINES (op 6: bottom-drum row,col, ROWS-to-rise h). True 2:1:
 	' drums 2h cols apart, belt drawn on the exact line between them.
 	DATA BYTE 6, 8,21,2		' right conveyor: drum (8,21) -> top drum (6,25)
-	DATA BYTE 6, 22,5,2		' left conveyor: drum (22,5) -> top drum (20,9),
-					' delivering up-right to the beam shaft (cols 11-16)
+	DATA BYTE 6, 22,5,2		' left conveyor:  drum (22,5) -> top drum (20,9)
+	' The machine cabinet at the top right, on its own one-cell ledge.
+	DATA BYTE 8, 4,29,1,180		' cabinet upper (readout panel)
+	DATA BYTE 8, 5,29,1,181		' cabinet lower (two lamps)
+	DATA BYTE 1, 6,29,1,1		' the ledge it stands on
+	' Stacks of planks. These are DECOR (pass-through). The one under the
+	' lower-left tier used to be painted as a girder, which handed the player
+	' a whole extra platform the reference does not have.
+	DATA BYTE 8, 18,2,4,172		' plank stack under the lower-left tier
+	DATA BYTE 8, 12,7,1,172		' plank stack on the mid-left tier
 	' Electromagnet head above the shaft; moving crane beam starts at r13.
 	DATA BYTE 5,9, 4,12		' electromagnet at the reference's row 4
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
-	' Bottom-row machinery from the reference: the cement mixer stands just
-	' right of the lower conveyor's support post. Decor only (pass-through).
+	' Bottom-row machinery from the reference: the cement mixer beside the
+	' lower conveyor's post, and a second one over on the right. Decor only.
 	DATA BYTE 1, 22,10,1,6		' mixer, left half
 	DATA BYTE 1, 22,11,1,7		' mixer, right half
-	' Incinerator pot on the ground, off the beam's column path (hazard).
-	DATA BYTE 1, 22,19,2,4
-	' Six PRIZES, one per beam end, each a DIFFERENT item (kind 0-5). They sit
-	' one row ABOVE the beam (rows 8/12/16, beams are 9/13/17) so they rest ON
-	' the girder instead of punching a hole in it -- and so take_item's torso
-	' probe can actually reach them (at the beam row they were uncollectable).
-	DATA BYTE 5,8, 8,6,0		' upper-left tier
-	DATA BYTE 5,8, 12,4,1		' mid-left tier
-	DATA BYTE 5,8, 12,19,2		' mid-right tier
-	DATA BYTE 5,8, 16,5,3		' lower-left tier
-	DATA BYTE 5,8, 16,19,4		' lower-right tier
-	DATA BYTE 5,8, 22,3,5		' on the ground, bottom left
+	DATA BYTE 1, 22,17,1,6		' right-hand machine, left half
+	DATA BYTE 1, 22,18,1,7		' right-hand machine, right half
+	' Six PRIZES, ONE PER TIER END, each a different item (kind 0-5). They sit
+	' one row ABOVE the beam (rows 8/12/16) so they rest ON the girder instead
+	' of punching a hole in it -- and so take_item's torso probe can reach them.
+	DATA BYTE 5,8, 8,6,0		' upper-left tier   (reference cols 6-7)
+	DATA BYTE 5,8, 8,19,5		' upper-right tier
+	DATA BYTE 5,8, 12,4,1		' mid-left tier     (reference cols 4-5)
+	DATA BYTE 5,8, 12,19,2		' mid-right tier    (reference cols 19-20)
+	DATA BYTE 5,8, 16,2,3		' lower-left tier   (reference cols 2-3)
+	DATA BYTE 5,8, 16,19,4		' lower-right tier  (reference cols 19-20)
 	' Vandal patrols the right mid tier.
 	DATA BYTE 5,11, 13,18,25
-	' Mack spawns on the GROUND, below the beam's shaft; the beam rides down
-	' to row 22 (1 cell up) so he can jump aboard from the ground.
-	DATA BYTE 5,13, 23,7
+	' Mack spawns on the GROUND at the bottom left, where the reference puts
+	' him: walk right onto the lower conveyor, ride it up to its top drum, and
+	' jump across to the crane beam.
+	DATA BYTE 5,13, 23,3
 	DATA BYTE 0
 
 	'
@@ -2551,6 +2571,21 @@ pail_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
 	' toolbox: gray handle, dark-yellow chest
 	DATA BYTE $E1,$E1,$11,$A1,$A1,$A1,$A1,$A1
+plank_pat:
+	' 172 stack of planks: white boards banded with the light-blue shadow
+	' between them. Decor band, so it is pass-through -- in the reference
+	' this is a pile of lumber under the beam, NOT another girder.
+	DATA BYTE $00,$FF,$00,$FF,$00,$FF,$00,$FF
+plank_col:
+	DATA BYTE $11,$F5,$F5,$F5,$F5,$F5,$F5,$F5
+mach_pat:
+	' 180/181 the machine cabinet standing at the top right of level 2:
+	' a red cap, a white readout panel, then a blue body with two lamps.
+	DATA BYTE $FF,$00,$7E,$5A,$7E,$00,$00,$00
+	DATA BYTE $00,$66,$66,$00,$00,$66,$66,$00
+mach_col:
+	DATA BYTE $95,$F5,$F5,$F5,$F5,$F5,$F5,$F5
+	DATA BYTE $F5,$F5,$F5,$F5,$F5,$F5,$F5,$F5
 inm_pat:
 	' 191 IN hopper (level 3): a wide chute mouth -- walk in carrying a
 	' steel box to feed the machine. Decor band, so it is pass-through.

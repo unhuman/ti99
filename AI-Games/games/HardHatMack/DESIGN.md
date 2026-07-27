@@ -72,8 +72,9 @@ while dodging the **vandal**, the **OSHA man**, and (level 1) **thrown bolts**:
 
 1. **Beams and Bolts** — carry 4 loose girder pieces into the 4 floor gaps, then grab the
    roaming jackhammer (it can never be put down) and walk it over each filled gap to rivet it.
-2. **Lunch Break** — collect 6 lunchboxes across a 4-tier site, then ride up under the armed
-   electromagnet before falling into the incinerator.
+2. **Lunch Break** — collect 6 lunchboxes across a 3-tier site, then ride up under the armed
+   electromagnet. (The Apple II original threatens an incinerator at the bottom; the ColecoVision
+   reference we build to has none, so ours has none either — see §7 Level 2.)
 3. **Rivet Works** — carry 6 steel boxes (one at a time) to either machine marked **IN**.
 
 Clearing level 3 loops the game harder: **faster and more targeted, never more enemies**
@@ -205,15 +206,23 @@ immediate return trip; the shaft is an open pit when the platform is elsewhere. 
 every floor (cols 3–26) ends at a 2-cell jumpable gap (cols 27–28) before the trampoline
 channel (cols 29–30). The trampoline is ONE character tall** (a low cap on the 1st floor — jumpable-over).
 
-**The catch zone starts exactly where the floor stops.** Both the walk-off catch (`st_walk`) and
-the fall catch (`st_fall`) test Mack's **centre** (`mx+8`) against `trxl = trx − 16`, the same x at
-which `foot_probe` stops finding floor. Keying the catch off `trx` itself instead left a 10-px band
-(mx 208–217) with no floor *and* no trampoline: walking right off the bottom beam fell straight
-through to the "off the world" death every time, and the respawn put Mack back on beam 1 — which
-reads as *"he teleports, falls from up high, and lands right back where he started."* The fall
-catch additionally requires Mack to be genuinely **below the bottom beam** (`fy > trmy = trby − 8`)
-so a jump arc merely passing over the channel is not captured mid-air (being snapped to the channel
-centre with steering locked reads as a second, uncontrollable jump bolted onto the first).
+**Reaching the trampoline is a jump you can miss.** There is exactly **one** catch, in `st_fall`,
+and it requires both:
+- **x** — Mack's 12-px art (`mx+2 … mx+13`) must overlap the **pad itself**, with 4 px of grace
+  (`trxl = trx − 4`). Walking off the beam edge leaves him well short, so **walking off the right
+  edge is fatal** and getting across is a deliberate, late jump. Measured window on the bottom
+  beam: taking off from roughly the last cell and a half works; jumping a cell early misses and
+  kills you.
+- **y** — only once he is genuinely **below the bottom beam** (`fy > trmy = trby − 8`), so a jump
+  arc merely passing over the channel is not captured mid-air (being snapped to the pad with
+  steering locked reads as a second, uncontrollable jump bolted onto the first).
+
+Two earlier versions of this were wrong in opposite directions. Keying the catch off `trx` while
+Mack loses support at `mx+8` left a 10-px band with no floor *and* no trampoline, so walking right
+died every time and the respawn put him back on beam 1 — which reads as *"he teleports, falls from
+up high, and lands right back where he started."* Widening the zone to the whole channel fixed that
+but made the entire right side risk-free. The pad-overlap test is the middle: no dead band, no free
+ride.
 
 Entry rows round to real
 floor rows so the bounce delivers **exactly one level above the floor you came from** (top
@@ -223,76 +232,92 @@ hop down the building (left-only, one bounce per floor, passing through after ea
 contact kills. Vandal patrols the 4th floor (2–12); OSHA patrols the 1st floor's left side
 (4–20, homing in Mack's band). Mack spawns on the **right side of the 1st floor** (21,25).
 
-### Level 2 — "Lunch Break" (M4 — layout drawn to the reference, mechanics in progress)
-**Drawn (positions MEASURED from `assets/HHM-CV-Level2.png` at its native 32×24 cell grid — the
-CV image is 384×288 = 12 px/cell — so tile columns/rows are exact, not eyeballed):** a **thin
-crane cable** (char 178, op 7) down **col 14** with the **electromagnet head** (chars 176–177) on
-top. Platforms (girder2 = char 129): a **top crane platform** cols **11–17** (r5); three **side
-tiers** per wall at rows **9/13/17**, left **cols 2–9** / right **cols 18–25** (a narrow center
-gap, not a full-width grid); **ground** r23. Two diagonal **conveyors** (char 156, **op 6**):
-Two conveyor **machines** (op 6, bottom-drum row,col,belt-cells) built from 4 chars (156-159):
-**cyan roller drums** at both ends, a **white belt with dark oval holes** (belt-lo 156 / belt-hi 157
-alternating) rising at a shallow **2:1** slope (up 1 row every 2 cells), and a **yellow support post**
-(159) under the top drum down to the platform — matched to the reference machine, not a plain ramp.
-Right machine drum (8,19); left machine drum (22,5, delivering up-right toward the beam shaft).
-**Belt RIDE** (`conv_sup`, hooked wherever `beam_sup` is — walk/jump-land/fall-land): each belt is
-stored as a **pixel SURFACE line** from `(cvx0,cvy0)` up to `(cvx1,cvy1)` (recorded by op 6). Standing
-near that line both holds Mack up and carries him **up-and-right** (mx +1/frame, `my` snapped to the
-line each frame); FIRE jumps off onto the crane beam. This replaced tile-probing, which dropped him
-through the gaps between the diagonally-staggered belt cells — the pixel line has no gaps. The belt is
-drawn as the reference's two-rail ladder (thin rails + center dots) and **animates**: every 2 frames
-`DEFINE CHAR 156,3` advances **3 chars** through 8 phases (`belt_anim0..7`) — belt-lo + belt-hi
-rotated up 1 px/phase (the belt scrolls up the incline) **and the roller drum (158) with a spoke
-rotated to match (the rollers spin)** — so the WHOLE conveyor moves, not just the belt. 8 phases = one
-full rotation = a seamless loop (a shorter cycle shook because the center dot makes the belt pattern
-non-periodic below 8 rows). The post (159) stays static (a support strut). **Geometry (measured from the reference, not guessed):** the reference conveyor is exactly **2:1
-(26°)** with its drums **4 cols / 2 rows apart** (col 21→25, row 8→6). op 6 takes `(row, col, h)` and
-puts the top drum at `(r−h, c+2h)`, then draws each belt cell on the **exact line between the two
-drums**, so belt and drums can't disagree.
+### Level 2 — "Lunch Break" (M4 — layout transcribed from the reference)
 
-**Three belt chars, so the band is never clipped:** the band drops 4 px per cell, so on alternate
-columns its centre lands *on* a cell boundary. With only two chars that half fell outside the cell and
-vanished — those were the visible gaps. Now `156` = band centred in the cell, and a straddling column
-draws **both** halves: `157` (upper half, along the cell above's bottom edge) + `158` (lower half,
-along this cell's top edge). Verified gap-free in a tiling simulation before building. **Open flow issue:** riding
-off the TOP currently drops Mack (a >20 px fall = fatal) — the conveyor-top → beam handoff (a landing
-ledge, or timing the beam's low point to meet the conveyor top) needs live-play tuning; the beam's
-low point (row 21, cols 11-16) is the intended catch. 
+**The layout below is MEASURED, not eyeballed.** `assets/HHM-CV-Level2.png` is 384x288 = exactly
+1.5x the 256x192 screen, so it maps 1:1 onto the 32x24 cell grid; every coordinate here comes from
+classifying the dominant colour of each cell and then zooming individual props to the pixel.
 
-**Prizes — one per beam end, each DIFFERENT** (`ob_pail` takes a `kind` byte 0-5 → lunch pail 183,
-toolbox 184, wrench 186, spray can 187, hard hat 188, brick 185). They are placed one row **above**
-the beam (rows 8/12/16 for beams 9/13/17) so they rest **on** the girder: drawing them into the beam
-row punched a hole in the girder *and* sat a row below `take_item`'s torso probe, which made them
-**uncollectable**. All six count toward `nlbr`.
+| Element | Cells (row, col) |
+|---|---|
+| Top crane platform | row 5, cols 11–13 and 15–17 (split by the cable) |
+| Tier beams | rows 9 / 13 / 17, cols **2–10** (left) and **18–26** (right) |
+| Crane cable | col 14, rows 3–19 |
+| Crane beam (moving) | **cols 12–16**, centred on the cable |
+| Conveyor A (upper right) | bottom drum (8,21) → top drum (6,25), post col 25 rows 7–8 |
+| Conveyor B (lower left) | bottom drum (22,5) → top drum (20,9), post col 9 rows 21–22 |
+| Chain (climbable) | col 23, rows 18–21 |
+| Ground | row 23, cols 2–29 |
+| Machine cabinet | col 29, rows 4–5, on a one-cell ledge at (6,29) |
+| Plank stacks (decor) | (18, 2–5) and (12, 7) |
+| Cement mixers (decor) | (22, 10–11) and (22, 17–18) |
+| Electromagnet | row 4, above the shaft |
+| Mack spawn | ground, col 3 |
 
-**Element art matched to the reference (patterns/colors extracted from the PNG at TI-pixel
-resolution, not eyeballed):** the lunch pail is a domed **white** lid + gray latch band over
-a **red** body (`pail_pat`/`pail_col`, char 183); the **conveyor** is a **white** diagonal escalator
-tread band (`conv_col`, not the old dark-yellow belt); the **magnet** (chars 176–177) is a classic
-**white horseshoe** with red pole tips on a light-blue cable (`mag_pat`/`mag_col`). **Incinerator**
-pot (hazard char 164) sits on the ground off the beam's column path; vandal on the right mid tier.
+**Prizes — one per tier end, each a DIFFERENT item** (`ob_pail` takes a `kind` byte 0–5 → lunch pail
+183, toolbox 184, wrench 186, spray can 187, hard hat 188, brick 185): (8,6) (8,19) (12,4) (12,19)
+(16,2) (16,19). They sit one row **above** the beam so they rest **on** the girder — drawing them
+into the beam row punched a hole in the girder *and* sat a row below `take_item`'s torso probe,
+which made them uncollectable. All six count toward `nlbr`; collecting them all arms the magnet.
 
-**Element art matched to the reference (girders):** each platform (girder2 = char 129) is a
-**SOLID full-height red(2px)/blue(4px)/red(2px)** girder — no dash-holes (the measured reference
-girder is red a9433f / blue 706bdf, solid); **ground** (char 133) is green grass over yellow-olive.
+**Corrections made 2026-07-26 after a cell-by-cell re-check against the reference:**
+- The slab at (18, 2–5) was painted as a **girder**, handing the player a whole extra platform. In
+  the reference it is a **stack of planks** — light-blue/white banded decor (char 172, pass-through).
+  A second, one-cell stack sits at (12,7).
+- The crane beam was **6 cells (11–16)**, which put it half a cell left of the cable it rides. The
+  reference beam is **5 cells (12–16)**, centred on col 14. `beam_sup`'s span moved with it (x 96–135).
+- The lower-left prize was at (16,5); the reference pail is at (16, 2–3).
+- A sixth prize sat on the ground at (22,3) — where the reference puts **Mack**, not a prize. It moved
+  to the upper-right tier (8,19), which had none, keeping the one-per-tier rule.
+- Mack spawned at col 7 (mid-conveyor); the reference starts him at **col 3**.
+- The chain ran rows 18–22; the reference is 18–21.
+- The **incinerator** at (22, 19–20) is **not in the ColecoVision reference** and has been removed;
+  the reference has a second round machine at (22, 17–18), which is now drawn there. (The Apple II
+  original does have an incinerator — say the word and it comes back.)
+- Added the **machine cabinet** at the top right (col 29, rows 4–5) and its ledge, which was missing.
 
-**The center is the moving CRANE BEAM (op 5 sub 10) — NOT chains:** an 8-px **girder** bar drawn with
-**characters** (179 upper / 180 lower) whose **bitmaps AND color-table entries are rewritten every
-frame** so it glides **1 px at a time** up/down the shaft as a proper **red/blue/red girder at every
-sub-pixel offset** — the color bands travel with the bar (per-cell color alone can't do this), no
-sprite. `beam_move` steps `bmy` **2 px/frame** over rows 48↔168 (kept above the ground row so it
-never blanks the grass); `beam_draw` pattern-scrolls the bar across up to two cell rows, writing the
-pattern table at VDP >0000 and the color table at >2000 (8192), both in the three 2048-B bitmap zones.
-**`beam_draw` runs FIRST in the loop, inside vblank** (right after `WAIT`, using the previous pass's
-`bmy` — 1-frame latency, invisible) so its ~32 VDP-table writes land before scan-out; drawing it late
-(mid-active-display) tore the bar. It also skips entirely on dwell frames (`bmy = bmyd`). The earlier "invisible beam" was a bug: the bitmap-zone
-offset `zone*2048` overflowed an **8-bit** variable and always wrote zone 0 — fixed by holding every
-VDP address in a **16-bit (`#`) var**. Mack
-**jumps on and off** the beam across the 1-cell side gaps; `beam_sup` (pixel check, x 88–135,
-`bmy`±2) supports him and `bonbeam` carries him (cleared on jump). **Mack starts on the GROUND** and
-the beam rides down near it so he can jump aboard. Collecting all 6 pails (`ob_pail` → `nlbr` →
-`lvdone`) clears it. **Still to do:** magnet endgame, functional conveyors, and play-verifying the
-beam ride/boarding feel + speed.
+**Known remaining cosmetic gaps vs the reference** (reported, not yet built): the cement mixers are
+one cell tall where the reference draws them two; the small white props at (16,5) and (16,8), the
+blue case + green hat at (16, 21–22), the barrel at (22,20) and the red device at (22,14) are absent;
+the reference's top-right enemy is a red crab sprite where ours is the vandal patrolling the right
+mid tier.
+
+**Conveyor machines** (op 6, payload `row, col, h`) are built from 5 chars (156–160): **cyan roller
+drums** at both ends, a **white belt with dark oval holes**, and a **yellow support post** under the
+top drum. **Geometry is measured:** the reference conveyor is exactly **2:1** with its drums 4 cols /
+2 rows apart, so op 6 puts the top drum at `(r−h, c+2h)` and draws each belt cell on the **exact line
+between the two drums** — belt and drums cannot disagree. **Three belt chars, so the band is never
+clipped:** the band drops 4 px per cell, so on alternate columns its centre lands *on* a cell
+boundary; with only two chars that half fell outside the cell and vanished (the visible gaps). Now
+`156` = band centred in the cell, and a straddling column draws **both** halves (`157` upper +
+`158` lower). It **animates**: every 2 passes `DEFINE CHAR 156,4` advances through 8 phases
+(`belt_anim0..7`) — belt slices rotated 1 px/phase **and** the drum spoke rotated to match, so the
+whole machine moves. 8 phases = one full rotation = a seamless loop.
+
+**Belt RIDE** (`conv_sup`, hooked wherever `beam_sup` is — walk / jump-land / fall-land): each belt is
+stored as a **pixel SURFACE line** from `(cvx0,cvy0)` up to `(cvx1,cvy1)`. Standing near that line both
+holds Mack up and carries him **up-and-right** (mx +1/pass, `my` snapped to the line), and it **stops
+conveying at the top drum** so he stands there and chooses when to jump. This replaced tile-probing,
+which dropped him through the gaps between diagonally-staggered belt cells.
+
+**The centre is the moving CRANE BEAM (op 5 sub 10) — not chains.** It is drawn from **16 pre-shifted
+girder chars (192–207)**, so moving it is pure **name-table placement**: nothing rewrites a pattern or
+colour entry at runtime, which is what used to tear and flash. `beam_draw` runs **first in the loop,
+inside vblank**, and skips entirely on dwell frames. `beam_move` steps `bmy` 2 px/pass over rows
+48↔168. Mack **jumps on and off** across the side gaps; `beam_sup` (pixel check, x 96–135, `bmy`±4)
+supports him and `bonbeam` carries him.
+
+**Routes up from the ground:** the chain at col 23 (reachable standing on the ground, since it hangs
+to row 21) reaches the lower-right tier; the lower-left conveyor lifts to (20,9), from where the
+crane beam is a jump away at its low point.
+
+**Element art matched to the reference** (patterns/colours extracted from the PNG at TI-pixel
+resolution): the lunch pail is a domed **white** lid + gray latch band over a **red** body; each
+platform is a **solid full-height red(2px)/blue(4px)/red(2px)** girder — no dash-holes; **ground** is
+green grass over yellow-olive; the **magnet** is a white horseshoe with red pole tips.
+
+**Still to do:** the magnet endgame has never been observed to fire, and the full six-prize clear has
+not been played end to end.
 
 ### Level 3 — "Rivet Works" (M5)
 Orange girders. Full-width top girder; top-left conveyor running **left into a grinder**
