@@ -217,6 +217,7 @@
 	DEFINE SPRITE 11,1,mackw_bitmap		' Mack run right B (frame 44)
 	DEFINE SPRITE 12,1,mackl_bitmap		' Mack stand left  (frame 48)
 	DEFINE SPRITE 13,1,mackl2_bitmap	' Mack run left B  (frame 52)
+	DEFINE SPRITE 14,1,cable_bitmap		' crane cable link (frame 56)
 
 	' Music player: SIMPLE (channels 0+1) so SOUND 2 stays free for game
 	' effects and SOUND 3 (noise) for drills/crashes.
@@ -347,7 +348,24 @@ main_loop:
 	IF st = S_FALL THEN mfr = 32
 	IF st = S_TRAMP THEN mfr = 32
 	IF st <> S_DEAD THEN SPRITE 0,my - 1,mx,mfr,15
-	SPRITE 2,ely - 1,elx,8,15
+	' Elevator platform. The parked/absent value is ely = 209, and writing
+	' ely-1 puts **208** in the sprite's y byte -- which on the TMS9918 is the
+	' SPRITE LIST TERMINATOR ($D0), not an off-screen row. On every level
+	' without an elevator (2 and 3) that silently killed all 29 sprites after
+	' this one: the level-2 vandal never appeared, and any sprite added later
+	' was invisible for no visible reason. Hide it with a literal 209 instead.
+	IF ely > 200 THEN
+		SPRITE 2,209,0,0,0
+	ELSE
+		SPRITE 2,ely - 1,elx,8,15
+	END IF
+	' Crane cable link: bottom edge exactly on the beam, so the rope stays
+	' attached at every sub-cell offset instead of snapping between rows.
+	IF bmon = 1 THEN
+		SPRITE 7,bmy - 17,112,56,5
+	ELSE
+		SPRITE 7,209,0,0,0
+	END IF
 	' Both a carried brick and the jackhammer are held IN FRONT of Mack,
 	' on the side he is facing.
 	IF carry = 0 THEN
@@ -1161,8 +1179,13 @@ beam_move:
 	' through the +-4 px catch window: jumping across from the conveyor's top
 	' roller only worked if you happened to meet the beam coming DOWN. At 1 px
 	' the window is twice as forgiving in both directions and the ride reads
-	' better besides. Range rows 6..21 (48..168): the lower beam cell stays
-	' above the ground row (23) so it never blanks the grass.
+	' better besides.
+	' Range 48..167. The bar is TWO cell rows tall, drawn at brow and brow+1,
+	' and vacated cells are blanked -- so the bottom limit has to keep brow+1
+	' off the bottom-row machinery. 167 puts brow at 20 and the lower cell at
+	' 21; 168 tips brow to 21 and the lower cell wipes row 22, which chewed
+	' half the bin off the end of the conveyor. It still comes down level with
+	' the belt's top roller (y 163), which is what the jump across needs.
 	IF bmd = 0 THEN
 		bmy = bmy - 1
 		IF bmy <= 48 THEN
@@ -1171,8 +1194,8 @@ beam_move:
 		END IF
 	ELSE
 		bmy = bmy + 1
-		IF bmy >= 168 THEN
-			bmy = 168
+		IF bmy >= 167 THEN
+			bmy = 167
 			bmd = 0
 		END IF
 	END IF
@@ -1227,20 +1250,12 @@ conv_sup:
 				IF fy >= srf - 4 THEN
 					IF fy <= srf + 5 THEN
 						csup = 1
-						' STOP conveying at the top drum -- he rides up and
-						' then STANDS there. Carrying him off the end threw
-						' him into a 3-cell (fatal) fall with no chance to
-						' react, and he could walk right back on: a death
-						' loop. From the top he CHOOSES to jump (onto the
-						' crane beam).
-						' Carry him across the top roller and stop AT its far edge (not
-					' 6 px short of it, which parked him mid-drum and cost the reach
-					' he needs to jump to the crane beam). One pixel of slack keeps
-					' the belt from pushing him off the end into a fatal drop.
-					ktp = kx1 - 1
-						IF fx < ktp THEN
-							IF mx < 240 THEN mx = mx + 1
-						END IF
+						' The belt runs THROUGH its rollers and off the end --
+						' it never parks him. Ride to the top and jump off, or
+						' be tipped over the roller into the bins below. An
+						' earlier version stopped him dead at the top, which
+						' made the whole ride passive and safe.
+						IF mx < 240 THEN mx = mx + 1
 						fx = mx + 8
 						IF fx > kx1 THEN fx = kx1
 						#cvt = fx - kx0
@@ -1272,21 +1287,27 @@ beam_draw:
 	lc = 200 + boff
 	' On a cell-row change, blank the two rows the beam just vacated first.
 	IF brow <> bprow THEN
-		' Vacated cells go back to EMPTY -- except col 14, which carries the
-		' crane cable the beam rides on; blanking it chewed a moving hole in
-		' the cable.
+		' Vacated cells go back to EMPTY. Col 14 is the cable, and the cable
+		' is what the beam HANGS FROM: it exists only ABOVE the beam, so a
+		' vacated row gets cable if it is now above the bar and nothing if it
+		' is below. (Restoring it unconditionally drew rope under the beam,
+		' which is not how a crane works.)
+		cbu = 32
+		IF bprow < brow THEN cbu = T_CABLE
 		#va = VADDR(bprow,12)
 		FOR i = 1 TO 5
 			bc9 = 32
-			IF i = 3 THEN bc9 = T_CABLE
+			IF i = 3 THEN bc9 = cbu
 			VPOKE #va,bc9
 			#va = #va + 1
 		NEXT i
 		bpr2 = bprow + 1
+		cbu = 32
+		IF bpr2 < brow THEN cbu = T_CABLE
 		#va = VADDR(bpr2,12)
 		FOR i = 1 TO 5
 			bc9 = 32
-			IF i = 3 THEN bc9 = T_CABLE
+			IF i = 3 THEN bc9 = cbu
 			VPOKE #va,bc9
 			#va = #va + 1
 		NEXT i
@@ -1545,6 +1566,8 @@ bolt_move:
 	' (never right, never re-aims), bounces ONCE on each floor it meets,
 	' then passes THROUGH that floor to keep descending. Called every frame
 	' (ungated by the 3/4 pace) so it falls at its original full speed.
+	' Level 1 only -- see bolon in init_level.
+	IF bolon = 0 THEN RETURN
 	IF bon = 0 THEN
 		btm = btm - 1
 		IF btm = 0 THEN
@@ -1920,6 +1943,10 @@ init_level:
 	bon = 0
 	btm = 240
 	btk = 120
+	' Thrown rivets belong to the girder-framing screen only. Levels 2 and 3
+	' have their own hazards and nobody up top to throw them.
+	bolon = 0
+	IF lv = 1 THEN bolon = 1
 	emov = 0
 	trx = 240
 	trxl = 236	' trampoline pad left edge, less 4 px of grace
@@ -2065,6 +2092,7 @@ ob_beam:
 	' surface pixel-y; Mack jumps on/off across the 1-cell side gaps.
 	READ BYTE r
 	bmy = r * 8		' surface pixel-y (feet rest here)
+	bprow = r		' the cable is pre-drawn down to here; track from it
 	bmd = 0			' 0 = rising, 1 = falling
 	bmon = 1
 	GOTO lv_parse
@@ -2378,7 +2406,11 @@ level2_data:
 	'   conveyors        drums (8,21)->(6,25) and (22,5)->(20,9), both 2:1
 	'   chain            col 23, rows 18-21
 	'   ground           row 23, cols 2-29
-	DATA BYTE 7, 14,3,17		' crane cable, col 14 rows 3-19 (beam rides it)
+	DATA BYTE 7, 14,3,10		' crane cable, col 14 rows 3-12: down to the beam's
+				' opening row and NO FURTHER -- the beam hangs
+				' from it, so there is no rope below the bar.
+				' beam_draw pays it out and reels it in; a sprite
+				' carries the last few pixels to the bar itself.
 	DATA BYTE 1, 5,11,3,1		' top crane platform, LEFT half (cols 11-13)
 	DATA BYTE 1, 5,15,3,1		' top crane platform, RIGHT half (cols 15-17)
 	DATA BYTE 1, 9,2,9,1		' upper-left tier  (cols 2-10)
@@ -2714,6 +2746,28 @@ mag_col:
 	' white arch, red pole tips (classic horseshoe magnet)
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$61,$61
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$61,$61
+cable_bitmap:
+	' The last stretch of crane cable, as a SPRITE so it can meet the beam at
+	' any pixel offset. Char cells can only end on an 8-px boundary, so the
+	' rope used to visibly detach from the bar between cell rows; this hangs
+	' from the bottom of the char cable and its bottom edge sits exactly on
+	' the beam, travelling with it.
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
+	BITMAP "...XX..........."
 cable_pat:
 	' 178 thin crane cable: a 2-px centered vertical line
 	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18

@@ -24,6 +24,14 @@
 >   fixes (jump watchdog, fire-button cooldown, head-bump changes) into the code and back out
 >   again. Suspect array sizing first whenever behaviour moves when you edit something unrelated.
 > - **Array out-of-bounds is Coleco-FATAL** (781 free RAM bytes) — size arrays exactly.
+> - **Sprite y = 208 (`$D0`) TERMINATES the sprite attribute list.** It is not an off-screen row —
+>   the VDP stops scanning there, so *every higher-numbered sprite vanishes*. Park unused sprites at
+>   **209**, and make sure no computed y can land on 208. This bit us for a long time in a way that
+>   looked like anything but a sprite bug: the elevator is hidden by setting `ely = 209`, and the
+>   draw call wrote `ely - 1` = **208**, so on every level without an elevator (2 and 3) all 29
+>   sprites after it were silently dead. The level-2 vandal was invisible for weeks and a newly
+>   added sprite simply never appeared. Symptom to remember: *a sprite you just added doesn't draw,
+>   and neither do any others above it in slot order* — look for a 208 in a lower slot.
 > - **`SPRITE FLICKER` is all-or-nothing** (rotates the player too) — roll our own slot rotation.
 > - **`DEF FN` substitutes arguments TEXTUALLY, with no implicit parens.** `VADDR(r + 1,c)`
 >   against a body `$1800 + r * 32 + c` expands to `$1800 + r + 1*32 + c` — silently wrong
@@ -296,9 +304,16 @@ whole machine moves. 8 phases = one full rotation = a seamless loop.
 
 **Belt RIDE** (`conv_sup`, hooked wherever `beam_sup` is — walk / jump-land / fall-land): each belt is
 stored as a **pixel SURFACE line** from `(cvx0,cvy0)` up to `(cvx1,cvy1)`. Standing near that line both
-holds Mack up and carries him **up-and-right** (mx +1/pass, `my` snapped to the line), and it **stops
-conveying at the top drum** so he stands there and chooses when to jump. This replaced tile-probing,
-which dropped him through the gaps between diagonally-staggered belt cells.
+holds Mack up and carries him **up-and-right** (mx +1/pass, `my` snapped to the line) all the way
+through the rollers and off the end. This replaced tile-probing, which dropped him through the gaps
+between diagonally-staggered belt cells.
+
+**The crane cable hangs from above the beam only.** The cable is what the bar is suspended from, so
+`beam_draw` pays it out and reels it in: a vacated cell in col 14 gets cable if it is now *above* the
+bar and nothing if it is below. (Restoring it unconditionally drew rope underneath the beam.) Because
+char cells can only end on an 8-px boundary, the last stretch is a **sprite** (`cable_bitmap`, slot 7)
+whose bottom edge sits exactly on `bmy` and travels with the beam — without it the rope visibly
+detached from the bar between cell rows.
 
 **The centre is the moving CRANE BEAM (op 5 sub 10) — not chains.** It is drawn from **16 pre-shifted
 girder chars (192–207)**, so moving it is pure **name-table placement**: nothing rewrites a pattern or
@@ -312,9 +327,12 @@ to row 21) reaches the lower-right tier; the lower-left conveyor lifts you to it
 where the crane beam is a **timed** jump away as it passes.
 
 **Making that jump possible again took three fixes (2026-07-26), and all three were needed:**
-1. **Ride through the roller.** The belt line runs drum-to-drum, but conveying quit 6 px early
-   (`ktp = kx1 − 6`), parking Mack *mid-drum*. He now rides to the roller's far edge
-   (`ktp = kx1 − 1`) — one pixel of slack so the belt cannot push him off the end.
+1. **The belt runs through its rollers and off the end.** Conveying used to quit 6 px early,
+   parking Mack *mid-drum* — which both cost him the reach he needed and made the whole ride
+   passive and safe. The machine now keeps feeding him: ride to the top and **jump off in time, or
+   be tipped over the roller into the bins below**. (Support ends one pixel past the top drum, so
+   the pass after the roller simply drops him. The fall is ~21 px, under `FATALFALL`, so it costs
+   you the climb rather than a life.)
 2. **Land by overlap, not by centre.** `beam_sup` required Mack's midpoint to clear the beam's left
    edge. With the beam correctly narrowed to the reference's 5 cells, that left the jump **one pixel**
    short. Any overlap of his 12-px art (`mx+2 … mx+13`) now counts — landing on a platform's edge is
@@ -336,6 +354,10 @@ jump right, and `bonbeam` latches with Mack riding at the beam's surface.
 resolution): the lunch pail is a domed **white** lid + gray latch band over a **red** body; each
 platform is a **solid full-height red(2px)/blue(4px)/red(2px)** girder — no dash-holes; **ground** is
 green grass over yellow-olive; the **magnet** is a white horseshoe with red pole tips.
+
+**Thrown rivets are level 1 only** (`bolon`, set in `init_level`). They used to fall on every screen
+because `bolt_move` spawned off a bare timer; levels 2 and 3 have their own hazards and nobody up top
+to throw them.
 
 **Still to do:** the magnet endgame has never been observed to fire, and the full six-prize clear has
 not been played end to end.
