@@ -534,12 +534,15 @@ st_walk:
 			my = bmy - 16
 			RETURN
 		END IF
-		' STICKY: if he was on the beam and his centre is still over its span,
+		' STICKY: if he was on the beam and his art still overlaps its span,
 		' keep him on it even though the tight y-check missed (the beam moves
 		' 2 px/frame, so a strict y-window drops -- and kills -- him for nothing).
+		' Same overlap rule as beam_sup, or he would slide off the edge he is
+		' allowed to land on.
 		IF obonb = 1 THEN
-			cx = mx + 8
+			cx = mx + 13
 			IF cx >= 96 THEN
+				cx = mx + 2
 				IF cx <= 135 THEN
 					bonbeam = 1
 					my = bmy - 16
@@ -1153,17 +1156,21 @@ elev_move:
 	'
 beam_move:
 	IF bmon = 0 THEN RETURN
-	' Advance 2 px/pass -- brisk but still smooth (beam_draw pattern-scrolls
-	' the two beam chars to match). Range rows 6..21 (48..168): the lower beam
-	' cell stays above the ground row (23) so it never blanks the grass.
+	' Advance 1 px/pass. At 2 px/pass the beam travelled 120 px/s -- faster than
+	' Mack falls -- so a beam on its way UP outran his descent and slipped
+	' through the +-4 px catch window: jumping across from the conveyor's top
+	' roller only worked if you happened to meet the beam coming DOWN. At 1 px
+	' the window is twice as forgiving in both directions and the ride reads
+	' better besides. Range rows 6..21 (48..168): the lower beam cell stays
+	' above the ground row (23) so it never blanks the grass.
 	IF bmd = 0 THEN
-		bmy = bmy - 2
+		bmy = bmy - 1
 		IF bmy <= 48 THEN
 			bmy = 48
 			bmd = 1
 		END IF
 	ELSE
-		bmy = bmy + 2
+		bmy = bmy + 1
 		IF bmy >= 168 THEN
 			bmy = 168
 			bmd = 0
@@ -1173,8 +1180,12 @@ beam_move:
 	RETURN
 
 beam_sup:
-	' bsup = 1 if Mack's feet rest on the beam surface and his centre is over
-	' its 40-px span (cols 12-16 => pixels 96..135).
+	' bsup = 1 if Mack's feet rest on the beam surface and any part of his ART
+	' overlaps its 40-px span (cols 12-16 => pixels 96..135). The art is 12 px
+	' wide inside the 16-px box, so it runs mx+2 .. mx+13.
+	' OVERLAP, not centre: requiring his midpoint to clear x=96 left the jump
+	' from the lower conveyor's top roller exactly ONE pixel short. Landing on
+	' a platform's edge is what a player expects anyway.
 	bsup = 0
 	IF bmon = 0 THEN RETURN
 	fy = my + 16
@@ -1182,8 +1193,9 @@ beam_sup:
 	' tighter window can be skipped in one step (falling THROUGH the beam).
 	IF fy >= bmy - 4 THEN
 		IF fy <= bmy + 4 THEN
-			cx = mx + 8
+			cx = mx + 13		' his right edge must reach the beam
 			IF cx >= 96 THEN
+				cx = mx + 2	' his left edge must not be past it
 				IF cx <= 135 THEN bsup = 1
 			END IF
 		END IF
@@ -1221,7 +1233,11 @@ conv_sup:
 						' react, and he could walk right back on: a death
 						' loop. From the top he CHOOSES to jump (onto the
 						' crane beam).
-						ktp = kx1 - 6
+						' Carry him across the top roller and stop AT its far edge (not
+					' 6 px short of it, which parked him mid-drum and cost the reach
+					' he needs to jump to the crane beam). One pixel of slack keeps
+					' the belt from pushing him off the end into a fatal drop.
+					ktp = kx1 - 1
 						IF fx < ktp THEN
 							IF mx < 240 THEN mx = mx + 1
 						END IF
@@ -2376,7 +2392,11 @@ level2_data:
 	' Conveyor MACHINES (op 6: bottom-drum row,col, ROWS-to-rise h). True 2:1:
 	' drums 2h cols apart, belt drawn on the exact line between them.
 	DATA BYTE 6, 8,21,2		' right conveyor: drum (8,21) -> top drum (6,25)
-	DATA BYTE 6, 22,5,2		' left conveyor:  drum (22,5) -> top drum (20,9)
+	' The lower machine group sits ONE column right of the reference, as a
+	' set (belt + post + mixer). At the reference's col 5/9 the belt's top
+	' roller is 17 px from the crane beam and the 16-px jump cannot cross;
+	' shifted, the ride delivers him within comfortable jumping range.
+	DATA BYTE 6, 22,6,2		' left conveyor:  drum (22,6) -> top drum (20,10)
 	' The machine cabinet at the top right, on its own one-cell ledge.
 	DATA BYTE 8, 4,29,1,180		' cabinet upper (readout panel)
 	DATA BYTE 8, 5,29,1,181		' cabinet lower (two lamps)
@@ -2391,8 +2411,8 @@ level2_data:
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
 	' Bottom-row machinery from the reference: the cement mixer beside the
 	' lower conveyor's post, and a second one over on the right. Decor only.
-	DATA BYTE 1, 22,10,1,6		' mixer, left half
-	DATA BYTE 1, 22,11,1,7		' mixer, right half
+	DATA BYTE 1, 22,11,1,6		' mixer, left half  (moved with the belt)
+	DATA BYTE 1, 22,12,1,7		' mixer, right half
 	DATA BYTE 1, 22,17,1,6		' right-hand machine, left half
 	DATA BYTE 1, 22,18,1,7		' right-hand machine, right half
 	' Six PRIZES, ONE PER TIER END, each a different item (kind 0-5). They sit

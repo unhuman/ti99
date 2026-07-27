@@ -245,12 +245,12 @@ classifying the dominant colour of each cell and then zooming individual props t
 | Crane cable | col 14, rows 3–19 |
 | Crane beam (moving) | **cols 12–16**, centred on the cable |
 | Conveyor A (upper right) | bottom drum (8,21) → top drum (6,25), post col 25 rows 7–8 |
-| Conveyor B (lower left) | bottom drum (22,5) → top drum (20,9), post col 9 rows 21–22 |
+| Conveyor B (lower left) | bottom drum (22,**6**) → top drum (20,**10**), post col 10 rows 21–22 — the whole lower machine group sits one column right of the reference; see "Routes up" below |
 | Chain (climbable) | col 23, rows 18–21 |
 | Ground | row 23, cols 2–29 |
 | Machine cabinet | col 29, rows 4–5, on a one-cell ledge at (6,29) |
 | Plank stacks (decor) | (18, 2–5) and (12, 7) |
-| Cement mixers (decor) | (22, 10–11) and (22, 17–18) |
+| Cement mixers (decor) | (22, **11–12**) and (22, 17–18) — the left one moved with its belt |
 | Electromagnet | row 4, above the shaft |
 | Mack spawn | ground, col 3 |
 
@@ -303,13 +303,34 @@ which dropped him through the gaps between diagonally-staggered belt cells.
 **The centre is the moving CRANE BEAM (op 5 sub 10) — not chains.** It is drawn from **16 pre-shifted
 girder chars (192–207)**, so moving it is pure **name-table placement**: nothing rewrites a pattern or
 colour entry at runtime, which is what used to tear and flash. `beam_draw` runs **first in the loop,
-inside vblank**, and skips entirely on dwell frames. `beam_move` steps `bmy` 2 px/pass over rows
-48↔168. Mack **jumps on and off** across the side gaps; `beam_sup` (pixel check, x 96–135, `bmy`±4)
-supports him and `bonbeam` carries him.
+inside vblank**, and skips entirely on dwell frames. `beam_move` steps `bmy` 1 px/pass over rows
+48↔168. Mack **jumps on and off** across the side gaps; `beam_sup` (pixel check, art overlapping
+x 96–135, `bmy`±4) supports him and `bonbeam` carries him.
 
 **Routes up from the ground:** the chain at col 23 (reachable standing on the ground, since it hangs
-to row 21) reaches the lower-right tier; the lower-left conveyor lifts to (20,9), from where the
-crane beam is a jump away at its low point.
+to row 21) reaches the lower-right tier; the lower-left conveyor lifts you to its top roller, from
+where the crane beam is a **timed** jump away as it passes.
+
+**Making that jump possible again took three fixes (2026-07-26), and all three were needed:**
+1. **Ride through the roller.** The belt line runs drum-to-drum, but conveying quit 6 px early
+   (`ktp = kx1 − 6`), parking Mack *mid-drum*. He now rides to the roller's far edge
+   (`ktp = kx1 − 1`) — one pixel of slack so the belt cannot push him off the end.
+2. **Land by overlap, not by centre.** `beam_sup` required Mack's midpoint to clear the beam's left
+   edge. With the beam correctly narrowed to the reference's 5 cells, that left the jump **one pixel**
+   short. Any overlap of his 12-px art (`mx+2 … mx+13`) now counts — landing on a platform's edge is
+   what a player expects. The sticky-ride check uses the same rule, or he would slide off the edge he
+   is allowed to land on.
+3. **The lower machine group moved one column right** (belt, post and mixer together). At the
+   reference's cols 5/9 the roller is 17 px from the beam against a 16-px jump, so even after (1) and
+   (2) the margin was 3 px — inside the noise of which sub-step the belt parks him on. Shifted, the
+   park is `mx = 78` and the landing clears by 11 px. This is a deliberate, acknowledged one-cell
+   deviation from the reference, taken because the alternative is a route that cannot be walked.
+
+**The crane beam travels 1 px/pass, not 2.** At 2 px it covered 120 px/s — faster than Mack falls —
+so a beam on its way *up* outran his descent and slipped through the ±4 px catch window entirely: the
+jump only worked if you happened to meet the beam coming *down*. At 1 px the window is twice as
+forgiving in both directions, and the ride reads better. Verified in a scripted run: ride up, wait,
+jump right, and `bonbeam` latches with Mack riding at the beam's surface.
 
 **Element art matched to the reference** (patterns/colours extracted from the PNG at TI-pixel
 resolution): the lunch pail is a domed **white** lid + gray latch band over a **red** body; each
