@@ -617,10 +617,14 @@ st_walk:
 	IF ch = T_SPRTOP THEN GOTO walk_tramp
 	IF ch = T_SPRBSE THEN GOTO walk_tramp
 	IF ch = T_INM THEN GOSUB deliver_box
-	IF ch = T_LBOXL THEN GOSUB take_item
-	IF ch = T_BRICK THEN GOSUB take_item
-	IF ch = T_WRENCH THEN GOSUB take_item
-	IF ch = T_CAN THEN GOSUB take_item
+	' Any char in the pickup band 183-188 is collectable. This used to be four
+	' separate equality tests (183/185/186/187), which silently left out the
+	' TOOLBOX (184) and the HARD HAT (188) -- two of level 2's six prizes could
+	' be walked over forever and the level could never be cleared. A range test
+	' cannot drift out of step with the prize table the way a list can.
+	IF ch >= T_LBOXL THEN
+		IF ch <= T_HAT THEN GOSUB take_item
+	END IF
 	' Deposit a carried piece when standing at the edge of an open gap.
 	IF carry = 1 THEN GOSUB try_fill
 	RETURN

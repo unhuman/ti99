@@ -262,6 +262,11 @@ classifying the dominant colour of each cell and then zooming individual props t
 | Electromagnet | row 4, above the shaft |
 | Mack spawn | ground, col 3 |
 
+**The pickup test is a RANGE over the whole band 183–188** (`T_LBOXL … T_HAT`), not a list of char
+codes. It used to be four equality tests — 183/185/186/187 — which silently omitted the **toolbox
+(184)** and the **hard hat (188)**. Two of level 2's six prizes could be walked over forever, so the
+level could never be cleared. A list drifts out of step with the prize table; a range cannot.
+
 **Prizes — one per tier end, each a DIFFERENT item** (`ob_pail` takes a `kind` byte 0–5 → lunch pail
 183, toolbox 184, wrench 186, spray can 187, hard hat 188, brick 185): (8,6) (8,19) (12,4) (12,19)
 (16,2) (16,19). They sit one row **above** the beam so they rest **on** the girder — drawing them
