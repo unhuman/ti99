@@ -191,11 +191,23 @@ unsigned — split at 32768. `DIM a(N)` is 0..N−1; size for the real max (OOB 
 textual — parenthesize in body. Computed `FOR 1 TO 0` runs once. Dual-target: build **both**
 machines every time; `#if TI994A` (unhuman/CVBasic fork) for splits.
 
-**Found while building this game (both confirmed by reading the generated `.a99`):**
+**Found while building this game (all confirmed by reading the generated `.a99`). Three of
+these are one family — a constant > 255 silently truncated to 8 bits — hitting three different
+syntax shapes:**
 - **8-bit var × large constant miscompiles to 0 on the TMS9900 backend** — `th * 2048.` emitted
   a plain `CLR` (the radar-dot third offset was always 0, all dots invisible). Small powers of
   two (`* 8.`, `* 32.`) and `* 34.` compile fine. Workaround: 16-bit intermediate or an
   IF-ladder (`dot_addr` does the latter).
+- **Dotted constant folded with another constant truncates to 8 bits** — `#va = $1800 + 728.`
+  compiled to `li r0,6360` ($1800 + 728 AND 255 = $1800 + 216): the lives icons drew 16 rows
+  high (row 6) and the fuel bar (`$1800 + 696.`) drew over radar row 5. Var-times-dotted-const
+  (`rw * 32.`) is fine; it's the *pure constant fold* that breaks. Workaround: precompute the
+  folded value yourself (`#va = 6872` in `draw_lives`, `#va = 6840` in `fuel_bar`).
+- **A `CONST` > 255 truncates to 8 bits when used** — `CONST FUELMAX = 768` then
+  `#fuel = FUELMAX` compiled to `clr @cvb__FUEL` (768 AND 255 = 0): the game started with zero
+  fuel, permanent crawl speed, and smoke silently disabled. Bare 16-bit literals are fine
+  (`#fuel = 768` emits `li r0,768`). Rule: no `CONST` > 255 in TI-targeted CVBasic — use
+  literals or a `#var`.
 - **VDP writes (`VPOKE`/`PRINT`) are buffered per frame and bursts silently drop** — the radar
   init's ~1,900-VPOKE loop lost most writes (partial blue canvas, missing FUEL label). Pace
   bursts with `WAIT` (≤ a few dozen buffered ops per frame). TI `DEFINE CHAR`/`DEFINE COLOR`
