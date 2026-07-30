@@ -48,6 +48,9 @@
 				' must let the bounce pass through
 	CONST T_LADD0  = 152	' 152-155: climbable
 	CONST T_CHAIN  = 152	'   hanging chain (THE climbing element)
+	CONST T_PNL    = 153	'   pater-noster shaft, LEFT rail  (level 3)
+	CONST T_PNR    = 154	'   pater-noster shaft, RIGHT rail (level 3)
+	CONST T_CHAING = 155	'   green chain (level 3); 152 stays cyan for L1
 	CONST T_LADD1  = 155
 	CONST T_CONV0  = 156	' 156-163: conveyor belts (L/R x 2 anim frames)
 	CONST T_CONVB  = 156	'   conveyor belt tile (level 2)
@@ -58,7 +61,8 @@
 	' 172+: pass-through decoration and pickups
 	CONST T_PLANK  = 172	' 172: stack of planks (level 2 decor, pass-through)
 	CONST T_MACH   = 180	' 180-181: the right-hand machine cabinet (level 2)
-	CONST T_DOOR   = 182	' 182: level-3 processor door panel (decor)
+	CONST T_DOOR   = 173	' 173: level-3 processor door panel (decor)
+	CONST T_STAND  = 179	' 179: trampoline stand under a pad (decor)
 	CONST T_PILLAR = 174	' support pillar (art only -- NOT solid)
 	CONST T_PED    = 175	' pedestal base under the bottom girder (art)
 	CONST T_INM    = 191	' level-3 IN hopper: deliver a steel box here
@@ -66,6 +70,9 @@
 	CONST T_CABLE  = 178	' 178: thin crane cable (level 2 centre pole, art)
 	CONST T_BEAM   = 192	' 192-207: 16 pre-shifted crane-beam girder slices
 				'   placed by beam_draw, name-table only (level 2)
+	CONST T_SBOX   = 182	' level-3 steel box. Deliberately ONE BELOW the
+				' lunchbox so the pickup band stays a single
+				' contiguous range 182-188.
 	CONST T_LBOXL  = 183	' lunchbox (2 cells, level 2)
 	CONST T_LBOXR  = 184
 	CONST T_BRICK  = 185	' loose girder piece: 1-cell red brick stack
@@ -167,6 +174,8 @@
 	DEFINE CHAR T_SOLID0,11,tile_pat
 	DEFINE COLOR T_SOLID0,11,tile_col
 	DEFINE CHAR T_CHAIN,1,chain_pat
+	DEFINE CHAR T_CHAING,1,chain_pat	' 155 same links, green (level 3)
+	DEFINE COLOR T_CHAING,1,chaing_col
 	DEFINE COLOR T_CHAIN,1,chain_col
 	DEFINE CHAR T_PILLAR,2,pillar_pat		' 174 pillar, 175 pedestal
 	DEFINE COLOR T_PILLAR,2,pillar_col
@@ -177,6 +186,12 @@
 	DEFINE COLOR T_LBOXL,2,pail_col
 	DEFINE CHAR T_INM,1,inm_pat	' 191 level-3 IN hopper
 	DEFINE COLOR T_INM,1,inm_col
+	DEFINE CHAR T_PNL,2,pn_pat	' 153-154 pater-noster shaft rails
+	DEFINE COLOR T_PNL,2,pn_col
+	DEFINE CHAR T_STAND,1,stand_pat	' 179 trampoline stand
+	DEFINE COLOR T_STAND,1,stand_col
+	DEFINE CHAR T_SBOX,1,sbox_pat	' 182 level-3 steel box
+	DEFINE COLOR T_SBOX,1,sbox_col
 	DEFINE CHAR T_PAD,1,pad_pat	' 139 level-3 trampoline pad
 	DEFINE COLOR T_PAD,1,pad_col
 	DEFINE CHAR T_CONVH,1,convh_pat	' 161 flat conveyor belt
@@ -591,7 +606,7 @@ st_walk:
 			IF ch >= T_HAZ0 THEN
 				IF ch <= T_HAZ1 THEN GOSUB mack_die
 			END IF
-			IF ch >= T_LBOXL THEN
+			IF ch >= T_SBOX THEN
 				IF ch <= T_HAT THEN GOSUB take_item
 			END IF
 			RETURN
@@ -662,7 +677,7 @@ st_walk:
 	' TOOLBOX (184) and the HARD HAT (188) -- two of level 2's six prizes could
 	' be walked over forever and the level could never be cleared. A range test
 	' cannot drift out of step with the prize table the way a list can.
-	IF ch >= T_LBOXL THEN
+	IF ch >= T_SBOX THEN
 		IF ch <= T_HAT THEN GOSUB take_item
 	END IF
 	' Deposit a carried piece when standing at the edge of an open gap.
@@ -2039,6 +2054,20 @@ lv_parse:
 		NEXT i
 		GOTO lv_parse
 	END IF
+	IF op = 10 THEN
+		' Raw VERTICAL character run: col, row, count, CHAR CODE. The mirror
+		' of op 8, for shafts and rails that are not the standard chain.
+		READ BYTE c
+		READ BYTE r
+		READ BYTE n
+		READ BYTE ch
+		#va = VADDR(r,c)
+		FOR i = 1 TO n
+			VPOKE #va,ch
+			#va = #va + 32
+		NEXT i
+		GOTO lv_parse
+	END IF
 	IF op = 9 THEN
 		' FLAT conveyor: row, col, length, direction (0 = right, 1 = LEFT).
 		' Level 3's top-left machine is horizontal and runs INTO the grinder,
@@ -2243,7 +2272,9 @@ ob_brick:
 	itk(nitem) = 0
 	nitem = nitem + 1
 	#va = VADDR(r,c)
+	' Level 3's boxes are steel crates, not level 1's brick stacks.
 	ch = T_BRICK
+	IF lv = 3 THEN ch = T_SBOX
 	VPOKE #va,ch
 	GOTO lv_parse
 
@@ -2581,8 +2612,8 @@ level3_data:
 	' is a CLIMBABLE shaft (the flagged simplification -- the function of the
 	' lift without moving cars) and it is carried down to the ground so the
 	' player can enter it from below, then up to the full-width top beam.
-	DATA BYTE 2, 15,6,17		' left rail,  cols 15, rows 6-22
-	DATA BYTE 2, 16,6,17		' right rail, cols 16, rows 6-22
+	DATA BYTE 10, 15,6,17,153	' left rail  (col 15, rows 6-22)
+	DATA BYTE 10, 16,6,17,154	' right rail (col 16, rows 6-22)
 	' Step-off stubs either side of the shaft, where the reference draws the
 	' lift's paddles. They are real ledges: the shaft is how you change floor.
 	DATA BYTE 1, 10,17,2,3		' right stub, cols 17-18
@@ -2594,27 +2625,29 @@ level3_data:
 	DATA BYTE 9, 9,2,10,1		' row 9, cols 2-11, direction 1 = left
 	DATA BYTE 1, 8,2,2,4		' grinder, cols 2-3, at torso height on the belt
 	' Chains, where the reference hangs them.
-	DATA BYTE 2, 4,6,2		' top beam -> the conveyor level (col 4)
-	DATA BYTE 2, 24,6,2		' top beam -> upper-right beam (col 24)
-	DATA BYTE 2, 9,14,3		' mid-left -> lower-left  (col 9)
-	DATA BYTE 2, 29,14,3		' mid-right -> lower-right (col 29)
+	DATA BYTE 10, 4,6,2,155		' top beam -> the conveyor level (col 4)
+	DATA BYTE 10, 24,6,2,155	' top beam -> upper-right beam (col 24)
+	DATA BYTE 10, 9,14,3,155	' mid-left -> lower-left  (col 9)
+	DATA BYTE 10, 29,14,3,155	' mid-right -> lower-right (col 29)
 	' Ground machinery. The two IN hoppers eat the steel boxes; the processor
 	' door in the centre is decor; the two pads are trampolines that throw you
 	' a whole beam up (hold a direction to steer onto the ledge you want).
 	DATA BYTE 1, 22,3,5,8		' left IN machine  (cols 3-7)
 	DATA BYTE 1, 22,24,5,8		' right IN machine (cols 24-28)
-	DATA BYTE 8, 19,14,4,182	' processor door lintel (cols 14-17)
-	DATA BYTE 8, 20,14,1,182	' door frame, left column
-	DATA BYTE 8, 21,14,1,182
-	DATA BYTE 8, 22,14,1,182
-	DATA BYTE 8, 20,17,1,182	' door frame, right column
-	DATA BYTE 8, 21,17,1,182
-	DATA BYTE 8, 22,17,1,182
+	DATA BYTE 8, 19,14,4,173	' processor door lintel (cols 14-17)
+	DATA BYTE 8, 20,14,1,173	' door frame, left column
+	DATA BYTE 8, 21,14,1,173
+	DATA BYTE 8, 22,14,1,173
+	DATA BYTE 8, 20,17,1,173	' door frame, right column
+	DATA BYTE 8, 21,17,1,173
+	DATA BYTE 8, 22,17,1,173
 	' The pads go IN the ground row, not on top of it: Mack walks the ground
 	' with his feet on row 23, so a pad drawn at row 22 sits at his waist and
 	' he strolls straight through it. The foot probe is what triggers a pad.
 	DATA BYTE 8, 23,11,1,139	' left  trampoline pad (col 11)
 	DATA BYTE 8, 23,20,1,139	' right trampoline pad (col 20)
+	DATA BYTE 8, 22,11,1,179	' ...and the stands the reference draws under
+	DATA BYTE 8, 22,20,1,179	'    them
 	' Six steel boxes, one per beam, each resting ON the girder (one row above
 	' it) so the torso probe can reach them. The conveyor one rides at belt
 	' height and has to be grabbed before the grinder gets it.
@@ -2739,6 +2772,33 @@ pail_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
 	' toolbox: gray handle, dark-yellow chest
 	DATA BYTE $E1,$E1,$11,$A1,$A1,$A1,$A1,$A1
+pn_pat:
+	' 153/154 the pater-noster shaft: a green tube with white side walls,
+	' as the reference draws it. Two cells wide; both codes sit in the
+	' CLIMB band (152-155) so the shaft is how you change floor.
+	' Each cell is white edge / green rail / white edge, so the pair reads as
+	' TWO green rails inside a white-walled tube -- the reference shaft, not a
+	' solid slab of green.
+	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3	' left half
+	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3	' right half
+pn_col:
+	' white wall over the green shaft interior
+	DATA BYTE $F3,$F3,$F3,$F3,$F3,$F3,$F3,$F3
+	DATA BYTE $F3,$F3,$F3,$F3,$F3,$F3,$F3,$F3
+chaing_col:
+	' the reference draws level 3's chains green
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31
+stand_pat:
+	' 179 the pinched stand under a trampoline pad (decor only)
+	DATA BYTE $00,$7E,$3C,$18,$18,$3C,$7E,$00
+stand_col:
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+sbox_pat:
+	' 182 steel box: a white crate with a green lid and a magenta face --
+	' the reference's box, not level 1's red brick stack.
+	DATA BYTE $00,$7E,$FF,$3C,$3C,$FF,$7E,$00
+sbox_col:
+	DATA BYTE $11,$31,$F1,$DF,$DF,$F1,$F1,$11
 pad_pat:
 	' 139 trampoline pad: a green bounce plate on a pinched magenta stand.
 	' SOLID, so Mack stands on it -- and st_walk launches him straight off
@@ -2749,15 +2809,15 @@ pad_col:
 convh_pat:
 	' 161 flat conveyor belt: a white band with two lugs, surface on the
 	' cell's top edge to match cvy0 = row*8+2.
-	DATA BYTE $FF,$99,$99,$FF,$00,$00,$00,$00
+	DATA BYTE $FF,$DB,$DB,$DB,$FF,$00,$00,$00
 convh_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$11,$11,$11,$11
 door_pat:
 	' 182 the processor door under the pater-noster: a blue frame around a
 	' dark-yellow panel.
-	DATA BYTE $FF,$81,$BD,$BD,$BD,$BD,$81,$FF
+	DATA BYTE $FF,$FF,$3C,$3C,$3C,$3C,$FF,$FF
 door_col:
-	DATA BYTE $51,$51,$A1,$A1,$A1,$A1,$51,$51
+	DATA BYTE $51,$51,$A5,$A5,$A5,$A5,$51,$51
 plank_pat:
 	' 172 stack of planks: white boards banded with the light-blue shadow
 	' between them. Decor band, so it is pass-through -- in the reference
@@ -2800,78 +2860,65 @@ haz_col:
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $B1,$91,$91,$B1,$91,$B1,$91,$61
 conv_pat:
-	' Conveyor MACHINE (4 chars, 156-159), matched to the reference: a shallow
-	' 2:1 white belt with dark oval holes, cyan roller drums at both ends, and
-	' a yellow support post. op 6 assembles these into the escalator.
-	' THREE belt chars, so the 2:1 band is never clipped. The band drops 4 px
-	' across a cell, so on alternate columns its centre lands ON a cell
-	' boundary; with only two chars that half fell outside the cell and was
-	' lost -- those were the gaps. Now a straddling column draws BOTH halves.
-	' 156 belt-FULL: band centred in the cell (column centre lands mid-cell)
-	DATA BYTE $00,$03,$07,$37,$77,$74,$70,$40
-	' 157 belt-BOTTOM: the band's upper half, along this cell's bottom edge
-	DATA BYTE $00,$00,$00,$00,$00,$03,$07,$37
-	' 158 belt-TOP: the band's lower half, along this cell's top edge
-	DATA BYTE $77,$74,$70,$40,$00,$00,$00,$00
-	' 159 roller drum: a cyan cylinder with a spoke (spins via the animation)
-	DATA BYTE $18,$7E,$7E,$00,$00,$7E,$7E,$18
-	' 160 support post: a vertical yellow strut
+	' 156 belt cell, band centred (see genbelt: continuous rails,
+	' travelling rungs -- the old art broke at x=0 and x=4 and read as
+	' loose dashes instead of one machine)
+	DATA BYTE $00,$03,$0F,$37,$F7,$7C,$70,$C0
+	' 157 belt, the piece that lands in the cell ABOVE
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$37
+	' 158 belt, the piece that lands in THIS cell
+	DATA BYTE $F7,$7C,$70,$C0,$00,$00,$00,$00
+	' 159 roller drum
+	DATA BYTE $18,$7E,$7E,$FF,$55,$7E,$7E,$18
+	' 160 yellow support post under the top drum
 	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
 conv_col:
-	' belt full / bottom / top white, drum cyan, post yellow
+	' belt white, drum cyan, post yellow
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
-	' Belt scroll phases 0-7: three chars each -- belt-lo, belt-hi (conv_pat's
-	' two belt chars ROTATED up 0..7 px, both by the same amount so they keep
-	' tiling) AND the roller drum (158) with a spoke rotated to the matching
-	' phase. Cycling 0->1->...->7->0 scrolls the belt up 1 px/step and spins the
-	' rollers; 8 phases = one full rotation, so it loops seamlessly (no shake).
-	' Each phase is 4 chars: belt full / bottom / top (the dark cleats travel
-	' along the band -- the band itself is invariant, so only the cleats move,
-	' which is what selling belt motion needs) + the drum spoke rotated.
 belt_anim0:
-	DATA BYTE $00,$03,$07,$37,$77,$74,$70,$40
-	DATA BYTE $00,$00,$00,$00,$00,$03,$07,$37
-	DATA BYTE $77,$74,$70,$40,$00,$00,$00,$00
-	DATA BYTE $18,$7E,$7E,$00,$00,$7E,$7E,$18
+	DATA BYTE $00,$03,$0F,$37,$F7,$7C,$70,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$37
+	DATA BYTE $F7,$7C,$70,$C0,$00,$00,$00,$00
+	DATA BYTE $18,$7E,$7E,$FF,$55,$7E,$7E,$18
 belt_anim1:
-	DATA BYTE $00,$02,$0E,$2E,$EE,$EC,$E0,$C0
-	DATA BYTE $00,$00,$00,$00,$00,$02,$0E,$2E
-	DATA BYTE $EE,$EC,$E0,$C0,$00,$00,$00,$00
-	DATA BYTE $18,$7E,$1E,$07,$E0,$78,$7E,$18
+	DATA BYTE $00,$03,$0E,$3E,$EF,$EC,$F0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0E,$3E
+	DATA BYTE $EF,$EC,$F0,$C0,$00,$00,$00,$00
+	DATA BYTE $18,$3E,$5E,$EF,$F7,$7A,$7C,$18
 belt_anim2:
-	DATA BYTE $00,$01,$0D,$1D,$DD,$DC,$D0,$C0
-	DATA BYTE $00,$00,$00,$00,$00,$01,$0D,$1D
-	DATA BYTE $DD,$DC,$D0,$C0,$00,$00,$00,$00
-	DATA BYTE $18,$1E,$0E,$C7,$E3,$70,$78,$18
+	DATA BYTE $00,$03,$0D,$3D,$DF,$DC,$F0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0D,$3D
+	DATA BYTE $DF,$DC,$F0,$C0,$00,$00,$00,$00
+	DATA BYTE $10,$7E,$76,$FF,$F7,$7E,$76,$18
 belt_anim3:
-	DATA BYTE $00,$03,$0B,$3B,$BB,$B8,$B0,$80
-	DATA BYTE $00,$00,$00,$00,$00,$03,$0B,$3B
-	DATA BYTE $BB,$B8,$B0,$80,$00,$00,$00,$00
-	DATA BYTE $08,$4E,$4E,$E7,$E7,$72,$72,$10
+	DATA BYTE $00,$03,$0F,$3B,$FB,$BC,$B0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$3B
+	DATA BYTE $FB,$BC,$B0,$C0,$00,$00,$00,$00
+	DATA BYTE $18,$7C,$7A,$F7,$E7,$5E,$3E,$18
 belt_anim4:
-	DATA BYTE $00,$03,$07,$37,$77,$74,$70,$40
-	DATA BYTE $00,$00,$00,$00,$00,$03,$07,$37
-	DATA BYTE $77,$74,$70,$40,$00,$00,$00,$00
-	DATA BYTE $00,$66,$66,$E7,$E7,$66,$66,$00
+	DATA BYTE $00,$03,$0F,$37,$F7,$7C,$70,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$37
+	DATA BYTE $F7,$7C,$70,$C0,$00,$00,$00,$00
+	DATA BYTE $18,$7E,$7E,$FD,$57,$7E,$7E,$18
 belt_anim5:
-	DATA BYTE $00,$02,$0E,$2E,$EE,$EC,$E0,$C0
-	DATA BYTE $00,$00,$00,$00,$00,$02,$0E,$2E
-	DATA BYTE $EE,$EC,$E0,$C0,$00,$00,$00,$00
-	DATA BYTE $10,$72,$72,$E7,$E7,$4E,$4E,$08
+	DATA BYTE $00,$03,$0E,$3E,$EF,$EC,$F0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0E,$3E
+	DATA BYTE $EF,$EC,$F0,$C0,$00,$00,$00,$00
+	DATA BYTE $18,$3E,$5E,$EF,$F7,$7A,$7C,$18
 belt_anim6:
-	DATA BYTE $00,$01,$0D,$1D,$DD,$DC,$D0,$C0
-	DATA BYTE $00,$00,$00,$00,$00,$01,$0D,$1D
-	DATA BYTE $DD,$DC,$D0,$C0,$00,$00,$00,$00
-	DATA BYTE $18,$78,$70,$E3,$C7,$0E,$1E,$18
+	DATA BYTE $00,$03,$0D,$3D,$DF,$DC,$F0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0D,$3D
+	DATA BYTE $DF,$DC,$F0,$C0,$00,$00,$00,$00
+	DATA BYTE $08,$7E,$66,$FF,$F7,$7E,$76,$18
 belt_anim7:
-	DATA BYTE $00,$03,$0B,$3B,$BB,$B8,$B0,$80
-	DATA BYTE $00,$00,$00,$00,$00,$03,$0B,$3B
-	DATA BYTE $BB,$B8,$B0,$80,$00,$00,$00,$00
-	DATA BYTE $18,$7E,$78,$E0,$07,$1E,$7E,$18
+	DATA BYTE $00,$03,$0F,$3B,$FB,$BC,$B0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$3B
+	DATA BYTE $FB,$BC,$B0,$C0,$00,$00,$00,$00
+	DATA BYTE $18,$7C,$7A,$F7,$E7,$5E,$3E,$18
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
 	' hanging down to grab Mack -- matches the reference's white/red magnet.
