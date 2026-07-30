@@ -55,6 +55,13 @@
 	CONST T_CONV0  = 156	' 156-163: conveyor belts (L/R x 2 anim frames)
 	CONST T_CONVB  = 156	'   conveyor belt tile (level 2)
 	CONST T_CONVH  = 161	'   FLAT belt tile (level 3's horizontal machine)
+	CONST T_MIXBAS = 162	'   cement-mixer stand (decor)
+	CONST T_DRUM   = 163	'   oil drum (level 3 ground decor)
+				'   162/163 are the last free codes and they sit in
+				'   the CONVEYOR band because the decor band is
+				'   full. Safe: the belt-drag test only runs when
+				'   Mack is STANDING on the probed tile, and only
+				'   128-151 support him -- so it cannot reach these.
 	CONST T_CONV1  = 163
 	CONST T_HAZ0   = 164	' 164-171: touch = death
 	CONST T_HAZ1   = 171
@@ -186,6 +193,8 @@
 	DEFINE COLOR T_LBOXL,2,pail_col
 	DEFINE CHAR T_INM,1,inm_pat	' 191 level-3 IN hopper
 	DEFINE COLOR T_INM,1,inm_col
+	DEFINE CHAR T_MIXBAS,2,mixb_pat	' 162 mixer stand, 163 oil drum
+	DEFINE COLOR T_MIXBAS,2,mixb_col
 	DEFINE CHAR T_PNL,2,pn_pat	' 153-154 pater-noster shaft rails
 	DEFINE COLOR T_PNL,2,pn_col
 	DEFINE CHAR T_STAND,1,stand_pat	' 179 trampoline stand
@@ -283,14 +292,14 @@ main_loop:
 			' Redefine 4 chars: the three belt slices (full/bottom/top --
 			' their cleats travel along the band) AND the drum (159, spinning
 			' roller), so the WHOLE conveyor moves. Post (160) stays static.
-			IF cvaf = 0 THEN DEFINE CHAR 156,4,belt_anim0
-			IF cvaf = 1 THEN DEFINE CHAR 156,4,belt_anim1
-			IF cvaf = 2 THEN DEFINE CHAR 156,4,belt_anim2
-			IF cvaf = 3 THEN DEFINE CHAR 156,4,belt_anim3
-			IF cvaf = 4 THEN DEFINE CHAR 156,4,belt_anim4
-			IF cvaf = 5 THEN DEFINE CHAR 156,4,belt_anim5
-			IF cvaf = 6 THEN DEFINE CHAR 156,4,belt_anim6
-			IF cvaf = 7 THEN DEFINE CHAR 156,4,belt_anim7
+			IF cvaf = 0 THEN DEFINE CHAR 156,6,belt_anim0
+			IF cvaf = 1 THEN DEFINE CHAR 156,6,belt_anim1
+			IF cvaf = 2 THEN DEFINE CHAR 156,6,belt_anim2
+			IF cvaf = 3 THEN DEFINE CHAR 156,6,belt_anim3
+			IF cvaf = 4 THEN DEFINE CHAR 156,6,belt_anim4
+			IF cvaf = 5 THEN DEFINE CHAR 156,6,belt_anim5
+			IF cvaf = 6 THEN DEFINE CHAR 156,6,belt_anim6
+			IF cvaf = 7 THEN DEFINE CHAR 156,6,belt_anim7
 		END IF
 	END IF
 	' FRAME-delta pacing (shared convention with Structris): a missed
@@ -2047,6 +2056,8 @@ lv_parse:
 	IF t = 6 THEN ch = 189		' cement mixer, left half (decor)
 	IF t = 7 THEN ch = 190		' cement mixer, right half (decor)
 	IF t = 8 THEN ch = T_INM	' level-3 IN hopper (delivery zone)
+	IF t = 9 THEN ch = T_MIXBAS	' cement-mixer stand
+	IF t = 10 THEN ch = T_DRUM	' oil drum
 		#va = VADDR(r,c)
 		FOR i = 1 TO n
 			VPOKE #va,ch
@@ -2557,10 +2568,14 @@ level2_data:
 	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
 	' Bottom-row machinery from the reference: the cement mixer beside the
 	' lower conveyor's post, and a second one over on the right. Decor only.
-	DATA BYTE 1, 22,11,1,6		' mixer, left half  (moved with the belt)
-	DATA BYTE 1, 22,12,1,7		' mixer, right half
-	DATA BYTE 1, 22,17,1,6		' right-hand machine, left half
-	DATA BYTE 1, 22,18,1,7		' right-hand machine, right half
+	' Two cells tall, as the reference draws them: the round drum sits on a
+	' stand instead of being a lone blob on the grass.
+	DATA BYTE 1, 21,11,1,6		' mixer drum, left half  (moved with the belt)
+	DATA BYTE 1, 21,12,1,7		' mixer drum, right half
+	DATA BYTE 1, 22,11,2,9		' its stand
+	DATA BYTE 1, 21,17,1,6		' right-hand machine, drum
+	DATA BYTE 1, 21,18,1,7
+	DATA BYTE 1, 22,17,2,9		' its stand
 	' Six PRIZES, ONE PER TIER END, each a different item (kind 0-5). They sit
 	' one row ABOVE the beam (rows 8/12/16) so they rest ON the girder instead
 	' of punching a hole in it -- and so take_item's torso probe can reach them.
@@ -2648,6 +2663,9 @@ level3_data:
 	DATA BYTE 8, 23,20,1,139	' right trampoline pad (col 20)
 	DATA BYTE 8, 22,11,1,179	' ...and the stands the reference draws under
 	DATA BYTE 8, 22,20,1,179	'    them
+	' The two pairs of oil drums the reference stands on the ground.
+	DATA BYTE 1, 22,9,2,10
+	DATA BYTE 1, 22,21,2,10
 	' Six steel boxes, one per beam, each resting ON the girder (one row above
 	' it) so the torso probe can reach them. The conveyor one rides at belt
 	' height and has to be grabbed before the grinder gets it.
@@ -2772,6 +2790,17 @@ pail_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$E1,$61,$61,$61
 	' toolbox: gray handle, dark-yellow chest
 	DATA BYTE $E1,$E1,$11,$A1,$A1,$A1,$A1,$A1
+mixb_pat:
+	' 162 the stand under the cement mixer's drum. SYMMETRIC, so one char
+	' serves both columns -- which is how the drum gets to be two cells tall
+	' on the two codes that were left.
+	DATA BYTE $66,$66,$66,$3C,$3C,$7E,$FF,$FF
+	' 163 oil drum: white lid over a banded magenta can, the pair the
+	' reference stands on level 3's ground.
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$7E,$7E
+mixb_col:
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $11,$F1,$D1,$D1,$F1,$D1,$D1,$D1
 pn_pat:
 	' 153/154 the pater-noster shaft: a green tube with white side walls,
 	' as the reference draws it. Two cells wide; both codes sit in the
@@ -2849,14 +2878,16 @@ mixer_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$E1,$E1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$E1,$E1
 haz_pat:
-	' 164 incinerator pot (white outline)
-	DATA BYTE $FF,$81,$81,$81,$81,$81,$FF,$7E
+	' 164 GRINDER (level 3, at the end of the belt): a toothed wheel throwing
+	' sparks. It was a plain block, which read as scenery rather than as the
+	' thing that eats you.
+	DATA BYTE $99,$5A,$3C,$FF,$FF,$3C,$5A,$99
 	' 165 spare
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	' 166 flame
 	DATA BYTE $10,$54,$38,$7C,$BA,$FE,$7C,$38
 haz_col:
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $91,$91,$E1,$E1,$E1,$E1,$91,$91
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $B1,$91,$91,$B1,$91,$B1,$91,$61
 conv_pat:
@@ -2884,41 +2915,57 @@ belt_anim0:
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$37
 	DATA BYTE $F7,$7C,$70,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$7E,$7E,$FF,$55,$7E,$7E,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$77,$77,$77,$FF,$00,$00,$00
 belt_anim1:
 	DATA BYTE $00,$03,$0E,$3E,$EF,$EC,$F0,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0E,$3E
 	DATA BYTE $EF,$EC,$F0,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$3E,$5E,$EF,$F7,$7A,$7C,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$EE,$EE,$EE,$FF,$00,$00,$00
 belt_anim2:
 	DATA BYTE $00,$03,$0D,$3D,$DF,$DC,$F0,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0D,$3D
 	DATA BYTE $DF,$DC,$F0,$C0,$00,$00,$00,$00
 	DATA BYTE $10,$7E,$76,$FF,$F7,$7E,$76,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$DD,$DD,$DD,$FF,$00,$00,$00
 belt_anim3:
 	DATA BYTE $00,$03,$0F,$3B,$FB,$BC,$B0,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$3B
 	DATA BYTE $FB,$BC,$B0,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$7C,$7A,$F7,$E7,$5E,$3E,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$BB,$BB,$BB,$FF,$00,$00,$00
 belt_anim4:
 	DATA BYTE $00,$03,$0F,$37,$F7,$7C,$70,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$37
 	DATA BYTE $F7,$7C,$70,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$7E,$7E,$FD,$57,$7E,$7E,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$77,$77,$77,$FF,$00,$00,$00
 belt_anim5:
 	DATA BYTE $00,$03,$0E,$3E,$EF,$EC,$F0,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0E,$3E
 	DATA BYTE $EF,$EC,$F0,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$3E,$5E,$EF,$F7,$7A,$7C,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$EE,$EE,$EE,$FF,$00,$00,$00
 belt_anim6:
 	DATA BYTE $00,$03,$0D,$3D,$DF,$DC,$F0,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0D,$3D
 	DATA BYTE $DF,$DC,$F0,$C0,$00,$00,$00,$00
 	DATA BYTE $08,$7E,$66,$FF,$F7,$7E,$76,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$DD,$DD,$DD,$FF,$00,$00,$00
 belt_anim7:
 	DATA BYTE $00,$03,$0F,$3B,$FB,$BC,$B0,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$03,$0F,$3B
 	DATA BYTE $FB,$BC,$B0,$C0,$00,$00,$00,$00
 	DATA BYTE $18,$7C,$7A,$F7,$E7,$5E,$3E,$18
+	DATA BYTE $18,$18,$18,$18,$18,$18,$18,$18
+	DATA BYTE $FF,$BB,$BB,$BB,$FF,$00,$00,$00
 mag_pat:
 	' 176/177 electromagnet: a HORSESHOE (U) magnet, arch on top, two legs
 	' hanging down to grab Mack -- matches the reference's white/red magnet.
