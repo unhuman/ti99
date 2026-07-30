@@ -5,48 +5,51 @@
 	' Maze transcribed at the cell grid from the arcade Rally-X map rip
 	' (assets/transcribe2.py); see DESIGN.md for the full element spec.
 	'
-	' Milestones done: M1 world + driving (scrolling viewport via SCREEN blit
-	' of the 34x58 ROM map, stepped camera + dead zone, pixel-smooth sprite
-	' car, queued turns, PEEK wall collision -- zero per-frame VDP reads).
-	' M2 flags + fuel + scoring + HUD + radar (radar = chars 144-255 as a
-	' 64x112-px canvas, whole map at 2 px/cell, pattern-table plotting).
-	' M3 enemies (reactive pursuit AI, sprite-slot rotation, radar dots),
-	' smoke screens, crash/lives/game over.
+	' The world renders at 2x2 CHARACTERS PER MAZE CELL (16-px roads), so
+	' the 16x16 car exactly fills a lane and the 24x24-char viewport shows
+	' a 12x12-cell window of the 32x56 maze -- the radar earns its keep.
+	' Two map encodings: map1 (34x58 logical bytes, collision/AI/radar,
+	' TI bank 0 so gameplay PEEKs never bank-switch) and map2 (68x116
+	' pre-edged chars, stride 68, TI bank 1 for the SCREEN blits). The
+	' camera pans in 1-char (8-px) steps for smoothness.
+	'
+	' Milestones: M1 world + driving, M2 flags/fuel/score/HUD/radar,
+	' M3 enemies/smoke/crash, M4 title/rounds/challenge/jingles.
 	'
 	' 2026 UNHUMAN AND CLAUDE
 	'
 
-	' TI-99: the fixed cart area caps at 24,336 bytes and linkticart
-	' silently truncates past it, so the big DATA blocks (map, art) live
-	' in BANK 1, selected once at init and never switched away.
-	' ColecoVision fits flat in 32K -- no banking (needs the unhuman/CVBasic
-	' fork's #if, keyed on the auto-defined TI994A constant).
+	' TI-99: the fixed cart area caps at 24,336 bytes. Bank layout:
+	' bank 0 = code + logical map, bank 1 = map2 char map (selected during
+	' gameplay), bank 2 = art/tiles/radar tables/item lists (selected only
+	' during init and round setup). ColecoVision fits flat in 32K -- every
+	' BANK statement is inside #if TI994A (unhuman/CVBasic fork).
 #if TI994A
 	BANK ROM 128
 #endif
 
-	CONST MAPW = 34		' bordered map width (32 maze + tree ring)
-	CONST MAPH = 58		' bordered map height (56 maze + tree ring)
-	CONST CAMMAXC = 10	' MAPW - viewport width 24
-	CONST CAMMAXR = 34	' MAPH - viewport height 24
-	CONST ROADCH = 113	' map codes >= ROADCH are drivable (walls 96-111,
+	CONST MAPW = 34		' bordered logical map width (32 maze + tree ring)
+	CONST MAPH = 58		' bordered logical map height
+	CONST CAMMAXC = 44	' map2 chars 68 - viewport 24
+	CONST CAMMAXR = 92	' map2 chars 116 - viewport 24
+	CONST ROADCH = 113	' logical codes >= ROADCH are drivable (wall 96,
 				' tree 112 -- one compare tells wall from road)
-	CONST FLAGCH = 114	' 114 F, 115 S, 116 L
-	CONST SMOKECH = 117
+	CONST SMOKECH = 12	' overlay chars: F 0-3, S 4-7, L 8-11, smoke 12-15
 	' fuel max is 768 (~51 s at 1 unit / 4 frames) -- written as a literal
 	' at the init site because "CONST FUELMAX = 768" assigned to a 16-bit
 	' var compiles to CLR (a CONST > 255 truncates to 8 bits -- same
 	' family as the dotted-constant folding bug, verified in RALTIX.a99)
-	CONST ESPD = 10		' enemy speed, 1/8 px per frame (10 = 1.25 px/f)
+	CONST PSPD = 24		' player speed, 1/8 px per frame (24 = 3 px/f
+				' = same cells/second as before the 2x scale)
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
-	DIM fr(10)		' flag row (bordered map cell)
+	DIM fr(10)		' flag row (bordered logical cell)
 	DIM fc(10)		' flag col
 	DIM fst(10)		' 0 = live, 1 = taken
 	DIM msktab(4)		' radar 2-px dot masks by (x AND 6)/2
 
 	' enemies (up to 4; nen active this round)
-	DIM #ex(4)		' map-pixel x
+	DIM #ex(4)		' map-pixel x (16 px per cell)
 	DIM #ey(4)		' map-pixel y
 	DIM edir(4)		' heading 0-3
 	DIM estn(4)		' stun countdown (smoke hit)
@@ -69,20 +72,17 @@
 	SPRITE FLICKER OFF
 
 #if TI994A
-	BANK SELECT 1		' all DATA (map, art, flags) is in bank 1;
-				' selected here once, never switched away
+	BANK SELECT 2		' art/tiles/radar tables live in bank 2
 #endif
 
-	DEFINE CHAR 96,16,wallpat	' wall block, 16 neighbor variants
+	DEFINE CHAR 0,16,ovlpat		' flags F/S/L + smoke, 2x2 quadrants
+	DEFINE CHAR 96,16,wallpat	' wall quadrants, 4 per corner
 	DEFINE CHAR 112,2,misc_chars	' 112 tree, 113 road
-	DEFINE CHAR 114,3,flag_chars	' 114 F, 115 S, 116 L
-	DEFINE CHAR 117,1,smoke_char
 	DEFINE CHAR 120,9,fuel_chars	' fuel bar fill 0-8 px
 	DEFINE CHAR 129,1,live_char	' lives icon
+	DEFINE COLOR 0,16,ovlcol
 	DEFINE COLOR 96,16,wallcol
 	DEFINE COLOR 112,2,misc_colors
-	DEFINE COLOR 114,3,flag_colors
-	DEFINE COLOR 117,1,smoke_color
 	DEFINE COLOR 120,9,fuel_colors
 	DEFINE COLOR 129,1,live_color
 	DEFINE SPRITE 0,4,car_bitmaps	' defs 0-3 = car up/right/down/left
@@ -104,7 +104,6 @@
 	PRINT AT 88,"HI"
 	WAIT
 	PRINT AT 664,"FUEL"
-	PRINT AT 760,"RD 1"
 	WAIT
 	GOSUB prt_hi
 	WAIT
@@ -156,6 +155,10 @@ game_init:
 
 	' --- round start ------------------------------------------------------
 round_init:
+	' item lists live in bank 2; gameplay needs bank 1 (map2 blits)
+#if TI994A
+	BANK SELECT 2
+#endif
 	RESTORE flag_data
 	FOR i = 0 TO 9
 	READ BYTE t
@@ -164,6 +167,9 @@ round_init:
 	fc(i) = t
 	fst(i) = 0
 	NEXT i
+#if TI994A
+	BANK SELECT 1
+#endif
 	nfl = 0
 	sgot = 0
 	' difficulty: 3 chasers, 4 from round 4; speed ramps with the round.
@@ -172,8 +178,8 @@ round_init:
 	nen = 3
 	IF rnd >= 4 THEN nen = 4
 	IF rc3 = 2 THEN nen = 0
-	espd = 9 + rnd
-	IF espd > 15 THEN espd = 15
+	espd = 18 + rnd * 2
+	IF espd > 30 THEN espd = 30
 	GOSUB rehome
 	FOR j = 0 TO 5
 	st(j) = 0
@@ -198,16 +204,16 @@ round_init:
 	' Player start cell (23,15) bordered, heading right (the start corridor
 	' is horizontal -- walls sit directly above and below); camera centered.
 restart:
-	#px = 120		' 15 * 8 (map-pixel, top-left of the car's cell)
-	#py = 184		' 23 * 8
+	#px = 240		' 15 * 16 (map-pixel, cell = 16 px)
+	#py = 368		' 23 * 16
 	dir = 1
 	qdir = 1
 	blocked = 0
 	lcr = 23
 	lcc = 15
 	GOSUB set_dir
-	camc = 3
-	camr = 11
+	camc = 18		' camera in map2 CHAR units (car char - 12)
+	camr = 34
 	#acc = 0
 	#eacc = 0
 	GOSUB draw_view
@@ -229,10 +235,10 @@ game_loop:
 	IF cont1.left THEN qdir = 3
 	IF qdir = ((dir + 2) AND 3) THEN dir = qdir : blocked = 0 : GOSUB set_dir
 
-	' speed: 1.5 px/f, 1.125 under 25% fuel, 0.75 when empty
-	spd = 12
-	IF #fuel < 192 THEN spd = 9
-	IF #fuel = 0 THEN spd = 6
+	' speed: 3 px/f, 2.25 under 25% fuel, 1.5 when empty
+	spd = PSPD
+	IF #fuel < 192 THEN spd = 18
+	IF #fuel = 0 THEN spd = 12
 
 	' player movement: accumulate 1/8-px units, walk whole pixels
 	#acc = #acc + spd * #fd
@@ -242,14 +248,14 @@ game_loop:
 
 	GOSUB update_cam
 
-	x = #px - camc * 8. - 4
-	y = #py - camr * 8. - 4
+	x = #px - camc * 8.
+	y = #py - camr * 8.
 	SPRITE 0, y - 1, x, dir * 4, 5
 
 	' enemies: same pixel-walk scheme, shared accumulator
 	IF sct > 0 THEN sct = sct - 1
-	pcr = #py / 8
-	pcc = #px / 8
+	pcr = #py / 16
+	pcc = #px / 16
 	#eacc = #eacc + espd * #fd
 	esteps = #eacc / 8
 	#eacc = #eacc AND 7
@@ -273,7 +279,8 @@ eskip:
 	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, edir(i) * 4, 9 ELSE SPRITE sl, 209, 0, 0, 0
 	NEXT i
 
-	' player vs enemy collision (12-px boxes)
+	' player vs enemy collision (12-px boxes; lanes are 16 px apart, so
+	' adjacent lanes can never false-positive)
 	hitf = 0
 	FOR i = 0 TO 3
 	IF i < nen THEN GOSUB ckhit
@@ -361,29 +368,36 @@ game_over:
 	NEXT i
 	GOTO title
 
-	' reset enemies to their spawn cells, scattered
+	' reset enemies to their spawn cells, scattered (spawn list is in
+	' bank 2; gameplay runs with bank 1 selected)
 rehome:
+#if TI994A
+	BANK SELECT 2
+#endif
 	RESTORE espawn_data
 	FOR i = 0 TO 3
 	READ BYTE t
-	#ey(i) = t * 8.
+	#ey(i) = t * 16.
 	READ BYTE t
-	#ex(i) = t * 8.
+	#ex(i) = t * 16.
 	edir(i) = 2
 	estn(i) = 0
 	NEXT i
+#if TI994A
+	BANK SELECT 1
+#endif
 	sct = 180
 	RETURN
 
 	' --- player: move one pixel (turns/walls only at cell alignment) ------
 move1px:
-	IF (#px AND 7) = 0 THEN IF (#py AND 7) = 0 THEN GOSUB at_center
+	IF (#px AND 15) = 0 THEN IF (#py AND 15) = 0 THEN GOSUB at_center
 	IF blocked = 0 THEN #px = #px + #dx : #py = #py + #dy
 	RETURN
 
 at_center:
-	cr = #py / 8
-	cc = #px / 8
+	cr = #py / 16
+	cc = #px / 16
 	' flag pickup: car cell == a live flag's cell
 	FOR fi = 0 TO 9
 	IF fst(fi) = 0 THEN IF fr(fi) = cr THEN IF fc(fi) = cc THEN GOSUB take_flag
@@ -401,7 +415,8 @@ at_center:
 	IF t < ROADCH THEN blocked = 1 ELSE blocked = 0
 	RETURN
 
-	' map code of the cell next to (cr,cc) in direction d -> t
+	' logical-map code of the cell next to (cr,cc) in direction d -> t
+	' (map1 lives in TI bank 0 -- always visible, no bank switch)
 probe:
 	tr = cr
 	tc = cc
@@ -424,7 +439,7 @@ set_dir:
 	' --- enemy: move one pixel (AI only at cell alignment) ----------------
 emove1:
 	IF estn(i) > 0 THEN estn(i) = estn(i) - 1 : RETURN
-	IF (#ex(i) AND 7) = 0 THEN IF (#ey(i) AND 7) = 0 THEN GOSUB eai
+	IF (#ex(i) AND 15) = 0 THEN IF (#ey(i) AND 15) = 0 THEN GOSUB eai
 	d = edir(i)
 	IF d = 0 THEN #ey(i) = #ey(i) - 1
 	IF d = 1 THEN #ex(i) = #ex(i) + 1
@@ -436,8 +451,8 @@ emove1:
 	' if open, else the other, else keep going, else any open non-reverse,
 	' else reverse (dead end). Scatter inverts the preferences.
 eai:
-	ecr = #ey(i) / 8
-	ecc = #ex(i) / 8
+	ecr = #ey(i) / 16
+	ecc = #ex(i) / 16
 	' smoke check
 	FOR j = 0 TO 5
 	IF st(j) > 0 THEN IF sr(j) = ecr THEN IF sc(j) = ecc THEN estn(i) = 90
@@ -472,16 +487,17 @@ eai:
 	IF fnd = 0 THEN edir(i) = rv
 	RETURN
 
-	' enemy i on-screen? -> vis, x2, y2 (hidden near edges to avoid wrap)
+	' enemy i on-screen? -> vis, x2, y2 (char units; the 16-px car spans
+	' 2 chars, so hide at the edges to avoid coordinate wrap)
 evis:
 	t = #ex(i) / 8 - camc
 	IF t = 0 THEN RETURN
-	IF t >= 23 THEN RETURN
+	IF t >= 22 THEN RETURN
 	t2 = #ey(i) / 8 - camr
 	IF t2 = 0 THEN RETURN
-	IF t2 >= 23 THEN RETURN
-	x2 = #ex(i) - camc * 8. - 4
-	y2 = #ey(i) - camr * 8. - 4
+	IF t2 >= 22 THEN RETURN
+	x2 = #ex(i) - camc * 8.
+	y2 = #ey(i) - camr * 8.
 	vis = 1
 	RETURN
 
@@ -498,29 +514,59 @@ ckhit:
 	hitf = 1
 	RETURN
 
+	' --- 2x2 overlay draw: logical cell (or2,oc2) as chars ----------------
+	' ob = quadrant base (overlay chars < 96 use ob+0..3 TL TR BL BR;
+	' ob = ROADCH paints plain road in all four quadrants)
+put_cell:
+	tcr = or2 + or2
+	tcc = oc2 + oc2
+	q = 0
+	GOSUB put_char
+	tcc = tcc + 1
+	q = 1
+	GOSUB put_char
+	tcr = tcr + 1
+	q = 3
+	GOSUB put_char
+	tcc = tcc - 1
+	q = 2
+	GOSUB put_char
+	RETURN
+put_char:
+	t = tcr - camr
+	IF t >= 24 THEN RETURN
+	t2 = tcc - camc
+	IF t2 >= 24 THEN RETURN
+	ch = ob
+	IF ob < 96 THEN ch = ob + q
+	#va = $1800 + t * 32.
+	#va = #va + t2
+	VPOKE #va,ch
+	RETURN
+
 	' --- smoke ------------------------------------------------------------
 	' drop a puff at the just-exited cell (lcr,lcc); costs 8 fuel
 smoke_put:
 	IF #fuel < 8 THEN RETURN
 	#fuel = #fuel - 8
-	IF st(nsm) > 0 THEN GOSUB smk_off2
+	IF st(nsm) > 0 THEN or2 = sr(nsm) : oc2 = sc(nsm) : ob = ROADCH : GOSUB put_cell
 	sr(nsm) = lcr
 	sc(nsm) = lcc
 	st(nsm) = 180
-	t = lcr - camr
-	IF t < 24 THEN t2 = lcc - camc : IF t2 < 24 THEN #va = $1800 + t * 32. : #va = #va + t2 : t2 = SMOKECH : VPOKE #va,t2
+	or2 = lcr
+	oc2 = lcc
+	ob = SMOKECH
+	GOSUB put_cell
 	nsm = nsm + 1
 	IF nsm >= 6 THEN nsm = 0
 	RETURN
 
-	' erase expired puff j / recycled puff nsm from the viewport
+	' erase expired puff j from the viewport
 smk_off:
-	t = sr(j) - camr
-	IF t < 24 THEN t2 = sc(j) - camc : IF t2 < 24 THEN #va = $1800 + t * 32. : #va = #va + t2 : t2 = ROADCH : VPOKE #va,t2
-	RETURN
-smk_off2:
-	t = sr(nsm) - camr
-	IF t < 24 THEN t2 = sc(nsm) - camc : IF t2 < 24 THEN #va = $1800 + t * 32. : #va = #va + t2 : t2 = ROADCH : VPOKE #va,t2
+	or2 = sr(j)
+	oc2 = sc(j)
+	ob = ROADCH
+	GOSUB put_cell
 	RETURN
 
 	' --- flag pickup (fi = slot, car at its cell) -------------------------
@@ -538,9 +584,11 @@ take_flag:
 	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
 	GOSUB prt_score
 	IF olg = 0 THEN IF #score >= 2000 THEN olg = 1 : lives = lives + 1 : GOSUB draw_lives
-	' erase its viewport char (the car is on it) and its radar dot
-	t = fr(fi) - camr
-	IF t < 24 THEN t2 = fc(fi) - camc : IF t2 < 24 THEN #va = $1800 + t * 32. : #va = #va + t2 : t2 = ROADCH : VPOKE #va,t2
+	' erase its viewport chars (the car is on it) and its radar dot
+	or2 = fr(fi)
+	oc2 = fc(fi)
+	ob = ROADCH
+	GOSUB put_cell
 	tr2 = fr(fi)
 	tc2 = fc(fi)
 	GOSUB dot_addr
@@ -570,15 +618,16 @@ draw_lives:
 	FOR li = 0 TO 3
 	t2 = 32
 	IF li < lives THEN t2 = 129
-	' 6872 = $1800 + 22*32 + 24 (row 22 col 24); see fuel_bar note on the
-	' dotted-constant folding bug
+	' 6872 = $1800 + 22*32 + 24 (row 22 col 24); dotted-constant folds
+	' truncate to 8 bits on this compiler, so the value is written out
 	#va = 6872
 	#va = #va + li
 	VPOKE #va,t2
 	NEXT li
 	RETURN
 
-	' --- camera: dead zone keeps the car's screen cell in cols/rows 10-13 -
+	' --- camera (char units): dead zone keeps the car's screen char in
+	' cols/rows 10-13; pans 1 char (8 px) per step for smoothness --------
 update_cam:
 	dirty = 0
 	t = #px / 8 - camc
@@ -591,10 +640,13 @@ update_cam:
 	RETURN
 
 	' --- viewport blit + live-flag/smoke overlay --------------------------
+	' The WAIT between the SCREEN blit and the overlay pokes keeps the
+	' overlay out of the same frame's write budget (bursts drop silently).
 draw_view:
-	#voff = camr * 34.
+	#voff = camr * 68.
 	#voff = #voff + camc
-	SCREEN map1, #voff, 0, 24, 24, 34
+	SCREEN map2, #voff, 0, 24, 24, 68
+	WAIT
 	FOR oi = 0 TO 9
 	IF fst(oi) = 0 THEN GOSUB ov_flag
 	NEXT oi
@@ -603,26 +655,18 @@ draw_view:
 	NEXT j
 	RETURN
 ov_flag:
-	t = fr(oi) - camr
-	IF t >= 24 THEN RETURN
-	t2 = fc(oi) - camc
-	IF t2 >= 24 THEN RETURN
-	#va = $1800 + t * 32.
-	#va = #va + t2
-	t2 = FLAGCH
-	IF oi = 8 THEN t2 = FLAGCH + 1
-	IF oi = 9 THEN t2 = FLAGCH + 2
-	VPOKE #va,t2
+	or2 = fr(oi)
+	oc2 = fc(oi)
+	ob = 0
+	IF oi = 8 THEN ob = 4
+	IF oi = 9 THEN ob = 8
+	GOSUB put_cell
 	RETURN
 ov_smoke:
-	t = sr(j) - camr
-	IF t >= 24 THEN RETURN
-	t2 = sc(j) - camc
-	IF t2 >= 24 THEN RETURN
-	#va = $1800 + t * 32.
-	#va = #va + t2
-	t2 = SMOKECH
-	VPOKE #va,t2
+	or2 = sr(j)
+	oc2 = sc(j)
+	ob = SMOKECH
+	GOSUB put_cell
 	RETURN
 
 	' --- fuel bar (8 chars, row 21, redrawn only when the level changes) --
@@ -636,9 +680,7 @@ fuel_bar:
 	IF lvl > t THEN n = lvl - t
 	IF n > 8 THEN n = 8
 	t2 = 120 + n
-	' 6840 = $1800 + 21*32 + 24 (row 21 col 24). Written out because
-	' "$1800 + 696." folds WRONG: a dotted constant folded with another
-	' constant truncates to 8 bits (696 -> 184) on this compiler.
+	' 6840 = $1800 + 21*32 + 24 (row 21 col 24); see draw_lives note
 	#va = 6840
 	#va = #va + i
 	VPOKE #va,t2
@@ -646,8 +688,8 @@ fuel_bar:
 	RETURN
 
 	' --- radar ------------------------------------------------------------
-	' dot_addr: map cell (tr2,tc2) -> pattern addr #da (first of 2 rows)
-	' and 2-px mask dmsk. Radar canvas = codes 144+, 2 px per map cell,
+	' dot_addr: logical cell (tr2,tc2) -> pattern addr #da (first of 2
+	' rows) and 2-px mask dmsk. Radar canvas = codes 144+, 2 px per cell,
 	' per-third pattern tables (third = screen row / 8).
 dot_addr:
 	rx = tc2 - 1
@@ -704,15 +746,15 @@ radar_tick:
 	IF mi = 0 THEN GOTO rt_ply
 	t = mi - 1
 	IF t >= nen THEN RETURN
-	tr2 = #ey(t) / 8
-	tc2 = #ex(t) / 8
+	tr2 = #ey(t) / 16
+	tc2 = #ex(t) / 16
 	cv = $84
 	GOTO rt_put
 rt_ply:
 	blink = 1 - blink
 	IF blink = 0 THEN RETURN
-	tr2 = #py / 8
-	tc2 = #px / 8
+	tr2 = #py / 16
+	tc2 = #px / 16
 	cv = $F4
 rt_put:
 	GOSUB dot_addr
@@ -778,13 +820,23 @@ sfx_tick:
 	SOUND 0,#sf,12
 	RETURN
 
-	' --- art (TI: BANK 1 from here down) ----------------------------------
+	' --- data -------------------------------------------------------------
+	' TI bank 0: the logical map (gameplay PEEKs, always visible)
+	INCLUDE "map0.bas"
+
+	' TI bank 1: the doubled char map (SCREEN blits during gameplay)
 #if TI994A
 	BANK 1
 #endif
+	INCLUDE "map2.bas"
+
+	' TI bank 2: art, tiles, radar tables, item lists (init / round setup)
+#if TI994A
+	BANK 2
+#endif
 	' 16x16 car, 4 rotations (generated by a throwaway script; left-column
-	' 16 bytes then right-column 16 bytes per frame). 12-px body overhangs
-	' the 8-px road by 2 px per side, into the walls' 1-px inset margin.
+	' 16 bytes then right-column 16 bytes per frame). The 12-px body rides
+	' a 16-px lane with 2 px of margin each side.
 car_bitmaps:
 	' up
 	DATA BYTE $00,$07,$07,$3F,$3F,$07,$07,$3F,$3F,$07,$07,$3F,$3F,$07,$3F,$00
@@ -813,22 +865,6 @@ misc_chars:
 misc_colors:
 	DATA BYTE $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C	' light green on dark green
 	DATA BYTE $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA	' tan on tan
-
-	' flags 114 F / 115 S / 116 L: same pennant, told apart by color
-flag_chars:
-	DATA BYTE $7C,$78,$70,$40,$40,$40,$40,$00
-	DATA BYTE $7C,$78,$70,$40,$40,$40,$40,$00
-	DATA BYTE $7C,$78,$70,$40,$40,$40,$40,$00
-flag_colors:
-	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA	' F: yellow on tan
-	DATA BYTE $8A,$8A,$8A,$8A,$8A,$8A,$8A,$8A	' S: red on tan
-	DATA BYTE $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA	' L: white on tan
-
-	' smoke puff (117)
-smoke_char:
-	DATA BYTE $00,$6C,$FE,$FE,$7C,$38,$10,$00
-smoke_color:
-	DATA BYTE $FA,$FA,$EA,$EA,$EA,$FA,$FA,$FA	' white/gray on tan
 
 	' lives icon (129): mini car
 live_char:
@@ -881,4 +917,4 @@ espawn_data:
 	DATA BYTE 28,17
 	DATA BYTE 36,3
 
-	INCLUDE "map1.bas"
+	INCLUDE "tiles.bas"
