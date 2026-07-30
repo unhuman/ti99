@@ -458,7 +458,31 @@ the lower-right.
 with them; the **grinder** is a toothed wheel throwing orange sparks instead of a plain block; and
 the reference's two pairs of **oil drums** now stand on the ground at cols 9–10 and 21–22.
 
-**Not yet done:** no full six-box clear has been played.
+**Traversal audit 2026-07-29 — the level was NOT completable; three things were wrong.**
+
+1. **Every side beam was a one-way trap.** The step-off stubs were 2 cells at 13–14 / 17–19, which
+   left them *three* cells from the beams — unreachable with a 2-cell jump — and the beams had no
+   other route back. You could bounce up to a beam off a pad and then had no way down that wasn't
+   a fatal drop. The stubs are **4 cells** now (11–14 left, 17–20 right), which puts each one a
+   single jump from its beam while still inside the chain-grab probe of the shaft. The left stubs
+   overhang the beam below them, so coming back is just walking off the edge and dropping a row.
+2. **The box on the conveyor could not be collected.** The only way onto the belt was the chain at
+   col 4 — its *left* end — but the belt runs left, so you arrived already past the box at col 7
+   with nothing ahead but the grinder. Worse, you cannot walk right against the belt (the drag
+   exactly cancels a walk step). A **second chain at col 10** drops you on the far end, so it is
+   the gauntlet it was meant to be: ride left over the box, then climb out on the col-4 chain
+   before the teeth.
+3. **The trampoline pads were an infinite bounce.** With no direction held a pad throws you
+   straight up and you land back on it — and they sit at cols 11 and 20, right across the walk
+   between the shaft and the IN machines. Pads now use the same arm/disarm rule as the elevator
+   (`padok`): fire on arrival, re-arm only once Mack is off the tile again.
+
+**Verified by measurement** (spawn on the tile, drive one input, read `mx`/`my` back off a debug
+HUD): ground → shaft → top beam (feet land on row 5); mid-left beam → row-12 stub and back; row-14
+stub → mid-right beam; pad → lower-left beam.
+
+**Still unverified:** the belt gauntlet end-to-end and a full six-box clear — the machine locked
+mid-run and the emulator cannot be driven from a locked session.
 
 ## §8 Scoring, lives, bonus
 

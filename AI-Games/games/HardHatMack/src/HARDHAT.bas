@@ -656,7 +656,10 @@ st_walk:
 	' Level-3 trampoline pad, under his FEET: launch immediately with the
 	' spr2 arc, which clears a whole beam. Hold a direction to steer -- the
 	' pads sit two cells out from the beam they serve.
+	IF ch <> T_PAD THEN padok = 1	' stepped off: the pads are live again
 	IF ch = T_PAD THEN
+		IF padok = 0 THEN RETURN	' already bounced off this one
+		padok = 0
 		st = S_JUMP
 		bmp1 = 0
 		jix = 0
@@ -2023,6 +2026,7 @@ init_level:
 	' have their own hazards and nobody up top to throw them.
 	bolon = 0
 	IF lv = 1 THEN bolon = 1
+	padok = 1		' level-3 trampoline pads start armed
 	emov = 0
 	trx = 240
 	trxl = 236	' trampoline pad left edge, less 4 px of grace
@@ -2631,16 +2635,22 @@ level3_data:
 	DATA BYTE 10, 16,6,17,154	' right rail (col 16, rows 6-22)
 	' Step-off stubs either side of the shaft, where the reference draws the
 	' lift's paddles. They are real ledges: the shaft is how you change floor.
-	DATA BYTE 1, 10,17,2,3		' right stub, cols 17-18
-	DATA BYTE 1, 12,13,2,3		' left  stub, cols 13-14
-	DATA BYTE 1, 14,17,2,3		' right stub, cols 17-18
-	DATA BYTE 1, 16,13,2,3		' left  stub, cols 13-14
+	' FOUR cells, reaching to the beam's own column. Measured: from a 3-cell
+	' stub the jump to the beam landed in the gap and killed you unless you
+	' were within 4 px of the stub's edge. At four cells the LEFT stubs
+	' overhang the beam below them, so you just walk off and drop one row
+	' onto it -- and the beam-to-stub jump back up still lands (verified).
+	DATA BYTE 1, 10,17,4,3		' right stub, cols 17-20 <-> upper-right beam
+	DATA BYTE 1, 12,11,4,3		' left  stub, cols 11-14 <-> mid-left beam
+	DATA BYTE 1, 14,17,4,3		' right stub, cols 17-20 <-> mid-right beam
+	DATA BYTE 1, 16,11,4,3		' left  stub, cols 11-14 <-> lower-left beam
 	' Top-left machine: a FLAT belt (op 9) carrying everything LEFT into the
 	' grinder. Ride it to the end and you die -- get off, or grab the box.
 	DATA BYTE 9, 9,2,10,1		' row 9, cols 2-11, direction 1 = left
 	DATA BYTE 1, 8,2,2,4		' grinder, cols 2-3, at torso height on the belt
 	' Chains, where the reference hangs them.
-	DATA BYTE 10, 4,6,2,155		' top beam -> the conveyor level (col 4)
+	DATA BYTE 10, 4,6,2,155		' top beam -> conveyor, the ESCAPE chain (col 4)
+	DATA BYTE 10, 10,6,3,155	' top beam -> the conveyor's far end (col 10)
 	DATA BYTE 10, 24,6,2,155	' top beam -> upper-right beam (col 24)
 	DATA BYTE 10, 9,14,3,155	' mid-left -> lower-left  (col 9)
 	DATA BYTE 10, 29,14,3,155	' mid-right -> lower-right (col 29)
