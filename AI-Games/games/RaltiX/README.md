@@ -9,8 +9,9 @@ radar on the right, and don't run out of fuel.
 - **Status:** 🎮 Playable — M1–M3 emulator-verified in Classic99, M4 core in (title, rounds,
   challenge stages, jingles). The world renders at **2×2 chars per maze cell** (16-px roads —
   the 16×16 car fills its lane; the viewport shows 12×12 cells, so the radar matters).
-  Deferred: in-game music, maps 2–4, rocks, per-round flag sets, Coleco runtime pass (see
-  `DESIGN.md` §17). TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
+  Flags are sprites (no flicker), the car is a proper top-down F1, and the camera can no longer
+  let the car escape the window (all three from review — see `DESIGN.md` §17).
+  Deferred: in-game music, maps 2–4, rocks, per-round flag sets, Coleco runtime pass. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
   char map, bank 2 art/tables); Coleco builds flat. Building this flushed out three CVBasic
   TMS9900 codegen bugs (8-bit×big-constant → 0, dotted-constant folding truncates, CONST>255
   truncates) — documented in `DESIGN.md` §14 with workarounds in the source.

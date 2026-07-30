@@ -88,6 +88,7 @@
 	DEFINE SPRITE 0,4,car_bitmaps	' defs 0-3 = car up/right/down/left
 					' (enemies reuse them, recolored red)
 	DEFINE SPRITE 4,2,expl_bitmaps	' defs 4-5 = crash explosion
+	DEFINE SPRITE 6,1,flag_sprite	' def 6 = flag pennant (slots 5-14)
 
 	#mapbase = VARPTR map1(0)
 	msktab(0) = $C0
@@ -278,6 +279,16 @@ eskip:
 	IF i < nen THEN GOSUB evis
 	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, edir(i) * 4, 9 ELSE SPRITE sl, 209, 0, 0, 0
 	NEXT i
+
+	' flag sprites (slots 5-14): F yellow, S red, L white. They sit above
+	' the chars, so camera-pan blits never flicker them; the 4-per-scanline
+	' rule favors low sprite numbers, so gameplay actors always win.
+	FOR fi = 0 TO 9
+	sl = 5 + fi
+	vis = 0
+	IF fst(fi) = 0 THEN GOSUB fvis
+	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, 24, fcol ELSE SPRITE sl, 209, 0, 0, 0
+	NEXT fi
 
 	' player vs enemy collision (12-px boxes; lanes are 16 px apart, so
 	' adjacent lanes can never false-positive)
@@ -501,6 +512,26 @@ evis:
 	vis = 1
 	RETURN
 
+	' flag fi on-screen? -> vis, x2, y2, fcol (char units; hidden at the
+	' edges so the sprite never bleeds into the panel, and skipping row 0
+	' keeps "y2 - 1" from wrapping to 255. The compares are unsigned, so an
+	' off-window flag underflows to a huge value and fails them -- correct.)
+fvis:
+	t = fr(fi) + fr(fi)
+	t = t - camr
+	IF t = 0 THEN RETURN
+	IF t >= 23 THEN RETURN
+	t2 = fc(fi) + fc(fi)
+	t2 = t2 - camc
+	IF t2 >= 23 THEN RETURN
+	y2 = t * 8
+	x2 = t2 * 8
+	fcol = 11
+	IF fi = 8 THEN fcol = 8
+	IF fi = 9 THEN fcol = 15
+	vis = 1
+	RETURN
+
 	' player-enemy overlap test for enemy i -> hitf
 ckhit:
 	#g = #px
@@ -584,11 +615,8 @@ take_flag:
 	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
 	GOSUB prt_score
 	IF olg = 0 THEN IF #score >= 2000 THEN olg = 1 : lives = lives + 1 : GOSUB draw_lives
-	' erase its viewport chars (the car is on it) and its radar dot
-	or2 = fr(fi)
-	oc2 = fc(fi)
-	ob = ROADCH
-	GOSUB put_cell
+	' no viewport erase needed -- the flag is a sprite, and the per-frame
+	' sprite loop hides it now that fst() is 1. Clear its radar dot.
 	tr2 = fr(fi)
 	tc2 = fc(fi)
 	GOSUB dot_addr
@@ -628,39 +656,69 @@ draw_lives:
 
 	' --- camera (char units): dead zone keeps the car's screen char in
 	' cols/rows 10-13; pans 1 char (8 px) per step for smoothness --------
+	' Computed as a CLAMP, not a +/-1 nudge: on a pan frame the blit stalls
+	' the loop 2-3 frames and FRAME-delta catch-up can move the car up to
+	' 12 px while a 1-step camera moves only 8, so the car slowly outran
+	' the window -- then the UNSIGNED dead-zone compare wrapped, the camera
+	' ran the wrong way, and the sprite wrapped to the far edge (the "car
+	' left the map and died" bug). Snapping any distance in one step keeps
+	' the car inside the window no matter how far it jumped, and comparing
+	' 16-bit char positions before subtracting keeps it wrap-safe.
+	' Expressed as an allowed RANGE for the camera rather than a nudge:
+	' the car's screen char must land in 10..13, so
+	'   camc must be within [carchar-13, carchar-10]
+	' and we snap to whichever bound is violated. Two properties matter:
+	'  * lo <= hi always, so the two tests are MUTUALLY EXCLUSIVE. (The
+	'    first cut reused one variable for both the car char and the new
+	'    camera value, so the second test compared the camera against
+	'    itself+10, always fired, and dragged the camera 10 chars back --
+	'    the camera then ran away from a parked car and shoved the sprite
+	'    off the right edge. Separate lo/hi/snapshot vars prevent that.)
+	'  * subtraction is clamped at 0 BEFORE use, because these are
+	'    unsigned: near the left/top edge the car char is as low as 2, and
+	'    "carchar - 13" would wrap to ~65525.
+	' Snapping the whole distance in one step (rather than +/-1) is what
+	' keeps the car inside the window even when a pan-frame stall lets
+	' FRAME-delta catch-up move it 12 px while the camera moves 8.
 update_cam:
 	dirty = 0
-	t = #px / 8 - camc
-	IF t < 10 THEN IF camc > 0 THEN camc = camc - 1 : dirty = 1
-	IF t > 13 THEN IF camc < CAMMAXC THEN camc = camc + 1 : dirty = 1
-	t = #py / 8 - camr
-	IF t < 10 THEN IF camr > 0 THEN camr = camr - 1 : dirty = 1
-	IF t > 13 THEN IF camr < CAMMAXR THEN camr = camr + 1 : dirty = 1
+	#cch = #px / 8			' car's map2 char column
+	#lo = 0
+	IF #cch > 13 THEN #lo = #cch - 13
+	#hi = 0
+	IF #cch > 10 THEN #hi = #cch - 10
+	IF #lo > CAMMAXC THEN #lo = CAMMAXC
+	IF #hi > CAMMAXC THEN #hi = CAMMAXC
+	#cs = camc
+	IF #cs < #lo THEN camc = #lo : dirty = 1
+	IF #cs > #hi THEN camc = #hi : dirty = 1
+	#cch = #py / 8			' car's map2 char row
+	#lo = 0
+	IF #cch > 13 THEN #lo = #cch - 13
+	#hi = 0
+	IF #cch > 10 THEN #hi = #cch - 10
+	IF #lo > CAMMAXR THEN #lo = CAMMAXR
+	IF #hi > CAMMAXR THEN #hi = CAMMAXR
+	#cs = camr
+	IF #cs < #lo THEN camr = #lo : dirty = 1
+	IF #cs > #hi THEN camr = #hi : dirty = 1
 	IF dirty THEN GOSUB draw_view
 	RETURN
 
-	' --- viewport blit + live-flag/smoke overlay --------------------------
+	' --- viewport blit + smoke overlay ------------------------------------
 	' The WAIT between the SCREEN blit and the overlay pokes keeps the
 	' overlay out of the same frame's write budget (bursts drop silently).
+	' Flags are NOT redrawn here -- they're sprites (slots 5-14), which is
+	' what stopped them flickering: a char flag had to be re-poked after
+	' every pan blit, and the poke landed a frame late.
 draw_view:
 	#voff = camr * 68.
 	#voff = #voff + camc
 	SCREEN map2, #voff, 0, 24, 24, 68
 	WAIT
-	FOR oi = 0 TO 9
-	IF fst(oi) = 0 THEN GOSUB ov_flag
-	NEXT oi
 	FOR j = 0 TO 5
 	IF st(j) > 0 THEN GOSUB ov_smoke
 	NEXT j
-	RETURN
-ov_flag:
-	or2 = fr(oi)
-	oc2 = fc(oi)
-	ob = 0
-	IF oi = 8 THEN ob = 4
-	IF oi = 9 THEN ob = 8
-	GOSUB put_cell
 	RETURN
 ov_smoke:
 	or2 = sr(j)
@@ -834,22 +892,33 @@ sfx_tick:
 #if TI994A
 	BANK 2
 #endif
-	' 16x16 car, 4 rotations (generated by a throwaway script; left-column
-	' 16 bytes then right-column 16 bytes per frame). The 12-px body rides
-	' a 16-px lane with 2 px of margin each side.
+	' 16x16 top-down F1 car, 4 rotations (assets/gencar.py; sprite order =
+	' left half rows 0-15, then right half rows 0-15): narrow nose, four
+	' protruding wheels, wide midsection, rear wing -- 16 px wheel-to-wheel,
+	' exactly filling a lane. The 'up' art is left-right SYMMETRIC so its
+	' 90-degree rotations stay readable (an asymmetric first cut rotated
+	' into a ragged edge column); the wheels correctly come out 2x4 when
+	' travelling vertically and 4x2 horizontally.
 car_bitmaps:
 	' up
-	DATA BYTE $00,$07,$07,$3F,$3F,$07,$07,$3F,$3F,$07,$07,$3F,$3F,$07,$3F,$00
-	DATA BYTE $00,$E0,$E0,$FC,$FC,$E0,$E0,$FC,$FC,$E0,$E0,$FC,$FC,$E0,$FC,$00
+	DATA BYTE $01,$03,$63,$63,$67,$67,$07,$0F,$0F,$07,$67,$67,$63,$63,$3F,$00
+	DATA BYTE $80,$C0,$C6,$C6,$E6,$E6,$E0,$F0,$F0,$E0,$E6,$E6,$C6,$C6,$FC,$00
 	' right
-	DATA BYTE $00,$00,$59,$59,$59,$7F,$7F,$7F,$7F,$7F,$7F,$59,$59,$59,$00,$00
-	DATA BYTE $00,$00,$98,$98,$98,$FE,$FE,$FE,$FE,$FE,$FE,$98,$98,$98,$00,$00
+	DATA BYTE $00,$3C,$7C,$40,$41,$4F,$7F,$7F,$7F,$7F,$4F,$41,$40,$7C,$3C,$00
+	DATA BYTE $00,$3C,$3C,$00,$80,$F0,$FE,$FF,$FF,$FE,$F0,$80,$00,$3C,$3C,$00
 	' down
-	DATA BYTE $00,$3F,$07,$3F,$3F,$07,$07,$3F,$3F,$07,$07,$3F,$3F,$07,$07,$00
-	DATA BYTE $00,$FC,$E0,$FC,$FC,$E0,$E0,$FC,$FC,$E0,$E0,$FC,$FC,$E0,$E0,$00
+	DATA BYTE $00,$3F,$63,$63,$67,$67,$07,$0F,$0F,$07,$67,$67,$63,$63,$03,$01
+	DATA BYTE $00,$FC,$C6,$C6,$E6,$E6,$E0,$F0,$F0,$E0,$E6,$E6,$C6,$C6,$C0,$80
 	' left
-	DATA BYTE $00,$00,$19,$19,$19,$7F,$7F,$7F,$7F,$7F,$7F,$19,$19,$19,$00,$00
-	DATA BYTE $00,$00,$9A,$9A,$9A,$FE,$FE,$FE,$FE,$FE,$FE,$9A,$9A,$9A,$00,$00
+	DATA BYTE $00,$3C,$3C,$00,$01,$0F,$7F,$FF,$FF,$7F,$0F,$01,$00,$3C,$3C,$00
+	DATA BYTE $00,$3C,$3E,$02,$82,$F2,$FE,$FE,$FE,$FE,$F2,$82,$02,$3E,$3C,$00
+
+	' 16x16 flag pennant (sprite def 6) -- viewport flags are SPRITES so
+	' camera-pan blits can't flicker them (chars get repainted a frame
+	' after the blit; sprites ride on top untouched)
+flag_sprite:
+	DATA BYTE $1F,$1F,$1F,$1F,$1F,$18,$18,$18,$18,$18,$18,$18,$18,$18,$00,$00
+	DATA BYTE $C0,$F8,$FE,$F8,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 	' crash explosion, 2 frames (defs 4-5)
 expl_bitmaps:
