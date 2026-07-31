@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Build RaltiX (CVBasic) for the TI-99/4A.
+# Build RALLY-X (CVBasic) for the TI-99/4A.
 #
-#   cvbasic compile -> xas99 assemble -> linkticart pack -> RALTIX_8.bin
+#   cvbasic compile -> xas99 assemble -> linkticart pack -> RALLYX_8.bin
 #
-# Output: src/RALTIX_8.bin -- load in Classic99 or js99er.
+# Output: src/RALLYX_8.bin -- load in Classic99 or js99er.
 #
 # Same .bas source as the ColecoVision build (build-coleco.sh); only the
 # toolchain differs. If this script fails under bash, run the three stages
@@ -15,8 +15,8 @@ XDT99_DIR="${XDT99_DIR:-/cygdrive/c/Users/Howie/github.git/endlos99/xdt99}"
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
 [ -d "$XDT99_DIR" ]   || XDT99_DIR="${XDT99_DIR/#\/cygdrive\/c\//\/c\/}"
 
-NAME="RALTIX"
-CARTNAME="RALTIX"
+NAME="RALLYX"
+CARTNAME="RALLY-X"
 
 die() { echo "ERROR: $1" >&2; exit 1; }
 

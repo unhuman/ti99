@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Build RaltiX (CVBasic) for ColecoVision.
+# Build RALLY-X (CVBasic) for ColecoVision.
 #
-#   cvbasic (default target = Coleco) -> gasm80 -> raltix.rom
+#   cvbasic (default target = Coleco) -> gasm80 -> rallyx.rom
 #
-# Output: src/raltix.rom -- load in CoolCV / blueMSX (ColecoVision).
+# Output: src/rallyx.rom -- load in CoolCV / blueMSX (ColecoVision).
 #
 # Same .bas source as the TI-99 build (build-ti.sh); only the toolchain
 # differs (no --ti994a, and gasm80 instead of xas99+linkticart).
@@ -14,8 +14,8 @@ GASM80="${GASM80:-/cygdrive/c/Users/Howie/github.git/nanochess/gasm80/gasm80.exe
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
 [ -f "$GASM80" ]      || GASM80="${GASM80/#\/cygdrive\/c\//\/c\/}"
 
-SRC="RALTIX.bas"        # canonical source (shared with the TI build)
-NAME="raltix"           # output base name (dot-free, lowercase)
+SRC="RALLYX.bas"        # canonical source (shared with the TI build)
+NAME="rallyx"           # output base name (dot-free, lowercase)
 ASM="${NAME}_col.asm"
 ROM="${NAME}.rom"
 

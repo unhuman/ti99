@@ -1,5 +1,5 @@
 	'
-	' RaltiX -- New Rally-X clone (CVBasic, dual-target TI-99/4A + ColecoVision)
+	' RALLY-X -- Namco arcade clone (CVBasic, dual-target TI-99/4A + ColecoVision)
 	'
 	' Drive the maze, grab the flags, dodge the red cars, watch the radar.
 	' Maze transcribed at the cell grid from the arcade Rally-X map rip
@@ -38,9 +38,11 @@
 	' fuel max is 768 (~51 s at 1 unit / 4 frames) -- written as a literal
 	' at the init site because "CONST FUELMAX = 768" assigned to a 16-bit
 	' var compiles to CLR (a CONST > 255 truncates to 8 bits -- same
-	' family as the dotted-constant folding bug, verified in RALTIX.a99)
+	' family as the dotted-constant folding bug, verified in RALLYX.a99)
 	CONST PSPD = 24		' player speed, 1/8 px per frame (24 = 3 px/f
 				' = same cells/second as before the 2x scale)
+	CONST TURNRT = 3	' frames per 45-degree step while turning: a
+				' 90-degree turn takes 6 frames, a 180 takes 12
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -52,6 +54,8 @@
 	DIM #ex(4)		' map-pixel x (16 px per cell)
 	DIM #ey(4)		' map-pixel y
 	DIM edir(4)		' heading 0-3
+	DIM eang(4)		' VISUAL heading 0-7 (45 deg steps), eases toward
+				' edir*2 so enemies turn instead of snapping
 	DIM estn(4)		' stun countdown (smoke hit)
 
 	' smoke puffs (circular list, oldest reused)
@@ -85,10 +89,10 @@
 	DEFINE COLOR 112,2,misc_colors
 	DEFINE COLOR 120,9,fuel_colors
 	DEFINE COLOR 129,1,live_color
-	DEFINE SPRITE 0,4,car_bitmaps	' defs 0-3 = car up/right/down/left
-					' (enemies reuse them, recolored red)
-	DEFINE SPRITE 4,2,expl_bitmaps	' defs 4-5 = crash explosion
-	DEFINE SPRITE 6,1,flag_sprite	' def 6 = flag pennant (slots 5-14)
+	DEFINE SPRITE 0,8,car_bitmaps	' defs 0-7 = car headings N,NE,E,SE,
+					' S,SW,W,NW (enemies reuse them, red)
+	DEFINE SPRITE 8,2,expl_bitmaps	' defs 8-9 = crash explosion
+	DEFINE SPRITE 10,1,flag_sprite	' def 10 = flag pennant (slots 5-14)
 
 	#mapbase = VARPTR map1(0)
 	msktab(0) = $C0
@@ -133,7 +137,7 @@
 	' Printed over the viewport (black at boot, stale maze after game
 	' over); the first draw_view repaints it away.
 title:
-	PRINT AT 359,"* RALTIX *"
+	PRINT AT 359,"* RALLY-X *"
 	PRINT AT 424,"PRESS FIRE"
 	PRINT AT 512,"2026 UNHUMAN AND CLAUDE"
 t_rel:
@@ -209,6 +213,8 @@ restart:
 	#py = 368		' 23 * 16
 	dir = 1
 	qdir = 1
+	ang = 2			' visual heading 0-7; 2 = East, matches dir = 1
+	turning = 0
 	blocked = 0
 	lcr = 23
 	lcc = 15
@@ -229,29 +235,25 @@ game_loop:
 	#lf = FRAME
 	IF #fd > 4 THEN #fd = 4
 
-	' stick sets the queued direction; reverse is taken immediately
+	' stick sets the queued direction
 	IF cont1.up THEN qdir = 0
 	IF cont1.right THEN qdir = 1
 	IF cont1.down THEN qdir = 2
 	IF cont1.left THEN qdir = 3
-	IF qdir = ((dir + 2) AND 3) THEN dir = qdir : blocked = 0 : GOSUB set_dir
+	' A REVERSE is a turn, not a flip: the car never snaps from up to down.
+	' It can start anywhere (the cell behind is by definition open), unlike
+	' a 90-degree turn which waits for a cell centre (see at_center).
+	IF turning = 0 THEN IF qdir = ((dir + 2) AND 3) THEN GOSUB start_turn
 
-	' speed: 3 px/f, 2.25 under 25% fuel, 1.5 when empty
-	spd = PSPD
-	IF #fuel < 192 THEN spd = 18
-	IF #fuel = 0 THEN spd = 12
-
-	' player movement: accumulate 1/8-px units, walk whole pixels
-	#acc = #acc + spd * #fd
-	steps = #acc / 8
-	#acc = #acc AND 7
-	IF steps > 0 THEN FOR i = 1 TO steps : GOSUB move1px : NEXT i
+	' While turning the car rotates IN PLACE and does not advance -- this
+	' is the Rally-X handling model. Driving resumes when ang reaches tang.
+	IF turning = 1 THEN GOSUB turn_step ELSE GOSUB drive_step
 
 	GOSUB update_cam
 
 	x = #px - camc * 8.
 	y = #py - camr * 8.
-	SPRITE 0, y - 1, x, dir * 4, 5
+	SPRITE 0, y - 1, x, ang * 4, 5
 
 	' enemies: same pixel-walk scheme, shared accumulator
 	IF sct > 0 THEN sct = sct - 1
@@ -277,8 +279,15 @@ eskip:
 	sl = 1 + ((i + rot) AND 3)
 	vis = 0
 	IF i < nen THEN GOSUB evis
-	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, edir(i) * 4, 9 ELSE SPRITE sl, 209, 0, 0, 0
+	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, eang(i) * 4, 9 ELSE SPRITE sl, 209, 0, 0, 0
 	NEXT i
+
+	' enemy turning animation: eang eases 45 degrees at a time toward the
+	' logical heading. Unlike the player they keep moving while they turn
+	' (their AI only ever picks a 90-degree change, so a visible sweep is
+	' enough -- stopping them dead would make them trivial to escape).
+	eat = eat + #fd
+	IF eat >= TURNRT THEN eat = 0 : GOSUB eang_step
 
 	' flag sprites (slots 5-14): F yellow, S red, L white. They sit above
 	' the chars, so camera-pan blits never flicker them; the 4-per-scanline
@@ -352,7 +361,7 @@ crash:
 	FOR j = 1 TO 48
 	WAIT
 	t = j AND 8
-	IF t = 0 THEN t2 = 16 ELSE t2 = 20
+	IF t = 0 THEN t2 = 32 ELSE t2 = 36	' explosion defs 8/9 -> names 32/36
 	SPRITE 0, y - 1, x, t2, 10
 	#sf = 150 + j * 12
 	SOUND 0,#sf,13
@@ -392,12 +401,54 @@ rehome:
 	READ BYTE t
 	#ex(i) = t * 16.
 	edir(i) = 2
+	eang(i) = 4		' visual heading matches edir 2 (South)
 	estn(i) = 0
 	NEXT i
 #if TI994A
 	BANK SELECT 1
 #endif
 	sct = 180
+	RETURN
+
+	' --- player driving / turning -----------------------------------------
+	' speed: 3 px/f, 2.25 under 25% fuel, 1.5 when empty
+drive_step:
+	spd = PSPD
+	IF #fuel < 192 THEN spd = 18
+	IF #fuel = 0 THEN spd = 12
+	' accumulate 1/8-px units, then walk whole pixels one at a time
+	#acc = #acc + spd * #fd
+	steps = #acc / 8
+	#acc = #acc AND 7
+	IF steps > 0 THEN FOR i = 1 TO steps : GOSUB move1px : NEXT i
+	RETURN
+
+	' Begin rotating toward qdir. Takes the SHORT way round; a 180 goes
+	' clockwise (there is no short way), so a reverse visibly sweeps
+	' through the 90-degree heading instead of flipping.
+start_turn:
+	tang = qdir + qdir
+	IF tang = ang THEN RETURN
+	rstep = 1
+	trn = tang - ang
+	trn = trn AND 7
+	IF trn > 4 THEN rstep = 7	' 7 == -1 (mod 8): rotate anticlockwise
+	turning = 1
+	trot = 0
+	RETURN
+
+	' One 45-degree step every TURNRT frames; arriving commits the heading
+turn_step:
+	trot = trot + #fd
+	IF trot < TURNRT THEN RETURN
+	trot = 0
+	ang = ang + rstep
+	ang = ang AND 7
+	IF ang <> tang THEN RETURN
+	turning = 0
+	dir = tang / 2
+	blocked = 0
+	GOSUB set_dir
 	RETURN
 
 	' --- player: move one pixel (turns/walls only at cell alignment) ------
@@ -420,7 +471,10 @@ at_center:
 	IF smkf = 1 THEN IF cont1.button THEN GOSUB smoke_put
 	lcr = cr
 	lcc = cc
-	IF qdir <> dir THEN d = qdir : GOSUB probe : IF t >= ROADCH THEN dir = qdir : GOSUB set_dir
+	' a 90-degree turn is taken at a cell centre when that way is open --
+	' it starts a rotation (start_turn), it does not snap the heading
+	IF qdir <> dir THEN d = qdir : GOSUB probe : IF t >= ROADCH THEN GOSUB start_turn
+	IF turning = 1 THEN RETURN
 	d = dir
 	GOSUB probe
 	IF t < ROADCH THEN blocked = 1 ELSE blocked = 0
@@ -484,18 +538,56 @@ eai:
 	rv = (edir(i) + 2) AND 3
 	cr = ecr
 	cc = ecc
+	' Every candidate must be open road AND not already claimed by another
+	' enemy (probe_free) -- two cars must never stack on one cell. The car
+	' that would have moved in is the one that turns away, because this
+	' test runs when IT picks its direction.
 	d = p1
-	IF d <> rv THEN GOSUB probe : IF t >= ROADCH THEN edir(i) = d : RETURN
+	IF d <> rv THEN GOSUB probe_free : IF pfok = 1 THEN edir(i) = d : RETURN
 	d = p2
-	IF d <> rv THEN GOSUB probe : IF t >= ROADCH THEN edir(i) = d : RETURN
+	IF d <> rv THEN GOSUB probe_free : IF pfok = 1 THEN edir(i) = d : RETURN
 	d = edir(i)
-	GOSUB probe
-	IF t >= ROADCH THEN RETURN
+	GOSUB probe_free
+	IF pfok = 1 THEN RETURN
 	fnd = 0
 	FOR j = 0 TO 3
-	IF fnd = 0 THEN IF j <> rv THEN d = j : GOSUB probe : IF t >= ROADCH THEN edir(i) = j : fnd = 1
+	IF fnd = 0 THEN IF j <> rv THEN d = j : GOSUB probe_free : IF pfok = 1 THEN edir(i) = j : fnd = 1
 	NEXT j
 	IF fnd = 0 THEN edir(i) = rv
+	RETURN
+
+	' probe direction d from (cr,cc): pfok = 1 only if it is road AND no
+	' other active enemy occupies that cell
+probe_free:
+	GOSUB probe
+	pfok = 0
+	IF t < ROADCH THEN RETURN
+	pfo = 0
+	FOR pfe = 0 TO 3
+	IF pfe <> i THEN IF pfe < nen THEN GOSUB pf_chk
+	NEXT pfe
+	IF pfo = 0 THEN pfok = 1
+	RETURN
+pf_chk:
+	pfr = #ey(pfe) / 16
+	IF pfr <> tr THEN RETURN
+	pfc = #ex(pfe) / 16
+	IF pfc <> tc THEN RETURN
+	pfo = 1
+	RETURN
+
+	' step every enemy's visual heading one notch toward its real one
+eang_step:
+	FOR ea = 0 TO 3
+	IF ea < nen THEN GOSUB eang1
+	NEXT ea
+	RETURN
+eang1:
+	eat2 = edir(ea) + edir(ea)
+	IF eang(ea) = eat2 THEN RETURN
+	eat3 = eat2 - eang(ea)
+	eat3 = eat3 AND 7
+	IF eat3 > 4 THEN eang(ea) = (eang(ea) + 7) AND 7 ELSE eang(ea) = (eang(ea) + 1) AND 7
 	RETURN
 
 	' enemy i on-screen? -> vis, x2, y2 (char units; the 16-px car spans
@@ -768,7 +860,7 @@ dot_addr:
 	t2 = 144 + t * 8 + rx / 8
 	' NOTE: "#da = th * 2048." miscompiles on the TMS9900 backend --
 	' 8-bit var times a constant >= 2048 emits a plain CLR (verified in
-	' RALTIX.a99). IF-ladder instead (th is only ever 0-2).
+	' RALLYX.a99). IF-ladder instead (th is only ever 0-2).
 	#da = 0
 	IF th = 1 THEN #da = 2048
 	IF th = 2 THEN #da = 4096
@@ -817,12 +909,15 @@ radar_tick:
 	tc2 = #ex(t) / 16
 	cv = $84
 	GOTO rt_put
+	' The player dot is ALWAYS drawn and cycles white/black instead of
+	' blinking on and off -- a dot that vanishes half the time is hard to
+	' pick out, while a flashing white/black one reads instantly.
 rt_ply:
 	blink = 1 - blink
-	IF blink = 0 THEN RETURN
 	tr2 = #py / 16
 	tc2 = #px / 16
-	cv = $F4
+	cv = $F4			' white on dark blue
+	IF blink = 0 THEN cv = $14	' black on dark blue
 rt_put:
 	GOSUB dot_addr
 	a = VPEEK(#da)
@@ -909,27 +1004,39 @@ sfx_tick:
 	' into a ragged edge column); the wheels correctly come out 2x4 when
 	' travelling vertically and 4x2 horizontally.
 car_bitmaps:
-	' up
-	DATA BYTE $01,$03,$63,$63,$67,$67,$07,$0F,$0F,$07,$67,$67,$63,$63,$3F,$00
-	DATA BYTE $80,$C0,$C6,$C6,$E6,$E6,$E0,$F0,$F0,$E0,$E6,$E6,$C6,$C6,$FC,$00
-	' right
-	DATA BYTE $00,$3C,$7C,$40,$41,$4F,$7F,$7F,$7F,$7F,$4F,$41,$40,$7C,$3C,$00
-	DATA BYTE $00,$3C,$3C,$00,$80,$F0,$FE,$FF,$FF,$FE,$F0,$80,$00,$3C,$3C,$00
-	' down
-	DATA BYTE $00,$3F,$63,$63,$67,$67,$07,$0F,$0F,$07,$67,$67,$63,$63,$03,$01
-	DATA BYTE $00,$FC,$C6,$C6,$E6,$E6,$E0,$F0,$F0,$E0,$E6,$E6,$C6,$C6,$C0,$80
-	' left
-	DATA BYTE $00,$3C,$3C,$00,$01,$0F,$7F,$FF,$FF,$7F,$0F,$01,$00,$3C,$3C,$00
-	DATA BYTE $00,$3C,$3E,$02,$82,$F2,$FE,$FE,$FE,$FE,$F2,$82,$02,$3E,$3C,$00
+	' N
+	DATA BYTE $00,$00,$01,$39,$39,$3B,$03,$03,$03,$03,$3B,$3B,$3F,$0F,$00,$00
+	DATA BYTE $00,$00,$80,$9C,$9C,$DC,$C0,$C0,$C0,$C0,$DC,$DC,$FC,$F0,$00,$00
+	' NE
+	DATA BYTE $00,$03,$03,$03,$00,$01,$73,$77,$7F,$3F,$1F,$0F,$07,$03,$01,$00
+	DATA BYTE $00,$80,$80,$80,$30,$F0,$E0,$EE,$EE,$CE,$80,$00,$C0,$C0,$C0,$00
+	' E
+	DATA BYTE $00,$00,$1C,$1C,$3C,$30,$3F,$3F,$3F,$3F,$30,$3C,$1C,$1C,$00,$00
+	DATA BYTE $00,$00,$38,$38,$38,$00,$E0,$FC,$FC,$E0,$00,$38,$38,$38,$00,$00
+	' SE
+	DATA BYTE $00,$01,$03,$07,$0F,$1F,$3F,$7F,$77,$73,$01,$00,$03,$03,$03,$00
+	DATA BYTE $00,$C0,$C0,$C0,$00,$80,$CE,$EE,$EE,$E0,$F0,$30,$80,$80,$80,$00
+	' S
+	DATA BYTE $00,$00,$0F,$3F,$3B,$3B,$03,$03,$03,$03,$3B,$39,$39,$01,$00,$00
+	DATA BYTE $00,$00,$F0,$FC,$DC,$DC,$C0,$C0,$C0,$C0,$DC,$9C,$9C,$80,$00,$00
+	' SW
+	DATA BYTE $00,$03,$03,$03,$00,$01,$73,$77,$77,$07,$0F,$0C,$01,$01,$01,$00
+	DATA BYTE $00,$80,$C0,$E0,$F0,$F8,$FC,$FE,$EE,$CE,$80,$00,$C0,$C0,$C0,$00
+	' W
+	DATA BYTE $00,$00,$1C,$1C,$1C,$00,$07,$3F,$3F,$07,$00,$1C,$1C,$1C,$00,$00
+	DATA BYTE $00,$00,$38,$38,$3C,$0C,$FC,$FC,$FC,$FC,$0C,$3C,$38,$38,$00,$00
+	' NW
+	DATA BYTE $00,$01,$01,$01,$0C,$0F,$07,$77,$77,$73,$01,$00,$03,$03,$03,$00
+	DATA BYTE $00,$C0,$C0,$C0,$00,$80,$CE,$EE,$FE,$FC,$F8,$F0,$E0,$C0,$80,$00
 
-	' 16x16 flag pennant (sprite def 6) -- viewport flags are SPRITES so
+	' 16x16 flag pennant (sprite def 10) -- viewport flags are SPRITES so
 	' camera-pan blits can't flicker them (chars get repainted a frame
 	' after the blit; sprites ride on top untouched)
 flag_sprite:
 	DATA BYTE $1F,$1F,$1F,$1F,$1F,$18,$18,$18,$18,$18,$18,$18,$18,$18,$00,$00
 	DATA BYTE $C0,$F8,$FE,$F8,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
-	' crash explosion, 2 frames (defs 4-5)
+	' crash explosion, 2 frames (defs 8-9)
 expl_bitmaps:
 	DATA BYTE $00,$10,$44,$01,$20,$04,$49,$02,$24,$09,$40,$12,$04,$41,$10,$00
 	DATA BYTE $00,$08,$22,$80,$04,$20,$92,$40,$24,$90,$02,$48,$20,$82,$08,$00

@@ -1,6 +1,6 @@
 # Generated build artifacts
 # TI-99:  cvbasic -> xas99 -> linkticart
-RALTIX.a99
+RALLYX.a99
 *.bin
 *.txt
 # ColecoVision:  cvbasic -> gasm80

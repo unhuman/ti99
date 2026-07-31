@@ -48,10 +48,10 @@ ovlpat:
 	DATA BYTE $C0,$F8,$FE,$F8,$C0,$00,$00,$00
 	DATA BYTE $18,$18,$18,$18,$18,$18,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$07,$1F,$3F,$7F,$7F,$FF,$FF
-	DATA BYTE $00,$C0,$F0,$F8,$FC,$FE,$FE,$FF
-	DATA BYTE $7F,$7F,$3F,$1F,$0F,$03,$00,$00
-	DATA BYTE $FF,$FE,$FC,$F8,$E0,$80,$00,$00
+	DATA BYTE $00,$00,$03,$07,$07,$07,$3F,$7F
+	DATA BYTE $00,$00,$C0,$E0,$F0,$F0,$FE,$FE
+	DATA BYTE $7F,$7F,$3F,$3F,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$FE,$FE,$00,$00,$00,$00
 ovlcol:
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BA,$BA,$BA
@@ -67,8 +67,8 @@ ovlcol:
 	DATA BYTE $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA
 	DATA BYTE $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA
 	DATA BYTE $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA
-	DATA BYTE $EA,$EA,$EA,$EA,$EA,$EA,$EA,$EA
-	DATA BYTE $EA,$EA,$EA,$EA,$EA,$EA,$EA,$EA
+	DATA BYTE $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA
+	DATA BYTE $FA,$FA,$FA,$FA,$FA,$FA,$FA,$FA
 radar_zero:
 	' 112 x 8 zero pattern rows: blank radar canvas (chars 144-255)
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00

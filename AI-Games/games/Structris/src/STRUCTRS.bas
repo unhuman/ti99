@@ -1174,8 +1174,12 @@ wall_close:
 	' Both walls march inward until they meet in the middle; the stage
 	' lip is erased as each wall passes. Each step plays a short
 	' ARTICULATED note on channel 2 (silenced mid-step, or the run
-	' smears into one long beep).
-	dmax = W / 2
+	' smears into one long beep). dmax rounds the half-width UP (not
+	' truncating down): at odd W, W/2 stops one step short of the true
+	' meeting column, leaving a permanent 1-column gap that never
+	' actually closes (confirmed: every odd-W level 1/3/5/7/9 left this
+	' gap; even-W levels closed fine, since their halves land exactly).
+	dmax = (W + 1) / 2
 	FOR d = 1 TO dmax
 		WAIT
 		WAIT
@@ -1248,8 +1252,12 @@ wall_anim:
 	' (and no-ops past the flare tip), walls sit at lc/rc, black interior
 	' fills between, and the lips/wings are left clear above the stage. ---
 	wdep = 17 - sh + 1
-	lc = oML + oW / 2
-	rc = oML + oW + 1 - oW / 2
+	' lc/rc start at the CLOSE phase's true final wall columns -- reuse
+	' dmax directly (still holds the rounded-up half-width computed in
+	' wall_close; calc_geom doesn't touch it) instead of recomputing the
+	' halving, both to save code and to guarantee they can't drift apart.
+	lc = oML + dmax
+	rc = oML + oW + 1 - dmax
 	ml2 = ML
 	mr2 = ML + W + 1
 	cnt2 = 0

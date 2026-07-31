@@ -133,31 +133,38 @@ flag16 = [
     0b0000000000000000,
     0b0000000000000000,
 ]
-smoke16 = [
-    0b0000000000000000,
-    0b0000011111000000,
-    0b0001111111110000,
-    0b0011111111111000,
-    0b0111111111111100,
-    0b0111111111111110,
-    0b1111111111111110,
-    0b1111111111111111,
-    0b0111111111111111,
-    0b0111111111111110,
-    0b0011111111111100,
-    0b0001111111111000,
-    0b0000111111100000,
-    0b0000001110000000,
-    0b0000000000000000,
-    0b0000000000000000,
-]
+def cloud16():
+    """A puffy smoke cloud: three overlapping lobes over a flat base.
+
+    (The first version was a single circle shaded white on top and grey on
+    the bottom, which read as a two-tone ball rather than a cloud -- the
+    colour split came from the top two quadrant chars being white and the
+    bottom two grey. The cloud is now ONE colour and gets its shape from
+    the lobes.)
+    """
+    lobes = [(3.4, 8.2, 3.0), (7.8, 5.2, 3.8), (12.2, 8.2, 3.0)]
+    rows = []
+    for y in range(16):
+        bits = 0
+        for x in range(16):
+            on = any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in lobes)
+            if 8.6 <= y <= 11.0 and 1.5 <= x <= 14.0:
+                on = True                       # flat underside
+            if on:
+                bits |= 1 << (15 - x)
+        rows.append(bits)
+    return rows
+
+smoke16 = cloud16()
 
 ovlpat = quads(flag16) * 3 + quads(smoke16)
 FLAGCOLS = ["$BA", "$8A", "$FA"]   # F yellow / S red / L white, on tan
 ovlcol = []
 for fc in FLAGCOLS:
     ovlcol += [[fc] * 8] * 4
-ovlcol += [["$FA"] * 8, ["$FA"] * 8, ["$EA"] * 8, ["$EA"] * 8]  # smoke
+ovlcol += [["$FA"] * 8] * 4     # smoke: ONE colour (white on tan) in all
+                                # four quadrants -- a per-quadrant split is
+                                # what made the cloud look half-grey
 
 # --- emit -------------------------------------------------------------------
 out = []
