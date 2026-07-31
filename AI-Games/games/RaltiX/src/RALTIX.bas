@@ -631,11 +631,17 @@ take_flag:
 	sfxt = 10
 	RETURN
 
+	' Blank the 8-char panel field BEFORE printing. CVBasic prints numbers
+	' with no fixed width, so a value needing fewer digits than the last
+	' draw (e.g. #score back to 0 on a new game) left the old value's
+	' right-hand digits on screen -- a garbled score/high score.
 prt_score:
-	PRINT AT 56,#score,"0  "
+	PRINT AT 56,"        "
+	PRINT AT 56,#score,"0"
 	RETURN
 prt_hi:
-	PRINT AT 120,#hi,"0  "
+	PRINT AT 120,"        "
+	PRINT AT 120,#hi,"0"
 	RETURN
 prt_rd:
 	PRINT AT 760,"RD "
@@ -682,26 +688,29 @@ draw_lives:
 	' FRAME-delta catch-up move it 12 px while the camera moves 8.
 update_cam:
 	dirty = 0
+	' NOTE: these bounds are #cblo/#cbhi, NOT #lo/#hi -- `#hi` is the HIGH
+	' SCORE, and the first version of this routine used it as the camera's
+	' upper-bound scratch, clobbering the high score every single frame.
 	#cch = #px / 8			' car's map2 char column
-	#lo = 0
-	IF #cch > 13 THEN #lo = #cch - 13
-	#hi = 0
-	IF #cch > 10 THEN #hi = #cch - 10
-	IF #lo > CAMMAXC THEN #lo = CAMMAXC
-	IF #hi > CAMMAXC THEN #hi = CAMMAXC
+	#cblo = 0
+	IF #cch > 13 THEN #cblo = #cch - 13
+	#cbhi = 0
+	IF #cch > 10 THEN #cbhi = #cch - 10
+	IF #cblo > CAMMAXC THEN #cblo = CAMMAXC
+	IF #cbhi > CAMMAXC THEN #cbhi = CAMMAXC
 	#cs = camc
-	IF #cs < #lo THEN camc = #lo : dirty = 1
-	IF #cs > #hi THEN camc = #hi : dirty = 1
+	IF #cs < #cblo THEN camc = #cblo : dirty = 1
+	IF #cs > #cbhi THEN camc = #cbhi : dirty = 1
 	#cch = #py / 8			' car's map2 char row
-	#lo = 0
-	IF #cch > 13 THEN #lo = #cch - 13
-	#hi = 0
-	IF #cch > 10 THEN #hi = #cch - 10
-	IF #lo > CAMMAXR THEN #lo = CAMMAXR
-	IF #hi > CAMMAXR THEN #hi = CAMMAXR
+	#cblo = 0
+	IF #cch > 13 THEN #cblo = #cch - 13
+	#cbhi = 0
+	IF #cch > 10 THEN #cbhi = #cch - 10
+	IF #cblo > CAMMAXR THEN #cblo = CAMMAXR
+	IF #cbhi > CAMMAXR THEN #cbhi = CAMMAXR
 	#cs = camr
-	IF #cs < #lo THEN camr = #lo : dirty = 1
-	IF #cs > #hi THEN camr = #hi : dirty = 1
+	IF #cs < #cblo THEN camr = #cblo : dirty = 1
+	IF #cs > #cbhi THEN camr = #cbhi : dirty = 1
 	IF dirty THEN GOSUB draw_view
 	RETURN
 

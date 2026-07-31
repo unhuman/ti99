@@ -289,13 +289,29 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
   left-right symmetric so its rotations stay readable, and wheels come out 2×4 travelling
   vertically / 4×2 horizontally. Enemies share the art recoloured red.
 
-**Verification note:** the Classic99 screenshot harness stopped working partway through this
-session — the desktop session became non-interactive, so the emulator could no longer take
-foreground (keystrokes went nowhere) and `CopyFromScreen` began failing. Two runs that looked
-like in-game freezes/console resets were almost certainly this artifact (the cart never
-started, leaving the static TI menu), **but that is not proven** — if a reset ever shows up in
-real play, the enemy-collision/respawn path (`crash:` → `rehome`, which bank-switches to read
-the spawn list) is the first place to look.
+**Follow-up: the freeze was real, and it was a variable-name collision.** The camera rewrite
+above used `#hi` as scratch for its upper bound — and **`#hi` is the high score**, so
+`update_cam` overwrote it every single frame. The visible symptom was a garbled high score
+(reported from play), and because `take_flag` then saw `#score > #hi` on essentially every
+pickup it re-drew the HI field constantly; the game went on to lock up. Renamed the camera
+bounds to `#cblo`/`#cbhi`. Verified: the exact route that previously froze (zero changed
+pixels across 2 s) now runs with 317 k changed pixels and a stable `1UP 100 / HI 5000` panel.
+
+Two lessons recorded: **prefix scratch variables per-routine** (`#cb…` for camera bounds) in a
+language with only global variables, and treat "a displayed value is garbage" as naming the
+corrupted variable — that report localised the bug immediately after a long, and largely
+wasted, emulator bisection.
+
+**Also fixed:** `prt_score`/`prt_hi` printed numbers with no fixed width and only two trailing
+spaces, so a value needing fewer digits than the previous draw (e.g. `#score` back to 0 on a
+new game) left the old value's right-hand digits on screen. Both now blank the 8-char panel
+field before printing.
+
+**Harness note:** Classic99 screenshot capture requires an interactive, unlocked desktop, and
+the emulator must be given foreground by a real mouse click (`SetForegroundWindow` alone is
+refused for a background process — keystrokes then go elsewhere and the cart never starts,
+which mimics a freeze). Capture rects must also be clamped to the virtual screen. The working
+probe is `scratchpad/probe5.ps1`.
 
 ## 17a. Status (2026-07-29)
 
