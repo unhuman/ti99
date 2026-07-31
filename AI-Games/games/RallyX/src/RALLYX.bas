@@ -43,6 +43,7 @@
 				' = same cells/second as before the 2x scale)
 	CONST TURNRT = 3	' frames per 45-degree step while turning: a
 				' 90-degree turn takes 6 frames, a 180 takes 12
+	CONST BLINKRT = 30	' frames between radar player-dot colour flips
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -321,6 +322,10 @@ eskip:
 	rdt = rdt + #fd
 	IF rdt >= 6 THEN rdt = 0 : GOSUB radar_tick
 
+	' player-dot colour flip, every BLINKRT frames
+	blt = blt + #fd
+	IF blt >= BLINKRT THEN blt = 0 : blink = 1 - blink
+
 	' flag-blip envelope
 	IF sfxt > 0 THEN GOSUB sfx_tick
 
@@ -332,14 +337,9 @@ round_done:
 	PRINT AT 395,"ROUND"
 	PRINT AT 427,"CLEAR"
 	IF rc3 = 2 THEN #score = #score + 1000 : GOSUB prt_score
-	' force-erase stale mover radar dots (radar_tick erases, and skips
-	' the player replot because blink flips to 0)
-	blink = 1
-	FOR i = 0 TO 4
-	GOSUB radar_tick
-	blink = 1
-	WAIT
-	NEXT i
+	' (stale mover radar dots are erased by round_init's mpv/rd_erase pass;
+	' the old loop here relied on the player dot skipping its replot when
+	' blink flipped to 0, which no longer happens now that it always draws)
 	' clear jingle: rising sweep
 	FOR i = 1 TO 90
 	WAIT
@@ -474,7 +474,13 @@ at_center:
 	' a 90-degree turn is taken at a cell centre when that way is open --
 	' it starts a rotation (start_turn), it does not snap the heading
 	IF qdir <> dir THEN d = qdir : GOSUB probe : IF t >= ROADCH THEN GOSUB start_turn
-	IF turning = 1 THEN RETURN
+	' blocked = 1 pins the car on the cell centre for the rest of THIS
+	' frame's pixel steps. Without it the leftover steps kept moving it in
+	' the OLD direction, so the turn finished 1-3 px off the grid -- and
+	' since the cross-axis coordinate then never hit a multiple of 16
+	' again, at_center never ran, `blocked` stayed 0, and the car drove
+	' straight through every wall. turn_step clears it when the turn ends.
+	IF turning = 1 THEN blocked = 1 : RETURN
 	d = dir
 	GOSUB probe
 	IF t < ROADCH THEN blocked = 1 ELSE blocked = 0
@@ -911,9 +917,10 @@ radar_tick:
 	GOTO rt_put
 	' The player dot is ALWAYS drawn and cycles white/black instead of
 	' blinking on and off -- a dot that vanishes half the time is hard to
-	' pick out, while a flashing white/black one reads instantly.
+	' pick out, while a flashing white/black one reads instantly. The
+	' colour flips on BLINKRT (30) frames, driven by its own counter in the
+	' main loop rather than by this routine's 5-mover round-robin.
 rt_ply:
-	blink = 1 - blink
 	tr2 = #py / 16
 	tc2 = #px / 16
 	cv = $F4			' white on dark blue

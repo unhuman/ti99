@@ -303,8 +303,16 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
   four quadrant chars. The old version split white over grey across the quadrant boundary,
   which read as a two-tone ball.
 - **Radar player dot cycles white/black** instead of blinking on and off — a dot that vanishes
-  half the time is hard to track. Verified: the dot is present in both phases, 70 px moving
-  between the white and black counts.
+  half the time is hard to track. The flip is driven by its own `BLINKRT` (30-frame) counter in
+  the main loop, not by the 5-mover round-robin. Verified: the dot is present in both phases.
+- **Fixed: the car could drive through walls** (regression from the turn work). When a 90° turn
+  started at a cell centre, `at_center` returned early but `move1px` still ran its remaining
+  pixel steps for that frame **in the old direction**, so the turn finished 1–3 px off the
+  grid. From then on the car's cross-axis coordinate was never a multiple of 16, `at_center`
+  never fired again, `blocked` stayed 0 — and the car drove over everything. Fix: starting a
+  turn sets `blocked = 1`, pinning the car on the centre for the rest of the frame (`turn_step`
+  clears it when the turn ends). Verified by sampling the four corners of the car's own 16-px
+  cell (art-free, since the car is 12 px) after three turn-heavy routes: road on all of them.
 
 ## 17a. Status (2026-07-29, later)
 
