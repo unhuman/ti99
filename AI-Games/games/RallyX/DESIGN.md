@@ -296,6 +296,13 @@ heading settles and it drives on.
 - Player vs enemy: same cell, or pixel boxes within 12 px on both axes ⇒ **crash**: explosion
   animation + descending boom, lose a life, enemies rehome to spawns, player restarts at the
   start cell (flags/fuel keep their state). 3 lives; game over card → title.
+- **Game over tears the playfield down in two stages**, so neither screen is drawn over
+  leftovers. `hide_spr` parks all five car sprites at y=209 *before* the GAME OVER card, so the
+  wreck and the chasers do not sit frozen underneath it; then, after the sting, `clear_view`
+  blanks the 24×24 viewport before jumping to `title`, so the title is not printed over a stale
+  maze. `clear_view` writes one row per frame — 24 chars is already a sizeable buffered burst,
+  and bursts past the per-frame budget are dropped silently. (y=209, never 208: 208 is the
+  sprite-list terminator and would blank every sprite after it too.)
 - Player vs rock (rounds ≥2): same as a crash.
 - Enemies ignore rocks/flags/each other.
 
@@ -416,6 +423,10 @@ Full measurements and the two rules they establish are in **§1a**. Summary:
 - Cheaper per pass: cached enemy cells (`ecra`/`ecca`), hoisted camera origin (`#cx8`/`#cy8`),
   `update_cam` early-out when the car has not moved, cached flag radar addresses, smoke ageing
   skipped when no puff is live, AI last-resort scan no longer re-probes `p1`/`p2`.
+- **Game over cleans up after itself** (§9): sprites hidden before the GAME OVER card, viewport
+  wiped before the title returns. Verified across the whole death → card → title → new game
+  cycle: no cars under the card, no maze behind the title, and the maze repaints correctly when
+  a new game starts.
 
 ## 17b. Status (2026-08-01) — arcade-accuracy pass
 

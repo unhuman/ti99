@@ -154,8 +154,9 @@
 	NEXT rr
 
 	' --- title ------------------------------------------------------------
-	' Printed over the viewport (black at boot, stale maze after game
-	' over); the first draw_view repaints it away.
+	' The viewport is blank whenever we get here: black at boot, and wiped
+	' by clear_view on the way out of game_over (which also parks the car
+	' sprites). The first draw_view of a new game repaints it away.
 title:
 	PRINT AT 359,"* RALLY-X *"
 	PRINT AT 424,"PRESS FIRE"
@@ -429,6 +430,9 @@ crash:
 	GOTO restart
 
 game_over:
+	' Cars off the screen before GAME OVER shows -- the player's wreck and
+	' the chasers used to sit there frozen underneath it.
+	GOSUB hide_spr
 	PRINT AT 396,"GAME"
 	PRINT AT 428,"OVER"
 	' descending sting, then back to the title
@@ -441,7 +445,28 @@ game_over:
 	FOR i = 1 TO 120
 	WAIT
 	NEXT i
+	' and wipe the maze, so the title is not printed over a stale playfield
+	GOSUB clear_view
 	GOTO title
+
+	' park all five car sprites off screen. y = 209, NEVER 208: 208 is the
+	' sprite-list terminator and would blank every sprite after it too.
+hide_spr:
+	FOR hs = 0 TO 4
+	SPRITE hs, 209, 0, 0, 0
+	NEXT hs
+	RETURN
+
+	' blank the 24x24 viewport (cols 0-23), leaving the panel alone. One row
+	' per frame: 24 chars is already a sizeable buffered write burst, and
+	' bursts past the per-frame budget are dropped silently.
+clear_view:
+	FOR cvr = 0 TO 23
+	WAIT
+	#cva = cvr * 32.
+	PRINT AT #cva,"                        "
+	NEXT cvr
+	RETURN
 
 	' reset enemies to their spawn cells, scattered (spawn list is in
 	' bank 2; gameplay runs with bank 1 selected)

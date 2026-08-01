@@ -13,7 +13,8 @@ radar on the right, and don't run out of fuel.
   is what stopped them flickering), the car is a proper top-down F1 with **eight heading frames**
   that **rotate in place** (a reverse sweeps around instead of flipping — the Rally-X handling
   model), enemies turn too and never stack on one cell, smoke puffs are puff-balls of one colour,
-  and the radar's player dot cycles white/black instead of blinking out. See `DESIGN.md` §17.
+  and the radar's player dot cycles white/black instead of blinking out. Game over hides the cars
+  before the GAME OVER card and wipes the maze before the title returns. See `DESIGN.md` §17.
   **Speed:** the loop was profiled on Classic99 and rebuilt from **8.2** game-loop passes/sec to
   **one pass per vblank** — 59.7/sec parked, 52.6/sec while driving with the camera panning. Game
   speed no longer varies with load either: the old `#fd` clamp discarded real time whenever the
