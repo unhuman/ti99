@@ -177,13 +177,29 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   Empty ⇒ crawl speed, no smoke; you can still finish the round.
 - Extra life at 20,000 (once). Score/HI 6 digits, persistent HI per session.
 
-## 8. Smoke Screen
+## 8. Smoke Screen — arcade rules
 
-Hold fire (TI: joystick fire / `Q`; Coleco: left button) while moving with fuel > 0: a smoke
-puff (char 117, animating to 118) is dropped in each cell the car exits, up to **6 live puffs**
-(oldest expires; RAM list of (r,c,ttl), ttl 180 frames). An enemy whose cell is smoke gets
-stunned 90 frames (spin frame, then resumes). Puffs inside the viewport are drawn as overlay
-chars; expiry restores the road char.
+Researched rather than invented ([StrategyWiki Rally-X](https://strategywiki.org/wiki/Rally-X)
+and [New Rally-X](https://strategywiki.org/wiki/New_Rally-X)): **one button press releases
+exactly three puffs** behind the car — it is *not* a stream you hold down — and each use costs
+a big slice of fuel; the guides warn that using it more than about once every 30 s means
+running dry before all ten flags.
+
+So: fire is **edge-triggered** (`smoke_fire` on the rising edge only), charges `SMKCOST` 96
+fuel up front out of a 768 tank (8 uses if you never drove), and queues `SMKPUFF` 3 puffs.
+Queued puffs are laid one per cell as the car leaves it, producing the arcade's short trail.
+No fuel, no smoke. `MAXSMK` 6 puff slots hold two deployments in flight; the oldest slot is
+recycled beyond that. Each puff lives `SMKTTL` 150 frames (2.5 s).
+
+**Puffs age by the frame delta, not a flat 1 per pass** — the loop does not run at a steady
+60 Hz, and a flat decrement measured ~30 ticks in 4 seconds, leaving puffs on screen roughly 8×
+too long. Expiry sets a dirty flag and `draw_view` repaints after the ageing loop (it can't be
+called from inside it — `draw_view` has its own `FOR j` and would clobber the counter); a
+targeted per-cell erase silently did nothing whenever the cell was off-window at that moment.
+
+An enemy whose cell holds smoke is stunned `SPINFR` 96 frames and **spins**: while stunned its
+visual heading advances a notch every tick, so it whirls through ~4 revolutions before its
+heading settles and it drives on.
 
 ## 9. Collisions & Lives
 
@@ -288,7 +304,25 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
 8. Both targets build; TI single-bank with free bytes reported; same real-world speed on both
    (FRAME-delta pacing); no hazard-rule violations (§14).
 
-## 17. Status (2026-07-30) — renamed to RALLY-X, cars turn properly
+## 17. Status (2026-08-01) — arcade-accuracy pass
+
+Driven by reference screenshots supplied in review (kept in `assets/`):
+- **Start position matches the arcade**: the player faces **up** a clear corridor at bordered
+  cell (35,22) with the three chasers lined up in a row **behind** him (row 38, cols 19/22/25),
+  each on road with road to the north so they come straight at him. Found by searching the
+  transcribed maze for a cell with a clear run north and a spread of road cells to the south.
+- **Flags are CHARACTERS again.** As sprites they were drawn with the wrong pattern name (24 =
+  an SE *car* frame — a renumbering slip, which is why they looked like cars), read badly
+  against the road, and drifted off the cell grid. The original char flicker is gone because
+  the `WAIT` that used to sit between the viewport blit and the overlay pokes is gone: both now
+  land in the same frame's buffered batch. Flag colours changed for contrast on the tan road —
+  white F, light-red S, cyan L (yellow-on-tan was nearly invisible).
+- **Smoke is a puff-ball, not a cloud** (§4/§8), traced from the arcade shot, and follows the
+  arcade's three-puffs-per-press rule with a real fuel cost.
+- **Extra lives are little yellow cars**, the car silhouette at 8×8, matching the arcade.
+- **Enemies spin when smoked** instead of freezing.
+
+## 17a. Status (2026-07-30) — renamed to RALLY-X, cars turn properly
 
 - **Renamed** RaltiX → **RALLY-X** everywhere: folder `games/RallyX`, source `RALLYX.bas`,
   outputs `RALLYX_8.bin` / `rallyx.rom`, cart menu label `RALLY-X`, title screen `* RALLY-X *`.

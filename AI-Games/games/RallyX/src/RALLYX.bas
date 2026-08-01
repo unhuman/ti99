@@ -44,6 +44,16 @@
 	CONST TURNRT = 3	' frames per 45-degree step while turning: a
 				' 90-degree turn takes 6 frames, a 180 takes 12
 	CONST BLINKRT = 30	' frames between radar player-dot colour flips
+	' SMOKE, per the arcade rules: ONE button press releases exactly THREE
+	' puffs behind the car (it is not a stream you hold down), and each use
+	' costs a big slice of fuel -- the strategy guides warn that using it
+	' more than about once every 30 s means running dry before all ten
+	' flags. 768 fuel is a full tank, so 96 = 8 uses if you never drove.
+	CONST SMKPUFF = 3	' puffs released per press
+	CONST SMKCOST = 96	' fuel per press (1/8 tank)
+	CONST MAXSMK = 6	' puff slots = two deployments in flight
+	CONST SMKTTL = 150	' frames a puff lasts (2.5 s) before it clears
+	CONST SPINFR = 96	' frames an enemy spins after driving into smoke
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -93,7 +103,6 @@
 	DEFINE SPRITE 0,8,car_bitmaps	' defs 0-7 = car headings N,NE,E,SE,
 					' S,SW,W,NW (enemies reuse them, red)
 	DEFINE SPRITE 8,2,expl_bitmaps	' defs 8-9 = crash explosion
-	DEFINE SPRITE 10,1,flag_sprite	' def 10 = flag pennant (slots 5-14)
 
 	#mapbase = VARPTR map1(0)
 	msktab(0) = $C0
@@ -187,10 +196,12 @@ round_init:
 	espd = 18 + rnd * 2
 	IF espd > 30 THEN espd = 30
 	GOSUB rehome
-	FOR j = 0 TO 5
+	FOR j = 0 TO MAXSMK - 1
 	st(j) = 0
 	NEXT j
 	nsm = 0
+	smkq = 0
+	btnp = 1		' ignore a button still held from the title screen
 	#fuel = 768
 	plvl = 255
 	blink = 0
@@ -207,21 +218,23 @@ round_init:
 	GOSUB radar_flags
 	IF rc3 = 2 THEN PRINT AT 389,"CHALLENGING STAGE" : FOR i = 1 TO 90 : WAIT : NEXT i
 
-	' Player start cell (23,15) bordered, heading right (the start corridor
-	' is horizontal -- walls sit directly above and below); camera centered.
+	' Arcade start (see the reference shot): the player faces UP a clear
+	' corridor with the chasers lined up in a row BEHIND him. Player is
+	' bordered cell (35,22); the enemies sit 3 rows south, spread across
+	' cols 19/22/25 (espawn_data), all able to drive north at him.
 restart:
-	#px = 240		' 15 * 16 (map-pixel, cell = 16 px)
-	#py = 368		' 23 * 16
-	dir = 1
-	qdir = 1
-	ang = 2			' visual heading 0-7; 2 = East, matches dir = 1
+	#px = 352		' 22 * 16 (map-pixel, cell = 16 px)
+	#py = 560		' 35 * 16
+	dir = 0
+	qdir = 0
+	ang = 0			' visual heading 0-7; 0 = North, matches dir = 0
 	turning = 0
 	blocked = 0
-	lcr = 23
-	lcc = 15
+	lcr = 35
+	lcc = 22
 	GOSUB set_dir
-	camc = 18		' camera in map2 CHAR units (car char - 12)
-	camr = 34
+	camc = 32		' camera in map2 CHAR units (car char - 12)
+	camr = 58
 	#acc = 0
 	#eacc = 0
 	GOSUB draw_view
@@ -241,6 +254,15 @@ game_loop:
 	IF cont1.right THEN qdir = 1
 	IF cont1.down THEN qdir = 2
 	IF cont1.left THEN qdir = 3
+	' Smoke fires on the button's RISING EDGE and queues SMKPUFF puffs,
+	' which are then laid in the next cells the car leaves -- that is what
+	' produces the arcade's short trail behind the car. Holding the button
+	' does nothing extra; you pay the fuel per press.
+	btn = 0
+	IF cont1.button THEN btn = 1
+	IF btn = 1 THEN IF btnp = 0 THEN GOSUB smoke_fire
+	btnp = btn
+
 	' A REVERSE is a turn, not a flip: the car never snaps from up to down.
 	' It can start anywhere (the cell behind is by definition open), unlike
 	' a 90-degree turn which waits for a cell centre (see at_center).
@@ -290,15 +312,7 @@ eskip:
 	eat = eat + #fd
 	IF eat >= TURNRT THEN eat = 0 : GOSUB eang_step
 
-	' flag sprites (slots 5-14): F yellow, S red, L white. They sit above
-	' the chars, so camera-pan blits never flicker them; the 4-per-scanline
-	' rule favors low sprite numbers, so gameplay actors always win.
-	FOR fi = 0 TO 9
-	sl = 5 + fi
-	vis = 0
-	IF fst(fi) = 0 THEN GOSUB fvis
-	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, 24, fcol ELSE SPRITE sl, 209, 0, 0, 0
-	NEXT fi
+	' (flags are CHARACTERS, drawn by draw_view -- see the note there)
 
 	' player vs enemy collision (12-px boxes; lanes are 16 px apart, so
 	' adjacent lanes can never false-positive)
@@ -308,10 +322,23 @@ eskip:
 	NEXT i
 	IF hitf = 1 THEN GOTO crash
 
-	' smoke ttl
-	FOR j = 0 TO 5
-	IF st(j) > 0 THEN st(j) = st(j) - 1 : IF st(j) = 0 THEN GOSUB smk_off
+	' Smoke ttl. An expiring puff repaints the WHOLE window rather than
+	' poking its own cell back to road: the targeted erase silently did
+	' nothing whenever the cell was off-window at the moment it expired,
+	' which left clouds on screen forever. draw_view redraws map + live
+	' flags + live smoke, so it is correct in every case. It must be called
+	' AFTER this loop -- draw_view has its own FOR j, which would clobber
+	' this loop's counter.
+	' Age by the FRAME DELTA, not a flat 1 per pass: the loop does not run
+	' at a steady 60 Hz (a heavy frame does more than one frame's worth of
+	' work), so a flat decrement made the lifetime drift wildly -- measured
+	' ~30 ticks in 4 seconds, i.e. clouds hanging around ~8x too long.
+	' #fd is already clamped to 4 by the pacing code above.
+	smkdty = 0
+	FOR j = 0 TO MAXSMK - 1
+	IF st(j) > 0 THEN GOSUB smk_age
 	NEXT j
+	IF smkdty = 1 THEN GOSUB draw_view
 
 	' fuel drain: 1 unit per 4 frames (frame-delta safe: drain on ticks)
 	fdt = fdt + #fd
@@ -464,11 +491,11 @@ at_center:
 	FOR fi = 0 TO 9
 	IF fst(fi) = 0 THEN IF fr(fi) = cr THEN IF fc(fi) = cc THEN GOSUB take_flag
 	NEXT fi
-	' smoke: button held while entering a fresh cell drops a puff behind
+	' lay one queued puff in the cell just left behind
 	smkf = 0
 	IF lcr <> cr THEN smkf = 1
 	IF lcc <> cc THEN smkf = 1
-	IF smkf = 1 THEN IF cont1.button THEN GOSUB smoke_put
+	IF smkf = 1 THEN IF smkq > 0 THEN GOSUB smoke_lay
 	lcr = cr
 	lcc = cc
 	' a 90-degree turn is taken at a cell centre when that way is open --
@@ -525,8 +552,8 @@ eai:
 	ecr = #ey(i) / 16
 	ecc = #ex(i) / 16
 	' smoke check
-	FOR j = 0 TO 5
-	IF st(j) > 0 THEN IF sr(j) = ecr THEN IF sc(j) = ecc THEN estn(i) = 90
+	FOR j = 0 TO MAXSMK - 1
+	IF st(j) > 0 THEN IF sr(j) = ecr THEN IF sc(j) = ecc THEN estn(i) = SPINFR
 	NEXT j
 	IF estn(i) > 0 THEN RETURN
 	#g = pcc
@@ -589,6 +616,11 @@ eang_step:
 	NEXT ea
 	RETURN
 eang1:
+	' A smoked car SPINS: while its stun counter runs it just keeps
+	' rotating one notch per tick, so it whirls through several full turns
+	' (SPINFR 96 / TURNRT 3 = 32 notches = 4 revolutions) before its
+	' heading settles and it drives on. emove1 keeps it parked meanwhile.
+	IF estn(ea) > 0 THEN eang(ea) = (eang(ea) + 1) AND 7 : RETURN
 	eat2 = edir(ea) + edir(ea)
 	IF eang(ea) = eat2 THEN RETURN
 	eat3 = eat2 - eang(ea)
@@ -607,26 +639,6 @@ evis:
 	IF t2 >= 22 THEN RETURN
 	x2 = #ex(i) - camc * 8.
 	y2 = #ey(i) - camr * 8.
-	vis = 1
-	RETURN
-
-	' flag fi on-screen? -> vis, x2, y2, fcol (char units; hidden at the
-	' edges so the sprite never bleeds into the panel, and skipping row 0
-	' keeps "y2 - 1" from wrapping to 255. The compares are unsigned, so an
-	' off-window flag underflows to a huge value and fails them -- correct.)
-fvis:
-	t = fr(fi) + fr(fi)
-	t = t - camr
-	IF t = 0 THEN RETURN
-	IF t >= 23 THEN RETURN
-	t2 = fc(fi) + fc(fi)
-	t2 = t2 - camc
-	IF t2 >= 23 THEN RETURN
-	y2 = t * 8
-	x2 = t2 * 8
-	fcol = 11
-	IF fi = 8 THEN fcol = 8
-	IF fi = 9 THEN fcol = 15
 	vis = 1
 	RETURN
 
@@ -675,27 +687,36 @@ put_char:
 
 	' --- smoke ------------------------------------------------------------
 	' drop a puff at the just-exited cell (lcr,lcc); costs 8 fuel
+	' one press = SMKPUFF puffs, charged up front. No fuel, no smoke.
+smoke_fire:
+	IF #fuel < SMKCOST THEN RETURN
+	#fuel = #fuel - SMKCOST
+	smkq = SMKPUFF
+	RETURN
+
+smoke_lay:
+	smkq = smkq - 1
 smoke_put:
-	IF #fuel < 8 THEN RETURN
-	#fuel = #fuel - 8
 	IF st(nsm) > 0 THEN or2 = sr(nsm) : oc2 = sc(nsm) : ob = ROADCH : GOSUB put_cell
 	sr(nsm) = lcr
 	sc(nsm) = lcc
-	st(nsm) = 180
+	st(nsm) = SMKTTL
 	or2 = lcr
 	oc2 = lcc
 	ob = SMOKECH
 	GOSUB put_cell
 	nsm = nsm + 1
-	IF nsm >= 6 THEN nsm = 0
+	IF nsm >= MAXSMK THEN nsm = 0
 	RETURN
 
 	' erase expired puff j from the viewport
-smk_off:
-	or2 = sr(j)
-	oc2 = sc(j)
-	ob = ROADCH
-	GOSUB put_cell
+	' age one puff by #fd frames; expiry flags a repaint (draw_view can't be
+	' called from here -- it has its own FOR j and would clobber the caller)
+smk_age:
+	smka = #fd
+	IF st(j) > smka THEN st(j) = st(j) - smka : RETURN
+	st(j) = 0
+	smkdty = 1
 	RETURN
 
 	' --- flag pickup (fi = slot, car at its cell) -------------------------
@@ -713,8 +734,11 @@ take_flag:
 	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
 	GOSUB prt_score
 	IF olg = 0 THEN IF #score >= 2000 THEN olg = 1 : lives = lives + 1 : GOSUB draw_lives
-	' no viewport erase needed -- the flag is a sprite, and the per-frame
-	' sprite loop hides it now that fst() is 1. Clear its radar dot.
+	' repaint its cell as plain road, then clear its radar dot
+	or2 = fr(fi)
+	oc2 = fc(fi)
+	ob = ROADCH
+	GOSUB put_cell
 	tr2 = fr(fi)
 	tc2 = fc(fi)
 	GOSUB dot_addr
@@ -818,14 +842,30 @@ update_cam:
 	' Flags are NOT redrawn here -- they're sprites (slots 5-14), which is
 	' what stopped them flickering: a char flag had to be re-poked after
 	' every pan blit, and the poke landed a frame late.
+	' Flags and smoke are CHARACTERS again (sprites made them read as cars
+	' and sit badly against the road). The original char flicker came from
+	' the WAIT that used to sit between the blit and these overlay pokes:
+	' the blit landed one frame and the overlays the next, so at ~3 pans a
+	' second the flags strobed. With NO wait, both go into the same frame's
+	' buffered batch and are applied at the same vblank -- no flicker.
 draw_view:
 	#voff = camr * 68.
 	#voff = #voff + camc
 	SCREEN map2, #voff, 0, 24, 24, 68
-	WAIT
-	FOR j = 0 TO 5
+	FOR oi = 0 TO 9
+	IF fst(oi) = 0 THEN GOSUB ov_flag
+	NEXT oi
+	FOR j = 0 TO MAXSMK - 1
 	IF st(j) > 0 THEN GOSUB ov_smoke
 	NEXT j
+	RETURN
+ov_flag:
+	or2 = fr(oi)
+	oc2 = fc(oi)
+	ob = 0			' F = chars 0-3
+	IF oi = 8 THEN ob = 4	' S = chars 4-7
+	IF oi = 9 THEN ob = 8	' L = chars 8-11
+	GOSUB put_cell
 	RETURN
 ov_smoke:
 	or2 = sr(j)
@@ -1058,11 +1098,12 @@ misc_colors:
 	DATA BYTE $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C	' light green on dark green
 	DATA BYTE $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA	' tan on tan
 
-	' lives icon (129): mini car
+	' lives icon (129): the car silhouette at 8x8 -- four wheels sticking
+	' out, body, rear wing -- in yellow, matching the arcade's little cars
 live_char:
-	DATA BYTE $00,$18,$7E,$5A,$7E,$5A,$18,$00
+	DATA BYTE $42,$3C,$7E,$3C,$3C,$7E,$42,$7E
 live_color:
-	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51	' light blue on black
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' light yellow on black
 
 	' fuel bar 120-128: n pixels lit from the left, rows 2-5
 fuel_chars:
@@ -1100,13 +1141,14 @@ flag_data:
 	DATA BYTE 8,28
 	DATA BYTE 54,22
 
-	' enemy spawn cells (bordered row,col): the transcribed car-blob cells
-	' sat on wall cells (the sprite covered the cell in the rip), so each
-	' spawn is the adjacent road cell instead
+	' Enemy spawns (bordered row,col): a ROW BEHIND the player, matching the
+	' arcade start -- three chasers spread across the corridor 3 rows south
+	' of the player's cell (35,22), each on road with road to the north so
+	' they immediately come at him. The 4th (rounds >= 4) fills the gap.
 espawn_data:
-	DATA BYTE 7,24
-	DATA BYTE 22,30
-	DATA BYTE 28,17
-	DATA BYTE 36,3
+	DATA BYTE 38,19
+	DATA BYTE 38,22
+	DATA BYTE 38,25
+	DATA BYTE 38,23
 
 	INCLUDE "tiles.bas"

@@ -133,32 +133,46 @@ flag16 = [
     0b0000000000000000,
     0b0000000000000000,
 ]
-def cloud16():
-    """A puffy smoke cloud: three overlapping lobes over a flat base.
+def puff16():
+    """The arcade smoke PUFF-BALL: a rosette of round lobes.
 
-    (The first version was a single circle shaded white on top and grey on
-    the bottom, which read as a two-tone ball rather than a cloud -- the
-    colour split came from the top two quadrant chars being white and the
-    bottom two grey. The cloud is now ONE colour and gets its shape from
-    the lobes.)
+    Traced from the arcade screenshot (assets/ref-smoke.png, native 288x224
+    so 1 px = 1 game px): the puff is a pale cream blob whose lobes are
+    separated by black outlines -- it reads as popcorn, not as a cloud.
+
+    A TI char row has only fg+bg, so we can't draw a third outline colour.
+    Instead we light each lobe's INTERIOR and leave its EDGE unlit: where
+    lobes overlap those edges become the internal separations, and against
+    the tan road they read exactly like the arcade's outlines.
     """
-    lobes = [(3.4, 8.2, 3.0), (7.8, 5.2, 3.8), (12.2, 8.2, 3.0)]
+    # A SOLID bumpy ball (big centre + four diagonal bumps), with small
+    # bites taken out of the perimeter at the cardinals. Carving full
+    # outlines between overlapping lobes ate the fill and came out hollow;
+    # a solid blob with a lobed silhouette is what reads as popcorn at 16px.
+    lobes = [(7.5, 7.5, 5.5), (4.3, 4.3, 3.0), (10.7, 4.3, 3.0),
+             (4.3, 10.7, 3.0), (10.7, 10.7, 3.0)]
+    notches = [(7.5, 1.6, 1.4), (7.5, 13.4, 1.4),
+               (1.6, 7.5, 1.4), (13.4, 7.5, 1.4)]
     rows = []
     for y in range(16):
         bits = 0
         for x in range(16):
             on = any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in lobes)
-            if 8.6 <= y <= 11.0 and 1.5 <= x <= 14.0:
-                on = True                       # flat underside
+            if on:
+                if any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in notches):
+                    on = False
             if on:
                 bits |= 1 << (15 - x)
         rows.append(bits)
     return rows
 
-smoke16 = cloud16()
+smoke16 = puff16()
 
 ovlpat = quads(flag16) * 3 + quads(smoke16)
-FLAGCOLS = ["$BA", "$8A", "$FA"]   # F yellow / S red / L white, on tan
+# Flag colours are chosen for CONTRAST AGAINST THE TAN ROAD (bg A = dark
+# yellow). The original yellow-on-tan flag was nearly invisible; white,
+# light red and cyan all read cleanly on it.
+FLAGCOLS = ["$FA", "$9A", "$7A"]   # F white / S light red / L cyan, on tan
 ovlcol = []
 for fc in FLAGCOLS:
     ovlcol += [[fc] * 8] * 4
