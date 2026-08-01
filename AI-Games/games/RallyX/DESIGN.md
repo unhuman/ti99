@@ -221,14 +221,39 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
 - **Enemies turn too** but keep moving while they do (`eang` eases toward `edir*2` on the same
   3-frame clock). Their AI only ever picks 90° changes, so a visible sweep is enough — stopping
   them dead mid-turn would make them trivial to escape.
-- **Enemies:** 2.5 px/frame at round 1 (`espd = 18 + rnd*2` eighth-px units), +0.25/round to a
-  3.75 cap. At each cell center pick: prefer the axis with the larger gap to the player if
-  open, else the other axis, else keep straight, else any open ≠ reverse (reverse only at dead
-  ends). **Enemies never stack:** every candidate direction must pass `probe_free`, which
-  requires the target cell to be road *and* unoccupied by another active enemy — so the car
-  that would have driven into an occupied cell is the one that turns away, since the test runs
-  as it chooses. In **scatter** (round start ~3 s, and after a crash) the preferences invert — they
-  head away. Stunned (smoke) = 90-frame stop.
+- **Difficulty ramps on three dials together** (round 1 used to open with three cars at 83 % of
+  the player's speed all beelining from a 3 s head start):
+
+  | dial | round 1 | ramp |
+  |---|---|---|
+  | car count (`nen`) | 2 | 3 from round 3, 4 from round 6 |
+  | speed (`espd`) | 1.75 px/f | +0.25 a round, capped at 3.75 |
+  | smarts (`eagg`) | pursues 3 decisions in 8 | +1 a round, always from round 6 |
+  | head start (`scti`) | 5 s of scatter | −0.5 s a round, floor 2 s |
+
+  `eagg` is the important one: below full aggression a car ignores the player for *that decision*
+  and heads away instead, reusing the scatter inversion. Early packs wander and leave you room
+  instead of converging.
+- At each cell center pick: prefer the axis with the larger gap to the player if open, else the
+  other axis, else keep straight, else any open ≠ reverse, else reverse — **and every one of
+  those is validated**, including the dead-end reverse. In **scatter** the preferences invert.
+  Stunned (smoke) = 90-step spin.
+- **Two cars can never occupy one cell. This is a hard invariant, and it is easy to break:**
+  - Every heading a car commits to — from the AI, from a bump, or from the dead-end fallback —
+    goes through `probe_free` first. The dead-end case used to assign reverse unconditionally on
+    the reasoning that "the cell you came from is always open"; true of walls, false of cars.
+  - `probe_free` rejects a cell another car is **driving into**, not just one it is standing in.
+    A car only starts occupying a cell once it fully arrives, so two cars approaching the same
+    empty cell from opposite sides were both cleared to enter it.
+  - A car with nothing open at all is **cornered**: it spins on the spot and re-decides when a
+    neighbour clears, instead of driving into an occupied cell.
+- **Bumps are visible** (`ebump`). When a car's first choice is refused by another *car* rather
+  than a wall, both spin for `BUMPFR` steps and leave in **different** directions: straight back
+  if that is open, else any other open heading, and the second car may not reuse the first's
+  choice. Order matters — the first car's heading is committed *before* the second picks (so the
+  second sees the reservation), and both are stunned only *afterwards* (a stunned car reserves
+  nothing, so stunning them up front made the pair invisible to each other for exactly the two
+  picks that must not clash). `pfhit` is latched on entry because `probe_free` overwrites it.
 - **Enemies advance in cell-bounded chunks** (`emove_n`), not one subroutine call per pixel: a
   car moves straight to the next 16-px boundary or to the end of this frame's travel, whichever
   comes first, and only stops to run the AI on a boundary. Each enemy also completes a whole
@@ -291,11 +316,41 @@ An enemy whose cell holds smoke is stunned `SPINFR` 96 frames and **spins**: whi
 visual heading advances a notch every tick, so it whirls through ~4 revolutions before its
 heading settles and it drives on.
 
+## 8a. Sound channel budget
+
+The SN76489 has three tone channels plus a noise channel, and everything here
+depends on this split:
+
+| channel | use |
+|---|---|
+| 0, 1 | background music (`music_bg`, via the CVBasic music player) |
+| 2 | flag blip, round-clear jingle, game-over sting |
+| 3 | engine buzz, and the crash boom that overrides it |
+
+`PLAY SIMPLE NO DRUMS` is what makes this fit: **SIMPLE** keeps the player off channel 2, and
+**NO DRUMS** keeps it off the noise channel — without it the drum track and the engine would be
+writing the same register.
+
+The **music data must live in TI bank 0**. The player refills the sound registers from the vblank
+ISR, which can fire at any point, including while gameplay has bank 1 (map2) or bank 2 (art)
+selected; bank 0 is the only one mapped the whole time.
+
+The **engine** is channel 3 in *periodic* mode (control 0–3), which is a buzz rather than a hiss.
+It is re-issued only when the car's state changes — rolling / parked-or-turning — so the hot loop
+pays two compares, not a sound write per frame.
+
 ## 9. Collisions & Lives
 
-- Player vs enemy: same cell, or pixel boxes within 12 px on both axes ⇒ **crash**: explosion
-  animation + descending boom, lose a life, enemies rehome to spawns, player restarts at the
-  start cell (flags/fuel keep their state). 3 lives; game over card → title.
+- Player vs enemy: pixel boxes within 12 px on both axes ⇒ **crash**. **Both cars are destroyed:**
+  every sprite is parked, **BANG** is stamped on the wreck (one char row up, so the blast does not
+  sit across the letters), two explosions flash out — one at each car — the border strobes for
+  ~0.2 s, and the boom is on the noise channel. Lose a life, enemies rehome to spawns, player
+  restarts at the start cell (flags/fuel keep their state). 3 lives; game over card → title.
+- **The collision test runs inside both movement loops, after every chunk** — not once per pass.
+  Detection needs `|dx| < 12` on both axes, a 24-px window, and the pair closes up to 3 + 3.75 px
+  per frame, so a single end-of-pass sample let a fast pair jump clean through each other. That
+  was the "player drove through an enemy car" bug. `hitf` is cleared before anything moves and
+  acted on once at the end of the pass, so a hit found mid-movement still unwinds cleanly.
 - **Game over tears the playfield down in two stages**, so neither screen is drawn over
   leftovers. `hide_spr` parks all five car sprites at y=209 *before* the GAME OVER card, so the
   wreck and the chasers do not sit frozen underneath it; then, after the sting, `clear_view`
@@ -403,7 +458,24 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
 8. Both targets build; TI single-bank with free bytes reported; same real-world speed on both
    (FRAME-delta pacing); no hazard-rule violations (§14).
 
-## 17. Status (2026-08-01, later) — performance pass: 8.2 → 60 passes/sec
+## 17. Status (2026-08-01, latest) — difficulty, collisions, audio
+
+- **Difficulty ramps** on four dials instead of opening at full tilt (§6).
+- **Fixed: the player could drive through an enemy car.** The hit test sampled only the end of
+  each pass; it now runs inside both movement loops after every chunk (§9).
+- **Fixed: two enemies could share a cell and thrash.** Three separate holes — an unvalidated
+  dead-end reverse, two cars cleared into the same empty cell because neither occupied it yet,
+  and `ebump` stunning both cars before picking their headings, which hid them from each other
+  (§6). Verified with an assertion build that checks every enemy pair every pass at round 9
+  (4 cars, top speed, full aggression): **0 violations over 351 passes with 28 bumps taken**.
+  The same probe reported 3 violations before the fixes and 1 after the first two, which is why
+  all three were needed.
+- **Crash is now a real event** (§9): both cars destroyed, BANG on the wreck, twin blasts, border
+  strobe, noise-channel boom.
+- **Audio**: looping background music on channels 0–1, engine buzz on 3, effects on 2 (§8a).
+- Loop rate unchanged by all of the above: still **1.00 pass per vblank** (59.6/sec measured).
+
+## 17a. Status (2026-08-01, later) — performance pass: 8.2 → 60 passes/sec
 
 Full measurements and the two rules they establish are in **§1a**. Summary:
 

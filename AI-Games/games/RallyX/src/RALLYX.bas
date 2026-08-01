@@ -54,6 +54,7 @@
 	CONST MAXSMK = 6	' puff slots = two deployments in flight
 	CONST SMKTTL = 150	' frames a puff lasts (2.5 s) before it clears
 	CONST SPINFR = 96	' frames an enemy spins after driving into smoke
+	CONST BUMPFR = 64	' shorter spin after bumping another car
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -95,6 +96,15 @@
 	BORDER 1
 	VDP(1) = $E2		' 16x16 sprites, no magnification
 	SPRITE FLICKER OFF
+
+	' SOUND CHANNEL BUDGET -- everything here depends on this split:
+	'   0,1  background music (the CVBasic music player, SIMPLE mode)
+	'   2    flag blip, round jingle, game-over sting
+	'   3    engine buzz, and the crash boom that overrides it
+	' SIMPLE keeps the player off channel 2, NO DRUMS keeps it off channel 3
+	' (the noise channel) -- without NO DRUMS the drum track would fight the
+	' engine for the same register.
+	PLAY SIMPLE NO DRUMS
 
 #if TI994A
 	BANK SELECT 2		' art/tiles/radar tables live in bank 2
@@ -158,6 +168,8 @@
 	' by clear_view on the way out of game_over (which also parks the car
 	' sprites). The first draw_view of a new game repaints it away.
 title:
+	GOSUB eng_off
+	PLAY music_bg
 	PRINT AT 359,"* RALLY-X *"
 	PRINT AT 424,"PRESS FIRE"
 	PRINT AT 512,"2026 UNHUMAN AND CLAUDE"
@@ -198,14 +210,28 @@ round_init:
 #endif
 	nfl = 0
 	sgot = 0
-	' difficulty: 3 chasers, 4 from round 4; speed ramps with the round.
+	' DIFFICULTY RAMP. Round 1 used to open with three chasers at 2.5 px/f
+	' (83% of the player's 3 px/f) all beelining from a 3-second head start,
+	' which is brutal before you know the maze. Three dials now ramp
+	' together instead:
+	'   count  2 cars -> 3 at round 3 -> 4 at round 6
+	'   speed  1.75 px/f at round 1, +0.25 a round, capping at 3.75
+	'   smarts eagg = chance in 8 that a car actually pursues on a given
+	'          decision; 3/8 at round 1 up to 8/8 (always) from round 6, so
+	'          early packs wander and give you room instead of converging.
 	' Every 3rd round (rc3 = 2) is a CHALLENGE stage: no enemies, all
 	' flags, completion bonus.
-	nen = 3
-	IF rnd >= 4 THEN nen = 4
+	nen = 2
+	IF rnd >= 3 THEN nen = 3
+	IF rnd >= 6 THEN nen = 4
 	IF rc3 = 2 THEN nen = 0
-	espd = 18 + rnd * 2
+	espd = 12 + rnd * 2
 	IF espd > 30 THEN espd = 30
+	eagg = 2 + rnd
+	IF eagg > 8 THEN eagg = 8
+	' head start before they turn on you: 5 s at round 1 down to 2 s
+	scti = 300 - rnd * 30
+	IF scti < 120 THEN scti = 120
 	GOSUB rehome
 	FOR j = 0 TO MAXSMK - 1
 	st(j) = 0
@@ -296,6 +322,10 @@ game_loop:
 	' a 90-degree turn which waits for a cell centre (see at_center).
 	IF turning = 0 THEN IF qdir = ((dir + 2) AND 3) THEN GOSUB start_turn
 
+	' Cleared BEFORE anything moves: both movement loops sample collisions
+	' as they go and set it, and the pass acts on it once at the end.
+	hitf = 0
+
 	' While turning the car rotates IN PLACE and does not advance -- this
 	' is the Rally-X handling model. Driving resumes when ang reaches tang.
 	IF turning = 1 THEN GOSUB turn_step ELSE GOSUB drive_step
@@ -349,12 +379,10 @@ eskip:
 
 	' (flags are CHARACTERS, drawn by draw_view -- see the note there)
 
-	' player vs enemy collision (12-px boxes; lanes are 16 px apart, so
-	' adjacent lanes can never false-positive)
-	hitf = 0
-	FOR i = 0 TO 3
-	IF i < nen THEN GOSUB ckhit
-	NEXT i
+	' Act on any collision the movement loops found (12-px boxes; lanes are
+	' 16 px apart, so adjacent lanes can never false-positive). The scan
+	' that used to live here only sampled the END of the pass, which is
+	' what let a fast pair tunnel through each other -- see ckhit.
 	IF hitf = 1 THEN GOTO crash
 
 	' Smoke ttl -- skipped entirely while no puff is in flight, which is most
@@ -385,6 +413,9 @@ eskip:
 	' flag-blip envelope
 	IF sfxt > 0 THEN GOSUB sfx_tick
 
+	' engine note follows the car's state
+	GOSUB eng_tick
+
 	IF nfl >= 10 THEN GOTO round_done
 	GOTO game_loop
 
@@ -396,13 +427,14 @@ round_done:
 	' (stale mover radar dots are erased by round_init's mpv/rd_erase pass;
 	' the old loop here relied on the player dot skipping its replot when
 	' blink flipped to 0, which no longer happens now that it always draws)
-	' clear jingle: rising sweep
+	' clear jingle: rising sweep (channel 2 -- music owns 0 and 1)
+	GOSUB eng_off
 	FOR i = 1 TO 90
 	WAIT
 	#sf = 400 - i * 3
-	SOUND 0,#sf,12
+	SOUND 2,#sf,12
 	NEXT i
-	SOUND 0,,0
+	SOUND 2,,0
 	FOR i = 1 TO 60
 	WAIT
 	NEXT i
@@ -412,17 +444,53 @@ round_done:
 	GOSUB prt_rd
 	GOTO round_init
 
-	' --- crash: explosion, lose a life ------------------------------------
+	' --- crash: BOTH cars destroyed, explosion, lose a life ---------------
+	' The old sequence cycled two frames on the player's sprite alone with a
+	' tone sweep, and was easy to miss in a busy screen. Now: both cars
+	' vanish, BANG is stamped on the wreck, two blasts flash out of the
+	' collision point, the border strobes, and it is a noise-channel boom
+	' rather than a tone.
 crash:
-	FOR j = 1 TO 48
+	SOUND 2,,0
+	GOSUB eng_off
+	' Pin both wreck sites in SCREEN pixels. Recomputed from the camera here
+	' rather than reusing the main loop's x/y: the collision is now detected
+	' mid-movement, so x/y can be a pass out of date.
+	#cx8 = camc * 8.
+	#cy8 = camr * 8.
+	bpx = #px - #cx8
+	bpy = #py - #cy8
+	bex = #ex(hitn) - #cx8
+	bey = #ey(hitn) - #cy8
+	GOSUB hide_spr
+	' BANG across the wreck, clamped so all four chars stay in the viewport
+	bgx = bpx / 8
+	IF bgx > 20 THEN bgx = 20
+	bgy = bpy / 8
+	IF bgy > 23 THEN bgy = 23
+	' one row up when there is room, so the blast sprite (centred on the
+	' wreck) does not sit across the letters
+	IF bgy > 0 THEN bgy = bgy - 1
+	#bva = bgy * 32.
+	#bva = #bva + bgx
+	PRINT AT #bva,"BANG"
+	FOR j = 1 TO 44
 	WAIT
-	t = j AND 8
+	t = j AND 4
 	IF t = 0 THEN t2 = 32 ELSE t2 = 36	' explosion defs 8/9 -> names 32/36
-	SPRITE 0, y - 1, x, t2, 10
-	#sf = 150 + j * 12
-	SOUND 0,#sf,13
+	cbl = 11				' light yellow / light red flicker
+	IF t = 0 THEN cbl = 9
+	SPRITE 0, bpy - 1, bpx, t2, cbl
+	SPRITE 1, bey - 1, bex, t2, cbl
+	' border strobes for the first fifth of a second, then settles
+	IF j < 12 THEN BORDER cbl
+	IF j = 12 THEN BORDER 1
+	t3 = 13 - j / 4				' 13 -> 2, never wraps (j <= 44)
+	SOUND 3,5,t3
 	NEXT j
-	SOUND 0,,0
+	SOUND 3,,0
+	BORDER 1
+	GOSUB hide_spr
 	lives = lives - 1
 	GOSUB draw_lives
 	IF lives = 0 THEN GOTO game_over
@@ -433,15 +501,20 @@ game_over:
 	' Cars off the screen before GAME OVER shows -- the player's wreck and
 	' the chasers used to sit there frozen underneath it.
 	GOSUB hide_spr
+	' engine and music both stop -- the sting should land in silence
+	GOSUB eng_off
+	PLAY OFF
+	SOUND 0,,0
+	SOUND 1,,0
 	PRINT AT 396,"GAME"
 	PRINT AT 428,"OVER"
 	' descending sting, then back to the title
 	FOR i = 1 TO 120
 	WAIT
 	#sf = 200 + i * 4
-	SOUND 0,#sf,11
+	SOUND 2,#sf,11
 	NEXT i
-	SOUND 0,,0
+	SOUND 2,,0
 	FOR i = 1 TO 120
 	WAIT
 	NEXT i
@@ -489,7 +562,7 @@ rehome:
 #if TI994A
 	BANK SELECT 1
 #endif
-	sct = 180
+	sct = scti
 	RETURN
 
 sct_tick:
@@ -528,6 +601,9 @@ pm_top:
 	IF dir = 1 THEN #px = #px + pmk
 	IF dir = 2 THEN #py = #py + pmk
 	IF dir = 3 THEN #px = #px - pmk
+	' sample collisions every chunk, not once at the end of the pass
+	GOSUB ckhit_all
+	IF hitf = 1 THEN RETURN
 	steps = steps - pmk
 	GOTO pm_top
 
@@ -654,6 +730,9 @@ emn_top:
 	' updated on every move, not just when the AI runs
 	ecra(i) = #ey(i) / 16
 	ecca(i) = #ex(i) / 16
+	' this car against the player, every chunk (see ckhit)
+	GOSUB ckhit
+	IF hitf = 1 THEN RETURN
 	emn = emn - emk
 	GOTO emn_top
 
@@ -682,7 +761,14 @@ eai:
 	#g2 = #g2 - ecr
 	vd = 2
 	IF #g2 >= 32768 THEN vd = 0 : #g2 = 0 - #g2
-	IF sct > 0 THEN hd = (hd + 2) AND 3 : vd = (vd + 2) AND 3
+	' Scatter inverts the preferences outright. On top of that, below full
+	' aggression a car ignores the player for THIS decision and heads away
+	' instead -- that is the difficulty ramp's "smarts" dial (eagg), and it
+	' is what stops round 1 being three cars beelining at you at once.
+	einv = 0
+	IF sct > 0 THEN einv = 1
+	IF eagg < 8 THEN IF RANDOM(8) >= eagg THEN einv = 1 - einv
+	IF einv = 1 THEN hd = (hd + 2) AND 3 : vd = (vd + 2) AND 3
 	p1 = hd
 	p2 = vd
 	IF #g2 > #g THEN p1 = vd : p2 = hd
@@ -695,6 +781,8 @@ eai:
 	' test runs when IT picks its direction.
 	d = p1
 	IF d <> rv THEN GOSUB probe_free : IF pfok = 1 THEN edir(i) = d : RETURN
+	' first choice refused by another CAR (not a wall) -> that is a bump
+	IF pfcar = 1 THEN GOSUB ebump : RETURN
 	d = p2
 	IF d <> rv THEN GOSUB probe_free : IF pfok = 1 THEN edir(i) = d : RETURN
 	d = edir(i)
@@ -710,7 +798,16 @@ eai:
 	FOR j = 0 TO 3
 	IF fnd = 0 THEN IF j <> rv THEN IF j <> p1 THEN IF j <> p2 THEN d = j : GOSUB probe_free : IF pfok = 1 THEN edir(i) = j : fnd = 1
 	NEXT j
-	IF fnd = 0 THEN edir(i) = rv
+	IF fnd = 1 THEN RETURN
+	' Dead end: reverse -- but VALIDATED. This used to be an unconditional
+	' `edir(i) = rv`, on the assumption that the cell you came from is
+	' always open. That holds for walls but not for cars: another one can
+	' have moved in behind, and driving into it put two cars in one cell.
+	d = rv
+	GOSUB probe_free
+	IF pfok = 1 THEN edir(i) = rv : RETURN
+	' boxed in on all four sides -- spin on the spot and try again later
+	estn(i) = BUMPFR
 	RETURN
 
 	' is this cell smoked? (only reached while a puff is actually live)
@@ -725,20 +822,101 @@ eai_smoke:
 probe_free:
 	GOSUB probe
 	pfok = 0
+	pfcar = 0
 	IF t < ROADCH THEN RETURN
 	pfo = 0
 	FOR pfe = 0 TO 3
 	IF pfe <> i THEN IF pfe < nen THEN GOSUB pf_chk
 	NEXT pfe
-	IF pfo = 0 THEN pfok = 1
+	IF pfo = 0 THEN pfok = 1 ELSE pfcar = 1
 	RETURN
 	' Reads the cached cell rather than dividing both pixel coordinates.
 	' This runs up to 4 times per candidate direction and up to 6 directions
 	' per AI decision, so it was doing ~24 divisions per decision.
+	' A cell is unavailable if another car is IN it, or is DRIVING INTO it.
+	' The second half matters: a car only starts occupying a cell once it
+	' fully arrives, so two cars approaching the same empty cell from
+	' opposite sides were both cleared to enter and ended up sharing it.
+	' Treating the cell ahead of a moving car as reserved closes that race.
+	' A stunned car is not moving, so it reserves nothing.
 pf_chk:
-	IF ecra(pfe) <> tr THEN RETURN
-	IF ecca(pfe) <> tc THEN RETURN
+	IF ecra(pfe) <> tr THEN GOTO pf_ahead
+	IF ecca(pfe) <> tc THEN GOTO pf_ahead
 	pfo = 1
+	pfhit = pfe		' which car is in the way (for ebump)
+	RETURN
+pf_ahead:
+	IF estn(pfe) > 0 THEN RETURN
+	pfr2 = ecra(pfe)
+	pfc2 = ecca(pfe)
+	pfd = edir(pfe)
+	IF pfd = 0 THEN pfr2 = pfr2 - 1
+	IF pfd = 1 THEN pfc2 = pfc2 + 1
+	IF pfd = 2 THEN pfr2 = pfr2 + 1
+	IF pfd = 3 THEN pfc2 = pfc2 - 1
+	IF pfr2 <> tr THEN RETURN
+	IF pfc2 <> tc THEN RETURN
+	pfo = 1
+	pfhit = pfe
+	RETURN
+
+	' Two cars have met. Both spin for BUMPFR pixel-steps and then leave in
+	' DIFFERENT directions.
+	'
+	' Every heading here is validated with probe_free before it is
+	' committed. An earlier version just flipped both cars to their reverse,
+	' which is how two of them ended up sharing a cell and thrashing: a
+	' reverse can be a wall, or a cell a third car has since taken. The
+	' rules are, in order: straight back the way it came if that is open
+	' (a true head-on bounce), else any other open heading, and the second
+	' car may not reuse the first one's choice, so they always separate.
+	' A car with nothing open at all is cornered -- it keeps spinning on the
+	' spot (estn) and re-decides once a neighbour clears out, rather than
+	' driving into an occupied cell.
+	' i is the enemy loop's index, so it is saved and restored around the
+	' two probe_free calls, which need it to mean "the car being tested".
+ebump:
+	' Latch BOTH indices first. ebpick calls probe_free, whose pf_chk writes
+	' pfhit -- reading pfhit after that point redirects whichever car the
+	' last probe happened to touch instead of the one we collided with.
+	ebo = i
+	ebp = pfhit
+	ebx = 255			' no heading forbidden for the first car
+	GOSUB ebpick
+	' Commit the first car's heading BEFORE the second one picks, so the
+	' second sees the cell the first has just reserved. Two different
+	' headings can still lead to the same cell (approaching it from
+	' opposite sides), so forbidding the heading alone is not enough.
+	edir(ebo) = ebd
+	ebx = ebd
+	i = ebp
+	GOSUB ebpick
+	edir(ebp) = ebd
+	i = ebo
+	' Stun LAST. pf_ahead ignores a stunned car's reservation (a parked car
+	' is not driving anywhere), so stunning them up front made the pair
+	' invisible to each other for exactly the two picks that must not clash.
+	estn(ebo) = BUMPFR
+	estn(ebp) = BUMPFR
+	RETURN
+
+	' choose a validated heading for car i -> ebd (unchanged if boxed in)
+ebpick:
+	cr = ecra(i)
+	cc = ecca(i)
+	ebd = edir(i)
+	ebf = 0
+	ebr = (edir(i) + 2) AND 3
+	IF ebr <> ebx THEN d = ebr : GOSUB probe_free : IF pfok = 1 THEN ebd = ebr : ebf = 1
+	IF ebf = 1 THEN RETURN
+	FOR ebj = 0 TO 3
+	IF ebf = 0 THEN IF ebj <> ebx THEN GOSUB ebtry
+	NEXT ebj
+	RETURN
+ebtry:
+	d = ebj
+	GOSUB probe_free
+	IF pfok = 1 THEN ebd = ebj : ebf = 1
 	RETURN
 
 	' step every enemy's visual heading one notch toward its real one
@@ -779,7 +957,21 @@ evis:
 	vis = 1
 	RETURN
 
+	' All active cars against the player. Used from the PLAYER's movement
+	' chunk loop; clobbering i is safe there (the main loop's own FOR i
+	' loops all run later in the pass).
+ckhit_all:
+	FOR ckn = 0 TO 3
+	IF ckn < nen THEN i = ckn : GOSUB ckhit
+	NEXT ckn
+	RETURN
+
 	' player-enemy overlap test for enemy i -> hitf
+	' Called from INSIDE both movement loops, after every chunk, not once
+	' per pass at the end. Detection needs |dx| < 12 on both axes -- a 24-px
+	' window -- and the pair can close 3 + 3.75 px per frame, so a single
+	' end-of-pass sample let them jump straight through each other whenever
+	' #fd spiked. That is the "player drove through an enemy" bug.
 ckhit:
 	#g = #px
 	#g = #g - #ex(i)
@@ -790,6 +982,7 @@ ckhit:
 	IF #g >= 32768 THEN #g = 0 - #g
 	IF #g >= 12 THEN RETURN
 	hitf = 1
+	hitn = i		' which car we hit -- it dies with us
 	RETURN
 
 	' --- 2x2 overlay draw: logical cell (or2,oc2) as chars ----------------
@@ -1205,14 +1398,79 @@ rt_rebake:
 sfx_tick:
 	sfxa = #fd
 	IF sfxt > sfxa THEN sfxt = sfxt - sfxa ELSE sfxt = 0
-	IF sfxt = 0 THEN SOUND 0,,0 : RETURN
+	IF sfxt = 0 THEN SOUND 2,,0 : RETURN
 	#sf = 100 + sfxt * 30
-	SOUND 0,#sf,12
+	SOUND 2,#sf,12
+	RETURN
+
+	' --- engine ------------------------------------------------------------
+	' Channel 3 in PERIODIC mode (control 0-3) is a buzz rather than a hiss,
+	' which reads as an engine. Re-issued only when the state changes, so
+	' the hot loop pays two compares: rolling = higher, faster buzz; parked
+	' against a wall or mid-turn = lower and quieter; dry tank = idling.
+eng_tick:
+	engc = 1
+	IF blocked = 1 THEN engc = 2
+	IF turning = 1 THEN engc = 2
+	IF #fuel = 0 THEN engc = 2
+	IF engc <> engp THEN GOSUB eng_set
+	RETURN
+eng_set:
+	engp = engc
+	IF engc = 1 THEN SOUND 3,1,5 ELSE SOUND 3,2,3
+	RETURN
+eng_off:
+	engp = 0
+	SOUND 3,,0
 	RETURN
 
 	' --- data -------------------------------------------------------------
 	' TI bank 0: the logical map (gameplay PEEKs, always visible)
 	INCLUDE "map0.bas"
+
+	' Background music -- MUST live in bank 0. The music player refills the
+	' sound registers from the vblank ISR, which can fire at any point,
+	' including while gameplay has bank 1 (map2) or bank 2 (art) selected;
+	' only bank 0 is mapped in the whole time.
+	' Two voices, because PLAY SIMPLE uses channels 0-1: a rolling melody
+	' over a walking bass. Bass notes are written an octave up with Z --
+	' that instrument transposes down two octaves, and anything below
+	' octave 4 goes silent on the SN76489.
+music_bg:
+	DATA BYTE 6		' ticks per note (50 ticks/sec)
+	MUSIC C5W,C4Z
+	MUSIC S,S
+	MUSIC E5,S
+	MUSIC S,S
+	MUSIC G5,G4Z
+	MUSIC S,S
+	MUSIC E5,S
+	MUSIC S,S
+	MUSIC F5,F4Z
+	MUSIC S,S
+	MUSIC A5,S
+	MUSIC S,S
+	MUSIC C6,C5Z
+	MUSIC S,S
+	MUSIC A5,S
+	MUSIC S,S
+	MUSIC G5,G4Z
+	MUSIC S,S
+	MUSIC B5,S
+	MUSIC S,S
+	MUSIC D6,D5Z
+	MUSIC S,S
+	MUSIC B5,S
+	MUSIC S,S
+	MUSIC C6,C5Z
+	MUSIC S,S
+	MUSIC G5,G4Z
+	MUSIC S,S
+	MUSIC E5,E4Z
+	MUSIC S,S
+	MUSIC C5,C4Z
+	MUSIC S,S
+	MUSIC REPEAT
 
 	' TI bank 1: the doubled char map (SCREEN blits during gameplay)
 #if TI994A
