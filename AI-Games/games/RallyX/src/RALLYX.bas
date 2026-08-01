@@ -168,8 +168,11 @@
 	' by clear_view on the way out of game_over (which also parks the car
 	' sprites). The first draw_view of a new game repaints it away.
 title:
+	' Title is silent -- music belongs to the round, not the attract screen.
 	GOSUB eng_off
-	PLAY music_bg
+	PLAY OFF
+	SOUND 0,,0
+	SOUND 1,,0
 	PRINT AT 359,"* RALLY-X *"
 	PRINT AT 424,"PRESS FIRE"
 	PRINT AT 512,"2026 UNHUMAN AND CLAUDE"
@@ -255,6 +258,7 @@ round_init:
 	NEXT mi
 	GOSUB radar_flags
 	IF rc3 = 2 THEN PRINT AT 389,"CHALLENGING STAGE" : FOR i = 1 TO 90 : WAIT : NEXT i
+	PLAY music_bg		' music runs during the round only, not the title
 
 	' Arcade start (see the reference shot): the player faces UP a clear
 	' corridor with the chasers lined up in a row BEHIND him. Player is
@@ -779,15 +783,25 @@ eai:
 	' enemy (probe_free) -- two cars must never stack on one cell. The car
 	' that would have moved in is the one that turns away, because this
 	' test runs when IT picks its direction.
+	'
+	' A car being in the way is NOT by itself a collision: the pack all
+	' chases the same target, so first choices clash constantly. An earlier
+	' version bumped (and mutually stunned) both cars the moment a first
+	' choice was refused, and the pack spent its whole time spinning at
+	' itself instead of hunting. Now every alternative is tried first and a
+	' refusal is only remembered (ecb); the bump happens further down, when
+	' the car has genuinely run out of road.
+	ecb = 0
 	d = p1
 	IF d <> rv THEN GOSUB probe_free : IF pfok = 1 THEN edir(i) = d : RETURN
-	' first choice refused by another CAR (not a wall) -> that is a bump
-	IF pfcar = 1 THEN GOSUB ebump : RETURN
+	IF pfcar = 1 THEN ecb = 1
 	d = p2
 	IF d <> rv THEN GOSUB probe_free : IF pfok = 1 THEN edir(i) = d : RETURN
+	IF pfcar = 1 THEN ecb = 1
 	d = edir(i)
 	GOSUB probe_free
 	IF pfok = 1 THEN RETURN
+	IF pfcar = 1 THEN ecb = 1
 	' Last resort. p1 and p2 (one horizontal, one vertical) and rv have all
 	' just been tried and failed, and the four headings are two horizontal
 	' plus two vertical -- so exactly ONE direction here is actually new.
@@ -805,9 +819,21 @@ eai:
 	' have moved in behind, and driving into it put two cars in one cell.
 	d = rv
 	GOSUB probe_free
-	IF pfok = 1 THEN edir(i) = rv : RETURN
-	' boxed in on all four sides -- spin on the spot and try again later
+	IF pfok = 1 THEN GOSUB eai_back : RETURN
+	' Boxed in on every side -- spin on the spot and re-decide once someone
+	' moves. This is the "cornered by the others and the walls" case; the
+	' cars that still have room drive off on their own next decision, which
+	' frees this one.
 	estn(i) = BUMPFR
+	RETURN
+
+	' Turning back the way it came. If a CAR was what shut the forward
+	' routes down, that is a real head-on: spin briefly so the collision
+	' reads on screen. Only this car is stunned -- stunning the other one
+	' too is what welded pairs together.
+eai_back:
+	edir(i) = rv
+	IF ecb = 1 THEN estn(i) = BUMPFR
 	RETURN
 
 	' is this cell smoked? (only reached while a puff is actually live)
@@ -843,7 +869,6 @@ pf_chk:
 	IF ecra(pfe) <> tr THEN GOTO pf_ahead
 	IF ecca(pfe) <> tc THEN GOTO pf_ahead
 	pfo = 1
-	pfhit = pfe		' which car is in the way (for ebump)
 	RETURN
 pf_ahead:
 	IF estn(pfe) > 0 THEN RETURN
@@ -857,67 +882,8 @@ pf_ahead:
 	IF pfr2 <> tr THEN RETURN
 	IF pfc2 <> tc THEN RETURN
 	pfo = 1
-	pfhit = pfe
 	RETURN
 
-	' Two cars have met. Both spin for BUMPFR pixel-steps and then leave in
-	' DIFFERENT directions.
-	'
-	' Every heading here is validated with probe_free before it is
-	' committed. An earlier version just flipped both cars to their reverse,
-	' which is how two of them ended up sharing a cell and thrashing: a
-	' reverse can be a wall, or a cell a third car has since taken. The
-	' rules are, in order: straight back the way it came if that is open
-	' (a true head-on bounce), else any other open heading, and the second
-	' car may not reuse the first one's choice, so they always separate.
-	' A car with nothing open at all is cornered -- it keeps spinning on the
-	' spot (estn) and re-decides once a neighbour clears out, rather than
-	' driving into an occupied cell.
-	' i is the enemy loop's index, so it is saved and restored around the
-	' two probe_free calls, which need it to mean "the car being tested".
-ebump:
-	' Latch BOTH indices first. ebpick calls probe_free, whose pf_chk writes
-	' pfhit -- reading pfhit after that point redirects whichever car the
-	' last probe happened to touch instead of the one we collided with.
-	ebo = i
-	ebp = pfhit
-	ebx = 255			' no heading forbidden for the first car
-	GOSUB ebpick
-	' Commit the first car's heading BEFORE the second one picks, so the
-	' second sees the cell the first has just reserved. Two different
-	' headings can still lead to the same cell (approaching it from
-	' opposite sides), so forbidding the heading alone is not enough.
-	edir(ebo) = ebd
-	ebx = ebd
-	i = ebp
-	GOSUB ebpick
-	edir(ebp) = ebd
-	i = ebo
-	' Stun LAST. pf_ahead ignores a stunned car's reservation (a parked car
-	' is not driving anywhere), so stunning them up front made the pair
-	' invisible to each other for exactly the two picks that must not clash.
-	estn(ebo) = BUMPFR
-	estn(ebp) = BUMPFR
-	RETURN
-
-	' choose a validated heading for car i -> ebd (unchanged if boxed in)
-ebpick:
-	cr = ecra(i)
-	cc = ecca(i)
-	ebd = edir(i)
-	ebf = 0
-	ebr = (edir(i) + 2) AND 3
-	IF ebr <> ebx THEN d = ebr : GOSUB probe_free : IF pfok = 1 THEN ebd = ebr : ebf = 1
-	IF ebf = 1 THEN RETURN
-	FOR ebj = 0 TO 3
-	IF ebf = 0 THEN IF ebj <> ebx THEN GOSUB ebtry
-	NEXT ebj
-	RETURN
-ebtry:
-	d = ebj
-	GOSUB probe_free
-	IF pfok = 1 THEN ebd = ebj : ebf = 1
-	RETURN
 
 	' step every enemy's visual heading one notch toward its real one
 eang_step:
