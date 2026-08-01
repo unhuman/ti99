@@ -14,8 +14,11 @@ radar on the right, and don't run out of fuel.
   that **rotate in place** (a reverse sweeps around instead of flipping — the Rally-X handling
   model), enemies turn too and never stack on one cell, smoke puffs are puff-balls of one colour,
   and the radar's player dot cycles white/black instead of blinking out. See `DESIGN.md` §17.
-  **Speed:** the loop was profiled on Classic99 and rebuilt to run **3.1× faster** (8.2 → 25.7
-  game-loop passes/sec) — see `DESIGN.md` §1a for the measurements and the per-`#fd` rule.
+  **Speed:** the loop was profiled on Classic99 and rebuilt from **8.2** game-loop passes/sec to
+  **one pass per vblank** — 59.7/sec parked, 52.6/sec while driving with the camera panning. Game
+  speed no longer varies with load either: the old `#fd` clamp discarded real time whenever the
+  loop was busy, which is why the enemy cars appeared to speed up while the player sat still.
+  See `DESIGN.md` §1a for the measurements and the two pacing rules.
   Deferred: in-game music, maps 2–4, rocks, per-round flag sets, Coleco runtime pass. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
   char map, bank 2 art/tables); Coleco builds flat. Building this flushed out three CVBasic
   TMS9900 codegen bugs (8-bit×big-constant → 0, dotted-constant folding truncates, CONST>255

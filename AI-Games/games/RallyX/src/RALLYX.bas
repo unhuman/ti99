@@ -73,6 +73,11 @@
 	DIM eang(4)		' VISUAL heading 0-7 (45 deg steps), eases toward
 				' edir*2 so enemies turn instead of snapping
 	DIM estn(4)		' stun countdown (smoke hit)
+	' Cell coordinates, kept in step with #ex/#ey on every move. probe_free
+	' consults these for all four cars on every candidate direction, so
+	' deriving them there cost ~24 divisions per AI decision.
+	DIM ecra(4)		' cell row  = #ey(i) / 16
+	DIM ecca(4)		' cell col  = #ex(i) / 16
 
 	' smoke puffs (circular list, oldest reused)
 	DIM sr(6)
@@ -240,7 +245,8 @@ restart:
 	lcc = 22
 	pqd = 255		' force the first at_center to probe
 	pdr = 255
-	GOSUB set_dir
+	#ucx = 65535		' impossible position: force the first camera update
+	#ucy = 65535
 	camc = 32		' camera in map2 CHAR units (car char - 12)
 	camr = 58
 	#acc = 0
@@ -253,9 +259,22 @@ game_loop:
 	WAIT
 	' FRAME-delta pacing (Structris pattern): a missed vblank becomes a
 	' catch-up step, so TI-99 and ColecoVision run the same real speed.
+	'
+	' The clamp DISCARDS real elapsed time, so it must be loose enough never
+	' to fire in normal play. At 4 it fired constantly: the loop was slow
+	' enough that #fd wanted to be 7-8, so the world advanced at roughly half
+	' real time whenever the loop was busy and at full speed whenever it was
+	' not -- which is why the enemies visibly sped up while the player was
+	' parked and the screen was not scrolling. Everything that moves is now
+	' O(cells crossed) rather than O(pixels travelled) (drive_step, emove_n),
+	' so a large delta is cheap AND safe -- both walk cell boundary to cell
+	' boundary, testing walls at each one, so nothing tunnels no matter how
+	' big the jump. 16 is a quarter second: it still bounds the one huge
+	' delta after a round card or a crash pause, but ordinary play never
+	' reaches it, so game speed no longer depends on frame rate.
 	#fd = FRAME - #lf
 	#lf = FRAME
-	IF #fd > 4 THEN #fd = 4
+	IF #fd > 16 THEN #fd = 16
 
 	' stick sets the queued direction
 	IF cont1.up THEN qdir = 0
@@ -282,12 +301,21 @@ game_loop:
 
 	GOSUB update_cam
 
-	x = #px - camc * 8.
-	y = #py - camr * 8.
+	' Camera origin in PIXELS, worked out once. evis re-derived both of
+	' these for every enemy every pass, so this was eight multiplies a pass
+	' to compute two values that cannot change in between.
+	#cx8 = camc * 8.
+	#cy8 = camr * 8.
+
+	x = #px - #cx8
+	y = #py - #cy8
 	SPRITE 0, y - 1, x, ang * 4, 5
 
 	' enemies: same pixel-walk scheme, shared accumulator
-	IF sct > 0 THEN sct = sct - 1
+	' Scatter timer counts REAL frames, not loop passes. Decrementing it by
+	' 1 per pass made the scatter phase last as long as the loop was slow --
+	' one of two timers whose duration drifted with the frame rate.
+	IF sct > 0 THEN GOSUB sct_tick
 	pcr = #py / 16
 	pcc = #px / 16
 	#eacc = #eacc + espd * #fd
@@ -425,8 +453,10 @@ rehome:
 	FOR i = 0 TO 3
 	READ BYTE t
 	#ey(i) = t * 16.
+	ecra(i) = t
 	READ BYTE t
 	#ex(i) = t * 16.
+	ecca(i) = t
 	edir(i) = 2
 	eang(i) = 4		' visual heading matches edir 2 (South)
 	estn(i) = 0
@@ -437,18 +467,44 @@ rehome:
 	sct = 180
 	RETURN
 
+sct_tick:
+	scta = #fd
+	IF sct > scta THEN sct = sct - scta ELSE sct = 0
+	RETURN
+
 	' --- player driving / turning -----------------------------------------
 	' speed: 3 px/f, 2.25 under 25% fuel, 1.5 when empty
 drive_step:
 	spd = PSPD
 	IF #fuel < 192 THEN spd = 18
 	IF #fuel = 0 THEN spd = 12
-	' accumulate 1/8-px units, then walk whole pixels one at a time
+	' Accumulate 1/8-px units, then walk to the next CELL BOUNDARY in one
+	' step rather than a subroutine call per pixel (same change as the
+	' enemies' emove_n, and for the same reason: per-pixel work is O(#fd),
+	' which is the shape that feeds the pacing runaway -- see DESIGN.md §1a).
+	' Every decision the car makes -- turns, walls, flags, laying a puff --
+	' happens on a cell centre, so nothing is lost by jumping the gaps.
 	#acc = #acc + spd * #fd
 	steps = #acc / 8
 	#acc = #acc AND 7
-	IF steps > 0 THEN FOR i = 1 TO steps : GOSUB move1px : NEXT i
-	RETURN
+pm_top:
+	IF steps = 0 THEN RETURN
+	IF (#px AND 15) = 0 THEN IF (#py AND 15) = 0 THEN GOSUB at_center
+	' blocked is only ever set on a centre, so the car is parked there
+	IF blocked = 1 THEN RETURN
+	' pmk = pixels to the next boundary along dir
+	IF dir = 0 THEN pmk = #py AND 15
+	IF dir = 1 THEN pmk = 16 - (#px AND 15)
+	IF dir = 2 THEN pmk = 16 - (#py AND 15)
+	IF dir = 3 THEN pmk = #px AND 15
+	IF pmk = 0 THEN pmk = 16		' sitting on a centre, heading away
+	IF pmk > steps THEN pmk = steps
+	IF dir = 0 THEN #py = #py - pmk
+	IF dir = 1 THEN #px = #px + pmk
+	IF dir = 2 THEN #py = #py + pmk
+	IF dir = 3 THEN #px = #px - pmk
+	steps = steps - pmk
+	GOTO pm_top
 
 	' Begin rotating toward qdir. Takes the SHORT way round; a 180 goes
 	' clockwise (there is no short way), so a reverse visibly sweeps
@@ -475,13 +531,6 @@ turn_step:
 	turning = 0
 	dir = tang / 2
 	blocked = 0
-	GOSUB set_dir
-	RETURN
-
-	' --- player: move one pixel (turns/walls only at cell alignment) ------
-move1px:
-	IF (#px AND 15) = 0 THEN IF (#py AND 15) = 0 THEN GOSUB at_center
-	IF blocked = 0 THEN #px = #px + #dx : #py = #py + #dy
 	RETURN
 
 at_center:
@@ -546,13 +595,6 @@ probe:
 	t = PEEK(#t)
 	RETURN
 
-set_dir:
-	IF dir = 0 THEN #dx = 0 : #dy = -1
-	IF dir = 1 THEN #dx = 1 : #dy = 0
-	IF dir = 2 THEN #dx = 0 : #dy = 1
-	IF dir = 3 THEN #dx = -1 : #dy = 0
-	RETURN
-
 	' --- enemy: advance esteps pixels, stopping at every cell centre ------
 	' The AI (and the stun countdown) only ever needs to act on a 16-px
 	' boundary, so the pixels in between are added in ONE step instead of
@@ -582,6 +624,11 @@ emn_top:
 	IF d = 1 THEN #ex(i) = #ex(i) + emk
 	IF d = 2 THEN #ey(i) = #ey(i) + emk
 	IF d = 3 THEN #ex(i) = #ex(i) - emk
+	' keep this car's cached cell in step with its pixel position -- it is
+	' what every OTHER car's probe_free tests against, so it has to be
+	' updated on every move, not just when the AI runs
+	ecra(i) = #ey(i) / 16
+	ecca(i) = #ex(i) / 16
 	emn = emn - emk
 	GOTO emn_top
 
@@ -596,12 +643,11 @@ emn_stun:
 	' if open, else the other, else keep going, else any open non-reverse,
 	' else reverse (dead end). Scatter inverts the preferences.
 eai:
-	ecr = #ey(i) / 16
-	ecc = #ex(i) / 16
-	' smoke check
-	FOR j = 0 TO MAXSMK - 1
-	IF st(j) > 0 THEN IF sr(j) = ecr THEN IF sc(j) = ecc THEN estn(i) = SPINFR
-	NEXT j
+	ecr = ecra(i)
+	ecc = ecca(i)
+	' smoke check -- skipped outright when no puff is live, which is the
+	' normal case (this ran six array reads on every AI decision)
+	IF nsmk > 0 THEN GOSUB eai_smoke
 	IF estn(i) > 0 THEN RETURN
 	#g = pcc
 	#g = #g - ecc
@@ -629,11 +675,24 @@ eai:
 	d = edir(i)
 	GOSUB probe_free
 	IF pfok = 1 THEN RETURN
+	' Last resort. p1 and p2 (one horizontal, one vertical) and rv have all
+	' just been tried and failed, and the four headings are two horizontal
+	' plus two vertical -- so exactly ONE direction here is actually new.
+	' Without these two skips this loop re-probed p1 and p2, taking the
+	' worst case from 4 probes to 7, and a car boxed in by the other cars
+	' hits that worst case constantly.
 	fnd = 0
 	FOR j = 0 TO 3
-	IF fnd = 0 THEN IF j <> rv THEN d = j : GOSUB probe_free : IF pfok = 1 THEN edir(i) = j : fnd = 1
+	IF fnd = 0 THEN IF j <> rv THEN IF j <> p1 THEN IF j <> p2 THEN d = j : GOSUB probe_free : IF pfok = 1 THEN edir(i) = j : fnd = 1
 	NEXT j
 	IF fnd = 0 THEN edir(i) = rv
+	RETURN
+
+	' is this cell smoked? (only reached while a puff is actually live)
+eai_smoke:
+	FOR j = 0 TO MAXSMK - 1
+	IF st(j) > 0 THEN IF sr(j) = ecr THEN IF sc(j) = ecc THEN estn(i) = SPINFR
+	NEXT j
 	RETURN
 
 	' probe direction d from (cr,cc): pfok = 1 only if it is road AND no
@@ -648,11 +707,12 @@ probe_free:
 	NEXT pfe
 	IF pfo = 0 THEN pfok = 1
 	RETURN
+	' Reads the cached cell rather than dividing both pixel coordinates.
+	' This runs up to 4 times per candidate direction and up to 6 directions
+	' per AI decision, so it was doing ~24 divisions per decision.
 pf_chk:
-	pfr = #ey(pfe) / 16
-	IF pfr <> tr THEN RETURN
-	pfc = #ex(pfe) / 16
-	IF pfc <> tc THEN RETURN
+	IF ecra(pfe) <> tr THEN RETURN
+	IF ecca(pfe) <> tc THEN RETURN
 	pfo = 1
 	RETURN
 
@@ -678,14 +738,19 @@ eang1:
 	' enemy i on-screen? -> vis, x2, y2 (char units; the 16-px car spans
 	' 2 chars, so hide at the edges to avoid coordinate wrap)
 evis:
-	t = #ex(i) / 8 - camc
+	' Screen pixel offset first; the char-unit visibility test then comes
+	' from it with a shift instead of a second pair of divides, and the
+	' camera-origin multiplies are hoisted into the main loop (#cx8/#cy8).
+	#gx = #ex(i) - #cx8
+	#gy = #ey(i) - #cy8
+	t = #gx / 8
 	IF t = 0 THEN RETURN
 	IF t >= 22 THEN RETURN
-	t2 = #ey(i) / 8 - camr
+	t2 = #gy / 8
 	IF t2 = 0 THEN RETURN
 	IF t2 >= 22 THEN RETURN
-	x2 = #ex(i) - camc * 8.
-	y2 = #ey(i) - camr * 8.
+	x2 = #gx
+	y2 = #gy
 	vis = 1
 	RETURN
 
@@ -886,6 +951,13 @@ draw_lives:
 	' keeps the car inside the window even when a pan-frame stall lets
 	' FRAME-delta catch-up move it 12 px while the camera moves 8.
 update_cam:
+	' The camera is a pure function of the car's position, so when the car
+	' has not moved -- every frame it spends parked against a wall, mid-turn,
+	' or stunned -- the whole clamp below recomputes an answer it already
+	' has. Two compares replace ~24 statements.
+	IF #px = #ucx THEN IF #py = #ucy THEN RETURN
+	#ucx = #px
+	#ucy = #py
 	dirty = 0
 	' NOTE: these bounds are #cblo/#cbhi, NOT #lo/#hi -- `#hi` is the HIGH
 	' SCORE, and the first version of this routine used it as the camera's
@@ -1103,8 +1175,11 @@ rt_rebake:
 	RETURN
 
 	' --- flag-blip sound envelope ----------------------------------------
+	' Also frame-delta paced, so the blip is the same length whatever the
+	' loop is doing (see sct_tick).
 sfx_tick:
-	sfxt = sfxt - 1
+	sfxa = #fd
+	IF sfxt > sfxa THEN sfxt = sfxt - sfxa ELSE sfxt = 0
 	IF sfxt = 0 THEN SOUND 0,,0 : RETURN
 	#sf = 100 + sfxt * 30
 	SOUND 0,#sf,12

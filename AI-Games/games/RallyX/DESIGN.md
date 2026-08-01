@@ -24,9 +24,10 @@ red cars, upbeat music.
 
 ## 1. Performance Budget (decide-before-code, per repo mandate)
 
-- **Sprites: 15** — player car + up to 4 enemy cars (all moving) + the 10 flags (static, but
-  sprites so camera pans can't flicker them; §5). Enemy sprite slots rotate order every frame (our own rotation, never `SPRITE FLICKER`)
-  so a 5-on-a-scanline pileup degrades to flicker, not vanishing.
+- **Sprites: 5** — player car + up to 4 enemy cars, all moving. Flags and smoke are *characters*
+  (§17b), painted by `draw_view` in the same frame as the pan blit. Enemy sprite slots rotate
+  order every frame (our own rotation, never `SPRITE FLICKER`) so a 5-on-a-scanline pileup
+  degrades to flicker, not vanishing.
 - **Motion:** all actors repositioned per frame by CPU (`SPRITE` statements) — native code
   affords this (proven by Ms. Pac-Man CV / Structris). No `LOCATE`-analog concerns in CVBasic.
 - **Per-frame VDP round-trips: ~0 reads.** All collision (walls, flags, smoke, cars) is computed
@@ -34,7 +35,9 @@ red cars, upbeat music.
   5 sprite attribute updates + (on camera-step frames only) one `SCREEN` blit of the 24×24
   viewport + ≤10 overlay `VPOKE`s.
 - **Camera `SCREEN` blit** (576 B) happens at most once per ~3 frames (8-px char pan at
-  3 px/frame car speed), never per frame, with a `WAIT` before the overlay pokes.
+  3 px/frame car speed), never per frame. The flag/smoke overlay pokes follow it with **no**
+  `WAIT` in between, so blit and overlay land in the same frame's buffered batch — the `WAIT`
+  that used to sit there is exactly what made char flags strobe (§17b).
 - **Radar refresh at ~10 Hz** (every 6 frames): re-plot ≤5 mover dots as pattern-table `VPOKE`s
   (a handful of bytes each). Flag dots are baked once per round.
 - **Enemy AI: reactive, intersection-only.** Direction is chosen only when an enemy reaches a
@@ -42,35 +45,57 @@ red cars, upbeat music.
 - Loop is real-time 60 Hz with **FRAME-delta pacing** (Structris pattern) so TI-99 and
   ColecoVision run the same real-world speed even if a frame slips.
 
-### 1a. Measured cost, and the per-`#fd` rule that follows from it
+### 1a. Measured cost, and the two rules that follow from it
 
-Measured on Classic99 (real TI-99 timing) by counting game-loop passes against a host clock
-over 12 s, with the crash disabled so both runs stay in the same game state:
+Measured on Classic99 (real TI-99 timing) by counting game-loop passes against a host clock over
+12 s, crash disabled so every run stays in the same game state. The honest metric is
+**passes ÷ `FRAME` ticks**, which is independent of host-clock error: 1.00 means one pass per
+vblank, i.e. a true 60 Hz.
 
-| build | loop passes/sec | ms per pass |
+| build | parked | driving (camera panning) | `#fd` |
+|---|---|---|---|
+| original | 8.2/sec | — | pinned at the clamp, 4 |
+| after round 1 | 25.7/sec | — | ~2.3 |
+| **now** | **59.7/sec** (1.00 pass/frame) | **52.6/sec** (0.88 pass/frame) | **1.00 – 1.14** |
+
+`FRAME` advanced at a true 59–60 Hz in every run, so no vblanks were ever being lost — the loop
+was simply doing too much work per pass.
+
+What the profiling actually found, in order (each by building a variant with one subsystem
+disabled and re-measuring):
+
+| term | cost | what it was |
 |---|---|---|
-| before this pass of optimisation | 8.2 | 121 |
-| after | **25.7** | 39 |
+| enemy pixel-walk | 13.6 ms | one subroutine call **per pixel** per enemy |
+| player `at_center` | 12.1 ms | 10-flag scan on **every aligned pixel step** |
+| `ckhit` + smoke ageing + fuel bar | 5.4 ms | ran unconditionally |
+| radar tick | 4.2 ms | `dot_addr` re-derived for all 10 flags per tick |
+| `evis` + `update_cam` | — | camera-origin multiplies redone per enemy per pass |
 
-`FRAME` advanced at a true 59–60 Hz throughout, so no vblanks were being lost — the loop was
-simply doing far too much work per pass.
+Two things were **not** the problem, both of which looked like the obvious suspect first:
+the 576-byte camera `SCREEN` blit (`draw_view` was not called *at all* during the slow runs), and
+the enemy AI (`eai` measured 0.56 calls per pass at 1.55 probes each — it is genuinely
+intersection-only, as designed).
 
-The profile that produced those fixes (per pass, `#fd` pinned to 1 so the terms are comparable):
+> **Rule 1 — anything whose cost scales with `#fd` is on a feedback loop.** FRAME-delta pacing
+> multiplies per-pass work by the delta, so an expensive pass raises `#fd`, which makes the next
+> pass more expensive again; the old loop sat pinned at its clamp and never recovered. Per-pixel
+> work is exactly this shape, so **everything that moves is O(cells crossed), never O(pixels
+> travelled)** — `drive_step` and `emove_n` both walk boundary to boundary.
+>
+> **Rule 2 — the clamp discards real time, so it must never fire in normal play.** Clamping `#fd`
+> to 4 while the loop wanted 7–8 meant the world advanced at roughly *half* real time whenever
+> the loop was busy and at full speed whenever it was not. That is why **the enemy cars visibly
+> sped up while the player was parked** and the screen was not scrolling: not an enemy bug, a
+> pacing bug. With movement now O(cells) a large delta is both cheap and safe (nothing can tunnel
+> — every step tests walls at each boundary), so the clamp is 16, far above anything ordinary
+> play reaches. Any timer counted in *passes* has the same disease: `sct` (scatter) and `sfxt`
+> (flag blip) were decremented by 1 per pass and so drifted with the frame rate; both are now
+> `#fd`-scaled.
 
-| term | ms | what it was |
-|---|---|---|
-| enemy pixel-walk | 13.6 | one subroutine call **per pixel** per enemy |
-| player `at_center` | 12.1 | 10-flag scan on **every aligned pixel step** |
-| `ckhit` + smoke ageing + fuel bar | 5.4 | ran unconditionally |
-| radar tick | 4.2 | `dot_addr` re-derived for all 10 flags per tick |
-| enemy sprite refresh | 2.3 | fine as-is |
-
-> **The rule this establishes: anything whose cost scales with `#fd` is on a feedback loop.**
-> FRAME-delta pacing multiplies per-pass work by the delta, so an expensive pass raises `#fd`,
-> which makes the next pass more expensive again. The old loop sat pinned at the `#fd` clamp of
-> 4 — it never recovered. Per-pixel work (`steps`/`esteps` loops) is exactly this shape, so it
-> must stay O(cells crossed), never O(pixels travelled). The camera `SCREEN` blit, by contrast,
-> measured as a **non**-issue: `draw_view` was not called at all during the slow runs.
+`WAIT` quantises a pass to a whole frame, so the loop rate can only be 60, 30, 20… — there is no
+"45 fps". A body that overruns one frame by even a little costs a full second frame, which is why
+the last few milliseconds were worth chasing rather than settling at 2 frames per pass.
 
 ## 2. Screen Layout (32×24, CVBasic default mode — never `MODE 2`)
 
@@ -181,6 +206,12 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   sweeping through the sideways heading** instead of snapping from up to down. A 90° turn still
   waits for a cell centre with that way open (`at_center`); a reverse may start anywhere, since
   the cell behind is by definition open.
+- **The player walks cell boundary to cell boundary** (`drive_step`'s `pm_top` loop), exactly
+  like `emove_n`: it jumps straight to the next 16-px boundary or to the end of the frame's
+  travel, whichever comes first. Every decision the car makes happens on a centre, so nothing is
+  lost by skipping the gaps, and movement cost stops scaling with `#fd` (§1a rule 1). There is
+  no longer a per-pixel `move1px`, and the `#dx`/`#dy` step vector and `set_dir` went with it —
+  each of the four headings moves its own coordinate directly.
 - **`at_center` splits per-cell from per-step work.** Flag pickup and laying a queued puff are
   per-CELL and live in `enter_cell`, reached only when `(cr,cc)` differs from `(lcr,lcc)`. The
   turn/wall probes are per-step, but are themselves skipped while `(cell, dir, qdir)` are all
@@ -204,10 +235,18 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   frame's travel before the next one starts, rather than being interleaved pixel-by-pixel; the
   no-stacking guarantee is unaffected because `probe_free` compares **cell** coordinates and a
   car occupies its cell for many pixels. This was the single largest cost in the loop (§1a).
+- **Every car's cell is cached** in `ecra`/`ecca`, updated alongside `#ex`/`#ey` on every move.
+  `probe_free` consults all four cars for each candidate direction, so deriving the cells there
+  meant ~24 divisions per AI decision. The AI's last-resort scan also skips `p1`/`p2`, which it
+  has already tried — of the four headings only one is ever actually new there, and re-probing
+  the other three took the worst case from 4 probes to 7 exactly when cars are boxed in.
 - **Camera** (in map2 **char** units, col 0..44, row 0..92): dead zone keeps the car's screen
   char within cols/rows 10–13; crossing it pans the camera 1 char (8 px) toward the car
   (clamped), triggering the viewport blit — the pan stays 8 px even though cells are 16 px,
-  which keeps the scroll as smooth as before the 2× scale.
+  which keeps the scroll as smooth as before the 2× scale. `update_cam` returns immediately when
+  the car has not moved (it is a pure function of the car's position), and the camera origin in
+  pixels is computed once per pass into `#cx8`/`#cy8` rather than re-derived inside `evis` for
+  every enemy.
 
 ## 7. Flags, Fuel, Scoring
 
@@ -357,7 +396,28 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
 8. Both targets build; TI single-bank with free bytes reported; same real-world speed on both
    (FRAME-delta pacing); no hazard-rule violations (§14).
 
-## 17. Status (2026-08-01) — arcade-accuracy pass
+## 17. Status (2026-08-01, later) — performance pass: 8.2 → 60 passes/sec
+
+Full measurements and the two rules they establish are in **§1a**. Summary:
+
+- **The loop now runs one pass per vblank** — 59.7 passes/sec parked, 52.6 while driving with the
+  camera panning continuously, against **8.2** before. `#fd` stays between 1.00 and 1.14 and is
+  never clamped.
+- **Game speed no longer depends on frame rate.** The reported "enemy cars move faster when the
+  screen is not scrolling" was a pacing bug, not an enemy bug: the `#fd` clamp of 4 discarded
+  real elapsed time whenever the loop wanted a bigger delta, so the world ran at ~half speed
+  while busy and full speed while parked. Movement is now O(cells crossed), which makes a large
+  delta cheap and safe, so the clamp sits at 16 and ordinary play never reaches it. `sct` and
+  `sfxt`, which counted passes rather than frames, are `#fd`-scaled for the same reason.
+- **Everything that moves walks boundary to boundary** — `drive_step` (new `pm_top` loop, no more
+  per-pixel `move1px`) and `emove_n`. Wall integrity re-verified with an assertion build that
+  checks all four corners of the car's 16-px box every pass: **0 violations** over a 20-leg route
+  driven into walls in all four directions.
+- Cheaper per pass: cached enemy cells (`ecra`/`ecca`), hoisted camera origin (`#cx8`/`#cy8`),
+  `update_cam` early-out when the car has not moved, cached flag radar addresses, smoke ageing
+  skipped when no puff is live, AI last-resort scan no longer re-probes `p1`/`p2`.
+
+## 17b. Status (2026-08-01) — arcade-accuracy pass
 
 Driven by reference screenshots supplied in review (kept in `assets/`):
 - **Start position matches the arcade**: the player faces **up** a clear corridor at bordered
@@ -375,7 +435,7 @@ Driven by reference screenshots supplied in review (kept in `assets/`):
 - **Extra lives are little yellow cars**, the car silhouette at 8×8, matching the arcade.
 - **Enemies spin when smoked** instead of freezing.
 
-## 17a. Status (2026-07-30) — renamed to RALLY-X, cars turn properly
+## 17c. Status (2026-07-30) — renamed to RALLY-X, cars turn properly
 
 - **Renamed** RaltiX → **RALLY-X** everywhere: folder `games/RallyX`, source `RALLYX.bas`,
   outputs `RALLYX_8.bin` / `rallyx.rom`, cart menu label `RALLY-X`, title screen `* RALLY-X *`.
@@ -401,7 +461,7 @@ Driven by reference screenshots supplied in review (kept in `assets/`):
   clears it when the turn ends). Verified by sampling the four corners of the car's own 16-px
   cell (art-free, since the car is 12 px) after three turn-heavy routes: road on all of them.
 
-## 17a. Status (2026-07-29, later)
+## 17d. Status (2026-07-29, later)
 
 **Review fixes:**
 - **Flags are now SPRITES (slots 5–14), not characters** — that is what caused the reported
@@ -451,7 +511,7 @@ refused for a background process — keystrokes then go elsewhere and the cart n
 which mimics a freeze). Capture rects must also be clamped to the virtual screen. The working
 probe is `scratchpad/probe5.ps1`.
 
-## 17a. Status (2026-07-29)
+## 17e. Status (2026-07-29)
 
 **2×-scale world shipped:** the game now renders 2×2 chars per maze cell (16-px roads; the car
 fills its lane; 12×12-cell viewport), per review feedback — verified in Classic99: title →

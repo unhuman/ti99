@@ -162,11 +162,22 @@ cost a debugging session:
   O(`#fd`).** With `#fd = FRAME - #lf`, any "repeat the step `#fd` times" loop (per-pixel
   movement, per-pixel AI polling) makes a slow pass slower still: cost rises with `#fd`, which
   raises `#fd` again. RallyX sat pinned at its `#fd` clamp of 4 and ran at **8 loop passes/sec**
-  until the per-pixel loops were rewritten to advance to the next *cell boundary* in one step
-  (→ 25.7/s, 3.1×). Symptom is "sluggish sometimes" with `FRAME` still ticking a clean 60 Hz —
-  i.e. no vblanks lost, the loop is just too fat. **Profile before optimising:** the obvious
-  suspect there (the 576-byte `SCREEN` pan blit) turned out never to be called during the slow
-  runs. Measure loop passes/sec against a host clock — see `games/RallyX/DESIGN.md` §1a.
+  until everything that moves was rewritten to advance to the next *cell boundary* in one step
+  (→ **60/s, one pass per vblank**). Symptom is "sluggish sometimes" with `FRAME` still ticking a
+  clean 60 Hz — i.e. no vblanks lost, the loop is just too fat. **Profile before optimising:** the
+  obvious suspect there (the 576-byte `SCREEN` pan blit) was never called during the slow runs,
+  and the enemy AI ran 0.56×/pass. Measure loop passes/sec against a host clock —
+  see `games/RallyX/DESIGN.md` §1a.
+- **The `#fd` clamp DISCARDS real time — game speed then depends on frame rate.** Clamping the
+  delta bounds catch-up work, but the world advances only `clamp` frames per pass while real time
+  advances more, so everything runs slow *exactly when the loop is busy* and full speed when it
+  is idle. In RallyX this read as "the enemy cars move faster when the screen isn't scrolling."
+  Once movement is O(cells crossed) a big delta is cheap **and** safe (each step still tests walls
+  at every boundary, so nothing tunnels), so set the clamp far above normal play. Same trap for
+  any timer counted in *passes* rather than frames — scale every countdown by `#fd`.
+- **`WAIT` quantises the loop to whole frames**: achievable rates are 60, 30, 20 … A body that
+  overruns one frame by a hair costs a whole extra frame, so the last millisecond is worth more
+  than it looks — and an average like "2.2 frames per pass" means visible jitter between 2 and 3.
 
 ---
 
