@@ -42,6 +42,36 @@ red cars, upbeat music.
 - Loop is real-time 60 Hz with **FRAME-delta pacing** (Structris pattern) so TI-99 and
   ColecoVision run the same real-world speed even if a frame slips.
 
+### 1a. Measured cost, and the per-`#fd` rule that follows from it
+
+Measured on Classic99 (real TI-99 timing) by counting game-loop passes against a host clock
+over 12 s, with the crash disabled so both runs stay in the same game state:
+
+| build | loop passes/sec | ms per pass |
+|---|---|---|
+| before this pass of optimisation | 8.2 | 121 |
+| after | **25.7** | 39 |
+
+`FRAME` advanced at a true 59–60 Hz throughout, so no vblanks were being lost — the loop was
+simply doing far too much work per pass.
+
+The profile that produced those fixes (per pass, `#fd` pinned to 1 so the terms are comparable):
+
+| term | ms | what it was |
+|---|---|---|
+| enemy pixel-walk | 13.6 | one subroutine call **per pixel** per enemy |
+| player `at_center` | 12.1 | 10-flag scan on **every aligned pixel step** |
+| `ckhit` + smoke ageing + fuel bar | 5.4 | ran unconditionally |
+| radar tick | 4.2 | `dot_addr` re-derived for all 10 flags per tick |
+| enemy sprite refresh | 2.3 | fine as-is |
+
+> **The rule this establishes: anything whose cost scales with `#fd` is on a feedback loop.**
+> FRAME-delta pacing multiplies per-pass work by the delta, so an expensive pass raises `#fd`,
+> which makes the next pass more expensive again. The old loop sat pinned at the `#fd` clamp of
+> 4 — it never recovered. Per-pixel work (`steps`/`esteps` loops) is exactly this shape, so it
+> must stay O(cells crossed), never O(pixels travelled). The camera `SCREEN` blit, by contrast,
+> measured as a **non**-issue: `draw_view` was not called at all during the slow runs.
+
 ## 2. Screen Layout (32×24, CVBasic default mode — never `MODE 2`)
 
 The world renders at **2×2 characters per maze cell** (16-px roads): the 16×16 car exactly
@@ -151,6 +181,12 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   sweeping through the sideways heading** instead of snapping from up to down. A 90° turn still
   waits for a cell centre with that way open (`at_center`); a reverse may start anywhere, since
   the cell behind is by definition open.
+- **`at_center` splits per-cell from per-step work.** Flag pickup and laying a queued puff are
+  per-CELL and live in `enter_cell`, reached only when `(cr,cc)` differs from `(lcr,lcc)`. The
+  turn/wall probes are per-step, but are themselves skipped while `(cell, dir, qdir)` are all
+  unchanged (`pqd`/`pdr`) — a car pinned against a wall stays cell-aligned indefinitely, so
+  without those two guards the 10-flag scan and both probes re-ran on every pixel step of every
+  frame (§1a).
 - **Enemies turn too** but keep moving while they do (`eang` eases toward `edir*2` on the same
   3-frame clock). Their AI only ever picks 90° changes, so a visible sweep is enough — stopping
   them dead mid-turn would make them trivial to escape.
@@ -162,6 +198,12 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   that would have driven into an occupied cell is the one that turns away, since the test runs
   as it chooses. In **scatter** (round start ~3 s, and after a crash) the preferences invert — they
   head away. Stunned (smoke) = 90-frame stop.
+- **Enemies advance in cell-bounded chunks** (`emove_n`), not one subroutine call per pixel: a
+  car moves straight to the next 16-px boundary or to the end of this frame's travel, whichever
+  comes first, and only stops to run the AI on a boundary. Each enemy also completes a whole
+  frame's travel before the next one starts, rather than being interleaved pixel-by-pixel; the
+  no-stacking guarantee is unaffected because `probe_free` compares **cell** coordinates and a
+  car occupies its cell for many pixels. This was the single largest cost in the loop (§1a).
 - **Camera** (in map2 **char** units, col 0..44, row 0..92): dead zone keeps the car's screen
   char within cols/rows 10–13; crossing it pans the camera 1 char (8 px) toward the car
   (clamped), triggering the viewport blit — the pan stays 8 px even though cells are 16 px,
@@ -193,9 +235,18 @@ recycled beyond that. Each puff lives `SMKTTL` 150 frames (2.5 s).
 
 **Puffs age by the frame delta, not a flat 1 per pass** — the loop does not run at a steady
 60 Hz, and a flat decrement measured ~30 ticks in 4 seconds, leaving puffs on screen roughly 8×
-too long. Expiry sets a dirty flag and `draw_view` repaints after the ageing loop (it can't be
-called from inside it — `draw_view` has its own `FOR j` and would clobber the counter); a
-targeted per-cell erase silently did nothing whenever the cell was off-window at that moment.
+too long. The whole ageing pass is skipped while `nsmk` (live puff count) is 0, which is most
+of the time.
+
+**An expired puff restores just its own 2×2 block** via `cell_restore` — a 2×2 `SCREEN` blit
+straight out of `map2`, four bytes instead of the 576-byte full-window `draw_view` repaint that
+used to fire up to six times per deployment, each one a whole frame stalled with interrupts off.
+Blitting from the map (rather than poking `ROADCH` into all four quadrants, which is what an
+earlier targeted erase did) is what makes it correct: road cells that sit against a wall carry
+pre-edged art, and a flat road poke flattened that edging. Cells that are off-window are simply
+skipped — nothing of them is on screen, and the next pan calls `draw_view`, which only ever
+paints puffs that are still live. `take_flag` uses the same routine for the picked-up flag's
+cell, which fixes the same latent edging loss there.
 
 An enemy whose cell holds smoke is stunned `SPINFR` 96 frames and **spins**: while stunned its
 visual heading advances a notch every tick, so it whirls through ~4 revolutions before its
@@ -235,7 +286,9 @@ CVBasic `MUSIC` (2 melody channels) + channel 3/noise reserved for SFX:
 
 - **RAM (Coleco ~781 B free is the binding constraint):** actor state (~40 B), flag list
   (10×3 B), smoke list (6×3 B), camera/score/round vars (~40 B) — ≪ 200 B. **No map copy, no
-  radar copy** (both re-derived from ROM; radar erase re-bakes from the flag list).
+  radar copy** (both re-derived from ROM; radar erase re-bakes from the flag list). Each flag's
+  radar dot address + mask are cached once per round (`#fda`/`fdm`, 30 B) so the erase does not
+  re-run `dot_addr` ten times per tick. Coleco reports 314/814 B used.
 - **ROM (TI, banked — `BANK ROM 128`):** bank 0 = code + logical map1 (~2 K; the fixed area
   caps at 24,336 B); bank 1 = map2 doubled char map (7,888 B, selected during gameplay);
   bank 2 = art/tiles/radar tables/item lists (selected only during init and round setup —

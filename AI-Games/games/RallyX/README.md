@@ -9,10 +9,13 @@ radar on the right, and don't run out of fuel.
 - **Status:** 🎮 Playable — M1–M3 emulator-verified in Classic99, M4 core in (title, rounds,
   challenge stages, jingles). The world renders at **2×2 chars per maze cell** (16-px roads —
   the 16×16 car fills its lane; the viewport shows 12×12 cells, so the radar matters).
-  Flags are sprites (no flicker), the car is a proper top-down F1 with **eight heading frames**
+  Flags and smoke are characters (drawn by `draw_view` in the same frame as the pan blit, which
+  is what stopped them flickering), the car is a proper top-down F1 with **eight heading frames**
   that **rotate in place** (a reverse sweeps around instead of flipping — the Rally-X handling
-  model), enemies turn too and never stack on one cell, smoke clouds are puffy and one colour,
+  model), enemies turn too and never stack on one cell, smoke puffs are puff-balls of one colour,
   and the radar's player dot cycles white/black instead of blinking out. See `DESIGN.md` §17.
+  **Speed:** the loop was profiled on Classic99 and rebuilt to run **3.1× faster** (8.2 → 25.7
+  game-loop passes/sec) — see `DESIGN.md` §1a for the measurements and the per-`#fd` rule.
   Deferred: in-game music, maps 2–4, rocks, per-round flag sets, Coleco runtime pass. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
   char map, bank 2 art/tables); Coleco builds flat. Building this flushed out three CVBasic
   TMS9900 codegen bugs (8-bit×big-constant → 0, dotted-constant folding truncates, CONST>255

@@ -158,6 +158,15 @@ cost a debugging session:
   Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
 - **Build BOTH targets every time**, not just TI. `#if TI994A` needs the **unhuman/CVBasic**
   fork (stock nanochess has no preprocessor).
+- **FRAME-delta pacing is a positive feedback loop — keep per-pass work O(events), not
+  O(`#fd`).** With `#fd = FRAME - #lf`, any "repeat the step `#fd` times" loop (per-pixel
+  movement, per-pixel AI polling) makes a slow pass slower still: cost rises with `#fd`, which
+  raises `#fd` again. RallyX sat pinned at its `#fd` clamp of 4 and ran at **8 loop passes/sec**
+  until the per-pixel loops were rewritten to advance to the next *cell boundary* in one step
+  (→ 25.7/s, 3.1×). Symptom is "sluggish sometimes" with `FRAME` still ticking a clean 60 Hz —
+  i.e. no vblanks lost, the loop is just too fat. **Profile before optimising:** the obvious
+  suspect there (the 576-byte `SCREEN` pan blit) turned out never to be called during the slow
+  runs. Measure loop passes/sec against a host clock — see `games/RallyX/DESIGN.md` §1a.
 
 ---
 

@@ -59,6 +59,11 @@
 	DIM fr(10)		' flag row (bordered logical cell)
 	DIM fc(10)		' flag col
 	DIM fst(10)		' 0 = live, 1 = taken
+	' Flags never move, so their radar dot address and 2-px mask are worked
+	' out once at round start instead of being re-derived for all ten flags
+	' on every radar tick (that rescan measured ~4 ms per pass).
+	DIM #fda(10)		' radar pattern addr of flag i's dot
+	DIM fdm(10)		' radar dot mask of flag i
 	DIM msktab(4)		' radar 2-px dot masks by (x AND 6)/2
 
 	' enemies (up to 4; nen active this round)
@@ -200,6 +205,7 @@ round_init:
 	st(j) = 0
 	NEXT j
 	nsm = 0
+	nsmk = 0		' live puffs; 0 lets the main loop skip smoke ageing
 	smkq = 0
 	btnp = 1		' ignore a button still held from the title screen
 	#fuel = 768
@@ -232,6 +238,8 @@ restart:
 	blocked = 0
 	lcr = 35
 	lcc = 22
+	pqd = 255		' force the first at_center to probe
+	pdr = 255
 	GOSUB set_dir
 	camc = 32		' camera in map2 CHAR units (car char - 12)
 	camr = 58
@@ -286,11 +294,9 @@ game_loop:
 	esteps = #eacc / 8
 	#eacc = #eacc AND 7
 	IF esteps = 0 THEN GOTO eskip
-	FOR k = 1 TO esteps
 	FOR i = 0 TO 3
-	IF i < nen THEN GOSUB emove1
+	IF i < nen THEN GOSUB emove_n
 	NEXT i
-	NEXT k
 eskip:
 
 	' enemy sprites: slots 1-4 rotated every frame so a 5-on-a-scanline
@@ -322,23 +328,17 @@ eskip:
 	NEXT i
 	IF hitf = 1 THEN GOTO crash
 
-	' Smoke ttl. An expiring puff repaints the WHOLE window rather than
-	' poking its own cell back to road: the targeted erase silently did
-	' nothing whenever the cell was off-window at the moment it expired,
-	' which left clouds on screen forever. draw_view redraws map + live
-	' flags + live smoke, so it is correct in every case. It must be called
-	' AFTER this loop -- draw_view has its own FOR j, which would clobber
-	' this loop's counter.
+	' Smoke ttl -- skipped entirely while no puff is in flight, which is most
+	' of the time. An expiring puff now restores just its own 2x2 block
+	' straight from the map (cell_restore) instead of repainting the whole
+	' window: the full draw_view was a 576-byte blit with interrupts off,
+	' i.e. a whole frame's stall, up to six times per smoke deployment.
 	' Age by the FRAME DELTA, not a flat 1 per pass: the loop does not run
 	' at a steady 60 Hz (a heavy frame does more than one frame's worth of
 	' work), so a flat decrement made the lifetime drift wildly -- measured
 	' ~30 ticks in 4 seconds, i.e. clouds hanging around ~8x too long.
-	' #fd is already clamped to 4 by the pacing code above.
-	smkdty = 0
-	FOR j = 0 TO MAXSMK - 1
-	IF st(j) > 0 THEN GOSUB smk_age
-	NEXT j
-	IF smkdty = 1 THEN GOSUB draw_view
+	' #fd is already clamped by the pacing code above.
+	IF nsmk > 0 THEN GOSUB smk_tick
 
 	' fuel drain: 1 unit per 4 frames (frame-delta safe: drain on ticks)
 	fdt = fdt + #fd
@@ -487,17 +487,24 @@ move1px:
 at_center:
 	cr = #py / 16
 	cc = #px / 16
-	' flag pickup: car cell == a live flag's cell
-	FOR fi = 0 TO 9
-	IF fst(fi) = 0 THEN IF fr(fi) = cr THEN IF fc(fi) = cc THEN GOSUB take_flag
-	NEXT fi
-	' lay one queued puff in the cell just left behind
+	' Per-CELL work (flag pickup, laying a puff) runs only when the car has
+	' actually entered a NEW cell. It used to run on every aligned pixel
+	' step, and a car held against a wall stays aligned forever -- so the
+	' ten-flag scan re-ran on every pixel step of every frame and measured
+	' ~12 ms per pass, about a quarter of the whole loop.
 	smkf = 0
 	IF lcr <> cr THEN smkf = 1
 	IF lcc <> cc THEN smkf = 1
-	IF smkf = 1 THEN IF smkq > 0 THEN GOSUB smoke_lay
-	lcr = cr
-	lcc = cc
+	IF smkf = 1 THEN GOSUB enter_cell
+	' The two probes below depend only on (cell, dir, qdir). A car pinned
+	' against a wall stays cell-aligned forever, so those inputs stop
+	' changing while the player holds a dead direction -- a very common
+	' state in this game -- and re-probing on every pixel step was pure
+	' waste. blocked/turning simply keep the values the last probe gave
+	' them, which is exactly right while nothing has changed.
+	IF smkf = 0 THEN IF qdir = pqd THEN IF dir = pdr THEN RETURN
+	pqd = qdir
+	pdr = dir
 	' a 90-degree turn is taken at a cell centre when that way is open --
 	' it starts a rotation (start_turn), it does not snap the heading
 	IF qdir <> dir THEN d = qdir : GOSUB probe : IF t >= ROADCH THEN GOSUB start_turn
@@ -511,6 +518,18 @@ at_center:
 	d = dir
 	GOSUB probe
 	IF t < ROADCH THEN blocked = 1 ELSE blocked = 0
+	RETURN
+
+	' First arrival in cell (cr,cc). smoke_lay must run BEFORE lcr/lcc are
+	' updated: a puff is dropped in the cell just LEFT BEHIND, which is what
+	' smoke_put reads out of lcr/lcc.
+enter_cell:
+	FOR fi = 0 TO 9
+	IF fst(fi) = 0 THEN IF fr(fi) = cr THEN IF fc(fi) = cc THEN GOSUB take_flag
+	NEXT fi
+	IF smkq > 0 THEN GOSUB smoke_lay
+	lcr = cr
+	lcc = cc
 	RETURN
 
 	' logical-map code of the cell next to (cr,cc) in direction d -> t
@@ -534,15 +553,43 @@ set_dir:
 	IF dir = 3 THEN #dx = -1 : #dy = 0
 	RETURN
 
-	' --- enemy: move one pixel (AI only at cell alignment) ----------------
-emove1:
-	IF estn(i) > 0 THEN estn(i) = estn(i) - 1 : RETURN
+	' --- enemy: advance esteps pixels, stopping at every cell centre ------
+	' The AI (and the stun countdown) only ever needs to act on a 16-px
+	' boundary, so the pixels in between are added in ONE step instead of
+	' one subroutine call each. The old per-pixel version ran up to 30
+	' dispatches per pass and measured ~14 ms -- the single biggest item in
+	' the loop. Enemies now also complete a whole frame's travel one at a
+	' time rather than interleaved pixel-by-pixel; probe_free still compares
+	' CELL coordinates, and a car occupies its cell for many pixels, so the
+	' no-overlap guarantee is unchanged.
+emove_n:
+	emn = esteps
+emn_top:
+	IF emn = 0 THEN RETURN
+	IF estn(i) > 0 THEN GOSUB emn_stun : GOTO emn_top
 	IF (#ex(i) AND 15) = 0 THEN IF (#ey(i) AND 15) = 0 THEN GOSUB eai
+	' eai can stun this car (it drove into smoke); spend the rest there
+	IF estn(i) > 0 THEN GOTO emn_top
 	d = edir(i)
-	IF d = 0 THEN #ey(i) = #ey(i) - 1
-	IF d = 1 THEN #ex(i) = #ex(i) + 1
-	IF d = 2 THEN #ey(i) = #ey(i) + 1
-	IF d = 3 THEN #ex(i) = #ex(i) - 1
+	' emk = pixels left until the next cell boundary along d
+	IF d = 0 THEN emk = #ey(i) AND 15
+	IF d = 1 THEN emk = 16 - (#ex(i) AND 15)
+	IF d = 2 THEN emk = 16 - (#ey(i) AND 15)
+	IF d = 3 THEN emk = #ex(i) AND 15
+	IF emk = 0 THEN emk = 16		' sitting on a centre, heading away
+	IF emk > emn THEN emk = emn
+	IF d = 0 THEN #ey(i) = #ey(i) - emk
+	IF d = 1 THEN #ex(i) = #ex(i) + emk
+	IF d = 2 THEN #ey(i) = #ey(i) + emk
+	IF d = 3 THEN #ex(i) = #ex(i) - emk
+	emn = emn - emk
+	GOTO emn_top
+
+	' burn stun frames in bulk -- estn counts pixel steps, as it always did
+emn_stun:
+	IF estn(i) > emn THEN estn(i) = estn(i) - emn : emn = 0 : RETURN
+	emn = emn - estn(i)
+	estn(i) = 0
 	RETURN
 
 	' reactive pursuit: prefer the axis with the larger gap to the player
@@ -619,7 +666,7 @@ eang1:
 	' A smoked car SPINS: while its stun counter runs it just keeps
 	' rotating one notch per tick, so it whirls through several full turns
 	' (SPINFR 96 / TURNRT 3 = 32 notches = 4 revolutions) before its
-	' heading settles and it drives on. emove1 keeps it parked meanwhile.
+	' heading settles and it drives on. emove_n keeps it parked meanwhile.
 	IF estn(ea) > 0 THEN eang(ea) = (eang(ea) + 1) AND 7 : RETURN
 	eat2 = edir(ea) + edir(ea)
 	IF eang(ea) = eat2 THEN RETURN
@@ -697,7 +744,10 @@ smoke_fire:
 smoke_lay:
 	smkq = smkq - 1
 smoke_put:
-	IF st(nsm) > 0 THEN or2 = sr(nsm) : oc2 = sc(nsm) : ob = ROADCH : GOSUB put_cell
+	' recycling a still-live slot: wipe its old block first, otherwise the
+	' active count would double-count this slot
+	IF st(nsm) = 0 THEN nsmk = nsmk + 1
+	IF st(nsm) > 0 THEN er2 = sr(nsm) : ec2 = sc(nsm) : GOSUB cell_restore
 	sr(nsm) = lcr
 	sc(nsm) = lcc
 	st(nsm) = SMKTTL
@@ -709,14 +759,40 @@ smoke_put:
 	IF nsm >= MAXSMK THEN nsm = 0
 	RETURN
 
-	' erase expired puff j from the viewport
-	' age one puff by #fd frames; expiry flags a repaint (draw_view can't be
-	' called from here -- it has its own FOR j and would clobber the caller)
+	' age every live puff by #fd frames; an expired one wipes its own block
+smk_tick:
+	FOR j = 0 TO MAXSMK - 1
+	IF st(j) > 0 THEN GOSUB smk_age
+	NEXT j
+	RETURN
 smk_age:
 	smka = #fd
 	IF st(j) > smka THEN st(j) = st(j) - smka : RETURN
 	st(j) = 0
-	smkdty = 1
+	nsmk = nsmk - 1
+	er2 = sr(j)
+	ec2 = sc(j)
+	GOSUB cell_restore
+	RETURN
+
+	' --- restore logical cell (er2,ec2) to its true map art ---------------
+	' A 2x2 SCREEN blit straight out of map2, so edged road cells next to
+	' walls come back correctly -- poking ROADCH into all four quadrants
+	' (what put_cell does) flattened that edging. Off-window cells are
+	' simply skipped: nothing of them is on screen, and the next pan calls
+	' draw_view, which only ever paints puffs that are still live.
+cell_restore:
+	crr = er2 + er2
+	crc = ec2 + ec2
+	crsr = crr - camr
+	IF crsr >= 23 THEN RETURN
+	crsc = crc - camc
+	IF crsc >= 23 THEN RETURN
+	#crs = crr * 68.
+	#crs = #crs + crc
+	#crd = crsr * 32.
+	#crd = #crd + crsc
+	SCREEN map2, #crs, #crd, 2, 2, 68
 	RETURN
 
 	' --- flag pickup (fi = slot, car at its cell) -------------------------
@@ -734,11 +810,12 @@ take_flag:
 	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
 	GOSUB prt_score
 	IF olg = 0 THEN IF #score >= 2000 THEN olg = 1 : lives = lives + 1 : GOSUB draw_lives
-	' repaint its cell as plain road, then clear its radar dot
-	or2 = fr(fi)
-	oc2 = fc(fi)
-	ob = ROADCH
-	GOSUB put_cell
+	' restore its cell from the map (not a flat ROADCH poke -- that dropped
+	' the edging on road cells that sit against a wall), then clear its
+	' radar dot
+	er2 = fr(fi)
+	ec2 = fc(fi)
+	GOSUB cell_restore
 	tr2 = fr(fi)
 	tc2 = fc(fi)
 	GOSUB dot_addr
@@ -923,6 +1000,9 @@ radar_flags:
 	tr2 = fr(fi)
 	tc2 = fc(fi)
 	GOSUB dot_addr
+	' cache this flag's dot address + mask for rd_erase (flags never move)
+	#fda(fi) = #da
+	fdm(fi) = dmsk
 	a = VPEEK(#da)
 	a = a OR dmsk
 	VPOKE #da,a
@@ -997,15 +1077,16 @@ rd_erase:
 	VPOKE #pb,a
 	#pb = #pb + 1
 	VPOKE #pb,a
+	' Only flags sharing this pattern byte need re-baking. The address test
+	' now uses the cached #fda() instead of running dot_addr ten times per
+	' radar tick, which is where most of that ~4 ms went.
 	FOR fi = 0 TO 9
-	IF fst(fi) = 0 THEN GOSUB rt_rebake
+	IF fst(fi) = 0 THEN IF #fda(fi) = #mpa(mi) THEN GOSUB rt_rebake
 	NEXT fi
 	RETURN
 rt_rebake:
-	tr2 = fr(fi)
-	tc2 = fc(fi)
-	GOSUB dot_addr
-	IF #da <> #mpa(mi) THEN RETURN
+	#da = #fda(fi)
+	dmsk = fdm(fi)
 	a = VPEEK(#da)
 	a = a OR dmsk
 	VPOKE #da,a
