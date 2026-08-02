@@ -286,8 +286,15 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   dry leaves you crawling until something catches you.
 - Values: 1st flag 100, then 200, 300 … (per pickup order, capped 1000). After collecting **S**,
   every later flag's value is **doubled**. **L** additionally pays `remaining fuel bar px × 10`.
-- Collecting all 10 ends the round: short jingle, round card, next round. **Not yet implemented:**
-  the arcade also pays a fuel bonus for finishing a round, scaled by what is left in the tank.
+- Collecting all 10 ends the round: round card, **fuel bonus**, jingle, next round.
+- **Fuel bonus** pays what is left in the tank on the lucky flag's scale (bar pixels x 10, so a
+  full tank is 640). It is TALLIED rather than handed over: one unit at a time moves out of the
+  gauge into the score, the bar visibly empties, and each tick blips at a falling pitch (on for
+  a frame, off for a frame -- a held tone just smears into a siren). ~2 s for a full tank.
+  The music and engine are stopped at the top of `round_done` so the tally and jingle have the
+  sound chip to themselves; `round_init` starts the music again.
+- **The lucky flag pays POINTS, not fuel** — verified: it *"gives bonus points based on how much
+  fuel the player has"*. It never refills the tank.
 - **A new car starts the stage fresh** — the arcade rule, verified against the Rally-X
   references. Losing a life **resets the fuel gauge to full**, sends **the next flag back to
   100**, and **cancels the special's doubling**. Collected flags stay collected: it is the

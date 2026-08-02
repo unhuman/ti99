@@ -464,14 +464,52 @@ eskip:
 
 	' --- round complete ---------------------------------------------------
 round_done:
+	' The round is over: stop the music and the engine so the bonus tally
+	' and the jingle have the sound chip to themselves. round_init starts
+	' the music again for the next round.
+	PLAY OFF
+	SOUND 0,,0
+	SOUND 1,,0
+	GOSUB eng_off
 	PRINT AT 395,"ROUND"
 	PRINT AT 427,"CLEAR"
 	IF rc3 = 2 THEN #score = #score + 1000 : GOSUB prt_score
+	' FUEL BONUS for finishing the round, scaled by what is left in the tank
+	' -- the arcade pays one, on the same scale as the lucky flag (fuel-bar
+	' pixels x 10, so a full tank is worth 640). #score is in units of 10.
+	'
+	' It is TALLIED, not handed over in a lump: one unit at a time moves out
+	' of the gauge and into the score, the bar visibly empties as it goes,
+	' and each tick blips at a falling pitch. A full tank takes about two
+	' seconds to count over.
+	#fb = #fuel / 12
+	PRINT AT 459,"FUEL BONUS"
+	PRINT AT 491,#fb,"0   "
+	FOR i = 1 TO 30
+	WAIT
+	NEXT i
+fb_tally:
+	IF #fb = 0 THEN GOTO fb_done
+	#fb = #fb - 1
+	#score = #score + 1
+	#fuel = #fuel - 12	' cannot underflow: 12 * #fb <= #fuel by construction
+	GOSUB prt_score
+	PRINT AT 491,#fb,"0   "
+	GOSUB fuel_bar
+	' one crisp tick per unit -- on for a frame, off for a frame, pitch
+	' falling as the gauge empties. A held tone just smears into a siren.
+	#sf = 300 + #fb * 6
+	SOUND 2,#sf,13
+	WAIT
+	SOUND 2,,0
+	WAIT
+	GOTO fb_tally
+fb_done:
+	SOUND 2,,0
 	' (stale mover radar dots are erased by round_init's mpv/rd_erase pass;
 	' the old loop here relied on the player dot skipping its replot when
 	' blink flipped to 0, which no longer happens now that it always draws)
-	' clear jingle: rising sweep (channel 2 -- music owns 0 and 1)
-	GOSUB eng_off
+	' clear jingle: rising sweep (channel 2 -- the tally has finished)
 	FOR i = 1 TO 90
 	WAIT
 	#sf = 400 - i * 3
