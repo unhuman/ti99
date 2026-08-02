@@ -398,6 +398,19 @@ pays two compares, not a sound write per frame.
 - Player vs rock (rounds ≥2): same as a crash.
 - Enemies ignore rocks/flags/each other.
 
+## 9a. 838 setup mode
+
+Type **8, 3, 8** on the title screen to open a hidden setup with two questions:
+
+- **CARS 1-10, 0=10** — starting lives
+- **LEVEL 1-10, 0=10** — starting round
+
+Answers are single digits read with `CONT1.KEY`, which returns 0-9 on **both** targets (the
+ColecoVision keypad and the TI keyboard) and 15 for nothing pressed, so the same code serves
+both. The watcher is edge-triggered — the key must be released between digits or one press
+reads as several. Starting above round 1 also re-phases `rc3`, which cycles 0,1,2 and picks the
+challenging stage, so the bonus round still lands on every third round.
+
 ## 10. Rounds & Challenge Stages
 
 **Challenging stage (every 3rd round) — verified against the arcade, not invented.** The red

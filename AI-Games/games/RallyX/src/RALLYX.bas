@@ -140,6 +140,8 @@
 	msktab(3) = $03
 
 	#hi = 500		' session high score (5000 pts; score unit = 10)
+	lives0 = 3		' defaults, overridden by the 838 setup screen
+	rnd0 = 1
 
 	' panel text (col 24+): 1UP/score, HI/hi, FUEL label, round.
 	' VDP writes are BUFFERED and applied at vblank -- pace bursts with
@@ -182,22 +184,84 @@ title:
 	PLAY OFF
 	SOUND 0,,0
 	SOUND 1,,0
-	PRINT AT 359,"* RALLY-X *"
-	PRINT AT 424,"PRESS FIRE"
-	PRINT AT 512,"2026 UNHUMAN AND CLAUDE"
+	GOSUB t_draw
+	tseq = 0
+	tkp = 15
 t_rel:
 	WAIT
+	GOSUB t_key
 	IF cont1.button THEN GOTO t_rel
 t_prs:
 	WAIT
+	GOSUB t_key
 	IF cont1.button = 0 THEN GOTO t_prs
-	rnd = 1
-	rc3 = 0
+	rnd = rnd0
+	' rc3 cycles 0,1,2 with the round and picks the challenging stage, so a
+	' start level other than 1 has to land on the right phase.
+	rc3 = rnd - 1
+rc3wrap:
+	IF rc3 >= 3 THEN rc3 = rc3 - 3 : GOTO rc3wrap
+
+t_draw:
+	PRINT AT 359,"* RALLY-X *"
+	PRINT AT 424,"PRESS FIRE"
+	PRINT AT 512,"2026 UNHUMAN AND CLAUDE"
+	RETURN
+
+	' --- "838 mode": type 8, 3, 8 on the title for the setup screen -------
+	' CONT1.KEY gives 0-9 on both targets (Coleco keypad, TI keyboard) and
+	' 15 for nothing pressed, so this is portable. Edge-triggered: the key
+	' has to be released between digits or one press reads as many.
+t_key:
+	tk = cont1.key
+	IF tk = tkp THEN RETURN
+	tkp = tk
+	IF tk = 15 THEN RETURN
+	IF tseq = 2 THEN IF tk = 8 THEN GOSUB setup838 : tseq = 0 : RETURN
+	IF tseq = 1 THEN IF tk = 3 THEN tseq = 2 : RETURN
+	tseq = 0
+	IF tk = 8 THEN tseq = 1
+	RETURN
+
+	' Two questions, each a single digit with 0 meaning 10.
+setup838:
+	GOSUB clear_view
+	PRINT AT 100,"838 SETUP"
+	PRINT AT 196,"CARS  1-10, 0=10"
+	GOSUB t_digit
+	lives0 = tdg
+	IF lives0 = 0 THEN lives0 = 10
+	PRINT AT 228,"CARS  ="
+	PRINT AT 236,lives0," "
+	PRINT AT 292,"LEVEL 1-10, 0=10"
+	GOSUB t_digit
+	rnd0 = tdg
+	IF rnd0 = 0 THEN rnd0 = 10
+	PRINT AT 324,"LEVEL ="
+	PRINT AT 332,rnd0," "
+	FOR i = 1 TO 90
+	WAIT
+	NEXT i
+	GOSUB clear_view
+	GOSUB t_draw
+	tkp = 15
+	RETURN
+
+	' wait for release, then for a digit 0-9
+t_digit:
+	WAIT
+	IF cont1.key <> 15 THEN GOTO t_digit
+td_wait:
+	WAIT
+	tdg = cont1.key
+	IF tdg > 9 THEN GOTO td_wait
+	tkp = tdg
+	RETURN
 
 	' --- new game ---------------------------------------------------------
 game_init:
 	#score = 0
-	lives = 3
+	lives = lives0
 	olg = 0
 	GOSUB prt_score
 	GOSUB draw_lives
