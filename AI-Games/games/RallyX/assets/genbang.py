@@ -7,7 +7,7 @@ PRINT pads with. A first cut put the burst at 16..33 and so redefined space
 as a chunk of tan starburst -- the panel's blank areas and every padded
 field turned into yellow rubble. So:
 
-  chars 16..27    BANG burst, 4x3 chars = 32x24 px (below the font)
+  chars 16..23    BANG burst: TWO 2x2 animation frames (16x16 px each)
   chars 140..143  the score popup's 2x2 box -- NOT fixed art. Only four
                   codes are reserved; their patterns are composed in RAM at
                   pickup from a 3x5 mini font and uploaded with
@@ -25,60 +25,64 @@ import math
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-W, H = 32, 24                   # 4 x 3 chars: big enough for a
-                                # readable BANG inside a real burst,
-                                # half the area of the 6x3 first cut
-LET_TOP, LET_BOT = 8, 15        # the whole middle character row
+W = H = 16                      # 2x2 chars -- ONE maze cell, no more
+LET_TOP, LET_BOT = 6, 10        # narrow letter band, so the star still shows
 
-BANG_BASE = 16          # burst; the popup box is 140-143, composed at runtime
+# TWO animation frames, 4 chars each: 16-19 and 20-23. The explosion is
+# CHARACTERS, not sprites -- it belongs to the roadway, and a sprite drifts
+# out of register with the map the moment anything scrolls. Animating costs
+# 4 VPOKEs (swap which frame's codes are on the name table), not a pattern
+# reupload.
+BANG_BASE = 16
 
 # ---------------------------------------------------------------- burst shape
-star = [[0] * W for _ in range(H)]
-for y in range(H):
-    for x in range(W):
-        dx = x - (W / 2.0 - 0.5)
-        dy = (y - (H / 2.0 - 0.5)) * 1.35
-        r = math.hypot(dx, dy)
-        a = math.atan2(dy, dx)
-        if r <= 11.0 + 4.5 * math.cos(8.0 * a):
-            star[y][x] = 1
+def make_star(base, amp, phase):
+    g = [[0] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            dx = x - (W / 2.0 - 0.5)
+            dy = (y - (H / 2.0 - 0.5))
+            r = math.hypot(dx, dy)
+            a = math.atan2(dy, dx)
+            if r <= base + amp * math.cos(8.0 * a + phase):
+                g[y][x] = 1
+    return g
 
-# 6x8 letters: across 32 px four of them fit at a size that actually reads.
+STARS = [make_star(5.0, 3.2, 0.0), make_star(6.6, 2.6, math.pi / 8)]
+
+# 3x5 letters: four of them across 16 px is all that fits.
 LETTERS = {
-    "B": ["111100", "110110", "110110", "111100",
-          "110110", "110110", "111100", "000000"],
-    "A": ["011000", "110110", "110110", "111110",
-          "110110", "110110", "110110", "000000"],
-    "N": ["110110", "111110", "111110", "111110",
-          "110110", "110110", "110110", "000000"],
-    "G": ["011100", "110000", "110000", "110110",
-          "110110", "110110", "011100", "000000"],
+    "B": ["110", "101", "110", "101", "110"],
+    "A": ["010", "101", "111", "101", "101"],
+    "N": ["101", "111", "111", "111", "101"],
+    "G": ["011", "100", "101", "101", "011"],
 }
 letters = [[0] * W for _ in range(H)]
 for idx, ch in enumerate("BANG"):
-    x0 = 2 + idx * 7
+    x0 = idx * 4
     for y, rowbits in enumerate(LETTERS[ch]):
         for x, b in enumerate(rowbits):
             if b == "1":
                 letters[LET_TOP + y][x0 + x] = 1
 
 bang_pat, bang_col = [], []
-for cr in range(H // 8):
-    for cc in range(W // 8):
-        rows, cols = [], []
-        for ly in range(8):
-            y = cr * 8 + ly
-            lettered = LET_TOP <= y <= LET_BOT
-            src = letters if lettered else star
-            bits = 0
-            for lx in range(8):
-                if src[y][cc * 8 + lx]:
-                    bits |= 0x80 >> lx
-            rows.append(bits)
-            # $1B black on light yellow (letter band) / $BA light yellow on tan
-            cols.append(0x1B if lettered else 0xBA)
-        bang_pat.append(rows)
-        bang_col.append(cols)
+for star in STARS:
+    for cr in range(H // 8):
+        for cc in range(W // 8):
+            rows, cols = [], []
+            for ly in range(8):
+                y = cr * 8 + ly
+                lettered = LET_TOP <= y <= LET_BOT
+                src = letters if lettered else star
+                bits = 0
+                for lx in range(8):
+                    if src[y][cc * 8 + lx]:
+                        bits |= 0x80 >> lx
+                rows.append(bits)
+                # $1B black on light yellow (letters) / $BA yellow on road tan
+                cols.append(0x1B if lettered else 0xBA)
+            bang_pat.append(rows)
+            bang_col.append(cols)
 
 # ------------------------------------------------------------- popup glyphs
 # 3x5 MINI font. The popup has to fit the same 2x2 cell as the burst, i.e.

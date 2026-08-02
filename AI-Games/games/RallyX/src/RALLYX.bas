@@ -119,8 +119,8 @@
 	' Custom art MUST stay below char 32: 32 is SPACE, which CLS fills the
 	' screen with and every PRINT pads with. Defining over it turned every
 	' blank cell in the panel into rubble.
-	DEFINE CHAR 16,12,bang_pat	' crash starburst, 4x3 chars
-	DEFINE COLOR 16,12,bang_col
+	DEFINE CHAR 16,8,bang_pat	' crash starburst, two 2x2 frames
+	DEFINE COLOR 16,8,bang_col
 	DEFINE COLOR 140,4,pop_col	' popup box: white on black
 	#fontb = VARPTR mini_font(0)
 	DEFINE CHAR 96,16,wallpat	' wall quadrants, 4 per corner
@@ -134,7 +134,6 @@
 	DEFINE COLOR 129,1,live_color
 	DEFINE SPRITE 0,8,car_bitmaps	' defs 0-7 = car headings N,NE,E,SE,
 					' S,SW,W,NW (enemies reuse them, red)
-	DEFINE SPRITE 8,2,expl_bitmaps	' defs 8-9 = crash explosion
 
 	#mapbase = VARPTR map1(0)
 	msktab(0) = $C0
@@ -477,28 +476,29 @@ round_done:
 crash:
 	SOUND 2,,0
 	GOSUB eng_off
-	' Pin both wreck sites in SCREEN pixels. Recomputed from the camera here
-	' rather than reusing the main loop's x/y: the collision is now detected
+	' Wreck position in SCREEN pixels. Recomputed from the camera here
+	' rather than reusing the main loop's x/y: the collision is detected
 	' mid-movement, so x/y can be a pass out of date.
 	#cx8 = camc * 8.
 	#cy8 = camr * 8.
 	bpx = #px - #cx8
 	bpy = #py - #cy8
-	bex = #ex(hitn) - #cx8
-	bey = #ey(hitn) - #cy8
 	GOSUB hide_spr
-	' the starburst, centred on the wreck
 	bgx = bpx / 8
 	bgy = bpy / 8
-	GOSUB draw_bang
 	FOR j = 1 TO 44
 	WAIT
-	t = j AND 4
-	IF t = 0 THEN t2 = 32 ELSE t2 = 36	' explosion defs 8/9 -> names 32/36
-	cbl = 11				' light yellow / light red flicker
+	' Alternate the two burst frames. This is a CHARACTER animation: four
+	' VPOKEs swap which frame's codes sit on the name table. It used to be
+	' two explosion SPRITES, which is wrong for something that belongs to
+	' the roadway -- a sprite is positioned in screen pixels, so it slid out
+	' of register with the maze as soon as anything scrolled.
+	t = j AND 8
+	bfr = 16
+	IF t = 0 THEN bfr = 20
+	GOSUB draw_bang
+	cbl = 11				' light yellow / light red strobe
 	IF t = 0 THEN cbl = 9
-	SPRITE 0, bpy - 1, bpx, t2, cbl
-	SPRITE 1, bey - 1, bex, t2, cbl
 	' border strobes for the first fifth of a second, then settles
 	IF j < 12 THEN BORDER cbl
 	IF j = 12 THEN BORDER 1
@@ -618,12 +618,16 @@ pop_glyph:
 	' scrolled out of the window and vanished after about 0.4 s of its 2 s.
 	' Riding above the car keeps the whole value on screen for its full life.
 pop_draw:
-	bbx = x / 8
-	IF bbx > 22 THEN bbx = 22
-	bby = 0
-	bbt = y / 8
-	IF bbt > 2 THEN bby = bbt - 2
-	IF bby > 22 THEN bby = 22
+	' Anchored to the FLAG's map cell -- it is part of the roadway, so it
+	' scrolls with the maze and stays put while the car drives on. (Pinning
+	' it to the car instead kept it on screen longer but made it drift over
+	' the road, which is exactly what was not wanted.)
+	bbt = pvr + pvr
+	bby = bbt - camr
+	IF bby >= 23 THEN RETURN
+	bbt = pvc + pvc
+	bbx = bbt - camc
+	IF bbx >= 23 THEN RETURN
 	bbn = 140
 	FOR bbr = 0 TO 1
 	bbt = bby + bbr
@@ -649,24 +653,23 @@ pop_tick:
 	GOSUB draw_view
 	RETURN
 
-	' --- crash starburst: chars 16-27, 4 wide x 3 tall -------------------
-	' Centred on the wreck. The subtractions are guarded rather than clamped
-	' afterwards: these are unsigned, so bgx - 2 at column 1 would wrap to
-	' ~65535 instead of going negative.
+	' --- crash starburst: one 2x2 cell, frame base in bfr ---------------
+	' Sits EXACTLY on the wreck. bgx/bgy are the car's TOP-LEFT screen
+	' character and the car is itself 2x2, so the burst's origin is that
+	' character -- an earlier -1 here pushed the whole graphic half a cell
+	' up and left of where the car actually died.
 draw_bang:
-	bbx = 0
-	IF bgx > 2 THEN bbx = bgx - 2
-	IF bbx > 20 THEN bbx = 20
-	bby = 0
-	IF bgy > 1 THEN bby = bgy - 1
-	IF bby > 21 THEN bby = 21
-	bbn = 16
-	FOR bbr = 0 TO 2
+	bbx = bgx
+	IF bbx > 22 THEN bbx = 22
+	bby = bgy
+	IF bby > 22 THEN bby = 22
+	bbn = bfr
+	FOR bbr = 0 TO 1
 	bbt = bby + bbr
 	#bva = bbt * 32.
 	#bva = #bva + 6144		' $1800 name table; folded consts truncate
 	#bva = #bva + bbx
-	FOR bbc = 0 TO 3
+	FOR bbc = 0 TO 1
 	#bvb = #bva + bbc
 	VPOKE #bvb,bbn
 	bbn = bbn + 1
@@ -1117,7 +1120,6 @@ ckhit:
 	IF #g >= 32768 THEN #g = 0 - #g
 	IF #g >= 12 THEN RETURN
 	hitf = 1
-	hitn = i		' which car we hit -- it dies with us
 	RETURN
 
 	' --- 2x2 overlay draw: logical cell (or2,oc2) as chars ----------------
@@ -1227,6 +1229,8 @@ take_flag:
 	#pvv = #val * 10
 	pvm = sgot
 	pvt = POPFR
+	pvr = fr(fi)
+	pvc = fc(fi)
 	GOSUB pop_build
 	IF sgot = 1 THEN #val = #val * 2
 	IF fi = 8 THEN sgot = 1
@@ -1664,13 +1668,6 @@ car_bitmaps:
 flag_sprite:
 	DATA BYTE $1F,$1F,$1F,$1F,$1F,$18,$18,$18,$18,$18,$18,$18,$18,$18,$00,$00
 	DATA BYTE $C0,$F8,$FE,$F8,$C0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-
-	' crash explosion, 2 frames (defs 8-9)
-expl_bitmaps:
-	DATA BYTE $00,$10,$44,$01,$20,$04,$49,$02,$24,$09,$40,$12,$04,$41,$10,$00
-	DATA BYTE $00,$08,$22,$80,$04,$20,$92,$40,$24,$90,$02,$48,$20,$82,$08,$00
-	DATA BYTE $10,$02,$28,$85,$02,$50,$15,$4A,$21,$54,$0A,$A8,$41,$14,$40,$08
-	DATA BYTE $08,$40,$14,$A1,$40,$0A,$A8,$52,$84,$2A,$50,$15,$82,$28,$02,$10
 
 	' tree (112) + road (113) tiles and their per-row colors
 misc_chars:
