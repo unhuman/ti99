@@ -143,8 +143,11 @@ cost a debugging session:
   SCORE every frame. Prefix temps per routine and grep the name before adding one.
 - **Constants > 255 truncate to 8 bits** in three shapes: `CONST X = 768` used in a 16-bit
   assignment compiles to `CLR`; a folded dotted constant (`$1800 + 728.`) truncates the addend;
-  and an 8-bit var times a constant ≥ 2048 (`th * 2048.`) compiles to `CLR`. Use bare 16-bit
-  literals, precomputed values, or an IF-ladder.
+  and **an 8-bit var times a constant > 255** compiles to `CLR`. The threshold is **256, not
+  2048** — `mhi * 256.` emitted a bare `clr`, which silently reduced every music note to its low
+  byte. (`* 34.`, `* 68.`, `* 136.` are all fine.) Use bare 16-bit literals, precomputed values,
+  an IF-ladder, or repeated doubling (`#x = #x + #x` eight times == `* 256`).
+  **Check the generated `.a99`** when a multiply matters: this failure is completely silent.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

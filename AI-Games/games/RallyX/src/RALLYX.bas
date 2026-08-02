@@ -1798,8 +1798,7 @@ mus_mel:
 	mhi = PEEK(#mua)
 	#mua = #mua + 1
 	mlo = PEEK(#mua)
-	#mf = mhi * 256.
-	#mf = #mf + mlo
+	GOSUB mus_word
 	SOUND 0,#mf,musv
 	RETURN
 mus_bas:
@@ -1807,9 +1806,29 @@ mus_bas:
 	mhi = PEEK(#mua)
 	#mua = #mua + 1
 	mlo = PEEK(#mua)
-	#mf = mhi * 256.
-	#mf = #mf + mlo
+	GOSUB mus_word
 	SOUND 1,#mf,musv
+	RETURN
+
+	' Rebuild the 16-bit divider from the table's hi/lo bytes WITHOUT a
+	' constant multiply. "#mf = mhi * 256." compiles to a plain CLR on this
+	' backend -- confirmed by reading the generated .a99 -- so every note
+	' came out as just its low byte: pitches wrong, anything over 255
+	' wrapping, and the tune unrecognisable. Eight doublings are exact and
+	' cost nothing at seven notes a second.
+	' NOTE: the repo hazard list said this truncation starts at 2048. It
+	' does not -- 256 is already broken.
+mus_word:
+	#mf = mhi
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + mlo
 	RETURN
 
 	' --- engine ------------------------------------------------------------
