@@ -6,7 +6,7 @@ def grab(name):
     return [[int(v[1:], 16) for v in ln.split()[2].split(",")]
             for ln in m.group(1).strip("\n").split("\n")]
 pat, col = grab("bang_pat"), grab("bang_col")
-PAL = {0x0: None, 0x1: (0,0,0), 0xA: (222,151,71), 0xB: (255,255,120)}
+PAL = {0x0: None, 0x1: (0,0,0), 0xA: (222,151,71), 0xB: (255,255,120), 0x9: (255,119,102)}
 S = 12
 im = Image.new("RGB", (16*S*2 + S*2, 16*S), (222,151,71))
 px = im.load()
