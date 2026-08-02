@@ -224,6 +224,12 @@ round_init:
 #endif
 	nfl = 0
 	sgot = 0
+	' Roll which flag is S and which is L. Positions are fixed (arcade
+	' map); the ROLES move each round so the route is not memorised.
+	sidx = RANDOM(10)
+lroll:
+	lidx = RANDOM(10)
+	IF lidx = sidx THEN GOTO lroll
 	' DIFFICULTY RAMP. Round 1 used to open with three chasers at 2.5 px/f
 	' (83% of the player's 3 px/f) all beelining from a 3-second head start,
 	' which is brutal before you know the maze. Three dials now ramp
@@ -1230,18 +1236,27 @@ take_flag:
 	nfl = nfl + 1
 	#val = nfl * 10
 	IF #val > 100 THEN #val = 100
-	' Popup: the BASE points (score is kept in units of 10, so x10 here) and
-	' whether the special is doubling them. Captured before the doubling so
-	' the graphic can read "500x2" rather than a bare 1000.
-	#pvv = #val * 10
-	pvm = sgot
+	' Base points before any doubling (score is kept in units of 10), and
+	' whether the special is already doubling THIS flag -- sgot is updated
+	' just below, so it has to be read first.
+	#pvb = #val * 10
+	pvm0 = sgot
+	IF sgot = 1 THEN #val = #val * 2
+	IF fi = sidx THEN sgot = 1
+	IF fi = lidx THEN #val = #val + #fuel / 12
+	' Popup. Normally the base value with "x2" when the special is doubling
+	' it, so it reads "500x2" rather than a bare 1000. The LUCKY flag is the
+	' exception: its fuel bonus is added after the doubling and is not
+	' itself doubled, so base-and-multiplier cannot express what it paid --
+	' it shows the plain total. (It used to show the base either way, which
+	' understated the lucky flag by up to 640 points.)
+	#pvv = #pvb
+	pvm = pvm0
+	IF fi = lidx THEN #pvv = #val * 10 : pvm = 0
 	pvt = POPFR
 	pvr = fr(fi)
 	pvc = fc(fi)
 	GOSUB pop_build
-	IF sgot = 1 THEN #val = #val * 2
-	IF fi = 8 THEN sgot = 1
-	IF fi = 9 THEN #val = #val + #fuel / 12
 	#score = #score + #val
 	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
 	GOSUB prt_score
@@ -1383,8 +1398,8 @@ ov_flag:
 	or2 = fr(oi)
 	oc2 = fc(oi)
 	ob = 0			' F = chars 0-3
-	IF oi = 8 THEN ob = 4	' S = chars 4-7
-	IF oi = 9 THEN ob = 8	' L = chars 8-11
+	IF oi = sidx THEN ob = 4	' S = chars 4-7
+	IF oi = lidx THEN ob = 8	' L = chars 8-11
 	GOSUB put_cell
 	RETURN
 ov_smoke:
@@ -1455,7 +1470,7 @@ radar_flags:
 	VPOKE #db,a
 	#db = #da + $2000
 	a = $B4
-	IF fi = 8 THEN a = $84
+	IF fi = sidx THEN a = $84
 	VPOKE #db,a
 	#db = #db + 1
 	VPOKE #db,a
@@ -1539,7 +1554,7 @@ rt_rebake:
 	VPOKE #pb,a
 	#pb = #da + $2000
 	a2 = $B4
-	IF fi = 8 THEN a2 = $84
+	IF fi = sidx THEN a2 = $84
 	VPOKE #pb,a2
 	#pb = #pb + 1
 	VPOKE #pb,a2

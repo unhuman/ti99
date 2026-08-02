@@ -276,6 +276,14 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
 ## 7. Flags, Fuel, Scoring
 
 - 10 flags/round: 8 regular + **S** + **L** (positions §3). Pickup = car's cell == flag cell.
+- **Which flag is S and which is L is rolled each round** (`sidx`/`lidx`). The ten POSITIONS stay
+  as transcribed from the arcade map — they are spread deliberately — but the roles move, so a
+  round cannot be memorised as "the double is always in the top right".
+- **S doubles what comes AFTER it, not itself.** `#val` is doubled before `sgot` is set, which is
+  the arcade rule.
+- **Out of fuel is not fatal**: speed halves to 1.5 px/f, smoke is refused (it costs 96 fuel),
+  the engine drops to its idle note, and the round continues — as in the arcade, where running
+  dry leaves you crawling until something catches you.
 - Values: 1st flag 100, then 200, 300 … (per pickup order, capped 1000). After collecting **S**,
   every later flag's value is **doubled**. **L** additionally pays `remaining fuel bar px × 10`.
 - Collecting all 10 ends the round: short jingle, round card, next round (no fuel bonus beyond L).
