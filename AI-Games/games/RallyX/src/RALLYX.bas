@@ -292,6 +292,13 @@ restart:
 	lcc = 22
 	pqd = 255		' force the first at_center to probe
 	pdr = 255
+	' Cancel any smoke still owed. A deployment queues SMKPUFF puffs that are
+	' laid one per cell as the car drives on, so dying mid-deployment used to
+	' carry the remainder over and the respawned car trailed smoke it never
+	' asked for. btnp = 1 likewise ignores a fire button still held from the
+	' crash, so smoke only ever starts on a fresh press.
+	smkq = 0
+	btnp = 1
 	#ucx = 65535		' impossible position: force the first camera update
 	#ucy = 65535
 	camc = 32		' camera in map2 CHAR units (car char - 12)

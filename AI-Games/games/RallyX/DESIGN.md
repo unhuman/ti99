@@ -279,6 +279,11 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
 - Values: 1st flag 100, then 200, 300 … (per pickup order, capped 1000). After collecting **S**,
   every later flag's value is **doubled**. **L** additionally pays `remaining fuel bar px × 10`.
 - Collecting all 10 ends the round: short jingle, round card, next round (no fuel bonus beyond L).
+- **Dying does NOT clear the S multiplier.** Collected flags stay collected across a life, so
+  the doubling they earned stays with them; `sgot` is reset only by `round_init`.
+- **Dying DOES cancel owed smoke.** A press queues `SMKPUFF` puffs that are laid one per cell as
+  the car drives on; `restart` clears `smkq` (and sets `btnp`) so a respawned car never trails
+  smoke the player did not ask for, and a fire button still held from the crash does not fire.
 - **Fuel:** 768 units ≈ 64 px bar; drains 1 unit/4 frames (~51 s), plus 8 per smoke puff.
   Empty ⇒ crawl speed, no smoke; you can still finish the round.
 - Extra life at 20,000 (once). Score/HI 6 digits, persistent HI per session.
