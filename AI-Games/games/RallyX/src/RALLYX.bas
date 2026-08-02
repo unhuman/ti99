@@ -201,6 +201,11 @@ t_prs:
 	rc3 = rnd - 1
 rc3wrap:
 	IF rc3 >= 3 THEN rc3 = rc3 - 3 : GOTO rc3wrap
+	' MUST jump: the title's helper subroutines sit between here and
+	' game_init, so without this the fall-through walks straight into
+	' t_draw and hits its RETURN with nothing on the GOSUB stack -- which
+	' took the machine down the moment you pressed fire on the title.
+	GOTO game_init
 
 t_draw:
 	PRINT AT 359,"* RALLY-X *"

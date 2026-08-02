@@ -359,13 +359,17 @@ depends on this split:
 
 | channel | use |
 |---|---|
-| 0, 1 | background music (`music_bg`, via the CVBasic music player) |
+| 0, 1 | background music — **our own player**, not CVBasic's `PLAY` |
 | 2 | flag blip, round-clear jingle, game-over sting |
 | 3 | engine buzz, and the crash boom that overrides it |
 
-`PLAY SIMPLE NO DRUMS` is what makes this fit: **SIMPLE** keeps the player off channel 2, and
-**NO DRUMS** keeps it off the noise channel — without it the drum track and the engine would be
-writing the same register.
+**We drive the music ourselves** (`mus_tick`). CVBasic's PSG `PLAY` writes the volume registers
+from envelope tables baked into the shared prologue, so a game cannot turn it down — and this tune
+has to sit UNDER the engine and the effects. Ours sets volume explicitly: melody `MUSVOL` 6, bass
+`MUSBAS` 5, against an engine at 11. The song is 64 steps at `MUSTICK` 9 frames — about ten
+seconds before it repeats, against roughly four for the `PLAY` version it replaced. Data is
+`assets/genmusic.py` → `src/music.bas`, note indices into a table of 16-bit SN76489 dividers, and
+it **must live in TI bank 0** because the player runs every frame while a maze bank is selected.
 
 The **music data must live in TI bank 0**. The player refills the sound registers from the vblank
 ISR, which can fire at any point, including while gameplay has bank 1 (map2) or bank 2 (art)
