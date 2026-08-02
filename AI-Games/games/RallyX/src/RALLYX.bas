@@ -223,7 +223,6 @@ round_init:
 	BANK SELECT 1
 #endif
 	nfl = 0
-	sgot = 0
 	' Roll which flag is S and which is L. Positions are fixed (arcade
 	' map); the ROLES move each round so the route is not memorised.
 	sidx = RANDOM(10)
@@ -265,8 +264,6 @@ lroll:
 	pvt = 0			' no flag-value popup pending
 	smkq = 0
 	btnp = 1		' ignore a button still held from the title screen
-	#fuel = 768
-	plvl = 255
 	blink = 0
 	rdt = 0
 	fdt = 0
@@ -298,6 +295,16 @@ restart:
 	lcc = 22
 	pqd = 255		' force the first at_center to probe
 	pdr = 255
+	' A NEW CAR STARTS THE STAGE FRESH -- arcade rule, verified against the
+	' Rally-X references: losing a life resets the fuel gauge, sends the
+	' next flag back to 100, and cancels the special's doubling. Collected
+	' flags stay collected (nfl is untouched); it is the SCORING that
+	' resets, which is why vstep is separate from nfl.
+	' round_init falls through to here, so these cover a new round too.
+	#fuel = 768
+	plvl = 255		' force the fuel bar to redraw at the new level
+	vstep = 0		' flag values start again at 100
+	sgot = 0		' and the special's doubling is lost
 	' Cancel any smoke still owed. A deployment queues SMKPUFF puffs that are
 	' laid one per cell as the car drives on, so dying mid-deployment used to
 	' carry the remainder over and the respawned car trailed smoke it never
@@ -1233,8 +1240,9 @@ cell_restore:
 	' L additionally pays fuel-bar-px x 10. #score is in units of 10 pts.
 take_flag:
 	fst(fi) = 1
-	nfl = nfl + 1
-	#val = nfl * 10
+	nfl = nfl + 1		' flags left to finish the round
+	vstep = vstep + 1	' value progression -- resets on death
+	#val = vstep * 10
 	IF #val > 100 THEN #val = 100
 	' Base points before any doubling (score is kept in units of 10), and
 	' whether the special is already doubling THIS flag -- sgot is updated

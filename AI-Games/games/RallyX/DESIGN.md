@@ -286,9 +286,17 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   dry leaves you crawling until something catches you.
 - Values: 1st flag 100, then 200, 300 … (per pickup order, capped 1000). After collecting **S**,
   every later flag's value is **doubled**. **L** additionally pays `remaining fuel bar px × 10`.
-- Collecting all 10 ends the round: short jingle, round card, next round (no fuel bonus beyond L).
-- **Dying does NOT clear the S multiplier.** Collected flags stay collected across a life, so
-  the doubling they earned stays with them; `sgot` is reset only by `round_init`.
+- Collecting all 10 ends the round: short jingle, round card, next round. **Not yet implemented:**
+  the arcade also pays a fuel bonus for finishing a round, scaled by what is left in the tank.
+- **A new car starts the stage fresh** — the arcade rule, verified against the Rally-X
+  references. Losing a life **resets the fuel gauge to full**, sends **the next flag back to
+  100**, and **cancels the special's doubling**. Collected flags stay collected: it is the
+  SCORING that resets, which is why `vstep` (value progression, per life) is separate from
+  `nfl` (flags collected, per round). All three live in `restart`, and `round_init` falls
+  through to it, so one copy covers both a new round and a new car.
+  (An earlier version kept all three across a death on the reasoning that it should not
+  retroactively punish banked flags. The arcade does exactly the opposite, and the reset is
+  also what stops a deliberate crash being a cheap refuel.)
 - **Dying DOES cancel owed smoke.** A press queues `SMKPUFF` puffs that are laid one per cell as
   the car drives on; `restart` clears `smkq` (and sets `btnp`) so a respawned car never trails
   smoke the player did not ask for, and a fire button still held from the crash does not fire.
@@ -358,7 +366,8 @@ pays two compares, not a sound write per frame.
   every sprite is parked, **BANG** is stamped on the wreck (one char row up, so the blast does not
   sit across the letters), two explosions flash out — one at each car — the border strobes for
   ~0.2 s, and the boom is on the noise channel. Lose a life, enemies rehome to spawns, player
-  restarts at the start cell (flags/fuel keep their state). 3 lives; game over card → title.
+  restarts at the start cell — flags stay collected, but fuel, flag value and the S multiplier all
+  reset (§7). 3 lives; game over card → title.
 - **The collision test runs inside both movement loops, after every chunk** — not once per pass.
   Detection needs `|dx| < 12` on both axes, a 24-px window, and the pair closes up to 3 + 3.75 px
   per frame, so a single end-of-pass sample let a fast pair jump clean through each other. That
