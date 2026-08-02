@@ -38,27 +38,36 @@ IDX = {n: i + 1 for i, n in enumerate(NOTES)}
 IDX["-"] = 0
 
 # --- the song ---------------------------------------------------------------
-# Four 16-step phrases -- A, B, A', C -- so it runs about ten seconds before
-# it comes round again, rather than the four-second loop it replaces.
+# FOUR SECTIONS THAT ACTUALLY DIFFER. The first cut had all four phrases on
+# the same rhythm -- a note every other step -- so the "new" parts sounded
+# like the opening again. Each section now has its own rhythm and register:
+#
+#   A  the hook: held notes, note-rest-note-rest
+#   B  a running eighth line, notes on CONSECUTIVE steps, climbing
+#   C  a descending call-and-answer with gaps
+#   D  a low, sparse tag that leaves room before the loop comes round
 A = ["C5", "-", "E5", "-", "G5", "-", "E5", "-",
-     "F5", "-", "A5", "-", "G5", "-", "E5", "-"]
-B = ["D5", "-", "F5", "-", "A5", "-", "F5", "-",
-     "G5", "-", "B5", "-", "C6", "-", "B5", "-"]
-A2 = ["C5", "-", "E5", "-", "G5", "-", "C6", "-",
-      "B5", "-", "G5", "-", "E5", "-", "C5", "-"]
-C = ["A4", "-", "C5", "-", "E5", "-", "C5", "-",
-     "F5", "-", "E5", "-", "D5", "-", "G4", "-"]
-MELODY = A + B + A2 + C
+     "F5", "-", "A5", "-", "G5", "-", "-", "-"]
+B = ["G5", "A5", "B5", "C6", "B5", "A5", "G5", "F5",
+     "E5", "F5", "G5", "A5", "G5", "F5", "E5", "D5"]
+C = ["C6", "-", "-", "A5", "-", "-", "F5", "-",
+     "G5", "-", "-", "E5", "-", "-", "C5", "-"]
+D = ["A4", "-", "-", "-", "C5", "-", "E5", "-",
+     "D5", "-", "-", "-", "G4", "-", "-", "-"]
+MELODY = A + B + C + D
 
-# walking bass, one note per four steps
-def bass(seq):
+# Bass moves with each section: steady roots under A, walking under the
+# running line in B, half-time under C, and a low pedal under D.
+def hold(seq, per=4):
     out = []
     for n in seq:
-        out += [n, "-", "-", "-"]
+        out += [n] + ["-"] * (per - 1)
     return out
 
-BASS = (bass(["C3", "F3", "G3", "C3"]) + bass(["D3", "G3", "C4", "G3"]) +
-        bass(["C3", "E3", "G3", "C3"]) + bass(["F3", "C3", "G3", "G3"]))
+BASS = (hold(["C3", "F3", "G3", "C3"]) +
+        hold(["C3", "E3", "F3", "G3", "A3", "G3", "F3", "E3"], 2) +
+        hold(["F3", "D3", "G3", "C3"]) +
+        hold(["F3", "G3"], 8))
 
 assert len(MELODY) == len(BASS) == 64, (len(MELODY), len(BASS))
 

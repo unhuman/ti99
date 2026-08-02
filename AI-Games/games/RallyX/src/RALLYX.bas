@@ -302,6 +302,16 @@ round_init:
 	READ BYTE t
 	spc(i) = t
 	NEXT i
+	' WIPE THE RADAR before this round's flags are baked. The canvas was
+	' only zeroed once at boot, so every round inherited the previous
+	' round's flag dots -- and since each round is a DIFFERENT maze with
+	' different flag cells, those stale dots looked like flags you could
+	' collect but never needed. Done here while bank 5 is still selected,
+	' because the blank canvas and its colours live with the art.
+	DEFINE CHAR 144,112,radar_zero
+	WAIT
+	DEFINE COLOR 144,112,radar_base
+	WAIT
 	GOSUB sel_maze
 	nfl = 0
 	' Roll which flag is S and which is L. Positions are fixed (arcade
@@ -353,11 +363,9 @@ lroll:
 	fdt = 0
 	sfxt = 0
 	rdmover = 0
-	' clear any stale radar mover dots, then plot this round's flags
+	' mover dots went with the canvas wipe above; just forget where they were
 	FOR mi = 0 TO 4
-	IF mpv(mi) = 1 THEN GOSUB rd_erase
 	mpv(mi) = 0
-	WAIT
 	NEXT mi
 	GOSUB radar_flags
 	IF rc3 = 2 THEN PRINT AT 389,"CHALLENGING STAGE" : FOR i = 1 TO 90 : WAIT : NEXT i
@@ -686,6 +694,9 @@ game_over:
 	FOR i = 1 TO 120
 	WAIT
 	NEXT i
+	' 838 settings last for ONE game only -- back to 3 cars from round 1.
+	lives0 = 3
+	rnd0 = 1
 	' and wipe the maze, so the title is not printed over a stale playfield
 	GOSUB clear_view
 	GOTO title

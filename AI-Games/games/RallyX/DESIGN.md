@@ -38,6 +38,11 @@ red cars, upbeat music.
   3 px/frame car speed), never per frame. The flag/smoke overlay pokes follow it with **no**
   `WAIT` in between, so blit and overlay land in the same frame's buffered batch — the `WAIT`
   that used to sit there is exactly what made char flags strobe (§17b).
+- **The radar canvas is wiped at the start of every round** (re-`DEFINE`d from `radar_zero`/
+  `radar_base` while bank 5 is selected) before this round's flags are baked. It used to be
+  zeroed only once at boot, so each round inherited the previous round's flag dots — and since
+  every round is now a different maze with different flag cells, those stale dots read as flags
+  you could collect but never needed.
 - **Radar refresh at ~10 Hz** (every 6 frames): re-plot ≤5 mover dots as pattern-table `VPOKE`s
   (a handful of bytes each). Flag dots are baked once per round.
 - **Enemy AI: reactive, intersection-only.** Direction is chosen only when an enemy reaches a
@@ -408,6 +413,9 @@ Type **8, 3, 8** on the title screen to open a hidden setup with two questions:
 
 - **CARS 1-10, 0=10** — starting lives
 - **LEVEL 1-10, 0=10** — starting round
+
+The settings last for **one game only** — `game_over` puts them back to 3 cars from round 1, so a
+new game off the title is always the standard one.
 
 Answers are single digits read with `CONT1.KEY`, which returns 0-9 on **both** targets (the
 ColecoVision keypad and the TI keyboard) and 15 for nothing pressed, so the same code serves
