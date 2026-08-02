@@ -33,41 +33,46 @@ def freq(name):
 # every note the song uses, index 1..n (0 = rest)
 NOTES = ["C3", "D3", "E3", "F3", "G3", "A3", "B3",
          "C4", "D4", "E4", "F4", "G4", "A4", "B4",
-         "C5", "D5", "E5", "F5", "G5", "A5", "B5", "C6"]
+         "C5", "D5", "E5", "F5", "G5", "A5", "B5",
+         "C6", "D6"]
 IDX = {n: i + 1 for i, n in enumerate(NOTES)}
 IDX["-"] = 0
 
 # --- the song ---------------------------------------------------------------
-# FOUR SECTIONS THAT ACTUALLY DIFFER. The first cut had all four phrases on
-# the same rhythm -- a note every other step -- so the "new" parts sounded
-# like the opening again. Each section now has its own rhythm and register:
+# PHRASE A is the ORIGINAL tune, restored note for note: a C-F-G-C arpeggio
+# run, one note every two steps with the second step sustaining. An earlier
+# attempt threw this away for four contrasting sections and they were worse
+# -- this keeps the tune and ANSWERS it instead.
 #
-#   A  the hook: held notes, note-rest-note-rest
-#   B  a running eighth line, notes on CONSECUTIVE steps, climbing
-#   C  a descending call-and-answer with gaps
-#   D  a low, sparse tag that leaves room before the loop comes round
-A = ["C5", "-", "E5", "-", "G5", "-", "E5", "-",
-     "F5", "-", "A5", "-", "G5", "-", "-", "-"]
-B = ["G5", "A5", "B5", "C6", "B5", "A5", "G5", "F5",
-     "E5", "F5", "G5", "A5", "G5", "F5", "E5", "D5"]
-C = ["C6", "-", "-", "A5", "-", "-", "F5", "-",
-     "G5", "-", "-", "E5", "-", "-", "C5", "-"]
-D = ["A4", "-", "-", "-", "C5", "-", "E5", "-",
-     "D5", "-", "-", "-", "G4", "-", "-", "-"]
-MELODY = A + B + C + D
+# PHRASE B is a new continuation in the SAME arpeggio style, dropping to the
+# relative minor and climbing back to resolve on C. Same rhythm, same shape,
+# so it reads as more of the tune rather than a different one.
+#
+# The bass plays at the written pitch, NOT two octaves down as the original
+# asked: the SN76489 bottoms out around 110 Hz, so those notes were silent
+# and the tune was effectively melody-only.
+A_MEL = ["C5", "E5", "G5", "E5", "F5", "A5", "C6", "A5",
+         "G5", "B5", "D6", "B5", "C6", "G5", "E5", "C5"]
+A_BASS = ["C4", "-", "G4", "-", "F4", "-", "C5", "-",
+          "G4", "-", "D5", "-", "C5", "G4", "E4", "C4"]
 
-# Bass moves with each section: steady roots under A, walking under the
-# running line in B, half-time under C, and a low pedal under D.
-def hold(seq, per=4):
+B_MEL = ["A4", "C5", "E5", "C5", "D5", "F5", "A5", "F5",
+         "G4", "B4", "D5", "B4", "C5", "E5", "G5", "C6"]
+B_BASS = ["A3", "-", "E4", "-", "D4", "-", "A4", "-",
+          "G3", "-", "D4", "-", "C4", "E4", "G4", "C5"]
+
+
+def spread(seq):
+    """one note every two steps; the second step sustains (a rest writes
+    nothing, so the note simply keeps ringing)."""
     out = []
     for n in seq:
-        out += [n] + ["-"] * (per - 1)
+        out += [n, "-"]
     return out
 
-BASS = (hold(["C3", "F3", "G3", "C3"]) +
-        hold(["C3", "E3", "F3", "G3", "A3", "G3", "F3", "E3"], 2) +
-        hold(["F3", "D3", "G3", "C3"]) +
-        hold(["F3", "G3"], 8))
+
+MELODY = spread(A_MEL) + spread(B_MEL)
+BASS = spread(A_BASS) + spread(B_BASS)
 
 assert len(MELODY) == len(BASS) == 64, (len(MELODY), len(BASS))
 

@@ -371,8 +371,13 @@ depends on this split:
 **We drive the music ourselves** (`mus_tick`). CVBasic's PSG `PLAY` writes the volume registers
 from envelope tables baked into the shared prologue, so a game cannot turn it down — and this tune
 has to sit UNDER the engine and the effects. Ours sets volume explicitly: melody `MUSVOL` 6, bass
-`MUSBAS` 5, against an engine at 11. The song is 64 steps at `MUSTICK` 9 frames — about ten
-seconds before it repeats, against roughly four for the `PLAY` version it replaced. Data is
+`MUSBAS` 5, against an engine at 11. The song is the **original tune restored note for note** (a C-F-G-C arpeggio run) plus an
+answering phrase in the same style that drops to the relative minor and climbs back to resolve —
+32 notes over 64 steps, twice the length at the same character. `MUSTICK` 7 with two steps per
+note reproduces the original's 0.24 s note. A previous attempt replaced the tune with four
+contrasting sections and was worse; extending it beat replacing it. The bass plays at the
+WRITTEN pitch, not the two-octaves-down the original asked for: the SN76489 bottoms out near
+110 Hz, so those notes were silent and the tune was effectively melody-only. Data is
 `assets/genmusic.py` → `src/music.bas`, note indices into a table of 16-bit SN76489 dividers, and
 it **must live in TI bank 0** because the player runs every frame while a maze bank is selected.
 

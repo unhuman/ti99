@@ -55,7 +55,7 @@
 	CONST SPINFR = 96	' frames an enemy spins after driving into smoke
 	CONST BUMPFR = 64	' shorter spin after bumping another car
 	CONST POPFR = 110	' frames the flag-value popup stays up (~2 s)
-	CONST MUSTICK = 9	' frames per music step (~6.7 steps/sec)
+	CONST MUSTICK = 7	' frames per step; 2 steps a note = the original tempo
 	CONST MUSVOL = 6	' melody volume -- low on purpose, the engine
 	CONST MUSBAS = 5	' and the effects have to cut through it
 
