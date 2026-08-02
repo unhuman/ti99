@@ -55,6 +55,9 @@
 	CONST SPINFR = 96	' frames an enemy spins after driving into smoke
 	CONST BUMPFR = 64	' shorter spin after bumping another car
 	CONST POPFR = 110	' frames the flag-value popup stays up (~2 s)
+	CONST MUSTICK = 9	' frames per music step (~6.7 steps/sec)
+	CONST MUSVOL = 6	' melody volume -- low on purpose, the engine
+	CONST MUSBAS = 5	' and the effects have to cut through it
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -104,13 +107,18 @@
 	SPRITE FLICKER OFF
 
 	' SOUND CHANNEL BUDGET -- everything here depends on this split:
-	'   0,1  background music (the CVBasic music player, SIMPLE mode)
+	'   0,1  background music (OUR player, see mus_tick)
 	'   2    flag blip, round jingle, game-over sting
 	'   3    engine buzz, and the crash boom that overrides it
-	' SIMPLE keeps the player off channel 2, NO DRUMS keeps it off channel 3
-	' (the noise channel) -- without NO DRUMS the drum track would fight the
-	' engine for the same register.
-	PLAY SIMPLE NO DRUMS
+	'
+	' We drive the music ourselves rather than using PLAY. CVBasic's PSG
+	' music player writes the volume registers FROM ITS OWN TABLES every
+	' vblank, so a game cannot turn it down -- and worse, while it is
+	' compiled in it keeps writing the channels and drowns anything the game
+	' puts there, which is exactly why the engine could not be heard.
+	' Removing every PLAY statement is what leaves CVBASIC_MUSIC_PLAYER at 0.
+	#musf = VARPTR mus_freq(0)
+	#muss = VARPTR mus_song(0)
 
 	BANK SELECT 5		' art / tiles / radar tables / item lists
 
@@ -181,7 +189,7 @@
 title:
 	' Title is silent -- music belongs to the round, not the attract screen.
 	GOSUB eng_off
-	PLAY OFF
+	GOSUB mus_off
 	SOUND 0,,0
 	SOUND 1,,0
 	GOSUB t_draw
@@ -369,7 +377,7 @@ lroll:
 	NEXT mi
 	GOSUB radar_flags
 	IF rc3 = 2 THEN PRINT AT 389,"CHALLENGING STAGE" : FOR i = 1 TO 90 : WAIT : NEXT i
-	PLAY music_bg		' music runs during the round only, not the title
+	GOSUB mus_start		' music runs during the round only, not the title
 
 	' Arcade start (see the reference shot): the player faces UP a clear
 	' corridor with the chasers lined up in a row BEHIND him. Player is
@@ -560,6 +568,9 @@ eskip:
 	' engine note follows the car's state
 	GOSUB eng_tick
 
+	' background music, one step every MUSTICK frames
+	GOSUB mus_tick
+
 	IF nfl >= 10 THEN GOTO round_done
 	GOTO game_loop
 
@@ -568,7 +579,7 @@ round_done:
 	' The round is over: stop the music and the engine so the bonus tally
 	' and the jingle have the sound chip to themselves. round_init starts
 	' the music again for the next round.
-	PLAY OFF
+	GOSUB mus_off
 	SOUND 0,,0
 	SOUND 1,,0
 	GOSUB eng_off
@@ -679,7 +690,7 @@ game_over:
 	GOSUB hide_spr
 	' engine and music both stop -- the sting should land in silence
 	GOSUB eng_off
-	PLAY OFF
+	GOSUB mus_off
 	SOUND 0,,0
 	SOUND 1,,0
 	PRINT AT 396,"GAME"
@@ -1754,6 +1765,53 @@ sfx_tick:
 	SOUND 2,#sf,12
 	RETURN
 
+	' --- music --------------------------------------------------------------
+	' Two voices on channels 0 and 1 at a FIXED, deliberately low volume so
+	' the engine and the effects stay on top. 64 steps at MUSTICK frames is
+	' about ten seconds before it comes round again.
+mus_start:
+	mup = 0
+	mut = 1
+	RETURN
+mus_off:
+	mut = 0
+	SOUND 0,,0
+	SOUND 1,,0
+	RETURN
+mus_tick:
+	IF mut = 0 THEN RETURN		' stopped
+	mut = mut - 1
+	IF mut > 0 THEN RETURN
+	mut = MUSTICK
+	#mua = #muss + mup + mup
+	mun = PEEK(#mua)
+	#mua = #mua + 1
+	mub = PEEK(#mua)
+	IF mun > 0 THEN musv = MUSVOL : GOSUB mus_mel
+	IF mub > 0 THEN musv = MUSBAS : GOSUB mus_bas
+	mup = mup + 1
+	IF mup >= 64 THEN mup = 0
+	RETURN
+	' note index -> 16-bit divider (stored hi,lo), then sound it
+mus_mel:
+	#mua = #musf + mun + mun
+	mhi = PEEK(#mua)
+	#mua = #mua + 1
+	mlo = PEEK(#mua)
+	#mf = mhi * 256.
+	#mf = #mf + mlo
+	SOUND 0,#mf,musv
+	RETURN
+mus_bas:
+	#mua = #musf + mub + mub
+	mhi = PEEK(#mua)
+	#mua = #mua + 1
+	mlo = PEEK(#mua)
+	#mf = mhi * 256.
+	#mf = #mf + mlo
+	SOUND 1,#mf,musv
+	RETURN
+
 	' --- engine ------------------------------------------------------------
 	' Channel 3 in PERIODIC mode (control 0-3) is a buzz rather than a hiss,
 	' which reads as an engine. Re-issued only when the state changes, so
@@ -1768,7 +1826,7 @@ eng_tick:
 	RETURN
 eng_set:
 	engp = engc
-	IF engc = 1 THEN SOUND 3,1,5 ELSE SOUND 3,2,3
+	IF engc = 1 THEN SOUND 3,1,11 ELSE SOUND 3,2,8
 	RETURN
 eng_off:
 	engp = 0
@@ -1779,49 +1837,7 @@ eng_off:
 	' TI bank 0: the logical map (gameplay PEEKs, always visible)
 	INCLUDE "minifont.bas"
 
-	' Background music -- MUST live in bank 0. The music player refills the
-	' sound registers from the vblank ISR, which can fire at any point,
-	' including while gameplay has bank 1 (map2) or bank 2 (art) selected;
-	' only bank 0 is mapped in the whole time.
-	' Two voices, because PLAY SIMPLE uses channels 0-1: a rolling melody
-	' over a walking bass. Bass notes are written an octave up with Z --
-	' that instrument transposes down two octaves, and anything below
-	' octave 4 goes silent on the SN76489.
-music_bg:
-	DATA BYTE 6		' ticks per note (50 ticks/sec)
-	MUSIC C5W,C4Z
-	MUSIC S,S
-	MUSIC E5,S
-	MUSIC S,S
-	MUSIC G5,G4Z
-	MUSIC S,S
-	MUSIC E5,S
-	MUSIC S,S
-	MUSIC F5,F4Z
-	MUSIC S,S
-	MUSIC A5,S
-	MUSIC S,S
-	MUSIC C6,C5Z
-	MUSIC S,S
-	MUSIC A5,S
-	MUSIC S,S
-	MUSIC G5,G4Z
-	MUSIC S,S
-	MUSIC B5,S
-	MUSIC S,S
-	MUSIC D6,D5Z
-	MUSIC S,S
-	MUSIC B5,S
-	MUSIC S,S
-	MUSIC C6,C5Z
-	MUSIC S,S
-	MUSIC G5,G4Z
-	MUSIC S,S
-	MUSIC E5,E4Z
-	MUSIC S,S
-	MUSIC C5,C4Z
-	MUSIC S,S
-	MUSIC REPEAT
+	INCLUDE "music.bas"
 
 	' TI bank 1: the doubled char map (SCREEN blits during gameplay)
 	BANK 1
