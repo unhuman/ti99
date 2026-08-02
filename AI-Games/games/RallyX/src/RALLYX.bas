@@ -250,12 +250,15 @@ lroll:
 	'   smarts eagg = chance in 8 that a car actually pursues on a given
 	'          decision; 3/8 at round 1 up to 8/8 (always) from round 6, so
 	'          early packs wander and give you room instead of converging.
-	' Every 3rd round (rc3 = 2) is a CHALLENGE stage: no enemies, all
-	' flags, completion bonus.
+	' Every 3rd round (rc3 = 2) is a CHALLENGING STAGE (see below).
 	nen = 2
 	IF rnd >= 3 THEN nen = 3
 	IF rnd >= 6 THEN nen = 4
-	IF rc3 = 2 THEN nen = 0
+	' CHALLENGING STAGE: the cars are still there -- they just do not move
+	' until the fuel runs out. chal gates both their movement and their
+	' collision, so a parked car is scenery you can drive straight past.
+	chal = 0
+	IF rc3 = 2 THEN chal = 1
 	espd = 12 + rnd * 2
 	IF espd > 30 THEN espd = 30
 	' eagg = chances in 8 that a car pursues on a given decision. The floor
@@ -412,6 +415,8 @@ game_loop:
 	esteps = #eacc / 8
 	#eacc = #eacc AND 7
 	IF esteps = 0 THEN GOTO eskip
+	' frozen for the whole challenging stage until the tank runs dry
+	IF chal = 1 THEN IF #fuel > 0 THEN GOTO eskip
 	FOR i = 0 TO 3
 	IF i < nen THEN GOSUB emove_n
 	NEXT i
@@ -1213,6 +1218,8 @@ ckhit_all:
 	' end-of-pass sample let them jump straight through each other whenever
 	' #fd spiked. That is the "player drove through an enemy" bug.
 ckhit:
+	' a parked challenge-stage car cannot hurt you
+	IF chal = 1 THEN IF #fuel > 0 THEN RETURN
 	#g = #px
 	#g = #g - #ex(i)
 	IF #g >= 32768 THEN #g = 0 - #g

@@ -400,6 +400,13 @@ pays two compares, not a sound write per frame.
 
 ## 10. Rounds & Challenge Stages
 
+**Challenging stage (every 3rd round) — verified against the arcade, not invented.** The red
+cars are **present but STILL**; they only start moving when the tank runs dry. A parked car is
+harmless scenery you can drive straight past — `chal` gates both `emove_n` and `ckhit` on
+`#fuel > 0`. Once the fuel is gone they move and become lethal as usual, so the stage is a race
+to clear the flags before the tank empties. An earlier version removed the cars entirely, which
+lost the whole point of the stage.
+
 Sequence: round 1, 2 → **challenge** → 3, 4 → challenge → … Regular rounds reuse the maps
 cyclically (map1 now; L2–L4 transcriptions in M4) with per-round flag/spawn/rock lists and
 rising speeds/enemy counts (round 1 = 3 chasers of the 4 spawns, later rounds 4 — difficulty
