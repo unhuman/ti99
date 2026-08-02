@@ -963,6 +963,16 @@ emn_stun:
 eai:
 	ecr = ecra(i)
 	ecc = ecca(i)
+	' probe/probe_free read the cell to test FROM out of cr/cc, so they must
+	' be this car's cell before ANY probe below runs. They used to be set
+	' further down, after the pursuit maths -- which left eai_commit probing
+	' from whatever cr/cc the last caller happened to leave behind, usually
+	' the PLAYER's cell via at_center. That validated an unrelated cell, so
+	' the commit almost always "succeeded": cars held a post-meeting heading
+	' instead of chasing, and the move they held was never really checked,
+	' which let two of them share a cell.
+	cr = ecr
+	cc = ecc
 	' smoke check -- skipped outright when no puff is live, which is the
 	' normal case (this ran six array reads on every AI decision)
 	IF nsmk > 0 THEN GOSUB eai_smoke
@@ -989,8 +999,6 @@ eai:
 	p2 = vd
 	IF #g2 > #g THEN p1 = vd : p2 = hd
 	rv = (edir(i) + 2) AND 3
-	cr = ecr
-	cc = ecc
 	' Every candidate must be open road AND not already claimed by another
 	' enemy (probe_free) -- two cars must never stack on one cell. The car
 	' that would have moved in is the one that turns away, because this
