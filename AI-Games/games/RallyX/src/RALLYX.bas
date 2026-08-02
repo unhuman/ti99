@@ -23,10 +23,9 @@
 	' bank 0 = code + logical map, bank 1 = map2 char map (selected during
 	' gameplay), bank 2 = art/tiles/radar tables/item lists (selected only
 	' during init and round setup). ColecoVision fits flat in 32K -- every
-	' BANK statement is inside #if TI994A (unhuman/CVBasic fork).
-#if TI994A
+	' Banking is used on BOTH targets: four maps do not fit in Coleco's
+	' 32 K flat ROM, and CVBasic supports Opcode's Megacart mapper there.
 	BANK ROM 128
-#endif
 
 	CONST MAPW = 34		' bordered logical map width (32 maze + tree ring)
 	CONST MAPH = 58		' bordered logical map height
@@ -81,6 +80,8 @@
 	DIM ecra(4)		' cell row  = #ey(i) / 16
 	DIM ecca(4)		' cell col  = #ex(i) / 16
 	DIM ecmt(4)		' cells left holding a heading after meeting a car
+	DIM spr(4)		' this maze's enemy spawn cells
+	DIM spc(4)
 
 	DIM pvbuf(4)		' popup digits, most significant first
 	DIM popbuf(32)		' the popup box's four characters, 8 rows each
@@ -111,9 +112,7 @@
 	' engine for the same register.
 	PLAY SIMPLE NO DRUMS
 
-#if TI994A
-	BANK SELECT 2		' art/tiles/radar tables live in bank 2
-#endif
+	BANK SELECT 5		' art / tiles / radar tables / item lists
 
 	DEFINE CHAR 0,16,ovlpat		' flags F/S/L + smoke, 2x2 quadrants
 	' Custom art MUST stay below char 32: 32 is SPACE, which CLS fills the
@@ -135,7 +134,6 @@
 	DEFINE SPRITE 0,8,car_bitmaps	' defs 0-7 = car headings N,NE,E,SE,
 					' S,SW,W,NW (enemies reuse them, red)
 
-	#mapbase = VARPTR map1(0)
 	msktab(0) = $C0
 	msktab(1) = $30
 	msktab(2) = $0C
@@ -207,11 +205,19 @@ game_init:
 
 	' --- round start ------------------------------------------------------
 round_init:
-	' item lists live in bank 2; gameplay needs bank 1 (map2 blits)
-#if TI994A
-	BANK SELECT 2
-#endif
-	RESTORE flag_data
+	' FOUR MAZES, cycling with the round. mz also selects the ROM bank the
+	' char map lives in (bank 1 + mz) and which map2_n the SCREEN blits and
+	' probe use.
+	mz = rnd - 1
+	mz = mz AND 3
+	' Item lists live in bank 5 with the art; gameplay needs the maze's own
+	' bank for the blits and for probe's PEEKs.
+	BANK SELECT 5
+	' items.bas holds the four mazes back to back, 30 bytes each (10 flag
+	' cells, the start, four spawns), so skipping mz blocks lands on ours.
+	' The skip is guarded: a computed FOR 1 TO 0 still runs its body once.
+	RESTORE flag_data_1
+	IF mz > 0 THEN GOSUB skip_items
 	FOR i = 0 TO 9
 	READ BYTE t
 	fr(i) = t
@@ -219,9 +225,15 @@ round_init:
 	fc(i) = t
 	fst(i) = 0
 	NEXT i
-#if TI994A
-	BANK SELECT 1
-#endif
+	READ BYTE sr0		' player start cell for this maze
+	READ BYTE sc0
+	FOR i = 0 TO 3		' and its four enemy spawns
+	READ BYTE t
+	spr(i) = t
+	READ BYTE t
+	spc(i) = t
+	NEXT i
+	GOSUB sel_maze
 	nfl = 0
 	' Roll which flag is S and which is L. Positions are fixed (arcade
 	' map); the ROLES move each round so the route is not memorised.
@@ -284,15 +296,16 @@ lroll:
 	' bordered cell (35,22); the enemies sit 3 rows south, spread across
 	' cols 19/22/25 (espawn_data), all able to drive north at him.
 restart:
-	#px = 352		' 22 * 16 (map-pixel, cell = 16 px)
-	#py = 560		' 35 * 16
+	' start cell for THIS maze (sr0,sc0), loaded in round_init
+	#px = sc0 * 16.
+	#py = sr0 * 16.
 	dir = 0
 	qdir = 0
 	ang = 0			' visual heading 0-7; 0 = North, matches dir = 0
 	turning = 0
 	blocked = 0
-	lcr = 35
-	lcc = 22
+	lcr = sr0
+	lcc = sc0
 	pqd = 255		' force the first at_center to probe
 	pdr = 255
 	' A NEW CAR STARTS THE STAGE FRESH -- arcade rule, verified against the
@@ -314,8 +327,14 @@ restart:
 	btnp = 1
 	#ucx = 65535		' impossible position: force the first camera update
 	#ucy = 65535
-	camc = 32		' camera in map2 CHAR units (car char - 12)
-	camr = 58
+	' camera in map2 CHAR units: centre the car (char = cell*2) in the
+	' 24-char window, then clamp to the map edges
+	camc = 0
+	IF sc0 > 6 THEN camc = sc0 + sc0 - 12
+	IF camc > CAMMAXC THEN camc = CAMMAXC
+	camr = 0
+	IF sr0 > 6 THEN camr = sr0 + sr0 - 12
+	IF camr > CAMMAXR THEN camr = CAMMAXR
 	#acc = 0
 	#eacc = 0
 	GOSUB draw_view
@@ -756,16 +775,14 @@ clear_view:
 
 	' reset enemies to their spawn cells, scattered (spawn list is in
 	' bank 2; gameplay runs with bank 1 selected)
+	' Spawns come from spr/spc, read once in round_init -- rehome is called
+	' again after every crash and no longer touches a bank to do it.
 rehome:
-#if TI994A
-	BANK SELECT 2
-#endif
-	RESTORE espawn_data
 	FOR i = 0 TO 3
-	READ BYTE t
+	t = spr(i)
 	#ey(i) = t * 16.
 	ecra(i) = t
-	READ BYTE t
+	t = spc(i)
 	#ex(i) = t * 16.
 	ecca(i) = t
 	edir(i) = 2
@@ -773,10 +790,24 @@ rehome:
 	estn(i) = 0
 	ecmt(i) = 0
 	NEXT i
-#if TI994A
-	BANK SELECT 1
-#endif
 	sct = scti
+	RETURN
+
+	' skip mz whole item blocks (30 bytes each) to reach this maze's
+skip_items:
+	FOR i = 1 TO mz
+	FOR j = 1 TO 30
+	READ BYTE t
+	NEXT j
+	NEXT i
+	RETURN
+
+	' select the maze's ROM bank and point probe at its char map
+sel_maze:
+	IF mz = 0 THEN BANK SELECT 1 : #mapbase = VARPTR map2_1(0)
+	IF mz = 1 THEN BANK SELECT 2 : #mapbase = VARPTR map2_2(0)
+	IF mz = 2 THEN BANK SELECT 3 : #mapbase = VARPTR map2_3(0)
+	IF mz = 3 THEN BANK SELECT 4 : #mapbase = VARPTR map2_4(0)
 	RETURN
 
 sct_tick:
@@ -905,7 +936,12 @@ probe:
 	IF d = 1 THEN tc = cc + 1
 	IF d = 2 THEN tr = cr + 1
 	IF d = 3 THEN tc = cc - 1
-	#t = #mapbase + tr * 34.
+	' Cell type comes from map2's TOP-LEFT quadrant: road cells are plain
+	' ROAD in all four, trees TREE, walls the edged 96..111 -- so the same
+	' ">= ROADCH" test works and no separate logical map is needed. Stride
+	' is 68 chars and each cell is 2x2, hence row*136 + col*2.
+	#t = #mapbase + tr * 136.
+	#t = #t + tc
 	#t = #t + tc
 	t = PEEK(#t)
 	RETURN
@@ -1278,7 +1314,10 @@ cell_restore:
 	#crs = #crs + crc
 	#crd = crsr * 32.
 	#crd = #crd + crsc
-	SCREEN map2, #crs, #crd, 2, 2, 68
+	IF mz = 0 THEN SCREEN map2_1, #crs, #crd, 2, 2, 68
+	IF mz = 1 THEN SCREEN map2_2, #crs, #crd, 2, 2, 68
+	IF mz = 2 THEN SCREEN map2_3, #crs, #crd, 2, 2, 68
+	IF mz = 3 THEN SCREEN map2_4, #crs, #crd, 2, 2, 68
 	RETURN
 
 	' --- flag pickup (fi = slot, car at its cell) -------------------------
@@ -1440,7 +1479,10 @@ update_cam:
 draw_view:
 	#voff = camr * 68.
 	#voff = #voff + camc
-	SCREEN map2, #voff, 0, 24, 24, 68
+	IF mz = 0 THEN SCREEN map2_1, #voff, 0, 24, 24, 68
+	IF mz = 1 THEN SCREEN map2_2, #voff, 0, 24, 24, 68
+	IF mz = 2 THEN SCREEN map2_3, #voff, 0, 24, 24, 68
+	IF mz = 3 THEN SCREEN map2_4, #voff, 0, 24, 24, 68
 	FOR oi = 0 TO 9
 	IF fst(oi) = 0 THEN GOSUB ov_flag
 	NEXT oi
@@ -1648,7 +1690,6 @@ eng_off:
 
 	' --- data -------------------------------------------------------------
 	' TI bank 0: the logical map (gameplay PEEKs, always visible)
-	INCLUDE "map0.bas"
 	INCLUDE "minifont.bas"
 
 	' Background music -- MUST live in bank 0. The music player refills the
@@ -1696,15 +1737,17 @@ music_bg:
 	MUSIC REPEAT
 
 	' TI bank 1: the doubled char map (SCREEN blits during gameplay)
-#if TI994A
 	BANK 1
-#endif
-	INCLUDE "map2.bas"
+	INCLUDE "map2_1.bas"
+	BANK 2
+	INCLUDE "map2_2.bas"
+	BANK 3
+	INCLUDE "map2_3.bas"
+	BANK 4
+	INCLUDE "map2_4.bas"
 
 	' TI bank 2: art, tiles, radar tables, item lists (init / round setup)
-#if TI994A
-	BANK 2
-#endif
+	BANK 5
 	' 16x16 top-down F1 car, 4 rotations (assets/gencar.py; sprite order =
 	' left half rows 0-15, then right half rows 0-15): narrow nose, four
 	' protruding wheels, wide midsection, rear wing -- 16 px wheel-to-wheel,
@@ -1782,30 +1825,8 @@ fuel_colors:
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
 
-	' round 1 flag cells (bordered coords, from the transcription):
-	' 8 regular, then S, then L (DESIGN.md 3)
-flag_data:
-	DATA BYTE 13,13
-	DATA BYTE 18,23
-	DATA BYTE 23,18
-	DATA BYTE 28,8
-	DATA BYTE 36,14
-	DATA BYTE 39,7
-	DATA BYTE 39,29
-	DATA BYTE 46,4
-	DATA BYTE 8,28
-	DATA BYTE 54,22
-
-	' Enemy spawns (bordered row,col): a ROW BEHIND the player, matching the
-	' arcade start -- three chasers spread across the corridor 3 rows south
-	' of the player's cell (35,22), each on road with road to the north so
-	' they immediately come at him. The 4th (rounds >= 4) fills the gap.
-espawn_data:
-	DATA BYTE 38,19
-	DATA BYTE 38,22
-	DATA BYTE 38,25
-	DATA BYTE 38,23
-
 	INCLUDE "tiles.bas"
 	' crash starburst + score-popup glyphs (assets/genbang.py)
 	INCLUDE "bang.bas"
+	' per-maze flag cells / start / spawns (assets/genmaps4.py)
+	INCLUDE "items.bas"
