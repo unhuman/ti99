@@ -55,6 +55,7 @@
 	CONST SMKTTL = 150	' frames a puff lasts (2.5 s) before it clears
 	CONST SPINFR = 96	' frames an enemy spins after driving into smoke
 	CONST BUMPFR = 64	' shorter spin after bumping another car
+	CONST POPFR = 110	' frames the flag-value popup stays up (~2 s)
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -79,6 +80,10 @@
 	' deriving them there cost ~24 divisions per AI decision.
 	DIM ecra(4)		' cell row  = #ey(i) / 16
 	DIM ecca(4)		' cell col  = #ex(i) / 16
+	DIM ecmt(4)		' cells left holding a heading after meeting a car
+
+	DIM pvbuf(4)		' popup digits, most significant first
+	DIM popbuf(32)		' the popup box's four characters, 8 rows each
 
 	' smoke puffs (circular list, oldest reused)
 	DIM sr(6)
@@ -111,6 +116,13 @@
 #endif
 
 	DEFINE CHAR 0,16,ovlpat		' flags F/S/L + smoke, 2x2 quadrants
+	' Custom art MUST stay below char 32: 32 is SPACE, which CLS fills the
+	' screen with and every PRINT pads with. Defining over it turned every
+	' blank cell in the panel into rubble.
+	DEFINE CHAR 16,12,bang_pat	' crash starburst, 4x3 chars
+	DEFINE COLOR 16,12,bang_col
+	DEFINE COLOR 140,4,pop_col	' popup box: white on black
+	#fontb = VARPTR mini_font(0)
 	DEFINE CHAR 96,16,wallpat	' wall quadrants, 4 per corner
 	DEFINE CHAR 112,2,misc_chars	' 112 tree, 113 road
 	DEFINE CHAR 120,9,fuel_chars	' fuel bar fill 0-8 px
@@ -230,7 +242,11 @@ round_init:
 	IF rc3 = 2 THEN nen = 0
 	espd = 12 + rnd * 2
 	IF espd > 30 THEN espd = 30
-	eagg = 2 + rnd
+	' eagg = chances in 8 that a car pursues on a given decision. The floor
+	' was 3/8, i.e. it deliberately headed AWAY five times in eight -- which
+	' does not read as "easier", it reads as the cars being broken. 5/8 at
+	' round 1 still gives you room while looking like a chase.
+	eagg = 4 + rnd
 	IF eagg > 8 THEN eagg = 8
 	' head start before they turn on you: 5 s at round 1 down to 2 s
 	scti = 300 - rnd * 30
@@ -241,6 +257,7 @@ round_init:
 	NEXT j
 	nsm = 0
 	nsmk = 0		' live puffs; 0 lets the main loop skip smoke ageing
+	pvt = 0			' no flag-value popup pending
 	smkq = 0
 	btnp = 1		' ignore a button still held from the title screen
 	#fuel = 768
@@ -414,6 +431,9 @@ eskip:
 	blt = blt + #fd
 	IF blt >= BLINKRT THEN blt = 0 : blink = 1 - blink
 
+	' flag-value popup: redrawn every frame so it rides the scrolling maze
+	IF pvt > 0 THEN GOSUB pop_tick
+
 	' flag-blip envelope
 	IF sfxt > 0 THEN GOSUB sfx_tick
 
@@ -467,17 +487,10 @@ crash:
 	bex = #ex(hitn) - #cx8
 	bey = #ey(hitn) - #cy8
 	GOSUB hide_spr
-	' BANG across the wreck, clamped so all four chars stay in the viewport
+	' the starburst, centred on the wreck
 	bgx = bpx / 8
-	IF bgx > 20 THEN bgx = 20
 	bgy = bpy / 8
-	IF bgy > 23 THEN bgy = 23
-	' one row up when there is room, so the blast sprite (centred on the
-	' wreck) does not sit across the letters
-	IF bgy > 0 THEN bgy = bgy - 1
-	#bva = bgy * 32.
-	#bva = #bva + bgx
-	PRINT AT #bva,"BANG"
+	GOSUB draw_bang
 	FOR j = 1 TO 44
 	WAIT
 	t = j AND 4
@@ -526,6 +539,141 @@ game_over:
 	GOSUB clear_view
 	GOTO title
 
+	' --- flag score popup -------------------------------------------------
+	' Builds the glyph run once at pickup: the value, then "x2" when the
+	' special is doubling it, e.g. 500 x2. Digits come out by repeated
+	' SUBTRACTION rather than division -- values are only ever 100..1000, so
+	' this is a handful of iterations and costs no divide.
+	' Glyph codes: 130 + digit, and 140 = 'x'. They sit ABOVE the font,
+	' in the gap between the lives icon (129) and the radar (144+):
+	' below 32 there is no longer room for these AND the burst.
+pop_build:
+	' Clear the four characters of the box (4 chars x 8 rows).
+	FOR pb = 0 TO 31
+	popbuf(pb) = 0
+	NEXT pb
+	' Digits of #pvv, most significant first. Repeated SUBTRACTION rather
+	' than division -- the value is only ever 100..1000.
+	pvn = 0
+	pvz = 0
+	#pw = #pvv
+	#pdv = 1000
+pop_loop:
+	pvd = 0
+pop_sub:
+	IF #pw >= #pdv THEN #pw = #pw - #pdv : pvd = pvd + 1 : GOTO pop_sub
+	IF pvd > 0 THEN pvz = 1
+	IF pvz = 1 THEN pvbuf(pvn) = pvd : pvn = pvn + 1
+	IF #pdv = 1 THEN GOTO pop_done
+	#pdv = #pdv / 10
+	GOTO pop_loop
+pop_done:
+	' value across the TOP half, one 3x5 glyph per 4-px slot
+	prow = 1
+	FOR pb = 0 TO pvn - 1
+	pgl = pvbuf(pb)
+	pdx = pb
+	GOSUB pop_glyph
+	NEXT pb
+	' "x2" across the BOTTOM half when the special is doubling this flag
+	IF pvm = 1 THEN GOSUB pop_mult
+	DEFINE CHAR 140,4,VARPTR popbuf(0)
+	RETURN
+
+pop_mult:
+	prow = 9
+	pgl = 10		' 'x'
+	pdx = 1
+	GOSUB pop_glyph
+	pgl = 2			' '2'
+	pdx = 2
+	GOSUB pop_glyph
+	RETURN
+
+	' Blit 3x5 glyph pgl into slot pdx (0-3, i.e. x = 0,4,8,12) at pixel row
+	' prow. Slots never straddle a character boundary, which is the whole
+	' reason for the 4-px pitch: even slots use the font byte as stored
+	' (pixels already in bits 7-5), odd slots just shift right by 4.
+	' Buffer layout is char-major: char = (row/8)*2 + half, 8 bytes each.
+pop_glyph:
+	FOR pgr = 0 TO 4
+	#pfa = #fontb + pgl * 5.
+	#pfa = #pfa + pgr
+	pgb = PEEK(#pfa)
+	IF pdx = 1 THEN pgb = pgb / 16
+	IF pdx = 3 THEN pgb = pgb / 16
+	pry = prow + pgr
+	pbi = pry AND 7
+	IF pry > 7 THEN pbi = pbi + 16
+	IF pdx > 1 THEN pbi = pbi + 8
+	popbuf(pbi) = popbuf(pbi) OR pgb
+	NEXT pgr
+	RETURN
+
+	' Redrawn every frame while it is up (the pan blit repaints over it), and
+	' anchored to the CAR, two rows above it.
+	'
+	' It used to be pinned to the flag's map cell, which is where the flag
+	' was -- but you are driving away from that cell at 3 px a frame, so it
+	' scrolled out of the window and vanished after about 0.4 s of its 2 s.
+	' Riding above the car keeps the whole value on screen for its full life.
+pop_draw:
+	bbx = x / 8
+	IF bbx > 22 THEN bbx = 22
+	bby = 0
+	bbt = y / 8
+	IF bbt > 2 THEN bby = bbt - 2
+	IF bby > 22 THEN bby = 22
+	bbn = 140
+	FOR bbr = 0 TO 1
+	bbt = bby + bbr
+	#bva = bbt * 32.
+	#bva = #bva + 6144
+	#bva = #bva + bbx
+	FOR bbc = 0 TO 1
+	#bvb = #bva + bbc
+	VPOKE #bvb,bbn
+	bbn = bbn + 1
+	NEXT bbc
+	NEXT bbr
+	RETURN
+
+	' age it; when it lapses the window is repainted to wipe the glyphs.
+	' draw_view (a full blit) rather than a targeted restore because the
+	' popup can straddle flags and smoke, which draw_view repaints too. It
+	' costs about one frame and happens at most ten times a round.
+pop_tick:
+	pvs = #fd
+	IF pvt > pvs THEN pvt = pvt - pvs : GOSUB pop_draw : RETURN
+	pvt = 0
+	GOSUB draw_view
+	RETURN
+
+	' --- crash starburst: chars 16-27, 4 wide x 3 tall -------------------
+	' Centred on the wreck. The subtractions are guarded rather than clamped
+	' afterwards: these are unsigned, so bgx - 2 at column 1 would wrap to
+	' ~65535 instead of going negative.
+draw_bang:
+	bbx = 0
+	IF bgx > 2 THEN bbx = bgx - 2
+	IF bbx > 20 THEN bbx = 20
+	bby = 0
+	IF bgy > 1 THEN bby = bgy - 1
+	IF bby > 21 THEN bby = 21
+	bbn = 16
+	FOR bbr = 0 TO 2
+	bbt = bby + bbr
+	#bva = bbt * 32.
+	#bva = #bva + 6144		' $1800 name table; folded consts truncate
+	#bva = #bva + bbx
+	FOR bbc = 0 TO 3
+	#bvb = #bva + bbc
+	VPOKE #bvb,bbn
+	bbn = bbn + 1
+	NEXT bbc
+	NEXT bbr
+	RETURN
+
 	' park all five car sprites off screen. y = 209, NEVER 208: 208 is the
 	' sprite-list terminator and would blank every sprite after it too.
 hide_spr:
@@ -562,6 +710,7 @@ rehome:
 	edir(i) = 2
 	eang(i) = 4		' visual heading matches edir 2 (South)
 	estn(i) = 0
+	ecmt(i) = 0
 	NEXT i
 #if TI994A
 	BANK SELECT 1
@@ -757,6 +906,8 @@ eai:
 	' normal case (this ran six array reads on every AI decision)
 	IF nsmk > 0 THEN GOSUB eai_smoke
 	IF estn(i) > 0 THEN RETURN
+	' still driving off a meeting? hold the heading while it stays clear
+	IF ecmt(i) > 0 THEN GOSUB eai_commit : IF ecmf = 1 THEN RETURN
 	#g = pcc
 	#g = #g - ecc
 	hd = 1
@@ -827,13 +978,31 @@ eai:
 	estn(i) = BUMPFR
 	RETURN
 
-	' Turning back the way it came. If a CAR was what shut the forward
-	' routes down, that is a real head-on: spin briefly so the collision
-	' reads on screen. Only this car is stunned -- stunning the other one
-	' too is what welded pairs together.
+	' Turning back the way it came.
+	'
+	' NO SPIN. Spinning here looked dramatic in isolation but wrecked the
+	' chase: cars meet often, and every meeting parked one of them for 64
+	' steps, so the pack read as "going crazy and not chasing". A car that
+	' meets another now simply turns and keeps driving -- the only stuns
+	' left are smoke (intended) and being boxed in on all four sides (rare).
+	'
+	' Instead it COMMITS to the new heading for a few cells. Without that it
+	' re-aims at the player at the very next cell, walks straight back into
+	' the same car, and the two of them jitter on the spot.
 eai_back:
 	edir(i) = rv
-	IF ecb = 1 THEN estn(i) = BUMPFR
+	IF ecb = 1 THEN ecmt(i) = 3
+	RETURN
+
+	' Holding a post-meeting heading: keep going while the way is clear.
+	' Falls through to the normal chase logic the moment it is not.
+eai_commit:
+	ecmf = 0
+	ecmt(i) = ecmt(i) - 1
+	d = edir(i)
+	GOSUB probe_free
+	IF pfok = 1 THEN ecmf = 1 : RETURN
+	ecmt(i) = 0
 	RETURN
 
 	' is this cell smoked? (only reached while a puff is actually live)
@@ -1052,6 +1221,13 @@ take_flag:
 	nfl = nfl + 1
 	#val = nfl * 10
 	IF #val > 100 THEN #val = 100
+	' Popup: the BASE points (score is kept in units of 10, so x10 here) and
+	' whether the special is doubling them. Captured before the doubling so
+	' the graphic can read "500x2" rather than a bare 1000.
+	#pvv = #val * 10
+	pvm = sgot
+	pvt = POPFR
+	GOSUB pop_build
 	IF sgot = 1 THEN #val = #val * 2
 	IF fi = 8 THEN sgot = 1
 	IF fi = 9 THEN #val = #val + #fuel / 12
@@ -1393,6 +1569,7 @@ eng_off:
 	' --- data -------------------------------------------------------------
 	' TI bank 0: the logical map (gameplay PEEKs, always visible)
 	INCLUDE "map0.bas"
+	INCLUDE "minifont.bas"
 
 	' Background music -- MUST live in bank 0. The music player refills the
 	' sound registers from the vblank ISR, which can fire at any point,
@@ -1557,3 +1734,5 @@ espawn_data:
 	DATA BYTE 38,23
 
 	INCLUDE "tiles.bas"
+	' crash starburst + score-popup glyphs (assets/genbang.py)
+	INCLUDE "bang.bas"
