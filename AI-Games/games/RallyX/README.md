@@ -17,7 +17,9 @@ radar on the right, and don't run out of fuel.
   before the GAME OVER card and wipes the maze before the title returns.
   **Difficulty ramps** over rounds on four dials (car count, speed, how directly they come at
   you, and the head start you get) instead of opening at full tilt. Round 1 opens with the
-  arcade's **three** chasers; a fourth joins at round 5. Crashing destroys **both**
+  arcade's **three** chasers; a fourth joins at round 5. **Vehicle speeds are half** what they
+  were — the game was outrunning the arcade; the halving is done at the fixed-point scale so the
+  per-round ramp is unchanged, just at half scale. Crashing destroys **both**
   cars with a BANG, twin blasts and a border strobe; enemies that meet each other bump, spin and
   leave in different directions, and can never share a cell — nor **overlap in pixels**, which is
   a stricter thing and was the bug the old cell-based check kept missing. Below full aggression a

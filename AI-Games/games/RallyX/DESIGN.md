@@ -34,8 +34,8 @@ red cars, upbeat music.
   from the **ROM map + small RAM lists**, never `VPEEK` of the playfield. Writes per frame:
   5 sprite attribute updates + (on camera-step frames only) one `SCREEN` blit of the 24×24
   viewport + ≤10 overlay `VPOKE`s.
-- **Camera `SCREEN` blit** (576 B) happens at most once per ~3 frames (8-px char pan at
-  3 px/frame car speed), never per frame. The flag/smoke overlay pokes follow it with **no**
+- **Camera `SCREEN` blit** (576 B) happens at most once per ~5 frames (8-px char pan at
+  1.5 px/frame car speed), never per frame. The flag/smoke overlay pokes follow it with **no**
   `WAIT` in between, so blit and overlay land in the same frame's buffered batch — the `WAIT`
   that used to sit there is exactly what made char flags strobe (§17b).
 - **The radar canvas is wiped at the start of every round** (re-`DEFINE`d from `radar_zero`/
@@ -209,7 +209,26 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   1/8-px-per-frame fixed point: an accumulator adds `speed` each frame, the car moves whole
   pixels when it overflows (FRAME-delta scaled).
 - **Player:** always moves in its heading; the stick sets a **queued direction**. Base speed
-  3 px/frame; low fuel (<25%) drops to 2.25, empty fuel crawls at 1.5.
+  **1.5 px/frame**; low fuel (<25%) drops to 1.125, empty fuel crawls at 0.75.
+
+  **All vehicle speeds were halved** against the arcade, which the game was outrunning badly.
+  It was done at the FIXED-POINT SCALE, not by retuning constants: both movement routines
+  accumulate sub-pixel units and cash them in for whole pixels, so redefining a unit from
+  ⅛ px to ₁₁₆ px (`/8` → `/16`, `AND 7` → `AND 15`) halves every vehicle at once, exactly,
+  and carries the entire per-round ramp and the player:enemy ratio with it untouched.
+  Three things ride along and had to move with it:
+  - **`TURNRT` 3 → 6.** Rotation is vehicle speed too; leaving it would have made turns twice
+    as cheap relative to driving, i.e. changed the handling rather than the pace.
+  - **Fuel drain 1 unit per 4 frames → per 8.** Fuel is a RANGE, not a clock — it has to last
+    ten flags. Halving speed without this leaves every tank covering half the ground and makes
+    rounds unfinishable.
+  - **`SPINFR` 96 → 48, `BUMPFR` 64 → 32.** These count PIXEL STEPS, not frames, so they are
+    consumed at the car's speed; unhalved, a smoke stun would have lasted twice as long.
+
+  Measured, not assumed: enemy speed **1.729 → 0.873 px/frame** on a fixed route (ratio 0.505),
+  and the player lands at **1.453** against a theoretical 1.50 — the 3% is frames that end
+  part-way into a wall. The player's raw distance/time is NOT a speed measure: a blind test route
+  spends a wildly variable share of its time parked against walls.
 - **Turning is a rotation, never a flip** (the Rally-X handling model, and the reason for the
   eight heading frames). The car has a logical `dir` (0–3) and a visual `ang` (0–7, 45° steps).
   Requesting a new direction starts a turn: `ang` steps one notch every `TURNRT` (3) frames
@@ -240,7 +259,7 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   | dial | round 1 | ramp |
   |---|---|---|
   | car count (`nen`) | **3** (the arcade count) | 4 from round 5 |
-  | speed (`espd`) | 1.75 px/f | +0.25 a round, capped at 3.75 |
+  | speed (`espd`) | 0.875 px/f | +0.125 a round, capped at 1.875 |
   | smarts (`eagg`) | 3 decisions in 8 taken direct | +1 a round, always from round 6 |
   | head start (`scti`) | 5 s of scatter | −0.5 s a round, floor 2 s |
 
@@ -313,7 +332,7 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   round cannot be memorised as "the double is always in the top right".
 - **S doubles what comes AFTER it, not itself.** `#val` is doubled before `sgot` is set, which is
   the arcade rule.
-- **Out of fuel is not fatal**: speed halves to 1.5 px/f, smoke is refused (it costs 96 fuel),
+- **Out of fuel is not fatal**: speed halves to 0.75 px/f, smoke is refused (it costs 96 fuel),
   the engine drops to its idle note, and the round continues — as in the arcade, where running
   dry leaves you crawling until something catches you.
 - Values: 1st flag 100, then 200, 300 … (per pickup order, capped 1000). After collecting **S**,
@@ -448,8 +467,8 @@ pays two compares, not a sound write per frame.
   restarts at the start cell — flags stay collected, but fuel, flag value and the S multiplier all
   reset (§7). 3 lives; game over card → title.
 - **The collision test runs inside both movement loops, after every chunk** — not once per pass.
-  Detection needs `|dx| < 12` on both axes, a 24-px window, and the pair closes up to 3 + 3.75 px
-  per frame, so a single end-of-pass sample let a fast pair jump clean through each other. That
+  Detection needs `|dx| < 12` on both axes, a 24-px window, and the pair closes up to
+  1.5 + 1.875 px per frame, so a single end-of-pass sample let a fast pair jump clean through each other. That
   was the "player drove through an enemy car" bug. `hitf` is cleared before anything moves and
   acted on once at the end of the pass, so a hit found mid-movement still unwinds cleanly.
 - **Game over tears the playfield down in two stages**, so neither screen is drawn over
@@ -634,6 +653,10 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
   not a motor. Now rate 2 (~116 Hz), the lowest periodic pitch available without borrowing the
   SFX channel; the stalled variant moved to white noise at the same rate (§8a). Verified in the
   generated `.a99` that both branches emit the intended control bytes (2 and 6).
+- **All vehicle speeds halved.** The game was outrunning the arcade badly. Done at the
+  fixed-point scale (⅛ px per unit → ₁₁₆), so every vehicle halves at once and the whole
+  level-to-level ramp survives untouched — no speed constant was retuned. Turn rate, fuel drain
+  and the pixel-step stun counters move with it (§6). Measured: enemy 1.729 → 0.873 px/frame.
 - **Challenging stage corrected to the arcade schedule and rules.** It fired every *third* round;
   the arcade is *"the third level and every fourth thereafter"* — 3, 7, 11, 15. And `chal` gated
   the enemy **hitbox** as well as their movement, so a parked red car was scenery you could drive

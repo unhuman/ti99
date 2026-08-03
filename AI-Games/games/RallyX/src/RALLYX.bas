@@ -38,10 +38,19 @@
 	' at the init site because "CONST FUELMAX = 768" assigned to a 16-bit
 	' var compiles to CLR (a CONST > 255 truncates to 8 bits -- same
 	' family as the dotted-constant folding bug, verified in RALLYX.a99)
-	CONST PSPD = 24		' player speed, 1/8 px per frame (24 = 3 px/f
-				' = same cells/second as before the 2x scale)
-	CONST TURNRT = 3	' frames per 45-degree step while turning: a
-				' 90-degree turn takes 6 frames, a 180 takes 12
+	' SPEEDS ARE IN 1/16 px PER FRAME. They were 1/8 and everything ran at
+	' twice this; against the arcade the game simply played too fast, so the
+	' whole fixed-point scale was halved rather than every constant retuned.
+	' Doing it at the scale keeps the level-to-level ramp and the
+	' player:enemy ratio exactly as they were.
+	CONST PSPD = 24		' player speed, 1/16 px per frame (= 1.5 px/f)
+	CONST TURNRT = 6	' frames per 45-degree step while turning: a
+				' 90-degree turn takes 12 frames, a 180 takes 24.
+				' Doubled with the speed halving -- rotation is
+				' vehicle speed too, and leaving it at 3 would
+				' have made turns twice as cheap relative to
+				' driving, i.e. changed the handling rather than
+				' just the pace.
 	CONST BLINKRT = 30	' frames between radar player-dot colour flips
 	' SMOKE, per the arcade rules: ONE button press releases exactly THREE
 	' puffs behind the car (it is not a stream you hold down), and each use
@@ -52,8 +61,11 @@
 	CONST SMKCOST = 96	' fuel per press (1/8 tank)
 	CONST MAXSMK = 6	' puff slots = two deployments in flight
 	CONST SMKTTL = 150	' frames a puff lasts (2.5 s) before it clears
-	CONST SPINFR = 96	' frames an enemy spins after driving into smoke
-	CONST BUMPFR = 64	' shorter spin after bumping another car
+	' These two count PIXEL STEPS, not frames, so they are consumed at the
+	' car's speed -- halving the speed would have doubled their wall-clock
+	' duration. Halved to hold the smoke stun at the same real duration.
+	CONST SPINFR = 48	' pixel steps an enemy spins after hitting smoke
+	CONST BUMPFR = 32	' shorter spin after bumping another car
 	CONST POPFR = 110	' frames the flag-value popup stays up (~2 s)
 	CONST ENGCHG = 6	' frames per idle chug (~10 Hz, a lumpy tickover)
 	CONST MUSTICK = 7	' frames per step; 2 steps a note = the original tempo
@@ -355,8 +367,8 @@ round_init:
 lroll:
 	lidx = RANDOM(10)
 	IF lidx = sidx THEN GOTO lroll
-	' DIFFICULTY RAMP. Round 1 used to open with three chasers at 2.5 px/f
-	' (83% of the player's 3 px/f) all beelining from a 3-second head start,
+	' DIFFICULTY RAMP. Round 1 used to open with three chasers at 83% of the
+	' player's speed all beelining from a 3-second head start,
 	' which is brutal before you know the maze. Three dials now ramp
 	' together instead:
 	'   count  3 cars (the ARCADE count -- both Rally-X and New Rally-X run
@@ -364,7 +376,9 @@ lroll:
 	'          with 2 made round 1 read as under-populated rather than easy;
 	'          the mercy in round 1 comes from the speed dial, not from
 	'          leaving a car out.
-	'   speed  1.75 px/f at round 1, +0.25 a round, capping at 3.75
+	'   speed  0.875 px/f at round 1, +0.125 a round, capping at 1.875
+	'          (these are 1/16-px units: espd 14 -> 30. Halved with
+	'          everything else; the RAMP is unchanged, just at half scale)
 	'   smarts eagg = chance in 8 that a car actually pursues on a given
 	'          decision; 3/8 at round 1 up to 8/8 (always) from round 6, so
 	'          early packs wander and give you room instead of converging.
@@ -534,8 +548,8 @@ game_loop:
 	pcr = #py / 16
 	pcc = #px / 16
 	#eacc = #eacc + espd * #fd
-	esteps = #eacc / 8
-	#eacc = #eacc AND 7
+	esteps = #eacc / 16
+	#eacc = #eacc AND 15
 	IF esteps = 0 THEN GOTO eskip
 	' frozen for the whole challenging stage until the tank runs dry
 	IF chal = 1 THEN IF #fuel > 0 THEN GOTO eskip
@@ -583,9 +597,13 @@ eskip:
 	' #fd is already clamped by the pacing code above.
 	IF nsmk > 0 THEN GOSUB smk_tick
 
-	' fuel drain: 1 unit per 4 frames (frame-delta safe: drain on ticks)
+	' Fuel drain: 1 unit per 8 frames (frame-delta safe: drain on ticks).
+	' Was 1 per 4. Fuel is really a RANGE, not a clock -- it has to last ten
+	' flags -- so halving the car's speed without halving the drain would
+	' have left every tank covering half the ground and made rounds
+	' unfinishable. Same distance per tank as before, just taken slower.
 	fdt = fdt + #fd
-	IF fdt >= 4 THEN fdt = fdt - 4 : IF #fuel > 0 THEN #fuel = #fuel - 1
+	IF fdt >= 8 THEN fdt = fdt - 8 : IF #fuel > 0 THEN #fuel = #fuel - 1
 	GOSUB fuel_bar
 
 	' radar movers refresh: one of the 5 dots per tick (~10 Hz ticks)
@@ -949,20 +967,20 @@ sct_tick:
 	RETURN
 
 	' --- player driving / turning -----------------------------------------
-	' speed: 3 px/f, 2.25 under 25% fuel, 1.5 when empty
+	' speed: 1.5 px/f, 1.125 under 25% fuel, 0.75 when empty
 drive_step:
 	spd = PSPD
 	IF #fuel < 192 THEN spd = 18
 	IF #fuel = 0 THEN spd = 12
-	' Accumulate 1/8-px units, then walk to the next CELL BOUNDARY in one
+	' Accumulate 1/16-px units, then walk to the next CELL BOUNDARY in one
 	' step rather than a subroutine call per pixel (same change as the
 	' enemies' emove_n, and for the same reason: per-pixel work is O(#fd),
 	' which is the shape that feeds the pacing runaway -- see DESIGN.md §1a).
 	' Every decision the car makes -- turns, walls, flags, laying a puff --
 	' happens on a cell centre, so nothing is lost by jumping the gaps.
 	#acc = #acc + spd * #fd
-	steps = #acc / 8
-	#acc = #acc AND 7
+	steps = #acc / 16
+	#acc = #acc AND 15
 pm_top:
 	IF steps = 0 THEN RETURN
 	IF (#px AND 15) = 0 THEN IF (#py AND 15) = 0 THEN GOSUB at_center
@@ -1187,7 +1205,7 @@ eai:
 	' one. The car still comes at you every single time; it just takes the
 	' less direct line, which loses ground in the open and is much easier to
 	' shake around a corner. The real early-round mercy is the speed ramp
-	' (espd: 1.75 px/f at round 1 against the player's 3), not fleeing.
+	' (espd: 0.875 px/f at round 1 against the player's 1.5), not fleeing.
 	IF eagg < 8 THEN IF RANDOM(8) >= eagg THEN eswp = p1 : p1 = p2 : p2 = eswp
 	rv = (edir(i) + 2) AND 3
 	' Every candidate must be open road AND not already claimed by another
@@ -1364,7 +1382,7 @@ ckhit_all:
 	' player-enemy overlap test for enemy i -> hitf
 	' Called from INSIDE both movement loops, after every chunk, not once
 	' per pass at the end. Detection needs |dx| < 12 on both axes -- a 24-px
-	' window -- and the pair can close 3 + 3.75 px per frame, so a single
+	' window -- and the pair can close 1.5 + 1.875 px per frame, so a single
 	' end-of-pass sample let them jump straight through each other whenever
 	' #fd spiked. That is the "player drove through an enemy" bug.
 ckhit:
