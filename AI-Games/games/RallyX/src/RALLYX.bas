@@ -1883,9 +1883,26 @@ eng_tick:
 	IF #fuel = 0 THEN engc = 2
 	IF engc <> engp THEN GOSUB eng_set
 	RETURN
+	' Channel 3 control: bit 2 picks the source (0-3 PERIODIC, 4-7 white
+	' noise) and the low 2 bits pick the shift rate (0 = clk/512, 1 =
+	' clk/1024, 2 = clk/2048; 3 follows channel 2, which is the SFX channel,
+	' so it is unusable here -- the engine would change pitch under every
+	' flag blip).
+	'
+	' Periodic noise repeats every 15 shifts, so the audible pitch is
+	' clk/(rate x 15): rate 1 is ~233 Hz and rate 2 is ~116 Hz. Driving used
+	' rate 1, and 233 Hz of constant buzz is a whine, not a motor. Rate 2 --
+	' the lowest periodic pitch the chip offers without borrowing channel 2 --
+	' is an octave down and reads as an engine.
+	'
+	' The stalled/turning variant then cannot also be periodic rate 2 (it
+	' would be the same note), so it moves to WHITE noise at the same lowest
+	' rate: control 6. That is a low scrubbing rumble rather than a pitch,
+	' which is what pushing against a wall should sound like anyway, and it
+	' stays clear of the driving note instead of being a quieter copy of it.
 eng_set:
 	engp = engc
-	IF engc = 1 THEN SOUND 3,1,11 ELSE SOUND 3,2,8
+	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,6,7
 	RETURN
 eng_off:
 	engp = 0

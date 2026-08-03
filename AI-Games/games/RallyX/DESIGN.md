@@ -387,6 +387,16 @@ depends on this split:
 | 2 | flag blip, round-clear jingle, game-over sting |
 | 3 | engine buzz, and the crash boom that overrides it |
 
+**The engine note is periodic noise at the LOWEST rate (control 2, ~116 Hz).** Channel 3's control
+byte picks the source in bit 2 (0–3 periodic, 4–7 white) and the shift rate in the low two bits
+(0 = clk/512, 1 = clk/1024, 2 = clk/2048; **3 is unusable here** — it follows channel 2, the SFX
+channel, so the engine would change pitch under every flag blip). Periodic noise repeats every 15
+shifts, so the audible pitch is clk/(rate × 15): rate 1 is ~233 Hz, rate 2 ~116 Hz. It ran at
+rate 1, and 233 Hz of constant buzz is a whine rather than a motor. The stalled/turning variant
+therefore cannot also be periodic rate 2 (same note), so it uses **white** noise at the same
+lowest rate — control 6, a low scrubbing rumble, which is what pushing against a wall should
+sound like anyway.
+
 **Music is OFF by default, toggled with `1` on the title screen** (`musen`, shown as
 `1 MUSIC ON/OFF` under PRESS FIRE). Nothing is competing for a channel — music is on 0/1 and the
 engine is noise on 3 — but the two still fight for the ear, and the busy mix is why the engine
@@ -600,6 +610,10 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
   just less directly (§6). Mean chase distance at round 1: **10 → 6 cells**, on the same route
   with the same pass count. The floor was widened `4 + rnd` → `2 + rnd` to keep a real ramp now
   that a slack decision still pursues.
+- **Engine pitch dropped an octave.** It was periodic noise at shift rate 1 (~233 Hz) — a whine,
+  not a motor. Now rate 2 (~116 Hz), the lowest periodic pitch available without borrowing the
+  SFX channel; the stalled variant moved to white noise at the same rate (§8a). Verified in the
+  generated `.a99` that both branches emit the intended control bytes (2 and 6).
 - **Music is off by default**, toggled with `1` on the title (§8a). It never shared a channel with
   the engine, but it crowded it; off is the right default for this game.
 - Both targets rebuilt; 838 setup verified still reachable after using the new toggle key.
