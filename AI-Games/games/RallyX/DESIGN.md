@@ -392,10 +392,20 @@ byte picks the source in bit 2 (0–3 periodic, 4–7 white) and the shift rate 
 (0 = clk/512, 1 = clk/1024, 2 = clk/2048; **3 is unusable here** — it follows channel 2, the SFX
 channel, so the engine would change pitch under every flag blip). Periodic noise repeats every 15
 shifts, so the audible pitch is clk/(rate × 15): rate 1 is ~233 Hz, rate 2 ~116 Hz. It ran at
-rate 1, and 233 Hz of constant buzz is a whine rather than a motor. The stalled/turning variant
-therefore cannot also be periodic rate 2 (same note), so it uses **white** noise at the same
-lowest rate — control 6, a low scrubbing rumble, which is what pushing against a wall should
-sound like anyway.
+rate 1, and 233 Hz of constant buzz is a whine rather than a motor.
+
+**Driving and idling share the note — it is one car with one engine.** What separates them is
+loudness and steadiness: driving is a steady 11, idling **chugs** between 5 and 2 every `ENGCHG`
+6 frames (~10 Hz), frame-delta paced like every other timer here. A stopped car still has an
+engine, and an idle is the same motor turning over slowly and unevenly, so a lumpy quiet version
+of the driving note is what it should be. An earlier cut gave the stopped state **white** noise
+to keep it clear of the driving note; that distinguished the two fine but stopped sounding like
+an engine at all — it was a hiss.
+
+Note the pitch floor: periodic rate 2 is as low as this can go. Rate 3 clocks the noise from
+channel 2, which is the SFX channel, so borrowing it would make the engine change pitch under
+every flag blip. Anything lower has to come from **volume**, which is why the idle drops to 5/2
+against the driving 11 rather than to a lower note.
 
 **Music is OFF by default, toggled with `1` on the title screen** (`musen`, shown as
 `1 MUSIC ON/OFF` under PRESS FIRE). Nothing is competing for a channel — music is on 0/1 and the

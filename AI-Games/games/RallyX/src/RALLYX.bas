@@ -55,6 +55,7 @@
 	CONST SPINFR = 96	' frames an enemy spins after driving into smoke
 	CONST BUMPFR = 64	' shorter spin after bumping another car
 	CONST POPFR = 110	' frames the flag-value popup stays up (~2 s)
+	CONST ENGCHG = 6	' frames per idle chug (~10 Hz, a lumpy tickover)
 	CONST MUSTICK = 7	' frames per step; 2 steps a note = the original tempo
 	CONST MUSVOL = 6	' melody volume -- low on purpose, the engine
 	CONST MUSBAS = 5	' and the effects have to cut through it
@@ -1882,6 +1883,23 @@ eng_tick:
 	IF turning = 1 THEN engc = 2
 	IF #fuel = 0 THEN engc = 2
 	IF engc <> engp THEN GOSUB eng_set
+	IF engc = 2 THEN GOSUB eng_idle
+	RETURN
+
+	' A STOPPED CAR STILL HAS AN ENGINE. White noise here was a hiss, which
+	' is not an engine at all -- an idling motor is the SAME motor, just
+	' turning over slowly and unevenly. So the idle keeps the driving note
+	' (periodic rate 2) and becomes LUMPY instead: it chugs between two low
+	' volumes about ten times a second. Pitch cannot go lower -- rate 2 is
+	' already the floor for periodic noise, and rate 3 clocks the noise from
+	' channel 2, which is the SFX channel -- so "quieter" is what carries
+	' the drop, and the idle sits well under the driving note (5/2 vs 11).
+eng_idle:
+	engt = engt + #fd
+	IF engt < ENGCHG THEN RETURN
+	engt = 0
+	engv = 1 - engv
+	IF engv = 1 THEN SOUND 3,2,5 ELSE SOUND 3,2,2
 	RETURN
 	' Channel 3 control: bit 2 picks the source (0-3 PERIODIC, 4-7 white
 	' noise) and the low 2 bits pick the shift rate (0 = clk/512, 1 =
@@ -1895,14 +1913,17 @@ eng_tick:
 	' the lowest periodic pitch the chip offers without borrowing channel 2 --
 	' is an octave down and reads as an engine.
 	'
-	' The stalled/turning variant then cannot also be periodic rate 2 (it
-	' would be the same note), so it moves to WHITE noise at the same lowest
-	' rate: control 6. That is a low scrubbing rumble rather than a pitch,
-	' which is what pushing against a wall should sound like anyway, and it
-	' stays clear of the driving note instead of being a quieter copy of it.
+	' Both states use the SAME note -- it is one car with one engine. What
+	' separates them is loudness and steadiness: driving is a steady 11,
+	' idling chugs quietly between 5 and 2 (see eng_idle). An earlier cut
+	' gave the stopped state WHITE noise to keep it clear of the driving
+	' note, which distinguished them fine but stopped sounding like an
+	' engine at all -- it was a hiss.
 eng_set:
 	engp = engc
-	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,6,7
+	engt = 0
+	engv = 0
+	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,2,2
 	RETURN
 eng_off:
 	engp = 0
