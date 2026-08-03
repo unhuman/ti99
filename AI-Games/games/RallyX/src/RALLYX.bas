@@ -68,6 +68,14 @@
 	CONST BUMPFR = 32	' shorter spin after bumping another car
 	CONST POPFR = 110	' frames the flag-value popup stays up (~2 s)
 	CONST ENGCHG = 6	' frames per idle chug (~10 Hz, a lumpy tickover)
+	' ROCKS: static, lethal, and the dial that carries difficulty AFTER
+	' every other one has maxed out (speed caps at round 9, pursuit at 6,
+	' car count at 5). Round R lays the first R-1 of its maze's list, so
+	' round 1 has none -- matching the arcade's level-1 rip -- and the count
+	' is still climbing at round 17. 16 is what the tightest maze can hold
+	' with every flag still reachable; see assets/genrocks.py.
+	CONST MAXROCK = 16
+	CONST ROCKCH = 24	' 2x2 boulder, chars 24-27 (clear of BANG at 16-23)
 	CONST MUSTICK = 7	' frames per step; 2 steps a note = the original tempo
 	CONST MUSVOL = 6	' melody volume -- low on purpose, the engine
 	CONST MUSBAS = 5	' and the effects have to cut through it
@@ -98,6 +106,8 @@
 	DIM ecmt(4)		' cells left holding a heading after meeting a car
 	DIM spr(4)		' this maze's enemy spawn cells
 	DIM spc(4)
+	DIM rkr(MAXROCK)	' this maze's rock cells, in the order they appear
+	DIM rkc(MAXROCK)
 
 	DIM pvbuf(4)		' popup digits, most significant first
 	DIM popbuf(32)		' the popup box's four characters, 8 rows each
@@ -139,6 +149,8 @@
 	' Custom art MUST stay below char 32: 32 is SPACE, which CLS fills the
 	' screen with and every PRINT pads with. Defining over it turned every
 	' blank cell in the panel into rubble.
+	DEFINE CHAR 24,4,rockpat	' rock boulder, one 2x2 cell
+	DEFINE COLOR 24,4,rockcol
 	DEFINE CHAR 16,8,bang_pat	' crash starburst, two 2x2 frames
 	DEFINE COLOR 16,8,bang_col
 	DEFINE COLOR 140,4,pop_col	' popup box: white on black
@@ -348,6 +360,22 @@ round_init:
 	spr(i) = t
 	READ BYTE t
 	spc(i) = t
+	NEXT i
+	' Rocks for this maze, from the same bank. Round R lays the first R-1;
+	' the list is ORDERED and every prefix of it was checked at generation
+	' time to leave all ten flags reachable, so no round can be rocked into
+	' being unwinnable. Challenging stages keep their rocks -- the arcade
+	' ends the stage if you hit one.
+	nrk = 0
+	IF rnd > 1 THEN nrk = rnd - 1
+	IF nrk > MAXROCK THEN nrk = MAXROCK
+	RESTORE rock_data_1
+	IF mz > 0 THEN GOSUB skip_rocks
+	FOR i = 0 TO MAXROCK - 1
+	READ BYTE t
+	rkr(i) = t
+	READ BYTE t
+	rkc(i) = t
 	NEXT i
 	' WIPE THE RADAR before this round's flags are baked. The canvas was
 	' only zeroed once at boot, so every round inherited the previous
@@ -953,6 +981,16 @@ skip_items:
 	NEXT i
 	RETURN
 
+	' same shape for rocks.bas: MAXROCK cells x 2 bytes per maze
+skip_rocks:
+	FOR i = 1 TO mz
+	FOR j = 1 TO MAXROCK
+	READ BYTE t
+	READ BYTE t
+	NEXT j
+	NEXT i
+	RETURN
+
 	' select the maze's ROM bank and point probe at its char map
 sel_maze:
 	IF mz = 0 THEN BANK SELECT 1 : #mapbase = VARPTR map2_1(0)
@@ -1064,6 +1102,34 @@ at_center:
 	d = dir
 	GOSUB probe
 	IF t < ROADCH THEN blocked = 1 ELSE blocked = 0
+	' ROCK AHEAD? Checked on the cell the car is about to ENTER (probe has
+	' just left it in tr/tc), never on the cell it has arrived in.
+	'
+	' The first cut tested on arrival, in enter_cell. That only fires once
+	' the car is fully ON the cell -- a whole 16 px, most of a second at
+	' this speed -- so the car visibly drove into the boulder and sat on it
+	' before exploding. Reported as "it's detected, but it's delayed".
+	' Testing ahead means the car never enters the cell at all and the burst
+	' lands where the car actually is, against the rock.
+	IF blocked = 0 THEN IF nrk > 0 THEN GOSUB rock_ahead
+	RETURN
+
+	' is the cell at (tr,tc) rocked? -> crash. Runs once per cell boundary
+	' crossed, not per frame, so the 16-entry scan costs nothing measurable.
+rock_ahead:
+	FOR rki = 0 TO MAXROCK - 1
+	IF rki < nrk THEN IF rkr(rki) = tr THEN IF rkc(rki) = tc THEN hitf = 1
+	NEXT rki
+	IF hitf = 0 THEN RETURN
+	' PUT THE CAR ON THE ROCK. `probe` left the rock's cell in tr/tc, so the
+	' car is snapped onto it before the crash runs -- `crash` derives the
+	' burst position from #px/#py, so the explosion then lands squarely on
+	' the boulder instead of in the empty cell beside it. The car is only
+	' there for the single pass it takes to reach `crash`, which hides the
+	' sprites anyway; what is seen is the burst covering the rock.
+	#px = tc * 16.
+	#py = tr * 16.
+	blocked = 1
 	RETURN
 
 	' First arrival in cell (cr,cc). smoke_lay must run BEFORE lcr/lcc are
@@ -1662,6 +1728,9 @@ draw_view:
 	FOR oi = 0 TO 9
 	IF fst(oi) = 0 THEN GOSUB ov_flag
 	NEXT oi
+	FOR oi = 0 TO MAXROCK - 1
+	IF oi < nrk THEN GOSUB ov_rock
+	NEXT oi
 	FOR j = 0 TO MAXSMK - 1
 	IF st(j) > 0 THEN GOSUB ov_smoke
 	NEXT j
@@ -1672,6 +1741,12 @@ ov_flag:
 	ob = 0			' F = chars 0-3
 	IF oi = sidx THEN ob = 4	' S = chars 4-7
 	IF oi = lidx THEN ob = 8	' L = chars 8-11
+	GOSUB put_cell
+	RETURN
+ov_rock:
+	or2 = rkr(oi)
+	oc2 = rkc(oi)
+	ob = ROCKCH
 	GOSUB put_cell
 	RETURN
 ov_smoke:
@@ -2074,3 +2149,5 @@ fuel_colors:
 	INCLUDE "bang.bas"
 	' per-maze flag cells / start / spawns (assets/genmaps4.py)
 	INCLUDE "items.bas"
+
+	INCLUDE "rocks.bas"

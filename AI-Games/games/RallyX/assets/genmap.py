@@ -168,6 +168,45 @@ def puff16():
 
 smoke16 = puff16()
 
+
+def rock16():
+    """A boulder: lumpy mass, wider at the base, sitting ON the road.
+
+    Chars 24-27, i.e. clear of the flag/smoke overlays (0-15) and of the
+    BANG burst (16-23), and safely under 32 -- redefining 32 would rewrite
+    SPACE and wreck every blank cell on the screen (see genbang.py).
+
+    Not a clean circle: a circle at 16px reads as a ball. Overlapping lobes
+    with a flattened, wider bottom read as a rock, and the small bites out
+    of the top-left silhouette give it facets.
+    """
+    lobes = [(7.5, 9.0, 5.6), (5.0, 6.0, 3.4), (10.4, 6.2, 3.2),
+             (7.6, 4.6, 2.8)]
+    bites = [(2.0, 3.4, 2.2), (13.2, 3.6, 2.0), (7.5, 1.2, 1.6)]
+    rows = []
+    for y in range(16):
+        bits = 0
+        for x in range(16):
+            on = any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in lobes)
+            # flat base: the boulder rests on the road, it does not float
+            if y >= 14:
+                on = False
+            if on and any((x - cx) ** 2 + (y - cy) ** 2 <= r * r
+                          for cx, cy, r in bites):
+                on = False
+            if on:
+                bits |= 1 << (15 - x)
+        rows.append(bits)
+    return rows
+
+
+rock16 = rock16()
+rockpat = quads(rock16)
+# GREY (14) on the tan road (10). Grey is the one palette entry that reads as
+# stone against both the tan road and the green blocks, and it cannot be
+# confused with a car (red/blue) or a flag (white/light red/cyan).
+rockcol = [["$EA"] * 8] * 4
+
 ovlpat = quads(flag16) * 3 + quads(smoke16)
 # Flag colours are chosen for CONTRAST AGAINST THE TAN ROAD (bg A = dark
 # yellow). The original yellow-on-tan flag was nearly invisible; white,
@@ -215,6 +254,14 @@ for p in ovlpat:
 out.append("ovlcol:")
 for c8 in ovlcol:
     out.append("\tDATA BYTE " + ",".join(c8))
+out.append("rockpat:")
+out.append("	' chars 24-27: rock boulder, 2x2 quadrants (TL TR BL BR)")
+for p in rockpat:
+    out.append("	DATA BYTE " + ",".join("$%02X" % b for b in p))
+out.append("rockcol:")
+out.append("	' grey (14) on tan road (10), every row")
+for c8 in rockcol:
+    out.append("	DATA BYTE " + ",".join(c8))
 out.append("radar_zero:")
 out.append("\t' 112 x 8 zero pattern rows: blank radar canvas (chars 144-255)")
 for i in range(112):

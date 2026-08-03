@@ -259,7 +259,8 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   | dial | round 1 | ramp |
   |---|---|---|
   | car count (`nen`) | **3** (the arcade count) | 4 from round 5 |
-  | speed (`espd`) | 0.875 px/f | +0.125 a round, capped at 1.875 |
+  | speed (`espd`) | 0.875 px/f | +0.125 a round, capped at 1.875 (round 9) |
+  | rocks (`nrk`) | none | +1 a round from round 2, capped at 16 (round 17) |
   | smarts (`eagg`) | 3 decisions in 8 taken direct | +1 a round, always from round 6 |
   | head start (`scti`) | 5 s of scatter | −0.5 s a round, floor 2 s |
 
@@ -520,6 +521,41 @@ Regular rounds reuse the four maps cyclically with per-round flag/spawn lists an
 speeds/counts (3 chasers from round 1, a 4th from round 5 — difficulty scales **speed and
 smarts, never count beyond 4**). Clearing a challenging stage pays a 1,000-unit bonus on top of
 the usual fuel bonus, and the stage opens with a "CHALLENGING STAGE" card.
+
+### Rocks — the dial that outlives the others
+
+Every other difficulty dial maxes out early: pursuit at round 6, car count at 5, head start at 6,
+speed at 9. Rocks are what keeps the curve climbing — round R lays the first **R−1** of its
+maze's list, so they are still arriving at round 17. Round 1 has none, matching the arcade's
+level-1 rip. Challenging stages keep theirs (the arcade ends the stage if you hit one).
+
+**Reachability is the hard constraint.** A rock is lethal, not solid, but you still cannot drive
+through one — so a rock dropped in a one-wide corridor can cut a flag off from the start and make
+the round unwinnable. `assets/genrocks.py` builds each maze's list one rock at a time and accepts
+a candidate only if all ten flags are still reachable from the start with it in place.
+
+Two things fell out of getting this right, both worth keeping:
+
+- **Reachability is MONOTONE** — removing a rock can only open paths — so if the full 16-rock set
+  leaves every flag reachable, *every subset does, in any order*. That means the list can be
+  reordered freely after it is built. It is: sorted **nearest-the-start first**. Farthest-point
+  sampling picks good positions but a terrible order, jumping to the maze corners right after the
+  centre seed, which put the round-2..5 rocks where nobody drives. Nearest-first puts the first
+  rock 9–11 cells from the start instead of 55.
+- The first-pick metric is a *negated* distance, and `bestd` seeded at `-1` meant only a candidate
+  within one cell of the maze centre could ever win. Maze 3's centre is a wall, so it silently
+  generated **zero** rocks. Seed comparison state as "unset", never as a value from the metric's
+  own range.
+
+**The hit is tested on the cell AHEAD, never the cell arrived in** (`rock_ahead`, called from
+`at_center` with `probe`'s `tr`/`tc` still loaded). Testing on arrival — the first cut — only fires
+once the car is fully onto the cell, a whole 16 px, so the car visibly drove into the boulder and
+sat on it before exploding. On a hit the car is then **snapped onto the rock's cell** (`#px`/`#py`
+= cell × 16) so that `crash`, which derives the burst position from `#px`/`#py`, puts the
+explosion squarely on the boulder rather than in the empty cell beside it.
+
+Art is chars **24–27**, a 2×2 grey boulder — clear of the overlays (0–15) and the BANG burst
+(16–23), and well under 32, which is SPACE.
 
 ## 11. Sound & Music
 

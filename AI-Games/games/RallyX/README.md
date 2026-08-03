@@ -19,7 +19,10 @@ radar on the right, and don't run out of fuel.
   you, and the head start you get) instead of opening at full tilt. Round 1 opens with the
   arcade's **three** chasers; a fourth joins at round 5. **Vehicle speeds are half** what they
   were — the game was outrunning the arcade; the halving is done at the fixed-point scale so the
-  per-round ramp is unchanged, just at half scale. Crashing destroys **both**
+  per-round ramp is unchanged, just at half scale. **Rocks** (lethal grey boulders) arrive from
+  round 2, one more each round to 16 — the dial that keeps the curve climbing after speed, pursuit
+  and car count have all maxed out. Placement is generated with a reachability proof so no round
+  can be rocked into being unwinnable. Crashing destroys **both**
   cars with a BANG, twin blasts and a border strobe; enemies that meet each other bump, spin and
   leave in different directions, and can never share a cell — nor **overlap in pixels**, which is
   a stricter thing and was the bug the old cell-based check kept missing. Below full aggression a
@@ -32,7 +35,7 @@ radar on the right, and don't run out of fuel.
   speed no longer varies with load either: the old `#fd` clamp discarded real time whenever the
   loop was busy, which is why the enemy cars appeared to speed up while the player sat still.
   See `DESIGN.md` §1a for the measurements and the two pacing rules.
-  Deferred: in-game music, maps 2–4, rocks, per-round flag sets, Coleco runtime pass. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
+  Deferred: per-round flag sets, Coleco runtime pass. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
   char map, bank 2 art/tables); Coleco builds flat. Building this flushed out three CVBasic
   TMS9900 codegen bugs (8-bit×big-constant → 0, dotted-constant folding truncates, CONST>255
   truncates) — documented in `DESIGN.md` §14 with workarounds in the source.
