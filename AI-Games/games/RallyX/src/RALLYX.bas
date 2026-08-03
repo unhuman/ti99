@@ -210,11 +210,21 @@ t_prs:
 	GOSUB t_key
 	IF cont1.button = 0 THEN GOTO t_prs
 	rnd = rnd0
-	' rc3 cycles 0,1,2 with the round and picks the challenging stage, so a
-	' start level other than 1 has to land on the right phase.
-	rc3 = rnd - 1
+	' rc3 is the challenging-stage phase: it cycles 0..3 with the round and
+	' the stage runs when it is 0 from round 3 on -- i.e. rounds 3, 7, 11,
+	' 15, which is the arcade cadence ("the third level and every fourth
+	' thereafter"). It used to cycle 0..2 and fire every THIRD round.
+	' A start level other than 1 has to land on the right phase, hence the
+	' wrap here rather than a plain reset.
+	' Phase is (rnd - 3) mod 4, written as (rnd + 1) mod 4 to keep every
+	' intermediate POSITIVE -- these are unsigned 8-bit vars, so rnd - 3 at
+	' round 1 would wrap to 254 and take 63 trips round the loop below to
+	' come back. rnd 1..10 -> 2,3,0,1,2,3,0,1,2,3: round 3 is a stage, then
+	' 7, then 11, and rounds 1-2 land on 2 and 3 so the +1 per round walks
+	' onto 0 exactly at round 3.
+	rc3 = rnd + 1
 rc3wrap:
-	IF rc3 >= 3 THEN rc3 = rc3 - 3 : GOTO rc3wrap
+	IF rc3 >= 4 THEN rc3 = rc3 - 4 : GOTO rc3wrap
 	' MUST jump: the title's helper subroutines sit between here and
 	' game_init, so without this the fall-through walks straight into
 	' t_draw and hits its RETURN with nothing on the GOSUB stack -- which
@@ -358,14 +368,21 @@ lroll:
 	'   smarts eagg = chance in 8 that a car actually pursues on a given
 	'          decision; 3/8 at round 1 up to 8/8 (always) from round 6, so
 	'          early packs wander and give you room instead of converging.
-	' Every 3rd round (rc3 = 2) is a CHALLENGING STAGE (see below).
+	' Round 3 and every 4th thereafter is a CHALLENGING STAGE (see below).
 	nen = 3
 	IF rnd >= 5 THEN nen = 4
-	' CHALLENGING STAGE: the cars are still there -- they just do not move
-	' until the fuel runs out. chal gates both their movement and their
-	' collision, so a parked car is scenery you can drive straight past.
+	' CHALLENGING STAGE (arcade rule, researched rather than assumed): the
+	' red cars are present but DO NOT MOVE -- "the red cars remain idle and
+	' will not chase the player unless their fuel is empty". Run the tank
+	' dry and they wake up, which is the time pressure that stops the stage
+	' being a free lap.
+	'
+	' `chal` gates their MOVEMENT ONLY. It used to gate their collision too,
+	' making a parked car scenery you could drive straight through -- that is
+	' wrong: an idle red car still kills you. Only the pursuit is switched
+	' off, never the hitbox.
 	chal = 0
-	IF rc3 = 2 THEN chal = 1
+	IF rnd >= 3 THEN IF rc3 = 0 THEN chal = 1
 	espd = 12 + rnd * 2
 	IF espd > 30 THEN espd = 30
 	' eagg = chances in 8 that a car pursues on a given decision. The floor
@@ -396,7 +413,7 @@ lroll:
 	mpv(mi) = 0
 	NEXT mi
 	GOSUB radar_flags
-	IF rc3 = 2 THEN PRINT AT 389,"CHALLENGING STAGE" : FOR i = 1 TO 90 : WAIT : NEXT i
+	IF chal = 1 THEN PRINT AT 389,"CHALLENGING STAGE" : FOR i = 1 TO 90 : WAIT : NEXT i
 	GOSUB mus_start		' music runs during the round only, not the title
 
 	' Arcade start (see the reference shot): the player faces UP a clear
@@ -605,7 +622,7 @@ round_done:
 	GOSUB eng_off
 	PRINT AT 395,"ROUND"
 	PRINT AT 427,"CLEAR"
-	IF rc3 = 2 THEN #score = #score + 1000 : GOSUB prt_score
+	IF chal = 1 THEN #score = #score + 1000 : GOSUB prt_score
 	' FUEL BONUS for finishing the round, scaled by what is left in the tank
 	' -- the arcade pays one, on the same scale as the lucky flag (fuel-bar
 	' pixels x 10, so a full tank is worth 640). #score is in units of 10.
@@ -653,7 +670,7 @@ fb_done:
 	NEXT i
 	rnd = rnd + 1
 	rc3 = rc3 + 1
-	IF rc3 >= 3 THEN rc3 = 0
+	IF rc3 >= 4 THEN rc3 = 0
 	GOSUB prt_rd
 	GOTO round_init
 
@@ -1351,8 +1368,9 @@ ckhit_all:
 	' end-of-pass sample let them jump straight through each other whenever
 	' #fd spiked. That is the "player drove through an enemy" bug.
 ckhit:
-	' a parked challenge-stage car cannot hurt you
-	IF chal = 1 THEN IF #fuel > 0 THEN RETURN
+	' NO challenge-stage exemption. A parked red car is still a car: the
+	' arcade lets an idle one kill you, and driving through one looked like
+	' a bug anyway. `chal` switches off their PURSUIT, never their hitbox.
 	#g = #px
 	#g = #g - #ex(i)
 	IF #g >= 32768 THEN #g = 0 - #g
@@ -1900,13 +1918,14 @@ eng_tick:
 	' 2 dB a step. A first cut chugged 5/2 against a driving 11, i.e. 12-18
 	' dB down, which is not "quiet", it is inaudible -- and that is exactly
 	' how it came back: "there is no sound". 9/6 is 4-10 dB down: clearly
-	' under the driving note, clearly still an engine.
+	' under the driving note, clearly still an engine. Settled at 10/7 --
+	' one step louder again, i.e. 2-8 dB under driving.
 eng_idle:
 	engt = engt + #fd
 	IF engt < ENGCHG THEN RETURN
 	engt = 0
 	engv = 1 - engv
-	IF engv = 1 THEN SOUND 3,2,9 ELSE SOUND 3,2,6
+	IF engv = 1 THEN SOUND 3,2,10 ELSE SOUND 3,2,7
 	RETURN
 	' Channel 3 control: bit 2 picks the source (0-3 PERIODIC, 4-7 white
 	' noise) and the low 2 bits pick the shift rate (0 = clk/512, 1 =
@@ -1930,7 +1949,7 @@ eng_set:
 	engp = engc
 	engt = 0
 	engv = 0
-	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,2,6
+	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,2,7
 	RETURN
 eng_off:
 	engp = 0

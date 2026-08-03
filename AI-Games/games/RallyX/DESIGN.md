@@ -475,24 +475,32 @@ new game off the title is always the standard one.
 Answers are single digits read with `CONT1.KEY`, which returns 0-9 on **both** targets (the
 ColecoVision keypad and the TI keyboard) and 15 for nothing pressed, so the same code serves
 both. The watcher is edge-triggered — the key must be released between digits or one press
-reads as several. Starting above round 1 also re-phases `rc3`, which cycles 0,1,2 and picks the
-challenging stage, so the bonus round still lands on every third round.
+reads as several. Starting above round 1 also re-phases `rc3`, the 0..3 challenging-stage
+phase, so a mid-game start still lands the bonus round on the same ABSOLUTE schedule (start at
+round 5 and the next stage is still round 7, not five rounds later). The phase is `(rnd - 3)
+mod 4`, written as `(rnd + 1) mod 4` so every intermediate stays positive — these are unsigned
+8-bit vars, and `rnd - 3` at round 1 would wrap to 254 and take 63 trips round the wrap loop.
 
 ## 10. Rounds & Challenge Stages
 
-**Challenging stage (every 3rd round) — verified against the arcade, not invented.** The red
-cars are **present but STILL**; they only start moving when the tank runs dry. A parked car is
-harmless scenery you can drive straight past — `chal` gates both `emove_n` and `ckhit` on
-`#fuel > 0`. Once the fuel is gone they move and become lethal as usual, so the stage is a race
-to clear the flags before the tank empties. An earlier version removed the cars entirely, which
-lost the whole point of the stage.
+**Challenging stage — rounds 3, 7, 11, 15 … (researched, not assumed).** Wikipedia: *"The third
+level and every fourth thereafter is a bonus round"*, and *"in these bonus rounds, the red cars
+remain idle and will not chase the player unless their fuel is empty."* This was previously
+every **third** round, which is wrong.
 
-Sequence: round 1, 2 → **challenge** → 3, 4 → challenge → … Regular rounds reuse the maps
-cyclically (map1 now; L2–L4 transcriptions in M4) with per-round flag/spawn/rock lists and
-rising speeds/enemy counts (round 1 = 3 chasers of the 4 spawns, later rounds 4 — difficulty
-scales **speed, never count beyond 4**). **Challenge stage:** no enemies, fixed fuel, all 10
-flags placed dense; collect everything before fuel empties for a 10,000 bonus (arcade-style
-"CHALLENGING STAGE" card, its own tune).
+The red cars are **present but STILL**, and they wake up when the tank runs dry — that is the
+answer to "when do they activate": the stage is a race to clear the flags before your own fuel
+arms the thing chasing you. `chal` gates `emove_n` on `#fuel > 0`.
+
+**`chal` gates their MOVEMENT ONLY — never their hitbox.** It used to gate `ckhit` as well,
+making a parked car scenery you could drive straight through. That is wrong on the arcade (an
+idle red car still kills you) and it looked like a bug besides. Verified in-game: driving into
+the parked row at round 3 now costs a life per car.
+
+Regular rounds reuse the four maps cyclically with per-round flag/spawn lists and rising
+speeds/counts (3 chasers from round 1, a 4th from round 5 — difficulty scales **speed and
+smarts, never count beyond 4**). Clearing a challenging stage pays a 1,000-unit bonus on top of
+the usual fuel bonus, and the stage opens with a "CHALLENGING STAGE" card.
 
 ## 11. Sound & Music
 
@@ -626,6 +634,11 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
   not a motor. Now rate 2 (~116 Hz), the lowest periodic pitch available without borrowing the
   SFX channel; the stalled variant moved to white noise at the same rate (§8a). Verified in the
   generated `.a99` that both branches emit the intended control bytes (2 and 6).
+- **Challenging stage corrected to the arcade schedule and rules.** It fired every *third* round;
+  the arcade is *"the third level and every fourth thereafter"* — 3, 7, 11, 15. And `chal` gated
+  the enemy **hitbox** as well as their movement, so a parked red car was scenery you could drive
+  straight through; the arcade lets an idle car kill you. Movement only now (§10). The activation
+  rule was already right: they wake when the tank runs dry.
 - **3 chasers from round 1**, not 2. Both Rally-X and New Rally-X run three from the start;
   opening with 2 read as under-populated rather than easy. The 4th now arrives at round 5. Early
   mercy comes from the speed dial, not from leaving a car out.
