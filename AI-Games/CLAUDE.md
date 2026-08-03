@@ -161,6 +161,18 @@ cost a debugging session:
   Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
 - **Build BOTH targets every time**, not just TI. `#if TI994A` needs the **unhuman/CVBasic**
   fork (stock nanochess has no preprocessor).
+- **A grid-cell occupancy check does NOT prove sprites do not overlap.** A 16-px actor on a 16-px
+  grid straddles two cells for its entire traverse, so "no two actors share a cell" can read a
+  clean 0 while they are visibly stacked. Worse, a cell cache derived from raw pixels every frame
+  is **asymmetric**: moving up or left, `pixel / 16` flips to the next cell after ONE pixel, so
+  the actor releases the cell its body still fills. Hold the cached cell as an **anchor** updated
+  only on arrival (both low nibbles zero) and let the actor reserve origin + destination while in
+  transit. Assert on the thing you can see — `|dx| < size AND |dy| < size` — not on the index you
+  happen to store. RallyX chased this through several "verified fixed" rounds because the probe
+  measured cells.
+- **A difficulty dial must never invert the goal.** Weakening an enemy by making it flee reads as
+  broken AI, not as an easier game. Degrade the *quality* of the pursuit instead (chase on the
+  worse axis, react later, move slower); the actor should always be visibly trying.
 - **FRAME-delta pacing is a positive feedback loop — keep per-pass work O(events), not
   O(`#fd`).** With `#fd = FRAME - #lf`, any "repeat the step `#fd` times" loop (per-pixel
   movement, per-pixel AI polling) makes a slow pass slower still: cost rises with `#fd`, which

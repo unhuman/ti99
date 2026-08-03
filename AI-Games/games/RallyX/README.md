@@ -18,8 +18,12 @@ radar on the right, and don't run out of fuel.
   **Difficulty ramps** over rounds on four dials (car count, speed, how often they actually chase
   you, and the head start you get) instead of opening at full tilt. Crashing destroys **both**
   cars with a BANG, twin blasts and a border strobe; enemies that meet each other bump, spin and
-  leave in different directions, and can never share a cell. Background music plays on two
-  channels with an engine buzz on a third. See `DESIGN.md` §17.
+  leave in different directions, and can never share a cell — nor **overlap in pixels**, which is
+  a stricter thing and was the bug the old cell-based check kept missing. Below full aggression a
+  car takes a less direct line at you rather than driving away, so early rounds are gentler
+  without the cars ever looking like they have stopped chasing. Background music is on two
+  channels with an engine buzz on a third, and is **off by default** — press `1` on the title to
+  turn it on. See `DESIGN.md` §17.
   **Speed:** the loop was profiled on Classic99 and rebuilt from **8.2** game-loop passes/sec to
   **one pass per vblank** — 59.7/sec parked, 52.6/sec while driving with the camera panning. Game
   speed no longer varies with load either: the old `#fd` clamp discarded real time whenever the
@@ -30,6 +34,8 @@ radar on the right, and don't run out of fuel.
   TMS9900 codegen bugs (8-bit×big-constant → 0, dotted-constant folding truncates, CONST>255
   truncates) — documented in `DESIGN.md` §14 with workarounds in the source.
 - **Controls:** TI: joystick 1 or E/S/D/X, fire or `Q` = smoke. Coleco: stick + left button.
+  On the title screen: `1` toggles the music, `8` `3` `8` opens the hidden setup (cars + start
+  level).
 - **Build:** `assets/genmap.py` → `src/map1.bas`, then CVBasic → xas99 → linkticart
   (`build-cvbasic-game` skill): `build/RALLYX_8.bin` (Classic99) and `build/rallyx.rom`
   (ColecoVision). Build **both** targets every time.

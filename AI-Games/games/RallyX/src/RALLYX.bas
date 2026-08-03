@@ -150,6 +150,11 @@
 	#hi = 500		' session high score (5000 pts; score unit = 10)
 	lives0 = 3		' defaults, overridden by the 838 setup screen
 	rnd0 = 1
+	' MUSIC IS OFF BY DEFAULT. It shares the ear with the engine note and
+	' wins, which made the engine inaudible and the whole mix busy. Press 1
+	' on the title to turn it on. Unlike the 838 settings this is a
+	' PREFERENCE, so it is set once at boot and survives game over.
+	musen = 0
 
 	' panel text (col 24+): 1UP/score, HI/hi, FUEL label, round.
 	' VDP writes are BUFFERED and applied at vblank -- pace bursts with
@@ -218,7 +223,14 @@ rc3wrap:
 t_draw:
 	PRINT AT 359,"* RALLY-X *"
 	PRINT AT 424,"PRESS FIRE"
-	PRINT AT 512,"2026 UNHUMAN AND CLAUDE"
+	GOSUB t_mus
+	PRINT AT 544,"2026 UNHUMAN AND CLAUDE"
+	RETURN
+
+	' Music on/off indicator. Both strings are the same length so the second
+	' one fully covers the first -- no trailing "N" left behind by "OFF".
+t_mus:
+	IF musen = 1 THEN PRINT AT 486,"1 MUSIC ON " ELSE PRINT AT 486,"1 MUSIC OFF"
 	RETURN
 
 	' --- "838 mode": type 8, 3, 8 on the title for the setup screen -------
@@ -230,6 +242,10 @@ t_key:
 	IF tk = tkp THEN RETURN
 	tkp = tk
 	IF tk = 15 THEN RETURN
+	' 1 toggles the music. Not part of the 838 sequence, so it cannot
+	' interfere with it -- but it DOES break a partial sequence, same as any
+	' other stray digit, which is handled by the tseq = 0 below.
+	IF tk = 1 THEN musen = 1 - musen : GOSUB t_mus
 	IF tseq = 2 THEN IF tk = 8 THEN GOSUB setup838 : tseq = 0 : RETURN
 	IF tseq = 1 THEN IF tk = 3 THEN tseq = 2 : RETURN
 	tseq = 0
@@ -352,7 +368,7 @@ lroll:
 	' was 3/8, i.e. it deliberately headed AWAY five times in eight -- which
 	' does not read as "easier", it reads as the cars being broken. 5/8 at
 	' round 1 still gives you room while looking like a chase.
-	eagg = 4 + rnd
+	eagg = 2 + rnd
 	IF eagg > 8 THEN eagg = 8
 	' head start before they turn on you: 5 s at round 1 down to 2 s
 	scti = 300 - rnd * 30
@@ -1071,11 +1087,24 @@ emn_top:
 	IF d = 1 THEN #ex(i) = #ex(i) + emk
 	IF d = 2 THEN #ey(i) = #ey(i) + emk
 	IF d = 3 THEN #ex(i) = #ex(i) - emk
-	' keep this car's cached cell in step with its pixel position -- it is
-	' what every OTHER car's probe_free tests against, so it has to be
-	' updated on every move, not just when the AI runs
-	ecra(i) = #ey(i) / 16
-	ecca(i) = #ex(i) / 16
+	' The cached cell is this car's ANCHOR, and it only moves when the car
+	' has fully ARRIVED on a boundary -- not every pixel.
+	'
+	' It used to be recomputed from the raw pixels on every chunk, which is
+	' ASYMMETRIC. A car moving UP or LEFT crosses into the next cell's pixel
+	' range after ONE pixel of travel, so it reported the new cell while its
+	' 16-px body still covered nearly all of the old one. That released the
+	' old cell to another car and the two visibly sat on top of each other --
+	' and the cell-overlap probe read a clean 0 the whole time, because
+	' logically they WERE in different cells. Measuring cells was measuring
+	' the wrong thing; a PIXEL-overlap probe caught it (see DESIGN.md 1a).
+	'
+	' Holding the anchor until arrival makes a car in transit reserve both
+	' the cell it is leaving (this) and the one it is entering (pf_ahead) --
+	' which is what its body actually covers. Two cars cannot double-book the
+	' destination either: they decide one at a time inside the FOR i loop,
+	' so the second one sees the first already holding it.
+	IF (#ex(i) AND 15) = 0 THEN IF (#ey(i) AND 15) = 0 THEN ecra(i) = #ey(i) / 16 : ecca(i) = #ex(i) / 16
 	' this car against the player, every chunk (see ckhit)
 	GOSUB ckhit
 	IF hitf = 1 THEN RETURN
@@ -1119,17 +1148,26 @@ eai:
 	#g2 = #g2 - ecr
 	vd = 2
 	IF #g2 >= 32768 THEN vd = 0 : #g2 = 0 - #g2
-	' Scatter inverts the preferences outright. On top of that, below full
-	' aggression a car ignores the player for THIS decision and heads away
-	' instead -- that is the difficulty ramp's "smarts" dial (eagg), and it
-	' is what stops round 1 being three cars beelining at you at once.
+	' Scatter -- the timed head start at the top of a round -- inverts the
+	' preferences outright, so the cars genuinely drive away. That is
+	' deliberate and time-boxed.
 	einv = 0
 	IF sct > 0 THEN einv = 1
-	IF eagg < 8 THEN IF RANDOM(8) >= eagg THEN einv = 1 - einv
 	IF einv = 1 THEN hd = (hd + 2) AND 3 : vd = (vd + 2) AND 3
 	p1 = hd
 	p2 = vd
 	IF #g2 > #g THEN p1 = vd : p2 = hd
+	' DIFFICULTY DIAL (eagg). This used to reuse the scatter inversion: below
+	' full aggression the car turned round and drove AWAY from the player for
+	' that decision. It does not read as "easier", it reads as the cars being
+	' broken and refusing to chase -- which is exactly the complaint.
+	'
+	' A slack decision now closes on the SHORTER axis instead of the longer
+	' one. The car still comes at you every single time; it just takes the
+	' less direct line, which loses ground in the open and is much easier to
+	' shake around a corner. The real early-round mercy is the speed ramp
+	' (espd: 1.75 px/f at round 1 against the player's 3), not fleeing.
+	IF eagg < 8 THEN IF RANDOM(8) >= eagg THEN eswp = p1 : p1 = p2 : p2 = eswp
 	rv = (edir(i) + 2) AND 3
 	' Every candidate must be open road AND not already claimed by another
 	' enemy (probe_free) -- two cars must never stack on one cell. The car
@@ -1772,6 +1810,8 @@ sfx_tick:
 mus_start:
 	mup = 0
 	mut = 1
+	' switched off on the title? then the player never starts
+	IF musen = 0 THEN mut = 0
 	RETURN
 mus_off:
 	mut = 0

@@ -241,12 +241,17 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   |---|---|---|
   | car count (`nen`) | 2 | 3 from round 3, 4 from round 6 |
   | speed (`espd`) | 1.75 px/f | +0.25 a round, capped at 3.75 |
-  | smarts (`eagg`) | pursues 3 decisions in 8 | +1 a round, always from round 6 |
+  | smarts (`eagg`) | 3 decisions in 8 taken direct | +1 a round, always from round 6 |
   | head start (`scti`) | 5 s of scatter | −0.5 s a round, floor 2 s |
 
-  `eagg` is the important one: below full aggression a car ignores the player for *that decision*
-  and heads away instead, reusing the scatter inversion. Early packs wander and leave you room
-  instead of converging.
+  **`eagg` never makes a car flee.** It used to: below full aggression a car reused the scatter
+  inversion and drove *away* from the player for that decision. That does not play as "easier",
+  it plays as the cars being broken and refusing to chase, which is exactly how it was reported.
+  A slack decision now closes on the **shorter** axis instead of the longer one — the car still
+  comes at you every time, it just takes the less direct line, loses ground in the open and is
+  much easier to shake round a corner. Real fleeing is left to the scatter phase, where it is
+  deliberate and time-boxed. Because a slack decision still pursues, the floor was widened
+  (`4 + rnd` → `2 + rnd`) so the ramp still has somewhere to climb from.
 - At each cell center pick: prefer the axis with the larger gap to the player if open, else the
   other axis, else keep straight, else any open ≠ reverse, else reverse — **and every one of
   those is validated**, including the dead-end reverse. In **scatter** the preferences invert.
@@ -260,6 +265,12 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
     empty cell from opposite sides were both cleared to enter it.
   - A car with nothing open at all is **cornered**: it spins on the spot and re-decides when a
     neighbour clears, instead of driving into an occupied cell.
+- **Measure overlap in PIXELS, not cells.** The cell-overlap probe read a clean 0 for sessions
+  while cars were still visibly stacked, because logically they *were* in different cells — it
+  was measuring the wrong thing. A 16-px car straddles two cells for its whole traverse, so the
+  test that matters is `|dx| < 16 AND |dy| < 16` on `#ex`/`#ey`. Same probe, same 30 s route,
+  same pass count: **15 overlapping passes of 318 → 0** at round 6, and **5 of 783 → 0** at
+  round 1, with mean chase distance holding at 4 cells (round 6) and improving 10 → 6 (round 1).
 - **Bumps are visible** (`ebump`). When a car's first choice is refused by another *car* rather
   than a wall, both spin for `BUMPFR` steps and leave in **different** directions: straight back
   if that is open, else any other open heading, and the second car may not reuse the first's
@@ -273,7 +284,15 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   frame's travel before the next one starts, rather than being interleaved pixel-by-pixel; the
   no-stacking guarantee is unaffected because `probe_free` compares **cell** coordinates and a
   car occupies its cell for many pixels. This was the single largest cost in the loop (§1a).
-- **Every car's cell is cached** in `ecra`/`ecca`, updated alongside `#ex`/`#ey` on every move.
+- **Every car's cell is cached** in `ecra`/`ecca` as an **anchor**: it moves only when the car
+  fully *arrives* on a boundary, never mid-transit. Recomputing it from raw pixels every chunk is
+  asymmetric — a car moving **up or left** crosses into the next cell's pixel range after ONE
+  pixel of travel, so it reported the new cell while its 16-px body still covered nearly all of
+  the old one. That released the old cell to another car and the two visibly sat on top of each
+  other. Holding the anchor until arrival makes a car in transit reserve both the cell it is
+  leaving and the one it is entering (`pf_ahead`) — which is what its body actually covers. Two
+  cars cannot double-book the destination either, because they decide one at a time inside the
+  `FOR i` loop, so the second sees the first already holding it.
   `probe_free` consults all four cars for each candidate direction, so deriving the cells there
   meant ~24 divisions per AI decision. The AI's last-resort scan also skips `p1`/`p2`, which it
   has already tried — of the four headings only one is ever actually new there, and re-probing
@@ -364,9 +383,18 @@ depends on this split:
 
 | channel | use |
 |---|---|
-| 0, 1 | background music — **our own player**, not CVBasic's `PLAY` |
+| 0, 1 | background music — **our own player**, not CVBasic's `PLAY`; OFF by default |
 | 2 | flag blip, round-clear jingle, game-over sting |
 | 3 | engine buzz, and the crash boom that overrides it |
+
+**Music is OFF by default, toggled with `1` on the title screen** (`musen`, shown as
+`1 MUSIC ON/OFF` under PRESS FIRE). Nothing is competing for a channel — music is on 0/1 and the
+engine is noise on 3 — but the two still fight for the ear, and the busy mix is why the engine
+read as inaudible. Off is the better default for a game whose signature sound is the engine;
+anyone who wants the tune presses one key. `musen` is a **preference**, so unlike the 838
+settings it is set once at boot and survives game over. `mus_start` simply refuses to start the
+player when it is 0. The toggle key is `1`, which is not part of the 838 sequence and so cannot
+interfere with it (verified: 8-3-8 still opens setup after toggling).
 
 **We drive the music ourselves** (`mus_tick`). CVBasic's PSG `PLAY` writes the volume registers
 from envelope tables baked into the shared prologue, so a game cannot turn it down — and this tune
@@ -557,6 +585,24 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
 - **`eagg` floor raised 3 → 5.** At 3-in-8 pursuit the cars deliberately headed away five times
   in eight; that does not read as "easier", it reads as broken.
 - ColecoVision ROM is now **32 KB — the flat maximum**. Anything further needs `BANK ROM`.
+
+## 17b. Status (2026-08-02) — the overlap the cell probe could not see
+
+- **Fixed: cars overlapping.** Not a new AI hole — a MEASUREMENT hole. Every previous pass was
+  verified against a cell-overlap probe that read 0, while the cars on screen were still stacked,
+  because the cached cell was released mid-transit: moving up or left, a car reported the next
+  cell after one pixel of travel while its body still covered the old one. Two cars in genuinely
+  different cells, overlapping by up to 15 px. The cell cache is now an **anchor** that only moves
+  on arrival (§6). Measured with a PIXEL-overlap probe on a fixed 30 s route: **15/318 passes
+  → 0** at round 6, **5/783 → 0** at round 1.
+- **Fixed: cars "not chasing".** Below full aggression `eagg` reused the scatter inversion and
+  sent the car *away* from the player. It now takes the shorter axis instead — always closing,
+  just less directly (§6). Mean chase distance at round 1: **10 → 6 cells**, on the same route
+  with the same pass count. The floor was widened `4 + rnd` → `2 + rnd` to keep a real ramp now
+  that a slack decision still pursues.
+- **Music is off by default**, toggled with `1` on the title (§8a). It never shared a channel with
+  the engine, but it crowded it; off is the right default for this game.
+- Both targets rebuilt; 838 setup verified still reachable after using the new toggle key.
 
 ## 17a. Status (2026-08-01) — difficulty, collisions, audio
 
