@@ -349,15 +349,18 @@ lroll:
 	' (83% of the player's 3 px/f) all beelining from a 3-second head start,
 	' which is brutal before you know the maze. Three dials now ramp
 	' together instead:
-	'   count  2 cars -> 3 at round 3 -> 4 at round 6
+	'   count  3 cars (the ARCADE count -- both Rally-X and New Rally-X run
+	'          three chasers from the start) -> a 4th from round 5. Opening
+	'          with 2 made round 1 read as under-populated rather than easy;
+	'          the mercy in round 1 comes from the speed dial, not from
+	'          leaving a car out.
 	'   speed  1.75 px/f at round 1, +0.25 a round, capping at 3.75
 	'   smarts eagg = chance in 8 that a car actually pursues on a given
 	'          decision; 3/8 at round 1 up to 8/8 (always) from round 6, so
 	'          early packs wander and give you room instead of converging.
 	' Every 3rd round (rc3 = 2) is a CHALLENGING STAGE (see below).
-	nen = 2
-	IF rnd >= 3 THEN nen = 3
-	IF rnd >= 6 THEN nen = 4
+	nen = 3
+	IF rnd >= 5 THEN nen = 4
 	' CHALLENGING STAGE: the cars are still there -- they just do not move
 	' until the fuel runs out. chal gates both their movement and their
 	' collision, so a parked car is scenery you can drive straight past.
@@ -1893,13 +1896,17 @@ eng_tick:
 	' volumes about ten times a second. Pitch cannot go lower -- rate 2 is
 	' already the floor for periodic noise, and rate 3 clocks the noise from
 	' channel 2, which is the SFX channel -- so "quieter" is what carries
-	' the drop, and the idle sits well under the driving note (5/2 vs 11).
+	' the drop. Mind the SCALE though: SN76489 volume is LOGARITHMIC, about
+	' 2 dB a step. A first cut chugged 5/2 against a driving 11, i.e. 12-18
+	' dB down, which is not "quiet", it is inaudible -- and that is exactly
+	' how it came back: "there is no sound". 9/6 is 4-10 dB down: clearly
+	' under the driving note, clearly still an engine.
 eng_idle:
 	engt = engt + #fd
 	IF engt < ENGCHG THEN RETURN
 	engt = 0
 	engv = 1 - engv
-	IF engv = 1 THEN SOUND 3,2,5 ELSE SOUND 3,2,2
+	IF engv = 1 THEN SOUND 3,2,9 ELSE SOUND 3,2,6
 	RETURN
 	' Channel 3 control: bit 2 picks the source (0-3 PERIODIC, 4-7 white
 	' noise) and the low 2 bits pick the shift rate (0 = clk/512, 1 =
@@ -1923,7 +1930,7 @@ eng_set:
 	engp = engc
 	engt = 0
 	engv = 0
-	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,2,2
+	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,2,6
 	RETURN
 eng_off:
 	engp = 0

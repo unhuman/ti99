@@ -239,7 +239,7 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
 
   | dial | round 1 | ramp |
   |---|---|---|
-  | car count (`nen`) | 2 | 3 from round 3, 4 from round 6 |
+  | car count (`nen`) | **3** (the arcade count) | 4 from round 5 |
   | speed (`espd`) | 1.75 px/f | +0.25 a round, capped at 3.75 |
   | smarts (`eagg`) | 3 decisions in 8 taken direct | +1 a round, always from round 6 |
   | head start (`scti`) | 5 s of scatter | −0.5 s a round, floor 2 s |
@@ -395,7 +395,7 @@ shifts, so the audible pitch is clk/(rate × 15): rate 1 is ~233 Hz, rate 2 ~116
 rate 1, and 233 Hz of constant buzz is a whine rather than a motor.
 
 **Driving and idling share the note — it is one car with one engine.** What separates them is
-loudness and steadiness: driving is a steady 11, idling **chugs** between 5 and 2 every `ENGCHG`
+loudness and steadiness: driving is a steady 11, idling **chugs** between 9 and 6 every `ENGCHG`
 6 frames (~10 Hz), frame-delta paced like every other timer here. A stopped car still has an
 engine, and an idle is the same motor turning over slowly and unevenly, so a lumpy quiet version
 of the driving note is what it should be. An earlier cut gave the stopped state **white** noise
@@ -404,8 +404,10 @@ an engine at all — it was a hiss.
 
 Note the pitch floor: periodic rate 2 is as low as this can go. Rate 3 clocks the noise from
 channel 2, which is the SFX channel, so borrowing it would make the engine change pitch under
-every flag blip. Anything lower has to come from **volume**, which is why the idle drops to 5/2
-against the driving 11 rather than to a lower note.
+every flag blip. Anything lower has to come from **volume** — but mind the scale:
+SN76489 volume is **logarithmic**, roughly 2 dB a step. A first cut chugged 5/2 against a driving
+11, i.e. 12–18 dB down, which is not "quiet" but inaudible, and came back as "there is no sound".
+9/6 is 4–10 dB down: clearly under the driving note and clearly still an engine.
 
 **Music is OFF by default, toggled with `1` on the title screen** (`musen`, shown as
 `1 MUSIC ON/OFF` under PRESS FIRE). Nothing is competing for a channel — music is on 0/1 and the
@@ -624,6 +626,9 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
   not a motor. Now rate 2 (~116 Hz), the lowest periodic pitch available without borrowing the
   SFX channel; the stalled variant moved to white noise at the same rate (§8a). Verified in the
   generated `.a99` that both branches emit the intended control bytes (2 and 6).
+- **3 chasers from round 1**, not 2. Both Rally-X and New Rally-X run three from the start;
+  opening with 2 read as under-populated rather than easy. The 4th now arrives at round 5. Early
+  mercy comes from the speed dial, not from leaving a car out.
 - **Music is off by default**, toggled with `1` on the title (§8a). It never shared a channel with
   the engine, but it crowded it; off is the right default for this game.
 - Both targets rebuilt; 838 setup verified still reachable after using the new toggle key.
