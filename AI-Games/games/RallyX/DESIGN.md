@@ -333,6 +333,11 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   round cannot be memorised as "the double is always in the top right".
 - **S doubles what comes AFTER it, not itself.** `#val` is doubled before `sgot` is set, which is
   the arcade rule.
+- **The car icons show SPARES**, excluding the car being driven: a fresh 3-car game shows **two**
+  icons and the last car shows none. This is a repo-wide rule (`CLAUDE.md` §7A), not a RallyX
+  choice. Note the underflow guard — `draw_lives` IS called with `lives = 0` (crash decrements,
+  redraws, then tests for game over) and these are unsigned, so a bare `lives - 1` would wrap to
+  255 and light every icon exactly when the player has none.
 - **Out of fuel is not fatal**: speed halves to 0.75 px/f, smoke is refused (it costs 96 fuel),
   the engine drops to its idle note, and the round continues — as in the arcade, where running
   dry leaves you crawling until something catches you.
@@ -581,8 +586,13 @@ more refused probes and more fallback scans. That is the feature, not waste.
 chunky. The cost is four cars at full aggression, and it wants its own optimisation pass; §1a's
 "one pass per vblank" was measured at round 1.
 
-Art is chars **24–27**, a 2×2 grey boulder — clear of the overlays (0–15) and the BANG burst
-(16–23), and well under 32, which is SPACE.
+Art is chars **24–27**, a 2×2 boulder — clear of the overlays (0–15) and the BANG burst
+(16–23), and well under 32, which is SPACE. It is **BLACK on the tan road**, not grey: the
+TMS9918 has exactly one grey (14) so "a darker grey" does not exist, and plain grey proved too
+low-contrast to pick out while driving. Black is the strongest contrast available here and
+nothing else in the playfield is black, so a boulder can only be a boulder. A shaded version
+(grey highlight band on top, black below) was rendered and rejected — colour is per ROW, so any
+highlight spans the full width and it came out looking like a pot with a lid.
 
 ## 11. Sound & Music
 

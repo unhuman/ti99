@@ -76,11 +76,11 @@ rockpat:
 	DATA BYTE $3F,$3F,$3F,$1F,$1F,$0F,$00,$00
 	DATA BYTE $FC,$FC,$FC,$F8,$F8,$F0,$00,$00
 rockcol:
-	' grey (14) on tan road (10), every row
-	DATA BYTE $EA,$EA,$EA,$EA,$EA,$EA,$EA,$EA
-	DATA BYTE $EA,$EA,$EA,$EA,$EA,$EA,$EA,$EA
-	DATA BYTE $EA,$EA,$EA,$EA,$EA,$EA,$EA,$EA
-	DATA BYTE $EA,$EA,$EA,$EA,$EA,$EA,$EA,$EA
+	' black (1) on tan road (10): max contrast, and nothing else is black
+	DATA BYTE $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+	DATA BYTE $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+	DATA BYTE $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
+	DATA BYTE $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A
 radar_zero:
 	' 112 x 8 zero pattern rows: blank radar canvas (chars 144-255)
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00

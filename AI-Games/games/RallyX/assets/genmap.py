@@ -202,10 +202,17 @@ def rock16():
 
 rock16 = rock16()
 rockpat = quads(rock16)
-# GREY (14) on the tan road (10). Grey is the one palette entry that reads as
-# stone against both the tan road and the green blocks, and it cannot be
-# confused with a car (red/blue) or a flag (white/light red/cyan).
-rockcol = [["$EA"] * 8] * 4
+# THERE IS ONLY ONE GREY on the TMS9918 (14), so "a darker grey" does not
+# exist -- the darker choices are black, dark blue, dark red, dark green.
+# Plain grey on the tan road was too low-contrast to pick out while driving.
+#
+# BLACK on tan it is: the strongest contrast the palette offers here, and
+# nothing else in the playfield is black, so a boulder can only be a
+# boulder. Shading it (grey highlight band on top, black below) was tried
+# first and rejected from the render -- colour is per ROW, so any highlight
+# is a full-width band and the rock came out looking like a pot with a lid
+# rather than a rock. The lumpy silhouette alone reads as stone.
+rockcol = [["$1A"] * 8] * 4
 
 ovlpat = quads(flag16) * 3 + quads(smoke16)
 # Flag colours are chosen for CONTRAST AGAINST THE TAN ROAD (bg A = dark
@@ -259,7 +266,7 @@ out.append("	' chars 24-27: rock boulder, 2x2 quadrants (TL TR BL BR)")
 for p in rockpat:
     out.append("	DATA BYTE " + ",".join("$%02X" % b for b in p))
 out.append("rockcol:")
-out.append("	' grey (14) on tan road (10), every row")
+out.append("	' black (1) on tan road (10): max contrast, and nothing else is black")
 for c8 in rockcol:
     out.append("	DATA BYTE " + ",".join(c8))
 out.append("radar_zero:")

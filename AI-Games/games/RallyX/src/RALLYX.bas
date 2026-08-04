@@ -1670,10 +1670,23 @@ prt_rd:
 	PRINT AT 763,rnd," "
 	RETURN
 
+	' SHOW SPARES, NOT TOTAL CARS. The icons are the cars held in RESERVE,
+	' excluding the one currently being driven -- so a fresh 3-car game
+	' shows TWO icons, and the last car shows none. Drawing `lives` itself
+	' is the anti-convention: every arcade game of this era counts reserves,
+	' so an icon that vanishes the instant you start a life reads as though
+	' you had already crashed. See CLAUDE.md -- this is a repo-wide rule.
+	'
+	' The guard matters: draw_lives IS called with lives = 0 (crash decrements
+	' then redraws before testing for game over), and these are unsigned, so
+	' a bare `lives - 1` would wrap to 255 and light every icon at the exact
+	' moment the player has none.
 draw_lives:
+	lvsp = 0
+	IF lives > 0 THEN lvsp = lives - 1
 	FOR li = 0 TO 3
 	t2 = 32
-	IF li < lives THEN t2 = 129
+	IF li < lvsp THEN t2 = 129
 	' 6872 = $1800 + 22*32 + 24 (row 22 col 24); dotted-constant folds
 	' truncate to 8 bits on this compiler, so the value is written out
 	#va = 6872

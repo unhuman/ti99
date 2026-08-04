@@ -287,6 +287,24 @@ Every game's XB source must satisfy all of these so XB and compiled behavior mat
 
 ---
 
+## 7A. Arcade Conventions (binding for EVERY game in this repo)
+
+Player-facing conventions that arcade players read without thinking. Getting one wrong does not
+look like a bug, it looks like the game is broken — so these are rules, not preferences.
+
+- **The lives/ships/cars indicator shows SPARES — the reserves, EXCLUDING the life being played.**
+  A fresh 3-life game shows **two** icons; the last life shows **none**; game over is the crash
+  that happens with zero showing. Never draw one icon per total life. Drawing the current life as
+  well is an anti-convention: the icon disappears the moment play starts, which reads as having
+  already lost one, and the player can never tell whether the last icon means "one more chance"
+  or "this is it". This has been got wrong repeatedly in this repo — check it in every game.
+  - Watch the underflow: the decrement-then-redraw-then-test-for-game-over order means the draw
+    routine IS called with `lives = 0`, and these are unsigned 8-bit vars, so a bare `lives - 1`
+    wraps to 255 and lights every icon exactly when the player has none. Guard it
+    (`IF lives > 0 THEN spare = lives - 1`).
+  - A setup/options screen that asks for "number of cars" still means TOTAL cars (3 cars = 3
+    plays). Only the in-game HUD counts reserves.
+
 ## 8. Per-Game Structure & Lifecycle
 
 Every game is built the same way — that consistency is the point.
