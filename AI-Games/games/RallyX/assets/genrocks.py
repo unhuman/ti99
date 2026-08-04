@@ -94,7 +94,11 @@ def pick_rocks(road, flags, start, spawns):
 
     cand = sorted(road - banned)
     chosen = []
-    must_reach = set(flags)
+    # ENEMY SPAWNS ARE IN THE PROOF TOO, not just the flags. The cars treat
+    # rocks as walls, so a rock that seals a spawn into a pocket would leave
+    # that car circling a closet for the whole round. Flags being reachable
+    # does not imply the spawns are.
+    must_reach = set(flags) | set(spawns)
     # SEED AT THE MIDDLE OF THE MAZE, and spread relative to the other ROCKS
     # only. Including the start in the spread reference looked reasonable and
     # was quite wrong: farthest-point sampling then makes rock #1 the cell
@@ -157,10 +161,13 @@ for lvl in MAZES:
     rocks = pick_rocks(road, flags, start, spawns)
     counts.append(len(rocks))
 
-    # paranoia: re-verify every prefix independently of the build loop
+    # Paranoia: re-verify every prefix independently, AFTER the reorder.
+    # Monotonicity says checking the full set is enough, but this is cheap
+    # and it is the property the game actually depends on.
+    need = set(flags) | set(spawns)
     for k in range(len(rocks) + 1):
-        assert set(flags) <= reachable(road, set(rocks[:k]), start), \
-            "maze %d prefix %d strands a flag" % (lvl, k)
+        assert need <= reachable(road, set(rocks[:k]), start), \
+            "maze %d prefix %d strands a flag or a spawn" % (lvl, k)
 
     lines.append("rock_data_%d:" % lvl)
     for r, c in rocks:

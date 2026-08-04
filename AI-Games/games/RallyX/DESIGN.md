@@ -554,6 +554,33 @@ sat on it before exploding. On a hit the car is then **snapped onto the rock's c
 = cell × 16) so that `crash`, which derives the burst position from `#px`/`#py`, puts the
 explosion squarely on the boulder rather than in the empty cell beside it.
 
+**Enemies treat rocks as walls too** (`pf_rock`, from `probe_free`). They used to phase straight
+through, which was not merely inaccurate — the arcade's rocks are obstacles for the red cars as
+well — but UNFAIR: every boulder was a shortcut the pack could take and the player could not, so
+each round the maze tilted further in their favour, and rocks are the late-game dial, so it
+compounded exactly where the game is hardest. A rock is refused like a **wall**, not like a car:
+`pfcar` stays 0, so it never sets the "met another car" flag or the post-meeting heading
+commitment. Verified: **0 passes** with any enemy on a rock cell, over 429 at round 9.
+
+This is also why the generator's reachability proof covers the **enemy spawns**, not just the
+flags — with the cars respecting rocks, a boulder sealing a spawn into a pocket would leave that
+car circling a closet all round.
+
+**Cost, measured (round 9, 4 cars, 8 rocks, player parked):** 19.85 → 17.96 passes/sec, and
+18.29 after optimisation — about **8%**. Three things were wasteful in the first cut and are
+worth remembering as a pattern: all three loops walked all **16** rock SLOTS rather than the
+`nrk` live ones; `draw_view` called `put_cell` (four `put_char` calls) for rocks nowhere near the
+12×12-cell window, so the overlay now rejects off-window rocks with a single test; and
+`pf_rock` sits inside `probe_free`, the hottest path in the game, so it now short-circuits on a
+per-row flag array (`rkrow`) — with 8 rocks over 58 rows that exits ~86% of probes after one
+array read. The ~8% that remains is the cars genuinely having to navigate around obstacles:
+more refused probes and more fallback scans. That is the feature, not waste.
+
+**Separately, and NOT caused by rocks:** round 9 already ran at ~20 passes/sec before any of this
+— roughly three frames per pass. FRAME-delta pacing keeps the game SPEED right, but the motion is
+chunky. The cost is four cars at full aggression, and it wants its own optimisation pass; §1a's
+"one pass per vblank" was measured at round 1.
+
 Art is chars **24–27**, a 2×2 grey boulder — clear of the overlays (0–15) and the BANG burst
 (16–23), and well under 32, which is SPACE.
 

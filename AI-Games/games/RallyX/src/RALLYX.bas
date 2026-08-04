@@ -108,6 +108,12 @@
 	DIM spc(4)
 	DIM rkr(MAXROCK)	' this maze's rock cells, in the order they appear
 	DIM rkc(MAXROCK)
+	' ROW REJECT: 1 if any live rock sits in that bordered row. probe_free
+	' is the hottest path in the game and the rock scan runs inside it, so
+	' the common case -- no rock anywhere near this row -- has to cost one
+	' array read, not a walk of the whole list. With 8 rocks spread over 58
+	' rows this short-circuits ~86% of probes.
+	DIM rkrow(58)
 
 	DIM pvbuf(4)		' popup digits, most significant first
 	DIM popbuf(32)		' the popup box's four characters, 8 rows each
@@ -371,11 +377,16 @@ round_init:
 	IF nrk > MAXROCK THEN nrk = MAXROCK
 	RESTORE rock_data_1
 	IF mz > 0 THEN GOSUB skip_rocks
+	FOR i = 0 TO 57
+	rkrow(i) = 0
+	NEXT i
 	FOR i = 0 TO MAXROCK - 1
 	READ BYTE t
 	rkr(i) = t
+	t2rk = t
 	READ BYTE t
 	rkc(i) = t
+	IF i < nrk THEN rkrow(t2rk) = 1
 	NEXT i
 	' WIPE THE RADAR before this round's flags are baked. The canvas was
 	' only zeroed once at boot, so every round inherited the previous
@@ -1117,8 +1128,9 @@ at_center:
 	' is the cell at (tr,tc) rocked? -> crash. Runs once per cell boundary
 	' crossed, not per frame, so the 16-entry scan costs nothing measurable.
 rock_ahead:
-	FOR rki = 0 TO MAXROCK - 1
-	IF rki < nrk THEN IF rkr(rki) = tr THEN IF rkc(rki) = tc THEN hitf = 1
+	IF rkrow(tr) = 0 THEN RETURN
+	FOR rki = 0 TO nrk - 1
+	IF rkr(rki) = tr THEN IF rkc(rki) = tc THEN hitf = 1
 	NEXT rki
 	IF hitf = 0 THEN RETURN
 	' PUT THE CAR ON THE ROCK. `probe` left the rock's cell in tr/tc, so the
@@ -1363,6 +1375,23 @@ probe_free:
 	pfok = 0
 	pfcar = 0
 	IF t < ROADCH THEN RETURN
+	' ROCKS COUNT AS WALLS FOR THE CARS TOO. They used to phase straight
+	' through, which was not just inaccurate but UNFAIR: every boulder was a
+	' shortcut the pack could take and the player could not, so each round
+	' the maze got more lopsided in their favour -- and rocks are the main
+	' late-game dial, so it compounded exactly where the game is hardest.
+	'
+	' Refused like a WALL, not like a car: pfcar stays 0, so a rock never
+	' sets the `ecb` "met another car" flag and never triggers the
+	' post-meeting heading commitment. Cheap because probes only happen when
+	' a car reaches a cell boundary -- about a tenth of a frame's work per
+	' car -- not every frame.
+	' pfrk is CLEARED HERE, not inside pf_rock: there are no locals, so on a
+	' round with no rocks (round 1) the guarded call would leave whatever
+	' the last rocked round put there and every probe would read as blocked.
+	pfrk = 0
+	IF nrk > 0 THEN GOSUB pf_rock
+	IF pfrk = 1 THEN RETURN
 	pfo = 0
 	FOR pfe = 0 TO 3
 	IF pfe <> i THEN IF pfe < nen THEN GOSUB pf_chk
@@ -1378,6 +1407,14 @@ probe_free:
 	' opposite sides were both cleared to enter and ended up sharing it.
 	' Treating the cell ahead of a moving car as reserved closes that race.
 	' A stunned car is not moving, so it reserves nothing.
+	' is (tr,tc) rocked? -> pfrk
+pf_rock:
+	pfrk = 0
+	IF rkrow(tr) = 0 THEN RETURN
+	FOR pfr = 0 TO nrk - 1
+	IF rkr(pfr) = tr THEN IF rkc(pfr) = tc THEN pfrk = 1
+	NEXT pfr
+	RETURN
 pf_chk:
 	IF ecra(pfe) <> tr THEN GOTO pf_ahead
 	IF ecca(pfe) <> tc THEN GOTO pf_ahead
@@ -1728,9 +1765,7 @@ draw_view:
 	FOR oi = 0 TO 9
 	IF fst(oi) = 0 THEN GOSUB ov_flag
 	NEXT oi
-	FOR oi = 0 TO MAXROCK - 1
-	IF oi < nrk THEN GOSUB ov_rock
-	NEXT oi
+	IF nrk > 0 THEN GOSUB ov_rocks
 	FOR j = 0 TO MAXSMK - 1
 	IF st(j) > 0 THEN GOSUB ov_smoke
 	NEXT j
@@ -1743,9 +1778,29 @@ ov_flag:
 	IF oi = lidx THEN ob = 8	' L = chars 8-11
 	GOSUB put_cell
 	RETURN
+	' Safe to run 0 TO nrk-1 unguarded only because the caller checked
+	' nrk > 0 -- a computed FOR 1 TO 0 still executes its body once here.
+ov_rocks:
+	FOR oi = 0 TO nrk - 1
+	GOSUB ov_rock
+	NEXT oi
+	RETURN
 ov_rock:
 	or2 = rkr(oi)
 	oc2 = rkc(oi)
+	' OFF-WINDOW REJECT, one test instead of four put_char calls. Rocks are
+	' spread over a 34x58 maze and the window shows 12x12 cells, so most of
+	' them are nowhere near the screen on any given pan -- and put_cell
+	' unconditionally called put_char four times for each. This is what made
+	' the first cut cost 18% of the loop rate. Unsigned wrap does the
+	' negative side for free: a cell above/left of the camera underflows to
+	' a large value and trips the same >= 24 test (put_char's own trick).
+	t = or2 + or2
+	t = t - camr
+	IF t >= 24 THEN RETURN
+	t2 = oc2 + oc2
+	t2 = t2 - camc
+	IF t2 >= 24 THEN RETURN
 	ob = ROCKCH
 	GOSUB put_cell
 	RETURN
