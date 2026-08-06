@@ -163,10 +163,14 @@ cols 24–31: panel
 | 112 | tree (border; tiles as 4 blobs per border cell) | light green circles on dark green |
 | 113 | road (solid) | tan on tan |
 | 120–128 | fuel bar fill levels 0–8 px | yellow on black |
-| 129 | mini car icon (lives) | blue on black |
+| 16–23 | **BANG burst**, two 2×2 animation frames (`genbang.py`) | light red spikes on tan; black lettering on light red across the letter band |
+| 24–27 | **rock**, one 2×2 boulder (`genmap.py`) | **black on tan** — the TMS9918 has only one grey (14) and it was too low-contrast to spot while driving |
+| 129 | mini car icon (lives) — shows **spares**, see §7 | blue on black |
+| 140–143 | score-popup box, composed in RAM at pickup from the 3×5 `mini_font` | black on tan |
 | 144–255 | **radar canvas**, one code per radar cell (8×14 = 112, code = 144 + (row−5)*8 + col−24) | per-row colors set at plot time; base white dots on dark blue |
 
-(Rock art is deferred with rocks themselves — round 1 has none.)
+(Round 1 has no rocks — matching the arcade's level-1 rip — but the art and the placement
+generator both ship; see §10.)
 
 Radar plotting writes the pattern table **directly per screen third** (the code appears at
 exactly one screen position, so only that third's bank is written): pattern byte address =
@@ -678,9 +682,14 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
    dot, red enemy dots — positions match reality (verify by screenshot probe).
 5. Fuel bar drains; smoke drops puffs, costs fuel, stuns enemies; empty fuel = crawl.
 6. Enemies chase (reactive), crash costs a life, 3 lives, game over → title, HI persists.
-7. Challenge stage after every 2 regular rounds, no enemies, bonus on completion.
-8. Both targets build; TI single-bank with free bytes reported; same real-world speed on both
-   (FRAME-delta pacing); no hazard-rule violations (§14).
+7. Challenging stage on round 3 and every 4th after (3, 7, 11, 15 — the arcade cadence). The
+   red cars ARE present; they do not move until the tank runs dry, but they are lethal the
+   whole time. 1,000-unit bonus on completion.
+8. Rocks from round 2, one more each round to 16; lethal to the player AND impassable to the
+   cars; no round can be rocked into being unwinnable (proved per-prefix in `genrocks.py`).
+9. Lives indicator shows **spares**, excluding the car being driven (`CLAUDE.md` §7A).
+10. Both targets build; the TI cart is **banked** (`BANK ROM 128`, six banks); same real-world
+   speed on both (FRAME-delta pacing); no hazard-rule violations (§14).
 
 ## 17. Status (2026-08-01, latest) — crash graphic, score popup, chase fixes
 
@@ -895,9 +904,24 @@ fuel bar, lives icons (M3); title → fire → fresh game flow and an on-screen 
 (M4). Round-clear, challenge-stage and game-over paths are code-complete (crash/rehome/reset
 verified; full multi-round session not yet manually played through).
 
-**Deferred (next session):** in-game background music (jingles exist; the continuous New
-Rally-X theme needs `PLAY`-vs-SFX channel budgeting), maps 2–4 transcription (bank 1 is full —
-needs BANK 2+ and bank-switch discipline around map reads), rocks (no rocks in round 1),
-smoke-puff animation frame, per-round flag-position variation (currently every round reuses
-the round-1 flag set), Coleco emulator gameplay pass (`rallyx.rom` builds; only TI was
-runtime-tested).
+**Still open (as of 2026-08-05).** Everything the old list here named — in-game music, maps
+2–4, rocks — has since shipped; what actually remains is:
+
+1. **ColecoVision has never been RUN.** `rallyx.rom` builds on every change but no one has
+   played it, so the dual-target claim is unverified at runtime. Highest-risk item: a
+   one-past-end array write is silent on TI and black-screens Coleco on its 1 KB of RAM, and
+   rocks added three arrays. ColEm and CoolCV are both installed.
+2. **Late-round frame pacing.** Round 9 measured ~20 loop passes/sec — about three frames per
+   pass. FRAME-delta keeps the game SPEED right, so it is not a difficulty bug, but the motion
+   is chunky exactly where the game is most demanding. Four cars at full aggression is the
+   cost. §1a's "one pass per vblank" was measured at round 1.
+3. **The challenging stage's fuel is too generous for its own rule.** The cars are meant to
+   wake when the tank runs dry, and they do — but a full tank is 102 s of driving and clearing
+   ten flags takes 45–71 s, so in practice the tank never empties and the cars never move. The
+   arcade gives the bonus stage a tighter allowance so the threat is real. Needs a decision on
+   a challenge-stage fuel figure.
+4. **Per-round flag positions.** Every round reuses its maze's fixed ten flag cells; only which
+   flag is S and which is L rotates, so a maze plays the same route each time it comes round.
+5. **Smoke-puff animation frame** (single frame today).
+6. **No full multi-round playthrough.** Round transitions, the challenging stages, maze cycling
+   and the fuel-bonus tally have each been verified in isolation, never in one session.

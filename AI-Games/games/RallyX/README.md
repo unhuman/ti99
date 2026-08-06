@@ -35,7 +35,9 @@ radar on the right, and don't run out of fuel.
   speed no longer varies with load either: the old `#fd` clamp discarded real time whenever the
   loop was busy, which is why the enemy cars appeared to speed up while the player sat still.
   See `DESIGN.md` §1a for the measurements and the two pacing rules.
-  Deferred: per-round flag sets, Coleco runtime pass. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
+  Open: **ColecoVision has never been run** (it builds every time, but only TI has been
+  runtime-tested); late-round frame pacing (~3 frames per pass at round 9); per-round flag
+  positions; challenging-stage fuel too generous for its own wake-the-cars rule. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
   char map, bank 2 art/tables); Coleco builds flat. Building this flushed out three CVBasic
   TMS9900 codegen bugs (8-bit×big-constant → 0, dotted-constant folding truncates, CONST>255
   truncates) — documented in `DESIGN.md` §14 with workarounds in the source.
