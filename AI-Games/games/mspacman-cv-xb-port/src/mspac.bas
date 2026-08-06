@@ -903,7 +903,19 @@ setwc:	PROCEDURE
 	' --- HUD (XB 708-709) ---
 hud:	PROCEDURE
 	PRINT AT 0, "SCORE ", <5>#pt, "0"
-	PRINT AT 32, "LIVES ", lv, " LEVEL ", le
+	' LIVES shows SPARES -- the lives held in RESERVE, not counting the one
+	' being played. A fresh 3-life game reads LIVES 2, and the last life
+	' reads LIVES 0. Printing `lv` itself is the anti-convention: the number
+	' drops the instant you start, which reads as having already died, and
+	' "LIVES 1" cannot be told apart from "this is your last one".
+	' Repo-wide rule -- see CLAUDE.md section 7A.
+	'
+	' Guarded because `lv` reaches 0: the death path decrements and only
+	' then tests for game over, and these are unsigned, so a bare lv - 1
+	' would print 255 at exactly the wrong moment.
+	lvsp = 0
+	IF lv > 0 THEN lvsp = lv - 1
+	PRINT AT 32, "LIVES ", lvsp, " LEVEL ", le
 	END
 
 	' --- animated title (XB 1200-1218; 8-3-8 cheat enabled) ---

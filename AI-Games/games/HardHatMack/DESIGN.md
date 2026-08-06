@@ -488,7 +488,7 @@ mid-run and the emulator cannot be driven from a locked session.
 
 Girder deposited 100 · gap riveted 200 · lunchbox 300 · steel box delivered 500 · level
 complete + remaining BONUS. BONUS starts 4600 (L1) / 5000 (L2/L3) and drops 100 per 60-frame
-tick (floor 0). 3 lives; extra life at 10,000 (one-time). Death = tumble + jingle, respawn at
+tick (floor 0). 3 lives; extra life at 10,000 (one-time). **`lives` is the SPARE count, not the total** — it starts at **2** for three plays, and game over fires on dying with it at 0, so `hud_lives` drawing `IF i < lives` correctly shows two hats on a fresh game. That is the repo convention (`CLAUDE.md` §7A: the indicator shows reserves, excluding the life being played). Stated explicitly because the `IF i < lives` pattern looks like the anti-convention bug at a glance and has already been misread once. Death = tumble + jingle, respawn at
 the level spawn **with level state intact**; 0 lives → GAME OVER → hi-score (session RAM) →
 title.
 

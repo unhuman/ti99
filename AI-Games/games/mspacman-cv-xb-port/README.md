@@ -52,7 +52,10 @@ is silently unused; harmless, but safe to remove from the scripts if it's ever c
 
 ## Implemented since the first port
 - Per-level **fruit shapes** (cherry…banana) via runtime `DEFINE SPRITE`; **level-clear flash**
-  (sprites + sound cleared first); **death spin** animation; **8-3-8** title cheat (LEVEL/LIVES select).
+  (sprites + sound cleared first); **death spin** animation; **8-3-8** title cheat (LEVEL/LIVES
+  select). The HUD **LIVES** figure is the SPARE count — lives in reserve, not counting the one
+  being played — so a fresh 3-life game reads `LIVES 2` (repo rule, `CLAUDE.md` §7A). The 8-3-8
+  prompt still asks for the TOTAL.
 - **Per-maze wall colour** (`setwc` + four `DEFINE COLOR` tables, walls 128–143 and the `+` cross):
   maze 1 magenta, 2 light blue, 3 light red, 4 dark blue — the XB `WC` palette (TI 14/6/10/5 →
   CV 13/5/9/4). Applied in `drawmaze` and restored during the level-clear flash.
