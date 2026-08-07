@@ -30,6 +30,11 @@ radar on the right, and don't run out of fuel.
   without the cars ever looking like they have stopped chasing. Background music is on two
   channels with an engine buzz on a third, and is **off by default** — press `1` on the title to
   turn it on. See `DESIGN.md` §17.
+  **Pacing:** the loop is held to a fixed **30 Hz** (two frames a pass) rather than running at
+  whatever the body costs — `WAIT` quantises to whole frames, so an unpaced loop oscillates
+  between 2, 3 and 4+ and the irregular step size is what reads as stutter. Parked it is
+  essentially locked; driving still has a tail owned by the camera pan blit. See `DESIGN.md`
+  §10a for the measured per-subsystem costs.
   **Speed:** the loop was profiled on Classic99 and rebuilt from **8.2** game-loop passes/sec to
   **one pass per vblank** — 59.7/sec parked, 52.6/sec while driving with the camera panning. Game
   speed no longer varies with load either: the old `#fd` clamp discarded real time whenever the

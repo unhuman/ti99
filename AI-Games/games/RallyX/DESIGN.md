@@ -156,7 +156,7 @@ cols 24–31: panel
 
 | Codes | What | Colors (fg on bg) |
 |-------|------|-------------------|
-| 0–11 | flag F/S/L 2×2 quadrant chars — **unused since flags became sprites** (§5); kept so `SMOKECH` stays at 12 and the set is one `DEFINE CHAR 0,16` | — |
+| 0–11 | flag F/S/L, 2×2 quadrant chars (they are CHARACTERS, not sprites — `draw_view` overlays them) | **two colours per flag**: the pole quadrants black, the pennant quadrants white / light red / cyan, all on tan |
 | 12–15 | smoke cloud, 2×2 quadrants (three lobes over a flat base, built by `genmap.py`) | white on tan — **one colour in all four quadrants**; the first version was white on the top two chars and grey on the bottom two, which read as a two-tone ball rather than a cloud |
 | 32–95 | stock ASCII (HUD text, title) | white on black |
 | 96–111 | wall **quadrant** chars, 4 variants per corner (each quadrant needs only its 2 road-facing edge bits: TL 96+N+2W, TR 100+N+2E, BL 104+S+2W, BR 108+S+2E; 2-px road-side inset), baked into `map2` offline by `genmap.py` | green on tan |
@@ -383,8 +383,23 @@ running dry before all ten flags.
 So: fire is **edge-triggered** (`smoke_fire` on the rising edge only), charges `SMKCOST` 96
 fuel up front out of a 768 tank (8 uses if you never drove), and queues `SMKPUFF` 3 puffs.
 Queued puffs are laid one per cell as the car leaves it, producing the arcade's short trail.
-No fuel, no smoke. `MAXSMK` 6 puff slots hold two deployments in flight; the oldest slot is
-recycled beyond that. Each puff lives `SMKTTL` 150 frames (2.5 s).
+No fuel, no smoke — **and no smoke while the car is not moving.** Puffs drop in the cells the
+car LEAVES, so pressing fire while blocked against a wall or mid-turn produced nothing visible
+yet still charged the full 96 fuel. `smoke_fire` refuses outright on `blocked` or `turning`.
+`MAXSMK` 6 puff slots hold two deployments in flight; the oldest slot is recycled beyond that.
+Each puff lives `SMKTTL` 150 frames (2.5 s).
+
+**Each puff coughs as it is LAID** — not all three at the press — so a deployment reads as
+"put put put", spaced by the cells the car crosses. The cough is a **NOISE burst**, white noise
+at the lowest shift rate with the volume falling 11→2 over `PUTFR` 5 frames. Two earlier
+versions were tones on the effects channel and both were wrong: the first swept its pitch
+UPWARD as it decayed (193 → 329 Hz), which is a bubble, not an exhaust; the second held pitch
+and dropped only volume, which cured the bubble but stayed "beepy", because a square wave reads
+as a beep however low it is put — and low was already spent, since the tone divider is 10 bits
+and **~109 Hz is the chip's floor**. Unpitched noise cannot beep. It borrows channel 3 from the
+engine for those five frames; `engp` is forced to 0 on release so `eng_tick` (which runs
+immediately after in the same pass) restores the engine note, and `eng_idle` stands off while
+`putt` is live.
 
 **Puffs age by the frame delta, not a flat 1 per pass** — the loop does not run at a steady
 60 Hz, and a flat decrement measured ~30 ticks in 4 seconds, leaving puffs on screen roughly 8×
@@ -477,10 +492,25 @@ pays two compares, not a sound write per frame.
   restarts at the start cell — flags stay collected, but fuel, flag value and the S multiplier all
   reset (§7). 3 lives; game over card → title.
 - **The collision test runs inside both movement loops, after every chunk** — not once per pass.
-  Detection needs `|dx| < 12` on both axes, a 24-px window, and the pair closes up to
-  1.5 + 1.875 px per frame, so a single end-of-pass sample let a fast pair jump clean through each other. That
-  was the "player drove through an enemy car" bug. `hitf` is cleared before anything moves and
-  acted on once at the end of the pass, so a hit found mid-movement still unwinds cleanly.
+  Detection needs `|dx| < 9` on both axes and the pair closes up to 1.5 + 1.875 px per frame,
+  so a single end-of-pass sample let a fast pair jump clean through each other. That was the
+  "player drove through an enemy car" bug. `hitf` is cleared before anything moves and acted on
+  once at the end of the pass, so a hit found mid-movement still unwinds cleanly.
+
+  **9, not 12** — the threshold is against the car ART, not the sprite cell. The sprite is
+  16×16 but the art measures **12 px wide** (14 on the diagonals), inset 2 px each side; measured
+  off `car_bitmaps`. A threshold of 12 therefore fired the instant the two 12-px art boxes grazed
+  by ONE pixel on each axis — a 1×1 corner touch, which reads as the crash happening before the
+  cars meet. 9 requires 3 px of real overlap on both axes, and is still far too wide to tunnel:
+  the pair closes at most ~4 px between consecutive `ckhit` samples.
+- **Game over parks ALL 32 sprite slots and repaints the maze.** `hide_spr` clears every slot,
+  not just the five the game uses, so nothing left in the attribute table can sit over the card;
+  it is paced with a `WAIT` every 8 writes, because a burst past the per-frame VDP budget is
+  dropped **silently** — which would leave exactly the stragglers it exists to remove. The maze
+  repaint is what clears the **crash burst**: that is CHARACTERS, not sprites, so `hide_spr`
+  never touched it, and on an ordinary crash the restart's `draw_view` wipes it — but on the last
+  life nothing redrew until `clear_view` ran *after* the card, so the starburst sat poking out of
+  the top of GAME OVER.
 - **Game over tears the playfield down in two stages**, so neither screen is drawn over
   leftovers. `hide_spr` parks all five car sprites at y=209 *before* the GAME OVER card, so the
   wreck and the chasers do not sit frozen underneath it; then, after the sting, `clear_view`
@@ -597,6 +627,33 @@ low-contrast to pick out while driving. Black is the strongest contrast availabl
 nothing else in the playfield is black, so a boulder can only be a boulder. A shaded version
 (grey highlight band on top, black below) was rendered and rejected — colour is per ROW, so any
 highlight spans the full width and it came out looking like a pot with a lid.
+
+### Where the frame time goes (measured, round 1, driving)
+
+Found by disabling one subsystem at a time and comparing **F**, the total frames consumed by a
+fixed 400 loop passes — lower is cheaper. `#fd` is the frames elapsed per pass, so a histogram
+of it measures the stutter directly; an average hides it, and the *spread* is what reads as
+stutter.
+
+| disabled | F | saving |
+|---|---|---|
+| — (baseline) | 1140 | — |
+| radar tick | 1064 | 7% |
+| enemy sprite writes | 997 | 13% |
+| maze blit on camera pan | 983 | 14% |
+| player-vs-enemy hit test | 1019 | 11% |
+| **all enemies** | **676** | **41%** |
+
+Enemies are over half the frame time with three cars. Treat the 7–14% figures as indicative
+only — they are single runs on a blind route and sit close enough together to be within
+run-to-run noise; the 41% is far outside it. One variant (stubbing the no-overlap scan) came out
+SLOWER than baseline and was discarded: removing that check lets the cars pile up and changes
+their behaviour, so it was not measuring what it claimed to.
+
+The trims that came out of this: the enemy position hoisted into scalars for its whole walk
+(CVBasic recomputes the index on every array access, and `emove_n` touched it about a dozen
+times per chunk), the off-window reject extended from rocks to flags and smoke, and `fuel_bar`
+early-outing before its real `DIV`.
 
 ## 11. Sound & Music
 
@@ -911,10 +968,16 @@ verified; full multi-round session not yet manually played through).
    played it, so the dual-target claim is unverified at runtime. Highest-risk item: a
    one-past-end array write is silent on TI and black-screens Coleco on its 1 KB of RAM, and
    rocks added three arrays. ColEm and CoolCV are both installed.
-2. **Late-round frame pacing.** Round 9 measured ~20 loop passes/sec — about three frames per
-   pass. FRAME-delta keeps the game SPEED right, so it is not a difficulty bug, but the motion
-   is chunky exactly where the game is most demanding. Four cars at full aggression is the
-   cost. §1a's "one pass per vblank" was measured at round 1.
+2. **Frame pacing while DRIVING.** The loop is now paced to a fixed **30 Hz** — it waits for at
+   least two frames per pass rather than racing ahead, so there are no 1-frame passes and the
+   step size is uniform. Parked, that is essentially locked (85% of passes exactly two frames).
+   **Driving still has a tail**: ~23% of passes overrun to 4+ frames. The parked-vs-driving gap
+   is the useful measurement — it rules out host-side emulator jitter and points squarely at the
+   **camera pan blit**, a 576-byte `SCREEN` with interrupts off that fires every time the camera
+   steps one character (roughly every third pass while driving). No amount of trimming elsewhere
+   touches it; the options are splitting the blit across two passes (halves the stall, risks a
+   one-pass tear) or panning two characters less often (jerkier camera). Both are visible
+   trade-offs and neither has been taken.
 3. **The challenging stage's fuel is too generous for its own rule.** The cars are meant to
    wake when the tank runs dry, and they do — but a full tank is 102 s of driving and clearing
    ten flags takes 45–71 s, so in practice the tank never empties and the cars never move. The
