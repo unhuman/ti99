@@ -1,187 +1,170 @@
 #!/usr/bin/env python3
-"""Generate src/music.bas -- the in-game tune for our own tiny player.
+"""Generate src/music.bas from the New Rally-X MIDI.
 
-Why not CVBasic's PLAY: its PSG music player writes the volume registers
-itself, from envelope tables baked into the shared prologue, so a game
-cannot turn it down. The tune has to sit UNDER the engine and the effects,
-so we drive two channels ourselves and set the volume explicitly.
+Reads assets/newrallyx.mid directly, so the tune is EXACT rather than
+transcribed by eye. Two earlier attempts are worth remembering:
 
-SOURCE: the piano arrangement supplied by the user (Rally-X, arr. Beaulan
-Turner) -- A major, 4/4, quarter = 150, with a "Default theme" and a
-"Challenge theme".
+  * reading pitches off a rendered score image -- the noteheads are a few
+    pixels tall and it came out wrong;
+  * writing an original 12-bar blues -- the melody's blue notes ground
+    against a walking bass playing the natural third, and two bare square
+    waves a semitone apart just sound sour.
 
-  *** THE NOTE DATA BELOW IS A READING OF A RENDERED SCORE IMAGE, NOT an
-  *** import of the source file. The rhythm and structure are read directly
-  *** (bar lengths, where the long notes fall, the eighth-note bass
-  *** ostinato); individual PITCHES are the least certain part -- noteheads
-  *** are a few pixels tall in the image and A major puts most of them on
-  *** ledger-free lines that are easy to misread by a step.
-  ***
-  *** Every bar is written as plain note names precisely so this is easy to
-  *** correct by ear: fix a name, re-run, rebuild. A MIDI or MusicXML export
-  *** of the arrangement would let this be generated exactly instead.
+The MIDI removes both problems: the notes are the notes.
 
-Timing: at 150 BPM an eighth note is 0.2 s = 12 frames, so ONE STEP IS ONE
-EIGHTH and MUSTICK is 12. The previous tune ran two steps per note.
+WHAT THE FILE CONTAINS (see midiscan.py): format 1, 960 ticks/quarter,
+151 BPM. Track 1 is the melody (E4..A5), track 2 the bass (D2..A3);
+tracks 3 and 4 duplicate them on other channels and are ignored.
 
-Layout emitted:
-  mus_freq   16-bit SN76489 dividers, hi byte then lo, one per note index.
-             Index 0 is a rest / sustain (writes nothing, so the previous
-             note keeps ringing).
-  mus_song   two bytes per step: melody note index, bass note index.
-  mus_len    number of steps in the default theme, then the total.
+GRID: SIXTEENTHS. The bass is pure eighths, but the MELODY has twelve
+sixteenth-note pairs -- runs where two notes share one eighth. An eighth
+grid silently swallowed the second of each pair, which is why the fast
+figures "did not get there". One step is a sixteenth: 60/151/4 = 0.0993 s
+= 6 frames, so MUSTICK is 6 and a bar is 16 steps.
 
-SN76489 divider: N = 3579545 / (32 * f). Smaller N = higher pitch.
+That makes the song 336 steps, which is past what a byte holds -- the
+player position has to be a 16-bit variable. It was not, and 288 steps
+silently wrapped to 32 once before.
+
+THE BASS HAS TO COME UP AN OCTAVE. The SN76489's tone divider is 10 bits,
+which puts its floor at about 109 Hz; the MIDI bass goes down to D2 (73 Hz)
+and would alias to a wrong pitch rather than simply being quiet. The whole
+bass line is transposed up 12 semitones, which keeps every interval intact.
 """
 import os
+import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLOCK = 3579545.0
+MIDI = os.path.join(HERE, "newrallyx.mid")
 
-# Chromatic, because A major needs F#, C# and G# and the arrangement adds
-# naturals against them.
-SEMI = {"C": 0, "C#": 1, "D": 2, "D#": 3, "E": 4, "F": 5, "F#": 6,
-        "G": 7, "G#": 8, "A": 9, "A#": 10, "B": 11}
-
-
-def freq(name):
-    """'F#4' / 'A3' -> Hz, A4 = 440."""
-    letter = name[:-1]
-    octv = int(name[-1])
-    n = SEMI[letter] + 12 * (octv + 1)          # MIDI number
-    return 440.0 * (2.0 ** ((n - 69) / 12.0))
+MEL_TRACK, BASS_TRACK = 1, 2
+BASS_OCTAVE_UP = 12          # see module docstring: chip floor is ~109 Hz
+STEPS_PER_BEAT = 4           # sixteenths: the melody needs them
 
 
-def divider(name):
-    d = int(round(CLOCK / (32.0 * freq(name))))
-    # The tone divider is 10 bits. 1023 is the deepest note the chip has,
-    # about 109 Hz -- anything written below that would alias to a wrong
-    # pitch rather than just being quiet, so it is clamped and reported.
-    if d > 1023:
-        print("  ! %s (%.1f Hz) is below the chip floor -- clamped" % (name, freq(name)))
-        d = 1023
-    if d < 1:
-        d = 1
-    return d
+# ----------------------------------------------------------- MIDI reading
+def read_midi(path):
+    d = open(path, "rb").read()
+
+    def vlq(i):
+        v = 0
+        while True:
+            b = d[i]; i += 1
+            v = (v << 7) | (b & 0x7F)
+            if not (b & 0x80):
+                return v, i
+
+    assert d[:4] == b"MThd", "not a MIDI file"
+    hlen, fmt, ntrk, div = struct.unpack(">IHHH", d[4:14])
+    i = 8 + hlen
+    tracks = []
+    for _ in range(ntrk):
+        assert d[i:i + 4] == b"MTrk"
+        tlen = struct.unpack(">I", d[i + 4:i + 8])[0]
+        end, j, tick, status = i + 8 + tlen, i + 8, 0, 0
+        notes, live = [], {}
+        while j < end:
+            dt, j = vlq(j)
+            tick += dt
+            if d[j] & 0x80:
+                status = d[j]; j += 1
+            ev = status & 0xF0
+            if status == 0xFF:
+                j += 1
+                ln, j = vlq(j)
+                j += ln
+            elif status in (0xF0, 0xF7):
+                ln, j = vlq(j)
+                j += ln
+            elif ev in (0x80, 0x90):
+                p, v = d[j], d[j + 1]; j += 2
+                if ev == 0x90 and v > 0:
+                    live.setdefault(p, []).append(tick)
+                elif live.get(p):
+                    notes.append((live[p].pop(0), tick, p))
+            elif ev in (0xA0, 0xB0, 0xE0):
+                j += 2
+            elif ev in (0xC0, 0xD0):
+                j += 1
+            else:
+                j += 1
+        tracks.append(sorted(notes))
+        i = end
+    return div, tracks
 
 
-# --------------------------------------------------------------- the tune
-# One string per BAR, eight slots = eight eighth notes. "." holds the
-# previous note (a rest writes nothing, so it sustains); names are absolute
-# so the key signature never has to be applied in the head.
-#
-# The bass is the driving eighth-note ostinato that runs under the whole
-# piece -- that part IS clearly readable in the score: a low root alternating
-# with the note a fifth above, shifting with the harmony.
+div, tracks = read_midi(MIDI)
+STEP_TICKS = div // STEPS_PER_BEAT          # ticks per step (a sixteenth)
 
-DEFAULT_MEL = [
-    "A4 . B4 C#5 D5 . C#5 B4",      # 1
-    "A4 . E5 . D5 . C#5 B4",        # 2
-    "A4 . B4 C#5 D5 E5 F#5 G5",     # 3
-    "F#5 E5 D5 C#5 B4 . A4 .",      # 4
-    "E5 . F#5 G5 A5 . G5 F#5",      # 5
-    "E5 . D5 . C#5 . B4 .",         # 6
-    "A4 . B4 C#5 D5 . E5 .",        # 7
-    "C#5 . B4 A4 B4 . . .",         # 8
-    "A4 . B4 C#5 D5 . C#5 B4",      # 9
-    "A4 . E5 . D5 . C#5 B4",        # 10
-    "A4 . B4 C#5 D5 E5 F#5 G5",     # 11
-    "F#5 . . . E5 . . .",           # 12  (long notes)
-    "D5 . C#5 B4 A4 . B4 C#5",      # 13
-    "D5 . E5 . F#5 . E5 D5",        # 14
-    "C#5 . B4 . A4 . B4 C#5",       # 15
-    "A4 . . . . . . .",             # 16  (held)
-]
-DEFAULT_BASS = [
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-    "D3 A3 D3 A3 D3 A3 D3 A3",
-    "E3 B3 E3 B3 A2 A3 A2 A3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-    "E3 B3 E3 B3 E3 B3 E3 B3",
-    "D3 A3 D3 A3 D3 A3 D3 A3",
-    "E3 B3 E3 B3 E3 B3 E3 B3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-    "D3 A3 D3 A3 D3 A3 D3 A3",
-    "E3 B3 E3 B3 E3 B3 E3 B3",
-    "D3 A3 D3 A3 A2 A3 A2 A3",
-    "D3 A3 D3 A3 E3 B3 E3 B3",
-    "A2 A3 A2 A3 E3 B3 E3 B3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-]
+mel_notes = [(t0, t1, p) for t0, t1, p in tracks[MEL_TRACK]]
+bass_notes = [(t0, t1, p + BASS_OCTAVE_UP) for t0, t1, p in tracks[BASS_TRACK]]
 
-# The challenge theme is the shorter, more urgent section from bar 17.
-CHAL_MEL = [
-    "E5 F#5 G5 F#5 E5 . D5 .",      # 17
-    "C#5 D5 E5 D5 C#5 . B4 .",      # 18
-    "A4 B4 C#5 D5 E5 . F#5 .",      # 19
-    "E5 . . . D5 . . .",            # 20
-    "E5 F#5 G5 F#5 E5 . D5 .",      # 21
-    "C#5 D5 E5 D5 C#5 . B4 .",      # 22
-    "D5 . C#5 B4 A4 . B4 C#5",      # 23
-    "A4 . . . . . . .",             # 24
-]
-CHAL_BASS = [
-    "E3 B3 E3 B3 E3 B3 E3 B3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-    "D3 A3 D3 A3 D3 A3 D3 A3",
-    "E3 B3 E3 B3 E3 B3 E3 B3",
-    "E3 B3 E3 B3 E3 B3 E3 B3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-    "D3 A3 D3 A3 E3 B3 E3 B3",
-    "A2 A3 A2 A3 A2 A3 A2 A3",
-]
+last = max(max(n[1] for n in mel_notes), max(n[1] for n in bass_notes))
+STEPS = int(round(last / float(STEP_TICKS)))
+STEPS -= STEPS % 16                         # whole bars only
 
 
-def flatten(bars, what):
-    out = []
-    for i, bar in enumerate(bars):
-        slots = bar.split()
-        assert len(slots) == 8, \
-            "%s bar %d has %d slots, want 8 (one per eighth note)" % (what, i + 1, len(slots))
-        out += slots
-    return out
+def lay(notes, steps):
+    """Quantise to the sixteenth grid. A slot holds a pitch where a note
+    STARTS and 0 elsewhere, because index 0 means 'write nothing' -- the
+    note already sounding keeps ringing, which is how held notes work."""
+    grid = [0] * steps
+    for t0, t1, p in notes:
+        s = int(round(t0 / float(STEP_TICKS)))
+        if 0 <= s < steps:
+            grid[s] = max(grid[s], p)       # a chord collapses to its top note
+    return grid
 
 
-mel = flatten(DEFAULT_MEL, "default melody") + flatten(CHAL_MEL, "challenge melody")
-bass = flatten(DEFAULT_BASS, "default bass") + flatten(CHAL_BASS, "challenge bass")
-assert len(mel) == len(bass)
-DEFAULT_STEPS = len(DEFAULT_MEL) * 8
-TOTAL_STEPS = len(mel)
+mel = lay(mel_notes, STEPS)
+bass = lay(bass_notes, STEPS)
 
-# every distinct pitch used, index 1..n (0 = sustain/rest)
-names = []
-for n in mel + bass:
-    if n != "." and n not in names:
-        names.append(n)
-names.sort(key=freq)
-IDX = {n: i + 1 for i, n in enumerate(names)}
-IDX["."] = 0
+NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
-lines = ["\t' GENERATED by assets/genmusic.py -- do not hand-edit.",
-         "\t' Rally-X, arr. Beaulan Turner: A major, 4/4, quarter = 150.",
-         "\t' ONE STEP = ONE EIGHTH NOTE = 12 frames (MUSTICK).",
-         "\t' Default theme %d steps, challenge theme %d, %d total."
-         % (DEFAULT_STEPS, TOTAL_STEPS - DEFAULT_STEPS, TOTAL_STEPS),
-         "\t' Note data is a READING of the score image -- see genmusic.py.",
+
+def nm(p):
+    return "%s%d" % (NAMES[p % 12], p // 12 - 1)
+
+
+def freq(p):
+    return 440.0 * (2.0 ** ((p - 69) / 12.0))
+
+
+used = sorted({p for p in mel + bass if p})
+IDX = {p: i + 1 for i, p in enumerate(used)}
+lo = min(used)
+assert CLOCK / (32.0 * freq(lo)) <= 1023, \
+    "%s (%.1f Hz) is under the chip floor even after transposing" % (nm(lo), freq(lo))
+
+lines = ["\t' GENERATED by assets/genmusic.py from assets/newrallyx.mid.",
+         "\t' New Rally-X BGM, 151 BPM. One step is a SIXTEENTH = 6 frames",
+         "\t' (MUSTICK): the bass is eighths but the melody has sixteenth runs,",
+         "\t' and an eighth grid swallowed the second note of every pair.",
+         "\t' %d steps = %d bars. Position must be 16-BIT -- this is past 255."
+         % (STEPS, STEPS // 16),
+         "\t' Melody is MIDI track 1, bass track 2 transposed UP AN OCTAVE:",
+         "\t' the original bass reaches D2 (73 Hz) and the SN76489's 10-bit",
+         "\t' divider bottoms out near 109 Hz, so it would alias rather than",
+         "\t' just be quiet. Every interval is preserved.",
          ""]
-
-print("notes used (%d):" % len(names))
 lines.append("mus_freq:")
-lines.append("\tDATA BYTE $00,$00\t' 0 = sustain")
-for n in names:
-    d = divider(n)
-    lines.append("\tDATA BYTE $%02X,$%02X\t' %-4s %6.1f Hz" % (d >> 8, d & 0xFF, n, freq(n)))
-print("   " + " ".join(names))
-
+lines.append("\tDATA BYTE $00,$00\t' 0 = sustain (writes nothing)")
+for p in used:
+    d = int(round(CLOCK / (32.0 * freq(p))))
+    lines.append("\tDATA BYTE $%02X,$%02X\t' %-4s %6.1f Hz" % (d >> 8, d & 0xFF, nm(p), freq(p)))
 lines.append("mus_song:")
-for i in range(TOTAL_STEPS):
-    if i % 8 == 0:
-        lines.append("\t' bar %d" % (i // 8 + 1))
-    lines.append("\tDATA BYTE %d,%d" % (IDX[mel[i]], IDX[bass[i]]))
+for i in range(STEPS):
+    if i % 16 == 0:
+        lines.append("\t' bar %d" % (i // 16 + 1))
+    lines.append("\tDATA BYTE %d,%d" % (IDX.get(mel[i], 0), IDX.get(bass[i], 0)))
 
 open(os.path.join(HERE, "..", "src", "music.bas"), "w").write("\n".join(lines) + "\n")
-print("\nwrote src/music.bas: %d notes, %d steps (default %d + challenge %d)"
-      % (len(names), TOTAL_STEPS, DEFAULT_STEPS, TOTAL_STEPS - DEFAULT_STEPS))
-print("song length = %.1f s at 12 frames/step" % (TOTAL_STEPS * 12 / 60.0))
+
+print("melody %d notes %s..%s / bass %d notes %s..%s (transposed +%d)"
+      % (len(mel_notes), nm(min(p for _, _, p in mel_notes)), nm(max(p for _, _, p in mel_notes)),
+         len(bass_notes), nm(min(p for _, _, p in bass_notes)), nm(max(p for _, _, p in bass_notes)),
+         BASS_OCTAVE_UP))
+print("%d distinct pitches, %s (%.1f Hz) lowest" % (len(used), nm(lo), freq(lo)))
+print("wrote src/music.bas: %d steps = %d bars = %.1f s at 6 frames/step"
+      % (STEPS, STEPS // 16, STEPS * 6 / 60.0))

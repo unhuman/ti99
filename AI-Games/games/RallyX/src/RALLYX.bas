@@ -80,11 +80,16 @@
 	' with every flag still reachable; see assets/genrocks.py.
 	CONST MAXROCK = 16
 	CONST ROCKCH = 24	' 2x2 boulder, chars 24-27 (clear of BANG at 16-23)
-	' 150 BPM, and one step is ONE EIGHTH NOTE, so 60/150/2 s = 0.2 s = 12
-	' frames. The previous tune ran two steps per note at a different tempo.
-	CONST MUSTICK = 12	' frames per step = one eighth note at 150 BPM
-	CONST MUSDEF = 128	' steps in the default theme (16 bars)
-	CONST MUSTOT = 192	' plus the challenge theme (8 bars) = total
+	' Generated straight from the New Rally-X MIDI: 151 BPM, and one step is
+	' a SIXTEENTH -- 60/151/4 = 0.0993 s = 6 frames. An eighth grid was tried
+	' first and lost the melody's sixteenth runs, swallowing the second note
+	' of every fast pair.
+	'
+	' 320 steps is past what a byte holds, so the play position is a 16-BIT
+	' variable (#mup) and the loop bound is a bare literal rather than a
+	' CONST -- a CONST over 255 truncates to 8 bits on this backend, which is
+	' how an earlier 288-step version silently wrapped to 32.
+	CONST MUSTICK = 6	' frames per step = one sixteenth at 151 BPM
 	' Dropped again (6 -> 4 melody, 5 -> 3 bass) so the EFFECTS lead: the
 	' engine, the flag blip and the smoke cough all have to cut through, and
 	' music that competes with them makes the mix mush rather than making it
@@ -2324,14 +2329,10 @@ sfx_tick:
 	' the engine and the effects stay on top. 64 steps at MUSTICK frames is
 	' about ten seconds before it comes round again.
 mus_start:
-	' The song holds BOTH themes back to back: the default theme first, the
-	' challenge theme after it. A round plays one or the other and loops
-	' inside it, which is why the player carries an explicit first/last step
-	' rather than assuming the whole table.
-	mup = 0
-	musz = MUSDEF
-	IF chal = 1 THEN mup = MUSDEF : musz = MUSTOT
-	musa = mup
+	' One tune, played by every round. The MIDI has no separate challenge
+	' theme, and inventing one alongside a real transcription would only put
+	' the two side by side to be compared.
+	#mup = 0
 	mut = 1
 	' switched off on the title? then the player never starts
 	IF musen = 0 THEN mut = 0
@@ -2343,17 +2344,25 @@ mus_off:
 	RETURN
 mus_tick:
 	IF mut = 0 THEN RETURN		' stopped
-	mut = mut - 1
-	IF mut > 0 THEN RETURN
+	' COUNT FRAMES, NOT PASSES. This was the one timer in the game still
+	' decrementing by 1 per loop pass while its period was written in
+	' FRAMES -- every other countdown here scales by #fd. It was correct
+	' only while the loop happened to run one pass per frame; locking the
+	' loop to 30 Hz made a pass two frames, so MUSTICK 12 became 24 and the
+	' music played at exactly HALF TEMPO. Nothing about it looked wrong, and
+	' the tune had been replaced twice in the meantime, so the slowness read
+	' as "this tune is bad" rather than "the clock is wrong".
+	musd = #fd
+	IF mut > musd THEN mut = mut - musd : RETURN
 	mut = MUSTICK
-	#mua = #muss + mup + mup
+	#mua = #muss + #mup + #mup
 	mun = PEEK(#mua)
 	#mua = #mua + 1
 	mub = PEEK(#mua)
 	IF mun > 0 THEN musv = MUSVOL : GOSUB mus_mel
 	IF mub > 0 THEN musv = MUSBAS : GOSUB mus_bas
-	mup = mup + 1
-	IF mup >= musz THEN mup = musa
+	#mup = #mup + 1
+	IF #mup >= 320 THEN #mup = 0
 	RETURN
 	' note index -> 16-bit divider (stored hi,lo), then sound it
 mus_mel:
