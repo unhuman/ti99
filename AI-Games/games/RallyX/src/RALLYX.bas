@@ -183,24 +183,18 @@
 	' PREFERENCE, so it is set once at boot and survives game over.
 	musen = 0
 
-	' panel text (col 24+): 1UP/score, HI/hi, FUEL label, round.
-	' VDP writes are BUFFERED and applied at vblank -- pace bursts with
-	' WAIT or the buffer overflows and writes are silently dropped.
-	GOSUB panel_draw
-
-	' radar canvas: chars 144-255 on rows 5-18, cols 24-31. Patterns and
-	' base colors come from ROM tables via DEFINE (synchronous on TI);
-	' only the name-table mapping is poked here, one row per frame.
-	DEFINE CHAR 144,112,radar_zero
-	WAIT
-	DEFINE COLOR 144,112,radar_base
-	WAIT
-	GOSUB radar_canvas
-
 	' --- title ------------------------------------------------------------
-	' The viewport is blank whenever we get here: black at boot, and wiped
-	' by clear_view on the way out of game_over (which also parks the car
-	' sprites). The first draw_view of a new game repaints it away.
+	' STRAIGHT TO THE TITLE. Boot used to draw the panel furniture and poke
+	' the radar canvas here first -- fourteen rows at one per frame, so it
+	' was plainly visible -- and the title then wiped all of it. The game
+	' appeared to start building a playfield, throw it away and only then
+	' show its title, on the very first thing the player sees.
+	'
+	' None of it was needed: t_teardown draws the panel and the canvas when
+	' a game actually starts, which is why the SECOND title (after a game
+	' over) never had the problem. Boot now sets up characters and goes
+	' straight to the title, and t_setup's own full-screen wipe covers
+	' whatever CVBasic left on screen.
 title:
 	' Title is silent -- music belongs to the round, not the attract screen.
 	GOSUB eng_off
