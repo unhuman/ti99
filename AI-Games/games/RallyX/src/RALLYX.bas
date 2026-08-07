@@ -57,6 +57,10 @@
 	' costs a big slice of fuel -- the strategy guides warn that using it
 	' more than about once every 30 s means running dry before all ten
 	' flags. 768 fuel is a full tank, so 96 = 8 uses if you never drove.
+	CONST PUTFR = 5		' frames the "put" cough lasts, per puff
+	' NOISE control 6 = WHITE noise at the lowest shift rate (clk/2048).
+	' Not a tone: see put_tick for why a tone could never work here.
+	CONST PUTNSE = 6	' the "put" is a noise burst, not a note
 	CONST SMKPUFF = 3	' puffs released per press
 	CONST SMKCOST = 96	' fuel per press (1/8 tank)
 	CONST MAXSMK = 6	' puff slots = two deployments in flight
@@ -520,7 +524,27 @@ restart:
 
 	' --- main loop --------------------------------------------------------
 game_loop:
+	' PACED TO A FIXED 30 Hz -- two frames per pass, every pass.
+	'
+	' The loop used to take whatever the body cost and let FRAME-delta sort
+	' out the speed. That keeps the SPEED right but not the SMOOTHNESS: WAIT
+	' quantises to whole frames, so the only rates available are 60/30/20/15,
+	' and the body sits just over two frames. Measured over 400 passes at
+	' round 1 while driving: 2% of passes took 1 frame, 65% took 2, 11% took
+	' 3 and 21% took FOUR OR MORE. The car therefore advanced 3 px, then
+	' 4.5, then 6+, in no pattern -- and irregular steps read as stutter far
+	' more than a slower even cadence does.
+	'
+	' Waiting for at least two frames spends the slack instead of racing
+	' ahead, so a pass that finishes early no longer produces a 1-frame step
+	' that the next 4-frame step has to make up. This is a floor, not a cap:
+	' if the body genuinely overruns two frames the delta still absorbs it
+	' and nothing desyncs -- which is why the enemy trim below matters, it
+	' is what keeps the body under the budget.
 	WAIT
+gl_pace:
+	#fd = FRAME - #lf
+	IF #fd < 2 THEN WAIT : GOTO gl_pace
 	' FRAME-delta pacing (Structris pattern): a missed vblank becomes a
 	' catch-up step, so TI-99 and ColecoVision run the same real speed.
 	'
@@ -536,7 +560,6 @@ game_loop:
 	' big the jump. 16 is a quarter second: it still bounds the one huge
 	' delta after a round card or a crash pause, but ordinary play never
 	' reaches it, so game speed no longer depends on frame rate.
-	#fd = FRAME - #lf
 	#lf = FRAME
 	IF #fd > 16 THEN #fd = 16
 
@@ -658,6 +681,8 @@ eskip:
 
 	' flag-blip envelope
 	IF sfxt > 0 THEN GOSUB sfx_tick
+	' smoke "put" envelope
+	IF putt > 0 THEN GOSUB put_tick
 
 	' engine note follows the car's state
 	GOSUB eng_tick
@@ -782,6 +807,12 @@ game_over:
 	' Cars off the screen before GAME OVER shows -- the player's wreck and
 	' the chasers used to sit there frozen underneath it.
 	GOSUB hide_spr
+	' ...and repaint the maze, which is what actually clears the CRASH BURST.
+	' The burst is CHARACTERS, not sprites, so hide_spr never touched it: on
+	' an ordinary crash the restart's draw_view wipes it, but on the last
+	' life nothing redraws until clear_view runs AFTER the card, so the
+	' starburst sat poking out of the top of GAME OVER like debris.
+	GOSUB draw_view
 	' engine and music both stop -- the sting should land in silence
 	GOSUB eng_off
 	GOSUB mus_off
@@ -946,9 +977,24 @@ draw_bang:
 
 	' park all five car sprites off screen. y = 209, NEVER 208: 208 is the
 	' sprite-list terminator and would blank every sprite after it too.
+	' Park EVERY sprite, not just the five this game uses. The player and
+	' four chasers are slots 0-4 and nothing else is ever written, so any
+	' sprite still showing over the GAME OVER card is a slot we never
+	' touched -- boot garbage in the attribute table. Clearing all 32 costs
+	' nothing here (it only runs on a crash, inside a pause) and makes the
+	' card unconditionally clean.
+	'
+	' PACED: VDP writes are buffered and a burst past the per-frame budget
+	' is dropped SILENTLY, which would leave exactly the stragglers this is
+	' meant to remove. A WAIT every 8 slots keeps each batch well inside it.
+	'
+	' 209, never 208: 208 is the sprite-list TERMINATOR, so parking a sprite
+	' there would also blank every slot after it -- which looks like it
+	' works right up until something needs slot 0 again.
 hide_spr:
-	FOR hs = 0 TO 4
+	FOR hs = 0 TO 31
 	SPRITE hs, 209, 0, 0, 0
+	IF (hs AND 7) = 7 THEN WAIT
 	NEXT hs
 	RETURN
 
@@ -1186,24 +1232,39 @@ probe:
 	' no-overlap guarantee is unchanged.
 emove_n:
 	emn = esteps
+	' HOIST THE POSITION INTO SCALARS for the whole walk, write back once.
+	' CVBasic recomputes the index on every array access, and this routine
+	' touched #ex(i)/#ey(i) about a dozen times per chunk -- alignment tests,
+	' the boundary distance, the move itself, the anchor update and ckhit.
+	' With three cars every pass that made the enemies 41% of all frame time
+	' (measured by disabling them: 1140 -> 676 frames per 400 passes).
+	'
+	' Safe because nothing else reads #ex(i)/#ey(i) mid-walk: probe_free and
+	' pf_chk work off the ANCHOR arrays (ecra/ecca), which are still written
+	' the moment the car arrives, and evis does not run until every car has
+	' finished moving. Every exit goes through emn_out so the write-back
+	' cannot be skipped -- including the collision exit, so `crash` sees the
+	' final position.
+	#enx = #ex(i)
+	#eny = #ey(i)
 emn_top:
-	IF emn = 0 THEN RETURN
+	IF emn = 0 THEN GOTO emn_out
 	IF estn(i) > 0 THEN GOSUB emn_stun : GOTO emn_top
-	IF (#ex(i) AND 15) = 0 THEN IF (#ey(i) AND 15) = 0 THEN GOSUB eai
+	IF (#enx AND 15) = 0 THEN IF (#eny AND 15) = 0 THEN GOSUB eai
 	' eai can stun this car (it drove into smoke); spend the rest there
 	IF estn(i) > 0 THEN GOTO emn_top
 	d = edir(i)
 	' emk = pixels left until the next cell boundary along d
-	IF d = 0 THEN emk = #ey(i) AND 15
-	IF d = 1 THEN emk = 16 - (#ex(i) AND 15)
-	IF d = 2 THEN emk = 16 - (#ey(i) AND 15)
-	IF d = 3 THEN emk = #ex(i) AND 15
+	IF d = 0 THEN emk = #eny AND 15
+	IF d = 1 THEN emk = 16 - (#enx AND 15)
+	IF d = 2 THEN emk = 16 - (#eny AND 15)
+	IF d = 3 THEN emk = #enx AND 15
 	IF emk = 0 THEN emk = 16		' sitting on a centre, heading away
 	IF emk > emn THEN emk = emn
-	IF d = 0 THEN #ey(i) = #ey(i) - emk
-	IF d = 1 THEN #ex(i) = #ex(i) + emk
-	IF d = 2 THEN #ey(i) = #ey(i) + emk
-	IF d = 3 THEN #ex(i) = #ex(i) - emk
+	IF d = 0 THEN #eny = #eny - emk
+	IF d = 1 THEN #enx = #enx + emk
+	IF d = 2 THEN #eny = #eny + emk
+	IF d = 3 THEN #enx = #enx - emk
 	' The cached cell is this car's ANCHOR, and it only moves when the car
 	' has fully ARRIVED on a boundary -- not every pixel.
 	'
@@ -1221,12 +1282,16 @@ emn_top:
 	' which is what its body actually covers. Two cars cannot double-book the
 	' destination either: they decide one at a time inside the FOR i loop,
 	' so the second one sees the first already holding it.
-	IF (#ex(i) AND 15) = 0 THEN IF (#ey(i) AND 15) = 0 THEN ecra(i) = #ey(i) / 16 : ecca(i) = #ex(i) / 16
+	IF (#enx AND 15) = 0 THEN IF (#eny AND 15) = 0 THEN ecra(i) = #eny / 16 : ecca(i) = #enx / 16
 	' this car against the player, every chunk (see ckhit)
 	GOSUB ckhit
-	IF hitf = 1 THEN RETURN
+	IF hitf = 1 THEN GOTO emn_out
 	emn = emn - emk
 	GOTO emn_top
+emn_out:
+	#ex(i) = #enx
+	#ey(i) = #eny
+	RETURN
 
 	' burn stun frames in bulk -- estn counts pixel steps, as it always did
 emn_stun:
@@ -1478,7 +1543,7 @@ evis:
 	' loops all run later in the pass).
 ckhit_all:
 	FOR ckn = 0 TO 3
-	IF ckn < nen THEN i = ckn : GOSUB ckhit
+	IF ckn < nen THEN i = ckn : #enx = #ex(i) : #eny = #ey(i) : GOSUB ckhit
 	NEXT ckn
 	RETURN
 
@@ -1492,14 +1557,28 @@ ckhit:
 	' NO challenge-stage exemption. A parked red car is still a car: the
 	' arcade lets an idle one kill you, and driving through one looked like
 	' a bug anyway. `chal` switches off their PURSUIT, never their hitbox.
+	' Reads #enx/#eny, NOT #ex(i)/#ey(i): during an enemy's walk the arrays
+	' are deliberately stale (see emove_n). ckhit_all loads them for the
+	' player-side sweep.
+	' HITBOX 9, not 12. The sprite CELL is 16 px but the car ART is only
+	' 12 wide (14 on the diagonals), inset 2 px each side -- measured off
+	' car_bitmaps. So a threshold of 12 fired the instant the two 12-px art
+	' boxes grazed by ONE pixel on each axis: a 1x1 corner touch, which
+	' reads as a crash happening before the cars meet.
+	'
+	' 9 requires 3 px of real overlap on BOTH axes before it counts. Still
+	' far too wide to tunnel: the pair closes at most about 4 px between
+	' consecutive ckhit samples (the test runs after every movement chunk,
+	' and each actor moves at most one pass's worth between samples), and
+	' the window is 18 px across.
 	#g = #px
-	#g = #g - #ex(i)
+	#g = #g - #enx
 	IF #g >= 32768 THEN #g = 0 - #g
-	IF #g >= 12 THEN RETURN
+	IF #g >= 9 THEN RETURN
 	#g = #py
-	#g = #g - #ey(i)
+	#g = #g - #eny
 	IF #g >= 32768 THEN #g = 0 - #g
-	IF #g >= 12 THEN RETURN
+	IF #g >= 9 THEN RETURN
 	hitf = 1
 	RETURN
 
@@ -1537,6 +1616,13 @@ put_char:
 	' drop a puff at the just-exited cell (lcr,lcc); costs 8 fuel
 	' one press = SMKPUFF puffs, charged up front. No fuel, no smoke.
 smoke_fire:
+	' A PARKED CAR LAYS NO SMOKE. Puffs are dropped in the cells the car
+	' LEAVES BEHIND (smoke_put reads lcr/lcc), so pressing fire while pinned
+	' against a wall or mid-turn produced nothing visible -- but still took
+	' its 96 fuel, an eighth of the tank, for absolutely no effect. Refused
+	' outright now: no puffs queued and no fuel spent.
+	IF blocked = 1 THEN RETURN
+	IF turning = 1 THEN RETURN
 	IF #fuel < SMKCOST THEN RETURN
 	#fuel = #fuel - SMKCOST
 	smkq = SMKPUFF
@@ -1544,6 +1630,11 @@ smoke_fire:
 
 smoke_lay:
 	smkq = smkq - 1
+	' "PUT" -- one per puff, fired as the puff is LAID rather than all three
+	' at the press, so a full deployment reads as "put put put" spaced by the
+	' cells the car crosses. Envelope driven by putt from the main loop.
+	putt = PUTFR
+	SOUND 3,PUTNSE,11
 smoke_put:
 	' recycling a still-live slot: wipe its old block first, otherwise the
 	' active count would double-count this slot
@@ -1786,6 +1877,20 @@ draw_view:
 ov_flag:
 	or2 = fr(oi)
 	oc2 = fc(oi)
+	' OFF-WINDOW REJECT -- the same one-test guard ov_rock already has, which
+	' flags never got. Ten flags are spread over a 34x58 maze and the window
+	' shows 12x12 cells, so typically one or two are visible, yet every live
+	' flag was going through put_cell and its FOUR put_char calls on every
+	' camera pan. `draw_view` fires on a pan and is the burst that overruns
+	' the frame budget, so this is exactly where the stutter tail lives.
+	' Unsigned wrap covers the negative side: a cell above or left of the
+	' camera underflows to a large value and trips the same >= 24 test.
+	t = or2 + or2
+	t = t - camr
+	IF t >= 24 THEN RETURN
+	t2 = oc2 + oc2
+	t2 = t2 - camc
+	IF t2 >= 24 THEN RETURN
 	ob = 0			' F = chars 0-3
 	IF oi = sidx THEN ob = 4	' S = chars 4-7
 	IF oi = lidx THEN ob = 8	' L = chars 8-11
@@ -1820,12 +1925,25 @@ ov_rock:
 ov_smoke:
 	or2 = sr(j)
 	oc2 = sc(j)
+	' same reject; puffs are usually near the player but not always, and a
+	' deployment can leave six of them behind as the camera moves on
+	t = or2 + or2
+	t = t - camr
+	IF t >= 24 THEN RETURN
+	t2 = oc2 + oc2
+	t2 = t2 - camc
+	IF t2 >= 24 THEN RETURN
 	ob = SMOKECH
 	GOSUB put_cell
 	RETURN
 
 	' --- fuel bar (8 chars, row 21, redrawn only when the level changes) --
 fuel_bar:
+	' Early-out BEFORE the divide. 12 is not a power of two so this is a
+	' real TMS9900 DIV, and it ran every pass purely to discover that the
+	' gauge had not moved -- the tank only loses a unit every 8 frames.
+	IF #fuel = pfu THEN RETURN
+	pfu = #fuel
 	lvl = #fuel / 12
 	IF lvl = plvl THEN RETURN
 	plvl = lvl
@@ -1978,6 +2096,35 @@ rt_rebake:
 	' --- flag-blip sound envelope ----------------------------------------
 	' Also frame-delta paced, so the blip is the same length whatever the
 	' loop is doing (see sct_tick).
+	' The "put" is deliberately SHORT and falls away fast: it has to sit
+	' under the engine without masking it, and three of them land close
+	' together. Shares channel 2 with the flag blip -- they cannot overlap
+	' in practice (you are not collecting a flag on the frame you deploy),
+	' and if they ever did the later one simply wins.
+put_tick:
+	' A "PUT" IS NOISE, NOT A NOTE. Two earlier cuts were tones on channel 2
+	' and both were wrong for the same underlying reason. The first swept its
+	' pitch UP as it decayed (193 -> 329 Hz), which is a bubble -- reported as
+	' "under water". The second held a fixed pitch and dropped only the
+	' volume, which fixed the bubble but was still "beepy", because a square
+	' wave reads as a beep however low you put it. And low was already
+	' exhausted: the tone divider is 10 bits, so ~109 Hz IS the floor.
+	'
+	' So it borrows the NOISE channel instead -- white noise at the lowest
+	' shift rate, volume falling 11, 8, 6, 4, 2. Unpitched, so it cannot beep.
+	'
+	' Channel 3 is the engine's, and this takes it for five frames per puff.
+	' Handing it back is the fiddly part: eng_set only re-issues when the
+	' state CHANGES, so engp is forced to 0 to make eng_tick treat the next
+	' pass as a change and restore the note. Without that the engine stays
+	' silent until the player next hits a wall.
+	puta = #fd
+	IF putt > puta THEN putt = putt - puta ELSE putt = 0
+	IF putt = 0 THEN engp = 0 : RETURN
+	putv = putt + putt
+	SOUND 3,PUTNSE,putv
+	RETURN
+
 sfx_tick:
 	sfxa = #fd
 	IF sfxt > sfxa THEN sfxt = sfxt - sfxa ELSE sfxt = 0
@@ -2082,6 +2229,12 @@ eng_tick:
 	' under the driving note, clearly still an engine. Settled at 10/7 --
 	' one step louder again, i.e. 2-8 dB under driving.
 eng_idle:
+	' Stand off while a smoke "put" owns the noise channel. Normally these
+	' cannot coincide -- a put only starts while driving, and driving is
+	' engc 1, which never reaches here -- but the puffs are laid over the
+	' following cells, so the car can be stopped by a wall mid-deployment.
+	' Without this the idle chug would fight the cough for channel 3.
+	IF putt > 0 THEN RETURN
 	engt = engt + #fd
 	IF engt < ENGCHG THEN RETURN
 	engt = 0
