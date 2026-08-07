@@ -61,6 +61,22 @@
 	' NOISE control 6 = WHITE noise at the lowest shift rate (clk/2048).
 	' Not a tone: see put_tick for why a tone could never work here.
 	CONST PUTNSE = 6	' the "put" is a noise burst, not a note
+	' ENGINE PITCH BY DIRECTION, as the arcade does it: higher heading up
+	' the screen, lower heading down, and the middle value going across.
+	'
+	' This needs noise control 3, which clocks the noise from TONE CHANNEL
+	' 2's divider instead of one of the three fixed rates -- and three fixed
+	' rates is all periodic noise otherwise offers (466 / 233 / 116 Hz), with
+	' 233 already rejected as a whine and nothing at all below 116. Control 3
+	' gives a continuous choice, so the three pitches can all sit low.
+	'
+	' Periodic noise repeats every 15 shifts, so the pitch is
+	' 3579545/(32*N*15) = 7457/N Hz. Channel 2 is driven at VOLUME 0: the
+	' tone generator still runs and still clocks the noise, it is simply not
+	' heard. See eng_set for what that costs.
+	CONST ENGUP = 48	' heading north -- 155 Hz
+	CONST ENGLR = 64	' east/west    -- 116 Hz, the pitch it had before
+	CONST ENGDN = 90	' heading south --  83 Hz
 	CONST SMKMAX = 3	' most puffs ONE press can produce
 	CONST SMKCOST = 32	' fuel PER PUFF (three of them = the old 96)
 	CONST MAXSMK = 6	' puff slots = two deployments in flight
@@ -90,13 +106,13 @@
 	' CONST -- a CONST over 255 truncates to 8 bits on this backend, which is
 	' how an earlier 288-step version silently wrapped to 32.
 	CONST MUSTICK = 6	' frames per step = one sixteenth at 151 BPM
-	' Dropped again (6 -> 4 melody, 5 -> 3 bass) so the EFFECTS lead: the
-	' engine, the flag blip and the smoke cough all have to cut through, and
-	' music that competes with them makes the mix mush rather than making it
-	' richer. SN76489 volume is logarithmic at ~2 dB a step, so two steps is
-	' a clearly audible drop, not a nudge.
-	CONST MUSVOL = 4	' melody volume -- low on purpose, the engine
-	CONST MUSBAS = 3	' and the effects have to cut through it
+	' Raised now the tune is the real one and in time. It had been pushed
+	' down to 4/3 while it was a bad transcription playing at half tempo --
+	' burying it was treating the symptom. 8/6 puts it clearly in front
+	' without covering the engine (11) or the effects. SN76489 volume is
+	' logarithmic at ~2 dB a step, so this is a big lift, not a nudge.
+	CONST MUSVOL = 8	' melody volume
+	CONST MUSBAS = 6	' and the effects have to cut through it
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -182,11 +198,12 @@
 	#hi = 500		' session high score (5000 pts; score unit = 10)
 	lives0 = 3		' defaults, overridden by the 838 setup screen
 	rnd0 = 1
-	' MUSIC IS OFF BY DEFAULT. It shares the ear with the engine note and
-	' wins, which made the engine inaudible and the whole mix busy. Press 1
-	' on the title to turn it on. Unlike the 838 settings this is a
-	' PREFERENCE, so it is set once at boot and survives game over.
-	musen = 0
+	' MUSIC IS ON BY DEFAULT. It was off while the tune was a bad
+	' transcription playing at half tempo -- with the real one in time there
+	' is no reason to hide it. Press 1 on the title to turn it off. Unlike
+	' the 838 settings this is a PREFERENCE, so it is set once at boot and
+	' survives game over.
+	musen = 1
 
 	' --- title ------------------------------------------------------------
 	' STRAIGHT TO THE TITLE. Boot used to draw the panel furniture and poke
@@ -2341,7 +2358,9 @@ put_tick:
 sfx_tick:
 	sfxa = #fd
 	IF sfxt > sfxa THEN sfxt = sfxt - sfxa ELSE sfxt = 0
-	IF sfxt = 0 THEN SOUND 2,,0 : RETURN
+	' The blip has been using channel 2, whose divider is what clocks the
+	' engine noise -- so hand it back by forcing a re-issue.
+	IF sfxt = 0 THEN SOUND 2,,0 : engp = 0 : RETURN
 	#sf = 100 + sfxt * 30
 	SOUND 2,#sf,12
 	RETURN
@@ -2450,6 +2469,9 @@ eng_tick:
 	IF turning = 1 THEN engc = 2
 	IF #fuel = 0 THEN engc = 2
 	IF engc <> engp THEN GOSUB eng_set
+	' ...and re-issue on a change of HEADING too, which is what makes the
+	' note track the direction rather than only the driving/idling state.
+	IF dir <> engd THEN GOSUB eng_set
 	IF engc = 2 THEN GOSUB eng_idle
 	RETURN
 
@@ -2477,7 +2499,7 @@ eng_idle:
 	IF engt < ENGCHG THEN RETURN
 	engt = 0
 	engv = 1 - engv
-	IF engv = 1 THEN SOUND 3,2,10 ELSE SOUND 3,2,7
+	IF engv = 1 THEN SOUND 3,3,10 ELSE SOUND 3,3,7
 	RETURN
 	' Channel 3 control: bit 2 picks the source (0-3 PERIODIC, 4-7 white
 	' noise) and the low 2 bits pick the shift rate (0 = clk/512, 1 =
@@ -2499,9 +2521,21 @@ eng_idle:
 	' engine at all -- it was a hiss.
 eng_set:
 	engp = engc
+	engd = dir
 	engt = 0
 	engv = 0
-	IF engc = 1 THEN SOUND 3,2,11 ELSE SOUND 3,2,7
+	' dir: 0 = north, 1 = east, 2 = south, 3 = west
+	engn = ENGLR
+	IF dir = 0 THEN engn = ENGUP
+	IF dir = 2 THEN engn = ENGDN
+	' Channel 2 at volume 0 -- silent, but its tone generator still clocks
+	' the noise. That does entangle the engine with the effects channel: the
+	' flag blip writes channel 2 and leaves its divider behind, so sfx_tick
+	' forces engp = 0 when the blip ends and this routine puts the engine's
+	' divider back. Same trick the smoke "put" already uses to hand back
+	' channel 3.
+	SOUND 2,engn,0
+	IF engc = 1 THEN SOUND 3,3,11 ELSE SOUND 3,3,7
 	RETURN
 eng_off:
 	engp = 0

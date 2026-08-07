@@ -437,7 +437,21 @@ depends on this split:
 | 2 | flag blip, round-clear jingle, game-over sting |
 | 3 | engine buzz, and the crash boom that overrides it |
 
-**The engine note is periodic noise at the LOWEST rate (control 2, ~116 Hz).** Channel 3's control
+**The engine note tracks the HEADING**, as the arcade does it: ~155 Hz driving north, ~116 Hz
+east/west, ~83 Hz driving south. That needs noise control **3**, which clocks the noise from
+tone channel 2's divider rather than one of the three fixed rates — and three is all periodic
+noise otherwise offers (466 / 233 / 116 Hz), with 233 already rejected as a whine and nothing at
+all below 116. Periodic noise repeats every 15 shifts, so the pitch is 3579545/(32×N×15) =
+7457/N Hz, giving dividers 48 / 64 / 90.
+
+**The cost is that channel 2 is now shared.** It runs at volume 0 for the engine — the tone
+generator still clocks the noise, it is simply not heard — but the flag blip writes channel 2
+and leaves its divider behind, so `sfx_tick` forces `engp = 0` when the blip ends and `eng_set`
+puts the engine's divider back. That is the same hand-back the smoke "put" already uses for
+channel 3. `eng_set` is also re-issued on a change of `dir`, not just of driving/idling state.
+
+**Historic note: the engine note was previously periodic noise at the fixed lowest rate**
+(control 2, ~116 Hz). Channel 3's control
 byte picks the source in bit 2 (0–3 periodic, 4–7 white) and the shift rate in the low two bits
 (0 = clk/512, 1 = clk/1024, 2 = clk/2048; **3 is unusable here** — it follows channel 2, the SFX
 channel, so the engine would change pitch under every flag blip). Periodic noise repeats every 15
