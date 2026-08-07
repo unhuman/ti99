@@ -442,7 +442,12 @@ t_draw:
 	' Music on/off indicator. Both strings are the same length so the second
 	' one fully covers the first -- no trailing "N" left behind by "OFF".
 t_mus:
-	IF musen = 1 THEN PRINT AT 330,"1 MUSIC ON " ELSE PRINT AT 330,"1 MUSIC OFF"
+	' Column 11, not 10, so it lines up with PRESS FIRE above it. "1 MUSIC
+	' ON" is ten visible characters against OFF's eleven -- the trailing
+	' space only stops OFF leaving an N behind, it does not centre anything.
+	' At column 11 the ON form spans 11-20, exactly under PRESS FIRE, which
+	' is the state it sits in whenever the music is actually playing.
+	IF musen = 1 THEN PRINT AT 331,"1 MUSIC ON " ELSE PRINT AT 331,"1 MUSIC OFF"
 	RETURN
 
 	' --- "838 mode": type 8, 3, 8 on the title for the setup screen -------
