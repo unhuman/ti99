@@ -61,8 +61,8 @@
 	' NOISE control 6 = WHITE noise at the lowest shift rate (clk/2048).
 	' Not a tone: see put_tick for why a tone could never work here.
 	CONST PUTNSE = 6	' the "put" is a noise burst, not a note
-	CONST SMKPUFF = 3	' puffs released per press
-	CONST SMKCOST = 96	' fuel per press (1/8 tank)
+	CONST SMKMAX = 3	' most puffs ONE press can produce
+	CONST SMKCOST = 32	' fuel PER PUFF (three of them = the old 96)
 	CONST MAXSMK = 6	' puff slots = two deployments in flight
 	CONST SMKTTL = 150	' frames a puff lasts (2.5 s) before it clears
 	' These two count PIXEL STEPS, not frames, so they are consumed at the
@@ -685,6 +685,13 @@ restart:
 	' resets, which is why vstep is separate from nfl.
 	' round_init falls through to here, so these cover a new round too.
 	#fuel = 768
+	' HALF A TANK IN A CHALLENGING STAGE, so its own rule can fire. The red
+	' cars are meant to wake when the fuel runs out, but a full tank is 102 s
+	' of driving and clearing ten flags takes 45-71 s, so the tank never
+	' emptied and the cars never moved -- the threat was unreachable. 384
+	' units is about 51 s: close enough to the clear time that running dry is
+	' a real risk rather than a formality.
+	IF chal = 1 THEN #fuel = 384
 	plvl = 255		' force the fuel bar to redraw at the new level
 	vstep = 0		' flag values start again at 100
 	sgot = 0		' and the special's doubling is lost
@@ -756,13 +763,16 @@ gl_pace:
 	IF cont1.right THEN qdir = 1
 	IF cont1.down THEN qdir = 2
 	IF cont1.left THEN qdir = 3
-	' Smoke fires on the button's RISING EDGE and queues SMKPUFF puffs,
-	' which are then laid in the next cells the car leaves -- that is what
-	' produces the arcade's short trail behind the car. Holding the button
-	' does nothing extra; you pay the fuel per press.
+	' Smoke is now HELD, not fired: a tap drops one puff, holding the button
+	' keeps dropping them as the car leaves each cell, up to SMKMAX 3 on any
+	' one press. It used to commit to all three on the rising edge and charge
+	' the whole 96 fuel up front, so a tap you regretted still cost an eighth
+	' of the tank. Fuel is charged per puff instead, so one puff costs a
+	' third of what three do.
 	btn = 0
 	IF cont1.button THEN btn = 1
 	IF btn = 1 THEN IF btnp = 0 THEN GOSUB smoke_fire
+	IF btn = 1 THEN IF btnp = 1 THEN GOSUB smoke_more
 	btnp = btn
 
 	' A REVERSE is a turn, not a flip: the car never snaps from up to down.
@@ -904,9 +914,9 @@ round_done:
 	#fb = #fuel / 12
 	PRINT AT 459,"FUEL BONUS"
 	PRINT AT 491,#fb,"0   "
-	FOR i = 1 TO 30
-	WAIT
-	NEXT i
+	' No pause before the tally. There used to be half a second of silence
+	' between the bonus appearing and the first tick, so the sound arrived
+	' after the award rather than with it.
 fb_tally:
 	IF #fb = 0 THEN GOTO fb_done
 	#fb = #fb - 1
@@ -1806,17 +1816,29 @@ put_char:
 	' --- smoke ------------------------------------------------------------
 	' drop a puff at the just-exited cell (lcr,lcc); costs 8 fuel
 	' one press = SMKPUFF puffs, charged up front. No fuel, no smoke.
-smoke_fire:
 	' A PARKED CAR LAYS NO SMOKE. Puffs are dropped in the cells the car
 	' LEAVES BEHIND (smoke_put reads lcr/lcc), so pressing fire while pinned
 	' against a wall or mid-turn produced nothing visible -- but still took
-	' its 96 fuel, an eighth of the tank, for absolutely no effect. Refused
-	' outright now: no puffs queued and no fuel spent.
+	' fuel for absolutely no effect. Refused outright: nothing queued, nothing
+	' spent.
+smoke_fire:
+	smkc = 0		' puffs used by THIS press
+	GOSUB smoke_more
+	RETURN
+
+	' Queue one more puff, if this press still has some of its three left and
+	' the previous one has already been laid. Called on the rising edge and
+	' then every pass the button stays down, so how long you hold decides
+	' whether you get one, two or three.
+smoke_more:
 	IF blocked = 1 THEN RETURN
 	IF turning = 1 THEN RETURN
+	IF smkc >= SMKMAX THEN RETURN
+	IF smkq > 0 THEN RETURN		' previous puff not laid yet
 	IF #fuel < SMKCOST THEN RETURN
 	#fuel = #fuel - SMKCOST
-	smkq = SMKPUFF
+	smkq = 1
+	smkc = smkc + 1
 	RETURN
 
 smoke_lay:
@@ -2353,8 +2375,22 @@ mus_tick:
 	' the tune had been replaced twice in the meantime, so the slowness read
 	' as "this tune is bad" rather than "the clock is wrong".
 	musd = #fd
+	' AND DO NOT DROP THE REMAINDER. This used to play a single step and
+	' reset the counter whenever the elapsed frames reached it, throwing away
+	' everything past one step -- so the music LOST TIME exactly when the
+	' loop was busy, which is when the camera is panning. The tempo therefore
+	' wobbled with what was on screen, and on a bass that alternates every
+	' sixteenth that reads as the sound itself changing rather than as the
+	' beat drifting. It now spends the whole delta, playing as many steps as
+	' the elapsed frames actually call for and carrying what is left over.
+mus_adv:
 	IF mut > musd THEN mut = mut - musd : RETURN
+	musd = musd - mut
 	mut = MUSTICK
+	GOSUB mus_step
+	GOTO mus_adv
+
+mus_step:
 	#mua = #muss + #mup + #mup
 	mun = PEEK(#mua)
 	#mua = #mua + 1

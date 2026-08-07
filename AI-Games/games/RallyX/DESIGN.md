@@ -383,6 +383,12 @@ running dry before all ten flags.
 So: fire is **edge-triggered** (`smoke_fire` on the rising edge only), charges `SMKCOST` 96
 fuel up front out of a 768 tank (8 uses if you never drove), and queues `SMKPUFF` 3 puffs.
 Queued puffs are laid one per cell as the car leaves it, producing the arcade's short trail.
+**Smoke is HELD, not fired.** A tap drops one puff; holding the button keeps dropping them as
+the car leaves each cell, up to `SMKMAX` 3 on any one press. It used to commit to all three on
+the rising edge and charge the whole 96 fuel up front, so a tap you regretted still cost an
+eighth of the tank. Fuel is charged **per puff** (`SMKCOST` 32) instead, so one costs a third of
+what three do.
+
 No fuel, no smoke — **and no smoke while the car is not moving.** Puffs drop in the cells the
 car LEAVES, so pressing fire while blocked against a wall or mid-turn produced nothing visible
 yet still charged the full 96 fuel. `smoke_fire` refuses outright on `blocked` or `turning`.
@@ -476,6 +482,13 @@ therefore writes the tune as **plain note names, one string per bar**, precisely
 corrected by ear — fix a name, re-run, rebuild. A MIDI or MusicXML export of the arrangement
 would let it be generated exactly instead.
 
+**The player spends the whole frame delta.** `mus_tick` used to play a single step and reset its
+counter whenever the elapsed frames reached it, throwing away everything past one step — so the
+music LOST TIME exactly when the loop was busy, which is when the camera is panning. The tempo
+wobbled with what was on screen, and on a bass alternating every sixteenth that reads as the
+*sound* changing rather than the beat drifting. It now plays as many steps as the elapsed frames
+call for and carries the remainder.
+
 Volumes were dropped again (melody 6 → 4, bass 5 → 3) so the **effects lead**: the engine, the
 flag blip and the smoke cough all have to cut through, and music that competes with them makes
 the mix mush rather than richer. At ~2 dB a step that is a clearly audible drop.
@@ -559,6 +572,11 @@ mod 4`, written as `(rnd + 1) mod 4` so every intermediate stays positive — th
 8-bit vars, and `rnd - 3` at round 1 would wrap to 254 and take 63 trips round the wrap loop.
 
 ## 10. Rounds & Challenge Stages
+
+**The challenging stage runs on HALF A TANK** (384 units, ~51 s) so its own rule can actually
+fire. The red cars are meant to wake when the fuel runs out — and the code always did that — but
+a full tank is 102 s of driving while clearing ten flags takes 45–71 s, so the tank never emptied
+and the cars never moved. The threat was unreachable, which is why it never looked implemented.
 
 **Challenging stage — rounds 3, 7, 11, 15 … (researched, not assumed).** Wikipedia: *"The third
 level and every fourth thereafter is a bonus round"*, and *"in these bonus rounds, the red cars
