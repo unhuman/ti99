@@ -155,27 +155,10 @@
 
 	BANK SELECT 5		' art / tiles / radar tables / item lists
 
-	DEFINE CHAR 0,16,ovlpat		' flags F/S/L + smoke, 2x2 quadrants
-	' Custom art MUST stay below char 32: 32 is SPACE, which CLS fills the
-	' screen with and every PRINT pads with. Defining over it turned every
-	' blank cell in the panel into rubble.
-	DEFINE CHAR 24,4,rockpat	' rock boulder, one 2x2 cell
-	DEFINE COLOR 24,4,rockcol
-	DEFINE CHAR 16,8,bang_pat	' crash starburst, two 2x2 frames
-	DEFINE COLOR 16,8,bang_col
-	DEFINE COLOR 140,4,pop_col	' popup box: white on black
 	#fontb = VARPTR mini_font(0)
-	DEFINE CHAR 96,16,wallpat	' wall quadrants, 4 per corner
-	DEFINE CHAR 112,2,misc_chars	' 112 tree, 113 road
-	DEFINE CHAR 120,9,fuel_chars	' fuel bar fill 0-8 px
-	DEFINE CHAR 129,1,live_char	' lives icon
-	DEFINE COLOR 0,16,ovlcol
-	DEFINE COLOR 96,16,wallcol
-	DEFINE COLOR 112,2,misc_colors
-	DEFINE COLOR 120,9,fuel_colors
-	DEFINE COLOR 129,1,live_color
 	DEFINE SPRITE 0,8,car_bitmaps	' defs 0-7 = car headings N,NE,E,SE,
 					' S,SW,W,NW (enemies reuse them, red)
+	GOSUB gfx_reset
 
 	msktab(0) = $C0
 	msktab(1) = $30
@@ -194,13 +177,7 @@
 	' panel text (col 24+): 1UP/score, HI/hi, FUEL label, round.
 	' VDP writes are BUFFERED and applied at vblank -- pace bursts with
 	' WAIT or the buffer overflows and writes are silently dropped.
-	PRINT AT 24,"1UP"
-	PRINT AT 88,"HI"
-	WAIT
-	PRINT AT 664,"FUEL"
-	WAIT
-	GOSUB prt_hi
-	WAIT
+	GOSUB panel_draw
 
 	' radar canvas: chars 144-255 on rows 5-18, cols 24-31. Patterns and
 	' base colors come from ROM tables via DEFINE (synchronous on TI);
@@ -209,18 +186,7 @@
 	WAIT
 	DEFINE COLOR 144,112,radar_base
 	WAIT
-	FOR rr = 0 TO 13
-	rw = 5 + rr
-	#va = $1800 + rw * 32.
-	#va = #va + 24
-	t2 = 144 + rr * 8
-	FOR j = 0 TO 7
-	#vb = #va + j
-	t = t2 + j
-	VPOKE #vb,t
-	NEXT j
-	WAIT
-	NEXT rr
+	GOSUB radar_canvas
 
 	' --- title ------------------------------------------------------------
 	' The viewport is blank whenever we get here: black at boot, and wiped
@@ -232,6 +198,8 @@ title:
 	GOSUB mus_off
 	SOUND 0,,0
 	SOUND 1,,0
+	GOSUB hide_spr
+	GOSUB t_setup
 	GOSUB t_draw
 	tseq = 0
 	tkp = 15
@@ -243,6 +211,7 @@ t_prs:
 	WAIT
 	GOSUB t_key
 	IF cont1.button = 0 THEN GOTO t_prs
+	GOSUB t_teardown
 	rnd = rnd0
 	' rc3 is the challenging-stage phase: it cycles 0..3 with the round and
 	' the stage runs when it is 0 from round 3 on -- i.e. rounds 3, 7, 11,
@@ -265,17 +234,206 @@ rc3wrap:
 	' took the machine down the moment you pressed fire on the title.
 	GOTO game_init
 
+	' --- title screen -----------------------------------------------------
+	' Modelled on the X68000 port: the RALLY-X logo over a TAN field with a
+	' legend naming everything you will meet, drawn with the game's OWN art
+	' rather than mock-ups -- the flag, smoke, BANG and rock icons are the
+	' real characters and the two cars are the real sprites.
+	'
+	' The whole 32x24 screen goes tan, panel included, so the title is not a
+	' picture sitting in a black frame. Two consequences: the printable font
+	' has to be recoloured (white-on-black is right for the in-game panel and
+	' invisible here), and the panel furniture and radar canvas have to be
+	' rebuilt on the way out. t_teardown does both.
+	' ORDER MATTERS: BLANK FIRST, RECOLOUR SECOND. Changing the font colour
+	' or a character definition while the old screen is still up repaints
+	' whatever is on it in the new colours for a moment, which looks like
+	' corruption. Clearing to spaces first means the recolour lands on an
+	' empty field.
+	'
+	' And the fill is SPACES, not a tan tile: a screen of spaces takes the
+	' font's own colour, so flipping the font table to black-on-tan turns the
+	' entire field tan in one go -- no second 768-cell pass, and the same
+	' flip back to white-on-black blanks it to black on the way out.
+	' EVERY character and colour the GAME uses, re-uploaded from ROM in one
+	' go. Called at boot and again at BOTH ends of the title screen.
+	'
+	' It would be cheaper to restore only what the title disturbs, and that
+	' is what this used to do -- but it means tracking exactly which codes
+	' each screen touches, and getting it wrong shows up as corrupted text
+	' three transitions later rather than immediately. A full reset has no
+	' edge cases: whatever the previous screen did, the next one starts from
+	' a known state. It costs a few frames on a screen change, which is
+	' invisible next to the screen wipe that precedes it.
+	'
+	' Art must stay BELOW char 32: 32 is SPACE, which every PRINT pads with
+	' and the screen wipe fills with. Defining over it turns every blank
+	' cell into rubble.
+gfx_reset:
+	BANK SELECT 5
+	DEFINE CHAR 0,16,ovlpat		' flags F/S/L + smoke, 2x2 quadrants
+	DEFINE COLOR 0,16,ovlcol
+	WAIT
+	DEFINE CHAR 16,8,bang_pat	' crash starburst, two 2x2 frames
+	DEFINE COLOR 16,8,bang_col
+	DEFINE CHAR 24,4,rockpat	' rock boulder, one 2x2 cell
+	DEFINE COLOR 24,4,rockcol
+	WAIT
+	DEFINE CHAR 96,16,wallpat	' wall quadrants, 4 per corner
+	DEFINE COLOR 96,16,wallcol
+	DEFINE CHAR 112,2,misc_chars	' 112 tree, 113 road
+	DEFINE COLOR 112,2,misc_colors
+	WAIT
+	DEFINE CHAR 120,9,fuel_chars	' fuel bar fill 0-8 px
+	DEFINE COLOR 120,9,fuel_colors
+	DEFINE CHAR 129,1,live_char	' lives icon
+	DEFINE COLOR 129,1,live_color
+	DEFINE COLOR 140,4,pop_col	' popup box
+	WAIT
+	DEFINE CHAR 144,112,radar_zero	' blank radar canvas
+	DEFINE COLOR 144,112,radar_base
+	WAIT
+	DEFINE COLOR 32,64,font_norm	' printable font: white on black
+	WAIT
+	RETURN
+
+t_setup:
+	sfch = 32
+	GOSUB screen_fill
+	GOSUB gfx_reset
+	BORDER 10
+	DEFINE COLOR 32,64,font_tan
+	' The logo borrows the RADAR canvas codes, which a title screen has no
+	' use for. round_init re-uploads the real canvas every round anyway, so
+	' the restore path already exists and is exercised constantly.
+	BANK SELECT 6
+	DEFINE CHAR 144,64,title_pat
+	WAIT
+	DEFINE COLOR 144,64,title_col
+	WAIT
+	' logo: 15 x 4 chars at row 2, col 8 -- centred on the 32-column screen
+	RESTORE title_map
+	FOR tly = 0 TO 3
+	trw = 2 + tly
+	#va = $1800 + trw * 32.
+	#va = #va + 8
+	FOR tlx = 0 TO 14
+	READ BYTE t
+	#vb = #va + tlx
+	VPOKE #vb,t
+	NEXT tlx
+	WAIT
+	NEXT tly
+	BANK SELECT 5
+	RETURN
+
+	' Back to a playfield: font readable on black again, screen blanked, and
+	' the panel and radar canvas rebuilt over the logo's borrowed codes.
+t_teardown:
+	' Same shape as t_setup and for the same reason: wipe first, then reset
+	' everything from ROM, then rebuild the panel furniture.
+	sfch = 32
+	GOSUB screen_fill
+	GOSUB gfx_reset
+	BORDER 1
+	GOSUB panel_draw
+	GOSUB radar_canvas
+	RETURN
+
+	' fill all 32x24 with sfch, ONE ROW PER FRAME: 32 cells is already a
+	' sizeable buffered burst, and bursts past the budget are dropped
+	' silently -- a half-filled background would be worse than none
+screen_fill:
+	FOR sfr = 0 TO 23
+	#va = $1800 + sfr * 32.
+	FOR sfc = 0 TO 31
+	#vb = #va + sfc
+	VPOKE #vb,sfch
+	NEXT sfc
+	WAIT
+	NEXT sfr
+	RETURN
+
+	' the fixed panel furniture (col 24+) -- needed at boot and after a title
+panel_draw:
+	PRINT AT 24,"1UP"
+	PRINT AT 88,"HI"
+	WAIT
+	PRINT AT 664,"FUEL"
+	WAIT
+	GOSUB prt_hi
+	WAIT
+	RETURN
+
+	' radar name-table mapping: chars 144-255 over rows 5-18, cols 24-31
+radar_canvas:
+	FOR rr = 0 TO 13
+	rw = 5 + rr
+	#va = $1800 + rw * 32.
+	#va = #va + 24
+	t2 = 144 + rr * 8
+	FOR j = 0 TO 7
+	#vb = #va + j
+	t = t2 + j
+	VPOKE #vb,t
+	NEXT j
+	WAIT
+	NEXT rr
+	RETURN
+
+	' a 2x2 art cell straight onto the screen at (tir,tic). The overlay
+	' quadrant order is TL, TR, BL, BR = ob+0..3, the same order put_cell uses
+t_icon:
+	#va = $1800 + tir * 32.
+	#va = #va + tic
+	VPOKE #va,ob
+	#vb = #va + 1
+	t = ob + 1
+	VPOKE #vb,t
+	#vb = #va + 32
+	t = ob + 2
+	VPOKE #vb,t
+	#vb = #vb + 1
+	t = ob + 3
+	VPOKE #vb,t
+	RETURN
+
 t_draw:
-	PRINT AT 359,"* RALLY-X *"
-	PRINT AT 424,"PRESS FIRE"
+	PRINT AT 267,"PRESS FIRE"
 	GOSUB t_mus
-	PRINT AT 544,"2026 UNHUMAN AND CLAUDE"
+	' LEGEND, in the arcade port's two columns
+	ob = 0			' F flag
+	tir = 13
+	tic = 3
+	GOSUB t_icon
+	PRINT AT 422,"FLAG"
+	ob = 16			' BANG burst, first frame
+	tic = 18
+	GOSUB t_icon
+	PRINT AT 437,"BANG"
+	WAIT
+	ob = SMOKECH
+	tir = 16
+	tic = 3
+	GOSUB t_icon
+	PRINT AT 518,"SMOKE"
+	ob = ROCKCH
+	tic = 18
+	GOSUB t_icon
+	PRINT AT 533,"ROCK"
+	WAIT
+	' the cars are the REAL sprites -- nothing else uses slots 0 and 1 here
+	PRINT AT 614,"MY CAR"
+	PRINT AT 629,"RED CAR"
+	SPRITE 0,151,24,8,5		' player car, heading East
+	SPRITE 1,151,144,8,9		' red car
+	PRINT AT 708,"2026 UNHUMAN AND CLAUDE"
 	RETURN
 
 	' Music on/off indicator. Both strings are the same length so the second
 	' one fully covers the first -- no trailing "N" left behind by "OFF".
 t_mus:
-	IF musen = 1 THEN PRINT AT 486,"1 MUSIC ON " ELSE PRINT AT 486,"1 MUSIC OFF"
+	IF musen = 1 THEN PRINT AT 330,"1 MUSIC ON " ELSE PRINT AT 330,"1 MUSIC OFF"
 	RETURN
 
 	' --- "838 mode": type 8, 3, 8 on the title for the setup screen -------
@@ -833,8 +991,11 @@ game_over:
 	' 838 settings last for ONE game only -- back to 3 cars from round 1.
 	lives0 = 3
 	rnd0 = 1
-	' and wipe the maze, so the title is not printed over a stale playfield
-	GOSUB clear_view
+	' No clear_view here. It wiped only the 24-column viewport and left the
+	' panel, then the title wiped the whole screen again -- so the playfield
+	' visibly cleared, sat there, and cleared a second time. t_setup's
+	' full-screen wipe is now the only one, which reads as a single clean
+	' transition.
 	GOTO title
 
 	' --- flag score popup -------------------------------------------------
@@ -2287,6 +2448,9 @@ eng_off:
 	INCLUDE "map2_4.bas"
 
 	' TI bank 2: art, tiles, radar tables, item lists (init / round setup)
+	BANK 6
+	INCLUDE "title.bas"
+
 	BANK 5
 	' 16x16 top-down F1 car, 4 rotations (assets/gencar.py; sprite order =
 	' left half rows 0-15, then right half rows 0-15): narrow nose, four

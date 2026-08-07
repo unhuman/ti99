@@ -294,6 +294,20 @@ out.append("rockcol:")
 out.append("	' black (1) on tan road (10): max contrast, and nothing else is black")
 for c8 in rockcol:
     out.append("	DATA BYTE " + ",".join(c8))
+# ---- ASCII font colour tables -------------------------------------------
+# The font (32-95) is never given colours by the game -- it runs on CVBasic's
+# default white-on-black, which is right for the black panel but wrong on the
+# title screen's tan field. Two full tables let the title flip the whole
+# printable range in one DEFINE COLOR and flip it back when a game starts.
+# 64 chars x 8 rows each.
+out.append("font_tan:")
+out.append("	' black on tan -- the title screen's field")
+for i in range(64):
+    out.append("	DATA BYTE $1A,$1A,$1A,$1A,$1A,$1A,$1A,$1A")
+out.append("font_norm:")
+out.append("	' white on black -- the in-game panel")
+for i in range(64):
+    out.append("	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1")
 out.append("radar_zero:")
 out.append("\t' 112 x 8 zero pattern rows: blank radar canvas (chars 144-255)")
 for i in range(112):

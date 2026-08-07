@@ -655,6 +655,45 @@ The trims that came out of this: the enemy position hoisted into scalars for its
 times per chunk), the off-window reject extended from rocks to flags and smoke, and `fuel_bar`
 early-outing before its real `DIV`.
 
+### Title screen
+
+Modelled on the X68000 port: the **RALLY-X logo** over a tan field with a legend naming
+everything you meet. The legend uses the game's **own art** — the flag, smoke, BANG and rock are
+the real characters and the two cars are the real sprites, so the title cannot drift out of step
+with what you actually see in play.
+
+**The logo is generated** (`assets/gentitle.py` → `src/title.bas`): slab caps rendered into a
+15×4 character block, cells **deduped** and padded to a fixed 64 so the source's `DEFINE CHAR`
+count never has to change when the art does. It borrows char codes **144–207**, the radar
+canvas, which a title has no use for.
+
+Two things the hardware dictated:
+
+- **A drop shadow was tried and removed.** Orange letter + blue shadow + tan background is three
+  colours in one character row, which the TMS9918 cannot do. Resolving it per row (letter ink
+  wins, else shadow) left the shadow as disconnected blue blocks; restricting it to the band
+  below the word was tidier but still read as debris rather than a shadow. Plain orange caps are
+  cleaner than a shadow the hardware cannot draw properly.
+- **The background is a screen of SPACES, not a tan tile.** A space takes the font's colour, so
+  flipping the printable range (32–95) to black-on-tan turns the whole field tan in one
+  `DEFINE COLOR`, and flipping back to white-on-black blanks it to black. No second 768-cell
+  pass, and the panel needs no special handling.
+
+**Screen changes: wipe first, then reset everything.** Both `t_setup` and `t_teardown` clear the
+screen to spaces *before* touching any colour or character definition — recolouring a screen that
+still has content on it repaints that content in the new colours for a moment, which is
+indistinguishable from corruption. They then call **`gfx_reset`**, which re-uploads *every*
+character and colour the game uses from ROM.
+
+That full reset replaced an earlier version that restored only what the title disturbed. The
+targeted version was cheaper and wrong: it meant tracking exactly which codes each screen
+touches, and a miss showed up as **corrupted text on the title after a game had been played** —
+the logo and icons were fine, only the 32–95 font colours were wrong, and only after gameplay.
+A full reset has no such edge cases: whatever the previous screen did, the next starts from a
+known state. `game_over` no longer calls `clear_view` either — it wiped just the viewport and
+left the panel, so the playfield visibly cleared, sat, then cleared again when the title wiped
+the whole screen.
+
 ## 11. Sound & Music
 
 CVBasic `MUSIC` (2 melody channels) + channel 3/noise reserved for SFX:
