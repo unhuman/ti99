@@ -116,22 +116,39 @@ def quads(rows16):
     return [tl, tr, bl, br]
 
 flag16 = [
-    0b0001111111000000,
-    0b0001111111111000,
-    0b0001111111111110,
-    0b0001111111111000,
-    0b0001111111000000,
-    0b0001100000000000,
-    0b0001100000000000,
-    0b0001100000000000,
-    0b0001100000000000,
-    0b0001100000000000,
-    0b0001100000000000,
-    0b0001100000000000,
-    0b0001100000000000,
-    0b0001100000000000,
+    # BLACK POLE + COLOURED PENNANT, transcribed from the arcade rip (the
+    # flag at level-1 cell (12,12); see the grid dumped by cropflag.py):
+    # a right-pointing pennant whose straight edge IS the pole, with a
+    # short foot at the bottom.
+    #
+    # THE SPLIT IS WHAT DICTATES THE SIZE. A TMS9918 character row carries
+    # ONE foreground and ONE background colour, so a black pole and a
+    # coloured banner cannot share a character. They are therefore split
+    # down the 2x2 cell's middle: the pole lives entirely in the LEFT
+    # column (x 0-7, coloured black) and the pennant entirely in the RIGHT
+    # column (x 8-15, coloured per flag type). That costs the banner a few
+    # pixels of width versus the old single-colour flag -- it now spans
+    # x 8-14 rather than reaching back to the pole -- which is the price of
+    # having two colours at all.
+    #        pole|pennant
     0b0000000000000000,
-    0b0000000000000000,
+    0b0000001100000000,   # pole top
+    0b0000001110000000,   # pennant starts at the char boundary
+    0b0000001111100000,
+    0b0000001111111000,
+    0b0000001111111110,   # apex -- widest point of the pennant
+    0b0000001111111000,
+    0b0000001111100000,
+    0b0000001110000000,
+    0b0000001100000000,   # pole continues below the pennant
+    0b0000001100000000,
+    0b0000001100000000,
+    0b0000001100000000,
+    0b0000001100000000,
+    0b0000011100000000,   # foot -- 1 px left of the pole, kept inside the
+    0b0000011100000000,   # left column; it cannot straddle the pole the way
+                          # the arcade's does without crossing into the
+                          # pennant's character and losing the black.
 ]
 def puff16():
     """The arcade smoke PUFF-BALL: a rosette of round lobes.
@@ -218,10 +235,18 @@ ovlpat = quads(flag16) * 3 + quads(smoke16)
 # Flag colours are chosen for CONTRAST AGAINST THE TAN ROAD (bg A = dark
 # yellow). The original yellow-on-tan flag was nearly invisible; white,
 # light red and cyan all read cleanly on it.
+#
+# TWO COLOURS PER FLAG, one per CHARACTER COLUMN: the pole quadrants are
+# black, the pennant quadrants carry the flag's colour. quads() returns
+# [TL, TR, BL, BR], so TL/BL are the pole column and TR/BR the pennant.
+POLECOL = "$1A"                    # black pole on tan road
 FLAGCOLS = ["$FA", "$9A", "$7A"]   # F white / S light red / L cyan, on tan
 ovlcol = []
 for fc in FLAGCOLS:
-    ovlcol += [[fc] * 8] * 4
+    ovlcol += [[POLECOL] * 8,      # TL  pole, upper half
+               [fc] * 8,           # TR  pennant
+               [POLECOL] * 8,      # BL  pole + foot
+               [fc] * 8]           # BR  (empty, colour irrelevant)
 ovlcol += [["$FA"] * 8] * 4     # smoke: ONE colour (white on tan) in all
                                 # four quadrants -- a per-quadrant split is
                                 # what made the cloud look half-grey
