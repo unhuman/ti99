@@ -470,8 +470,14 @@ t_key:
 	RETURN
 
 	' Two questions, each a single digit with 0 meaning 10.
+	' Same screen discipline as everywhere else: park the sprites and wipe
+	' the WHOLE screen, not just the 24-column viewport. clear_view left the
+	' panel columns untouched, so the setup questions appeared next to a
+	' strip of leftover title, and the two legend cars stayed parked on it.
 setup838:
-	GOSUB clear_view
+	GOSUB hide_spr
+	sfch = 32
+	GOSUB screen_fill
 	PRINT AT 100,"838 SETUP"
 	PRINT AT 196,"CARS  1-10, 0=10"
 	GOSUB t_digit
@@ -488,7 +494,12 @@ setup838:
 	FOR i = 1 TO 90
 	WAIT
 	NEXT i
-	GOSUB clear_view
+	' Rebuild the title through its normal entry point rather than clearing
+	' by hand: t_setup wipes, resets every character and colour from ROM and
+	' redraws the logo, so the screen comes back in a known state whatever
+	' the setup left behind -- and the logo, which screen_fill just erased,
+	' comes back with it.
+	GOSUB t_setup
 	GOSUB t_draw
 	tkp = 15
 	RETURN
