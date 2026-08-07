@@ -462,6 +462,24 @@ settings it is set once at boot and survives game over. `mus_start` simply refus
 player when it is 0. The toggle key is `1`, which is not part of the 838 sequence and so cannot
 interfere with it (verified: 8-3-8 still opens setup after toggling).
 
+**The tune is the supplied piano arrangement** (Rally-X, arr. Beaulan Turner): A major, 4/4,
+quarter = 150, with a *Default theme* (16 bars) and a *Challenge theme* (8 bars). At 150 BPM an
+eighth note is 0.2 s = **12 frames**, so one player step is one eighth and `MUSTICK` is 12. The
+song table holds both themes back to back — 128 steps then 64 — and `mus_start` picks which one
+to loop by setting an explicit first/last step, so a challenging stage gets its own music.
+
+⚠ **The note data is a READING of a rendered score image, not an import.** The rhythm and
+structure are read directly (bar lengths, where the long notes fall, the eighth-note bass
+ostinato); the individual PITCHES are the least certain part, since the noteheads are a few
+pixels tall and A major puts most of them where a one-step misread is easy. `assets/genmusic.py`
+therefore writes the tune as **plain note names, one string per bar**, precisely so it can be
+corrected by ear — fix a name, re-run, rebuild. A MIDI or MusicXML export of the arrangement
+would let it be generated exactly instead.
+
+Volumes were dropped again (melody 6 → 4, bass 5 → 3) so the **effects lead**: the engine, the
+flag blip and the smoke cough all have to cut through, and music that competes with them makes
+the mix mush rather than richer. At ~2 dB a step that is a clearly audible drop.
+
 **We drive the music ourselves** (`mus_tick`). CVBasic's PSG `PLAY` writes the volume registers
 from envelope tables baked into the shared prologue, so a game cannot turn it down — and this tune
 has to sit UNDER the engine and the effects. Ours sets volume explicitly: melody `MUSVOL` 6, bass

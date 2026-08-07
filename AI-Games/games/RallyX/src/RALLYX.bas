@@ -80,9 +80,18 @@
 	' with every flag still reachable; see assets/genrocks.py.
 	CONST MAXROCK = 16
 	CONST ROCKCH = 24	' 2x2 boulder, chars 24-27 (clear of BANG at 16-23)
-	CONST MUSTICK = 7	' frames per step; 2 steps a note = the original tempo
-	CONST MUSVOL = 6	' melody volume -- low on purpose, the engine
-	CONST MUSBAS = 5	' and the effects have to cut through it
+	' 150 BPM, and one step is ONE EIGHTH NOTE, so 60/150/2 s = 0.2 s = 12
+	' frames. The previous tune ran two steps per note at a different tempo.
+	CONST MUSTICK = 12	' frames per step = one eighth note at 150 BPM
+	CONST MUSDEF = 128	' steps in the default theme (16 bars)
+	CONST MUSTOT = 192	' plus the challenge theme (8 bars) = total
+	' Dropped again (6 -> 4 melody, 5 -> 3 bass) so the EFFECTS lead: the
+	' engine, the flag blip and the smoke cough all have to cut through, and
+	' music that competes with them makes the mix mush rather than making it
+	' richer. SN76489 volume is logarithmic at ~2 dB a step, so two steps is
+	' a clearly audible drop, not a nudge.
+	CONST MUSVOL = 4	' melody volume -- low on purpose, the engine
+	CONST MUSBAS = 3	' and the effects have to cut through it
 
 	' flags: slots 0-7 regular, 8 = special S, 9 = lucky L (DESIGN.md 3/7)
 	DIM fr(10)		' flag row (bordered logical cell)
@@ -332,6 +341,12 @@ t_setup:
 t_teardown:
 	' Same shape as t_setup and for the same reason: wipe first, then reset
 	' everything from ROM, then rebuild the panel furniture.
+	'
+	' SPRITES GO TOO. The title parks the two legend cars in slots 0 and 1;
+	' in play those slots are rewritten every frame so they would not show,
+	' but "cleared" should mean cleared -- leaving anything behind here is
+	' the same class of bug as the crash burst surviving into GAME OVER.
+	GOSUB hide_spr
 	sfch = 32
 	GOSUB screen_fill
 	GOSUB gfx_reset
@@ -2299,7 +2314,14 @@ sfx_tick:
 	' the engine and the effects stay on top. 64 steps at MUSTICK frames is
 	' about ten seconds before it comes round again.
 mus_start:
+	' The song holds BOTH themes back to back: the default theme first, the
+	' challenge theme after it. A round plays one or the other and loops
+	' inside it, which is why the player carries an explicit first/last step
+	' rather than assuming the whole table.
 	mup = 0
+	musz = MUSDEF
+	IF chal = 1 THEN mup = MUSDEF : musz = MUSTOT
+	musa = mup
 	mut = 1
 	' switched off on the title? then the player never starts
 	IF musen = 0 THEN mut = 0
@@ -2321,7 +2343,7 @@ mus_tick:
 	IF mun > 0 THEN musv = MUSVOL : GOSUB mus_mel
 	IF mub > 0 THEN musv = MUSBAS : GOSUB mus_bas
 	mup = mup + 1
-	IF mup >= 64 THEN mup = 0
+	IF mup >= musz THEN mup = musa
 	RETURN
 	' note index -> 16-bit divider (stored hi,lo), then sound it
 mus_mel:
