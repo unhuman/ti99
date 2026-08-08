@@ -160,13 +160,22 @@ def puff16():
     dark outlines, and that IS reproducible in one colour: leave the dividing
     pixels UNLIT and the tan road shows through them as the seam.
 
-    The seams are SHALLOW and there are only four, punched inward from the
-    rim at the diagonals. Earlier attempts carved every lobe boundary right
-    through the middle and cut the ball into segments, or hollowed it into a
-    ring -- with seven overlapping lobes almost every interior pixel is near
-    some rim, so "near a rim" is useless as a test. Cutting a fixed short
-    distance in from the edge at fixed angles is controllable and leaves the
-    mass intact.
+    Detail is built in TWO passes, because the two kinds of seam need
+    completely different rules:
+
+    RIM NOTCHES -- shallow, four of them, punched inward from the edge at the
+    diagonals. Earlier attempts carved every lobe boundary right through the
+    middle and cut the ball into segments, or hollowed it into a ring: with
+    seven overlapping lobes almost every interior pixel is near some rim, so
+    "near a rim" is useless as a test. Cutting a fixed short distance in from
+    the edge at fixed angles is controllable and leaves the mass intact.
+
+    BUBBLE SEAMS -- thin arcs INSIDE the mass, one per bubble, which is what
+    makes the ball read as a cluster rather than a blob. The rule that keeps
+    them from eating the puff is the INTERIOR test: a pixel may only be
+    carved if all four of its neighbours are lit, so a seam can never reach
+    the silhouette and open the ball up. The band is 0.3 px, i.e. one pixel
+    wide; at 0.55 the arcs came out two pixels wide in places and gutted it.
     """
     import math as _m
     cx = cy = 7.5
@@ -176,13 +185,12 @@ def puff16():
         lobes.append((cx + 3.8 * _m.cos(a), cy + 3.8 * _m.sin(a), 3.0))
     NOTCH_IN, NOTCH_OUT, NOTCH_WID, NOTCHES = 3.6, 5.6, 0.20, 4
     seams = [_m.pi * 2 * (k + 0.5) / NOTCHES - _m.pi / 2 for k in range(NOTCHES)]
+    BUBBLES = [(4.5, 5.0, 3.0), (10.5, 5.0, 3.0), (7.5, 11.5, 3.0)]
+    BAND = 0.3
 
-    rows = []
-    for y in range(16):
-        bits = 0
+    grid = [[0] * 16 for _ in range(16)]
+    for y in range(15):                     # row 15 blank: it sits on the road
         for x in range(16):
-            if y >= 15:                     # flat base: it sits on the road
-                continue
             if not any((x - lx) ** 2 + (y - ly) ** 2 <= r * r for lx, ly, r in lobes):
                 continue
             d = _m.hypot(x - cx, y - cy)
@@ -191,9 +199,17 @@ def puff16():
                 if any(abs((a - sa + _m.pi) % (2 * _m.pi) - _m.pi) < NOTCH_WID
                        for sa in seams):
                     continue
-            bits |= 1 << (15 - x)
-        rows.append(bits)
-    return rows
+            grid[y][x] = 1
+
+    inner = [(x, y) for y in range(1, 15) for x in range(1, 15)
+             if grid[y][x] and grid[y - 1][x] and grid[y + 1][x]
+             and grid[y][x - 1] and grid[y][x + 1]]
+    for bx, by, br in BUBBLES:
+        for x, y in inner:
+            if abs(_m.hypot(x - bx, y - by) - br) <= BAND:
+                grid[y][x] = 0
+
+    return [sum(1 << (15 - x) for x in range(16) if grid[y][x]) for y in range(16)]
 
 
 smoke16 = puff16()
@@ -270,9 +286,15 @@ for fc in FLAGCOLS:
 #
 # Grey (14) is also the ONLY grey the TMS9918 has: white (15) is the sole
 # lighter shade and black the sole darker one, so "lighter grey" and "darker
-# grey" do not exist to pick between. Puffiness therefore has to come
-# entirely from the SILHOUETTE, which is why the ball is a rosette of six
-# small lobes (see puff16) rather than one circle.
+# grey" do not exist to pick between. A DARKER puff is therefore not a colour
+# change at all -- the only dial is how much of the tan road shows through,
+# i.e. the seams and notches carved in puff16. Black (1) is the one genuinely
+# darker ink available and is deliberately NOT used: the rocks are black on
+# tan, and a black puff would read as a boulder.
+#
+# Puffiness likewise has to come entirely from the SILHOUETTE and the carved
+# seams, which is why the ball is a rosette of six small lobes (see puff16)
+# rather than one circle.
 ovlcol += [["$EA"] * 8] * 4     # smoke: grey on tan, flat
                                 # four quadrants -- a per-quadrant split is
                                 # what made the cloud look half-grey

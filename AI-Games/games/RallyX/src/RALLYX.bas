@@ -2684,30 +2684,40 @@ misc_colors:
 	' clear column each side, which is what makes it read as a car at this
 	' size; a solid silhouette just looks like a brick.
 	'
-	' NO AXLES, AND NO BULGE -- there is not room for either at 8x8.
+	' THREE-PIXEL TIRES WITH AN AXLE. Each tire is 3 rows tall and its
+	' MIDDLE row carries the axle: the clear column between wheel and body
+	' is filled on that row only, so the axle reads as a bar through the
+	' hub rather than as a widening of the car. 3+3 tire rows leave exactly
+	' two rows over, which are the nose (row 0) and the mid-body (row 4).
 	'
-	' A version with full-width axle rows joining the wheels, and a body
-	' that widened through the middle, came out looking like a TURTLE: at
-	' this size any bulge between four protruding wheels reads as a shell
-	' with legs. The two features fight each other, and the wheels are what
-	' carry "car", so they win.
+	' THE BODY STAYS 3 PIXELS WIDE ON EVERY ROW BELOW THE NOSE. An earlier
+	' attempt paired axle rows with a body that ALSO widened through the
+	' middle and came out looking like a TURTLE -- a shell with legs. It was
+	' the bulge that did that, not the axles: with the body held constant
+	' the only wide rows are the two axles, one per wheel pair, which is
+	' what an axle is.
 	'
-	' What is left: a constant narrow body with the wheels always held off
-	' it by a clear column, and the nose one pixel narrower than the tail --
-	' just enough taper to give it a front and a back without a silhouette
-	' that suggests anything else. Column 8 stays blank so several icons in
-	' a row do not run together.
+	' POINTY NOSE: row 0 is a SINGLE pixel on the body's centre column. The
+	' nose row is only 3 px wide to begin with, so one pixel off each side
+	' is all there is to take -- and that is exactly what leaves a tip.
+	' There is no room to taper over two rows: rows 1-3 and 5-7 are the two
+	' tires, so row 0 is the only row above the front wheels.
 	'
-	'     ...##...      nose, 2 wide
-	'     #.###.#.      front wheels, clear of the body
-	'     #.###.#.
-	'     ..###...      body, 3 wide throughout
-	'     ..###...
-	'     #.###.#.      rear wheels
-	'     #.###.#.
-	'     ..###...      tail, 3 wide
+	' THE BODY ENDS AT THE REAR AXLE. The last row is wheels only, so the
+	' tail does not run past them -- the rear tires are the back of the car.
+	'
+	' Column 8 stays blank so several icons in a row do not run together.
+	'
+	'     ...#....      nose -- pointy tip, 1 px
+	'     #.###.#.      front tire, row 1 of 3
+	'     #######.      front AXLE -- fills the gap columns
+	'     #.###.#.      front tire, row 3 of 3
+	'     ..###...      body, 3 wide
+	'     #.###.#.      rear tire
+	'     #######.      rear AXLE -- last row of body
+	'     #.....#.      rear tire only, no body beneath the axle
 live_char:
-	DATA BYTE $18,$BA,$BA,$38,$38,$BA,$BA,$38
+	DATA BYTE $10,$BA,$FE,$BA,$38,$BA,$FE,$82
 live_color:
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' light yellow on black
 

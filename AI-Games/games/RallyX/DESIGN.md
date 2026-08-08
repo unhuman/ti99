@@ -157,7 +157,7 @@ cols 24–31: panel
 | Codes | What | Colors (fg on bg) |
 |-------|------|-------------------|
 | 0–11 | flag F/S/L, 2×2 quadrant chars (they are CHARACTERS, not sprites — `draw_view` overlays them) | **two colours per flag**: the pole quadrants black, the pennant quadrants white / light red / cyan, all on tan |
-| 12–15 | smoke cloud, 2×2 quadrants (three lobes over a flat base, built by `genmap.py`) | white on tan — **one colour in all four quadrants**; the first version was white on the top two chars and grey on the bottom two, which read as a two-tone ball rather than a cloud |
+| 12–15 | smoke puff, 2×2 quadrants: a seven-lobe rosette with **carved seams** — four shallow rim notches at the diagonals plus three one-pixel bubble arcs inside (`puff16` in `genmap.py`) | **grey (14) on tan, one colour in all four quadrants.** Detail and "darker" are the same dial here: unlit pixels let the tan road through, because grey is the *only* grey the TMS9918 has (white is the sole lighter shade, black the sole darker one) and colour is per character *row*, so a second colour inside a puff can only meet the first at a dead-straight horizontal line — tried at two heights, read as a lid and then a hat. Black would be genuinely darker but is what the rocks are. Interior arcs may only carve pixels whose four neighbours are all lit, which is what stops a seam from reaching the silhouette and opening the ball up |
 | 32–95 | stock ASCII (HUD text, title) | white on black |
 | 96–111 | wall **quadrant** chars, 4 variants per corner (each quadrant needs only its 2 road-facing edge bits: TL 96+N+2W, TR 100+N+2E, BL 104+S+2W, BR 108+S+2E; 2-px road-side inset), baked into `map2` offline by `genmap.py` | green on tan |
 | 112 | tree (border; tiles as 4 blobs per border cell) | light green circles on dark green |
@@ -165,7 +165,7 @@ cols 24–31: panel
 | 120–128 | fuel bar fill levels 0–8 px | yellow on black |
 | 16–23 | **BANG burst**, two 2×2 animation frames (`genbang.py`) | light red spikes on tan; black lettering on light red across the letter band |
 | 24–27 | **rock**, one 2×2 boulder (`genmap.py`) | **black on tan** — the TMS9918 has only one grey (14) and it was too low-contrast to spot while driving |
-| 129 | mini car icon (lives) — shows **spares**, see §7 | blue on black |
+| 129 | mini car icon (lives) — shows **spares**, see §7. Top-down car in 7 of the 8 columns (column 8 blank so a row of icons does not run together): 3-px tires whose middle row carries a full-width **axle**, a constant 3-px body, a 1-px **pointy nose** on row 0, a mid-body row between the two tire pairs, and no body below the rear axle (last row is wheels only). The body must *not* widen as well — bulge + protruding wheels read as a turtle | light yellow on black |
 | 140–143 | score-popup box, composed in RAM at pickup from the 3×5 `mini_font` | black on tan |
 | 144–255 | **radar canvas**, one code per radar cell (8×14 = 112, code = 144 + (row−5)*8 + col−24) | per-row colors set at plot time; base white dots on dark blue |
 
