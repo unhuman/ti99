@@ -151,37 +151,36 @@ flag16 = [
                           # pennant's character and losing the black.
 ]
 def puff16():
-    """The arcade smoke PUFF-BALL: a rosette of round lobes.
+    """The arcade's smoke PUFF-BALL: a rosette of round lobes.
 
-    Traced from the arcade screenshot (assets/ref-smoke.png, native 288x224
-    so 1 px = 1 game px): the puff is a pale cream blob whose lobes are
-    separated by black outlines -- it reads as popcorn, not as a cloud.
+    PUFFINESS COMES FROM THE SILHOUETTE, not from the fill. The colour rule
+    only allows a horizontal band per character row, so a highlight can only
+    ever be a straight stripe -- it reads as a lit, rounded mass only if the
+    OUTLINE it sits on is visibly scalloped. An earlier version was one big
+    circle with small bites taken out of it and came out square: a grey box
+    with a white cap.
 
-    A TI char row has only fg+bg, so we can't draw a third outline colour.
-    Instead we light each lobe's INTERIOR and leave its EDGE unlit: where
-    lobes overlap those edges become the internal separations, and against
-    the tan road they read exactly like the arcade's outlines.
+    So the ball is built from SIX small lobes around a modest centre, each
+    small enough that its curve shows at 16 px, giving a bumpy edge all the
+    way round. The base is flattened so the puff sits on the road rather
+    than floating.
     """
-    # A SOLID bumpy ball (big centre + four diagonal bumps), with small
-    # bites taken out of the perimeter at the cardinals. Carving full
-    # outlines between overlapping lobes ate the fill and came out hollow;
-    # a solid blob with a lobed silhouette is what reads as popcorn at 16px.
-    lobes = [(7.5, 7.5, 5.5), (4.3, 4.3, 3.0), (10.7, 4.3, 3.0),
-             (4.3, 10.7, 3.0), (10.7, 10.7, 3.0)]
-    notches = [(7.5, 1.6, 1.4), (7.5, 13.4, 1.4),
-               (1.6, 7.5, 1.4), (13.4, 7.5, 1.4)]
+    import math as _m
+    lobes = [(7.5, 8.0, 3.9)]
+    for k in range(6):
+        a = _m.pi * 2 * k / 6.0 - _m.pi / 2
+        lobes.append((7.5 + 4.0 * _m.cos(a), 8.0 + 3.9 * _m.sin(a), 3.0))
     rows = []
     for y in range(16):
         bits = 0
         for x in range(16):
-            on = any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in lobes)
-            if on:
-                if any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in notches):
-                    on = False
-            if on:
+            if y >= 15:                     # flat base
+                continue
+            if any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in lobes):
                 bits |= 1 << (15 - x)
         rows.append(bits)
     return rows
+
 
 smoke16 = puff16()
 
@@ -247,7 +246,23 @@ for fc in FLAGCOLS:
                [fc] * 8,           # TR  pennant
                [POLECOL] * 8,      # BL  pole + foot
                [fc] * 8]           # BR  (empty, colour irrelevant)
-ovlcol += [["$FA"] * 8] * 4     # smoke: ONE colour (white on tan) in all
+# SMOKE IN TWO COLOURS, for puffiness. The arcade's puff is shaded, and the
+# TMS9918 can do that here -- colour is per ROW of each character, so a
+# lighter band across the top and grey below reads as a lit, rounded volume
+# rather than a flat blob. It is only ever TWO colours in any one row, which
+# is the whole of the hardware's rule.
+#
+# The pair has to be WHITE (15) over GREY (14): grey is the ONLY grey the
+# palette has -- there is no darker or lighter one -- so those two are the
+# only shades available that both still read as smoke. Black would look like
+# a hole punched in the road.
+#
+# quads() order is TL, TR, BL, BR, so the highlight goes on the top half of
+# the two UPPER characters and everything below stays grey.
+SMOKE_HI, SMOKE_LO = "$FA", "$EA"       # white on tan, grey on tan
+_top = [SMOKE_LO] + [SMOKE_HI] * 6 + [SMOKE_LO]     # lit across the upper half
+_bot = [SMOKE_LO] * 8
+ovlcol += [_top, _top, _bot, _bot]      # smoke: shaded
                                 # four quadrants -- a per-quadrant split is
                                 # what made the cloud look half-grey
 

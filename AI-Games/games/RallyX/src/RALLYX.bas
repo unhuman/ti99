@@ -77,6 +77,13 @@
 	CONST ENGUP = 48	' heading north -- 155 Hz
 	CONST ENGLR = 64	' east/west    -- 116 Hz, the pitch it had before
 	CONST ENGDN = 90	' heading south --  83 Hz
+	' EXTRA CAR fanfare: three short dings. Six phases of DINGFR frames,
+	' alternating tone and silence, so it is "ding ding ding" rather than one
+	' held note. Non-blocking -- it is driven from the main loop like every
+	' other envelope, because stalling the loop for half a second here would
+	' hand the enemies a free catch-up jump through the frame delta.
+	CONST DINGFR = 7	' frames per phase
+	CONST DINGFRQ = 180	' ~622 Hz, well clear of the engine and the music
 	CONST SMKMAX = 3	' most puffs ONE press can produce
 	CONST SMKCOST = 32	' fuel PER PUFF (three of them = the old 96)
 	CONST MAXSMK = 6	' puff slots = two deployments in flight
@@ -195,7 +202,7 @@
 	msktab(2) = $0C
 	msktab(3) = $03
 
-	#hi = 500		' session high score (5000 pts; score unit = 10)
+	#hi = 0			' session high score starts at zero, not a seeded 5000
 	lives0 = 3		' defaults, overridden by the 838 setup screen
 	rnd0 = 1
 	' MUSIC IS ON BY DEFAULT. It was off while the tune was a bad
@@ -430,6 +437,13 @@ t_icon:
 	RETURN
 
 t_draw:
+	' Score and high score on the top line. The panel is covered by the tan
+	' field on the title, so these are printed into the title screen itself
+	' rather than being the panel's copies showing through.
+	PRINT AT 1,"SCORE"
+	GOSUB prt_tsc
+	PRINT AT 18,"HI"
+	GOSUB prt_thi
 	PRINT AT 267,"PRESS FIRE"
 	GOSUB t_mus
 	' LEGEND, in the arcade port's two columns
@@ -459,6 +473,16 @@ t_draw:
 	SPRITE 0,151,24,8,5		' player car, heading East
 	SPRITE 1,151,144,8,9		' red car
 	PRINT AT 708,"2026 UNHUMAN AND CLAUDE"
+	RETURN
+
+	' Title-screen score and high score. Both are kept in units of 10, so
+	' each prints its value followed by a literal "0" -- the same trick the
+	' in-game panel uses.
+prt_tsc:
+	PRINT AT 7,#score,"0    "
+	RETURN
+prt_thi:
+	PRINT AT 21,#hi,"0    "
 	RETURN
 
 	' Music on/off indicator. Both strings are the same length so the second
@@ -898,6 +922,8 @@ eskip:
 	IF sfxt > 0 THEN GOSUB sfx_tick
 	' smoke "put" envelope
 	IF putt > 0 THEN GOSUB put_tick
+	' extra-car fanfare
+	IF dingn > 0 THEN GOSUB ding_tick
 
 	' engine note follows the car's state
 	GOSUB eng_tick
@@ -1058,6 +1084,31 @@ game_over:
 	' full-screen wipe is now the only one, which reads as a single clean
 	' transition.
 	GOTO title
+
+	' Award a free car: bump the count, redraw the icons, and fanfare.
+extra_car:
+	olg = 1
+	lives = lives + 1
+	GOSUB draw_lives
+	sfxt = 0		' the flag blip loses channel 2 to this
+	dingn = 6
+	dingp = 1
+	dingt = DINGFR
+	SOUND 2,DINGFRQ,13
+	RETURN
+
+	' Three dings, alternating tone and gap. Channel 2 also clocks the
+	' engine's noise, so the last phase hands it back the way the flag blip
+	' and the smoke "put" do -- by forcing eng_set to re-issue.
+ding_tick:
+	dinga = #fd
+	IF dingt > dinga THEN dingt = dingt - dinga : RETURN
+	dingn = dingn - 1
+	IF dingn = 0 THEN SOUND 2,,0 : engp = 0 : RETURN
+	dingp = 1 - dingp
+	dingt = DINGFR
+	IF dingp = 1 THEN SOUND 2,DINGFRQ,13 ELSE SOUND 2,,0
+	RETURN
 
 	' --- flag score popup -------------------------------------------------
 	' Builds the glyph run once at pickup: the value, then "x2" when the
@@ -1957,7 +2008,9 @@ take_flag:
 	#score = #score + #val
 	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
 	GOSUB prt_score
-	IF olg = 0 THEN IF #score >= 2000 THEN olg = 1 : lives = lives + 1 : GOSUB draw_lives
+	' FREE CAR AT 20,000 POINTS, once only -- the arcade's default bonus-car
+	' setting. #score is in units of 10, so 2000 is 20,000.
+	IF olg = 0 THEN IF #score >= 2000 THEN GOSUB extra_car
 	' restore its cell from the map (not a flat ROADCH poke -- that dropped
 	' the edging on road cells that sit against a wall), then clear its
 	' radar dot
@@ -1991,8 +2044,13 @@ prt_hi:
 	PRINT AT 120,#hi,"0"
 	RETURN
 prt_rd:
-	PRINT AT 760,"RD "
-	PRINT AT 763,rnd," "
+	' The label is printed with trailing spaces out to the END of the row
+	' (cols 24-31) before the number goes in, so a two-digit round dropping
+	' back to one digit cannot leave its old tens digit behind. Writing the
+	' number with a trailing space instead would run off col 31 and wrap
+	' onto the next row -- and this is the last row.
+	PRINT AT 760,"ROUND   "
+	PRINT AT 766,rnd
 	RETURN
 
 	' SHOW SPARES, NOT TOTAL CARS. The icons are the cars held in RESERVE,
@@ -2615,10 +2673,41 @@ misc_colors:
 	DATA BYTE $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C	' light green on dark green
 	DATA BYTE $AA,$AA,$AA,$AA,$AA,$AA,$AA,$AA	' tan on tan
 
-	' lives icon (129): the car silhouette at 8x8 -- four wheels sticking
-	' out, body, rear wing -- in yellow, matching the arcade's little cars
+	' Lives icon (129): a TOP-DOWN CAR, traced off the arcade's spare-car
+	' icons (a 10x10 yellow car: narrow body with wheels poking out at two
+	' axles) and redrawn to fit one 8x8 character. The old shape was a
+	' rounded blob that read as a bug rather than a vehicle.
+	'
+	' SEVEN PIXELS WIDE -- the rightmost column is deliberately blank, so
+	' several icons side by side have a gap between them instead of running
+	' together into one bar. The wheels are separated from the body by a
+	' clear column each side, which is what makes it read as a car at this
+	' size; a solid silhouette just looks like a brick.
+	'
+	' NO AXLES, AND NO BULGE -- there is not room for either at 8x8.
+	'
+	' A version with full-width axle rows joining the wheels, and a body
+	' that widened through the middle, came out looking like a TURTLE: at
+	' this size any bulge between four protruding wheels reads as a shell
+	' with legs. The two features fight each other, and the wheels are what
+	' carry "car", so they win.
+	'
+	' What is left: a constant narrow body with the wheels always held off
+	' it by a clear column, and the nose one pixel narrower than the tail --
+	' just enough taper to give it a front and a back without a silhouette
+	' that suggests anything else. Column 8 stays blank so several icons in
+	' a row do not run together.
+	'
+	'     ...##...      nose, 2 wide
+	'     #.###.#.      front wheels, clear of the body
+	'     #.###.#.
+	'     ..###...      body, 3 wide throughout
+	'     ..###...
+	'     #.###.#.      rear wheels
+	'     #.###.#.
+	'     ..###...      tail, 3 wide
 live_char:
-	DATA BYTE $42,$3C,$7E,$3C,$3C,$7E,$42,$7E
+	DATA BYTE $18,$BA,$BA,$38,$38,$BA,$BA,$38
 live_color:
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' light yellow on black
 
