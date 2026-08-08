@@ -46,13 +46,43 @@
 	' Doing it at the scale keeps the level-to-level ramp and the
 	' player:enemy ratio exactly as they were.
 	CONST PSPD = 24		' player speed, 1/16 px per frame (= 1.5 px/f)
-	CONST TURNRT = 6	' frames per 45-degree step while turning: a
-				' 90-degree turn takes 12 frames, a 180 takes 24.
-				' Doubled with the speed halving -- rotation is
-				' vehicle speed too, and leaving it at 3 would
-				' have made turns twice as cheap relative to
-				' driving, i.e. changed the handling rather than
-				' just the pace.
+	' TWO ROTATION RATES, because the two rotations cost different things.
+	'
+	' ROTRT is the COSMETIC sweep -- the player's 90-degree turn and every
+	' enemy turn. Nothing waits for it, so it is free to be slow enough to
+	' actually see. TURNRT is the player's 180-degree REVERSE, which rotates
+	' in place and does cost the time it takes.
+	'
+	' THE LOOP IS LOCKED TO 30 Hz, so #fd is 2 and a step needs ceil(rate/2)
+	' passes: rates 3 and 4 are both 2 passes (4 frames), 5 and 6 are both 3
+	' passes (6 frames). That quantisation is why the sweep cannot be tuned
+	' in fine steps -- a 90-degree turn can be 8 frames or 12, not 10.
+	CONST ROTRT = 5		' 6 frames per 45-degree step: a 90-degree sweep
+				' takes 12 frames (0.2 s) -- the same duration the
+				' turn used to have, back when it also stopped the
+				' car. Now the car drives through it.
+	CONST TURNRT = 3	' frames per 45-degree step while REVERSING: a
+				' 180 takes 16 frames of standing still.
+				'
+				' THE PLAYER IS THE ONLY CAR THAT PAYS FOR A TURN.
+				' While `turning` the player rotates IN PLACE and
+				' does not advance, but the enemies' rotation
+				' (`eang`, see the turning animation) is COSMETIC:
+				' they keep moving through it. So this constant is
+				' not a shared handling rule, it is a one-sided
+				' handicap.
+				'
+				' It was 6 -- doubled along with the speed halving
+				' on the reasoning that "rotation is vehicle speed
+				' too". That reasoning holds only if both cars pay,
+				' and they do not: the doubling made the PLAYER's
+				' cornering twice as expensive while the chasers'
+				' stayed free. At 6, a 90-degree turn cost 12
+				' frames -- about 18 px of travel, more than a
+				' whole cell -- so in a maze you turn constantly
+				' in, the enemies were effectively at parity by
+				' round 4 even at 83% of the player's raw speed.
+				' That is what made round 4 unplayable.
 	CONST BLINKRT = 30	' frames between radar player-dot colour flips
 	' CAR COLOURS. These two inks are RESERVED for the cars and used by
 	' nothing else on the playfield, which is what makes a car readable at a
@@ -363,16 +393,20 @@ gfx_reset:
 	'
 	' Written as four flat IFs rather than a table because DEFINE COLOR
 	' needs a label, and a label cannot be selected by a variable.
+	' ONE UPLOAD PER THEME. Chars 96-111 (walls) and 112 (shrubs) are
+	' ADJACENT, so 17 chars in a single DEFINE COLOR covers both -- half the
+	' call sites that a wall call plus a shrub call needed. Code, not data,
+	' is the budget that binds on this cart, and this bought back ~120 bytes
+	' of it (romcheck.py).
+	'
+	' The count stops at 17, i.e. chars 96..112, so char 113 -- the road --
+	' is still never written. The guarantee is now enforced by the count
+	' rather than by using a separate one-char call for the shrubs.
 theme_col:
-	IF thm = 0 THEN DEFINE COLOR 96,16,wallcol_spring
-	IF thm = 1 THEN DEFINE COLOR 96,16,wallcol_frost
-	IF thm = 2 THEN DEFINE COLOR 96,16,wallcol_autumn
-	IF thm = 3 THEN DEFINE COLOR 96,16,wallcol_night
-	WAIT
-	IF thm = 0 THEN DEFINE COLOR 112,1,treecol_spring
-	IF thm = 1 THEN DEFINE COLOR 112,1,treecol_frost
-	IF thm = 2 THEN DEFINE COLOR 112,1,treecol_autumn
-	IF thm = 3 THEN DEFINE COLOR 112,1,treecol_night
+	IF thm = 0 THEN DEFINE COLOR 96,17,themecol_spring
+	IF thm = 1 THEN DEFINE COLOR 96,17,themecol_frost
+	IF thm = 2 THEN DEFINE COLOR 96,17,themecol_autumn
+	IF thm = 3 THEN DEFINE COLOR 96,17,themecol_night
 	WAIT
 	RETURN
 
@@ -704,9 +738,10 @@ lroll:
 	'          with 2 made round 1 read as under-populated rather than easy;
 	'          the mercy in round 1 comes from the speed dial, not from
 	'          leaving a car out.
-	'   speed  0.875 px/f at round 1, +0.125 a round, capping at 1.875
-	'          (these are 1/16-px units: espd 14 -> 30. Halved with
-	'          everything else; the RAMP is unchanged, just at half scale)
+	'   speed  0.875 px/f at round 1, +0.0625 a round, capping at 1.375 --
+	'          58% of the player at round 1 rising to 92% from round 9
+	'          (1/16-px units: espd 14 -> 22). The chasers never reach the
+	'          player's speed: see the ramp below for why that cap matters.
 	'   smarts eagg = chance in 8 that a car actually pursues on a given
 	'          decision; 3/8 at round 1 up to 8/8 (always) from round 6, so
 	'          early packs wander and give you room instead of converging.
@@ -725,8 +760,20 @@ lroll:
 	' off, never the hitbox.
 	chal = 0
 	IF rnd >= 3 THEN IF rc3 = 0 THEN chal = 1
-	espd = 12 + rnd * 2
-	IF espd > 30 THEN espd = 30
+	' SPEED RAMP: starts exactly where it always did and climbs HALF as fast,
+	' to a cap BELOW the player instead of above.
+	'
+	' Round 1 is deliberately unchanged at 14 (58% of the player's 24) --
+	' the ramp was too steep, round 1 was not too hard. From there it is
+	' +1 a round to a cap of 22, i.e. 92%, reached at round 9.
+	'
+	' The old ramp was +2 a round to a cap of 30. That put the chasers at
+	' 100% of the player's speed by round 6 and 125% from round 9 -- they
+	' simply outran you, which is not the arcade relationship. There the
+	' danger is being CORNERED, not outpaced: you can always outdrive a red
+	' car in a straight line, and the maze is what kills you.
+	espd = 13 + rnd
+	IF espd > 22 THEN espd = 22
 	' eagg = chances in 8 that a car pursues on a given decision. The floor
 	' was 3/8, i.e. it deliberately headed AWAY five times in eight -- which
 	' does not read as "easier", it reads as the cars being broken. 5/8 at
@@ -770,6 +817,7 @@ restart:
 	qdir = 0
 	ang = 0			' visual heading 0-7; 0 = North, matches dir = 0
 	turning = 0
+	rotv = 0		' no cosmetic sweep in progress
 	blocked = 0
 	lcr = sr0
 	lcc = sc0
@@ -855,7 +903,13 @@ gl_pace:
 	#lf = FRAME
 	IF #fd > 16 THEN #fd = 16
 
-	' stick sets the queued direction
+	' STICK IS A HELD REQUEST, NOT A QUEUED ONE. qdir falls back to the
+	' current heading every pass, so centring the stick cancels a pending
+	' turn: to take a junction you must be HOLDING that direction as you
+	' reach it. It used to latch -- a direction pressed anywhere was
+	' remembered indefinitely and taken at the next junction that allowed
+	' it, so the car turned off on its own long after you let go.
+	qdir = dir
 	IF cont1.up THEN qdir = 0
 	IF cont1.right THEN qdir = 1
 	IF cont1.down THEN qdir = 2
@@ -881,9 +935,15 @@ gl_pace:
 	' as they go and set it, and the pass acts on it once at the end.
 	hitf = 0
 
-	' While turning the car rotates IN PLACE and does not advance -- this
-	' is the Rally-X handling model. Driving resumes when ang reaches tang.
+	' A REVERSE rotates in place and does not advance (turning). A 90-degree
+	' turn does NOT: the heading commits at the junction and the sprite
+	' sweeps round while the car drives on (rotv), exactly as the enemies
+	' do. Keeping the sweep but dropping the stop is what gives the turn back
+	' its look without giving back the handicap -- the pause WAS the
+	' handicap, ~18 px of lost ground at every corner against chasers that
+	' cornered for free.
 	IF turning = 1 THEN GOSUB turn_step ELSE GOSUB drive_step
+	IF rotv = 1 THEN GOSUB rot_step
 
 	GOSUB update_cam
 
@@ -931,8 +991,10 @@ eskip:
 	' logical heading. Unlike the player they keep moving while they turn
 	' (their AI only ever picks a 90-degree change, so a visible sweep is
 	' enough -- stopping them dead would make them trivial to escape).
+	' ROTRT, not TURNRT: their sweep is cosmetic, like the player's 90-degree
+	' turn, so the two rotate at the same visible rate
 	eat = eat + #fd
-	IF eat >= TURNRT THEN eat = 0 : GOSUB eang_step
+	IF eat >= ROTRT THEN eat = 0 : GOSUB eang_step
 
 	' (flags are CHARACTERS, drawn by draw_view -- see the note there)
 
@@ -969,7 +1031,7 @@ eskip:
 
 	' player-dot colour flip, every BLINKRT frames
 	blt = blt + #fd
-	IF blt >= BLINKRT THEN blt = 0 : blink = 1 - blink
+	IF blt >= BLINKRT THEN blt = 0 : blink = 1 - blink : GOSUB sflash
 
 	' flag-value popup: redrawn every frame so it rides the scrolling maze
 	IF pvt > 0 THEN GOSUB pop_tick
@@ -1025,14 +1087,36 @@ fb_tally:
 	#fb = #fb - 1
 	#score = #score + 1
 	#fuel = #fuel - 12	' cannot underflow: 12 * #fb <= #fuel by construction
+	' THE TICK IS HELD FOR TWO FRAMES, MEASURED -- not assumed.
+	'
+	' A probe build stamped FRAME either side of the tally and printed the
+	' total: 33 frames for 32 units, i.e. ONE frame per unit. So WAIT does
+	' block properly (an earlier theory that the redraw overran a frame and
+	' collapsed the on/off pair was wrong -- the redraw is about 2 ms), and
+	' the tick had simply never lasted longer than a single frame. One frame
+	' is 3-6 cycles at the old 164-373 Hz and 9-15 at the current pitch,
+	' which is a thud rather than a tone.
+	'
+	' Two frames of tone plus one of silence is 3 frames a unit: a full tank
+	' counts over in about 3 seconds, and each tick is ~30 cycles.
+	#sf = 120 + #fb * 2
+	SOUND 2,#sf,13
 	GOSUB prt_score
 	PRINT AT 491,#fb,"0   "
 	GOSUB fuel_bar
-	' one crisp tick per unit -- on for a frame, off for a frame, pitch
-	' falling as the gauge empties. A held tone just smears into a siren.
-	#sf = 300 + #fb * 6
-	SOUND 2,#sf,13
 	WAIT
+	WAIT
+	' ...then silence for a frame, which is what separates one tick from the
+	' next instead of smearing them into a siren.
+	'
+	' The PITCH matters as much as the timing: a short tick only lasts as
+	' many cycles as its pitch allows, and the old 300-684 divider range
+	' (373 Hz down to 164 Hz) gave 3-6 cycles -- a thud even when it did
+	' sound. 120-248 is 932 Hz down to 563 Hz, in the same register as the
+	' flag blip and the extra-car ding, which were always the audible ones.
+	'
+	' Pitch RISES as the gauge empties (a smaller divider is a higher note);
+	' the comment here used to claim it fell.
 	SOUND 2,,0
 	WAIT
 	GOTO fb_tally
@@ -1051,6 +1135,34 @@ fb_done:
 	FOR i = 1 TO 60
 	WAIT
 	NEXT i
+	' --- crashed out of a challenging stage --------------------------------
+	' Reached from `crash` with the life already deducted and the wreck
+	' already cleared. The stage is over: no ROUND CLEAR, no 1,000-unit
+	' completion bonus, no fuel tally -- those are for CLEARING it. Flag
+	' points banked before the crash are kept, because they were scored as
+	' they were collected.
+	'
+	' Only the music needs silencing: crash has already stopped the engine
+	' and channels 2 and 3 and parked the sprites. round_init starts the
+	' tune again for the next round.
+	'
+	' The CLEARED path falls through here too, and that is fine: round_done
+	' silenced the same three things on its way in, and all of them are
+	' idempotent. Not worth a jump to skip.
+chal_end:
+	GOSUB mus_off
+	SOUND 0,,0
+	SOUND 1,,0
+
+	' Shared by BOTH ways out of a round: cleared, and crashed out of a
+	' challenging stage (chal_end above). Everything a clear earns -- the
+	' ROUND CLEAR card, the 1,000 bonus, the fuel tally -- sits ABOVE this
+	' label, so the crash path skips all of it just by jumping here.
+	'
+	' rc3 advancing here rather than in either caller is what keeps the
+	' challenging-stage cadence on 3, 7, 11 ... whether the stage was
+	' finished or crashed out of.
+next_round:
 	rnd = rnd + 1
 	rc3 = rc3 + 1
 	IF rc3 >= 4 THEN rc3 = 0
@@ -1064,6 +1176,15 @@ fb_done:
 	' collision point, the border strobes, and it is a noise-channel boom
 	' rather than a tone.
 crash:
+	' MUSIC OFF FIRST, and that is what stops the stuck notes. The crash
+	' sequence is a blocking loop -- mus_tick is not called for the whole
+	' explosion -- so whatever note the tune was holding when you died just
+	' sustained through the bang, the pause and the respawn. The player only
+	' ever writes a NEW note; nothing was writing the note OFF.
+	'
+	' mus_off silences channels 0 and 1 and stops the player; round_init
+	' (or restart, via the main loop) starts it again.
+	GOSUB mus_off
 	SOUND 2,,0
 	GOSUB eng_off
 	' Wreck position in SCREEN pixels. Recomputed from the camera here
@@ -1101,7 +1222,23 @@ crash:
 	lives = lives - 1
 	GOSUB draw_lives
 	IF lives = 0 THEN GOTO game_over
+	' A CRASH ENDS A CHALLENGING STAGE -- it does not restart you inside it.
+	' The old behaviour made the bonus round the most FORGIVING round in the
+	' game: you were dropped back in with the flags you had already taken
+	' still gone, so crashing cost a life but you kept farming the rest.
+	' Backwards for a bonus round, and not what the arcade does (it ends the
+	' stage when you hit a rock -- DESIGN.md section 10).
+	'
+	' The lives test stays FIRST: the last car is game over, in a
+	' challenging stage exactly as in any other round.
+	IF chal = 1 THEN GOTO chal_end
 	GOSUB rehome
+	' The tune was stopped on the way into the explosion (see the top of
+	' crash), so it has to be started again here -- restart is NOT reached
+	' through round_init on this path, and without this the round would run
+	' out in silence. It begins from the top, which reads as a fresh start
+	' rather than resuming mid-phrase after a death.
+	GOSUB mus_start
 	GOTO restart
 
 game_over:
@@ -1377,6 +1514,23 @@ skip_rocks:
 	NEXT i
 	RETURN
 
+	' THE ONE PLACE THAT NAMES THE MAZE TABLES. SCREEN needs a LABEL, and a
+	' label cannot be chosen by a variable, so every blit has to be a 4-way
+	' IF ladder over mz. Written out at both call sites (draw_view and
+	' cell_restore) that was eight SCREEN calls; funnelling both through here
+	' costs four variable stores per blit and gives back ~140 bytes of the
+	' fixed area, which is the budget that actually binds (romcheck.py).
+	'
+	' Both blits are SQUARE -- the viewport is 24x24 and a cell is 2x2 -- so
+	' one `bwh` serves as width and height.
+	'   #bsrc source offset in map chars, #bdst name-table offset, bwh size
+blit_map:
+	IF mz = 0 THEN SCREEN map2_1, #bsrc, #bdst, bwh, bwh, 68
+	IF mz = 1 THEN SCREEN map2_2, #bsrc, #bdst, bwh, bwh, 68
+	IF mz = 2 THEN SCREEN map2_3, #bsrc, #bdst, bwh, bwh, 68
+	IF mz = 3 THEN SCREEN map2_4, #bsrc, #bdst, bwh, bwh, 68
+	RETURN
+
 	' select the maze's ROM bank and point probe at its char map
 sel_maze:
 	IF mz = 0 THEN BANK SELECT 1 : #mapbase = VARPTR map2_1(0)
@@ -1427,27 +1581,65 @@ pm_top:
 	steps = steps - pmk
 	GOTO pm_top
 
-	' Begin rotating toward qdir. Takes the SHORT way round; a 180 goes
-	' clockwise (there is no short way), so a reverse visibly sweeps
-	' through the 90-degree heading instead of flipping.
+	' TWO KINDS OF ROTATION, ONE BODY. Both sweep `ang` toward `tang` the
+	' SHORT way round (a 180 has no short way, so it goes clockwise and
+	' visibly passes through the 90-degree heading instead of flipping).
+	' They differ only in whether the car stops:
+	'
+	'   start_turn / turning  REVERSE: rotates IN PLACE, does not advance.
+	'   start_rot  / rotv     90-DEGREE: heading commits at the junction and
+	'                         the car drives on -- the sweep is cosmetic,
+	'                         which is what the enemies have always done.
+	'
+	' The shared tang/rstep/trot state is safe because the two never overlap:
+	' start_turn clears rotv, and a reverse cannot begin while turning.
+	'
+	' Kept as one body deliberately -- written out twice it cost ~90 bytes of
+	' the fixed area, which is 0.4% of the whole program budget and enough to
+	' push the music off the end of the cart (see assets/romcheck.py).
 start_turn:
-	tang = qdir + qdir
+	GOSUB set_sweep
 	IF tang = ang THEN RETURN
+	turning = 1
+	rotv = 0
+	RETURN
+
+start_rot:
+	GOSUB set_sweep
+	dir = qdir			' heading commits AT THE JUNCTION
+	IF tang = ang THEN RETURN
+	rotv = 1
+	RETURN
+
+set_sweep:
+	tang = qdir + qdir
 	rstep = 1
 	trn = tang - ang
 	trn = trn AND 7
 	IF trn > 4 THEN rstep = 7	' 7 == -1 (mod 8): rotate anticlockwise
-	turning = 1
 	trot = 0
 	RETURN
 
-	' One 45-degree step every TURNRT frames; arriving commits the heading
-turn_step:
+	' One 45-degree step every `srt` frames -- the caller picks the rate,
+	' cosmetic (ROTRT) or blocking (TURNRT)
+sweep_step:
 	trot = trot + #fd
-	IF trot < TURNRT THEN RETURN
+	IF trot < srt THEN RETURN
 	trot = 0
 	ang = ang + rstep
 	ang = ang AND 7
+	RETURN
+
+rot_step:
+	srt = ROTRT
+	GOSUB sweep_step
+	IF ang = tang THEN rotv = 0
+	RETURN
+
+	' arriving commits the heading and releases the car
+turn_step:
+	srt = TURNRT
+	GOSUB sweep_step
 	IF ang <> tang THEN RETURN
 	turning = 0
 	dir = tang / 2
@@ -1475,9 +1667,11 @@ at_center:
 	IF smkf = 0 THEN IF qdir = pqd THEN IF dir = pdr THEN RETURN
 	pqd = qdir
 	pdr = dir
-	' a 90-degree turn is taken at a cell centre when that way is open --
-	' it starts a rotation (start_turn), it does not snap the heading
-	IF qdir <> dir THEN d = qdir : GOSUB probe : IF t >= ROADCH THEN GOSUB start_turn
+	' A 90-degree turn is taken at a cell centre when that way is open. It
+	' commits the heading at once and sweeps the sprite round as the car
+	' drives on (start_rot) -- it does not stop the car, and it does not
+	' snap the sprite either.
+	IF qdir <> dir THEN d = qdir : GOSUB probe : IF t >= ROADCH THEN GOSUB start_rot
 	' blocked = 1 pins the car on the cell centre for the rest of THIS
 	' frame's pixel steps. Without it the leftover steps kept moving it in
 	' the OLD direction, so the turn finished 1-3 px off the grid -- and
@@ -2025,11 +2219,10 @@ cell_restore:
 	#crs = #crs + crc
 	#crd = crsr * 32.
 	#crd = #crd + crsc
-	IF mz = 0 THEN SCREEN map2_1, #crs, #crd, 2, 2, 68
-	IF mz = 1 THEN SCREEN map2_2, #crs, #crd, 2, 2, 68
-	IF mz = 2 THEN SCREEN map2_3, #crs, #crd, 2, 2, 68
-	IF mz = 3 THEN SCREEN map2_4, #crs, #crd, 2, 2, 68
-	RETURN
+	#bsrc = #crs
+	#bdst = #crd
+	bwh = 2
+	GOTO blit_map		' blit_map RETURNs for us
 
 	' --- flag pickup (fi = slot, car at its cell) -------------------------
 	' Values 100,200..1000 by pickup order; after S everything doubles;
@@ -2062,8 +2255,7 @@ take_flag:
 	pvc = fc(fi)
 	GOSUB pop_build
 	#score = #score + #val
-	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
-	GOSUB prt_score
+	GOSUB prt_score			' prt_score carries the high score with it
 	' FREE CAR AT 20,000 POINTS, once only -- the arcade's default bonus-car
 	' setting. #score is in units of 10, so 2000 is 20,000.
 	IF olg = 0 THEN IF #score >= 2000 THEN GOSUB extra_car
@@ -2094,6 +2286,14 @@ take_flag:
 prt_score:
 	PRINT AT 56,"        "
 	PRINT AT 56,#score,"0"
+	' THE HIGH SCORE RIDES WITH THE SCORE, wherever the score changes.
+	' This test used to live in take_flag, so HI only advanced on a flag
+	' pickup: the fuel-bonus tally and the challenging-stage award pushed
+	' the score past the high score and left HI sitting on the old value
+	' until the next flag -- or, on the last round of a game, for good.
+	' Putting it here covers every route by construction, and costs nothing
+	' extra: every score change already had to call this.
+	IF #score > #hi THEN #hi = #score : GOSUB prt_hi
 	RETURN
 prt_hi:
 	PRINT AT 120,"        "
@@ -2120,10 +2320,20 @@ prt_rd:
 	' then redraws before testing for game over), and these are unsigned, so
 	' a bare `lives - 1` would wrap to 255 and light every icon at the exact
 	' moment the player has none.
+	' EIGHT SLOTS -- the full width of the panel (cols 24-31), not four.
+	' Row 22 carries nothing else (FUEL is row 20, its bar row 21, ROUND row
+	' 23), and the icon is 7 px wide with a blank 8th column exactly so a row
+	' of them tiles, so eight span the panel and no more will fit. It used to
+	' draw four, which hid most of the reserves: the 838 screen allows up to
+	' 10 cars and extra cars are awarded during play, so five or more spares
+	' is an ordinary state, not a corner case.
+	'
+	' Beyond eight spares the count simply stops growing on screen -- with
+	' ten cars the ninth spare has nowhere to go.
 draw_lives:
 	lvsp = 0
 	IF lives > 0 THEN lvsp = lives - 1
-	FOR li = 0 TO 3
+	FOR li = 0 TO 7
 	t2 = 32
 	IF li < lvsp THEN t2 = 129
 	' 6872 = $1800 + 22*32 + 24 (row 22 col 24); dotted-constant folds
@@ -2210,10 +2420,10 @@ update_cam:
 draw_view:
 	#voff = camr * 68.
 	#voff = #voff + camc
-	IF mz = 0 THEN SCREEN map2_1, #voff, 0, 24, 24, 68
-	IF mz = 1 THEN SCREEN map2_2, #voff, 0, 24, 24, 68
-	IF mz = 2 THEN SCREEN map2_3, #voff, 0, 24, 24, 68
-	IF mz = 3 THEN SCREEN map2_4, #voff, 0, 24, 24, 68
+	#bsrc = #voff
+	#bdst = 0
+	bwh = 24
+	GOSUB blit_map
 	FOR oi = 0 TO 9
 	IF fst(oi) = 0 THEN GOSUB ov_flag
 	NEXT oi
@@ -2350,12 +2560,48 @@ radar_flags:
 	a = a OR dmsk
 	VPOKE #db,a
 	#db = #da + $2000
-	a = $B4
-	IF fi = sidx THEN a = $84
-	VPOKE #db,a
+	GOSUB flag_ink
+	VPOKE #db,a2
 	#db = #db + 1
-	VPOKE #db,a
+	VPOKE #db,a2
 	NEXT fi
+	RETURN
+
+	' ONE PLACE THAT DECIDES A FLAG DOT'S COLOUR, for flag index fi. Both
+	' the round-start bake and the re-bake after a mover dot passes over it
+	' had their own copy of these tests; sharing them is fewer bytes than
+	' two copies, which matters -- the fixed area is nearly full.
+	'
+	' Each dot matches its pennant, so the legend on the title screen reads
+	' straight onto the radar: ordinary yellow, SPECIAL red, LUCKY cyan.
+	' The lucky flag pays by how much fuel is left when you take it, so
+	' knowing where it is early is worth real points -- it used to draw as
+	' an ordinary flag with no way to pick it out.
+flag_ink:
+	a2 = $B4			' ordinary: light yellow on dark blue
+	IF fi = sidx THEN a2 = $84	' special: medium red
+	IF fi = lidx THEN a2 = $74	' lucky:   cyan
+	RETURN
+
+	' THE SPECIAL FLAG FLASHES, which is what the arcade does and what makes
+	' the multiplier a route decision rather than luck. It also settles a
+	' collision: the enemy mover dots are medium red too, so a steady red
+	' dot was ambiguous -- car or multiplier? A BLINKING red dot is neither
+	' of the other two things on the radar (steady red cars, a white/black
+	' player dot).
+	'
+	' Colour only -- the pattern bits stay lit, so this costs two VPOKEs
+	' twice a second, on the same `blink` flip the player dot already uses.
+	' Between a mover dot erasing it and the next flip, rt_rebake may leave
+	' it steady red for up to half a second; that is not worth more code.
+sflash:
+	IF fst(sidx) = 1 THEN RETURN	' collected -- nothing to flash
+	#pb = #fda(sidx) + $2000
+	a = $84
+	IF blink = 0 THEN a = $44	' dark blue on dark blue = invisible
+	VPOKE #pb,a
+	#pb = #pb + 1
+	VPOKE #pb,a
 	RETURN
 
 	' one mover dot per tick: 0 = player (white, blinking), 1-4 = enemies
@@ -2434,8 +2680,7 @@ rt_rebake:
 	a = a OR dmsk
 	VPOKE #pb,a
 	#pb = #da + $2000
-	a2 = $B4
-	IF fi = sidx THEN a2 = $84
+	GOSUB flag_ink
 	VPOKE #pb,a2
 	#pb = #pb + 1
 	VPOKE #pb,a2
@@ -2586,10 +2831,29 @@ eng_tick:
 	IF blocked = 1 THEN engc = 2
 	IF turning = 1 THEN engc = 2
 	IF #fuel = 0 THEN engc = 2
+	' STAND OFF CHANNEL 2 WHILE AN EFFECT OWNS IT. eng_set writes
+	' `SOUND 2,engn,0` -- volume ZERO, because channel 2 is only the
+	' engine's silent noise clock. The flag blip and the extra-car ding put
+	' a real volume on that same channel, and eng_tick runs AFTER their
+	' ticks in the pass, so a re-issue lands straight on top and mutes them.
+	'
+	' That is why a flag "sometimes" made no beep: eng_set fires on a change
+	' of heading, and you collect flags at junctions -- exactly where you
+	' turn. The blip lasts 5 passes; one turn inside that window killed it.
+	'
+	' Nothing is lost by waiting: when the effect finishes it sets engp = 0
+	' (see sfx_tick and ding_tick), which forces the re-issue on the next
+	' pass and hands the divider back. Same contract eng_idle already
+	' honours for channel 3 while a smoke "put" is coughing.
+	IF sfxt > 0 THEN GOTO eng_chug
+	IF dingn > 0 THEN GOTO eng_chug
 	IF engc <> engp THEN GOSUB eng_set
 	' ...and re-issue on a change of HEADING too, which is what makes the
 	' note track the direction rather than only the driving/idling state.
 	IF dir <> engd THEN GOSUB eng_set
+	' The idle chug is channel 3, so it is safe even while an effect holds
+	' channel 2 -- it keeps its own guard for the one that shares channel 3.
+eng_chug:
 	IF engc = 2 THEN GOSUB eng_idle
 	RETURN
 

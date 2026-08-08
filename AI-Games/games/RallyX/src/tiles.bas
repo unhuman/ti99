@@ -35,8 +35,8 @@ wallcol:
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
-wallcol_spring:
-	' medium green (2) on tan, all 16 quadrant chars
+themecol_spring:
+	' chars 96-111 walls: medium green (2) on tan
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
@@ -53,71 +53,67 @@ wallcol_spring:
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
-wallcol_frost:
-	' light blue (5) on tan, all 16 quadrant chars
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-wallcol_autumn:
-	' magenta (13) on tan, all 16 quadrant chars
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
-wallcol_night:
-	' dark green (12) on tan, all 16 quadrant chars
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
-treecol_spring:
-	' light green on dark green -- char 112 ONLY, so the road (113) is never touched
+	' char 112 shrubs: light green on dark green -- and it STOPS HERE, short of the road
 	DATA BYTE $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
-treecol_frost:
-	' dark blue on light blue -- char 112 ONLY, so the road (113) is never touched
+themecol_frost:
+	' chars 96-111 walls: light blue (5) on tan
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	' char 112 shrubs: dark blue on light blue -- and it STOPS HERE, short of the road
 	DATA BYTE $45,$45,$45,$45,$45,$45,$45,$45
-treecol_autumn:
-	' dark green on magenta -- char 112 ONLY, so the road (113) is never touched
+themecol_autumn:
+	' chars 96-111 walls: magenta (13) on tan
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	' char 112 shrubs: dark green on magenta -- and it STOPS HERE, short of the road
 	DATA BYTE $CD,$CD,$CD,$CD,$CD,$CD,$CD,$CD
-treecol_night:
-	' dark green on black -- char 112 ONLY, so the road (113) is never touched
+themecol_night:
+	' chars 96-111 walls: dark green (12) on tan
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	' char 112 shrubs: dark green on black -- and it STOPS HERE, short of the road
 	DATA BYTE $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
 ovlpat:
 	' chars 0-15: F 0-3, S 4-7, L 8-11, smoke 12-15 (TL TR BL BR)

@@ -112,6 +112,12 @@ the radar genuinely necessary.
 cols 0–23: scrolling maze viewport (24×24 chars = a 12×12-CELL window on the map)
 cols 24–31: panel
   rows 0–1: "1UP" + score (6 digits)     rows 2–3: "HI" + high score
+
+**HI advances inside `prt_score`**, not at the call sites. The test used to live in `take_flag`
+alone, so the high score only moved on a flag pickup: the fuel tally and the challenging-stage
+award pushed the score past it and left HI on the stale value until the next flag — and on a
+game's last round, permanently. Every scoring route already calls `prt_score`, so putting it
+there makes the coverage structural instead of something each new scoring site must remember.
   row  4:   blank
   rows 5–18: RADAR (8×14 chars = 64×112 px; the whole 32×56-unit map at 2 px per unit)
   row 19:   blank
@@ -174,9 +180,25 @@ generator both ship; see §10.)
 
 Radar plotting writes the pattern table **directly per screen third** (the code appears at
 exactly one screen position, so only that third's bank is written): pattern byte address =
-`third*$800 + code*8 + row`, color likewise at `$2000 + ...`. Flag dots (2×2 px, yellow rows)
-are baked at round start; mover dots (player = always drawn, cycling white/black, enemies = red) are erased by
+`third*$800 + code*8 + row`, color likewise at `$2000 + ...`. Flag dots (2×2 px) are baked at
+round start; mover dots (player = always drawn, cycling white/black, enemies = red) are erased by
 re-deriving the baked pattern from the flag list (no RAM radar copy), then OR-ing the new dot.
+
+**Each flag dot matches its pennant**, so the title-screen legend reads straight onto the map:
+ordinary **light yellow**, special **red**, lucky **cyan**. One routine, `flag_ink`, decides it
+for both the round-start bake and `rt_rebake` (the re-bake after a mover dot passes over a flag)
+— fewer bytes than the two copies of the test they used to carry.
+
+**The special flag FLASHES** (`sflash`, red ↔ invisible on the same `blink` flip the player dot
+uses). Two reasons: the arcade flashes it, because knowing where the multiplier is turns the
+round into a route decision; and the enemy mover dots are red too, so a *steady* red dot was
+ambiguous — car or multiplier? A blinking one is neither of the other two things on the radar.
+The lucky flag was likewise indistinguishable from an ordinary one, which hid the fact that
+taking it early is worth more fuel bonus.
+
+Caveat that applies to all of it: a radar character covers a **4×4 block of maze cells**, and
+TMS9918 colour is per character *row*, so two flags in the same block on the same pixel row are
+forced to share a colour. Uncommon, and not worth code to avoid.
 
 ## 4a. Per-round colour themes (walls + shrubbery)
 
@@ -262,8 +284,15 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   ⅛ px to ₁₁₆ px (`/8` → `/16`, `AND 7` → `AND 15`) halves every vehicle at once, exactly,
   and carries the entire per-round ramp and the player:enemy ratio with it untouched.
   Three things ride along and had to move with it:
-  - **`TURNRT` 3 → 6.** Rotation is vehicle speed too; leaving it would have made turns twice
-    as cheap relative to driving, i.e. changed the handling rather than the pace.
+  - **`TURNRT` 3 → 6 — and back to 3, because it was wrong.** The reasoning was "rotation is
+    vehicle speed too, so it halves with everything else". That holds only if *both* cars pay
+    for a turn, and they do not: the player rotates **in place and does not advance**, while the
+    enemies' rotation (`eang`) is cosmetic — they keep moving through it. So the doubling was a
+    one-sided handicap. At `TURNRT` 6 a 90° turn cost the player 12 frames ≈ 18 px, more than a
+    whole cell, in a maze you turn constantly in; the chasers were effectively at parity by
+    round 4 despite being at 83% of raw speed, which is what made round 4 unplayable. **Any
+    constant that only one side pays has to be checked against the other side before it is
+    scaled.**
   - **Fuel drain 1 unit per 4 frames → per 8.** Fuel is a RANGE, not a clock — it has to last
     ten flags. Halving speed without this leaves every tank covering half the ground and makes
     rounds unfinishable.
@@ -275,14 +304,34 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   part-way into a wall. The player's raw distance/time is NOT a speed measure: a blind test route
   spends a wildly variable share of its time parked against walls.
 - **Turning is a rotation, never a flip** (the Rally-X handling model, and the reason for the
-  eight heading frames). The car has a logical `dir` (0–3) and a visual `ang` (0–7, 45° steps).
-  Requesting a new direction starts a turn: `ang` steps one notch every `TURNRT` (3) frames
-  toward the target, taking the short way round, and **the car does not advance while it
-  turns** — it rotates on the spot. Movement resumes, and `dir` is committed, only when `ang`
-  reaches the target. So a 90° turn takes 6 frames and a **180° reverse takes 12, visibly
-  sweeping through the sideways heading** instead of snapping from up to down. A 90° turn still
-  waits for a cell centre with that way open (`at_center`); a reverse may start anywhere, since
-  the cell behind is by definition open.
+  eight heading frames). The car has a logical `dir` (0–3) and a visual `ang` (0–7, 45° steps),
+  and `ang` steps one notch toward the target, the short way round, on a rate that depends on
+  which kind of turn it is: **`ROTRT` (5) for the cosmetic sweeps** — the player's 90° turn and
+  every enemy turn — and **`TURNRT` (3) for the blocking reverse**. Splitting the constant is
+  what lets the sweep be slow enough to see without the reverse costing more.
+
+  **The loop is locked to 30 Hz, so `#fd` is 2 and a 45° step takes `ceil(rate/2)` passes**:
+  rates 3 and 4 are both 4 frames, 5 and 6 are both 6. A 90° turn can be 8 frames or 12, never
+  10 — the rate cannot be tuned finely, and that quantisation is why halving 6 → 3 shortened a
+  90° turn from 12 frames to 8 rather than to 6.
+  **There are two kinds of turn, and only one of them stops the car:**
+
+  | | starts | costs | commits `dir` |
+  |---|---|---|---|
+  | **90°** (`start_rot`, `rotv`, `ROTRT`) | at a cell centre with that way open | **nothing** — the car drives on while the sprite sweeps round behind it over 12 frames | immediately, at the junction |
+  | **180° reverse** (`start_turn`, `turning`, `TURNRT`) | anywhere (the cell behind is open by definition) | rotates **in place**, 16 frames | when the sweep arrives |
+
+  **The 90° turn used to stop the car too, and that was a one-sided handicap** — the enemies'
+  rotation has always been cosmetic (`eang`), so the player was the only car paying for a corner:
+  ~18 px of lost ground each time, in a maze you corner in constantly. Combined with a speed ramp
+  that reached parity by round 6, it made round 4 unwinnable. A 90° turn now uses the enemies'
+  own model. The sweep is still drawn — the *look* of the turn was never the problem, the *stop*
+  was.
+- **The stick is a HELD request, not a queued one.** `qdir` resets to `dir` every pass before the
+  stick is read, so centring the stick cancels a pending turn: you must be holding the direction
+  as you reach the junction. It used to latch — a direction pressed anywhere was remembered
+  indefinitely and taken at the next junction that allowed it, so the car would turn off on its
+  own long after the stick was released.
 - **The player walks cell boundary to cell boundary** (`drive_step`'s `pm_top` loop), exactly
   like `emove_n`: it jumps straight to the next 16-px boundary or to the end of the frame's
   travel, whichever comes first. Every decision the car makes happens on a centre, so nothing is
@@ -304,7 +353,7 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   | dial | round 1 | ramp |
   |---|---|---|
   | car count (`nen`) | **3** (the arcade count) | 4 from round 5 |
-  | speed (`espd`) | 0.875 px/f | +0.125 a round, capped at 1.875 (round 9) |
+  | speed (`espd`) | 0.875 px/f (58% of the player) | **+0.0625 a round, capped at 1.375 = 92%** (round 9) |
   | rocks (`nrk`) | none | +1 a round from round 2, capped at 16 (round 17) |
   | smarts (`eagg`) | 3 decisions in 8 taken direct | +1 a round, always from round 6 |
   | head start (`scti`) | 5 s of scatter | −0.5 s a round, floor 2 s |
@@ -317,6 +366,24 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   much easier to shake round a corner. Real fleeing is left to the scatter phase, where it is
   deliberate and time-boxed. Because a slack decision still pursues, the floor was widened
   (`4 + rnd` → `2 + rnd`) so the ramp still has somewhere to climb from.
+
+  **THE SPEED RAMP WAS TWICE AS STEEP AS IT SHOULD HAVE BEEN, AND ITS CAP WAS ON THE WRONG SIDE
+  OF THE PLAYER.** It ran `12 + rnd*2` to a cap of 30, i.e. **100% of the player's speed at round
+  6 and 125% from round 9** — the chasers simply outran you, which is not the arcade
+  relationship: there you can always outdrive a red car in a straight line and it is the *maze*
+  that kills you, by cornering you. Combined with the `TURNRT` handicap above (which cost the
+  player ~18 px a corner while the chasers cornered free), round 4 was unwinnable.
+
+  Now `13 + rnd` capped at 22. **Round 1 is deliberately identical to before** (14, 58%) — the
+  ramp was too steep, round 1 was not too hard — and it climbs half as fast to 92% at round 9:
+
+  | round | 1 | 2 | 4 | 6 | 9+ |
+  |---|---|---|---|---|---|
+  | was | 58% | 67% | 83% | 100% | 125% |
+  | now | 58% | 63% | 71% | 79% | 92% |
+
+  Note the cornering fix (`TURNRT` 3) applies to **every** round including round 1, so round 1 is
+  still somewhat easier in net terms than it was — the speed dial is the part held constant.
 - At each cell center pick: prefer the axis with the larger gap to the player if open, else the
   other axis, else keep straight, else any open ≠ reverse, else reverse — **and every one of
   those is validated**, including the dead-end reverse. In **scatter** the preferences invert.
@@ -491,6 +558,31 @@ and leaves its divider behind, so `sfx_tick` forces `engp = 0` when the blip end
 puts the engine's divider back. That is the same hand-back the smoke "put" already uses for
 channel 3. `eng_set` is also re-issued on a change of `dir`, not just of driving/idling state.
 
+**And sharing needs a stand-off, not just a hand-back — this is what made flags "sometimes" have
+no beep.** `eng_set` writes `SOUND 2,engn,0`, i.e. volume ZERO, and `eng_tick` runs *after* the
+effect ticks in the same pass. So any re-issue while a blip was sounding muted it outright — and
+`eng_set` fires on a change of heading, while flags are collected at junctions, which is exactly
+where you turn. The blip lasts 5 passes; one turn inside that window killed it. `eng_tick` now
+skips the re-issue while `sfxt > 0` or `dingn > 0`; nothing is lost, because both effects already
+set `engp = 0` on the way out, which forces the re-issue on the next pass. **Any channel with two
+owners needs both halves of the contract: hands off while the other holds it, and a forced
+re-issue when it lets go.** `eng_idle` had this for channel 3; channel 2 never did.
+
+**A one-frame tone is not a tone — it is as many cycles as its pitch allows.** The fuel-bonus
+tally sounded a tick per unit for a single frame at divider 300–684 (373 Hz down to 164 Hz):
+**three to six cycles**, a thud, and inaudible on small speakers. It was reported as "no fuel
+drain sound", and the writes were correct all along. A probe stamping `FRAME` either side of the
+tally measured **33 frames for 32 units**, which disproved the obvious theory (that the redraw
+overran a frame and collapsed the on/off pair — the redraw is ~2 ms) and located the real one.
+The tick is now **two frames of tone plus one of silence** at divider 120–248 (932–563 Hz), so
+~30 cycles apiece, in the same register as the blip and the ding — the two effects that were
+always audible, because they run 5–7 frames.
+
+**The music is stopped before the death sequence.** `crash` is a blocking loop, so `mus_tick`
+never runs during it and whatever note the tune held just sustained through the explosion and the
+respawn — the player only ever writes a *new* note, never an off. `crash` calls `mus_off` first,
+and the respawn path calls `mus_start` again, since it does not go through `round_init`.
+
 **Historic note: the engine note was previously periodic noise at the fixed lowest rate**
 (control 2, ~116 Hz). Channel 3's control
 byte picks the source in bit 2 (0–3 periodic, 4–7 white) and the shift rate in the low two bits
@@ -579,7 +671,7 @@ pays two compares, not a sound write per frame.
   restarts at the start cell — flags stay collected, but fuel, flag value and the S multiplier all
   reset (§7). 3 lives; game over card → title.
 - **The collision test runs inside both movement loops, after every chunk** — not once per pass.
-  Detection needs `|dx| < 9` on both axes and the pair closes up to 1.5 + 1.875 px per frame,
+  Detection needs `|dx| < 9` on both axes and the pair closes up to 1.5 + 1.375 px per frame,
   so a single end-of-pass sample let a fast pair jump clean through each other. That was the
   "player drove through an enemy car" bug. `hitf` is cleared before anything moves and acted on
   once at the end of the pass, so a hit found mid-movement still unwinds cleanly.
@@ -657,6 +749,28 @@ arms the thing chasing you. `chal` gates `emove_n` on `#fuel > 0`.
 making a parked car scenery you could drive straight through. That is wrong on the arcade (an
 idle red car still kills you) and it looked like a bug besides. Verified in-game: driving into
 the parked row at round 3 now costs a life per car.
+
+**A CRASH ENDS THE STAGE — it costs a life AND moves you on.** The stage used to be the most
+*forgiving* round in the game: an ordinary crash restarted you inside it with the flags you had
+already taken still gone, so you could keep farming the rest until the lives or the fuel ran out.
+Backwards for a bonus round. Now `crash` branches to `chal_end` when `chal = 1`: the life is
+deducted as in any round, then the stage is over. Flag points banked before the crash are kept
+(they were scored on collection), but there is **no 1,000-unit completion bonus and no fuel
+bonus** — those are for clearing it.
+
+Two details that carry the rule:
+
+- The `lives = 0` test stays **ahead** of the `chal` branch, so the last car is GAME OVER in a
+  challenging stage exactly as anywhere else. Verified both ways in Classic99 from the 838 screen:
+  3 cars at level 3 → crash → straight into round 4 with no ROUND CLEAR card or tally; 1 car at
+  level 3 → crash → GAME OVER.
+- `chal_end` falls into `next_round`, the label on `round_done`'s existing round-advance tail, so
+  `rc3` — the 0..3 stage phase — advances identically whether the stage was cleared or crashed out
+  of, and the next stage still lands on 7, 11, 15 … Everything a clear *earns* sits above that
+  label, so the crash path skips it by construction rather than by a flag.
+
+The "ends the stage" half is the researched arcade rule (the arcade ends it when you hit a rock);
+"and costs a life" is this game's choice, not a verified arcade behaviour.
 
 Regular rounds reuse the four maps cyclically with per-round flag/spawn lists and rising
 speeds/counts (3 chasers from round 1, a 4th from round 5 — difficulty scales **speed and
@@ -925,7 +1039,9 @@ have made it 64 KB). `build-ti.sh` does this; an ad-hoc command line must too.
 6. Enemies chase (reactive), crash costs a life, 3 lives, game over → title, HI persists.
 7. Challenging stage on round 3 and every 4th after (3, 7, 11, 15 — the arcade cadence). The
    red cars ARE present; they do not move until the tank runs dry, but they are lethal the
-   whole time. 1,000-unit bonus on completion.
+   whole time. 1,000-unit bonus on completion. **A crash ends the stage**: it costs a life and
+   moves to the next round with no completion or fuel bonus, banked flag points kept — and the
+   last car is still GAME OVER, not a round advance.
 8. Rocks from round 2, one more each round to 16; lethal to the player AND impassable to the
    cars; no round can be rocked into being unwinnable (proved per-prefix in `genrocks.py`).
 9. Lives indicator shows **spares**, excluding the car being driven (`CLAUDE.md` §7A).

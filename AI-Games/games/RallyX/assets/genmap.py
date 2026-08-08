@@ -371,14 +371,20 @@ THEMES = [
     ("autumn",  0xDA,   "magenta",      0xCD, "dark green on magenta"),
     ("night",   0xCA,   "dark green",   0xC1, "dark green on black"),
 ]
+# ONE TABLE PER THEME, COVERING CHARS 96-112 IN A SINGLE UPLOAD. The 16 wall
+# quadrants (96-111) and the shrub char (112) are ADJACENT, so a theme is one
+# `DEFINE COLOR 96,17,...` rather than a wall call plus a shrub call. That
+# halves the number of call sites in theme_col, and code -- not data -- is the
+# budget that binds on this cart (see assets/romcheck.py).
+#
+# It STOPS AT 17 CHARS, i.e. 96..112, so char 113 (the road) is still never
+# written. That is the same guarantee as before, now enforced by the count.
 for name, wc, wn, tc, tn in THEMES:
-    out.append("wallcol_%s:" % name)
-    out.append("\t' %s (%d) on tan, all 16 quadrant chars" % (wn, wc >> 4))
+    out.append("themecol_%s:" % name)
+    out.append("\t' chars 96-111 walls: %s (%d) on tan" % (wn, wc >> 4))
     for i in range(16):
         out.append("\tDATA BYTE " + ",".join(["$%02X" % wc] * 8))
-for name, wc, wn, tc, tn in THEMES:
-    out.append("treecol_%s:" % name)
-    out.append("\t' %s -- char 112 ONLY, so the road (113) is never touched" % tn)
+    out.append("\t' char 112 shrubs: %s -- and it STOPS HERE, short of the road" % tn)
     out.append("\tDATA BYTE " + ",".join(["$%02X" % tc] * 8))
 out.append("ovlpat:")
 out.append("\t' chars 0-15: F 0-3, S 4-7, L 8-11, smoke 12-15 (TL TR BL BR)")
