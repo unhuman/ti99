@@ -52,6 +52,12 @@
 				' driving, i.e. changed the handling rather than
 				' just the pace.
 	CONST BLINKRT = 30	' frames between radar player-dot colour flips
+	' CAR COLOURS. These two inks are RESERVED for the cars and used by
+	' nothing else on the playfield, which is what makes a car readable at a
+	' glance among walls that change colour every round (see theme_col).
+	' The per-round wall/shrub palette deliberately excludes both.
+	CONST PCOL = 4		' player car -- dark blue
+	CONST ECOL = 6		' chasers    -- dark red
 	' SMOKE, per the arcade rules: ONE button press releases exactly THREE
 	' puffs behind the car (it is not a stream you hold down), and each use
 	' costs a big slice of fuel -- the strategy guides warn that using it
@@ -235,14 +241,24 @@ title:
 	GOSUB t_draw
 	tseq = 0
 	tkp = 15
+	' 838 SETUP STARTS THE GAME ITSELF. setup838 raises sgo instead of
+	' jumping, and the two waits below act on it. It cannot GOTO the start
+	' path directly: it runs two GOSUBs deep (title -> t_key -> setup838),
+	' and leaving that way abandons both return addresses on the GOSUB
+	' stack -- once per game is survivable, but the title is reachable again
+	' after every game over, so the leak would accumulate all session.
+	sgo = 0
 t_rel:
 	WAIT
 	GOSUB t_key
+	IF sgo = 1 THEN GOTO t_start
 	IF cont1.button THEN GOTO t_rel
 t_prs:
 	WAIT
 	GOSUB t_key
+	IF sgo = 1 THEN GOTO t_start
 	IF cont1.button = 0 THEN GOTO t_prs
+t_start:
 	GOSUB t_teardown
 	rnd = rnd0
 	' rc3 is the challenging-stage phase: it cycles 0..3 with the round and
@@ -326,6 +342,35 @@ gfx_reset:
 	DEFINE COLOR 144,112,radar_base
 	WAIT
 	DEFINE COLOR 32,64,font_norm	' printable font: white on black
+	WAIT
+	RETURN
+
+	' PER-ROUND COLOUR THEME: the wall ink and the shrub pair, selected by
+	' `thm` (= mz, so a maze always wears the same colours). Caller must
+	' have BANK SELECT 5 -- the tables live with the rest of the art.
+	'
+	' THE ROAD IS NEVER TOUCHED. Walls are an ink drawn ON the tan road
+	' background, so re-inking them cannot change the road; and the shrub
+	' write is `DEFINE COLOR 112,1`, one char, which stops short of 113
+	' (road). That is the whole guarantee -- no theme can make the road a
+	' different colour even by accident.
+	'
+	' The car inks (PCOL/ECOL) are excluded from every theme, so a car is
+	' never the same colour as the walls it is driving between; see
+	' assets/genmap.py for the full list of what each theme may not use.
+	'
+	' Written as four flat IFs rather than a table because DEFINE COLOR
+	' needs a label, and a label cannot be selected by a variable.
+theme_col:
+	IF thm = 0 THEN DEFINE COLOR 96,16,wallcol_spring
+	IF thm = 1 THEN DEFINE COLOR 96,16,wallcol_frost
+	IF thm = 2 THEN DEFINE COLOR 96,16,wallcol_autumn
+	IF thm = 3 THEN DEFINE COLOR 96,16,wallcol_night
+	WAIT
+	IF thm = 0 THEN DEFINE COLOR 112,1,treecol_spring
+	IF thm = 1 THEN DEFINE COLOR 112,1,treecol_frost
+	IF thm = 2 THEN DEFINE COLOR 112,1,treecol_autumn
+	IF thm = 3 THEN DEFINE COLOR 112,1,treecol_night
 	WAIT
 	RETURN
 
@@ -444,7 +489,11 @@ t_draw:
 	GOSUB prt_tsc
 	PRINT AT 18,"HI"
 	GOSUB prt_thi
-	PRINT AT 267,"PRESS FIRE"
+	' Row 7 (was 8), col 6: 19 characters centred on the 32-column screen.
+	' It no longer shares a column with the music line below it -- that line
+	' is centred on its own width, and matching left edges on two strings of
+	' different lengths would look like a mistake rather than a column.
+	PRINT AT 230,"PRESS FIRE TO START"
 	GOSUB t_mus
 	' LEGEND, in the arcade port's two columns
 	ob = 0			' F flag
@@ -470,8 +519,8 @@ t_draw:
 	' the cars are the REAL sprites -- nothing else uses slots 0 and 1 here
 	PRINT AT 614,"MY CAR"
 	PRINT AT 629,"RED CAR"
-	SPRITE 0,151,24,8,5		' player car, heading East
-	SPRITE 1,151,144,8,9		' red car
+	SPRITE 0,151,24,8,PCOL		' player car, heading East
+	SPRITE 1,151,144,8,ECOL		' red car
 	PRINT AT 708,"2026 UNHUMAN AND CLAUDE"
 	RETURN
 
@@ -488,12 +537,12 @@ prt_thi:
 	' Music on/off indicator. Both strings are the same length so the second
 	' one fully covers the first -- no trailing "N" left behind by "OFF".
 t_mus:
-	' Column 11, not 10, so it lines up with PRESS FIRE above it. "1 MUSIC
-	' ON" is ten visible characters against OFF's eleven -- the trailing
-	' space only stops OFF leaving an N behind, it does not centre anything.
-	' At column 11 the ON form spans 11-20, exactly under PRESS FIRE, which
-	' is the state it sits in whenever the music is actually playing.
-	IF musen = 1 THEN PRINT AT 331,"1 MUSIC ON " ELSE PRINT AT 331,"1 MUSIC OFF"
+	' Column 10: the OFF form is 11 characters, so 10..20 centres it on the
+	' 32-column screen. It used to sit at 11 to line up under a 10-character
+	' PRESS FIRE; that string is now 19 characters and centred on its own,
+	' so this line is centred on its own too.
+	' The trailing space in the ON form only stops OFF leaving an N behind.
+	IF musen = 1 THEN PRINT AT 330,"1 MUSIC ON " ELSE PRINT AT 330,"1 MUSIC OFF"
 	RETURN
 
 	' --- "838 mode": type 8, 3, 8 on the title for the setup screen -------
@@ -540,13 +589,12 @@ setup838:
 	FOR i = 1 TO 90
 	WAIT
 	NEXT i
-	' Rebuild the title through its normal entry point rather than clearing
-	' by hand: t_setup wipes, resets every character and colour from ROM and
-	' redraws the logo, so the screen comes back in a known state whatever
-	' the setup left behind -- and the logo, which screen_fill just erased,
-	' comes back with it.
-	GOSUB t_setup
-	GOSUB t_draw
+	' STRAIGHT INTO THE GAME -- the title is not rebuilt. Answering both
+	' questions IS the decision to play, so bouncing back to the title only
+	' to demand a fire press repeats it. sgo tells the title loop to take
+	' its start path as soon as this returns; see `title:` for why the jump
+	' is a flag rather than a GOTO from in here.
+	sgo = 1
 	tkp = 15
 	RETURN
 
@@ -621,6 +669,10 @@ round_init:
 	rkc(i) = t
 	IF i < nrk THEN rkrow(t2rk) = 1
 	NEXT i
+	' This maze's COLOUR THEME. Bank 5 is selected and the colour tables
+	' live with the art, so it costs nothing extra here.
+	thm = mz
+	GOSUB theme_col
 	' WIPE THE RADAR before this round's flags are baked. The canvas was
 	' only zeroed once at boot, so every round inherited the previous
 	' round's flag dots -- and since each round is a DIFFERENT maze with
@@ -839,7 +891,7 @@ gl_pace:
 
 	x = #px - #cx8
 	y = #py - #cy8
-	SPRITE 0, y - 1, x, ang * 4, 5
+	SPRITE 0, y - 1, x, ang * 4, PCOL
 
 	' enemies: same pixel-walk scheme, shared accumulator
 	' Scatter timer counts REAL frames, not loop passes. Decrementing it by
@@ -868,7 +920,7 @@ eskip:
 	sl = 1 + ((i + rot) AND 3)
 	vis = 0
 	IF i < nen THEN GOSUB evis
-	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, eang(i) * 4, 9 ELSE SPRITE sl, 209, 0, 0, 0
+	IF vis = 1 THEN SPRITE sl, y2 - 1, x2, eang(i) * 4, ECOL ELSE SPRITE sl, 209, 0, 0, 0
 	NEXT i
 
 	' enemy turning animation: eang eases 45 degrees at a time toward the

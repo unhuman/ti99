@@ -159,8 +159,8 @@ cols 24–31: panel
 | 0–11 | flag F/S/L, 2×2 quadrant chars (they are CHARACTERS, not sprites — `draw_view` overlays them) | **two colours per flag**: the pole quadrants black, the pennant quadrants white / light red / cyan, all on tan |
 | 12–15 | smoke puff, 2×2 quadrants: a seven-lobe rosette with **carved seams** — four shallow rim notches at the diagonals plus three one-pixel bubble arcs inside (`puff16` in `genmap.py`) | **grey (14) on tan, one colour in all four quadrants.** Detail and "darker" are the same dial here: unlit pixels let the tan road through, because grey is the *only* grey the TMS9918 has (white is the sole lighter shade, black the sole darker one) and colour is per character *row*, so a second colour inside a puff can only meet the first at a dead-straight horizontal line — tried at two heights, read as a lid and then a hat. Black would be genuinely darker but is what the rocks are. Interior arcs may only carve pixels whose four neighbours are all lit, which is what stops a seam from reaching the silhouette and opening the ball up |
 | 32–95 | stock ASCII (HUD text, title) | white on black |
-| 96–111 | wall **quadrant** chars, 4 variants per corner (each quadrant needs only its 2 road-facing edge bits: TL 96+N+2W, TR 100+N+2E, BL 104+S+2W, BR 108+S+2E; 2-px road-side inset), baked into `map2` offline by `genmap.py` | green on tan |
-| 112 | tree (border; tiles as 4 blobs per border cell) | light green circles on dark green |
+| 96–111 | wall **quadrant** chars, 4 variants per corner (each quadrant needs only its 2 road-facing edge bits: TL 96+N+2W, TR 100+N+2E, BL 104+S+2W, BR 108+S+2E; 2-px road-side inset), baked into `map2` offline by `genmap.py` | **per round, see §4a** (spring: medium green on tan) |
+| 112 | tree (border; tiles as 4 blobs per border cell) | **per round, see §4a** (spring: light green circles on dark green) |
 | 113 | road (solid) | tan on tan |
 | 120–128 | fuel bar fill levels 0–8 px | yellow on black |
 | 16–23 | **BANG burst**, two 2×2 animation frames (`genbang.py`) | light red spikes on tan; black lettering on light red across the letter band |
@@ -178,6 +178,42 @@ exactly one screen position, so only that third's bank is written): pattern byte
 are baked at round start; mover dots (player = always drawn, cycling white/black, enemies = red) are erased by
 re-deriving the baked pattern from the flag list (no RAM radar copy), then OR-ing the new dot.
 
+## 4a. Per-round colour themes (walls + shrubbery)
+
+Each maze wears its own palette, so a round is recognisable at a glance. The theme index **is**
+the maze index (`thm = mz = (round−1) AND 3`), applied by `theme_col` in `round_init` from tables
+`wallcol_*` / `treecol_*` that `genmap.py` bakes into `tiles.bas`.
+
+| # | Maze | Walls (on tan) | Shrubbery (fg on bg) |
+|---|------|----------------|----------------------|
+| 1 | spring | medium green (2) | light green (3) on dark green (12) |
+| 2 | frost | light blue (5) | dark blue (4) on light blue (5) |
+| 3 | autumn | magenta (13) | dark green (12) on magenta (13) |
+| 4 | night | dark green (12) | dark green (12) on black (1) |
+
+Frost's shrub dots are the **player's own ink**, by explicit choice: they are foliage on the
+border ring, never a moving 16×16 shape on the road, and they sit on light blue rather than tan,
+so the car's colour *pairing* is not repeated anywhere.
+
+**The road never changes.** Two structural reasons, not a convention to remember: walls are an
+ink drawn *on* the tan road background, so re-inking them cannot touch the road; and the shrub
+write is `DEFINE COLOR 112,1` — one char, stopping short of 113 (road). No theme can recolour
+the road even by accident.
+
+**What the palette may not contain**, and why the surviving list is this short: dark blue (4) is
+the player, dark red (6) the chasers, black (1) the rocks, grey (14) the smoke, tan (10) the road,
+and white / light red / cyan are the three flag pennants. Light yellow (11) is excluded for being
+one step off the road colour. That leaves exactly medium green, light blue, magenta and dark green
+as wall inks. Shrub pairs are freer — the border ring is not the playfield, so a colour there
+can't be mistaken for something you might drive into — but they still avoid the two car inks.
+Frost and autumn set the shrub **background to their own wall ink**, so wall and border read as
+one material and the tan road is the only thing standing apart from it.
+
+Verify any change with `assets/prevthemes.py`, which paints the name table offline from the same
+tables the cart uses and drops a flag, a rock, smoke and both cars into each theme. It has already
+caught two bad picks that looked fine in the table: light-yellow shrubs made the border read as
+*drivable*, and light-red shrubs put the border in the chasers' hue family.
+
 ## 5. Sprites (16×16, MAG default double-size)
 
 Sprite **pattern defs**: 0–7 = the car's eight headings (N, NE, E, SE, S, SW, W, NW — the
@@ -185,8 +221,13 @@ Sprite **pattern defs**: 0–7 = the car's eight headings (N, NE, E, SE, S, SW, 
 
 | # | What | Notes |
 |---|------|-------|
-| 0 | player car | eight heading frames, light blue; becomes the explosion frames (defs 8–9) on crash |
-| 1–4 | enemy red cars | same art recolored red, own visual heading `eang`; slots rotated every frame; hidden at **y=209** when off-viewport |
+| 0 | player car | eight heading frames, **dark blue (`PCOL` = 4)**; becomes the explosion frames (defs 8–9) on crash |
+| 1–4 | enemy red cars | same art recolored **dark red (`ECOL` = 6)**, own visual heading `eang`; slots rotated every frame; hidden at **y=209** when off-viewport |
+
+**The two car inks are RESERVED.** `PCOL` and `ECOL` are used by nothing else on the playfield,
+which is what lets a car stay readable against walls that change colour every round — the
+per-round palette in §4a excludes both. Change either constant and that palette has to be
+re-checked.
 | 5–14 | the 10 flags (def 10) | F light yellow, S red, L white. **Sprites, not chars** — camera-pan blits can't flicker them, and pickup just stops drawing them. Higher slot numbers than the actors, so a 4-per-scanline overflow drops a flag rather than a car. Hidden at y=209 when taken or off-window (row 0 is skipped so `y−1` can't wrap to 255). |
 
 Art: top-down Formula-1 — narrow nose, four protruding wheels, wide midsection, rear wing —
@@ -473,11 +514,12 @@ SN76489 volume is **logarithmic**, roughly 2 dB a step. A first cut chugged 5/2 
 11, i.e. 12–18 dB down, which is not "quiet" but inaudible, and came back as "there is no sound".
 9/6 is 4–10 dB down: clearly under the driving note and clearly still an engine.
 
-**Music is OFF by default, toggled with `1` on the title screen** (`musen`, shown as
-`1 MUSIC ON/OFF` under PRESS FIRE). Nothing is competing for a channel — music is on 0/1 and the
+**Music is ON by default, toggled with `1` on the title screen** (`musen = 1` at boot, shown as
+`1 MUSIC ON/OFF` on the title under `PRESS FIRE TO START`). Nothing is competing for a channel — music is on 0/1 and the
 engine is noise on 3 — but the two still fight for the ear, and the busy mix is why the engine
-read as inaudible. Off is the better default for a game whose signature sound is the engine;
-anyone who wants the tune presses one key. `musen` is a **preference**, so unlike the 838
+read as inaudible — which is why the music sits well under the effects in the mix. It defaults ON
+now that the tune is right; anyone who wants it gone presses one key. `musen` is a **preference**,
+so unlike the 838
 settings it is set once at boot and survives game over. `mus_start` simply refuses to start the
 player when it is 0. The toggle key is `1`, which is not part of the 838 sequence and so cannot
 interfere with it (verified: 8-3-8 still opens setup after toggling).
@@ -578,6 +620,13 @@ Type **8, 3, 8** on the title screen to open a hidden setup with two questions:
 
 The settings last for **one game only** — `game_over` puts them back to 3 cars from round 1, so a
 new game off the title is always the standard one.
+
+**Answering both questions starts the game** — the title is not rebuilt, because choosing cars and
+level *is* the decision to play and returning to the title only to demand a fire press repeats it.
+`setup838` raises `sgo` and returns; the title's two wait loops test it and take the start path.
+It must not `GOTO` there itself: it runs two `GOSUB`s deep (`title` → `t_key` → `setup838`), so
+jumping out would strand both return addresses on the `GOSUB` stack — survivable once, but the
+title is reachable again after every game over, so the leak would accumulate all session.
 
 Answers are single digits read with `CONT1.KEY`, which returns 0-9 on **both** targets (the
 ColecoVision keypad and the TI keyboard) and 15 for nothing pressed, so the same code serves

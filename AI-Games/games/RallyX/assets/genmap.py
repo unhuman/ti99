@@ -324,9 +324,62 @@ for i, p in enumerate(wallpat):
     out.append("\tDATA BYTE " + ",".join("$%02X" % b for b in p) +
                "\t' %s v%d" % (qn[i // 4], i % 4))
 out.append("wallcol:")
-out.append("\t' green (2) on tan (10) every row, all 16 quadrant chars")
+out.append("\t' green (2) on tan (10) every row, all 16 quadrant chars -- the")
+out.append("\t' boot/default theme; round_init overrides it per THEME (below).")
 for i in range(16):
     out.append("\tDATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A")
+
+# --- per-round themes: wall ink and shrub pair ------------------------------
+# ONE PALETTE ENTRY = a wall ink (on the tan road) plus a shrub fg/bg pair.
+#
+# WHAT THE LIST MAY NOT CONTAIN, and why the choice is this narrow:
+#   dark blue (4)  is the PLAYER car        -- reserved
+#   dark red (6)   is the CHASERS           -- reserved
+#   black (1)      is the rocks             -- an obstacle must stay unique
+#   grey (14)      is the smoke
+#   tan (10)       is the road, which never changes -- walls are drawn as an
+#                  ink ON tan, so varying them cannot touch the road at all
+#   white (15) / light red (9) / cyan (7) are the three flag pennants
+#   light yellow (11) is a near-miss for the tan road: too low contrast
+# What survives with good contrast against tan: medium green, light blue,
+# magenta, dark green. Those are the four wall inks.
+#
+# The SHRUB pair is freer, because the border ring is not the playfield: a
+# colour used there cannot be mistaken for a car or a rock you might drive
+# into. It still avoids the two car inks, and the shrub BACKGROUND carries
+# most of the theme change since it fills whole cells.
+#
+# Frost and autumn deliberately set the shrub BACKGROUND to the theme's own
+# WALL ink, with a contrasting fg on top. Wall and border then read as one
+# material and the tan road is the only thing that stands apart from it,
+# which is the distinction that actually matters while driving.
+#
+# The theme follows the MAZE (theme = mz = (round-1) AND 3), so each of the
+# four mazes always wears the same colours and stays recognisable.
+THEMES = [
+    # name       wall ink on tan        shrub fg on bg
+    ("spring",  0x2A,   "medium green", 0x3C, "light green on dark green"),
+    # Frost's shrub fg IS the player's ink (dark blue 4) -- allowed here by
+    # explicit choice: it is the border ring's foliage dots, never a moving
+    # 16x16 shape on the road, and the shrubs sit on light blue rather than
+    # on tan, so the pairing the eye learns for the car is not repeated.
+    ("frost",   0x5A,   "light blue",   0x45, "dark blue on light blue"),
+    # AUTUMN'S SHRUBS COST TWO TRIES BEFORE THIS ONE. Light yellow (11) is
+    # one step off the tan road and the whole border ring read as DRIVABLE in
+    # the render. Light red (9) fixed that but put the border in the CHASERS'
+    # hue family, the one thing a player tracks by colour.
+    ("autumn",  0xDA,   "magenta",      0xCD, "dark green on magenta"),
+    ("night",   0xCA,   "dark green",   0xC1, "dark green on black"),
+]
+for name, wc, wn, tc, tn in THEMES:
+    out.append("wallcol_%s:" % name)
+    out.append("\t' %s (%d) on tan, all 16 quadrant chars" % (wn, wc >> 4))
+    for i in range(16):
+        out.append("\tDATA BYTE " + ",".join(["$%02X" % wc] * 8))
+for name, wc, wn, tc, tn in THEMES:
+    out.append("treecol_%s:" % name)
+    out.append("\t' %s -- char 112 ONLY, so the road (113) is never touched" % tn)
+    out.append("\tDATA BYTE " + ",".join(["$%02X" % tc] * 8))
 out.append("ovlpat:")
 out.append("\t' chars 0-15: F 0-3, S 4-7, L 8-11, smoke 12-15 (TL TR BL BR)")
 for p in ovlpat:

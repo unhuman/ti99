@@ -17,7 +17,8 @@ wallpat:
 	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC	' BR v2
 	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$00,$00	' BR v3
 wallcol:
-	' green (2) on tan (10) every row, all 16 quadrant chars
+	' green (2) on tan (10) every row, all 16 quadrant chars -- the
+	' boot/default theme; round_init overrides it per THEME (below).
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
@@ -34,6 +35,90 @@ wallcol:
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
 	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+wallcol_spring:
+	' medium green (2) on tan, all 16 quadrant chars
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+	DATA BYTE $2A,$2A,$2A,$2A,$2A,$2A,$2A,$2A
+wallcol_frost:
+	' light blue (5) on tan, all 16 quadrant chars
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
+wallcol_autumn:
+	' magenta (13) on tan, all 16 quadrant chars
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+	DATA BYTE $DA,$DA,$DA,$DA,$DA,$DA,$DA,$DA
+wallcol_night:
+	' dark green (12) on tan, all 16 quadrant chars
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+	DATA BYTE $CA,$CA,$CA,$CA,$CA,$CA,$CA,$CA
+treecol_spring:
+	' light green on dark green -- char 112 ONLY, so the road (113) is never touched
+	DATA BYTE $3C,$3C,$3C,$3C,$3C,$3C,$3C,$3C
+treecol_frost:
+	' dark blue on light blue -- char 112 ONLY, so the road (113) is never touched
+	DATA BYTE $45,$45,$45,$45,$45,$45,$45,$45
+treecol_autumn:
+	' dark green on magenta -- char 112 ONLY, so the road (113) is never touched
+	DATA BYTE $CD,$CD,$CD,$CD,$CD,$CD,$CD,$CD
+treecol_night:
+	' dark green on black -- char 112 ONLY, so the road (113) is never touched
+	DATA BYTE $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1
 ovlpat:
 	' chars 0-15: F 0-3, S 4-7, L 8-11, smoke 12-15 (TL TR BL BR)
 	DATA BYTE $00,$03,$03,$03,$03,$03,$03,$03
