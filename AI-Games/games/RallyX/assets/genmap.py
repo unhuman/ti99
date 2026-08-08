@@ -151,33 +151,47 @@ flag16 = [
                           # pennant's character and losing the black.
 ]
 def puff16():
-    """The arcade's smoke PUFF-BALL: a rosette of round lobes.
+    """The arcade's smoke PUFF-BALL: a rosette with carved seams.
 
-    PUFFINESS COMES FROM THE SILHOUETTE, not from the fill. The colour rule
-    only allows a horizontal band per character row, so a highlight can only
-    ever be a straight stripe -- it reads as a lit, rounded mass only if the
-    OUTLINE it sits on is visibly scalloped. An earlier version was one big
-    circle with small bites taken out of it and came out square: a grey box
-    with a white cap.
+    DETAIL COMES FROM CARVED SEAMS, NOT A SECOND COLOUR. A TMS9918 character
+    row carries one ink, so shading a puff means a dead-straight horizontal
+    line across it -- tried, and it read as a lid whatever height it sat at.
+    What the arcade's puff actually shows is overlapping balls divided by
+    dark outlines, and that IS reproducible in one colour: leave the dividing
+    pixels UNLIT and the tan road shows through them as the seam.
 
-    So the ball is built from SIX small lobes around a modest centre, each
-    small enough that its curve shows at 16 px, giving a bumpy edge all the
-    way round. The base is flattened so the puff sits on the road rather
-    than floating.
+    The seams are SHALLOW and there are only four, punched inward from the
+    rim at the diagonals. Earlier attempts carved every lobe boundary right
+    through the middle and cut the ball into segments, or hollowed it into a
+    ring -- with seven overlapping lobes almost every interior pixel is near
+    some rim, so "near a rim" is useless as a test. Cutting a fixed short
+    distance in from the edge at fixed angles is controllable and leaves the
+    mass intact.
     """
     import math as _m
-    lobes = [(7.5, 8.0, 3.9)]
+    cx = cy = 7.5
+    lobes = [(cx, cy, 4.7)]
     for k in range(6):
         a = _m.pi * 2 * k / 6.0 - _m.pi / 2
-        lobes.append((7.5 + 4.0 * _m.cos(a), 8.0 + 3.9 * _m.sin(a), 3.0))
+        lobes.append((cx + 3.8 * _m.cos(a), cy + 3.8 * _m.sin(a), 3.0))
+    NOTCH_IN, NOTCH_OUT, NOTCH_WID, NOTCHES = 3.6, 5.6, 0.20, 4
+    seams = [_m.pi * 2 * (k + 0.5) / NOTCHES - _m.pi / 2 for k in range(NOTCHES)]
+
     rows = []
     for y in range(16):
         bits = 0
         for x in range(16):
-            if y >= 15:                     # flat base
+            if y >= 15:                     # flat base: it sits on the road
                 continue
-            if any((x - cx) ** 2 + (y - cy) ** 2 <= r * r for cx, cy, r in lobes):
-                bits |= 1 << (15 - x)
+            if not any((x - lx) ** 2 + (y - ly) ** 2 <= r * r for lx, ly, r in lobes):
+                continue
+            d = _m.hypot(x - cx, y - cy)
+            a = _m.atan2(y - cy, x - cx)
+            if NOTCH_IN <= d <= NOTCH_OUT:
+                if any(abs((a - sa + _m.pi) % (2 * _m.pi) - _m.pi) < NOTCH_WID
+                       for sa in seams):
+                    continue
+            bits |= 1 << (15 - x)
         rows.append(bits)
     return rows
 
@@ -246,23 +260,20 @@ for fc in FLAGCOLS:
                [fc] * 8,           # TR  pennant
                [POLECOL] * 8,      # BL  pole + foot
                [fc] * 8]           # BR  (empty, colour irrelevant)
-# SMOKE IN TWO COLOURS, for puffiness. The arcade's puff is shaded, and the
-# TMS9918 can do that here -- colour is per ROW of each character, so a
-# lighter band across the top and grey below reads as a lit, rounded volume
-# rather than a flat blob. It is only ever TWO colours in any one row, which
-# is the whole of the hardware's rule.
+# SMOKE IS ONE GREY. Two colours were tried and reverted.
 #
-# The pair has to be WHITE (15) over GREY (14): grey is the ONLY grey the
-# palette has -- there is no darker or lighter one -- so those two are the
-# only shades available that both still read as smoke. Black would look like
-# a hole punched in the road.
+# The hardware cannot shade a puff. Colour is per ROW of a character, so any
+# two colours inside one puff meet at a dead-straight HORIZONTAL LINE across
+# it -- there is no soft edge available at any position. White over grey put
+# that line across the middle and looked like a lid; moving it up to the
+# crown just looked like a hat. The line is the problem, not where it sits.
 #
-# quads() order is TL, TR, BL, BR, so the highlight goes on the top half of
-# the two UPPER characters and everything below stays grey.
-SMOKE_HI, SMOKE_LO = "$FA", "$EA"       # white on tan, grey on tan
-_top = [SMOKE_LO] + [SMOKE_HI] * 6 + [SMOKE_LO]     # lit across the upper half
-_bot = [SMOKE_LO] * 8
-ovlcol += [_top, _top, _bot, _bot]      # smoke: shaded
+# Grey (14) is also the ONLY grey the TMS9918 has: white (15) is the sole
+# lighter shade and black the sole darker one, so "lighter grey" and "darker
+# grey" do not exist to pick between. Puffiness therefore has to come
+# entirely from the SILHOUETTE, which is why the ball is a rosette of six
+# small lobes (see puff16) rather than one circle.
+ovlcol += [["$EA"] * 8] * 4     # smoke: grey on tan, flat
                                 # four quadrants -- a per-quadrant split is
                                 # what made the cloud look half-grey
 
