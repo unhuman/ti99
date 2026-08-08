@@ -42,8 +42,11 @@ radar on the right, and don't run out of fuel.
   See `DESIGN.md` §1a for the measurements and the two pacing rules.
   Open: **ColecoVision has never been run** (it builds every time, but only TI has been
   runtime-tested); late-round frame pacing (~3 frames per pass at round 9); per-round flag
-  positions; challenging-stage fuel too generous for its own wake-the-cars rule. TI cart is **banked** (`BANK ROM 128`: bank 0 code+logical map, bank 1
-  char map, bank 2 art/tables); Coleco builds flat. Building this flushed out three CVBasic
+  positions; challenging-stage fuel too generous for its own wake-the-cars rule. TI cart is
+  **banked and 64 KB** (banks 1–4 = the four char maps, bank 5 = art/tables/title); Coleco is
+  128 KB, the floor `BANK ROM` allows. ROM is three separate budgets and only the 24,336-byte
+  fixed area is scarce (185 B free) — see `DESIGN.md` §13; `assets/romcheck.py` audits every
+  build after a silent truncation cost the music its last seven bars. Building this flushed out three CVBasic
   TMS9900 codegen bugs (8-bit×big-constant → 0, dotted-constant folding truncates, CONST>255
   truncates) — documented in `DESIGN.md` §14 with workarounds in the source.
 - **Controls:** TI: joystick 1 or E/S/D/X, fire or `Q` = smoke. Coleco: stick + left button.

@@ -159,6 +159,30 @@ cost a debugging session:
   textually (parenthesize every use); a computed `FOR 1 TO 0` still runs the body once.
 - **TI cart limit: 24,336 bytes** in the fixed area — `linkticart` silently truncates past it.
   Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
+- **ROM IS THREE SEPARATE BUDGETS, and "shrink the ROM" usually optimises the wrong one.**
+  (1) The **fixed area** — all code plus any data read during a frame — is the 24,336-byte cap
+  above, and it is the only scarce one. (2) **Banks** are 8 KB each and typically half empty.
+  (3) **Cart size** = 3 loader pages + one page per bank, *rounded up to a power of two*.
+  Consequences, all three measured in RallyX (`games/RallyX/assets/romcheck.py`, run it on any
+  banked game):
+  - Moving repeated data out of a bank and into code **makes things worse** — it spends the
+    scarce budget to save the abundant one. Doing exactly that (3.6 KB of repeated colour bytes
+    → ~400 B of fill loops) overflowed the fixed area by 229 B and **silently cut the last seven
+    bars off the music**: total ROM went *down* while the build broke.
+  - **The overflow is invisible.** Nothing in `cvbasic` → `xas99` → `linkticart` warns; the
+    excess is dropped and the symptom is missing *data* (whatever sits nearest `>FFFF`, usually
+    the last `DATA` block), not a build error. A banked build skipped `build-ti.sh`'s size guard
+    entirely. Audit the packed cart and verify at-risk blocks round-trip byte-for-byte.
+  - **A thinly-used bank can double the cart.** A 1.1 KB title logo alone in bank 6 made 9 pages
+    → 128 KB; folding it into a bank with room gave 8 pages → **64 KB, content unchanged**.
+  - **Delete `NAME_b*.bin` before assembling** — linkticart appends every bank file it finds, so
+    a stale one from a previous build is packed into the cart and inflates the page count.
+- **A scrolling playfield's char map cannot be compressed** on this hardware. The TMS9918 has no
+  scroll register, so a 1-char pan rewrites the whole 24×24 name table; only CVBasic's built-in
+  `SCREEN` blit is fast enough, and it copies **literal char codes from CPU memory**. Any packed
+  or per-cell encoding must be expanded 576 chars at a time in CVBasic (orders of magnitude
+  slower), and decompressing a maze at round start needs contiguous RAM neither target has
+  (TI ~7.2 KB free, Coleco ~230 B). Budget for it up front: it is the price of scrolling.
 - **Build BOTH targets every time**, not just TI. `#if TI994A` needs the **unhuman/CVBasic**
   fork (stock nanochess has no preprocessor).
 - **A grid-cell occupancy check does NOT prove sprites do not overlap.** A 16-px actor on a 16-px

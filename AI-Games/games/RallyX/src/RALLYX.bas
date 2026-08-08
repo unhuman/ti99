@@ -8,10 +8,12 @@
 	' The world renders at 2x2 CHARACTERS PER MAZE CELL (16-px roads), so
 	' the 16x16 car exactly fills a lane and the 24x24-char viewport shows
 	' a 12x12-cell window of the 32x56 maze -- the radar earns its keep.
-	' Two map encodings: map1 (34x58 logical bytes, collision/AI/radar,
-	' TI bank 0 so gameplay PEEKs never bank-switch) and map2 (68x116
-	' pre-edged chars, stride 68, TI bank 1 for the SCREEN blits). The
-	' camera pans in 1-char (8-px) steps for smoothness.
+	' ONE map encoding reaches the cart: the four map2_n CHAR maps (68x116
+	' pre-edged chars, stride 68, one per ROM bank, blitted by SCREEN). Cell
+	' TYPE is read from a cell's top-left quadrant, so there is no separate
+	' logical map -- genmap.py still writes map0.bas and map2.bas, but
+	' nothing INCLUDEs them and they cost no ROM.
+	' The camera pans in 1-char (8-px) steps for smoothness.
 	'
 	' Milestones: M1 world + driving, M2 flags/fuel/score/HUD/radar,
 	' M3 enemies/smoke/crash, M4 title/rounds/challenge/jingles.
@@ -383,7 +385,9 @@ t_setup:
 	' The logo borrows the RADAR canvas codes, which a title screen has no
 	' use for. round_init re-uploads the real canvas every round anyway, so
 	' the restore path already exists and is exercised constantly.
-	BANK SELECT 6
+	' Bank 5 already: the logo lives with the rest of the art (see the data
+	' section -- giving it a bank of its own is what made the cart 128 KB).
+	BANK SELECT 5
 	DEFINE CHAR 144,64,title_pat
 	WAIT
 	DEFINE COLOR 144,64,title_col
@@ -2673,10 +2677,21 @@ eng_off:
 	INCLUDE "map2_4.bas"
 
 	' TI bank 2: art, tiles, radar tables, item lists (init / round setup)
-	BANK 6
+	'
+	' THE TITLE LOGO SHARES THIS BANK, and that is what sets the cart's SIZE.
+	' linkticart builds the cart as 3 loader pages plus one 8 KB page per
+	' bank, then rounds the total UP to a power of two. The logo had a bank
+	' to itself: 1,126 bytes in an 8 KB page, which made 9 pages and rounded
+	' the cart to 128 KB. Folded in here (this bank runs about 6 KB of its
+	' 8 KB with it) the count is 8 pages exactly -- a 64 KB cart, for no
+	' change to a single byte of content.
+	'
+	' Both are init/round-setup data, never read during a frame of play, so
+	' one BANK SELECT 5 covers them; nothing needs to switch banks to reach
+	' the logo any more.
+	BANK 5
 	INCLUDE "title.bas"
 
-	BANK 5
 	' 16x16 top-down F1 car, 4 rotations (assets/gencar.py; sprite order =
 	' left half rows 0-15, then right half rows 0-15): narrow nose, four
 	' protruding wheels, wide midsection, rear wing -- 16 px wheel-to-wheel,

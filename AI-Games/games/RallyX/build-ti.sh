@@ -58,6 +58,14 @@ rm -f "${NAME}_8.bin"
     || die "linkticart failed"
 [ -s "${NAME}_8.bin" ] || die "linkticart produced no/empty ${NAME}_8.bin"
 
+# AUDIT THE PACKED CART. The guard above only covers the NON-banked path; a
+# BANKED build had no check at all, and that is exactly how 229 bytes were
+# cut off the end of the music with every tool in the chain reporting
+# success. romcheck.py re-derives the fixed-area usage from the binary and
+# proves the at-risk data blocks survived into the cart.
+echo
+"$PY" "../assets/romcheck.py" || die "romcheck FAILED -- the cart is truncated (see above)"
+
 echo
 echo "Build OK ->  $(pwd)/${NAME}_8.bin"
 echo "Load it in Classic99 or js99er."

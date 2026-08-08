@@ -816,11 +816,40 @@ CVBasic `MUSIC` (2 melody channels) + channel 3/noise reserved for SFX:
   radar copy** (both re-derived from ROM; radar erase re-bakes from the flag list). Each flag's
   radar dot address + mask are cached once per round (`#fda`/`fdm`, 30 B) so the erase does not
   re-run `dot_addr` ten times per tick. Coleco reports 314/814 B used.
-- **ROM (TI, banked — `BANK ROM 128`):** bank 0 = code + logical map1 (~2 K; the fixed area
-  caps at 24,336 B); bank 1 = map2 doubled char map (7,888 B, selected during gameplay);
-  bank 2 = art/tiles/radar tables/item lists (selected only during init and round setup —
-  `round_init` and `rehome` switch to 2 for their `READ`s and back to 1). Coleco builds flat
-  (~24 K). Report free bytes every build. Extra maps would need further banks.
+- **ROM (TI, banked — `BANK ROM 128`):** banks 1–4 = the four `map2_n` doubled char maps
+  (7,888 B each, the maze's own bank selected during gameplay); bank 5 = art, tiles, radar
+  tables, item lists **and the title logo** (selected only during init and round setup).
+  Coleco is fixed at 128 KB — `BANK ROM` accepts only 128/256/512/1024, so that is its floor
+  whatever the content.
+
+**ROM IS NOT ONE POOL — three separate budgets, and only one of them is scarce.** Measured with
+`assets/romcheck.py`, which every TI build now runs:
+
+| Budget | Holds | Size | Free |
+|--------|-------|------|------|
+| **Fixed area** | *all* code + music + mini-font — everything reachable during a frame | **24,336 B hard cap** | **185 B (0.8%)** |
+| Banks | maps, art, tables — anything read only behind a `BANK SELECT` | 8,192 B each | 262 B ×4 maps, 2,242 B in bank 5 |
+| Cart size | 3 loader pages + 1 page per bank, **rounded up to a power of two** | 8 pages | = **64 KB** |
+
+Three consequences that are not obvious from "the ROM is 43% maze data":
+
+1. **Only the fixed area is worth optimising.** It is 99.2% full. Moving data *out* of a bank
+   into code makes things worse: a change that replaced 3.6 KB of repeated colour bytes with
+   ~400 B of fill loops freed space in a bank that had 3,326 B spare and **overflowed the fixed
+   area by 229 B**, silently cutting the last seven bars off `mus_song`. Total ROM went down
+   while the build broke. That change was reverted; the lesson is in `romcheck.py`'s header.
+2. **An almost-empty bank can double the cart.** The title logo (1,126 B) had a bank to itself,
+   making 9 pages — which rounds to 128 KB. Folding it into bank 5 gives exactly 8 pages and a
+   **64 KB cart, with no change to a single byte of content.**
+3. **The maze tables cannot shrink.** 31,552 B (43% of content) is four `map2_n`, and it is the
+   price of scrolling: the TMS9918 has **no scroll register**, so panning one 8-px step means
+   rewriting all 576 name-table bytes, which only CVBasic's built-in `SCREEN` blit is fast
+   enough to do. `SCREEN` copies a rectangle of **literal char codes** from CPU memory, so any
+   compressed or per-cell form would have to be expanded 576 chars at a time in CVBasic —
+   orders of magnitude slower, and the scroll is exactly what must not slow down. Decompressing
+   a maze at round start needs 7,888 B of contiguous RAM; TI has ~7.2 KB free and Coleco 231 B,
+   so neither target can hold it. The four mazes are also genuinely distinct (~43% byte
+   agreement, i.e. road/tree coincidence), so there is nothing to dedupe.
 
 ## 14. CVBasic hazard rules (binding, from sibling games + this one)
 
@@ -855,20 +884,34 @@ syntax shapes:**
   immediate copies — safe in bulk; radar canvas init uses them from generated ROM tables
   (`radar_zero`/`radar_base` in `src/tiles.bas`).
 - **TI cart banking**: fixed area caps at 24,336 B; this game exceeded it in M2. Layout per
-  §13: bank 0 code + logical map, bank 1 map2 (gameplay-selected), bank 2 everything else
+  §13: banks 1–4 the four map2 tables (gameplay-selected), bank 5 everything else
   (init/round-setup-selected). Coleco builds flat — every `BANK` statement is inside
-  `#if TI994A`. `build-ti.sh` auto-detects the `_b0.bin` multi-bank output and refuses a
-  >24,336 single-bank binary instead of letting linkticart silently truncate it.
+  `#if TI994A`.
+- **A BANKED build had NO truncation check, and that is how the music lost its tail.**
+  `build-ti.sh`'s size guard only ever covered the *single-bank* path; once `_b0.bin` exists it
+  was skipped entirely, so an over-cap fixed area sailed through the compiler, the assembler and
+  linkticart with every one of them reporting success. The failure surfaces as *data* going
+  missing — whatever the assembler happened to place nearest `>FFFF` — not as a build error.
+  Every TI build now ends with `assets/romcheck.py`, which re-derives fixed-area usage from the
+  binary, fails if anything non-padding lands in the discarded region, **and proves `mus_song`,
+  `mus_freq` and `mini_font` survived byte-for-byte into the packed cart.**
 
 ## 15. Build
 
 ```
-assets/genmap.py  →  src/map0.bas (logical 34×58) + src/map2.bas (chars 68×116)
-                     + src/tiles.bas (wall quadrants, flag/smoke 2×2 art, radar tables)
-cvbasic --ti994a src/RALLYX.bas → xas99 → linkticart → src/RALLYX_8.bin   (Classic99)
-cvbasic          src/RALLYX.bas → gasm80              → src/rallyx.rom    (ColecoVision)
+assets/genmap.py  →  src/tiles.bas (wall quadrants, flag/smoke 2×2 art, radar tables)
+                     (also writes map0.bas + map2.bas, which nothing INCLUDEs — the four
+                      per-maze src/map2_n.bas from genmaps4.py are what ship)
+cvbasic --ti994a src/RALLYX.bas → xas99 → linkticart → src/RALLYX_8.bin   (Classic99, 64 KB)
+                                        → assets/romcheck.py  (truncation audit, gates the build)
+cvbasic          src/RALLYX.bas → gasm80              → src/rallyx.rom    (ColecoVision, 128 KB)
 ```
 via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the sibling games.
+
+**Delete `RALLYX_b*.bin` before assembling.** linkticart appends every `_bN.bin` it finds, so a
+bank file left over from an earlier build is packed into the new cart — which both corrupts it
+and inflates the page count (a stale bank 6 kept the cart at 128 KB after the merge that should
+have made it 64 KB). `build-ti.sh` does this; an ad-hoc command line must too.
 
 ## 16. Acceptance Criteria
 
@@ -886,8 +929,10 @@ via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the 
 8. Rocks from round 2, one more each round to 16; lethal to the player AND impassable to the
    cars; no round can be rocked into being unwinnable (proved per-prefix in `genrocks.py`).
 9. Lives indicator shows **spares**, excluding the car being driven (`CLAUDE.md` §7A).
-10. Both targets build; the TI cart is **banked** (`BANK ROM 128`, six banks); same real-world
-   speed on both (FRAME-delta pacing); no hazard-rule violations (§14).
+10. Both targets build; the TI cart is **banked and 64 KB** (five banks, 8 pages); same
+   real-world speed on both (FRAME-delta pacing); no hazard-rule violations (§14).
+11. `assets/romcheck.py` passes: fixed area within 24,336 B and `mus_song`/`mus_freq`/
+   `mini_font` present byte-for-byte in the packed cart.
 
 ## 17. Status (2026-08-01, latest) — crash graphic, score popup, chase fixes
 
