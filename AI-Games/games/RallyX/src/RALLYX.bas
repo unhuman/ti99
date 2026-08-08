@@ -917,6 +917,10 @@ round_done:
 	SOUND 0,,0
 	SOUND 1,,0
 	GOSUB eng_off
+	' Cars off the screen before the notice, the same as GAME OVER does.
+	' The round is finished, so the player and the chasers just sat there
+	' frozen underneath ROUND CLEAR and the bonus tally.
+	GOSUB hide_spr
 	PRINT AT 395,"ROUND"
 	PRINT AT 427,"CLEAR"
 	IF chal = 1 THEN #score = #score + 1000 : GOSUB prt_score

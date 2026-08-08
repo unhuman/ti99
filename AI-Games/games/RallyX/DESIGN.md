@@ -548,6 +548,9 @@ pays two compares, not a sound write per frame.
   by ONE pixel on each axis — a 1×1 corner touch, which reads as the crash happening before the
   cars meet. 9 requires 3 px of real overlap on both axes, and is still far too wide to tunnel:
   the pair closes at most ~4 px between consecutive `ckhit` samples.
+- **Round clear parks the sprites too.**  calls  before printing the
+  notice, for the same reason game over does: the round is finished, so the player and the
+  chasers were sitting frozen underneath ROUND CLEAR and the fuel-bonus tally.
 - **Game over parks ALL 32 sprite slots and repaints the maze.** `hide_spr` clears every slot,
   not just the five the game uses, so nothing left in the attribute table can sit over the card;
   it is paced with a `WAIT` every 8 writes, because a burst past the per-frame VDP budget is
