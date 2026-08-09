@@ -1644,6 +1644,22 @@ turn_step:
 	turning = 0
 	dir = tang / 2
 	blocked = 0
+	' AND FORCE at_center TO PROBE AGAIN. Clearing `blocked` without this
+	' let the car DRIVE INTO A WALL -- found by assets/simdrive.py, not by
+	' playing:
+	'
+	'   at a dead end, at_center probes, finds the way ahead solid, sets
+	'   blocked = 1 and caches (cell, dir, qdir) in pqd/pdr. Reverse, then
+	'   reverse back, and dir and qdir are the SAME PAIR again in the SAME
+	'   cell -- so the cache says "nothing has changed, skip the probe"
+	'   while this routine has just cleared blocked. The car then drives
+	'   off in a direction nothing ever probed.
+	'
+	' 255 is the same "no valid cache" sentinel restart uses. Note the
+	' reverse cannot be trusted to land somewhere open either: "the cell
+	' behind is by definition open" holds for a car that drove in, not for
+	' one parked against a wall that reverses twice.
+	pqd = 255
 	RETURN
 
 at_center:

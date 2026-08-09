@@ -344,6 +344,18 @@ a solid bar. The generator prints an ASCII preview of all 8 frames plus the `DAT
   unchanged (`pqd`/`pdr`) — a car pinned against a wall stays cell-aligned indefinitely, so
   without those two guards the 10-flag scan and both probes re-ran on every pixel step of every
   frame (§1a).
+
+  **ANYTHING THAT CLEARS `blocked` MUST INVALIDATE THAT CACHE.** `turn_step` sets `blocked = 0`
+  when a reverse completes, and that combination drove the car *through walls*: at a dead end
+  `at_center` probes, finds the way solid, sets `blocked = 1` and caches the triple; reverse and
+  reverse back, and the car is in the same cell with the same `dir` and `qdir`, so the cache
+  matches and the probe is skipped — with `blocked` freshly cleared. It then drives off in a
+  direction nothing ever probed. `turn_step` now also sets `pqd = 255`, the same "no valid cache"
+  sentinel `restart` uses. Note this also disproves the comment that justified starting a reverse
+  anywhere: *"the cell behind is by definition open"* is true of a car that drove in, **not** of
+  one parked against a wall that reverses twice.
+
+  Found by `assets/simdrive.py`, not by playing — see §15.
 - **Enemies turn too** but keep moving while they do (`eang` eases toward `edir*2` on the same
   3-frame clock). Their AI only ever picks 90° changes, so a visible sweep is enough — stopping
   them dead mid-turn would make them trivial to escape.
@@ -1021,6 +1033,24 @@ cvbasic --ti994a src/RALLYX.bas → xas99 → linkticart → src/RALLYX_8.bin   
 cvbasic          src/RALLYX.bas → gasm80              → src/rallyx.rom    (ColecoVision, 128 KB)
 ```
 via the `build-cvbasic-game` skill / `build-ti.sh` + `build-coleco.sh` like the sibling games.
+
+**`assets/simdrive.py` is the movement regression harness**, and the only automated check on the
+driving grid. It ports `drive_step` / `at_center` / `start_rot` / `start_turn` / `sweep_step`
+line-for-line into Python, reads the **same** char map the cart does (`map2_1.bas`, sampled at
+each cell's top-left quadrant exactly as `probe` does — deliberately *not* the unused `map0.bas`),
+and drives with random stick input for 40 × 20,000 passes, asserting:
+
+1. the car's cell is always road;
+2. the **cross** axis stays 16-aligned — driving vertically `px` is a multiple of 16, driving
+   horizontally `py` is;
+3. a 90° turn only ever commits at a cell centre (asserted inside `start_rot`, where it happens —
+   checking once per pass is wrong, because the car can reach a centre mid-pass and turn legally).
+
+Invariant 2 is why it exists: a 90° turn begun at a centre used to let the frame's remaining
+pixel steps run in the old direction, finishing 1–3 px off-grid, after which `at_center` never
+fired again and the car drove through everything. Invariant 1 is what caught the `blocked`/cache
+bug in §6. **Re-run it after any change to movement, turning, or the probe cache** — it costs
+seconds and catches what minutes of play will not.
 
 **Delete `RALLYX_b*.bin` before assembling.** linkticart appends every `_bN.bin` it finds, so a
 bank file left over from an earlier build is packed into the new cart — which both corrupts it
