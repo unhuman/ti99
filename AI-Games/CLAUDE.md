@@ -148,6 +148,44 @@ cost a debugging session:
   byte. (`* 34.`, `* 68.`, `* 136.` are all fine.) Use bare 16-bit literals, precomputed values,
   an IF-ladder, or repeated doubling (`#x = #x + #x` eight times == `* 256`).
   **Check the generated `.a99`** when a multiply matters: this failure is completely silent.
+- **`VPOKE` takes a RAW VRAM address; the name table is at `$1800` (6144). `SCREEN`'s target
+  offset is name-table-RELATIVE (0–767).** Mixing them up writes your name-table data into the
+  **pattern table**, i.e. it corrupts the character set: the symptom is a field of junk tiling the
+  whole screen, missing walls/borders, and garbled text — not a crash, and not obviously an
+  addressing bug. Add 6144 as **its own step** (`#a = row*32+col : #a = #a + 6144`), never folded
+  into a constant expression (folded constants truncate, per the item below). Cost a Puzzle Bobble
+  session; `RALLYX.bas:1434` carries the same warning.
+- **`DEFINE COLOR n,total,label` needs EIGHT bytes per character** (one per scan line, this is the
+  per-8×1-line colour mode), not one. `DEFINE COLOR 32,16,tbl` reads **128** bytes. Supply fewer
+  and it silently reads whatever follows in ROM as colour data — text and tiles come out in random
+  colours with no error. `DEFINE CHAR` is 8 bytes/char and replicates across all three screen
+  thirds automatically.
+- **`CONST` > 255 silently becomes ZERO — bare literals are fine.** This is the sharpest edge of
+  the truncation item above and deserves its own line: `CONST FXMIN = 4096` compiled to `ci r0,0`
+  and `#bx = FXLX` (20480) compiled to a bare `clr`. A ball launched from 0,0 and no wall ever
+  bounced. The same values written inline (`IF #bx < 4096`, `#bx = 20480`) compile correctly, as
+  does `SOUND 0,300` → `li r0,300`. **The distinction is CONST vs literal, not the magnitude.**
+  Never put a value above 255 in a `CONST`.
+- **Every sound effect needs an explicit note-off.** `SOUND ch,f,v` latches; with no `SOUND ch,f,0`
+  the last tone sustains forever ("sticky" audio). Two `SOUND` calls on the *same* channel back to
+  back just cancel the first — a two-note effect needs two channels. Keep a per-channel decay
+  counter and tick it after **every** `WAIT`, including inside animation loops that don't run the
+  main loop.
+- **`SOUND`'s second argument is a 10-bit DIVISOR, not a frequency — smaller is HIGHER**
+  (`RALLYX.bas:1118`: "a smaller divider is a higher note"). Two traps, both silent:
+  (1) the field is **10 bits, max 1023** — anything larger is masked, so `SOUND 0,2400,10` plays
+  some unrelated pitch rather than a high one; (2) rising/falling sweeps read backwards, so a
+  "descending" tone written as a decreasing argument actually rises. Pitch ≈ 3579545/(32·n):
+  n=100 → ~1100 Hz, n=250 → ~450 Hz, n=900 → ~124 Hz. In Puzzle Bobble this had a *high ping*
+  standing in for the ceiling's low clunk and four effects silently masked, none of which
+  produced any error.
+- **A per-pass counter is not a clock.** Anything timed — a beep interval, a countdown, a
+  telegraph — must decrement by the frame delta, not once per loop pass, or it slows down exactly
+  when the loop gets busy. That is the same root cause as movement slowing (§3A's FRAME-delta
+  item), and it is worst for warning cues, which become least reliable precisely when the frame is
+  most loaded. Corollary: once a timer decrements by a *variable* delta, any logic keyed on its
+  **parity** (`t AND 1`) breaks — an even delta freezes the parity. Drive alternating states from
+  their own phase counter.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

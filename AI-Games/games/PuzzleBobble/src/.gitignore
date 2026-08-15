@@ -1,0 +1,15 @@
+# Generated build artifacts
+# TI-99:  cvbasic -> xas99 -> linkticart
+PUZBOBL.a99
+*.bin
+*.txt
+# ColecoVision:  cvbasic -> gasm80
+*.asm
+*.rom
+*.lst
+*.sym
+
+# NOTE: art.bas and levels.bas ARE tracked. They are generated (by
+# assets/genart.py and assets/genlevels.py) but are build INPUTS, the same way
+# RALLY-X tracks its generated map2_*.bas -- the build must work from a clean
+# checkout without running the generators.

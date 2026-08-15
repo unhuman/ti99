@@ -1,0 +1,57 @@
+# PUZZLE BOBBLE — level data (source of truth; src/levels.bas is GENERATED from this file)
+#
+# Run  assets/genlevels.py  to regenerate src/levels.bas
+# Run  assets/prevlevels.py to render a preview PNG of every level defined here
+#
+# FORMAT
+# ------
+#   LEVEL <n>            starts a block
+#   COLOURS <3..8>       how many bubble colours are in play this round
+#   DROPTIME <s>         seconds between ceiling drops (stored as quarter-seconds)
+#   SEQ <32 digits>      the FIXED shot sequence — levels are puzzles, not slot machines.
+#                        Cycles with AND 31. A colour no longer on the field is substituted
+#                        deterministically (DESIGN.md §11), so the sequence never goes dead.
+#   then up to 11 grid rows.
+#
+# GRID ROWS
+#   '.' = empty, '1'..'8' = bubble colour.
+#   EVEN rows (the 1st, 3rd, 5th … listed) are 8 cells wide, flush left.
+#   ODD  rows are 7 cells wide and sit 8 px (one character) to the RIGHT — write them with one
+#   leading space so the hex stagger is visible in this file exactly as it appears on screen.
+#
+# COLOURS
+#   1 red   2 green   3 blue   4 yellow   5 cyan   6 magenta   7 white   8 orange
+#   (DESIGN.md §4 — each is a lit/base shade pair; every character line is bubble-shade on black,
+#    so the two-colours-per-line rule is never at risk.)
+
+LEVEL 1
+COLOURS 3
+DROPTIME 20
+SEQ 32123122132123122312132213211232
+11222211
+ 1233321
+.123321.
+ ..232..
+
+# TEMPORARY: level 2 is a copy of level 1, purely so the round-clear close and the
+# wall-lifting reveal can be watched end to end. Replace it with a real layout.
+LEVEL 2
+COLOURS 3
+DROPTIME 20
+SEQ 32123122132123122312132213211232
+11222211
+ 1233321
+.123321.
+ ..232..
+
+# ---------------------------------------------------------------------------------------------
+# LEVELS 3–30 GO HERE.
+#
+# Level 1 above is PROVISIONAL — a faithful-feeling opener, not a transcription. It is symmetric,
+# 3 colours, 24 bubbles, with the blue core buried under a green shell so the first drop the
+# player ever causes is a visible one. Replace it, and add the rest, once reference screenshots
+# land in this folder; see DESIGN.md §7 for the transcribe-at-the-cell-grid method (eyeballing a
+# layout was rejected twice on Hard Hat Mack — measuring worked first try).
+#
+# Nothing in the game code changes when these are replaced: layouts are data.
+# ---------------------------------------------------------------------------------------------
