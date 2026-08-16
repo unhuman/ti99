@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PUZZLE BOBBLE - offline screen renderer.
+BUST-A-BOBBLE - offline screen renderer.
 
 Paints the real 256x192 TMS9918 screen for each authored level, using the actual geometry
 from DESIGN.md section 2/3 and the real TMS9918 palette -- so layouts and the character
@@ -152,7 +152,7 @@ def alignment_sheet(grid):
     sheet = Image.new("RGB", (len(shks) * (tile_w + pad) + pad,
                               len(tops) * (tile_h + pad) + pad + 14), (24, 24, 28))
     sd = ImageDraw.Draw(sheet)
-    sd.text((pad, 3), "PUZZLE BOBBLE alignment invariant: every bubble corner on a char "
+    sd.text((pad, 3), "BUST-A-BOBBLE alignment invariant: every bubble corner on a char "
                       "boundary, at every ceiling offset and shake phase", fill=(210, 210, 210))
 
     for ri, top in enumerate(tops):

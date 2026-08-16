@@ -1,0 +1,288 @@
+# BUST-A-BOBBLE -- the 30 arcade stage SHAPES, transcribed at the cell grid.
+#
+# PROVENANCE
+#   Transcribed from the "PUZZLE BOBBLE STAGES and their MILLIONS" diagrams in the
+#   Puzzle Bobble / Bust-A-Move FAQ v1.24 (neo-geo.com wiki). That FAQ draws each
+#   round on the same 8/7 staggered grid the hardware uses, so the transcription is
+#   cell-for-cell rather than by eye.
+#
+# WHAT IS AUTHENTIC AND WHAT IS NOT -- read this before "fixing" a level.
+#   SHAPES are authentic: which cells hold a bubble, for all 30 rounds.
+#   COLOURS ARE NOT, mostly. The FAQ's legend says:
+#       a-d  colours; usually "attack spots" for earning millions
+#       X    balls where you should find an "attack spot"
+#       O    ball of ANY colour
+#   So the source only pins down a colour where it matters strategically. Every O
+#   and X is unspecified, and assets/transcribe_stages.py assigns those from the
+#   round's stated palette with a deterministic banding pattern (see there).
+#   The per-round COLOUR COUNT below is authentic.
+#
+#   Net: play these and you are playing the arcade's layouts with substituted
+#   colours -- not a byte-exact reproduction of the arcade's bubbles. Replacing a
+#   round with a screenshot-derived colouring only means editing this file.
+#
+# FORMAT
+#   STAGE <n> <colour-count>
+#   then the rows, top first. EVEN rows (1st, 3rd, ...) are 8 cells; ODD rows are
+#   7 cells and sit half a cell right -- written indented one space, as on screen.
+#   '.' empty   'O' any colour   'X' attack-spot marker (treated as O)
+#   'a'..'d'    distinct named colours, preserved as distinct
+
+STAGE 1 4
+aabbccdd
+ aabbccd
+OOOOOOOO
+ OOOOOOO
+
+STAGE 2 6
+...aa...
+ ...O...
+...O....
+ ...O...
+...O....
+ ...O...
+...O....
+ ...O...
+
+STAGE 3 5
+O......O
+ aOOOOOb
+O......O
+ aOOOOOb
+...O....
+ ...O...
+...O....
+
+STAGE 4 5
+.aa..bb.
+ .O...O.
+.O...O..
+ .O...O.
+.O...O..
+ .O...O.
+.O...O..
+ .O...O.
+
+STAGE 5 6
+.O.O.O.O
+ O.O.d.b
+O.O.O.O.
+ .O.O.O.
+.O.O.O..
+ ..c.O..
+....a...
+
+STAGE 6 6
+OOOOOOOO
+ O.O.O.O
+.OOOOOO.
+ .O.O.O.
+.OOOOOO.
+ O.O.O.O
+OOOOOOOO
+
+STAGE 7 6
+...XX...
+ ..XXX..
+...XX...
+ .OO.OO.
+.OOOOOO.
+ .OO.OO.
+
+STAGE 8 5
+OOOOOOOO
+ OOOOOOO
+OOOOOOOO
+ OOOOOOO
+
+STAGE 9 7
+aaaaaaaa
+ .a....a
+a..OOOOO
+ .a..OOO
+a.....OO
+ .a.....
+OO......
+ .OOOO..
+
+STAGE 10 7
+O......O
+ .aOOOa.
+O......O
+ .aOOOa.
+O......O
+ .aOOOa.
+
+STAGE 11 8
+...XX...
+ ..XXX..
+..OO.XX.
+ .OOOOO.
+.OOOOO..
+ ..OOO..
+...OO...
+ ....O..
+
+STAGE 12 3
+...OO...
+ ..OOO..
+.OOOOO..
+ OOOOOOO
+OOOOOOOO
+ OOOOOOO
+OOOOOOOO
+
+STAGE 13 8
+aabbOOaa
+ .OabOba
+aabbbbaa
+ .abbaOO
+aaaa....
+ .aaaO..
+OOOOOOOO
+
+STAGE 14 7
+O.O.O.O.
+ .O.O.O.
+.O.O.O..
+ O.O.O.O
+O.OOO.O.
+ .OOOOO.
+.OOOOOO.
+
+STAGE 15 8
+aa.bb.cc
+ .O..O.O
+a..O..b.
+ O..O..O
+a..O..b.
+ .O.O..O
+aa.bb.cc
+
+STAGE 16 7
+OOOOOOOO
+ OOOOOOO
+OOOOOOOO
+ OOOOOOO
+
+STAGE 17 4
+OOO..OOO
+ OO...OO
+OOO..OOO
+ OO...OO
+OOO..OOO
+
+STAGE 18 7
+....a...
+ ...a...
+..OOa.O.
+ .OOaaOO
+..OOa.O.
+ .OOOOOO
+..OOOO..
+
+STAGE 19 3
+OOOOOOOO
+ OOOOOOO
+.OO.OO..
+ ..O..O.
+.OO.OO..
+ OOOOOOO
+OOOOOOOO
+
+STAGE 20 7
+O.O.O.O.
+ .O.O.O.
+O..OO..O
+ .OOOOO.
+O..OO..O
+ .O.O.O.
+O.O.O.O.
+ .O....O
+
+STAGE 21 4
+OOOOOOOO
+ OOO.OOO
+.OO..OO.
+ .O...O.
+.OO..OO.
+ OOO.OOO
+OOOOOOOO
+
+STAGE 22 6
+cccccccc
+ b......
+.OOOOOOO
+ .a.....
+..OOOOOO
+ ..O....
+...OOOOO
+
+STAGE 23 7
+...bO...
+ ..abc..
+..OacO..
+ .OO.OO.
+.OO..OO.
+ OO...OO
+OO....OO
+ O.....O
+
+STAGE 24 7
+OOOO....
+ OOO....
+OOOO....
+ OOO....
+OOOO....
+ OOO....
+
+STAGE 25 7
+a......b
+ a.....b
+.OOOOOO.
+ .O...O.
+.OOOOOO.
+ .O...O.
+.OOOOOO.
+
+STAGE 26 8
+OOOOOOOO
+ OOOOOOO
+OOOOOOOO
+ OOOOOOO
+
+STAGE 27 6
+aaa..aaa
+ ..a.a..
+..OOOO..
+ .O.O.O.
+..OOOO..
+ ..OOO..
+.OOOOOO.
+
+STAGE 28 6
+OOOOOOO.
+ OOOOOO.
+.OOOOO..
+ .OOOO..
+..OOO...
+ ..OO...
+...O....
+
+STAGE 29 7
+..a..a..
+ ..a.a..
+...aa...
+ .OOaOO.
+.OO..OO.
+ O.OOO.O
+O..OO..O
+
+STAGE 30 8
+O.O.O.O.
+ O.O.O.O
+O.O.O.O.
+ O.O.O.O
+O.O.O.O.
+ O.O.O.O
+O.O.O.O.

@@ -2,9 +2,9 @@
 #
 # Build Puzzle Bobble (CVBasic) for the TI-99/4A.
 #
-#   cvbasic compile -> xas99 assemble -> linkticart pack -> PUZBOBL_8.bin
+#   cvbasic compile -> xas99 assemble -> linkticart pack -> BUSTABOB_8.bin
 #
-# Output: src/PUZBOBL_8.bin -- load in Classic99 or js99er.
+# Output: src/BUSTABOB_8.bin -- load in Classic99 or js99er.
 #
 # Same .bas source as the ColecoVision build (build-coleco.sh); only the
 # toolchain differs. No build-time constants needed (unlike Astiroids'
@@ -22,8 +22,8 @@ XDT99_DIR="${XDT99_DIR:-/cygdrive/c/Users/Howie/github.git/endlos99/xdt99}"
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
 [ -d "$XDT99_DIR" ]   || XDT99_DIR="${XDT99_DIR/#\/cygdrive\/c\//\/c\/}"
 
-NAME="PUZBOBL"
-CARTNAME="PUZZLE BOBBLE"
+NAME="BUSTABOB"
+CARTNAME="BUST-A-BOBBLE"
 
 die() { echo "ERROR: $1" >&2; exit 1; }
 

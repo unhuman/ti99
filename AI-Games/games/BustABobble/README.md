@@ -1,4 +1,7 @@
-# Puzzle Bobble — CVBasic, TI-99/4A & ColecoVision
+# Bust-A-Bobble — CVBasic, TI-99/4A & ColecoVision
+
+*The name is a play on the game's two: Taito shipped it as **Puzzle Bobble** in Japan and
+**Bust-A-Move** in the West.*
 
 Clone of Taito's **Puzzle Bobble** / *Bust-A-Move* (1994). A hex-packed field of coloured bubbles
 hangs from the ceiling; aim the launcher at the bottom and fire a bubble along a ray that bounces
@@ -101,8 +104,8 @@ with a fixed trailing `0`: 8 stored digits become 9 shown, and a carry off the t
 
 ## Build
 
-- **TI-99/4A:** `bash build-ti.sh` → `src/PUZBOBL_8.bin` (load in Classic99 or js99er)
-- **ColecoVision:** `bash build-coleco.sh` → `src/puzbobl.rom` (load in CoolCV or blueMSX)
+- **TI-99/4A:** `bash build-ti.sh` → `src/BUSTABOB_8.bin` (load in Classic99 or js99er)
+- **ColecoVision:** `bash build-coleco.sh` → `src/bustabob.rom` (load in CoolCV or blueMSX)
 
 > Requires the forked `cvbasic` (`unhuman/CVBasic`) for `#if TI994A`. Build **both** targets on
 > every change. TI fixed-area budget is a hard 24,336 bytes — check it with

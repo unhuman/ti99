@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post-build TI-99 ROM audit for PUZZLE BOBBLE: fail LOUDLY on silent truncation.
+"""Post-build TI-99 ROM audit for BUST-A-BOBBLE: fail LOUDLY on silent truncation.
 
 linkticart carries the program image (>A000..>FFFF) in three loader pages of
 8112 bytes = 24,336 bytes, and DISCARDS any excess without a word from any tool
@@ -34,7 +34,7 @@ def content_len(d):
 
 
 def main():
-    path = os.path.join(SRC, "PUZBOBL.bin")
+    path = os.path.join(SRC, "BUSTABOB.bin")
     if not os.path.isfile(path):
         sys.stderr.write("error: %s not found -- run build-ti.sh first\n" % path)
         return 2
@@ -48,7 +48,7 @@ def main():
     used = content_len(image)
     free = FIXED_CAP - used
 
-    print("PUZZLE BOBBLE -- TI-99/4A fixed area (all code + data read during a frame)")
+    print("BUST-A-BOBBLE -- TI-99/4A fixed area (all code + data read during a frame)")
     print("  raw image   %6d B   (starts at >%04X)" % (len(raw), CART_BASE))
     print("  >A000 up    %6d B" % len(image))
     print("  used        %6d B   of %d   (%.1f%%)" % (used, FIXED_CAP,

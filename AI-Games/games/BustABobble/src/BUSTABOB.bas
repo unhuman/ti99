@@ -1,5 +1,5 @@
 	'
-	' PUZZLE BOBBLE -- TI-99/4A + ColecoVision (CVBasic, dual-target)
+	' BUST-A-BOBBLE -- TI-99/4A + ColecoVision (CVBasic, dual-target)
 	'
 	' Clone of Taito's Puzzle Bobble / Bust-A-Move (1994). See DESIGN.md.
 	'

@@ -2,9 +2,9 @@
 #
 # Build Puzzle Bobble (CVBasic) for ColecoVision.
 #
-#   cvbasic (default target = Coleco) -> gasm80 -> puzbobl.rom
+#   cvbasic (default target = Coleco) -> gasm80 -> bustabob.rom
 #
-# Output: src/puzbobl.rom -- load in CoolCV / blueMSX (ColecoVision).
+# Output: src/bustabob.rom -- load in CoolCV / blueMSX (ColecoVision).
 #
 # Same .bas source as the TI-99 build (build-ti.sh); only the toolchain
 # differs (no --ti994a, and gasm80 instead of xas99+linkticart). No
@@ -18,8 +18,8 @@ GASM80="${GASM80:-/cygdrive/c/Users/Howie/github.git/nanochess/gasm80/gasm80.exe
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
 [ -f "$GASM80" ]      || GASM80="${GASM80/#\/cygdrive\/c\//\/c\/}"
 
-SRC="PUZBOBL.bas"      # canonical source (shared with the TI build)
-NAME="puzbobl"          # output base name (dot-free, lowercase)
+SRC="BUSTABOB.bas"      # canonical source (shared with the TI build)
+NAME="bustabob"          # output base name (dot-free, lowercase)
 ASM="${NAME}_col.asm"
 ROM="${NAME}.rom"
 

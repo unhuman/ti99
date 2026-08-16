@@ -1,12 +1,12 @@
-# PUZZLE BOBBLE — Design
+# BUST-A-BOBBLE — Design
 
 > CVBasic game, **dual-target**: TI-99/4A (native TMS9900 cartridge ROM, `--ti994a`) **and**
-> ColecoVision (native Z80 ROM, CVBasic default target) from the same `src/PUZBOBL.bas` —
+> ColecoVision (native Z80 ROM, CVBasic default target) from the same `src/BUSTABOB.bas` —
 > not an XB256/XB-compiler game. The repo `CLAUDE.md` is the XB256 platform spec; the CVBasic
 > hazard list (`CLAUDE.md` §3A, restated as §14 here) is binding. Sibling CVBasic projects:
 > `games/RallyX`, `games/Structris`, `games/HardHatMack`, `games/Astiroids`.
 
-This document describes the game to be built. Once code exists, `src/PUZBOBL.bas` is the source
+This document describes the game to be built. Once code exists, `src/BUSTABOB.bas` is the source
 of truth; keep this file in sync with any behaviour change (repo standing rule).
 
 ---
@@ -267,15 +267,31 @@ assets/prevlevels.py   renders all 30 to a PNG contact sheet, using the real DEF
                        (repo memory: render-level-offline-to-compare-art)
 ```
 
-**Open decision — where the 30 layouts come from.** Two paths, and this one is yours to pick:
-1. **Transcribed** from arcade reference screenshots at the cell grid, the way HARD HAT MACK's
-   levels were done (repo memory `transcribe-reference-png-at-cell-grid` — eyeballing was rejected
-   twice there; measuring worked first try). Needs 30 reference images dropped in `assets/`.
-2. **Original** 30 layouts authored in `levels.txt`, hand-tuned for a difficulty ramp.
+**RESOLVED (2026-08-15): all 30 are transcribed.** The Puzzle Bobble / Bust-A-Move FAQ v1.24
+(neo-geo.com wiki) draws every round on the same 8/7 staggered grid the hardware uses, so the
+transcription is cell-for-cell rather than by eye — the method repo memory
+`transcribe-reference-png-at-cell-grid` insists on. Pipeline:
 
-The encoding, the generator and the game code are identical either way, so this does not block
-starting. Level data is read **once at round start**, never during a frame, so it may live in a
-ROM bank if the fixed area gets tight (§13).
+```
+assets/arcade-stages.txt        the 30 shapes, transcribed, with per-round colour counts
+assets/transcribe_stages.py     assigns concrete colours -> levels.txt
+assets/genlevels.py             levels.txt -> src/levels.bas
+```
+
+**What is authentic and what is not.** The FAQ's legend defines `a`–`d` as colours that matter
+strategically, `X` as an attack-spot hint, and **`O` as "ball of any colour"**. So the source pins
+down *shape* completely and *colour* only where it mattered to the strategy it was describing:
+
+- **Authentic:** every round's shape — which cells hold a bubble — and its colour count.
+- **Assigned:** the colour of every `O`/`X`. `transcribe_stages.py` gives them
+  `((c >> 1) + r) mod N + 1`, i.e. horizontal **pairs** of a colour shifting one step per row.
+  Pairs matter: a lone bubble needs two more of its colour to pop, so a field of noise plays badly
+  while banded pairs mean most shots have a target. Letters keep their identity, so cells the
+  source marked as the same colour stay the same colour.
+
+Re-colouring a round from a screenshot means editing one file and regenerating; no code moves.
+Level data is read **once at round start**, never during a frame, so it may live in a ROM bank if
+the fixed area gets tight (§13) — it does not currently need to.
 
 ---
 
@@ -661,22 +677,22 @@ Restated from `CLAUDE.md` §3A because each one has a concrete landing site here
 ## 15. Build
 
 ```
-games/PuzzleBobble/
+games/BustABobble/
   DESIGN.md  README.md
-  src/PUZBOBL.bas          main source
+  src/BUSTABOB.bas          main source
   src/levels.bas           30 levels, generated -- never hand-edited
   src/aimtab.bas           64-entry aim table, generated
   src/music.bas            original BGM + danger variant
   assets/levels.txt        the 30 layouts, human-readable
   assets/genlevels.py  assets/genaim.py  assets/prevlevels.py
-  build-ti.sh              cvbasic --ti994a -> xas99 -> linkticart -> PUZBOBL_8.bin
-  build-coleco.sh          cvbasic -> gasm80 -> puzbobl.rom
+  build-ti.sh              cvbasic --ti994a -> xas99 -> linkticart -> BUSTABOB_8.bin
+  build-coleco.sh          cvbasic -> gasm80 -> bustabob.rom
 ```
 
 - **Build BOTH targets every time** (repo standing rule, memory `structris-build-both-targets`) —
   not just TI, and not just at the end.
 - `#if TI994A` needs the **unhuman/CVBasic** fork; stock nanochess has no preprocessor.
-- Delete any stale `PUZBOBL_b*.bin` before assembling — `linkticart` packs every bank file it
+- Delete any stale `BUSTABOB_b*.bin` before assembling — `linkticart` packs every bank file it
   finds and a leftover inflates the page count.
 - Finish every session with Classic99 left **running the newest build** (repo standing rule).
 
@@ -764,7 +780,7 @@ TI fixed area now **14,380 B of 24,336 — 9,956 free**.
 
 **2026-08-15 (later) — playable on TI-99/4A.** Round 1 renders and plays: aim, fire, wall
 bounces, sticking, match-3 pops, orphan drops, scoring, the drop timer, the shake and the
-round-clear slide are all in `src/PUZBOBL.bas`. Both targets build from the one source.
+round-clear slide are all in `src/BUSTABOB.bas`. Both targets build from the one source.
 
 - **TI fixed area: 13,916 B of 24,336 — 10,420 free.** `assets/romcheck.py` runs inside
   `build-ti.sh` every build. Note the raw `.bin` starts at `>6000`, so its total size is *not* the
