@@ -73,13 +73,18 @@ def blank():
 
 
 def draw_bubble(px, x0, y0, k):
-    base, lit, lrows = BUBBLE[k]
+    # Pixels come from genart's mask (dithered colours have their own), and the
+    # colour from its table -- so the preview shows exactly what the ROM holds.
+    base, lit, lrows, style = BUBBLE[k]
+    m = genart.bubble_mask(style)
     for yy in range(16):
         y = y0 + yy
         if not 0 <= y < SCRH:
             continue
-        col = TMS[lit if yy < lrows else base]
-        for xx in range(INSET[yy], 16 - INSET[yy]):
+        col = TMS[lit] if (style or yy < lrows) else TMS[base]
+        for xx in range(16):
+            if not m[yy][xx]:
+                continue
             x = x0 + xx
             if 0 <= x < SCRW:
                 px[x, y] = col

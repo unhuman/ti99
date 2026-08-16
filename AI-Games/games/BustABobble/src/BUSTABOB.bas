@@ -67,6 +67,16 @@
 	DIM hs(8)		' high score
 	DIM ad(6)		' 6-digit BCD addend fed to add_score
 	DIM pres(9)		' pres(k) = 1 if colour k is still on the field
+	' Orphans falling away after a drop, animated as SPRITES (slots 8..19).
+	' Sprites cost ONE call each per frame and the VDP erases them for us; the
+	' character equivalent would be 8 VPOKEs each per frame, which is well past
+	' what a frame will carry. Capped at 12 -- a bigger drop still scores in full,
+	' it just does not animate every bubble.
+	DIM ofr(12)		' grid row
+	DIM ofcl(12)		' grid column
+	DIM ofk(12)		' colour
+	DIM ofxx(12)		' pixel x (fixed for the whole fall)
+	DIM ofyy(12)		' pixel y, advanced per frame
 
 	'
 	' ---------------------------------------------------------------- setup
@@ -76,20 +86,16 @@
 	VDP(1) = $E2		' 16x16 sprites, NOT magnified (a bubble is 16 px)
 	SPRITE FLICKER OFF	' all-or-nothing in CVBasic; we stay under 4 per line
 
-	' All eight bubble colours share ONE 2x2 pattern; only DEFINE COLOR
-	' differs. Eight calls against the same 32 bytes (see assets/genart.py).
-	DEFINE CHAR 128,4,bub_pat
-	DEFINE CHAR 132,4,bub_pat
-	DEFINE CHAR 136,4,bub_pat
-	DEFINE CHAR 140,4,bub_pat
-	DEFINE CHAR 144,4,bub_pat
-	DEFINE CHAR 148,4,bub_pat
-	DEFINE CHAR 152,4,bub_pat
-	DEFINE CHAR 156,4,bub_pat
+	' Bubble characters are PER COLOUR now (32 chars in one call): cyan and
+	' magenta are dithered, which needs their own pixels, not just their own
+	' colour -- a two-colours-per-line display can only shade by pixel density.
+	DEFINE CHAR 128,32,bub_pat
 	DEFINE COLOR 128,32,bub_col
 
 	DEFINE CHAR 160,2,wall_pat
 	DEFINE COLOR 160,2,wall_col
+	DEFINE CHAR 164,12,bur_pat	' 3 pop frames x 4 chars
+	DEFINE COLOR 164,12,bur_col
 	DEFINE COLOR 32,16,txt_col
 	DEFINE COLOR 48,16,txt_col
 	DEFINE COLOR 64,16,txt_col
@@ -97,8 +103,8 @@
 
 	' 16 bubble patterns: 2k = colour k+1's cap, 2k+1 its body. Each colour has
 	' its own highlight size (genart.py), so they cannot share one pair.
-	DEFINE SPRITE 0,16,spr_bub
-	DEFINE SPRITE 16,1,spr_dot
+	DEFINE SPRITE 0,24,spr_bub
+	DEFINE SPRITE 24,1,spr_dot
 
 	' Sprite colours are NOT declared here any more. They used to be a hand-kept
 	' copy of the palette in genart.py, and when that palette changed this copy
@@ -566,6 +572,8 @@ after_stick:
 		GOSUB drop_orphans
 	END IF
 	GOSUB draw_field
+	' Field is now drawn WITHOUT the orphans, so they can fall over a clean board.
+	IF ofn > 0 THEN GOSUB fall_orphans
 	GOSUB scan_present
 	GOSUB prt_hud
 	IF nleft = 0 THEN
@@ -598,7 +606,18 @@ count_marks:
 	NEXT cmi
 	RETURN
 
+	' The matched group bursts before it clears: three dissolve frames painted
+	' over the marked cells (white flash -> yellow -> grey specks), two frames
+	' each. Only the marked cells are touched, so this is a handful of VPOKEs
+	' rather than a field redraw.
 pop_marks:
+	FOR pbf = 0 TO 2
+		GOSUB draw_burst
+		WAIT
+		GOSUB sfx_tick
+		WAIT
+		GOSUB sfx_tick
+	NEXT pbf
 	FOR cmi = 0 TO 95
 		IF (grid(cmi) AND 64) <> 0 THEN grid(cmi) = 0
 	NEXT cmi
@@ -609,6 +628,40 @@ pop_marks:
 	RETURN
 
 	'
+	' Paint burst frame pbf over every marked cell. Cell (r,c) is at character
+	' row CEILROW+top+2r and column shkb+1+2c+(r AND 1) -- the same arithmetic
+	' draw_row uses, because the burst has to land exactly where the bubble was.
+draw_burst:
+	pbc = 164 + pbf * 4
+	FOR pbr = 0 TO 11
+		pbrow = CEILROW + top + pbr + pbr
+		IF pbrow < 23 THEN
+			pbp = pbr AND 1
+			pbb = pbr * 8
+			FOR pbi = 0 TO 7
+				IF (grid(pbb + pbi) AND 64) <> 0 THEN
+					pbx = shkb + 1 + pbi + pbi + pbp
+					#pba = pbrow
+					#pba = #pba * 32
+					#pba = #pba + pbx
+					#pba = #pba + 6144
+					pbv = pbc
+					VPOKE #pba,pbv
+					#pba = #pba + 1
+					pbv = pbc + 1
+					VPOKE #pba,pbv
+					#pba = #pba + 31
+					pbv = pbc + 2
+					VPOKE #pba,pbv
+					#pba = #pba + 1
+					pbv = pbc + 3
+					VPOKE #pba,pbv
+				END IF
+			NEXT pbi
+		END IF
+	NEXT pbr
+	RETURN
+
 	' Mark propagation, used for BOTH fills. No queue: repeat a full scan,
 	' marking any cell adjacent to a marked one, until a pass changes nothing.
 	' A worst-case queue would be ~96 bytes and ColecoVision has ~781 free, so
@@ -695,9 +748,21 @@ drop_orphans:
 	pgcol = 0
 	GOSUB propag
 	don = 0
-	FOR doi = 0 TO 95
+	ofn = 0
+	' Walked by row/column, not flat index, so the orphan's grid position is known
+	' without a division -- fall_orphans needs it to place the sprite.
+	FOR dor = 0 TO 11
+		dob8 = dor * 8
+		FOR docc = 0 TO 7
+			doi = dob8 + docc
 		IF (grid(doi) AND 15) <> 0 THEN
 			IF (grid(doi) AND 64) = 0 THEN
+				IF ofn < 12 THEN
+					ofr(ofn) = dor
+					ofcl(ofn) = docc
+					ofk(ofn) = grid(doi) AND 15
+					ofn = ofn + 1
+				END IF
 				grid(doi) = 0
 				don = don + 1
 				dobi = don
@@ -713,11 +778,50 @@ drop_orphans:
 				GOSUB add_score
 			END IF
 		END IF
-	NEXT doi
+		NEXT docc
+	NEXT dor
 	IF don > 0 THEN
 		SOUND 1,400,12
 		sf1 = 12
 	END IF
+	RETURN
+
+	' The orphans drop away as sprites, at slightly different speeds so a row of
+	' them spreads out instead of moving as a slab -- which also keeps them off
+	' each other's scanlines, where only four sprites can show at once.
+	' Called AFTER the field has been redrawn without them.
+fall_orphans:
+	FOR ofi = 0 TO ofn - 1
+		ofp = ofr(ofi)
+		ofq = ofp AND 1
+		ofv = CEILROW + top + ofp + ofp
+		ofyy(ofi) = ofv * 8
+		ofv = shkb + 1 + ofcl(ofi) + ofcl(ofi) + ofq
+		ofxx(ofi) = ofv * 8
+	NEXT ofi
+	FOR off = 0 TO 26
+		FOR ofi = 0 TO ofn - 1
+			IF ofyy(ofi) < 200 THEN
+				ofs = 6 + (ofi AND 3)
+				ofyy(ofi) = ofyy(ofi) + ofs
+				IF ofyy(ofi) > 199 THEN
+					SPRITE 8 + ofi,209,0,0,0
+				ELSE
+					ofj = ofk(ofi) - 1
+					ofj = ofj * 12
+					ofc2 = bub_base(ofk(ofi) - 1)
+					ofw = ofyy(ofi) - 1
+					SPRITE 8 + ofi,ofw,ofxx(ofi),ofj + 8,ofc2
+				END IF
+			END IF
+		NEXT ofi
+		WAIT
+		GOSUB sfx_tick
+	NEXT off
+	FOR ofi = 0 TO 11
+		SPRITE 8 + ofi,209,0,0,0
+	NEXT ofi
+	ofn = 0
 	RETURN
 
 	'
@@ -1230,13 +1334,13 @@ draw_sprites:
 	' Pattern frame = def * 4, and colour k uses defs 2(k-1) and 2(k-1)+1, so the
 	' cap frame is (k-1)*8 and the body frame is that + 4.
 	dsf = curk - 1
-	dsf = dsf * 8
+	dsf = dsf * 12
 	dsc = bub_base(curk - 1)
 	dsl = bub_lit(curk - 1)
 	SPRITE 0,dsy,dsx,dsf + 4,dsc
 	SPRITE 1,dsy,dsx,dsf,dsl
 	dsf = nxtk - 1
-	dsf = dsf * 8
+	dsf = dsf * 12
 	dsc = bub_base(nxtk - 1)
 	dsl = bub_lit(nxtk - 1)
 	SPRITE 2,NEXTY - 1,NEXTX,dsf + 4,dsc
@@ -1259,12 +1363,12 @@ draw_sprites:
 			END IF
 			gpy = guy * gi
 			gpy = LAUNCHY - gpy
-			SPRITE 3 + gi,gpy - 9,gpx - 8,64,15
+			SPRITE 3 + gi,gpy - 9,gpx - 8,96,15
 		NEXT gi
 	ELSE
-		SPRITE 4,209,0,64,0
-		SPRITE 5,209,0,64,0
-		SPRITE 6,209,0,64,0
+		SPRITE 4,209,0,96,0
+		SPRITE 5,209,0,96,0
+		SPRITE 6,209,0,96,0
 	END IF
 	RETURN
 
@@ -1285,6 +1389,14 @@ title_screen:
 	GOSUB title_bubbles
 	tby = 15
 	GOSUB title_bubbles
+	' Last score and high score across the top row: "SCORE" then the 9 digits,
+	' "HI" then its 9. Row 0 is cols 0-31, so SCORE occupies 0-14 and HI 17-31.
+	PRINT AT 0,"SCORE"
+	PRINT AT 17,"HI"
+	tsp = 6
+	GOSUB title_num_sc
+	tsp = 20
+	GOSUB title_num_hi
 	PRINT AT 265,"BUST-A-BOBBLE"
 	PRINT AT 356,"2026 UNHUMAN AND CLAUDE"
 	PRINT AT 678,"PRESS FIRE TO START"
@@ -1333,6 +1445,34 @@ title_go:
 	reveal = 0
 	GOTO new_round
 
+	' The two 9-digit numbers on the title's top row. Same trailing-zero
+	' convention as the HUD: 8 stored BCD digits shown with a literal 0.
+title_num_sc:
+	FOR tni = 0 TO 7
+		#tna = tsp + tni
+		#tna = #tna + 6144
+		tnv = 48 + sc(tni)
+		VPOKE #tna,tnv
+	NEXT tni
+	#tna = tsp + 8
+	#tna = #tna + 6144
+	tnv = 48
+	VPOKE #tna,tnv
+	RETURN
+
+title_num_hi:
+	FOR tni = 0 TO 7
+		#tna = tsp + tni
+		#tna = #tna + 6144
+		tnv = 48 + hs(tni)
+		VPOKE #tna,tnv
+	NEXT tni
+	#tna = tsp + 8
+	#tna = #tna + 6144
+	tnv = 48
+	VPOKE #tna,tnv
+	RETURN
+
 	' One row-pair of all eight bubble colours, centred, at character row tby.
 title_bubbles:
 	FOR tbi = 0 TO 39
@@ -1369,7 +1509,7 @@ msg_box:
 	RETURN
 
 hide_sprites:
-	FOR hsi = 0 TO 8
+	FOR hsi = 0 TO 19
 		SPRITE hsi,209,0,0,0
 	NEXT hsi
 	RETURN
