@@ -23,8 +23,26 @@ OUT = os.path.join(HERE, "..", "src", "art.bas")
 INSET = [4, 3, 2, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 4]
 LITROWS = 6
 
-# bubble colour k (1..8) -> (base, lit) TMS9918 colour numbers. DESIGN.md section 4.
-BUBBLE = [(8, 9), (12, 3), (4, 5), (10, 11), (7, 15), (13, 15), (14, 15), (6, 9)]
+# bubble colour k (1..8) -> (base, lit, litrows). DESIGN.md section 4.
+#
+# litrows is how many of the sphere's 16 pixel rows take the LIT shade, i.e. how
+# big the highlight is. It is PER COLOUR because the palette is not symmetric:
+# the TMS9918 has exactly ONE grey (14) and no dark grey, so the only two-tone
+# grey available is white-over-grey -- and with the standard 6-row highlight that
+# reads as a WHITE ball. Shrinking it to 3 rows turns the white into a glint and
+# the ball reads grey, which is as close to "light and dark grey" as this
+# hardware gets.
+BUBBLE = [
+    (8, 9, 6),      # 1 red      medium red  / light red
+    (12, 3, 6),     # 2 green    dark green  / light green
+    (4, 5, 6),      # 3 blue     dark blue   / light blue
+    (10, 11, 6),    # 4 yellow   dark yellow / light yellow
+    (5, 7, 6),      # 5 cyan     light blue  / cyan   (cyan is the brighter of
+                    #            the two: luminance 186 vs 135, so it caps)
+    (13, 15, 5),    # 6 magenta  magenta     / white
+    (14, 15, 3),    # 7 grey     grey        / white, small glint
+    (6, 9, 6),      # 8 orange   dark red    / light red
+]
 WELLBG = 1                      # black behind every bubble
 
 NAIM = 32                       # aim steps, 0 = straight up .. 31 = 80 degrees
@@ -77,15 +95,17 @@ def main():
     w("\t' fg*16+bg; bg is always black. The TOP chars switch from lit to base at")
     w("\t' pixel row %d; the BOTTOM chars are all base." % LITROWS)
     w("bub_col:")
-    for k, (base, lit) in enumerate(BUBBLE):
+    for k, (base, lit, lrows) in enumerate(BUBBLE):
         b = base * 16 + WELLBG
         t = lit * 16 + WELLBG
-        top = [t] * LITROWS + [b] * (8 - LITROWS)
-        w("\t' colour %d  base=%-2d lit=%-2d" % (k + 1, base, lit))
+        # lrows can exceed 8, in which case the highlight runs into the bottom pair
+        top = [t if y < lrows else b for y in range(8)]
+        bot = [t if (y + 8) < lrows else b for y in range(8)]
+        w("\t' colour %d  base=%-2d lit=%-2d litrows=%d" % (k + 1, base, lit, lrows))
         w("\tDATA BYTE %s\t' TL" % hexrow(top))
         w("\tDATA BYTE %s\t' TR" % hexrow(top))
-        w("\tDATA BYTE %s\t' BL" % hexrow([b] * 8))
-        w("\tDATA BYTE %s\t' BR" % hexrow([b] * 8))
+        w("\tDATA BYTE %s\t' BL" % hexrow(bot))
+        w("\tDATA BYTE %s\t' BR" % hexrow(bot))
     w("")
 
     # --- sprites ----------------------------------------------------------------------
@@ -93,12 +113,28 @@ def main():
     w("\t' Flying bubble = TWO overlaid 16x16 sprites so it is pixel-identical to the")
     w("\t' same bubble once it sticks and becomes characters (a sprite is one colour).")
     w("\t' 16 bytes left column then 16 bytes right column -- NOT sequential scan lines.")
-    w("spr_cap:\t' lit upper cap, pixel rows 0-%d" % (LITROWS - 1))
-    w("\tDATA BYTE %s" % hexrow(L[:LITROWS] + [0] * (16 - LITROWS)))
-    w("\tDATA BYTE %s" % hexrow(R[:LITROWS] + [0] * (16 - LITROWS)))
-    w("spr_body:\t' base lower body, pixel rows %d-15" % LITROWS)
-    w("\tDATA BYTE %s" % hexrow([0] * LITROWS + L[LITROWS:]))
-    w("\tDATA BYTE %s" % hexrow([0] * LITROWS + R[LITROWS:]))
+    w("\t' PER COLOUR, because litrows is per colour: sprite pattern 2k = colour")
+    w("\t' k+1's cap, 2k+1 its body. The flying bubble must split at the same row")
+    w("\t' its character form does, or it stops matching the moment it lands.")
+    w("spr_bub:")
+    for k, (base, lit, lrows) in enumerate(BUBBLE):
+        w("\t' colour %d cap (rows 0-%d)" % (k + 1, lrows - 1))
+        w("\tDATA BYTE %s" % hexrow(L[:lrows] + [0] * (16 - lrows)))
+        w("\tDATA BYTE %s" % hexrow(R[:lrows] + [0] * (16 - lrows)))
+        w("\t' colour %d body (rows %d-15)" % (k + 1, lrows))
+        w("\tDATA BYTE %s" % hexrow([0] * lrows + L[lrows:]))
+        w("\tDATA BYTE %s" % hexrow([0] * lrows + R[lrows:]))
+    # SPRITE colours, emitted from the SAME table the character colours come from.
+    # These used to be hand-written as colv()/litv() in the .bas, i.e. a second
+    # copy of this data -- and the moment the palette changed here, the flying
+    # bubble and the landed bubble disagreed: a shot looked white-and-cyan and
+    # became cyan-and-blue when it stuck. One table, no copies.
+    w("bub_base:\t' body colour per bubble colour 1..8")
+    w("\tDATA BYTE %s" % hexrow([b for (b, l, r) in BUBBLE]))
+    w("bub_lit:\t' cap colour per bubble colour 1..8")
+    w("\tDATA BYTE %s" % hexrow([l for (b, l, r) in BUBBLE]))
+    w("")
+
     dotl = [0] * 6 + [0x03] * 4 + [0] * 6
     dotr = [0] * 6 + [0xC0] * 4 + [0] * 6
     w("spr_dot:\t' 4x4 aim-guide dot, centred in the 16x16 cell")
@@ -148,10 +184,11 @@ def main():
     with open(OUT, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out) + "\n")
 
-    total = 32 + 8 * 4 * 8 + 3 * 32 + NAIM * 4 + NDROP * 6
+    nspr = (len(BUBBLE) * 2 + 1) * 32
+    total = 32 + 8 * 4 * 8 + nspr + NAIM * 4 + NDROP * 6
     print("wrote %s" % os.path.normpath(OUT))
     print("  patterns 32 B  colours %d B  sprites %d B  aim %d B  dropbcd %d B  = %d B"
-          % (8 * 4 * 8, 3 * 32, NAIM * 4, NDROP * 6, total))
+          % (8 * 4 * 8, nspr, NAIM * 4, NDROP * 6, total))
     print("  aim step 0 = (%d,%d)  step 31 = (%d,%d)  [8.8 fixed]"
           % (dxs[0], dys[0], dxs[-1], dys[-1]))
     return 0

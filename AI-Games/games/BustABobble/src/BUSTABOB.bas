@@ -67,8 +67,6 @@
 	DIM hs(8)		' high score
 	DIM ad(6)		' 6-digit BCD addend fed to add_score
 	DIM pres(9)		' pres(k) = 1 if colour k is still on the field
-	DIM colv(9)		' colour k -> base VDP colour (sprite body)
-	DIM litv(9)		' colour k -> lit VDP colour (sprite cap)
 
 	'
 	' ---------------------------------------------------------------- setup
@@ -97,26 +95,23 @@
 	DEFINE COLOR 64,16,txt_col
 	DEFINE COLOR 80,16,txt_col
 
-	DEFINE SPRITE 0,1,spr_cap
-	DEFINE SPRITE 1,1,spr_body
-	DEFINE SPRITE 2,1,spr_dot
+	' 16 bubble patterns: 2k = colour k+1's cap, 2k+1 its body. Each colour has
+	' its own highlight size (genart.py), so they cannot share one pair.
+	DEFINE SPRITE 0,16,spr_bub
+	DEFINE SPRITE 16,1,spr_dot
 
-	colv(1) = 8  : litv(1) = 9
-	colv(2) = 12 : litv(2) = 3
-	colv(3) = 4  : litv(3) = 5
-	colv(4) = 10 : litv(4) = 11
-	colv(5) = 7  : litv(5) = 15
-	colv(6) = 13 : litv(6) = 15
-	colv(7) = 14 : litv(7) = 15
-	colv(8) = 6  : litv(8) = 9
+	' Sprite colours are NOT declared here any more. They used to be a hand-kept
+	' copy of the palette in genart.py, and when that palette changed this copy
+	' did not: the flying bubble drew white-on-cyan while the landed one drew
+	' cyan-on-light-blue. draw_sprites now reads bub_base/bub_lit, the tables
+	' genart.py emits from the same data as the character colours.
 
 	FOR i = 0 TO 7
 		sc(i) = 0
 		hs(i) = 0
 	NEXT i
 
-	lvl = 1
-	lives = 3
+	GOTO title_screen
 
 new_round:
 	GOSUB load_level
@@ -961,7 +956,18 @@ do_clear:
 		GOSUB sfx_tick
 	NEXT dcs
 	lvl = lvl + 1
-	IF lvl > 30 THEN lvl = 30
+	IF lvl > 30 THEN
+		mrow = 11
+		mcol = 10
+		mlen = 12
+		GOSUB msg_box
+		PRINT AT 362,"ALL 30 CLEAR"
+		FOR dcw = 0 TO 180
+			WAIT
+			GOSUB sfx_tick
+		NEXT dcw
+		GOTO title_screen
+	END IF
 	reveal = 1		' screen is solid brick now -- lift it to show the level
 	GOTO new_round
 
@@ -973,6 +979,18 @@ do_dead:
 		GOSUB sfx_tick
 	NEXT ddi
 	IF lives > 0 THEN lives = lives - 1
+	IF lives = 0 THEN
+		mrow = 11
+		mcol = 11
+		mlen = 9
+		GOSUB msg_box
+		PRINT AT 363,"GAME OVER"
+		FOR ddi = 0 TO 120
+			WAIT
+			GOSUB sfx_tick
+		NEXT ddi
+		GOTO title_screen
+	END IF
 	GOTO new_round
 
 	'
@@ -1143,6 +1161,13 @@ draw_ceiling:
 	' HUD labels, right-justified to end at column 30 (one char of space at the
 	' right edge). The walls are NOT drawn here any more -- draw_row owns them.
 draw_frame:
+	' CLEAR THE WHOLE SCREEN FIRST. Every playfield blit is 20 characters wide at
+	' column 0, so nothing in the normal draw path ever touches the HUD panel
+	' (columns 20-31) -- and the title screen writes well into it (the credit line
+	' reaches column 26, the bubble rows column 25). Without this, title text sat
+	' in the panel for the whole game. The reveal repaints its own brick right
+	' after, so there is no flash.
+	CLS
 	GOSUB draw_ceiling
 	' All on column 22, aligned with the score digits below each one.
 	PRINT AT 22,"1UP"
@@ -1202,14 +1227,20 @@ draw_sprites:
 		dsx = LAUNCHX - 8
 		dsy = LAUNCHY - 9
 	END IF
-	dsc = colv(curk)
-	dsl = litv(curk)
-	SPRITE 0,dsy,dsx,4,dsc
-	SPRITE 1,dsy,dsx,0,dsl
-	dsc = colv(nxtk)
-	dsl = litv(nxtk)
-	SPRITE 2,NEXTY - 1,NEXTX,4,dsc
-	SPRITE 3,NEXTY - 1,NEXTX,0,dsl
+	' Pattern frame = def * 4, and colour k uses defs 2(k-1) and 2(k-1)+1, so the
+	' cap frame is (k-1)*8 and the body frame is that + 4.
+	dsf = curk - 1
+	dsf = dsf * 8
+	dsc = bub_base(curk - 1)
+	dsl = bub_lit(curk - 1)
+	SPRITE 0,dsy,dsx,dsf + 4,dsc
+	SPRITE 1,dsy,dsx,dsf,dsl
+	dsf = nxtk - 1
+	dsf = dsf * 8
+	dsc = bub_base(nxtk - 1)
+	dsl = bub_lit(nxtk - 1)
+	SPRITE 2,NEXTY - 1,NEXTX,dsf + 4,dsc
+	SPRITE 3,NEXTY - 1,NEXTX,dsf,dsl
 	IF flying = 0 THEN
 		#gux = #aimdx(am)
 		#gux = #gux * 4
@@ -1228,13 +1259,150 @@ draw_sprites:
 			END IF
 			gpy = guy * gi
 			gpy = LAUNCHY - gpy
-			SPRITE 3 + gi,gpy - 9,gpx - 8,8,15
+			SPRITE 3 + gi,gpy - 9,gpx - 8,64,15
 		NEXT gi
 	ELSE
-		SPRITE 4,209,0,8,0
-		SPRITE 5,209,0,8,0
-		SPRITE 6,209,0,8,0
+		SPRITE 4,209,0,64,0
+		SPRITE 5,209,0,64,0
+		SPRITE 6,209,0,64,0
 	END IF
+	RETURN
+
+	'
+	' ---------------------------------------------------------- title screen
+	'
+	' Fire starts a game. Typing 8 3 8 opens a round selector -- the same secret
+	' the other games in this repo use, and deliberately not advertised on screen.
+	' The chosen round lasts ONE game: coming back here always resets to round 1.
+	'
+title_screen:
+	stlv = 1
+	GOSUB hide_sprites
+	CLS
+	' Two decorative rows showing all eight bubble colours, built in the same
+	' row buffer the playfield uses.
+	tby = 3
+	GOSUB title_bubbles
+	tby = 15
+	GOSUB title_bubbles
+	PRINT AT 265,"BUST-A-BOBBLE"
+	PRINT AT 356,"2026 UNHUMAN AND CLAUDE"
+	PRINT AT 678,"PRESS FIRE TO START"
+	t8 = 0
+	tkl = 15
+	btnr = 0
+
+title_wait:
+	WAIT
+	GOSUB sfx_tick
+	' Edge-triggered 8-3-8. cont1.key gives 0-9 on both targets (TI keyboard,
+	' Coleco keypad) and 15 for nothing, so this is portable.
+	tk = cont1.key
+	IF tk <> tkl THEN
+		tkl = tk
+		IF tk = 8 THEN
+			IF t8 = 2 THEN
+				GOSUB setup838
+				GOTO title_go
+			END IF
+			t8 = 1
+		END IF
+		IF tk = 3 THEN
+			IF t8 = 1 THEN
+				t8 = 2
+			ELSE
+				t8 = 0
+			END IF
+		END IF
+	END IF
+	' Require a RELEASE before the press, so a button still held from the
+	' previous game cannot skip straight past the title.
+	IF btnr = 0 THEN
+		IF cont1.button = 0 THEN btnr = 1
+	ELSE
+		IF cont1.button THEN GOTO title_go
+	END IF
+	GOTO title_wait
+
+title_go:
+	lvl = stlv
+	lives = 3
+	FOR tgi = 0 TO 7
+		sc(tgi) = 0
+	NEXT tgi
+	reveal = 0
+	GOTO new_round
+
+	' One row-pair of all eight bubble colours, centred, at character row tby.
+title_bubbles:
+	FOR tbi = 0 TO 39
+		rowbuf(tbi) = BLANK
+	NEXT tbi
+	FOR tbi = 0 TO 7
+		tbc = 128 + tbi * 4
+		tbx = tbi + tbi + 2
+		rowbuf(tbx) = tbc
+		rowbuf(tbx + 1) = tbc + 1
+		rowbuf(tbx + 20) = tbc + 2
+		rowbuf(tbx + 21) = tbc + 3
+	NEXT tbi
+	#tbd = tby
+	#tbd = #tbd * 32
+	#tbd = #tbd + 6
+	SCREEN rowbuf,0,#tbd,20,2,20
+	RETURN
+
+	' Blank a rectangle one character bigger than the message on every side, so
+	' the text sits in a clean black box instead of on top of the bubble field.
+	' Caller sets mrow / mcol / mlen, then PRINTs the message itself.
+msg_box:
+	FOR mbi = 0 TO 39
+		rowbuf(mbi) = BLANK
+	NEXT mbi
+	mbw = mlen + 2
+	FOR mbr = 0 TO 2
+		#mba = mrow - 1 + mbr
+		#mba = #mba * 32
+		#mba = #mba + mcol - 1
+		SCREEN rowbuf,0,#mba,mbw,1,mbw
+	NEXT mbr
+	RETURN
+
+hide_sprites:
+	FOR hsi = 0 TO 8
+		SPRITE hsi,209,0,0,0
+	NEXT hsi
+	RETURN
+
+	' Round selector: two digits, 01-30, echoed as they are typed.
+setup838:
+	CLS
+	PRINT AT 266,"SELECT ROUND"
+	PRINT AT 360,"ENTER TWO DIGITS"
+	rdp = 463
+	GOSUB rd_dig
+	sd1 = tdg
+	GOSUB rd_dig
+	stlv = sd1 * 10 + tdg
+	IF stlv < 1 THEN stlv = 1
+	IF stlv > 30 THEN stlv = 30
+	RETURN
+
+rd_dig:
+rd_rel:
+	WAIT
+	IF cont1.key <> 15 THEN GOTO rd_rel
+rd_get:
+	WAIT
+	tdg = cont1.key
+	IF tdg > 9 THEN GOTO rd_get
+	#rda = rdp
+	#rda = #rda + 6144
+	rdv = 48 + tdg
+	VPOKE #rda,rdv
+	rdp = rdp + 1
+	SOUND 0,250,10
+	sf0 = 3
 	RETURN
 
 	'

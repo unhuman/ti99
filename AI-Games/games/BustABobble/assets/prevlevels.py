@@ -39,12 +39,11 @@ TMS = {
     13: (201, 91, 186), 14: (204, 204, 204), 15: (255, 255, 255),
 }
 
-# bubble colour k (1..8) -> (base fg for pixel rows 6..15, lit fg for rows 0..5)
-# DESIGN.md section 4. Background of every bubble line is 1 (black).
-BUBBLE = {
-    1: (8, 9),    2: (12, 3),   3: (4, 5),    4: (10, 11),
-    5: (7, 15),   6: (13, 15),  7: (14, 15),  8: (6, 9),
-}
+# Bubble shading comes STRAIGHT FROM genart.py -- the generator that writes the
+# ROM tables -- so the preview cannot drift from what the hardware actually shows.
+# Each entry is (base, lit, litrows); litrows is per colour (see genart.py).
+import genart
+BUBBLE = dict((k + 1, v) for k, v in enumerate(genart.BUBBLE))
 
 # --- screen geometry (DESIGN.md section 3) ---------------------------------------------
 CELLW = 8
@@ -74,12 +73,12 @@ def blank():
 
 
 def draw_bubble(px, x0, y0, k):
-    base, lit = BUBBLE[k]
+    base, lit, lrows = BUBBLE[k]
     for yy in range(16):
         y = y0 + yy
         if not 0 <= y < SCRH:
             continue
-        col = TMS[lit if yy < LITROWS else base]
+        col = TMS[lit if yy < lrows else base]
         for xx in range(INSET[yy], 16 - INSET[yy]):
             x = x0 + xx
             if 0 <= x < SCRW:

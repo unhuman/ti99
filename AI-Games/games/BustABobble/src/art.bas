@@ -15,42 +15,42 @@ bub_pat:
 	' fg*16+bg; bg is always black. The TOP chars switch from lit to base at
 	' pixel row 6; the BOTTOM chars are all base.
 bub_col:
-	' colour 1  base=8  lit=9 
+	' colour 1  base=8  lit=9  litrows=6
 	DATA BYTE $91,$91,$91,$91,$91,$91,$81,$81	' TL
 	DATA BYTE $91,$91,$91,$91,$91,$91,$81,$81	' TR
 	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81	' BL
 	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81	' BR
-	' colour 2  base=12 lit=3 
+	' colour 2  base=12 lit=3  litrows=6
 	DATA BYTE $31,$31,$31,$31,$31,$31,$C1,$C1	' TL
 	DATA BYTE $31,$31,$31,$31,$31,$31,$C1,$C1	' TR
 	DATA BYTE $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1	' BL
 	DATA BYTE $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1	' BR
-	' colour 3  base=4  lit=5 
+	' colour 3  base=4  lit=5  litrows=6
 	DATA BYTE $51,$51,$51,$51,$51,$51,$41,$41	' TL
 	DATA BYTE $51,$51,$51,$51,$51,$51,$41,$41	' TR
 	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41	' BL
 	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41	' BR
-	' colour 4  base=10 lit=11
+	' colour 4  base=10 lit=11 litrows=6
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$A1,$A1	' TL
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$A1,$A1	' TR
 	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1	' BL
 	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1	' BR
-	' colour 5  base=7  lit=15
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$71,$71	' TL
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$71,$71	' TR
-	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' BL
-	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' BR
-	' colour 6  base=13 lit=15
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$D1,$D1	' TL
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$D1,$D1	' TR
+	' colour 5  base=5  lit=7  litrows=6
+	DATA BYTE $71,$71,$71,$71,$71,$71,$51,$51	' TL
+	DATA BYTE $71,$71,$71,$71,$71,$71,$51,$51	' TR
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51	' BL
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51	' BR
+	' colour 6  base=13 lit=15 litrows=5
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$D1,$D1,$D1	' TL
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$D1,$D1,$D1	' TR
 	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1	' BL
 	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1	' BR
-	' colour 7  base=14 lit=15
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$E1,$E1	' TL
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$E1,$E1	' TR
+	' colour 7  base=14 lit=15 litrows=3
+	DATA BYTE $F1,$F1,$F1,$E1,$E1,$E1,$E1,$E1	' TL
+	DATA BYTE $F1,$F1,$F1,$E1,$E1,$E1,$E1,$E1	' TR
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' BL
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' BR
-	' colour 8  base=6  lit=9 
+	' colour 8  base=6  lit=9  litrows=6
 	DATA BYTE $91,$91,$91,$91,$91,$91,$61,$61	' TL
 	DATA BYTE $91,$91,$91,$91,$91,$91,$61,$61	' TR
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61	' BL
@@ -59,12 +59,63 @@ bub_col:
 	' Flying bubble = TWO overlaid 16x16 sprites so it is pixel-identical to the
 	' same bubble once it sticks and becomes characters (a sprite is one colour).
 	' 16 bytes left column then 16 bytes right column -- NOT sequential scan lines.
-spr_cap:	' lit upper cap, pixel rows 0-5
+	' PER COLOUR, because litrows is per colour: sprite pattern 2k = colour
+	' k+1's cap, 2k+1 its body. The flying bubble must split at the same row
+	' its character form does, or it stops matching the moment it lands.
+spr_bub:
+	' colour 1 cap (rows 0-5)
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-spr_body:	' base lower body, pixel rows 6-15
+	' colour 1 body (rows 6-15)
 	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 2 cap (rows 0-5)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 2 body (rows 6-15)
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 3 cap (rows 0-5)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 3 body (rows 6-15)
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 4 cap (rows 0-5)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 4 body (rows 6-15)
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 5 cap (rows 0-5)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 5 body (rows 6-15)
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 6 cap (rows 0-4)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 6 body (rows 5-15)
+	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 7 cap (rows 0-2)
+	DATA BYTE $0F,$1F,$3F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 7 body (rows 3-15)
+	DATA BYTE $00,$00,$00,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
+	DATA BYTE $00,$00,$00,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 8 cap (rows 0-5)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 8 body (rows 6-15)
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+bub_base:	' body colour per bubble colour 1..8
+	DATA BYTE $08,$0C,$04,$0A,$05,$0D,$0E,$06
+bub_lit:	' cap colour per bubble colour 1..8
+	DATA BYTE $09,$03,$05,$0B,$07,$0F,$0F,$09
+
 spr_dot:	' 4x4 aim-guide dot, centred in the 16x16 cell
 	DATA BYTE $00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00

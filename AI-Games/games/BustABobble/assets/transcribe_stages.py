@@ -82,15 +82,48 @@ def assign(st):
     return out
 
 
-def sequence(st, used):
-    """32 shots, deterministic, drawn ONLY from colours actually on the field.
+def sequence(st, grid):
+    """32 shots, deterministic, WEIGHTED by what is actually on the field.
 
-    A sparse layout will not always receive every colour its round declares -- the
-    banding pattern skips some when few cells are filled. Drawing the sequence from
-    the placed colours keeps every shot useful from the first one; the game's
-    substitution rule would cope either way, but it should not have to on shot 1.
+    Only colours actually placed can appear: a sparse layout does not always
+    receive every colour its round declares, and a shot of a colour that is not on
+    the board is a wasted turn. The draw is weighted by each colour's share of the
+    field, so a mostly-red board mostly hands you red.
+
+    NOTE the generator is a real LCG, not a cheap polynomial. `(i*i + i*5 + k) % n`
+    was used here first and was badly broken: i*i + i*5 factors to i*(i+5), so one
+    term is always even and the whole expression has fixed parity -- with 4 colours
+    only residues 1 and 3 ever came out, so half of every palette was unreachable
+    and round 1 dealt nothing but greens and yellows. Modular structure in a
+    "random enough" formula is exactly the kind of thing that looks fine in the
+    source and is only visible in play.
     """
-    return "".join(used[(i * i + i * 5 + st["n"] * 7) % len(used)] for i in range(NSEQ))
+    counts = {}
+    for row in grid:
+        for ch in row:
+            if ch != ".":
+                counts[ch] = counts.get(ch, 0) + 1
+    pool = []
+    for c in sorted(counts):
+        pool.extend([c] * counts[c])
+
+    s = [(st["n"] * 2654435761 + 12345) & 0x7FFFFFFF]
+
+    def rnd(n):
+        s[0] = (s[0] * 1103515245 + 12345) & 0x7FFFFFFF
+        return (s[0] >> 16) % n
+
+    # One of EVERY colour on the field first, so none can be missed, then fill
+    # the rest by weight. A round like stage 2 has nine bubbles across six
+    # colours -- some appear once, and a purely weighted draw of 32 will happily
+    # skip them, leaving a colour on the board that the launcher never offers.
+    out = sorted(counts)
+    while len(out) < NSEQ:
+        out.append(pool[rnd(len(pool))])
+    for i in range(len(out) - 1, 0, -1):        # deterministic shuffle
+        j = rnd(i + 1)
+        out[i], out[j] = out[j], out[i]
+    return "".join(out)
 
 
 def droptime(n):
@@ -105,7 +138,7 @@ def main():
         sys.stderr.write("error: found %d stages, expected 30\n" % len(stages))
         return 1
 
-    body = []
+    body, fail = [], []
     for st in stages:
         grid = assign(st)
         used = sorted(set(ch for row in grid for ch in row if ch != "."))
@@ -115,7 +148,15 @@ def main():
         # lives in arcade-stages.txt; a sparse layout may not receive all of them.
         body.append("COLOURS %d" % max(int(c) for c in used))
         body.append("DROPTIME %g" % droptime(st["n"]))
-        body.append("SEQ %s" % sequence(st, used))
+        seq = sequence(st, grid)
+        # GUARD: a sequence must reach every colour on the field. The first
+        # generator here silently reached only half of each palette, which is
+        # invisible in the data and obvious the moment you play it.
+        missing = sorted(set(used) - set(seq))
+        if missing:
+            fail.append("stage %d: sequence never offers colour(s) %s"
+                        % (st["n"], ",".join(missing)))
+        body.append("SEQ %s" % seq)
         for r, row in enumerate(grid):
             body.append((" " if (r & 1) else "") + row)
         body.append("")
@@ -133,6 +174,11 @@ def main():
         "# 1 red  2 green  3 blue  4 yellow  5 cyan  6 magenta  7 white  8 orange",
         "",
     ]
+    if fail:
+        for f in fail:
+            sys.stderr.write("error: %s\n" % f)
+        return 1
+
     with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(head + body) + "\n")
 
