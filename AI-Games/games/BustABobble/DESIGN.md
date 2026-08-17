@@ -1372,10 +1372,21 @@ case to cope with the data, check the data.
 
 ## 17. Status
 
-**2026-08-17 (build 15) — BUB loads the bubbles, and `NEXT` leaves the HUD.** The next bubble is no
-longer a static swatch in the HUD panel: a pipe opens in the **left wall** at deck height, the bubble
-rolls out of it along the deck, and **BUB** — standing at his own station immediately left of the
-launch spot — lifts it across and sets it into the muzzle.
+**2026-08-17 (build 16) — BUB loads the bubbles, and `NEXT` leaves the HUD.** A pipe opens in the
+**left wall level with the launcher**; the next bubble rolls out of it and **waits beside BUB**, who
+stands one slot to the left of the launch spot. That waiting bubble *is* the next-bubble indicator —
+it is on screen the whole time you are aiming, which is what let the HUD's `NEXT` label and swatch
+go. Fire, and BUB lifts it **over his head** and sets it into the muzzle; when the shot lands, the
+following bubble rolls out of the pipe to take its place at his side.
+
+> **The roll starts when the shot LANDS, not during the lift — and that is a gameplay decision.**
+> Having the next bubble roll out behind him while he carries the current one is prettier, and it was
+> built that way first: it needs the pipeline to advance at *fire* time, because three colours are
+> then on screen at once. But `pick_next` substitutes over the colours **present on the field**, so
+> choosing at fire time chooses before this shot's pops have removed anything — and the game can hand
+> out a colour it is about to wipe off the board. That is a rules change, and the solver priced it:
+> **round 30 went from 68 shots to 119**. Reverted. The visible cost is that the roll begins a beat
+> later; the alternative was making the hardest round nearly twice as long.
 
 **It costs no time, which is the whole design.** BUB starts the moment the shot *leaves*, not when it
 lands, so his roll-and-lift (about 24 frames) happens while the bubble is in flight and the next one
@@ -1387,13 +1398,12 @@ about 70 of them (§11b measurements: it tolerates 1.5 s of dead time per shot, 
 
 Three geometry constraints, none of them free choices:
 
-- **BUB sits one character row ABOVE the launcher** (sprite y 167 against the bubble's 175). The deck
-  is rows 21–23 and the loaded bubble already has its lower 8 px in row 23 — TV overscan on real
-  hardware, clipped in Classic99 — so a 16 px BUB level with it would be cut off at the knees. The
-  bubble therefore reaches the muzzle by being set *down* the last 8 px.
-- **Three 16 px slots side by side**: 40 where the bubble arrives, 56 where BUB stands, 72 the launch
-  spot. Nothing overlaps, and sprite 0 (the loaded bubble) outranks sprite 1 (BUB), so he passes
-  behind it rather than through it.
+- **Three 16 px slots side by side on the launcher's own row**: 40 where the next bubble waits, 56
+  where BUB stands, 72 the launch spot — and the pipe opens on the same rows (22–23). BUB's lower
+  8 px are in row 23, TV overscan on real hardware, exactly as the loaded bubble's already are: the
+  price of standing him level with it rather than perching him a row above.
+- **The lift arcs over his head, not through him.** At its apex the bubble sits 16 px up, so its
+  sprite is entirely above his; a flat slide would have drawn it straight across his face.
 - **The pipe mouth is punched after every field redraw, at column `shkb`.** The deck's wall columns
   come out of the same row buffer as the field and are repainted on every shake and ceiling drop, so
   a hole punched once at round start would be bricked up by the first one — and since the walls move

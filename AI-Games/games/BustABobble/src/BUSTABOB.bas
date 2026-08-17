@@ -118,22 +118,21 @@
 	CONST NEXTY    = 88
 	' BUB and his pipe. All SPRITE coordinates (y reads one low on this VDP).
 	'
-	' He does NOT walk: he stands at his station immediately left of the launch
-	' spot, and the bubble comes to him. Three 16 px slots sit side by side on the
-	' deck -- 40 where the bubble arrives, 56 where BUB stands, 72 the launch spot --
-	' so nothing overlaps and the lift is a straight move from his hands to the
-	' muzzle.
-	' BUB SITS ONE ROW HIGHER THAN THE LAUNCHER, and that is forced, not chosen.
-	' The deck is rows 21-23 and the loaded bubble already has its lower 8 px in
-	' row 23 -- TV overscan on real hardware, clipped in Classic99 -- so a 16 px
-	' BUB level with it would be cut off at the knees. At 167 he occupies rows
-	' 21-22 and is wholly on screen, and the bubble reaches the muzzle by being
-	' set DOWN the last 8 px rather than lifted up.
-	CONST BUBY     = 167	' BUB and the rolling bubble: rows 21-22, fully visible
-	CONST BUBPLACE = 175	' the launch spot, 8 px lower -- rows 22-23
-	CONST BUBHOME  = 56	' his station, immediately left of the launch spot
-	CONST BUBCATCH = 40	' where the bubble stops rolling, at his feet
-	CONST BUBSTEP  = 4	' roll speed: 8 -> 40 in eight frames
+	' He stands ON THE LAUNCHER'S OWN ROW, and so does the pipe -- three 16 px slots
+	' side by side along the deck: 40 where the NEXT bubble waits, 56 where BUB
+	' stands, 72 the launch spot. His lower 8 px are in row 23 (overscan on a real
+	' TV) exactly as the loaded bubble's are, which is the price of having him level
+	' with it rather than perched a row above.
+	'
+	' THE WAITING BUBBLE IS THE "NEXT" INDICATOR. It is always there between shots,
+	' which is what let the HUD's NEXT swatch go: you read the next colour off the
+	' deck beside BUB instead of out of the panel.
+	CONST BUBY     = 175	' BUB and both deck bubbles: level with the launcher
+	CONST BUBWAIT  = 40	' where the next bubble waits, at his left hand
+	CONST BUBHOME  = 56	' his station, between the waiting bubble and the muzzle
+	CONST BUBMID   = 167	' the lift, 8 px up
+	CONST BUBOVER  = 159	' ...and 16 px up: clear over his head, not through it
+	CONST BUBSTEP  = 4	' roll speed: the pipe to the waiting slot in eight frames
 	CONST PIPEX    = 8	' the pipe's mouth, in the left wall
 	' !! The pipe's name-table cell is NOT a CONST. Row 21 column 0 is 672, and a
 	' CONST above 255 compiles to ZERO here -- the VPOKE would have gone to cell 0,
@@ -543,9 +542,18 @@ do_fire:
 	' in flight -- so clear it here, or a shot fired from a shallow aim would leave
 	' the flying bubble itself rotating in and out of view.
 	SPRITE FLICKER OFF
-	bubst = 1
-	bubbx = PIPEX			' the next bubble starts in the pipe's mouth
-	bubby = BUBY
+	' THE PIPELINE STILL ADVANCES WHEN THE SHOT LANDS, NOT HERE -- and that is a
+	' gameplay decision, not an oversight. Advancing at fire would have let BUB
+	' carry one bubble while the NEXT one rolled out behind him, which is prettier;
+	' but pick_next substitutes over the colours PRESENT on the field, so choosing
+	' at fire time means choosing before this shot's pops have removed anything, and
+	' the game can hand out a colour it is about to wipe off the board. Measured, it
+	' took round 30 from 68 shots to 119. The roll therefore starts at next_shot
+	' instead, a beat later than the lift.
+	bubst = 1			' BUB lifts the waiting bubble into the muzzle
+	bublx = BUBWAIT
+	SPRITE 3,209,0,0,0		' its slot is empty until the next one rolls out
+	bubrn = 0
 	flying = 1
 	btnr = 0
 	#bx = 20480		' LAUNCHX * 256 -- bare literal, see the note at the top
@@ -1017,8 +1025,13 @@ after_stick:
 
 next_shot:
 	curk = nxtk
-	bubst = 0			' he hands it over; the launcher bubble appears
 	GOSUB pick_next
+	' BUB's carried bubble stops being drawn here -- sprite 0 now draws the loaded
+	' bubble in exactly the same place, so the hand-over needs no animation -- and
+	' the following bubble leaves the pipe, its colour known only now.
+	bubst = 0
+	bubrx = PIPEX
+	bubrn = 1
 	RETURN
 
 clr_marks:
@@ -1447,6 +1460,8 @@ load_level:
 	#seqb = #seqb * 16
 	si = 0
 	bubst = 0			' nothing in transit; the launcher already has its bubble
+	bubrn = 0			' and the next one is already waiting beside BUB
+	bubrx = BUBWAIT
 	top = 0
 	shkb = 1
 	shkbo = 1
@@ -1763,11 +1778,13 @@ draw_field:
 	' start would be bricked up again by the first shake or ceiling drop. One cell,
 	' re-punched after each redraw, and no per-row exception inside the blit.
 	' TWO cells, not one: the bubble is 16 px tall, so a one-row mouth would have it
-	' emerging from a slot half its size. 672 = row 21 column 0, and the wall column
+	' emerging from a slot half its size. 704 = row 22 column 0 -- the pipe is level
+	' with the launcher, so it opens on rows 22-23 like the bubble it feeds, and the
+	' wall column
 	' is shkb -- the walls live in the shake buffer and move with it, so the hole has
 	' to move with them or it would sit beside the wall for the length of a shake.
 	ppv = BLANK
-	#ppa = 672
+	#ppa = 704
 	#ppa = #ppa + shkb
 	#ppa = #ppa + 6144
 	VPOKE #ppa,ppv
@@ -1993,40 +2010,48 @@ prt_hud:
 	'
 bub_tick:
 	IF bubst = 1 THEN
-		' The bubble rolls out of the pipe along the deck to his feet.
-		bubbx = bubbx + BUBSTEP
-		bubby = BUBY
-		IF bubbx >= BUBCATCH THEN
-			bubbx = BUBCATCH
-			bubst = 2
+		' The lift: across to the muzzle, arcing OVER his head rather than through
+		' him -- at BUBOVER the bubble's 16 px sit entirely above his own.
+		bublx = bublx + 2
+		bubly = BUBMID
+		IF bublx > 47 THEN bubly = BUBOVER
+		IF bublx > 63 THEN bubly = BUBMID
+		IF bublx >= LAUNCHX - 8 THEN
+			bublx = LAUNCHX - 8
+			bubly = BUBY
+			bubst = 2		' set down; it waits here for the shot to land
 		END IF
 	END IF
-	IF bubst = 2 THEN
-		' He lifts it across and sets it down into the muzzle, which sits 8 px
-		' lower than he does.
-		bubbx = bubbx + 2
-		IF bubbx >= LAUNCHX - 8 THEN
-			bubbx = LAUNCHX - 8
-			bubby = BUBPLACE
-			bubst = 3
+	' The following bubble rolls out of the pipe WHILE he lifts, and then simply
+	' waits at his left hand until the next shot needs it.
+	IF bubrn = 1 THEN
+		bubrx = bubrx + BUBSTEP
+		IF bubrx >= BUBWAIT THEN
+			bubrx = BUBWAIT
+			bubrn = 0
 		END IF
 	END IF
-	' BUB himself never moves. Two frames: standing, and a lift pose while he has
-	' the bubble in the air.
+	' BUB: standing, or a second frame while he has a bubble in the air.
 	bubp = 36
-	IF bubst = 2 THEN bubp = 40
+	IF bubst = 1 THEN bubp = 40
 	SPRITE 1,BUBY,BUBHOME,bubp,3
-	' The bubble in transit is the NEXT one, so it is already the right colour when
-	' it lands on the launcher. State 3 parks it exactly where sprite 0 will draw
-	' the loaded bubble, so the hand-over at next_shot has nothing to animate -- the
-	' sprite simply changes which slot draws it, in the same place.
+	' Sprite 2 is the bubble he is carrying and sprite 3 the one waiting beside him.
+	' BOTH are nxtk -- never at the same time: he is carrying it, or it is waiting.
+	' The waiting one IS the next-bubble indicator, which is what let the HUD's NEXT
+	' swatch go.
 	IF bubst = 0 THEN
 		SPRITE 2,209,0,0,0
 	ELSE
 		bubf = nxtk - 1
 		bubf = bubf * 4
 		bubc = bub_base(nxtk - 1)
-		SPRITE 2,bubby,bubbx,bubf,bubc
+		SPRITE 2,bubly,bublx,bubf,bubc
+	END IF
+	IF bubst = 0 THEN
+		bubf = nxtk - 1
+		bubf = bubf * 4
+		bubc = bub_base(nxtk - 1)
+		SPRITE 3,BUBY,bubrx,bubf,bubc
 	END IF
 	RETURN
 
