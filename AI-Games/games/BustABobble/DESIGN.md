@@ -1101,9 +1101,28 @@ is the reusable part.
 
 | # | Problem | Detail |
 |---|---|---|
+| 0 | ⚠️ **ROUND 20 IS UNWINNABLE as shipped.** With the drop clock disabled entirely the solver still stalls with **22 of its 29 bubbles left**. Its 11 detached bubbles are permanent anchors under the scenery rule (§11), and scenery can only be removed by matching three of a colour against it — which for isolated singles means placing two more bubbles in cells the launcher cannot necessarily reach. This is a **regression introduced by fixing the round-10 collapse**, and it is not fixable by choosing a different orphan rule: see the table below. The fix is upstream, at problem 1. Detect with `solvelevels.py`. | §11, §7a |
 | 1 | **Four rounds ship layouts detached from the ceiling** — 9 (33% loose), **10 (90%)**, 15 (44%), 20 (38%). The FAQ's ASCII diagrams do not preserve hex adjacency at the row ends, so the transcription is faithful and still malformed. The scenery rule (§11) stops them collapsing, but they are *still wrong*: round 10 plays as an 18-shot grind over a cage that hangs in mid-air, and its two ceiling bubbles are lone singles that can only be cleared by building onto them. **Repairing the layouts is the real fix and has not been done** — it means altering transcribed arcade shapes, which is a call about authenticity, not a mechanical edit. Detect with `solvelevels.py --anchors`. | §7a, §11 |
 | 2 | **Too many pre-made groups** — 85 pre-existing 3+ clusters across the 30 rounds; round 1 starts with 90% of its bubbles in one. They look poppable and are not, because matches are only tested when a bubble lands. Fix identified, not applied. | §7 |
 | 3 | **Difficulty does not ramp.** Measured by playing every round out: at a realistic 1 s per shot, 29 of 30 finish having taken at most one ceiling drop. Push to *eight* seconds a shot and 29 of 30 still win. **Round 30 is the only round the drop clock ever constrains.** The timer is not a difficulty dial today, it is a formality. | §11b |
+
+**No orphan rule fixes all three symptoms, because they are all the same bad data.** Measured, not
+argued — each row is a rule that was actually built and run against all 30 rounds:
+
+| Orphan rule | Round 10 collapse | Bubble shot onto scenery falls | Round 20 |
+|---|---|---|---|
+| Global "not reachable from row 0" (original) | **broken** — one pop drops 19 | yes | winnable |
+| "Was anchored before this shot" (attempt 1) | fixed | **broken** — can never fall | winnable |
+| **Ceiling + surviving scenery** (attempt 2, shipped) | fixed | fixed | **unwinnable** |
+
+The rule is a patch over layouts that were never attached to the ceiling. **Repair the four layouts
+and the whole row of problems retires at once**: with no detached pieces, scenery is the empty set,
+the rule degenerates to the stock Puzzle Bobble rule, and rounds 9/10/15/20 stop being special.
+Proposed fix: a deterministic anchor pass in `transcribe_stages.py` after colour assignment, filling
+the fewest cells needed to connect each detached component to the ceiling network, plus wiring
+`solvelevels.py --anchors` into `build-ti.sh` next to `romcheck.py` so malformed data fails the
+build instead of surfacing as a gameplay bug three sessions later. Not done — it alters transcribed
+arcade shapes, which is a call about authenticity.
 
 ### Open — not yet built
 

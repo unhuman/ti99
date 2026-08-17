@@ -47,17 +47,22 @@ Two open items, both measured and both pure data changes:
   round 1 at 90% of its bubbles. They look poppable and aren't, because matches are only checked
   when a bubble lands. Fix identified.
 
-**All 30 rounds are proven winnable** (`assets/solvelevels.py`, `DESIGN.md` §7a). Because the shot
-sequence is fixed, a round *can* be impossible, and nothing else in the build would notice — so a
-solver re-implements the game from the shipped `src/levels.bas` and `src/art.bas` (real fixed-point
-flight, real pixel collision, real snap tie-breaks, real substitution rule, real drop clock) and
-searches each round for a clearing line. It finds one for all 30; 28 clear before the ceiling drops
-at all, and no winning line relies on the ceiling-overwrite quirk. Charging the player a punitive
-eight seconds of dithering per shot still leaves 29 of 30 — so the verdict does not rest on the
-timing model. `check_source_drift()` re-reads `BUSTABOB.bas` each run so the checker cannot go stale
-against a tuned constant, and its predictions were **checked against Classic99 running the built
-cartridge** — including an 80° shot that zigzags off both walls, which lands one cell left of a
-straight shot exactly as simulated.
+⚠️ **29 of 30 rounds are proven winnable. Round 20 currently is not** — see `DESIGN.md` §16a. Because
+the shot sequence is fixed, a round *can* be impossible and nothing else in the build would notice,
+so `assets/solvelevels.py` re-implements the game from the shipped `src/levels.bas` and `src/art.bas`
+(real fixed-point flight, real pixel collision, real snap tie-breaks, real substitution rule, real
+drop clock) and searches each round for a clearing line.
+
+It finds one for 29. **Round 20 fails even with the drop clock disabled**, stalling with 22 of its
+29 bubbles left: its detached pieces are now permanent anchors (the scenery rule, §11) and cannot be
+matched away. That is a regression from fixing the round-10 collapse, and the real cause is upstream
+— four rounds ship layouts that were never attached to the ceiling. Fixing the *layouts* retires all
+of it; the rule is only a patch over bad data.
+
+`check_source_drift()` re-reads `BUSTABOB.bas` each run so the checker cannot go stale against a
+tuned constant, and its predictions were **checked against Classic99 running the built cartridge** —
+including an 80° shot that zigzags off both walls, which lands one cell left of a straight shot
+exactly as simulated.
 
 Because the solver has the lines, it can also hand them over. `solvelevels.py --report` writes
 `assets/WALKTHROUGH.md` — every round's opening board, its fixed shot sequence, and a shot-by-shot
