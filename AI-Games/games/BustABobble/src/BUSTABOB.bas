@@ -1578,18 +1578,9 @@ do_clear:
 		GOSUB sfx_tick
 	NEXT dcs
 	lvl = lvl + 1
-	IF lvl > 30 THEN
-		mrow = 11
-		mcol = 10
-		mlen = 12
-		GOSUB msg_box
-		PRINT AT 362,"ALL 30 CLEAR"
-		FOR dcw = 0 TO 180
-			WAIT
-			GOSUB sfx_tick
-		NEXT dcw
-		GOTO title_screen
-	END IF
+	' Beating round 30 gets its own screen (victory:), not a message box. The
+	' message box that used to say ALL 30 CLEAR for three seconds is gone with it.
+	IF lvl > 30 THEN GOTO victory
 	reveal = 1		' screen is solid brick now -- lift it to show the level
 	GOTO new_round
 
@@ -1968,6 +1959,96 @@ draw_sprites:
 	' the other games in this repo use, and deliberately not advertised on screen.
 	' The chosen round lasts ONE game: coming back here always resets to round 1.
 	'
+	'
+	' ------------------------------------------------------- victory screen
+	'
+	' Beating round 30. Scores across the top exactly as the title screen lays
+	' them out (same routines), CONGRATULATIONS! under them, the creature standing
+	' in the lower middle JUGGLING all eight bubble colours, and PRESS FIRE at the
+	' bottom to leave. The music keeps playing -- mus_off is not called until
+	' title_screen, which is where fire sends us.
+	'
+	' THE JUGGLE IS ONE TABLE AND ONE COUNTER. All eight balls walk the same
+	' 64-step closed loop (juggle.bas, generated) at a phase offset of 8 steps
+	' each, so ball i is at step (jt + 8*i) AND 63. Eight independent arcs would
+	' have meant eight tables and eight sets of state; this is 128 bytes.
+	'
+	' !! THE FOUR-SPRITE LIMIT IS THE WHOLE DESIGN CONSTRAINT HERE. Eleven sprites
+	' are on screen -- eight balls, his body, and his two arms -- and the TMS9918
+	' draws only FOUR per scanline, silently dropping the rest (SPRITE FLICKER is
+	' off in this game, so nothing rotates them into view). Body and arms are three
+	' sprites on the same rows by necessity: the arm art's shoulder is drawn for
+	' the body's own y, and lifting it 8 px puts the arm root straight on his eye.
+	' That leaves room for exactly ONE ball down there, which is why the loop's
+	' shape is not a free choice -- genjuggle.py sweeps it and proves no scanline
+	' ever exceeds four, over all 64 phases. It comes out at exactly four on his
+	' top row. So there is NO margin: adding any sprite to this screen, or nudging
+	' the creature's y, needs genjuggle.py re-run or balls will start vanishing.
+	'
+	' The two hands rock in OPPOSITE phase (one up while the other is down), which
+	' is what sells it as juggling rather than two arms waving in unison.
+	'
+victory:
+	GOSUB hide_sprites
+	CLS
+	' Same top row as the title: SCORE flush left, HI flush right.
+	PRINT AT 0,"SCORE"
+	PRINT AT 20,"HI"
+	tsp = 6
+	GOSUB title_num_sc
+	tsp = 23
+	GOSUB title_num_hi
+	PRINT AT 104,"CONGRATULATIONS!"	' row 3, col 8 -- 16 chars, centred
+	PRINT AT 715,"PRESS FIRE"	' row 22, col 11. NOT row 23: that row is
+					' overscan on real hardware and clipped in
+					' Classic99 (same reason the lives moved).
+	jt = 0
+	jts = 0
+	btnr = 0			' a fire still held from the last shot must
+					' not skip the screen before it is seen
+
+victory_wait:
+	WAIT
+	GOSUB sfx_tick
+	GOSUB jug_draw
+	' HALF SPEED: one step every OTHER frame, so a full 64-step revolution takes
+	' 2.1 s rather than 1.1. At one step per frame the balls whipped round faster
+	' than a person could juggle. The hands still rock off `jt`, so they slow with
+	' the balls and stay in time with them.
+	jts = 1 - jts
+	IF jts = 0 THEN
+		jt = jt + 1
+		jt = jt AND 63
+	END IF
+	IF btnr = 0 THEN
+		IF cont1.button = 0 THEN btnr = 1
+	ELSE
+		IF cont1.button THEN GOTO title_screen
+	END IF
+	GOTO victory_wait
+
+	' Body on sprite 0, right arm on 1, left arm on 2, the eight balls on 3-10.
+	' Lower sprite numbers win on this VDP, so his hands draw OVER the ball at the
+	' bottom of the loop -- which is what makes it look held rather than behind him.
+jug_draw:
+	SPRITE 0,143,120,36,3		' pattern 9 (legs apart), green, screen centre
+	jphs = jt AND 15
+	jh = 44				' right hand, its two rock frames
+	IF jphs > 7 THEN jh = 48
+	SPRITE 1,143,128,jh,3
+	jh2 = 56			' left hand, deliberately the OPPOSITE frame
+	IF jphs > 7 THEN jh2 = 52
+	SPRITE 2,143,112,jh2,3
+	FOR jbi = 0 TO 7
+		jp = jbi * 8
+		jp = jp + jt
+		jp = jp AND 63
+		jf = jbi * 4		' bubble colour jbi+1's sprite frame
+		jc = bub_base(jbi)
+		SPRITE 3 + jbi,jug_y(jp),jug_x(jp),jf,jc
+	NEXT jbi
+	RETURN
+
 title_screen:
 	GOSUB mus_off
 	hudok = 0			' the title writes into the HUD panel; rebuild it
@@ -2364,6 +2445,10 @@ txt_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
 	INCLUDE "art.bas"
+	' The juggling path is read EVERY FRAME on the victory screen, so it belongs in
+	' the fixed area with the aim table -- above the BANK directive below, never in
+	' a bank.
+	INCLUDE "juggle.bas"
 	INCLUDE "music.bas"
 	' LEVELS COME LAST, and on TI everything after `BANK 1` is assembled into that
 	' bank. The order matters for exactly that reason: music.bas used to be last,

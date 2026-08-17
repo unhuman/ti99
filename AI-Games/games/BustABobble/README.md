@@ -40,6 +40,15 @@ each with his own mind — separate patrol, speed phase and timers. Every 12–2
 that counts your spare lives, generated from one 8×8 definition at both sizes so they can never
 drift apart, with the left-handed frames derived by bit-reversal.
 
+**Beating round 30 gets a victory screen**: the scores across the top, CONGRATULATIONS!, and the
+little green creature standing in the lower middle **juggling all eight bubble colours** — one
+64-step loop table walked by all eight balls at a phase offset each, with the title screen's waving
+arms reused as his hands, rocking in opposite phase. PRESS FIRE returns to the title. The loop's
+shape is not a free choice: eleven sprites are on screen and the TMS9918 draws four per scanline,
+so `assets/genjuggle.py` sweeps the ellipse and proves no scanline ever exceeds four across all 64
+phases (`DESIGN.md` §17). It lands on exactly four, so **there is no margin** — adding a sprite here
+means re-running the generator.
+
 The **death line is yellow, and flashes red** when a bubble crosses it — including *through* the
 bubbles sitting on it, which would otherwise hide the very thing the player needs to see. Those
 bubbles are drawn from a variant character set carrying the dash through their middle with a 1px
