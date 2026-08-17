@@ -22,7 +22,7 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,208 B of 24,336 — 1,128 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,598 B of 24,336 — 738 free**, because the **level data now lives in ROM bank 1**
 (1,902 of 8,192 used). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
@@ -49,6 +49,13 @@ shape is not a free choice: eleven sprites are on screen and the TMS9918 draws f
 so `assets/genjuggle.py` sweeps the ellipse and proves no scanline ever exceeds four across all 64
 phases (`DESIGN.md` §17). It lands on exactly four, so **there is no margin** — adding a sprite here
 means re-running the generator.
+
+**BUB loads your bubbles.** The next bubble is no longer a swatch in the HUD: a pipe opens in the left
+wall at deck height, the bubble rolls out along the deck, and BUB — standing just left of the launch
+spot — lifts it across and sets it into the muzzle. He starts the moment your shot *leaves*, so the
+whole sequence happens during the bubble's flight and costs no time at all; fire again mid-fetch and
+he just starts over, which reads as him hurrying. The aim guide's dots would be a fifth sprite on that
+crowded deck when you aim very low, so **flicker switches on only for that case** (`DESIGN.md` §17).
 
 The **death line is yellow, and flashes red** when a bubble crosses it — including *through* the
 bubbles sitting on it, which would otherwise hide the very thing the player needs to see. Those

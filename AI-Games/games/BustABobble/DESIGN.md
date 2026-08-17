@@ -1372,6 +1372,47 @@ case to cope with the data, check the data.
 
 ## 17. Status
 
+**2026-08-17 (build 15) — BUB loads the bubbles, and `NEXT` leaves the HUD.** The next bubble is no
+longer a static swatch in the HUD panel: a pipe opens in the **left wall** at deck height, the bubble
+rolls out of it along the deck, and **BUB** — standing at his own station immediately left of the
+launch spot — lifts it across and sets it into the muzzle.
+
+**It costs no time, which is the whole design.** BUB starts the moment the shot *leaves*, not when it
+lands, so his roll-and-lift (about 24 frames) happens while the bubble is in flight and the next one
+is already in place when the shot resolves. He never gates firing: shoot again mid-fetch and the
+sequence simply restarts from the pipe, which reads as him hurrying. That matters because the drop
+clock never pauses — a blocking version would have cost ~0.5 s on every shot, and round 30 needs
+about 70 of them (§11b measurements: it tolerates 1.5 s of dead time per shot, so blocking was
+*affordable* but would have eaten half the margin the flat clock just bought).
+
+Three geometry constraints, none of them free choices:
+
+- **BUB sits one character row ABOVE the launcher** (sprite y 167 against the bubble's 175). The deck
+  is rows 21–23 and the loaded bubble already has its lower 8 px in row 23 — TV overscan on real
+  hardware, clipped in Classic99 — so a 16 px BUB level with it would be cut off at the knees. The
+  bubble therefore reaches the muzzle by being set *down* the last 8 px.
+- **Three 16 px slots side by side**: 40 where the bubble arrives, 56 where BUB stands, 72 the launch
+  spot. Nothing overlaps, and sprite 0 (the loaded bubble) outranks sprite 1 (BUB), so he passes
+  behind it rather than through it.
+- **The pipe mouth is punched after every field redraw, at column `shkb`.** The deck's wall columns
+  come out of the same row buffer as the field and are repainted on every shake and ceiling drop, so
+  a hole punched once at round start would be bricked up by the first one — and since the walls move
+  with the shake, the hole has to move with them.
+
+**Flicker is switched on only when a shallow aim would put a FIFTH sprite on the deck.** The deck
+carries three already (loaded bubble, BUB, the bubble in transit) and the TMS9918 draws four before
+it starts dropping them, so one guide dot down there is fine — it is the second that overflows. The
+test is geometry rather than a guessed angle: dot `gi` sits `guy*gi` px above the launcher and its
+16 px sprite reaches the deck when `guy*gi <= 15`, so the second dot does when `guy <= 7`. CVBasic's
+`SPRITE FLICKER` is all-or-nothing — it rotates every sprite including the player's — which is why it
+is turned on for that case only and explicitly cleared on fire, so a shot from a shallow aim does not
+leave the flying bubble rotating in and out of view.
+
+> ⚠️ Written first as `CONST PIPECELL = 672` — **a `CONST` above 255 compiles to zero here**, so the
+> VPOKE would have gone to name-table cell 0, writing through the score digits and leaving the wall
+> untouched. It is a bare literal at the use site now, like every other value over 255 in this file.
+> Caught by reading, not by running: the symptom would have been a corrupted score with no pipe.
+
 **2026-08-17 (build 13) — the drop clock goes flat at 20 s, and round 30 becomes winnable.**
 The 20 s → 12 s ramp was this port's invention (the arcade drops on a flat 20 s interval), and it
 was the direct cause of round 30 being the only round of the thirty a real player could not finish.

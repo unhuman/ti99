@@ -116,6 +116,30 @@
 	' 16-px bubble centres under it at left edge 184, not flush at 176.
 	CONST NEXTX    = 184
 	CONST NEXTY    = 88
+	' BUB and his pipe. All SPRITE coordinates (y reads one low on this VDP).
+	'
+	' He does NOT walk: he stands at his station immediately left of the launch
+	' spot, and the bubble comes to him. Three 16 px slots sit side by side on the
+	' deck -- 40 where the bubble arrives, 56 where BUB stands, 72 the launch spot --
+	' so nothing overlaps and the lift is a straight move from his hands to the
+	' muzzle.
+	' BUB SITS ONE ROW HIGHER THAN THE LAUNCHER, and that is forced, not chosen.
+	' The deck is rows 21-23 and the loaded bubble already has its lower 8 px in
+	' row 23 -- TV overscan on real hardware, clipped in Classic99 -- so a 16 px
+	' BUB level with it would be cut off at the knees. At 167 he occupies rows
+	' 21-22 and is wholly on screen, and the bubble reaches the muzzle by being
+	' set DOWN the last 8 px rather than lifted up.
+	CONST BUBY     = 167	' BUB and the rolling bubble: rows 21-22, fully visible
+	CONST BUBPLACE = 175	' the launch spot, 8 px lower -- rows 22-23
+	CONST BUBHOME  = 56	' his station, immediately left of the launch spot
+	CONST BUBCATCH = 40	' where the bubble stops rolling, at his feet
+	CONST BUBSTEP  = 4	' roll speed: 8 -> 40 in eight frames
+	CONST PIPEX    = 8	' the pipe's mouth, in the left wall
+	' !! The pipe's name-table cell is NOT a CONST. Row 21 column 0 is 672, and a
+	' CONST above 255 compiles to ZERO here -- the VPOKE would have gone to cell 0,
+	' i.e. straight through the score digits, with nothing to show for it at the
+	' wall. It is a bare literal at the use site, like every other value over 255 in
+	' this file (see the note at the top).
 
 	DIM grid(96)		' 8 cols x 12 rows. bits 0-3 colour (0 = empty), bit 6 mark
 	' 20 chars x 2 rows. THE WALLS LIVE IN THIS BUFFER TOO (at shkb and
@@ -380,6 +404,10 @@ game_loop:
 
 	IF flying = 1 THEN GOSUB do_flight
 
+	' BUB runs every frame, in flight or not: his fetch is meant to overlap the
+	' shot, and he also has to finish walking home after the shot has landed.
+	GOSUB bub_tick
+
 	GOTO game_loop
 
 	'
@@ -504,6 +532,20 @@ do_aim:
 	RETURN
 
 do_fire:
+	' BUB STARTS THE MOMENT THE SHOT LEAVES, not when it lands. That is what keeps
+	' this free: his whole round trip (about 48 frames) happens while the bubble is
+	' in flight, so the next one is already in his hands when the shot resolves and
+	' nothing waits on him. He is never allowed to gate firing -- if the player is
+	' quick enough to shoot again mid-fetch, he simply turns round and goes back to
+	' the pipe from wherever he is, which looks like him hurrying rather than like a
+	' glitch.
+	' Flicker is only ever justified by a low aim guide, and the guide is not drawn
+	' in flight -- so clear it here, or a shot fired from a shallow aim would leave
+	' the flying bubble itself rotating in and out of view.
+	SPRITE FLICKER OFF
+	bubst = 1
+	bubbx = PIPEX			' the next bubble starts in the pipe's mouth
+	bubby = BUBY
 	flying = 1
 	btnr = 0
 	#bx = 20480		' LAUNCHX * 256 -- bare literal, see the note at the top
@@ -975,6 +1017,7 @@ after_stick:
 
 next_shot:
 	curk = nxtk
+	bubst = 0			' he hands it over; the launcher bubble appears
 	GOSUB pick_next
 	RETURN
 
@@ -1403,6 +1446,7 @@ load_level:
 	#seqb = lvl - 1
 	#seqb = #seqb * 16
 	si = 0
+	bubst = 0			' nothing in transit; the launcher already has its bubble
 	top = 0
 	shkb = 1
 	shkbo = 1
@@ -1713,6 +1757,22 @@ draw_field:
 			GOSUB blit_row
 		END IF
 	NEXT dfr
+	' PUNCH THE PIPE MOUTH THROUGH THE LEFT WALL, HERE AND NOT IN draw_frame. The
+	' deck's wall columns come out of the same row buffer as the field and are
+	' repainted by every one of these redraws -- so a hole punched once at round
+	' start would be bricked up again by the first shake or ceiling drop. One cell,
+	' re-punched after each redraw, and no per-row exception inside the blit.
+	' TWO cells, not one: the bubble is 16 px tall, so a one-row mouth would have it
+	' emerging from a slot half its size. 672 = row 21 column 0, and the wall column
+	' is shkb -- the walls live in the shake buffer and move with it, so the hole has
+	' to move with them or it would sit beside the wall for the length of a shake.
+	ppv = BLANK
+	#ppa = 672
+	#ppa = #ppa + shkb
+	#ppa = #ppa + 6144
+	VPOKE #ppa,ppv
+	#ppa = #ppa + 32
+	VPOKE #ppa,ppv
 	RETURN
 
 	' Round transition, the mirror of do_clear: the closing wall has filled the
@@ -1882,7 +1942,6 @@ draw_frame:
 		PRINT AT 22,"1UP"
 		PRINT AT 118,"HI"
 		PRINT AT 214,"ROUND"
-		PRINT AT 342,"NEXT"	' row 10, the bubble sits directly beneath it
 		PRINT AT 502,"TIME"
 		hudok = 1
 	END IF
@@ -1927,6 +1986,51 @@ prt_hud:
 	RETURN
 
 	'
+	' BUB: 0 idle at the launcher, 1 walking to the pipe, 2 waiting at the mouth for
+	' the bubble to arrive, 3 carrying it back, 4 holding it ready. next_shot puts
+	' him back to 0 -- that is the moment the bubble he was holding becomes the one
+	' on the launcher, so the hand-over needs no animation of its own.
+	'
+bub_tick:
+	IF bubst = 1 THEN
+		' The bubble rolls out of the pipe along the deck to his feet.
+		bubbx = bubbx + BUBSTEP
+		bubby = BUBY
+		IF bubbx >= BUBCATCH THEN
+			bubbx = BUBCATCH
+			bubst = 2
+		END IF
+	END IF
+	IF bubst = 2 THEN
+		' He lifts it across and sets it down into the muzzle, which sits 8 px
+		' lower than he does.
+		bubbx = bubbx + 2
+		IF bubbx >= LAUNCHX - 8 THEN
+			bubbx = LAUNCHX - 8
+			bubby = BUBPLACE
+			bubst = 3
+		END IF
+	END IF
+	' BUB himself never moves. Two frames: standing, and a lift pose while he has
+	' the bubble in the air.
+	bubp = 36
+	IF bubst = 2 THEN bubp = 40
+	SPRITE 1,BUBY,BUBHOME,bubp,3
+	' The bubble in transit is the NEXT one, so it is already the right colour when
+	' it lands on the launcher. State 3 parks it exactly where sprite 0 will draw
+	' the loaded bubble, so the hand-over at next_shot has nothing to animate -- the
+	' sprite simply changes which slot draws it, in the same place.
+	IF bubst = 0 THEN
+		SPRITE 2,209,0,0,0
+	ELSE
+		bubf = nxtk - 1
+		bubf = bubf * 4
+		bubc = bub_base(nxtk - 1)
+		SPRITE 2,bubby,bubbx,bubf,bubc
+	END IF
+	RETURN
+
+	'
 	' Sprites: flying bubble (body + lit cap, so it is pixel-identical to the
 	' same bubble once it sticks and becomes characters), the next bubble, and
 	' three aim-guide dots placed along the ray with the SAME table the shot
@@ -1949,19 +2053,31 @@ draw_sprites:
 	dsf = dsf * 4
 	dsc = bub_base(curk - 1)
 	SPRITE 0,dsy,dsx,dsf,dsc
-	dsf = nxtk - 1
-	dsf = dsf * 4
-	dsc = bub_base(nxtk - 1)
-	SPRITE 2,NEXTY - 1,NEXTX,dsf,dsc
 	IF flying = 0 THEN
 		#gux = #aimdx(am)
 		#gux = #gux * 4
 		#gux = #gux / 256
 		gux = #gux
+		' FLICKER ONLY WHEN AIMED LOW ENOUGH TO NEED IT. The deck carries three
+		' sprites already -- the loaded bubble, BUB, and the bubble he is holding --
+		' and the TMS9918 draws FOUR per scanline before it starts dropping them. So
+		' one guide dot down there is fine; it is the SECOND that would be the fifth
+		' sprite.
+		'
+		' The test is the geometry rather than a guessed aim angle: dot `gi` sits
+		' guy*gi px above the launcher, and its 16 px sprite reaches the deck band
+		' when guy*gi <= 15. For the second dot that is guy <= 7. CVBasic's
+		' SPRITE FLICKER is all-or-nothing (it rotates every sprite, the player's
+		' included), which is why it is switched on for this case only.
 		#guy = #aimdy(am)
 		#guy = #guy * 4
 		#guy = #guy / 256
 		guy = #guy
+		IF guy < 8 THEN
+			SPRITE FLICKER ON
+		ELSE
+			SPRITE FLICKER OFF
+		END IF
 		FOR gi = 1 TO 3
 			gdd = gux * gi
 			IF adir = 1 THEN
