@@ -37,20 +37,39 @@ LITROWS = 6
 #           is the only way to get a gradient out of a two-colours-per-line
 #           display, and it means the colour needs its own character pattern
 #           rather than sharing the common one.
+# EVERY BUBBLE IS ONE COLOUR, DITHERED. A two-tone ball is identified by a PAIR
+# of colours, and this palette does not have eight well-separated pairs -- red
+# (medium red / light red) and "orange" (dark red / light red) shared a cap and
+# differed only in body shade, which made them the same ball in play: four
+# touching "reds" that would not pop, because two of them were the other colour.
+# One hue per ball removes the whole failure mode -- there is nothing to confuse
+# but the hue itself -- and dithering supplies the shading that the second colour
+# used to. The eight are one per HUE FAMILY the TMS9918 offers, in their
+# brightest variant, because dithering darkens.
+# style: 0 = solid two-tone, 1 = LIGHT dither, 2 = NORMAL, 3 = HEAVY.
+# Dither density IS apparent brightness -- more pixels lit reads brighter -- so it
+# is the knob that separates two colours the palette puts close together. White
+# and grey are only 51 levels apart per channel (255 vs 204) and at the same
+# density they read as the same ball; running white LIGHT and grey HEAVY pulls
+# them apart far more than their hues ever could.
 BUBBLE = [
-    (8, 9, 6, 0),   # 1 red      medium red  / light red
-    (12, 3, 6, 0),  # 2 green    dark green  / light green
-    (4, 5, 6, 0),   # 3 blue     dark blue   / light blue
-    (10, 11, 6, 0), # 4 yellow   dark yellow / light yellow
-    (7, 7, 5, 1),   # 5 cyan     dithered: solid cyan cap, cyan/black checks below
-    (13, 13, 5, 1), # 6 magenta  dithered, same as cyan
-    (14, 14, 5, 1), # 7 grey     dithered -- this is what "light and dark grey"
-                    #            actually wants: the TMS9918 has ONE grey, but
-                    #            solid grey against grey/black checks reads as
-                    #            two tones of it. Better than the white glint
-                    #            that was standing in for it.
-    (6, 9, 6, 0),   # 8 orange   dark red    / light red
+    (9, 9, 5, 2),   # 1 red
+    (3, 3, 5, 2),   # 2 green
+    (5, 5, 5, 2),   # 3 blue
+    (11, 11, 5, 2), # 4 yellow
+    (7, 7, 5, 2),   # 5 cyan
+    (13, 13, 5, 2), # 6 magenta
+    (14, 14, 5, 3), # 7 grey    heavy dither -> reads darkest
+    (15, 15, 5, 1), # 8 white   light dither -> reads brightest
 ]
+
+# Per style: list of (up_to_row, modulus). A pixel at (x,y) is kept when
+# (x + y) % modulus == 0, so modulus 1 is solid, 2 is half, 4 a quarter.
+DITHER = {
+    1: [(11, 1), (16, 2)],              # light:  solid to row 10, then half
+    2: [(5, 1), (9, 2), (16, 4)],       # normal: solid, half, quarter
+    3: [(3, 1), (7, 4), (16, 8)],       # heavy:  solid, quarter, eighth
+}
 WELLBG = 1                      # black behind every bubble
 
 
@@ -78,17 +97,16 @@ def bubble_mask(style):
                 ny, nx = y + dy, x + dx
                 if not (0 <= ny < 16 and 0 <= nx < 16) or not m[ny][nx]:
                     out[y][x] = True
+    ramp = DITHER[style]
     d = [[False] * 16 for _ in range(16)]
     for y in range(16):
+        mod = next(m2 for (upto, m2) in ramp if y < upto)
         for x in range(16):
             if not m[y][x]:
                 continue
-            if out[y][x] or y < 5:
-                d[y][x] = True                      # outline, and a solid cap
-            elif y < 9:
-                d[y][x] = ((x + y) & 1) == 0        # half density
-            else:
-                d[y][x] = ((x + y) & 3) == 0        # quarter density
+            # The outline is ALWAYS solid, whatever the density -- it is what
+            # keeps a sparse ball reading as a circle instead of a cloud.
+            d[y][x] = out[y][x] or ((x + y) % mod) == 0
     return d
 
 
@@ -213,6 +231,12 @@ def main():
         w("\tDATA BYTE %s\t' BL" % hexrow(bot))
         w("\tDATA BYTE %s\t' BR" % hexrow(bot))
     w("")
+
+    # NO death-flash bubble table here. Flashing the BUBBLES was wrong twice over:
+    # it is the death LINE the player needs drawn to, and recolouring every bubble
+    # white left the ones that were already white or grey visibly unchanged, so it
+    # read as "some of the balls blink". The flash lives on character 161, the
+    # death-line dash, in BUSTABOB.bas next to wall_col.
 
     # --- sprites ----------------------------------------------------------------------
     # CVBasic 16x16 sprite pattern = 16 bytes left column, then 16 bytes right column.

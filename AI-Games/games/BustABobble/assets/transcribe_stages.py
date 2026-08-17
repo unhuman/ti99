@@ -171,7 +171,12 @@ def main():
         "# of arcade-stages.txt for exactly what is and is not from the source.",
         "#",
         "# '.' = empty, '1'..'8' = colour. Even rows 8 cells, odd rows 7 and indented.",
-        "# 1 red  2 green  3 blue  4 yellow  5 cyan  6 magenta  7 white  8 orange",
+        # Names must match genart.py's BUBBLE table, which is what the ROM draws.
+        # This line used to read '7 white 8 orange'; there is no orange bubble --
+        # 7 is GREY (heavy dither, reads darkest) and 8 is WHITE (light dither,
+        # reads brightest). Getting it wrong sends a reader looking for a ball
+        # that does not exist.
+        "# 1 red  2 green  3 blue  4 yellow  5 cyan  6 magenta  7 grey  8 white",
         "",
     ]
     if fail:

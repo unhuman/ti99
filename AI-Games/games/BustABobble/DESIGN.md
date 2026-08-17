@@ -124,17 +124,23 @@ col:  0 | 1 ................................ 18 | 19 | 20 ........... 31
       L |   even rows: 8 bubbles spanning 128 px       L |  row 1    : score, 8 digits (§11a)
         |   odd rows : 7 bubbles, +8 px offset           |  row 3    : "HI"
         |                                                |  row 4    : high score, 8 digits
-        |   at rest the field is inset 8 px each side    |  row 6-7  : "ROUND" + number
-        |   -> that 8 px of slack each side is exactly   |  row 9-10 : "NEXT" + next-bubble well
-        |      the shake travel, so bubbles never        |  row 13   : "TIME"
-        |      overlap the walls and the walls           |  row 14   : drop-timer bar, 8 chars
-        |      themselves never redraw                   |  row 17-21: BUB (mascot, decor)
-        |                                                |  row 23   : lives / spares (§12)
+        |   the field spans the FULL well, so bubbles    |  row 6-7  : "ROUND" + number
+        |   touch the walls; the walls live in the same  |  row 10-11: "NEXT" + next-bubble well
+        |   row buffer and shake WITH the field, so the  |  row 15   : "TIME"
+        |   whole assembly slides as one unit (§8) and   |  row 16   : drop-timer gauge, 8 chars
+        |   nothing outside the blit needs erasing       |  row 18   : lives / spares (§12)
+        |                                                |  row 20-22: BUB (mascot, decor) - unbuilt
 row 0  : CEILING BAR (solid, full well width)
 rows 1-19: play area  (grid row r occupies char rows 1+top+2r and 1+top+2r+1)
 row 20 : DEATH LINE (dashed rule). A bubble whose bottom reaches row 20 ends the game.
 rows 21-23: launcher deck — dragon sprite, loaded bubble, aim guide dots
 ```
+
+> **The diagram above is current as of the timer/lives build.** It previously still described the
+> pre-build-3 geometry ("at rest the field is inset 8 px each side… the walls themselves never
+> redraw"), which the revision notes above it had already reversed, and it placed `TIME` on row 13
+> and lives on row 23. Both were wrong in the shipped ROM. Corrected rather than annotated, so §3
+> reads as one description instead of a stale picture with fixes stacked on top.
 
 - Well interior is **18 chars (144 px)** rather than the field's 128 px. That extra 8 px each side
   is deliberate: it is the shake travel. It means the shake never has to move or redraw the wall
@@ -152,7 +158,8 @@ The default CVBasic mode gives **one foreground/background pair per character sc
 confirmed in `games/Structris/src/STRUCTRS.bas`, whose `DEFINE COLOR 128,11,tile_colors` is backed
 by 11×8 colour bytes. That is what makes a shaded sphere possible in characters.
 
-**Bubble stamp:** 8 colours × 4 quadrant chars = **32 chars**, codes 128–159.
+**Bubble stamp:** 8 colours × 4 quadrant chars = **32 chars**, codes 128–159, loaded by a single
+`DEFINE CHAR 128,32,bub_pat`.
 
 ```
 colour k occupies codes 128+4k .. 131+4k
@@ -160,27 +167,56 @@ colour k occupies codes 128+4k .. 131+4k
     +2 bottom-left +3 bottom-right
 ```
 
-**Shading without breaking the 2-colour rule.** Each bubble colour is a *(lit, base)* pair. Pixel
-rows 0–5 of the sphere use the lit shade, rows 6–15 the base shade. Every character scan line
-therefore contains exactly two colours — one bubble shade and the well background (black) — and is
-always legal. No cell ever contains two different bubbles, because bubbles are 2 chars wide on a
-2-char pitch and always char-aligned (§2), so there is no seam case to handle.
+### One hue per ball, shaded by dither — and why it had to become that
 
-| k | Bubble | base (fg, rows 6-15) | lit (fg, rows 0-5) |
-|---|--------|----------------------|--------------------|
-| 0 | red    | 8 medium red   | 9 light red    |
-| 1 | green  | 12 dark green  | 3 light green  |
-| 2 | blue   | 4 dark blue    | 5 light blue   |
-| 3 | yellow | 10 dark yellow | 11 light yellow|
-| 4 | cyan   | 7 cyan         | 15 white       |
-| 5 | magenta| 13 magenta     | 15 white       |
-| 6 | white  | 14 gray        | 15 white       |
-| 7 | orange | 6 dark red     | 9 light red    |
+**Every bubble is a single colour, dithered.** This started as *two-tone* shading (a lit shade over
+a base shade, solid sphere) and that turned out to be a **gameplay** bug, not a style choice:
 
-Background for every bubble line is **1 (black)** — the well interior colour.
+> A two-tone ball is identified by a **pair** of colours, and this palette does not contain eight
+> well-separated pairs. Red was medium-red over light-red and "orange" was dark-red over the *same*
+> light-red — one shade apart in the body, identical on top. In play they were the same ball.
+> Four touching "reds" refused to pop; sampling the pixels showed two of them were the other
+> colour. **The match logic was correct the whole time** (verified against a reference hex flood
+> fill over 4,000 random fields — zero mismatches); the palette was lying to the player.
 
-Colours 6 and 7 are the least distinguishable pair on a composite TV; early rounds use k=0..2,
-and §7's per-level colour count keeps 7 and 8 colours to the last third of the game.
+One hue per ball removes the failure mode by construction: there is nothing left to confuse but the
+hue itself. The eight are **one per hue family the TMS9918 offers**, in their brightest variant,
+because dithering darkens. There is no orange on this hardware — dark red was only ever standing in
+for it, and that substitution is what caused the bug.
+
+**Shading comes from pixel density instead.** Solid at the top, then checks against black that thin
+out going down, with the **outline always solid** so a sparse ball still reads as a circle rather
+than a cloud. On a display that allows two colours per line, density is the *only* way to get a
+gradient out of one colour.
+
+**Density is per colour, and it is the tool for separating close colours.** More lit pixels reads
+brighter. White and grey are only 51 levels apart per channel (255 vs 204) and at equal density
+they read as the same ball, so white runs **light** and grey runs **heavy**:
+
+| k | Bubble | TMS | density | lit px | apparent |
+|---|--------|-----|---------|--------|----------|
+| 1 | red     | 9 light red    | normal | 132 | 83 |
+| 2 | green   | 3 light green  | normal | 132 | 88 |
+| 3 | blue    | 5 light blue   | normal | 132 | 70 |
+| 4 | yellow  | 11 light yellow| normal | 132 | 105 |
+| 5 | cyan    | 7 cyan         | normal | 132 | 96 |
+| 6 | magenta | 13 magenta     | normal | 132 | 70 |
+| 7 | grey    | 14 grey        | **heavy** | 88 | 70 |
+| 8 | white   | 15 white       | **light** | 191 | 190 |
+
+White ends up **2.2× denser** than grey — far more separation than their hues could ever give.
+Ramps live in `DITHER` in `genart.py`: a list of `(up_to_row, modulus)`, where a pixel survives when
+`(x + y) % modulus == 0`, so modulus 1 is solid, 2 half, 4 a quarter.
+
+Background for every bubble line is **1 (black)** — the well interior colour. No cell ever contains
+two different bubbles (bubbles are 2 chars wide on a 2-char pitch and always char-aligned, §2), so
+there is no seam case to handle.
+
+`assets/prevcolours.py` renders all eight side by side with their pixel counts — the pair a level
+rarely shows together is impossible to judge from a level render.
+
+Other characters: font (32–95), wall/brick (160), death-line dash (161), pop-burst frames
+(164–175, §9). Total well under 256.
 
 Other characters: font (32–95, reused from the repo's mini-font approach), wall column, ceiling
 bar, death-line rule, HUD frame, launcher deck. Total well under 256.
@@ -192,19 +228,30 @@ bar, death-line rule, HUD frame, launcher deck. Total well under 256.
 All 16×16, `SPRITE FLICKER` **off**, unused slots parked at **y = 209** (never 208 — 208
 terminates the TMS9918 sprite list; repo memory `tms9918-sprite-y-208-terminates`).
 
+**Three patterns per colour**, so 24 in all plus the guide dot: `3k` = colour *k+1*'s **cap**,
+`3k+1` its **body**, `3k+2` the **full** ball. Frame numbers are `def × 4`, so colour *k* uses
+`(k−1)×12` for the cap, `+4` for the body, `+8` for the full; the dot is pattern 24, frame 96.
+
 | Slot | What | Pattern | Colour |
 |------|------|---------|--------|
-| 0 | flying bubble — lit cap | 2 patterns/colour, see below | lit shade of k |
-| 1 | flying bubble — base body | | base shade of k |
-| 2,3 | next bubble (parked in the HUD well) | same pair | shades of next k |
-| 4,5 | launcher dragon | fixed | white + green |
-| 6,7,8 | aim guide dots | 4×4 dot | white |
+| 0 | flying bubble — base body | `(k−1)×12 + 4` | base shade of k |
+| 1 | flying bubble — lit cap | `(k−1)×12` | lit shade of k |
+| 2,3 | next bubble (parked under NEXT in the HUD) | same pair | shades of next k |
+| 4,5,6 | aim guide dots | 96 | white |
+| 8…19 | **falling orphans** (§9), one sprite each | `(k−1)×12 + 8` (full) | base shade of that bubble |
 
 A TMS9918 sprite is single-coloured, so the flying bubble is **two overlaid sprites at the same
-position**: one carrying the lit upper cap, one the base lower body. That makes the in-flight
-bubble pixel-identical to the same bubble once it sticks and becomes characters — the seam that
-usually gives away a char/sprite hybrid. Cost: 8 colours × 2 patterns × 32 bytes = 512 bytes of
-sprite pattern table (of 2 KB available).
+position**: lit upper cap over base lower body. That makes the in-flight bubble pixel-identical to
+the same bubble once it sticks and becomes characters — the seam that usually gives away a
+char/sprite hybrid. The cap/body split has to be **per colour** because `litrows` is (§4): a shared
+pair would split at the wrong row and the match would break the instant the ball landed.
+
+The **full** pattern exists for falling debris. Drawing debris with the *body* pattern — which by
+definition starts below the highlight — made the falling bubbles look like bottom halves. Full also
+keeps each falling bubble at **one** sprite rather than two, which halves the slots used and keeps
+them off each other's scanlines (only four sprites show per line).
+
+Cost: 25 patterns × 32 bytes = **800 bytes** of the 2 KB sprite pattern table.
 
 ---
 
@@ -289,9 +336,130 @@ down *shape* completely and *colour* only where it mattered to the strategy it w
   while banded pairs mean most shots have a target. Letters keep their identity, so cells the
   source marked as the same colour stay the same colour.
 
+### ✱ OPEN: the colour assignment builds too many pre-made groups
+
+Measured across the 30 rounds: **85 pre-existing connected groups of 3+**, and round 1 starts with
+**90% of its bubbles already sitting in one**. Round 8 is 80%; round 9 contains a group of ten.
+
+A pre-made group looks poppable and is not — match detection only runs when a bubble *sticks*, so a
+group that was already there just sits. That is correct Puzzle Bobble behaviour and the arcade does
+it too (round 1's own `aabbccdd` over `aabbccd` stacks each colour into a 4-group). But at this
+density it reads as the game being broken, and it cost a play-test session chasing a match bug that
+did not exist.
+
+The cause is the banding rule above. Same-colour **pairs are exactly what you want** — a pair gives
+a shot somewhere useful to land, and completing it pops. **Triples are the problem.** Horizontal
+pairs shifting one row per step do not just make pairs; they stack into 3s and 4s.
+
+**Fix, not yet applied:** colour the `O` cells one at a time and reject any colour that would join
+**two or more** already-placed same-coloured neighbours. That keeps pairs everywhere and stops
+groups forming. Leave cells the source marked `a`–`d` alone — those pre-made groups are the
+arcade's own. Pure change to `transcribe_stages.py`; no game code moves.
+
 Re-colouring a round from a screenshot means editing one file and regenerating; no code moves.
 Level data is read **once at round start**, never during a frame, so it may live in a ROM bank if
 the fixed area gets tight (§13) — it does not currently need to.
+
+### 7a. Every round is proven winnable — `assets/solvelevels.py`
+
+A round here can be impossible in a way a random-bubble game never can. The shot sequence is
+**fixed** (§11), so the player cannot wait for the colour they need: if a round's 32 shots and its
+layout cannot be made to clear, no amount of skill fixes it, and **nothing else in the build would
+notice**. The colours are assigned by a script (above), so this is not a theoretical risk — it is
+the exact thing that assignment could break.
+
+`assets/solvelevels.py` re-implements the game and searches each round for a clearing line.
+
+**It plays the round as shipped, not a tidy model of it.** It reads `src/levels.bas` and
+`src/art.bas` — the `DATA BYTE` blocks that go in the cartridge, so the packer is validated too —
+and re-implements the source's own rules, quirks included:
+
+- the 8.8 fixed-point flight at 5 px/frame, wall planes at 6144 / 34816, unsigned compares
+- `coltest`'s 3×3 candidate scan with the **pixel** accept `dx² + dy² < 196`
+- `do_snap`'s nearest-free-cell-by-Manhattan, ties broken by scan order
+- the ceiling shortcut — `bpy <= top*8+16` sticks in row 0 via `snap_col` and **overwrites**
+  whatever is there, because that is what the source does
+- `pick_next`'s forward walk with substitution over still-present colours
+- the drop clock in frames, drops landing **mid-flight**, and `check_death`'s `top + 2r >= 18`
+
+**Time is charged against the round, generously.** Real play gets the pop and orphan animations
+free — the main loop is not running during them, so `#dropt` never ticks, and the catch-up
+afterwards is clamped to 4 frames (`#fd`). The checker charges the full 4 every shot *and* every
+aiming frame, since the launcher turns one step per frame.
+
+**Result: all 30 rounds are winnable, none by more than a fraction of the time available.**
+28 of 30 clear before the ceiling drops even once; rounds 3, 5 and 30 take one drop. **No winning
+line anywhere uses the ceiling-overwrite quirk**, so nothing here rests on it.
+
+The margin was then stress-tested by charging the player extra dead frames per shot:
+
+| Dithering charged per shot | Rounds proven winnable |
+|---|---|
+| 0 (fires the instant it can) | 30 / 30 |
+| 1 s | 30 / 30, ≤ 4 ceiling drops |
+| 2 s, 4 s, 8 s | **29 / 30** — only round 30 fails, and identically at all three |
+
+So the verdict does not depend on the timing model at all: it survives an eight-second-per-shot
+player. Round 30 having the only real margin is the one place the difficulty ramp is doing its job
+(§11b), and the failure is the *drop timer*, not the layout — the checker reports which, by
+re-running with the clock off.
+
+**Checked against the real machine, not just against itself.** A faithful-looking simulator that
+quietly disagrees with the cartridge would prove nothing, so its predictions were compared with
+Classic99 running the built ROM:
+
+| Prediction | On hardware |
+|---|---|
+| round 1 opens holding colour 3, NEXT shows 3 | NEXT is blue ✓ |
+| straight up (aim 31) → grid (4,3), char cell r9 c8 | blue lands char r9 c8 ✓ |
+| after that shot, NEXT becomes colour 4 | NEXT is yellow ✓ |
+| full left (aim 0 — 80° off vertical, zigzagging off **both** walls the whole way up) → grid (5,2), one cell **left** of where a straight shot goes | lands char col 7, not col 9 ✓ |
+
+The last row is the one that matters: aim 0 and aim 31 land in the same cell on an empty round 1,
+so the test was repeated from a board where they differ. A wrong wall plane or a bounce that failed
+to flip direction would have put that ball against a wall, not one cell over.
+
+**Honest about its limits.** Finding a line *proves* a round winnable. Failing to find one does
+not prove the opposite — the search is a beam search, not exhaustive — so failures are reported as
+`UNPROVEN`, re-run four times wider, and then re-run with the clock disabled to say whether the
+obstacle is the timer or the layout/colours.
+
+**It cannot go stale silently.** The checker hard-codes the game's constants, so `check_source_drift()`
+re-reads `BUSTABOB.bas` on every run and aborts if `HITD2`, `LAUNCHX/Y`, `DEATHROW`, `CEILROW`, the
+two wall-plane literals, the `* 15` quarter-seconds conversion, or the `#fd` clamp have moved.
+Without that it would happily keep validating a game that no longer exists.
+
+```
+python3 assets/solvelevels.py                    all 30, exit 1 if any is unproven
+python3 assets/solvelevels.py --level 1 --replay one winning line, shot by shot, with boards
+python3 assets/solvelevels.py --probe 1          where all 63 aims land the round's first shot
+python3 assets/solvelevels.py --overhead 120     stress the drop clock
+python3 assets/solvelevels.py --report           WALKTHROUGH.md + walkthrough.json for all 30
+python3 assets/walkthroughhtml.py                walkthrough.json -> a shareable HTML round book
+```
+
+### The walkthrough falls out of the proof
+
+`--report` writes the lines the solver found as a readable document: each round's opening board,
+its fixed shot sequence, and a table of every shot — ball colour, **aim as a step count off
+vertical** with the wall banks called out, the cell it lands in, what it pops or drops, and how many
+bubbles are left. Because the aim is what the player physically holds the stick to reach, that is
+the number the table gives (63 positions, 31 either side, one step ≈ 2.6°, and it **persists between
+shots**, so the counts are absolute).
+
+`walkthroughhtml.py` turns the same JSON into a self-contained page that draws the boards in the
+game's real colours at the real hex stagger, every round to the same depth with the death line
+marked so headroom is comparable round to round.
+
+**Report lines are chosen for brevity, which the proof does not care about.** A win is a win at any
+length, but a 45-shot line is a bad walkthrough, so `--report` runs a **ladder of beam widths and
+keeps the shortest**. That is not cosmetic: a wider beam is *not* reliably better here — it explores
+a different region — so round 3 came out at 45 shots at beam 48, **73** at beam 150 and 37 at beam
+400, and round 5 went 41 → 17. Taking the best of a ladder got round 3 to 28.
+
+Run it after **any** change to `levels.txt`, `transcribe_stages.py`, the aim table, or the
+collision constants — those are exactly the edits that can make a round unwinnable without
+producing a single visible symptom.
 
 ---
 
@@ -419,11 +587,27 @@ any cell adjacent to a marked one, until a pass changes nothing. Worst case ~12 
 ≤2 frames. If it measures slower than that, the fallback is a 32-entry explicit stack (32 bytes),
 which the RAM budget in §13 can absorb.
 
-**Popped bubbles** get a 3-frame sparkle-erase (pattern swap on their own char codes, not a
-name-table rewrite). **Orphaned bubbles** mid-round get the same sparkle. Only the round-clear
-case slides the field bodily off the bottom, because only there is the whole field falling —
-that is what §8's slide is for, and rendering a mid-round partial drop the same way would be
-wrong (the remaining anchored bubbles must not move).
+### The two animations
+
+**Popped bubbles burst.** Three dissolve frames — the sphere solid, then holed on a checker, then
+sparse specks — flashing white, yellow, grey. Chars 164–175, **one set shared by all colours**: a
+pop is a bright flash and reads fine without carrying the bubble's hue, which would otherwise cost
+eight times the characters. Painted with VPOKEs over **only the marked cells**, so it is a handful
+of writes rather than a field redraw. Two frames each, ~0.1 s.
+
+**Orphans fall away as SPRITES**, one per bubble, using the full-ball pattern (§5), at slightly
+different speeds (`6 + (i AND 3)` px/frame) so a row of them spreads out instead of sliding as a
+slab — which also keeps them off each other's scanlines. They run to ~0.45 s and are hidden at
+y = 209 when they pass the bottom.
+
+Sprites are what make this affordable: **one `SPRITE` call each per frame with the VDP erasing for
+us, against 8 VPOKEs each** for the character equivalent, which is far past what a frame carries.
+Capped at **12** animated orphans (12 slots, 8…19); a larger drop still *scores* in full, it simply
+does not animate every bubble.
+
+The field is redrawn **without** the orphans before the fall starts, so they drop over a clean
+board. That is also why this can't reuse §8's slide: there the whole field moves, here the
+remaining anchored bubbles must stay exactly where they are.
 
 ---
 
@@ -491,7 +675,33 @@ loop (one pass per vblank):
               IF any occupied cell's bottom char row >= DEATHROW: GAME OVER
 ```
 
+### Title screen
+
+Boot goes to a title: all eight bubble colours on two decorative rows, the game name, the credit
+line, and **last score + high score across the top row** (same trailing-zero convention as the HUD,
+§11a). Fire starts a game, and a **release is required first** so a button still held from the
+previous game cannot skip through. Typing **8 3 8** opens a round selector — two digits, 01–30,
+echoed as typed — the same secret the other games in this repo use, and likewise not advertised on
+screen. The chosen round lasts **one game**; returning to the title always resets to round 1.
+
+Game over (lives exhausted) and clearing round 30 both return to the title. The high score
+survives; the score does not. Both messages blank a one-character border before printing so they
+read as a box over the bubble field.
+
 ### The ceiling drop is on a **timer**, not a shot count
+
+> **What the arcade actually does — and it is not this.** The Puzzle Bobble FAQ v1.24 is explicit:
+> *"the screen drops after a certain number of bubbles ("b") have been fired from the launcher"* —
+> shots, not time. And the genuinely clever part: *"For each missing color, the screen drops every
+> b − missing colors bubbles."* **The ceiling accelerates as you eliminate colours.** That is a
+> self-balancing difficulty ramp — the closer you get to clearing a round, the harder it presses —
+> and it is why the arcade stays tense on a nearly-empty board. There is also a fallback so a
+> stalled game still progresses, and the warning is carried by the **music tempo**, which rises as
+> the bubbles near the line, rather than by an alarm tone.
+>
+> This build uses a timer by explicit direction. The gap is worth knowing about because it bears
+> directly on the difficulty problem in §11b: the arcade's colour-count rule solves the very thing
+> a flat timer ramp cannot.
 
 `#dropt` counts down one per loop pass — and the loop is exactly one pass per vblank (§1), so a
 pass is a frame and the timer is real seconds with no calibration needed on either target.
@@ -504,6 +714,15 @@ pass is a frame and the timer is real seconds with no calibration needed on eith
   worth doing for its own sake: a design that pauses and resumes a clock has to get every
   transition right or it silently gifts or steals time, and that bug is invisible until someone
   notices a round feels long.
+  > **This was aspirational until 2026-08-16 and the code did not do it.** The burst (6 frames) and
+  > the orphan fall (27) run their own `WAIT` loops with the main loop stopped, so `#dropt` stood
+  > still for both — better than half a second of free time on every popping shot, which is most of
+  > them, handed over precisely when the player did something *good*. `anim_tick` now runs the
+  > countdown and the gauge inside those loops. The **drop itself** is still deferred to the next
+  > main-loop pass rather than fired from inside an animation: it would move the field out from
+  > under a burst that is painted at fixed cells. Deferred by at most the rest of the animation,
+  > never lost. Exactly the "silently gifts time" failure this bullet warned about, in the game the
+  > bullet is describing.
 - **The shake is the telegraph, and the timer is what makes it meaningful**: at
   `#dropt = SHAKELEAD` (12 frames) the shake starts, so the board is visibly shuddering for the
   0.3 s before it drops. With a shot-count drop the shake could only fire after a shot landed;
@@ -512,6 +731,89 @@ pass is a frame and the timer is real seconds with no calibration needed on eith
   changes — once per `droptime/8` ≈ 2.5 s, so its cost is nil.
 - A secondary 10-second **shot** timer still auto-fires at the current aim, purely so a walked-away
   cabinet still reaches game over.
+
+### Orphans fall RELATIVE to the shot, not by a global ceiling check
+
+Puzzle Bobble's rule is that anything losing its connection to the ceiling falls, and the obvious
+implementation is a global "not reachable from row 0" check after each pop. That is what this game
+did, and it is wrong in one specific way: it also drops bubbles that were **already** detached
+before the shot and had nothing to do with it.
+
+Four of the transcribed arcade layouts contain detached pieces — rounds 9 (33% loose), **10 (90%)**,
+15 (44%) and 20 (38%) — because the FAQ's ASCII diagrams do not preserve hex adjacency at the row
+ends (§7a). On round 10 the entire cage is detached, so the first pop *anywhere* collapsed nineteen
+bubbles at once, most of which never touched the popped group. It reads as the match logic being
+broken, and it was reported as exactly that.
+
+**The rule is now relative to the shot: a bubble falls only if it *was* hanging from the ceiling and
+is not any more.** Implemented as grid bit 5, recomputed each shot by `save_anchors` before the
+match fill; `drop_orphans` then requires bit 5 as well as "no longer reachable".
+
+On a well-formed field the two rules are **identical** — a group loses the ceiling only if the
+popped group was its last link — so the other 26 rounds are unaffected. Pre-detached scenery now
+sits there and has to be cleared by matching it, which is why round 10 went from an 8-shot,
+2.6-million-point collapse to a 43-shot grind. That is the honest cost of the layout; the levels
+themselves are still malformed and fixing *them* is tracked separately in §7a.
+
+### The drop-timer gauge and the lives creatures (built 2026-08-16)
+
+**What the arcade actually does — researched, because the gauge is an invention.** The
+Puzzle Bobble/Bust-A-Move FAQ v1.24 (the same source the layouts came from) is explicit that the
+ceiling is driven by **shots, not time**, and that the count tightens as colours are eliminated:
+
+> "If all eight colors are on the playfield, the screen drops after a certain number of bubbles
+> ('b') have been fired from the launcher."
+> "For each missing color, the screen drops every b−missing colors bubbles."
+> "Also, after a certain amount of bubbles have been fired the level will drop anyway."
+
+And the arcade shows **no gauge, bar or counter at all**. Its two cues are the playfield
+**juddering** just before a drop, and the **music tempo rising** as the stack nears the death
+line — note the second is a *danger* cue about the death line, not a drop countdown.
+
+So this game already deviates twice, both deliberately: the drop is on a **timer** (§11), and it
+gets a **visible gauge**. The justification for the gauge is that the timer deviation created a
+problem the arcade does not have — a shot count is something the player can *see themselves*
+by counting their own shots, whereas a wall clock is invisible, and the only cue was an alarm
+1.3 s out. Without a gauge the pacing mechanic is unreadable.
+
+**How it is drawn.** Eight characters on row 16, under the "TIME" label. Nine character shapes
+give fill widths 0–8 px, so the gauge drains in **64 steps** rather than eight chunky ones. The
+unfilled pixels are left clear and show the character's *background* colour, which is the grey
+track — fill and track out of one character instead of two. Per-scan-line colour makes lines 0 and
+7 black-on-black so the bar reads as 6 px tall inside an 8 px cell. It is redrawn only when the
+pixel count changes (≤64 times per cycle, 8 `VPOKE`s each), not every frame.
+
+The fill turns **red for the last quarter** of the gauge — 5 s at round 1, 3 s at round 30. Keying
+it to the alarm instead put the colour change 1.3 s out, when only ~4 of 64 pixels were still lit:
+there was no bar left to be red.
+
+**The DEATH LINE flashes when a bubble crosses it.** The 1.5 s pause in `do_dead` was a tone over a
+frozen board with nothing to say *why* the round ended. The line now flashes white for that whole
+1.5 s (90 frames, toggling every 8 — just under 4 flashes a second). One character's colour
+alternates: `DEFINE COLOR 161,1,dash_colf`, 8 bytes a flip. `dash_col` is a label *inside* `wall_col`
+rather than a copy, so `DEFINE COLOR 160,2,wall_col` still reads straight through both characters.
+
+> Built first as a flash of the **bubbles**, which was wrong twice over. It draws the eye to the
+> wrong thing — the line is the rule that was broken, so the line is what should be lit — and
+> recolouring all 32 bubble characters white leaves the ones that were *already* white or grey
+> visibly unchanged, so it read as "some of the balls blink, not even all". The lesson is the
+> second half: a flash implemented by forcing one colour is invisible on anything already near
+> that colour, which on this palette is two of the eight.
+
+**Lives are a little green creature, not a bubble.** The field is *made* of bubbles, so a bubble in
+the HUD reads as ammunition. The creature's eyes are unlit pixels — a character is one colour per
+scan line, so holes are the only way to draw a face at 8×8. It shows **spares** per `CLAUDE.md` §7A
+(3 lives → 2 creatures), with the unsigned-underflow guard, and sits on **row 18**: the design said
+row 23, which is the last row on the screen, in TV overscan on real hardware and clipped entirely
+in Classic99 — the one element telling you how much game is left was the one you could not see.
+
+> ⚠️ The gauge was built once and silently did not work: it sat full for the whole cycle and only
+> flashed red. Cause was a **CVBasic codegen bug** — `MPY` on the TMS9900 overwrites `r0` with the
+> product's high word, and the compiler kept assuming `r0` still held the multiplied variable, so
+> `#bstep = #droprl` right after `#droprl = #droprl * 15` stored **zero**. Now recorded in
+> `CLAUDE.md` §3A. It was found by *measuring the bar's pixel width from screenshots over a full
+> cycle*, not by looking at it — the visual impression ("it wipes a few times") did not distinguish
+> a broken gauge from a working one.
 
 ### The bubble sequence is pre-ordained per level, not random
 
@@ -531,6 +833,47 @@ would be most infuriating — being handed a useless colour on the last shot.
 
 Danger state (any bubble within 2 rows of the death line): the HUD flashes and the music switches
 to its faster variant.
+
+---
+
+## 11b. Difficulty is not actually ramping — measured, open
+
+Deriving grace time per round (`drops available × droptime`, where drops = `DEATHROW` minus the
+lowest bubble's char row) says the ramp is not doing its job:
+
+| | drops to death | grace, doing nothing | shots at 2.5 s |
+|---|---|---|---|
+| Round 1 | 12 | **240 s** | ~96 |
+| Round 9 | 4 | 71 s | 28 |
+| Round 16 | 12 | 189 s | 76 |
+| Round 20 | 4 | 59 s | 24 |
+| Round 30 | 6 | 72 s | 29 |
+
+**Confirmed by actually playing them.** The winnability checker (§7a) plays every round out under
+the real rules and reports how much of the clock a clearing line spends. At a realistic one second
+of deliberation per shot, **29 of the 30 rounds finish having taken at most one ceiling drop** —
+i.e. the timer never becomes a factor. Push it to *eight* seconds per shot and 29 of 30 are still
+winnable. Only **round 30** is ever bounded by its timer. That is a much sharper statement of the
+same problem than the idle-grace table below: the drop clock is not a difficulty dial at present,
+it is a formality.
+
+Mean **108 s of pure inactivity** before game over. Two problems: it is far too generous, and
+**difficulty is dominated by each level's depth, not by the timer** — drops-to-death swings between
+4 and 12 depending where the arcade layout starts, so a smooth 20 s → 12 s ramp is swamped and the
+curve sawtooths. Round 26 is more forgiving than round 9.
+
+Two candidate fixes, unresolved:
+
+1. **Target grace time.** `droptime = target_grace(round) / drops_available(round)`, with
+   `target_grace` ramping (150 s → 60 s) and `droptime` clamped 6–20 s. Makes the curve monotonic
+   regardless of depth. Pure data change in `transcribe_stages.py`.
+2. **The arcade's rule** (§11): drop on a shot count that *shrinks as colours are eliminated*. This
+   is self-balancing by construction and does not care about level depth at all — a deep round with
+   few colours presses hard, which is exactly right. Needs game code, not just data, and reverses
+   the timer decision.
+
+They are not exclusive: the shot count could stay the primary trigger with the existing timer as
+the anti-idle fallback, which is what the arcade appears to do.
 
 ---
 
@@ -624,14 +967,20 @@ round and number of bubbles/lives. That screen asks for **total** lives, not spa
 | Item | Bytes |
 |---|---|
 | `grid(96)` — field, colour + mark bit | 96 |
-| `rowbuf(36)` — one row-pair blit source | 36 |
+| `rowbuf(40)` — one row-pair blit source, **walls included** (§8) | 40 |
 | `sc(8)` + `hs(8)` — score and high score, BCD digits (§11a) | 16 |
-| scalars: `#bx #by #bdx #bdy`, `#dropt`, aim, top, shk, si, round, lives, sfx state | ~46 |
-| flood-fill stack **if** the scan proves too slow (§9 fallback) | +32 |
-| **Total** | **~194 (226 worst case)** |
+| `ofr/ofcl/ofk/ofxx/ofyy(12)` — falling orphans (§9) | 60 |
+| `pres(9)`, `ad(6)` | 15 |
+| scalars: `#bx #by #bdx #bdy`, `#dropt`, `#fd/#lf`, aim, top, shk, si, warn, sfx | ~55 |
+| **Arrays + scalars** | **~282** |
 
-Comfortable on both targets. The single decision that bought this was building the blit source one
-row-pair at a time (§8) rather than shadowing the name table (432 bytes).
+**Measured after the fact: 487 B of 814 on ColecoVision, 498 B of 7,854 on TI** — the difference
+above and the measured figure is CVBasic's own runtime. Comfortable on both, with Coleco at 60%.
+
+Two decisions bought that headroom: building the blit source **one row-pair at a time** (§8)
+rather than shadowing the name table (432 bytes), and deleting the hand-kept `colv`/`litv` colour
+lookups, which were a second copy of the palette in `genart.py` — they desynced the moment it
+changed, and `draw_sprites` now reads the generated `bub_base`/`bub_lit` tables from ROM (§14).
 
 **ROM.** Start **unbanked** and watch the fixed-area cap of 24,336 bytes with
 `games/RallyX/assets/romcheck.py`, which runs on any build. Estimated: levels + sequences 1,860 B
@@ -742,7 +1091,86 @@ games/BustABobble/
 
 ---
 
+## 16a. Known problems — everything open, in one place
+
+Found while building the winnability checker and the HUD (2026-08-16). Fixed items are listed too,
+with where the detail lives, because several were invisible for a long time and the *way* they hid
+is the reusable part.
+
+### Open — level data
+
+| # | Problem | Detail |
+|---|---|---|
+| 1 | **Four rounds ship layouts detached from the ceiling** — 9 (33% loose), **10 (90%)**, 15 (44%), 20 (38%). The FAQ's ASCII diagrams do not preserve hex adjacency at the row ends, so the transcription is faithful and still malformed. The scenery rule (§11) stops them collapsing, but they are *still wrong*: round 10 plays as an 18-shot grind over a cage that hangs in mid-air, and its two ceiling bubbles are lone singles that can only be cleared by building onto them. **Repairing the layouts is the real fix and has not been done** — it means altering transcribed arcade shapes, which is a call about authenticity, not a mechanical edit. Detect with `solvelevels.py --anchors`. | §7a, §11 |
+| 2 | **Too many pre-made groups** — 85 pre-existing 3+ clusters across the 30 rounds; round 1 starts with 90% of its bubbles in one. They look poppable and are not, because matches are only tested when a bubble lands. Fix identified, not applied. | §7 |
+| 3 | **Difficulty does not ramp.** Measured by playing every round out: at a realistic 1 s per shot, 29 of 30 finish having taken at most one ceiling drop. Push to *eight* seconds a shot and 29 of 30 still win. **Round 30 is the only round the drop clock ever constrains.** The timer is not a difficulty dial today, it is a formality. | §11b |
+
+### Open — not yet built
+
+| # | Item | Detail |
+|---|---|---|
+| 4 | **Music does not fit** the fixed area any more after art growth. Plan: levels + music into one bank together, never separate. | §13 |
+| 5 | **The danger state** (arcade raises the music tempo as the stack nears the line) is unbuilt. The death line flashes once a bubble has *crossed* it, but there is still no cue for danger *approaching*. | §11 |
+| 6 | **BUB mascot**, rows 20–22, unbuilt. | §3 |
+
+### Open — engine limits worth knowing
+
+| # | Limit | Detail |
+|---|---|---|
+| 7 | **More than 4 sprites on a scanline still drop out.** Raising the orphan-fall cap 12→24 stopped bubbles *vanishing*, but a wide row of falling debris can still have some invisible for a frame or two until the staggered speeds spread them. `SPRITE FLICKER` stays off deliberately. | §5 |
+| 8 | **A drop is deferred, never fired mid-animation** — it would move the field out from under a burst painted at fixed cells. Deferred by at most the rest of the animation. | §11 |
+
+### Fixed this session — and how each one hid
+
+| Problem | How it hid |
+|---|---|
+| **Orphans fell globally**, dropping bubbles unrelated to the pop; then the first fix inverted it and a bubble shot *onto* scenery could never fall | Looked like broken match logic. Both directions had to be reported from play before the rule was right (§11) |
+| **Drop-timer gauge never drained**, sat full and only flashed red | A CVBasic codegen bug: `MPY` clobbers `r0` with the product's high word, so `#bstep = #droprl` right after a multiply stored **0**. Silent at compile *and* run time; found by measuring the bar's pixel width across a cycle, not by looking at it. Now `CLAUDE.md` §3A |
+| **The drop clock paused** for the burst and the orphan fall — half a second free on every popping shot | §11 already *claimed* it never paused. The doc was aspirational and the code did not do it |
+| **Big drops made bubbles disappear** instead of falling | The 12-sprite cap did not skip the animation, it deleted them — and drop_orphans walks top-down, so the ones that vanished were always the lowest, where the eye is |
+| **"TIME" label over empty space; lives never drawn** | `prevlevels.py` mocks the *design*, so the preview PNGs showed a timer and lives the ROM never had |
+| **Colour legend said "7 white 8 orange"** | There is no orange ball — 7 is grey, 8 is white. A walkthrough would have sent a reader hunting for a bubble that does not exist |
+| **§3's screen diagram was stale** | It described pre-build-3 geometry with the corrections stacked in notes *above* it, and put TIME/lives on rows the ROM does not use |
+
+---
+
 ## 17. Status
+
+**2026-08-16 (build 8) — one hue per ball.** The two-tone palette was causing a *gameplay* fault,
+not just an aesthetic one: red and "orange" shared a cap and differed by one body shade, so four
+touching "reds" would not pop because two of them were a different colour. Every bubble is now a
+single hue shaded by dither (§4), with density as the per-colour knob that separates white from
+grey (2.2× denser). Title screen: SCORE flush left, HI flush right.
+
+Two things were *proved* rather than assumed along the way, and both are worth keeping:
+- **The match flood fill is correct** — 0 mismatches against a reference hex BFS over 4,000 random
+  fields. That permanently rules it out as a suspect; the palette was the liar both times.
+- **`assets/prevcolours.py`** renders all eight bubbles side by side with pixel counts, because the
+  confusable pair is precisely the one a level render rarely shows together.
+
+**Open, newly measured:** §7's pre-made-group problem — 85 pre-existing 3+ groups across the 30
+rounds, round 1 at 90%. Fix identified, not applied.
+
+**2026-08-15 (build 7) — animation, art, title screen.** Committed as `3e8a073`, `4149ec7`.
+
+- **Pops burst and orphans fall** (§9). Sprites make the fall affordable — one call each per frame
+  against 8 VPOKEs for characters. Debris needed a **full-ball** pattern; drawn with the body
+  pattern it looked like bottom halves.
+- **Cyan, magenta and grey are dithered** (§4) — the three that were all using white and competing.
+  Grey is the case that matters: hardware has one grey, so density is the only way to two tones.
+- **Title screen** with fire-to-start, 8-3-8 round select, and last/high score on the top row (§11).
+- **Two duplication bugs, same shape.** The shot sequence used a polynomial whose parity was fixed,
+  so **half of every palette was unreachable in all 30 rounds** (round 1 dealt only two colours);
+  and the palette lived in two places, so the flying bubble and the landed bubble disagreed. Both
+  fixed at the root: a generated table with a build-failing guard, and one source of truth for the
+  palette. `prevlevels.py` imports from `genart.py` for the same reason.
+
+**Budgets: TI fixed area 19,552 B of 24,336 — 4,784 free (80.3%).** Art grew ~2.8 KB this pass, so
+**music no longer fits in the fixed area**; the plan is §13's (levels + music into ONE bank
+together, never separate — a thinly-used bank doubled RALLY-X's cart). ColecoVision RAM 487 of 814.
+
+**Open:** the difficulty ramp (§11b — measured, two candidate fixes, unresolved); whether the
+quarter-density dither band shimmers in motion on a real display; music; the lives/spares HUD.
 
 **2026-08-15 (build 5) — pacing, audio and HUD.** All from play-testing:
 - **Everything that moves is paced by elapsed frames** (`fd = FRAME - #lf`, clamped 4), not loop

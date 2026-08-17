@@ -6,26 +6,26 @@
 	' dithered colour needs its own pixels: on a two-colours-per-line display
 	' a gradient can only come from pixel density, not from more colours.
 bub_pat:
-	' colour 1
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF	' TL
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF	' TR
-	DATA BYTE $FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F	' BL
-	DATA BYTE $FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0	' BR
-	' colour 2
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF	' TL
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF	' TR
-	DATA BYTE $FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F	' BL
-	DATA BYTE $FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0	' BR
-	' colour 3
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF	' TL
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF	' TR
-	DATA BYTE $FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F	' BL
-	DATA BYTE $FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0	' BR
-	' colour 4
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF	' TL
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF	' TR
-	DATA BYTE $FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F	' BL
-	DATA BYTE $FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0	' BR
+	' colour 1  DITHERED
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55	' TR
+	DATA BYTE $AA,$91,$A2,$44,$48,$31,$12,$0F	' BL
+	DATA BYTE $AB,$11,$23,$46,$8A,$14,$28,$F0	' BR
+	' colour 2  DITHERED
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55	' TR
+	DATA BYTE $AA,$91,$A2,$44,$48,$31,$12,$0F	' BL
+	DATA BYTE $AB,$11,$23,$46,$8A,$14,$28,$F0	' BR
+	' colour 3  DITHERED
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55	' TR
+	DATA BYTE $AA,$91,$A2,$44,$48,$31,$12,$0F	' BL
+	DATA BYTE $AB,$11,$23,$46,$8A,$14,$28,$F0	' BR
+	' colour 4  DITHERED
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55	' TR
+	DATA BYTE $AA,$91,$A2,$44,$48,$31,$12,$0F	' BL
+	DATA BYTE $AB,$11,$23,$46,$8A,$14,$28,$F0	' BR
 	' colour 5  DITHERED
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5	' TL
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55	' TR
@@ -37,15 +37,15 @@ bub_pat:
 	DATA BYTE $AA,$91,$A2,$44,$48,$31,$12,$0F	' BL
 	DATA BYTE $AB,$11,$23,$46,$8A,$14,$28,$F0	' BR
 	' colour 7  DITHERED
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5	' TL
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55	' TR
-	DATA BYTE $AA,$91,$A2,$44,$48,$31,$12,$0F	' BL
-	DATA BYTE $AB,$11,$23,$46,$8A,$14,$28,$F0	' BR
-	' colour 8
+	DATA BYTE $0F,$1F,$3F,$44,$48,$91,$A2,$C0	' TL
+	DATA BYTE $F0,$F8,$FC,$46,$8A,$11,$23,$41	' TR
+	DATA BYTE $80,$81,$82,$44,$48,$30,$10,$0F	' BL
+	DATA BYTE $81,$01,$03,$06,$0A,$14,$28,$F0	' BR
+	' colour 8  DITHERED
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF	' TL
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF	' TR
-	DATA BYTE $FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F	' BL
-	DATA BYTE $FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0	' BR
+	DATA BYTE $FF,$FF,$FF,$55,$6A,$35,$1A,$0F	' BL
+	DATA BYTE $FF,$FF,$FF,$56,$AA,$54,$A8,$F0	' BR
 
 	' Pop animation: 3 frames x 4 chars (TL,TR,BL,BR), chars 164-175.
 	' Shared by every colour: the burst flashes white/yellow/grey rather than
@@ -84,26 +84,26 @@ bur_col:	' white flash -> yellow -> grey, one colour per frame
 	' fg*16+bg; bg is always black. The TOP chars switch from lit to base at
 	' pixel row 6; the BOTTOM chars are all base.
 bub_col:
-	' colour 1  base=8  lit=9  litrows=6
-	DATA BYTE $91,$91,$91,$91,$91,$91,$81,$81	' TL
-	DATA BYTE $91,$91,$91,$91,$91,$91,$81,$81	' TR
-	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81	' BL
-	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81	' BR
-	' colour 2  base=12 lit=3  litrows=6
-	DATA BYTE $31,$31,$31,$31,$31,$31,$C1,$C1	' TL
-	DATA BYTE $31,$31,$31,$31,$31,$31,$C1,$C1	' TR
-	DATA BYTE $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1	' BL
-	DATA BYTE $C1,$C1,$C1,$C1,$C1,$C1,$C1,$C1	' BR
-	' colour 3  base=4  lit=5  litrows=6
-	DATA BYTE $51,$51,$51,$51,$51,$51,$41,$41	' TL
-	DATA BYTE $51,$51,$51,$51,$51,$51,$41,$41	' TR
-	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41	' BL
-	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41	' BR
-	' colour 4  base=10 lit=11 litrows=6
-	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$A1,$A1	' TL
-	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$A1,$A1	' TR
-	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1	' BL
-	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1	' BR
+	' colour 1  base=9  lit=9  litrows=5  DITHERED
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' TL
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' TR
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' BL
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' BR
+	' colour 2  base=3  lit=3  litrows=5  DITHERED
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31	' TL
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31	' TR
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31	' BL
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31	' BR
+	' colour 3  base=5  lit=5  litrows=5  DITHERED
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51	' TL
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51	' TR
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51	' BL
+	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51	' BR
+	' colour 4  base=11 lit=11 litrows=5  DITHERED
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' TL
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' TR
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' BL
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' BR
 	' colour 5  base=7  lit=7  litrows=5  DITHERED
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' TL
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' TR
@@ -119,11 +119,11 @@ bub_col:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' TR
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' BL
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' BR
-	' colour 8  base=6  lit=9  litrows=6
-	DATA BYTE $91,$91,$91,$91,$91,$91,$61,$61	' TL
-	DATA BYTE $91,$91,$91,$91,$91,$91,$61,$61	' TR
-	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61	' BL
-	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61	' BR
+	' colour 8  base=15 lit=15 litrows=5  DITHERED
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' TL
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' TR
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' BL
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' BR
 
 	' Flying bubble = TWO overlaid 16x16 sprites so it is pixel-identical to the
 	' same bubble once it sticks and becomes characters (a sprite is one colour).
@@ -136,42 +136,42 @@ bub_col:
 	' (only four sprites show per line). Drawing debris with the body pattern
 	' alone is what made the falling bubbles look like bottom halves.
 spr_bub:
-	' colour 1 cap (rows 0-5)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 1 body (rows 6-15)
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 1 cap (rows 0-4)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 1 body (rows 5-15)
+	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
 	' colour 1 full
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
-	' colour 2 cap (rows 0-5)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 2 body (rows 6-15)
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
+	' colour 2 cap (rows 0-4)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 2 body (rows 5-15)
+	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
 	' colour 2 full
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
-	' colour 3 cap (rows 0-5)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 3 body (rows 6-15)
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
+	' colour 3 cap (rows 0-4)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 3 body (rows 5-15)
+	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
 	' colour 3 full
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
-	' colour 4 cap (rows 0-5)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 4 body (rows 6-15)
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
+	' colour 4 cap (rows 0-4)
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 4 body (rows 5-15)
+	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
 	' colour 4 full
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
 	' colour 5 cap (rows 0-4)
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
@@ -191,27 +191,27 @@ spr_bub:
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
 	' colour 7 cap (rows 0-4)
+	DATA BYTE $0F,$1F,$3F,$44,$48,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F8,$FC,$46,$8A,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' colour 7 body (rows 5-15)
+	DATA BYTE $00,$00,$00,$00,$00,$91,$A2,$C0,$80,$81,$82,$44,$48,$30,$10,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$11,$23,$41,$81,$01,$03,$06,$0A,$14,$28,$F0
+	' colour 7 full
+	DATA BYTE $0F,$1F,$3F,$44,$48,$91,$A2,$C0,$80,$81,$82,$44,$48,$30,$10,$0F
+	DATA BYTE $F0,$F8,$FC,$46,$8A,$11,$23,$41,$81,$01,$03,$06,$0A,$14,$28,$F0
+	' colour 8 cap (rows 0-4)
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 7 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 7 full
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 8 cap (rows 0-5)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 8 body (rows 6-15)
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	' colour 8 body (rows 5-15)
+	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$55,$6A,$35,$1A,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$56,$AA,$54,$A8,$F0
 	' colour 8 full
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$7F,$7F,$3F,$1F,$0F
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$FE,$FE,$FC,$F8,$F0
+	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$55,$6A,$35,$1A,$0F
+	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$56,$AA,$54,$A8,$F0
 bub_base:	' body colour per bubble colour 1..8
-	DATA BYTE $08,$0C,$04,$0A,$07,$0D,$0E,$06
+	DATA BYTE $09,$03,$05,$0B,$07,$0D,$0E,$0F
 bub_lit:	' cap colour per bubble colour 1..8
-	DATA BYTE $09,$03,$05,$0B,$07,$0D,$0E,$09
+	DATA BYTE $09,$03,$05,$0B,$07,$0D,$0E,$0F
 
 spr_dot:	' 4x4 aim-guide dot, centred in the 16x16 cell
 	DATA BYTE $00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00

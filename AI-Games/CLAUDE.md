@@ -148,6 +148,24 @@ cost a debugging session:
   byte. (`* 34.`, `* 68.`, `* 136.` are all fine.) Use bare 16-bit literals, precomputed values,
   an IF-ladder, or repeated doubling (`#x = #x + #x` eight times == `* 256`).
   **Check the generated `.a99`** when a multiply matters: this failure is completely silent.
+- **READING A 16-BIT VAR RIGHT AFTER MULTIPLYING IT RETURNS THE PRODUCT'S HIGH WORD (usually 0).**
+  On the TMS9900 `MPY` writes a **32-bit** product into a register *pair*: the low word (the
+  answer) lands in `r1` and **`r0` is overwritten with the high word**. CVBasic stores `r1`
+  correctly and then keeps believing `r0` still holds the multiplied variable, so the very next
+  statement that reads it compiles to a register move of the *high* word — zero for any product
+  under 65536:
+  ```
+  #droprl = #droprl * 15      li r1,15
+                              mpy r1,r0            ; r0 = HIGH word, r1 = low word
+                              mov r1,@cvb__DROPRL  ; correct
+  #bstep  = #droprl           mov r0,@cvb__BSTEP   ; WRONG -- stores 0
+  ```
+  No compile or run-time error; in Bust-A-Bobble the only symptom was a drop-timer gauge that
+  sat full and never drained. **Fix: put the dependent computation behind its own label**
+  (`GOSUB calc_x`) — a branch target forces the compiler to emit a real load — or otherwise break
+  the register-tracking before re-reading. Applies to *any* read of a just-multiplied 16-bit
+  variable, so it is much easier to hit than the `CLR` truncation above. Verify in the `.a99`:
+  the good form is `mov @cvb__SRC,@cvb__DST`, the bug is a bare `mov r0,@cvb__DST`.
 - **`VPOKE` takes a RAW VRAM address; the name table is at `$1800` (6144). `SCREEN`'s target
   offset is name-table-RELATIVE (0–767).** Mixing them up writes your name-table data into the
   **pattern table**, i.e. it corrupts the character set: the symptom is a field of junk tiling the

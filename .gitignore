@@ -27,11 +27,40 @@ MSPAC.TXT
 **/*-Y
 **/*.OBJ
 
-# CVBasic stuff 
+# CVBasic stuff
 *.asm
 *.a99
+*.a80
 mspac.txt
 *.bin
+
+# Generated walkthrough + report page. Derived entirely from the shipped level data
+# and the solver, and REGENERATED whenever a game rule changes -- a checked-in copy
+# goes stale silently and then confidently describes shots that no longer work.
+# Rebuild: assets/solvelevels.py --report, then assets/walkthroughhtml.py
+**/assets/roundbook.html
+**/assets/WALKTHROUGH.md
+**/assets/walkthrough.json
+
+# --- Generated preview renders (NOT reference art) ---
+# BUST-A-BOBBLE's previews are 100% derived: prevlevels.py/prevcolours.py redraw
+# them from levels.txt plus the same DEFINE CHAR/COLOR tables genart.py emits, and
+# its actual source material is TEXT (assets/arcade-stages.txt). Git cannot delta a
+# PNG, so one palette tweak rewrites all 31 and adds ~412 KB to history forever.
+#
+# DELIBERATELY NOT a blanket *.png rule. Other games' PNGs are REFERENCE ART and
+# must stay tracked -- games/HardHatMack/assets/HHM-*.png and RallyX's
+# Rally-X-Level*.png / ref-*-arcade.png are arcade rips, the ground truth every
+# layout was transcribed against. They are irreplaceable input, not output.
+# NB: `**/` prefix, not `games/...`. This file sits one level ABOVE AI-Games, so a
+# pattern starting `games/` anchors to the wrong directory and matches nothing.
+**/BustABobble/assets/level-*.png
+**/BustABobble/assets/alignment.png
+**/BustABobble/assets/colours.png
+
+# Classic99's own config, rewritten by the emulator every time it exits. Machine-
+# local state (window size, stretch mode, MRU list), not project configuration.
+classic99.ini
 
 # --- IDE (IntelliJ) ---
 .idea/

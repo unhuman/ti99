@@ -7,7 +7,7 @@
 # of arcade-stages.txt for exactly what is and is not from the source.
 #
 # '.' = empty, '1'..'8' = colour. Even rows 8 cells, odd rows 7 and indented.
-# 1 red  2 green  3 blue  4 yellow  5 cyan  6 magenta  7 white  8 orange
+# 1 red  2 green  3 blue  4 yellow  5 cyan  6 magenta  7 grey  8 white
 
 LEVEL 1
 COLOURS 4

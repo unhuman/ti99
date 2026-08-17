@@ -67,16 +67,22 @@
 	DIM hs(8)		' high score
 	DIM ad(6)		' 6-digit BCD addend fed to add_score
 	DIM pres(9)		' pres(k) = 1 if colour k is still on the field
-	' Orphans falling away after a drop, animated as SPRITES (slots 8..19).
+	' Orphans falling away after a drop, animated as SPRITES (slots 8..31).
 	' Sprites cost ONE call each per frame and the VDP erases them for us; the
 	' character equivalent would be 8 VPOKEs each per frame, which is well past
-	' what a frame will carry. Capped at 12 -- a bigger drop still scores in full,
-	' it just does not animate every bubble.
-	DIM ofr(12)		' grid row
-	DIM ofcl(12)		' grid column
-	DIM ofk(12)		' colour
-	DIM ofxx(12)		' pixel x (fixed for the whole fall)
-	DIM ofyy(12)		' pixel y, advanced per frame
+	' what a frame will carry.
+	' CAP RAISED 12 -> 24, which is every sprite slot left after the flying bubble
+	' (0-1), the next bubble (2-3) and the aim dots (4-6). At 12 the overflow did
+	' not merely skip the animation -- those bubbles VANISHED on the spot while
+	' their neighbours fell. And because drop_orphans walks the grid top-down, the
+	' ones that vanished were always the LOWEST, which is exactly where the eye
+	' is: reported as "the gray balls didn't drop, they disappeared" on round 10,
+	' whose greys sit in the bottom row.
+	DIM ofr(24)		' grid row
+	DIM ofcl(24)		' grid column
+	DIM ofk(24)		' colour
+	DIM ofxx(24)		' pixel x (fixed for the whole fall)
+	DIM ofyy(24)		' pixel y, advanced per frame
 
 	'
 	' ---------------------------------------------------------------- setup
@@ -96,6 +102,11 @@
 	DEFINE COLOR 160,2,wall_col
 	DEFINE CHAR 164,12,bur_pat	' 3 pop frames x 4 chars
 	DEFINE COLOR 164,12,bur_col
+	' Drop-timer gauge (9 fill widths) and the spare-life creature.
+	DEFINE CHAR 176,9,bar_pat
+	DEFINE COLOR 176,9,bar_col
+	DEFINE CHAR 185,1,life_pat
+	DEFINE COLOR 185,1,life_col
 	DEFINE COLOR 32,16,txt_col
 	DEFINE COLOR 48,16,txt_col
 	DEFINE COLOR 64,16,txt_col
@@ -202,6 +213,8 @@ game_loop:
 		warnon = 0
 	END IF
 
+	GOSUB tick_bar
+
 	' Shake telegraph. Render-only: shkb feeds draw_row and NOTHING else, so
 	' collision always uses the rest position and a shot fired just before a
 	' shake lands exactly where it was aimed.
@@ -249,6 +262,94 @@ game_loop:
 	GOTO game_loop
 
 	'
+	' --------------------------------------------------------- drop-timer bar
+	'
+	' The drop clock was completely invisible: the HUD printed a "TIME" label
+	' with nothing under it, so the only warning was the alarm 1.3 s out. The
+	' gauge is 8 characters wide and drains RIGHT TO LEFT in 64 steps -- each
+	' character carries nine fill widths (0-8 px), so it creeps rather than
+	' jumping in eighths.
+	'
+	' Redrawn only when the pixel count actually changes: at most 64 times per
+	' drop cycle instead of 8 VPOKEs every frame.
+	'
+tick_bar:
+	#tbx = #dropt
+	#tbx = #tbx / #bstep
+	tbpx = #tbx
+	IF tbpx > 64 THEN tbpx = 64
+	' Fill turns RED for the last QUARTER of the gauge, not for the last second.
+	' Keying it to the alarm instead (`warnon`) put the colour change 1.3 s out,
+	' by which point only ~4 of the 64 pixels are still lit -- there was almost no
+	' bar left to be red, so the cue was invisible. A quarter is 5 s at round 1
+	' and 3 s at round 30, and it comfortably contains both the alarm and the
+	' board shake. DEFINE COLOR is re-issued only on the transition.
+	tbwant = 0
+	IF tbpx < 17 THEN tbwant = 1
+	IF tbwant <> barw THEN
+		barw = tbwant
+		IF barw = 1 THEN
+			DEFINE COLOR 176,9,bar_colw
+		ELSE
+			DEFINE COLOR 176,9,bar_col
+		END IF
+	END IF
+	IF tbpx <> barlast THEN
+		barlast = tbpx
+		GOSUB draw_bar
+	END IF
+	RETURN
+
+	' Row 16, columns 22-29 -- directly under the "TIME" label on column 22.
+	' 534 = 16*32 + 22 is written as a BARE LITERAL: a CONST above 255 silently
+	' compiles to zero on this toolchain (see the note at the top of the file).
+draw_bar:
+	tbf = barlast / 8		' whole cells filled
+	tbr = barlast - tbf * 8		' leftover pixels in the next cell
+	#tba = 534
+	#tba = #tba + 6144
+	FOR tbi = 0 TO 7
+		IF tbi < tbf THEN
+			tbv = 184
+		ELSEIF tbi = tbf THEN
+			tbv = 176 + tbr
+		ELSE
+			tbv = 176
+		END IF
+		VPOKE #tba,tbv
+		#tba = #tba + 1
+	NEXT tbi
+	RETURN
+
+	'
+	' SPARE LIVES -- the little green creature, one per life IN RESERVE.
+	' Repo convention (CLAUDE.md 7A): the indicator shows SPARES, excluding the
+	' life being played, so a fresh 3-life game shows TWO and the last life shows
+	' none. `lives` is unsigned and do_dead decrements it BEFORE this redraws, so
+	' the guard matters: a bare `lives - 1` at zero wraps to 255 and would light
+	' every slot exactly when the player has none.
+	'
+prt_lives:
+	plv = 0
+	IF lives > 0 THEN plv = lives - 1
+	' Row 18, column 22 -- two rows under the gauge. DESIGN.md originally put this
+	' on row 23; that is the last row on the screen, which sits in TV overscan on
+	' real hardware and was clipped entirely in Classic99, so the one HUD element
+	' that tells you how much game is left was the one you could not see.
+	#pla = 598			' 18*32 + 22, bare literal for the same reason
+	#pla = #pla + 6144
+	FOR pli = 0 TO 4
+		IF pli < plv THEN
+			plc = 185
+		ELSE
+			plc = BLANK
+		END IF
+		VPOKE #pla,plc
+		#pla = #pla + 2		' a blank column between creatures
+	NEXT pli
+	RETURN
+
+	'
 	' ------------------------------------------------------------------ aim
 	'
 	' aim runs 0..62 with 31 = straight up. am = distance from centre indexes
@@ -292,6 +393,34 @@ do_fire:
 	' notes get two channels, not two calls.
 	' Called after EVERY WAIT in the program, including inside the animations.
 	'
+	'
+	' The tick used INSIDE the animations (burst, orphan fall). Those loops run
+	' their own WAITs with the main loop stopped, so the drop clock used to stand
+	' still for their whole duration -- 6 frames for a burst plus 27 for a fall,
+	' better than half a second of free time on every popping shot, which is most
+	' of them. The clock is the game's only pressure, so pausing it whenever the
+	' player did something good was exactly backwards.
+	'
+	' The DROP ITSELF is deliberately not fired here, only the countdown: a drop
+	' mid-animation would move the field out from under a burst that is painted at
+	' fixed cells. #dropt is allowed to reach 0 and sit there; the main loop's
+	' `IF #dropt = 0 THEN GOSUB do_drop` fires on the next pass, so the drop is
+	' deferred by at most the rest of the animation, never lost.
+	'
+	' #lf is restamped every frame so the main loop does not then ALSO charge its
+	' clamped catch-up (#fd up to 4) for time already counted here.
+	'
+anim_tick:
+	GOSUB sfx_tick
+	IF #dropt > 1 THEN
+		#dropt = #dropt - 1
+	ELSE
+		#dropt = 0
+	END IF
+	#lf = FRAME
+	GOSUB tick_bar
+	RETURN
+
 sfx_tick:
 	IF sf0 > 0 THEN
 		sf0 = sf0 - 1
@@ -558,8 +687,8 @@ do_stick:
 	' ------------------------------------------------- match, orphans, score
 	'
 after_stick:
-	GOSUB clr_marks
-	grid(strr * 8 + stcc) = curk OR 64
+	GOSUB clr_fill			' clr_marks would wipe the scenery flags (bit 5)
+	grid(strr * 8 + stcc) = grid(strr * 8 + stcc) OR 64
 	pgcol = curk
 	GOSUB propag
 	GOSUB count_marks
@@ -599,6 +728,56 @@ clr_marks:
 	NEXT cmi
 	RETURN
 
+	' Clear the FILL mark (bit 6) but keep the anchor flag (bit 5) and colour.
+clr_fill:
+	FOR cmi = 0 TO 95
+		grid(cmi) = grid(cmi) AND 47
+	NEXT cmi
+	RETURN
+
+	'
+	' Bit 5 = STATIC SCENERY: a bubble the LEVEL placed that was not hanging from
+	' the ceiling to begin with. Set once at load, never on a bubble the player
+	' shoots. Scenery acts as an anchor, exactly like the ceiling does.
+	'
+	' Why this exists. Puzzle Bobble drops anything that loses its connection to
+	' the ceiling, and a global "reachable from row 0" check is the obvious way to
+	' do it -- but four of the transcribed arcade layouts contain pieces that were
+	' never attached in the first place (rounds 9, 10, 15, 20; round 10 is 90%
+	' detached, because the FAQ's ASCII diagrams do not preserve hex adjacency at
+	' the row ends -- section 7a). A global check collapsed all of that on the
+	' first pop anywhere, whether or not it touched the popped group. It reads as
+	' the match logic being broken, and was reported as exactly that.
+	'
+	' The first attempt keyed off "was it anchored BEFORE this shot", which fixed
+	' the collapse but broke the opposite case: a bubble shot ONTO the scenery is
+	' never ceiling-anchored, so it could never fall -- clear everything under it
+	' and it just hung there. Anchoring on the scenery ITSELF fixes both, because
+	' a shot bubble is not scenery and is not an anchor:
+	'
+	'   ceiling + surviving scenery = anchors;  anything that cannot reach one falls
+	'
+	' Scenery that gets popped stops being an anchor with it, so whatever was
+	' resting on it then falls. On a well-formed field there is no scenery at all
+	' and this is precisely the stock rule, so 26 of the 30 rounds are untouched.
+	'
+mark_scenery:
+	FOR sai = 0 TO 95
+		grid(sai) = grid(sai) AND 15
+	NEXT sai
+	FOR sai = 0 TO 7
+		IF (grid(sai) AND 15) <> 0 THEN grid(sai) = grid(sai) OR 64
+	NEXT sai
+	pgcol = 0
+	GOSUB propag
+	FOR sai = 0 TO 95
+		IF (grid(sai) AND 15) <> 0 THEN
+			IF (grid(sai) AND 64) = 0 THEN grid(sai) = grid(sai) OR 32
+		END IF
+		grid(sai) = grid(sai) AND 47
+	NEXT sai
+	RETURN
+
 count_marks:
 	mkn = 0
 	FOR cmi = 0 TO 95
@@ -614,9 +793,9 @@ pop_marks:
 	FOR pbf = 0 TO 2
 		GOSUB draw_burst
 		WAIT
-		GOSUB sfx_tick
+		GOSUB anim_tick
 		WAIT
-		GOSUB sfx_tick
+		GOSUB anim_tick
 	NEXT pbf
 	FOR cmi = 0 TO 95
 		IF (grid(cmi) AND 64) <> 0 THEN grid(cmi) = 0
@@ -741,9 +920,15 @@ nbmark:
 	' (131072 units = 1,310,720 points, the documented arcade maximum).
 	'
 drop_orphans:
-	GOSUB clr_marks
+	GOSUB clr_fill			' keep bit 5 -- the scenery flags are the anchors
 	FOR doc = 0 TO 7
 		IF (grid(doc) AND 15) <> 0 THEN grid(doc) = grid(doc) OR 64
+	NEXT doc
+	' Seed from the level's own static scenery as well as from the ceiling. A
+	' scenery bubble that has been popped is gone from the grid and so stops
+	' anchoring, which is what makes anything resting on it fall.
+	FOR doc = 0 TO 95
+		IF (grid(doc) AND 32) <> 0 THEN grid(doc) = grid(doc) OR 64
 	NEXT doc
 	pgcol = 0
 	GOSUB propag
@@ -756,8 +941,11 @@ drop_orphans:
 		FOR docc = 0 TO 7
 			doi = dob8 + docc
 		IF (grid(doi) AND 15) <> 0 THEN
+			' Unreachable from the ceiling OR from surviving scenery: it falls.
+			' No bit-5 test here -- scenery seeds the fill above, so it is already
+			' marked and cannot reach this branch while it still exists.
 			IF (grid(doi) AND 64) = 0 THEN
-				IF ofn < 12 THEN
+				IF ofn < 24 THEN
 					ofr(ofn) = dor
 					ofcl(ofn) = docc
 					ofk(ofn) = grid(doi) AND 15
@@ -816,9 +1004,9 @@ fall_orphans:
 			END IF
 		NEXT ofi
 		WAIT
-		GOSUB sfx_tick
+		GOSUB anim_tick
 	NEXT off
-	FOR ofi = 0 TO 11
+	FOR ofi = 0 TO 23
 		SPRITE 8 + ofi,209,0,0,0
 	NEXT ofi
 	ofn = 0
@@ -909,6 +1097,10 @@ load_level:
 	#droprl = pb_meta(#lvm + 1)
 	#droprl = #droprl * 15		' quarter-seconds -> frames (60 Hz both targets)
 	#dropt = #droprl
+	GOSUB mark_scenery		' flag the level's own detached pieces, once
+	GOSUB calc_bstep
+	barlast = 255			' force the first tick_bar to draw
+	barw = 0
 	#seqb = lvl - 1
 	#seqb = #seqb * 16
 	si = 0
@@ -916,6 +1108,36 @@ load_level:
 	shkb = 1
 	shkbo = 1
 	shking = 0		' a round can end mid-shake; do not inherit the phase
+	RETURN
+
+	'
+	' Frames per pixel of the 64-step gauge. Computed once per round.
+	'
+	' !! THIS MUST STAY IN ITS OWN ROUTINE. Written inline right after
+	' `#droprl = #droprl * 15` it silently produced ZERO, because on the TMS9900
+	' `MPY` returns a 32-bit product in r0:r1 -- the LOW word (the answer) goes to
+	' r1 and r0 is overwritten with the HIGH word. CVBasic stores r1 correctly and
+	' then goes on believing r0 still holds #droprl, so the very next
+	' `#bstep = #droprl` compiled to `mov r0,@cvb__BSTEP` and stored the high word,
+	' which is 0 for any product under 65536:
+	'
+	'     li r1,15
+	'     mpy r1,r0             ; r0 = high word, r1 = low word
+	'     mov r1,@cvb__DROPRL   ; correct
+	'     mov r0,@cvb__BSTEP    ; WRONG -- stores 0
+	'
+	' `IF #bstep < 1 THEN #bstep = 1` then clamped it to 1, so the gauge read
+	' `px = #dropt` clamped at 64 and sat FULL until the last second instead of
+	' draining. No error at compile or run time; the only symptom was a bar that
+	' never moved. A label is a branch target, so the compiler cannot assume
+	' anything about r0 here and emits a real load. The same trap applies to ANY
+	' read of a 16-bit variable immediately after multiplying it -- verify the
+	' generated .a99 whenever a multiply is involved (CLAUDE.md section 3A).
+	'
+calc_bstep:
+	#bstep = #droprl
+	#bstep = #bstep / 64
+	IF #bstep < 1 THEN #bstep = 1
 	RETURN
 
 	' Also tracks maxr, the lowest occupied grid row -- draw_field uses it to
@@ -1075,13 +1297,36 @@ do_clear:
 	reveal = 1		' screen is solid brick now -- lift it to show the level
 	GOTO new_round
 
+	'
+	' A bubble crossed the death line. The 1.5 s pause here was a tone over a
+	' frozen board with nothing to say WHY the round ended, so THE DEATH LINE
+	' flashes for that whole 1.5 s (90 frames at 60 Hz, toggling every 8 -- just
+	' under 4 flashes a second). The line is the rule that was broken, so the line
+	' is what the eye should be pulled to.
+	'
+	' It is character 161's colour that alternates, nothing else. Flashing the
+	' BUBBLES was tried first and was wrong twice over: it draws attention to the
+	' wrong thing, and recolouring all 32 bubble characters white leaves the ones
+	' already white or grey unchanged, so only *some* of the balls appear to blink.
+	' One character, one DEFINE COLOR of 8 bytes per flip.
+	'
 do_dead:
 	SOUND 0,800,13
 	sf0 = 40
+	ddf = 0
 	FOR ddi = 0 TO 90
+		IF (ddi AND 7) = 0 THEN
+			ddf = 1 - ddf
+			IF ddf = 1 THEN
+				DEFINE COLOR 161,1,dash_colf
+			ELSE
+				DEFINE COLOR 161,1,dash_col
+			END IF
+		END IF
 		WAIT
 		GOSUB sfx_tick
 	NEXT ddi
+	DEFINE COLOR 161,1,dash_col	' always leave the line its normal colour
 	IF lives > 0 THEN lives = lives - 1
 	IF lives = 0 THEN
 		mrow = 11
@@ -1315,6 +1560,7 @@ prt_hud:
 	psv = lvl - psh * 10
 	psv = 48 + psv
 	VPOKE #psa,psv
+	GOSUB prt_lives
 	RETURN
 
 	'
@@ -1391,11 +1637,13 @@ title_screen:
 	GOSUB title_bubbles
 	' Last score and high score across the top row: "SCORE" then the 9 digits,
 	' "HI" then its 9. Row 0 is cols 0-31, so SCORE occupies 0-14 and HI 17-31.
+	' SCORE is flush LEFT (label col 0, digits 6-14); HI is flush RIGHT (digits
+	' 23-31, label just before it) so the two blocks bracket the row evenly.
 	PRINT AT 0,"SCORE"
-	PRINT AT 17,"HI"
+	PRINT AT 20,"HI"
 	tsp = 6
 	GOSUB title_num_sc
-	tsp = 20
+	tsp = 23
 	GOSUB title_num_hi
 	PRINT AT 265,"BUST-A-BOBBLE"
 	PRINT AT 356,"2026 UNHUMAN AND CLAUDE"
@@ -1556,9 +1804,68 @@ wall_pat:
 	DATA BYTE $00,$EE,$EE,$EE,$00,$BB,$BB,$BB
 	DATA BYTE $00,$00,$00,$3C,$3C,$00,$00,$00
 	' Grey brick face over black mortar; dark red dash on black.
+	' dash_col is a label INSIDE this table, not a copy: `DEFINE COLOR 160,2,wall_col`
+	' still reads all 16 bytes straight through, while `DEFINE COLOR 161,1,dash_col`
+	' addresses just the death-line dash so it can be flashed on its own.
 wall_col:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+dash_col:
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
+	' Death-line flash: white on black, swapped in and out by do_dead.
+dash_colf:
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+
+	' 176-184 = the drop-timer gauge: the same cell at nine fill widths, 0 to 8
+	' pixels from the LEFT. Eight of these side by side give a 64-step bar.
+	' The unfilled pixels are left CLEAR on purpose -- they show the character's
+	' BACKGROUND colour, which is the grey track, so fill and track come out of
+	' one character instead of needing two.
+bar_pat:
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00	' 0 px -- empty track
+	DATA BYTE $00,$80,$80,$80,$80,$80,$80,$00	' 1
+	DATA BYTE $00,$C0,$C0,$C0,$C0,$C0,$C0,$00	' 2
+	DATA BYTE $00,$E0,$E0,$E0,$E0,$E0,$E0,$00	' 3
+	DATA BYTE $00,$F0,$F0,$F0,$F0,$F0,$F0,$00	' 4
+	DATA BYTE $00,$F8,$F8,$F8,$F8,$F8,$F8,$00	' 5
+	DATA BYTE $00,$FC,$FC,$FC,$FC,$FC,$FC,$00	' 6
+	DATA BYTE $00,$FE,$FE,$FE,$FE,$FE,$FE,$00	' 7
+	DATA BYTE $00,$FF,$FF,$FF,$FF,$FF,$FF,$00	' 8 -- full
+
+	' Per-scan-line colour is what gives the gauge a defined top and bottom:
+	' lines 0 and 7 are black-on-black, so the bar reads as 6 px tall inside an
+	' 8 px cell. Lines 1-6 are green on GREY -- lit pixels are the fill, unlit
+	' are the track. Nine characters x 8 lines.
+bar_col:
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
+	' Same nine characters in RED, swapped in for the last second of the cycle.
+bar_colw:
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
+
+	' 185 = the spare-life creature. A bubble would have been wrong here: the
+	' field is made of bubbles, so a bubble in the HUD reads as ammunition, not
+	' as a life. Eyes are UNLIT pixels (the black background showing through) --
+	' a character is one colour per scan line, so a second colour was never an
+	' option and holes are how you draw a face at this size.
+life_pat:
+	DATA BYTE $3C,$7E,$DB,$FF,$FF,$7E,$66,$E7
+life_col:
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31
 	' DEFINE COLOR takes EIGHT bytes per character (one per scan line), so
 	' `DEFINE COLOR 32,16,txt_col` reads 16 x 8 = 128 bytes. Supplying only 16
 	' made it read 112 bytes of whatever followed in ROM as colour data --

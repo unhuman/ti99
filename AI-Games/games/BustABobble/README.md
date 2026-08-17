@@ -16,25 +16,62 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 
 ## Status
 
-**Playable on TI-99/4A — round 1** (2026-08-15). Aim, fire, wall bounces, sticking, match-3 pops,
-orphan drops, scoring, the drop timer, the board shake and the round-clear slide all work. Both
-targets build from one source. TI fixed area **13,916 B of 24,336** (10,420 free, checked by
-`assets/romcheck.py` on every build); ColecoVision RAM **354 B of 814**.
+**Playable on TI-99/4A, all 30 rounds** (2026-08-16). Title screen with fire-to-start and an
+`8 3 8` round selector; aim, fire, wall bounces, sticking, match-3 pops with a burst animation,
+orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
+round-clear close/reveal. Both targets build from one source.
 
-Only round 1 is authored, so rounds 2+ are empty placeholders and self-clear. Not yet built: title
-screen, `8 3 8` setup, music, danger state, lives HUD, and the pop/drop sparkle.
+TI fixed area **20,846 B of 24,336 — 3,490 free** (checked by `assets/romcheck.py` on every
+build); ColecoVision RAM **566 B of 814**.
 
-**Design + level 1 + asset pipeline** (2026-08-15).
+**Orphans fall relative to the shot**, not by a global ceiling check: a bubble falls only if it
+*was* hanging from the ceiling and is not any more. Identical to the standard rule on a well-formed
+field — it only matters on the four rounds whose transcribed layouts ship detached pieces
+(`DESIGN.md` §11), where a global check collapsed most of the board on the first pop anywhere.
 
-`assets/levels.txt` holds the authoring format with round 1 defined; `genlevels.py` packs all 30
-rounds into `src/levels.bas` (1,860 bytes) and `prevlevels.py` renders them as full screen mocks.
-The character-alignment invariant the whole design rests on is **checked, not just claimed** —
-rendered at 4 ceiling offsets × 3 shake phases with the character lattice overlaid, and verified
-numerically (0 violations). See `assets/level-01.png` and `assets/alignment.png`.
+The HUD now carries a **drop-timer gauge** (8 chars, 64 steps, red for the last quarter) and
+**spare lives as little green creatures** — see `DESIGN.md` §11. The arcade has neither: it drops
+the ceiling on a *shot count* and shows no gauge at all, so both are deliberate additions that pay
+for this game's timer-based drop being otherwise invisible.
 
-Open: whether the 30 layouts are transcribed from arcade reference screenshots at the cell grid or
-authored fresh (`DESIGN.md` §7), and which of two circulating readings of the drop-scoring rule is
-correct (`DESIGN.md` §11a — one line switches it). Neither blocks starting; layouts are data.
+Not yet built: music, the danger state, and the BUB mascot. ⚠️ Art growth means **music no
+longer fits in the fixed area** — `DESIGN.md` §13 has the plan (levels + music into one bank
+together, never separate).
+
+Two open items, both measured and both pure data changes:
+- **Difficulty does not ramp** (`DESIGN.md` §11b). Round 1 gives 240 s of doing nothing; the mean
+  across 30 rounds is 108 s. Worse, difficulty is dominated by each level's *depth* rather than the
+  timer, so the curve sawtooths — round 26 is more forgiving than round 9. The solver sharpens
+  this: played out for real, **round 30 is the only round the drop clock ever constrains**.
+- **Too many pre-made groups** (`DESIGN.md` §7). 85 pre-existing 3+ clusters across the 30 rounds,
+  round 1 at 90% of its bubbles. They look poppable and aren't, because matches are only checked
+  when a bubble lands. Fix identified.
+
+**All 30 rounds are proven winnable** (`assets/solvelevels.py`, `DESIGN.md` §7a). Because the shot
+sequence is fixed, a round *can* be impossible, and nothing else in the build would notice — so a
+solver re-implements the game from the shipped `src/levels.bas` and `src/art.bas` (real fixed-point
+flight, real pixel collision, real snap tie-breaks, real substitution rule, real drop clock) and
+searches each round for a clearing line. It finds one for all 30; 28 clear before the ceiling drops
+at all, and no winning line relies on the ceiling-overwrite quirk. Charging the player a punitive
+eight seconds of dithering per shot still leaves 29 of 30 — so the verdict does not rest on the
+timing model. `check_source_drift()` re-reads `BUSTABOB.bas` each run so the checker cannot go stale
+against a tuned constant, and its predictions were **checked against Classic99 running the built
+cartridge** — including an 80° shot that zigzags off both walls, which lands one cell left of a
+straight shot exactly as simulated.
+
+Because the solver has the lines, it can also hand them over. `solvelevels.py --report` writes
+`assets/WALKTHROUGH.md` — every round's opening board, its fixed shot sequence, and a shot-by-shot
+table giving the ball, the **aim as a step count off vertical** (with wall banks called out), where
+it lands, and what it pops or drops; `assets/walkthroughhtml.py` renders the same data as a
+shareable page with the boards in the game's real colours. Both are **generated on demand and not
+checked in**: they are derived from the level data and the game's rules, so a committed copy goes
+stale the moment a rule changes and then confidently describes shots that no longer work.
+
+**Verified rather than assumed:** the character-alignment invariant the whole design rests on is
+rendered at 4 ceiling offsets × 3 shake phases with the lattice overlaid and checked numerically
+(0 violations); and the match flood fill is compared against a reference hex BFS over 4,000 random
+fields (0 mismatches). The latter earned its keep — two separate "matches aren't popping" reports
+turned out to be the *palette*, not the logic.
 
 ## Controls
 
@@ -51,7 +88,8 @@ right-and-back just before the drop. Every shake phase is a full field redraw, s
 scales with its length while audio costs the loop nothing — the warning got longer *and* cheaper.
 
 **The game stays playable throughout**: the flying bubble is a sprite and moves independently of
-the field redraw, so aim and fire stay live and the clock never pauses. The shake is render-only,
+the field redraw, so aim and fire stay live. The clock never pauses — including through the burst
+and the orphan fall, which used to stop it dead for half a second on every popping shot. The shake is render-only,
 so a shot fired just before one still lands exactly where it was aimed. Everything that moves —
 and every timer — is paced by **elapsed frames**, not loop passes, so a pass that overruns its
 frame doesn't slow the game down.
@@ -66,7 +104,7 @@ body: no shifted pattern variants, no cell ever holding two different bubbles, n
 rebuild.
 
 Which means the three motions in the game are all the *same* operation with a different
-destination offset on a `SCREEN` blit sourced from a 36-byte RAM buffer:
+destination offset on a `SCREEN` blit sourced from a 40-byte RAM buffer:
 
 | Motion | What changes |
 |---|---|
@@ -87,8 +125,17 @@ magnitudes stored positive and direction as a flag, because CVBasic compares `#v
 and no modulo anywhere (CVBasic compiles `%` to a real `DIV`, so row parity is `AND 1` and cell
 index is `>> 4`). Total RAM ≈ 182 bytes, which fits ColecoVision's ~781 with room to spare.
 
-The in-flight bubble is **two overlaid sprites** — lit cap and base body — so it is pixel-identical
-to the same bubble once it sticks and becomes characters.
+The in-flight bubble is **two overlaid sprites** — cap and body — so it is pixel-identical to the
+same bubble once it sticks and becomes characters. Falling debris uses a third, full-ball pattern:
+drawn with the body pattern alone it looked like bottom halves.
+
+**Every bubble is one hue, shaded by dithering** — solid at the top, then checks against black that
+thin out downward, with the outline always solid. That is not a style choice, it is a bug fix. Two-
+tone balls are identified by a *pair* of colours and this palette has no eight well-separated pairs:
+red and "orange" shared a cap and differed by one body shade, so four touching "reds" wouldn't pop
+because two were a different colour. One hue per ball removes the confusion by construction.
+Density is per colour and is what separates close colours — white runs 2.2× denser than grey, which
+their hues alone could never manage.
 
 **Levels are puzzles, not slot machines.** Each round carries a fixed 32-entry shot sequence
 alongside its layout, so a round is a solvable, learnable, comparable problem. A colour no longer
