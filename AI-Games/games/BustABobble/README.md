@@ -43,11 +43,12 @@ The HUD now carries a **drop-timer gauge** (8 chars, 64 steps, red for the last 
 the ceiling on a *shot count* and shows no gauge at all, so both are deliberate additions that pay
 for this game's timer-based drop being otherwise invisible.
 
-**In-game music**: an original 16-bar tune in C major, 150 BPM, looping every 25.6 s, written as
+**In-game music**: an original 12-bar tune in C major, 150 BPM, looping every 19.2 s, written as
 readable bars in `assets/genmusic.py` and generated into `src/music.bas`. Melody on channel 2, bass
 on channel 1 — the effects all live on 0 and 1, so the melody sits on the one channel nothing else
 touches and is never chopped, while the bass ducks under an alarm or a pop and resumes at its next
-note.
+note, at a volume well under them so the pop still carries. **Press 1 on the title to toggle music**
+(remembered across games), as RALLY-X does.
 
 Clearing a round pays a **descending-wall bonus**: 100 for the first row the wall closes over,
 doubling per row, stopping at the death line — 102,300 from a fresh ceiling, and *less* if the

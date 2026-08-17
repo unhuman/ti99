@@ -51,10 +51,14 @@ def divider(name):
 
 
 # --- the tune -------------------------------------------------------------------
-# 16 bars, 4/4. Chords cycle C - Am - F - G, the cheeriest progression there is,
-# four times through. Bars 1-4 state an arpeggio hook, 5-8 repeat it and run back
-# down, 9-12 answer with a stepwise melody so the ear gets a rest from arpeggios,
-# 13-16 return to the hook and land on C.
+# 12 bars, 4/4. Chords cycle C - Am - F - G three times. Bars 1-4 state an
+# arpeggio hook, 5-8 repeat it and run back down, 9-12 answer with a stepwise
+# melody so the ear gets a rest from arpeggios, then it loops -- bar 12 ends on D5
+# and bar 1 opens on C5, which resolves.
+#
+# It was 16 bars; the last four repeated 1-4 bar their final cadence, and their 128
+# bytes bought the on-screen music toggle. Repetition was the cheapest thing here
+# to give up.
 MELODY = [
     "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 1
     "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 2
@@ -68,10 +72,6 @@ MELODY = [
     "A5 -  -  -  G5 -  E5 -  C5 -  -  -  D5 -  E5 - ",   # 10
     "F5 -  -  -  E5 -  D5 -  C5 -  -  -  A4 -  C5 - ",   # 11
     "G5 -  -  -  F5 -  E5 -  D5 -  -  -  -  -  -  - ",   # 12
-    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 13
-    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 14
-    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 15
-    "G4 -  B4 -  D5 -  F5 -  E5 -  D5 -  C5 -  -  - ",   # 16
 ]
 
 # Bouncing root-fifth eighths under each chord. Everything sits in octave 3 or
@@ -87,7 +87,7 @@ BASSLINE = {
     "F":  "F3 -  C3 -  F3 -  C3 -  F3 -  C3 -  F3 -  C3 - ",
     "G":  "G3 -  D3 -  G3 -  D3 -  G3 -  D3 -  G3 -  D3 - ",
 }
-CHORDS = ["C", "Am", "F", "G"] * 4
+CHORDS = ["C", "Am", "F", "G"] * 3
 BASS = [BASSLINE[c] for c in CHORDS]
 
 MUSTICK = 6                  # frames per sixteenth -> 900/6 = 150 BPM
@@ -163,6 +163,33 @@ def main():
             t = index[bas[i]] if bas[i] else 0
             w("\tDATA BYTE %d,%d" % (m, t))
     w("")
+
+    # CHECK THE PLAYER'S LOOP-BACK LITERAL MATCHES THIS TUNE.
+    #
+    # The length has to be a bare literal in BUSTABOB.bas, which means it can drift
+    # from the tune -- so it is verified here instead of trusted. Two attempts to
+    # make it a CONST both failed as the SAME silent symptom, the song replaying its
+    # first note for ever: above 255 a CONST compiles to zero, and a CONST emitted
+    # into this file is a FORWARD REFERENCE (music.bas is INCLUDEd last), which
+    # CVBasic accepts as an undefined variable holding zero. A literal plus this
+    # check is the only arrangement that fails loudly.
+    # A MISSING SOURCE IS A FAILURE, NOT A SKIP. `if os.path.exists(...)` here first,
+    # and the check quietly passed when the path resolved wrong -- which is the very
+    # thing it exists to prevent. A guard that can silently not run is not a guard.
+    want = "IF #mup >= %d THEN #mup = 0" % steps
+    bas = os.path.join(HERE, "..", "src", "BUSTABOB.bas")
+    if not os.path.exists(bas):
+        sys.stderr.write("error: cannot find %s to verify the loop-back literal\n"
+                         % os.path.normpath(bas))
+        return 1
+    if want not in open(bas, encoding="utf-8").read():
+        sys.stderr.write(
+            "error: the tune is %d steps but src/BUSTABOB.bas does not loop back\n"
+            "       at %d. mus_step needs exactly:\n"
+            "           %s\n"
+            "       A mismatch plays part of the tune, or reads past the table\n"
+            "       into whatever follows it.\n" % (steps, steps, want))
+        return 1
 
     outdir = os.path.dirname(os.path.abspath(OUT))
     if not os.path.isdir(outdir):

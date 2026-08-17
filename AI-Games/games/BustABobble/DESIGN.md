@@ -908,8 +908,9 @@ in Classic99 — the one element telling you how much game is left was the one y
 
 ### Music, and why it sits on the channels it does
 
-An **original** 16-bar tune — Taito's is theirs — in C major over C–Am–F–G, 150 BPM on a
-sixteenth grid, looping every 25.6 s. `assets/genmusic.py` holds it as readable bars, one line per
+An **original** 12-bar tune — Taito's is theirs — in C major over C–Am–F–G, 150 BPM on a
+sixteenth grid, looping every 19.2 s. It was 16 bars; the last four repeated 1-4 bar their cadence, and their
+128 bytes bought the on-screen music toggle -- **press 1 on the title** to switch it off. `assets/genmusic.py` holds it as readable bars, one line per
 bar and sixteen tokens per line, and emits `src/music.bas`; the thing a person edits is a tune and
 the thing the ROM gets is a byte table, and neither is maintained by hand.
 
@@ -933,10 +934,15 @@ frames), and **spend the whole delta** rather than resetting the counter (otherw
 time exactly when the loop is busy — here, during a burst or an orphan fall, so the tune would drag
 whenever the player did something good).
 
-> ⚠️ `CONST MUSLEN = 256` made the tune play its first note forever. A `CONST` above 255 compiles to
-> **zero** on this toolchain, so the loop-back test `IF #mup >= MUSLEN` read `>= 0` — always true
-> unsigned — and the song reset to step 0 every tick. It sounded like one long beep with nothing
-> visibly wrong. Same hazard that once launched the ball from 0,0; the length is a bare literal now.
+> ⚠️ **The song length broke TWICE as the same symptom** — the tune replaying its first note for
+> ever, which sounds like one long beep with nothing visibly wrong. First as `CONST MUSLEN = 256`: a
+> `CONST` above 255 compiles to **zero** here. Then as `CONST MUSLEN = 192` emitted into
+> `music.bas`, which is `INCLUDE`d at the *end* of the file — CVBasic accepted the forward reference
+> as an **undefined 8-bit variable holding zero** (`movb @cvb_MUSLEN,r0` in the listing). Either way
+> `#mup >= MUSLEN` became `>= 0`, always true unsigned. It is a **bare literal** now, and
+> `genmusic.py` reads `BUSTABOB.bas` and fails with the exact line if the two disagree. A generated
+> constant cannot be forward-referenced, and a guard that can silently skip is not a guard — the
+> first version of that check was wrapped in `if os.path.exists()` and quietly passed.
 
 ### The bubble sequence is pre-ordained per level, not random
 

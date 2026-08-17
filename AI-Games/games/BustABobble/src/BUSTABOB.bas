@@ -42,9 +42,19 @@
 	' at its next note -- a gap of at most an eighth, which reads as the effect
 	' ducking the music rather than as the music breaking.
 	CONST MUSTICK  = 6	' frames per sixteenth -> 900/6 = 150 BPM
-	CONST MUSVOL   = 10	' melody, under the effects at 12-13
-	CONST MUSBAS   = 8	' bass, quieter still
-	' !! NO CONST FOR THE SONG LENGTH -- 256 IS ABOVE 255 AND WOULD COMPILE TO ZERO,
+	' Music sits WELL under the effects, which run 8-13. At 10/8 it was level with
+	CONST MUSVOL   = 7	' them and drowned the pop, which is the sound that
+	CONST MUSBAS   = 5	' actually carries information.
+	' !! THE SONG LENGTH IS A BARE LITERAL, AND IT HAS TO BE. It has now broken TWICE
+	' as the identical symptom -- the tune playing its first note for ever, sounding
+	' like one long beep with nothing visibly wrong:
+	'   1. `CONST MUSLEN = 256`. A CONST above 255 compiles to ZERO here.
+	'   2. `CONST MUSLEN = 192` emitted into music.bas, which is INCLUDEd at the END
+	'      of this file. CVBasic accepted the forward reference as an UNDEFINED
+	'      8-BIT VARIABLE holding zero -- `movb @cvb_MUSLEN,r0` in the listing.
+	' Either way `#mup >= MUSLEN` became `>= 0`, always true unsigned, so the song
+	' reset every tick. genmusic.py now reads this file and fails if the literal
+	' below does not match the tune it just generated.
 	' exactly like the fixed-point wall planes at the top of this file. As a CONST it
 	' made `IF #mup >= MUSLEN` read `>= 0`, which is always true on an unsigned
 	' compare, so the song reset to step 0 every tick and played its first note
@@ -180,6 +190,7 @@
 	#musf = VARPTR mus_freq(0)
 	#muss = VARPTR mus_song(0)
 	mut = 0				' player stopped until a round starts
+	musen = 1			' music on by default; the title toggles it with 1
 
 	GOTO title_screen
 
@@ -503,6 +514,16 @@ anim_tick:
 mus_start:
 	#mup = 0
 	mut = 1
+	IF musen = 0 THEN mut = 0		' switched off on the title
+	RETURN
+
+	' Only the state word is reprinted, not the whole line -- "1=MUSIC" is static.
+prt_musen:
+	IF musen = 1 THEN
+		PRINT AT 626,"ON "
+	ELSE
+		PRINT AT 626,"OFF"
+	END IF
 	RETURN
 
 mus_off:
@@ -538,7 +559,7 @@ mus_step:
 	IF mun > 0 THEN GOSUB mus_mel
 	IF mub > 0 THEN GOSUB mus_bas
 	#mup = #mup + 1
-	IF #mup >= 256 THEN #mup = 0	' BARE LITERAL -- see the note by MUSTICK
+	IF #mup >= 192 THEN #mup = 0	' SONG LENGTH -- genmusic.py verifies this
 	RETURN
 
 mus_mel:
@@ -586,6 +607,11 @@ sfx_tick:
 	IF sf1 > 0 THEN
 		sf1 = sf1 - 1
 		IF sf1 = 0 THEN SOUND 1,1000,0
+	END IF
+	' Channel 3 is the NOISE generator, used only by the pop.
+	IF sf3 > 0 THEN
+		sf3 = sf3 - 1
+		IF sf3 = 0 THEN SOUND 3,,0
 	END IF
 	RETURN
 
@@ -834,8 +860,13 @@ do_stick:
 	SPRITE 1,209,0,0,0
 	grid(strr * 8 + stcc) = curk
 	IF strr > maxr THEN maxr = strr		' draw_field runs before scan_present
-	SOUND 0,600,9
-	sf0 = 3
+	' LANDING IS A FAST BLIP, NOT A BEEP. At 186 Hz over three frames it read as a
+	' distinct low note, and since a landing is usually followed a frame later by the
+	' pop, that note sat on top of the pop and muddied it. Now shaped like the wall
+	' bounce -- two frames, same register -- so landing and bouncing are recognisably
+	' kin, with the landing a little lower so they are still distinguishable.
+	SOUND 0,430,9
+	sf0 = 2
 	GOSUB draw_field
 	GOSUB after_stick
 	RETURN
@@ -957,10 +988,24 @@ pop_marks:
 	FOR cmi = 0 TO 95
 		IF (grid(cmi) AND 64) <> 0 THEN grid(cmi) = 0
 	NEXT cmi
-	SOUND 0,700,12
-	sf0 = 5
-	SOUND 1,470,10
-	sf1 = 8
+	' A BUBBLE BURSTING IS A NOISE TRANSIENT, NOT A TONE. Channel 3 is the noise
+	' generator, and type 7 is white noise whose shift rate is taken from CHANNEL 2 --
+	' the music melody. That coupling is what puts the little swipe on the tail of the
+	' burst, and it is why 7 was chosen over the fixed rates of 4-6 after hearing all
+	' eight side by side. Two tuned square waves never made a pop, however low they
+	' were pitched.
+	'
+	' !! IT DOES MEAN THE POP FOLLOWS THE TUNE, and that with music switched off
+	' channel 2 is never written -- so the swipe depends on whatever last set that
+	' register. Worth listening to with 1=MUSIC OFF before trusting it.
+	'
+	' It also gets the pop OFF CHANNEL 1, which is the music's bass -- so pops no
+	' longer duck the tune. Channel 3 is used by nothing else in the game, so this
+	' effect never collides with anything.
+	SOUND 3,7,13
+	sf3 = 4
+	SOUND 0,700,10
+	sf0 = 4
 	RETURN
 
 	'
@@ -1907,6 +1952,8 @@ title_screen:
 	GOSUB title_num_hi
 	PRINT AT 265,"BUST-A-BOBBLE"
 	PRINT AT 548,"2026 UNHUMAN AND CLAUDE"	' row 17, col 4
+	PRINT AT 618,"1=MUSIC"			' row 19, col 10
+	GOSUB prt_musen
 	PRINT AT 710,"PRESS FIRE TO START"	' row 22, col 6
 	t8 = 0
 	tkl = 15
@@ -1943,6 +1990,10 @@ title_wait:
 				GOTO title_go
 			END IF
 			t8 = 1
+		END IF
+		IF tk = 1 THEN
+			musen = 1 - musen
+			GOSUB prt_musen
 		END IF
 		IF tk = 3 THEN
 			IF t8 = 1 THEN
