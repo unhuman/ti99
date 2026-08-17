@@ -691,16 +691,37 @@ walk frames). Three things make it cheap and keep it honest:
   a single 8-byte definition, the big one being the small one with every pixel doubled. The guy
   counting your spare lives and the guy on the title cannot drift apart, because there is only one
   of him. (Repo rule: scale art, never redraw it at a new size.)
-- **One variable drives both.** The right-hand creature is mirrored, so they walk toward each other
-  and back together. It is mirrored about the **text** centre (px 123.5, `231 - twx`), not the screen
-  centre (128) — mirroring about the screen left clearances of 2 px and 11 px, which read as
-  lopsided.
+- **They have separate minds.** Each owns his position, direction, step and leg phase, state, patrol
+  bounds and countdown, held in **arrays** indexed by `twi` so the behaviour is written once and
+  simply runs twice — with CVBasic having no locals or parameters, duplicated code is exactly how two
+  copies of a behaviour drift apart.
 - **The patrol is bounded by the creature's RIGHT edge, not its left.** It is 16 px wide, so stopping
   `twx` at 51 keeps that edge at 67, clear of the "B" at px 72. Bounding the left edge instead had it
   walking across the first letter — visible immediately on screen, invisible in the arithmetic.
 
-Only the legs differ between the two frames, so the cycle reads as walking rather than the whole
+Only the legs differ between the two walk frames, so the cycle reads as walking rather than the whole
 creature twitching.
+
+**Every 12–24 seconds each stops and waves** — with the left or right hand, chosen by a coin at the
+start of each wave, for 1.6–2.5 s. The intervals are re-rolled every time, so the two never fall
+into step. Three things this cost, all worth recording:
+
+- **The countdown ticks every 8 frames, not every frame.** These are 8-bit array slots, and an
+  interval long enough to be "every once in a while" does not fit in one: `240 + RANDOM(240)` wraps
+  past 255 and lands somewhere small, which is exactly why the first version waved almost
+  constantly. In eighths, 12–24 s is 90–180 and fits with room to spare.
+- **The arm is a second sprite, laid over the body at the same y, 8 px to whichever side.** An
+  earlier version placed it 8 px *higher* and its shoulder landed on the creature's eye — his eyes
+  are unlit pixels, so anything drawn there fills them in and he goes blank-faced.
+- **Both wave frames keep the hand outside the body silhouette.** The first pair rocked the hand
+  horizontally and its second frame sat behind him, so half of every wave was invisible and the
+  whole thing read as a twitch. The hand now rocks diagonally between two positions that clear his
+  side. Confirmed by compositing body + arm offline from `art.bas` rather than by hunting for a
+  wave in the emulator.
+
+The left-handed frames are **derived** from the right-handed ones by bit-reversal in `genart.py`.
+The TMS9918 cannot flip a sprite in hardware, so a left-handed wave genuinely costs its own 64 bytes
+of patterns — but there is still only one drawing, so the two hands cannot disagree.
 
 Game over (lives exhausted) and clearing round 30 both return to the title. The high score
 survives; the score does not. Both messages blank a one-character border before printing so they

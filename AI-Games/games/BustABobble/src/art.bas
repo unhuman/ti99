@@ -361,6 +361,23 @@ spr_walk:
 	DATA BYTE $0F,$0F,$3F,$3F,$F3,$F3,$FF,$FF,$FF,$FF,$3F,$3F,$03,$03,$0F,$0F
 	DATA BYTE $F0,$F0,$FC,$FC,$CF,$CF,$FF,$FF,$FF,$FF,$FC,$FC,$C0,$C0,$F0,$F0
 
+	' The waving arm: patterns 27-28 wave with the RIGHT hand, 29-30 with the
+	' LEFT. Laid over the body at the same y, 8 px to whichever side is waving,
+	' so the shoulder meets his body at shoulder height and clears his eyes.
+spr_wave:
+	' right hand -- frame A, hand out
+	DATA BYTE $00,$01,$01,$00,$03,$06,$06,$0C,$0C,$18,$18,$00,$00,$00,$00,$00
+	DATA BYTE $E0,$F0,$F0,$E0,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' right hand -- frame B, hand rocked back
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$03,$06,$0C,$18,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$70,$F8,$F8,$70,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	' left hand (mirrored) -- frame A, hand out
+	DATA BYTE $07,$0F,$0F,$07,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$80,$80,$00,$C0,$60,$60,$30,$30,$18,$18,$00,$00,$00,$00,$00
+	' left hand (mirrored) -- frame B, hand rocked back
+	DATA BYTE $00,$00,$00,$0E,$1F,$1F,$0E,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$C0,$60,$30,$18,$00,$00,$00,$00,$00
+
 spr_dot:	' 4x4 aim-guide dot, centred in the 16x16 cell
 	DATA BYTE $00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00

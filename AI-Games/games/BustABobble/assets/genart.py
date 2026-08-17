@@ -396,6 +396,67 @@ def main():
         w("\tDATA BYTE %s" % hexrow(right))
     w("")
 
+    # The waving arm, drawn as a SECOND sprite laid over the creature's shoulder
+    # rather than baked into his body: the body then keeps its two walk frames and
+    # the arm gets its own two, instead of needing four combined poses. It is
+    # positioned 8 px right and 8 px up of the body, so the arm's base (rows 12-13,
+    # near its left edge) lands inside the body's upper-right and the hand clears
+    # the head.
+    #
+    # The hand rocks left-right between the frames while the shoulder stays put --
+    # a wave, not a whole arm flapping.
+    # Laid over the body at the SAME y, 8 px to one side. The shoulder sits at
+    # local rows 9-10, which is the creature's shoulder height -- an earlier version
+    # put the sprite 8 px HIGHER and its arm root landed straight on his eye (his
+    # eyes are unlit pixels at body rows 4-5, so anything drawn there fills them in
+    # and he goes blank-faced).
+    # BOTH frames keep the hand OUTSIDE the body silhouette (body-local x15 and
+    # beyond). The first attempt rocked the hand horizontally and its second frame
+    # sat at body-local x12-16 -- i.e. behind him -- so half of every wave was
+    # invisible and the whole thing read as a twitch. The hand now rocks
+    # diagonally between two positions that both clear his side.
+    WAVE_A_L = [0x00, 0x01, 0x01, 0x00, 0x03, 0x06, 0x06, 0x0C,
+                0x0C, 0x18, 0x18, 0, 0, 0, 0, 0]
+    WAVE_A_R = [0xE0, 0xF0, 0xF0, 0xE0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0]
+    WAVE_B_L = [0, 0, 0, 0x00, 0x00, 0x00, 0x00, 0x03,
+                0x06, 0x0C, 0x18, 0, 0, 0, 0, 0]
+    WAVE_B_R = [0, 0, 0, 0x70, 0xF8, 0xF8, 0x70, 0x00,
+                0, 0, 0, 0, 0, 0, 0, 0]
+
+    def flip(l, r):
+        """Mirror a 16-px row: the left byte becomes the reversed right, and vice
+        versa. The TMS9918 cannot flip a sprite in hardware, so a left-handed wave
+        genuinely costs its own patterns -- but they are DERIVED here rather than
+        drawn again, so the two hands can never disagree."""
+        def rev(b):
+            v = 0
+            for i in range(8):
+                if b & (1 << i):
+                    v |= 0x80 >> i
+            return v
+        return rev(r), rev(l)
+
+    w("\t' The waving arm: patterns 27-28 wave with the RIGHT hand, 29-30 with the")
+    w("\t' LEFT. Laid over the body at the same y, 8 px to whichever side is waving,")
+    w("\t' so the shoulder meets his body at shoulder height and clears his eyes.")
+    w("spr_wave:")
+    for tag, (al, ar, bl, br) in (
+            ("right hand", (WAVE_A_L, WAVE_A_R, WAVE_B_L, WAVE_B_R)),
+            ("left hand (mirrored)",
+             tuple(list(t) for t in (
+                 [flip(l, r)[0] for l, r in zip(WAVE_A_L, WAVE_A_R)],
+                 [flip(l, r)[1] for l, r in zip(WAVE_A_L, WAVE_A_R)],
+                 [flip(l, r)[0] for l, r in zip(WAVE_B_L, WAVE_B_R)],
+                 [flip(l, r)[1] for l, r in zip(WAVE_B_L, WAVE_B_R)])))):
+        w("\t' %s -- frame A, hand out" % tag)
+        w("\tDATA BYTE %s" % hexrow(al))
+        w("\tDATA BYTE %s" % hexrow(ar))
+        w("\t' %s -- frame B, hand rocked back" % tag)
+        w("\tDATA BYTE %s" % hexrow(bl))
+        w("\tDATA BYTE %s" % hexrow(br))
+    w("")
+
     dotl = [0] * 6 + [0x03] * 4 + [0] * 6
     dotr = [0] * 6 + [0xC0] * 4 + [0] * 6
     w("spr_dot:\t' 4x4 aim-guide dot, centred in the 16x16 cell")

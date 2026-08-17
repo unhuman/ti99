@@ -21,12 +21,15 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **22,658 B of 24,336 — 1,678 free** (checked by `assets/romcheck.py` on every
-build); ColecoVision RAM **576 B of 814**.
+⚠️ TI fixed area **23,742 B of 24,336 — only 594 free** (checked by `assets/romcheck.py` on every
+build); ColecoVision RAM **595 B of 814**. The fixed area is nearly full; `DESIGN.md` §13 has the
+banking plan, and music cannot land until that happens.
 
-The title screen has **two of the little green creature pacing either side of the name**, at 2× —
-the same creature that counts your spare lives, generated from one 8×8 definition at both sizes so
-they can never drift apart.
+The title screen has **two of the little green creature pacing either side of the name**, at 2×,
+each with his own mind — separate patrol, speed phase and timers. Every 12–24 seconds one stops and
+**waves with either hand** (chosen at random per wave) before carrying on. It is the same creature
+that counts your spare lives, generated from one 8×8 definition at both sizes so they can never
+drift apart, with the left-handed frames derived by bit-reversal.
 
 The **death line is yellow, and flashes red** when a bubble crosses it — including *through* the
 bubbles sitting on it, which would otherwise hide the very thing the player needs to see. Those

@@ -82,7 +82,24 @@
 	DIM ofcl(24)		' grid column
 	DIM ofk(24)		' colour
 	DIM ofxx(24)		' pixel x (fixed for the whole fall)
-	DIM ofyy(24)		' pixel y, advanced per frame
+		DIM ofyy(24)		' pixel y, advanced per frame
+
+	' The two title-screen creatures, one array slot each. Arrays rather than two
+	' sets of scalars so the behaviour is written ONCE and simply runs twice -- with
+	' CVBasic having no locals or parameters, duplicated code is how these drift
+	' apart. Each guy owns his position, direction, step and leg phase, his state
+	' (0 walking, 1 waving), his countdown to the next state change, his wave phase,
+	' and his own patrol bounds.
+	DIM twx(2)
+	DIM twdir(2)
+	DIM twt(2)
+	DIM twf(2)
+	DIM twst(2)
+	DIM twtm(2)
+	DIM twwf(2)
+	DIM twlo(2)
+	DIM twhi(2)
+	DIM twside(2)
 
 	'
 	' ---------------------------------------------------------------- setup
@@ -119,8 +136,9 @@
 	' its own highlight size (genart.py), so they cannot share one pair.
 	DEFINE SPRITE 0,24,spr_bub
 	DEFINE SPRITE 24,1,spr_dot
-	' 25-26 = the creature at 2x, two walk frames, for the title screen.
+	' 25-26 = the creature at 2x, two walk frames; 27-28 = his waving arm.
 	DEFINE SPRITE 25,2,spr_walk
+	DEFINE SPRITE 27,4,spr_wave
 
 	' Sprite colours are NOT declared here any more. They used to be a hand-kept
 	' copy of the palette in genart.py, and when that palette changed this copy
@@ -1694,10 +1712,15 @@ title_screen:
 	t8 = 0
 	tkl = 15
 	btnr = 0
-	twx = 30
-	twdir = 0
-	twt = 0
-	twf = 0
+	' Two creatures, deliberately out of step from the first frame: different
+	' starting positions, directions, step phases and countdowns. They never sync
+	' up because the countdowns are re-rolled at random each time.
+	twx(0) = 30 : twdir(0) = 0 : twt(0) = 0 : twf(0) = 0
+	twst(0) = 0 : twtm(0) = 40 : twwf(0) = 0
+	twlo(0) = 30 : twhi(0) = 51
+	twx(1) = 195 : twdir(1) = 1 : twt(1) = 2 : twf(1) = 2
+	twst(1) = 0 : twtm(1) = 95 : twwf(1) = 0
+	twlo(1) = 179 : twhi(1) = 200
 
 title_wait:
 	WAIT
@@ -1791,24 +1814,88 @@ title_num_hi:
 	' The body is identical between frames and only the legs change, so the walk
 	' cycle reads as legs moving rather than the whole guy twitching.
 	'
+	' The state countdowns tick every 8 FRAMES, not every frame. That is not a
+	' nicety: these are 8-bit array slots, and a countdown in frames long enough to
+	' be "every once in a while" does not fit -- `240 + RANDOM(240)` wraps past 255
+	' and comes out a small number, which is precisely why the first version waved
+	' almost constantly. In eighths, 12-24 seconds is 90-180, comfortably in range.
 title_walk:
-	twt = twt + 1
-	IF twt < 4 THEN RETURN		' a step every 4th frame -- 15 px/s, an amble
-	twt = 0
-	IF twdir = 0 THEN
-		twx = twx + 1
-		IF twx > 51 THEN twdir = 1
-	ELSE
-		twx = twx - 1
-		IF twx < 31 THEN twdir = 0
+	twtick = twtick + 1
+	twtick = twtick AND 7
+	FOR twi = 0 TO 1
+		IF twtick = 0 THEN
+			IF twtm(twi) > 0 THEN twtm(twi) = twtm(twi) - 1
+		END IF
+		IF twst(twi) = 0 THEN GOSUB tw_walk
+		IF twst(twi) = 1 THEN GOSUB tw_wave
+		GOSUB tw_draw
+	NEXT twi
+	RETURN
+
+	' WALKING. A step every 4th frame (15 px/s, an amble), legs swapping every two
+	' steps. When his countdown runs out he stops where he is and waves -- with
+	' whichever hand the coin says, decided once per wave.
+tw_walk:
+	IF twtm(twi) = 0 THEN
+		twst(twi) = 1
+		twtm(twi) = 12 + RANDOM(8)	' wave for 1.6-2.5 s
+		twwf(twi) = 0
+		twside(twi) = RANDOM(2)		' 0 = right hand, 1 = left
+		RETURN
 	END IF
-	twf = twf + 1
-	twf = twf AND 3			' swap legs every 2 steps = every 8 frames
-	twp = 100			' sprite pattern 25 -> frame 25*4
-	IF twf > 1 THEN twp = 104	' pattern 26
-	twr = 231 - twx
-	SPRITE 0,59,twx,twp,3
-	SPRITE 1,59,twr,twp,3
+	twt(twi) = twt(twi) + 1
+	IF twt(twi) < 4 THEN RETURN
+	twt(twi) = 0
+	IF twdir(twi) = 0 THEN
+		twx(twi) = twx(twi) + 1
+		IF twx(twi) >= twhi(twi) THEN twdir(twi) = 1
+	ELSE
+		twx(twi) = twx(twi) - 1
+		IF twx(twi) <= twlo(twi) THEN twdir(twi) = 0
+	END IF
+	twf(twi) = twf(twi) + 1
+	twf(twi) = twf(twi) AND 3
+	RETURN
+
+	' WAVING. He stands still and rocks his hand. The next walk lasts a fresh
+	' random 4-8 s, which is why the two never fall into step with each other.
+tw_wave:
+	IF twtm(twi) = 0 THEN
+		twst(twi) = 0
+		twtm(twi) = 90 + RANDOM(90)	' walk 12-24 s before the next one
+		RETURN
+	END IF
+	twwf(twi) = twwf(twi) + 1
+	twwf(twi) = twwf(twi) AND 15	' hand rocks every 8 frames
+	RETURN
+
+	' Body on sprite 0/1, arm on 2/3. The arm is parked off screen unless he is
+	' actually waving -- sprite y 209, not 208, which would end the sprite list and
+	' take everything after it with it.
+tw_draw:
+	twpx = twx(twi)
+	twp = 100			' pattern 25 -> frame 25*4; legs apart
+	IF twst(twi) = 0 THEN
+		IF twf(twi) > 1 THEN twp = 104
+	END IF
+	SPRITE twi,59,twpx,twp,3
+	IF twst(twi) = 1 THEN
+		' Right hand = patterns 27/28 laid 8 px right; left hand = 29/30 laid 8 px
+		' left. Same y as the body, so the shoulder meets him at shoulder height
+		' and the arm stays clear of his eyes.
+		IF twside(twi) = 0 THEN
+			twh = 108
+			IF twwf(twi) > 7 THEN twh = 112
+			twpx = twpx + 8
+		ELSE
+			twh = 116
+			IF twwf(twi) > 7 THEN twh = 120
+			twpx = twpx - 8
+		END IF
+		SPRITE 2 + twi,59,twpx,twh,3
+	ELSE
+		SPRITE 2 + twi,209,0,108,0
+	END IF
 	RETURN
 
 	' One row-pair of all eight bubble colours, centred, at character row tby.
