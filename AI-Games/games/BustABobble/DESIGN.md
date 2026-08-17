@@ -684,6 +684,24 @@ previous game cannot skip through. Typing **8 3 8** opens a round selector — t
 echoed as typed — the same secret the other games in this repo use, and likewise not advertised on
 screen. The chosen round lasts **one game**; returning to the title always resets to round 1.
 
+**Two of the creature pace either side of the name**, at 2×, as 16×16 sprites (patterns 25–26, two
+walk frames). Three things make it cheap and keep it honest:
+
+- **One shape, two sizes.** `genart.py` emits the 8×8 HUD life icon *and* the 16×16 walking pair from
+  a single 8-byte definition, the big one being the small one with every pixel doubled. The guy
+  counting your spare lives and the guy on the title cannot drift apart, because there is only one
+  of him. (Repo rule: scale art, never redraw it at a new size.)
+- **One variable drives both.** The right-hand creature is mirrored, so they walk toward each other
+  and back together. It is mirrored about the **text** centre (px 123.5, `231 - twx`), not the screen
+  centre (128) — mirroring about the screen left clearances of 2 px and 11 px, which read as
+  lopsided.
+- **The patrol is bounded by the creature's RIGHT edge, not its left.** It is 16 px wide, so stopping
+  `twx` at 51 keeps that edge at 67, clear of the "B" at px 72. Bounding the left edge instead had it
+  walking across the first letter — visible immediately on screen, invisible in the arithmetic.
+
+Only the legs differ between the two frames, so the cycle reads as walking rather than the whole
+creature twitching.
+
 Game over (lives exhausted) and clearing round 30 both return to the title. The high score
 survives; the score does not. Both messages blank a one-character border before printing so they
 read as a box over the bubble field.

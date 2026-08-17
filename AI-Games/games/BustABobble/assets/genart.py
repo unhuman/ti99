@@ -355,6 +355,47 @@ def main():
     w("\tDATA BYTE %s" % hexrow([l for (b, l, r, s) in BUBBLE]))
     w("")
 
+    # --- the creature: 8x8 HUD life icon, and its 2x walking twin for the title ---------
+    # ONE shape, two sizes. The 16x16 is the 8x8 with every pixel doubled -- not a
+    # redrawn bigger creature -- so the guy walking on the title screen and the guy
+    # counting your spare lives cannot drift apart. (Repo rule: scale art, never
+    # redesign it at a new size.)
+    #
+    # Frame A is the life icon exactly; frame B differs only in the last two rows,
+    # legs together instead of apart. Two frames is all a walk cycle needs at this
+    # size, and keeping the body identical means only the legs read as moving.
+    CREATURE_A = [0x3C, 0x7E, 0xDB, 0xFF, 0xFF, 0x7E, 0x66, 0xE7]   # legs apart
+    CREATURE_B = [0x3C, 0x7E, 0xDB, 0xFF, 0xFF, 0x7E, 0x18, 0x3C]   # legs together
+
+    def dbl(row8):
+        """One 8-pixel row -> 16 pixels, each doubled. Returns (left, right)."""
+        v = 0
+        for i in range(8):
+            if row8 & (0x80 >> i):
+                v |= 3 << (14 - 2 * i)
+        return (v >> 8) & 0xFF, v & 0xFF
+
+    w("\t' The spare-life creature, 8x8. Eyes are UNLIT pixels -- a character is one")
+    w("\t' colour per scan line, so holes are how you draw a face at this size.")
+    w("life_pat:")
+    w("\tDATA BYTE %s" % hexrow(CREATURE_A))
+    w("life_col:")
+    w("\tDATA BYTE %s" % hexrow([3 * 16 + WELLBG] * 8))
+    w("")
+    w("\t' The same creature at 2x as a 16x16 SPRITE, two walk frames, for the title")
+    w("\t' screen. 16 bytes left column then 16 bytes right column -- NOT scan lines.")
+    w("spr_walk:")
+    for name, src in (("A  legs apart", CREATURE_A), ("B  legs together", CREATURE_B)):
+        rows = [dbl(r) for r in src]
+        left, right = [], []
+        for (l, r) in rows:
+            left += [l, l]                  # each source row is two pixel rows
+            right += [r, r]
+        w("\t' frame %s" % name)
+        w("\tDATA BYTE %s" % hexrow(left))
+        w("\tDATA BYTE %s" % hexrow(right))
+    w("")
+
     dotl = [0] * 6 + [0x03] * 4 + [0] * 6
     dotr = [0] * 6 + [0xC0] * 4 + [0] * 6
     w("spr_dot:\t' 4x4 aim-guide dot, centred in the 16x16 cell")

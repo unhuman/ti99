@@ -21,8 +21,12 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **22,304 B of 24,336 — 2,032 free** (checked by `assets/romcheck.py` on every
-build); ColecoVision RAM **570 B of 814**.
+TI fixed area **22,658 B of 24,336 — 1,678 free** (checked by `assets/romcheck.py` on every
+build); ColecoVision RAM **576 B of 814**.
+
+The title screen has **two of the little green creature pacing either side of the name**, at 2× —
+the same creature that counts your spare lives, generated from one 8×8 definition at both sizes so
+they can never drift apart.
 
 The **death line is yellow, and flashes red** when a bubble crosses it — including *through* the
 bubbles sitting on it, which would otherwise hide the very thing the player needs to see. Those

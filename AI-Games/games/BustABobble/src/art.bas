@@ -344,6 +344,23 @@ bub_base:	' body colour per bubble colour 1..8
 bub_lit:	' cap colour per bubble colour 1..8
 	DATA BYTE $09,$03,$05,$0B,$07,$0D,$0E,$0F
 
+	' The spare-life creature, 8x8. Eyes are UNLIT pixels -- a character is one
+	' colour per scan line, so holes are how you draw a face at this size.
+life_pat:
+	DATA BYTE $3C,$7E,$DB,$FF,$FF,$7E,$66,$E7
+life_col:
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31
+
+	' The same creature at 2x as a 16x16 SPRITE, two walk frames, for the title
+	' screen. 16 bytes left column then 16 bytes right column -- NOT scan lines.
+spr_walk:
+	' frame A  legs apart
+	DATA BYTE $0F,$0F,$3F,$3F,$F3,$F3,$FF,$FF,$FF,$FF,$3F,$3F,$3C,$3C,$FC,$FC
+	DATA BYTE $F0,$F0,$FC,$FC,$CF,$CF,$FF,$FF,$FF,$FF,$FC,$FC,$3C,$3C,$3F,$3F
+	' frame B  legs together
+	DATA BYTE $0F,$0F,$3F,$3F,$F3,$F3,$FF,$FF,$FF,$FF,$3F,$3F,$03,$03,$0F,$0F
+	DATA BYTE $F0,$F0,$FC,$FC,$CF,$CF,$FF,$FF,$FF,$FF,$FC,$FC,$C0,$C0,$F0,$F0
+
 spr_dot:	' 4x4 aim-guide dot, centred in the 16x16 cell
 	DATA BYTE $00,$00,$00,$00,$00,$00,$03,$03,$03,$03,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$C0,$C0,$C0,$C0,$00,$00,$00,$00,$00,$00
