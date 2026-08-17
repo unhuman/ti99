@@ -515,6 +515,7 @@ do_fire:
 	bdir = adir
 	SOUND 0,480,10
 	sf0 = 4
+	sfd = 0
 	RETURN
 
 	'
@@ -650,9 +651,23 @@ mus_word:
 	RETURN
 
 sfx_tick:
+	' Channel 0 decays, and while it does it may SWEEP -- sfd is the per-frame
+	' change to the divider, set by whatever started the sound and cleared here when
+	' it ends. Only the pop uses it; every other channel-0 effect sets sfd = 0 at its
+	' own site, because a two-frame blip fired during the pop's six-frame sweep would
+	' otherwise inherit the slide -- and the landing blip fires on the very shot that
+	' pops, so that overlap is certain, not hypothetical.
 	IF sf0 > 0 THEN
 		sf0 = sf0 - 1
-		IF sf0 = 0 THEN SOUND 0,1000,0
+		IF sf0 = 0 THEN
+			SOUND 0,1000,0
+			sfd = 0
+		ELSE
+			IF sfd > 0 THEN
+				#sfr = #sfr + sfd
+				SOUND 0,#sfr,sfv
+			END IF
+		END IF
 	END IF
 	IF sf1 > 0 THEN
 		sf1 = sf1 - 1
@@ -706,6 +721,7 @@ flight_step:
 			bdir = 1
 			SOUND 0,360,8
 			sf0 = 3
+			sfd = 0
 		END IF
 	ELSE
 		IF #bx > 34816 THEN
@@ -713,6 +729,7 @@ flight_step:
 			bdir = 0
 			SOUND 0,360,8
 			sf0 = 3
+			sfd = 0
 		END IF
 	END IF
 
@@ -917,6 +934,7 @@ do_stick:
 	' kin, with the landing a little lower so they are still distinguishable.
 	SOUND 0,430,9
 	sf0 = 2
+	sfd = 0
 	GOSUB draw_field
 	GOSUB after_stick
 	RETURN
@@ -1054,8 +1072,16 @@ pop_marks:
 	' effect never collides with anything.
 	SOUND 3,7,13
 	sf3 = 4
-	SOUND 0,700,10
-	sf0 = 4
+	' THE BLOOP. Under the noise burst, a tone falling 400 -> 900 in divider terms
+	' over six frames: about 280 Hz down to 124 Hz, a tenth of a second. A bubble
+	' bursting is a cavity collapsing and the pitch of a collapsing cavity FALLS, so
+	' a fixed tone (this was a flat 700) reads as a beep however it is tuned.
+	' Remember the divider is inverted: a RISING number is a FALLING pitch.
+	#sfr = 400
+	sfd = 100
+	sfv = 10
+	SOUND 0,#sfr,sfv
+	sf0 = 6
 	RETURN
 
 	'
@@ -1515,6 +1541,7 @@ do_drop:
 	GOSUB draw_field
 	SOUND 0,900,13
 	sf0 = 12
+	sfd = 0
 	#dropt = #droprl
 	GOSUB check_death
 	IF dead = 1 THEN GOSUB do_dead
@@ -1612,6 +1639,7 @@ do_dead:
 	SPRITE 6,209,0,32,0
 	SOUND 0,800,13
 	sf0 = 40
+	sfd = 0
 	ddf = 0
 	FOR ddi = 0 TO 90
 		IF (ddi AND 7) = 0 THEN
@@ -2329,6 +2357,10 @@ hide_sprites:
 
 	' Round selector: two digits, 01-30, echoed as they are typed.
 setup838:
+	' The title's two creatures were still standing either side of SELECT ROUND --
+	' CLS clears characters, not sprites, and title_walk does not run here, so they
+	' sat frozen in whatever pose they were caught in.
+	GOSUB hide_sprites
 	CLS
 	PRINT AT 266,"SELECT ROUND"
 	PRINT AT 360,"ENTER TWO DIGITS"
@@ -2380,6 +2412,7 @@ rd_get:
 	#rdp = #rdp + 1
 	SOUND 0,500,9
 	sf0 = 3
+	sfd = 0
 	RETURN
 
 	'

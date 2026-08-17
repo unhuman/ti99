@@ -17,11 +17,12 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 ## Status
 
 **Playable on TI-99/4A, all 30 rounds** (2026-08-16). Title screen with fire-to-start and an
-`8 3 8` round selector; aim, fire, wall bounces, sticking, match-3 pops with a burst animation,
+`8 3 8` round selector (which now clears the title's sprites, and puts the digits you type below the
+prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation and a falling bloop,
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,068 B of 24,336 — 1,268 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,208 B of 24,336 — 1,128 free**, because the **level data now lives in ROM bank 1**
 (1,902 of 8,192 used). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music

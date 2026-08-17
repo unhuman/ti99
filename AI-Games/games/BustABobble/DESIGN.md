@@ -937,6 +937,19 @@ ducked by an alarm, a pop or a drop and resumes at its next note — a gap of at
 reads as the effect cutting through rather than as the music breaking. Volumes 10 and 8 sit under
 effects at 12–13.
 
+**The pop is a noise burst with a falling bloop under it.** Channel 3 fires noise type 7 for four
+frames; channel 0 plays a tone whose divider slides **400 → 900 over six frames** — about 280 Hz down
+to 124 Hz, a tenth of a second. The slide is the point: a bursting bubble is a cavity collapsing and
+the pitch of a collapsing cavity *falls*, so the flat 700 this replaced read as a beep however it was
+tuned. Remember the divider is inverted — a **rising** number is a **falling** pitch, so a "descending"
+effect written as a decreasing argument rises (`CLAUDE.md` §3A).
+
+The sweep is a general mechanism, not a special case in the pop: `sfd` is the per-frame change to the
+divider and `sfx_tick` applies it while channel 0 decays, clearing it when the effect ends. **Every
+other channel-0 effect sets `sfd = 0` at its own site**, which is not defensive tidiness — the landing
+blip fires on the very shot that pops, so a two-frame blip landing inside the pop's six-frame sweep is
+certain, and it would otherwise inherit the slide.
+
 **Only the melody can be transposed.** The PSG's divider is 10 bits, so its lowest playable note is
 about 110 Hz and the bass already sits near that floor — C2 would need 1710. `divider()` refuses an
 out-of-range note rather than letting it wrap, because a bass that aliases sounds wrong without
