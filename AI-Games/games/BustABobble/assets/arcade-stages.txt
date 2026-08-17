@@ -278,11 +278,22 @@ STAGE 29 7
  O.OOO.O
 O..OO..O
 
+# STAGE 30'S COLOURS ARE REAL, not assigned. Every cell here was 'O' -- the FAQ
+# pins no colour on this round -- so transcribe_stages.py banded it diagonally,
+# which put all eight colours in a spread of ~3.5 bubbles each and made the round
+# very nearly unmatchable. The colouring below came from the arcade itself: seven
+# rows, each one PAIR of colours repeated twice, chaining down the field (each
+# row shares a colour with the row two above it).
+#
+# The letters are the palette in order -- a red, b green, c blue, d yellow,
+# e cyan, f magenta, g grey, h white. 'e' is the arcade's ORANGE: this palette has
+# no orange (red and orange were one hue apart and could not be told apart once
+# every ball became a single dithered colour), and cyan took that slot.
 STAGE 30 8
-O.O.O.O.
- O.O.O.O
-O.O.O.O.
- O.O.O.O
-O.O.O.O.
- O.O.O.O
-O.O.O.O.
+a.c.a.c.
+ b.d.b.d
+c.f.c.f.
+ d.e.d.e
+f.h.f.h.
+ e.g.e.g
+h.a.h.a.

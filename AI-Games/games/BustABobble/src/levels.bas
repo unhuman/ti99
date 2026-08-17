@@ -353,13 +353,13 @@ pb_lay:
 	DATA BYTE $00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00
 	' level 30
-	DATA BYTE $10,$20,$30,$40
-	DATA BYTE $20,$30,$40,$50
-	DATA BYTE $30,$40,$50,$60
-	DATA BYTE $40,$50,$60,$70
-	DATA BYTE $50,$60,$70,$80
-	DATA BYTE $60,$70,$80,$10
-	DATA BYTE $70,$80,$10,$20
+	DATA BYTE $10,$30,$10,$30
+	DATA BYTE $20,$40,$20,$40
+	DATA BYTE $30,$60,$30,$60
+	DATA BYTE $40,$50,$40,$50
+	DATA BYTE $60,$80,$60,$80
+	DATA BYTE $50,$70,$50,$70
+	DATA BYTE $80,$10,$80,$10
 	DATA BYTE $00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00
@@ -426,7 +426,7 @@ pb_seq:
 	' level 29
 	DATA BYTE $61,$61,$75,$36,$17,$66,$11,$66,$11,$41,$32,$54,$13,$11,$12,$16
 	' level 30
-	DATA BYTE $67,$45,$11,$86,$46,$56,$53,$66,$42,$54,$18,$65,$33,$64,$57,$76
+	DATA BYTE $66,$35,$11,$85,$46,$56,$53,$66,$42,$54,$18,$65,$33,$63,$57,$76
 
 pb_meta:
 	' 2 B per level: colours in play, droptime in QUARTER-seconds

@@ -1356,6 +1356,24 @@ case to cope with the data, check the data.
 
 ## 17. Status
 
+**2026-08-17 (build 12) — round 30 gets its real colours.** Its cells were all `O` ("any colour")
+in the transcription source, so `transcribe_stages.py` banded them diagonally and gave the round
+eight colours at ~3.5 bubbles each — very nearly unmatchable. The arcade colouring, supplied from
+play, is **seven rows of one colour PAIR repeated twice**, chaining down the field so each row
+shares a colour with the row two above it: red/blue, green/yellow, blue/magenta, yellow/orange,
+magenta/white, orange/grey, white/red. The arcade's **orange is cyan (5) here** — this palette
+dropped orange when every ball became a single dithered hue, because red and orange could not be
+told apart. Fixed at source in `arcade-stages.txt` and regenerated, so `levels.txt` and `levels.bas`
+follow. Still anchored, still winnable (79 shots).
+
+> ⚠️ **Round 30 remains humanly unwinnable, and the recolour did not change that** — the proven line
+> is 79 shots over 40.9 s against a 12 s drop clock, surviving three ceiling drops. `--overhead 30`
+> (half a second of human thinking per shot) turns it UNPROVEN, and the solver's clock-off pass
+> confirms the drop timer, not the geometry, is the obstacle. It is the only round of the thirty a
+> real player cannot finish, which matches play exactly. The shot count is the root cause: the mean
+> round needs about 12. See §11b — the fix is fewer shots (layout or colours), not a longer clock,
+> which at 79 shots would need 24–36 s and would make round 30 more generous than round 1.
+
 **2026-08-17 (build 11) — the victory screen.** Beating round 30 now clears the screen and shows
 the scores across the top (the title screen's own `title_num_sc`/`title_num_hi`),
 **CONGRATULATIONS!** on row 3, the creature standing in the lower middle **juggling all eight
