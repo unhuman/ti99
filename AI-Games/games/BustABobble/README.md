@@ -21,9 +21,10 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-⚠️ TI fixed area **23,742 B of 24,336 — only 594 free** (checked by `assets/romcheck.py` on every
-build); ColecoVision RAM **595 B of 814**. The fixed area is nearly full; `DESIGN.md` §13 has the
-banking plan, and music cannot land until that happens.
+TI fixed area **22,882 B of 24,336 — 1,454 free** (checked by `assets/romcheck.py` on every build);
+ColecoVision RAM **595 B of 814**. That is after an **860-byte** clean-out: collapsing the obsolete
+two-sprite bubble (512 B), and replacing two tables that repeated one 8-byte row 16 and 9 times over
+with a `DEFINE COLOR` loop (`txt_col` 128→8, the gauge colours 144→16).
 
 The title screen has **two of the little green creature pacing either side of the name**, at 2×,
 each with his own mind — separate patrol, speed phase and timers. Every 12–24 seconds one stops and
@@ -136,9 +137,10 @@ magnitudes stored positive and direction as a flag, because CVBasic compares `#v
 and no modulo anywhere (CVBasic compiles `%` to a real `DIV`, so row parity is `AND 1` and cell
 index is `>> 4`). Total RAM ≈ 182 bytes, which fits ColecoVision's ~781 with room to spare.
 
-The in-flight bubble is **two overlaid sprites** — cap and body — so it is pixel-identical to the
-same bubble once it sticks and becomes characters. Falling debris uses a third, full-ball pattern:
-drawn with the body pattern alone it looked like bottom halves.
+The in-flight bubble is **one sprite**, pixel-identical to the same bubble once it sticks and becomes
+characters. It used to be two overlaid sprites — a lit cap over a base body — which the dither
+rewrite made pointless without anyone noticing: once every ball is a single hue, those two sprites
+are the same colour drawn twice. Collapsing it recovered 512 bytes (`DESIGN.md` §5).
 
 **Every bubble is one hue, shaded by dithering** — solid at the top, then checks against black that
 thin out downward, with the outline always solid. That is not a style choice, it is a bug fix. Two-

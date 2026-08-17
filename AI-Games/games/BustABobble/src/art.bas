@@ -256,92 +256,43 @@ bub_colxf:
 	DATA BYTE $F1,$F1,$F1,$91,$91,$F1,$F1,$F1	' BL
 	DATA BYTE $F1,$F1,$F1,$91,$91,$F1,$F1,$F1	' BR
 
-	' Flying bubble = TWO overlaid 16x16 sprites so it is pixel-identical to the
-	' same bubble once it sticks and becomes characters (a sprite is one colour).
-	' 16 bytes left column then 16 bytes right column -- NOT sequential scan lines.
-	' THREE patterns per colour: 3k = cap, 3k+1 = body, 3k+2 = FULL ball.
-	' cap/body are per colour because litrows is -- the flying bubble must
-	' split at the same row its character form does or it stops matching the
-	' moment it lands. FULL is for falling debris: one sprite instead of two,
-	' which halves the slots used AND keeps them off each other's scanlines
-	' (only four sprites show per line). Drawing debris with the body pattern
-	' alone is what made the falling bubbles look like bottom halves.
+	' ONE 16x16 sprite per bubble colour. 16 bytes left column then 16 bytes
+	' right column -- NOT sequential scan lines.
+	'
+	' This used to be THREE patterns per colour -- cap, body and full -- so the
+	' flying bubble could be two overlaid sprites, a lit cap over a base body,
+	' matching the two-tone character version. The dither rewrite made every ball
+	' a SINGLE hue (base == lit for all eight), which quietly made the cap/body
+	' split meaningless: two sprites of the same colour drawn on top of each
+	' other are just the full ball. Collapsing it frees 512 bytes of pattern
+	' table, halves the sprites the loop touches, and removes the class of bug
+	' where the cap lagged the body by a frame.
 spr_bub:
-	' colour 1 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 1 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 1 full
+	' colour 1
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 2 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 2 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 2 full
+	' colour 2
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 3 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 3 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 3 full
+	' colour 3
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 4 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 4 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 4 full
+	' colour 4
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 5 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 5 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 5 full
+	' colour 5
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 6 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 6 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 6 full
+	' colour 6
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$D5,$AA,$D5,$AA,$91,$A2,$44,$48,$31,$12,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$55,$AB,$55,$AB,$11,$23,$46,$8A,$14,$28,$F0
-	' colour 7 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$44,$48,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$46,$8A,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 7 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$91,$A2,$C0,$80,$81,$82,$44,$48,$30,$10,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$11,$23,$41,$81,$01,$03,$06,$0A,$14,$28,$F0
-	' colour 7 full
+	' colour 7
 	DATA BYTE $0F,$1F,$3F,$44,$48,$91,$A2,$C0,$80,$81,$82,$44,$48,$30,$10,$0F
 	DATA BYTE $F0,$F8,$FC,$46,$8A,$11,$23,$41,$81,$01,$03,$06,$0A,$14,$28,$F0
-	' colour 8 cap (rows 0-4)
-	DATA BYTE $0F,$1F,$3F,$7F,$7F,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F8,$FC,$FE,$FE,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	' colour 8 body (rows 5-15)
-	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$55,$6A,$35,$1A,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF,$FF,$FF,$FF,$56,$AA,$54,$A8,$F0
-	' colour 8 full
+	' colour 8
 	DATA BYTE $0F,$1F,$3F,$7F,$7F,$FF,$FF,$FF,$FF,$FF,$FF,$55,$6A,$35,$1A,$0F
 	DATA BYTE $F0,$F8,$FC,$FE,$FE,$FF,$FF,$FF,$FF,$FF,$FF,$56,$AA,$54,$A8,$F0
-bub_base:	' body colour per bubble colour 1..8
-	DATA BYTE $09,$03,$05,$0B,$07,$0D,$0E,$0F
-bub_lit:	' cap colour per bubble colour 1..8
+bub_base:	' sprite colour per bubble colour 1..8
 	DATA BYTE $09,$03,$05,$0B,$07,$0D,$0E,$0F
 
 	' The spare-life creature, 8x8. Eyes are UNLIT pixels -- a character is one

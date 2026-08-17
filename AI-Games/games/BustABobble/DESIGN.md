@@ -240,18 +240,31 @@ terminates the TMS9918 sprite list; repo memory `tms9918-sprite-y-208-terminates
 | 4,5,6 | aim guide dots | 96 | white |
 | 8…19 | **falling orphans** (§9), one sprite each | `(k−1)×12 + 8` (full) | base shade of that bubble |
 
-A TMS9918 sprite is single-coloured, so the flying bubble is **two overlaid sprites at the same
-position**: lit upper cap over base lower body. That makes the in-flight bubble pixel-identical to
-the same bubble once it sticks and becomes characters — the seam that usually gives away a
-char/sprite hybrid. The cap/body split has to be **per colour** because `litrows` is (§4): a shared
-pair would split at the wrong row and the match would break the instant the ball landed.
+**One sprite pattern per bubble colour, and one sprite on screen per bubble.**
 
-The **full** pattern exists for falling debris. Drawing debris with the *body* pattern — which by
-definition starts below the highlight — made the falling bubbles look like bottom halves. Full also
-keeps each falling bubble at **one** sprite rather than two, which halves the slots used and keeps
-them off each other's scanlines (only four sprites show per line).
+It was not always. A TMS9918 sprite is single-coloured, so when bubbles were two-tone the flying
+bubble had to be **two overlaid sprites** — a lit upper cap over a base lower body — to stay
+pixel-identical to the same bubble once it sticks and becomes characters. That needed three patterns
+per colour (cap, body, full) and a second colour table, `bub_lit`.
 
-Cost: 25 patterns × 32 bytes = **800 bytes** of the 2 KB sprite pattern table.
+**The dither rewrite silently made all of that dead.** Once every ball became a single hue
+(§4), `base == lit` for all eight colours, so the two overlaid sprites were the same colour drawn
+twice — which is just the full ball. Collapsing it to one pattern per colour recovered **512 bytes**
+of sprite-pattern table plus `bub_lit`, halved the sprite writes per frame, and removed the class of
+bug where the cap lagged the body by a frame. `genart.py` now asserts `base == lit`, so reintroducing
+a two-tone colour fails the build rather than quietly drawing half a ball.
+
+> The general lesson: a change made for *appearance* (one hue per ball, to fix red vs "orange"
+> confusion) invalidated a structure that existed for a *technical* reason, and nothing connected
+> the two. It sat there costing half a kilobyte through several sessions of worrying about ROM.
+
+Falling debris uses the same single pattern, which keeps each falling bubble at **one** sprite and
+keeps them off each other's scanlines (only four sprites show per line). Drawing debris with the old
+*body* pattern — which by definition started below the highlight — is what once made falling bubbles
+look like bottom halves; with one full pattern that failure mode cannot recur.
+
+Sprite patterns: 8 bubbles + 1 aim dot + 2 walk + 4 wave = **15 × 32 = 480 bytes** of the 2 KB
+sprite pattern table, down from 800.
 
 ---
 

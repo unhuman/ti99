@@ -121,24 +121,33 @@
 	DEFINE COLOR 164,12,bur_col
 	' Drop-timer gauge (9 fill widths) and the spare-life creature.
 	DEFINE CHAR 176,9,bar_pat
-	DEFINE COLOR 176,9,bar_col
+	barw = 0
+	GOSUB set_bar_col
 	' Bubbles carrying the death line through their middle (see draw_row).
 	DEFINE CHAR 186,32,bub_patx
 	DEFINE COLOR 186,32,bub_colx
 	DEFINE CHAR 185,1,life_pat
 	DEFINE COLOR 185,1,life_col
-	DEFINE COLOR 32,16,txt_col
-	DEFINE COLOR 48,16,txt_col
-	DEFINE COLOR 64,16,txt_col
-	DEFINE COLOR 80,16,txt_col
+	' Text is white-on-black for every printable character, so ONE 8-byte row does
+	' for all 64 of them. It used to be a 128-byte table (16 chars' worth) issued
+	' four times -- 120 bytes of the same eight values repeated, which is a lot of
+	' ROM to spend saying "white" sixteen times.
+	FOR i = 32 TO 95
+		DEFINE COLOR i,1,txt_col
+	NEXT i
 
 	' 16 bubble patterns: 2k = colour k+1's cap, 2k+1 its body. Each colour has
 	' its own highlight size (genart.py), so they cannot share one pair.
-	DEFINE SPRITE 0,24,spr_bub
-	DEFINE SPRITE 24,1,spr_dot
+	' ONE sprite pattern per bubble colour (0-7), not three. The cap/body pair that
+	' used to sit either side of the full ball existed so the flying bubble could be
+	' two overlaid sprites in a lit shade and a base shade -- and the dither rewrite
+	' made every ball a SINGLE hue, so those two sprites became the same colour
+	' drawn twice. 512 bytes of pattern table, recovered.
+	DEFINE SPRITE 0,8,spr_bub
+	DEFINE SPRITE 8,1,spr_dot
 	' 25-26 = the creature at 2x, two walk frames; 27-28 = his waving arm.
-	DEFINE SPRITE 25,2,spr_walk
-	DEFINE SPRITE 27,4,spr_wave
+	DEFINE SPRITE 9,2,spr_walk
+	DEFINE SPRITE 11,4,spr_wave
 
 	' Sprite colours are NOT declared here any more. They used to be a hand-kept
 	' copy of the palette in genart.py, and when that palette changed this copy
@@ -154,6 +163,10 @@
 	GOTO title_screen
 
 new_round:
+	' Clear every slot first. A bubble is one sprite now, so the round only ever
+	' uses 0 (flying), 2 (next) and 4-6 (aim dots) -- and the title screen leaves
+	' its creatures in 1 and 3, which would otherwise stand there through the game.
+	GOSUB hide_sprites
 	GOSUB load_level
 	' scan_present MUST run before draw_field: it computes maxr, and draw_field
 	' uses maxr to decide which rows to rebuild. With a stale maxr the level's
@@ -311,16 +324,26 @@ tick_bar:
 	IF tbpx < 17 THEN tbwant = 1
 	IF tbwant <> barw THEN
 		barw = tbwant
-		IF barw = 1 THEN
-			DEFINE COLOR 176,9,bar_colw
-		ELSE
-			DEFINE COLOR 176,9,bar_col
-		END IF
+		GOSUB set_bar_col
 	END IF
 	IF tbpx <> barlast THEN
 		barlast = tbpx
 		GOSUB draw_bar
 	END IF
+	RETURN
+
+	' Paint all nine gauge characters from one 8-byte row -- green normally, red
+	' once barw is set. Called only on a transition (twice a drop cycle), so nine
+	' DEFINE COLORs cost nothing next to the 128 bytes of duplicated table they
+	' replace.
+set_bar_col:
+	FOR bci = 176 TO 184
+		IF barw = 1 THEN
+			DEFINE COLOR bci,1,bar_colw
+		ELSE
+			DEFINE COLOR bci,1,bar_col
+		END IF
+	NEXT bci
 	RETURN
 
 	' Row 16, columns 22-29 -- directly under the "TIME" label on column 22.
@@ -696,7 +719,7 @@ do_stick:
 	' and a full redraw with NO WAIT in between, so the sprite would otherwise
 	' sit on top of the character bubble it just became for those frames --
 	' reading as a doubled bubble that lingers after the ball lands.
-	SPRITE 0,209,0,4,0
+	SPRITE 0,209,0,0,0
 	SPRITE 1,209,0,0,0
 	grid(strr * 8 + stcc) = curk
 	IF strr > maxr THEN maxr = strr		' draw_field runs before scan_present
@@ -1019,10 +1042,10 @@ fall_orphans:
 					SPRITE 8 + ofi,209,0,0,0
 				ELSE
 					ofj = ofk(ofi) - 1
-					ofj = ofj * 12
+					ofj = ofj * 4
 					ofc2 = bub_base(ofk(ofi) - 1)
 					ofw = ofyy(ofi) - 1
-					SPRITE 8 + ofi,ofw,ofxx(ofi),ofj + 8,ofc2
+					SPRITE 8 + ofi,ofw,ofxx(ofi),ofj,ofc2
 				END IF
 			END IF
 		NEXT ofi
@@ -1340,11 +1363,11 @@ do_dead:
 	' death line -- exactly where the eye is about to be sent. Parked before the
 	' flash starts so the line is the only thing moving. Sprites 2/3 (the NEXT
 	' bubble) stay: that is a HUD readout, not the aiming device.
-	SPRITE 0,209,0,4,0
+	SPRITE 0,209,0,0,0
 	SPRITE 1,209,0,0,0
-	SPRITE 4,209,0,96,0
-	SPRITE 5,209,0,96,0
-	SPRITE 6,209,0,96,0
+	SPRITE 4,209,0,32,0
+	SPRITE 5,209,0,32,0
+	SPRITE 6,209,0,32,0
 	SOUND 0,800,13
 	sf0 = 40
 	ddf = 0
@@ -1640,18 +1663,17 @@ draw_sprites:
 	END IF
 	' Pattern frame = def * 4, and colour k uses defs 2(k-1) and 2(k-1)+1, so the
 	' cap frame is (k-1)*8 and the body frame is that + 4.
+	' One sprite each now: pattern k-1, frame (k-1)*4. Sprites 1 and 3 are no longer
+	' used in play -- new_round hides them, so nothing of the title screen's
+	' creatures is left behind in those slots.
 	dsf = curk - 1
-	dsf = dsf * 12
+	dsf = dsf * 4
 	dsc = bub_base(curk - 1)
-	dsl = bub_lit(curk - 1)
-	SPRITE 0,dsy,dsx,dsf + 4,dsc
-	SPRITE 1,dsy,dsx,dsf,dsl
+	SPRITE 0,dsy,dsx,dsf,dsc
 	dsf = nxtk - 1
-	dsf = dsf * 12
+	dsf = dsf * 4
 	dsc = bub_base(nxtk - 1)
-	dsl = bub_lit(nxtk - 1)
-	SPRITE 2,NEXTY - 1,NEXTX,dsf + 4,dsc
-	SPRITE 3,NEXTY - 1,NEXTX,dsf,dsl
+	SPRITE 2,NEXTY - 1,NEXTX,dsf,dsc
 	IF flying = 0 THEN
 		#gux = #aimdx(am)
 		#gux = #gux * 4
@@ -1670,12 +1692,12 @@ draw_sprites:
 			END IF
 			gpy = guy * gi
 			gpy = LAUNCHY - gpy
-			SPRITE 3 + gi,gpy - 9,gpx - 8,96,15
+			SPRITE 3 + gi,gpy - 9,gpx - 8,32,15
 		NEXT gi
 	ELSE
-		SPRITE 4,209,0,96,0
-		SPRITE 5,209,0,96,0
-		SPRITE 6,209,0,96,0
+		SPRITE 4,209,0,32,0
+		SPRITE 5,209,0,32,0
+		SPRITE 6,209,0,32,0
 	END IF
 	RETURN
 
@@ -1891,9 +1913,9 @@ tw_wave:
 	' take everything after it with it.
 tw_draw:
 	twpx = twx(twi)
-	twp = 100			' pattern 25 -> frame 25*4; legs apart
+	twp = 36			' pattern 9 -> frame 9*4; legs apart
 	IF twst(twi) = 0 THEN
-		IF twf(twi) > 1 THEN twp = 104
+		IF twf(twi) > 1 THEN twp = 40
 	END IF
 	SPRITE twi,59,twpx,twp,3
 	IF twst(twi) = 1 THEN
@@ -1901,17 +1923,17 @@ tw_draw:
 		' left. Same y as the body, so the shoulder meets him at shoulder height
 		' and the arm stays clear of his eyes.
 		IF twside(twi) = 0 THEN
-			twh = 108
-			IF twwf(twi) > 7 THEN twh = 112
+			twh = 44
+			IF twwf(twi) > 7 THEN twh = 48
 			twpx = twpx + 8
 		ELSE
-			twh = 116
-			IF twwf(twi) > 7 THEN twh = 120
+			twh = 52
+			IF twwf(twi) > 7 THEN twh = 56
 			twpx = twpx - 8
 		END IF
 		SPRITE 2 + twi,59,twpx,twh,3
 	ELSE
-		SPRITE 2 + twi,209,0,108,0
+		SPRITE 2 + twi,209,0,44,0
 	END IF
 	RETURN
 
@@ -1951,7 +1973,7 @@ msg_box:
 	RETURN
 
 hide_sprites:
-	FOR hsi = 0 TO 19
+	FOR hsi = 0 TO 31
 		SPRITE hsi,209,0,0,0
 	NEXT hsi
 	RETURN
@@ -2034,26 +2056,13 @@ bar_pat:
 	' lines 0 and 7 are black-on-black, so the bar reads as 6 px tall inside an
 	' 8 px cell. Lines 1-6 are green on GREY -- lit pixels are the fill, unlit
 	' are the track. Nine characters x 8 lines.
+	' ONE row each, applied to all nine gauge characters by set_bar_col. They were
+	' nine copies apiece -- 128 bytes of ROM restating that the bar is green and
+	' that the warning is red.
 bar_col:
 	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	DATA BYTE $11,$3E,$3E,$3E,$3E,$3E,$3E,$11
-	' Same nine characters in RED, swapped in for the last second of the cycle.
+	' The same character in RED, swapped in for the last quarter of the gauge.
 bar_colw:
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
-	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
 	DATA BYTE $11,$9E,$9E,$9E,$9E,$9E,$9E,$11
 
 	' 185 = the spare-life creature. A bubble would have been wrong here: the field
@@ -2066,21 +2075,6 @@ bar_colw:
 	' made it read 112 bytes of whatever followed in ROM as colour data --
 	' the text came out in random colours. Same shape as Structris's txt_white.
 txt_col:
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
 	INCLUDE "art.bas"

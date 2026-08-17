@@ -320,28 +320,23 @@ def main():
 
     # --- sprites ----------------------------------------------------------------------
     # CVBasic 16x16 sprite pattern = 16 bytes left column, then 16 bytes right column.
-    w("\t' Flying bubble = TWO overlaid 16x16 sprites so it is pixel-identical to the")
-    w("\t' same bubble once it sticks and becomes characters (a sprite is one colour).")
-    w("\t' 16 bytes left column then 16 bytes right column -- NOT sequential scan lines.")
-    w("\t' THREE patterns per colour: 3k = cap, 3k+1 = body, 3k+2 = FULL ball.")
-    w("\t' cap/body are per colour because litrows is -- the flying bubble must")
-    w("\t' split at the same row its character form does or it stops matching the")
-    w("\t' moment it lands. FULL is for falling debris: one sprite instead of two,")
-    w("\t' which halves the slots used AND keeps them off each other's scanlines")
-    w("\t' (only four sprites show per line). Drawing debris with the body pattern")
-    w("\t' alone is what made the falling bubbles look like bottom halves.")
+    w("\t' ONE 16x16 sprite per bubble colour. 16 bytes left column then 16 bytes")
+    w("\t' right column -- NOT sequential scan lines.")
+    w("\t'")
+    w("\t' This used to be THREE patterns per colour -- cap, body and full -- so the")
+    w("\t' flying bubble could be two overlaid sprites, a lit cap over a base body,")
+    w("\t' matching the two-tone character version. The dither rewrite made every ball")
+    w("\t' a SINGLE hue (base == lit for all eight), which quietly made the cap/body")
+    w("\t' split meaningless: two sprites of the same colour drawn on top of each")
+    w("\t' other are just the full ball. Collapsing it frees 512 bytes of pattern")
+    w("\t' table, halves the sprites the loop touches, and removes the class of bug")
+    w("\t' where the cap lagged the body by a frame.")
     w("spr_bub:")
     for k, (base, lit, lrows, style) in enumerate(BUBBLE):
         rows = mask_bytes(bubble_mask(style))
         BL = [r[0] for r in rows]
         BR = [r[1] for r in rows]
-        w("\t' colour %d cap (rows 0-%d)" % (k + 1, lrows - 1))
-        w("\tDATA BYTE %s" % hexrow(BL[:lrows] + [0] * (16 - lrows)))
-        w("\tDATA BYTE %s" % hexrow(BR[:lrows] + [0] * (16 - lrows)))
-        w("\t' colour %d body (rows %d-15)" % (k + 1, lrows))
-        w("\tDATA BYTE %s" % hexrow([0] * lrows + BL[lrows:]))
-        w("\tDATA BYTE %s" % hexrow([0] * lrows + BR[lrows:]))
-        w("\t' colour %d full" % (k + 1))
+        w("\t' colour %d" % (k + 1))
         w("\tDATA BYTE %s" % hexrow(BL))
         w("\tDATA BYTE %s" % hexrow(BR))
     # SPRITE colours, emitted from the SAME table the character colours come from.
@@ -349,11 +344,14 @@ def main():
     # copy of this data -- and the moment the palette changed here, the flying
     # bubble and the landed bubble disagreed: a shot looked white-and-cyan and
     # became cyan-and-blue when it stuck. One table, no copies.
-    w("bub_base:\t' body colour per bubble colour 1..8")
+    w("bub_base:\t' sprite colour per bubble colour 1..8")
     w("\tDATA BYTE %s" % hexrow([b for (b, l, r, s) in BUBBLE]))
-    w("bub_lit:\t' cap colour per bubble colour 1..8")
-    w("\tDATA BYTE %s" % hexrow([l for (b, l, r, s) in BUBBLE]))
     w("")
+    # bub_lit is gone with the cap/body split: every ball is one hue, so the "lit"
+    # column of BUBBLE is identical to the base column and a second table was just
+    # eight bytes saying the same thing twice.
+    assert all(b == l for (b, l, r, s) in BUBBLE), \
+        "a two-tone colour is back: the single-sprite bubble assumes base == lit"
 
     # --- the creature: 8x8 HUD life icon, and its 2x walking twin for the title ---------
     # ONE shape, two sizes. The 16x16 is the 8x8 with every pixel doubled -- not a
@@ -506,7 +504,7 @@ def main():
     with open(OUT, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out) + "\n")
 
-    nspr = (len(BUBBLE) * 3 + 1) * 32
+    nspr = (len(BUBBLE) + 1) * 32 + 64 + 128	# bubbles, dot, walk, wave
     total = 32 + 8 * 4 * 8 + nspr + NAIM * 4 + NDROP * 6
     print("wrote %s" % os.path.normpath(OUT))
     print("  patterns 32 B  colours %d B  sprites %d B  aim %d B  dropbcd %d B  = %d B"
