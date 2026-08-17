@@ -1300,9 +1300,10 @@ do_clear:
 	'
 	' A bubble crossed the death line. The 1.5 s pause here was a tone over a
 	' frozen board with nothing to say WHY the round ended, so THE DEATH LINE
-	' flashes for that whole 1.5 s (90 frames at 60 Hz, toggling every 8 -- just
-	' under 4 flashes a second). The line is the rule that was broken, so the line
-	' is what the eye should be pulled to.
+	' flashes RED against its normal yellow for that whole 1.5 s (90 frames at
+	' 60 Hz, toggling every 8 -- just under 4 flashes a second). The line is the
+	' rule that was broken, so the line is what the eye should be pulled to, and
+	' yellow -> red says which rule without a word of text.
 	'
 	' It is character 161's colour that alternates, nothing else. Flashing the
 	' BUBBLES was tried first and was wrong twice over: it draws attention to the
@@ -1803,17 +1804,22 @@ rd_get:
 wall_pat:
 	DATA BYTE $00,$EE,$EE,$EE,$00,$BB,$BB,$BB
 	DATA BYTE $00,$00,$00,$3C,$3C,$00,$00,$00
-	' Grey brick face over black mortar; dark red dash on black.
+	' Grey brick face over black mortar; YELLOW dash on black for the death line.
 	' dash_col is a label INSIDE this table, not a copy: `DEFINE COLOR 160,2,wall_col`
 	' still reads all 16 bytes straight through, while `DEFINE COLOR 161,1,dash_col`
-	' addresses just the death-line dash so it can be flashed on its own.
+	' addresses just the death-line dash so it can be recoloured on its own.
+	'
+	' Yellow at rest, RED when crossed -- the line changes meaning at that moment,
+	' from a boundary you are approaching to the rule you just broke, so it changes
+	' colour rather than merely blinking. It was dark red at rest, which both read
+	' as already-alarming and left nowhere for the alarm state to go.
 wall_col:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 dash_col:
-	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
-	' Death-line flash: white on black, swapped in and out by do_dead.
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' light yellow on black
+	' Death-line flash: light red on black, swapped in and out by do_dead.
 dash_colf:
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91
 
 	' 176-184 = the drop-timer gauge: the same cell at nine fill widths, 0 to 8
 	' pixels from the LEFT. Eight of these side by side give a 64-step bar.

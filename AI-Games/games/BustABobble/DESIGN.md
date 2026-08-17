@@ -787,11 +787,16 @@ The fill turns **red for the last quarter** of the gauge — 5 s at round 1, 3 s
 it to the alarm instead put the colour change 1.3 s out, when only ~4 of 64 pixels were still lit:
 there was no bar left to be red.
 
-**The DEATH LINE flashes when a bubble crosses it.** The 1.5 s pause in `do_dead` was a tone over a
-frozen board with nothing to say *why* the round ended. The line now flashes white for that whole
-1.5 s (90 frames, toggling every 8 — just under 4 flashes a second). One character's colour
-alternates: `DEFINE COLOR 161,1,dash_colf`, 8 bytes a flip. `dash_col` is a label *inside* `wall_col`
-rather than a copy, so `DEFINE COLOR 160,2,wall_col` still reads straight through both characters.
+**The death line is YELLOW, and flashes RED when a bubble crosses it.** The 1.5 s pause in `do_dead`
+was a tone over a frozen board with nothing to say *why* the round ended. The line now flashes for
+that whole 1.5 s (90 frames, toggling every 8 — just under 4 flashes a second). One character's
+colour alternates: `DEFINE COLOR 161,1,dash_colf`, 8 bytes a flip. `dash_col` is a label *inside*
+`wall_col` rather than a copy, so `DEFINE COLOR 160,2,wall_col` still reads straight through both
+characters.
+
+Yellow at rest matters as much as red on death: the line was *dark red* at rest, which already read
+as alarming and left the alarm state nowhere to go. Yellow → red says the line changed meaning — from
+a boundary you are approaching to the rule you just broke — without a word of text.
 
 > Built first as a flash of the **bubbles**, which was wrong twice over. It draws the eye to the
 > wrong thing — the line is the rule that was broken, so the line is what should be lit — and
