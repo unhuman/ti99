@@ -62,6 +62,12 @@ rm -f "$NAME.bin"
 # (we are inside src/ at this point, hence the relative path)
 "$PY" ../assets/romcheck.py || die "fixed area overflowed -- see above"
 
+# AUDIT THE LEVEL DATA TOO. A layout with bubbles that hang from nothing is not a
+# build error and not a crash -- it surfaces sessions later as three different
+# apparent bugs in the drop logic, and one round that cannot be won at all
+# (DESIGN.md 16a). It costs a second to check, so it is checked every build.
+"$PY" ../assets/solvelevels.py --anchors || die "level data has unanchored bubbles -- see above"
+
 echo "[3/3] linkticart $NAME.bin -> ${NAME}_8.bin   ('$CARTNAME')"
 rm -f "${NAME}_8.bin"
 "$PY" "$CVBASIC_DIR/linkticart.py" "$NAME.bin" "${NAME}_8.bin" "$CARTNAME" \

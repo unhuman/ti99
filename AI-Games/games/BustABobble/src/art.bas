@@ -125,6 +125,137 @@ bub_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' BL
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' BR
 
+	' Bubbles WITH the death line through them, chars 186-217 (4 per colour).
+	' Scan lines 2 and 5 are cleared to black -- the spacers; 3-4 keep the ball's
+	' silhouette and are recoloured by bub_colx/bub_colxf.
+bub_patx:
+	' colour 1
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$AB,$55	' TR
+	DATA BYTE $AA,$91,$00,$3C,$3C,$00,$12,$0F	' BL
+	DATA BYTE $AB,$11,$00,$3C,$3C,$00,$28,$F0	' BR
+	' colour 2
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$AB,$55	' TR
+	DATA BYTE $AA,$91,$00,$3C,$3C,$00,$12,$0F	' BL
+	DATA BYTE $AB,$11,$00,$3C,$3C,$00,$28,$F0	' BR
+	' colour 3
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$AB,$55	' TR
+	DATA BYTE $AA,$91,$00,$3C,$3C,$00,$12,$0F	' BL
+	DATA BYTE $AB,$11,$00,$3C,$3C,$00,$28,$F0	' BR
+	' colour 4
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$AB,$55	' TR
+	DATA BYTE $AA,$91,$00,$3C,$3C,$00,$12,$0F	' BL
+	DATA BYTE $AB,$11,$00,$3C,$3C,$00,$28,$F0	' BR
+	' colour 5
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$AB,$55	' TR
+	DATA BYTE $AA,$91,$00,$3C,$3C,$00,$12,$0F	' BL
+	DATA BYTE $AB,$11,$00,$3C,$3C,$00,$28,$F0	' BR
+	' colour 6
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$AA,$D5	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$AB,$55	' TR
+	DATA BYTE $AA,$91,$00,$3C,$3C,$00,$12,$0F	' BL
+	DATA BYTE $AB,$11,$00,$3C,$3C,$00,$28,$F0	' BR
+	' colour 7
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$A2,$C0	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$23,$41	' TR
+	DATA BYTE $80,$81,$00,$3C,$3C,$00,$10,$0F	' BL
+	DATA BYTE $81,$01,$00,$3C,$3C,$00,$28,$F0	' BR
+	' colour 8
+	DATA BYTE $0F,$1F,$00,$3C,$3C,$00,$FF,$FF	' TL
+	DATA BYTE $F0,$F8,$00,$3C,$3C,$00,$FF,$FF	' TR
+	DATA BYTE $FF,$FF,$00,$3C,$3C,$00,$1A,$0F	' BL
+	DATA BYTE $FF,$FF,$00,$3C,$3C,$00,$A8,$F0	' BR
+
+	' at rest: yellow line -- scan lines 3-4 are the line, the rest is the bubble.
+bub_colx:
+	' colour 1
+	DATA BYTE $91,$91,$91,$B1,$B1,$91,$91,$91	' TL
+	DATA BYTE $91,$91,$91,$B1,$B1,$91,$91,$91	' TR
+	DATA BYTE $91,$91,$91,$B1,$B1,$91,$91,$91	' BL
+	DATA BYTE $91,$91,$91,$B1,$B1,$91,$91,$91	' BR
+	' colour 2
+	DATA BYTE $31,$31,$31,$B1,$B1,$31,$31,$31	' TL
+	DATA BYTE $31,$31,$31,$B1,$B1,$31,$31,$31	' TR
+	DATA BYTE $31,$31,$31,$B1,$B1,$31,$31,$31	' BL
+	DATA BYTE $31,$31,$31,$B1,$B1,$31,$31,$31	' BR
+	' colour 3
+	DATA BYTE $51,$51,$51,$B1,$B1,$51,$51,$51	' TL
+	DATA BYTE $51,$51,$51,$B1,$B1,$51,$51,$51	' TR
+	DATA BYTE $51,$51,$51,$B1,$B1,$51,$51,$51	' BL
+	DATA BYTE $51,$51,$51,$B1,$B1,$51,$51,$51	' BR
+	' colour 4
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' TL
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' TR
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' BL
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' BR
+	' colour 5
+	DATA BYTE $71,$71,$71,$B1,$B1,$71,$71,$71	' TL
+	DATA BYTE $71,$71,$71,$B1,$B1,$71,$71,$71	' TR
+	DATA BYTE $71,$71,$71,$B1,$B1,$71,$71,$71	' BL
+	DATA BYTE $71,$71,$71,$B1,$B1,$71,$71,$71	' BR
+	' colour 6
+	DATA BYTE $D1,$D1,$D1,$B1,$B1,$D1,$D1,$D1	' TL
+	DATA BYTE $D1,$D1,$D1,$B1,$B1,$D1,$D1,$D1	' TR
+	DATA BYTE $D1,$D1,$D1,$B1,$B1,$D1,$D1,$D1	' BL
+	DATA BYTE $D1,$D1,$D1,$B1,$B1,$D1,$D1,$D1	' BR
+	' colour 7
+	DATA BYTE $E1,$E1,$E1,$B1,$B1,$E1,$E1,$E1	' TL
+	DATA BYTE $E1,$E1,$E1,$B1,$B1,$E1,$E1,$E1	' TR
+	DATA BYTE $E1,$E1,$E1,$B1,$B1,$E1,$E1,$E1	' BL
+	DATA BYTE $E1,$E1,$E1,$B1,$B1,$E1,$E1,$E1	' BR
+	' colour 8
+	DATA BYTE $F1,$F1,$F1,$B1,$B1,$F1,$F1,$F1	' TL
+	DATA BYTE $F1,$F1,$F1,$B1,$B1,$F1,$F1,$F1	' TR
+	DATA BYTE $F1,$F1,$F1,$B1,$B1,$F1,$F1,$F1	' BL
+	DATA BYTE $F1,$F1,$F1,$B1,$B1,$F1,$F1,$F1	' BR
+
+	' death flash: red line -- scan lines 3-4 are the line, the rest is the bubble.
+bub_colxf:
+	' colour 1
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' TL
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' TR
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' BL
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' BR
+	' colour 2
+	DATA BYTE $31,$31,$31,$91,$91,$31,$31,$31	' TL
+	DATA BYTE $31,$31,$31,$91,$91,$31,$31,$31	' TR
+	DATA BYTE $31,$31,$31,$91,$91,$31,$31,$31	' BL
+	DATA BYTE $31,$31,$31,$91,$91,$31,$31,$31	' BR
+	' colour 3
+	DATA BYTE $51,$51,$51,$91,$91,$51,$51,$51	' TL
+	DATA BYTE $51,$51,$51,$91,$91,$51,$51,$51	' TR
+	DATA BYTE $51,$51,$51,$91,$91,$51,$51,$51	' BL
+	DATA BYTE $51,$51,$51,$91,$91,$51,$51,$51	' BR
+	' colour 4
+	DATA BYTE $B1,$B1,$B1,$91,$91,$B1,$B1,$B1	' TL
+	DATA BYTE $B1,$B1,$B1,$91,$91,$B1,$B1,$B1	' TR
+	DATA BYTE $B1,$B1,$B1,$91,$91,$B1,$B1,$B1	' BL
+	DATA BYTE $B1,$B1,$B1,$91,$91,$B1,$B1,$B1	' BR
+	' colour 5
+	DATA BYTE $71,$71,$71,$91,$91,$71,$71,$71	' TL
+	DATA BYTE $71,$71,$71,$91,$91,$71,$71,$71	' TR
+	DATA BYTE $71,$71,$71,$91,$91,$71,$71,$71	' BL
+	DATA BYTE $71,$71,$71,$91,$91,$71,$71,$71	' BR
+	' colour 6
+	DATA BYTE $D1,$D1,$D1,$91,$91,$D1,$D1,$D1	' TL
+	DATA BYTE $D1,$D1,$D1,$91,$91,$D1,$D1,$D1	' TR
+	DATA BYTE $D1,$D1,$D1,$91,$91,$D1,$D1,$D1	' BL
+	DATA BYTE $D1,$D1,$D1,$91,$91,$D1,$D1,$D1	' BR
+	' colour 7
+	DATA BYTE $E1,$E1,$E1,$91,$91,$E1,$E1,$E1	' TL
+	DATA BYTE $E1,$E1,$E1,$91,$91,$E1,$E1,$E1	' TR
+	DATA BYTE $E1,$E1,$E1,$91,$91,$E1,$E1,$E1	' BL
+	DATA BYTE $E1,$E1,$E1,$91,$91,$E1,$E1,$E1	' BR
+	' colour 8
+	DATA BYTE $F1,$F1,$F1,$91,$91,$F1,$F1,$F1	' TL
+	DATA BYTE $F1,$F1,$F1,$91,$91,$F1,$F1,$F1	' TR
+	DATA BYTE $F1,$F1,$F1,$91,$91,$F1,$F1,$F1	' BL
+	DATA BYTE $F1,$F1,$F1,$91,$91,$F1,$F1,$F1	' BR
+
 	' Flying bubble = TWO overlaid 16x16 sprites so it is pixel-identical to the
 	' same bubble once it sticks and becomes characters (a sprite is one colour).
 	' 16 bytes left column then 16 bytes right column -- NOT sequential scan lines.

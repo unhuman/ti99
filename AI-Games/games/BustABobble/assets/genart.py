@@ -232,11 +232,91 @@ def main():
         w("\tDATA BYTE %s\t' BR" % hexrow(bot))
     w("")
 
-    # NO death-flash bubble table here. Flashing the BUBBLES was wrong twice over:
-    # it is the death LINE the player needs drawn to, and recolouring every bubble
-    # white left the ones that were already white or grey visibly unchanged, so it
-    # read as "some of the balls blink". The flash lives on character 161, the
-    # death-line dash, in BUSTABOB.bas next to wall_col.
+    # --- bubbles with the death line running THROUGH them ----------------------------
+    # A bubble sitting on the death-line row hides the line behind it, and once the
+    # stack is deep that is most of the line -- so the flash the player is supposed to
+    # read is exactly the part covered up.
+    #
+    # These 32 characters (186-217) are the same bubbles carrying the line themselves.
+    # The trick is that the VDP colours a character PER SCAN LINE: the dash lives on
+    # scan lines 3-4, so the variant clears scan lines 2 and 5 to black (the 1px
+    # spacers) and lets 3-4 keep the ball's own silhouette, while the colour table
+    # paints just those two lines in the line colour and leaves the rest the bubble's.
+    # The line therefore spans the ball's full width at that height, and flashing it
+    # is one DEFINE COLOR -- no second set of patterns.
+    #
+    # Four per colour, because a bubble straddling the line has either its TOP pair or
+    # its BOTTOM pair on that row, depending on the ceiling's parity.
+    LINE_Y = 11 * 16 + WELLBG      # light yellow  -- must match dash_col in BUSTABOB.bas
+    LINE_R = 9 * 16 + WELLBG       # light red     -- must match dash_colf
+
+    # The death-line dash itself: $3C on its two scan lines, i.e. 4 lit pixels of 8,
+    # centred in the character. MUST match wall_pat's second character in
+    # BUSTABOB.bas -- the line inside the bubbles and the line between them are one
+    # line, and they only read as one if they share the dash.
+    DASH_BITS = 0x3C
+
+    def crossed(b8, solid8):
+        """One quadrant with the line cut through it.
+
+        Scan lines 3-4 carry the DASH PATTERN, not the ball's own pixels and not a
+        solid bar. Two earlier tries were wrong: the ball's dithered pixels made
+        grey's line a row of stray dots (only every eighth pixel is lit at that
+        density), and a solid bar read as a different line from the dashed one
+        either side of the bubble. Using the dash keeps one continuous dashed line
+        across the whole well.
+
+        The dash lands in phase for free, because bubbles are character-aligned --
+        the load-bearing decision in section 2. The dash is per character and the
+        bubble occupies whole characters, so its dashes cannot drift against the
+        ones outside it.
+
+        `solid8` bounds it to the ball: at these scan lines the sphere spans the
+        character anyway, so the mask is a no-op today, but it keeps the line from
+        poking outside the bubble if INSET is ever retuned.
+        """
+        v = list(b8)
+        v[2] = 0                   # 1px black spacer above the line
+        v[5] = 0                   # and below it
+        v[3] = DASH_BITS & solid8[3]
+        v[4] = DASH_BITS & solid8[4]
+        return v
+
+    w("\t' Bubbles WITH the death line through them, chars 186-217 (4 per colour).")
+    w("\t' Scan lines 2 and 5 are cleared to black -- the spacers; 3-4 keep the ball's")
+    w("\t' silhouette and are recoloured by bub_colx/bub_colxf.")
+    w("bub_patx:")
+    for k, (base, lit, lrows, style) in enumerate(BUBBLE):
+        rows = mask_bytes(bubble_mask(style))
+        BL = [r[0] for r in rows]
+        BR = [r[1] for r in rows]
+        w("\t' colour %d" % (k + 1))
+        w("\tDATA BYTE %s\t' TL" % hexrow(crossed(BL[0:8], L[0:8])))
+        w("\tDATA BYTE %s\t' TR" % hexrow(crossed(BR[0:8], R[0:8])))
+        w("\tDATA BYTE %s\t' BL" % hexrow(crossed(BL[8:16], L[8:16])))
+        w("\tDATA BYTE %s\t' BR" % hexrow(crossed(BR[8:16], R[8:16])))
+    w("")
+
+    for lab, linec, what in (("bub_colx", LINE_Y, "at rest: yellow line"),
+                             ("bub_colxf", LINE_R, "death flash: red line")):
+        w("\t' %s -- scan lines 3-4 are the line, the rest is the bubble." % what)
+        w("%s:" % lab)
+        for k, (base, lit, lrows, style) in enumerate(BUBBLE):
+            b = base * 16 + WELLBG
+            t = lit * 16 + WELLBG
+            if style:
+                top = bot = [t] * 8
+            else:
+                top = [t if y < lrows else b for y in range(8)]
+                bot = [t if (y + 8) < lrows else b for y in range(8)]
+            top = [linec if y in (3, 4) else v for y, v in enumerate(top)]
+            bot = [linec if y in (3, 4) else v for y, v in enumerate(bot)]
+            w("\t' colour %d" % (k + 1))
+            w("\tDATA BYTE %s\t' TL" % hexrow(top))
+            w("\tDATA BYTE %s\t' TR" % hexrow(top))
+            w("\tDATA BYTE %s\t' BL" % hexrow(bot))
+            w("\tDATA BYTE %s\t' BR" % hexrow(bot))
+        w("")
 
     # --- sprites ----------------------------------------------------------------------
     # CVBasic 16x16 sprite pattern = 16 bytes left column, then 16 bytes right column.

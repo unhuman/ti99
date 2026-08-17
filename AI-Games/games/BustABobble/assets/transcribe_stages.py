@@ -82,6 +82,112 @@ def assign(st):
     return out
 
 
+def neighbours(grid, r, c):
+    """The six hex neighbours, matching nbmark in BUSTABOB.bas exactly.
+
+    Bounds are taken from the GRID, not a fixed 11 rows: stages are 4 to 11 rows
+    tall, so a constant bound walks off the end of the short ones.
+    """
+    p = r & 1
+    n = c + p
+    out = []
+    if c > 0:
+        out.append((r, c - 1))
+    if c < 7:
+        out.append((r, c + 1))
+    for dr in (-1, 1):
+        rr = r + dr
+        if n > 0:
+            out.append((rr, n - 1))
+        if n < 8:
+            out.append((rr, n))
+    return [(rr, cc) for (rr, cc) in out
+            if 0 <= rr < len(grid) and 0 <= cc < len(grid[rr])]
+
+
+def reachable(grid):
+    """Occupied cells chained to grid row 0 -- the only row the ceiling holds."""
+    seen = set()
+    stack = [(0, c) for c in range(8) if grid[0][c] != "."]
+    seen.update(stack)
+    while stack:
+        r, c = stack.pop()
+        for (rr, cc) in neighbours(grid, r, c):
+            if (rr, cc) not in seen and grid[rr][cc] != ".":
+                seen.add((rr, cc))
+                stack.append((rr, cc))
+    return seen
+
+
+def anchor(st, grid):
+    """Connect every detached piece to the ceiling by adding the FEWEST bubbles.
+
+    WHY THIS EXISTS. The FAQ's stage diagrams are ASCII, and ASCII does not carry
+    hex adjacency at the row ends: four stages (9, 10, 15, 20) transcribe to fields
+    with pieces that hang from nothing. Puzzle Bobble drops whatever loses the
+    ceiling, so on those rounds one pop anywhere collapsed most of the board.
+    Special-casing the DROP RULE to cope was tried twice and each version traded
+    one bug for another -- the last of them left round 20 unwinnable, with 22 of
+    its 29 bubbles unclearable even with the drop clock switched off.
+
+    Fixing the DATA retires all of it: with nothing detached, the game's scenery
+    set is empty and the drop rule degenerates to the stock Puzzle Bobble rule.
+
+    Greedy and deterministic: repeatedly add the single empty cell that re-attaches
+    the most currently-detached bubbles, until none are left. Colour is chosen to
+    avoid completing a 3-in-a-row where possible, so the repair does not hand the
+    player free pops (see the pre-made-groups note in DESIGN.md section 7).
+    """
+    grid = [list(row) for row in grid]
+    added = []
+    for _ in range(64):                     # bounded; real repairs need a handful
+        occupied = set((r, c) for r in range(len(grid))
+                       for c in range(len(grid[r])) if grid[r][c] != ".")
+        loose = occupied - reachable(grid)
+        if not loose:
+            break
+        # Candidate empty cells: anywhere adjacent to something detached.
+        best = None
+        for r in range(len(grid)):
+            for c in range(len(grid[r])):
+                if grid[r][c] != ".":
+                    continue
+                nb = neighbours(grid, r, c)
+                if not any(grid[rr][cc] != "." for (rr, cc) in nb):
+                    continue
+                trial = [row[:] for row in grid]
+                trial[r][c] = "?"           # placeholder, colour chosen after
+                gained = len(loose - (set((rr, cc) for rr in range(len(trial))
+                                          for cc in range(len(trial[rr]))
+                                          if trial[rr][cc] != ".")
+                                      - reachable(trial)))
+                if gained <= 0:
+                    continue
+                key = (-gained, r, c)       # most re-attached, then topmost/leftmost
+                if best is None or key < best[0]:
+                    best = (key, r, c)
+        if best is None:
+            raise SystemExit("stage %d: cannot anchor, no candidate cell" % st["n"])
+        _, r, c = best
+        # Colour: prefer one that does NOT complete a group of 3+.
+        pick = None
+        for k in range(1, st["ncol"] + 1):
+            grid[r][c] = str(k)
+            seen, stack = {(r, c)}, [(r, c)]
+            while stack:
+                rr, cc = stack.pop()
+                for (r2, c2) in neighbours(grid, rr, cc):
+                    if (r2, c2) not in seen and grid[r2][c2] == str(k):
+                        seen.add((r2, c2))
+                        stack.append((r2, c2))
+            if len(seen) < 3:
+                pick = str(k)
+                break
+        grid[r][c] = pick if pick else "1"
+        added.append((r, c, grid[r][c]))
+    return ["".join(row) for row in grid], added
+
+
 def sequence(st, grid):
     """32 shots, deterministic, WEIGHTED by what is actually on the field.
 
@@ -139,8 +245,12 @@ def main():
         return 1
 
     body, fail = [], []
+    repairs = []
     for st in stages:
         grid = assign(st)
+        grid, added = anchor(st, grid)
+        if added:
+            repairs.append((st["n"], added))
         used = sorted(set(ch for row in grid for ch in row if ch != "."))
         body.append("LEVEL %d" % st["n"])
         # COLOURS is the highest colour index PLACED, which is what genlevels.py
@@ -187,14 +297,23 @@ def main():
     with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(head + body) + "\n")
 
-    tot = sum(sum(1 for row in assign(st) for ch in row if ch != ".") for st in stages)
+    tot = 0
     print("wrote %s" % os.path.normpath(OUT))
-    print("  30 stages, %d bubbles total" % tot)
     for st in stages:
-        g = assign(st)
+        g, _ = anchor(st, assign(st))
         cnt = sum(1 for row in g for ch in row if ch != ".")
+        tot += cnt
         print("    stage %-2d  %2d rows  %3d bubbles  %d colours  droptime %gs"
               % (st["n"], len(g), cnt, st["ncol"], droptime(st["n"])))
+    print("  30 stages, %d bubbles total" % tot)
+    if repairs:
+        print("\n  ANCHOR REPAIRS -- cells added so nothing hangs from nothing:")
+        for n, added in repairs:
+            print("    stage %-2d  +%d  %s"
+                  % (n, len(added),
+                     " ".join("r%dc%d=%s" % a for a in added)))
+    else:
+        print("\n  every stage was already anchored; no repairs needed")
     return 0
 
 

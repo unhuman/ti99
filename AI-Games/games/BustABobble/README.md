@@ -21,13 +21,14 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **20,846 B of 24,336 — 3,490 free** (checked by `assets/romcheck.py` on every
-build); ColecoVision RAM **566 B of 814**.
+TI fixed area **22,304 B of 24,336 — 2,032 free** (checked by `assets/romcheck.py` on every
+build); ColecoVision RAM **570 B of 814**.
 
-**Orphans fall relative to the shot**, not by a global ceiling check: a bubble falls only if it
-*was* hanging from the ceiling and is not any more. Identical to the standard rule on a well-formed
-field — it only matters on the four rounds whose transcribed layouts ship detached pieces
-(`DESIGN.md` §11), where a global check collapsed most of the board on the first pop anywhere.
+The **death line is yellow, and flashes red** when a bubble crosses it — including *through* the
+bubbles sitting on it, which would otherwise hide the very thing the player needs to see. Those
+bubbles are drawn from a variant character set carrying the dash through their middle with a 1px
+black spacer either side, so the line stays one continuous dashed rule across the whole well
+(`DESIGN.md` §11).
 
 The HUD now carries a **drop-timer gauge** (8 chars, 64 steps, red for the last quarter) and
 **spare lives as little green creatures** — see `DESIGN.md` §11. The arcade has neither: it drops
@@ -47,17 +48,15 @@ Two open items, both measured and both pure data changes:
   round 1 at 90% of its bubbles. They look poppable and aren't, because matches are only checked
   when a bubble lands. Fix identified.
 
-⚠️ **29 of 30 rounds are proven winnable. Round 20 currently is not** — see `DESIGN.md` §16a. Because
-the shot sequence is fixed, a round *can* be impossible and nothing else in the build would notice,
-so `assets/solvelevels.py` re-implements the game from the shipped `src/levels.bas` and `src/art.bas`
-(real fixed-point flight, real pixel collision, real snap tie-breaks, real substitution rule, real
-drop clock) and searches each round for a clearing line.
+**All 30 rounds are proven winnable.** Because the shot sequence is fixed, a round *can* be
+impossible and nothing else in the build would notice, so `assets/solvelevels.py` re-implements the
+game from the shipped `src/levels.bas` and `src/art.bas` (real fixed-point flight, real pixel
+collision, real snap tie-breaks, real substitution rule, real drop clock) and searches each round
+for a clearing line. It finds one for all 30, re-verified after the layout repair below.
 
-It finds one for 29. **Round 20 fails even with the drop clock disabled**, stalling with 22 of its
-29 bubbles left: its detached pieces are now permanent anchors (the scenery rule, §11) and cannot be
-matched away. That is a regression from fixing the round-10 collapse, and the real cause is upstream
-— four rounds ship layouts that were never attached to the ceiling. Fixing the *layouts* retires all
-of it; the rule is only a patch over bad data.
+`--anchors` additionally proves **no round ships a bubble that hangs from nothing**, which is the
+defect that made rounds 9/10/15/20 misbehave three different ways before it was fixed at source
+(`DESIGN.md` §16a).
 
 `check_source_drift()` re-reads `BUSTABOB.bas` each run so the checker cannot go stale against a
 tuned constant, and its predictions were **checked against Classic99 running the built cartridge** —

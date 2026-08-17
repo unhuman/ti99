@@ -105,6 +105,9 @@
 	' Drop-timer gauge (9 fill widths) and the spare-life creature.
 	DEFINE CHAR 176,9,bar_pat
 	DEFINE COLOR 176,9,bar_col
+	' Bubbles carrying the death line through their middle (see draw_row).
+	DEFINE CHAR 186,32,bub_patx
+	DEFINE COLOR 186,32,bub_colx
 	DEFINE CHAR 185,1,life_pat
 	DEFINE COLOR 185,1,life_col
 	DEFINE COLOR 32,16,txt_col
@@ -1312,22 +1315,37 @@ do_clear:
 	' One character, one DEFINE COLOR of 8 bytes per flip.
 	'
 do_dead:
+	' Clear the launcher deck FIRST. The loaded ball and the three aim dots are
+	' pointing at a shot that will never be taken, and they sit right under the
+	' death line -- exactly where the eye is about to be sent. Parked before the
+	' flash starts so the line is the only thing moving. Sprites 2/3 (the NEXT
+	' bubble) stay: that is a HUD readout, not the aiming device.
+	SPRITE 0,209,0,4,0
+	SPRITE 1,209,0,0,0
+	SPRITE 4,209,0,96,0
+	SPRITE 5,209,0,96,0
+	SPRITE 6,209,0,96,0
 	SOUND 0,800,13
 	sf0 = 40
 	ddf = 0
 	FOR ddi = 0 TO 90
 		IF (ddi AND 7) = 0 THEN
 			ddf = 1 - ddf
+			' Both halves of the line together: the bare dash where it is
+			' visible, and the line inside any bubble sitting on that row.
 			IF ddf = 1 THEN
 				DEFINE COLOR 161,1,dash_colf
+				DEFINE COLOR 186,32,bub_colxf
 			ELSE
 				DEFINE COLOR 161,1,dash_col
+				DEFINE COLOR 186,32,bub_colx
 			END IF
 		END IF
 		WAIT
 		GOSUB sfx_tick
 	NEXT ddi
 	DEFINE COLOR 161,1,dash_col	' always leave the line its normal colour
+	DEFINE COLOR 186,32,bub_colx
 	IF lives > 0 THEN lives = lives - 1
 	IF lives = 0 THEN
 		mrow = 11
@@ -1447,17 +1465,39 @@ draw_row:
 			rowbuf(shkb + dri) = DASHCH
 		NEXT dri
 	END IF
+	' A bubble sitting ON the death-line row would hide the line behind it, and
+	' with a deep stack that is most of the line -- so the flash the player is
+	' meant to read is exactly the part covered up. Bubbles on that row are drawn
+	' from the variant set instead (chars 186-217), which carries the line through
+	' its own middle with a 1px black spacer either side. Which PAIR gets it
+	' depends on the ceiling's parity: the row-pair's top char row may be the death
+	' row, or its bottom one.
 	drp = drr AND 1
 	drb = drr * 8
+	dlt = 0
+	dlb = 0
+	IF drw = DEATHROW THEN dlt = 1
+	IF drv = DEATHROW THEN dlb = 1
 	FOR drc = 0 TO 7
 		drk = grid(drb + drc) AND 15
 		IF drk <> 0 THEN
 			drx = shkb + 1 + drc + drc + drp
 			drh = 124 + drk * 4
-			rowbuf(drx) = drh
-			rowbuf(drx + 1) = drh + 1
-			rowbuf(drx + 20) = drh + 2
-			rowbuf(drx + 21) = drh + 3
+			drhx = 182 + drk * 4
+			IF dlt = 1 THEN
+				rowbuf(drx) = drhx
+				rowbuf(drx + 1) = drhx + 1
+			ELSE
+				rowbuf(drx) = drh
+				rowbuf(drx + 1) = drh + 1
+			END IF
+			IF dlb = 1 THEN
+				rowbuf(drx + 20) = drhx + 2
+				rowbuf(drx + 21) = drhx + 3
+			ELSE
+				rowbuf(drx + 20) = drh + 2
+				rowbuf(drx + 21) = drh + 3
+			END IF
 		END IF
 	NEXT drc
 blit_row:
