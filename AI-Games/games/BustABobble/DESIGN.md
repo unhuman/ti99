@@ -677,9 +677,15 @@ loop (one pass per vblank):
 
 ### Title screen
 
-Boot goes to a title: all eight bubble colours on two decorative rows, the game name, the credit
-line, and **last score + high score across the top row** (same trailing-zero convention as the HUD,
-§11a). Fire starts a game, and a **release is required first** so a button still held from the
+Boot goes to a title laid out top to bottom as: **score + high score on row 0** (same trailing-zero
+convention as the HUD, §11a), all eight bubble colours on **rows 3–4**, the game name on **row 8**
+with a creature pacing either side of it, two clear rows, the eight colours again on **rows 11–12**,
+the credit on **row 17**, and **PRESS FIRE TO START on row 22**.
+
+Row 17 puts the credit exactly between the lower bubbles and PRESS FIRE — four clear rows above and
+four below. It was originally chosen as a deliberate skew *toward* PRESS FIRE, because with that
+message a row higher the gap was odd and a credit floating mid-screen reads as belonging to nothing;
+moving PRESS FIRE down one row made the same position land dead centre. Fire starts a game, and a **release is required first** so a button still held from the
 previous game cannot skip through. Typing **8 3 8** opens a round selector — two digits, 01–30,
 echoed as typed — the same secret the other games in this repo use, and likewise not advertised on
 screen. The chosen round lasts **one game**; returning to the title always resets to round 1.
@@ -698,6 +704,11 @@ walk frames). Three things make it cheap and keep it honest:
 - **The patrol is bounded by the creature's RIGHT edge, not its left.** It is 16 px wide, so stopping
   `twx` at 51 keeps that edge at 67, clear of the "B" at px 72. Bounding the left edge instead had it
   walking across the first letter — visible immediately on screen, invisible in the arithmetic.
+- **The two patrols are deliberately unequal**: left 14–51, right 179–224. Both run from just clear
+  of the title outward, but the name spans px 72–175 and so is *not* centred on the 256 px screen —
+  there is more empty screen to the right of it than the left. Matching the ranges would have wasted
+  that room and left the right-hand guy looking penned in; as it is, both keep about 15 px of margin
+  at the screen edge with the waving arm extended.
 
 Only the legs differ between the two walk frames, so the cycle reads as walking rather than the whole
 creature twitching.

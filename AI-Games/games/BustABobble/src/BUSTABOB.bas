@@ -1692,9 +1692,19 @@ title_screen:
 	CLS
 	' Two decorative rows showing all eight bubble colours, built in the same
 	' row buffer the playfield uses.
+	'
+	' LAYOUT, top to bottom: score/hi on row 0, bubbles on 3-4, the name on 8 (with
+	' the creatures pacing either side of it), TWO clear rows, bubbles again on
+	' 11-12, the credit on 17, and PRESS FIRE on 21.
+	'
+	' The credit on row 17 sits exactly between them: rows 13-21 are free between
+	' the lower bubbles and PRESS FIRE on 22, leaving four clear rows above it and
+	' four below. (It was chosen as a deliberate skew toward PRESS FIRE when that
+	' sat on row 21 and the gap was odd; moving PRESS FIRE down one row made the
+	' same position land dead centre, so the skew is no longer needed.)
 	tby = 3
 	GOSUB title_bubbles
-	tby = 15
+	tby = 11
 	GOSUB title_bubbles
 	' Last score and high score across the top row: "SCORE" then the 9 digits,
 	' "HI" then its 9. Row 0 is cols 0-31, so SCORE occupies 0-14 and HI 17-31.
@@ -1707,20 +1717,27 @@ title_screen:
 	tsp = 23
 	GOSUB title_num_hi
 	PRINT AT 265,"BUST-A-BOBBLE"
-	PRINT AT 356,"2026 UNHUMAN AND CLAUDE"
-	PRINT AT 678,"PRESS FIRE TO START"
+	PRINT AT 548,"2026 UNHUMAN AND CLAUDE"	' row 17, col 4
+	PRINT AT 710,"PRESS FIRE TO START"	' row 22, col 6
 	t8 = 0
 	tkl = 15
 	btnr = 0
 	' Two creatures, deliberately out of step from the first frame: different
 	' starting positions, directions, step phases and countdowns. They never sync
 	' up because the countdowns are re-rolled at random each time.
+	'
+	' The patrols are ASYMMETRIC on purpose. Both run from just clear of the title
+	' outward, but "BUST-A-BOBBLE" is not centred on the screen -- it spans px
+	' 72-175, so there is more empty screen on the right than the left. The left
+	' guy roams 14-51 (2 chars further out than he used to), the right 179-224
+	' (3 chars), which uses the room that is actually there and still leaves both
+	' about 15 px of margin at the screen edge, arm included.
 	twx(0) = 30 : twdir(0) = 0 : twt(0) = 0 : twf(0) = 0
 	twst(0) = 0 : twtm(0) = 40 : twwf(0) = 0
-	twlo(0) = 30 : twhi(0) = 51
+	twlo(0) = 14 : twhi(0) = 51
 	twx(1) = 195 : twdir(1) = 1 : twt(1) = 2 : twf(1) = 2
 	twst(1) = 0 : twtm(1) = 95 : twwf(1) = 0
-	twlo(1) = 179 : twhi(1) = 200
+	twlo(1) = 179 : twhi(1) = 224
 
 title_wait:
 	WAIT
