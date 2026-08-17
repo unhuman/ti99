@@ -1091,6 +1091,12 @@ drop_orphans:
 	GOSUB propag
 	don = 0
 	ofn = 0
+	' The i-th dropped bubble is worth 2^i UNITS OF 10, so the award is just the
+	' previous one doubled -- dbl_ad, the same routine the round-clear bonus uses.
+	' This replaced a 102-byte dropbcd table of seventeen six-digit entries AND the
+	' `* 6` index multiply that read it. Starts at 2 units = 20 points.
+	ad(0) = 0 : ad(1) = 0 : ad(2) = 0
+	ad(3) = 0 : ad(4) = 0 : ad(5) = 2
 	' Walked by row/column, not flat index, so the orphan's grid position is known
 	' without a division -- fall_orphans needs it to place the sprite.
 	FOR dor = 0 TO 11
@@ -1110,17 +1116,12 @@ drop_orphans:
 				END IF
 				grid(doi) = 0
 				don = don + 1
-				dobi = don
-				IF dobi > 17 THEN dobi = 17
-				#dob = dobi - 1
-				#dob = #dob * 6
-				ad(0) = dropbcd(#dob)
-				ad(1) = dropbcd(#dob + 1)
-				ad(2) = dropbcd(#dob + 2)
-				ad(3) = dropbcd(#dob + 3)
-				ad(4) = dropbcd(#dob + 4)
-				ad(5) = dropbcd(#dob + 5)
 				GOSUB add_score
+				' Capped at the 17th bubble (131,072 units = 1,310,720 points, the
+				' documented arcade maximum): past that the award simply stops
+				' doubling, so every further bubble pays the same top rate -- which
+				' is exactly what the old table's `IF dobi > 17` clamp did.
+				IF don < 17 THEN GOSUB dbl_ad
 			END IF
 		END IF
 		NEXT docc
@@ -2156,6 +2157,16 @@ setup838:
 	stlv = sd1 * 10 + tdg
 	IF stlv < 1 THEN stlv = 1
 	IF stlv > 30 THEN stlv = 30
+	' LET THE SECOND DIGIT'S BEEP DECAY BEFORE LEAVING. The first digit's note is
+	' silenced by the wait loops of the second call to rd_dig -- but after the
+	' SECOND digit there is no loop left, and nothing between here and the main loop
+	' calls sfx_tick: not title_go, not load_level, not draw_frame. So the note held
+	' all the way through round setup and only stopped once the game loop began,
+	' which sounded like a beep running until the music started.
+	FOR sdw = 0 TO 5
+		WAIT
+		GOSUB sfx_tick
+	NEXT sdw
 	RETURN
 
 rd_dig:

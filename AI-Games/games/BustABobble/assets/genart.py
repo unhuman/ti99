@@ -481,22 +481,10 @@ def main():
         w("\tDATA %s" % ",".join(str(v) for v in dys[i:i + 8]))
     w("")
 
-    # --- drop-score table -------------------------------------------------------------
-    # The i-th dropped bubble is worth 20 * 2^(i-1) points = 2^i UNITS OF 10.
-    # Capped at i=17 -> 131072 units = 1,310,720 points, the documented arcade maximum.
-    w("\t' Drop score. The i-th dropped bubble is worth 20 * 2^(i-1) POINTS, which is")
-    w("\t' exactly 2^i UNITS OF 10. Capped at i=%d -> %d units = %s points," %
-      (NDROP, 2 ** NDROP, "{:,}".format(2 ** NDROP * 10)))
-    w("\t' the documented arcade maximum for one drop.")
-    w("\t' Stored as 6 BCD digits, most significant first, so adding into the score is")
-    w("\t' a digit-wise add with carry -- no division, no 32-bit arithmetic, no overflow.")
-    w("dropbcd:")
-    for i in range(1, NDROP + 1):
-        u = 2 ** i
-        digs = [int(c) for c in "%06d" % u]
-        w("\tDATA BYTE %s\t' %2d bubbles: %6d units = %s pts"
-          % (hexrow(digs), i, u, "{:,}".format(u * 10)))
-    w("")
+    # The drop score needs NO TABLE any more: the i-th dropped bubble is worth
+    # 2^i units of 10, which BUSTABOB.bas now gets by doubling the previous award
+    # in place (dbl_ad). The old dropbcd was 17 six-digit entries, 102 bytes, plus
+    # a `* 6` index multiply to read it.
 
     outdir = os.path.dirname(os.path.abspath(OUT))
     if not os.path.isdir(outdir):
@@ -507,7 +495,7 @@ def main():
     nspr = (len(BUBBLE) + 1) * 32 + 64 + 128	# bubbles, dot, walk, wave
     total = 32 + 8 * 4 * 8 + nspr + NAIM * 4 + NDROP * 6
     print("wrote %s" % os.path.normpath(OUT))
-    print("  patterns 32 B  colours %d B  sprites %d B  aim %d B  dropbcd %d B  = %d B"
+    print("  patterns 32 B  colours %d B  sprites %d B  aim %d B  = %d B"
           % (8 * 4 * 8, nspr, NAIM * 4, NDROP * 6, total))
     print("  aim step 0 = (%d,%d)  step 31 = (%d,%d)  [8.8 fixed]"
           % (dxs[0], dys[0], dxs[-1], dys[-1]))

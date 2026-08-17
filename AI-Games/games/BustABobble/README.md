@@ -21,7 +21,7 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-⚠️ TI fixed area **24,294 B of 24,336 — 42 free** (checked by `assets/romcheck.py` on every build);
+⚠️ TI fixed area **24,160 B of 24,336 — 176 free** (checked by `assets/romcheck.py` on every build);
 ColecoVision RAM **618 B of 814**. An 860-byte clean-out went almost entirely into the music:
 collapsing the obsolete two-sprite bubble (512 B), and replacing two colour tables that repeated one
 8-byte row 16 and 9 times over with a `DEFINE COLOR` loop (`txt_col` 128→8, gauge colours 144→16).
@@ -53,7 +53,7 @@ Clearing a round pays a **descending-wall bonus**: 100 for the first row the wal
 doubling per row, stopping at the death line — 102,300 from a fresh ceiling, and *less* if the
 ceiling already descended, so clearing early pays better.
 
-Not yet built: the danger state and the BUB mascot. ⚠️ **The fixed area is full — 42 bytes free.**
+Not yet built: the danger state and the BUB mascot. ⚠️ **The fixed area is essentially full — 176 bytes free.**
 Nothing more of any size fits until the level data (1,860 B) moves into a bank; `DESIGN.md` §13 has
 the plan. Note music itself **cannot** be banked: the player refills the sound registers from the
 vblank ISR, where bank-switching is not safe.

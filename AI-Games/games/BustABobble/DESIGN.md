@@ -1265,7 +1265,7 @@ case to cope with the data, check the data.
 
 | # | Item | Detail |
 |---|---|---|
-| 4 | ⚠️ **THE FIXED AREA IS FULL — 42 bytes free.** Music is built and fits, but nothing more of any size does; even a short pitch-sweep engine for the bubble pop is blocked. The level data (1,860 B) must move into a bank next. Music itself CANNOT be banked: the player refills the sound registers from the vblank ISR, where bank-switching is unsafe. So the levels move and the music stays. | §13, §11 |
+| 4 | ⚠️ **THE FIXED AREA IS ESSENTIALLY FULL — 176 bytes free.** Music is built and fits, but nothing more of any size does; even a short pitch-sweep engine for the bubble pop is blocked. The level data (1,860 B) must move into a bank next. Music itself CANNOT be banked: the player refills the sound registers from the vblank ISR, where bank-switching is unsafe. So the levels move and the music stays. | §13, §11 |
 | 5 | **The danger state** (arcade raises the music tempo as the stack nears the line) is unbuilt. The death line flashes once a bubble has *crossed* it, but there is still no cue for danger *approaching*. | §11 |
 | 6 | **BUB mascot**, rows 20–22, unbuilt. | §3 |
 

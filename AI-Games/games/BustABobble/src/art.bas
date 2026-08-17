@@ -348,27 +348,3 @@ spr_dot:	' 4x4 aim-guide dot, centred in the 16x16 cell
 	DATA 962,923,882,839,795,749,701,652
 	DATA 602,551,498,445,390,335,279,222
 
-	' Drop score. The i-th dropped bubble is worth 20 * 2^(i-1) POINTS, which is
-	' exactly 2^i UNITS OF 10. Capped at i=17 -> 131072 units = 1,310,720 points,
-	' the documented arcade maximum for one drop.
-	' Stored as 6 BCD digits, most significant first, so adding into the score is
-	' a digit-wise add with carry -- no division, no 32-bit arithmetic, no overflow.
-dropbcd:
-	DATA BYTE $00,$00,$00,$00,$00,$02	'  1 bubbles:      2 units = 20 pts
-	DATA BYTE $00,$00,$00,$00,$00,$04	'  2 bubbles:      4 units = 40 pts
-	DATA BYTE $00,$00,$00,$00,$00,$08	'  3 bubbles:      8 units = 80 pts
-	DATA BYTE $00,$00,$00,$00,$01,$06	'  4 bubbles:     16 units = 160 pts
-	DATA BYTE $00,$00,$00,$00,$03,$02	'  5 bubbles:     32 units = 320 pts
-	DATA BYTE $00,$00,$00,$00,$06,$04	'  6 bubbles:     64 units = 640 pts
-	DATA BYTE $00,$00,$00,$01,$02,$08	'  7 bubbles:    128 units = 1,280 pts
-	DATA BYTE $00,$00,$00,$02,$05,$06	'  8 bubbles:    256 units = 2,560 pts
-	DATA BYTE $00,$00,$00,$05,$01,$02	'  9 bubbles:    512 units = 5,120 pts
-	DATA BYTE $00,$00,$01,$00,$02,$04	' 10 bubbles:   1024 units = 10,240 pts
-	DATA BYTE $00,$00,$02,$00,$04,$08	' 11 bubbles:   2048 units = 20,480 pts
-	DATA BYTE $00,$00,$04,$00,$09,$06	' 12 bubbles:   4096 units = 40,960 pts
-	DATA BYTE $00,$00,$08,$01,$09,$02	' 13 bubbles:   8192 units = 81,920 pts
-	DATA BYTE $00,$01,$06,$03,$08,$04	' 14 bubbles:  16384 units = 163,840 pts
-	DATA BYTE $00,$03,$02,$07,$06,$08	' 15 bubbles:  32768 units = 327,680 pts
-	DATA BYTE $00,$06,$05,$05,$03,$06	' 16 bubbles:  65536 units = 655,360 pts
-	DATA BYTE $01,$03,$01,$00,$07,$02	' 17 bubbles: 131072 units = 1,310,720 pts
-
