@@ -21,10 +21,10 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **22,882 B of 24,336 — 1,454 free** (checked by `assets/romcheck.py` on every build);
-ColecoVision RAM **595 B of 814**. That is after an **860-byte** clean-out: collapsing the obsolete
-two-sprite bubble (512 B), and replacing two tables that repeated one 8-byte row 16 and 9 times over
-with a `DEFINE COLOR` loop (`txt_col` 128→8, the gauge colours 144→16).
+⚠️ TI fixed area **24,294 B of 24,336 — 42 free** (checked by `assets/romcheck.py` on every build);
+ColecoVision RAM **618 B of 814**. An 860-byte clean-out went almost entirely into the music:
+collapsing the obsolete two-sprite bubble (512 B), and replacing two colour tables that repeated one
+8-byte row 16 and 9 times over with a `DEFINE COLOR` loop (`txt_col` 128→8, gauge colours 144→16).
 
 The title screen has **two of the little green creature pacing either side of the name**, at 2×,
 each with his own mind — separate patrol, speed phase and timers. Every 12–24 seconds one stops and
@@ -43,9 +43,20 @@ The HUD now carries a **drop-timer gauge** (8 chars, 64 steps, red for the last 
 the ceiling on a *shot count* and shows no gauge at all, so both are deliberate additions that pay
 for this game's timer-based drop being otherwise invisible.
 
-Not yet built: music, the danger state, and the BUB mascot. ⚠️ Art growth means **music no
-longer fits in the fixed area** — `DESIGN.md` §13 has the plan (levels + music into one bank
-together, never separate).
+**In-game music**: an original 16-bar tune in C major, 150 BPM, looping every 25.6 s, written as
+readable bars in `assets/genmusic.py` and generated into `src/music.bas`. Melody on channel 2, bass
+on channel 1 — the effects all live on 0 and 1, so the melody sits on the one channel nothing else
+touches and is never chopped, while the bass ducks under an alarm or a pop and resumes at its next
+note.
+
+Clearing a round pays a **descending-wall bonus**: 100 for the first row the wall closes over,
+doubling per row, stopping at the death line — 102,300 from a fresh ceiling, and *less* if the
+ceiling already descended, so clearing early pays better.
+
+Not yet built: the danger state and the BUB mascot. ⚠️ **The fixed area is full — 42 bytes free.**
+Nothing more of any size fits until the level data (1,860 B) moves into a bank; `DESIGN.md` §13 has
+the plan. Note music itself **cannot** be banked: the player refills the sound registers from the
+vblank ISR, where bank-switching is not safe.
 
 Two open items, both measured and both pure data changes:
 - **Difficulty does not ramp** (`DESIGN.md` §11b). Round 1 gives 240 s of doing nothing; the mean

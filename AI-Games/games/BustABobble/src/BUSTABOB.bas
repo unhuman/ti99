@@ -34,6 +34,22 @@
 	' bounced. They are written as BARE LITERALS at each use site below, which
 	' compiles correctly (`SOUND 0,300` -> `li r0,300`). This is the CVBasic
 	' hazard in CLAUDE.md 3A; the distinction is CONST vs literal, not the value.
+	' MUSIC. Two voices at a deliberately low volume so the effects stay on top.
+	' MELODY IS ON CHANNEL 2 AND BASS ON CHANNEL 1, which is not arbitrary: every
+	' sound effect in this game lives on channels 0 and 1, so putting the melody on
+	' the one channel nothing else touches means the tune is never chopped. The bass
+	' is interrupted now and then by the alarm, a pop or a drop, and simply resumes
+	' at its next note -- a gap of at most an eighth, which reads as the effect
+	' ducking the music rather than as the music breaking.
+	CONST MUSTICK  = 6	' frames per sixteenth -> 900/6 = 150 BPM
+	CONST MUSVOL   = 10	' melody, under the effects at 12-13
+	CONST MUSBAS   = 8	' bass, quieter still
+	' !! NO CONST FOR THE SONG LENGTH -- 256 IS ABOVE 255 AND WOULD COMPILE TO ZERO,
+	' exactly like the fixed-point wall planes at the top of this file. As a CONST it
+	' made `IF #mup >= MUSLEN` read `>= 0`, which is always true on an unsigned
+	' compare, so the song reset to step 0 every tick and played its first note
+	' forever. It sounded like one long beep and nothing else looked wrong.
+	' The literal 256 is written at its use site in mus_step instead.
 	CONST WARNLD   = 80	' frames before the drop at which the ALARM starts --
 				' a full second ahead of the shake, so the player is
 				' warned early enough to change the shot they are lining up
@@ -160,6 +176,11 @@
 		hs(i) = 0
 	NEXT i
 
+	' Base addresses of the music tables, resolved once.
+	#musf = VARPTR mus_freq(0)
+	#muss = VARPTR mus_song(0)
+	mut = 0				' player stopped until a round starts
+
 	GOTO title_screen
 
 new_round:
@@ -167,6 +188,7 @@ new_round:
 	' uses 0 (flying), 2 (next) and 4-6 (aim dots) -- and the title screen leaves
 	' its creatures in 1 and 3, which would otherwise stand there through the game.
 	GOSUB hide_sprites
+	GOSUB mus_start			' the tune belongs to the round, not the title
 	GOSUB load_level
 	' scan_present MUST run before draw_field: it computes maxr, and draw_field
 	' uses maxr to decide which rows to rebuild. With a stale maxr the level's
@@ -213,6 +235,8 @@ game_loop:
 	IF #fd > 4 THEN #fd = 4
 	IF #fd < 1 THEN #fd = 1
 	fd = #fd
+	musdin = fd
+	GOSUB mus_tick
 
 	IF #dropt > fd THEN
 		#dropt = #dropt - fd
@@ -239,9 +263,9 @@ game_loop:
 			warnt = WARNGAP
 			warnf = 1 - warnf
 			IF warnf = 0 THEN
-				SOUND 1,180,12
+				SOUND 1,330,12
 			ELSE
-				SOUND 1,135,12
+				SOUND 1,260,12
 			END IF
 			sf1 = 7
 		END IF
@@ -428,7 +452,7 @@ do_fire:
 	#bdx = #aimdx(am)
 	#bdy = #aimdy(am)
 	bdir = adir
-	SOUND 0,300,12
+	SOUND 0,480,10
 	sf0 = 4
 	RETURN
 
@@ -458,6 +482,8 @@ do_fire:
 	'
 anim_tick:
 	GOSUB sfx_tick
+	musdin = 1			' the music keeps time through the animations too
+	GOSUB mus_tick
 	IF #dropt > 1 THEN
 		#dropt = #dropt - 1
 	ELSE
@@ -465,6 +491,91 @@ anim_tick:
 	END IF
 	#lf = FRAME
 	GOSUB tick_bar
+	RETURN
+
+	'
+	' ------------------------------------------------------------------ music
+	'
+	' Driven here rather than with CVBasic's PLAY: PLAY writes the volume registers
+	' from its own tables every frame, which would fight every sound effect in the
+	' game for the channels they share.
+	'
+mus_start:
+	#mup = 0
+	mut = 1
+	RETURN
+
+mus_off:
+	mut = 0
+	SOUND 1,,0
+	SOUND 2,,0
+	RETURN
+
+	' Caller sets musdin to the frames elapsed since it last called.
+	'
+	' COUNT FRAMES, NOT PASSES, and DO NOT DROP THE REMAINDER. Both are RALLY-X's
+	' scars (its DESIGN.md 17): a per-pass counter halves the tempo the moment a
+	' pass takes two frames, and resetting the counter instead of spending the whole
+	' delta makes the music LOSE TIME exactly when the loop is busy -- which here
+	' would be during a burst or an orphan fall, so the tune would drag whenever the
+	' player did something good.
+mus_tick:
+	IF mut = 0 THEN RETURN
+	musd = musdin
+mus_adv:
+	IF mut > musd THEN mut = mut - musd : RETURN
+	musd = musd - mut
+	mut = MUSTICK
+	GOSUB mus_step
+	GOTO mus_adv
+
+mus_step:
+	#mua = #muss + #mup
+	#mua = #mua + #mup
+	mun = PEEK(#mua)
+	#mua = #mua + 1
+	mub = PEEK(#mua)
+	IF mun > 0 THEN GOSUB mus_mel
+	IF mub > 0 THEN GOSUB mus_bas
+	#mup = #mup + 1
+	IF #mup >= 256 THEN #mup = 0	' BARE LITERAL -- see the note by MUSTICK
+	RETURN
+
+mus_mel:
+	#mua = #musf + mun
+	#mua = #mua + mun
+	mhi = PEEK(#mua)
+	#mua = #mua + 1
+	mlo = PEEK(#mua)
+	GOSUB mus_word
+	SOUND 2,#mf,MUSVOL
+	RETURN
+
+mus_bas:
+	#mua = #musf + mub
+	#mua = #mua + mub
+	mhi = PEEK(#mua)
+	#mua = #mua + 1
+	mlo = PEEK(#mua)
+	GOSUB mus_word
+	SOUND 1,#mf,MUSBAS
+	RETURN
+
+	' Rebuild the 16-bit divider from the table's hi/lo bytes by DOUBLING, never
+	' `mhi * 256`: that compiles to a bare CLR on this backend (CLAUDE.md 3A), so
+	' every note would come out as just its low byte -- pitches wrong, anything over
+	' 255 wrapping, the tune unrecognisable and no error anywhere.
+mus_word:
+	#mf = mhi
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + #mf
+	#mf = #mf + mlo
 	RETURN
 
 sfx_tick:
@@ -517,14 +628,14 @@ flight_step:
 		IF #bx < 6144 THEN
 			#bx = 6144
 			bdir = 1
-			SOUND 0,150,10
+			SOUND 0,360,8
 			sf0 = 3
 		END IF
 	ELSE
 		IF #bx > 34816 THEN
 			#bx = 34816
 			bdir = 0
-			SOUND 0,150,10
+			SOUND 0,360,8
 			sf0 = 3
 		END IF
 	END IF
@@ -723,7 +834,7 @@ do_stick:
 	SPRITE 1,209,0,0,0
 	grid(strr * 8 + stcc) = curk
 	IF strr > maxr THEN maxr = strr		' draw_field runs before scan_present
-	SOUND 0,250,10
+	SOUND 0,600,9
 	sf0 = 3
 	GOSUB draw_field
 	GOSUB after_stick
@@ -846,9 +957,9 @@ pop_marks:
 	FOR cmi = 0 TO 95
 		IF (grid(cmi) AND 64) <> 0 THEN grid(cmi) = 0
 	NEXT cmi
-	SOUND 0,120,12
+	SOUND 0,700,12
 	sf0 = 5
-	SOUND 1,90,10
+	SOUND 1,470,10
 	sf1 = 8
 	RETURN
 
@@ -1015,7 +1126,7 @@ drop_orphans:
 		NEXT docc
 	NEXT dor
 	IF don > 0 THEN
-		SOUND 1,400,12
+		SOUND 1,820,12
 		sf1 = 12
 	END IF
 	RETURN
@@ -1104,6 +1215,26 @@ add_score:
 			asj = 8
 		END IF
 	NEXT asj
+	RETURN
+
+	' Double the 6-digit BCD addend in place -- ad() + ad() with carry, the same
+	' digit-wise shape as add_score. Doubling BCD by adding it to itself avoids
+	' both a multiply (the 9900's MPY clobbers r0, CLAUDE.md 3A) and a lookup
+	' table. Overflow past six digits cannot happen here: the bonus tops out at
+	' 51,200 points = 5,120 units, four digits.
+dbl_ad:
+	dacy = 0
+	FOR daj = 0 TO 5
+		dai = 5 - daj
+		dat = ad(dai) + ad(dai) + dacy
+		IF dat > 9 THEN
+			dat = dat - 10
+			dacy = 1
+		ELSE
+			dacy = 0
+		END IF
+		ad(dai) = dat
+	NEXT daj
 	RETURN
 
 copy_hi:
@@ -1299,6 +1430,7 @@ do_drop:
 	' down one character row at a time.
 	'
 do_clear:
+	GOSUB mus_off			
 	' Same hazard as do_drop: the round can clear mid-shake, and the whole
 	' closing animation would then run one character off-centre.
 	shkb = 1
@@ -1308,19 +1440,41 @@ do_clear:
 	' TWO character rows per step, 14 steps -- the wall closes at the same pace
 	' the reveal opens (12 frames). One row per step was 27 frames AND each step
 	' carried a growing ceiling repaint, so it crawled.
+	' CLEAR BONUS, paid as the wall comes down: 100 for the first row and double
+	' for each row after it, stopping at the death line. Rows below the line pay
+	' nothing -- the bonus is for the board you cleared, and the wall carrying on
+	' past the line is just the animation finishing.
+	'
+	' Each step of this loop closes a ROW-PAIR, which is one bubble row, and that
+	' is what counts as "a row" here. Ten of them fit above the line from a fresh
+	' ceiling, so the last pays 51,200 and the whole bonus is 102,300 -- worth
+	' chasing next to a good drop, without dwarfing it.
+	'
+	' Held in ad() as BCD and doubled in place, rather than as a lookup table: the
+	' score is already 8 BCD digits (section 11a) and a table of 14 six-digit
+	' entries would cost 84 bytes we do not have.
+	dcaw = 1
+	ad(0) = 0 : ad(1) = 0 : ad(2) = 0
+	ad(3) = 0 : ad(4) = 1 : ad(5) = 0	' 10 units = 100 points
 	FOR dcs = 0 TO 13
 		bar = CEILROW + top
+		IF bar > DEATHROW THEN dcaw = 0
 		GOSUB brick_at
 		bar = bar + 1
 		GOSUB brick_at
 		top = top + 2
 		GOSUB draw_field
+		IF dcaw = 1 THEN
+			GOSUB add_score
+			GOSUB prt_hud		' the score ticks up a row at a time
+			GOSUB dbl_ad
+		END IF
 		' DESCENDING sweep, one step per row-pair: the wall coming down.
 		' Re-set every step, and sf1 is kept above zero so sfx_tick never
 		' silences it mid-sweep; it decays on its own after the loop.
 		#dct = dcs
-		#dct = #dct * 60
-		#dcf = 120
+		#dct = #dct * 50
+		#dcf = 300
 		#dcf = #dcf + #dct
 		SOUND 1,#dcf,12
 		sf1 = 3
@@ -1358,6 +1512,7 @@ do_clear:
 	' One character, one DEFINE COLOR of 8 bytes per flip.
 	'
 do_dead:
+	GOSUB mus_off			
 	' Clear the launcher deck FIRST. The loaded ball and the three aim dots are
 	' pointing at a shot that will never be taken, and they sit right under the
 	' death line -- exactly where the eye is about to be sent. Parked before the
@@ -1462,7 +1617,7 @@ do_reveal:
 		GOSUB draw_row
 		' RISING sweep, the mirror of the closing wall's descent.
 		#rvt = rvi
-		#rvt = #rvt * 70
+		#rvt = #rvt * 55
 		#rvf = 960
 		#rvf = #rvf - #rvt
 		SOUND 1,#rvf,12
@@ -1593,21 +1748,30 @@ draw_ceiling:
 
 	' HUD labels, right-justified to end at column 30 (one char of space at the
 	' right edge). The walls are NOT drawn here any more -- draw_row owns them.
+	' THE PANEL IS BUILT ONCE, NOT ONCE A ROUND.
+	'
+	' Every playfield blit is 20 characters wide at column 0, so nothing in the
+	' normal draw path can touch the HUD panel in columns 20-31. Only the TITLE
+	' screen reaches in there (its credit line runs to column 26, the bubble rows to
+	' 25) and the GAME OVER / ALL 30 CLEAR box, which is on its way to the title
+	' anyway. So the panel needs clearing and relabelling exactly when the game has
+	' come FROM the title -- and never between rounds, where wiping it and printing
+	' it straight back is a visible flicker of a HUD that was already right.
+	'
+	' hudok says whether the panel on screen is ours. title_screen clears it; this
+	' sets it once the labels are down.
 draw_frame:
-	' CLEAR THE WHOLE SCREEN FIRST. Every playfield blit is 20 characters wide at
-	' column 0, so nothing in the normal draw path ever touches the HUD panel
-	' (columns 20-31) -- and the title screen writes well into it (the credit line
-	' reaches column 26, the bubble rows column 25). Without this, title text sat
-	' in the panel for the whole game. The reveal repaints its own brick right
-	' after, so there is no flash.
-	CLS
+	IF hudok = 0 THEN
+		CLS
+		' All on column 22, aligned with the score digits below each one.
+		PRINT AT 22,"1UP"
+		PRINT AT 118,"HI"
+		PRINT AT 214,"ROUND"
+		PRINT AT 342,"NEXT"	' row 10, the bubble sits directly beneath it
+		PRINT AT 502,"TIME"
+		hudok = 1
+	END IF
 	GOSUB draw_ceiling
-	' All on column 22, aligned with the score digits below each one.
-	PRINT AT 22,"1UP"
-	PRINT AT 118,"HI"
-	PRINT AT 214,"ROUND"
-	PRINT AT 342,"NEXT"		' row 10, so the bubble sits directly beneath it
-	PRINT AT 502,"TIME"
 	RETURN
 
 	' !! VPOKE TAKES A RAW VRAM ADDRESS -- THE NAME TABLE IS AT $1800 (6144).
@@ -1709,6 +1873,8 @@ draw_sprites:
 	' The chosen round lasts ONE game: coming back here always resets to round 1.
 	'
 title_screen:
+	GOSUB mus_off
+	hudok = 0			' the title writes into the HUD panel; rebuild it
 	stlv = 1
 	GOSUB hide_sprites
 	CLS
@@ -1993,11 +2159,19 @@ setup838:
 	RETURN
 
 rd_dig:
+	' THESE TWO LOOPS MUST TICK THE SOUND. They are the only WAIT loops in the game
+	' that did not, and the digit beep sets sf0 for its note-off exactly like every
+	' other effect -- so the countdown never ran and the note simply held, for as
+	' long as the player took to type the second digit. It is the "every effect
+	' needs an explicit note-off" hazard from CLAUDE.md 3A arriving by the back
+	' door: the note-off existed, nothing was calling it.
 rd_rel:
 	WAIT
+	GOSUB sfx_tick
 	IF cont1.key <> 15 THEN GOTO rd_rel
 rd_get:
 	WAIT
+	GOSUB sfx_tick
 	tdg = cont1.key
 	IF tdg > 9 THEN GOTO rd_get
 	#rda = rdp
@@ -2005,7 +2179,7 @@ rd_get:
 	rdv = 48 + tdg
 	VPOKE #rda,rdv
 	rdp = rdp + 1
-	SOUND 0,250,10
+	SOUND 0,500,9
 	sf0 = 3
 	RETURN
 
@@ -2079,3 +2253,4 @@ txt_col:
 
 	INCLUDE "art.bas"
 	INCLUDE "levels.bas"
+	INCLUDE "music.bas"

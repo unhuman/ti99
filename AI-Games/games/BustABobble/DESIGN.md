@@ -906,6 +906,38 @@ in Classic99 — the one element telling you how much game is left was the one y
 > cycle*, not by looking at it — the visual impression ("it wipes a few times") did not distinguish
 > a broken gauge from a working one.
 
+### Music, and why it sits on the channels it does
+
+An **original** 16-bar tune — Taito's is theirs — in C major over C–Am–F–G, 150 BPM on a
+sixteenth grid, looping every 25.6 s. `assets/genmusic.py` holds it as readable bars, one line per
+bar and sixteen tokens per line, and emits `src/music.bas`; the thing a person edits is a tune and
+the thing the ROM gets is a byte table, and neither is maintained by hand.
+
+**Melody on channel 2, bass on channel 1.** Every sound effect in the game lives on channels 0 and
+1, so the melody occupies the one channel nothing else touches and is never chopped. The bass is
+ducked by an alarm, a pop or a drop and resumes at its next note — a gap of at most an eighth, which
+reads as the effect cutting through rather than as the music breaking. Volumes 10 and 8 sit under
+effects at 12–13.
+
+**Only the melody can be transposed.** The PSG's divider is 10 bits, so its lowest playable note is
+about 110 Hz and the bass already sits near that floor — C2 would need 1710. `divider()` refuses an
+out-of-range note rather than letting it wrap, because a bass that aliases sounds wrong without
+sounding low. The tune was first pitched an octave higher and was simply shrill: a bare square wave
+at C6 is 1 kHz of unrelieved buzz, tiring inside one round let alone on a loop. `MEL_OCTAVE` drops
+the melody alone, and F and G take the fifth *below* so the bass stays inside C3–A3 instead of poking
+up through the lowered tune.
+
+Two timing rules carried over from RALLY-X, both of which cost that game a session:
+**count frames, not passes** (a per-pass counter halves the tempo the moment a pass takes two
+frames), and **spend the whole delta** rather than resetting the counter (otherwise the music loses
+time exactly when the loop is busy — here, during a burst or an orphan fall, so the tune would drag
+whenever the player did something good).
+
+> ⚠️ `CONST MUSLEN = 256` made the tune play its first note forever. A `CONST` above 255 compiles to
+> **zero** on this toolchain, so the loop-back test `IF #mup >= MUSLEN` read `>= 0` — always true
+> unsigned — and the song reset to step 0 every tick. It sounded like one long beep with nothing
+> visibly wrong. Same hazard that once launched the ball from 0,0; the length is a bare literal now.
+
 ### The bubble sequence is pre-ordained per level, not random
 
 Your instinct is right, and it is the difference between a puzzle and a slot machine: a fixed
@@ -984,7 +1016,21 @@ The units-of-10 value of the *i*-th dropped bubble is exactly **2^i**. At the do
 (i = 17) that is 2^17 = 131,072 units = **1,310,720 points**, which matches the published maximum
 for a drop exactly. That is a satisfying check that the units conversion is right.
 
-**No separate round-clear bonus.** Clearing a round means the last shot orphaned everything left,
+**Round-clear bonus, paid as the wall descends.** 100 points for the first row the closing wall
+covers, doubling for each row after it, and **nothing once the wall passes the death line** — the
+bonus is for the board you cleared, not for the animation finishing. A step of the closing loop is a
+row-*pair*, i.e. one bubble row, and that is what counts as a row; ten fit above the line from a
+fresh ceiling, so the last pays 51,200 and the whole bonus is **102,300**. The score ticks up a row
+at a time as it lands.
+
+It falls out of that arithmetic that a ceiling which has already descended leaves fewer rows above
+the line and pays *less* — clearing early is worth more, which is the incentive the drop timer is
+supposed to create and previously did not reward at all.
+
+Held in `ad()` as BCD and doubled in place by `dbl_ad` rather than looked up: the score is already
+8 BCD digits, and a table of 14 six-digit entries would have cost 84 bytes that do not exist.
+
+**No flat round-clear bonus beyond that.** Clearing a round means the last shot orphaned everything left,
 so the clear *is* a huge drop and the drop table already pays it. Adding a flat bonus on top would
 dilute the one skill the game is actually about: setting up the last shot to drop the most bubbles.
 
@@ -1219,7 +1265,7 @@ case to cope with the data, check the data.
 
 | # | Item | Detail |
 |---|---|---|
-| 4 | **Music does not fit** the fixed area any more after art growth. Plan: levels + music into one bank together, never separate. | §13 |
+| 4 | ⚠️ **THE FIXED AREA IS FULL — 42 bytes free.** Music is built and fits, but nothing more of any size does; even a short pitch-sweep engine for the bubble pop is blocked. The level data (1,860 B) must move into a bank next. Music itself CANNOT be banked: the player refills the sound registers from the vblank ISR, where bank-switching is unsafe. So the levels move and the music stays. | §13, §11 |
 | 5 | **The danger state** (arcade raises the music tempo as the stack nears the line) is unbuilt. The death line flashes once a bubble has *crossed* it, but there is still no cue for danger *approaching*. | §11 |
 | 6 | **BUB mascot**, rows 20–22, unbuilt. | §3 |
 
