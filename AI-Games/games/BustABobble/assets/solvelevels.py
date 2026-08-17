@@ -52,7 +52,7 @@ DEATHROW = 20
 CEILROW = 1
 HITD2 = 196             # 14*14 -- collision accept, in pixels
 LAUNCHX = 80
-LAUNCHY = 176
+LAUNCHY = 184
 WALL_LO = 6144          # 24 * 256, left  edge column centre (8.8 fixed)
 WALL_HI = 34816         # 136 * 256, right edge column centre
 ANIM_FRAMES = 4         # a shot that neither pops nor drops; see the header note
@@ -118,7 +118,7 @@ def check_source_drift():
     for lit, what in ((str(WALL_LO), "left wall plane"),
                       (str(WALL_HI), "right wall plane"),
                       ("20480", "launch x, 8.8 fixed"),
-                      ("45056", "launch y, 8.8 fixed")):
+                      ("47104", "launch y, 8.8 fixed")):
         if lit not in src:
             bad.append("%s (%s) no longer appears in the source" % (lit, what))
     if "#droprl = #droprl * 15" not in src:
@@ -433,7 +433,7 @@ def play_shot(st, seq, aim, use_clock=True):
     if not tick():
         return DEAD
     s.frames += 1
-    bx, by = 20480, 45056
+    bx, by = 20480, 47104
     bdx, bdy = AIMDX[am], AIMDY[am]
 
     landed = None

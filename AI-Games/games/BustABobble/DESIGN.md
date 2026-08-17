@@ -134,7 +134,22 @@ row 0  : CEILING BAR (solid, full well width)
 rows 1-19: play area  (grid row r occupies char rows 1+top+2r and 1+top+2r+1)
 row 20 : DEATH LINE (dashed rule). A bubble whose bottom reaches row 20 ends the game.
 rows 21-23: launcher deck — dragon sprite, loaded bubble, aim guide dots
+             the loaded bubble is centred at y = LAUNCHY = 184, i.e. sprite
+             scanlines 176-191: char rows 22 and 23
 ```
+
+> **Revised 2026-08-17: the launcher sits one character row lower.** `LAUNCHY` went from 176 to
+> **184**, so the loaded bubble now occupies char rows 22–23 instead of 21–22. This is a **geometry**
+> change, not a cosmetic one: every shot starts 8 px lower, so each aim step reaches a slightly
+> different cell and the bank patterns off the walls shift. All 30 rounds were re-proven winnable
+> afterwards with `assets/solvelevels.py --beam 48 --depth 90` (§7a) — that re-run is mandatory for
+> any change to `LAUNCHY`, `LAUNCHX` or the aim table, because a hand-authored round can stop being
+> solvable without anything else in the build noticing.
+>
+> ⚠️ **Consequence: the bubble's lower half is now in row 23**, which is the last row on the screen —
+> TV overscan on real hardware, and clipped in Classic99 (the same reason the lives moved off row 23,
+> §12). The launcher deck was always specified as rows 21–23, so nothing is out of bounds, but the
+> bottom 8 px of the loaded bubble is the part most likely not to be visible.
 
 > **The diagram above is current as of the timer/lives build.** It previously still described the
 > pre-build-3 geometry ("at rest the field is inset 8 px each side… the walls themselves never
@@ -1149,7 +1164,7 @@ Restated from `CLAUDE.md` §3A because each one has a concrete landing site here
 | **`%` compiles to a real `DIV`** | row parity and cell index. Use `AND 1` and `>> 4` only (§10). No `%` in this game, anywhere. |
 | **`DIM a(N)` is 0..N-1**; OOB write black-screens Coleco | `grid(96)`, `rowbuf(36)`. Clamp r and c before every index (§9). |
 | **8-bit var × constant > 255 compiles to `CLR`** | `#dr*32` — 32 is safe, but the *product* exceeds 255, so the destination must be a 16-bit `#var`. Check the generated `.a99` for the blit offset arithmetic. |
-| **`CONST` > 255 silently becomes ZERO** — ✱ HIT THIS ✱ | The four 8.8 fixed-point positions (launcher `80*256`, `176*256`; wall planes `16*256`, `144*256`) were `CONST`s. Every one compiled to `clr` / `ci r0,0`: the ball launched from 0,0 and neither wall bounced. Written as **bare literals** at each use site they compile correctly. The distinction is CONST vs literal, not the value. |
+| **`CONST` > 255 silently becomes ZERO** — ✱ HIT THIS ✱ | The four 8.8 fixed-point positions (launcher `80*256`, `184*256` — `176*256` before the launcher dropped a row; wall planes `16*256`, `144*256`) were `CONST`s. Every one compiled to `clr` / `ci r0,0`: the ball launched from 0,0 and neither wall bounced. Written as **bare literals** at each use site they compile correctly. The distinction is CONST vs literal, not the value. |
 | **`VPOKE` is a RAW VRAM address; name table is `$1800`** — ✱ HIT THIS ✱ | Every HUD/wall `VPOKE` went to 0..767, which is the **pattern table** — it corrupted the character set. Symptom was junk tiling the whole screen, no walls, garbled digits. `SCREEN`'s target offset *is* name-table-relative, which is why the bubbles were right all along. Add 6144 as its own step. |
 | **`DEFINE COLOR` needs 8 bytes per char** — ✱ HIT THIS ✱ | `DEFINE COLOR 32,16,txt_col` reads **128** bytes; supplying 16 made it read 112 bytes of following ROM as colour data, so the text came out in random colours. |
 | **`SOUND` takes a 10-bit DIVISOR, smaller = higher** — ✱ HIT THIS ✱ | Four effects were written above 1023 and silently masked (bounce 1400, pop 1800/2400, chime 1200), and both round-transition sweeps were inverted — a "descending" tone written as a decreasing argument rises. The ceiling clunk at 140 was a ~800 Hz *ping*. Nothing errors. |
@@ -1271,7 +1286,7 @@ case to cope with the data, check the data.
 
 | # | Item | Detail |
 |---|---|---|
-| 4 | ⚠️ **THE FIXED AREA IS ESSENTIALLY FULL — 176 bytes free.** Music is built and fits, but nothing more of any size does; even a short pitch-sweep engine for the bubble pop is blocked. The level data (1,860 B) must move into a bank next. Music itself CANNOT be banked: the player refills the sound registers from the vblank ISR, where bank-switching is unsafe. So the levels move and the music stays. | §13, §11 |
+| 4 | ⚠️ **THE FIXED AREA IS ESSENTIALLY FULL — 68 bytes free** (24,268 of 24,336). Music is built and fits, but nothing more of any size does; even a short pitch-sweep engine for the bubble pop is blocked. The level data (1,860 B) must move into a bank next. Music itself CANNOT be banked: the player refills the sound registers from the vblank ISR, where bank-switching is unsafe. So the levels move and the music stays. | §13, §11 |
 | 5 | **The danger state** (arcade raises the music tempo as the stack nears the line) is unbuilt. The death line flashes once a bubble has *crossed* it, but there is still no cue for danger *approaching*. | §11 |
 | 6 | **BUB mascot**, rows 20–22, unbuilt. | §3 |
 

@@ -22,13 +22,18 @@
 	CONST DASHCH   = 161	' death-line dash
 
 	CONST LAUNCHX  = 80	' launcher muzzle, well-pixel space
-	CONST LAUNCHY  = 176
+	' LAUNCHY moved DOWN one character row, 176 -> 184. Every trajectory in the game
+	' changes with it: the ray starts 8 px lower, so each aim step now reaches a
+	' slightly different cell and the bank patterns off the walls shift. All 30
+	' rounds were re-proven winnable with solvelevels.py afterwards -- a launcher
+	' move is a GEOMETRY change, not a cosmetic one.
+	CONST LAUNCHY  = 184
 	CONST BXMIN    = 16	' ball CENTRE range; radius 8 inside an 8..151 well
 	CONST BXMAX    = 144
 	CONST HITD2    = 196	' collision accept: dx*dx + dy*dy < 14*14
 
 	' !! NO `CONST` ABOVE 255 -- IT SILENTLY BECOMES ZERO.
-	' The 8.8 fixed-point positions (launcher 80*256 = 20480, 176*256 = 45056;
+	' The 8.8 fixed-point positions (launcher 80*256 = 20480, 184*256 = 47104;
 	' wall planes 16*256 = 4096, 144*256 = 36864) were CONSTs and every one
 	' compiled to `clr` / `ci r0,0`: the ball launched from 0,0 and neither wall
 	' bounced. They are written as BARE LITERALS at each use site below, which
@@ -457,7 +462,7 @@ do_fire:
 	flying = 1
 	btnr = 0
 	#bx = 20480		' LAUNCHX * 256 -- bare literal, see the note at the top
-	#by = 45056		' LAUNCHY * 256
+	#by = 47104		' LAUNCHY * 256
 	bpx = LAUNCHX
 	bpy = LAUNCHY
 	#bdx = #aimdx(am)
