@@ -327,7 +327,7 @@ Plus a 30-entry metadata table, 2 bytes each (60 bytes):
 | Byte | Field | Range |
 |---|---|---|
 | 0 | colour count in play this round | 3–8 |
-| 1 | `droptime` — ceiling-drop period in **quarter-seconds** | 80 (20 s) down to 48 (12 s) |
+| 1 | `droptime` — ceiling-drop period in **quarter-seconds** | 80 (20 s), every round (§17) |
 
 Per level: 44 B layout + 16 B sequence = 60 B, ×30 = **1,800 B**, plus 60 B metadata.
 
@@ -784,8 +784,10 @@ read as a box over the bubble field.
 `#dropt` counts down one per loop pass — and the loop is exactly one pass per vblank (§1), so a
 pass is a frame and the timer is real seconds with no calibration needed on either target.
 
-- `droptime` is per level, stored as a byte in **quarter-seconds** (15-frame units): 20 s = 80 at
-  round 1, ramping to about 12 s = 48 by round 30. A byte holds up to 63 s, ample.
+- `droptime` is per level, stored as a byte in **quarter-seconds** (15-frame units): **80 = 20 s for
+  every round**, the arcade's interval. A byte holds up to 63 s, ample, and the value stays per-level
+  so one round can still be given its own clock. It used to ramp to 48 (12 s) by round 30, which cost
+  that round its winnability — see §17.
 - **The timer never pauses during play** — not for the shake, not for the drop, not for the pop and
   orphan animations. It stops only on the round-clear slide (the round is already won) and on
   pause. This is possible because the game stays playable throughout the shake (§8), and it is
@@ -1355,6 +1357,26 @@ case to cope with the data, check the data.
 ---
 
 ## 17. Status
+
+**2026-08-17 (build 13) — the drop clock goes flat at 20 s, and round 30 becomes winnable.**
+The 20 s → 12 s ramp was this port's invention (the arcade drops on a flat 20 s interval), and it
+was the direct cause of round 30 being the only round of the thirty a real player could not finish.
+`droptime()` in `transcribe_stages.py` now returns 20.0 for every round; `n` stays in the signature
+so a per-round override is still one line away. Measured with `solvelevels.py --overhead`, which
+charges dead frames per shot on top of every frame the game itself costs:
+
+| | 12 s ramp | flat 20 s |
+|---|---|---|
+| round 30, frame-perfect | 79 shots, 40.9 s, 3 drops | winnable |
+| round 30, **+0.5 s human thinking per shot** | **UNPROVEN** | **68 shots, 71.8 s, 3 drops** |
+| round 30, **+1.0 s per shot** | — | **72 shots, 107.2 s, 5 drops** |
+| all 30 rounds, +0.5 s per shot | — | **30 of 30 proven winnable** |
+
+This supersedes §11b's recommendation to *tune* the ramp: the measurement there already showed
+difficulty is dominated by each round's depth and colour spread, so the clock was never carrying the
+curve — it was only ever able to take the last round away. **"Winnable" now means winnable by a
+person**, not by a frame-perfect machine, which is the standard every future level change should be
+held to (`--overhead 30` at minimum).
 
 **2026-08-17 (build 12) — round 30 gets its real colours.** Its cells were all `O` ("any colour")
 in the transcription source, so `transcribe_stages.py` banded them diagonally and gave the round

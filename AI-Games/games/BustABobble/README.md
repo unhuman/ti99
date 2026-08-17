@@ -76,6 +76,9 @@ Not yet built: the danger state and the BUB mascot. Both now have room — the f
 under the pop (~110 B).
 
 Two open items, both measured and both pure data changes:
+- ~~**Difficulty does not ramp**~~ — **resolved by decision, 2026-08-17**: the clock is now flat at
+  the arcade's 20 s and the ramp is gone. It was never carrying the difficulty (below), and it cost
+  the last round its winnability. What follows is the measurement that led there.
 - **Difficulty does not ramp** (`DESIGN.md` §11b). Round 1 gives 240 s of doing nothing; the mean
   across 30 rounds is 108 s. Worse, difficulty is dominated by each level's *depth* rather than the
   timer, so the curve sawtooths — round 26 is more forgiving than round 9. The solver sharpens
@@ -127,7 +130,11 @@ turned out to be the *palette*, not the logic.
 | Pause | `P` | `1` |
 | Setup (starting round, lives) | type `8` `3` `8` on the title | `8` `3` `8` |
 
-The ceiling descends on a **timer**, not a shot count — 20 s at round 1, down to 12 s by round 30.
+The ceiling descends on a **timer**, not a shot count — a flat **20 s every round**, the arcade's
+interval. It used to ramp 20 s down to 12 s by round 30; that was this port's invention and it made
+round 30 the only round a person could not finish (its clearing line is ~70 shots, and the ceiling
+simply arrived first). All 30 rounds are now proven winnable *with half a second of human thinking
+charged against every shot*, and round 30 survives even at a full second.
 The warning is **audio-led**: a two-tone alarm starts ~1.3 s ahead, then the board gives one nudge
 right-and-back just before the drop. Every shake phase is a full field redraw, so the shake's cost
 scales with its length while audio costs the loop nothing — the warning got longer *and* cheaper.

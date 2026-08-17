@@ -233,9 +233,25 @@ def sequence(st, grid):
 
 
 def droptime(n):
-    """20 s at round 1 easing to 12 s by round 30, in quarter-second steps."""
-    secs = 20.0 - (n - 1) * 8.0 / 29.0
-    return round(secs * 4) / 4.0
+    """FLAT 20 s, every round -- the arcade's interval.
+
+    This used to ramp 20 s at round 1 down to 12 s at round 30, which was an
+    invention of this port and a bad one. It made round 30 the only round of the
+    thirty that a person could not finish: its clearing line is 79 shots, and at
+    roughly half a second a shot the ceiling simply arrived first. Charging just
+    30 frames of human thinking per shot turned it UNPROVEN in solvelevels.py,
+    while the same round is clearable with the clock switched off -- i.e. the
+    timer, not the geometry, was the wall.
+
+    A ramp was the wrong lever anyway. Difficulty here is dominated by each
+    round's DEPTH and colour spread, not by its clock (DESIGN.md 11b: the curve
+    sawtoothed, round 26 being more forgiving than round 9), so the ramp added
+    no felt progression and cost the last round its winnability.
+
+    Note `n` is kept in the signature: per-round overrides are the obvious next
+    lever if one round ever needs its own clock.
+    """
+    return 20.0
 
 
 def main():
