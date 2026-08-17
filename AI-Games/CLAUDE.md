@@ -178,6 +178,11 @@ cost a debugging session:
   and it silently reads whatever follows in ROM as colour data — text and tiles come out in random
   colours with no error. `DEFINE CHAR` is 8 bytes/char and replicates across all three screen
   thirds automatically.
+- **A PLAIN VARIABLE IS 8-BIT, so `v = 463` silently becomes 207.** Same family as the `CONST`
+  item below but it bites in ordinary code: any screen offset past row 7 (`row*32+col > 255`), any
+  VRAM address, any pixel count over 255 must go in a `#var`. Nothing warns at build or run time —
+  in Bust-A-Bobble the 838 menu's `rdp = 463` put the typed digits at row 6 instead of row 14, which
+  read as a deliberate (if odd) layout choice rather than a bug for weeks.
 - **`CONST` > 255 silently becomes ZERO — bare literals are fine.** This is the sharpest edge of
   the truncation item above and deserves its own line: `CONST FXMIN = 4096` compiled to `ci r0,0`
   and `#bx = FXLX` (20480) compiled to a bare `clr`. A ball launched from 0,0 and no wall ever

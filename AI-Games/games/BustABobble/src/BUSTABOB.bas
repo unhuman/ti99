@@ -2332,7 +2332,13 @@ setup838:
 	CLS
 	PRINT AT 266,"SELECT ROUND"
 	PRINT AT 360,"ENTER TWO DIGITS"
-	rdp = 463
+	' !! #rdp IS 16-BIT ON PURPOSE. Written `rdp = 463` -- a PLAIN variable, which is
+	' 8-BIT -- the 463 silently truncated to 207, and the typed digits appeared at
+	' row 6 col 15, ABOVE "SELECT ROUND", instead of row 14 below the prompt. No
+	' error at build or run time; the position just looked like someone's odd
+	' layout choice. Same family as the CONST > 255 hazard in CLAUDE.md 3A: any
+	' screen offset past row 7 needs a # variable.
+	#rdp = 463			' row 14, col 15 -- centred under the prompt
 	GOSUB rd_dig
 	sd1 = tdg
 	GOSUB rd_dig
@@ -2367,11 +2373,11 @@ rd_get:
 	GOSUB sfx_tick
 	tdg = cont1.key
 	IF tdg > 9 THEN GOTO rd_get
-	#rda = rdp
+	#rda = #rdp
 	#rda = #rda + 6144
 	rdv = 48 + tdg
 	VPOKE #rda,rdv
-	rdp = rdp + 1
+	#rdp = #rdp + 1
 	SOUND 0,500,9
 	sf0 = 3
 	RETURN
