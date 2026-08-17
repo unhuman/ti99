@@ -1373,7 +1373,10 @@ charges dead frames per shot on top of every frame the game itself costs:
 | round 30, **+1.0 s per shot** | — | **72 shots, 107.2 s, 5 drops** |
 | all 30 rounds, +0.5 s per shot | — | **30 of 30 proven winnable** |
 
-This supersedes §11b's recommendation to *tune* the ramp: the measurement there already showed
+**Confirmed in play the same day: round 30 was beaten on hardware.** The solver's prediction and the
+result agree, which is the first time that claim has been tested against a human rather than against
+itself — every round of the thirty is now finishable by a player, and the game is completable end to
+end. This supersedes §11b's recommendation to *tune* the ramp: the measurement there already showed
 difficulty is dominated by each round's depth and colour spread, so the clock was never carrying the
 curve — it was only ever able to take the last round away. **"Winnable" now means winnable by a
 person**, not by a frame-perfect machine, which is the standard every future level change should be

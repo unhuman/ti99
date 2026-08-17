@@ -135,6 +135,10 @@ interval. It used to ramp 20 s down to 12 s by round 30; that was this port's in
 round 30 the only round a person could not finish (its clearing line is ~70 shots, and the ceiling
 simply arrived first). All 30 rounds are now proven winnable *with half a second of human thinking
 charged against every shot*, and round 30 survives even at a full second.
+
+**Confirmed in play, 2026-08-17: round 30 has been beaten on hardware.** All 30 rounds are now
+finishable by a person, not just by the solver — the game is completable end to end, which makes the
+victory screen reachable for the first time.
 The warning is **audio-led**: a two-tone alarm starts ~1.3 s ahead, then the board gives one nudge
 right-and-back just before the drop. Every shake phase is a full field redraw, so the shake's cost
 scales with its length while audio costs the loop nothing — the warning got longer *and* cheaper.
