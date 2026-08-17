@@ -28,7 +28,7 @@ of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — 
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
 stayed, and `assets/romcheck.py` asserts exactly that on every build. Anything banked later belongs
 in bank 1 beside the levels; a second bank would take the cart to 64 KB. ColecoVision is unbanked and
-unchanged at 16,384 B, RAM **618 B of 814**.
+unchanged at 16,384 B, RAM **631 B of 814**.
 
 Compression was measured and passed over: the layouts are already nibble-packed, and a height byte or
 a per-row column mask would net ~450–510 B — a quarter of what banking gave, while changing the byte
@@ -72,19 +72,17 @@ Clearing a round pays a **descending-wall bonus**: 100 for the first row the wal
 doubling per row, stopping at the death line — 102,300 from a fresh ceiling, and *less* if the
 ceiling already descended, so clearing early pays better.
 
-Not yet built: the danger state and the BUB mascot. Both now have room — the fixed area went from
-68 bytes free to 1,912 when the levels were banked (**1,268** after the victory screen), which also
-unblocks the pitch-sweep "bloop"
-under the pop (~110 B).
+Not yet built: the danger state and the BUB mascot. Both have room now — banking the levels took the
+fixed area from 68 bytes free to 1,912, of which the victory screen and the pop's bloop have since
+spent 784, leaving **1,128**.
 
-Two open items, both measured and both pure data changes:
-- ~~**Difficulty does not ramp**~~ — **resolved by decision, 2026-08-17**: the clock is now flat at
-  the arcade's 20 s and the ramp is gone. It was never carrying the difficulty (below), and it cost
-  the last round its winnability. What follows is the measurement that led there.
-- **Difficulty does not ramp** (`DESIGN.md` §11b). Round 1 gives 240 s of doing nothing; the mean
-  across 30 rounds is 108 s. Worse, difficulty is dominated by each level's *depth* rather than the
-  timer, so the curve sawtooths — round 26 is more forgiving than round 9. The solver sharpens
-  this: played out for real, **round 30 is the only round the drop clock ever constrains**.
+One open item, and one closed by measurement:
+- ✅ **The difficulty ramp is gone — resolved 2026-08-17.** It had run 20 s at round 1 down to 12 s
+  by round 30, and the measurement behind it (`DESIGN.md` §11b) is why it went rather than got tuned:
+  difficulty here is dominated by each level's *depth*, not by its clock, so the curve sawtoothed —
+  round 26 was more forgiving than round 9 — and the ramp's only real effect was to make round 30
+  the one round a person could not finish. The clock is now the arcade's flat 20 s, and round 30 has
+  been beaten on hardware.
 - **Too many pre-made groups** (`DESIGN.md` §7). 85 pre-existing 3+ clusters across the 30 rounds,
   round 1 at 90% of its bubbles. They look poppable and aren't, because matches are only checked
   when a bubble lands. Fix identified.
