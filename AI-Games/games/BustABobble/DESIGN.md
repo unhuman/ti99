@@ -1140,16 +1140,50 @@ rather than shadowing the name table (432 bytes), and deleting the hand-kept `co
 lookups, which were a second copy of the palette in `genart.py` — they desynced the moment it
 changed, and `draw_sprites` now reads the generated `bub_base`/`bub_lit` tables from ROM (§14).
 
-**ROM.** Start **unbanked** and watch the fixed-area cap of 24,336 bytes with
-`games/RallyX/assets/romcheck.py`, which runs on any build. Estimated: levels + sequences 1,860 B
-+ aim table 128 B + drop-score BCD table 102 B + char/sprite patterns ~1.3 KB + font/HUD ~0.5 KB
-+ music 2–4 KB + code ~8–12 KB.
+**ROM — the level data is BANKED on TI (2026-08-17).** The fixed area had 68 bytes left, so the
+1,860 bytes of level data moved into bank 1 and the fixed area went to **22,424 of 24,336, 1,912
+free**. Measured, all three budgets:
 
-If the fixed area does get tight, move **levels and music together into one bank** — they are both
-read outside the frame loop. Do not move them into separate banks: a thinly-used bank doubled
-RALLY-X's cart to 128 KB, and cart size rounds up to a power of two (`CLAUDE.md` §3A). And do not
-"optimise" by converting banked data into code — that spends the scarce budget to save the
-abundant one, which is exactly the change that silently cut seven bars off RALLY-X's music.
+| | before | after |
+|---|---|---|
+| fixed area (code + anything read during a frame) | 24,268 / 24,336 — **68 free** | 22,424 / 24,336 — **1,912 free** |
+| bank 1 (`pb_lay` + `pb_seq` + `pb_meta`) | — | 1,902 / 8,192 — 6,290 free |
+| TI cart `BUSTABOB_8.bin` | 32,768 B | **32,768 B — unchanged** |
+| Coleco `bustabob.rom` | 16,384 B | **16,384 B — unchanged** |
+
+Three things make this work, and each is a rule for anything banked later:
+
+- **Only data read outside the frame loop may be banked.** Levels qualify (round start, plus one
+  `pb_seq` read per shot). **Music does not and never will:** `mus_tick` refills the sound chip from
+  the vblank ISR, where bank switching is unsafe. So the levels moved and the music stayed —
+  `romcheck.py` now asserts `mus_song`/`mus_freq` are still in the fixed area and still end inside
+  the cap, so a future edit cannot quietly sweep them into a bank.
+- **The bank is selected once at startup and never switched.** Bank 1 holds nothing else, so there
+  is no reason to page it out and every reason not to: a switch-per-read scheme would silently
+  return bytes from the wrong page the first time a `BANK SELECT` was missed, with no error at
+  build or run time. If a second bank is ever added, every `pb_*` read needs its own select.
+- **The next bank is what costs.** Pages = 3 loader + one per bank, rounded up to a power of two:
+  3 + 1 = 4 = 32 KB, which is what the cart already was, so this bank was *free*. A second bank
+  makes 5 pages → rounds to 8 → **64 KB**. Put anything banked later in bank 1 beside the levels
+  (6,290 bytes spare), never in a bank of its own. That mistake doubled RALLY-X's cart.
+
+`BANK ROM` only accepts **128, 256, 512 or 1024** — `BANK ROM 32` is rejected outright. The number
+sizes ColecoVision's Megacart mapper and is *not* the TI cart size, which comes from how many bank
+files the assembler emits. The directives are wrapped in `#if TI994A` because Coleco needs no
+banking (16 KB against a flat 32 KB budget) and enabling it there would only turn a plain ROM into
+a Megacart image.
+
+And do not "optimise" by converting banked data back into code — that spends the scarce budget to
+save the abundant one, which is exactly the change that silently cut seven bars off RALLY-X's music.
+
+> **Compression was measured and NOT taken.** The layouts are already nibble-packed (4 bits/cell,
+> 44 B/level). 68% of cells are empty and every empty row is trailing, so a 1-byte height would save
+> 494 B and a per-row column mask 631 B, less ~40–120 B of decoder — i.e. ~450–510 B, a quarter of
+> what banking gave for free. Compression would also change the byte format `solvelevels.py` parses,
+> adding a place for the checker and the game to disagree about what a level is; a `BANK` directive
+> changes no bytes at all, so the winnability checker needed no edit. Kept in reserve: it still
+> stacks on top if the fixed area ever gets tight again. The measurement is kept as
+> `assets/packsize.py` — re-run it rather than re-deriving the numbers.
 
 ---
 
@@ -1200,7 +1234,16 @@ games/BustABobble/
   not just TI, and not just at the end.
 - `#if TI994A` needs the **unhuman/CVBasic** fork; stock nanochess has no preprocessor.
 - Delete any stale `BUSTABOB_b*.bin` before assembling — `linkticart` packs every bank file it
-  finds and a leftover inflates the page count.
+  finds and a leftover inflates the page count. `build-ti.sh` now does this itself.
+- The TI build is **banked**, so it assembles to `BUSTABOB_b0.bin` (+ `b1`/`b2` stubs and `b3` =
+  bank 1) rather than a single `BUSTABOB.bin`; the script feeds `_b0` to `linkticart` so the banks
+  come with it. `assets/romcheck.py` handles either shape and runs **after** packing, because the
+  banked check is "did these bytes round-trip into the cart" — the pre-pack size guard it replaced
+  only ever covered the flat path, and RALLY-X's banked builds had *no* check at all, which is how
+  229 bytes of music went missing with every tool reporting success. Both of its failure paths were
+  negative-tested: a missing bank file and a corrupted `pb_lay` each exit non-zero.
+- `build-ti.sh` runs clean under **Git Bash** (`C:\Program Files\Git\bin\bash.exe`); it fails at the
+  cvbasic step under the cygwin shell, which is a pre-existing environment quirk, not a script bug.
 - Finish every session with Classic99 left **running the newest build** (repo standing rule).
 
 ---
@@ -1286,7 +1329,7 @@ case to cope with the data, check the data.
 
 | # | Item | Detail |
 |---|---|---|
-| 4 | ⚠️ **THE FIXED AREA IS ESSENTIALLY FULL — 68 bytes free** (24,268 of 24,336). Music is built and fits, but nothing more of any size does; even a short pitch-sweep engine for the bubble pop is blocked. The level data (1,860 B) must move into a bank next. Music itself CANNOT be banked: the player refills the sound registers from the vblank ISR, where bank-switching is unsafe. So the levels move and the music stays. | §13, §11 |
+| 4 | ✅ **DONE (2026-08-17): the fixed area has 1,912 bytes free** (22,424 of 24,336), the level data having moved into bank 1. The cart did not grow. The pitch-sweep "bloop" under the pop, which this item blocked at ~110 B, now fits. Rules for spending it: keep anything read during a frame out of the banks, and put anything banked next into bank 1 rather than a new one. | §13, §11 |
 | 5 | **The danger state** (arcade raises the music tempo as the stack nears the line) is unbuilt. The death line flashes once a bubble has *crossed* it, but there is still no cue for danger *approaching*. | §11 |
 | 6 | **BUB mascot**, rows 20–22, unbuilt. | §3 |
 
@@ -1312,6 +1355,19 @@ case to cope with the data, check the data.
 ---
 
 ## 17. Status
+
+**2026-08-17 (build 10) — the levels move into a ROM bank.** The fixed area was down to 68 bytes,
+which blocked every remaining feature. Banking the 1,860 bytes of level data took it to **1,912
+free** and the cart did not grow (§13). Verified on the built cartridge in Classic99, not just in
+the build log: the title screen, round 1's field loading correctly out of the bank, `NEXT` showing
+the right bubble (a `pb_seq` read), three shots landing, the gauge draining and the ceiling
+dropping. `assets/romcheck.py` was rewritten first — it handles the flat and banked shapes, prices
+all three budgets, proves the music tables stayed in the fixed area and end inside the cap, and
+proves the banked blocks round-trip into the packed cart. Both of its failure paths were
+negative-tested. Compression was measured and deliberately not taken (§13).
+
+**2026-08-17 (build 9) — the launcher drops a character row.** `LAUNCHY` 176 → 184, which changes
+every trajectory in the game, so all 30 rounds were re-proven winnable at the new height (§3).
 
 **2026-08-16 (build 8) — one hue per ball.** The two-tone palette was causing a *gameplay* fault,
 not just an aesthetic one: red and "orange" shared a cap and differed by one body shade, so four

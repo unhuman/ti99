@@ -13,6 +13,35 @@
 	' 2026 UNHUMAN AND CLAUDE
 	'
 
+	' TI-99 ONLY: the level data lives in a ROM BANK, not in the fixed area.
+	'
+	' The fixed area -- all code plus any data read DURING a frame -- caps at
+	' 24,336 bytes and had 68 left. The 1,860 bytes of level data qualify for a
+	' bank because they are read only at round start and when a shot is taken,
+	' never from the vblank ISR. The music tables do NOT qualify and stay put:
+	' the player refills the sound chip from the ISR, where bank switching is
+	' unsafe. So the levels move and the music stays.
+	'
+	' The cart does not grow. Pages = 3 loader + one per bank, rounded UP to a
+	' power of two: 3 + 1 = 4 pages = 32 KB, which is what it already was. A
+	' SECOND bank would make 5 pages, which rounds to 8 = 64 KB -- so anything
+	' banked later belongs in bank 1 beside the levels (it has ~6 KB spare),
+	' not in a bank of its own. That mistake doubled RALLY-X's cart.
+	'
+	' ColecoVision does not bank: its Z80 build is 16 KB against a flat 32 KB
+	' budget, and turning banking on there would switch it to a Megacart image
+	' for no gain. Hence the #if -- the two targets now differ in where the
+	' level data sits, so BOTH builds have to be run on every data change.
+	'
+	' THE 128 IS NOT THE CART SIZE. `BANK ROM` only accepts 128, 256, 512 or
+	' 1024 (it sizes ColecoVision's Megacart mapper; `BANK ROM 32` is rejected
+	' outright). On TI the cart size comes from the number of bank FILES the
+	' assembler emits, so one bank gives a 32 KB cart despite the 128 here --
+	' RALLY-X declares 128 too and packs to 64 KB with its five banks.
+#if TI994A
+	BANK ROM 128
+#endif
+
 	CONST NROWS    = 12	' grid rows (11 come from level data, 12th is headroom)
 	CONST WELLCOL  = 1	' first character column inside the well
 	CONST CEILROW  = 1	' character row of grid row 0 when top = 0
@@ -54,8 +83,8 @@
 	' as the identical symptom -- the tune playing its first note for ever, sounding
 	' like one long beep with nothing visibly wrong:
 	'   1. `CONST MUSLEN = 256`. A CONST above 255 compiles to ZERO here.
-	'   2. `CONST MUSLEN = 192` emitted into music.bas, which is INCLUDEd at the END
-	'      of this file. CVBasic accepted the forward reference as an UNDEFINED
+	'   2. `CONST MUSLEN = 192` emitted into music.bas, which is INCLUDEd after all
+	'      of the code. CVBasic accepted the forward reference as an UNDEFINED
 	'      8-BIT VARIABLE holding zero -- `movb @cvb_MUSLEN,r0` in the listing.
 	' Either way `#mup >= MUSLEN` became `>= 0`, always true unsigned, so the song
 	' reset every tick. genmusic.py now reads this file and fails if the literal
@@ -135,6 +164,22 @@
 	'
 	' ---------------------------------------------------------------- setup
 	'
+	' SELECT THE LEVEL BANK ONCE, HERE, AND NEVER SWITCH AGAIN.
+	'
+	' Bank 1 holds pb_lay / pb_seq / pb_meta and nothing else, so there is no
+	' reason to ever page it out -- and every reason not to. `pb_seq` is read on
+	' every shot (pick_next) and `pb_lay` at every round start, so a scheme that
+	' switched back and forth would need a select before each of those reads and
+	' would silently return bytes from the wrong page if one were missed. There is
+	' no compile-time or run-time error for that. One select, at startup, removes
+	' the whole class of bug.
+	'
+	' IF A SECOND BANK IS EVER ADDED: every read of pb_lay / pb_seq / pb_meta
+	' must then be preceded by `BANK SELECT 1`, and none of it may happen inside
+	' the vblank ISR (mus_tick), where bank switching is unsafe.
+#if TI994A
+	BANK SELECT 1
+#endif
 	CLS
 	BORDER 1
 	VDP(1) = $E2		' 16x16 sprites, NOT magnified (a bubble is 16 px)
@@ -2319,5 +2364,13 @@ txt_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
 	INCLUDE "art.bas"
-	INCLUDE "levels.bas"
 	INCLUDE "music.bas"
+	' LEVELS COME LAST, and on TI everything after `BANK 1` is assembled into that
+	' bank. The order matters for exactly that reason: music.bas used to be last,
+	' and if it still were, `BANK 1` would sweep the music tables into the bank
+	' too -- where the vblank ISR could not safely read them. Nothing may be
+	' INCLUDEd or defined after this point unless it also belongs in bank 1.
+#if TI994A
+	BANK 1
+#endif
+	INCLUDE "levels.bas"

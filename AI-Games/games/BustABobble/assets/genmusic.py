@@ -170,7 +170,8 @@ def main():
     # from the tune -- so it is verified here instead of trusted. Two attempts to
     # make it a CONST both failed as the SAME silent symptom, the song replaying its
     # first note for ever: above 255 a CONST compiles to zero, and a CONST emitted
-    # into this file is a FORWARD REFERENCE (music.bas is INCLUDEd last), which
+    # into this file is a FORWARD REFERENCE (music.bas is INCLUDEd after all the
+    # code -- levels.bas follows it, in the TI ROM bank), which
     # CVBasic accepts as an undefined variable holding zero. A literal plus this
     # check is the only arrangement that fails loudly.
     # A MISSING SOURCE IS A FAILURE, NOT A SKIP. `if os.path.exists(...)` here first,

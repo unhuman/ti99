@@ -215,6 +215,19 @@ cost a debugging session:
   textually (parenthesize every use); a computed `FOR 1 TO 0` still runs the body once.
 - **TI cart limit: 24,336 bytes** in the fixed area — `linkticart` silently truncates past it.
   Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
+  - **`BANK ROM` accepts only 128, 256, 512 or 1024.** `BANK ROM 32` is rejected outright
+    ("BANK ROM not 128, 256, 512 or 1024"), and a `BANK` statement without it fails with
+    "Using BANK without BANK ROM" pointing at the `BANK`, not at the missing declaration. The number
+    sizes **ColecoVision's Megacart mapper** and is *not* the TI cart size — that comes from how many
+    bank files the assembler emits, so `BANK ROM 128` with one bank still packs a 32 KB TI cart.
+  - **Bank only what is never read during a frame, and gate it per target.** A `#if TI994A` around
+    `BANK ROM` / `BANK n` / `BANK SELECT n` keeps a dual-target game unbanked on Coleco (whose Z80
+    build is typically half the size of the same source on the 9900, so it rarely needs banking and
+    would only become a Megacart image). **Everything after a `BANK n` directive is assembled into
+    that bank**, so the INCLUDE order is load-bearing: putting the bank directive before the music
+    tables would sweep them into a bank the vblank ISR cannot safely read.
+  - **Selecting the bank once at startup beats switching per read** when only one bank exists. A
+    missed `BANK SELECT` returns bytes from the wrong page with no error at build or run time.
 - **ROM IS THREE SEPARATE BUDGETS, and "shrink the ROM" usually optimises the wrong one.**
   (1) The **fixed area** — all code plus any data read during a frame — is the 24,336-byte cap
   above, and it is the only scarce one. (2) **Banks** are 8 KB each and typically half empty.

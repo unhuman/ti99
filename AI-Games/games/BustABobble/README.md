@@ -21,10 +21,18 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-⚠️ TI fixed area **24,268 B of 24,336 — 68 free** (checked by `assets/romcheck.py` on every build);
-ColecoVision RAM **618 B of 814**. An 860-byte clean-out went almost entirely into the music:
-collapsing the obsolete two-sprite bubble (512 B), and replacing two colour tables that repeated one
-8-byte row 16 and 9 times over with a `DEFINE COLOR` loop (`txt_col` 128→8, gauge colours 144→16).
+TI fixed area **22,424 B of 24,336 — 1,912 free**, because the **level data now lives in ROM bank 1**
+(1,902 of 8,192 used). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
+of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
+sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
+stayed, and `assets/romcheck.py` asserts exactly that on every build. Anything banked later belongs
+in bank 1 beside the levels; a second bank would take the cart to 64 KB. ColecoVision is unbanked and
+unchanged at 16,384 B, RAM **618 B of 814**.
+
+Compression was measured and passed over: the layouts are already nibble-packed, and a height byte or
+a per-row column mask would net ~450–510 B — a quarter of what banking gave, while changing the byte
+format `solvelevels.py` parses. It remains available if the fixed area gets tight again (`DESIGN.md`
+§13).
 
 The title screen has **two of the little green creature pacing either side of the name**, at 2×,
 each with his own mind — separate patrol, speed phase and timers. Every 12–24 seconds one stops and
@@ -54,10 +62,9 @@ Clearing a round pays a **descending-wall bonus**: 100 for the first row the wal
 doubling per row, stopping at the death line — 102,300 from a fresh ceiling, and *less* if the
 ceiling already descended, so clearing early pays better.
 
-Not yet built: the danger state and the BUB mascot. ⚠️ **The fixed area is essentially full — 68 bytes free.**
-Nothing more of any size fits until the level data (1,860 B) moves into a bank; `DESIGN.md` §13 has
-the plan. Note music itself **cannot** be banked: the player refills the sound registers from the
-vblank ISR, where bank-switching is not safe.
+Not yet built: the danger state and the BUB mascot. Both now have room — the fixed area went from
+68 bytes free to **1,912** when the levels were banked, which also unblocks the pitch-sweep "bloop"
+under the pop (~110 B).
 
 Two open items, both measured and both pure data changes:
 - **Difficulty does not ramp** (`DESIGN.md` §11b). Round 1 gives 240 s of doing nothing; the mean
@@ -185,5 +192,8 @@ with a fixed trailing `0`: 8 stored digits become 9 shown, and a carry off the t
 - **ColecoVision:** `bash build-coleco.sh` → `src/bustabob.rom` (load in CoolCV or blueMSX)
 
 > Requires the forked `cvbasic` (`unhuman/CVBasic`) for `#if TI994A`. Build **both** targets on
-> every change. TI fixed-area budget is a hard 24,336 bytes — check it with
-> `games/RallyX/assets/romcheck.py` after every build; `linkticart` truncates past it silently.
+> every change. TI fixed-area budget is a hard 24,336 bytes and `linkticart` truncates past it
+> silently, so `build-ti.sh` runs `assets/romcheck.py` after packing and fails the build on any
+> overflow — it also lists every bank, the cart's page count, and whether the banked level data
+> round-tripped into the cart. Use **Git Bash** for `build-ti.sh`; under the cygwin shell the cvbasic
+> step fails for environment reasons unrelated to the script.

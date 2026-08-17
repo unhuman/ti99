@@ -48,31 +48,45 @@ rm -f "$NAME.a99"
     || die "CVBasic compile failed (see messages above)"
 [ -s "$NAME.a99" ] || die "CVBasic produced no/empty $NAME.a99"
 
-echo "[2/3] xas99      $NAME.a99 -> $NAME.bin"
-rm -f "$NAME.bin"
+echo "[2/3] xas99      $NAME.a99 -> $NAME.bin / ${NAME}_b*.bin"
+# DELETE THE OLD BANK FILES FIRST. linkticart appends every ${NAME}_b*.bin it
+# finds, so one left over from a previous build is silently packed into the cart
+# and inflates the page count (CLAUDE.md 3A).
+rm -f "$NAME.bin" "${NAME}"_b*.bin
 "$PY" "$XDT99_DIR/xas99.py" -b -R "$NAME.a99" -L "$NAME.txt" \
     || die "xas99 failed (see $NAME.txt for assembly errors)"
-[ -s "$NAME.bin" ] || die "xas99 produced no/empty $NAME.bin"
 
-# AUDIT THE FIXED AREA BEFORE PACKING. linkticart silently discards anything
-# past 24,336 bytes of the >A000 program image; the symptom is missing DATA, not
-# a build error. NOTE the raw image starts at >6000, so its total size is NOT the
-# number to compare -- assets/romcheck.py subtracts the >6000..>9FFF part first.
-# (The Structris build script this was copied from has no guard at all.)
-# (we are inside src/ at this point, hence the relative path)
-"$PY" ../assets/romcheck.py || die "fixed area overflowed -- see above"
+# A program using BANK assembles to ${NAME}_b0.bin (the >6000..>FFFF image) plus
+# one file per bank from b3 up; a flat one leaves a single ${NAME}.bin.
+# linkticart wants the _b0 form so it picks the extra banks up.
+if [ -s "${NAME}_b0.bin" ]; then
+    FIRST="${NAME}_b0.bin"
+else
+    FIRST="$NAME.bin"
+    [ -s "$FIRST" ] || die "xas99 produced no/empty $NAME.bin"
+fi
 
-# AUDIT THE LEVEL DATA TOO. A layout with bubbles that hang from nothing is not a
-# build error and not a crash -- it surfaces sessions later as three different
-# apparent bugs in the drop logic, and one round that cannot be won at all
-# (DESIGN.md 16a). It costs a second to check, so it is checked every build.
+# AUDIT THE LEVEL DATA BEFORE PACKING. A layout with bubbles that hang from
+# nothing is not a build error and not a crash -- it surfaces sessions later as
+# three different apparent bugs in the drop logic, and one round that cannot be
+# won at all (DESIGN.md 16a). It costs a second to check, so it is checked every
+# build. (we are inside src/ at this point, hence the relative path)
 "$PY" ../assets/solvelevels.py --anchors || die "level data has unanchored bubbles -- see above"
 
-echo "[3/3] linkticart $NAME.bin -> ${NAME}_8.bin   ('$CARTNAME')"
+echo "[3/3] linkticart $FIRST -> ${NAME}_8.bin   ('$CARTNAME')"
 rm -f "${NAME}_8.bin"
-"$PY" "$CVBASIC_DIR/linkticart.py" "$NAME.bin" "${NAME}_8.bin" "$CARTNAME" \
+"$PY" "$CVBASIC_DIR/linkticart.py" "$FIRST" "${NAME}_8.bin" "$CARTNAME" \
     || die "linkticart failed"
 [ -s "${NAME}_8.bin" ] || die "linkticart produced no/empty ${NAME}_8.bin"
+
+# AUDIT THE PACKED CART. linkticart silently discards anything past 24,336 bytes
+# of the >A000 program image; the symptom is missing DATA, not a build error, and
+# the raw image starts at >6000 so its total size is NOT the number to compare.
+# This runs AFTER packing because it also proves the banked blocks round-trip
+# into the cart -- in RALLY-X the banked path had no check at all, and that is how
+# 229 bytes were cut off the end of the music with every tool reporting success.
+echo
+"$PY" ../assets/romcheck.py || die "romcheck FAILED -- the cart is truncated (see above)"
 
 echo
 echo "Build OK ->  $(pwd)/${NAME}_8.bin"
