@@ -21,7 +21,7 @@ Full spec: [`DESIGN.md`](DESIGN.md).
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **22,424 B of 24,336 — 1,912 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,068 B of 24,336 — 1,268 free**, because the **level data now lives in ROM bank 1**
 (1,902 of 8,192 used). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
@@ -72,7 +72,8 @@ doubling per row, stopping at the death line — 102,300 from a fresh ceiling, a
 ceiling already descended, so clearing early pays better.
 
 Not yet built: the danger state and the BUB mascot. Both now have room — the fixed area went from
-68 bytes free to **1,912** when the levels were banked, which also unblocks the pitch-sweep "bloop"
+68 bytes free to 1,912 when the levels were banked (**1,268** after the victory screen), which also
+unblocks the pitch-sweep "bloop"
 under the pop (~110 B).
 
 Two open items, both measured and both pure data changes:

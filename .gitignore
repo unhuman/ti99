@@ -75,4 +75,16 @@ classic99.ini
 Thumbs.db
 Desktop.ini
 
+# --- editor scratch ---
+# vim writes .<name>.swp beside the file being edited, INCLUDING beside files that
+# are themselves ignored -- editing the generated assets/WALKTHROUGH.md left a
+# tracked 16 KB .WALKTHROUGH.md.swp in the repo, which then surfaced as a pending
+# DELETE the moment vim exited. The leading-dot patterns are the ones that matter:
+# `*.swp` alone does not match a hidden `.WALKTHROUGH.md.swp` in every git version.
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
 
