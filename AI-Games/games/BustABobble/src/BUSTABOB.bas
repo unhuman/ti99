@@ -2795,6 +2795,10 @@ bar_colw:
 txt_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
+	' art.bas is only what is read DURING a frame now -- the aim table and the
+	' sprite-colour table. Every pattern and colour table moved to artdefs.bas,
+	' below the BANK directive, because DEFINE CHAR/COLOR/SPRITE read them once at
+	' startup and they were costing 1,992 bytes of the fixed area for that.
 	INCLUDE "art.bas"
 	' The juggling path is read EVERY FRAME on the victory screen, so it belongs in
 	' the fixed area with the aim table -- above the BANK directive below, never in
@@ -2809,4 +2813,5 @@ txt_col:
 #if TI994A
 	BANK 1
 #endif
+	INCLUDE "artdefs.bas"
 	INCLUDE "levels.bas"
