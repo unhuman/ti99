@@ -969,12 +969,15 @@ snap_col:
 
 do_stick:
 	flying = 0
-	' Park the in-flight sprites IMMEDIATELY. after_stick runs the flood fills
+	' Park the in-flight sprite IMMEDIATELY. after_stick runs the flood fills
 	' and a full redraw with NO WAIT in between, so the sprite would otherwise
 	' sit on top of the character bubble it just became for those frames --
 	' reading as a doubled bubble that lingers after the ball lands.
+	'
+	' ONLY SPRITE 0. This used to park sprite 1 as well, left over from when the
+	' flying bubble was two overlaid sprites -- and sprite 1 is BUB now, so he
+	' blinked out of existence at the exact moment every shot landed.
 	SPRITE 0,209,0,0,0
-	SPRITE 1,209,0,0,0
 	grid(strr * 8 + stcc) = curk
 	IF strr > maxr THEN maxr = strr		' draw_field runs before scan_present
 	' LANDING IS A FAST BLIP, NOT A BEEP. At 186 Hz over three frames it read as a
@@ -1689,10 +1692,10 @@ do_dead:
 	' Clear the launcher deck FIRST. The loaded ball and the three aim dots are
 	' pointing at a shot that will never be taken, and they sit right under the
 	' death line -- exactly where the eye is about to be sent. Parked before the
-	' flash starts so the line is the only thing moving. Sprites 2/3 (the NEXT
-	' bubble) stay: that is a HUD readout, not the aiming device.
+	' flash starts so the line is the only thing moving. BUB (sprite 1) and the
+	' bubble waiting beside him (sprite 3) STAY: they are scenery and a readout, not
+	' the aiming device, and clearing them would empty the whole deck.
 	SPRITE 0,209,0,0,0
-	SPRITE 1,209,0,0,0
 	SPRITE 4,209,0,32,0
 	SPRITE 5,209,0,32,0
 	SPRITE 6,209,0,32,0
