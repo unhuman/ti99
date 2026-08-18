@@ -136,8 +136,10 @@
 	' lands, so both movements are deliberately quick -- the roll is four frames and
 	' the lift eight, making the worst case about a fifth of a second and the usual
 	' case the roll alone. A bubble fired out of a pipe SHOULD be fast; it was the
-	' slower version that made the wait noticeable.
-	CONST BUBSTEP  = 8	' roll: the pipe to the waiting slot in four frames
+	' slower version that made the wait noticeable. Six frames covers the 32 px in
+	' steps of 6 (the last step overshoots to 44, which never shows: the sprite is
+	' parked and the character stamp takes over in the same pass).
+	CONST BUBSTEP  = 6	' roll: the pipe to the waiting slot in six frames
 	CONST PIPEX    = 8	' the pipe's mouth, in the left wall
 	' !! The pipe's name-table cell is NOT a CONST. Row 21 column 0 is 672, and a
 	' CONST above 255 compiles to ZERO here -- the VPOKE would have gone to cell 0,
