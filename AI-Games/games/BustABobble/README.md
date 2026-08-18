@@ -22,7 +22,7 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,766 B of 24,336 — 570 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **24,280 B of 24,336 — 56 free**, because the **level data now lives in ROM bank 1**
 (1,902 of 8,192 used). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
@@ -50,13 +50,17 @@ so `assets/genjuggle.py` sweeps the ellipse and proves no scanline ever exceeds 
 phases (`DESIGN.md` §17). It lands on exactly four, so **there is no margin** — adding a sprite here
 means re-running the generator.
 
-**BUB loads your bubbles.** A pipe opens in the left wall level with the launcher, and the next bubble
-waits beside BUB, who stands one slot left of the launch spot — that waiting bubble *is* the next
-indicator, which is what let the HUD'''s NEXT swatch go. Fire, and he lifts it over his head into the
-muzzle while your shot is still in the air; when the shot lands, the following bubble rolls out to
-take its place. It costs no time: the lift overlaps the flight. The aim guide'''s dots would be a fifth
-sprite on that crowded deck when you aim very low, so **flicker switches on only for that case**
-(`DESIGN.md` §17).
+**BUB loads your bubbles.** A pipe opens in the left wall level with the launcher, and the next
+bubble waits beside BUB, who stands one slot left of the launch spot — that waiting bubble *is* the
+next indicator, which is what let the HUD's NEXT swatch go. Fire and the pipe door opens, showing
+where the next one will come from; BUB lifts the waiting bubble over his head into the muzzle while
+your shot is in the air, and when the shot lands the following one rolls out to his side. **You
+cannot fire again until the cycle finishes** — usually just the six-frame roll, since the lift
+overlaps the flight. All 30 rounds are proven winnable with twice that charged against every shot.
+
+Both resting bubbles are **characters, not sprites** — they only become sprites while moving. That
+keeps the deck to four sprites a scanline (BUB plus three aim-guide dots), which is exactly what the
+TMS9918 draws, so no flicker is needed anywhere (`DESIGN.md` §17).
 
 The **death line is yellow, and flashes red** when a bubble crosses it — including *through* the
 bubbles sitting on it, which would otherwise hide the very thing the player needs to see. Those

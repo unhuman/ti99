@@ -1388,13 +1388,29 @@ following bubble rolls out of the pipe to take its place at his side.
 > **round 30 went from 68 shots to 119**. Reverted. The visible cost is that the roll begins a beat
 > later; the alternative was making the hardest round nearly twice as long.
 
-**It costs no time, which is the whole design.** BUB starts the moment the shot *leaves*, not when it
-lands, so his roll-and-lift (about 24 frames) happens while the bubble is in flight and the next one
-is already in place when the shot resolves. He never gates firing: shoot again mid-fetch and the
-sequence simply restarts from the pipe, which reads as him hurrying. That matters because the drop
-clock never pauses — a blocking version would have cost ~0.5 s on every shot, and round 30 needs
-about 70 of them (§11b measurements: it tolerates 1.5 s of dead time per shot, so blocking was
-*affordable* but would have eaten half the margin the flat clock just bought).
+**The loading cycle gates the trigger.** Firing into the middle of it left BUB carrying a bubble
+that was already obsolete while the next one was still in the pipe, so `do_fire` is unreachable until
+the lift has finished and the rolled bubble has arrived (`bubrn = 0`, `bubst <> 1` — nested `IF`s,
+never a compound `AND`, per §14). The wait is short because both movements are quick — the lift is
+**8 frames** and overlaps the flight, the roll **6** — so what is left when a shot lands is usually
+just the roll, about a fifth of a second at worst.
+
+That dead time is already paid for: §11b's measurements charge **half a second per shot** through
+`solvelevels.py --overhead 30` and all 30 rounds still clear, which is more than this cycle can cost.
+An earlier version deliberately cost nothing at all (BUB started on fire and never gated anything),
+and it was rejected in play — you could shoot before the cycle read as a cycle.
+
+**BUB keeps moving through the pop and orphan animations.** `after_stick` does not go round the main
+loop, so he froze mid-lift for their half second on every popping shot — and since he was the only
+thing on screen still moving, that read as *the game* sticking on a collision. `anim_tick` calls
+`bub_tick`, so the loading carries on underneath the burst exactly as the clock and the music do.
+
+**The pipe is a door, and it opens on the shot.** It stands open from the moment the player fires —
+showing where the next bubble is about to come from, so the route reads as one movement — and shuts
+**half a second after** that bubble reaches BUB. Two earlier versions were both unreadable: a
+permanent hole looked like damage to the well, and a door tied to the roll opened and shut inside
+four frames. `ppt` holds it (255 = stay open while the shot flies, re-armed at 30 when the bubble
+lands beside BUB).
 
 Three geometry constraints, none of them free choices:
 
@@ -1409,14 +1425,34 @@ Three geometry constraints, none of them free choices:
   a hole punched once at round start would be bricked up by the first one — and since the walls move
   with the shake, the hole has to move with them.
 
-**Flicker is switched on only when a shallow aim would put a FIFTH sprite on the deck.** The deck
-carries three already (loaded bubble, BUB, the bubble in transit) and the TMS9918 draws four before
-it starts dropping them, so one guide dot down there is fine — it is the second that overflows. The
-test is geometry rather than a guessed angle: dot `gi` sits `guy*gi` px above the launcher and its
-16 px sprite reaches the deck when `guy*gi <= 15`, so the second dot does when `guy <= 7`. CVBasic's
-`SPRITE FLICKER` is all-or-nothing — it rotates every sprite including the player's — which is why it
-is turned on for that case only and explicitly cleared on fire, so a shot from a shallow aim does not
-leave the flying bubble rotating in and out of view.
+**Resting deck bubbles are CHARACTERS; sprites only while they move.** The deck can hold three
+things at once — the loaded bubble, BUB, and the next one waiting — and with the aim guide's three
+dots that is six sprites on rows the TMS9918 will draw four of. Drawing the two that are standing
+still as characters takes it to BUB plus three dots = four, exactly the limit, so nothing is dropped
+and **the flicker test was deleted entirely**. It costs nothing in alignment, which is the same
+reason the whole field works: both slots sit on character boundaries (muzzle x 72 = column 9,
+waiting slot x 40 = column 5, both rows 22–23) and a bubble is already a 2×2 stamp, `124 + colour*4`
+and the next three, exactly as `draw_row` builds it. One routine does stamp and erase — with colour
+0 the step between codes is 0 too, so all four cells get `BLANK`.
+
+The stamps are re-applied after every redraw alongside the pipe door, because rows 22–23 are inside
+the 24 rows `draw_field` paints. Two consequences that were bugs first:
+
+- **`do_clear` and `do_dead` must erase them before their animations run.** `draw_field` runs on
+  every step of the round-clear curtain, so leaving the stamps set painted the loaded and waiting
+  bubbles back on *top* of the descending wall, one row-pair at a time. Parking sprite 0 no longer
+  clears the muzzle either, so the death flash showed a shot that would never be taken.
+- **`next_shot` stamps the muzzle, not just the end of the lift.** A short shot lands before the lift
+  finishes; `next_shot` sets `bubst = 0`, the lift block never reached its own stamp, and the muzzle
+  stayed empty for the rest of the game. Whatever BUB was carrying is the loaded bubble by
+  definition, so `next_shot` is the authoritative place to say so.
+
+> ⚠️ **The 8-bit truncation trap caught this twice in one session.** `sdc = 713` — a plain variable,
+> so 8 bits — became 201, and every deck stamp and erase landed at row 6 column 9 instead of row 22:
+> a black 2×2 hole punched through the *playfield* on every redraw. It is `#sdc` now. This was hours
+> after the same bug was fixed in the 838 menu (`rdp = 463` → 207) and written into `CLAUDE.md` §3A,
+> which is why that note now carries the practical rule: **grep any new routine for bare assignments
+> over 255 before building.** It never errors — it writes somewhere plausible-looking and wrong.
 
 > ⚠️ Written first as `CONST PIPECELL = 672` — **a `CONST` above 255 compiles to zero here**, so the
 > VPOKE would have gone to name-table cell 0, writing through the score digits and leaving the wall
