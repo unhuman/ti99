@@ -288,6 +288,14 @@ new_round:
 	GOSUB pick_next
 	curk = nxtk
 	GOSUB pick_next
+	' THE DECK STAMPS GO IN HERE, NOT IN load_level. load_level runs before these
+	' two picks, so setting them there stamped whatever colour the LAST round ended
+	' on -- and nothing re-stamped afterwards, which left the muzzle empty until the
+	' first shot landed and BUB placed one. Both bubbles are already in their final
+	' positions at round start, so they are characters from the first frame.
+	deckm = curk
+	deckw = nxtk
+	GOSUB draw_deck
 	aim = 31
 	flying = 0
 	btnr = 0
@@ -1468,8 +1476,6 @@ load_level:
 	bubst = 0			' nothing in transit; the launcher already has its bubble
 	bubrn = 0			' and the next one is already waiting beside BUB
 	bubrx = BUBWAIT
-	deckm = curk
-	deckw = nxtk
 	top = 0
 	shkb = 1
 	shkbo = 1
