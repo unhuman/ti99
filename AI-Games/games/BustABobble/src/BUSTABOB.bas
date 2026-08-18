@@ -1078,7 +1078,8 @@ next_shot:
 	bubst = 0
 	bubrx = PIPEX
 	bubrn = 1
-	GOSUB pipe_face		' the door opens for it
+	ppt = 60		' the door opens, and stays open about a second
+	GOSUB pipe_face
 	RETURN
 
 clr_marks:
@@ -1850,14 +1851,18 @@ draw_field:
 	RETURN
 
 	' THE PIPE IS A DOOR, NOT A HOLE. It stands open only while a bubble is actually
-	' coming out (bubrn = 1) and is bricked up again the moment that bubble reaches
-	' BUB -- otherwise the well has a permanent gap in its wall, which reads as
-	' damage rather than as a chute. Two cells, because the bubble is 16 px tall.
+	' coming out -- otherwise the well has a permanent gap in its wall, which reads
+	' as damage rather than as a chute.
+	'
+	' IT HOLDS OPEN FOR ABOUT A SECOND (ppt, ticked down in bub_tick) rather than
+	' shutting the instant the bubble reaches BUB. The roll is only four frames, so
+	' a door tied to the roll itself opened and closed too fast to see -- the effect
+	' was there and simply unreadable. Two cells, because the bubble is 16 px tall.
 	' 704 = row 22 column 0; the wall column is shkb, and the walls move with the
 	' shake, so the door has to move with them.
 pipe_face:
 	ppv = WALLCH
-	IF bubrn = 1 THEN ppv = BLANK
+	IF ppt > 0 THEN ppv = BLANK
 	#ppa = 704
 	#ppa = #ppa + shkb
 	#ppa = #ppa + 6144
@@ -2161,9 +2166,15 @@ bub_tick:
 			bubrn = 0
 			deckw = nxtk		' it has arrived; hand it to the characters
 			SPRITE 3,209,0,0,0
-			GOSUB pipe_face		' ...and the door closes behind it
 			GOSUB draw_deck
 		END IF
+	END IF
+	' The door shuts when its own timer expires. One tick per call is near enough
+	' for a cosmetic hold -- bub_tick runs once per frame from the main loop and
+	' from anim_tick, so it keeps counting through the pop animations too.
+	IF ppt > 0 THEN
+		ppt = ppt - 1
+		IF ppt = 0 THEN GOSUB pipe_face
 	END IF
 	' BUB: standing, or a second frame while he has a bubble in the air.
 	bubp = 36
