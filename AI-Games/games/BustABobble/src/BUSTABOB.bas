@@ -132,7 +132,12 @@
 	CONST BUBHOME  = 56	' his station, between the waiting bubble and the muzzle
 	CONST BUBMID   = 167	' the lift, 8 px up
 	CONST BUBOVER  = 159	' ...and 16 px up: clear over his head, not through it
-	CONST BUBSTEP  = 4	' roll speed: the pipe to the waiting slot in eight frames
+	' SPEED: the gate on firing costs whatever is LEFT of this cycle when a shot
+	' lands, so both movements are deliberately quick -- the roll is four frames and
+	' the lift eight, making the worst case about a fifth of a second and the usual
+	' case the roll alone. A bubble fired out of a pipe SHOULD be fast; it was the
+	' slower version that made the wait noticeable.
+	CONST BUBSTEP  = 8	' roll: the pipe to the waiting slot in four frames
 	CONST PIPEX    = 8	' the pipe's mouth, in the left wall
 	' !! The pipe's name-table cell is NOT a CONST. Row 21 column 0 is 672, and a
 	' CONST above 255 compiles to ZERO here -- the VPOKE would have gone to cell 0,
@@ -401,11 +406,25 @@ game_loop:
 
 	GOSUB do_aim
 
+	' THE LOADING CYCLE MUST FINISH BEFORE THE NEXT SHOT. BUB has to complete the
+	' lift and the following bubble has to reach him; firing into the middle of that
+	' left him carrying a bubble that was already obsolete and the next one still in
+	' the pipe. The wait is short -- the lift overlaps the flight, so what is left
+	' after a shot lands is usually just the eight-frame roll -- and it is paid for:
+	' the solver proves all 30 rounds winnable while charging half a second of dead
+	' time per shot, which is more than this cycle can ever cost.
+	'
+	' Nested, not `AND`: CVBasic's TMS9900 backend miscompiles compound comparisons
+	' (CLAUDE.md 3A).
 	IF flying = 0 THEN
-		IF btnr = 0 THEN
-			IF cont1.button = 0 THEN btnr = 1
-		ELSE
-			IF cont1.button THEN GOSUB do_fire
+		IF bubrn = 0 THEN
+			IF bubst <> 1 THEN
+				IF btnr = 0 THEN
+					IF cont1.button = 0 THEN btnr = 1
+				ELSE
+					IF cont1.button THEN GOSUB do_fire
+				END IF
+			END IF
 		END IF
 	END IF
 
@@ -603,7 +622,12 @@ do_fire:
 	' #lf is restamped every frame so the main loop does not then ALSO charge its
 	' clamped catch-up (#fd up to 4) for time already counted here.
 	'
+	' BUB RUNS HERE TOO. after_stick's burst and orphan animations do not go round
+	' the main loop, so without this he froze mid-lift for their half second on every
+	' popping shot -- which reads as the game pausing on a collision, because he is
+	' the only thing on screen that was moving.
 anim_tick:
+	GOSUB bub_tick
 	GOSUB sfx_tick
 	musdin = 1			' the music keeps time through the animations too
 	GOSUB mus_tick
@@ -1040,12 +1064,21 @@ after_stick:
 next_shot:
 	curk = nxtk
 	GOSUB pick_next
+	' STAMP THE MUZZLE HERE TOO, not only at the end of BUB's lift. A SHORT SHOT
+	' LANDS BEFORE HE FINISHES: the lift takes 16 frames and round 1's opening shots
+	' are gone in fewer, so next_shot set bubst = 0 while he was still mid-carry,
+	' the lift block never reached its `deckm = nxtk`, and the muzzle stayed EMPTY
+	' for the rest of the game. Whatever he was carrying is the loaded bubble now,
+	' by definition, so this is the authoritative place to say so; the lift-end
+	' stamp only exists to make it appear early on a long shot.
+	deckm = curk
 	' BUB's carried bubble stops being drawn here -- sprite 0 now draws the loaded
 	' bubble in exactly the same place, so the hand-over needs no animation -- and
 	' the following bubble leaves the pipe, its colour known only now.
 	bubst = 0
 	bubrx = PIPEX
 	bubrn = 1
+	GOSUB pipe_face		' the door opens for it
 	RETURN
 
 clr_marks:
@@ -1812,14 +1845,25 @@ draw_field:
 	' wall column
 	' is shkb -- the walls live in the shake buffer and move with it, so the hole has
 	' to move with them or it would sit beside the wall for the length of a shake.
-	ppv = BLANK
+	GOSUB pipe_face
+	GOSUB draw_deck
+	RETURN
+
+	' THE PIPE IS A DOOR, NOT A HOLE. It stands open only while a bubble is actually
+	' coming out (bubrn = 1) and is bricked up again the moment that bubble reaches
+	' BUB -- otherwise the well has a permanent gap in its wall, which reads as
+	' damage rather than as a chute. Two cells, because the bubble is 16 px tall.
+	' 704 = row 22 column 0; the wall column is shkb, and the walls move with the
+	' shake, so the door has to move with them.
+pipe_face:
+	ppv = WALLCH
+	IF bubrn = 1 THEN ppv = BLANK
 	#ppa = 704
 	#ppa = #ppa + shkb
 	#ppa = #ppa + 6144
 	VPOKE #ppa,ppv
 	#ppa = #ppa + 32
 	VPOKE #ppa,ppv
-	GOSUB draw_deck
 	RETURN
 
 	' Round transition, the mirror of do_clear: the closing wall has filled the
@@ -2099,7 +2143,7 @@ bub_tick:
 	IF bubst = 1 THEN
 		' The lift: across to the muzzle, arcing OVER his head rather than through
 		' him -- at BUBOVER the bubble's 16 px sit entirely above his own.
-		bublx = bublx + 2
+		bublx = bublx + 4
 		bubly = BUBMID
 		IF bublx > 47 THEN bubly = BUBOVER
 		IF bublx > 63 THEN bubly = BUBMID
@@ -2117,6 +2161,7 @@ bub_tick:
 			bubrn = 0
 			deckw = nxtk		' it has arrived; hand it to the characters
 			SPRITE 3,209,0,0,0
+			GOSUB pipe_face		' ...and the door closes behind it
 			GOSUB draw_deck
 		END IF
 	END IF
