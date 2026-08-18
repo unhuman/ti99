@@ -577,6 +577,13 @@ do_fire:
 	' the game can hand out a colour it is about to wipe off the board. Measured, it
 	' took round 30 from 68 shots to 119. The roll therefore starts at next_shot
 	' instead, a beat later than the lift.
+	' THE DOOR OPENS ON THE SHOT, not when the bubble arrives at it. Opening it as
+	' the player fires shows where the next bubble is about to come FROM, so the
+	' route -- door, roll, BUB, muzzle -- reads as one movement rather than a bubble
+	' appearing out of a wall that opened and shut around it. 255 just means "hold
+	' open"; the roll re-arms it with the real countdown when it finishes.
+	ppt = 255
+	GOSUB pipe_face
 	bubst = 1			' BUB lifts the waiting bubble into the muzzle
 	bublx = BUBWAIT
 	SPRITE 3,209,0,0,0		' its slot is empty until the next one rolls out
@@ -1078,7 +1085,6 @@ next_shot:
 	bubst = 0
 	bubrx = PIPEX
 	bubrn = 1
-	ppt = 60		' the door opens, and stays open about a second
 	GOSUB pipe_face
 	RETURN
 
@@ -1854,10 +1860,10 @@ draw_field:
 	' coming out -- otherwise the well has a permanent gap in its wall, which reads
 	' as damage rather than as a chute.
 	'
-	' IT HOLDS OPEN FOR ABOUT A SECOND (ppt, ticked down in bub_tick) rather than
-	' shutting the instant the bubble reaches BUB. The roll is only four frames, so
-	' a door tied to the roll itself opened and closed too fast to see -- the effect
-	' was there and simply unreadable. Two cells, because the bubble is 16 px tall.
+	' IT OPENS WHEN THE PLAYER FIRES and shuts HALF A SECOND after the bubble that
+	' came out of it has reached BUB (ppt, ticked down in bub_tick). Tied to the roll
+	' alone it opened and shut in four frames -- the effect was there and simply too
+	' fast to read. Two cells, because the bubble is 16 px tall.
 	' 704 = row 22 column 0; the wall column is shkb, and the walls move with the
 	' shake, so the door has to move with them.
 pipe_face:
@@ -2166,6 +2172,7 @@ bub_tick:
 			bubrn = 0
 			deckw = nxtk		' it has arrived; hand it to the characters
 			SPRITE 3,209,0,0,0
+			ppt = 30		' shut half a second after it arrives
 			GOSUB draw_deck
 		END IF
 	END IF
