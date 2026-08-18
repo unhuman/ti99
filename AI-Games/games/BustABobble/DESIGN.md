@@ -1162,7 +1162,7 @@ free**. Measured, all three budgets:
 | | before | after |
 |---|---|---|
 | fixed area (code + anything read during a frame) | 24,268 / 24,336 — **68 free** | 22,424 / 24,336 — **1,912 free** (23,068 / **1,268 free** once the victory screen was built) |
-| bank 1 (`pb_lay` + `pb_seq` + `pb_meta`) | — | 1,902 / 8,192 — 6,290 free |
+| bank 1 (`pb_lay` + `pb_seq` + `pb_meta`, and since 2026-08-18 all of `artdefs.bas`) | — | 3,886 / 8,192 — 4,306 free |
 | TI cart `BUSTABOB_8.bin` | 32,768 B | **32,768 B — unchanged** |
 | Coleco `bustabob.rom` | 16,384 B | **16,384 B — unchanged** |
 
@@ -1371,6 +1371,27 @@ case to cope with the data, check the data.
 ---
 
 ## 17. Status
+
+**2026-08-18 — the art moves into bank 1, and round 1 gets an opening.** `genart.py` emits two files
+now: `art.bas` keeps only what is read *during* a frame (the aim table and `bub_base`, 64 bytes) and
+**`artdefs.bas` takes every pattern and colour table** — the things `DEFINE CHAR`/`COLOR`/`SPRITE`
+read exactly once at startup, which had no business competing with code for the fixed area. That is
+**1,992 bytes back: 28 free became 2,012**, with the cart unchanged at 32 KB because it is still one
+bank (3 loader pages + 1 = 4, rounded to 32 KB either way). ColecoVision's ROM went 16 KB → 24 KB,
+which is padding — the reorder pushed it just past the 16 KB boundary, well inside its flat 32 KB.
+
+The split is a post-process over the generated lines, cut at label boundaries and keeping each
+block's comments with it, so new art needs no thought about which file it lands in — only whether its
+label belongs in `FRAME_READ`.
+
+**Round 1 opens with BUB walking the first bubble out.** The door opens, he walks out of the pipe
+pushing the bubble ahead of him and sets it down in the muzzle, and the second one rolls out behind
+him as usual. **Round 1 only** — once per game is the point: an intro you cannot skip wears out by
+round 10, and this one exists to explain where bubbles come from. It runs before the main loop starts,
+so it costs the drop clock nothing, but it must re-base `#lf` at the end or the first pass would read
+the whole intro as one enormous frame delta and drain the gauge. It also ticks sound and music itself
+rather than calling `anim_tick`, because that would call `bub_tick`, which parks the very sprite he is
+pushing.
 
 **2026-08-17 (build 16) — BUB loads the bubbles, and `NEXT` leaves the HUD.** A pipe opens in the
 **left wall level with the launcher**; the next bubble rolls out of it and **waits beside BUB**, who

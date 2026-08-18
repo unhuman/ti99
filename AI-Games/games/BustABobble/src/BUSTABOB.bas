@@ -304,10 +304,15 @@ new_round:
 	' on -- and nothing re-stamped afterwards, which left the muzzle empty until the
 	' first shot landed and BUB placed one. Both bubbles are already in their final
 	' positions at round start, so they are characters from the first frame.
+	bubx = BUBHOME			' his station; only the intro moves him
+	dkon = 1			' the deck is live: bubbles and the NEXT sign
 	deckm = curk
 	deckw = nxtk
-	dkon = 1			' the deck is live: bubbles and the NEXT sign
 	GOSUB draw_deck
+	' ROUND 1 ONLY. Once per game is the whole point: an intro you cannot skip
+	' wears out by round 10, and this one exists to explain the pipe -- after that
+	' the player knows where bubbles come from.
+	IF lvl = 1 THEN GOSUB intro
 	aim = 31
 	flying = 0
 	btnr = 0
@@ -2175,6 +2180,45 @@ draw_deck:
 	IF dkon = 0 THEN dkon = 2
 	RETURN
 
+	' ROUND 1's OPENING. The door opens, BUB walks out of the pipe pushing the first
+	' bubble ahead of him, and sets it down in the muzzle; the second one then rolls
+	' out behind him as usual. It runs before the main loop starts, so it costs the
+	' drop clock nothing -- but #lf has to be re-based at the end or the first pass
+	' would see the whole intro as one enormous frame delta and drain the gauge.
+	'
+	' It cannot call bub_tick (which anim_tick would): that parks sprite 2, which is
+	' the very bubble he is pushing. So it ticks sound and music itself.
+intro:
+	deckm = 0			' nothing on the deck yet -- he is bringing it
+	deckw = 0
+	GOSUB draw_deck
+	ppt = 255			' and the door is open for him to come out of
+	GOSUB pipe_face
+	bubx = PIPEX
+	bubf = curk - 1
+	bubf = bubf * 4
+	bubc = bub_base(curk - 1)
+intro_walk:
+	WAIT
+	GOSUB sfx_tick
+	musdin = 1
+	GOSUB mus_tick
+	bubx = bubx + 2
+	bubp = 36			' legs swap every 4 px, the title screen's cycle
+	bubw = bubx AND 4
+	IF bubw = 0 THEN bubp = 40
+	SPRITE 1,BUBY,bubx,bubp,3
+	bubv = bubx + 16		' the bubble travels just ahead of him
+	SPRITE 2,BUBY,bubv,bubf,bubc
+	IF bubx < BUBHOME THEN GOTO intro_walk
+	SPRITE 2,209,0,0,0		' set down: characters take over at the muzzle
+	deckm = curk
+	GOSUB draw_deck
+	bubrx = PIPEX			' and the next one rolls out behind him
+	bubrn = 1
+	#lf = FRAME
+	RETURN
+
 bub_tick:
 	IF bubst = 1 THEN
 		' The lift: across to the muzzle, arcing OVER his head rather than through
@@ -2212,7 +2256,7 @@ bub_tick:
 	' BUB: standing, or a second frame while he has a bubble in the air.
 	bubp = 36
 	IF bubst = 1 THEN bubp = 40
-	SPRITE 1,BUBY,BUBHOME,bubp,3
+	SPRITE 1,BUBY,bubx,bubp,3
 	' Sprite 2 is the bubble he is carrying and sprite 3 the one waiting beside him.
 	' BOTH are nxtk -- never at the same time: he is carrying it, or it is waiting.
 	' The waiting one IS the next-bubble indicator, which is what let the HUD's NEXT

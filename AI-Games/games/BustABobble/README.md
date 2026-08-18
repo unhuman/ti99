@@ -22,8 +22,8 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **24,280 B of 24,336 — 56 free**, because the **level data now lives in ROM bank 1**
-(1,902 of 8,192 used). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
+TI fixed area **22,654 B of 24,336 — 1,682 free**, because the **level data now lives in ROM bank 1**
+(3,886 of 8,192 used: the level data plus every art table). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
 stayed, and `assets/romcheck.py` asserts exactly that on every build. Anything banked later belongs
@@ -49,6 +49,8 @@ shape is not a free choice: eleven sprites are on screen and the TMS9918 draws f
 so `assets/genjuggle.py` sweeps the ellipse and proves no scanline ever exceeds four across all 64
 phases (`DESIGN.md` §17). It lands on exactly four, so **there is no margin** — adding a sprite here
 means re-running the generator.
+
+**Round 1 opens with BUB walking the first bubble out of the pipe** and setting it in the muzzle — once per game, to show where bubbles come from.
 
 **BUB loads your bubbles.** A pipe opens in the left wall level with the launcher, and the next
 bubble waits beside BUB, who stands one slot left of the launch spot — that waiting bubble *is* the
