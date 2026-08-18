@@ -2045,7 +2045,14 @@ prt_hud:
 	' x 40 = column 5, both on rows 22-23), and a bubble is already a 2x2 stamp --
 	' `124 + colour*4` and the next three, exactly as draw_row builds it.
 	'
-	' sdc = top-left name-table cell, sdk = colour, or 0 to erase. With sdk = 0 the
+	' !! #sdc IS 16-BIT, AND HAS TO BE. Written as a plain `sdc` -- 8 bits -- the
+	' cell number 713 truncated to 201, so every stamp and every erase landed at row
+	' 6 column 9 instead of row 22 column 9: a black 2x2 hole punched through the
+	' middle of the PLAYFIELD on every redraw. Exactly the hazard that had just been
+	' fixed in the 838 menu (rdp = 463 -> 207) and written into CLAUDE.md 3A. Any
+	' screen offset past row 7 is over 255.
+	'
+	' #sdc = top-left name-table cell, sdk = colour, or 0 to erase. With sdk = 0 the
 	' step sdo is 0 too, so all four cells get BLANK and one routine does both jobs.
 stamp_deck:
 	sdh = BLANK
@@ -2055,7 +2062,7 @@ stamp_deck:
 		sdh = sdh + 124
 		sdo = 1
 	END IF
-	#sda = sdc
+	#sda = #sdc
 	#sda = #sda + 6144
 	VPOKE #sda,sdh
 	sdv = sdh + sdo
@@ -2074,10 +2081,10 @@ stamp_deck:
 	' wipe the pipe mouth. deckm and deckw hold what is resting there (0 = nothing,
 	' because it is in the air).
 draw_deck:
-	sdc = 713			' muzzle: row 22, column 9 -- bare literal, > 255
+	#sdc = 713			' muzzle: row 22, column 9 -- bare literal, > 255
 	sdk = deckm
 	GOSUB stamp_deck
-	sdc = 709			' the waiting slot: row 22, column 5
+	#sdc = 709			' the waiting slot: row 22, column 5
 	sdk = deckw
 	GOSUB stamp_deck
 	RETURN

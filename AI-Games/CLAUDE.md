@@ -182,7 +182,11 @@ cost a debugging session:
   item below but it bites in ordinary code: any screen offset past row 7 (`row*32+col > 255`), any
   VRAM address, any pixel count over 255 must go in a `#var`. Nothing warns at build or run time —
   in Bust-A-Bobble the 838 menu's `rdp = 463` put the typed digits at row 6 instead of row 14, which
-  read as a deliberate (if odd) layout choice rather than a bug for weeks.
+  read as a deliberate (if odd) layout choice rather than a bug for weeks. **It then happened AGAIN
+  the same day, hours after being written down here**: `sdc = 713` (row 22, col 9) truncated to 201
+  and punched a black 2×2 hole through row 6 of the playfield on every redraw. Recording the rule is
+  not enough — **grep any new routine for bare assignments over 255 before building.** The symptom is
+  never an error; it is drawing or writing at a plausible-looking wrong place, 256 or 512 cells off.
 - **`CONST` > 255 silently becomes ZERO — bare literals are fine.** This is the sharpest edge of
   the truncation item above and deserves its own line: `CONST FXMIN = 4096` compiled to `ci r0,0`
   and `#bx = FXLX` (20480) compiled to a bare `clr`. A ball launched from 0,0 and no wall ever
