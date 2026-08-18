@@ -2222,7 +2222,10 @@ outro:
 outro_walk:
 	WAIT
 	GOSUB sfx_tick
-	bubx = bubx + 4
+	' SAME SPEED AS THE WAY IN: 2 px a frame. It was 4, which read as him hurrying
+	' off, and it also broke the walk cycle -- the legs are keyed on bubx AND 4, so at
+	' 4 px a frame they swap every single frame instead of every other one.
+	bubx = bubx + 2
 	bubp = 36
 	bubw = bubx AND 4
 	IF bubw = 0 THEN bubp = 40
