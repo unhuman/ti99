@@ -306,6 +306,7 @@ new_round:
 	' positions at round start, so they are characters from the first frame.
 	deckm = curk
 	deckw = nxtk
+	dkon = 1			' the deck is live: bubbles and the NEXT sign
 	GOSUB draw_deck
 	aim = 31
 	flying = 0
@@ -592,7 +593,6 @@ do_fire:
 	GOSUB pipe_face
 	bubst = 1			' BUB lifts the waiting bubble into the muzzle
 	bublx = BUBWAIT
-	SPRITE 3,209,0,0,0		' its slot is empty until the next one rolls out
 	bubrn = 0
 	deckm = 0			' the muzzle is empty -- that bubble is in flight
 	deckw = 0			' and BUB has picked the waiting one up
@@ -1681,7 +1681,10 @@ do_clear:
 	GOSUB hide_sprites
 	deckm = 0
 	deckw = 0
+	dkon = 0			' ...and the NEXT sign goes with them
 	GOSUB draw_deck
+	ppt = 0				' shut the pipe door before the wall comes down
+	GOSUB pipe_face
 	' Same hazard as do_drop: the round can clear mid-shake, and the whole
 	' closing animation would then run one character off-centre.
 	shkb = 1
@@ -1761,15 +1764,14 @@ do_dead:
 	' flash starts so the line is the only thing moving. BUB (sprite 1) and the
 	' bubble waiting beside him (sprite 3) STAY: they are scenery and a readout, not
 	' the aiming device, and clearing them would empty the whole deck.
-	SPRITE 0,209,0,0,0
-	' The loaded bubble is a character stamp now, so parking sprite 0 no longer
-	' clears it -- erase the muzzle instead, or the shot that will never be taken
-	' sits there through the whole death flash.
+	' Everything goes: the aiming device, BUB, and both deck bubbles. The loaded one
+	' is a character stamp now, so parking sprites no longer clears it -- dkon = 0
+	' takes the sign with it as well.
+	GOSUB hide_sprites
 	deckm = 0
+	deckw = 0
+	dkon = 0
 	GOSUB draw_deck
-	SPRITE 4,209,0,32,0
-	SPRITE 5,209,0,32,0
-	SPRITE 6,209,0,32,0
 	SOUND 0,800,13
 	sf0 = 40
 	sfd = 0
@@ -2147,6 +2149,7 @@ stamp_deck:
 	' wipe the pipe mouth. deckm and deckw hold what is resting there (0 = nothing,
 	' because it is in the air).
 draw_deck:
+	IF dkon = 2 THEN RETURN
 	#sdc = 713			' muzzle: row 22, column 9 -- bare literal, > 255
 	sdk = deckm
 	GOSUB stamp_deck
@@ -2157,23 +2160,30 @@ draw_deck:
 	' It is 5 px tall inside its 8 px cell, clear of the death line above it and of
 	' the bubble below. Re-stamped here because row 21 is inside the 24 rows
 	' draw_field paints, exactly like the bubbles and the pipe door.
+	sdh = BLANK
+	sdo = 0
+	IF dkon = 1 THEN
+		sdh = 96
+		sdo = 1
+	END IF
 	#sda = 677
 	#sda = #sda + 6144
-	sdv = 96
-	VPOKE #sda,sdv
+	VPOKE #sda,sdh
+	sdv = sdh + sdo
 	#sda = #sda + 1
-	sdv = 97
 	VPOKE #sda,sdv
+	IF dkon = 0 THEN dkon = 2
 	RETURN
 
 bub_tick:
 	IF bubst = 1 THEN
 		' The lift: across to the muzzle, arcing OVER his head rather than through
 		' him -- at BUBOVER the bubble's 16 px sit entirely above his own.
+		' Carried at full height for the whole crossing and set down at the end.
+		' The two intermediate arc steps were traded for the curtain fix when the
+		' fixed area ran out; at 16 px up he is clear over BUB either way.
 		bublx = bublx + 4
-		bubly = BUBMID
-		IF bublx > 47 THEN bubly = BUBOVER
-		IF bublx > 63 THEN bubly = BUBMID
+		bubly = BUBOVER
 		IF bublx >= LAUNCHX - 8 THEN
 			bubst = 2		' set down; it waits here for the shot to land
 			deckm = nxtk		' ...as CHARACTERS, and sprite 2 goes away
