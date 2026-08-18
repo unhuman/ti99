@@ -232,13 +232,17 @@
 	' Bubbles carrying the death line through their middle (see draw_row).
 	DEFINE CHAR 186,32,bub_patx
 	DEFINE COLOR 186,32,bub_colx
+	' The NEXT sign, two characters wide, over the bubble waiting beside BUB. 96-97
+	' are inside the text colour loop below, so they come out white on black for
+	' free -- no DEFINE COLOR of their own.
+	DEFINE CHAR 96,2,sign_pat
 	DEFINE CHAR 185,1,life_pat
 	DEFINE COLOR 185,1,life_col
 	' Text is white-on-black for every printable character, so ONE 8-byte row does
 	' for all 64 of them. It used to be a 128-byte table (16 chars' worth) issued
 	' four times -- 120 bytes of the same eight values repeated, which is a lot of
 	' ROM to spend saying "white" sixteen times.
-	FOR i = 32 TO 95
+	FOR i = 32 TO 97
 		DEFINE COLOR i,1,txt_col
 	NEXT i
 
@@ -1504,7 +1508,6 @@ load_level:
 	NEXT llr
 	#lvm = lvl - 1
 	#lvm = #lvm + #lvm
-	ncol = pb_meta(#lvm)
 	#droprl = pb_meta(#lvm + 1)
 	#droprl = #droprl * 15		' quarter-seconds -> frames (60 Hz both targets)
 	#dropt = #droprl
@@ -2150,6 +2153,17 @@ draw_deck:
 	#sdc = 709			' the waiting slot: row 22, column 5
 	sdk = deckw
 	GOSUB stamp_deck
+	' The NEXT sign sits in row 21 directly above that slot -- 677 = row 21 column 5.
+	' It is 5 px tall inside its 8 px cell, clear of the death line above it and of
+	' the bubble below. Re-stamped here because row 21 is inside the 24 rows
+	' draw_field paints, exactly like the bubbles and the pipe door.
+	#sda = 677
+	#sda = #sda + 6144
+	sdv = 96
+	VPOKE #sda,sdv
+	#sda = #sda + 1
+	sdv = 97
+	VPOKE #sda,sdv
 	RETURN
 
 bub_tick:
@@ -2216,27 +2230,24 @@ bub_tick:
 	' uses -- no rotated-arrow artwork.
 	'
 draw_sprites:
-	IF flying = 1 THEN
-		dsx = bpx - 8
-		dsy = bpy - 9
-	ELSE
-		dsx = LAUNCHX - 8
-		dsy = LAUNCHY - 9
-	END IF
+	' Only the in-flight position is needed: at rest the muzzle is a character stamp,
+	' so there is nothing to place there.
+	dsx = bpx - 8
+	dsy = bpy - 9
 	' Pattern frame = def * 4, and colour k uses defs 2(k-1) and 2(k-1)+1, so the
 	' cap frame is (k-1)*8 and the body frame is that + 4.
 	' One sprite each now: pattern k-1, frame (k-1)*4. Sprites 1 and 3 are no longer
 	' used in play -- new_round hides them, so nothing of the title screen's
 	' creatures is left behind in those slots.
 	' SPRITE 0 IS THE BUBBLE IN FLIGHT, AND NOTHING ELSE -- at rest the muzzle holds
-	' a character stamp (draw_deck), so there is no sprite there to draw.
+	' a character stamp (draw_deck), so there is no sprite there to draw. It needs no
+	' park branch here either: do_stick parks it the instant the shot sticks, and
+	' hide_sprites covers every other way a round can end.
 	IF flying = 1 THEN
 		dsf = curk - 1
 		dsf = dsf * 4
 		dsc = bub_base(curk - 1)
 		SPRITE 0,dsy,dsx,dsf,dsc
-	ELSE
-		SPRITE 0,209,0,0,0
 	END IF
 	IF flying = 0 THEN
 		#gux = #aimdx(am)

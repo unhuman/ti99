@@ -147,6 +147,36 @@ def hexrow(vals):
     return ",".join("$%02X" % v for v in vals)
 
 
+
+def emit_sign(w):
+    """The two-character NEXT sign that labels the bubble waiting beside BUB.
+
+    16 px wide by 5 px tall in a 3x5 font -- N E X T at three pixels each with one
+    pixel between them is 15, which is exactly what fits in two characters. Five
+    rows rather than eight so it clears the death line above it and the bubble
+    below; it sits on scan lines 1-5 of the cell.
+    """
+    rows = [("101", "111", "101", "111"),
+            ("111", "100", "101", "010"),
+            ("111", "110", "010", "010"),
+            ("101", "100", "101", "010"),
+            ("101", "111", "101", "010")]
+    left, right = [0], [0]
+    for r in rows:
+        bits = "".join(g + "0" for g in r)
+        left.append(int(bits[:8], 2))
+        right.append(int(bits[8:], 2))
+    left += [0, 0]
+    right += [0, 0]
+    w("\t' NEXT, 16x5, in a 3x5 font: N E X T at 3 px each with 1 px between = 15 px,")
+    w("\t' which is why two characters is exactly enough. Rows 1-5 of the cell, so it")
+    w("\t' clears the death line above and the waiting bubble below.")
+    w("sign_pat:")
+    w("\tDATA BYTE " + ",".join("$%02X" % b for b in left))
+    w("\tDATA BYTE " + ",".join("$%02X" % b for b in right))
+    w("")
+
+
 def main():
     L = [rowbits(y)[0] for y in range(16)]
     R = [rowbits(y)[1] for y in range(16)]
@@ -489,14 +519,20 @@ def main():
     outdir = os.path.dirname(os.path.abspath(OUT))
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
+    emit_sign(w)
+
     with open(OUT, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out) + "\n")
 
     nspr = (len(BUBBLE) + 1) * 32 + 64 + 128	# bubbles, dot, walk, wave
-    total = 32 + 8 * 4 * 8 + nspr + NAIM * 4 + NDROP * 6
+    # The drop-score table (NDROP) is no longer emitted -- dbl_ad doubles the BCD
+    # award in place instead -- but the summary still counted and printed it, which
+    # left the format string one specifier short of its arguments and made this
+    # script die AFTER writing art.bas. Counted from what is actually emitted now.
+    total = 32 + 8 * 4 * 8 + nspr + NAIM * 4 + 16
     print("wrote %s" % os.path.normpath(OUT))
-    print("  patterns 32 B  colours %d B  sprites %d B  aim %d B  = %d B"
-          % (8 * 4 * 8, nspr, NAIM * 4, NDROP * 6, total))
+    print("  patterns 32 B  colours %d B  sprites %d B  aim %d B  sign 16 B  = %d B"
+          % (8 * 4 * 8, nspr, NAIM * 4, total))
     print("  aim step 0 = (%d,%d)  step 31 = (%d,%d)  [8.8 fixed]"
           % (dxs[0], dys[0], dxs[-1], dys[-1]))
     return 0

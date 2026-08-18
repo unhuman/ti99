@@ -348,3 +348,10 @@ spr_dot:	' 4x4 aim-guide dot, centred in the 16x16 cell
 	DATA 962,923,882,839,795,749,701,652
 	DATA 602,551,498,445,390,335,279,222
 
+	' NEXT, 16x5, in a 3x5 font: N E X T at 3 px each with 1 px between = 15 px,
+	' which is why two characters is exactly enough. Rows 1-5 of the cell, so it
+	' clears the death line above and the waiting bubble below.
+sign_pat:
+	DATA BYTE $00,$AE,$E8,$EC,$A8,$AE,$00,$00
+	DATA BYTE $00,$AE,$A4,$44,$A4,$A4,$00,$00
+
