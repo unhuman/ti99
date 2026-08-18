@@ -309,10 +309,12 @@ new_round:
 	deckm = curk
 	deckw = nxtk
 	GOSUB draw_deck
-	' ROUND 1 ONLY. Once per game is the whole point: an intro you cannot skip
-	' wears out by round 10, and this one exists to explain the pipe -- after that
-	' the player knows where bubbles come from.
-	IF lvl = 1 THEN GOSUB intro
+	' EVERY round: he walks in from the left, sets the first bubble in the muzzle,
+	' and at the end of the round pushes the last one out through the right-hand
+	' door (do_clear). Both are about a third of a second, which is short enough to
+	' be a rhythm rather than a wait.
+	ppo = 0				' the pipe door is the LEFT one during play
+	GOSUB intro
 	aim = 31
 	flying = 0
 	btnr = 0
@@ -1677,6 +1679,7 @@ do_drop:
 	'
 do_clear:
 	GOSUB mus_off
+	GOSUB outro
 	' CLEAR THE DECK BEFORE THE CURTAIN COMES DOWN. BUB, the aim guide and the two
 	' resting bubbles all belong to a round that is over, and the closing wall is
 	' supposed to sweep an empty board. The character stamps matter twice over here:
@@ -1881,8 +1884,11 @@ draw_field:
 pipe_face:
 	ppv = WALLCH
 	IF ppt > 0 THEN ppv = BLANK
+	' ppo picks the door: 0 is the pipe in the left wall, 17 the exit in the right.
+	' Both are the same two cells relative to their own wall column.
 	#ppa = 704
 	#ppa = #ppa + shkb
+	#ppa = #ppa + ppo
 	#ppa = #ppa + 6144
 	VPOKE #ppa,ppv
 	#ppa = #ppa + 32
@@ -2188,6 +2194,47 @@ draw_deck:
 	'
 	' It cannot call bub_tick (which anim_tick would): that parks sprite 2, which is
 	' the very bubble he is pushing. So it ticks sound and music itself.
+	' THE ROUND'S CLOSE. A door opens in the RIGHT wall, BUB pushes the bubble that
+	' was still loaded out through it, the door shuts, and only then does the curtain
+	' come down. It is the intro run backwards, and it uses the same pipe_face with
+	' ppo = 17 -- the right wall is 17 columns from the left one, so the same two
+	' cells relative to their own wall.
+	'
+	' Same rule as the intro about anim_tick: it would call bub_tick, which parks the
+	' sprite being pushed.
+outro:
+	deckw = 0			' the waiting bubble is not coming with him
+	GOSUB draw_deck
+	' A round can clear on a shot short enough that BUB has not finished setting the
+	' next bubble down, leaving deckm at 0 -- and bub_base(-1) is an out-of-bounds
+	' read, which is silent on TI and black-screens ColecoVision. He pushes the one
+	' he is carrying in that case.
+	IF deckm = 0 THEN deckm = nxtk
+	bubf = deckm - 1		' whatever is in the muzzle is what he pushes
+	bubf = bubf * 4
+	bubc = bub_base(deckm - 1)
+	deckm = 0
+	GOSUB draw_deck
+	ppo = 17			' the door in the RIGHT wall
+	ppt = 255
+	GOSUB pipe_face
+	bubx = BUBHOME
+outro_walk:
+	WAIT
+	GOSUB sfx_tick
+	bubx = bubx + 4
+	bubp = 36
+	bubw = bubx AND 4
+	IF bubw = 0 THEN bubp = 40
+	SPRITE 1,BUBY,bubx,bubp,3
+	bubv = bubx + 16
+	SPRITE 2,BUBY,bubv,bubf,bubc
+	IF bubx < 120 THEN GOTO outro_walk
+	SPRITE 2,209,0,0,0		' the bubble is through the door
+	ppt = 0
+	GOSUB pipe_face			' ...which shuts behind it
+	RETURN
+
 intro:
 	deckm = 0			' nothing on the deck yet -- he is bringing it
 	deckw = 0
