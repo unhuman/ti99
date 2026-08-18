@@ -554,6 +554,9 @@ do_fire:
 	bublx = BUBWAIT
 	SPRITE 3,209,0,0,0		' its slot is empty until the next one rolls out
 	bubrn = 0
+	deckm = 0			' the muzzle is empty -- that bubble is in flight
+	deckw = 0			' and BUB has picked the waiting one up
+	GOSUB draw_deck
 	flying = 1
 	btnr = 0
 	#bx = 20480		' LAUNCHX * 256 -- bare literal, see the note at the top
@@ -1465,6 +1468,8 @@ load_level:
 	bubst = 0			' nothing in transit; the launcher already has its bubble
 	bubrn = 0			' and the next one is already waiting beside BUB
 	bubrx = BUBWAIT
+	deckm = curk
+	deckw = nxtk
 	top = 0
 	shkb = 1
 	shkbo = 1
@@ -1615,7 +1620,17 @@ do_drop:
 	' down one character row at a time.
 	'
 do_clear:
-	GOSUB mus_off			
+	GOSUB mus_off
+	' CLEAR THE DECK BEFORE THE CURTAIN COMES DOWN. BUB, the aim guide and the two
+	' resting bubbles all belong to a round that is over, and the closing wall is
+	' supposed to sweep an empty board. The character stamps matter twice over here:
+	' draw_field re-stamps them on every step of the close, so leaving deckm/deckw
+	' set would paint the loaded and waiting bubbles straight back on TOP of the
+	' curtain, one row-pair at a time.
+	GOSUB hide_sprites
+	deckm = 0
+	deckw = 0
+	GOSUB draw_deck
 	' Same hazard as do_drop: the round can clear mid-shake, and the whole
 	' closing animation would then run one character off-centre.
 	shkb = 1
@@ -1696,6 +1711,11 @@ do_dead:
 	' bubble waiting beside him (sprite 3) STAY: they are scenery and a readout, not
 	' the aiming device, and clearing them would empty the whole deck.
 	SPRITE 0,209,0,0,0
+	' The loaded bubble is a character stamp now, so parking sprite 0 no longer
+	' clears it -- erase the muzzle instead, or the shot that will never be taken
+	' sits there through the whole death flash.
+	deckm = 0
+	GOSUB draw_deck
 	SPRITE 4,209,0,32,0
 	SPRITE 5,209,0,32,0
 	SPRITE 6,209,0,32,0
@@ -1793,6 +1813,7 @@ draw_field:
 	VPOKE #ppa,ppv
 	#ppa = #ppa + 32
 	VPOKE #ppa,ppv
+	GOSUB draw_deck
 	RETURN
 
 	' Round transition, the mirror of do_clear: the closing wall has filled the
@@ -2011,6 +2032,56 @@ prt_hud:
 	' him back to 0 -- that is the moment the bubble he was holding becomes the one
 	' on the launcher, so the hand-over needs no animation of its own.
 	'
+	' RESTING DECK BUBBLES ARE CHARACTERS, NOT SPRITES.
+	'
+	' The deck can hold three things at once -- the loaded bubble, BUB, and the next
+	' bubble waiting beside him -- and with the aim guide's three dots that is six
+	' sprites on rows the TMS9918 will only draw four of. Drawing the two that are
+	' STANDING STILL as characters takes it to BUB plus three dots = four, which is
+	' exactly the limit, so nothing is dropped and no flicker is needed.
+	'
+	' It costs nothing in alignment, which is the same reason the whole field works:
+	' both slots sit on character boundaries (muzzle x 72 = column 9, waiting slot
+	' x 40 = column 5, both on rows 22-23), and a bubble is already a 2x2 stamp --
+	' `124 + colour*4` and the next three, exactly as draw_row builds it.
+	'
+	' sdc = top-left name-table cell, sdk = colour, or 0 to erase. With sdk = 0 the
+	' step sdo is 0 too, so all four cells get BLANK and one routine does both jobs.
+stamp_deck:
+	sdh = BLANK
+	sdo = 0
+	IF sdk > 0 THEN
+		sdh = sdk * 4
+		sdh = sdh + 124
+		sdo = 1
+	END IF
+	#sda = sdc
+	#sda = #sda + 6144
+	VPOKE #sda,sdh
+	sdv = sdh + sdo
+	#sda = #sda + 1
+	VPOKE #sda,sdv
+	sdv = sdv + sdo
+	#sda = #sda + 31
+	VPOKE #sda,sdv
+	sdv = sdv + sdo
+	#sda = #sda + 1
+	VPOKE #sda,sdv
+	RETURN
+
+	' Both slots, re-stamped after any redraw: rows 22-23 are inside the 24 rows
+	' draw_field paints, so a shake or a ceiling drop wipes them exactly as it would
+	' wipe the pipe mouth. deckm and deckw hold what is resting there (0 = nothing,
+	' because it is in the air).
+draw_deck:
+	sdc = 713			' muzzle: row 22, column 9 -- bare literal, > 255
+	sdk = deckm
+	GOSUB stamp_deck
+	sdc = 709			' the waiting slot: row 22, column 5
+	sdk = deckw
+	GOSUB stamp_deck
+	RETURN
+
 bub_tick:
 	IF bubst = 1 THEN
 		' The lift: across to the muzzle, arcing OVER his head rather than through
@@ -2020,9 +2091,9 @@ bub_tick:
 		IF bublx > 47 THEN bubly = BUBOVER
 		IF bublx > 63 THEN bubly = BUBMID
 		IF bublx >= LAUNCHX - 8 THEN
-			bublx = LAUNCHX - 8
-			bubly = BUBY
 			bubst = 2		' set down; it waits here for the shot to land
+			deckm = nxtk		' ...as CHARACTERS, and sprite 2 goes away
+			GOSUB draw_deck
 		END IF
 	END IF
 	' The following bubble rolls out of the pipe WHILE he lifts, and then simply
@@ -2030,8 +2101,10 @@ bub_tick:
 	IF bubrn = 1 THEN
 		bubrx = bubrx + BUBSTEP
 		IF bubrx >= BUBWAIT THEN
-			bubrx = BUBWAIT
 			bubrn = 0
+			deckw = nxtk		' it has arrived; hand it to the characters
+			SPRITE 3,209,0,0,0
+			GOSUB draw_deck
 		END IF
 	END IF
 	' BUB: standing, or a second frame while he has a bubble in the air.
@@ -2042,7 +2115,7 @@ bub_tick:
 	' BOTH are nxtk -- never at the same time: he is carrying it, or it is waiting.
 	' The waiting one IS the next-bubble indicator, which is what let the HUD's NEXT
 	' swatch go.
-	IF bubst = 0 THEN
+	IF bubst <> 1 THEN
 		SPRITE 2,209,0,0,0
 	ELSE
 		bubf = nxtk - 1
@@ -2050,7 +2123,7 @@ bub_tick:
 		bubc = bub_base(nxtk - 1)
 		SPRITE 2,bubly,bublx,bubf,bubc
 	END IF
-	IF bubst = 0 THEN
+	IF bubrn = 1 THEN
 		bubf = nxtk - 1
 		bubf = bubf * 4
 		bubc = bub_base(nxtk - 1)
@@ -2077,35 +2150,31 @@ draw_sprites:
 	' One sprite each now: pattern k-1, frame (k-1)*4. Sprites 1 and 3 are no longer
 	' used in play -- new_round hides them, so nothing of the title screen's
 	' creatures is left behind in those slots.
-	dsf = curk - 1
-	dsf = dsf * 4
-	dsc = bub_base(curk - 1)
-	SPRITE 0,dsy,dsx,dsf,dsc
+	' SPRITE 0 IS THE BUBBLE IN FLIGHT, AND NOTHING ELSE -- at rest the muzzle holds
+	' a character stamp (draw_deck), so there is no sprite there to draw.
+	IF flying = 1 THEN
+		dsf = curk - 1
+		dsf = dsf * 4
+		dsc = bub_base(curk - 1)
+		SPRITE 0,dsy,dsx,dsf,dsc
+	ELSE
+		SPRITE 0,209,0,0,0
+	END IF
 	IF flying = 0 THEN
 		#gux = #aimdx(am)
 		#gux = #gux * 4
 		#gux = #gux / 256
 		gux = #gux
-		' FLICKER ONLY WHEN AIMED LOW ENOUGH TO NEED IT. The deck carries three
-		' sprites already -- the loaded bubble, BUB, and the bubble he is holding --
-		' and the TMS9918 draws FOUR per scanline before it starts dropping them. So
-		' one guide dot down there is fine; it is the SECOND that would be the fifth
-		' sprite.
-		'
-		' The test is the geometry rather than a guessed aim angle: dot `gi` sits
-		' guy*gi px above the launcher, and its 16 px sprite reaches the deck band
-		' when guy*gi <= 15. For the second dot that is guy <= 7. CVBasic's
-		' SPRITE FLICKER is all-or-nothing (it rotates every sprite, the player's
-		' included), which is why it is switched on for this case only.
 		#guy = #aimdy(am)
 		#guy = #guy * 4
 		#guy = #guy / 256
 		guy = #guy
-		IF guy < 8 THEN
-			SPRITE FLICKER ON
-		ELSE
-			SPRITE FLICKER OFF
-		END IF
+		' No flicker test any more. The deck's resting bubbles are characters, so
+		' the only sprites down there are BUB and at most three guide dots -- four,
+		' exactly what the VDP draws. The single exception is the eight frames after
+		' a shot lands, while the next bubble rolls in as a sprite; a shallow aim can
+		' briefly make five and drop one dot, which is not worth rotating every
+		' sprite in the game to avoid.
 		FOR gi = 1 TO 3
 			gdd = gux * gi
 			IF adir = 1 THEN
