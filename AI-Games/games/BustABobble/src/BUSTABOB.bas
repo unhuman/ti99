@@ -2219,6 +2219,7 @@ outro:
 	ppt = 255
 	GOSUB pipe_face
 	bubx = BUBHOME
+	bfc = 5
 outro_walk:
 	WAIT
 	GOSUB sfx_tick
@@ -2227,6 +2228,12 @@ outro_walk:
 	' legs are keyed on bubx AND 4, which at 4 px a frame swaps them every single
 	' frame. At 3 the swap is irregular, one or two frames apart, which reads as
 	' scurrying rather than as a glitch.
+	bfc = bfc + 1
+	IF bfc >= 5 THEN		' faster patter on the way out
+		bfc = 0
+		SOUND 3,5,8
+		sf3 = 2
+	END IF
 	bubx = bubx + 3
 	bubp = 36
 	bubw = bubx AND 4
@@ -2247,6 +2254,7 @@ intro:
 	ppt = 255			' and the door is open for him to come out of
 	GOSUB pipe_face
 	bubx = PIPEX
+	bfc = 8
 	bubf = curk - 1
 	bubf = bubf * 4
 	bubc = bub_base(curk - 1)
@@ -2255,6 +2263,17 @@ intro_walk:
 	GOSUB sfx_tick
 	musdin = 1
 	GOSUB mus_tick
+	' PITTER-PATTER. A short quiet noise tap every 8 frames walking in, every 5
+	' running out -- counted in FRAMES rather than pixels, because at his 3 px
+	' running step a position test like `bubx AND 15` lands exactly once over the
+	' whole crossing. Channel 3 is the noise generator, which only the pop uses and
+	' nothing is popping here.
+	bfc = bfc + 1
+	IF bfc >= 8 THEN
+		bfc = 0
+		SOUND 3,5,8
+		sf3 = 2
+	END IF
 	bubx = bubx + 2
 	bubp = 36			' legs swap every 4 px, the title screen's cycle
 	bubw = bubx AND 4
