@@ -715,7 +715,7 @@ mus_step:
 	IF mun > 0 THEN GOSUB mus_mel
 	IF mub > 0 THEN GOSUB mus_bas
 	#mup = #mup + 1
-	IF #mup >= 192 THEN #mup = 0	' SONG LENGTH -- genmusic.py verifies this
+	IF #mup >= 384 THEN #mup = 0	' SONG LENGTH -- genmusic.py verifies this
 	RETURN
 
 mus_mel:

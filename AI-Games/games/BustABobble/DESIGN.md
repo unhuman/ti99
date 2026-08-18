@@ -925,17 +925,25 @@ in Classic99 — the one element telling you how much game is left was the one y
 
 ### Music, and why it sits on the channels it does
 
-An **original** 12-bar tune — Taito's is theirs — in C major over C–Am–F–G, 150 BPM on a
-sixteenth grid, looping every 19.2 s. It was 16 bars; the last four repeated 1-4 bar their cadence, and their
-128 bytes bought the on-screen music toggle -- **press 1 on the title** to switch it off. `assets/genmusic.py` holds it as readable bars, one line per
-bar and sixteen tokens per line, and emits `src/music.bas`; the thing a person edits is a tune and
-the thing the ROM gets is a byte table, and neither is maintained by hand.
+An **original 24-bar tune** — Taito's is theirs — in C major, 150 BPM on a sixteenth grid, looping
+every 38.4 s, held in `assets/genmusic.py` as readable bars and generated into `src/music.bas`.
 
-**Melody on channel 2, bass on channel 1.** Every sound effect in the game lives on channels 0 and
-1, so the melody occupies the one channel nothing else touches and is never chopped. The bass is
-ducked by an alarm, a pop or a drop and resumes at its next note — a gap of at most an eighth, which
-reads as the effect cutting through rather than as the music breaking. Volumes 10 and 8 sit under
-effects at 12–13.
+**It is three eight-bar sections, A–B–A′**, and that structure is the point. It was 12 bars of
+C–Am–F–G three times over, which is a loop rather than a tune: one idea repeated announces its own
+seam every 19 seconds.
+
+- **A (1–8)** — the arpeggio hook over C–Am–F–G twice, the second time running back *down* instead of
+  leaping, so the section falls into B rather than stopping.
+- **B (9–16)** — the contrast: half the harmonic rhythm (two bars a chord), a **stepwise** singing
+  line where A leaps, sitting higher, with long notes. That rest from sixteenth arpeggios is what the
+  old loop lacked and what made it tiring inside a round.
+- **A′ (17–24)** — the hook returns, then a real cadence (F–G–C) so the loop point lands on a
+  resolution. Bar 24 holds C and bar 1 opens on C an octave down, which is why it can loop at all
+  without sounding like a splice.
+
+800 bytes of table (768 song + 32 frequencies), affordable only because banking the art gave 2 KB
+back. The four bars cut in the first place — to buy the on-screen music toggle — are long since paid
+for.
 
 **The pop is a noise burst with a falling bloop under it.** Channel 3 fires noise type 7 for four
 frames; channel 0 plays a tone whose divider slides **400 → 900 over six frames** — about 280 Hz down
@@ -1371,6 +1379,27 @@ case to cope with the data, check the data.
 ---
 
 ## 17. Status
+
+**2026-08-18 (later) — BUB works both ends of the round, and the tune grows to 24 bars.**
+
+- He **walks in from the left every round**, not just the first, and the round now **closes** the
+  same way in reverse: a door opens in the *right* wall, he pushes whatever was still loaded out
+  through it, the door shuts, and only then does the curtain fall. Both doors are one routine —
+  `pipe_face` takes a column offset, 0 for the pipe and 17 for the exit, the same two cells relative
+  to their own wall column, so the board shake carries them both.
+- He **walks in at 2 px a frame and runs out at 3**. Four was tried and read as a sprint; it also
+  flattened the walk cycle, whose legs are keyed on `bubx AND 4` and swapped every frame at that
+  step.
+- **Pitter-patter**: a short quiet noise tap on channel 3, every 8 frames walking in and every 5
+  running out, so the patter quickens with him. Counted in **frames, not pixels** — at a 3 px step a
+  position test like `bubx AND 15` lands exactly once across the whole 64 px run, so the obvious
+  implementation gives one tap instead of a patter.
+- ⚠️ A round can clear on a shot short enough that BUB has not finished setting the next bubble down,
+  leaving the muzzle empty — and `bub_base(-1)` is an **out-of-bounds read, silent on TI and a black
+  screen on ColecoVision**. He pushes the bubble he is carrying in that case.
+- Neither animation may call `anim_tick`, because that calls `bub_tick`, which parks the very sprite
+  being pushed. Both tick sound and music themselves.
+- The **tune is now 24 bars, A–B–A′** (§11 above).
 
 **2026-08-18 — the art moves into bank 1, and round 1 gets an opening.** `genart.py` emits two files
 now: `art.bas` keeps only what is read *during* a frame (the aim table and `bub_base`, 64 bytes) and

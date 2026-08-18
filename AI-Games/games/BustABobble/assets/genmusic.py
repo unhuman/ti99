@@ -5,7 +5,7 @@ BUST-A-BOBBLE -- generates src/music.bas: the in-game tune.
 ORIGINAL COMPOSITION, not a transcription. Taito's Puzzle Bobble music is theirs;
 this is a cheerful major-key chip tune written for the game, in the same spirit.
 
-The tune is written below as READABLE BARS -- one line per bar, sixteen tokens per
+The tune is 24 bars in three sections (A-B-A'), written below as READABLE BARS -- one line per bar, sixteen tokens per
 line, one token per sixteenth note. That is the point of generating it: the thing a
 person edits is a tune, and the thing the ROM gets is a byte table, and neither has
 to be maintained by hand.
@@ -51,27 +51,51 @@ def divider(name):
 
 
 # --- the tune -------------------------------------------------------------------
-# 12 bars, 4/4. Chords cycle C - Am - F - G three times. Bars 1-4 state an
-# arpeggio hook, 5-8 repeat it and run back down, 9-12 answer with a stepwise
-# melody so the ear gets a rest from arpeggios, then it loops -- bar 12 ends on D5
-# and bar 1 opens on C5, which resolves.
+# 24 bars, 4/4, in three eight-bar sections: A - B - A'.
 #
-# It was 16 bars; the last four repeated 1-4 bar their final cadence, and their 128
-# bytes bought the on-screen music toggle. Repetition was the cheapest thing here
-# to give up.
+# It was 12 bars of C-Am-F-G three times over, which is a loop rather than a tune:
+# with one idea repeated it announces its own seam every 19 seconds. This has
+# somewhere to go and somewhere to come back to.
+#
+#   A  (1-8)   the arpeggio hook over C-Am-F-G twice, the second time running back
+#              down instead of leaping -- so the section ends by falling into B.
+#   B  (9-16)  the contrast: half the harmonic rhythm (two bars a chord), a
+#              STEPWISE singing line where A leaps, and it sits higher. Long notes
+#              give the ear a rest from sixteenth arpeggios, which is the thing
+#              that made the old loop tiring.
+#   A' (17-24) the hook returns, then a real cadence -- F, G, C -- so the loop
+#              point lands on a resolution rather than mid-phrase.
+#
+# Bar 24 holds C and bar 1 opens on C an octave down, which is why it can loop at
+# all without sounding like a tape splice.
 MELODY = [
-    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 1
-    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 2
-    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 3
-    "G4 -  B4 -  D5 -  -  -  D5 -  B4 -  G4 -  -  - ",   # 4
-    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 5
-    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 6
-    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 7
-    "G4 -  B4 -  D5 -  G5 -  F5 -  E5 -  D5 -  C5 - ",   # 8
-    "E5 -  -  -  D5 -  C5 -  D5 -  -  -  E5 -  G5 - ",   # 9
-    "A5 -  -  -  G5 -  E5 -  C5 -  -  -  D5 -  E5 - ",   # 10
-    "F5 -  -  -  E5 -  D5 -  C5 -  -  -  A4 -  C5 - ",   # 11
-    "G5 -  -  -  F5 -  E5 -  D5 -  -  -  -  -  -  - ",   # 12
+    # -- A ---------------------------------------------------------------------
+    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 1  C
+    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 2  Am
+    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 3  F
+    "G4 -  B4 -  D5 -  -  -  D5 -  B4 -  G4 -  -  - ",   # 4  G
+    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 5  C
+    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 6  Am
+    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 7  F
+    "G4 -  B4 -  D5 -  G5 -  F5 -  E5 -  D5 -  C5 - ",   # 8  G  (runs down into B)
+    # -- B ---------------------------------------------------------------------
+    "E5 -  -  -  A5 -  -  -  G5 -  E5 -  D5 -  -  - ",   # 9  Am
+    "C5 -  D5 -  E5 -  -  -  A4 -  -  -  -  -  -  - ",   # 10 Am
+    "F5 -  -  -  A5 -  -  -  G5 -  F5 -  E5 -  -  - ",   # 11 F
+    "D5 -  E5 -  F5 -  -  -  C5 -  -  -  -  -  -  - ",   # 12 F
+    "G5 -  -  -  C6 -  -  -  B5 -  G5 -  E5 -  -  - ",   # 13 C
+    "D5 -  E5 -  G5 -  -  -  C5 -  -  -  -  -  -  - ",   # 14 C
+    "D5 -  F5 -  G5 -  -  -  B5 -  G5 -  D5 -  -  - ",   # 15 G
+    "B4 -  D5 -  G5 -  -  -  F5 -  -  -  D5 -  -  - ",   # 16 G  (leading tone, back to A)
+    # -- A' --------------------------------------------------------------------
+    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 17 C
+    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 18 Am
+    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 19 F
+    "G4 -  B4 -  D5 -  -  -  D5 -  B4 -  G4 -  -  - ",   # 20 G
+    "C5 -  E5 -  G5 -  C6 -  -  -  G5 -  E5 -  C5 - ",   # 21 C  (the hook, inverted)
+    "F5 -  -  -  E5 -  D5 -  C5 -  -  -  A4 -  C5 - ",   # 22 F
+    "G4 -  B4 -  D5 -  G5 -  F5 -  D5 -  B4 -  G4 - ",   # 23 G
+    "C5 -  -  -  E5 -  G5 -  C6 -  -  -  -  -  -  - ",   # 24 C  (cadence, holds)
 ]
 
 # Bouncing root-fifth eighths under each chord. Everything sits in octave 3 or
@@ -87,7 +111,9 @@ BASSLINE = {
     "F":  "F3 -  C3 -  F3 -  C3 -  F3 -  C3 -  F3 -  C3 - ",
     "G":  "G3 -  D3 -  G3 -  D3 -  G3 -  D3 -  G3 -  D3 - ",
 }
-CHORDS = ["C", "Am", "F", "G"] * 3
+CHORDS = ["C", "Am", "F", "G", "C", "Am", "F", "G",
+          "Am", "Am", "F", "F", "C", "C", "G", "G",
+          "C", "Am", "F", "G", "C", "F", "G", "C"]
 BASS = [BASSLINE[c] for c in CHORDS]
 
 MUSTICK = 6                  # frames per sixteenth -> 900/6 = 150 BPM
