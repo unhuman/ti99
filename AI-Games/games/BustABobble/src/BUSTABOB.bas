@@ -304,6 +304,7 @@ new_round:
 	' on -- and nothing re-stamped afterwards, which left the muzzle empty until the
 	' first shot landed and BUB placed one. Both bubbles are already in their final
 	' positions at round start, so they are characters from the first frame.
+	nrq = 0				' no end-of-round request pending
 	bubx = BUBHOME			' his station; only the intro moves him
 	dkon = 1			' the deck is live: bubbles and the NEXT sign
 	deckm = curk
@@ -447,6 +448,16 @@ game_loop:
 	' BUB runs every frame, in flight or not: his fetch is meant to overlap the
 	' shot, and he also has to finish walking home after the shot has landed.
 	GOSUB bub_tick
+
+	' The round asked to end. do_clear / do_dead set nrq and RETURNed, so by the
+	' time control is back here every GOSUB has been popped and the jump is safe.
+	IF nrq > 0 THEN
+		nrqd = nrq
+		nrq = 0
+		IF nrqd = 1 THEN GOTO new_round
+		IF nrqd = 2 THEN GOTO victory
+		GOTO title_screen
+	END IF
 
 	GOTO game_loop
 
@@ -1744,11 +1755,32 @@ do_clear:
 		GOSUB sfx_tick
 	NEXT dcs
 	lvl = lvl + 1
-	' Beating round 30 gets its own screen (victory:), not a message box. The
-	' message box that used to say ALL 30 CLEAR for three seconds is gone with it.
-	IF lvl > 30 THEN GOTO victory
+	' !! RETURN, NEVER `GOTO`, OUT OF A ROUTINE THAT WAS `GOSUB`ed.
+	'
+	' This routine and do_dead used to end with GOTO new_round / GOTO victory /
+	' GOTO title_screen, and both are reached by GOSUB -- from
+	' game_loop > do_flight > do_stick > after_stick. Every completed round and
+	' every death therefore abandoned that whole chain of return addresses on the
+	' stack, a few bytes at a time, and NOTHING ever popped them.
+	'
+	' On the TI that leak has ~7 KB of RAM to chew through and never surfaced. On
+	' ColecoVision, with 1 KB total and about 150 bytes of headroom above the
+	' variables, roughly twenty rounds of it walked the stack down into the
+	' variable area: score digits printing as bubble characters (prt_hud prints
+	' 48 + sc(i), so garbage reads as garbage glyphs), the pop animation hanging,
+	' and corruption that survived into the title screen because nothing
+	' reinitialises those variables without a reboot.
+	'
+	' So both routines now set nrq and RETURN, the stack unwinds properly through
+	' after_stick and do_stick, and game_loop dispatches. Beating round 30 gets its
+	' own screen (victory:), not a message box.
+	IF lvl > 30 THEN
+		nrq = 2
+		RETURN
+	END IF
 	reveal = 1		' screen is solid brick now -- lift it to show the level
-	GOTO new_round
+	nrq = 1
+	RETURN
 
 	'
 	' A bubble crossed the death line. The 1.5 s pause here was a tone over a
@@ -1813,9 +1845,11 @@ do_dead:
 			WAIT
 			GOSUB sfx_tick
 		NEXT ddi
-		GOTO title_screen
+		nrq = 3			' see the note in do_clear: RETURN, never GOTO
+		RETURN
 	END IF
-	GOTO new_round
+	nrq = 1
+	RETURN
 
 	'
 	' ------------------------------------------------------------ rendering
