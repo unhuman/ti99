@@ -2311,12 +2311,28 @@ outro_walk:
 	bubw = bubx AND 4
 	IF bubw = 0 THEN bubp = 40
 	SPRITE 1,BUBY,bubx,bubp,3
-	bubv = bubx + 16
-	SPRITE 2,BUBY,bubv,bubf,bubc
-	IF bubx < 120 THEN GOTO outro_walk
-	SPRITE 2,209,0,0,0		' the bubble is through the door
-	ppt = 0
-	GOSUB pipe_face			' ...which shuts behind it
+	' The bubble is 16 px ahead of him and goes through first: once it reaches the
+	' wall column (x 144) it is out, and only he is left walking.
+	IF bubx < 128 THEN
+		bubv = bubx + 16
+		SPRITE 2,BUBY,bubv,bubf,bubc
+	ELSE
+		SPRITE 2,209,0,0,0
+	END IF
+	' THE DOOR SHUTS BEHIND HIM, not behind the bubble -- he is still coming. The
+	' `ppt > 0` test makes this fire once: closing sets it to 0, so the branch
+	' cannot run again on the frames that follow.
+	IF ppt > 0 THEN
+		IF bubx > 152 THEN
+			ppt = 0
+			GOSUB pipe_face
+		END IF
+	END IF
+	' ...and he keeps going, all the way off the right edge. Rows 22-23 of the HUD
+	' panel are empty -- the gauge is on 15-16 and the lives on 18 -- so he crosses
+	' clean space rather than walking over any readout.
+	IF bubx < 248 THEN GOTO outro_walk
+	SPRITE 1,209,0,0,0
 	RETURN
 
 intro:
