@@ -39,8 +39,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "src", "music.bas")
 MIDI = os.path.join(HERE, "BobbleMusic.mid")
 
-MEL_TRACK = 1                # measured: monophonic, G4..D#6, starts at bar 1
+MEL_TRACKS = (1, 3)          # the lead is SPLIT ACROSS TWO VOICES -- see below
 BASS_TRACK = 2               # monophonic, D#2..G4
+
+# WHY TWO MELODY TRACKS. Track 1 alone looks like the lead (monophonic, G4..D#6,
+# in from bar 1) and it is -- until bar 16, where it stops for three bars and
+# TRACK 3 carries the tune instead, playing the opening figure that ends the loop.
+# Reading track 1 only, the melody simply vanished for the last three bars before
+# the seam. They are two voices of one line, so the melody is the higher of the
+# two wherever both sound.
 BASS_MIN = 48                # C3: the PSG bottoms out near 110 Hz, so lift below this
 
 PSG_CLOCK = 3579545          # TI-99/4A SN76489 clock
@@ -242,10 +249,41 @@ def main():
         sys.stderr.write("error: no clean repeat found in %s (best %d bars, %.0f%%)\n"
                          % (os.path.basename(MIDI), nbars, 100 * ratio))
         return 1
-    mel_p = to_steps(tracks[MEL_TRACK], nbars, bar, 0)
+    mel_p = [None] * (nbars * STEPS_PER_BAR)
+    for tn in MEL_TRACKS:
+        part = to_steps(tracks[tn], nbars, bar, 0)
+        for i, p in enumerate(part):
+            if p and (mel_p[i] is None or p > mel_p[i]):
+                mel_p[i] = p
     bas_p = to_steps(tracks[BASS_TRACK], nbars, bar, BASS_MIN)
     mel = [midi_name(p + MEL_OCTAVE_MIDI) if p else None for p in mel_p]
     bas = [midi_name(p) if p else None for p in bas_p]
+
+    # DROP A BAR THAT MERELY REPEATS THE ONE BEFORE IT.
+    #
+    # This MIDI has two byte-identical bars back to back near the end (17 and 18),
+    # so the loop said the same phrase twice and then began again -- audible as a
+    # stutter at the seam. The engraving does NOT do that: bars 16, 17 and 18 open
+    # with the same figure but end on G5, C5 and Bb5, so the doubling looks like a
+    # sequencer copy-paste rather than the composition.
+    #
+    # Detected rather than hard-coded, so swapping the MIDI cannot silently
+    # reintroduce it -- and CONSECUTIVE only: bars 1-3 and 5-7 are also identical
+    # to each other, but that is the tune's own structure and must stay.
+    S = STEPS_PER_BAR
+    keep_m, keep_b, dropped = [], [], []
+    for b in range(len(mel) // S):
+        m = mel[b * S:(b + 1) * S]
+        d = bas[b * S:(b + 1) * S]
+        if keep_m and m == keep_m[-S:] and d == keep_b[-S:]:
+            dropped.append(b + 1)
+            continue
+        keep_m += m
+        keep_b += d
+    if dropped:
+        print("  dropped bar(s) %s -- identical to the bar before"
+              % ", ".join(str(x) for x in dropped))
+    mel, bas = keep_m, keep_b
     vmel = parse(VICTORY, "victory melody", MEL_OCTAVE)
     vbas = parse(VIC_BASS, "victory bass")
     if len(vmel) != len(vbas):

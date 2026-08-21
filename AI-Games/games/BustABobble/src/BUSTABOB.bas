@@ -702,17 +702,17 @@ mus_vic:
 	RETURN
 
 mus_start:
-	' FASTER THAN THE MARKING, BY CHOICE. The MIDI's tempo event says 104 BPM and
-	' the engraving is marked crotchet = 102, which is mustk 9. Played at that, with
-	' the melody finally correct, it still dragged against the game -- so this is 7,
-	' about 128 BPM.
+	' FASTER THAN THE MARKING, BY CHOICE, AND NOW BY A LOT. The MIDI's tempo event
+	' says 104 BPM and the engraving is marked crotchet = 102 -- that is mustk 9.
+	' This is 6, about 150, because the tune kept sounding like it was holding the
+	' game back: the board is busy, the drop clock never stops, and a bubble shooter
+	' wants music that pushes.
 	'
-	' That is a judgement about THIS GAME rather than about the tune: the board is
-	' busy, the drop clock is always running, and a bubble shooter wants music that
-	' pushes. The arcade original is a faster machine than a piano transcription of
-	' it. Worth knowing which way it is bent, and that 6 (150) and 8 (112) are the
-	' neighbouring settings.
-	mustk = 7
+	' 6 IS AS FAST AS THIS PLAYER GOES without new code. The tick is a whole number
+	' of frames, so the steps are 150 (6), 129 (7), 112 (8), 100 (9) -- there is no
+	' 135. A finer tempo would mean alternating tick lengths (7,7,6 averages 6.67),
+	' which is worth doing only if 150 turns out to overshoot.
+	mustk = 6
 	musv = MUSVOL			' under the effects, where the round loop belongs
 	musbv = MUSBAS
 	#muss = VARPTR mus_song(0)
@@ -2319,11 +2319,13 @@ outro_walk:
 	ELSE
 		SPRITE 2,209,0,0,0
 	END IF
-	' THE DOOR SHUTS BEHIND HIM, not behind the bubble -- he is still coming. The
-	' `ppt > 0` test makes this fire once: closing sets it to 0, so the branch
-	' cannot run again on the frames that follow.
+	' THE DOOR SHUTS BEHIND HIM, not behind the bubble -- he is still coming -- and
+	' not the instant he clears it either: 168 is three characters past the wall
+	' column at 144, so he is well outside before it swings to. The `ppt > 0` test
+	' makes this fire once: closing sets it to 0, so the branch cannot run again on
+	' the frames that follow.
 	IF ppt > 0 THEN
-		IF bubx > 152 THEN
+		IF bubx > 168 THEN
 			ppt = 0
 			GOSUB pipe_face
 		END IF
