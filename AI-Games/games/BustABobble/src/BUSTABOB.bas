@@ -685,6 +685,14 @@ anim_tick:
 	' CVBasic accepts as an undefined variable holding zero. Either way the song
 	' replays its first note for ever. genmusic.py verifies both literals.
 mus_vic:
+	' LOUDER THAN THE ROUND LOOP, and the bass much louder. In play both voices sit
+	' deliberately under the sound effects, because the pop is the sound that
+	' carries information. Nothing competes on the victory screen -- there are no
+	' effects at all -- so the galop is mixed as music rather than as background,
+	' and the oom-pah is what makes it sound like a circus band instead of a tune
+	' with something quiet underneath it.
+	musv = 13
+	musbv = 11
 	#muss = VARPTR vic_song(0)
 	#muslen = 128
 	#mup = 0
@@ -693,6 +701,8 @@ mus_vic:
 	RETURN
 
 mus_start:
+	musv = MUSVOL			' under the effects, where the round loop belongs
+	musbv = MUSBAS
 	#muss = VARPTR mus_song(0)
 	#muslen = 384
 	#mup = 0
@@ -752,7 +762,7 @@ mus_mel:
 	#mua = #mua + 1
 	mlo = PEEK(#mua)
 	GOSUB mus_word
-	SOUND 2,#mf,MUSVOL
+	SOUND 2,#mf,musv
 	RETURN
 
 mus_bas:
@@ -762,7 +772,7 @@ mus_bas:
 	#mua = #mua + 1
 	mlo = PEEK(#mua)
 	GOSUB mus_word
-	SOUND 1,#mf,MUSBAS
+	SOUND 1,#mf,musbv
 	RETURN
 
 	' Rebuild the 16-bit divider from the table's hi/lo bytes by DOUBLING, never

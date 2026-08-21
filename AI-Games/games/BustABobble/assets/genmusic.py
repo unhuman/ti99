@@ -140,6 +140,21 @@ VICTORY = [
 ]
 VIC_CHORDS = ["C", "C", "G", "G", "C", "F", "G", "C"]
 
+# The galop gets its OWN bass rather than reusing BASSLINE's plain root-fifth.
+# It is still oom-pah -- that is the sound of the thing -- but it WALKS into the
+# two cadences (bars 4 and 7), which is what a circus band does to tell you the
+# tune is about to turn round. Same 16 steps a bar, so it costs no extra bytes.
+VIC_BASS = [
+    "C3 -  G3 -  C3 -  G3 -  C3 -  G3 -  C3 -  G3 - ",   # 1  C
+    "C3 -  G3 -  C3 -  G3 -  C3 -  G3 -  E3 -  G3 - ",   # 2  C
+    "G3 -  D3 -  G3 -  D3 -  G3 -  D3 -  G3 -  D3 - ",   # 3  G
+    "G3 -  D3 -  G3 -  A3 -  B3 -  -  -  D3 -  -  - ",   # 4  G  walk-up
+    "C3 -  G3 -  C3 -  G3 -  C3 -  G3 -  C3 -  G3 - ",   # 5  C
+    "F3 -  C3 -  F3 -  C3 -  F3 -  C3 -  F3 -  C3 - ",   # 6  F
+    "G3 -  D3 -  G3 -  A3 -  B3 -  D3 -  G3 -  B3 - ",   # 7  G  walk-up
+    "C3 -  G3 -  C3 -  -  -  -  C3 -  -  -  -  -  - ",   # 8  C  two hits and out
+]
+
 MUSTICK = 6                  # frames per sixteenth -> 900/6 = 150 BPM
 
 # The melody is written above in the octave it is easiest to read and then dropped
@@ -175,7 +190,7 @@ def main():
     mel = parse(MELODY, "melody", MEL_OCTAVE)
     bas = parse(BASS, "bass")
     vmel = parse(VICTORY, "victory melody", MEL_OCTAVE)
-    vbas = parse([BASSLINE[c] for c in VIC_CHORDS], "victory bass")
+    vbas = parse(VIC_BASS, "victory bass")
     if len(mel) != len(bas):
         raise SystemExit("melody is %d steps, bass %d" % (len(mel), len(bas)))
     if len(vmel) != len(vbas):

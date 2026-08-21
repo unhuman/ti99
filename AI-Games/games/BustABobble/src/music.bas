@@ -468,7 +468,7 @@ vic_song:	' the victory galop -- melody note, bass note per step
 	DATA BYTE 0,0
 	DATA BYTE 10,5
 	DATA BYTE 0,0
-	DATA BYTE 8,1
+	DATA BYTE 8,3
 	DATA BYTE 0,0
 	DATA BYTE 0,5
 	DATA BYTE 0,0
@@ -496,15 +496,15 @@ vic_song:	' the victory galop -- melody note, bass note per step
 	DATA BYTE 0,0
 	DATA BYTE 16,5
 	DATA BYTE 0,0
-	DATA BYTE 0,2
+	DATA BYTE 0,6
 	DATA BYTE 0,0
-	DATA BYTE 14,5
+	DATA BYTE 14,7
 	DATA BYTE 0,0
-	DATA BYTE 12,2
+	DATA BYTE 12,0
 	DATA BYTE 0,0
-	DATA BYTE 9,5
+	DATA BYTE 9,2
 	DATA BYTE 0,0
-	DATA BYTE 0,2
+	DATA BYTE 0,0
 	DATA BYTE 0,0
 	' bar 5  (C)
 	DATA BYTE 10,1
@@ -547,15 +547,15 @@ vic_song:	' the victory galop -- melody note, bass note per step
 	DATA BYTE 0,0
 	DATA BYTE 9,5
 	DATA BYTE 0,0
-	DATA BYTE 12,2
+	DATA BYTE 12,6
 	DATA BYTE 0,0
-	DATA BYTE 14,5
+	DATA BYTE 14,7
 	DATA BYTE 0,0
 	DATA BYTE 16,2
 	DATA BYTE 0,0
 	DATA BYTE 14,5
 	DATA BYTE 0,0
-	DATA BYTE 12,2
+	DATA BYTE 12,7
 	DATA BYTE 0,0
 	' bar 8  (C)
 	DATA BYTE 15,1
@@ -564,14 +564,14 @@ vic_song:	' the victory galop -- melody note, bass note per step
 	DATA BYTE 0,0
 	DATA BYTE 12,1
 	DATA BYTE 0,0
-	DATA BYTE 10,5
+	DATA BYTE 10,0
 	DATA BYTE 0,0
-	DATA BYTE 8,1
-	DATA BYTE 0,0
-	DATA BYTE 0,5
-	DATA BYTE 0,0
+	DATA BYTE 8,0
 	DATA BYTE 0,1
 	DATA BYTE 0,0
-	DATA BYTE 0,5
+	DATA BYTE 0,0
+	DATA BYTE 0,0
+	DATA BYTE 0,0
+	DATA BYTE 0,0
 	DATA BYTE 0,0
 
