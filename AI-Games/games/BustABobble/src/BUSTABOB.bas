@@ -702,15 +702,17 @@ mus_vic:
 	RETURN
 
 mus_start:
-	' THE COMPOSER'S OWN TEMPO. The MIDI carries a tempo event of 104 BPM, which
-	' corroborates the engraving's crotchet = 102, so a sixteenth is 8.65 frames and
-	' 9 gives 100 -- four per cent slow, which nobody can hear.
+	' FASTER THAN THE MARKING, BY CHOICE. The MIDI's tempo event says 104 BPM and
+	' the engraving is marked crotchet = 102, which is mustk 9. Played at that, with
+	' the melody finally correct, it still dragged against the game -- so this is 7,
+	' about 128 BPM.
 	'
-	' It was briefly run at 7 (128 BPM) because the tune sounded like a dirge. That
-	' was never the tempo: the transcription had lost notes, and fewer, longer notes
-	' at a correct tempo is exactly what slow sounds like. With the melody read from
-	' the MIDI the density is right and the marked tempo is right with it.
-	mustk = 9
+	' That is a judgement about THIS GAME rather than about the tune: the board is
+	' busy, the drop clock is always running, and a bubble shooter wants music that
+	' pushes. The arcade original is a faster machine than a piano transcription of
+	' it. Worth knowing which way it is bent, and that 6 (150) and 8 (112) are the
+	' neighbouring settings.
+	mustk = 7
 	musv = MUSVOL			' under the effects, where the round loop belongs
 	musbv = MUSBAS
 	#muss = VARPTR mus_song(0)
