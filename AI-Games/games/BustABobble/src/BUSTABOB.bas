@@ -678,7 +678,23 @@ anim_tick:
 	' from its own tables every frame, which would fight every sound effect in the
 	' game for the channels they share.
 	'
+	' TWO TUNES, ONE PLAYER. mus_start plays the in-game loop and mus_vic the
+	' victory galop; they differ only in which table #muss points at and how long
+	' it is. Both lengths are BARE LITERALS -- a CONST above 255 compiles to zero
+	' here, and one emitted into music.bas would be a forward reference, which
+	' CVBasic accepts as an undefined variable holding zero. Either way the song
+	' replays its first note for ever. genmusic.py verifies both literals.
+mus_vic:
+	#muss = VARPTR vic_song(0)
+	#muslen = 128
+	#mup = 0
+	mut = 1
+	IF musen = 0 THEN mut = 0
+	RETURN
+
 mus_start:
+	#muss = VARPTR mus_song(0)
+	#muslen = 384
 	#mup = 0
 	mut = 1
 	IF musen = 0 THEN mut = 0		' switched off on the title
@@ -726,7 +742,7 @@ mus_step:
 	IF mun > 0 THEN GOSUB mus_mel
 	IF mub > 0 THEN GOSUB mus_bas
 	#mup = #mup + 1
-	IF #mup >= 384 THEN #mup = 0	' SONG LENGTH -- genmusic.py verifies this
+	IF #mup >= #muslen THEN #mup = 0	' set by mus_start / mus_vic
 	RETURN
 
 mus_mel:
@@ -2478,6 +2494,7 @@ draw_sprites:
 	' is what sells it as juggling rather than two arms waving in unison.
 	'
 victory:
+	GOSUB mus_vic			' the galop, not the round loop
 	GOSUB hide_sprites
 	CLS
 	' Same top row as the title: SCORE flush left, HI flush right.
