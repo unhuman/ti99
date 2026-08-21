@@ -2516,6 +2516,13 @@ victory:
 victory_wait:
 	WAIT
 	GOSUB sfx_tick
+	' THE SONG NEEDS TICKING HERE TOO. This loop does not go through game_loop or
+	' anim_tick, so nothing was advancing the player: mus_vic started the galop and
+	' then no step was ever taken, which is silence rather than a stuck note. The
+	' claim in DESIGN that the in-game tune "keeps playing" on this screen was
+	' wrong for the same reason -- it had simply stopped.
+	musdin = 1
+	GOSUB mus_tick
 	GOSUB jug_draw
 	' HALF SPEED: one step every OTHER frame, so a full 64-step revolution takes
 	' 2.1 s rather than 1.1. At one step per frame the balls whipped round faster
