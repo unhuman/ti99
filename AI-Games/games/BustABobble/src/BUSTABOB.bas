@@ -685,6 +685,7 @@ anim_tick:
 	' CVBasic accepts as an undefined variable holding zero. Either way the song
 	' replays its first note for ever. genmusic.py verifies both literals.
 mus_vic:
+	mustk = MUSTICK			' the galop is written at 150 BPM
 	' LOUDER THAN THE ROUND LOOP, and the bass much louder. In play both voices sit
 	' deliberately under the sound effects, because the pop is the sound that
 	' carries information. Nothing competes on the victory screen -- there are no
@@ -701,10 +702,14 @@ mus_vic:
 	RETURN
 
 mus_start:
+	' THE THEME IS MARKED CROTCHET = 102, so a sixteenth is 8.8 frames. MUSTICK is
+	' whole frames, and 9 gives 100 BPM -- two per cent slow, which no one can hear
+	' -- while the galop keeps 6. Per-tune tempo is why this is a variable now.
+	mustk = 9
 	musv = MUSVOL			' under the effects, where the round loop belongs
 	musbv = MUSBAS
 	#muss = VARPTR mus_song(0)
-	#muslen = 384
+	#muslen = 304
 	#mup = 0
 	mut = 1
 	IF musen = 0 THEN mut = 0		' switched off on the title
@@ -739,7 +744,7 @@ mus_tick:
 mus_adv:
 	IF mut > musd THEN mut = mut - musd : RETURN
 	musd = musd - mut
-	mut = MUSTICK
+	mut = mustk
 	GOSUB mus_step
 	GOTO mus_adv
 

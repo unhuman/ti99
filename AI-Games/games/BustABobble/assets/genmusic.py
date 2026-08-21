@@ -51,70 +51,72 @@ def divider(name):
 
 
 # --- the tune -------------------------------------------------------------------
-# 24 bars, 4/4, in three eight-bar sections: A - B - A'.
+# THE PUZZLE BOBBLE THEME (Kazuko Umino), transcribed from the engraving in
+# assets/BobbleMusic.png -- 19 bars, B flat major, marked crotchet = 102.
 #
-# It was 12 bars of C-Am-F-G three times over, which is a loop rather than a tune:
-# with one idea repeated it announces its own seam every 19 seconds. This has
-# somewhere to go and somewhere to come back to.
+# MEASURED, NOT EYEBALLED. RALLY-X's generator warns that "reading pitches off a
+# rendered score image -- the noteheads are a few pixels tall and it came out
+# wrong", and that is true of reading them by eye. Pixels do better: the five
+# staff lines are a ruler 4.12 px to the step, so a notehead's edge names its own
+# note, and engravers space notes proportionally, so the horizontal gaps ARE the
+# durations once scaled to 16 sixteenths a bar. Both came out of
+# $CLAUDE_JOB_DIR/tmp/score2bars.py; every bar summed to 16 without fudging, and
+# bars 5-7 came out identical to 1-3 (as did 16-18), which is the score's own
+# repeat structure reproducing itself -- misread noteheads would not do that.
 #
-#   A  (1-8)   the arpeggio hook over C-Am-F-G twice, the second time running back
-#              down instead of leaping -- so the section ends by falling into B.
-#   B  (9-16)  the contrast: half the harmonic rhythm (two bars a chord), a
-#              STEPWISE singing line where A leaps, and it sits higher. Long notes
-#              give the ear a rest from sixteenth arpeggios, which is the thing
-#              that made the old loop tiring.
-#   A' (17-24) the hook returns, then a real cadence -- F, G, C -- so the loop
-#              point lands on a resolution rather than mid-phrase.
-#
-# Bar 24 holds C and bar 1 opens on C an octave down, which is why it can loop at
-# all without sounding like a tape splice.
+# What it does NOT capture: the right hand's inner voices (only the top of each
+# chord is taken, which is the tune), one or two ornamental 16ths that the blob
+# detector merged, and accidentals outside the key signature (bar 1 has an F#
+# passing tone that comes out F). A MIDI would settle all three exactly.
 MELODY = [
-    # -- A ---------------------------------------------------------------------
-    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 1  C
-    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 2  Am
-    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 3  F
-    "G4 -  B4 -  D5 -  -  -  D5 -  B4 -  G4 -  -  - ",   # 4  G
-    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 5  C
-    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 6  Am
-    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 7  F
-    "G4 -  B4 -  D5 -  G5 -  F5 -  E5 -  D5 -  C5 - ",   # 8  G  (runs down into B)
-    # -- B ---------------------------------------------------------------------
-    "E5 -  -  -  A5 -  -  -  G5 -  E5 -  D5 -  -  - ",   # 9  Am
-    "C5 -  D5 -  E5 -  -  -  A4 -  -  -  -  -  -  - ",   # 10 Am
-    "F5 -  -  -  A5 -  -  -  G5 -  F5 -  E5 -  -  - ",   # 11 F
-    "D5 -  E5 -  F5 -  -  -  C5 -  -  -  -  -  -  - ",   # 12 F
-    "G5 -  -  -  C6 -  -  -  B5 -  G5 -  E5 -  -  - ",   # 13 C
-    "D5 -  E5 -  G5 -  -  -  C5 -  -  -  -  -  -  - ",   # 14 C
-    "D5 -  F5 -  G5 -  -  -  B5 -  G5 -  D5 -  -  - ",   # 15 G
-    "B4 -  D5 -  G5 -  -  -  F5 -  -  -  D5 -  -  - ",   # 16 G  (leading tone, back to A)
-    # -- A' --------------------------------------------------------------------
-    "C5 -  E5 -  G5 -  -  -  E5 -  G5 -  C6 -  -  - ",   # 17 C
-    "A4 -  C5 -  E5 -  -  -  C5 -  E5 -  A5 -  -  - ",   # 18 Am
-    "F4 -  A4 -  C5 -  -  -  A4 -  C5 -  F5 -  -  - ",   # 19 F
-    "G4 -  B4 -  D5 -  -  -  D5 -  B4 -  G4 -  -  - ",   # 20 G
-    "C5 -  E5 -  G5 -  C6 -  -  -  G5 -  E5 -  C5 - ",   # 21 C  (the hook, inverted)
-    "F5 -  -  -  E5 -  D5 -  C5 -  -  -  A4 -  C5 - ",   # 22 F
-    "G4 -  B4 -  D5 -  G5 -  F5 -  D5 -  B4 -  G4 - ",   # 23 G
-    "C5 -  -  -  E5 -  G5 -  C6 -  -  -  -  -  -  - ",   # 24 C  (cadence, holds)
+    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    -    G5   -    -    -    -", # 1  F3
+    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    C5   -    -    -    -    -", # 2  C3
+    "D5   -    D5   D#5  -    D#5  -    D#5  -    G5   -    -    A#5  -    C6   -", # 3  Bb2
+    "D6   -    A#5  G5   -    A#5  -    C6   -    G5   -    -    -    A#5  -    G5", # 4  F3
+    "A4   -    C5   C5   D#5  -    D#5  -    D#5  -    -    G5   -    -    -    -", # 5  C3
+    "C5   -    C5   D#5  -    D#5  -    D#5  -    -    C5   -    -    -    -    -", # 6  C3
+    "C5   -    C5   D#5  -    D#5  -    D#5  -    -    G5   -    A#5  -    G5   -", # 7  Bb3
+    "D6   -    A#5  D#5  -    -    A#5  -    -    -    -    A#5  -    G5   -    A#5", # 8  C3
+    "A#5  -    -    -    -    -    -    -    G5   -    -    -    -    A#5  -    -", # 9  F2
+    "D6   G5   -    -    F5   -    -    -    -    -    G5   -    -    G5   -    C5", # 10  D3
+    "F5   -    -    -    -    -    -    -    D#5  -    -    -    -    F5   -    -", # 11  C3
+    "A#5  D#5  -    -    D5   -    -    -    -    -    A#5  -    -    G5   -    A#5", # 12  C3
+    "A#5  -    -    -    -    -    -    -    A#5  -    -    -    -    A#5  -    -", # 13  Eb3
+    "C6   -    D#6  -    D6   -    -    A#5  -    G5   -    -    G5   -    -    D5", # 14  G3
+    "D#5  -    -    -    D#5  -    -    -    G4   -    A#4  -    -    A4   -    -", # 15  C3
+    "D5   -    D5   C6   D#5  -    D#5  -    D#5  -    -    G5   -    -    -    -", # 16  F3
+    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    C5   -    -    -    -    -", # 17  F3
+    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    G5   -    A#5  -    A#5  -", # 18  G3
+    "D#5  C6   A#5  A#5  -    G5   A#5  -    -    -    -    D#5  D#5  -    D#5  -", # 19  F3
 ]
 
-# Bouncing root-fifth eighths under each chord. Everything sits in octave 3 or
-# above because the PSG's 10-bit divider bottoms out around 110 Hz -- a "proper"
-# bass an octave down would alias rather than simply sound quiet.
-# F and G take the fifth BELOW rather than above (C3 not C4, D3 not D4) so the
-# whole bass stays inside one octave, C3-A3. With the melody dropped an octave it
-# would otherwise poke up through the tune's lower notes and the two voices would
-# swap places mid-bar.
-BASSLINE = {
-    "C":  "C3 -  G3 -  C3 -  G3 -  C3 -  G3 -  C3 -  G3 - ",
-    "Am": "A3 -  E3 -  A3 -  E3 -  A3 -  E3 -  A3 -  E3 - ",
-    "F":  "F3 -  C3 -  F3 -  C3 -  F3 -  C3 -  F3 -  C3 - ",
-    "G":  "G3 -  D3 -  G3 -  D3 -  G3 -  D3 -  G3 -  D3 - ",
-}
-CHORDS = ["C", "Am", "F", "G", "C", "Am", "F", "G",
-          "Am", "Am", "F", "F", "C", "C", "G", "G",
-          "C", "Am", "F", "G", "C", "F", "G", "C"]
-BASS = [BASSLINE[c] for c in CHORDS]
+# The left hand as measured -- a real bassline rather than the root-fifth pattern
+# the original tune used. Notes below C3 are lifted an octave by the generator:
+# the PSG bottoms out near 110 Hz and would alias rather than sound low.
+BASS_ROWS = [
+    "F3   -    -    -    C3   -    C3   D#3  -    D#3  C3   -    -    C3   F3   F3", # 1
+    "C3   -    -    -    C3   D#3  -    -    D#3  C3   -    -    C3   F3   -    F3", # 2
+    "A#3  -    G3   A#3  A3   -    A3   -    A3   -    -    A3   G3   -    -    G3", # 3
+    "F3   -    -    A#3  F3   G3   -    -    G3   C3   -    -    C3   F3   D4   F3", # 4
+    "C3   -    -    C3   D3   -    -    D3   C3   -    -    -    C3   F3   -    F3", # 5
+    "C3   -    -    -    C3   D3   -    -    D3   C3   -    -    C3   F3   -    F3", # 6
+    "A#3  -    D3   A#3  A3   -    D3   A3   A3   -    D3   A3   G3   -    -    G3", # 7
+    "C3   -    -    F3   -    -    -    A#3  -    -    -    -    -    -    -    -", # 8
+    "F3   -    -    -    F3   -    -    A#3  -    D#3  -    -    D#3  -    -    A#3", # 9
+    "D3   -    -    -    D3   -    -    A3   -    A3   -    -    A3   -    -    D3", # 10
+    "C3   -    -    -    C3   -    -    G3   -    F3   -    -    F3   -    -    D3", # 11
+    "C3   -    -    -    C3   -    -    F3   -    A#3  -    -    A#3  -    -    A#3", # 12
+    "D#3  -    -    -    D#3  -    -    A#3  -    D#3  -    -    D#3  -    -    A#3", # 13
+    "G3   -    -    -    G3   -    -    D3   -    G3   -    -    G3   -    -    D3", # 14
+    "C3   -    -    -    C3   -    -    -    G3   -    F3   -    -    F3   -    -", # 15
+    "F3   -    -    -    -    -    -    -    -    -    -    -    -    -    -    -", # 16
+    "F3   -    -    -    -    -    -    -    -    -    -    -    -    -    -    -", # 17
+    "G3   -    -    -    -    -    -    -    -    F3   -    -    -    -    -    -", # 18
+    "F3   -    -    -    -    -    -    -    -    -    -    -    -    -    -    -", # 19
+]
+BASSLINE = {}          # unused now: the bass is transcribed, not generated
+CHORDS = ['F3', 'C3', 'Bb2', 'F3', 'C3', 'C3', 'Bb3', 'C3', 'F2', 'D3', 'C3', 'C3', 'Eb3', 'G3', 'C3', 'F3', 'F3', 'G3', 'F3']
+BASS = BASS_ROWS
 
 # --- the victory tune -----------------------------------------------------------
 # Eight bars of circus galop for the screen you get for beating round 30. Also an
