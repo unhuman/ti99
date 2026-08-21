@@ -1,33 +1,51 @@
 #!/usr/bin/env python3
 """
-BUST-A-BOBBLE -- generates src/music.bas: the in-game tune.
+BUST-A-BOBBLE -- generates src/music.bas: the in-game theme and the victory galop.
 
-ORIGINAL COMPOSITION, not a transcription. Taito's Puzzle Bobble music is theirs;
-this is a cheerful major-key chip tune written for the game, in the same spirit.
+THE THEME IS READ FROM assets/BobbleMusic.mid, exactly as RALLY-X reads
+newrallyx.mid, and for the same reason: it is the only way to be right. It was
+first transcribed from an engraving (assets/BobbleMusic.png) by measuring
+noteheads against the staff-line ruler -- see score2bars.py, which is kept because
+the technique is sound -- and the result was recognisably the tune but wrong in
+two ways that matter. Half and whole notes are HOLLOW, so a filled-ink detector
+skips them; and since note lengths were derived from horizontal spacing, whatever
+survived was stretched to fill its bar. Bar 1 came out
 
-The tune is 24 bars in three sections (A-B-A'), written below as READABLE BARS -- one line per bar, sixteen tokens per
-line, one token per sixteenth note. That is the point of generating it: the thing a
-person edits is a tune, and the thing the ROM gets is a byte table, and neither has
-to be maintained by hand.
+    D5  D5  Eb5 Eb5 Eb5 G5           (transcribed, six notes)
+    D5  D5  F5  F5  D#5  F5 F#5 G5   (the MIDI, eight -- both F naturals and
+                                      the F# run restored)
+
+Fewer, longer notes at the right tempo is what "too slow" actually sounds like.
+
+THE REPEAT IS DETECTED, NOT ASSUMED. The file is the tune played twice: at an
+offset of 19 bars, 709 of 709 notes recur -- a perfect match, which is also the
+score's bar count. Only the first pass is emitted.
+
+The galop below is still an ORIGINAL composition written for the victory screen.
 
     C5   strike this note        -    let the previous note ring
-    .    same as '-' (spacer, purely so the beat is easy to count)
 
 There is no explicit rest: a note rings until the next one on its channel, which is
-what the player's "0 = sustain" encoding gives for free and what keeps the table at
-two bytes a step.
+what the player's "0 = sustain" encoding gives for free.
 
 Run:  python3 genmusic.py
 """
 
 import os
+import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "src", "music.bas")
+MIDI = os.path.join(HERE, "BobbleMusic.mid")
+
+MEL_TRACK = 1                # measured: monophonic, G4..D#6, starts at bar 1
+BASS_TRACK = 2               # monophonic, D#2..G4
+BASS_MIN = 48                # C3: the PSG bottoms out near 110 Hz, so lift below this
 
 PSG_CLOCK = 3579545          # TI-99/4A SN76489 clock
 STEPS_PER_BAR = 16           # sixteenth-note grid
+
 
 # Equal temperament, A4 = 440. Only the notes the tune uses get emitted.
 NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -50,74 +68,98 @@ def divider(name):
     return d
 
 
-# --- the tune -------------------------------------------------------------------
-# THE PUZZLE BOBBLE THEME (Kazuko Umino), transcribed from the engraving in
-# assets/BobbleMusic.png -- 19 bars, B flat major, marked crotchet = 102.
-#
-# MEASURED, NOT EYEBALLED. RALLY-X's generator warns that "reading pitches off a
-# rendered score image -- the noteheads are a few pixels tall and it came out
-# wrong", and that is true of reading them by eye. Pixels do better: the five
-# staff lines are a ruler 4.12 px to the step, so a notehead's edge names its own
-# note, and engravers space notes proportionally, so the horizontal gaps ARE the
-# durations once scaled to 16 sixteenths a bar. Both came out of
-# $CLAUDE_JOB_DIR/tmp/score2bars.py; every bar summed to 16 without fudging, and
-# bars 5-7 came out identical to 1-3 (as did 16-18), which is the score's own
-# repeat structure reproducing itself -- misread noteheads would not do that.
-#
-# What it does NOT capture: the right hand's inner voices (only the top of each
-# chord is taken, which is the tune), one or two ornamental 16ths that the blob
-# detector merged, and accidentals outside the key signature (bar 1 has an F#
-# passing tone that comes out F). A MIDI would settle all three exactly.
-MELODY = [
-    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    -    G5   -    -    -    -", # 1  F3
-    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    C5   -    -    -    -    -", # 2  C3
-    "D5   -    D5   D#5  -    D#5  -    D#5  -    G5   -    -    A#5  -    C6   -", # 3  Bb2
-    "D6   -    A#5  G5   -    A#5  -    C6   -    G5   -    -    -    A#5  -    G5", # 4  F3
-    "A4   -    C5   C5   D#5  -    D#5  -    D#5  -    -    G5   -    -    -    -", # 5  C3
-    "C5   -    C5   D#5  -    D#5  -    D#5  -    -    C5   -    -    -    -    -", # 6  C3
-    "C5   -    C5   D#5  -    D#5  -    D#5  -    -    G5   -    A#5  -    G5   -", # 7  Bb3
-    "D6   -    A#5  D#5  -    -    A#5  -    -    -    -    A#5  -    G5   -    A#5", # 8  C3
-    "A#5  -    -    -    -    -    -    -    G5   -    -    -    -    A#5  -    -", # 9  F2
-    "D6   G5   -    -    F5   -    -    -    -    -    G5   -    -    G5   -    C5", # 10  D3
-    "F5   -    -    -    -    -    -    -    D#5  -    -    -    -    F5   -    -", # 11  C3
-    "A#5  D#5  -    -    D5   -    -    -    -    -    A#5  -    -    G5   -    A#5", # 12  C3
-    "A#5  -    -    -    -    -    -    -    A#5  -    -    -    -    A#5  -    -", # 13  Eb3
-    "C6   -    D#6  -    D6   -    -    A#5  -    G5   -    -    G5   -    -    D5", # 14  G3
-    "D#5  -    -    -    D#5  -    -    -    G4   -    A#4  -    -    A4   -    -", # 15  C3
-    "D5   -    D5   C6   D#5  -    D#5  -    D#5  -    -    G5   -    -    -    -", # 16  F3
-    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    C5   -    -    -    -    -", # 17  F3
-    "D5   -    D5   D#5  -    D#5  -    D#5  -    -    G5   -    A#5  -    A#5  -", # 18  G3
-    "D#5  C6   A#5  A#5  -    G5   A#5  -    -    -    -    D#5  D#5  -    D#5  -", # 19  F3
-]
+def read_midi(path):
+    """(ticks-per-quarter, [track][ (start, end, pitch) ]) -- the RALLY-X reader."""
+    d = open(path, "rb").read()
 
-# The left hand as measured -- a real bassline rather than the root-fifth pattern
-# the original tune used. Notes below C3 are lifted an octave by the generator:
-# the PSG bottoms out near 110 Hz and would alias rather than sound low.
-BASS_ROWS = [
-    "F3   -    -    -    C3   -    C3   D#3  -    D#3  C3   -    -    C3   F3   F3", # 1
-    "C3   -    -    -    C3   D#3  -    -    D#3  C3   -    -    C3   F3   -    F3", # 2
-    "A#3  -    G3   A#3  A3   -    A3   -    A3   -    -    A3   G3   -    -    G3", # 3
-    "F3   -    -    A#3  F3   G3   -    -    G3   C3   -    -    C3   F3   D4   F3", # 4
-    "C3   -    -    C3   D3   -    -    D3   C3   -    -    -    C3   F3   -    F3", # 5
-    "C3   -    -    -    C3   D3   -    -    D3   C3   -    -    C3   F3   -    F3", # 6
-    "A#3  -    D3   A#3  A3   -    D3   A3   A3   -    D3   A3   G3   -    -    G3", # 7
-    "C3   -    -    F3   -    -    -    A#3  -    -    -    -    -    -    -    -", # 8
-    "F3   -    -    -    F3   -    -    A#3  -    D#3  -    -    D#3  -    -    A#3", # 9
-    "D3   -    -    -    D3   -    -    A3   -    A3   -    -    A3   -    -    D3", # 10
-    "C3   -    -    -    C3   -    -    G3   -    F3   -    -    F3   -    -    D3", # 11
-    "C3   -    -    -    C3   -    -    F3   -    A#3  -    -    A#3  -    -    A#3", # 12
-    "D#3  -    -    -    D#3  -    -    A#3  -    D#3  -    -    D#3  -    -    A#3", # 13
-    "G3   -    -    -    G3   -    -    D3   -    G3   -    -    G3   -    -    D3", # 14
-    "C3   -    -    -    C3   -    -    -    G3   -    F3   -    -    F3   -    -", # 15
-    "F3   -    -    -    -    -    -    -    -    -    -    -    -    -    -    -", # 16
-    "F3   -    -    -    -    -    -    -    -    -    -    -    -    -    -    -", # 17
-    "G3   -    -    -    -    -    -    -    -    F3   -    -    -    -    -    -", # 18
-    "F3   -    -    -    -    -    -    -    -    -    -    -    -    -    -    -", # 19
-]
-BASSLINE = {}          # unused now: the bass is transcribed, not generated
-CHORDS = ['F3', 'C3', 'Bb2', 'F3', 'C3', 'C3', 'Bb3', 'C3', 'F2', 'D3', 'C3', 'C3', 'Eb3', 'G3', 'C3', 'F3', 'F3', 'G3', 'F3']
-BASS = BASS_ROWS
+    def vlq(i):
+        v = 0
+        while True:
+            b = d[i]
+            i += 1
+            v = (v << 7) | (b & 0x7F)
+            if not (b & 0x80):
+                return v, i
 
+    assert d[:4] == b"MThd", "not a MIDI file"
+    hlen, fmt, ntrk, div = struct.unpack(">IHHH", d[4:14])
+    i = 8 + hlen
+    tracks = []
+    for _ in range(ntrk):
+        assert d[i:i + 4] == b"MTrk"
+        tlen = struct.unpack(">I", d[i + 4:i + 8])[0]
+        end, j, tick, status = i + 8 + tlen, i + 8, 0, 0
+        notes, live = [], {}
+        while j < end:
+            dt, j = vlq(j)
+            tick += dt
+            if d[j] & 0x80:
+                status = d[j]
+                j += 1
+            ev = status & 0xF0
+            if status == 0xFF:
+                j += 1
+                ln, j = vlq(j)
+                j += ln
+            elif status in (0xF0, 0xF7):
+                ln, j = vlq(j)
+                j += ln
+            elif ev in (0x80, 0x90):
+                p, v = d[j], d[j + 1]
+                j += 2
+                if ev == 0x90 and v > 0:
+                    live.setdefault(p, []).append(tick)
+                elif live.get(p):
+                    notes.append((live[p].pop(0), tick, p))
+            elif ev in (0xA0, 0xB0, 0xE0):
+                j += 2
+            elif ev in (0xC0, 0xD0):
+                j += 1
+            else:
+                j += 1
+        tracks.append(sorted(notes))
+        i = end
+    return div, tracks
+
+
+def repeat_bars(tracks, bar):
+    """How long the tune is before it starts again, measured not assumed."""
+    notes = set()
+    for t in tracks:
+        for t0, _, p in t:
+            notes.add((t0, p))
+    last = max(t0 for t0, _ in notes)
+    best = (0, 0.0)
+    for n in range(4, 33):
+        off = n * bar
+        src = [(t0, p) for (t0, p) in notes if t0 + off <= last]
+        if len(src) < 40:
+            continue
+        hit = sum(1 for (t0, p) in src if (t0 + off, p) in notes)
+        r = hit / float(len(src))
+        if r > best[1]:
+            best = (n, r)
+    return best
+
+
+def to_steps(notes, nbars, bar, lift):
+    """Quantise one monophonic track onto the sixteenth grid.
+
+    Where two notes land on the same step -- the 32nd-note run in bar 1 does --
+    the LATER one wins, so a run keeps the note it is heading for rather than the
+    grace note before it."""
+    per = bar // STEPS_PER_BAR
+    out = [None] * (nbars * STEPS_PER_BAR)
+    for t0, t1, p in notes:
+        k = int(round(t0 / float(per)))
+        if 0 <= k < len(out):
+            while p < lift:
+                p += 12
+            out[k] = p
+    return out
+
+
+MEL_OCTAVE_MIDI = -12        # the melody drops an octave, as the old tune did
 # --- the victory tune -----------------------------------------------------------
 # Eight bars of circus galop for the screen you get for beating round 30. Also an
 # ORIGINAL composition -- "Entry of the Gladiators" is what everyone hears in their
@@ -188,16 +230,29 @@ def parse(bars, what, shift=0):
     return out
 
 
+def midi_name(p):
+    return NAMES[p % 12] + str(p // 12 - 1)
+
+
 def main():
-    mel = parse(MELODY, "melody", MEL_OCTAVE)
-    bas = parse(BASS, "bass")
+    div, tracks = read_midi(MIDI)
+    bar = div * 4
+    nbars, ratio = repeat_bars(tracks, bar)
+    if ratio < 0.98:
+        sys.stderr.write("error: no clean repeat found in %s (best %d bars, %.0f%%)\n"
+                         % (os.path.basename(MIDI), nbars, 100 * ratio))
+        return 1
+    mel_p = to_steps(tracks[MEL_TRACK], nbars, bar, 0)
+    bas_p = to_steps(tracks[BASS_TRACK], nbars, bar, BASS_MIN)
+    mel = [midi_name(p + MEL_OCTAVE_MIDI) if p else None for p in mel_p]
+    bas = [midi_name(p) if p else None for p in bas_p]
     vmel = parse(VICTORY, "victory melody", MEL_OCTAVE)
     vbas = parse(VIC_BASS, "victory bass")
-    if len(mel) != len(bas):
-        raise SystemExit("melody is %d steps, bass %d" % (len(mel), len(bas)))
     if len(vmel) != len(vbas):
         raise SystemExit("victory melody is %d steps, bass %d" % (len(vmel), len(vbas)))
     steps, vsteps = len(mel), len(vmel)
+    print("  theme: %d bars from %s (repeat matched %.0f%% at that offset)"
+          % (nbars, os.path.basename(MIDI), 100 * ratio))
 
     # ONE frequency table for both tunes: the victory galop reuses most of the
     # in-game tune's notes, and a second table would be 30-odd bytes of the fixed
@@ -240,7 +295,17 @@ def main():
                                           index[b[i]] if b[i] else 0))
         w("")
 
-    emit("mus_song", mel, bas, CHORDS, "the in-game loop")
+    # Bar labels for the listing: the bass note each bar opens on, which is the
+    # closest thing to a chord symbol without doing harmonic analysis.
+    labels = []
+    for b in range(steps // STEPS_PER_BAR):
+        lab = "-"
+        for k in range(b * STEPS_PER_BAR, (b + 1) * STEPS_PER_BAR):
+            if bas[k]:
+                lab = bas[k]
+                break
+        labels.append(lab)
+    emit("mus_song", mel, bas, labels, "the Puzzle Bobble theme, from the MIDI")
     emit("vic_song", vmel, vbas, VIC_CHORDS, "the victory galop")
 
     # CHECK THE PLAYER'S LENGTH LITERALS MATCH THESE TUNES.

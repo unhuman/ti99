@@ -702,14 +702,15 @@ mus_vic:
 	RETURN
 
 mus_start:
-	' FASTER THAN THE SCORE'S OWN MARKING, on purpose. The theme is marked crotchet
-	' = 102, which is 8.8 frames a sixteenth and would be mustk 9. It played as a
-	' dirge, and the reason is the transcription rather than the tempo: the blob
-	' detector missed notes in the busy bars, and because durations come from
-	' spacing, the survivors were stretched to fill the bar. Fewer, longer notes at
-	' the right tempo sound slow. 7 frames is about 128 BPM, which carries the tune
-	' until it can be replaced from a MIDI and the missing notes come back.
-	mustk = 7
+	' THE COMPOSER'S OWN TEMPO. The MIDI carries a tempo event of 104 BPM, which
+	' corroborates the engraving's crotchet = 102, so a sixteenth is 8.65 frames and
+	' 9 gives 100 -- four per cent slow, which nobody can hear.
+	'
+	' It was briefly run at 7 (128 BPM) because the tune sounded like a dirge. That
+	' was never the tempo: the transcription had lost notes, and fewer, longer notes
+	' at a correct tempo is exactly what slow sounds like. With the melody read from
+	' the MIDI the density is right and the marked tempo is right with it.
+	mustk = 9
 	musv = MUSVOL			' under the effects, where the round loop belongs
 	musbv = MUSBAS
 	#muss = VARPTR mus_song(0)
