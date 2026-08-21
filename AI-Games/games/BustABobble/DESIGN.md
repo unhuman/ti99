@@ -925,25 +925,44 @@ in Classic99 — the one element telling you how much game is left was the one y
 
 ### Music, and why it sits on the channels it does
 
-An **original 24-bar tune** — Taito's is theirs — in C major, 150 BPM on a sixteenth grid, looping
-every 38.4 s, held in `assets/genmusic.py` as readable bars and generated into `src/music.bas`.
+**The in-game theme is Taito's, read from a MIDI.** `assets/genmusic.py` reads
+`assets/BobbleMusic.mid` the way RALLY-X reads `newrallyx.mid` — the only way to be right about a
+tune. 19 bars, looping, and three things are *measured* rather than assumed:
 
-**It is three eight-bar sections, A–B–A′**, and that structure is the point. It was 12 bars of
-C–Am–F–G three times over, which is a loop rather than a tune: one idea repeated announces its own
-seam every 19 seconds.
+- **The repeat.** The file is the tune played twice; at an offset of 19 bars, 709 of 709 notes
+  recur, so only the first pass is emitted. That also agrees with the engraving's bar count.
+- **The lead is split across two voices.** Track 1 carries the melody until bar 16, then stops for
+  three bars while **track 3** plays the closing statements of the opening figure. Reading track 1
+  alone left the melody *silent* for the last three bars before the loop seam — heard as "the same
+  part twice and then again from the top", because only the bass vamp remained. The melody is the
+  higher of the two wherever both sound.
+- **Consecutive identical bars are dropped**, detected rather than hard-coded, so swapping the MIDI
+  cannot silently reintroduce a stutter. With the melody restored there are none.
 
-- **A (1–8)** — the arpeggio hook over C–Am–F–G twice, the second time running back *down* instead of
-  leaping, so the section falls into B rather than stopping.
-- **B (9–16)** — the contrast: half the harmonic rhythm (two bars a chord), a **stepwise** singing
-  line where A leaps, sitting higher, with long notes. That rest from sixteenth arpeggios is what the
-  old loop lacked and what made it tiring inside a round.
-- **A′ (17–24)** — the hook returns, then a real cadence (F–G–C) so the loop point lands on a
-  resolution. Bar 24 holds C and bar 1 opens on C an octave down, which is why it can loop at all
-  without sounding like a splice.
+> **It was first transcribed from an engraving** (`assets/BobbleMusic.png`) by measuring noteheads
+> against the staff-line ruler — `assets/score2bars.py`, kept because the technique is sound and it
+> is how the pitches were cross-checked. It was recognisably the tune and still wrong twice over:
+> half and whole notes are **hollow**, so a filled-ink detector skips them, and because durations
+> came from horizontal spacing the survivors were **stretched to fill the bar**. Bar 1 came out as
+> six notes instead of eight, losing both F naturals and the F♯ run. Fewer, longer notes at a
+> correct tempo is exactly what "too slow" sounds like — which is why speeding it up never fixed it.
 
-800 bytes of table (768 song + 32 frequencies), affordable only because banking the art gave 2 KB
-back. The four bars cut in the first place — to buy the on-screen music toggle — are long since paid
-for.
+**Tempo and mix are per-tune**, which is why both are variables rather than `CONST`s. The theme runs
+at `mustk` 6 — about **150 BPM**, deliberately faster than the MIDI's own 104 and the engraving's
+♩=102, because the board is busy and the drop clock never stops. The tick is a whole number of
+frames, so the available tempi are 150, 129, 112, 100; a value between them would need alternating
+tick lengths. In play the voices sit **under** the effects (7 and 5) because the pop is the sound
+that carries information.
+
+**The victory screen gets its own tune**: an original eight-bar **circus galop**, 12.8 s, mixed as
+music rather than background (13 and 11) because nothing competes with it there, with a bass that
+walks into its two cadences. `mus_vic` and `mus_start` differ only in table, length, tempo and mix.
+
+> ⚠️ `victory_wait` does not go through `game_loop` or `anim_tick`, so **it has to tick the player
+> itself**. Without that, `mus_vic` set everything up and no step was ever taken — silence, not a
+> stuck note. It also means DESIGN's old claim that the in-game tune "keeps playing" on that screen
+> was wrong for as long as the screen existed; nobody noticed, because it took thirty rounds to
+> reach.
 
 **The pop is a noise burst with a falling bloop under it.** Channel 3 fires noise type 7 for four
 frames; channel 0 plays a tone whose divider slides **400 → 900 over six frames** — about 280 Hz down
@@ -1380,6 +1399,27 @@ case to cope with the data, check the data.
 
 ## 17. Status
 
+**2026-08-21 — the theme, the galop, and a stack leak that had been there all along.**
+
+- **THE STACK LEAK.** `do_clear` and `do_dead` were entered with `GOSUB` and left with `GOTO`, so
+  every completed round and every death abandoned the return addresses of the whole chain
+  (`game_loop → do_flight → do_stick → after_stick`). ColecoVision has ~150 bytes of headroom above
+  its variables, so about twenty rounds walked the stack down into them: score digits printing as
+  bubble characters, the pop animation hanging, corruption surviving into the title. The TI never
+  showed it — 7 KB of RAM absorbs the same leak for hundreds of rounds. Both routines now set `nrq`
+  and RETURN, and `game_loop` dispatches once the stack has unwound. Recorded in `CLAUDE.md` §3A,
+  because every game in this repo is built the same way.
+- **Music** (§11): the theme now comes from the MIDI, the victory screen has a galop, and the
+  victory loop ticks the player.
+- **BUB works both ends of every round**: in from the left pushing the first bubble to the muzzle,
+  and at the end out through a door in the right wall — bubble first, then him, with the door
+  shutting three characters behind him and the curtain only then falling. He walks in at 2 px a
+  frame and runs out at 3, with footsteps that quicken to match.
+- **The drop gauge repaints its colour at round start.** `barw = 0` said "green" but the nine gauge
+  characters kept the colour they were last `DEFINE`d with, and `tick_bar` only re-issues that on a
+  transition — so a round that ended in the red quarter handed the next one a full bar still
+  coloured red, looking like the drop was already imminent.
+
 **2026-08-18 (later) — BUB works both ends of the round, and the tune grows to 24 bars.**
 
 - He **walks in from the left every round**, not just the first, and the round now **closes** the
@@ -1399,7 +1439,7 @@ case to cope with the data, check the data.
   screen on ColecoVision**. He pushes the bubble he is carrying in that case.
 - Neither animation may call `anim_tick`, because that calls `bub_tick`, which parks the very sprite
   being pushed. Both tick sound and music themselves.
-- The **tune is now 24 bars, A–B–A′** (§11 above).
+- The tune was then 24 bars, A–B–A′ — an original composition, since replaced by Taito's own theme read from a MIDI (§11).
 
 **2026-08-18 — the art moves into bank 1, and round 1 gets an opening.** `genart.py` emits two files
 now: `art.bas` keeps only what is read *during* a frame (the aim table and `bub_base`, 64 bytes) and
@@ -1554,8 +1594,9 @@ follow. Still anchored, still winnable (79 shots).
 the scores across the top (the title screen's own `title_num_sc`/`title_num_hi`),
 **CONGRATULATIONS!** on row 3, the creature standing in the lower middle **juggling all eight
 bubble colours**, and **PRESS FIRE** on row 22 to return to the title. The three-second
-`ALL 30 CLEAR` message box it replaces is gone. Music keeps playing — `mus_off` is not called until
-`title_screen`. Cost 652 B of the 1,912 the banking freed; **1,268 left** (the 838 fix returned 8 B).
+`ALL 30 CLEAR` message box it replaces is gone. (The music did NOT keep playing, as this
+originally claimed: the screen's own loop never ticked the player. It plays the circus galop now —
+§11.) Cost 652 B of the 1,912 the banking freed; **1,268 left** (the 838 fix returned 8 B).
 
 The juggle is **one 64-step closed loop and one counter**: ball *i* sits at step `(jt + 8*i) AND 63`,
 so eight balls share one 128-byte table (`src/juggle.bas`, generated by `assets/genjuggle.py`) with

@@ -222,6 +222,18 @@ cost a debugging session:
 - **Sprite y = 208 terminates the sprite list** — hide sprites at 209, and watch for `y-1`.
 - Misc: 8-bit `FOR` to 255 loops forever; `ON GOTO` is 0-based; `DEF FN` args substitute
   textually (parenthesize every use); a computed `FOR 1 TO 0` still runs the body once.
+- **A `GOSUB` THAT LEAVES BY `GOTO` LEAKS THE STACK — and only ColecoVision dies of it.**
+  A routine entered with `GOSUB` and exited with `GOTO` never pops its return address, so every
+  pass through it grows the stack by the whole call chain. Bust-A-Bobble's `do_clear` and `do_dead`
+  did this on every completed round and every death, from four levels deep. On the **TI** the leak
+  has ~7 KB of RAM to chew through and never surfaced in months of play; on **ColecoVision**, with
+  1 KB total and ~150 bytes of headroom above the variables, about twenty rounds walked the stack
+  down into them. The symptoms look like anything but a stack: score digits printing as unrelated
+  characters (a corrupted BCD array read through `48 + digit`), an animation hanging, and
+  corruption that survives into the title screen because nothing reinitialises those variables
+  without a reboot. **Set a state variable, RETURN, and dispatch from the main loop.** The tell is
+  the combination — *gets worse over time*, *one target only*, *ends in a hang* — and the
+  asymmetry is just the RAM budgets.
 - **TI cart limit: 24,336 bytes** in the fixed area — `linkticart` silently truncates past it.
   Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
   - **`BANK ROM` accepts only 128, 256, 512 or 1024.** `BANK ROM 32` is rejected outright

@@ -1570,7 +1570,14 @@ load_level:
 	GOSUB mark_scenery		' flag the level's own detached pieces, once
 	GOSUB calc_bstep
 	barlast = 255			' force the first tick_bar to draw
+	' AND REPAINT THE GAUGE'S COLOUR, not just the flag. barw = 0 says "green" but
+	' the nine gauge CHARACTERS keep whatever colour they were last DEFINEd with,
+	' and tick_bar only re-issues that on a TRANSITION. A round that ended in the
+	' red quarter therefore handed the next round a full bar still coloured red,
+	' and it stayed red until the clock next crossed the quarter mark -- looking
+	' like the drop was imminent from the moment the round opened.
 	barw = 0
+	GOSUB set_bar_col
 	#seqb = lvl - 1
 	#seqb = #seqb * 16
 	si = 0

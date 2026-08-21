@@ -22,7 +22,7 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,488 B of 24,336 — 848 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,920 B of 24,336 — 416 free**, because the **level data now lives in ROM bank 1**
 (3,886 of 8,192 used: the level data plus every art table). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
@@ -51,9 +51,10 @@ phases (`DESIGN.md` §17). It lands on exactly four, so **there is no margin** �
 means re-running the generator.
 
 **Every round opens with BUB walking in from the left**, pushing the first bubble to the muzzle, and
-**closes with him pushing the last one out** through a door in the right wall before the curtain
-falls. He walks in at 2 px a frame and runs out at 3, with pitter-patter footsteps that quicken to
-match.
+**closes with him pushing the last one out** through a door in the right wall — the bubble goes
+first, then he follows it off the screen, the door shuts three characters behind him, and only then
+does the curtain fall. He walks in at 2 px a frame and runs out at 3, with pitter-patter footsteps
+that quicken to match.
 
 **BUB loads your bubbles.** A pipe opens in the left wall level with the launcher, and the next
 bubble waits beside BUB, who stands one slot left of the launch spot — that waiting bubble *is* the
@@ -78,15 +79,14 @@ The HUD now carries a **drop-timer gauge** (8 chars, 64 steps, red for the last 
 the ceiling on a *shot count* and shows no gauge at all, so both are deliberate additions that pay
 for this game's timer-based drop being otherwise invisible.
 
-**In-game music**: an original **24-bar** tune in C major, 150 BPM, looping every 38.4 s, written
-as readable bars in `assets/genmusic.py` and generated into `src/music.bas`. It is three eight-bar
-sections — **A–B–A′** — because 12 bars of one repeated idea announced its own seam; B halves the
-harmonic rhythm and answers A's arpeggios with a stepwise line, and A′ ends on a real cadence so the
-loop point resolves. Melody on channel 2, bass
-on channel 1 — the effects all live on 0 and 1, so the melody sits on the one channel nothing else
-touches and is never chopped, while the bass ducks under an alarm or a pop and resumes at its next
-note, at a volume well under them so the pop still carries. **Press 1 on the title to toggle music**
-(remembered across games), as RALLY-X does.
+**In-game music** is Taito's theme, read from `assets/BobbleMusic.mid` rather than transcribed —
+19 bars, with the repeat, the two-voice lead and any duplicate bars all *detected* rather than
+assumed (`DESIGN.md` §11). Melody on channel 2, bass on channel 1, both under the effects so the pop
+still carries. It runs at about 150 BPM, faster than the score's own ♩=102, because the board is busy
+and the clock never stops. **Press 1 on the title to toggle music** (remembered across games).
+
+**Beating round 30 gets its own tune**: an original eight-bar circus galop, mixed as music rather
+than background since nothing competes with it there.
 
 Clearing a round pays a **descending-wall bonus**: 100 for the first row the wall closes over,
 doubling per row, stopping at the death line — 102,300 from a fresh ceiling, and *less* if the
