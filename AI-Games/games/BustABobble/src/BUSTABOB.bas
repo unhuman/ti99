@@ -702,10 +702,14 @@ mus_vic:
 	RETURN
 
 mus_start:
-	' THE THEME IS MARKED CROTCHET = 102, so a sixteenth is 8.8 frames. MUSTICK is
-	' whole frames, and 9 gives 100 BPM -- two per cent slow, which no one can hear
-	' -- while the galop keeps 6. Per-tune tempo is why this is a variable now.
-	mustk = 9
+	' FASTER THAN THE SCORE'S OWN MARKING, on purpose. The theme is marked crotchet
+	' = 102, which is 8.8 frames a sixteenth and would be mustk 9. It played as a
+	' dirge, and the reason is the transcription rather than the tempo: the blob
+	' detector missed notes in the busy bars, and because durations come from
+	' spacing, the survivors were stretched to fill the bar. Fewer, longer notes at
+	' the right tempo sound slow. 7 frames is about 128 BPM, which carries the tune
+	' until it can be replaced from a MIDI and the missing notes come back.
+	mustk = 7
 	musv = MUSVOL			' under the effects, where the round loop belongs
 	musbv = MUSBAS
 	#muss = VARPTR mus_song(0)
