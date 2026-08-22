@@ -356,7 +356,10 @@ new_wave:
 	' ============================================================
 main_loop:
 	#pacef = FRAME
-	WHILE 1
+	' Cleared here rather than at game over, because the title falls straight
+	' into this label -- so this is the one place every new game passes through.
+	gover=0
+	WHILE gover=0
 		WAIT
 		' Frame-pace to each machine's measured native rate (pacen VDP frames
 		' per tick -- see the pacen/cdN/ciN block up top): TI-99 measured 20fps
@@ -404,6 +407,10 @@ main_loop:
 			END IF
 		END IF
 	WEND
+	' Out through the bottom, with the stack unwound: WHILE/WEND compile to a
+	' label and a jump and hold nothing, so nothing is left over from the game
+	' just finished.
+	GOTO title
 
 	' ============================================================
 	' CLEAR SCREEN
@@ -1381,7 +1388,11 @@ game_over: PROCEDURE
 		WAIT
 	NEXT ti
 	PRINT AT 11*32+11,"         "
-	GOTO title
+	' RAISE A FLAG; DO NOT JUMP TO THE TITLE FROM IN HERE. This is reached by
+	' GOSUB (main_loop -> ship_tick -> here), so a GOTO out would abandon two
+	' return addresses on every game over -- they are only ever popped by this
+	' END. main_loop tests the flag and leaves under its own power.
+	gover=1
 END
 
 	' ============================================================

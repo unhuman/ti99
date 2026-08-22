@@ -212,6 +212,22 @@ game-over is decided when the explosion ends. Respawn re-centers the ship.
 wipe the sprites, so the last asteroid field stays on screen behind the text. The sprites are
 cleared (and a fresh title field rebuilt) only when control returns to the `title` routine.
 
+> ⚠️ **`game_over` raises a flag; it does not jump to the title.** It is reached by GOSUB, two deep
+> (`main_loop → ship_tick → game_over`), so the `GOTO title` it used to end with abandoned two
+> return addresses on every game over — nothing pops them but the `END` it never reached. It now
+> sets `gover=1` and returns normally; `main_loop` runs `WHILE gover=0` and does the `GOTO title`
+> itself, from the top level where there is nothing on the stack to lose. `gover` is cleared at
+> `main_loop:` rather than at game over, because the title screen falls straight into that label,
+> making it the one point every new game passes through.
+>
+> **The margin was smaller than it looks.** Four bytes leak per game over (two addresses, two bytes
+> each on both CPUs), and the Coleco build reports **758 RAM bytes used of 814** — 56 bytes between
+> the variables and the stack, less whatever the deepest live call chain and the vblank ISR are
+> holding at the time. That is on the order of ten games in one sitting before the stack starts
+> writing into variables, which is well inside a single session; the TI, with 773 of 7854 bytes
+> used, would never have shown it. Same defect that corrupted Bust-A-Bobble, and invisible in play
+> right up until it isn't. `tools/gosubtrace.py` finds the shape mechanically; see `CLAUDE.md` §3A.
+
 ---
 
 ## 7. Waves
@@ -352,6 +368,7 @@ breaks signed logic. These bit this game repeatedly and the fixes are load-beari
 - **Sprite edges:** the VDP gives no clean per-pixel horizontal wrap and a vertical dead zone, so
   the ship is kept fully on-screen and *popped* across edges rather than relying on hardware wrap.
 - **Bitmap mode char color = 8 bytes/char** (one per row), or unset rows render garbage colors.
+- **A `GOSUB` must not be left by `GOTO`** — see §6: `game_over` did, and leaked the stack.
 
 ---
 

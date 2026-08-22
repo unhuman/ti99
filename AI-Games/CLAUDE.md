@@ -233,7 +233,12 @@ cost a debugging session:
   corruption that survives into the title screen because nothing reinitialises those variables
   without a reboot. **Set a state variable, RETURN, and dispatch from the main loop.** The tell is
   the combination — *gets worse over time*, *one target only*, *ends in a hang* — and the
-  asymmetry is just the RAM budgets.
+  asymmetry is just the RAM budgets. **`tools/gosubtrace.py` checks this mechanically**: it walks
+  the control flow out of every `GOSUB` target — both `label: PROCEDURE … END` and
+  `label: … RETURN` — and reports any that cannot reach a return. A `GOTO` into *another* routine
+  that returns is a tail call and is correctly not flagged. Run it over `games/*/src/*.bas` after
+  any change to a game's control flow; it swept the whole repo and found one more instance
+  (Astiroids' `game_over`, since fixed).
 - **TI cart limit: 24,336 bytes** in the fixed area — `linkticart` silently truncates past it.
   Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
   - **`BANK ROM` accepts only 128, 256, 512 or 1024.** `BANK ROM 32` is rejected outright

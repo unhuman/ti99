@@ -62,6 +62,12 @@ ROM** (not an XB256/compiler game). Full spec in [`DESIGN.md`](DESIGN.md).
 Playable — first complete version. Title screen, waves, UFO (large/small) with explosions,
 scoring, extra lives, persistent session high score.
 
+**Fixed since:** `game_over` was entered by GOSUB and left by `GOTO title`, so it leaked four bytes
+of stack per game over and never unwound. The TI would never have noticed; ColecoVision has 56 free
+bytes between its variables and its stack, which is about ten games in one sitting. Same defect that
+corrupted Bust-A-Bobble. It now returns normally and the main loop leaves under its own power
+(`DESIGN.md` §6). Found by `tools/gosubtrace.py`, which checks every game in the repo for the shape.
+
 ## Build
 
 One `.bas` source, two targets — sprite magnification is set with the portable `VDP(1)=$E3`, so
