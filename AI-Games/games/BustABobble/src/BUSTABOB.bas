@@ -685,8 +685,17 @@ anim_tick:
 	' CVBasic accepts as an undefined variable holding zero. Either way the song
 	' replays its first note for ever. genmusic.py verifies both literals.
 mus_vic:
-	mustk = MUSTICK			' the galop is written at 150 BPM
-	musba = 12			' 6 + 6: no alternation, a flat 150
+	' THE GALOP RUNS FASTER THAN THE GAME, at about 180 BPM against the theme's 164.
+	' It was a flat 150, which left the victory screen playing SLOWER than the round
+	' the player just finished -- the wrong way round for a finale, and a galop is a
+	' fast dance to begin with.
+	'
+	' 5 + 5 is a whole-frame tempo and needs no alternation, but it is written as a
+	' pair for the same reason the theme is: musba is the sum, so the speed is
+	' changed by editing two numbers here and nothing else. The reachable settings
+	' either side are 5+6 = 164, 5+4 = 200 and 4+4 = 225.
+	mustk = 5
+	musba = 10			' 5 + 5: a flat 180
 	' LOUDER THAN THE ROUND LOOP, and the bass much louder. In play both voices sit
 	' deliberately under the sound effects, because the pop is the sound that
 	' carries information. Nothing competes on the victory screen -- there are no

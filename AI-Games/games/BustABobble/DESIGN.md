@@ -961,9 +961,14 @@ special case, and any half-frame tempo is now reachable.
 In play the voices sit **under** the effects (7 and 5) because the pop is the sound that carries
 information.
 
-**The victory screen gets its own tune**: an original eight-bar **circus galop**, 12.8 s, mixed as
-music rather than background (13 and 11) because nothing competes with it there, with a bass that
-walks into its two cadences. `mus_vic` and `mus_start` differ only in table, length, tempo and mix.
+**The victory screen gets its own tune**: an original eight-bar **circus galop**, mixed as music
+rather than background (13 and 11) because nothing competes with it there, with a bass that walks
+into its two cadences. `mus_vic` and `mus_start` differ only in table, length, tempo and mix.
+
+It runs at **180 BPM against the theme's 164** — a galop is a fast dance, and at its original flat
+150 the victory screen played *slower* than the round the player had just finished, which is the
+wrong way round for a finale. 5+5 needs no alternation, but it is written as a pair like the theme's
+so the speed is two numbers in one place; either side of it lie 164 (5+6), 200 (5+4) and 225 (4+4).
 
 > ⚠️ `victory_wait` does not go through `game_loop` or `anim_tick`, so **it has to tick the player
 > itself**. Without that, `mus_vic` set everything up and no step was ever taken — silence, not a
