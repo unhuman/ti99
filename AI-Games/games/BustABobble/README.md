@@ -22,7 +22,7 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,926 B of 24,336 — 410 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,954 B of 24,336 — 382 free**, because the **level data now lives in ROM bank 1**
 (3,886 of 8,192 used: the level data plus every art table). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
@@ -82,8 +82,9 @@ for this game's timer-based drop being otherwise invisible.
 **In-game music** is Taito's theme, read from `assets/BobbleMusic.mid` rather than transcribed —
 19 bars, with the repeat, the two-voice lead and any duplicate bars all *detected* rather than
 assumed (`DESIGN.md` §11). Melody on channel 2, bass on channel 1, both under the effects so the pop
-still carries. It runs at about 150 BPM, faster than the score's own ♩=102, because the board is busy
-and the clock never stops. **Press 1 on the title to toggle music** (remembered across games).
+still carries. It runs at about 164 BPM, faster than the score's own ♩=102, because the board is busy
+and the clock never stops — and 164 is only reachable because the tick alternates between 6 and 5
+frames, whole-frame tempi being 150 or 180 with nothing between. **Press 1 on the title to toggle music** (remembered across games).
 
 **Beating round 30 gets its own tune**: an original eight-bar circus galop, mixed as music rather
 than background since nothing competes with it there.

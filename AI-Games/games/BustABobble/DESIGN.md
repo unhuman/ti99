@@ -948,11 +948,18 @@ tune. 19 bars, looping, and three things are *measured* rather than assumed:
 > correct tempo is exactly what "too slow" sounds like — which is why speeding it up never fixed it.
 
 **Tempo and mix are per-tune**, which is why both are variables rather than `CONST`s. The theme runs
-at `mustk` 6 — about **150 BPM**, deliberately faster than the MIDI's own 104 and the engraving's
-♩=102, because the board is busy and the drop clock never stops. The tick is a whole number of
-frames, so the available tempi are 150, 129, 112, 100; a value between them would need alternating
-tick lengths. In play the voices sit **under** the effects (7 and 5) because the pop is the sound
-that carries information.
+at about **164 BPM**, deliberately faster than the MIDI's own 104 and the engraving's ♩=102, because
+the board is busy and the drop clock never stops.
+
+**164 is not a whole-frame tempo, and that is the point.** A sixteenth has to last a whole number of
+frames, which allows only 150, 129, 112 and 100 — 150 still sat behind the game and 180 overshot. So
+**the tick alternates**: `mut` takes `mustk`, and `mustk` then flips to its partner, giving 6,5,6,5…
+and an average of 5.5 frames. `musba` is the pair's sum, so 11 alternates 6,5 while **12 gives 6,6 —
+a constant tick from the same two lines**, which is what the victory galop uses. Two statements, no
+special case, and any half-frame tempo is now reachable.
+
+In play the voices sit **under** the effects (7 and 5) because the pop is the sound that carries
+information.
 
 **The victory screen gets its own tune**: an original eight-bar **circus galop**, 12.8 s, mixed as
 music rather than background (13 and 11) because nothing competes with it there, with a bass that

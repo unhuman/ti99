@@ -686,6 +686,7 @@ anim_tick:
 	' replays its first note for ever. genmusic.py verifies both literals.
 mus_vic:
 	mustk = MUSTICK			' the galop is written at 150 BPM
+	musba = 12			' 6 + 6: no alternation, a flat 150
 	' LOUDER THAN THE ROUND LOOP, and the bass much louder. In play both voices sit
 	' deliberately under the sound effects, because the pop is the sound that
 	' carries information. Nothing competes on the victory screen -- there are no
@@ -708,11 +709,11 @@ mus_start:
 	' game back: the board is busy, the drop clock never stops, and a bubble shooter
 	' wants music that pushes.
 	'
-	' 6 IS AS FAST AS THIS PLAYER GOES without new code. The tick is a whole number
-	' of frames, so the steps are 150 (6), 129 (7), 112 (8), 100 (9) -- there is no
-	' 135. A finer tempo would mean alternating tick lengths (7,7,6 averages 6.67),
-	' which is worth doing only if 150 turns out to overshoot.
+	' 164 BPM, WHICH IS NOT A WHOLE-FRAME TEMPO. 150 (mustk 6) still sat behind the
+	' game and 180 (mustk 5) overshot, so the tick alternates 6,5 and averages 5.5
+	' frames a sixteenth -- see mus_adv. musba is the pair's sum.
 	mustk = 6
+	musba = 11			' 6 + 5
 	musv = MUSVOL			' under the effects, where the round loop belongs
 	musbv = MUSBAS
 	#muss = VARPTR mus_song(0)
@@ -751,7 +752,16 @@ mus_tick:
 mus_adv:
 	IF mut > musd THEN mut = mut - musd : RETURN
 	musd = musd - mut
+	' THE TICK ALTERNATES, which is how the tempo lands between the whole-frame
+	' settings. mut takes mustk and mustk then flips to its partner, so a pair of
+	' (6,5) plays one sixteenth in 6 frames and the next in 5 -- 5.5 on average, or
+	' about 164 BPM. musba is the pair's sum: 11 gives 6,5,6,5 and 12 gives 6,6,
+	' which is a constant tick using the same two lines and no special case.
+	'
+	' Without this the choices are 150, 129, 112, 100 BPM and nothing between them,
+	' because a sixteenth has to be a whole number of frames.
 	mut = mustk
+	mustk = musba - mustk
 	GOSUB mus_step
 	GOTO mus_adv
 
