@@ -1415,10 +1415,15 @@ case to cope with the data, check the data.
   and at the end out through a door in the right wall — bubble first, then him, with the door
   shutting three characters behind him and the curtain only then falling. He walks in at 2 px a
   frame and runs out at 3, with footsteps that quicken to match.
-- **The drop gauge repaints its colour at round start.** `barw = 0` said "green" but the nine gauge
-  characters kept the colour they were last `DEFINE`d with, and `tick_bar` only re-issues that on a
-  transition — so a round that ended in the red quarter handed the next one a full bar still
-  coloured red, looking like the drop was already imminent.
+- **The drop gauge is repainted AND refilled at round start.** Two faults with one cause: the bar is
+  only touched when `tick_bar` sees something change, and nothing calls `tick_bar` between the
+  curtain, the reveal and BUB walking in. So the colour was stale — `barw = 0` said "green" but the
+  nine gauge characters kept whatever colour they were last `DEFINE`d with, and a round that ended
+  in the red quarter handed the next one a red bar — and the *width* was stale too, showing the time
+  left from the round just finished. `load_level` now issues both: `set_bar_col` for the colour, and
+  `barlast = 64` with a `draw_bar` for the width. That 64 is not a "force a redraw" marker (which is
+  what the old 255 was) but the truth — `#dropt` has just been set to `#droprl`, so a full bar *is*
+  the state, and the first `tick_bar` agrees and leaves it alone.
 
 **2026-08-18 (later) — BUB works both ends of the round, and the tune grows to 24 bars.**
 

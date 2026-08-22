@@ -1569,7 +1569,6 @@ load_level:
 	#dropt = #droprl
 	GOSUB mark_scenery		' flag the level's own detached pieces, once
 	GOSUB calc_bstep
-	barlast = 255			' force the first tick_bar to draw
 	' AND REPAINT THE GAUGE'S COLOUR, not just the flag. barw = 0 says "green" but
 	' the nine gauge CHARACTERS keep whatever colour they were last DEFINEd with,
 	' and tick_bar only re-issues that on a TRANSITION. A round that ended in the
@@ -1578,6 +1577,16 @@ load_level:
 	' like the drop was imminent from the moment the round opened.
 	barw = 0
 	GOSUB set_bar_col
+	' ...AND FILL IT. The colour was only half the problem: the WIDTH was still the
+	' previous round's, because the bar is redrawn only when tick_bar sees the pixel
+	' count change and nothing calls tick_bar between the curtain, the reveal and
+	' BUB walking in. The new round opened showing the time left from the old one.
+	'
+	' barlast = 64 is not a "force a redraw" marker (which is what 255 was doing
+	' here) but the truth: #dropt has just been set to #droprl, so a full 64 pixels
+	' IS the state, and the first tick_bar agrees with it and leaves it alone.
+	barlast = 64
+	GOSUB draw_bar
 	#seqb = lvl - 1
 	#seqb = #seqb * 16
 	si = 0

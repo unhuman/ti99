@@ -22,7 +22,7 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,920 B of 24,336 — 416 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,926 B of 24,336 — 410 free**, because the **level data now lives in ROM bank 1**
 (3,886 of 8,192 used: the level data plus every art table). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
@@ -74,7 +74,7 @@ bubbles are drawn from a variant character set carrying the dash through their m
 black spacer either side, so the line stays one continuous dashed rule across the whole well
 (`DESIGN.md` §11).
 
-The HUD now carries a **drop-timer gauge** (8 chars, 64 steps, red for the last quarter) and
+The HUD now carries a **drop-timer gauge** (8 chars, 64 steps, red for the last quarter, repainted green and refilled at the start of every round) and
 **spare lives as little green creatures** — see `DESIGN.md` §11. The arcade has neither: it drops
 the ceiling on a *shot count* and shows no gauge at all, so both are deliberate additions that pay
 for this game's timer-based drop being otherwise invisible.
