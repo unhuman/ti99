@@ -364,22 +364,30 @@ down *shape* completely and *colour* only where it mattered to the strategy it w
   while banded pairs mean most shots have a target. Letters keep their identity, so cells the
   source marked as the same colour stay the same colour.
 
-### ✱ OPEN: the colour assignment builds too many pre-made groups
+### The colour assignment bands, which is why boards look striped
 
 Measured across the 30 rounds: **85 pre-existing connected groups of 3+**, and round 1 starts with
-**90% of its bubbles already sitting in one**. Round 8 is 80%; round 9 contains a group of ten.
+90% of its bubbles in one. That figure was written up as a defect and it is not one — the record is
+corrected here because it was cited as an open problem for weeks.
 
-A pre-made group looks poppable and is not — match detection only runs when a bubble *sticks*, so a
-group that was already there just sits. That is correct Puzzle Bobble behaviour and the arcade does
-it too (round 1's own `aabbccdd` over `aabbccd` stacks each colour into a 4-group). But at this
-density it reads as the game being broken, and it cost a play-test session chasing a match bug that
-did not exist.
+**The arcade does this too.** Round 1's colours are *arcade-specified* (`aabbccdd` over `aabbccd`
+in `arcade-stages.txt`), and that stacks each colour into a 4-group by design; its seven clusters are
+the source's, not ours. And a pre-made group is not a bug in either game: match detection runs only
+when a bubble **sticks**, so a group already sitting there is a target you complete, not a failure to
+pop. Thirty rounds have been played through to a win without it once being remarked on. The only
+cost ever recorded is that it misled a play-test into chasing a match bug that did not exist — an
+analysis failure, not a gameplay one.
 
-The cause is the banding rule above. Same-colour **pairs are exactly what you want** — a pair gives
-a shot somewhere useful to land, and completing it pops. **Triples are the problem.** Horizontal
-pairs shifting one row per step do not just make pairs; they stack into 3s and 4s.
+What is genuinely ours is the *pattern*. The source pins a colour on only **163 of 850 bubbles
+(19%)**; the other 81% are assigned by the banding rule above, which shifts pairs one row per step
+and therefore stacks them into 3s and 4s mechanically. **71 of the 85 clusters contain no
+arcade-specified bubble at all.** Rounds 8, 16 and 26 — 80% clustered apiece — have no source colour
+data whatsoever, while round 30, whose colours came from play and are 100% authentic, has none.
 
-**Fix, not yet applied:** colour the `O` cells one at a time and reject any colour that would join
+So this is an aesthetic gap, not a defect: our unspecified boards read as diagonal stripes where the
+arcade's read as designed. Worth closing one day, not worth calling a bug.
+
+**Optional improvement:** **Fix, not yet applied:** colour the `O` cells one at a time and reject any colour that would join
 **two or more** already-placed same-coloured neighbours. That keeps pairs everywhere and stops
 groups forming. Leave cells the source marked `a`–`d` alone — those pre-made groups are the
 arcade's own. Pure change to `transcribe_stages.py`; no game code moves.
@@ -1358,7 +1366,7 @@ is the reusable part.
 | # | Problem | Detail |
 |---|---|---|
 | 1 | ✅ **RESOLVED 2026-08-17 — four rounds shipped layouts detached from the ceiling** (9: 33% loose, **10: 90%**, 15: 44%, 20: 38%). The FAQ's ASCII diagrams do not carry hex adjacency at the row ends, so the transcription was faithful and still malformed. It broke three ways in turn — round 10 collapsing on the first pop, then bubbles shot onto the loose pieces never falling, then **round 20 becoming unwinnable** (22 of 29 bubbles unclearable even with the clock off). Fixed in the DATA: `transcribe_stages.py`'s `anchor()` pass adds the fewest cells that re-attach every piece — **14 cells across the four stages** (+2/+4/+3/+5), colours chosen so the repair does not hand out free pops. `--anchors` now reports zero, and with nothing detached the scenery set is empty and the drop rule degenerates to the stock Puzzle Bobble rule. | §7a, §11 |
-| 2 | **Too many pre-made groups** — 85 pre-existing 3+ clusters across the 30 rounds; round 1 starts with 90% of its bubbles in one. They look poppable and are not, because matches are only tested when a bubble lands. Fix identified, not applied. | §7 |
+| 2 | **Colour banding, not a defect** — 85 pre-existing 3+ clusters, but the arcade does the same (round 1's clusters are the source's own) and no player has ever remarked on them. 81% of our colours are assigned rather than transcribed, and the banding rule stacks them mechanically, so those boards look striped. Aesthetic, optional. | §7 |
 | 3 | **Difficulty does not ramp.** Measured by playing every round out: at a realistic 1 s per shot, 29 of 30 finish having taken at most one ceiling drop. Push to *eight* seconds a shot and 29 of 30 still win. **Round 30 is the only round the drop clock ever constrains.** The timer is not a difficulty dial today, it is a formality. | §11b |
 
 **No orphan rule could fix all three symptoms, because they were all the same bad data.** Each row
@@ -1662,8 +1670,9 @@ Two things were *proved* rather than assumed along the way, and both are worth k
 - **`assets/prevcolours.py`** renders all eight bubbles side by side with pixel counts, because the
   confusable pair is precisely the one a level render rarely shows together.
 
-**Open, newly measured:** §7's pre-made-group problem — 85 pre-existing 3+ groups across the 30
-rounds, round 1 at 90%. Fix identified, not applied.
+**Open, newly measured:** §7's pre-made groups — 85 across the 30 rounds, round 1 at 90%. (Later
+corrected: this is the banding rule making boards look striped, not a defect. The arcade has
+pre-made groups too. See §7.)
 
 **2026-08-15 (build 7) — animation, art, title screen.** Committed as `3e8a073`, `4149ec7`.
 

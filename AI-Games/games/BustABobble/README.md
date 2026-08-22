@@ -104,9 +104,12 @@ One open item, and one closed by measurement:
   round 26 was more forgiving than round 9 — and the ramp's only real effect was to make round 30
   the one round a person could not finish. The clock is now the arcade's flat 20 s, and round 30 has
   been beaten on hardware.
-- **Too many pre-made groups** (`DESIGN.md` §7). 85 pre-existing 3+ clusters across the 30 rounds,
-  round 1 at 90% of its bubbles. They look poppable and aren't, because matches are only checked
-  when a bubble lands. Fix identified.
+- **Boards look striped, which is cosmetic** (`DESIGN.md` §7). The shapes are transcribed
+  cell-for-cell, but the source pins a colour on only 19% of bubbles; the rest are assigned by a
+  banding rule that stacks them into 3s and 4s. It was written up as a defect ("85 pre-made
+  clusters") and is not one: the arcade does the same — round 1's clusters are the source's own —
+  a resting group is a target rather than a bug, and thirty rounds have been played to a win without
+  it being remarked on.
 
 The **launcher sits on char rows 22–23** (`LAUNCHY = 184`), one row lower than it first shipped.
 Moving it changes every trajectory in the game — the ray starts 8 px lower, so aim steps reach
