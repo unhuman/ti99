@@ -2346,9 +2346,15 @@ outro_walk:
 	bubw = bubx AND 4
 	IF bubw = 0 THEN bubp = 40
 	SPRITE 1,BUBY,bubx,bubp,3
-	' The bubble is 16 px ahead of him and goes through first: once it reaches the
-	' wall column (x 144) it is out, and only he is left walking.
-	IF bubx < 128 THEN
+	' THE BUBBLE GOES ALL THE WAY OUT WITH HIM, 16 px ahead the whole trip -- it is
+	' the thing he is delivering, so having it wink out at the doorway while he
+	' walked on read as it being deleted rather than carried through.
+	'
+	' It is hidden only when the next step would put it past the right edge: sprite
+	' x is a single byte, so bubx + 16 above 255 wraps and the bubble reappears at
+	' the LEFT edge, in the middle of the curtain, looking like a stray shot. He
+	' walks to 248, so the cut-off is his 239.
+	IF bubx < 240 THEN
 		bubv = bubx + 16
 		SPRITE 2,BUBY,bubv,bubf,bubc
 	ELSE
