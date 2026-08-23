@@ -2181,24 +2181,67 @@ draw_frame:
 	' walls, and garbled digits. 6144 is added as its OWN step, never folded into
 	' a constant expression (a folded constant truncates -- CLAUDE.md 3A).
 	' SCREEN is different: its target offset IS name-table-relative.
+	' Print a score: the eight stored BCD digits plus the literal trailing zero every
+	' score in this game ends with, with LEADING ZEROS BLANKED. A fresh game reads
+	' "00" rather than "000000000".
+	'
+	' Caller sets:
+	'   znb  name-table offset of the leftmost cell (all 9 are written every time,
+	'        so a shrinking number cannot leave a stale digit behind)
+	'   zns  0 = score, 1 = high score. CVBasic cannot pass an array, and copying
+	'        one into a scratch buffer would spend 8 bytes of a ColecoVision RAM
+	'        budget with ~150 free -- and the stack grows down into that. A
+	'        selector costs one byte.
+	'   znr  0 = flush left, 1 = flush right
+	'
+	' ALIGNMENT IS PER CALL SITE, because dropping leading zeros has to move one end
+	' of the number and each site has an edge it must keep. The HUD panel is
+	' left-justified on column 22 -- every label's left edge lines up with the score
+	' -- so both of its numbers grow rightward from there. The title and victory
+	' rows instead put SCORE flush left and HI flush right so the two bracket the
+	' row evenly, so HI keeps its RIGHT edge and blanks the cells in front of it.
+prt_num:
+	znl = 0
+	znz = 1
+	FOR zni = 0 TO 6		' never the last digit: a zero score must read "00"
+		IF znz = 1 THEN
+			IF zns = 0 THEN znv = sc(zni) ELSE znv = hs(zni)
+			IF znv = 0 THEN
+				znl = znl + 1
+			ELSE
+				znz = 0
+			END IF
+		END IF
+	NEXT zni
+	FOR zni = 0 TO 8
+		' Flush left slides the digits down by the count dropped, so the source
+		' index runs AHEAD of the cell and walks off the end (znx > 8) into the
+		' blanks. Flush right leaves them put and blanks the cells in front.
+		znx = zni
+		IF znr = 0 THEN znx = zni + znl
+		znv = BLANK
+		IF znx = 8 THEN znv = 48
+		IF znx < 8 THEN
+			IF znx >= znl THEN
+				IF zns = 0 THEN znv = sc(znx) ELSE znv = hs(znx)
+				znv = 48 + znv
+			END IF
+		END IF
+		#zna = znb + zni
+		#zna = #zna + 6144
+		VPOKE #zna,znv
+	NEXT zni
+	RETURN
+
 prt_hud:
-	FOR psi = 0 TO 7
-		#psa = SCPOS + psi
-		#psa = #psa + 6144
-		psv = 48 + sc(psi)
-		VPOKE #psa,psv
-		#psa = HIPOS + psi
-		#psa = #psa + 6144
-		psv = 48 + hs(psi)
-		VPOKE #psa,psv
-	NEXT psi
-	#psa = SCPOS + 8
-	#psa = #psa + 6144
-	psv = 48
-	VPOKE #psa,psv
-	#psa = HIPOS + 8
-	#psa = #psa + 6144
-	VPOKE #psa,psv
+	znb = SCPOS
+	zns = 0
+	znr = 0
+	GOSUB prt_num
+	znb = HIPOS
+	zns = 1
+	znr = 0
+	GOSUB prt_num
 	psh = lvl / 10
 	#psa = RNDPOS
 	#psa = #psa + 6144
@@ -2753,30 +2796,20 @@ title_go:
 
 	' The two 9-digit numbers on the title's top row. Same trailing-zero
 	' convention as the HUD: 8 stored BCD digits shown with a literal 0.
+	' SCORE is flush LEFT on these rows and HI flush RIGHT, so they bracket the row
+	' evenly -- which is why the two differ only in znr.
 title_num_sc:
-	FOR tni = 0 TO 7
-		#tna = tsp + tni
-		#tna = #tna + 6144
-		tnv = 48 + sc(tni)
-		VPOKE #tna,tnv
-	NEXT tni
-	#tna = tsp + 8
-	#tna = #tna + 6144
-	tnv = 48
-	VPOKE #tna,tnv
+	znb = tsp
+	zns = 0
+	znr = 0
+	GOSUB prt_num
 	RETURN
 
 title_num_hi:
-	FOR tni = 0 TO 7
-		#tna = tsp + tni
-		#tna = #tna + 6144
-		tnv = 48 + hs(tni)
-		VPOKE #tna,tnv
-	NEXT tni
-	#tna = tsp + 8
-	#tna = #tna + 6144
-	tnv = 48
-	VPOKE #tna,tnv
+	znb = tsp
+	zns = 1
+	znr = 1
+	GOSUB prt_num
 	RETURN
 
 	'
