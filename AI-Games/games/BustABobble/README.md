@@ -22,7 +22,7 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,848 B of 24,336 — 488 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,836 B of 24,336 — 500 free**, because the **level data now lives in ROM bank 1**
 (3,886 of 8,192 used: the level data plus every art table). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
@@ -95,7 +95,7 @@ ceiling already descended, so clearing early pays better.
 
 Not yet built: the danger state. BUB has since been built (above), and there is room — banking the
 levels took the fixed area from 68 bytes free to 1,912; BUB, the victory screen, the pop's bloop and
-Taito's theme have spent most of it, leaving **488**.
+Taito's theme have spent most of it, leaving **500**.
 
 One open item, and one closed by measurement:
 - ✅ **The difficulty ramp is gone — resolved 2026-08-17.** It had run 20 s at round 1 down to 12 s

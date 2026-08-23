@@ -187,12 +187,23 @@ cost a debugging session:
   and punched a black 2×2 hole through row 6 of the playfield on every redraw. Recording the rule is
   not enough — **grep any new routine for bare assignments over 255 before building.** The symptom is
   never an error; it is drawing or writing at a plausible-looking wrong place, 256 or 512 cells off.
-- **`CONST` > 255 silently becomes ZERO — bare literals are fine.** This is the sharpest edge of
-  the truncation item above and deserves its own line: `CONST FXMIN = 4096` compiled to `ci r0,0`
-  and `#bx = FXLX` (20480) compiled to a bare `clr`. A ball launched from 0,0 and no wall ever
-  bounced. The same values written inline (`IF #bx < 4096`, `#bx = 20480`) compile correctly, as
-  does `SOUND 0,300` → `li r0,300`. **The distinction is CONST vs literal, not the magnitude.**
+- **`CONST` > 255 is silently TRUNCATED TO 8 BITS — bare literals are fine.** This is the sharpest
+  edge of the truncation item above and deserves its own line: `CONST FXMIN = 4096` compiled to
+  `ci r0,0` and `#bx = FXLX` (20480) compiled to a bare `clr`. A ball launched from 0,0 and no wall
+  ever bounced. The same values written inline (`IF #bx < 4096`, `#bx = 20480`) compile correctly,
+  as does `SOUND 0,300` → `li r0,300`. **The distinction is CONST vs literal, not the magnitude.**
   Never put a value above 255 in a `CONST`.
+  - **It truncates, it does not zero** — `clr` is only the case where the low byte happens to be 0.
+    `CONST RNDPOS = 311` compiled to `li r0,55`, and 55 is a perfectly plausible name-table offset,
+    so the write landed *somewhere real*: row 1 columns 23-24, on top of the score, instead of row 9
+    under its label. A wrong-but-plausible address is far harder to spot than an obvious zero.
+  - **A CONST can be safe for months and then break without being edited.** That 311 was `247` for
+    as long as `ROUND` sat on row 7 of the HUD. Moving the label down two rows pushed the *derived*
+    offset over 255 — so the change that broke it was a layout tweak, and the value it broke was one
+    nobody was looking at. **Any `row*32+col` constant is one row-move away from this.** Screen
+    offsets belong in bare literals from the start.
+  - **`tools/bigconst.py` sweeps every game for it** and exits non-zero if it finds one. Run it after
+    any layout change.
 - **Every sound effect needs an explicit note-off.** `SOUND ch,f,v` latches; with no `SOUND ch,f,0`
   the last tone sustains forever ("sticky" audio). Two `SOUND` calls on the *same* channel back to
   back just cancel the first — a two-note effect needs two channels. Keep a per-channel decay

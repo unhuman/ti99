@@ -109,13 +109,9 @@
 	' Offsets are row*32 + col.
 	CONST SCPOS    = 54	' score,  9 digits, row 1  cols 22-30
 	CONST HIPOS    = 150	' hi,     9 digits, row 4  cols 22-30
-	' THE ROUND NUMBER IS CENTRED UNDER ITS OWN LABEL. "ROUND" spans columns 22-26,
-	' so column 24 is its middle and a single digit sits exactly on it; the tens
-	' digit goes in 23, half a character left of centre, which is as close as a
-	' character grid gets. Keeping the UNITS digit fixed in 24 also means the number
-	' does not jump sideways at round 10 -- it grows a digit to the left, the same
-	' way the scores do.
-	CONST RNDPOS   = 311	' round,  2 digits, row 9  cols 23-24
+	' The round number is at row 9, columns 23-24 -- see prt_hud, where the offset is
+	' a BARE LITERAL and not a CONST, because 9*32+23 is 311 and a CONST over 255
+	' truncates to 8 bits on this backend.
 	' BUB and his pipe. All SPRITE coordinates (y reads one low on this VDP).
 	'
 	' He stands ON THE LAUNCHER'S OWN ROW, and so does the pipe -- three 16 px slots
@@ -2240,15 +2236,28 @@ prt_hud:
 	znb = HIPOS
 	zns = 1
 	GOSUB prt_num
-	' Blank the tens rather than print a zero: rounds 1-9 read "1".."9", not "01".
+	' THE ROUND NUMBER IS CENTRED UNDER ITS OWN LABEL. "ROUND" spans columns 22-26,
+	' so column 24 is its middle and a single digit sits exactly on it; the tens
+	' digit goes in 23, half a character left of centre, which is as close as a
+	' character grid gets. Keeping the UNITS digit fixed in 24 also means the number
+	' does not jump sideways at round 10 -- it grows a digit to the left, the same
+	' way the scores do. The tens are BLANKED rather than printed as a zero, so
+	' rounds 1-9 read "1".."9".
+	'
+	' !! 311 IS A BARE LITERAL ON PURPOSE. Held in a CONST it compiled to `li r0,55`
+	' -- truncated to 8 bits -- and the two digits landed at offset 55, which is row
+	' 1 columns 23-24: on top of the SCORE. Nothing errored; the round simply was not
+	' under its label, and two stray digits sat in the score line. The same constant
+	' was SAFE at 247 for as long as ROUND lived on row 7, and moving it down two
+	' rows pushed it over 255. `#pla = 598` in prt_lives is a bare literal for
+	' exactly this reason.
 	psh = lvl / 10
-	#psa = RNDPOS
+	#psa = 311			' 9*32 + 23
 	#psa = #psa + 6144
 	psv = BLANK
 	IF psh > 0 THEN psv = 48 + psh
 	VPOKE #psa,psv
-	#psa = RNDPOS + 1
-	#psa = #psa + 6144
+	#psa = #psa + 1
 	psv = lvl - psh * 10
 	psv = 48 + psv
 	VPOKE #psa,psv

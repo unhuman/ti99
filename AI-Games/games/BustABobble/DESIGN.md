@@ -149,6 +149,14 @@ rows 21-23: launcher deck — dragon sprite, loaded bubble, aim guide dots
 > half a character left of centre, which is the closest a character grid gets. Keeping the *units*
 > digit fixed in column 24 also means the number does not jump sideways at round 10 — it grows a
 > digit leftward, the same way the scores do (§11a).
+>
+> ⚠️ **That offset is a bare literal, not a `CONST`.** Row 9 column 23 is 311, and a `CONST` over 255
+> truncates to 8 bits on this backend — it compiled to `li r0,55`, so the digits were written at
+> offset 55, which is **row 1 columns 23-24, on top of the score**. Nothing errored; the round was
+> simply absent from under its label while two stray digits sat in the score line. The constant had
+> been *safe* at 247 for as long as ROUND lived on row 7 — moving the label down two rows is what
+> pushed it over. Any `row*32+col` value is one row-move away from this; `#pla = 598` in `prt_lives`
+> is a bare literal for the same reason, and `tools/bigconst.py` now sweeps every game for it.
 
 > **Revised 2026-08-17: the launcher sits one character row lower.** `LAUNCHY` went from 176 to
 > **184**, so the loaded bubble now occupies char rows 22–23 instead of 21–22. This is a **geometry**
