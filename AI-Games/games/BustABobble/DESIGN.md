@@ -1160,7 +1160,8 @@ DIM hs(8)     ' high score, same
 
 **Leading zeros are blanked** (`prt_num`). A nine-digit `000000000` staring out of a HUD reads as a
 counter that is broken rather than as a score that is zero, and it was reported as such. A zero
-score shows **`00`** — one stored digit plus the literal trailing zero — and grows from there.
+score shows **`00`** — one stored digit plus the literal trailing zero — and grows leftward from
+there.
 
 The routine is shared by all four places a score is drawn (HUD score, HUD high score, and the
 title/victory row's SCORE and HI), which made the change *cheaper than what it replaced*: four
@@ -1170,19 +1171,17 @@ ColecoVision. The VDP write count per call is unchanged at 18, and `prt_hud` is 
 the frame loop — only at round load, when a shot resolves, and once per row of the descending-wall
 sweep — so there is no per-frame cost at all.
 
-⚠ **Alignment is per call site**, because dropping leading zeros has to move one end of the number
-and each site has an edge it must keep:
+**Every score is right-justified.** The units digit never moves; the number grows leftward into the
+blanks. Blanking leading zeros has to move one end of the number, and moving the end you *read* is
+worse than moving the end you do not — a score whose last digit walks right as it grows cannot be
+glanced at. It is also the arcade convention, and it is the cheap case: the digits stay exactly
+where they always sat and the cells in front are simply blanked, so there is no shifting to do.
 
-| Where | Edge kept | `znr` |
-|---|---|---|
-| HUD score + high score | left, column 22 with every label | 0 |
-| Title / victory `SCORE` | left, column 6 | 0 |
-| Title / victory `HI` | **right**, column 31 | 1 |
-
-The title row deliberately brackets itself — SCORE flush left, HI flush right — so blanking HI's
-leading zeros on the left is the only choice that preserves it. Blanking in place *is* the
-flush-right case; flush left slides the digits down by the count dropped and lets the source index
-walk off the end into the blanks.
+The cost is on the **title and victory rows**, where `SCORE` used to sit flush left against its
+label and its digits now hang at the right of the field with a gap between. That row was laid out
+to bracket itself — SCORE flush left, HI flush right — and right-justifying both trades that for
+agreeing with the HUD. If the gap grates, the fix is to move the title's `SCORE` field left rather
+than to give one screen its own alignment.
 
 - `add_drop` adds a **6-digit BCD constant** read from a 17-entry ROM table (2, 4, 8 … 131072 —
   17 × 6 = **102 bytes**) into `sc()`, right to left with carry. No division, no 32-bit

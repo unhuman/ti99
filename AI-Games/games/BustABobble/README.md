@@ -229,8 +229,10 @@ award can exceed a 16-bit integer before the score is even touched, and the arca
 30,331,990. Every award is a multiple of 10, so the score is stored in units of 10 and displayed
 with a fixed trailing `0`: 8 stored digits become 9 shown, and a carry off the top clamps at
 999,999,990 instead of rolling to zero. **Leading zeros are blanked** — a new game reads `00`, not
-`000000000`, which a player reported as looking broken rather than empty. Sharing one print routine
-across the HUD and the title/victory rows made that change *save* 86 bytes of ROM.
+`000000000`, which a player reported as looking broken rather than empty. Scores are
+**right-justified**, so the last digit holds still and the number grows leftward. Sharing one print
+routine across the HUD and the title/victory rows made the whole change *save* ROM rather than
+spend it.
 
 ## Build
 

@@ -2192,14 +2192,18 @@ draw_frame:
 	'        one into a scratch buffer would spend 8 bytes of a ColecoVision RAM
 	'        budget with ~150 free -- and the stack grows down into that. A
 	'        selector costs one byte.
-	'   znr  0 = flush left, 1 = flush right
 	'
-	' ALIGNMENT IS PER CALL SITE, because dropping leading zeros has to move one end
-	' of the number and each site has an edge it must keep. The HUD panel is
-	' left-justified on column 22 -- every label's left edge lines up with the score
-	' -- so both of its numbers grow rightward from there. The title and victory
-	' rows instead put SCORE flush left and HI flush right so the two bracket the
-	' row evenly, so HI keeps its RIGHT edge and blanks the cells in front of it.
+	' EVERY SCORE IS RIGHT-JUSTIFIED: the units digit never moves, and the number
+	' grows leftward into the blanks. That is the arcade convention and it is the
+	' only alignment that holds still -- blanking leading zeros has to move one end
+	' of the number, and moving the end you read is worse than moving the end you
+	' do not. It also makes this routine cheap: right-justified means the digits
+	' stay exactly where they always were and the cells in front are simply blanked,
+	' so there is no shifting to do.
+	'
+	' The cost is on the title and victory rows, where SCORE used to sit flush left
+	' against its label; a small score now hangs to the right of it with a gap
+	' between. Consistency with the HUD is worth more than that.
 prt_num:
 	znl = 0
 	znz = 1
@@ -2214,16 +2218,12 @@ prt_num:
 		END IF
 	NEXT zni
 	FOR zni = 0 TO 8
-		' Flush left slides the digits down by the count dropped, so the source
-		' index runs AHEAD of the cell and walks off the end (znx > 8) into the
-		' blanks. Flush right leaves them put and blanks the cells in front.
-		znx = zni
-		IF znr = 0 THEN znx = zni + znl
-		znv = BLANK
-		IF znx = 8 THEN znv = 48
-		IF znx < 8 THEN
-			IF znx >= znl THEN
-				IF zns = 0 THEN znv = sc(znx) ELSE znv = hs(znx)
+		znv = 48			' cell 8 is the literal trailing zero
+		IF zni < 8 THEN
+			IF zni < znl THEN
+				znv = BLANK
+			ELSE
+				IF zns = 0 THEN znv = sc(zni) ELSE znv = hs(zni)
 				znv = 48 + znv
 			END IF
 		END IF
@@ -2236,11 +2236,9 @@ prt_num:
 prt_hud:
 	znb = SCPOS
 	zns = 0
-	znr = 0
 	GOSUB prt_num
 	znb = HIPOS
 	zns = 1
-	znr = 0
 	GOSUB prt_num
 	psh = lvl / 10
 	#psa = RNDPOS
@@ -2796,19 +2794,15 @@ title_go:
 
 	' The two 9-digit numbers on the title's top row. Same trailing-zero
 	' convention as the HUD: 8 stored BCD digits shown with a literal 0.
-	' SCORE is flush LEFT on these rows and HI flush RIGHT, so they bracket the row
-	' evenly -- which is why the two differ only in znr.
 title_num_sc:
 	znb = tsp
 	zns = 0
-	znr = 0
 	GOSUB prt_num
 	RETURN
 
 title_num_hi:
 	znb = tsp
 	zns = 1
-	znr = 1
 	GOSUB prt_num
 	RETURN
 
