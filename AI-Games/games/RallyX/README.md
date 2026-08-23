@@ -39,9 +39,12 @@ radar on the right, and don't run out of fuel.
   leave in different directions, and can never share a cell — nor **overlap in pixels**, which is
   a stricter thing and was the bug the old cell-based check kept missing. Below full aggression a
   car takes a less direct line at you rather than driving away, so early rounds are gentler
-  without the cars ever looking like they have stopped chasing. Background music is on two
-  channels with an engine buzz on a third (its pitch follows the heading), and is **on by
-  default** — press `1` on the title to turn it off. The radar marks each flag in its **pennant
+  without the cars ever looking like they have stopped chasing. Background music is the New
+  Rally-X theme read straight from the MIDI, on two channels with an engine buzz on a third (its
+  pitch follows the heading), and is **on by default** — press `1` on the title to turn it off. It
+  plays at **180 BPM**, deliberately quicker than the file's own 151: the tempo is a whole number
+  of frames, so the choices are 150, 180 and 225, and 180 is the one that reads as a chase without
+  turning into a gallop. The radar marks each flag in its **pennant
   colour** (ordinary yellow, special red, lucky cyan) and **flashes the special one**, which the
   arcade does and which also stops it reading as one of the red enemy dots. See `DESIGN.md` §17.
   **Pacing:** the loop is held to a fixed **30 Hz** (two frames a pass) rather than running at

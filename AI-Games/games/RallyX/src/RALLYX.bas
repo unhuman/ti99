@@ -141,16 +141,24 @@
 	' with every flag still reachable; see assets/genrocks.py.
 	CONST MAXROCK = 16
 	CONST ROCKCH = 24	' 2x2 boulder, chars 24-27 (clear of BANG at 16-23)
-	' Generated straight from the New Rally-X MIDI: 151 BPM, and one step is
-	' a SIXTEENTH -- 60/151/4 = 0.0993 s = 6 frames. An eighth grid was tried
-	' first and lost the melody's sixteenth runs, swallowing the second note
-	' of every fast pair.
+	' Generated straight from the New Rally-X MIDI, where one step is a
+	' SIXTEENTH. An eighth grid was tried first and lost the melody's
+	' sixteenth runs, swallowing the second note of every fast pair.
+	'
+	' THE TEMPO IS A CHOICE, NOT THE TRANSCRIPTION. The MIDI is 151 BPM, which
+	' is 60/151/4 = 0.0993 s = 6 frames a step, and that is what this played at
+	' for a long time -- correct, and a little sedate against a game about
+	' being chased. 5 frames is 180 BPM. Only WHOLE frames are available, so
+	' the neighbours are 6 (150) and 4 (225) with nothing in between; the
+	' half-frame tempi need an alternating tick pair, which costs 18 bytes of a
+	' fixed area that has 49 free. 180 lands on a whole frame and is therefore
+	' free.
 	'
 	' 320 steps is past what a byte holds, so the play position is a 16-BIT
 	' variable (#mup) and the loop bound is a bare literal rather than a
 	' CONST -- a CONST over 255 truncates to 8 bits on this backend, which is
 	' how an earlier 288-step version silently wrapped to 32.
-	CONST MUSTICK = 6	' frames per step = one sixteenth at 151 BPM
+	CONST MUSTICK = 5	' frames per step = one sixteenth at 180 BPM
 	' Raised now the tune is the real one and in time. It had been pushed
 	' down to 4/3 while it was a bad transcription playing at half tempo --
 	' burying it was treating the symptom. 8/6 puts it clearly in front
@@ -2745,9 +2753,8 @@ sfx_tick:
 	RETURN
 
 	' --- music --------------------------------------------------------------
-	' Two voices on channels 0 and 1 at a FIXED, deliberately low volume so
-	' the engine and the effects stay on top. 64 steps at MUSTICK frames is
-	' about ten seconds before it comes round again.
+	' Two voices on channels 0 and 1 at a FIXED volume so the engine and the
+	' effects stay on top. 320 steps at MUSTICK 5 is 26.7 s round the loop.
 mus_start:
 	' One tune, played by every round. The MIDI has no separate challenge
 	' theme, and inventing one alongside a real transcription would only put

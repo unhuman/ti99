@@ -628,19 +628,34 @@ settings it is set once at boot and survives game over. `mus_start` simply refus
 player when it is 0. The toggle key is `1`, which is not part of the 838 sequence and so cannot
 interfere with it (verified: 8-3-8 still opens setup after toggling).
 
-**The tune is the supplied piano arrangement** (Rally-X, arr. Beaulan Turner): A major, 4/4,
-quarter = 150, with a *Default theme* (16 bars) and a *Challenge theme* (8 bars). At 150 BPM an
-eighth note is 0.2 s = **12 frames**, so one player step is one eighth and `MUSTICK` is 12. The
-song table holds both themes back to back — 128 steps then 64 — and `mus_start` picks which one
-to loop by setting an explicit first/last step, so a challenging stage gets its own music.
+**The tune is the New Rally-X BGM, read from the MIDI** (`assets/newrallyx.mid`, format 1, 960
+ticks/quarter). `assets/genmusic.py` takes track 1 as the melody and track 2 as the bass; tracks 3
+and 4 duplicate them on other channels and are ignored. 320 steps = 20 bars, looping. That count is
+past what a byte holds, so the play position is a 16-bit variable (`#mup`) and the loop bound is a
+bare literal — a `CONST` over 255 truncates to 8 bits on this backend, which is how an earlier
+288-step version silently wrapped to 32.
 
-⚠ **The note data is a READING of a rendered score image, not an import.** The rhythm and
-structure are read directly (bar lengths, where the long notes fall, the eighth-note bass
-ostinato); the individual PITCHES are the least certain part, since the noteheads are a few
-pixels tall and A major puts most of them where a one-step misread is easy. `assets/genmusic.py`
-therefore writes the tune as **plain note names, one string per bar**, precisely so it can be
-corrected by ear — fix a name, re-run, rebuild. A MIDI or MusicXML export of the arrangement
-would let it be generated exactly instead.
+**The grid is SIXTEENTHS, and it has to be.** The bass is pure eighths, but the melody has twelve
+sixteenth-note pairs — runs where two notes share an eighth. An eighth grid swallowed the second of
+each pair, which is why the fast figures "did not get there".
+
+> Two earlier versions are worth remembering, because both were wrong in ways that sounded like
+> taste rather than error. Reading the pitches off a **rendered score image** put noteheads a few
+> pixels tall into A major, where a one-step misread is easy, and it came out wrong. Writing an
+> **original 12-bar blues** put the melody's blue notes against a walking bass on the natural
+> third, and two bare square waves a semitone apart just sound sour. The MIDI removes both
+> problems: the notes are the notes.
+
+**The tempo is a choice, and it is not the MIDI's.** The file is 151 BPM, which on a sixteenth grid
+is 60/151/4 = 0.0993 s = 6 frames a step, and that is what the game played for a long time —
+accurate, and a little sedate for a game about being chased. It now runs **`MUSTICK` 5, which is
+180 BPM**.
+
+Only WHOLE frames are available, so the neighbours are 6 (150 BPM) and 4 (225) with nothing
+between them. The half-frame tempi in between need an **alternating tick pair** — 5,6,5,6 averages
+5.5, which is 164 — and that mechanism costs 18 bytes in a fixed area with 49 free (§13). 180 lands
+on a whole frame, so it is a one-constant change and costs nothing. Five A/B carts were built and
+compared before picking it.
 
 **The player spends the whole frame delta.** `mus_tick` used to play a single step and reset its
 counter whenever the elapsed frames reached it, throwing away everything past one step — so the
@@ -649,22 +664,21 @@ wobbled with what was on screen, and on a bass alternating every sixteenth that 
 *sound* changing rather than the beat drifting. It now plays as many steps as the elapsed frames
 call for and carries the remainder.
 
-Volumes were dropped again (melody 6 → 4, bass 5 → 3) so the **effects lead**: the engine, the
-flag blip and the smoke cough all have to cut through, and music that competes with them makes
-the mix mush rather than richer. At ~2 dB a step that is a clearly audible drop.
-
 **We drive the music ourselves** (`mus_tick`). CVBasic's PSG `PLAY` writes the volume registers
-from envelope tables baked into the shared prologue, so a game cannot turn it down — and this tune
-has to sit UNDER the engine and the effects. Ours sets volume explicitly: melody `MUSVOL` 6, bass
-`MUSBAS` 5, against an engine at 11. The song is the **original tune restored note for note** (a C-F-G-C arpeggio run) plus an
-answering phrase in the same style that drops to the relative minor and climbs back to resolve —
-32 notes over 64 steps, twice the length at the same character. `MUSTICK` 7 with two steps per
-note reproduces the original's 0.24 s note. A previous attempt replaced the tune with four
-contrasting sections and was worse; extending it beat replacing it. The bass plays at the
-WRITTEN pitch, not the two-octaves-down the original asked for: the SN76489 bottoms out near
-110 Hz, so those notes were silent and the tune was effectively melody-only. Data is
-`assets/genmusic.py` → `src/music.bas`, note indices into a table of 16-bit SN76489 dividers, and
-it **must live in TI bank 0** because the player runs every frame while a maze bank is selected.
+from envelope tables baked into the shared prologue, so a game cannot turn it down. Ours sets
+volume explicitly: melody `MUSVOL` **8**, bass `MUSBAS` **6**, against an engine at 11. Those were
+*raised* once the tune was the real one and in time — they had been pushed down to 4/3 while a bad
+transcription played at half tempo, and burying it was treating the symptom. At ~2 dB a step on the
+SN76489 this is a big lift, not a nudge.
+
+**The bass comes up an octave.** The chip's tone divider is 10 bits, so it bottoms out near 109 Hz;
+the MIDI bass reaches D2 (73 Hz), which would *alias to a wrong pitch* rather than simply going
+quiet. The whole line is transposed up 12 semitones, which keeps every interval intact —
+`genmusic.py` asserts the lowest note clears the floor after transposing, so this cannot regress
+silently.
+
+Data is `assets/genmusic.py` → `src/music.bas`: note indices into a table of 16-bit SN76489
+dividers.
 
 The **music data must live in TI bank 0**. The player refills the sound registers from the vblank
 ISR, which can fire at any point, including while gameplay has bank 1 (map2) or bank 2 (art)
