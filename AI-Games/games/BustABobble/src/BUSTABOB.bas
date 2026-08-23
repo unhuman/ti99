@@ -109,13 +109,13 @@
 	' Offsets are row*32 + col.
 	CONST SCPOS    = 54	' score,  9 digits, row 1  cols 22-30
 	CONST HIPOS    = 150	' hi,     9 digits, row 4  cols 22-30
-	' Round number sits one char in from the label's left edge (col 23), which
-	' centres it under "ROUND" at px 192 -- the same centre as the NEXT bubble.
-	CONST RNDPOS   = 247	' round,  2 digits, row 7  cols 23-24
-	' "NEXT" is 4 chars from col 22 = px 176-207, so its centre is px 192; a
-	' 16-px bubble centres under it at left edge 184, not flush at 176.
-	CONST NEXTX    = 184
-	CONST NEXTY    = 88
+	' THE ROUND NUMBER IS CENTRED UNDER ITS OWN LABEL. "ROUND" spans columns 22-26,
+	' so column 24 is its middle and a single digit sits exactly on it; the tens
+	' digit goes in 23, half a character left of centre, which is as close as a
+	' character grid gets. Keeping the UNITS digit fixed in 24 also means the number
+	' does not jump sideways at round 10 -- it grows a digit to the left, the same
+	' way the scores do.
+	CONST RNDPOS   = 311	' round,  2 digits, row 9  cols 23-24
 	' BUB and his pipe. All SPRITE coordinates (y reads one low on this VDP).
 	'
 	' He stands ON THE LAUNCHER'S OWN ROW, and so does the pipe -- three 16 px slots
@@ -2168,7 +2168,7 @@ draw_frame:
 		' All on column 22, aligned with the score digits below each one.
 		PRINT AT 22,"1UP"
 		PRINT AT 118,"HI"
-		PRINT AT 214,"ROUND"
+		PRINT AT 278,"ROUND"
 		PRINT AT 502,"TIME"
 		hudok = 1
 	END IF
@@ -2240,10 +2240,12 @@ prt_hud:
 	znb = HIPOS
 	zns = 1
 	GOSUB prt_num
+	' Blank the tens rather than print a zero: rounds 1-9 read "1".."9", not "01".
 	psh = lvl / 10
 	#psa = RNDPOS
 	#psa = #psa + 6144
-	psv = 48 + psh
+	psv = BLANK
+	IF psh > 0 THEN psv = 48 + psh
 	VPOKE #psa,psv
 	#psa = RNDPOS + 1
 	#psa = #psa + 6144

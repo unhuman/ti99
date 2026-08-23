@@ -121,15 +121,16 @@ col:  0 | 1 ................................ 18 | 19 | 20 ........... 31
       W |          WELL INTERIOR (18 chars = 144 px)   W |   HUD PANEL (12 chars)
       A |                                              A |
       L |   grid columns 0..7 at 16 px pitch           L |  row 0    : "1UP"
-      L |   even rows: 8 bubbles spanning 128 px       L |  row 1    : score, 8 digits (§11a)
+      L |   even rows: 8 bubbles spanning 128 px       L |  row 1    : score, 9 digits (§11a)
         |   odd rows : 7 bubbles, +8 px offset           |  row 3    : "HI"
-        |                                                |  row 4    : high score, 8 digits
-        |   the field spans the FULL well, so bubbles    |  row 6-7  : "ROUND" + number
-        |   touch the walls; the walls live in the same  |  row 10-11: "NEXT" + next-bubble well
-        |   row buffer and shake WITH the field, so the  |  row 15   : "TIME"
-        |   whole assembly slides as one unit (§8) and   |  row 16   : drop-timer gauge, 8 chars
-        |   nothing outside the blit needs erasing       |  row 18   : lives / spares (§12)
-        |                                                |  row 20-22: BUB (mascot, decor) - unbuilt
+        |                                                |  row 4    : high score, 9 digits
+        |   the field spans the FULL well, so bubbles    |  row 8-9  : "ROUND" + number
+        |   touch the walls; the walls live in the same  |  row 15   : "TIME"
+        |   row buffer and shake WITH the field, so the  |  row 16   : drop-timer gauge, 8 chars
+        |   whole assembly slides as one unit (§8) and   |  row 18   : lives / spares (§12)
+        |   nothing outside the blit needs erasing       |
+        |                                                |  labels start at col 22; the two
+        |                                                |  scores END at col 30 (§11a)
 row 0  : CEILING BAR (solid, full well width)
 rows 1-19: play area  (grid row r occupies char rows 1+top+2r and 1+top+2r+1)
 row 20 : DEATH LINE (dashed rule). A bubble whose bottom reaches row 20 ends the game.
@@ -137,6 +138,17 @@ rows 21-23: launcher deck — dragon sprite, loaded bubble, aim guide dots
              the loaded bubble is centred at y = LAUNCHY = 184, i.e. sprite
              scanlines 176-191: char rows 22 and 23
 ```
+
+> The panel's rows are spread, not packed: `ROUND` sits on 8-9 rather than 6-7 so the three readouts
+> above `TIME` are not bunched at the top of a twelve-character column with a ten-row hole under
+> them. **NEXT is no longer in the panel at all** — the bubble waiting beside BUB on the deck is the
+> next indicator (§12a), which is what freed those rows.
+>
+> **The round number is centred under its label and drops its leading zero.** `ROUND` spans columns
+> 22-26, so 24 is its middle column and a single digit sits exactly on it; the tens digit goes in 23,
+> half a character left of centre, which is the closest a character grid gets. Keeping the *units*
+> digit fixed in column 24 also means the number does not jump sideways at round 10 — it grows a
+> digit leftward, the same way the scores do (§11a).
 
 > **Revised 2026-08-17: the launcher sits one character row lower.** `LAUNCHY` went from 176 to
 > **184**, so the loaded bubble now occupies char rows 22–23 instead of 21–22. This is a **geometry**
