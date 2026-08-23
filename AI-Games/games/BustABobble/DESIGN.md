@@ -1485,6 +1485,13 @@ case to cope with the data, check the data.
   through it, the door shuts, and only then does the curtain fall. Both doors are one routine —
   `pipe_face` takes a column offset, 0 for the pipe and 17 for the exit, the same two cells relative
   to their own wall column, so the board shake carries them both.
+- ⚠️ **The outro shuts the LEFT door before he sets off.** One routine for both doors means one
+  `ppo`, and the outro moves it to 17 — so the left pipe, which opens the moment you fire and shuts
+  half a second after the bubble reaches him, was left standing open by any round that cleared on
+  that very shot. Nothing else closed it either: the `ppt = 0` before the curtain runs with `ppo`
+  already at 17, so it shut the right door a second time and never the left. He walked the whole
+  length of the deck away from a wall with a hole in it. Closing it is three lines at the top of
+  `outro`, before the exit is opened.
 - He **walks in at 2 px a frame and runs out at 3**. Four was tried and read as a sprint; it also
   flattened the walk cycle, whose legs are keyed on `bubx AND 4` and swapped every frame at that
   step.

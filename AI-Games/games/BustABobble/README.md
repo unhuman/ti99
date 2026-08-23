@@ -22,13 +22,13 @@ prompt); aim, fire, wall bounces, sticking, match-3 pops with a burst animation 
 orphans falling away, scoring, the drop timer with its two-tone alarm, the board shake, and the
 round-clear close/reveal. Both targets build from one source.
 
-TI fixed area **23,954 B of 24,336 — 382 free**, because the **level data now lives in ROM bank 1**
+TI fixed area **23,820 B of 24,336 — 516 free**, because the **level data now lives in ROM bank 1**
 (3,886 of 8,192 used: the level data plus every art table). The cart did not grow: pages are 3 loader + one per bank rounded up to a power
 of two, so 3 + 1 = 4 = the 32 KB it already was. Music **cannot** be banked — `mus_tick` refills the
 sound chip from the vblank ISR, where bank switching is unsafe — so the levels moved and the music
 stayed, and `assets/romcheck.py` asserts exactly that on every build. Anything banked later belongs
 in bank 1 beside the levels; a second bank would take the cart to 64 KB. ColecoVision is unbanked and
-unchanged at 16,384 B, RAM **631 B of 814**.
+unchanged at 24,576 B, RAM **669 B of 814**.
 
 Compression was measured and passed over: the layouts are already nibble-packed, and a height byte or
 a per-row column mask would net ~450–510 B — a quarter of what banking gave, while changing the byte
@@ -51,10 +51,10 @@ phases (`DESIGN.md` §17). It lands on exactly four, so **there is no margin** �
 means re-running the generator.
 
 **Every round opens with BUB walking in from the left**, pushing the first bubble to the muzzle, and
-**closes with him pushing the last one out** through a door in the right wall — the bubble goes
-first, then he follows it off the screen, the door shuts three characters behind him, and only then
-does the curtain fall. He walks in at 2 px a frame and runs out at 3, with pitter-patter footsteps
-that quicken to match.
+**closes with him pushing the last one out** through a door in the right wall — the pipe he came in
+by shuts first, then the bubble goes through, then he follows it off the screen, the door shuts
+three characters behind him, and only then does the curtain fall. He walks in at 2 px a frame and
+runs out at 3, with pitter-patter footsteps that quicken to match.
 
 **BUB loads your bubbles.** A pipe opens in the left wall level with the launcher, and the next
 bubble waits beside BUB, who stands one slot left of the launch spot — that waiting bubble *is* the
@@ -93,9 +93,9 @@ Clearing a round pays a **descending-wall bonus**: 100 for the first row the wal
 doubling per row, stopping at the death line — 102,300 from a fresh ceiling, and *less* if the
 ceiling already descended, so clearing early pays better.
 
-Not yet built: the danger state and the BUB mascot. Both have room now — banking the levels took the
-fixed area from 68 bytes free to 1,912, of which the victory screen and the pop's bloop have since
-spent 784, leaving **1,128**.
+Not yet built: the danger state. BUB has since been built (above), and there is room — banking the
+levels took the fixed area from 68 bytes free to 1,912; BUB, the victory screen, the pop's bloop and
+Taito's theme have spent most of it, leaving **516**.
 
 One open item, and one closed by measurement:
 - ✅ **The difficulty ramp is gone — resolved 2026-08-17.** It had run 20 s at round 1 down to 12 s

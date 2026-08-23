@@ -2363,7 +2363,16 @@ outro:
 	bubc = bub_base(deckm - 1)
 	deckm = 0
 	GOSUB draw_deck
-	ppo = 17			' the door in the RIGHT wall
+	' SHUT THE LEFT DOOR FIRST. It opens the moment you fire and shuts half a second
+	' after the bubble reaches BUB, so a round that clears on that very shot leaves
+	' it standing open -- and nothing else closes it: the `ppt = 0` before the
+	' curtain runs with ppo already moved to 17, so it shuts the RIGHT door twice
+	' and never this one. He would walk the whole length of the deck away from a
+	' wall with a hole in it.
+	ppo = 0
+	ppt = 0
+	GOSUB pipe_face
+	ppo = 17			' now the door in the RIGHT wall, and open
 	ppt = 255
 	GOSUB pipe_face
 	bubx = BUBHOME
