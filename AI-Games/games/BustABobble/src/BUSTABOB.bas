@@ -2652,16 +2652,21 @@ title_screen:
 	' Two decorative rows showing all eight bubble colours, built in the same
 	' row buffer the playfield uses.
 	'
-	' LAYOUT, top to bottom: score/hi on row 0, bubbles on 3-4, the name on 8 (with
-	' the creatures pacing either side of it), TWO clear rows, bubbles again on
-	' 11-12, the credit on 17, and PRESS FIRE on 21.
+	' LAYOUT, top to bottom: score/hi on row 0, bubbles on 4-5, the name on 8 (with
+	' the creatures pacing either side of it), bubbles again on 11-12, the credit
+	' on 17, 1=MUSIC on 19 and PRESS FIRE on 22.
 	'
-	' The credit on row 17 sits exactly between them: rows 13-21 are free between
-	' the lower bubbles and PRESS FIRE on 22, leaving four clear rows above it and
-	' four below. (It was chosen as a deliberate skew toward PRESS FIRE when that
-	' sat on row 21 and the gap was odd; moving PRESS FIRE down one row made the
-	' same position land dead centre, so the skew is no longer needed.)
-	tby = 3
+	' THE TWO BUBBLE BANDS SIT THE SAME DISTANCE FROM THE NAME: two clear rows
+	' each, 6-7 above and 9-10 below. The upper band used to start on row 3, which
+	' left THREE rows above the name against two below -- a one-row lean that reads
+	' as the name sitting low rather than as a gap being wrong, and so survived
+	' every look at this screen until someone measured it.
+	'
+	' The credit on row 17 sits four clear rows below the lower bubbles. It was
+	' picked when 18-21 were all empty and it landed dead centre between them and
+	' PRESS FIRE; 1=MUSIC on 19 has since taken one of those rows, so it now heads
+	' the block of small print instead of floating between two things.
+	tby = 4
 	GOSUB title_bubbles
 	tby = 11
 	GOSUB title_bubbles

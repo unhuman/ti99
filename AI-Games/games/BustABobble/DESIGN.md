@@ -714,14 +714,20 @@ loop (one pass per vblank):
 ### Title screen
 
 Boot goes to a title laid out top to bottom as: **score + high score on row 0** (same trailing-zero
-convention as the HUD, §11a), all eight bubble colours on **rows 3–4**, the game name on **row 8**
-with a creature pacing either side of it, two clear rows, the eight colours again on **rows 11–12**,
-the credit on **row 17**, and **PRESS FIRE TO START on row 22**.
+convention as the HUD, §11a), all eight bubble colours on **rows 4–5**, the game name on **row 8**
+with a creature pacing either side of it, the eight colours again on **rows 11–12**, the credit on
+**row 17**, `1=MUSIC` on **row 19**, and **PRESS FIRE TO START on row 22**.
 
-Row 17 puts the credit exactly between the lower bubbles and PRESS FIRE — four clear rows above and
-four below. It was originally chosen as a deliberate skew *toward* PRESS FIRE, because with that
-message a row higher the gap was odd and a credit floating mid-screen reads as belonging to nothing;
-moving PRESS FIRE down one row made the same position land dead centre. Fire starts a game, and a **release is required first** so a button still held from the
+**Both bubble bands sit two clear rows from the name** — 6–7 above, 9–10 below. The upper band began
+on row 3 for a long time, which put *three* rows above the name against two below. A one-row lean
+does not read as a gap being wrong; it reads as the name sitting slightly low, which is a thing you
+can look straight at without seeing, and it survived every pass over this screen until the rows were
+counted.
+
+Row 17 sits four clear rows below the lower bubbles. It was picked back when rows 18–21 were empty
+and it landed dead centre between them and PRESS FIRE; `1=MUSIC` on row 19 has since taken one of
+those rows, so the credit now reads as heading the block of small print rather than floating between
+two things, which is if anything the better place for it. Fire starts a game, and a **release is required first** so a button still held from the
 previous game cannot skip through. Typing **8 3 8** opens a round selector — two digits, 01–30,
 echoed as typed — the same secret the other games in this repo use, and likewise not advertised on
 screen. The chosen round lasts **one game**; returning to the title always resets to round 1.
