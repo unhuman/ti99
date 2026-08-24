@@ -58,6 +58,14 @@ WALL_HI = 34816         # 136 * 256, right edge column centre
 ANIM_FRAMES = 4         # a shot that neither pops nor drops; see the header note
 OVERHEAD = 0            # --overhead: extra dead frames per shot, to stress the clock
 
+# WHICH CART IS BEING PROVEN. The three things that differ -- the data file, the
+# level count and the ceiling rule -- travel together as ONE selection, because
+# three independent switches can disagree and this one cannot. Set by --set.
+SETNAME = "arcade"
+LEVELS_FILE = "levels.bas"
+NLEV = 30
+EXPERT = False
+
 DEAD = "DEAD"
 WIN = "WIN"
 
@@ -125,6 +133,28 @@ def check_source_drift():
         bad.append("droptime is no longer quarter-seconds * 15 frames")
     if "IF #fd > 4 THEN #fd = 4" not in src:
         bad.append("the frame-delta clamp moved; the clock model assumes 4")
+
+    # AND CHECK THE RIGHT CART. The two carts are one source split by #if EXPERT,
+    # so without this the guard would happily validate an expert model against the
+    # arcade branch -- it would stop guarding rather than fail, which is the worse
+    # failure. Anchored on whole stripped lines: a loose substring match buys
+    # false confidence.
+    lines = [l.strip() for l in src.splitlines()]
+    if "#if EXPERT" not in lines:
+        bad.append("the source no longer has an #if EXPERT branch; the two carts "
+                   "have been split some other way")
+    if EXPERT:
+        for want, what in (("drop_check:", "the shot-count drop routine"),
+                           ("shotn = shotn + 1", "the shot counter in do_fire"),
+                           ("shotb = pb_meta(#lvm)", "b read from pb_meta byte 0"),
+                           ("ncol0 = nprs", "the round's starting colour count"),
+                           ("IF shotn >= thr THEN", "the drop threshold test")):
+            if want not in lines:
+                bad.append("expert set: %s is gone (%s)" % (want, what))
+    else:
+        if "IF #dropt = 0 THEN GOSUB do_drop" not in lines:
+            bad.append("arcade set: the timer drop trigger is gone")
+
     if bad:
         sys.stderr.write("error: solvelevels.py is out of date with BUSTABOB.bas\n")
         for b in bad:
@@ -133,7 +163,7 @@ def check_source_drift():
 
 
 def load_rom():
-    lv = read_labelled(os.path.join(SRC, "levels.bas"))
+    lv = read_labelled(os.path.join(SRC, LEVELS_FILE))
     art = read_labelled(os.path.join(SRC, "art.bas"))
     rom = {
         "lay": values(lv["pb_lay"]),
@@ -142,9 +172,15 @@ def load_rom():
         "aimdx": values(art["#aimdx"]),
         "aimdy": values(art["#aimdy"]),
     }
-    assert len(rom["lay"]) == 30 * 44, len(rom["lay"])
-    assert len(rom["seq"]) == 30 * 16, len(rom["seq"])
-    assert len(rom["meta"]) == 30 * 2, len(rom["meta"])
+    # DERIVE the level count and CROSS-CHECK, rather than asserting a fixed 30.
+    # Three independent lengths that must agree is a real check: it catches a
+    # half-regenerated table, which a hard-coded count would only catch for one
+    # particular size of mistake.
+    n = len(rom["meta"]) // 2
+    assert len(rom["lay"]) == n * 44, (len(rom["lay"]), n)
+    assert len(rom["seq"]) == n * 16, (len(rom["seq"]), n)
+    assert n == NLEV, "%s holds %d levels, the %s set expects %d" % (
+        LEVELS_FILE, n, SETNAME, NLEV)
     assert len(rom["aimdx"]) == 32 and len(rom["aimdy"]) == 32
     return rom
 
@@ -184,7 +220,9 @@ CY = [16 + (i // 8) * 16 for i in range(96)]
 
 class Round(object):
     __slots__ = ("grid", "top", "dropt", "droprl", "si", "curk", "nxtk",
-                 "aim", "frames", "shots", "path", "ovw", "score", "ev", "scenery")
+                 "aim", "frames", "shots", "path", "ovw", "score", "ev", "scenery",
+                 # expert cart only: the shot-count ceiling rule
+                 "shotb", "shotn", "ncol0")
 
     def clone(self):
         r = Round()
@@ -203,9 +241,19 @@ class Round(object):
         r.score = self.score
         r.ev = self.ev
         r.scenery = self.scenery
+        r.shotb = self.shotb
+        r.shotn = self.shotn
+        r.ncol0 = self.ncol0
         return r
 
     def key(self):
+        # shotn is part of the STATE on the expert cart: two boards that look
+        # identical but sit at different points in the drop interval are not the
+        # same position, and collapsing them would let the search find a line the
+        # player cannot follow.
+        if EXPERT:
+            return (bytes(self.grid), self.top, self.si, self.curk, self.nxtk,
+                    self.shotn)
         return (bytes(self.grid), self.top, self.si, self.curk, self.nxtk)
 
 
@@ -258,6 +306,13 @@ def load_round(rom, lvl):
     st.top = 0
     st.droprl = rom["meta"][(lvl - 1) * 2 + 1] * 15
     st.dropt = st.droprl
+    # Expert cart: byte 0 is the base shot count b, and the clock above becomes
+    # the anti-idle fallback rather than the trigger. ncol0 is the round's
+    # STARTING colour count, which the engine captures in new_round for the same
+    # reason it is taken here -- after the grid is loaded, not before.
+    st.shotb = rom["meta"][(lvl - 1) * 2] if EXPERT else 0
+    st.shotn = 0
+    st.ncol0 = sum(present(st.grid)[0]) if EXPERT else 0
     st.si = 0
     st.aim = 31
     st.frames = 0
@@ -403,6 +458,9 @@ def play_shot(st, seq, aim, use_clock=True):
     """One complete shot at aim 0..62. Returns a new Round, DEAD, or (WIN, round)."""
     s = st.clone()
     grid = s.grid
+    # THE SHOT IS COUNTED AS IT LEAVES, mirroring do_fire. Every path below has
+    # already spent it, including the one where the bubble sticks nowhere.
+    s.shotn += 1
 
     if aim >= 31:
         am, bdir = aim - 31, 1
@@ -544,6 +602,29 @@ def play_shot(st, seq, aim, use_clock=True):
         cost = 2
     if not charge(cost + OVERHEAD):
         return DEAD
+
+    # THE EXPERT CART'S CEILING RULE -- drop_check, mirrored exactly.
+    #
+    # Placed here for the same reason it sits at the end of after_stick: after the
+    # win test and the death test, so a round just cleared or just lost does not
+    # also drop. The no-stick path returns earlier and never reaches this, which
+    # matches the engine -- that path calls next_shot directly and skips
+    # after_stick, so the shot is COUNTED but the threshold is not tested until
+    # the next shot that does stick.
+    if EXPERT:
+        mis = s.ncol0 - sum(pres)
+        if mis < 0:
+            mis = 0
+        thr = s.shotb - mis
+        if thr < 1:
+            thr = 1
+        if s.shotn >= thr:
+            s.shotn = 0
+            s.top += 1
+            s.dropt = s.droprl        # a shot-triggered drop rearms the fallback
+            if check_death(grid, s.top):
+                return DEAD
+
     return s
 
 
@@ -906,10 +987,17 @@ def main():
                     help="write WALKTHROUGH.md + walkthrough.json for every round")
     ap.add_argument("--overhead", type=int, default=0,
                     help="extra dead frames charged per shot, to stress the drop clock")
+    ap.add_argument("--set", dest="cartset", choices=("arcade", "expert"),
+                    default="arcade",
+                    help="which cart to prove: arcade (30 rounds, timer drop) "
+                         "or expert (50 levels, shot-count drop)")
     a = ap.parse_args()
 
-    global OVERHEAD
+    global OVERHEAD, SETNAME, LEVELS_FILE, NLEV, EXPERT
     OVERHEAD = a.overhead
+    SETNAME = a.cartset
+    if SETNAME == "expert":
+        LEVELS_FILE, NLEV, EXPERT = "levels2.bas", 50, True
 
     check_source_drift()
     rom = load_rom()
@@ -917,10 +1005,10 @@ def main():
     AIMDX, AIMDY = rom["aimdx"], rom["aimdy"]
 
     if a.anchors:
-        return anchor_audit(rom, [a.level] if a.level else list(range(1, 31)))
+        return anchor_audit(rom, [a.level] if a.level else list(range(1, NLEV + 1)))
 
     if a.report:
-        levels = [a.level] if a.level else list(range(1, 31))
+        levels = [a.level] if a.level else list(range(1, NLEV + 1))
         print("BUST-A-BOBBLE -- walkthrough for %d round(s), beam %d\n"
               % (len(levels), a.beam))
         return write_report(rom, levels, a.beam, a.depth,
@@ -970,7 +1058,7 @@ def main():
             return 1
         return 1 if replay(rom, a.level, res["path"]) else 0
 
-    levels = [a.level] if a.level else list(range(1, 31))
+    levels = [a.level] if a.level else list(range(1, NLEV + 1))
     work = [(rom, n, a.beam, a.depth, a.overhead) for n in levels]
 
     print("BUST-A-BOBBLE -- winnability check (src/levels.bas as shipped)")
