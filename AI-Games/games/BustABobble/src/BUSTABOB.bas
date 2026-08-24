@@ -301,9 +301,9 @@
 	' verified against the 20 s timer, the 50 expert levels against the shot count.
 	' Switching is one keypress, but the default is never the unverified one.
 #if EXPERT
-	hardm = 1
+	dlev = 2			' hard
 #else
-	hardm = 0
+	dlev = 0			' easy
 #endif
 
 	GOTO title_screen
@@ -319,12 +319,6 @@ new_round:
 	' uses maxr to decide which rows to rebuild. With a stale maxr the level's
 	' bubbles were simply not drawn until the first shot forced a rescan.
 	GOSUB scan_present
-	' The round's STARTING colour count, captured here because load_level runs
-	' before the first scan and so cannot know it. `missing` is measured against
-	' this, so a round that begins with six colours and is down to two drops every
-	' b-4 shots.
-	ncol0 = nprs
-
 	GOSUB draw_frame
 	IF reveal = 1 THEN
 		GOSUB do_reveal
@@ -421,10 +415,7 @@ game_loop:
 		warnon = 0
 	END IF
 
-	' NO PER-FRAME GAUGE TICK ON HARD. The magazine changes only when a shot is
-	' fired, so drop_check redraws it; calling tick_bar here would repaint the shot
-	' count from the FALLBACK clock every frame and wipe it out.
-	IF hardm = 0 THEN GOSUB tick_bar
+	GOSUB tick_bar
 
 	' Shake telegraph. Render-only: shkb feeds draw_row and NOTHING else, so
 	' collision always uses the rest position and a shot fired just before a
@@ -555,28 +546,13 @@ set_bar_col:
 	' 534 = 16*32 + 22 is written as a BARE LITERAL: a CONST above 255 silently
 	' compiles to zero on this toolchain (see the note at the top of the file).
 draw_bar:
-	' HARD DRAWS A SHOT MAGAZINE, EASY A CLOCK. On hard the ceiling falls on bubbles
-	' fired, so a 64-step pixel drain would be measuring the wrong thing -- and
-	' worse, would drain smoothly while the real quantity moved in whole steps. One
-	' filled cell per shot remaining, and no partial cell at all.
-	'
-	' It also makes the ACCELERATION visible: eliminate a colour and the magazine
-	' loses a cell on the spot, which teaches the rule better than any HUD text.
-	IF hardm = 1 THEN
-		tbf = drem
-		IF tbf > 8 THEN tbf = 8
-		tbr = 0
-		' Red for the last two, reusing the timer gauge's transition machinery.
-		tbwant = 0
-		IF drem < 3 THEN tbwant = 1
-		IF tbwant <> barw THEN
-			barw = tbwant
-			GOSUB set_bar_col
-		END IF
-	ELSE
-		tbf = barlast / 8	' whole cells filled
-		tbr = barlast - tbf * 8	' leftover pixels in the next cell
-	END IF
+	' ONE GAUGE, EVERY MODE: the drop clock. It drains steadily with time and JUMPS
+	' DOWN on each shot in medium and hard, so the player watches their own shots
+	' eating it. A separate shots-remaining magazine was tried and removed -- it
+	' measured only one of the two things that were killing you, which meant the
+	' other one could kill you with the bar apparently full.
+	tbf = barlast / 8		' whole cells filled
+	tbr = barlast - tbf * 8		' leftover pixels in the next cell
 	#tba = 534
 	#tba = #tba + 6144
 	FOR tbi = 0 TO 7
@@ -677,12 +653,6 @@ do_fire:
 	deckw = 0			' and BUB has picked the waiting one up
 	GOSUB draw_deck
 	flying = 1
-	' COUNT THE SHOT AS IT LEAVES, not as it lands. The arcade's rule is written in
-	' bubbles FIRED, and counting here also covers the shot that sticks nowhere --
-	' that path skips after_stick entirely, and a shot the ceiling ignores would
-	' otherwise be a free one.
-	shotn = shotn + 1
-
 	btnr = 0
 	#bx = 20480		' LAUNCHX * 256 -- bare literal, see the note at the top
 	#by = 47104		' LAUNCHY * 256
@@ -735,8 +705,7 @@ anim_tick:
 		#dropt = 0
 	END IF
 	#lf = FRAME
-	' Same reason as the main loop: on hard the magazine is event-driven, not timed.
-	IF hardm = 0 THEN GOSUB tick_bar
+	GOSUB tick_bar
 	RETURN
 
 	'
@@ -818,12 +787,12 @@ prt_musen:
 	' Both carts offer both. The expert cart defaults to HARD and the arcade cart to
 	' EASY, so each still plays the way it was proven, but neither is locked to it.
 	' Same four characters either way, so no clearing is needed on the toggle.
-prt_hardm:
-	IF hardm = 1 THEN
-		PRINT AT 628,"HARD"
-	ELSE
-		PRINT AT 628,"EASY"
-	END IF
+	' Padded to SIX characters so MEDIUM overwrites cleanly -- without the trailing
+	' spaces, switching MEDIUM -> HARD would leave "HARDUM" on the screen.
+prt_dlev:
+	IF dlev = 0 THEN PRINT AT 627,"EASY  "
+	IF dlev = 1 THEN PRINT AT 627,"MEDIUM"
+	IF dlev = 2 THEN PRINT AT 627,"HARD  "
 	RETURN
 
 mus_off:
@@ -1231,17 +1200,14 @@ after_stick:
 		GOSUB do_dead
 		RETURN
 	END IF
-	' THE SHOT-COUNT DROP IS TESTED HERE, after the round-clear and death tests. A
-	' round that has just been cleared, or that has just killed you, must not also
-	' drop -- and do_drop repaints the whole field and can itself call do_dead, so
-	' it cannot be run from do_fire with a shot about to launch.
+	' THE SHOT SPENDS THE CLOCK HERE, after the round-clear and death tests: a round
+	' just cleared, or just lost, should not also be charged for the shot.
 	'
-	' Nested rather than `IF hardm = 1 AND nrq > 0` -- the 9900 backend miscompiles
-	' compound comparisons against a stale register (CLAUDE.md 3A).
-	IF hardm = 1 THEN
-		GOSUB drop_check
-		IF nrq > 0 THEN RETURN
-	END IF
+	' Called in every mode -- drop_check returns immediately on easy, which is
+	' smaller than branching around it here. It no longer drops the ceiling itself,
+	' so there is nothing to unwind: the main loop fires on #dropt = 0 as it always
+	' has, on the next pass, with the field settled.
+	GOSUB drop_check
 	GOSUB next_shot
 	RETURN
 
@@ -1682,21 +1648,14 @@ load_level:
 	#droprl = pb_meta(#lvm + 1)
 	#droprl = #droprl * 15		' quarter-seconds -> frames (60 Hz both targets)
 	#dropt = #droprl
-	' THE EXPERT CART DROPS ON A SHOT COUNT, THE ARCADE'S OWN RULE. pb_meta byte 0
-	' is the base interval b -- the byte the arcade build fills with a colour count
-	' and never reads, so the two carts share the format without sharing a meaning.
-	'
-	' #droprl/#dropt above are NOT discarded: they become the anti-idle FALLBACK.
-	' A shot-count trigger alone means a player who never fires never loses, and
-	' the arcade has a fallback for exactly that. It costs no code -- the main
-	' loop's existing `IF #dropt = 0 THEN GOSUB do_drop` simply becomes it, and a
-	' shot-triggered drop rearms it because do_drop already resets #dropt.
-	shotb = pb_meta(#lvm)
-	shotn = 0
-
+	' pb_meta BYTE 0 IS UNREAD AGAIN. It briefly held the base shot count `b` for a
+	' version that dropped the ceiling on a shot COUNTER; the flat per-shot cost in
+	' drop_check replaced that, so nothing consumes it. The generators still emit it
+	' (`SHOTS`), which costs nothing -- the byte is allocated either way -- and it is
+	' what the acceleration term would need if the arcade's shrinking interval is
+	' ever restored.
 	GOSUB mark_scenery		' flag the level's own detached pieces, once
-	' Hard needs no pixel-per-frame divisor: the magazine counts shots, not frames.
-	IF hardm = 0 THEN GOSUB calc_bstep
+	GOSUB calc_bstep
 	' AND REPAINT THE GAUGE'S COLOUR, not just the flag. barw = 0 says "green" but
 	' the nine gauge CHARACTERS keep whatever colour they were last DEFINEd with,
 	' and tick_bar only re-issues that on a TRANSITION. A round that ended in the
@@ -1714,10 +1673,6 @@ load_level:
 	' here) but the truth: #dropt has just been set to #droprl, so a full 64 pixels
 	' IS the state, and the first tick_bar agrees with it and leaves it alone.
 	barlast = 64
-	' The magazine opens full: no shots fired yet, so the whole base interval is
-	' still ahead. drem must be set before draw_bar reads it.
-	drem = shotb
-
 	GOSUB draw_bar
 	#seqb = lvl - 1
 	#seqb = #seqb * 16
@@ -1781,15 +1736,6 @@ scan_present:
 			END IF
 		NEXT spc
 	NEXT spr
-	' HOW MANY COLOURS ARE STILL ALIVE. The arcade's drop rule keys off this: the
-	' ceiling falls every b-minus-MISSING shots, so eliminating a colour speeds it
-	' up. pres() is already filled above, so the count is a walk of eight bytes on
-	' a routine that only runs when the board changes -- not per frame.
-	nprs = 0
-	FOR spi = 1 TO 8
-		IF pres(spi) = 1 THEN nprs = nprs + 1
-	NEXT spi
-
 	RETURN
 
 	'
@@ -1860,50 +1806,49 @@ check_death:
 	' field left the whole ceiling skewed one character right -- draw_field no
 	' longer repaints the ceiling (that is the shake's job), so nothing put it
 	' back. Reset, then fill, then repaint BOTH.
-	' THE ARCADE'S CEILING RULE, from the Puzzle Bobble FAQ v1.24: "the screen
-	' drops after a certain number of bubbles (b) have been fired", and "for each
-	' missing color, the screen drops every b - missing colors bubbles".
+	' A SHOT SPENDS THE CLOCK. There is ONE quantity that kills you -- the drop
+	' timer -- and in medium and hard a shot takes a bite out of it on top of the
+	' seconds that were going to pass anyway.
 	'
-	' The clever half is the second clause. The ceiling ACCELERATES as colours are
-	' eliminated, so it presses hardest exactly as the board empties and you are
-	' closest to clearing. A flat timer cannot do that -- DESIGN 11b measured our
-	' 20 s clock and called it "not a difficulty dial at present, it is a
-	' formality": 28 of the arcade cart's 30 rounds clear before it fires once.
+	' This replaced a shot COUNTER that dropped the ceiling itself. That version ran
+	' two independent triggers, shots or time, whichever came first, and only one of
+	' them was on screen: idle in hard mode and the ceiling fell with the magazine
+	' still reading five shots left. One clock cannot do that to you, and the gauge
+	' is honest in every mode because there is only one thing to show.
 	'
-	' EVERY SUBTRACTION HERE IS GUARDED because these are 8-bit UNSIGNED: a - b
-	' with b > a wraps to 255 and nothing warns. prt_lives carries the same scar
-	' ("a bare lives - 1 at zero wraps to 255 and would light every slot exactly
-	' when the player has none"), and thr - shotn is the identical trap.
+	'   EASY    0 s a shot -- the pure timer, cart 1 as it originally shipped
+	'   MEDIUM  1.5 s
+	'   HARD    3 s
 	'
-	' Nested IFs, never `AND` -- the 9900 backend miscompiles compound comparisons
-	' against a stale register. No multiplies either, so the MPY-clobbers-r0 hazard
-	' documented above calc_bstep cannot apply.
+	' THREE SECONDS IS NOT A ROUND NUMBER, IT IS A MEASURED ONE. The clock loses
+	' elapsed time as well as the shot cost, and a shot really takes about 1.12 s
+	' (flight, animation, and the half-second of thinking the proof charges). So
+	' against the expert set's 35 s clock:
+	'
+	'     4 s a shot -> 5.12 s -> 6.8 shots a drop   ~15% harder than proven
+	'     3 s        -> 4.12 s -> 8.5 shots a drop   the proven pacing
+	'     2 s        -> 3.12 s -> 11.2 shots a drop  softer
+	'
+	' The 50 expert levels were proven at drop-every-8-shots, so 3 keeps that proof
+	' meaningful instead of quietly invalidating it. On the arcade set's 20 s clock
+	' the same costs give ~4.9 shots a drop on hard and ~7.6 on medium.
+	'
+	' GUARDED SUBTRACTION, because #dropt is unsigned: falling below zero wraps to
+	' 65535 and the ceiling would then never drop at all -- the opposite of the
+	' intent, and silent. prt_lives carries the same scar tissue for .
+	' The drop itself is left to the main loop, which fires on #dropt = 0 already;
+	' doing it here would repaint the field with a shot still resolving.
 drop_check:
-	mis = 0
-	IF ncol0 > nprs THEN mis = ncol0 - nprs
-	thr = shotb
-	IF thr > mis THEN
-		thr = thr - mis
+	IF dlev = 0 THEN RETURN
+	#shotc = 90			' medium: 1.5 s at 60 Hz
+	IF dlev = 2 THEN #shotc = 180	' hard: 3 s
+	IF #dropt > #shotc THEN
+		#dropt = #dropt - #shotc
 	ELSE
-		thr = 1
+		#dropt = 0
 	END IF
-	IF thr < 1 THEN thr = 1
-	drem = 0
-	IF thr > shotn THEN drem = thr - shotn
-	GOSUB draw_bar
-	' ONE BEEP ON THE LAST SHOT. The frame countdown that used to telegraph the
-	' drop has no meaning against a shot count, so the warning moves to the moment
-	' it is actionable: the next bubble you fire brings the ceiling down.
-	IF drem = 1 THEN
-		SOUND 1,330,12
-		sf1 = 7
-	END IF
-	IF shotn >= thr THEN
-		shotn = 0
-		GOSUB do_drop
-	END IF
+	GOSUB tick_bar
 	RETURN
-
 
 do_drop:
 	shkb = 1
@@ -2336,12 +2281,9 @@ draw_frame:
 		PRINT AT 22,"1UP"
 		PRINT AT 118,"HI"
 		PRINT AT 278,"ROUND"
-		' Four characters either way, so the panel's layout cannot shift.
-		IF hardm = 1 THEN
-			PRINT AT 502,"DROP"
-		ELSE
-			PRINT AT 502,"TIME"
-		END IF
+		' TIME in every mode now: there is only one clock, and a shot spending it
+		' does not make it something other than time.
+		PRINT AT 502,"TIME"
 		hudok = 1
 	END IF
 	GOSUB draw_ceiling
@@ -2933,10 +2875,12 @@ title_screen:
 	PRINT AT 484,"2026 UNHUMAN AND CLAUDE"	' row 15, col 4
 	PRINT AT 554,"1=MUSIC"			' row 17, col 10
 	GOSUB prt_musen
-	' 12 chars from column 7 with its value at 20 spans 7-23, centred on 15 -- the
-	' same centre as the line above it, so the two settings read as a pair.
-	PRINT AT 615,"2=DIFFICULTY"		' row 19, col 7
-	GOSUB prt_hardm
+	' Column 6, so the 12-character label ends at 17 and leaves column 18 BLANK
+	' before the value at 19 -- at column 7 it ended at 18 and ran straight into it
+	' ("2=DIFFICULTYEASY"). The line above has the same single space, at 17.
+	' Spans 6-24, centred on 15, which is where 1=MUSIC sits too.
+	PRINT AT 614,"2=DIFFICULTY"		' row 19, col 6
+	GOSUB prt_dlev
 	PRINT AT 710,"PRESS FIRE TO START"	' row 22, col 6
 	t8 = 0
 	tkl = 15
@@ -2997,8 +2941,9 @@ title_wait:
 		' kept across games, unlike the 838 round which lasts one game only. 2 is
 		' not part of the 8-3-8 sequence, so it cannot interfere with it.
 		IF tk = 2 THEN
-			hardm = 1 - hardm
-			GOSUB prt_hardm
+			dlev = dlev + 1
+			IF dlev > 2 THEN dlev = 0
+			GOSUB prt_dlev
 		END IF
 		IF tk = 3 THEN
 			IF t8 = 1 THEN

@@ -21,15 +21,18 @@ The same engine ships as **two cartridges**, selected at build time:
 | **`BUSTABOB`** | the 30 arcade rounds, transcribed | flat 20 s timer |
 | **`BUSTAB2`** — *Bust-A-Bobble 2* | 50 generated levels | the arcade's **shot count**, accelerating as colours are eliminated |
 
-**Both carts now offer both**, toggled with `2` on the title screen:
+**Both carts offer three difficulty settings**, cycled with `2` on the title. **There is one clock,
+and firing a shot spends it:**
 
-- **EASY** — the ceiling falls on the 20-second timer. The gauge is a clock.
-- **HARD** — it falls on **bubbles fired**, every `b − missing colours` shots, so it speeds up as the
-  board empties. The gauge becomes a magazine of shots remaining and the label reads `DROP`.
+| | a shot costs | expert 35 s clock | arcade 20 s clock |
+|---|---|---|---|
+| **EASY** | nothing | pure timer | pure timer — cart 1 exactly as it shipped |
+| **MEDIUM** | 1.5 s | ~13 shots a drop | ~7.6 |
+| **HARD** | 3 s | ~8.5 shots a drop | ~4.9 |
 
-Each cart defaults to the rule its levels were *proven* under — arcade to EASY, expert to HARD — so
-neither starts in a combination nobody verified. Like the music toggle it is a preference and
-survives across games.
+The bar drains steadily with time *and jumps down when you fire*, so you watch your own shots eating
+it. Each cart defaults to the rule its levels were proven under — arcade EASY, expert HARD — and like
+the music toggle it is a preference that survives across games.
 
 ```
 ./build-ti.sh            ./build-coleco.sh              cart 1

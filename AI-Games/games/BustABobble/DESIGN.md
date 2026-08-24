@@ -582,30 +582,42 @@ makes the acceleration *visible* — eliminate a colour and the magazine loses a
 which teaches the rule better than any HUD text. `tick_bar` and `calc_bstep` are compiled out with
 it.
 
-### Difficulty: EASY and HARD, on both carts
+### Difficulty: EASY, MEDIUM and HARD, on both carts
 
-`2` on the title toggles the ceiling rule, and it is a **preference** -- set once and
-kept across games, like the music toggle, unlike the 838 round which lasts one game.
+`2` on the title cycles the three, and it is a **preference** -- set once and kept across games,
+like the music toggle, unlike the 838 round which lasts one game.
 
-| | ceiling drops on | HUD gauge | label |
+**There is ONE clock, and firing a shot spends it.**
+
+| mode | a shot costs | expert 35 s clock | arcade 20 s clock |
 |---|---|---|---|
-| **EASY** | the 20 s timer | 64-step drain | `TIME` |
-| **HARD** | **bubbles fired**, every `b - missing` shots | 8-cell magazine, one per shot | `DROP` |
+| **EASY** | nothing | pure timer | pure timer -- cart 1 exactly as it shipped |
+| **MEDIUM** | **1.5 s** | ~13 shots a drop | ~7.6 |
+| **HARD** | **3 s** | ~8.5 shots a drop | ~4.9 |
 
-Each cart **defaults to the rule it was proven under** -- the 30 arcade rounds against
-the timer, the 50 expert levels against the shot count -- so neither ships defaulting
-to a combination nobody verified.
+The clock drains with time in every mode; medium and hard additionally take a bite out of it on each
+shot, so the gauge drains steadily **and jumps down when you fire**. Each cart defaults to the rule
+its levels were proven under -- arcade EASY, expert HARD.
 
-The rule is therefore a **runtime** branch now, not `#if EXPERT`, which means both
-carts carry both paths. That cost 746 bytes and both carts overflowed the fixed area
-by ~250. See the budget note below for where it came from.
+> **Three seconds is a measured figure, not a round one.** The clock loses elapsed time as well as
+> the shot cost, and a shot really takes ~1.12 s (flight, animation, and the half-second of thinking
+> the proof charges). Against the expert set's 35 s clock: 4 s a shot gives 6.8 shots a drop, 3 s
+> gives **8.5**, 2 s gives 11.2. The 50 levels were proven at drop-every-8-shots, so 3 keeps that
+> proof meaningful instead of quietly invalidating it -- and the re-proof came back **50/50**.
 
-⚠ **The arcade rounds needed a shot interval of their own.** `pb_meta` byte 0 held
-their colour count -- a byte the engine never read, so its contents never mattered.
-Hard mode reads that byte as `b`, and a 3-colour round would have dropped the ceiling
-every THREE shots. `transcribe_stages.py` now emits `SHOTS` for the arcade set too, on
-the same `min(8, colours + 2)` rule the expert generator uses. Layouts and sequences
-are untouched; only those 30 metadata bytes changed, and easy mode never reads them.
+⚠️ **This replaced a shot COUNTER that dropped the ceiling itself**, and the reason is worth keeping.
+That version left the timer running as an anti-idle fallback, so hard mode had **two independent
+triggers, shots or time, whichever came first -- and only one of them was on screen.** Idle, and the
+ceiling fell with the shot magazine still reading five left. One clock cannot do that, and the gauge
+is honest in every mode because there is only one thing to show.
+
+The cost of the change was **negative**: deleting the magazine, the `DROP`/`TIME` label branch, the
+shot counter and its four dead variables returned **406 bytes to each cart**.
+
+> **What was given up: the arcade's acceleration.** The old rule shrank the interval as colours were
+> eliminated, pressing hardest as the board emptied. A flat per-shot cost does not. It is more
+> predictable and explainable, which is a fair trade, but it is a real property lost. `pb_meta`
+> byte 0 still carries `b`, which is the one thing a scaling term would need to restore it.
 
 ### The two-cart mechanism, and the trap in it
 

@@ -66,6 +66,12 @@ LEVELS_FILE = "levels.bas"
 NLEV = 30
 EXPERT = False
 
+# Frames of drop clock a single shot spends, on top of the time it takes. This is
+# the difficulty setting: 0 easy, 90 medium (1.5 s), 180 hard (3 s). --set picks
+# the pairing each cart DEFAULTS to, which is the pairing its levels were proven
+# under -- arcade at easy, expert at hard.
+SHOTCOST = 0
+
 DEAD = "DEAD"
 WIN = "WIN"
 
@@ -139,16 +145,18 @@ def check_source_drift():
     # arcade branch -- it would stop guarding rather than fail, which is the worse
     # failure. Anchored on whole stripped lines: a loose substring match buys
     # false confidence.
-    lines = [l.strip() for l in src.splitlines()]
+    # Trailing comments stripped too, or a line that merely gained an explanation
+    # would read as deleted -- a guard that cries wolf gets switched off.
+    lines = [l.split("'")[0].strip() for l in src.splitlines()]
     if "#if EXPERT" not in lines:
         bad.append("the source no longer has an #if EXPERT branch; the two carts "
                    "have been split some other way")
     if EXPERT:
-        for want, what in (("drop_check:", "the shot-count drop routine"),
-                           ("shotn = shotn + 1", "the shot counter in do_fire"),
-                           ("shotb = pb_meta(#lvm)", "b read from pb_meta byte 0"),
-                           ("ncol0 = nprs", "the round's starting colour count"),
-                           ("IF shotn >= thr THEN", "the drop threshold test")):
+        for want, what in (("drop_check:", "the per-shot clock charge"),
+                           ("IF dlev = 0 THEN RETURN", "the easy-mode early out"),
+                           ("IF dlev = 2 THEN #shotc = 180", "the hard cost, 3 s"),
+                           ("#shotc = 90", "the medium cost, 1.5 s"),
+                           ("#dropt = #dropt - #shotc", "the clock subtraction")):
             if want not in lines:
                 bad.append("expert set: %s is gone (%s)" % (want, what))
     else:
@@ -603,27 +611,21 @@ def play_shot(st, seq, aim, use_clock=True):
     if not charge(cost + OVERHEAD):
         return DEAD
 
-    # THE EXPERT CART'S CEILING RULE -- drop_check, mirrored exactly.
+    # A SHOT SPENDS THE CLOCK -- drop_check, mirrored exactly.
     #
     # Placed here for the same reason it sits at the end of after_stick: after the
-    # win test and the death test, so a round just cleared or just lost does not
-    # also drop. The no-stick path returns earlier and never reaches this, which
-    # matches the engine -- that path calls next_shot directly and skips
-    # after_stick, so the shot is COUNTED but the threshold is not tested until
-    # the next shot that does stick.
-    if EXPERT:
-        mis = s.ncol0 - sum(pres)
-        if mis < 0:
-            mis = 0
-        thr = s.shotb - mis
-        if thr < 1:
-            thr = 1
-        if s.shotn >= thr:
-            s.shotn = 0
-            s.top += 1
-            s.dropt = s.droprl        # a shot-triggered drop rearms the fallback
-            if check_death(grid, s.top):
-                return DEAD
+    # win test and the death test, so a round just cleared or just lost is not also
+    # charged. The no-stick path returns earlier and never reaches this, matching
+    # the engine, where that path calls next_shot directly and skips after_stick.
+    #
+    # The DROP is not done here. #dropt simply goes down, and the main loop fires on
+    # #dropt = 0 on a later pass -- which tick() above already models. That is why
+    # there is no `s.top += 1` any more: doing it here would drop the ceiling one
+    # pass earlier than the game does.
+    if SHOTCOST:
+        s.dropt = s.dropt - SHOTCOST
+        if s.dropt < 0:
+            s.dropt = 0
 
     return s
 
@@ -993,11 +995,11 @@ def main():
                          "or expert (50 levels, shot-count drop)")
     a = ap.parse_args()
 
-    global OVERHEAD, SETNAME, LEVELS_FILE, NLEV, EXPERT
+    global OVERHEAD, SETNAME, LEVELS_FILE, NLEV, EXPERT, SHOTCOST
     OVERHEAD = a.overhead
     SETNAME = a.cartset
     if SETNAME == "expert":
-        LEVELS_FILE, NLEV, EXPERT = "levels2.bas", 50, True
+        LEVELS_FILE, NLEV, EXPERT, SHOTCOST = "levels2.bas", 50, True, 180
 
     check_source_drift()
     rom = load_rom()
