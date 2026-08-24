@@ -60,12 +60,12 @@
 	'
 	' NLEV stays under 255 on purpose -- a CONST above that truncates to 8 bits on
 	' this backend, silently (see the round-number note at prt_hud).
-#if EXPERT
+#if BOTH
+	#info BUILDING_BOTH_SETS_80_LEVELS_WITH_A_SELECT_SCREEN
+#elif EXPERT
 	#info BUILDING_EXPERT_SET_50_GENERATED_LEVELS
-	CONST NLEV     = 50
 #else
 	#info BUILDING_ARCADE_SET_30_TRANSCRIBED_ROUNDS
-	CONST NLEV     = 30
 #endif
 
 	CONST NROWS    = 12	' grid rows (11 come from level data, 12th is headroom)
@@ -319,6 +319,22 @@
 	' survives every play until the machine is switched off. Contrast the 838
 	' round, which is deliberately re-read each game.
 	dlev = 0			' easy
+
+	' WHICH LEVELS THIS CART PLAYS. lvbase is added to the round number to index
+	' the table; lvmax is how many rounds a game is. The single carts fix these at
+	' boot and never touch them again; the combined cart's select screen writes them
+	' each time you choose. One table of 80 with a base and a count, rather than two
+	' tables and two sets of pointers.
+#if BOTH
+	lvbase = 0			' the select screen sets these for real
+	lvmax = 30
+#elif EXPERT
+	lvbase = 0
+	lvmax = 50
+#else
+	lvbase = 0
+	lvmax = 30
+#endif
 
 	GOTO title_screen
 
@@ -1673,6 +1689,7 @@ copy_hi:
 	'
 load_level:
 	#lvb = lvl - 1
+	#lvb = #lvb + lvbase	' 0 = arcade, 30 = expert
 	#lvb = #lvb * 36		' 9 rows x 8 cells, one nibble each
 	FOR lli = 0 TO 95
 		grid(lli) = 0
@@ -1697,6 +1714,7 @@ load_level:
 		NEXT llc
 	NEXT llr
 	#lvm = lvl - 1
+	#lvm = #lvm + lvbase
 	#lvm = #lvm + #lvm
 	#droprl = pb_meta(#lvm + 1)
 	#droprl = #droprl * 15		' quarter-seconds -> frames (60 Hz both targets)
@@ -1728,6 +1746,7 @@ load_level:
 	barlast = 64
 	GOSUB draw_bar
 	#seqb = lvl - 1
+	#seqb = #seqb + lvbase
 	#seqb = #seqb * 16
 	si = 0
 	bubst = 0			' nothing in transit; the launcher already has its bubble
@@ -2021,7 +2040,7 @@ do_clear:
 	' So both routines now set nrq and RETURN, the stack unwinds properly through
 	' after_stick and do_stick, and game_loop dispatches. Beating round 30 gets its
 	' own screen (victory:), not a message box.
-	IF lvl > NLEV THEN
+	IF lvl > lvmax THEN
 		nrq = 2
 		RETURN
 	END IF
@@ -3045,9 +3064,84 @@ title_wait:
 	IF btnr = 0 THEN
 		IF cont1.button = 0 THEN btnr = 1
 	ELSE
+#if BOTH
+		IF cont1.button THEN GOTO set_screen
+#else
 		IF cont1.button THEN GOTO title_go
+#endif
 	END IF
 	GOTO title_wait
+
+#if BOTH
+	' THE SET-SELECT SCREEN. Only the combined cart has one, and it sits between the
+	' title and the game rather than replacing the title: the title still carries
+	' the scores, the music toggle and the difficulty, all of which apply to either
+	' game.
+	'
+	' A screen rather than two entries in the TI console menu, because linkticart
+	' packs one program entry per cart and cannot offer two -- and doing it in the
+	' game means ColecoVision gets exactly the same selection with the same code
+	' instead of needing a mechanism of its own.
+	'
+	' UP/DOWN moves, FIRE starts. The RELEASE-first rule is the same one the title
+	' uses: arriving here with the button still held from the title would otherwise
+	' start a game before the screen was read.
+set_screen:
+	GOSUB hide_sprites
+	CLS
+	PRINT AT 264,"CHOOSE YOUR GAME"
+	PRINT AT 393,"BUST-A-BOBBLE"
+	PRINT AT 457,"BUST-A-BOBBLE 2"
+	PRINT AT 582,"FIRE TO START"
+	ssel = 0
+	btnr = 0
+	sskl = 15
+set_wait:
+	WAIT
+	GOSUB sfx_tick
+	musdin = 1
+	GOSUB mus_tick
+	' Redraw both cursor cells every pass: cheaper than tracking what changed, and
+	' this screen has nothing else to do.
+	PRINT AT 391," "
+	PRINT AT 455," "
+	IF ssel = 0 THEN PRINT AT 391,">"
+	IF ssel = 1 THEN PRINT AT 455,">"
+	' Edge-triggered, or one press walks the cursor the whole way down.
+	ssk = 0
+	IF cont1.up THEN ssk = 1
+	IF cont1.down THEN ssk = 2
+	IF ssk <> sskl THEN
+		sskl = ssk
+		IF ssk = 1 THEN ssel = 0
+		IF ssk = 2 THEN ssel = 1
+		IF ssk > 0 THEN
+			SOUND 1,500,10
+			sf1 = 3
+		END IF
+	END IF
+	IF btnr = 0 THEN
+		IF cont1.button = 0 THEN btnr = 1
+	ELSE
+		IF cont1.button THEN GOTO set_chosen
+	END IF
+	GOTO set_wait
+
+set_chosen:
+	' The chosen set is a BASE into the 80-level table and a COUNT of rounds. The
+	' round the HUD prints is still 1..30 or 1..50, because it prints lvl, which is
+	' the round WITHIN the set -- lvbase is only ever added when indexing the data.
+	IF ssel = 0 THEN
+		lvbase = 0
+		lvmax = 30
+	ELSE
+		lvbase = 30
+		lvmax = 50
+	END IF
+	' The 838 round select is clamped against lvmax, so a round chosen for the other
+	' game cannot survive the switch.
+	IF stlv > lvmax THEN stlv = lvmax
+#endif
 
 title_go:
 	' THE SCORE'S BADGE BELONGS TO THE SCORE, not to the current setting. Captured
@@ -3255,7 +3349,7 @@ setup838:
 	GOSUB rd_dig
 	stlv = sd1 * 10 + tdg
 	IF stlv < 1 THEN stlv = 1
-	IF stlv > NLEV THEN stlv = NLEV
+	IF stlv > lvmax THEN stlv = lvmax
 	' LET THE SECOND DIGIT'S BEEP DECAY BEFORE LEAVING. The first digit's note is
 	' silenced by the wait loops of the second call to rd_dig -- but after the
 	' SECOND digit there is no loop left, and nothing between here and the main loop
@@ -3392,9 +3486,15 @@ txt_col:
 	INCLUDE "art.bas"
 	INCLUDE "juggle.bas"
 	INCLUDE "music.bas"
-	' An INCLUDE inside a false #if is never even opened, so this picks the file
-	' rather than compiling both and discarding one.
-#if EXPERT
+	' An INCLUDE inside a false #if is never even opened, so exactly one of these
+	' is compiled rather than all three being read and two discarded.
+	'
+	' levels12.bas is ONE table of 80 -- arcade 1-30, expert 31-80 -- not the other
+	' two side by side: they each define pb_lay, pb_seq and pb_meta, so including
+	' both would define every label twice.
+#if BOTH
+	INCLUDE "levels12.bas"
+#elif EXPERT
 	INCLUDE "levels2.bas"
 #else
 	INCLUDE "levels.bas"

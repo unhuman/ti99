@@ -11,16 +11,19 @@
 # the main loop is a single WAIT per frame doing trivial work on both machines,
 # so both run the same 60Hz NTSC tick rate natively.
 #
-#   ./build-ti.sh            -> BUSTABOB_8.bin, the 30 arcade rounds
-#   ./build-ti.sh --expert   -> BUSTAB2_8.bin,  the 50 generated ones
+#   ./build-ti.sh            -> BUSTABOB_8.bin,  the 30 arcade rounds
+#   ./build-ti.sh --expert   -> BUSTAB2_8.bin,   the 50 generated ones
+#   ./build-ti.sh --both     -> BUSTAB12_8.bin,  both, chosen on a select screen
 #
-# ONE ENGINE, TWO CARTS. --expert passes -DEXPERT=1; the source uses it to pick
-# levels2.bas over levels.bas and to swap the timer ceiling-drop for the arcade's
-# shot-count rule. Both carts build from the same BUSTABOB.bas, so an engine fix
-# reaches both without being applied twice.
+# ONE ENGINE, THREE CARTS, each buildable on its own. The flag picks which level
+# table is INCLUDEd -- levels.bas, levels2.bas, or the combined levels12.bas of 80
+# -- so an engine fix reaches all three without being applied three times.
 #
-# The disk name is BUSTAB2, not BUSTABOB2: the repo caps program names at 8
-# characters (CLAUDE.md 8).
+# The combined cart is still 32 KB and still ONE bank: 80 levels at 54 B is 4,320,
+# and with the art and music tables that is 7,574 of 8,192.
+#
+# Disk names are capped at 8 characters by repo rule (CLAUDE.md 8), hence BUSTAB2
+# and BUSTAB12 rather than BUSTABOBBLE2.
 #
 # On this machine, cvbasic.exe/xas99.py/linkticart.py have been flaky when run
 # from the Bash tool's cygwin shell (missing shared libs / mixed path forms).
@@ -37,13 +40,19 @@ NAME="BUSTABOB"
 CARTNAME="BUST-A-BOBBLE"
 DEFS=""
 EXPERT=0
+BOTH=0
 if [ "$1" = "--expert" ]; then
     NAME="BUSTAB2"
     CARTNAME="BUST-A-BOBBLE 2"
     DEFS="-DEXPERT=1"
     EXPERT=1
+elif [ "$1" = "--both" ]; then
+    NAME="BUSTAB12"
+    CARTNAME="BUST-A-BOBBLE 1+2"
+    DEFS="-DBOTH=1"
+    BOTH=1
 elif [ -n "$1" ]; then
-    echo "ERROR: unknown option '$1' (the only option is --expert)" >&2; exit 1
+    echo "ERROR: unknown option '$1' (--expert or --both)" >&2; exit 1
 fi
 
 die() { echo "ERROR: $1" >&2; exit 1; }
@@ -78,7 +87,10 @@ rm -f "$NAME.a99"
 # nothing in the chain would say a word. Both branches of the source announce
 # themselves with #info, so the compiler itself reports which one it took.
 # (The message is one underscored token because #info prints only its first word.)
-if [ "$EXPERT" = 1 ]; then
+if [ "$BOTH" = 1 ]; then
+    grep -q "BUILDING_BOTH_SETS" "$NAME.log" \
+        || die "-DBOTH=1 never reached the source: the compiler took another branch"
+elif [ "$EXPERT" = 1 ]; then
     grep -q "BUILDING_EXPERT_SET" "$NAME.log" \
         || die "-DEXPERT=1 never reached the source: the compiler took the ARCADE branch"
 else
@@ -109,7 +121,13 @@ fi
 # three different apparent bugs in the drop logic, and one round that cannot be
 # won at all (DESIGN.md 16a). It costs a second to check, so it is checked every
 # build. (we are inside src/ at this point, hence the relative path)
-if [ "$EXPERT" = 1 ]; then
+# The combined cart carries BOTH sets, so both get audited.
+if [ "$BOTH" = 1 ]; then
+    "$PY" ../assets/solvelevels.py --anchors \
+        || die "arcade level data has unanchored bubbles -- see above"
+    "$PY" ../assets/solvelevels.py --set expert --anchors \
+        || die "expert level data has unanchored bubbles -- see above"
+elif [ "$EXPERT" = 1 ]; then
     "$PY" ../assets/solvelevels.py --set expert --anchors \
         || die "expert level data has unanchored bubbles -- see above"
 else
@@ -129,7 +147,7 @@ rm -f "${NAME}_8.bin"
 # into the cart -- in RALLY-X the banked path had no check at all, and that is how
 # 229 bytes were cut off the end of the music with every tool reporting success.
 echo
-RCFLAG=""; [ "$EXPERT" = 1 ] && RCFLAG="--expert"
+RCFLAG=""; [ "$EXPERT" = 1 ] && RCFLAG="--expert"; [ "$BOTH" = 1 ] && RCFLAG="--both"
 "$PY" ../assets/romcheck.py "$NAME" $RCFLAG || die "romcheck FAILED -- the cart is truncated (see above)"
 
 echo

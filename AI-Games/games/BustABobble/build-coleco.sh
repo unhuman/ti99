@@ -29,8 +29,11 @@ if [ "$1" = "--expert" ]; then
     NAME="bustab2"
     DEFS="-DEXPERT=1"
     EXPERT=1
+elif [ "$1" = "--both" ]; then
+    NAME="bustab12"
+    DEFS="-DBOTH=1"
 elif [ -n "$1" ]; then
-    echo "ERROR: unknown option '$1' (the only option is --expert)" >&2; exit 1
+    echo "ERROR: unknown option '$1' (--expert or --both)" >&2; exit 1
 fi
 ASM="${NAME}_col.asm"
 ROM="${NAME}.rom"

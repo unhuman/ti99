@@ -71,7 +71,11 @@ FIXED_BLOCKS = ()
 # truncated -- correctly, in the sense that those bytes really are absent, and
 # uselessly, in the sense that they were never supposed to be there. Defaults to
 # the arcade set; --expert switches to levels2.bas.
-LEVELS = "levels2.bas" if "--expert" in sys.argv else "levels.bas"
+LEVELS = "levels.bas"
+if "--expert" in sys.argv:
+    LEVELS = "levels2.bas"
+elif "--both" in sys.argv:
+    LEVELS = "levels12.bas"   # the combined cart: one table of 80
 BANKED_BLOCKS = ((LEVELS, "pb_lay"), (LEVELS, "pb_seq"), (LEVELS, "pb_meta"),
                  ("music.bas", "mus_song"), ("music.bas", "mus_freq"))
 

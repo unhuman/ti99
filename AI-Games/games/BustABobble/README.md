@@ -48,7 +48,12 @@ expert 50, at all three settings, 240 level-proofs in total.
 ```
 ./build-ti.sh            ./build-coleco.sh              cart 1
 ./build-ti.sh --expert   ./build-coleco.sh --expert     cart 2
+./build-ti.sh --both     ./build-coleco.sh --both       both games, one cart
 ```
+
+The **combined cart** carries both games and asks which you want on a select screen
+after the title. It is still 32 KB and still one bank: 80 levels in one table, with
+the chosen set picked by a base and a count rather than a second set of pointers.
 
 Cart 2 exists because players asked for more and harder levels, and because cart 1 is *measurably*
 easy: 28 of its 30 rounds clear before the ceiling drops even once. The reason turned out not to be
