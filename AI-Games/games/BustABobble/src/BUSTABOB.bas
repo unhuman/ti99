@@ -1673,11 +1673,14 @@ copy_hi:
 	'
 load_level:
 	#lvb = lvl - 1
-	#lvb = #lvb * 44
+	#lvb = #lvb * 36		' 9 rows x 8 cells, one nibble each
 	FOR lli = 0 TO 95
 		grid(lli) = 0
 	NEXT lli
-	FOR llr = 0 TO 10
+	' NINE rows, not eleven: a bubble in grid row 9 is already past the death line
+	' at top = 0, so rows 9 and 10 could never hold anything. grid() is cleared
+	' above, so the rows beyond what is stored stay empty.
+	FOR llr = 0 TO 8
 		#llo = llr
 		#llo = #llo * 4
 		#llo = #llo + #lvb

@@ -4,7 +4,7 @@ BUST-A-BOBBLE - levels.txt -> src/levels.bas
 
 Reads the human-authored level file and emits CVBasic DATA BYTE blocks:
 
-    pb_lay   30 x 44 B   layout,   11 rows x 8 cells, one NIBBLE per cell
+    pb_lay   30 x 36 B   layout,    9 rows x 8 cells, one NIBBLE per cell
     pb_seq   30 x 16 B   sequence, 32 shots,          one NIBBLE per shot
     pb_meta  30 x  2 B   colours in play, droptime in QUARTER-SECONDS
 
@@ -24,7 +24,12 @@ SRC = os.path.join(HERE, "levels.txt")
 OUT = os.path.join(HERE, "..", "src", "levels.bas")
 
 NLEVELS = 30       # the game ships 30 rounds
-NROWS = 11         # grid rows stored per level
+# NINE, not eleven. The death line caps a level at nine rows: check_death is
+# top + 2*maxr >= 18, so a bubble in grid row 9 is dead at top = 0 -- i.e. the
+# instant the round loads. Rows 9 and 10 were therefore two rows of guaranteed
+# zeros in every level, 8 bytes each. Nine is not a budget compromise, it is the
+# physical maximum.
+NROWS = 9          # grid rows stored per level
 NCOLS = 8          # grid columns (odd rows use 0..6)
 NSEQ = 32          # shot-sequence entries per level (index wraps with AND 31)
 

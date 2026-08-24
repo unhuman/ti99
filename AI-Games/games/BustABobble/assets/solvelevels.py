@@ -188,7 +188,7 @@ def load_rom():
     # half-regenerated table, which a hard-coded count would only catch for one
     # particular size of mistake.
     n = len(rom["meta"]) // 2
-    assert len(rom["lay"]) == n * 44, (len(rom["lay"]), n)
+    assert len(rom["lay"]) == n * 36, (len(rom["lay"]), n)
     assert len(rom["seq"]) == n * 16, (len(rom["seq"]), n)
     assert n == NLEV, "%s holds %d levels, the %s set expects %d" % (
         LEVELS_FILE, n, SETNAME, NLEV)
@@ -305,9 +305,9 @@ def check_death(grid, top):
 
 def load_round(rom, lvl):
     st = Round()
-    base = (lvl - 1) * 44
+    base = (lvl - 1) * 36
     g = [0] * 96
-    for r in range(11):
+    for r in range(9):     # rows 9-10 cannot hold a bubble; see genlevels.py
         o = base + r * 4
         b = r * 8
         for c in range(8):
