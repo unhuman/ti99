@@ -3359,19 +3359,24 @@ bar_colw:
 txt_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
-	' ONLY THE MUSIC IS LEFT ABOVE THE BANK DIRECTIVE, and it is the only thing that
-	' has to be: the player refills the sound chip from the VBLANK ISR, which can
-	' fire anywhere, and bank switching there is unsafe.
+	' NOTHING DATA-SHAPED IS LEFT ABOVE THE BANK DIRECTIVE. art.bas, juggle.bas and
+	' now music.bas have all moved below it; what remains in the fixed area is code
+	' and nothing else.
 	'
-	' art.bas (the aim table, read every frame) and juggle.bas (the victory screen's
-	' path, likewise) USED to sit here on the grounds that a per-frame read must not
-	' be in a bank. That was over-cautious, and it was costing 264 bytes of the
-	' scarcest budget in the project. The hazard is bank SWITCHING, not bank
-	' residency: this cart selects bank 1 once at startup and never switches, so
-	' every byte in it is mapped permanently and reads are ordinary ROM reads. The
-	' rule that matters is the one at the top of the file -- if a SECOND bank is
-	' ever added, these become unsafe again along with pb_lay/pb_seq/pb_meta.
-	INCLUDE "music.bas"
+	' Each move was resisted by the same argument and the argument was wrong each
+	' time: "this is read every frame / from the ISR, so it must not be in a bank."
+	' THE HAZARD IS BANK SWITCHING, NOT BANK RESIDENCY. This cart issues one
+	' `BANK SELECT 1` at startup and never switches again, so bank 1 is mapped
+	' permanently and a read from it is an ordinary ROM read -- from the main loop
+	' or from the vblank ISR, it makes no difference.
+	'
+	' !! THAT MAKES "NEVER ADD A SECOND BANK" A HARD CONSTRAINT, not a preference.
+	' It used to cost only cart size (3 loader pages + one per bank, rounded up to a
+	' power of two, so a second bank doubles 32 KB to 64 KB). It now also BREAKS THE
+	' MUSIC: with two banks the ISR could fire while the other page is selected and
+	' would read its note tables out of the wrong ROM, intermittently, with nothing
+	' to catch it. If a second bank ever becomes necessary, music.bas must come back
+	' above the directive first and the fixed area must be found the 660 bytes.
 	' LEVELS COME LAST, and on TI everything after `BANK 1` is assembled into that
 	' bank. The order matters for exactly that reason: music.bas used to be last,
 	' and if it still were, `BANK 1` would sweep the music tables into the bank
@@ -3383,6 +3388,7 @@ txt_col:
 	INCLUDE "artdefs.bas"
 	INCLUDE "art.bas"
 	INCLUDE "juggle.bas"
+	INCLUDE "music.bas"
 	' An INCLUDE inside a false #if is never even opened, so this picks the file
 	' rather than compiling both and discarding one.
 #if EXPERT

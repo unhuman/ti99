@@ -54,7 +54,17 @@ NAME = _args[0] if _args else "BUSTABOB"
 # Blocks worth naming individually. Truncation always eats the END of the program
 # image, so what matters for a fixed-area block is not "is it there" but "does it
 # END inside the cap" -- which is checked by offset, not by searching the cart.
-FIXED_BLOCKS = (("music.bas", "mus_song"), ("music.bas", "mus_freq"))
+# NOTHING IS REQUIRED IN THE FIXED AREA ANY MORE. The music tables used to be
+# listed here and asserted to END inside the cap, because the vblank ISR reads them
+# and bank switching in an ISR is unsafe. They now live in the bank with everything
+# else data-shaped: the hazard is bank SWITCHING, and this cart selects bank 1 once
+# at startup and never switches, so bank 1 is permanently mapped.
+#
+# The guard INVERTS rather than disappears. What has to be checked now is the
+# premise: that there is exactly ONE bank. With two, the ISR could fire while the
+# other page is selected and read its notes out of the wrong ROM, intermittently,
+# and nothing else in the chain would notice.
+FIXED_BLOCKS = ()
 
 # WHICH LEVEL FILE THIS CART CARRIES. The two carts are the same engine over
 # different data, so checking BUSTAB2 against levels.bas reports every block as
@@ -62,7 +72,8 @@ FIXED_BLOCKS = (("music.bas", "mus_song"), ("music.bas", "mus_freq"))
 # uselessly, in the sense that they were never supposed to be there. Defaults to
 # the arcade set; --expert switches to levels2.bas.
 LEVELS = "levels2.bas" if "--expert" in sys.argv else "levels.bas"
-BANKED_BLOCKS = ((LEVELS, "pb_lay"), (LEVELS, "pb_seq"), (LEVELS, "pb_meta"))
+BANKED_BLOCKS = ((LEVELS, "pb_lay"), (LEVELS, "pb_seq"), (LEVELS, "pb_meta"),
+                 ("music.bas", "mus_song"), ("music.bas", "mus_freq"))
 
 
 def strip_fill(d):
@@ -185,6 +196,19 @@ def main():
             print("  BANK %d      used %5d / %d   free %5d"
                   % (nb + 1, c, BANK_SIZE, BANK_SIZE - c))
             nb += 1
+        # THE ONE-BANK PREMISE, checked because the music now depends on it.
+        # mus_song/mus_freq live in the bank, and that is only safe while bank 1 is
+        # selected once at startup and never switched -- with a second bank the
+        # vblank ISR could fire while the other page is mapped and read its note
+        # tables out of the wrong ROM. Intermittent, unreproducible, and invisible
+        # to every other tool in the chain. A second bank is not a size decision
+        # any more.
+        if nb > 1:
+            fail.append("this build has %d banks. The music tables live in bank 1 "
+                        "and the vblank ISR reads them, which is only safe while "
+                        "there is exactly ONE bank permanently mapped. Move "
+                        "music.bas back above the BANK directive (and find the "
+                        "fixed area 660 bytes) before shipping this." % nb)
         if nb == 0:
             fail.append("the build emitted %s_b0.bin (a banked layout) but no bank "
                         "files from b3 up -- the BANK data went nowhere" % NAME)
