@@ -472,8 +472,10 @@ def main():
     # dropped rather than as pointing down.
     w("\t' 218 easy: arrow down")
     w("\tDATA BYTE $18,$18,$18,$18,$7E,$3C,$18,$00")
+    # Raised one line as well, so all three badges share an optical centre: the
+    # arrows now occupy rows 0-6 and a bar sitting on rows 3-4 read low beside them.
     w("\t' 219 medium: flat bar")
-    w("\tDATA BYTE $00,$00,$00,$7E,$7E,$00,$00,$00")
+    w("\tDATA BYTE $00,$00,$7E,$7E,$00,$00,$00,$00")
     w("\t' 220 hard: arrow up")
     w("\tDATA BYTE $18,$3C,$7E,$18,$18,$18,$18,$00")
     # EIGHT bytes of colour per character -- one per scan line. Supplying fewer

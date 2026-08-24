@@ -818,14 +818,23 @@ prt_badges:
 
 	' Padded to SIX characters so MEDIUM overwrites cleanly -- without the trailing
 	' spaces, switching MEDIUM -> HARD would leave "HARDUM" on the screen.
+	' THE BADGE HUGS THE WORD rather than sitting at a fixed column: one space past
+	' whatever was printed, so EASY and HARD carry it at 23 and MEDIUM at 25. A
+	' fixed column left it marooned two spaces out from the short words.
+	'
+	' The words are padded to EIGHT characters (18-25) even though the longest is
+	' six. That pad is what erases MEDIUM's last two letters AND its badge when the
+	' toggle cycles back to a short word -- print six and "HARD  " leaves "UM" and a
+	' stranded badge behind it.
 prt_dlev:
-	IF dlev = 0 THEN PRINT AT 626,"EASY  "
-	IF dlev = 1 THEN PRINT AT 626,"MEDIUM"
-	IF dlev = 2 THEN PRINT AT 626,"HARD  "
-	' AND THE BADGE ITSELF, one space past the word. This is the LIVE setting --
-	' the only badge on the title that follows the toggle. The two beside the
-	' scores are history and must not move when you change your mind.
-	#tna = 633			' row 19, col 25
+	dlx = 23			' EASY and HARD are four characters
+	IF dlev = 0 THEN PRINT AT 626,"EASY    "
+	IF dlev = 1 THEN PRINT AT 626,"MEDIUM  "
+	IF dlev = 1 THEN dlx = 25
+	IF dlev = 2 THEN PRINT AT 626,"HARD    "
+	' This is the LIVE setting -- the only badge on the title that follows the
+	' toggle. The two beside the scores are history and must not move.
+	#tna = 608 + dlx		' row 19
 	#tna = #tna + 6144
 	tnv = 218 + dlev
 	VPOKE #tna,tnv

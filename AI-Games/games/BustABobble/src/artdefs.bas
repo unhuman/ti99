@@ -315,7 +315,7 @@ diff_pat:
 	' 218 easy: arrow down
 	DATA BYTE $18,$18,$18,$18,$7E,$3C,$18,$00
 	' 219 medium: flat bar
-	DATA BYTE $00,$00,$00,$7E,$7E,$00,$00,$00
+	DATA BYTE $00,$00,$7E,$7E,$00,$00,$00,$00
 	' 220 hard: arrow up
 	DATA BYTE $18,$3C,$7E,$18,$18,$18,$18,$00
 diff_col:
