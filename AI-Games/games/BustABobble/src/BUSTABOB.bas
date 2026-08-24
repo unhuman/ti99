@@ -133,8 +133,8 @@
 	' HUD is LEFT-JUSTIFIED on COLUMN 22 -- the column the 9-digit score and high
 	' score already start at, so every label's left edge lines up with them.
 	' Offsets are row*32 + col.
-	CONST SCPOS    = 54	' score,  9 digits, row 1  cols 22-30
-	CONST HIPOS    = 150	' hi,     9 digits, row 4  cols 22-30
+	CONST SCPOS    = 53	' score,  9 digits, row 1  cols 21-29
+	CONST HIPOS    = 149	' hi,     9 digits, row 4  cols 21-29
 	' The round number is at row 9, columns 23-24 -- see prt_hud, where the offset is
 	' a BARE LITERAL and not a CONST, because 9*32+23 is 311 and a CONST over 255
 	' truncates to 8 bits on this backend.
@@ -300,6 +300,7 @@
 	' No high score yet, so its badge starts on easy alongside the zeroes rather
 	' than reading whatever RAM held.
 	hidlev = 0
+	scdlev = 0
 
 	' Base addresses of the music tables, resolved once.
 	#musf = VARPTR mus_freq(0)
@@ -807,7 +808,7 @@ prt_musen:
 prt_badges:
 	#tna = 15
 	#tna = #tna + 6144
-	tnv = 218 + dlev
+	tnv = 218 + scdlev
 	VPOKE #tna,tnv
 	#tna = 31
 	#tna = #tna + 6144
@@ -818,9 +819,16 @@ prt_badges:
 	' Padded to SIX characters so MEDIUM overwrites cleanly -- without the trailing
 	' spaces, switching MEDIUM -> HARD would leave "HARDUM" on the screen.
 prt_dlev:
-	IF dlev = 0 THEN PRINT AT 627,"EASY  "
-	IF dlev = 1 THEN PRINT AT 627,"MEDIUM"
-	IF dlev = 2 THEN PRINT AT 627,"HARD  "
+	IF dlev = 0 THEN PRINT AT 626,"EASY  "
+	IF dlev = 1 THEN PRINT AT 626,"MEDIUM"
+	IF dlev = 2 THEN PRINT AT 626,"HARD  "
+	' AND THE BADGE ITSELF, one space past the word. This is the LIVE setting --
+	' the only badge on the title that follows the toggle. The two beside the
+	' scores are history and must not move when you change your mind.
+	#tna = 633			' row 19, col 25
+	#tna = #tna + 6144
+	tnv = 218 + dlev
+	VPOKE #tna,tnv
 	RETURN
 
 mus_off:
@@ -2396,17 +2404,17 @@ prt_hud:
 	znb = HIPOS
 	zns = 1
 	GOSUB prt_num
-	' THE TWO DIFFICULTY BADGES, each directly above its own score's last digit:
-	' row 0 column 30 over the score, row 3 column 30 over the high score. The
-	' label rows are short ("1UP", "HI") so column 30 is empty on both.
+	' THE TWO DIFFICULTY BADGES, each BESIDE its own score rather than above it.
+	' The scores moved one column left (21-29) to make room, which also lines their
+	' right edge up with the TIME gauge below at 22-29, and leaves column 31 as a
+	' margin -- the last column is inside TV overscan on real hardware.
 	'
-	' They can disagree, and that is the point -- the top one is what you are
-	' playing now, the bottom one is what the record was set on.
-	#psa = 30
+	' They can disagree, and that is the point: each says how ITS score was made.
+	#psa = 62			' 1*32 + 30, beside the score
 	#psa = #psa + 6144
-	psv = 218 + dlev
+	psv = 218 + scdlev
 	VPOKE #psa,psv
-	#psa = 126			' 3*32 + 30
+	#psa = 158			' 4*32 + 30, beside the high score
 	#psa = #psa + 6144
 	psv = 218 + hidlev
 	VPOKE #psa,psv
@@ -2941,11 +2949,11 @@ title_screen:
 	PRINT AT 484,"2026 UNHUMAN AND CLAUDE"	' row 15, col 4
 	PRINT AT 554,"1=MUSIC"			' row 17, col 10
 	GOSUB prt_musen
-	' Column 6, so the 12-character label ends at 17 and leaves column 18 BLANK
-	' before the value at 19 -- at column 7 it ended at 18 and ran straight into it
-	' ("2=DIFFICULTYEASY"). The line above has the same single space, at 17.
-	' Spans 6-24, centred on 15, which is where 1=MUSIC sits too.
-	PRINT AT 614,"2=DIFFICULTY"		' row 19, col 6
+	' Column 5 now, because the line grew a badge on the end: label 5-16, space at
+	' 17, value 18-23, space at 24, badge at 25. Spans 5-25, centred on 15, which is
+	' where 1=MUSIC sits too. The single space either side of the value is what
+	' stops it reading as "2=DIFFICULTYEASY".
+	PRINT AT 613,"2=DIFFICULTY"		' row 19, col 5
 	GOSUB prt_dlev
 	PRINT AT 710,"PRESS FIRE TO START"	' row 22, col 6
 	t8 = 0
@@ -3030,6 +3038,11 @@ title_wait:
 	GOTO title_wait
 
 title_go:
+	' THE SCORE'S BADGE BELONGS TO THE SCORE, not to the current setting. Captured
+	' as the game starts, so pressing 2 on the title afterwards cannot retroactively
+	' relabel a score that was already earned -- the arrow beside a score always
+	' says how THAT score was made. Same principle as hidlev for the high score.
+	scdlev = dlev
 	lvl = stlv
 	lives = 3
 	FOR tgi = 0 TO 7

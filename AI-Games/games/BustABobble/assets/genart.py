@@ -467,8 +467,11 @@ def main():
     w("\t' Arrow DOWN red for easy, flat bar cyan for medium, arrow UP green for hard;")
     w("\t' the shape says it too, so it survives a monochrome set.")
     w("diff_pat:")
+    # Raised one scan line from the up arrow's exact mirror. The badge shares its
+    # row with text, and a glyph hanging off the bottom of the cell reads as having
+    # dropped rather than as pointing down.
     w("\t' 218 easy: arrow down")
-    w("\tDATA BYTE $00,$18,$18,$18,$18,$7E,$3C,$18")
+    w("\tDATA BYTE $18,$18,$18,$18,$7E,$3C,$18,$00")
     w("\t' 219 medium: flat bar")
     w("\tDATA BYTE $00,$00,$00,$7E,$7E,$00,$00,$00")
     w("\t' 220 hard: arrow up")

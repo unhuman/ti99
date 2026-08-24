@@ -313,7 +313,7 @@ life_col:
 	' the shape says it too, so it survives a monochrome set.
 diff_pat:
 	' 218 easy: arrow down
-	DATA BYTE $00,$18,$18,$18,$18,$7E,$3C,$18
+	DATA BYTE $18,$18,$18,$18,$7E,$3C,$18,$00
 	' 219 medium: flat bar
 	DATA BYTE $00,$00,$00,$7E,$7E,$00,$00,$00
 	' 220 hard: arrow up
