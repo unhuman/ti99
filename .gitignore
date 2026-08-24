@@ -88,3 +88,9 @@ Desktop.ini
 .*.swo
 
 
+
+# Throwaway patch/probe scripts. Convention: anything named _*.py is scratch --
+# written to run once and delete. Twice now a directory-wide `git add` has swept
+# one into a commit (_tempo.py, _bt.py), and a committed run-once script is worse
+# than none: both were already broken by the very edit they had just made.
+_*.py
