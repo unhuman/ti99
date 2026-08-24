@@ -211,7 +211,29 @@ def groups(grid):
 
 def build(n, rng):
     rows = 6 + rng(4)                       # 6..9; 9 is a two-drop round
-    ncol = 5 + rng(4)                       # 5..8
+    # COLOURS ARE CAPPED AT 6, AND THIS IS MEASURED, NOT GUESSED. The first set
+    # ran 5..8 and the solver proved all 50 at --overhead 30:
+    #
+    #     5 colours   12 won   0 lost   100%
+    #     6 colours   13 won   1 lost    93%
+    #     7 colours    7 won   3 lost    70%
+    #     8 colours    2 won  12 lost    14%
+    #
+    # Eight colours is not hard, it is broken -- round 6 was only 6 rows and 33
+    # bubbles and the solver reported it "not clearable even with the clock off",
+    # so neither the drop rule nor the depth was the obstacle.
+    #
+    # The cause is this generator arguing with itself. Three in contact must pop,
+    # so a colour needs material; with 8 colours over ~33 bubbles that is ~4 each,
+    # and then the cluster-repair pass below strips out the groups that WOULD have
+    # been there, leaving the player to assemble every group from a palette that
+    # has barely enough of anything. The no-pre-made-clusters rule and a high
+    # colour count fight, and the clusters rule wins.
+    #
+    # Note what does NOT predict failure: bubbles-per-colour. Failures ran 3.1 to
+    # 6.5 and winnable rounds went as low as 3.8, so the ratio separates nothing.
+    # The colour COUNT does.
+    ncol = 4 + rng(3)                       # 4..6
     mirror = rng(4) > 0                     # 3 boards in 4 are symmetric
     shape = make_shape(rng, rows, mirror)
 
@@ -227,8 +249,13 @@ def build(n, rng):
     live = sorted(int(k) for k in used if used[k] > 0)
     if not live or max(live) != len(live):
         return None                          # palette must be a prefix 1..N
-    if min(used[k] for k in live) < 2:
-        return None                          # a lone bubble is a forced detour
+    if min(used[k] for k in live) < 4:
+        # FOUR, not two. Three in contact must pop, and the cluster-repair pass
+        # deliberately breaks up any group that arrives pre-made -- so a colour
+        # with exactly three on the board has to be rebuilt from scratch with no
+        # margin for a misfire. Two was the old threshold and it let through
+        # boards that were arithmetically clearable and practically not.
+        return None
 
     st = {"n": n, "ncol": len(live)}
     rowstr = ["".join(row) for row in grid]

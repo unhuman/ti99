@@ -110,7 +110,8 @@ fi
 # won at all (DESIGN.md 16a). It costs a second to check, so it is checked every
 # build. (we are inside src/ at this point, hence the relative path)
 if [ "$EXPERT" = 1 ]; then
-    echo "      *** EXPERT SET IS NOT YET WINNABILITY-CHECKED (plan phase 4) ***"
+    "$PY" ../assets/solvelevels.py --set expert --anchors \
+        || die "expert level data has unanchored bubbles -- see above"
 else
     "$PY" ../assets/solvelevels.py --anchors || die "level data has unanchored bubbles -- see above"
 fi
