@@ -311,6 +311,13 @@ new_round:
 	' uses maxr to decide which rows to rebuild. With a stale maxr the level's
 	' bubbles were simply not drawn until the first shot forced a rescan.
 	GOSUB scan_present
+#if EXPERT
+	' The round's STARTING colour count, captured here because load_level runs
+	' before the first scan and so cannot know it. `missing` is measured against
+	' this, so a round that begins with six colours and is down to two drops every
+	' b-4 shots.
+	ncol0 = nprs
+#endif
 	GOSUB draw_frame
 	IF reveal = 1 THEN
 		GOSUB do_reveal
@@ -407,7 +414,14 @@ game_loop:
 		warnon = 0
 	END IF
 
+#if EXPERT
+	' NO PER-FRAME GAUGE TICK on the expert cart. The magazine changes only when a
+	' shot is fired, so drop_check redraws it; calling tick_bar here would repaint
+	' the shot count from the FALLBACK clock every frame and wipe it out. This also
+	' takes tick_bar's divide out of the main loop entirely.
+#else
 	GOSUB tick_bar
+#endif
 
 	' Shake telegraph. Render-only: shkb feeds draw_row and NOTHING else, so
 	' collision always uses the rest position and a shot fired just before a
@@ -536,8 +550,28 @@ set_bar_col:
 	' 534 = 16*32 + 22 is written as a BARE LITERAL: a CONST above 255 silently
 	' compiles to zero on this toolchain (see the note at the top of the file).
 draw_bar:
+#if EXPERT
+	' A SHOT MAGAZINE, NOT A CLOCK. The expert cart's ceiling falls on bubbles
+	' fired, so a 64-step pixel drain would be measuring the wrong thing -- and
+	' worse, would drain smoothly while the real quantity moved in whole steps.
+	' One filled cell per shot remaining, and no partial cell at all.
+	'
+	' It also makes the ACCELERATION visible: eliminate a colour and the magazine
+	' loses a cell on the spot, which teaches the rule better than any HUD text.
+	tbf = drem
+	IF tbf > 8 THEN tbf = 8
+	tbr = 0
+	' Red for the last two, reusing the timer gauge's own transition machinery.
+	tbwant = 0
+	IF drem < 3 THEN tbwant = 1
+	IF tbwant <> barw THEN
+		barw = tbwant
+		GOSUB set_bar_col
+	END IF
+#else
 	tbf = barlast / 8		' whole cells filled
 	tbr = barlast - tbf * 8		' leftover pixels in the next cell
+#endif
 	#tba = 534
 	#tba = #tba + 6144
 	FOR tbi = 0 TO 7
@@ -638,6 +672,13 @@ do_fire:
 	deckw = 0			' and BUB has picked the waiting one up
 	GOSUB draw_deck
 	flying = 1
+#if EXPERT
+	' COUNT THE SHOT AS IT LEAVES, not as it lands. The arcade's rule is written in
+	' bubbles FIRED, and counting here also covers the shot that sticks nowhere --
+	' that path skips after_stick entirely, and a shot the ceiling ignores would
+	' otherwise be a free one.
+	shotn = shotn + 1
+#endif
 	btnr = 0
 	#bx = 20480		' LAUNCHX * 256 -- bare literal, see the note at the top
 	#by = 47104		' LAUNCHY * 256
@@ -690,7 +731,11 @@ anim_tick:
 		#dropt = 0
 	END IF
 	#lf = FRAME
+#if EXPERT
+	' Same reason as the main loop: the magazine is event-driven, not timed.
+#else
 	GOSUB tick_bar
+#endif
 	RETURN
 
 	'
@@ -1168,6 +1213,14 @@ after_stick:
 		GOSUB do_dead
 		RETURN
 	END IF
+#if EXPERT
+	' THE DROP IS TESTED HERE, after the round-clear and death tests. A round that
+	' has just been cleared, or that has just killed you, must not also drop -- and
+	' do_drop repaints the whole field and can itself call do_dead, so it cannot be
+	' run from do_fire with a shot about to launch.
+	GOSUB drop_check
+	IF nrq > 0 THEN RETURN
+#endif
 	GOSUB next_shot
 	RETURN
 
@@ -1608,6 +1661,19 @@ load_level:
 	#droprl = pb_meta(#lvm + 1)
 	#droprl = #droprl * 15		' quarter-seconds -> frames (60 Hz both targets)
 	#dropt = #droprl
+#if EXPERT
+	' THE EXPERT CART DROPS ON A SHOT COUNT, THE ARCADE'S OWN RULE. pb_meta byte 0
+	' is the base interval b -- the byte the arcade build fills with a colour count
+	' and never reads, so the two carts share the format without sharing a meaning.
+	'
+	' #droprl/#dropt above are NOT discarded: they become the anti-idle FALLBACK.
+	' A shot-count trigger alone means a player who never fires never loses, and
+	' the arcade has a fallback for exactly that. It costs no code -- the main
+	' loop's existing `IF #dropt = 0 THEN GOSUB do_drop` simply becomes it, and a
+	' shot-triggered drop rearms it because do_drop already resets #dropt.
+	shotb = pb_meta(#lvm)
+	shotn = 0
+#endif
 	GOSUB mark_scenery		' flag the level's own detached pieces, once
 	GOSUB calc_bstep
 	' AND REPAINT THE GAUGE'S COLOUR, not just the flag. barw = 0 says "green" but
@@ -1627,6 +1693,11 @@ load_level:
 	' here) but the truth: #dropt has just been set to #droprl, so a full 64 pixels
 	' IS the state, and the first tick_bar agrees with it and leaves it alone.
 	barlast = 64
+#if EXPERT
+	' The magazine opens full: no shots fired yet, so the whole base interval is
+	' still ahead. drem must be set before draw_bar reads it.
+	drem = shotb
+#endif
 	GOSUB draw_bar
 	#seqb = lvl - 1
 	#seqb = #seqb * 16
@@ -1690,6 +1761,16 @@ scan_present:
 			END IF
 		NEXT spc
 	NEXT spr
+#if EXPERT
+	' HOW MANY COLOURS ARE STILL ALIVE. The arcade's drop rule keys off this: the
+	' ceiling falls every b-minus-MISSING shots, so eliminating a colour speeds it
+	' up. pres() is already filled above, so the count is a walk of eight bytes on
+	' a routine that only runs when the board changes -- not per frame.
+	nprs = 0
+	FOR spi = 1 TO 8
+		IF pres(spi) = 1 THEN nprs = nprs + 1
+	NEXT spi
+#endif
 	RETURN
 
 	'
@@ -1760,6 +1841,52 @@ check_death:
 	' field left the whole ceiling skewed one character right -- draw_field no
 	' longer repaints the ceiling (that is the shake's job), so nothing put it
 	' back. Reset, then fill, then repaint BOTH.
+#if EXPERT
+	' THE ARCADE'S CEILING RULE, from the Puzzle Bobble FAQ v1.24: "the screen
+	' drops after a certain number of bubbles (b) have been fired", and "for each
+	' missing color, the screen drops every b - missing colors bubbles".
+	'
+	' The clever half is the second clause. The ceiling ACCELERATES as colours are
+	' eliminated, so it presses hardest exactly as the board empties and you are
+	' closest to clearing. A flat timer cannot do that -- DESIGN 11b measured our
+	' 20 s clock and called it "not a difficulty dial at present, it is a
+	' formality": 28 of the arcade cart's 30 rounds clear before it fires once.
+	'
+	' EVERY SUBTRACTION HERE IS GUARDED because these are 8-bit UNSIGNED: a - b
+	' with b > a wraps to 255 and nothing warns. prt_lives carries the same scar
+	' ("a bare lives - 1 at zero wraps to 255 and would light every slot exactly
+	' when the player has none"), and thr - shotn is the identical trap.
+	'
+	' Nested IFs, never `AND` -- the 9900 backend miscompiles compound comparisons
+	' against a stale register. No multiplies either, so the MPY-clobbers-r0 hazard
+	' documented above calc_bstep cannot apply.
+drop_check:
+	mis = 0
+	IF ncol0 > nprs THEN mis = ncol0 - nprs
+	thr = shotb
+	IF thr > mis THEN
+		thr = thr - mis
+	ELSE
+		thr = 1
+	END IF
+	IF thr < 1 THEN thr = 1
+	drem = 0
+	IF thr > shotn THEN drem = thr - shotn
+	GOSUB draw_bar
+	' ONE BEEP ON THE LAST SHOT. The frame countdown that used to telegraph the
+	' drop has no meaning against a shot count, so the warning moves to the moment
+	' it is actionable: the next bubble you fire brings the ceiling down.
+	IF drem = 1 THEN
+		SOUND 1,330,12
+		sf1 = 7
+	END IF
+	IF shotn >= thr THEN
+		shotn = 0
+		GOSUB do_drop
+	END IF
+	RETURN
+#endif
+
 do_drop:
 	shkb = 1
 	shkbo = 1
@@ -2191,7 +2318,12 @@ draw_frame:
 		PRINT AT 22,"1UP"
 		PRINT AT 118,"HI"
 		PRINT AT 278,"ROUND"
+#if EXPERT
+		' Four characters either way, so the panel's layout cannot shift.
+		PRINT AT 502,"DROP"
+#else
 		PRINT AT 502,"TIME"
+#endif
 		hudok = 1
 	END IF
 	GOSUB draw_ceiling
