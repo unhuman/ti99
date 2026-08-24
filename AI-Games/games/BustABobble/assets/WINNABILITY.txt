@@ -1,0 +1,45 @@
+BUST-A-BOBBLE -- winnability proof, the 30 arcade rounds, at HARD.
+
+  python3 solvelevels.py --set arcade --difficulty hard --depth 160 --overhead 30 --level N
+
+--overhead 30 charges HALF A SECOND OF HUMAN THINKING against every shot: winnable
+has to mean winnable by a person, not by a frame-perfect machine.
+
+WHY ONLY HARD IS RECORDED. Harder settings are strictly more pressure -- same board,
+same 40 s clock, same shot sequence, only a bigger charge per shot -- so a level
+proven at hard is winnable at medium and easy too. The one way that inheritance
+could fail is a line that leans on the ceiling-overwrite quirk, which is easier to
+trigger with a LOW ceiling and might not reproduce with a high one; the solver
+reports those as [N ceiling overwrites] and NONE of the 30 lines below uses it.
+(Checked anyway: the arcade set also proves 30/30 at easy and at medium.)
+
+  round 1   WINNABLE  12 shots   15.5 s of 40.0 s to the first drop  ceiling dropped 1
+  round 2   WINNABLE   3 shots    5.3 s of 40.0 s to the first drop  ceiling dropped 0
+  round 3   WINNABLE  17 shots   23.9 s of 40.0 s to the first drop  ceiling dropped 1
+  round 4   WINNABLE  10 shots    9.8 s of 40.0 s to the first drop  ceiling dropped 0
+  round 5   WINNABLE  37 shots   43.7 s of 40.0 s to the first drop  ceiling dropped 3
+  round 6   WINNABLE  17 shots   22.4 s of 40.0 s to the first drop  ceiling dropped 1
+  round 7   WINNABLE  14 shots   18.0 s of 40.0 s to the first drop  ceiling dropped 1
+  round 8   WINNABLE  13 shots   16.4 s of 40.0 s to the first drop  ceiling dropped 1
+  round 9   WINNABLE   1 shots    0.9 s of 40.0 s to the first drop  ceiling dropped 0
+  round 10  WINNABLE  14 shots   16.3 s of 40.0 s to the first drop  ceiling dropped 1
+  round 11  WINNABLE  16 shots   16.8 s of 40.0 s to the first drop  ceiling dropped 1
+  round 12  WINNABLE   9 shots   12.6 s of 40.0 s to the first drop  ceiling dropped 0
+  round 13  WINNABLE   6 shots   10.6 s of 40.0 s to the first drop  ceiling dropped 0
+  round 14  WINNABLE  31 shots   34.5 s of 40.0 s to the first drop  ceiling dropped 3
+  round 15  WINNABLE  15 shots   19.4 s of 40.0 s to the first drop  ceiling dropped 1
+  round 16  WINNABLE   7 shots   10.8 s of 40.0 s to the first drop  ceiling dropped 0
+  round 17  WINNABLE   8 shots   12.9 s of 40.0 s to the first drop  ceiling dropped 0
+  round 18  WINNABLE   3 shots    2.8 s of 40.0 s to the first drop  ceiling dropped 0
+  round 19  WINNABLE  10 shots   15.0 s of 40.0 s to the first drop  ceiling dropped 1
+  round 20  WINNABLE  19 shots   21.8 s of 40.0 s to the first drop  ceiling dropped 1
+  round 21  WINNABLE  12 shots   16.3 s of 40.0 s to the first drop  ceiling dropped 1
+  round 22  WINNABLE   6 shots    8.9 s of 40.0 s to the first drop  ceiling dropped 0
+  round 23  WINNABLE   6 shots    8.2 s of 40.0 s to the first drop  ceiling dropped 0
+  round 24  WINNABLE   5 shots    8.9 s of 40.0 s to the first drop  ceiling dropped 0
+  round 25  WINNABLE  14 shots   17.1 s of 40.0 s to the first drop  ceiling dropped 1
+  round 26  WINNABLE  17 shots   19.1 s of 40.0 s to the first drop  ceiling dropped 1
+  round 27  WINNABLE   7 shots    7.6 s of 40.0 s to the first drop  ceiling dropped 0
+  round 28  WINNABLE   7 shots   11.8 s of 40.0 s to the first drop  ceiling dropped 0
+  round 29  WINNABLE   2 shots    2.1 s of 40.0 s to the first drop  ceiling dropped 0
+  round 30  WINNABLE  60 shots   57.0 s of 40.0 s to the first drop  ceiling dropped 5

@@ -297,14 +297,18 @@
 	#muss = VARPTR mus_song(0)
 	mut = 0				' player stopped until a round starts
 	musen = 1			' music on by default; the title toggles it with 1
-	' Each cart defaults to the rule it was PROVEN under: the 30 arcade rounds were
-	' verified against the 20 s timer, the 50 expert levels against the shot count.
-	' Switching is one keypress, but the default is never the unverified one.
-#if EXPERT
-	dlev = 2			' hard
-#else
+	' BOTH CARTS START ON EASY. A player who has never seen the game should meet it
+	' at its gentlest; hard is something you choose, not something you are handed.
+	' The expert cart's 50 levels were designed and proven against HARD, so on that
+	' cart easy is the assist rather than the intent -- but all 50 are proven at
+	' every setting, so nothing is out of reach either way.
+	'
+	' PERSISTS EXACTLY LIKE musen, and for the same reason: it is set once here, in
+	' the boot block, and nothing else writes it but the title's own toggle. Game
+	' over returns to the title without passing through here, so the setting
+	' survives every play until the machine is switched off. Contrast the 838
+	' round, which is deliberately re-read each game.
 	dlev = 0			' easy
-#endif
 
 	GOTO title_screen
 
@@ -1838,9 +1842,18 @@ check_death:
 	' intent, and silent. prt_lives carries the same scar tissue for .
 	' The drop itself is left to the main loop, which fires on #dropt = 0 already;
 	' doing it here would repaint the field with a shot still resolving.
+	' EVERY MODE CHARGES SOMETHING, including easy. That is what lets ONE clock
+	' serve all three: 40 s on every level of both carts, with difficulty expressed
+	' purely as what a shot costs. Easy at 1 s against a 40 s clock affords 19.4
+	' shots per ceiling drop -- the 20 s clock it used to have, with shots free,
+	' afforded 18.9. Same pressure, one knob instead of two.
+	'
+	' It also means the gauge behaves identically everywhere: the bar jumps on every
+	' shot in every mode, rather than easy being the odd one out where it only ever
+	' drains.
 drop_check:
-	IF dlev = 0 THEN RETURN
-	#shotc = 90			' medium: 1.5 s at 60 Hz
+	#shotc = 60			' easy: 1 s at 60 Hz
+	IF dlev = 1 THEN #shotc = 120	' medium: 2 s
 	IF dlev = 2 THEN #shotc = 180	' hard: 3 s
 	IF #dropt > #shotc THEN
 		#dropt = #dropt - #shotc
@@ -3065,13 +3078,23 @@ tw_wave:
 	' Body on sprite 0/1, arm on 2/3. The arm is parked off screen unless he is
 	' actually waving -- sprite y 209, not 208, which would end the sprite list and
 	' take everything after it with it.
+	' Y 51 IS TIED TO THE TITLE'S ROW AND MUST MOVE WITH IT. The VDP reads sprite y
+	' one low, so 51 puts the top scanline at 52; a 2x-magnified 16 px creature then
+	' covers 52-83 and the name on row 7 (scanlines 56-63) sits in his upper third,
+	' at head height, with him standing to either side of it.
+	'
+	' It was 59 while the name was on row 8. Raising the title block one row to make
+	' space for 2=DIFFICULTY moved the text 8 px and left the sprites behind, so they
+	' walked THROUGH the name instead of beside it -- the text had moved up into
+	' their shoulders. Two places, this and the waving hand below, and they must
+	' agree.
 tw_draw:
 	twpx = twx(twi)
 	twp = 36			' pattern 9 -> frame 9*4; legs apart
 	IF twst(twi) = 0 THEN
 		IF twf(twi) > 1 THEN twp = 40
 	END IF
-	SPRITE twi,59,twpx,twp,3
+	SPRITE twi,51,twpx,twp,3
 	IF twst(twi) = 1 THEN
 		' Right hand = patterns 27/28 laid 8 px right; left hand = 29/30 laid 8 px
 		' left. Same y as the body, so the shoulder meets him at shoulder height
@@ -3085,7 +3108,7 @@ tw_draw:
 			IF twwf(twi) > 7 THEN twh = 56
 			twpx = twpx - 8
 		END IF
-		SPRITE 2 + twi,59,twpx,twh,3
+		SPRITE 2 + twi,51,twpx,twh,3
 	ELSE
 		SPRITE 2 + twi,209,0,44,0
 	END IF

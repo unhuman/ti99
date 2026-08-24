@@ -65,12 +65,14 @@ SETNAME = "arcade"
 LEVELS_FILE = "levels.bas"
 NLEV = 30
 EXPERT = False
+DIFFNAME = "easy"
 
 # Frames of drop clock a single shot spends, on top of the time it takes. This is
-# the difficulty setting: 0 easy, 90 medium (1.5 s), 180 hard (3 s). --set picks
+# the difficulty setting: 60 easy (1 s), 120 medium (2 s), 180 hard (3 s). Every
 # the pairing each cart DEFAULTS to, which is the pairing its levels were proven
 # under -- arcade at easy, expert at hard.
 SHOTCOST = 0
+DROPSCALE = 100         # --dropscale: per-cent of each round's drop clock
 
 DEAD = "DEAD"
 WIN = "WIN"
@@ -151,17 +153,18 @@ def check_source_drift():
     if "#if EXPERT" not in lines:
         bad.append("the source no longer has an #if EXPERT branch; the two carts "
                    "have been split some other way")
-    if EXPERT:
-        for want, what in (("drop_check:", "the per-shot clock charge"),
-                           ("IF dlev = 0 THEN RETURN", "the easy-mode early out"),
-                           ("IF dlev = 2 THEN #shotc = 180", "the hard cost, 3 s"),
-                           ("#shotc = 90", "the medium cost, 1.5 s"),
-                           ("#dropt = #dropt - #shotc", "the clock subtraction")):
-            if want not in lines:
-                bad.append("expert set: %s is gone (%s)" % (want, what))
-    else:
-        if "IF #dropt = 0 THEN GOSUB do_drop" not in lines:
-            bad.append("arcade set: the timer drop trigger is gone")
+    # BOTH CARTS CARRY BOTH PATHS now that difficulty is a runtime setting, so
+    # every one of these lines is present in every build and all of them are
+    # checked every run. Splitting the checks by cart was right when the rule was
+    # compile-time and would now let half the model go unguarded.
+    for want, what in (("IF #dropt = 0 THEN GOSUB do_drop", "the drop trigger"),
+                       ("drop_check:", "the per-shot clock charge"),
+                       ("#shotc = 60", "the easy cost, 1 s"),
+                       ("IF dlev = 1 THEN #shotc = 120", "the medium cost, 2 s"),
+                       ("IF dlev = 2 THEN #shotc = 180", "the hard cost, 3 s"),
+                       ("#dropt = #dropt - #shotc", "the clock subtraction")):
+        if want not in lines:
+            bad.append("%s is gone (%s)" % (want, what))
 
     if bad:
         sys.stderr.write("error: solvelevels.py is out of date with BUSTABOB.bas\n")
@@ -312,7 +315,7 @@ def load_round(rom, lvl):
             g[b + c] = (v >> 4) if (c & 1) == 0 else (v & 15)
     st.grid = g
     st.top = 0
-    st.droprl = rom["meta"][(lvl - 1) * 2 + 1] * 15
+    st.droprl = rom["meta"][(lvl - 1) * 2 + 1] * 15 * DROPSCALE // 100
     st.dropt = st.droprl
     # Expert cart: byte 0 is the base shot count b, and the clock above becomes
     # the anti-idle fallback rather than the trigger. ncol0 is the round's
@@ -687,7 +690,12 @@ def solve(rom, lvl, beam, maxdepth, use_clock=True):
         frontier = ranked
     best = min(frontier, key=score)
     _, n = present(best.grid)
-    return {"win": False, "reason": "depth limit (%d shots), best left %d bubbles"
+    # FLAGGED DISTINCTLY from a real loss. Both print as UNPROVEN and they mean
+    # opposite things: "no surviving shot" is the level killing you, this is the
+    # search running out of rope with the position still alive. Reading one as the
+    # other is how a tuning decision gets made against a level that was fine.
+    return {"win": False, "reason": "SEARCH LIMIT -- not a loss: hit --depth %d"
+                                   " with the position alive, best left %d bubbles"
             % (maxdepth, n), "depth": maxdepth}
 
 
@@ -974,7 +982,14 @@ def run_level(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--beam", type=int, default=48)
-    ap.add_argument("--depth", type=int, default=90)
+    # 160, NOT 90. The depth is a cap on how many SHOTS a line may take, and
+    # hitting it reports UNPROVEN with everything still alive -- the search giving
+    # up, not the level killing you. 90 produced two false negatives in one
+    # session: expert 31 at medium needs 93 shots, and round 30 at a 250% clock
+    # likewise. The counterintuitive part is that EASIER settings need a DEEPER
+    # search, because more clock means longer lines stay viable -- so the cap bit
+    # hardest exactly where the game is most forgiving.
+    ap.add_argument("--depth", type=int, default=160)
     ap.add_argument("--level", type=int, default=0)
     ap.add_argument("--jobs", type=int, default=0)
     ap.add_argument("--replay", action="store_true",
@@ -991,15 +1006,38 @@ def main():
                     help="extra dead frames charged per shot, to stress the drop clock")
     ap.add_argument("--set", dest="cartset", choices=("arcade", "expert"),
                     default="arcade",
-                    help="which cart to prove: arcade (30 rounds, timer drop) "
-                         "or expert (50 levels, shot-count drop)")
+                    help="which LEVELS to prove: arcade (30 rounds) or expert (50)")
+    # DIFFICULTY IS SEPARATE FROM THE LEVEL SET, because in the game it is: both
+    # carts carry all three modes and the player picks at the title. --set used to
+    # imply the rule as well, which was true when the rule was compile-time and
+    # became a lie the moment it went runtime -- and it left the off-default
+    # combinations (arcade at hard, expert at easy) with no way to be proven at all.
+    ap.add_argument("--difficulty", choices=("easy", "medium", "hard"), default=None,
+                    help="ceiling rule: easy (timer only), medium (a shot spends "
+                         "1.5 s), hard (3 s). Defaults to the cart default for "
+                         "--set: arcade easy, expert hard")
+    ap.add_argument("--dropscale", type=int, default=100,
+                    help="scale every round's drop clock by this PERCENT, for "
+                         "tuning: 200 doubles it. Models giving the harder modes "
+                         "a longer clock to pay for what each shot costs them")
+    ap.add_argument("--shotcost", type=int, default=None,
+                    help="override the per-shot clock charge, in FRAMES, for "
+                         "tuning experiments (90 = 1.5 s, 180 = 3 s). Overrides "
+                         "--difficulty; the answer to 'what if hard cost N'")
     a = ap.parse_args()
 
-    global OVERHEAD, SETNAME, LEVELS_FILE, NLEV, EXPERT, SHOTCOST
+    global OVERHEAD, SETNAME, LEVELS_FILE, NLEV, EXPERT, SHOTCOST, DIFFNAME, DROPSCALE
     OVERHEAD = a.overhead
     SETNAME = a.cartset
     if SETNAME == "expert":
-        LEVELS_FILE, NLEV, EXPERT, SHOTCOST = "levels2.bas", 50, True, 180
+        LEVELS_FILE, NLEV, EXPERT = "levels2.bas", 50, True
+    diff = a.difficulty or ("hard" if SETNAME == "expert" else "easy")
+    SHOTCOST = {"easy": 60, "medium": 120, "hard": 180}[diff]
+    DIFFNAME = diff
+    DROPSCALE = a.dropscale
+    if a.shotcost is not None:
+        SHOTCOST = a.shotcost
+        DIFFNAME = "%.2gs/shot" % (SHOTCOST / 60.0)
 
     check_source_drift()
     rom = load_rom()
@@ -1063,9 +1101,11 @@ def main():
     levels = [a.level] if a.level else list(range(1, NLEV + 1))
     work = [(rom, n, a.beam, a.depth, a.overhead) for n in levels]
 
-    print("BUST-A-BOBBLE -- winnability check (src/levels.bas as shipped)")
-    print("beam %d, depth %d, clock charged in frames + %d/shot + %d overhead\n"
-          % (a.beam, a.depth, ANIM_FRAMES, a.overhead))
+    print("BUST-A-BOBBLE -- winnability check (%s, %d levels, %s)"
+          % (LEVELS_FILE, NLEV, DIFFNAME.upper()))
+    print("beam %d, depth %d, clock charged in frames + %d/shot + %d overhead"
+          " + %d shot cost\n"
+          % (a.beam, a.depth, ANIM_FRAMES, a.overhead, SHOTCOST))
 
     results = {}
     if a.jobs and a.jobs > 1:

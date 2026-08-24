@@ -584,40 +584,59 @@ it.
 
 ### Difficulty: EASY, MEDIUM and HARD, on both carts
 
-`2` on the title cycles the three, and it is a **preference** -- set once and kept across games,
-like the music toggle, unlike the 838 round which lasts one game.
+`2` on the title cycles the three. **Both carts start on EASY**, and the setting is a **preference**:
+written once in the boot block and thereafter only by the title's own toggle, so it survives game
+over and every return to the title until the machine is switched off -- exactly like the music
+toggle, and unlike the 838 round, which is deliberately re-read each game.
 
-**There is ONE clock, and firing a shot spends it.**
+A player who has never seen the game meets it at its gentlest; hard is chosen, not handed over. The
+expert cart's 50 levels were designed and proven against HARD, so there easy is an assist rather than
+the intent -- but every level is proven at every setting, so nothing is out of reach either way.
 
-| mode | a shot costs | expert 35 s clock | arcade 20 s clock |
+**ONE CLOCK, ONE KNOB.** Every level of both carts has the same **40 s** drop clock. The only thing
+difficulty changes is what a shot costs you:
+
+| mode | a shot costs | shots per ceiling drop |
+|---|---|---|
+| **EASY** | **1 s** | 19.4 |
+| **MEDIUM** | **2 s** | 13.1 |
+| **HARD** | **3 s** | 9.9 |
+
+The clock drains with time in every mode and every shot takes a bite out of it, so the gauge drains
+steadily *and jumps down when you fire* -- identically in all three modes, with no special case.
+
+> **Why 40 s and why easy pays too.** The obvious design gives easy a free shot and scales the clock
+> per mode, and it is worse in both halves. Two knobs make the gauge mean something different in each
+> mode; and a free shot on easy makes easy the one mode where the bar never jumps.
+>
+> The clock has to be **40 s because of HARD**: arcade round 30 is winnable at 3 s a shot only with
+> that much clock, and was measured *impossible* at 20 s and at 30 s. Giving easy a **1 s** cost is
+> what stops that longer clock softening it -- 40 s at 1 s a shot affords **19.4** shots per drop,
+> against **18.9** for the 20 s clock with shots free. The two changes cancel, and easy plays as it
+> always did: round 30 still clears in 68 shots and 3 drops, the same figures it had before.
+
+**Proven at every setting**, all six combinations, `--overhead 30`:
+
+| | EASY | MEDIUM | HARD |
 |---|---|---|---|
-| **EASY** | nothing | pure timer | pure timer -- cart 1 exactly as it shipped |
-| **MEDIUM** | **1.5 s** | ~13 shots a drop | ~7.6 |
-| **HARD** | **3 s** | ~8.5 shots a drop | ~4.9 |
+| **arcade 30** | 30/30 | 30/30 | 30/30 |
+| **expert 50** | 50/50 | 50/50 | 50/50 |
 
-The clock drains with time in every mode; medium and hard additionally take a bite out of it on each
-shot, so the gauge drains steadily **and jumps down when you fire**. Each cart defaults to the rule
-its levels were proven under -- arcade EASY, expert HARD.
+Round 30 is the round to watch, because it has broken under every previous increase in pressure --
+the build-12 difficulty ramp made it the one round a person could not finish. It now reads
+68 shots / 3 drops on easy, 61 / 4 on medium, 60 / 5 on hard: the same board and the same clock, with
+difficulty showing up purely as drops taken.
 
-> **Three seconds is a measured figure, not a round one.** The clock loses elapsed time as well as
-> the shot cost, and a shot really takes ~1.12 s (flight, animation, and the half-second of thinking
-> the proof charges). Against the expert set's 35 s clock: 4 s a shot gives 6.8 shots a drop, 3 s
-> gives **8.5**, 2 s gives 11.2. The 50 levels were proven at drop-every-8-shots, so 3 keeps that
-> proof meaningful instead of quietly invalidating it -- and the re-proof came back **50/50**.
+⚠️ **This replaced a shot COUNTER that dropped the ceiling itself.** That version left the timer
+running as an anti-idle fallback, so hard had **two independent triggers -- shots or time, whichever
+came first -- and only one of them was on screen.** Idle, and the ceiling fell with the shot magazine
+still reading five left. One clock cannot do that. Deleting the magazine, the `DROP`/`TIME` label
+branch and the shot counter also returned **406 bytes to each cart**.
 
-⚠️ **This replaced a shot COUNTER that dropped the ceiling itself**, and the reason is worth keeping.
-That version left the timer running as an anti-idle fallback, so hard mode had **two independent
-triggers, shots or time, whichever came first -- and only one of them was on screen.** Idle, and the
-ceiling fell with the shot magazine still reading five left. One clock cannot do that, and the gauge
-is honest in every mode because there is only one thing to show.
-
-The cost of the change was **negative**: deleting the magazine, the `DROP`/`TIME` label branch, the
-shot counter and its four dead variables returned **406 bytes to each cart**.
-
-> **What was given up: the arcade's acceleration.** The old rule shrank the interval as colours were
-> eliminated, pressing hardest as the board emptied. A flat per-shot cost does not. It is more
-> predictable and explainable, which is a fair trade, but it is a real property lost. `pb_meta`
-> byte 0 still carries `b`, which is the one thing a scaling term would need to restore it.
+> **What was given up: the arcade's acceleration**, where the interval shrank as colours were
+> eliminated so it pressed hardest as the board emptied. A flat per-shot cost does not do that. More
+> predictable and explainable, which is a fair trade, but a real property lost -- `pb_meta` byte 0
+> still carries `b`, which is what a scaling term would need to restore it.
 
 ### The two-cart mechanism, and the trap in it
 

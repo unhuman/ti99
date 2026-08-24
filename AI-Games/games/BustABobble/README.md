@@ -21,18 +21,25 @@ The same engine ships as **two cartridges**, selected at build time:
 | **`BUSTABOB`** | the 30 arcade rounds, transcribed | flat 20 s timer |
 | **`BUSTAB2`** — *Bust-A-Bobble 2* | 50 generated levels | the arcade's **shot count**, accelerating as colours are eliminated |
 
-**Both carts offer three difficulty settings**, cycled with `2` on the title. **There is one clock,
-and firing a shot spends it:**
+**Both carts offer three difficulty settings**, cycled with `2` on the title. **There is one clock —
+40 seconds on every level of both carts — and the only thing difficulty changes is what a shot costs
+you:**
 
-| | a shot costs | expert 35 s clock | arcade 20 s clock |
-|---|---|---|---|
-| **EASY** | nothing | pure timer | pure timer — cart 1 exactly as it shipped |
-| **MEDIUM** | 1.5 s | ~13 shots a drop | ~7.6 |
-| **HARD** | 3 s | ~8.5 shots a drop | ~4.9 |
+| | a shot costs | shots per ceiling drop |
+|---|---|---|
+| **EASY** | 1 s | 19.4 |
+| **MEDIUM** | 2 s | 13.1 |
+| **HARD** | 3 s | 9.9 |
 
-The bar drains steadily with time *and jumps down when you fire*, so you watch your own shots eating
-it. Each cart defaults to the rule its levels were proven under — arcade EASY, expert HARD — and like
-the music toggle it is a preference that survives across games.
+**Both carts start on EASY**, and your choice sticks — like the music toggle it survives game over and
+every return to the title.
+
+The bar drains with time *and jumps down every time you fire*, in all three modes. Easy is not softer
+than the game always was: 40 s at 1 s a shot works out to the same pressure as the old 20 s clock with
+shots free, and round 30 still clears in the same 68 shots and 3 ceiling drops it always did.
+
+**Every combination is proven winnable** at half a second of human thinking per shot — arcade 30 and
+expert 50, at all three settings, 240 level-proofs in total.
 
 ```
 ./build-ti.sh            ./build-coleco.sh              cart 1

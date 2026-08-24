@@ -250,8 +250,19 @@ def droptime(n):
 
     Note `n` is kept in the signature: per-round overrides are the obvious next
     lever if one round ever needs its own clock.
+
+    NOW 40 s, AND THE SAME 40 s AS THE EXPERT SET. One clock for every level in
+    both carts, with difficulty expressed purely as what a shot COSTS you -- 1 s
+    on easy, 2 on medium, 3 on hard. Two knobs (a clock that varied and a cost
+    that varied) made the gauge mean something different in each mode; one knob
+    does not.
+    RESIST THE URGE TO PUT IT BACK TO 20. Easy is not more generous than it was:
+    at 40 s with a 1 s cost a round affords 19.4 shots per ceiling drop, against
+    18.9 at the old 20 s with shots free. The longer clock pays for the cost, and
+    the reason it has to be this long is HARD -- round 30 needs 40 s to be
+    winnable at 3 s a shot, and was provably impossible at 20 s and at 30 s.
     """
-    return 20.0
+    return 40.0
 
 
 def main():

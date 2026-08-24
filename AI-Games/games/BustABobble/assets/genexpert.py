@@ -277,7 +277,9 @@ def build(n, rng):
         "shots": min(MAXCELL, len(live) + 2),
         # The fallback clock, not the pressure. Generous on purpose: a tight one
         # would reintroduce the thinking-time dependency the shot rule removes.
-        "droptime": 35.0,
+        # 40 s, the SAME clock the arcade set uses -- one number for every level in
+        # both carts. Difficulty is the per-shot cost (1/2/3 s), not the clock.
+        "droptime": 40.0,
     }
 
 
