@@ -519,6 +519,91 @@ producing a single visible symptom.
 
 ---
 
+## 7b. Bust-A-Bobble 2 — the expert cart
+
+A **second cartridge, `BUSTAB2`**, built from this same source: 50 generated levels and the arcade's
+shot-count ceiling drop. Cart 1 is untouched — every difference is behind `#if EXPERT`, and the
+regression test for the whole exercise is that `BUSTABOB_8.bin` stays **byte-identical**
+(`01c0a72578f829f85cd4e8cf6835a100`) so its shipped balance and its winnability proof still stand.
+
+```
+./build-ti.sh            ->  BUSTABOB_8.bin   30 arcade rounds, 20 s timer
+./build-ti.sh --expert   ->  BUSTAB2_8.bin    50 generated levels, shot-count drop
+```
+
+### Why the levels are generated rather than transcribed
+
+Puzzle Bobble 2 was the obvious source and is principally a **two-player** game. That turned out not
+to matter, because our own measurements had already shown the arcade's *shapes* were never what made
+it hard: 28 of cart 1's 30 rounds clear before the ceiling drops once, and 29 of 30 survive **eight
+seconds of deliberation per shot** (§7a). Importing more authentic layouts would most likely have
+reproduced the same mildness.
+
+### ⚠ The death line caps depth at 8 rows — this is the thing to know
+
+`check_death` is `CEILROW + top + 2r + 1 >= DEATHROW`, i.e. **`top + 2·maxr >= 18`**, and `top`
+starts at 0:
+
+| data rows | deepest row | ceiling drops before death |
+|---|---|---|
+| 6 | 5 | 8 |
+| 7 | 6 | 6 |
+| 8 | 7 | **4** |
+| 9 | 8 | **2** |
+| 10 | 9 | **0 — game over the instant the round loads** |
+
+The layout format stores 11 rows and it is tempting to use them. **You cannot.** More important:
+the arcade set already runs to 8 rows, so **depth is very nearly spent as a difficulty lever** — its
+mean of 6.6 is a distribution whose top end is already against the wall, not headroom. The plan for
+this cart originally targeted "8–10 rows" and would have shipped dead levels. `genexpert.py` asserts
+`maxr <= 8` and prints drops-to-death per level.
+
+### The shot-count drop (`drop_check`)
+
+`pb_meta` byte 0 — the byte cart 1 fills with a colour count and **never reads** — carries the base
+interval `b`. Byte 1 stays the droptime, because that is what the fallback needs, so the data format
+does not grow. The ceiling falls every `b − missing` shots, `missing` counted from the `pres()` scan
+that already runs whenever the board changes.
+
+- **The shot is counted as it leaves** (`do_fire`), which is what the arcade counts and also covers
+  the shot that sticks nowhere — that path skips `after_stick`, so it would otherwise be free.
+- **The test runs in `after_stick`**, after the round-clear and death tests: a round just cleared or
+  just lost must not also drop, and `do_drop` repaints the field and can call `do_dead` itself.
+- **Every subtraction is guarded.** 8-bit unsigned `a - b` with `b > a` wraps to 255 silently; this
+  file already carries that scar in `prt_lives`.
+- **The idle fallback costs nothing.** `#droprl`/`#dropt` stay, so the main loop's existing
+  `IF #dropt = 0 THEN GOSUB do_drop` becomes the anti-idle backstop and a shot-triggered drop rearms
+  it. Without one, a player who never fires never loses.
+
+**The gauge becomes a magazine**: one filled cell per shot remaining, red for the last two, and
+`TIME` reads `DROP` (four characters either way, so the panel cannot shift). A 64-step pixel drain
+would measure the wrong quantity and drain smoothly while the real one moves in whole steps. It also
+makes the acceleration *visible* — eliminate a colour and the magazine loses a cell on the spot,
+which teaches the rule better than any HUD text. `tick_bar` and `calc_bstep` are compiled out with
+it.
+
+### The two-cart mechanism, and the trap in it
+
+An `#if` picks the `INCLUDE`; a false branch is never even opened, so exactly one level table is
+assembled. Constraints, all found the hard way:
+
+- ⚠ **An undefined name in `#if` is silently FALSE** — no error, no warning. A mistyped `-DEXPRT=1`
+  packs the *arcade* levels into a cart named `BUSTAB2` with every tool reporting success. Both
+  branches announce themselves with `#info` and `build-ti.sh` greps the compiler transcript rather
+  than trusting the flag it just passed.
+- ⚠ **`#info` prints only its first token**, so the message is one underscored word. "BUILDING THE
+  EXPERT SET" came out as `INFO: BUILDING` and matched either branch.
+- `#if` **cannot nest**, so no `#if EXPERT` may sit inside one of the three `#if TI994A` blocks.
+- `-D` requires `=value`, and must sit after `--ti994a` and before the source filename.
+
+### Budget
+
+50 levels × 62 B = **3,100 B**, so bank 1 runs **5,126 / 8,192** and the cart stays **32 KB** — a
+second bank would round the page count up and double it to 64 KB. The expert fixed area is
+**24,070 / 24,336 (266 free)** against cart 1's 23,836 / 500.
+
+---
+
 ## 8. The one rendering primitive
 
 `SCREEN` copies a rectangle from CPU memory to the name table, and CVBasic's manual (line 1118)
@@ -800,7 +885,7 @@ Game over (lives exhausted) and clearing round 30 both return to the title. The 
 survives; the score does not. Both messages blank a one-character border before printing so they
 read as a box over the bubble field.
 
-### The ceiling drop is on a **timer**, not a shot count
+### The ceiling drop is on a **timer** in cart 1, and on a **shot count** in cart 2
 
 > **What the arcade actually does — and it is not this.** The Puzzle Bobble FAQ v1.24 is explicit:
 > *"the screen drops after a certain number of bubbles ("b") have been fired from the launcher"* —
@@ -811,9 +896,12 @@ read as a box over the bubble field.
 > stalled game still progresses, and the warning is carried by the **music tempo**, which rises as
 > the bubbles near the line, rather than by an alarm tone.
 >
-> This build uses a timer by explicit direction. The gap is worth knowing about because it bears
-> directly on the difficulty problem in §11b: the arcade's colour-count rule solves the very thing
-> a flat timer ramp cannot.
+> **Cart 1 uses a timer by explicit direction. Cart 2 implements the rule above** — see §7b. The
+> gap mattered exactly as this note predicted: it bears directly on the difficulty problem in §11b,
+> and the arcade's colour-count rule turned out to be the thing that solves it.
+
+Everything in the rest of this section describes the **timer**, which is cart 1's mechanism and is
+still present in cart 2 as the anti-idle fallback.
 
 `#dropt` counts down one per loop pass — and the loop is exactly one pass per vblank (§1), so a
 pass is a frame and the timer is real seconds with no calibration needed on either target.
@@ -1068,7 +1156,18 @@ to its faster variant.
 
 ---
 
-## 11b. Difficulty is not actually ramping — measured, open
+## 11b. Difficulty is not actually ramping — measured; **answered in cart 2**
+
+> **Resolved for the expert cart (§7b).** This section's two candidate fixes ended with the arcade's
+> own rule — drop on a shot count that shrinks as colours are eliminated — noted here as the one that
+> "solves the very thing a flat timer ramp cannot". That is what `BUSTAB2` implements. Cart 1 keeps
+> the flat 20 s timer and this section still describes it accurately.
+>
+> One finding below did **not** survive contact with the code, and it is the important one: the
+> conclusion that "difficulty is dominated by each level's depth" is true, but it is not an
+> instruction to build deeper levels. The death line caps usable depth at **8 data rows** and the
+> arcade set already reaches it — see §7b's table. Depth is not headroom; it is spent.
+
 
 Deriving grace time per round (`drops available × droptime`, where drops = `DEATHROW` minus the
 lowest bubble's char row) says the ramp is not doing its job:
@@ -1335,15 +1434,24 @@ Restated from `CLAUDE.md` §3A because each one has a concrete landing site here
 ```
 games/BustABobble/
   DESIGN.md  README.md
-  src/BUSTABOB.bas          main source
-  src/levels.bas           30 levels, generated -- never hand-edited
-  src/aimtab.bas           64-entry aim table, generated
-  src/music.bas            original BGM + danger variant
-  assets/levels.txt        the 30 layouts, human-readable
-  assets/genlevels.py  assets/genaim.py  assets/prevlevels.py
-  build-ti.sh              cvbasic --ti994a -> xas99 -> linkticart -> BUSTABOB_8.bin
-  build-coleco.sh          cvbasic -> gasm80 -> bustabob.rom
+  src/BUSTABOB.bas         main source -- BOTH carts, split by #if EXPERT
+  src/levels.bas           30 arcade levels, generated -- never hand-edited
+  src/levels2.bas          50 expert levels, likewise
+  src/art.bas  src/artdefs.bas  src/juggle.bas   generated art
+  src/music.bas            Taito's theme, read from the MIDI
+  assets/levels.txt        the 30 arcade layouts, human-readable
+  assets/levels2.txt       the 50 expert layouts, likewise
+  assets/genexpert.py      generates the expert layouts (-> levels2.txt)
+  assets/genlevels.py      packs either .txt into its .bas  (--in/--out/--levels)
+  assets/solvelevels.py    winnability proof;  assets/romcheck.py  ROM audit
+  build-ti.sh              -> BUSTABOB_8.bin     --expert -> BUSTAB2_8.bin
+  build-coleco.sh          -> bustabob.rom       --expert -> bustab2.rom
 ```
+
+**Two carts, one source.** `--expert` passes `-DEXPERT=1`; see §7b for the mechanism and its traps.
+`romcheck.py` takes the cart name and `--expert` so each is audited against the level file it
+actually carries — without that the expert cart reports every block TRUNCATED, which is true and
+useless.
 
 - **Build BOTH targets every time** (repo standing rule, memory `structris-build-both-targets`) —
   not just TI, and not just at the end.

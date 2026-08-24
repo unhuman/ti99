@@ -12,6 +12,30 @@ Clear the field to advance — let a bubble cross the death line and the round i
 **30 static levels**, played in fixed order. Dual-target from one source: TI-99/4A (native TMS9900
 cartridge ROM, `--ti994a`) and ColecoVision (native Z80 ROM) — not an XB256/compiler game.
 
+## Two carts
+
+The same engine ships as **two cartridges**, selected at build time:
+
+| | levels | ceiling drop |
+|---|---|---|
+| **`BUSTABOB`** | the 30 arcade rounds, transcribed | flat 20 s timer |
+| **`BUSTAB2`** — *Bust-A-Bobble 2* | 50 generated levels | the arcade's **shot count**, accelerating as colours are eliminated |
+
+```
+./build-ti.sh            ./build-coleco.sh              cart 1
+./build-ti.sh --expert   ./build-coleco.sh --expert     cart 2
+```
+
+Cart 2 exists because players asked for more and harder levels, and because cart 1 is *measurably*
+easy: 28 of its 30 rounds clear before the ceiling drops even once. The reason turned out not to be
+the layouts — those are authentic — but the drop rule. The arcade drops on **bubbles fired**, every
+`b − missing colours` shots, so it presses hardest exactly as the board empties; we had replaced that
+with a flat timer. Cart 2 puts the real rule back, and its HUD gauge becomes a **magazine** showing
+shots remaining, so you can watch it lose a cell the moment a colour is wiped out.
+
+Everything new is `#if EXPERT`-gated, and the regression test for the whole exercise is that cart 1
+builds **byte-identical** to what shipped (`DESIGN.md` §7b).
+
 Full spec: [`DESIGN.md`](DESIGN.md).
 
 ## Status
