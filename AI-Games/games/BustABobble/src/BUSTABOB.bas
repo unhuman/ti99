@@ -509,6 +509,12 @@ game_loop:
 	' Redrawn only when the pixel count actually changes: at most 64 times per
 	' drop cycle instead of 8 VPOKEs every frame.
 	'
+' DEAD WEIGHT ON THE EXPERT CART. Nothing calls tick_bar there -- the magazine is
+' redrawn by drop_check when a shot is fired, not sampled every frame -- but an
+' uncalled routine is still assembled, and that cart has 88 bytes to spare. The
+' same goes for calc_bstep below. Compiled out rather than left to rot.
+#if EXPERT
+#else
 tick_bar:
 	#tbx = #dropt
 	#tbx = #tbx / #bstep
@@ -531,6 +537,7 @@ tick_bar:
 		GOSUB draw_bar
 	END IF
 	RETURN
+#endif
 
 	' Paint all nine gauge characters from one 8-byte row -- green normally, red
 	' once barw is set. Called only on a transition (twice a drop cycle), so nine
@@ -1675,7 +1682,11 @@ load_level:
 	shotn = 0
 #endif
 	GOSUB mark_scenery		' flag the level's own detached pieces, once
+#if EXPERT
+	' No pixel-per-frame divisor: the magazine counts shots, not frames.
+#else
 	GOSUB calc_bstep
+#endif
 	' AND REPAINT THE GAUGE'S COLOUR, not just the flag. barw = 0 says "green" but
 	' the nine gauge CHARACTERS keep whatever colour they were last DEFINEd with,
 	' and tick_bar only re-issues that on a TRANSITION. A round that ended in the
@@ -1735,11 +1746,14 @@ load_level:
 	' read of a 16-bit variable immediately after multiplying it -- verify the
 	' generated .a99 whenever a multiply is involved (CLAUDE.md section 3A).
 	'
+#if EXPERT
+#else
 calc_bstep:
 	#bstep = #droprl
 	#bstep = #bstep / 64
 	IF #bstep < 1 THEN #bstep = 1
 	RETURN
+#endif
 
 	' Also tracks maxr, the lowest occupied grid row -- draw_field uses it to
 	' skip rebuilding the identical empty rows beneath the field (see there).
@@ -2899,7 +2913,14 @@ title_screen:
 	GOSUB title_num_sc
 	tsp = 23
 	GOSUB title_num_hi
+#if EXPERT
+	' 15 chars at column 8 = px 64-183, centred on 15 -- the same half-character
+	' lean off the screen's 15.5 that the 13-char name has at column 9, so the two
+	' carts' titles sit in the same place rather than one looking nudged.
+	PRINT AT 264,"BUST-A-BOBBLE 2"
+#else
 	PRINT AT 265,"BUST-A-BOBBLE"
+#endif
 	PRINT AT 548,"2026 UNHUMAN AND CLAUDE"	' row 17, col 4
 	PRINT AT 618,"1=MUSIC"			' row 19, col 10
 	GOSUB prt_musen
@@ -2919,10 +2940,25 @@ title_screen:
 	' about 15 px of margin at the screen edge, arm included.
 	twx(0) = 30 : twdir(0) = 0 : twt(0) = 0 : twf(0) = 0
 	twst(0) = 0 : twtm(0) = 40 : twwf(0) = 0
+	' THE PATROLS MOVE WITH THE TITLE. The expert name is two characters longer and
+	' starts a character earlier, spanning px 64-183 against the arcade's 72-175 --
+	' so the arcade bounds would walk the left creature over the "B" and park the
+	' right one on top of the final "2". Both are pulled in by the 8 px the title
+	' grew at each end, keeping the same clearance the arcade layout was tuned to.
+	' The bound is the creature's RIGHT edge, 16 px past twx, which is why the left
+	' limit is 8 short of where the title starts.
+#if EXPERT
+	twlo(0) = 14 : twhi(0) = 43
+#else
 	twlo(0) = 14 : twhi(0) = 51
+#endif
 	twx(1) = 195 : twdir(1) = 1 : twt(1) = 2 : twf(1) = 2
 	twst(1) = 0 : twtm(1) = 95 : twwf(1) = 0
+#if EXPERT
+	twlo(1) = 187 : twhi(1) = 224
+#else
 	twlo(1) = 179 : twhi(1) = 224
+#endif
 
 title_wait:
 	WAIT
