@@ -128,7 +128,8 @@ rm -f "${NAME}_8.bin"
 # into the cart -- in RALLY-X the banked path had no check at all, and that is how
 # 229 bytes were cut off the end of the music with every tool reporting success.
 echo
-"$PY" ../assets/romcheck.py "$NAME" || die "romcheck FAILED -- the cart is truncated (see above)"
+RCFLAG=""; [ "$EXPERT" = 1 ] && RCFLAG="--expert"
+"$PY" ../assets/romcheck.py "$NAME" $RCFLAG || die "romcheck FAILED -- the cart is truncated (see above)"
 
 echo
 echo "Build OK ->  $(pwd)/${NAME}_8.bin"

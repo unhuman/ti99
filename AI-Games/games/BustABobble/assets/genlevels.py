@@ -15,6 +15,7 @@ forced empty (they are the 7-wide staggered rows -- DESIGN.md section 2).
 Run:  python3 genlevels.py          (from anywhere; paths are resolved off this file)
 """
 
+import argparse
 import os
 import sys
 
@@ -52,7 +53,8 @@ def parse(path):
                 n = int(head[1])
                 if n in levels:
                     raise LevelError("line %d: LEVEL %d defined twice" % (lineno, n))
-                cur = {"n": n, "colours": None, "droptime": None, "seq": None, "rows": []}
+                cur = {"n": n, "colours": None, "droptime": None, "seq": None,
+                       "shots": None, "rows": []}
                 levels[n] = cur
                 continue
 
@@ -61,6 +63,14 @@ def parse(path):
 
             if kw == "COLOURS" or kw == "COLORS":
                 cur["colours"] = int(head[1])
+                continue
+            if kw == "SHOTS":
+                # EXPERT SET ONLY. The base ceiling-drop interval in bubbles
+                # fired: the engine drops every SHOTS-minus-missing-colours
+                # shots, so it accelerates as the board empties. Stored in
+                # pb_meta byte 0 -- the byte the arcade build fills with a colour
+                # count and never reads, so the two meanings cannot collide.
+                cur["shots"] = int(head[1])
                 continue
             if kw == "DROPTIME":
                 cur["droptime"] = float(head[1])
@@ -95,6 +105,10 @@ def validate(lv):
     if not 1 <= q <= 255:
         bad("DROPTIME %g s does not fit a byte as quarter-seconds" % lv["droptime"])
     lv["q"] = q
+
+    # 8 because the expert HUD's drop gauge is 8 cells, one per shot remaining.
+    if lv["shots"] is not None and not 1 <= lv["shots"] <= 8:
+        bad("SHOTS %d out of range 1..8" % lv["shots"])
 
     if lv["seq"] is None:
         bad("no SEQ line")
@@ -155,6 +169,16 @@ def emit(fh, label, comment, blocks):
 
 
 def main():
+    # SRC/OUT/NLEVELS stay module-level: prevlevels.py imports this module and
+    # reads genlevels.SRC directly, so rebinding locals would break it silently.
+    global SRC, OUT, NLEVELS
+    ap = argparse.ArgumentParser(description="pack a levels .txt into a levels .bas")
+    ap.add_argument("--in", dest="src", default=SRC, help="source .txt")
+    ap.add_argument("--out", dest="out", default=OUT, help="generated .bas")
+    ap.add_argument("--levels", type=int, default=NLEVELS, help="table size")
+    args = ap.parse_args()
+    SRC, OUT, NLEVELS = args.src, args.out, args.levels
+
     try:
         levels = [validate(lv) for lv in parse(SRC)]
     except LevelError as e:
@@ -180,11 +204,12 @@ def main():
         if lv is None:
             lay_blocks.append((n, [pack([0] * NCOLS) for _ in range(NROWS)]))
             seq_blocks.append((n, [pack([1] * NSEQ)]))
-            meta.append((n, 3, 80))
+            meta.append((n, 3, 80, False))
             continue
         lay_blocks.append((n, [pack(lv["grid"][r]) for r in range(NROWS)]))
         seq_blocks.append((n, [pack([int(c) for c in lv["seq"]])]))
-        meta.append((n, lv["colours"], lv["q"]))
+        meta.append((n, lv["colours"] if lv["shots"] is None else lv["shots"],
+                     lv["q"], lv["shots"] is not None))
 
     outdir = os.path.dirname(os.path.abspath(OUT))
     if not os.path.isdir(outdir):
@@ -199,10 +224,21 @@ def main():
              % (NROWS * NCOLS // 2, NROWS, NCOLS), lay_blocks)
         emit(fh, "pb_seq", "%d B per level: %d shots, nibble-packed, index wraps AND 31"
              % (NSEQ // 2, NSEQ), seq_blocks)
-        fh.write("pb_meta:\n\t' 2 B per level: colours in play, droptime in QUARTER-seconds\n")
-        for (n, col, q) in meta:
-            fh.write("\tDATA BYTE $%02X,$%02X\t' level %d: %d colours, %g s\n"
-                     % (col, q, n, col, q / 4.0))
+        # Byte 0 carries a different quantity per cart, so say which one this is:
+        # a wrong-but-plausible comment on generated data is how a reader ends up
+        # debugging the wrong thing.
+        if any(m[3] for m in meta):
+            fh.write("pb_meta:\n\t' 2 B per level: BASE SHOT COUNT (ceiling drops every"
+                     " b-minus-missing-colours\n\t' shots), then the anti-idle FALLBACK"
+                     " clock in QUARTER-seconds\n")
+        else:
+            fh.write("pb_meta:\n\t' 2 B per level: colours in play (never read by the"
+                     " game), droptime in\n\t' QUARTER-seconds\n")
+        for (n, col, q, isshots) in meta:
+            fh.write("\tDATA BYTE $%02X,$%02X\t' level %d: %s, %g s\n"
+                     % (col, q, n,
+                        ("b = %d shots" % col) if isshots else ("%d colours" % col),
+                        q / 4.0))
         fh.write("\n")
 
     lay_b = NLEVELS * NROWS * NCOLS // 2

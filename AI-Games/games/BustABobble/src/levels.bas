@@ -429,7 +429,8 @@ pb_seq:
 	DATA BYTE $66,$35,$11,$85,$46,$56,$53,$66,$42,$54,$18,$65,$33,$63,$57,$76
 
 pb_meta:
-	' 2 B per level: colours in play, droptime in QUARTER-seconds
+	' 2 B per level: colours in play (never read by the game), droptime in
+	' QUARTER-seconds
 	DATA BYTE $04,$50	' level 1: 4 colours, 20 s
 	DATA BYTE $06,$50	' level 2: 6 colours, 20 s
 	DATA BYTE $05,$50	' level 3: 5 colours, 20 s

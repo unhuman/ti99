@@ -48,14 +48,21 @@ SKIP = RAM_BASE - CART_BASE  # 16384
 # Which cart to audit. BUSTABOB is the arcade set, BUSTAB2 the expert one; they
 # are separate cartridges built from the same source, so each has its own bank
 # files and its own packed image to check.
-NAME = sys.argv[1] if len(sys.argv) > 1 else "BUSTABOB"
+_args = [a for a in sys.argv[1:] if not a.startswith("-")]
+NAME = _args[0] if _args else "BUSTABOB"
 
 # Blocks worth naming individually. Truncation always eats the END of the program
 # image, so what matters for a fixed-area block is not "is it there" but "does it
 # END inside the cap" -- which is checked by offset, not by searching the cart.
 FIXED_BLOCKS = (("music.bas", "mus_song"), ("music.bas", "mus_freq"))
-BANKED_BLOCKS = (("levels.bas", "pb_lay"), ("levels.bas", "pb_seq"),
-                 ("levels.bas", "pb_meta"))
+
+# WHICH LEVEL FILE THIS CART CARRIES. The two carts are the same engine over
+# different data, so checking BUSTAB2 against levels.bas reports every block as
+# truncated -- correctly, in the sense that those bytes really are absent, and
+# uselessly, in the sense that they were never supposed to be there. Defaults to
+# the arcade set; --expert switches to levels2.bas.
+LEVELS = "levels2.bas" if "--expert" in sys.argv else "levels.bas"
+BANKED_BLOCKS = ((LEVELS, "pb_lay"), (LEVELS, "pb_seq"), (LEVELS, "pb_meta"))
 
 
 def strip_fill(d):
