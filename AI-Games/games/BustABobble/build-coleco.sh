@@ -18,8 +18,20 @@ GASM80="${GASM80:-/cygdrive/c/Users/Howie/github.git/nanochess/gasm80/gasm80.exe
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
 [ -f "$GASM80" ]      || GASM80="${GASM80/#\/cygdrive\/c\//\/c\/}"
 
+# Two carts from one source, exactly as build-ti.sh does it:
+#   ./build-coleco.sh            -> bustabob.rom, the 30 arcade rounds
+#   ./build-coleco.sh --expert   -> bustab2.rom,  the 50 generated ones
 SRC="BUSTABOB.bas"      # canonical source (shared with the TI build)
 NAME="bustabob"          # output base name (dot-free, lowercase)
+DEFS=""
+EXPERT=0
+if [ "$1" = "--expert" ]; then
+    NAME="bustab2"
+    DEFS="-DEXPERT=1"
+    EXPERT=1
+elif [ -n "$1" ]; then
+    echo "ERROR: unknown option '$1' (the only option is --expert)" >&2; exit 1
+fi
 ASM="${NAME}_col.asm"
 ROM="${NAME}.rom"
 
@@ -35,7 +47,7 @@ echo "[1/2] CVBasic (Coleco)  $SRC -> $ASM"
 rm -f "$ASM"
 # No --ti994a: ColecoVision is CVBasic's default target. The trailing-slash 3rd
 # path arg is the library dir (prologue/epilogue), same requirement as the TI build.
-"$CVBASIC_DIR/cvbasic.exe" "$SRC" "$ASM" "$CVBASIC_DIR/" \
+"$CVBASIC_DIR/cvbasic.exe" $DEFS "$SRC" "$ASM" "$CVBASIC_DIR/" \
     || die "CVBasic compile failed (see messages above)"
 [ -s "$ASM" ] || die "CVBasic produced no/empty $ASM"
 

@@ -9,7 +9,12 @@ BUSTABOB.a99
 *.lst
 *.sym
 
-# NOTE: art.bas and levels.bas ARE tracked. They are generated (by
+# The .log is the compiler transcript build-ti.sh greps to prove which level set
+# it compiled -- see the #info guard there.
+*.log
+
+# NOTE: art.bas, levels.bas and levels2.bas ARE tracked. They are generated (by
 # assets/genart.py and assets/genlevels.py) but are build INPUTS, the same way
 # RALLY-X tracks its generated map2_*.bas -- the build must work from a clean
-# checkout without running the generators.
+# checkout without running the generators. levels2.bas is the EXPERT set, picked
+# by `build-ti.sh --expert`.

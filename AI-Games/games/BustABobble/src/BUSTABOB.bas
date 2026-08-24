@@ -42,6 +42,32 @@
 	BANK ROM 128
 #endif
 
+	' WHICH LEVEL SET THIS CART CARRIES.
+	'
+	' One engine, two cartridges: BUSTABOB is the 30 arcade rounds, BUSTAB2 is the
+	' 50 generated ones. build-ti.sh --expert passes -DEXPERT=1 and everything that
+	' differs hangs off this.
+	'
+	' !! AN UNDEFINED NAME IN `#if` IS SILENTLY FALSE. A mistyped -DEXPRT=1 would
+	' quietly compile the ARCADE set into a cart named BUSTAB2, with no warning from
+	' any tool in the chain. That is why both branches announce themselves with
+	' #info: every compile prints which set it built, and build-ti.sh greps for that
+	' line rather than trusting the flag it just passed.
+	'
+	' The message is ONE TOKEN because `#info` prints only its first word -- "#info
+	' BUILDING THE EXPERT SET" comes out as "INFO: BUILDING", which would match
+	' either branch and make the guard useless. Hence the underscores.
+	'
+	' NLEV stays under 255 on purpose -- a CONST above that truncates to 8 bits on
+	' this backend, silently (see the round-number note at prt_hud).
+#if EXPERT
+	#info BUILDING_EXPERT_SET_50_GENERATED_LEVELS
+	CONST NLEV     = 50
+#else
+	#info BUILDING_ARCADE_SET_30_TRANSCRIBED_ROUNDS
+	CONST NLEV     = 30
+#endif
+
 	CONST NROWS    = 12	' grid rows (11 come from level data, 12th is headroom)
 	CONST WELLCOL  = 1	' first character column inside the well
 	CONST CEILROW  = 1	' character row of grid row 0 when top = 0
@@ -1843,7 +1869,7 @@ do_clear:
 	' So both routines now set nrq and RETURN, the stack unwinds properly through
 	' after_stick and do_stick, and game_loop dispatches. Beating round 30 gets its
 	' own screen (victory:), not a message box.
-	IF lvl > 30 THEN
+	IF lvl > NLEV THEN
 		nrq = 2
 		RETURN
 	END IF
@@ -2994,7 +3020,7 @@ setup838:
 	GOSUB rd_dig
 	stlv = sd1 * 10 + tdg
 	IF stlv < 1 THEN stlv = 1
-	IF stlv > 30 THEN stlv = 30
+	IF stlv > NLEV THEN stlv = NLEV
 	' LET THE SECOND DIGIT'S BEEP DECAY BEFORE LEAVING. The first digit's note is
 	' silenced by the wait loops of the second call to rd_dig -- but after the
 	' SECOND digit there is no loop left, and nothing between here and the main loop
@@ -3120,4 +3146,10 @@ txt_col:
 	BANK 1
 #endif
 	INCLUDE "artdefs.bas"
+	' An INCLUDE inside a false #if is never even opened, so this picks the file
+	' rather than compiling both and discarding one.
+#if EXPERT
+	INCLUDE "levels2.bas"
+#else
 	INCLUDE "levels.bas"
+#endif

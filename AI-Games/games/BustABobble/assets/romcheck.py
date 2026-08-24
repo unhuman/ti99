@@ -45,7 +45,10 @@ RAM_BASE = 0xA000           # where the program image is assembled
 CART_BASE = 0x6000          # where the raw xas99 image starts
 SKIP = RAM_BASE - CART_BASE  # 16384
 
-NAME = "BUSTABOB"
+# Which cart to audit. BUSTABOB is the arcade set, BUSTAB2 the expert one; they
+# are separate cartridges built from the same source, so each has its own bank
+# files and its own packed image to check.
+NAME = sys.argv[1] if len(sys.argv) > 1 else "BUSTABOB"
 
 # Blocks worth naming individually. Truncation always eats the END of the program
 # image, so what matters for a fixed-area block is not "is it there" but "does it
@@ -119,8 +122,8 @@ def main():
     used = page_content(image) if banked else strip_fill(image)
     free = FIXED_CAP - used
 
-    print("BUST-A-BOBBLE -- TI-99/4A ROM audit   (%s build, from %s)"
-          % ("BANKED" if banked else "flat", first))
+    print("%s -- TI-99/4A ROM audit   (%s build, from %s)"
+          % (NAME, "BANKED" if banked else "flat", first))
     print()
     print("FIXED AREA  (all code + music + font; copied to RAM at >%04X)" % RAM_BASE)
     print("  used        %6d B   of %d   (%.1f%%)" % (used, FIXED_CAP,

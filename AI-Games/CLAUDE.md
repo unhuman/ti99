@@ -291,6 +291,17 @@ cost a debugging session:
   (TI ~7.2 KB free, Coleco ~230 B). Budget for it up front: it is the price of scrolling.
 - **Build BOTH targets every time**, not just TI. `#if TI994A` needs the **unhuman/CVBasic**
   fork (stock nanochess has no preprocessor).
+  - **An UNDEFINED name in `#if` is silently FALSE** — no error, no warning. So a mistyped
+    `-DEXPRT=1` compiles the *other* branch and every tool in the chain reports success. When a `-D`
+    selects which content a cart carries, that is a wrong cart with a right-looking name. **Make the
+    source announce which branch it took** with `#info` and have the build script grep the compiler
+    transcript, rather than trusting the flag it just passed.
+  - **`#info` prints only its FIRST TOKEN.** `#info BUILDING THE EXPERT SET` emits
+    `INFO: BUILDING` — which matches both branches and makes the guard useless. Use one underscored
+    word (`#info BUILDING_EXPERT_SET_50_GENERATED_LEVELS`).
+  - `#if` **cannot nest** ("Nested #IF not supported"), but each INCLUDEd file gets a fresh
+    conditional state, so a file boundary buys one more effective level. An `INCLUDE` inside a false
+    `#if` is never opened, which is how one source can select between two data files.
 - **A grid-cell occupancy check does NOT prove sprites do not overlap.** A 16-px actor on a 16-px
   grid straddles two cells for its entire traverse, so "no two actors share a cell" can read a
   clean 0 while they are visibly stacked. Worse, a cell cache derived from raw pixels every frame
