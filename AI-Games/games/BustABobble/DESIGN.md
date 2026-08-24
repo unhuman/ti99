@@ -615,6 +615,23 @@ steadily *and jumps down when you fire* -- identically in all three modes, with 
 > against **18.9** for the 20 s clock with shots free. The two changes cancel, and easy plays as it
 > always did: round 30 still clears in 68 shots and 3 drops, the same figures it had before.
 
+### The difficulty badge
+
+A single character above the last digit of **each** score: an **arrow down in red** for easy, a
+**flat bar in cyan** for medium, an **arrow up in green** for hard. Chars 218/219/220, so the code
+is just `218 + dlev`. The shape carries the meaning as well as the colour, which matters on a
+monochrome set and at 8x8 in a busy panel.
+
+**There are two of them, and they can disagree** -- that is the point. The one over the score is
+what you are playing now; the one over the HIGH score is **the difficulty that score was set at**,
+captured in `copy_hi`, the single place `hs()` is ever written. Without it a 500,000 posted on easy
+is indistinguishable from one earned on hard and the record means nothing.
+
+In the HUD they sit at row 0 column 30 and row 3 column 30 -- the label rows (`1UP`, `HI`) are short,
+so that column is free. On the title and victory rows the score's badge goes at column 15 and the
+**HI block shifts one column left** (label 19-20, digits 22-30) to free column 31 for its own. The
+row still brackets itself, now with a badge on the outside of each score.
+
 **Proven at every setting**, all six combinations, `--overhead 30`:
 
 | | EASY | MEDIUM | HARD |

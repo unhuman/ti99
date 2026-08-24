@@ -260,6 +260,12 @@
 	DEFINE CHAR 96,2,sign_pat
 	DEFINE CHAR 185,1,life_pat
 	DEFINE COLOR 185,1,life_col
+	' The difficulty badge: 218 easy, 219 medium, 220 hard, so the character is
+	' simply 218 + dlev. THREE chars of colour is 24 bytes, not 3 -- DEFINE COLOR
+	' on this VDP is one byte per SCAN LINE, and supplying fewer reads whatever
+	' follows in ROM as colour data, silently.
+	DEFINE CHAR 218,3,diff_pat
+	DEFINE COLOR 218,3,diff_col
 	' Text is white-on-black for every printable character, so ONE 8-byte row does
 	' for all 64 of them. It used to be a 128-byte table (16 chars' worth) issued
 	' four times -- 120 bytes of the same eight values repeated, which is a lot of
@@ -291,6 +297,9 @@
 		sc(i) = 0
 		hs(i) = 0
 	NEXT i
+	' No high score yet, so its badge starts on easy alongside the zeroes rather
+	' than reading whatever RAM held.
+	hidlev = 0
 
 	' Base addresses of the music tables, resolved once.
 	#musf = VARPTR mus_freq(0)
@@ -791,6 +800,21 @@ prt_musen:
 	' Both carts offer both. The expert cart defaults to HARD and the arcade cart to
 	' EASY, so each still plays the way it was proven, but neither is locked to it.
 	' Same four characters either way, so no clearing is needed on the toggle.
+	' The title and victory rows' two badges: one just past the score's digits at
+	' column 15, one at the far right of the row at 31, past the high score's.
+	' Same meaning as in the HUD -- the second is the difficulty the RECORD was set
+	' on, so it can differ from the one you are about to play.
+prt_badges:
+	#tna = 15
+	#tna = #tna + 6144
+	tnv = 218 + dlev
+	VPOKE #tna,tnv
+	#tna = 31
+	#tna = #tna + 6144
+	tnv = 218 + hidlev
+	VPOKE #tna,tnv
+	RETURN
+
 	' Padded to SIX characters so MEDIUM overwrites cleanly -- without the trailing
 	' spaces, switching MEDIUM -> HARD would leave "HARDUM" on the screen.
 prt_dlev:
@@ -1616,10 +1640,15 @@ dbl_ad:
 	NEXT daj
 	RETURN
 
+	' THE HIGH SCORE REMEMBERS WHICH DIFFICULTY EARNED IT. Captured here because
+	' this is the one place hs() is ever written, so the two cannot drift apart.
+	' Without it a 500,000 posted on easy is indistinguishable from one earned on
+	' hard, and the record means nothing.
 copy_hi:
 	FOR chi = 0 TO 7
 		hs(chi) = sc(chi)
 	NEXT chi
+	hidlev = dlev
 	RETURN
 
 	'
@@ -2367,6 +2396,20 @@ prt_hud:
 	znb = HIPOS
 	zns = 1
 	GOSUB prt_num
+	' THE TWO DIFFICULTY BADGES, each directly above its own score's last digit:
+	' row 0 column 30 over the score, row 3 column 30 over the high score. The
+	' label rows are short ("1UP", "HI") so column 30 is empty on both.
+	'
+	' They can disagree, and that is the point -- the top one is what you are
+	' playing now, the bottom one is what the record was set on.
+	#psa = 30
+	#psa = #psa + 6144
+	psv = 218 + dlev
+	VPOKE #psa,psv
+	#psa = 126			' 3*32 + 30
+	#psa = #psa + 6144
+	psv = 218 + hidlev
+	VPOKE #psa,psv
 	' THE ROUND NUMBER IS CENTRED UNDER ITS OWN LABEL. "ROUND" spans columns 22-26,
 	' so column 24 is its middle and a single digit sits exactly on it; the tens
 	' digit goes in 23, half a character left of centre, which is as close as a
@@ -2772,11 +2815,16 @@ victory:
 	CLS
 	' Same top row as the title: SCORE flush left, HI flush right.
 	PRINT AT 0,"SCORE"
-	PRINT AT 20,"HI"
+	' HI MOVES ONE COLUMN LEFT (label 19-20, digits 22-30) so column 31 is free for
+	' its difficulty badge, and the score's badge sits at 15 just past its digits.
+	' The row still brackets itself: SCORE flush left, HI flush right, now with a
+	' badge on the outside of each.
+	PRINT AT 19,"HI"
 	tsp = 6
 	GOSUB title_num_sc
-	tsp = 23
+	tsp = 22
 	GOSUB title_num_hi
+	GOSUB prt_badges
 	PRINT AT 104,"CONGRATULATIONS!"	' row 3, col 8 -- 16 chars, centred
 	PRINT AT 715,"PRESS FIRE"	' row 22, col 11. NOT row 23: that row is
 					' overscan on real hardware and clipped in
@@ -2872,11 +2920,16 @@ title_screen:
 	' SCORE is flush LEFT (label col 0, digits 6-14); HI is flush RIGHT (digits
 	' 23-31, label just before it) so the two blocks bracket the row evenly.
 	PRINT AT 0,"SCORE"
-	PRINT AT 20,"HI"
+	' HI MOVES ONE COLUMN LEFT (label 19-20, digits 22-30) so column 31 is free for
+	' its difficulty badge, and the score's badge sits at 15 just past its digits.
+	' The row still brackets itself: SCORE flush left, HI flush right, now with a
+	' badge on the outside of each.
+	PRINT AT 19,"HI"
 	tsp = 6
 	GOSUB title_num_sc
-	tsp = 23
+	tsp = 22
 	GOSUB title_num_hi
+	GOSUB prt_badges
 #if EXPERT
 	' 15 chars at column 8 = px 64-183, centred on 15 -- the same half-character
 	' lean off the screen's 15.5 that the 13-char name has at column 9, so the two
@@ -2957,6 +3010,7 @@ title_wait:
 			dlev = dlev + 1
 			IF dlev > 2 THEN dlev = 0
 			GOSUB prt_dlev
+			GOSUB prt_badges	' the score badge follows the setting
 		END IF
 		IF tk = 3 THEN
 			IF t8 = 1 THEN

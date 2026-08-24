@@ -38,6 +38,10 @@ The bar drains with time *and jumps down every time you fire*, in all three mode
 than the game always was: 40 s at 1 s a shot works out to the same pressure as the old 20 s clock with
 shots free, and round 30 still clears in the same 68 shots and 3 ceiling drops it always did.
 
+A **difficulty badge** sits above the last digit of each score — red arrow down for easy, cyan bar
+for medium, green arrow up for hard. The one over the *high* score shows the difficulty **that score
+was set at**, so a record earned on hard is never confused with one posted on easy.
+
 **Every combination is proven winnable** at half a second of human thinking per shot — arcade 30 and
 expert 50, at all three settings, 240 level-proofs in total.
 

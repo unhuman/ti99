@@ -308,6 +308,21 @@ life_pat:
 life_col:
 	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31
 
+	' Difficulty badge, chars 218 (easy) 219 (medium) 220 (hard) -- 218 + dlev.
+	' Arrow DOWN red for easy, flat bar cyan for medium, arrow UP green for hard;
+	' the shape says it too, so it survives a monochrome set.
+diff_pat:
+	' 218 easy: arrow down
+	DATA BYTE $00,$18,$18,$18,$18,$7E,$3C,$18
+	' 219 medium: flat bar
+	DATA BYTE $00,$00,$00,$7E,$7E,$00,$00,$00
+	' 220 hard: arrow up
+	DATA BYTE $18,$3C,$7E,$18,$18,$18,$18,$00
+diff_col:
+	DATA BYTE $91,$91,$91,$91,$91,$91,$91,$91	' easy   light red on black
+	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' medium cyan on black
+	DATA BYTE $31,$31,$31,$31,$31,$31,$31,$31	' hard   light green on black
+
 	' The same creature at 2x as a 16x16 SPRITE, two walk frames, for the title
 	' screen. 16 bytes left column then 16 bytes right column -- NOT scan lines.
 spr_walk:

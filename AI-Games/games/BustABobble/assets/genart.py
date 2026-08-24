@@ -452,6 +452,35 @@ def main():
     w("life_col:")
     w("\tDATA BYTE %s" % hexrow([3 * 16 + WELLBG] * 8))
     w("")
+    # ---------------------------------------------------------------- difficulty
+    # THE DIFFICULTY BADGE: three characters at 218, 219, 220 so the code is simply
+    # 218 + dlev. It sits above the last digit of each score, and there are TWO of
+    # them for a reason -- the one over the high score shows the difficulty THAT
+    # SCORE WAS SET AT, not the current setting. Without that a 500,000 posted on
+    # easy is indistinguishable from one earned on hard, which makes the high score
+    # meaningless as a record.
+    #
+    # Shape carries the meaning as well as colour: an arrow up for hard, a bar for
+    # medium, an arrow down for easy. Colour alone would be lost on a monochrome
+    # TV, and these are 8x8 at the top of a busy panel.
+    w("\t' Difficulty badge, chars 218 (easy) 219 (medium) 220 (hard) -- 218 + dlev.")
+    w("\t' Arrow DOWN red for easy, flat bar cyan for medium, arrow UP green for hard;")
+    w("\t' the shape says it too, so it survives a monochrome set.")
+    w("diff_pat:")
+    w("\t' 218 easy: arrow down")
+    w("\tDATA BYTE $00,$18,$18,$18,$18,$7E,$3C,$18")
+    w("\t' 219 medium: flat bar")
+    w("\tDATA BYTE $00,$00,$00,$7E,$7E,$00,$00,$00")
+    w("\t' 220 hard: arrow up")
+    w("\tDATA BYTE $18,$3C,$7E,$18,$18,$18,$18,$00")
+    # EIGHT bytes of colour per character -- one per scan line. Supplying fewer
+    # reads whatever follows in ROM as colour data, silently (CLAUDE.md 3A).
+    w("diff_col:")
+    w("\tDATA BYTE %s\t' easy   light red on black" % hexrow([9 * 16 + 1] * 8))
+    w("\tDATA BYTE %s\t' medium cyan on black" % hexrow([7 * 16 + 1] * 8))
+    w("\tDATA BYTE %s\t' hard   light green on black" % hexrow([3 * 16 + 1] * 8))
+    w("")
+
     w("\t' The same creature at 2x as a 16x16 SPRITE, two walk frames, for the title")
     w("\t' screen. 16 bytes left column then 16 bytes right column -- NOT scan lines.")
     w("spr_walk:")
