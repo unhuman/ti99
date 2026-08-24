@@ -272,7 +272,15 @@ def main():
         # COLOURS is the highest colour index PLACED, which is what genlevels.py
         # validates the sequence against. The round's authentic declared count
         # lives in arcade-stages.txt; a sparse layout may not receive all of them.
-        body.append("COLOURS %d" % max(int(c) for c in used))
+        ncol = max(int(c) for c in used)
+        body.append("COLOURS %d" % ncol)
+        # THE ARCADE ROUNDS NEED A SHOT INTERVAL TOO, now that HARD mode is
+        # selectable on either cart. It goes in pb_meta byte 0, which this set used
+        # to fill with the colour count -- a byte the engine never read, so it did
+        # not matter what was in it. It matters now: hard mode reads that byte as
+        # `b`, and a 3-colour round would have dropped the ceiling every THREE
+        # shots. Same rule the expert generator uses, capped at the gauge's 8 cells.
+        body.append("SHOTS %d" % min(8, ncol + 2))
         body.append("DROPTIME %g" % droptime(st["n"]))
         seq = sequence(st, grid)
         # GUARD: a sequence must reach every colour on the field. The first

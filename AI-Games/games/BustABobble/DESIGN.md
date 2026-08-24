@@ -582,6 +582,31 @@ makes the acceleration *visible* — eliminate a colour and the magazine loses a
 which teaches the rule better than any HUD text. `tick_bar` and `calc_bstep` are compiled out with
 it.
 
+### Difficulty: EASY and HARD, on both carts
+
+`2` on the title toggles the ceiling rule, and it is a **preference** -- set once and
+kept across games, like the music toggle, unlike the 838 round which lasts one game.
+
+| | ceiling drops on | HUD gauge | label |
+|---|---|---|---|
+| **EASY** | the 20 s timer | 64-step drain | `TIME` |
+| **HARD** | **bubbles fired**, every `b - missing` shots | 8-cell magazine, one per shot | `DROP` |
+
+Each cart **defaults to the rule it was proven under** -- the 30 arcade rounds against
+the timer, the 50 expert levels against the shot count -- so neither ships defaulting
+to a combination nobody verified.
+
+The rule is therefore a **runtime** branch now, not `#if EXPERT`, which means both
+carts carry both paths. That cost 746 bytes and both carts overflowed the fixed area
+by ~250. See the budget note below for where it came from.
+
+⚠ **The arcade rounds needed a shot interval of their own.** `pb_meta` byte 0 held
+their colour count -- a byte the engine never read, so its contents never mattered.
+Hard mode reads that byte as `b`, and a 3-colour round would have dropped the ceiling
+every THREE shots. `transcribe_stages.py` now emits `SHOTS` for the arcade set too, on
+the same `min(8, colours + 2)` rule the expert generator uses. Layouts and sequences
+are untouched; only those 30 metadata bytes changed, and easy mode never reads them.
+
 ### The two-cart mechanism, and the trap in it
 
 An `#if` picks the `INCLUDE`; a false branch is never even opened, so exactly one level table is
@@ -600,7 +625,19 @@ assembled. Constraints, all found the hard way:
 
 50 levels × 62 B = **3,100 B**, so bank 1 runs **5,126 / 8,192** and the cart stays **32 KB** — a
 second bank would round the page count up and double it to 64 KB. The expert fixed area is
-**24,070 / 24,336 (266 free)** against cart 1's 23,836 / 500.
+**24,322 / 24,336 (14 free)** against cart 1's 24,318 / 18.
+
+⚠️ **THE FIXED AREA IS NOW FULL.** Both carts sit at 99.9%. The difficulty toggle made
+both drop rules resident in both carts, and paying for it meant moving `art.bas` (the
+aim table) and `juggle.bas` (the victory path) into bank 1 -- 264 bytes. Those had been
+kept out of the bank on the grounds that a per-frame read must not live there, which was
+over-cautious: the hazard is bank SWITCHING, not residency, and this cart selects bank 1
+once at startup and never switches, so every byte in it is permanently mapped. **If a
+second bank is ever added that reasoning collapses** and those two go back alongside
+pb_lay/pb_seq/pb_meta as reads needing an explicit select.
+
+Bank 1 has 2,802-4,042 free, so **anything added from here has to be data, and it has to
+go in the bank.** There is no room for code in either cart.
 
 ---
 

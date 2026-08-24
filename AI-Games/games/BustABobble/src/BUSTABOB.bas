@@ -297,6 +297,14 @@
 	#muss = VARPTR mus_song(0)
 	mut = 0				' player stopped until a round starts
 	musen = 1			' music on by default; the title toggles it with 1
+	' Each cart defaults to the rule it was PROVEN under: the 30 arcade rounds were
+	' verified against the 20 s timer, the 50 expert levels against the shot count.
+	' Switching is one keypress, but the default is never the unverified one.
+#if EXPERT
+	hardm = 1
+#else
+	hardm = 0
+#endif
 
 	GOTO title_screen
 
@@ -311,13 +319,12 @@ new_round:
 	' uses maxr to decide which rows to rebuild. With a stale maxr the level's
 	' bubbles were simply not drawn until the first shot forced a rescan.
 	GOSUB scan_present
-#if EXPERT
 	' The round's STARTING colour count, captured here because load_level runs
 	' before the first scan and so cannot know it. `missing` is measured against
 	' this, so a round that begins with six colours and is down to two drops every
 	' b-4 shots.
 	ncol0 = nprs
-#endif
+
 	GOSUB draw_frame
 	IF reveal = 1 THEN
 		GOSUB do_reveal
@@ -414,14 +421,10 @@ game_loop:
 		warnon = 0
 	END IF
 
-#if EXPERT
-	' NO PER-FRAME GAUGE TICK on the expert cart. The magazine changes only when a
-	' shot is fired, so drop_check redraws it; calling tick_bar here would repaint
-	' the shot count from the FALLBACK clock every frame and wipe it out. This also
-	' takes tick_bar's divide out of the main loop entirely.
-#else
-	GOSUB tick_bar
-#endif
+	' NO PER-FRAME GAUGE TICK ON HARD. The magazine changes only when a shot is
+	' fired, so drop_check redraws it; calling tick_bar here would repaint the shot
+	' count from the FALLBACK clock every frame and wipe it out.
+	IF hardm = 0 THEN GOSUB tick_bar
 
 	' Shake telegraph. Render-only: shkb feeds draw_row and NOTHING else, so
 	' collision always uses the rest position and a shot fired just before a
@@ -509,12 +512,8 @@ game_loop:
 	' Redrawn only when the pixel count actually changes: at most 64 times per
 	' drop cycle instead of 8 VPOKEs every frame.
 	'
-' DEAD WEIGHT ON THE EXPERT CART. Nothing calls tick_bar there -- the magazine is
-' redrawn by drop_check when a shot is fired, not sampled every frame -- but an
-' uncalled routine is still assembled, and that cart has 88 bytes to spare. The
-' same goes for calc_bstep below. Compiled out rather than left to rot.
-#if EXPERT
-#else
+' Both routines are back in BOTH carts: EASY uses the timer gauge, and easy is
+' selectable on either cart now, so neither can be compiled out.
 tick_bar:
 	#tbx = #dropt
 	#tbx = #tbx / #bstep
@@ -537,7 +536,6 @@ tick_bar:
 		GOSUB draw_bar
 	END IF
 	RETURN
-#endif
 
 	' Paint all nine gauge characters from one 8-byte row -- green normally, red
 	' once barw is set. Called only on a transition (twice a drop cycle), so nine
@@ -557,28 +555,28 @@ set_bar_col:
 	' 534 = 16*32 + 22 is written as a BARE LITERAL: a CONST above 255 silently
 	' compiles to zero on this toolchain (see the note at the top of the file).
 draw_bar:
-#if EXPERT
-	' A SHOT MAGAZINE, NOT A CLOCK. The expert cart's ceiling falls on bubbles
+	' HARD DRAWS A SHOT MAGAZINE, EASY A CLOCK. On hard the ceiling falls on bubbles
 	' fired, so a 64-step pixel drain would be measuring the wrong thing -- and
-	' worse, would drain smoothly while the real quantity moved in whole steps.
-	' One filled cell per shot remaining, and no partial cell at all.
+	' worse, would drain smoothly while the real quantity moved in whole steps. One
+	' filled cell per shot remaining, and no partial cell at all.
 	'
 	' It also makes the ACCELERATION visible: eliminate a colour and the magazine
 	' loses a cell on the spot, which teaches the rule better than any HUD text.
-	tbf = drem
-	IF tbf > 8 THEN tbf = 8
-	tbr = 0
-	' Red for the last two, reusing the timer gauge's own transition machinery.
-	tbwant = 0
-	IF drem < 3 THEN tbwant = 1
-	IF tbwant <> barw THEN
-		barw = tbwant
-		GOSUB set_bar_col
+	IF hardm = 1 THEN
+		tbf = drem
+		IF tbf > 8 THEN tbf = 8
+		tbr = 0
+		' Red for the last two, reusing the timer gauge's transition machinery.
+		tbwant = 0
+		IF drem < 3 THEN tbwant = 1
+		IF tbwant <> barw THEN
+			barw = tbwant
+			GOSUB set_bar_col
+		END IF
+	ELSE
+		tbf = barlast / 8	' whole cells filled
+		tbr = barlast - tbf * 8	' leftover pixels in the next cell
 	END IF
-#else
-	tbf = barlast / 8		' whole cells filled
-	tbr = barlast - tbf * 8		' leftover pixels in the next cell
-#endif
 	#tba = 534
 	#tba = #tba + 6144
 	FOR tbi = 0 TO 7
@@ -679,13 +677,12 @@ do_fire:
 	deckw = 0			' and BUB has picked the waiting one up
 	GOSUB draw_deck
 	flying = 1
-#if EXPERT
 	' COUNT THE SHOT AS IT LEAVES, not as it lands. The arcade's rule is written in
 	' bubbles FIRED, and counting here also covers the shot that sticks nowhere --
 	' that path skips after_stick entirely, and a shot the ceiling ignores would
 	' otherwise be a free one.
 	shotn = shotn + 1
-#endif
+
 	btnr = 0
 	#bx = 20480		' LAUNCHX * 256 -- bare literal, see the note at the top
 	#by = 47104		' LAUNCHY * 256
@@ -738,11 +735,8 @@ anim_tick:
 		#dropt = 0
 	END IF
 	#lf = FRAME
-#if EXPERT
-	' Same reason as the main loop: the magazine is event-driven, not timed.
-#else
-	GOSUB tick_bar
-#endif
+	' Same reason as the main loop: on hard the magazine is event-driven, not timed.
+	IF hardm = 0 THEN GOSUB tick_bar
 	RETURN
 
 	'
@@ -809,9 +803,26 @@ mus_start:
 	' Only the state word is reprinted, not the whole line -- "1=MUSIC" is static.
 prt_musen:
 	IF musen = 1 THEN
-		PRINT AT 626,"ON "
+		PRINT AT 562,"ON "
 	ELSE
-		PRINT AT 626,"OFF"
+		PRINT AT 562,"OFF"
+	END IF
+	RETURN
+
+	' EASY vs HARD is the CEILING RULE, and nothing else.
+	'
+	'   EASY  the ceiling falls on a timer, the arcade rounds' original 20 s
+	'   HARD  it falls on BUBBLES FIRED, every b-minus-missing-colours shots, so it
+	'         accelerates as the board empties -- the real arcade rule
+	'
+	' Both carts offer both. The expert cart defaults to HARD and the arcade cart to
+	' EASY, so each still plays the way it was proven, but neither is locked to it.
+	' Same four characters either way, so no clearing is needed on the toggle.
+prt_hardm:
+	IF hardm = 1 THEN
+		PRINT AT 628,"HARD"
+	ELSE
+		PRINT AT 628,"EASY"
 	END IF
 	RETURN
 
@@ -1220,14 +1231,17 @@ after_stick:
 		GOSUB do_dead
 		RETURN
 	END IF
-#if EXPERT
-	' THE DROP IS TESTED HERE, after the round-clear and death tests. A round that
-	' has just been cleared, or that has just killed you, must not also drop -- and
-	' do_drop repaints the whole field and can itself call do_dead, so it cannot be
-	' run from do_fire with a shot about to launch.
-	GOSUB drop_check
-	IF nrq > 0 THEN RETURN
-#endif
+	' THE SHOT-COUNT DROP IS TESTED HERE, after the round-clear and death tests. A
+	' round that has just been cleared, or that has just killed you, must not also
+	' drop -- and do_drop repaints the whole field and can itself call do_dead, so
+	' it cannot be run from do_fire with a shot about to launch.
+	'
+	' Nested rather than `IF hardm = 1 AND nrq > 0` -- the 9900 backend miscompiles
+	' compound comparisons against a stale register (CLAUDE.md 3A).
+	IF hardm = 1 THEN
+		GOSUB drop_check
+		IF nrq > 0 THEN RETURN
+	END IF
 	GOSUB next_shot
 	RETURN
 
@@ -1668,7 +1682,6 @@ load_level:
 	#droprl = pb_meta(#lvm + 1)
 	#droprl = #droprl * 15		' quarter-seconds -> frames (60 Hz both targets)
 	#dropt = #droprl
-#if EXPERT
 	' THE EXPERT CART DROPS ON A SHOT COUNT, THE ARCADE'S OWN RULE. pb_meta byte 0
 	' is the base interval b -- the byte the arcade build fills with a colour count
 	' and never reads, so the two carts share the format without sharing a meaning.
@@ -1680,13 +1693,10 @@ load_level:
 	' shot-triggered drop rearms it because do_drop already resets #dropt.
 	shotb = pb_meta(#lvm)
 	shotn = 0
-#endif
+
 	GOSUB mark_scenery		' flag the level's own detached pieces, once
-#if EXPERT
-	' No pixel-per-frame divisor: the magazine counts shots, not frames.
-#else
-	GOSUB calc_bstep
-#endif
+	' Hard needs no pixel-per-frame divisor: the magazine counts shots, not frames.
+	IF hardm = 0 THEN GOSUB calc_bstep
 	' AND REPAINT THE GAUGE'S COLOUR, not just the flag. barw = 0 says "green" but
 	' the nine gauge CHARACTERS keep whatever colour they were last DEFINEd with,
 	' and tick_bar only re-issues that on a TRANSITION. A round that ended in the
@@ -1704,11 +1714,10 @@ load_level:
 	' here) but the truth: #dropt has just been set to #droprl, so a full 64 pixels
 	' IS the state, and the first tick_bar agrees with it and leaves it alone.
 	barlast = 64
-#if EXPERT
 	' The magazine opens full: no shots fired yet, so the whole base interval is
 	' still ahead. drem must be set before draw_bar reads it.
 	drem = shotb
-#endif
+
 	GOSUB draw_bar
 	#seqb = lvl - 1
 	#seqb = #seqb * 16
@@ -1746,14 +1755,11 @@ load_level:
 	' read of a 16-bit variable immediately after multiplying it -- verify the
 	' generated .a99 whenever a multiply is involved (CLAUDE.md section 3A).
 	'
-#if EXPERT
-#else
 calc_bstep:
 	#bstep = #droprl
 	#bstep = #bstep / 64
 	IF #bstep < 1 THEN #bstep = 1
 	RETURN
-#endif
 
 	' Also tracks maxr, the lowest occupied grid row -- draw_field uses it to
 	' skip rebuilding the identical empty rows beneath the field (see there).
@@ -1775,7 +1781,6 @@ scan_present:
 			END IF
 		NEXT spc
 	NEXT spr
-#if EXPERT
 	' HOW MANY COLOURS ARE STILL ALIVE. The arcade's drop rule keys off this: the
 	' ceiling falls every b-minus-MISSING shots, so eliminating a colour speeds it
 	' up. pres() is already filled above, so the count is a walk of eight bytes on
@@ -1784,7 +1789,7 @@ scan_present:
 	FOR spi = 1 TO 8
 		IF pres(spi) = 1 THEN nprs = nprs + 1
 	NEXT spi
-#endif
+
 	RETURN
 
 	'
@@ -1855,7 +1860,6 @@ check_death:
 	' field left the whole ceiling skewed one character right -- draw_field no
 	' longer repaints the ceiling (that is the shake's job), so nothing put it
 	' back. Reset, then fill, then repaint BOTH.
-#if EXPERT
 	' THE ARCADE'S CEILING RULE, from the Puzzle Bobble FAQ v1.24: "the screen
 	' drops after a certain number of bubbles (b) have been fired", and "for each
 	' missing color, the screen drops every b - missing colors bubbles".
@@ -1899,7 +1903,7 @@ drop_check:
 		GOSUB do_drop
 	END IF
 	RETURN
-#endif
+
 
 do_drop:
 	shkb = 1
@@ -2332,12 +2336,12 @@ draw_frame:
 		PRINT AT 22,"1UP"
 		PRINT AT 118,"HI"
 		PRINT AT 278,"ROUND"
-#if EXPERT
 		' Four characters either way, so the panel's layout cannot shift.
-		PRINT AT 502,"DROP"
-#else
-		PRINT AT 502,"TIME"
-#endif
+		IF hardm = 1 THEN
+			PRINT AT 502,"DROP"
+		ELSE
+			PRINT AT 502,"TIME"
+		END IF
 		hudok = 1
 	END IF
 	GOSUB draw_ceiling
@@ -2895,13 +2899,18 @@ title_screen:
 	' as the name sitting low rather than as a gap being wrong, and so survived
 	' every look at this screen until someone measured it.
 	'
-	' The credit on row 17 sits four clear rows below the lower bubbles. It was
-	' picked when 18-21 were all empty and it landed dead centre between them and
-	' PRESS FIRE; 1=MUSIC on 19 has since taken one of those rows, so it now heads
-	' the block of small print instead of floating between two things.
-	tby = 4
+	' THE WHOLE TITLE BLOCK SITS ONE ROW HIGHER than it used to, to make room for a
+	' third line of small print (2=DIFFICULTY). Bubbles 3-4, name on 7, bubbles
+	' 10-11, then the three settings lines evenly spaced on 15, 17 and 19.
+	'
+	' PRESS FIRE STAYS ON ROW 22. Moving it down one, which would have freed the row
+	' from the other end, puts it on row 23 -- the last row on the screen, which is
+	' inside TV overscan on real hardware and is clipped outright in Classic99. The
+	' victory screen already carries that note. Raising the block gives the same row
+	' and costs nothing.
+	tby = 3
 	GOSUB title_bubbles
-	tby = 11
+	tby = 10
 	GOSUB title_bubbles
 	' Last score and high score across the top row: "SCORE" then the 9 digits,
 	' "HI" then its 9. Row 0 is cols 0-31, so SCORE occupies 0-14 and HI 17-31.
@@ -2917,13 +2926,17 @@ title_screen:
 	' 15 chars at column 8 = px 64-183, centred on 15 -- the same half-character
 	' lean off the screen's 15.5 that the 13-char name has at column 9, so the two
 	' carts' titles sit in the same place rather than one looking nudged.
-	PRINT AT 264,"BUST-A-BOBBLE 2"
+	PRINT AT 232,"BUST-A-BOBBLE 2"
 #else
-	PRINT AT 265,"BUST-A-BOBBLE"
+	PRINT AT 233,"BUST-A-BOBBLE"
 #endif
-	PRINT AT 548,"2026 UNHUMAN AND CLAUDE"	' row 17, col 4
-	PRINT AT 618,"1=MUSIC"			' row 19, col 10
+	PRINT AT 484,"2026 UNHUMAN AND CLAUDE"	' row 15, col 4
+	PRINT AT 554,"1=MUSIC"			' row 17, col 10
 	GOSUB prt_musen
+	' 12 chars from column 7 with its value at 20 spans 7-23, centred on 15 -- the
+	' same centre as the line above it, so the two settings read as a pair.
+	PRINT AT 615,"2=DIFFICULTY"		' row 19, col 7
+	GOSUB prt_hardm
 	PRINT AT 710,"PRESS FIRE TO START"	' row 22, col 6
 	t8 = 0
 	tkl = 15
@@ -2979,6 +2992,13 @@ title_wait:
 		IF tk = 1 THEN
 			musen = 1 - musen
 			GOSUB prt_musen
+		END IF
+		' 2 toggles the ceiling rule. Like musen it is a PREFERENCE: set once and
+		' kept across games, unlike the 838 round which lasts one game only. 2 is
+		' not part of the 8-3-8 sequence, so it cannot interfere with it.
+		IF tk = 2 THEN
+			hardm = 1 - hardm
+			GOSUB prt_hardm
 		END IF
 		IF tk = 3 THEN
 			IF t8 = 1 THEN
@@ -3295,15 +3315,18 @@ bar_colw:
 txt_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
-	' art.bas is only what is read DURING a frame now -- the aim table and the
-	' sprite-colour table. Every pattern and colour table moved to artdefs.bas,
-	' below the BANK directive, because DEFINE CHAR/COLOR/SPRITE read them once at
-	' startup and they were costing 1,992 bytes of the fixed area for that.
-	INCLUDE "art.bas"
-	' The juggling path is read EVERY FRAME on the victory screen, so it belongs in
-	' the fixed area with the aim table -- above the BANK directive below, never in
-	' a bank.
-	INCLUDE "juggle.bas"
+	' ONLY THE MUSIC IS LEFT ABOVE THE BANK DIRECTIVE, and it is the only thing that
+	' has to be: the player refills the sound chip from the VBLANK ISR, which can
+	' fire anywhere, and bank switching there is unsafe.
+	'
+	' art.bas (the aim table, read every frame) and juggle.bas (the victory screen's
+	' path, likewise) USED to sit here on the grounds that a per-frame read must not
+	' be in a bank. That was over-cautious, and it was costing 264 bytes of the
+	' scarcest budget in the project. The hazard is bank SWITCHING, not bank
+	' residency: this cart selects bank 1 once at startup and never switches, so
+	' every byte in it is mapped permanently and reads are ordinary ROM reads. The
+	' rule that matters is the one at the top of the file -- if a SECOND bank is
+	' ever added, these become unsafe again along with pb_lay/pb_seq/pb_meta.
 	INCLUDE "music.bas"
 	' LEVELS COME LAST, and on TI everything after `BANK 1` is assembled into that
 	' bank. The order matters for exactly that reason: music.bas used to be last,
@@ -3314,6 +3337,8 @@ txt_col:
 	BANK 1
 #endif
 	INCLUDE "artdefs.bas"
+	INCLUDE "art.bas"
+	INCLUDE "juggle.bas"
 	' An INCLUDE inside a false #if is never even opened, so this picks the file
 	' rather than compiling both and discarding one.
 #if EXPERT

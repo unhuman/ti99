@@ -429,36 +429,36 @@ pb_seq:
 	DATA BYTE $66,$35,$11,$85,$46,$56,$53,$66,$42,$54,$18,$65,$33,$63,$57,$76
 
 pb_meta:
-	' 2 B per level: colours in play (never read by the game), droptime in
-	' QUARTER-seconds
-	DATA BYTE $04,$50	' level 1: 4 colours, 20 s
-	DATA BYTE $06,$50	' level 2: 6 colours, 20 s
-	DATA BYTE $05,$50	' level 3: 5 colours, 20 s
-	DATA BYTE $05,$50	' level 4: 5 colours, 20 s
-	DATA BYTE $06,$50	' level 5: 6 colours, 20 s
-	DATA BYTE $06,$50	' level 6: 6 colours, 20 s
-	DATA BYTE $06,$50	' level 7: 6 colours, 20 s
-	DATA BYTE $05,$50	' level 8: 5 colours, 20 s
-	DATA BYTE $07,$50	' level 9: 7 colours, 20 s
-	DATA BYTE $07,$50	' level 10: 7 colours, 20 s
-	DATA BYTE $08,$50	' level 11: 8 colours, 20 s
-	DATA BYTE $03,$50	' level 12: 3 colours, 20 s
-	DATA BYTE $08,$50	' level 13: 8 colours, 20 s
-	DATA BYTE $07,$50	' level 14: 7 colours, 20 s
-	DATA BYTE $07,$50	' level 15: 7 colours, 20 s
-	DATA BYTE $07,$50	' level 16: 7 colours, 20 s
-	DATA BYTE $04,$50	' level 17: 4 colours, 20 s
-	DATA BYTE $07,$50	' level 18: 7 colours, 20 s
-	DATA BYTE $03,$50	' level 19: 3 colours, 20 s
-	DATA BYTE $07,$50	' level 20: 7 colours, 20 s
-	DATA BYTE $04,$50	' level 21: 4 colours, 20 s
-	DATA BYTE $06,$50	' level 22: 6 colours, 20 s
-	DATA BYTE $07,$50	' level 23: 7 colours, 20 s
-	DATA BYTE $07,$50	' level 24: 7 colours, 20 s
-	DATA BYTE $07,$50	' level 25: 7 colours, 20 s
-	DATA BYTE $07,$50	' level 26: 7 colours, 20 s
-	DATA BYTE $06,$50	' level 27: 6 colours, 20 s
-	DATA BYTE $06,$50	' level 28: 6 colours, 20 s
-	DATA BYTE $07,$50	' level 29: 7 colours, 20 s
-	DATA BYTE $08,$50	' level 30: 8 colours, 20 s
+	' 2 B per level: BASE SHOT COUNT (ceiling drops every b-minus-missing-colours
+	' shots), then the anti-idle FALLBACK clock in QUARTER-seconds
+	DATA BYTE $06,$50	' level 1: b = 6 shots, 20 s
+	DATA BYTE $08,$50	' level 2: b = 8 shots, 20 s
+	DATA BYTE $07,$50	' level 3: b = 7 shots, 20 s
+	DATA BYTE $07,$50	' level 4: b = 7 shots, 20 s
+	DATA BYTE $08,$50	' level 5: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 6: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 7: b = 8 shots, 20 s
+	DATA BYTE $07,$50	' level 8: b = 7 shots, 20 s
+	DATA BYTE $08,$50	' level 9: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 10: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 11: b = 8 shots, 20 s
+	DATA BYTE $05,$50	' level 12: b = 5 shots, 20 s
+	DATA BYTE $08,$50	' level 13: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 14: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 15: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 16: b = 8 shots, 20 s
+	DATA BYTE $06,$50	' level 17: b = 6 shots, 20 s
+	DATA BYTE $08,$50	' level 18: b = 8 shots, 20 s
+	DATA BYTE $05,$50	' level 19: b = 5 shots, 20 s
+	DATA BYTE $08,$50	' level 20: b = 8 shots, 20 s
+	DATA BYTE $06,$50	' level 21: b = 6 shots, 20 s
+	DATA BYTE $08,$50	' level 22: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 23: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 24: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 25: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 26: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 27: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 28: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 29: b = 8 shots, 20 s
+	DATA BYTE $08,$50	' level 30: b = 8 shots, 20 s
 
