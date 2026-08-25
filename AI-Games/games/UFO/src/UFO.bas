@@ -41,10 +41,18 @@
 
 	' ------------------------------------------------------------- ENEMIES
 	CONST NENE = 8			' enemy slots, DIM 0..7
-	CONST ETDRIFT = 1		' random drifter -- 1 point, ZERO AI
+	CONST ETDRIFT = 1		' random drifter        -- 1 point, ZERO AI
+	CONST ETHUNT = 2		' Hunter-Killer         -- 3 points
+	CONST ETSHIP = 3		' Light-speed Starship  -- 10 points
 	CONST SPAWNT = 90		' frames between spawn attempts
 	CONST RAMR = 14			' ram range: the force field's own radius
 	CONST HULLR = 9			' hull range: what kills you with no field
+	CONST ACQR = 110		' a Hunter this close ACQUIRES you -- and
+					' drags one of its own kind in with it
+	CONST NMIS = 8			' missile slots, DIM 0..7. EIGHT because a
+					' chain reaction spawns three at a time
+	CONST MLIFE = 90		' missile frames before it burns out
+	CONST SHIPFT = 70		' Starship frames between shots
 
 	' -------------------------------------------------------------- variables
 	' shld  force field, 0..SHMAX. Armed ONLY at SHMAX
@@ -57,7 +65,9 @@
 	'            overflows 16 bits exactly. Y is the only axis that costs.
 
 	DIM #aox(16),#aoy(16)		' gun-dot offset from the ship, 8.8
-	DIM #vlxt(16),#vlyt(16)		' laser velocity, 8.8
+	DIM #vlxt(16),#vlyt(16)		' laser velocity, 8.8   (1024 = 4 px/frame)
+	DIM #vhxt(16),#vhyt(16)		' Hunter velocity, 8.8  (320  = 1.25)
+	DIM #vmxt(16),#vmyt(16)		' missile + Starship    (512  = 2)
 
 	DIM #lx(2),#ly(2)		' laser position, 8.8
 	DIM #lvx(2),#lvy(2)		' laser velocity for this shot
@@ -65,7 +75,16 @@
 
 	DIM #ex(NENE),#ey(NENE)		' enemy position, 8.8
 	DIM #evx(NENE),#evy(NENE)	' enemy velocity, 8.8 two's complement
-	DIM ety(NENE)			' 0 dead, ETDRIFT, (more in phase 5)
+	DIM ety(NENE)			' 0 dead, or one of the three ET* types
+	DIM edir(NENE)			' heading 0..15, for the types that steer
+	DIM eaq(NENE)			' Hunter: 1 once it has ACQUIRED the player
+	DIM efr(NENE)			' Starship: frames until it fires again
+
+	DIM #mx(NMIS),#my(NMIS)		' missile position, 8.8
+	DIM mdir(NMIS)			' heading 0..15 -- velocity is LOOKED UP from
+					' it each frame rather than stored, which is
+					' what makes a missile steerable for free
+	DIM mon(NMIS),mlf(NMIS)		' alive flag, frames remaining
 
 	' WHERE THE GUN IS, radius 6.8 px -- the same circle the force-field art is
 	' drawn on (assets/genart.py R_OUTER), so the gun dot sits ON the ring
@@ -123,6 +142,50 @@
 	#vlxt(13)=64590 : #vlyt(13)=65144
 	#vlxt(14)=64812 : #vlyt(14)=64812
 	#vlxt(15)=65144 : #vlyt(15)=64590
+
+	' HUNTER-KILLER VELOCITY, magnitude 320 = 1.25 px/frame.
+	'
+	' THAT NUMBER IS THE WHOLE BALANCE OF THE GAME. The player does 1.5
+	' px/frame armed and 0.75 recharging, so a Hunter is slower than you while
+	' your field is up and FASTER than you the moment you spend it. You can
+	' outrun one only by being armed -- which is exactly the thing you have to
+	' give up to shoot at it.
+	#vhxt(0)=0      : #vhyt(0)=65216
+	#vhxt(1)=122    : #vhyt(1)=65240
+	#vhxt(2)=226    : #vhyt(2)=65310
+	#vhxt(3)=296    : #vhyt(3)=65414
+	#vhxt(4)=320    : #vhyt(4)=0
+	#vhxt(5)=296    : #vhyt(5)=122
+	#vhxt(6)=226    : #vhyt(6)=226
+	#vhxt(7)=122    : #vhyt(7)=296
+	#vhxt(8)=0      : #vhyt(8)=320
+	#vhxt(9)=65414  : #vhyt(9)=296
+	#vhxt(10)=65310 : #vhyt(10)=226
+	#vhxt(11)=65240 : #vhyt(11)=122
+	#vhxt(12)=65216 : #vhyt(12)=0
+	#vhxt(13)=65240 : #vhyt(13)=65414
+	#vhxt(14)=65310 : #vhyt(14)=65310
+	#vhxt(15)=65414 : #vhyt(15)=65240
+
+	' MISSILE AND STARSHIP VELOCITY, magnitude 512 = 2 px/frame -- faster than
+	' anything else in the game, which is what makes both of them a problem
+	' you solve by not being there rather than by out-running.
+	#vmxt(0)=0      : #vmyt(0)=65024
+	#vmxt(1)=196    : #vmyt(1)=65063
+	#vmxt(2)=362    : #vmyt(2)=65174
+	#vmxt(3)=473    : #vmyt(3)=65340
+	#vmxt(4)=512    : #vmyt(4)=0
+	#vmxt(5)=473    : #vmyt(5)=196
+	#vmxt(6)=362    : #vmyt(6)=362
+	#vmxt(7)=196    : #vmyt(7)=473
+	#vmxt(8)=0      : #vmyt(8)=512
+	#vmxt(9)=65340  : #vmyt(9)=473
+	#vmxt(10)=65174 : #vmyt(10)=362
+	#vmxt(11)=65063 : #vmyt(11)=196
+	#vmxt(12)=65024 : #vmyt(12)=0
+	#vmxt(13)=65063 : #vmyt(13)=65340
+	#vmxt(14)=65174 : #vmyt(14)=65174
+	#vmxt(15)=65340 : #vmyt(15)=65063
 
 	#score = 0
 	#hisc = 0
@@ -210,6 +273,9 @@ new_game:
 	FOR ni = 0 TO NENE - 1
 		ety(ni) = 0
 	NEXT ni
+	FOR ni = 0 TO NMIS - 1
+		mon(ni) = 0
+	NEXT ni
 	dead = 0
 	sptk = 0
 	satt = 0
@@ -228,6 +294,7 @@ main:
 	GOSUB upd_lasers
 	GOSUB spawn_try
 	GOSUB upd_enemies
+	GOSUB upd_missiles
 	GOSUB draw_ship
 	GOSUB lprate
 	' DEATH IS A STATE, NOT A JUMP. Collision detection sets `dead` and the
@@ -461,15 +528,33 @@ spawn_try:
 	GOSUB to88
 	#ey(si) = #t88
 
-	GOSUB rnd_vel
-	#evx(si) = #rv
-	GOSUB rnd_vel
-	#evy(si) = #rv
-	' A satellite with no velocity at all just sits there looking broken.
-	IF #evx(si) = 0 THEN
-		IF #evy(si) = 0 THEN #evx(si) = 96
+	' WHICH KIND. Drifters are the bulk of the sky, Hunters are the threat,
+	' and a Starship is an event. Phase 8 tilts these with difficulty.
+	edir(si) = RANDOM(16)
+	eaq(si) = 0
+	efr(si) = SHIPFT
+	sr = RANDOM(10)
+	IF sr < 6 THEN
+		ety(si) = ETDRIFT
+		GOSUB rnd_vel
+		#evx(si) = #rv
+		GOSUB rnd_vel
+		#evy(si) = #rv
+		' A satellite with no velocity at all just sits there looking broken.
+		IF #evx(si) = 0 THEN
+			IF #evy(si) = 0 THEN #evx(si) = 96
+		END IF
+		RETURN
 	END IF
-	ety(si) = ETDRIFT
+	IF sr < 9 THEN
+		ety(si) = ETHUNT
+		#evx(si) = #vhxt(edir(si))
+		#evy(si) = #vhyt(edir(si))
+		RETURN
+	END IF
+	ety(si) = ETSHIP
+	#evx(si) = #vmxt(edir(si))
+	#evy(si) = #vmyt(edir(si))
 	RETURN
 
 	' -------------------------------------------------------- random velocity
@@ -527,12 +612,182 @@ upd_enemies:
 			eap = eap AND 4
 			epn = 24
 			IF eap <> 0 THEN epn = 28
-			SPRITE 5 + ei,ey8,ex8,epn,3
+			ecl = 3			' drifter: light green
+
+			IF ety(ei) = ETHUNT THEN
+				' Same PLUS/CROSS body in a hotter colour: the
+				' thing chasing you is recognisably the same
+				' species as the thing drifting past, which is
+				' how the original reads.
+				ecl = 13		' magenta: drifting, unaware
+				IF eaq(ei) = 1 THEN ecl = 9	' light red: LOCKED ON
+				GOSUB hunt_think
+			END IF
+			IF ety(ei) = ETSHIP THEN
+				epn = 32
+				IF eap <> 0 THEN epn = 36
+				ecl = 10		' amber -- its own colour
+				GOSUB ship_think
+			END IF
+			SPRITE 5 + ei,ey8,ex8,epn,ecl
 
 			GOSUB coll_player
 			GOSUB coll_lasers
 		END IF
 	NEXT ei
+	RETURN
+
+	' ----------------------------------------------------------- hunt think
+	' Two comparisons and a table lookup, on alternate frames. NO SEARCH --
+	' the Ms. Pac-Man trap in CLAUDE.md 5A is N actors each pathfinding every
+	' frame, and this is the opposite of it.
+	'
+	' LINKING. The manual says a Hunter-Killer that detects you "links with
+	' another of the same type". So the first one to get within ACQR drags a
+	' second in with it: kill one and the pair is already committed, which is
+	' what makes Hunters feel co-ordinated without any of them thinking.
+hunt_think:
+	hth = satt AND 1
+	IF hth <> 0 THEN RETURN
+
+	IF eaq(ei) = 0 THEN
+		' Not yet acquired: is the player inside the detection radius?
+		cdx = ex8 - shx8
+		IF cdx > 127 THEN cdx = 0 - cdx
+		IF cdx >= ACQR THEN RETURN
+		IF ey8 >= shy8 THEN
+			cdy = ey8 - shy8
+		ELSE
+			cdy = shy8 - ey8
+		END IF
+		IF cdy > 80 THEN cdy = 160 - cdy
+		IF cdy >= ACQR THEN RETURN
+		eaq(ei) = 1
+		' ...and link the FIRST unacquired Hunter to the same target.
+		' A flag, not `hli = NENE` -- breaking out by mutating a FOR
+		' variable is not something CVBasic promises anything about.
+		hlk = 0
+		FOR hli = 0 TO NENE - 1
+			IF hlk = 0 THEN
+				IF ety(hli) = ETHUNT THEN
+					IF eaq(hli) = 0 THEN
+						eaq(hli) = 1
+						hlk = 1	' one partner, not all
+					END IF
+				END IF
+			END IF
+		NEXT hli
+		RETURN
+	END IF
+
+	px8 = ex8
+	py8 = ey8
+	GOSUB dir_to_player
+	IF gdir = 255 THEN RETURN
+	GOSUB step_toward
+	edir(ei) = sdir
+	#evx(ei) = #vhxt(sdir)
+	#evy(ei) = #vhyt(sdir)
+	RETURN
+
+	' ----------------------------------------------------------- ship think
+	' The Starship does not steer -- it crosses, fast, and fires GUIDED
+	' missiles as it goes. Nothing about it reacts to the player except the
+	' thing it launches, which is why it reads as a bomber rather than a
+	' chaser and why it is worth ten points.
+ship_think:
+	IF efr(ei) > 0 THEN
+		efr(ei) = efr(ei) - 1
+		RETURN
+	END IF
+	efr(ei) = SHIPFT
+	px8 = ex8
+	py8 = ey8
+	GOSUB dir_to_player
+	IF gdir = 255 THEN RETURN
+	mfd = gdir
+	mfx8 = ex8
+	mfy8 = ey8
+	GOSUB fire_missile
+	RETURN
+
+	' -------------------------------------------------- direction to player
+	' Takes px8/py8, returns gdir 0..15 (even values -- eight directions), or
+	' 255 when the actor is sitting on top of the player and there is no
+	' meaningful direction at all.
+	'
+	' No trigonometry and no divide: compare the two magnitudes, and let an
+	' axis that is more than twice the other zero the smaller one. That turns
+	' four quadrants into the eight compass points.
+dir_to_player:
+	sgx = 0
+	mgx = shx8 - px8
+	IF mgx <> 0 THEN
+		IF mgx < 128 THEN
+			sgx = 1			' player is to the RIGHT
+		ELSE
+			sgx = 2			' to the LEFT
+			mgx = 0 - mgx
+		END IF
+	END IF
+	' Clamp before doubling: mgx can reach 128 and 128+128 wraps to 0 in
+	' 8 bits, which would invert the comparison at exactly the far distances.
+	IF mgx > 100 THEN mgx = 100
+
+	IF shy8 >= py8 THEN
+		mgy = shy8 - py8
+		sgy = 2				' player is BELOW
+	ELSE
+		mgy = py8 - shy8
+		sgy = 1				' ABOVE
+	END IF
+	IF mgy > 80 THEN
+		' The short way round is through the wrap seam, so the direction
+		' is the opposite of the one the raw comparison gave.
+		mgy = 160 - mgy
+		IF sgy = 1 THEN
+			sgy = 2
+		ELSE
+			sgy = 1
+		END IF
+	END IF
+	IF mgy = 0 THEN sgy = 0
+
+	IF mgx > mgy + mgy THEN sgy = 0
+	IF mgy > mgx + mgx THEN sgx = 0
+
+	gdir = 255
+	IF sgy = 1 THEN
+		gdir = 0
+		IF sgx = 1 THEN gdir = 2
+		IF sgx = 2 THEN gdir = 14
+	END IF
+	IF sgy = 0 THEN
+		IF sgx = 1 THEN gdir = 4
+		IF sgx = 2 THEN gdir = 12
+	END IF
+	IF sgy = 2 THEN
+		gdir = 8
+		IF sgx = 1 THEN gdir = 6
+		IF sgx = 2 THEN gdir = 10
+	END IF
+	RETURN
+
+	' -------------------------------------------------------- step toward
+	' One notch of edir(ei) toward gdir, THE SHORT WAY. These are guided
+	' weapons and homing enemies -- unlike the player's gun, which is
+	' deliberately clumsy and may only ever turn clockwise (drift_aim).
+step_toward:
+	sdir = edir(ei)
+	IF sdir = gdir THEN RETURN
+	stp = gdir - sdir
+	stp = stp AND 15
+	IF stp < 8 THEN
+		sdir = sdir + 1
+	ELSE
+		sdir = sdir - 1
+	END IF
+	sdir = sdir AND 15
 	RETURN
 
 	' ------------------------------------------------------- enemy vs player
@@ -601,12 +856,180 @@ coll_lasers:
 	RETURN
 
 	' ----------------------------------------------------------- kill enemy
-	' Phase 6 hangs the chain reaction off here: three missiles, diverging.
+	' THE CHAIN REACTION LIVES HERE. Every enemy that dies throws three
+	' missiles out on diverging headings, and those missiles kill enemies,
+	' which throw three more. It is the scoring engine of the game and the
+	' reason the missile pool is eight rather than four.
+	'
+	' At 1/3/10 points a chain is LEGIBLE -- the score ticks up one kill at a
+	' time and you can watch the cascade travel. A x100 scale would have made
+	' the same event an unreadable blur of zeroes.
 kill_enemy:
+	kt = ety(ei)
 	ety(ei) = 0
 	SPRITE 5 + ei,SPRHID,0,0,0
-	#score = #score + 1
+
+	kp = 1
+	IF kt = ETHUNT THEN kp = 3
+	IF kt = ETSHIP THEN kp = 10
+	#score = #score + kp
 	GOSUB prt_score
+
+	' Three headings, five notches apart, from a random start -- so debris
+	' fans out rather than firing the same three ways every time.
+	kd = RANDOM(16)
+	mfx8 = ex8
+	mfy8 = ey8
+	FOR kci = 0 TO 2
+		mfd = kd
+		GOSUB fire_missile
+		kd = kd + 5
+		kd = kd AND 15
+	NEXT kci
+	RETURN
+
+	' --------------------------------------------------------- fire missile
+	' mfd = heading, mfx8/mfy8 = where from. Silently does nothing when the
+	' pool is full, which is correct: eight missiles in the air is already a
+	' bigger cascade than the screen can show.
+fire_missile:
+	fmi = 255
+	FOR fmj = 0 TO NMIS - 1
+		IF mon(fmj) = 0 THEN fmi = fmj
+	NEXT fmj
+	IF fmi = 255 THEN RETURN
+	mon(fmi) = 1
+	mlf(fmi) = MLIFE
+	mdir(fmi) = mfd
+	t8 = mfx8
+	GOSUB to88
+	#mx(fmi) = #t88
+	t8 = mfy8
+	GOSUB to88
+	#my(fmi) = #t88
+	RETURN
+
+	' -------------------------------------------------------- update missiles
+	' Velocity is LOOKED UP from mdir every frame rather than stored, which is
+	' what makes a missile steerable at no cost: change the heading and the
+	' velocity follows. Two array reads per missile per frame.
+upd_missiles:
+	FOR mi = 0 TO NMIS - 1
+		IF mon(mi) = 1 THEN
+			mlf(mi) = mlf(mi) - 1
+			IF mlf(mi) = 0 THEN
+				mon(mi) = 0
+				SPRITE 13 + mi,SPRHID,0,0,0
+			ELSE
+				#mx(mi) = #mx(mi) + #vmxt(mdir(mi))
+				#my(mi) = #my(mi) + #vmyt(mdir(mi))
+				IF #my(mi) < 4096 THEN #my(mi) = #my(mi) + 40960
+				IF #my(mi) >= 45056 THEN #my(mi) = #my(mi) - 40960
+				mx8 = #mx(mi) / 256
+				my8 = #my(mi) / 256
+				SPRITE 13 + mi,my8,mx8,44,15
+
+				' GUIDED -- but only every fourth frame, so it
+				' curves rather than snapping onto you. A missile
+				' that tracked every frame would be unavoidable.
+				mth = satt AND 3
+				IF mth = 0 THEN
+					px8 = mx8
+					py8 = my8
+					GOSUB dir_to_player
+					IF gdir <> 255 THEN
+						GOSUB step_toward_m
+						mdir(mi) = sdir
+					END IF
+				END IF
+				GOSUB coll_mis_player
+				GOSUB coll_mis_enemy
+			END IF
+		END IF
+	NEXT mi
+	RETURN
+
+	' step_toward reads edir(ei); missiles keep their heading in mdir, so this
+	' entry point takes it in sdir directly rather than borrowing an enemy
+	' slot. Kept separate because ei is live in the enemy loop.
+step_toward_m:
+	sdir = mdir(mi)
+	IF sdir = gdir THEN RETURN
+	stp = gdir - sdir
+	stp = stp AND 15
+	IF stp < 8 THEN
+		sdir = sdir + 1
+	ELSE
+		sdir = sdir - 1
+	END IF
+	sdir = sdir AND 15
+	RETURN
+
+	' ----------------------------------------------------- missile vs player
+	' The same two-radius rule as an enemy body: an ARMED field eats the
+	' missile and is spent; without one, the hull is all there is.
+coll_mis_player:
+	cdx = mx8 - shx8
+	IF cdx > 127 THEN cdx = 0 - cdx
+	IF cdx >= RAMR THEN RETURN
+	IF my8 >= shy8 THEN
+		cdy = my8 - shy8
+	ELSE
+		cdy = shy8 - my8
+	END IF
+	IF cdy > 80 THEN cdy = 160 - cdy
+	IF cdy >= RAMR THEN RETURN
+
+	IF shld = SHMAX THEN
+		shld = 0
+		shtk = 0
+		mon(mi) = 0
+		SPRITE 13 + mi,SPRHID,0,0,0
+		RETURN
+	END IF
+	IF cdx >= HULLR THEN RETURN
+	IF cdy >= HULLR THEN RETURN
+	dead = 1
+	RETURN
+
+	' ----------------------------------------------------- missile vs enemy
+	' What makes a chain a chain. Tested x-first so the common case -- a
+	' missile nowhere near this enemy -- costs a subtract and a compare.
+coll_mis_enemy:
+	mhit = 0
+	FOR mj = 0 TO NENE - 1
+		IF mhit = 0 THEN
+		IF ety(mj) <> 0 THEN
+			IF mon(mi) = 1 THEN
+				mex = #ex(mj) / 256
+				cdx = mex - mx8
+				IF cdx > 127 THEN cdx = 0 - cdx
+				IF cdx < 11 THEN
+					mey = #ey(mj) / 256
+					IF mey >= my8 THEN
+						cdy = mey - my8
+					ELSE
+						cdy = my8 - mey
+					END IF
+					IF cdy > 80 THEN cdy = 160 - cdy
+					IF cdy < 11 THEN
+						mhit = 1
+						mon(mi) = 0
+						SPRITE 13 + mi,SPRHID,0,0,0
+						' kill_enemy works on ei/ex8/ey8.
+						' Clobbering ei is safe here: the
+						' enemy loop has already finished
+						' for this frame.
+						ei = mj
+						ex8 = mex
+						ey8 = mey
+						GOSUB kill_enemy
+					END IF
+				END IF
+			END IF
+		END IF
+		END IF
+	NEXT mj
 	RETURN
 
 	' ------------------------------------------------------------- spin ring

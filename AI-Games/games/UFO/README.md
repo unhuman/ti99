@@ -10,7 +10,7 @@ and mortal.
 
 ## Status
 
-**Phases 1-4 of 8 build and run on both targets.** See `DESIGN.md` §14 for the phase plan; §0 records the research the
+**Phases 1-6 of 8 build and run on both targets.** See `DESIGN.md` §14 for the phase plan; §0 records the research the
 design is built on, including where sources disagreed and which readings we took.
 
 | phase | content | state |
@@ -19,8 +19,8 @@ design is built on, including where sources disagreed and which readings we took
 | 2 | Force field: charge, drain, recharge, half speed, armed rule | **built** |
 | 3 | Clockwise gun drift, laser | **built** |
 | 4 | Drifters, ram kill, laser kill, death | **built** |
-| 5 | Hunter-Killers and Light-speed Starships | — |
-| 6 | Chain reactions | — |
+| 5 | Hunter-Killers and Light-speed Starships | **built** |
+| 6 | Chain reactions | **built** |
 | 7 | Death sequence, game over, high score | — |
 | 8 | `838` setup, sound, difficulty | — |
 
@@ -81,9 +81,9 @@ interleave, which is not something to do by hand.
 
 | target | used | free |
 |---|---|---|
-| TI-99/4A program image | 9,512 / 24,336 | 14,824 |
-| ColecoVision ROM | 8,192 | — |
-| ColecoVision RAM | 306 / 814 | 508 |
+| TI-99/4A program image | 13,384 / 24,336 | 10,952 |
+| ColecoVision ROM | 16,384 | — |
+| ColecoVision RAM | 545 / 814 | 269 |
 
 ## Notes
 

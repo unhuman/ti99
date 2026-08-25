@@ -246,6 +246,22 @@ Eight slots, shared by all three types.
 | **Hunter-Killer** | 3 | Nudges velocity toward the player — two compares, alternate frames. On acquiring you, a second Hunter **links** and converges too |
 | **Light-speed Starship** | 10 | Crosses fast and fires **guided** missiles that steer toward you |
 
+**Speed is the balance.** The Hunter-Killer moves at **1.25 px/frame** against the player's
+**1.5 armed** and **0.75 recharging**. So a Hunter is slower than you while your field is up and
+faster than you the moment you spend it — you can outrun one only by being armed, which is
+exactly the thing you have to give up in order to shoot at it. Starships and missiles both run
+at 2 px/frame and cannot be outrun at all; they are problems you solve by not being there.
+
+**Colour says which is which**, and the Hunter changes colour when it acquires you:
+
+| enemy | colour |
+|---|---|
+| Drifter | light green |
+| Hunter-Killer, unaware | magenta |
+| Hunter-Killer, **locked on** | light red |
+| Light-speed Starship | amber |
+| Missile | white |
+
 **Art: the plus/multiply alternation is the original's own trick.** Averett faked rotation on
 hardware that had none by flipping between the console's built-in `+` and `×` characters.
 Reproducing that exactly — two patterns, swapped every few frames — is most of why this will
@@ -403,8 +419,8 @@ free against the 24,336-byte cap.
 | 2 | Force field: ring, charge, drain, recharge, half speed, colour ramp, armed rule | **built** |
 | 3 | Clockwise gun drift, gun dot, laser fire and flight | **built** |
 | 4 | Drifters: plus/multiply spin, spawning, ram kill, laser kill, player death | **built** |
-| 5 | Hunter-Killers (with linking) and Light-speed Starships with guided missiles | — |
-| 6 | Chain reactions — three missiles per kill | — |
+| 5 | Hunter-Killers (with linking) and Light-speed Starships with guided missiles | **built** |
+| 6 | Chain reactions — three missiles per kill | **built** |
 | 7 | Death sequence (sparking colour-cycle, control retained), game over, high score | — |
 | 8 | `838` setup (ships 1-9, starting difficulty), sound, difficulty escalation | — |
 
