@@ -82,6 +82,13 @@ Horizontal **wrap** is free: `#px` is 8.8 fixed point, so 256 px × 256 = 65536 
 
 Seven entries, `DIM 8` (sized past the real max index, per `CLAUDE.md` §3A).
 
+**Islands are SOLID IN EVERY DIRECTION**, for the player and for knights alike. You
+cannot rise through one: the head bumps its underside (`ply + 8`, one character row
+thick) and upward motion stops dead. This is what makes the layout dictate the fight —
+you must fly *around*, and a knight above you cannot be escaped by rising through the
+floor he is standing on. Knights obey the same rule, because an enemy that can pass
+through a platform the player cannot reads as cheating.
+
 **Erosion.** `plon()` is a per-island present/absent flag.
 - Wave 1-2: all present. The bridge lets you walk across the lava.
 - **Wave 3**: the bridge burns away. From here the floor has a lava gap in the middle.
@@ -144,12 +151,40 @@ arithmetic wraps.
 Shadow Lords fly **higher** by preference — they bias their flap threshold upward, which
 is what makes them dangerous rather than merely fast.
 
-**AI, two comparisons per knight per frame:**
-1. Is the player above me, and has my flap cooldown expired → flap.
-2. Steer toward the player's x, **by the shorter way round the wrap**.
+### The three tiers fly differently — this is the character of the game
 
-That is all of it. Difficulty is flap eagerness and top speed — never fleeing, which reads
-as broken AI rather than as an easier game (`CLAUDE.md` §3A).
+Not one homing rule with the speed turned up. From the arcade behaviour (Joustmaster
+wiki, Wikipedia):
+
+| tier | behaviour |
+|---|---|
+| **Bounder** | "flies around the environment **randomly**, occasionally reacting to the protagonist" |
+| **Hunter** | "**seeks** the player's character in an effort to collide" |
+| **Shadow Lord** | "flies quickly and closer to the **top** of the screen", and the arcade AI makes it **fly higher when close to the player** to improve its odds |
+
+Implemented as one shared flight routine steering toward a per-knight **target**
+`(ktx, kty)`; only the *choice of target* differs by tier, so the cost stays O(1):
+
+- **Bounder** re-rolls a destination every 50-120 frames, and **only one roll in four is
+  the player**. It reads as a creature going about its business that sometimes notices
+  you. Explicitly **not a patrol** — pacing back and forth along a platform is what makes
+  an enemy look like furniture.
+- **Hunter** targets the player's x and **one notch above** his y: level flight into a
+  joust is a coin toss, so it wants the high side of the contact.
+- **Shadow Lord** targets the player but lives in the **top third**, and drops its target
+  altitude *further* when within 48 px. **The climb is the attack** — altitude decides the
+  joust, so closing high is aggression, not retreat.
+
+Steering always takes **the shorter way round the wrap**; chasing across the middle when
+the screen edge is nearer is the tell of an AI that does not know the screen wraps.
+
+Difficulty is flap eagerness, top speed and target choice — never fleeing, which reads as
+broken AI rather than as an easier game (`CLAUDE.md` §3A).
+
+> **The tier speeds are 400 / 490 / 580 and must be 16-bit.** Written as a plain
+> `ktop = 400 + tier*90` the 400 truncated to 144, giving 144 / 234 / 68 — **the Shadow
+> Lord would have been the slowest enemy in the game**, the same inversion that shipped in
+> RALLY-X. `tools/bigvar.py` caught it before the first build of this code.
 
 Knights **pass through each other**; only player↔knight is resolved.
 

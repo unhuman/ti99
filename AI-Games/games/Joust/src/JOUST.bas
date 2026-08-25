@@ -48,6 +48,9 @@
 	DIM kface(NKN)			' 0 right, 1 left
 	DIM kfrm(NKN)			' animation frame 0..3
 	DIM kflp(NKN)			' frames until this knight may flap again
+	DIM kty(NKN)			' target altitude, pixels -- what the AI steers to
+	DIM ktx(NKN)			' target x, pixels
+	DIM kwan(NKN)			' Bounder wander timer: frames until it re-rolls
 
 	DIM #ex(NEGG)			' egg x, 8.8
 	DIM #ey(NEGG)			' egg y, 8.8
@@ -137,6 +140,9 @@ new_wave:
 			IF wave > 5 THEN ktier(nwi) = 1 + (nwi AND 1)
 			kfrm(nwi) = 0
 			kflp(nwi) = 10 + nwi * 7
+			kwan(nwi) = nwi * 11	' stagger the first wander roll
+			ktx(nwi) = 128
+			kty(nwi) = 60
 			' spread the spawns across the two upper platforms
 			#kx(nwi) = 4096
 			IF nwi > 1 THEN #kx(nwi) = 45056
@@ -349,6 +355,7 @@ p_move:
 		#vy = 32768			' bonk the ceiling, stop rising
 	END IF
 
+	GOSUB p_bump
 	GOSUB p_land
 	IF pdead = 0 THEN
 		IF py8 >= LAVAY THEN
@@ -395,6 +402,33 @@ p_land:
 	NEXT pli2
 	RETURN
 
+	' PLATFORMS ARE SOLID FROM BELOW TOO. Rising through one was wrong -- in the
+	' arcade an island is a wall in every direction, which is exactly why the
+	' layout dictates the fight: you must fly AROUND, and a knight above you
+	' cannot simply be escaped by rising through the floor he stands on.
+	'
+	' An island is 8 px thick (one character row), so its underside is ply + 8.
+	' The head bumps when the sprite's top crosses that band while rising.
+p_bump:
+	IF #vy >= 32768 THEN RETURN		' only while rising
+	pbh = #py / 256				' the head is the sprite's top edge
+	pbc = #px / 256
+	pbc = pbc + 8				' centre x
+	FOR pbi = 0 TO NPLAT - 1
+		IF pbh <= ply(pbi) + 8 THEN
+			IF pbh >= ply(pbi) THEN
+				IF pbc >= #plx1(pbi) THEN
+					IF pbc <= #plx2(pbi) THEN
+						#py = ply(pbi) + 8
+						#py = #py * 256
+						#vy = 32768	' stopped dead, no bounce
+					END IF
+				END IF
+			END IF
+		END IF
+	NEXT pbi
+	RETURN
+
 	' ----------------------------------------------------- knight movement
 k_move:
 	FOR kni = 0 TO NKN - 1
@@ -403,29 +437,57 @@ k_move:
 	RETURN
 
 k_one:
-	' AI, two comparisons. No search, no path: the whole of the difficulty is
-	' how eagerly a tier flaps and how fast it may travel.
+	kpx = #px / 256
+	kpy = #py / 256
+	kmx = #kx(kni) / 256
+	kmy = #ky(kni) / 256
+	' !! 16-BIT, AND MULTIPLIED VIA A SEPARATE VARIABLE. As a plain `ktop` the 400
+	' truncated to 144, so the tiers came out 144 / 234 / 324-and-wrapped-to-68 --
+	' THE SHADOW LORD WOULD HAVE BEEN THE SLOWEST ENEMY IN THE GAME, the exact
+	' inversion that shipped in RALLY-X. tools/bigvar.py caught it before the build.
+	' The multiply reads #ktp2, not #ktop: on the 9900 MPY leaves the high word in
+	' r0 and reading back the variable just multiplied returns 0 (CLAUDE.md 3A).
+	#ktp2 = ktier(kni)
+	#ktop = #ktp2 * 90
+	#ktop = #ktop + 400
+	#kfast = 32768 + #ktop
+	#kslow = 32768 - #ktop
+
+	' THE THREE TIERS FLY DIFFERENTLY. This is the whole character of the game and
+	' it is not one homing rule with the speed turned up:
+	'
+	'   Bounder     wanders the arena, only OCCASIONALLY reacting to the player.
+	'   Hunter      seeks the player, trying to collide.
+	'   Shadow Lord fast, hugs the top of the screen, and deliberately flies
+	'               HIGHER as it closes -- because altitude is what decides the
+	'               joust, so climbing IS its attack.
+	'
+	' Each knight steers toward a TARGET (ktx, kty) rather than at the player
+	' directly. Only the choice of target differs per tier, so the flight code
+	' below is shared and stays O(1).
+	IF ktier(kni) = 0 THEN GOSUB k_wander
+	IF ktier(kni) = 1 THEN GOSUB k_hunt
+	IF ktier(kni) = 2 THEN GOSUB k_lord
+
+	' Climb toward the target altitude. Flapping is on a cooldown, which is what
+	' makes a tier feel eager or lazy without changing the rule.
 	IF kflp(kni) > 0 THEN
 		kflp(kni) = kflp(kni) - 1
 	ELSE
-		kpy = #py / 256
-		kmy = #ky(kni) / 256
-		IF kpy < kmy THEN
+		IF kmy > kty(kni) THEN
 			#kvy(kni) = 32768 - 620
 			kflp(kni) = 26 - ktier(kni) * 7
 		END IF
 	END IF
 
-	' Steer toward the player. Compared in screen pixels so the wrap is handled
-	' by choosing the shorter way round.
-	kpx = #px / 256
-	kmx = #kx(kni) / 256
-	ktop = 400 + ktier(kni) * 90
-	IF kpx > kmx THEN
-		kdd = kpx - kmx
+	' Steer toward the target x THE SHORTER WAY ROUND THE WRAP -- chasing across
+	' the middle when the edge is nearer is the tell of an AI that does not know
+	' the screen wraps.
+	IF ktx(kni) > kmx THEN
+		kdd = ktx(kni) - kmx
 		IF kdd < 128 THEN GOSUB k_right ELSE GOSUB k_left
 	ELSE
-		kdd = kmx - kpx
+		kdd = kmx - ktx(kni)
 		IF kdd < 128 THEN GOSUB k_left ELSE GOSUB k_right
 	END IF
 
@@ -441,6 +503,26 @@ k_one:
 	IF kmy < TOPY THEN
 		#ky(kni) = 2048
 		#kvy(kni) = 32768
+	END IF
+
+	' Knights obey the same solid islands the player does -- an enemy that can
+	' rise through a platform the player cannot is the kind of asymmetry that
+	' reads as cheating.
+	IF #kvy(kni) < 32768 THEN
+		kc = kmx + 8
+		FOR knj = 0 TO NPLAT - 1
+			IF kmy <= ply(knj) + 8 THEN
+				IF kmy >= ply(knj) THEN
+					IF kc >= #plx1(knj) THEN
+						IF kc <= #plx2(knj) THEN
+							#ky(kni) = ply(knj) + 8
+							#ky(kni) = #ky(kni) * 256
+							#kvy(kni) = 32768
+						END IF
+					END IF
+				END IF
+			END IF
+		NEXT knj
 	END IF
 
 	' Land, and never sink into the lava: a knight that reaches the floor line
@@ -470,14 +552,58 @@ k_one:
 	IF #kvy(kni) < 32768 THEN kfrm(kni) = 0
 	RETURN
 
+	' BOUNDER -- wanders. A fresh destination every second or two, and only one
+	' roll in four is the player, so it reads as a creature going about its
+	' business that sometimes notices you. Never a patrol: pacing a platform
+	' back and forth is what makes an enemy look like furniture.
+k_wander:
+	IF kwan(kni) > 0 THEN
+		kwan(kni) = kwan(kni) - 1
+		RETURN
+	END IF
+	kwan(kni) = 50 + RANDOM(70)
+	kr = RANDOM(4)
+	IF kr = 0 THEN
+		ktx(kni) = kpx
+		kty(kni) = kpy
+	ELSE
+		ktx(kni) = RANDOM(255)
+		kty(kni) = 24 + RANDOM(112)
+	END IF
+	RETURN
+
+	' HUNTER -- seeks. Aims at the player, and one notch above him: level flight
+	' into a joust is a coin toss, so it wants the high side of the contact.
+k_hunt:
+	ktx(kni) = kpx
+	kty(kni) = kpy - 8
+	IF kpy < 8 THEN kty(kni) = 0
+	RETURN
+
+	' SHADOW LORD -- fast, high, and higher still as it closes. It lives in the
+	' top third and CLIMBS when near, because altitude decides the joust: the
+	' climb is the attack, not a retreat from it.
+k_lord:
+	ktx(kni) = kpx
+	kty(kni) = kpy - 20
+	IF kpy < 20 THEN kty(kni) = 0
+	klx = kpx - kmx
+	IF kmx > kpx THEN klx = kmx - kpx
+	IF klx < 48 THEN
+		kty(kni) = kpy - 30
+		IF kpy < 30 THEN kty(kni) = 0
+	END IF
+	IF kty(kni) > 96 THEN kty(kni) = 96	' it belongs near the ceiling
+	RETURN
+
 k_right:
 	kface(kni) = 0
-	IF #kvx(kni) < 32768 + ktop THEN #kvx(kni) = #kvx(kni) + 14
+	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 14
 	RETURN
 
 k_left:
 	kface(kni) = 1
-	IF #kvx(kni) > 32768 - ktop THEN #kvx(kni) = #kvx(kni) - 14
+	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 14
 	RETURN
 
 	' --------------------------------------------------------- egg movement
