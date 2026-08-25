@@ -53,6 +53,8 @@
 					' chain reaction spawns three at a time
 	CONST MLIFE = 90		' missile frames before it burns out
 	CONST SHIPFT = 70		' Starship frames between shots
+	CONST DYINGF = 48		' frames of sparking before the ship goes -- and
+					' YOU STILL HAVE CONTROL for all of them
 
 	' -------------------------------------------------------------- variables
 	' shld  force field, 0..SHMAX. Armed ONLY at SHMAX
@@ -189,6 +191,10 @@
 
 	#score = 0
 	#hisc = 0
+	' ONE SHIP, faithful to the cartridge. 838 on the title will give you up
+	' to nine, and difficulty 1..9 to start from.
+	start_ships = 1
+	start_diff = 1
 	GOSUB setup
 	GOTO title_screen
 
@@ -202,6 +208,7 @@ setup:
 	' contiguous -- a gap would shift every letter after it.
 	DEFINE CHAR 32,59,font_bits
 	DEFINE CHAR 128,3,chr_stars
+	DEFINE CHAR 131,1,chr_life
 
 	DEFINE SPRITE 0,1,spr_ship	' pattern 0
 	DEFINE SPRITE 1,4,spr_ring	' patterns 4,8,12,16 -- the 4 rotation phases
@@ -219,8 +226,8 @@ title_screen:
 	CLS
 	GOSUB paint_stars
 
-	PRINT AT 98,"U F O !"
-	PRINT AT 162,"SATELLITE ATTACK"
+	PRINT AT 108,"U F O !"		' row 3, centred
+	PRINT AT 168,"SATELLITE ATTACK"	' row 5, centred
 	PRINT AT 291,"THE FIELD IS YOUR ARMOUR,"
 	PRINT AT 323,"YOUR AMMUNITION AND YOUR"
 	PRINT AT 355,"BEST WEAPON. YOU GET ONE."
@@ -239,14 +246,87 @@ title_screen:
 
 	' Wait for the button to be RELEASED first, so the press that ended the
 	' last game does not immediately start the next one.
+	SOUND 0,,0 : SOUND 1,,0 : SOUND 2,,0 : SOUND 3,,0
 	btnr = 0
+	cst = 0
+	tkl = 15
 title_wait:
 	WAIT
 	GOSUB spin_ring
+
+	' 8-3-8 OPENS THE SETUP SCREEN, edge-triggered on cont1.key, which gives
+	' 0-9 on both targets and 15 for nothing. It is NOT captioned on the
+	' title: there is no room, and it is in the README.
+	tk = cont1.key
+	IF tk <> tkl THEN
+		tkl = tk
+		IF tk <> 15 THEN
+			IF cst = 0 THEN
+				IF tk = 8 THEN cst = 1
+			END IF
+			IF cst = 1 THEN
+				IF tk = 3 THEN cst = 2
+			END IF
+			IF cst = 2 THEN
+				IF tk = 8 THEN GOTO setup838
+			END IF
+		END IF
+	END IF
+
 	IF cont1.button = 0 THEN btnr = 1
 	IF btnr = 0 THEN GOTO title_wait
 	IF cont1.button THEN GOTO new_game
 	GOTO title_wait
+
+	' ------------------------------------------------------- 8 3 8 SETUP
+	' NUMBER KEYS, one per field, with the key printed beside it. NOT a
+	' cursor: on the TI the joystick's vertical axis shares a line with ALPHA
+	' LOCK, so an up/down menu boots pinned to one entry and cannot be moved
+	' off it (CLAUDE.md 3A). Left/right would work and is its own trap --
+	' players press up and down anyway.
+setup838:
+	CLS
+	GOSUB paint_stars
+	PRINT AT 73,"8 3 8   SETUP"	' row 2, centred
+	PRINT AT 194,"1     SHIPS"
+	PRINT AT 258,"2     DIFFICULTY"
+	PRINT AT 386,"PRESS A NUMBER TO CHANGE IT"
+	PRINT AT 482,"PRESS FIRE TO START"
+	PRINT AT 610,"ONE SHIP IS THE ORIGINAL"
+	skl = 15
+	sbr = 0
+su_loop:
+	WAIT
+	GOSUB su_draw
+	sk = cont1.key
+	IF sk <> skl THEN
+		skl = sk
+		IF sk = 1 THEN
+			start_ships = start_ships + 1
+			IF start_ships > 9 THEN start_ships = 1
+		END IF
+		IF sk = 2 THEN
+			start_diff = start_diff + 1
+			IF start_diff > 9 THEN start_diff = 1
+		END IF
+	END IF
+	IF cont1.button = 0 THEN sbr = 1
+	IF sbr = 1 THEN
+		IF cont1.button THEN GOTO new_game
+	END IF
+	GOTO su_loop
+
+su_draw:
+	#sua = 6356			' row 6, column 20 -- CLEAR of the labels.
+					' Column 16 is inside the word DIFFICULTY
+					' on the row below, which reads as a typo
+					' in the label rather than a stray value.
+	suv = 48 + start_ships
+	VPOKE #sua,suv
+	#sua = 6420			' row 8, column 20
+	suv = 48 + start_diff
+	VPOKE #sua,suv
+	RETURN
 
 	' -------------------------------------------------------------- new game
 new_game:
@@ -255,8 +335,13 @@ new_game:
 	PRINT AT 0,"SCORE"
 	PRINT AT 23,"HI"
 	#score = 0
+	lives = start_ships
+	diff = start_diff
+	#dfk = 0
+	GOSUB set_rate
 	GOSUB prt_score
 	GOSUB prt_hi
+	GOSUB prt_lives
 
 	' Centre of the play band: x 120 (so the 16 px sprite straddles 128),
 	' y 88. In 8.8 that is 30720 and 22528 -- literals, see the header.
@@ -277,10 +362,39 @@ new_game:
 		mon(ni) = 0
 	NEXT ni
 	dead = 0
+	dying = 0
 	sptk = 0
 	satt = 0
+	sf0 = 0 : sf1 = 0 : sf2 = 0 : sf3 = 0
+	SOUND 0,,0 : SOUND 1,,0 : SOUND 2,,0 : SOUND 3,,0
 	lpc = 0
 	#lpl = 0
+
+	' ------------------------------------------------------------- respawn
+	' Missiles are cleared, satellites are NOT. Wiping the arena would make
+	' every death a free reset; leaving the missiles would make it a lottery,
+	' because a guided missile already in the air cannot be dodged from a
+	' standing start in the middle of the screen.
+respawn:
+	#shx = 30720
+	#shy = 22528
+	shld = SHMAX
+	shtk = 0
+	aim = 0
+	amtk = 0
+	fbr = 0
+	dead = 0
+	dying = 0
+	lon(0) = 0
+	lon(1) = 0
+	SPRITE 3,SPRHID,0,0,0
+	SPRITE 4,SPRHID,0,0,0
+	FOR ni = 0 TO NMIS - 1
+		mon(ni) = 0
+		SPRITE 13 + ni,SPRHID,0,0,0
+	NEXT ni
+	GOSUB prt_lives
+	GOTO main
 
 	' ------------------------------------------------------------- main loop
 main:
@@ -296,12 +410,35 @@ main:
 	GOSUB upd_enemies
 	GOSUB upd_missiles
 	GOSUB draw_ship
+	GOSUB tick_diff
+	GOSUB sfx_tick
 	GOSUB lprate
+
 	' DEATH IS A STATE, NOT A JUMP. Collision detection sets `dead` and the
 	' main loop acts on it here, at the top level. Jumping out of the
 	' collision GOSUB directly would never pop its return address -- invisible
 	' on the TI's 7 KB of stack, fatal on ColecoVision's 1 KB.
-	IF dead = 1 THEN GOTO do_death
+	'
+	' AND YOU KEEP FLYING WHILE IT HAPPENS. The original lets the player go on
+	' steering through the whole sparking, colour-cycling destruction, and it
+	' is a surprising amount of what gives the death its character -- you are
+	' not watching a cutscene, you are watching your own ship come apart
+	' underneath you while you still have the stick.
+	IF dead = 1 THEN
+		IF dying = 0 THEN
+			dying = DYINGF
+			#dsw = 150		' the sweep starts high and falls
+			sf0 = 0
+		END IF
+		dead = 0
+	END IF
+	IF dying > 0 THEN
+		dying = dying - 1
+		SOUND 0,#dsw,13
+		#dsw = #dsw + 16
+		IF #dsw > 1000 THEN #dsw = 1000
+		IF dying = 0 THEN GOTO do_death
+	END IF
 	GOTO main
 
 	' ------------------------------------------------------------ read stick
@@ -346,6 +483,14 @@ charge:
 	IF shtk < SHTICK THEN RETURN
 	shtk = 0
 	shld = shld + 1
+	' ARMED AGAIN -- and it is announced, because the player is watching
+	' enemies rather than their own ring, and this is the moment the rules
+	' change back. A rising two-note: the second note is set by sfx_tick,
+	' since two SOUNDs on one channel back to back would just cancel.
+	IF shld = SHMAX THEN
+		SOUND 2,500,9
+		sf2 = 12
+	END IF
 	RETURN
 
 	' ------------------------------------------------------------- move ship
@@ -428,6 +573,7 @@ fire_check:
 	fbr = 0
 	shld = shld - SHFIRE
 	shtk = 0			' a shot restarts the recharge clock
+	SOUND 0,180,12 : sf0 = 4
 
 	' The bolt starts AT THE GUN DOT, not at the ship's centre -- it has to
 	' leave from the thing the player has been watching drift into place.
@@ -470,7 +616,14 @@ upd_lasers:
 	' phase 4 -- otherwise the one at the player's height is the one that
 	' vanishes, exactly when it matters most.
 draw_ship:
-	SPRITE 0,shy8,shx8,0,15		' hull, white (shx8/shy8 set in move_ship)
+	' Sparking: the hull cycles colours furiously while it is dying, which is
+	' the cue that the next few seconds are already lost however well you fly.
+	shc = 15
+	IF dying > 0 THEN
+		shc = dying AND 7
+		shc = shc + 2
+	END IF
+	SPRITE 0,shy8,shx8,0,shc	' shx8/shy8 set in move_ship
 
 	' THE FIELD'S COLOUR IS THE GAUGE. Black when empty climbing to blue is
 	' the manual's own description; the flash at full charge is ours, and it
@@ -503,6 +656,30 @@ draw_ship:
 	SPRITE 2,gdy,gdx,20,gdc
 	RETURN
 
+	' ----------------------------------------------------------- difficulty
+	' One step every 1800 frames (30 s), to a ceiling of 9. It buys a faster
+	' spawn rate and a nastier MIX -- never a bigger arena and never a nerf to
+	' the player. Per CLAUDE.md 3A a difficulty dial must not invert the goal:
+	' enemies always visibly attack, Hunters just get commoner.
+tick_diff:
+	#dfk = #dfk + 1
+	IF #dfk < 1800 THEN RETURN
+	#dfk = 0
+	IF diff >= 9 THEN RETURN
+	diff = diff + 1
+	GOSUB set_rate
+	RETURN
+
+	' Spawn interval, 100 - diff*8: 92 frames at difficulty 1 down to 28 at 9.
+	' THREE DOUBLINGS, not `diff * 8` -- see to88 for why a multiply into an
+	' 8-bit variable is not worth the risk when three adds cost nothing.
+set_rate:
+	spint = diff + diff
+	spint = spint + spint
+	spint = spint + spint
+	spint = 100 - spint
+	RETURN
+
 	' ------------------------------------------------------------ spawn try
 	' Drifters arrive on the FAR SIDE of the wrap: x is the player's own
 	' column plus 96 to 159, which in 8-bit arithmetic wraps by itself and so
@@ -511,7 +688,7 @@ draw_ship:
 	' leave the arena empty for no reason the player can see.
 spawn_try:
 	sptk = sptk + 1
-	IF sptk < SPAWNT THEN RETURN
+	IF sptk < spint THEN RETURN
 	sptk = 0
 
 	si = 255
@@ -533,8 +710,15 @@ spawn_try:
 	edir(si) = RANDOM(16)
 	eaq(si) = 0
 	efr(si) = SHIPFT
-	sr = RANDOM(10)
-	IF sr < 6 THEN
+	' THE MIX SHIFTS, THE STARSHIP DOES NOT. Drifters thin out from 13 in 20
+	' down to 5 and Hunters take their place, but a Starship stays a flat 2 in
+	' 20 at every difficulty -- it is meant to be an event, and an event that
+	' happens constantly is just weather.
+	sr = RANDOM(20)
+	sdt = 14 - diff
+	sht = sdt + 4
+	sht = sht + diff
+	IF sr < sdt THEN
 		ety(si) = ETDRIFT
 		GOSUB rnd_vel
 		#evx(si) = #rv
@@ -546,7 +730,7 @@ spawn_try:
 		END IF
 		RETURN
 	END IF
-	IF sr < 9 THEN
+	IF sr < sht THEN
 		ety(si) = ETHUNT
 		#evx(si) = #vhxt(edir(si))
 		#evy(si) = #vhyt(edir(si))
@@ -806,6 +990,7 @@ step_toward:
 	' band is 160, so an 8-bit difference of 97 is ambiguous between +97 and
 	' -159. It is ordered instead, then folded over the band.
 coll_player:
+	IF dying > 0 THEN RETURN	' already coming apart; nothing to add
 	cdx = ex8 - shx8
 	IF cdx > 127 THEN cdx = 0 - cdx
 	IF cdx >= RAMR THEN RETURN
@@ -820,6 +1005,7 @@ coll_player:
 	IF shld = SHMAX THEN
 		shld = 0
 		shtk = 0
+		SOUND 1,600,13 : sf1 = 10
 		GOSUB kill_enemy
 		RETURN
 	END IF
@@ -874,6 +1060,7 @@ kill_enemy:
 	IF kt = ETSHIP THEN kp = 10
 	#score = #score + kp
 	GOSUB prt_score
+	SOUND 3,5,12 : sf3 = 8
 
 	' Three headings, five notches apart, from a random start -- so debris
 	' fans out rather than firing the same three ways every time.
@@ -969,6 +1156,7 @@ step_toward_m:
 	' The same two-radius rule as an enemy body: an ARMED field eats the
 	' missile and is spent; without one, the hull is all there is.
 coll_mis_player:
+	IF dying > 0 THEN RETURN
 	cdx = mx8 - shx8
 	IF cdx > 127 THEN cdx = 0 - cdx
 	IF cdx >= RAMR THEN RETURN
@@ -983,6 +1171,7 @@ coll_mis_player:
 	IF shld = SHMAX THEN
 		shld = 0
 		shtk = 0
+		SOUND 1,600,13 : sf1 = 10
 		mon(mi) = 0
 		SPRITE 13 + mi,SPRHID,0,0,0
 		RETURN
@@ -1119,8 +1308,12 @@ prt_dout:
 	' the original's sparking colour-cycle, which keeps the player in control
 	' while the ship comes apart.
 do_death:
+	SOUND 0,,0
 	SPRITE 1,SPRHID,0,0,0		' the field goes first
 	SPRITE 2,SPRHID,0,0,0
+	SPRITE 3,SPRHID,0,0,0
+	SPRITE 4,SPRHID,0,0,0
+	SOUND 3,6,13
 	ddp = 48
 	FOR ddi = 0 TO 2
 		SPRITE 0,shy8,shx8,ddp,9
@@ -1130,11 +1323,73 @@ do_death:
 		ddp = ddp + 4
 	NEXT ddi
 	SPRITE 0,SPRHID,0,0,0
-	FOR ddj = 0 TO 59
+	SOUND 3,,0
+	FOR ddj = 0 TO 39
 		WAIT
 	NEXT ddj
-	IF #score > #hisc THEN #hisc = #score
+
+	lives = lives - 1
+	IF lives > 0 THEN GOTO respawn
+
+	GOSUB prt_lives			' redraw an empty reserve row
+	IF #score > #hisc THEN
+		#hisc = #score
+		GOSUB prt_hi
+	END IF
+	PRINT AT 293,"  G A M E   O V E R  "	' row 9 col 5: 21 chars, ends col 25
+	FOR ddj = 0 TO 149
+		WAIT
+	NEXT ddj
 	GOTO title_screen
+
+	' -------------------------------------------------------------- sfx tick
+	' EVERY latched channel needs an explicit note-off or the tone sustains
+	' for ever. Ticked once per frame from the main loop.
+	'
+	' Channel 2 carries the two-note ARMED cue: the second, higher note is
+	' fired from inside the countdown, because two SOUNDs on one channel back
+	' to back simply cancel the first (CLAUDE.md 3A). Smaller divisor = higher
+	' note, so 500 -> 375 rises.
+sfx_tick:
+	IF sf0 > 0 THEN
+		sf0 = sf0 - 1
+		IF sf0 = 0 THEN SOUND 0,,0
+	END IF
+	IF sf1 > 0 THEN
+		sf1 = sf1 - 1
+		IF sf1 = 0 THEN SOUND 1,,0
+	END IF
+	IF sf2 > 0 THEN
+		sf2 = sf2 - 1
+		IF sf2 = 6 THEN SOUND 2,375,9
+		IF sf2 = 0 THEN SOUND 2,,0
+	END IF
+	IF sf3 > 0 THEN
+		sf3 = sf3 - 1
+		IF sf3 = 0 THEN SOUND 3,,0
+	END IF
+	RETURN
+
+	' ---------------------------------------------------------- print lives
+	' SPARES -- the reserves, EXCLUDING the life being flown. A fresh 3-ship
+	' game shows two icons and the last ship shows none (CLAUDE.md 7A). At the
+	' default of ONE ship the row is simply empty from the start, which is
+	' correct and needs no special case.
+	'
+	' GUARD THE UNDERFLOW: this is called with lives = 0 on the last death,
+	' and a bare `lives - 1` wraps to 255 in eight bits -- lighting every icon
+	' at the exact moment the player has none.
+prt_lives:
+	spr = 0
+	IF lives > 0 THEN spr = lives - 1
+	#pla = 6176			' row 1, column 0
+	FOR pli = 0 TO 8
+		plv = 32
+		IF pli < spr THEN plv = 131
+		VPOKE #pla,plv
+		#pla = #pla + 1
+	NEXT pli
+	RETURN
 
 	' ------------------------------------------------- TEMPORARY loop probe
 	' Two digits at row 0, column 20: measured main-loop passes per second.

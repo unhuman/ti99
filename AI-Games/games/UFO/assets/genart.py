@@ -334,6 +334,19 @@ BOOM_C = r"""
 # legible -- with nothing fixed to see it against, a ship crossing the seam
 # just looks like it teleported for no reason.
 
+# The SPARE-SHIP icon for the HUD -- the same hexagonal hull as the sprite, at
+# 6x6 in an 8x8 cell, so a reserve reads as unmistakably the thing you fly.
+LIFE_CH = r"""
+........
+..XXXX..
+.XXXXXX.
+.XX..XX.
+.XX..XX.
+.XXXXXX.
+..XXXX..
+........
+"""
+
 STAR_S = r"""
 ........
 ........
@@ -457,6 +470,9 @@ def main():
 
         emit(fh, "chr_stars", char_bytes(STAR_S) + char_bytes(STAR_M) + char_bytes(STAR_L),
              "starfield: small, medium, large -- static characters, free per frame")
+
+        emit(fh, "chr_life", char_bytes(LIFE_CH),
+             "spare-ship icon for the HUD -- SPARES, excluding the one being flown")
 
     print("wrote %s" % os.path.normpath(out))
     print()

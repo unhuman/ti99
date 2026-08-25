@@ -88,3 +88,6 @@ chr_stars:	' starfield: small, medium, large -- static characters, free per fram
 	DATA BYTE $00,$00,$10,$38,$10,$00,$00,$00
 	DATA BYTE $00,$10,$10,$7C,$10,$10,$00,$00
 
+chr_life:	' spare-ship icon for the HUD -- SPARES, excluding the one being flown
+	DATA BYTE $00,$3C,$7E,$66,$66,$7E,$3C,$00
+

@@ -10,7 +10,7 @@ and mortal.
 
 ## Status
 
-**Phases 1-6 of 8 build and run on both targets.** See `DESIGN.md` §14 for the phase plan; §0 records the research the
+**All 8 phases build and run on both targets.** See `DESIGN.md` §14 for the phase plan; §0 records the research the
 design is built on, including where sources disagreed and which readings we took.
 
 | phase | content | state |
@@ -21,8 +21,8 @@ design is built on, including where sources disagreed and which readings we took
 | 4 | Drifters, ram kill, laser kill, death | **built** |
 | 5 | Hunter-Killers and Light-speed Starships | **built** |
 | 6 | Chain reactions | **built** |
-| 7 | Death sequence, game over, high score | — |
-| 8 | `838` setup, sound, difficulty | — |
+| 7 | Death sequence, game over, high score | **built** |
+| 8 | `838` setup, sound, difficulty | **built** |
 
 ## Controls
 
@@ -33,8 +33,12 @@ design is built on, including where sources disagreed and which readings we took
 | Start | Fire on the title | Fire |
 | **Setup** | type `8` `3` `8` on the title | `8` `3` `8` |
 
-`838` picks **ships (1-9)** and starting difficulty. The default is **one ship**, which is
-what the cartridge gave you.
+`838` picks **ships (1-9)** and starting difficulty (1-9). Press `1` or `2` to change a
+field, then fire. The default is **one ship**, which is what the cartridge gave you.
+
+The setup screen uses **number keys, not a cursor** — on the TI the joystick's vertical axis
+shares a line with ALPHA LOCK, so an up/down menu boots pinned to one entry and cannot be
+moved off it.
 
 **Nothing reads the vertical axis for menus** — on the TI it shares a line with ALPHA LOCK,
 which reports a direction that never releases.
@@ -73,17 +77,23 @@ Both scripts run the truncation gates (`tools/bigvar.py`, `tools/bigconst.py`) a
 `tools/gosubtrace.py` **before** compiling, so an 8-bit overflow or a `GOSUB` that cannot
 reach a `RETURN` fails the build rather than shipping.
 
+`assets/checklayout.py` also gates the build: it catches a `PRINT AT` that runs past
+column 31 (which wraps onto the next row) and a HUD `VPOKE` that lands inside a label
+another routine printed. Both are arithmetic on a bare offset and invisible in the source.
+
 Art is generated: `assets/genart.py` → `src/art.bas`, `assets/genfont.py` → `src/font.bas`.
 Edit the ASCII in the generators, not the emitted bytes — they also do the TMS9918 quadrant
-interleave, which is not something to do by hand.
+interleave, which is not something to do by hand. The force-field ring is **computed** rather
+than drawn: eight dots on a circle at four rotation phases is thirty-two positions that have
+to stay evenly spaced, and placed by eye they wobble.
 
 ## Sizes
 
 | target | used | free |
 |---|---|---|
-| TI-99/4A program image | 13,384 / 24,336 | 10,952 |
+| TI-99/4A program image | 15,700 / 24,336 | 8,636 |
 | ColecoVision ROM | 16,384 | — |
-| ColecoVision RAM | 545 / 814 | 269 |
+| ColecoVision RAM | 576 / 814 | 238 |
 
 ## Notes
 

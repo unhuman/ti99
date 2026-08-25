@@ -311,6 +311,36 @@ attack. Hunters get *better at pursuing*, not more numerous but passive.
 
 `838` sets the starting `diff` as well as the ship count.
 
+The mix at each end:
+
+| difficulty | drifter | Hunter-Killer | Starship |
+|---|---|---|---|
+| 1 | 13/20 | 5/20 | **2/20** |
+| 9 | 5/20 | 13/20 | **2/20** |
+
+Spawn interval runs 92 frames down to 28. **The Starship stays flat at 2 in 20 at every
+difficulty** — it is meant to be an event, and an event that happens constantly is just weather.
+
+### 8a. Death, and why you keep the stick
+
+The original lets the player go on steering through the entire destruction — the ship "starts
+sparking and changing color furiously" before it explodes, and you are still flying it. That is
+reproduced here: `dying` counts 48 frames during which the hull cycles colours, the arena keeps
+moving, you keep control, and a descending sweep plays underneath. Only then does it explode.
+
+It matters more than it sounds. You are not watching a cutscene — you are watching your own ship
+come apart underneath you while you still have the stick, which is a materially different feeling
+from a freeze-and-explode.
+
+Collision is gated on `dying` so the ship cannot die twice, and the death sound owns channel 0
+outright for the duration.
+
+### 8b. Respawn clears the missiles, not the satellites
+
+Wiping the arena would make every death a free reset. Leaving the missiles would make the next
+one a lottery, because a guided missile already in the air cannot be dodged from a standing
+start in the middle of the screen. So missiles go, satellites stay.
+
 ---
 
 ## 9. Sprites and characters
@@ -405,9 +435,21 @@ Each is silent, and each has cost a session before (`CLAUDE.md` §3A):
 ./build-coleco.sh    ->  src/ufo.rom      CoolCV / blueMSX
 ```
 
-Both run `bigvar.py`, `bigconst.py` and `gosubtrace.py` **before** compiling, so a truncation or
-a leaking `GOSUB` fails the build rather than shipping. The TI script reports fixed-area bytes
-free against the 24,336-byte cap.
+Both run `bigvar.py`, `bigconst.py`, `gosubtrace.py` and `assets/checklayout.py` **before**
+compiling, so a truncation, a leaking `GOSUB` or a broken screen layout fails the build rather
+than shipping. The TI script reports fixed-area bytes free against the 24,336-byte cap.
+
+**`checklayout.py` earns its place.** A `PRINT AT` that runs past column 31 wraps onto the next
+row and overwrites it; a HUD `VPOKE` can land inside a label another routine printed. Both are
+arithmetic on a bare offset, so neither is visible in the source. The `838` screen shipped its
+difficulty digit into the middle of the word `DIFFICULTY`, which reads as a typo in the label
+rather than as a misplaced value.
+
+Note what the first version of that checker got wrong, because it generalises: it compared
+writes only against strings under the **same label**, and the setup screen prints its text in
+`setup838` but writes its digits in `su_draw` — so it passed the exact bug it was written for.
+Rows only mean the same thing within one *screen*, and the screen boundaries are not derivable
+from the source, so they are declared in a table at the top of the file.
 
 ---
 
@@ -421,8 +463,8 @@ free against the 24,336-byte cap.
 | 4 | Drifters: plus/multiply spin, spawning, ram kill, laser kill, player death | **built** |
 | 5 | Hunter-Killers (with linking) and Light-speed Starships with guided missiles | **built** |
 | 6 | Chain reactions — three missiles per kill | **built** |
-| 7 | Death sequence (sparking colour-cycle, control retained), game over, high score | — |
-| 8 | `838` setup (ships 1-9, starting difficulty), sound, difficulty escalation | — |
+| 7 | Death sequence (sparking colour-cycle, control retained), game over, high score | **built** |
+| 8 | `838` setup (ships 1-9, starting difficulty), sound, difficulty escalation | **built** |
 
 Each phase builds and runs on **both** targets before the next begins.
 

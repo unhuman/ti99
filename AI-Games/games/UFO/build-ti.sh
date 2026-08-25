@@ -50,6 +50,12 @@ TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
 "$TRUNCPY" ../../../tools/gosubtrace.py "$SRC" | grep -q "every GOSUB target reaches a return" \
     || die "a GOSUB target cannot reach a RETURN -- see CLAUDE.md 3A"
 
+# A PRINT AT that runs past column 31 wraps onto the next row, and a HUD VPOKE
+# can land inside a label some other routine printed. Both are arithmetic on a
+# bare offset, so neither is visible in the source -- the 838 screen shipped the
+# difficulty digit into the middle of the word DIFFICULTY.
+"$TRUNCPY" ../assets/checklayout.py > /dev/null     || die "screen layout: run assets/checklayout.py to see it"
+
 echo "[1/3] cvbasic    $SRC -> $NAME.a99"
 rm -f "$NAME.a99"
 "$CVBASIC_DIR/cvbasic.exe" --ti994a "$SRC" "$NAME.a99" "$CVBASIC_DIR/" \
