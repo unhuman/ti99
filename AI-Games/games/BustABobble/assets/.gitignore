@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# Scratch files: one-shot edit scripts, probe screenshots, anything prefixed _.
+# Stray _*.png got committed anyway -- widen it to every scratch file.
+_*
