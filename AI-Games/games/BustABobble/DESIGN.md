@@ -601,6 +601,19 @@ and **BUST-A-BOBBLE 2 came up under the plain BUST-A-BOBBLE title**. It is a run
 test there, read off `lvbase` rather than `ssel` so the title cannot disagree with
 the levels actually loaded.
 
+**And everything else keyed to the name's width moves with it.** The two patrol
+creatures pace either side of the title, and their bounds were a second bare
+`#if EXPERT` -- so on the combined cart BUST-A-BOBBLE 2 got the *arcade* bounds and
+the creatures walked into the wider name. The expert name spans px 64-183 against
+the arcade's 72-175, so both bounds pull in by the 8 px the title grew at each end.
+Only two of the four numbers change; `twlo(0)` and `twhi(1)` are the screen-edge
+limits and are the same either way.
+
+> **The lesson, since this was fixed one layer at a time:** the title's *width* is
+> depended on in more than one place. Fixing the text alone left the creatures
+> walking through it. When a compile-time layout constant becomes runtime, grep for
+> everything else keyed to the same measurement in the same change.
+
 ### The 838 prompt states its range
 
 `SELECT ROUND 1-30` in BUST-A-BOBBLE and `1-50` in BUST-A-BOBBLE 2, rather than

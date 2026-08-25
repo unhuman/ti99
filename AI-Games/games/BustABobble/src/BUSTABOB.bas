@@ -3123,19 +3123,35 @@ title_screen:
 	twst(0) = 0 : twtm(0) = 40 : twwf(0) = 0
 	' THE PATROLS MOVE WITH THE TITLE. The expert name is two characters longer and
 	' starts a character earlier, spanning px 64-183 against the arcade's 72-175 --
-	' so the arcade bounds would walk the left creature over the "B" and park the
-	' right one on top of the final "2". Both are pulled in by the 8 px the title
-	' grew at each end, keeping the same clearance the arcade layout was tuned to.
-	' The bound is the creature's RIGHT edge, 16 px past twx, which is why the left
-	' limit is 8 short of where the title starts.
-#if EXPERT
+	' so the arcade bounds walk the left creature over the "B" and park the right one
+	' on top of the final "2". Both are pulled in by the 8 px the title grew at each
+	' end, keeping the same clearance the arcade layout was tuned to. The bound is the
+	' creature's RIGHT edge, 16 px past twx, which is why the left limit is 8 short of
+	' where the title starts.
+	'
+	' RUNTIME ON THE COMBINED CART, for the same reason the name itself is: which game
+	' you picked is not known until the select screen has run. As a bare `#if EXPERT`
+	' this took the #else branch there and BUST-A-BOBBLE 2 got the ARCADE bounds, so
+	' the creatures walked into the wider name -- the title text was fixed first and
+	' these were missed, which is the lesson: the name's WIDTH is depended on in more
+	' than one place, so anything keyed to it has to move together.
+	'
+	' Only two of the four numbers actually change. twlo(0) and twhi(1) are the outer
+	' limits at the screen edges and are identical in both layouts.
+#if BOTH
+	twlo(0) = 14 : twhi(0) = 51
+	IF lvbase > 0 THEN twhi(0) = 43
+#elif EXPERT
 	twlo(0) = 14 : twhi(0) = 43
 #else
 	twlo(0) = 14 : twhi(0) = 51
 #endif
 	twx(1) = 195 : twdir(1) = 1 : twt(1) = 2 : twf(1) = 2
 	twst(1) = 0 : twtm(1) = 95 : twwf(1) = 0
-#if EXPERT
+#if BOTH
+	twlo(1) = 179 : twhi(1) = 224
+	IF lvbase > 0 THEN twlo(1) = 187
+#elif EXPERT
 	twlo(1) = 187 : twhi(1) = 224
 #else
 	twlo(1) = 179 : twhi(1) = 224
