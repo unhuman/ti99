@@ -588,6 +588,36 @@ The two tests are nested, not `ssk > 0 AND ssk < 3`: compound comparisons are
 miscompiled by the 9900 backend (§3A). And `ssk < 3` alone would catch the **0** key
 and start a game on a keypress that chose nothing.
 
+**The two creatures patrol the sides of it, one up each edge**, under a
+`PICK A BOBBLE` banner on row 3. Near enough free: the sprite patterns and the whole
+walk/wave/draw routine are already in ROM for the title, so this costs a setup call,
+a mode flag and a range. What the two screens share came out into `tw_init`; only the
+bounds, the orientation and the phase differ.
+
+**`twx()` is the position ALONG the patrol, not an X coordinate** -- horizontally
+that is the column, vertically it is the row, and `tw_walk` does not care which. So
+the walker, the turn-around, the wave and the frame animation are all shared, and
+only `tw_draw` knows the difference. The waving hand still offsets *horizontally* in
+both modes.
+
+Vertical rather than horizontal because it cannot collide with anything: the two are
+on opposite edges (px 16 and 224) and every line of text is centred within cols 8-25
+(px 64-207). It also keeps them mid-screen instead of on rows 21-23, which a window
+scaled larger than its client area clips out of sight. Both patrol 24-160 (rows 3-20)
+-- with the two on opposite edges there is no need to split the range the way a
+shared horizontal one would. Their starts are set on the screen itself rather than in
+`tw_init`, because that seeds *columns* for the title's horizontal patrol and 195
+would begin this one below the bottom of the screen.
+
+Cost **56 bytes free** on the combined cart, and **nothing** on the single carts --
+the vertical branch is inside `#if BOTH`, so they compile exactly as before (856/854
+free). No new ColecoVision RAM either: it reuses the existing `twx`/`twdir`/`twt`/…
+arrays, which matters where variables and the stack split 193 bytes.
+
+> **The combined cart is now at 56 bytes free and is the binding budget for anything
+> further.** Cheapest reclaim if it is needed: `CHOOSE YOUR GAME` and `PICK A BOBBLE`
+> say the same thing, and dropping either returns ~30 B.
+
 **The title seeds its edge detector with the key already held.** Choosing on 1 and 2
 made the select screen return the instant the key goes *down*, so the player is still
 holding it when the title's loop starts. The title's keys are edge-triggered on

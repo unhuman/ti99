@@ -2954,10 +2954,31 @@ jug_draw:
 set_screen:
 	GOSUB hide_sprites
 	CLS
+	PRINT AT 105,"PICK A BOBBLE"		' row 3, col 9
 	PRINT AT 264,"CHOOSE YOUR GAME"
 	PRINT AT 392,"1  BUST-A-BOBBLE"
 	PRINT AT 456,"2  BUST-A-BOBBLE 2"
 	PRINT AT 586,"PRESS 1 OR 2"
+	' THE SAME TWO CREATURES PATROL THE SIDES WHILE YOU CHOOSE, one up each edge.
+	' Near enough free: the sprite patterns and the whole walk/wave/draw routine are
+	' already in ROM for the title, so this is a setup call, a mode flag and a range.
+	'
+	' VERTICAL, so they cannot collide with each other (opposite edges) or with any of
+	' the text (which is centred, cols 8-25). It also keeps them well inside the screen
+	' rather than down on rows 21-23, where a window scaled larger than its client area
+	' clips them out of sight entirely.
+	'
+	' 24-160 is rows 3-20 of the patrol, both of them: with the two on opposite edges
+	' there is no reason to split the range the way a shared horizontal one would need.
+	' The starts are set here rather than in tw_init because that seeds columns for the
+	' title's horizontal patrol -- 195 would begin this one below the bottom of the
+	' screen and walk up into view. 40 going down against 140 going up (tw_init sets
+	' the directions) puts them in opposition from the first frame.
+	GOSUB tw_init
+	twvert = 1
+	twx(0) = 40 : twx(1) = 140
+	twlo(0) = 24 : twhi(0) = 160
+	twlo(1) = 24 : twhi(1) = 160
 	' WHATEVER IS HELD ON ARRIVAL MUST BE RELEASED FIRST. Seeding the "last key" with
 	' the key already down means a 1 or 2 still held from the title (where they are
 	' the music and difficulty toggles) cannot fall straight through this screen.
@@ -2967,6 +2988,7 @@ set_wait:
 	GOSUB sfx_tick
 	musdin = 1
 	GOSUB mus_tick
+	GOSUB title_walk
 	' A KEYPAD CHOICE, NOT A CURSOR ON A JOYSTICK AXIS. This began as a > cursor moved
 	' with cont1.up/cont1.down, and on the TI that axis shares a line with ALPHA LOCK:
 	' with it latched the console reports a direction that never releases, so the menu
@@ -3133,8 +3155,10 @@ title_screen:
 	' guy roams 14-51 (2 chars further out than he used to), the right 179-224
 	' (3 chars), which uses the room that is actually there and still leaves both
 	' about 15 px of margin at the screen edge, arm included.
-	twx(0) = 30 : twdir(0) = 0 : twt(0) = 0 : twf(0) = 0
-	twst(0) = 0 : twtm(0) = 40 : twwf(0) = 0
+	GOSUB tw_init
+#if BOTH
+	twvert = 0			' back to pacing either side of the name
+#endif
 	' THE PATROLS MOVE WITH THE TITLE. The expert name is two characters longer and
 	' starts a character earlier, spanning px 64-183 against the arcade's 72-175 --
 	' so the arcade bounds walk the left creature over the "B" and park the right one
@@ -3160,8 +3184,6 @@ title_screen:
 #else
 	twlo(0) = 14 : twhi(0) = 51
 #endif
-	twx(1) = 195 : twdir(1) = 1 : twt(1) = 2 : twf(1) = 2
-	twst(1) = 0 : twtm(1) = 95 : twwf(1) = 0
 #if BOTH
 	twlo(1) = 179 : twhi(1) = 224
 	IF lvbase > 0 THEN twlo(1) = 187
@@ -3273,6 +3295,22 @@ title_num_hi:
 	' be "every once in a while" does not fit -- `240 + RANDOM(240)` wraps past 255
 	' and comes out a small number, which is precisely why the first version waved
 	' almost constantly. In eighths, 12-24 seconds is 90-180, comfortably in range.
+	' THE PART OF THE CREATURE SETUP BOTH SCREENS SHARE. Split out when the select
+	' screen wanted the same two creatures: everything here is identical on both, and
+	' only the patrol bounds, the orientation and the phase differ, so the caller sets
+	' those three and this does the rest. Duplicating it instead would have cost ~120
+	' bytes on a cart with 250 free.
+	'
+	' The two are deliberately out of step from the first frame -- different start
+	' positions, directions, animation phases and wave timers -- so they never look
+	' like one creature mirrored.
+tw_init:
+	twx(0) = 30 : twdir(0) = 0 : twt(0) = 0 : twf(0) = 0
+	twst(0) = 0 : twtm(0) = 40 : twwf(0) = 0
+	twx(1) = 195 : twdir(1) = 1 : twt(1) = 2 : twf(1) = 2
+	twst(1) = 0 : twtm(1) = 95 : twwf(1) = 0
+	RETURN
+
 title_walk:
 	twtick = twtick + 1
 	twtick = twtick AND 7
@@ -3337,12 +3375,29 @@ tw_wave:
 	' their shoulders. Two places, this and the waving hand below, and they must
 	' agree.
 tw_draw:
+	' ONE PATROL AXIS, TWO ORIENTATIONS. twx() is the position ALONG the patrol, not
+	' an X coordinate -- horizontally that is the column, vertically it is the row, and
+	' tw_walk does not care which. So the walker, the turn-around, the wave and the
+	' frame animation are all shared; only this draw step knows the difference.
+	'
+	' Vertically the creatures hug the far edges, px 16 and 224. The centred text on
+	' the select screen spans cols 8-25 (px 64-207), so neither column touches it.
+	' The waving hand still offsets HORIZONTALLY from the body in both modes, which is
+	' why it is applied to twpx below in either case.
 	twpx = twx(twi)
+	twpy = 51			' the title's row; the only horizontal patrol there is
+#if BOTH
+	IF twvert = 1 THEN
+		twpy = twx(twi)
+		twpx = 16
+		IF twi = 1 THEN twpx = 224
+	END IF
+#endif
 	twp = 36			' pattern 9 -> frame 9*4; legs apart
 	IF twst(twi) = 0 THEN
 		IF twf(twi) > 1 THEN twp = 40
 	END IF
-	SPRITE twi,51,twpx,twp,3
+	SPRITE twi,twpy,twpx,twp,3
 	IF twst(twi) = 1 THEN
 		' Right hand = patterns 27/28 laid 8 px right; left hand = 29/30 laid 8 px
 		' left. Same y as the body, so the shoulder meets him at shoulder height
@@ -3356,7 +3411,7 @@ tw_draw:
 			IF twwf(twi) > 7 THEN twh = 56
 			twpx = twpx - 8
 		END IF
-		SPRITE 2 + twi,51,twpx,twh,3
+		SPRITE 2 + twi,twpy,twpx,twh,3
 	ELSE
 		SPRITE 2 + twi,209,0,44,0
 	END IF
