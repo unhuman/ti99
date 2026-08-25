@@ -625,6 +625,44 @@ that actually makes the control unambiguous, not the instruction line. Dropping 
 pair **returned 80 bytes**, taking the combined cart from 56 free to **136**, which is
 the binding budget for anything further.
 
+### A marquee runs round the edges
+
+A ring of small bulbs on all four edges, alternating lit and dim and flipping
+together every 8th frame like a theatre sign. It rides `twtick` -- the counter
+`title_walk` already keeps -- so the timing costs nothing.
+
+**Four `SCREEN` blits, not 108 `VPOKE`s.** The perimeter is 108 cells and the VDP
+queue takes a few dozen writes a frame, so poking it would be silently truncated and
+would need pacing `WAIT`s besides. `SCREEN` is the name-table blit the ceiling
+already uses, and it copies a *column* as happily as a row: width 1, height 22,
+source stride 1.
+
+**The source is a ROM table, not a buffer built at runtime.** Filling `rowbuf` with
+the alternating pattern first was the obvious way and it cost **44 bytes more than
+the cart had** -- `romcheck` failed the build over it. `SCREEN` copies literal char
+codes out of CPU memory and does not care whether that is RAM or ROM (it is how
+RALLY-X blits a maze), so 33 bytes of *bank* hold the pattern and the loop
+disappears. Bank space is the budget with room; the fixed area is the one without.
+It is 33 rather than 32 because two of the blits start at offset 1, so a 32-wide copy
+reads indices 1..32.
+
+**The phase is `(row + col) AND 1`** -- a checkerboard, the one rule that alternates
+correctly all the way round *including* the four corners. Read off a single
+alternating run that means each edge starts at the offset its corner demands: row 0
+at 0, row 23 at 1, the left column at 1, the right at 0. Get one wrong and two
+neighbouring bulbs light together at a corner, which is exactly where the eye follows
+the chase around.
+
+**One `DEFINE CHAR` per flip, not two:** both bulbs live in a single 2-character
+definition, so swapping the pair is one call against a different table. `DEFINE CHAR`
+replicates across all three screen thirds automatically, which is what lets a
+full-height border animate from one call.
+
+> **The combined cart is now at 24 bytes free.** That is the whole budget for any
+> further change to it; the single carts have ~905. `romcheck` fails the build on
+> overflow, so nothing can ship truncated -- but the next feature needs bytes found
+> first.
+
 **The title seeds its edge detector with the key already held.** Choosing on 1 and 2
 made the select screen return the instant the key goes *down*, so the player is still
 holding it when the title's loop starts. The title's keys are edge-triggered on

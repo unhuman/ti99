@@ -2981,6 +2981,36 @@ set_screen:
 	' title's horizontal patrol -- 195 would begin this one below the bottom of the
 	' screen and walk up into view. 40 going down against 140 going up (tw_init sets
 	' the directions) puts them in opposition from the first frame.
+	' THE MARQUEE. A ring of small balls around all four edges, alternating lit and
+	' dim, flipping together like the bulbs on a theatre sign.
+	'
+	' FOUR `SCREEN` BLITS, NOT 108 VPOKEs. The perimeter is 108 cells, and a VPOKE
+	' burst that size is silently dropped -- the VDP queue takes a few dozen a frame
+	' (CLAUDE.md 3A) -- so poking it would need pacing WAITs and would take a second
+	' to appear. SCREEN is the name-table blit the ceiling already uses, and it copies
+	' a column just as happily as a row: width 1, height 22, source stride 1.
+	'
+	' THE SOURCE IS A ROM TABLE, NOT A BUFFER BUILT AT RUNTIME. Filling rowbuf with
+	' the alternating pattern first was the obvious way and it cost 44 bytes more than
+	' the cart had -- romcheck failed the build over it. SCREEN copies literal char
+	' codes out of CPU memory and does not care whether that memory is RAM or ROM (it
+	' is how RALLY-X blits a maze), so 33 bytes of bank hold the pattern and the loop
+	' disappears. Bank space is the budget that has 434 bytes spare; the fixed area is
+	' the one that does not.
+	'
+	' THE PHASE IS (row + col) AND 1 -- a checkerboard -- which is the one rule that
+	' alternates correctly all the way round INCLUDING the four corners. Read off a
+	' single alternating buffer, that means each edge starts at the offset its corner
+	' demands: row 0 at 0, row 23 at 1, the left column at 1, the right at 0. Get one
+	' of those wrong and two neighbouring bulbs light together at a corner, which is
+	' exactly where the eye follows the chase around.
+	DEFINE CHAR 221,2,mq_ab
+	DEFINE COLOR 221,2,mq_col
+	mqph = 0
+	SCREEN mq_row,0,0,32,1,32	' row 0
+	SCREEN mq_row,1,736,32,1,32	' row 23
+	SCREEN mq_row,1,32,1,22,1	' left column, rows 1-22
+	SCREEN mq_row,0,63,1,22,1	' right column, rows 1-22
 	GOSUB tw_init
 	twvert = 1
 	twx(0) = 40 : twx(1) = 140
@@ -2996,6 +3026,9 @@ set_wait:
 	musdin = 1
 	GOSUB mus_tick
 	GOSUB title_walk
+	' twtick is title_walk's own counter, ANDed to 0-7, so this fires every 8th frame
+	' -- about 7 Hz, and free, rather than paying for a second counter.
+	IF twtick = 0 THEN GOSUB mq_flip
 	' A KEYPAD CHOICE, NOT A CURSOR ON A JOYSTICK AXIS. This began as a > cursor moved
 	' with cont1.up/cont1.down, and on the TI that axis shares a line with ALPHA LOCK:
 	' with it latched the console reports a direction that never releases, so the menu
@@ -3311,6 +3344,16 @@ title_num_hi:
 	' The two are deliberately out of step from the first frame -- different start
 	' positions, directions, animation phases and wave timers -- so they never look
 	' like one creature mirrored.
+	' ONE `DEFINE CHAR` PER FLIP, not two. Both bulbs live in one 2-character
+	' definition, so swapping the pair is a single call against a different table
+	' rather than a call each -- the label has to be a constant, so the alternative
+	' was four DEFINE CHARs in an IF/ELSE.
+mq_flip:
+	mqph = 1 - mqph
+	IF mqph = 0 THEN DEFINE CHAR 221,2,mq_ab
+	IF mqph = 1 THEN DEFINE CHAR 221,2,mq_ba
+	RETURN
+
 tw_init:
 	twx(0) = 30 : twdir(0) = 0 : twt(0) = 0 : twf(0) = 0
 	twst(0) = 0 : twtm(0) = 40 : twwf(0) = 0
@@ -3660,6 +3703,31 @@ bar_colw:
 	' the text came out in random colours. Same shape as Structris's txt_white.
 txt_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+
+	' 221/222 = the select screen's marquee bulbs, defined as ONE pair so a flip is a
+	' single DEFINE CHAR. mq_ab lights 221 and dims 222; mq_ba is the same two
+	' patterns the other way round. A dim bulb is a 2x2 pip rather than a blank cell,
+	' so the ring stays visible between flashes instead of half-vanishing.
+mq_ab:
+	DATA BYTE $00,$18,$3C,$7E,$7E,$3C,$18,$00	' 221 lit
+	DATA BYTE $00,$00,$00,$18,$18,$00,$00,$00	' 222 dim
+mq_ba:
+	DATA BYTE $00,$00,$00,$18,$18,$00,$00,$00	' 221 dim
+	DATA BYTE $00,$18,$3C,$7E,$7E,$3C,$18,$00	' 222 lit
+	' Light yellow on black, both bulbs -- the same $B1 the death-line dash uses.
+mq_col:
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+
+	' The alternating run every edge of the ring is blitted from. THIRTY-THREE bytes,
+	' not 32: the row-23 and left-column blits start at offset 1, so a 32-wide copy
+	' reads indices 1..32 and needs one spare on the end.
+mq_row:
+	DATA BYTE 221,222,221,222,221,222,221,222
+	DATA BYTE 221,222,221,222,221,222,221,222
+	DATA BYTE 221,222,221,222,221,222,221,222
+	DATA BYTE 221,222,221,222,221,222,221,222
+	DATA BYTE 221
 
 	INCLUDE "artdefs.bas"
 	INCLUDE "art.bas"
