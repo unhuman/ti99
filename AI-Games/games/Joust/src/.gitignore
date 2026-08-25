@@ -1,0 +1,9 @@
+*.a99
+*.bin
+*.rom
+*.asm
+*.txt
+*.log
+*.lst
+*.sym
+_*
