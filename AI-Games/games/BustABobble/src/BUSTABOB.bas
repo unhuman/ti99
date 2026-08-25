@@ -2955,10 +2955,17 @@ set_screen:
 	GOSUB hide_sprites
 	CLS
 	PRINT AT 105,"PICK A BOBBLE"		' row 3, col 9
-	PRINT AT 264,"CHOOSE YOUR GAME"
-	PRINT AT 392,"1  BUST-A-BOBBLE"
-	PRINT AT 456,"2  BUST-A-BOBBLE 2"
-	PRINT AT 586,"PRESS 1 OR 2"
+	' THE TWO CHOICES, CENTRED ON THE SCREEN. Rows 11 and 13 with a blank row between,
+	' so the pair's middle is row 12 against a true screen middle of 11.5 -- half a row
+	' cannot be split on a character grid, and sitting half a row LOW balances the
+	' banner's weight at the top better than half a row high would.
+	'
+	' NO "PRESS 1 OR 2" LINE ANY MORE, and no CHOOSE YOUR GAME above them: the banner
+	' already says what the screen is for, and each entry still carries the key that
+	' picks it, which is the part that actually makes the control unambiguous. Dropping
+	' both returned 56 bytes to the combined cart, which was down to 56 free.
+	PRINT AT 360,"1  BUST-A-BOBBLE"		' row 11, col 8
+	PRINT AT 424,"2  BUST-A-BOBBLE 2"	' row 13, col 8
 	' THE SAME TWO CREATURES PATROL THE SIDES WHILE YOU CHOOSE, one up each edge.
 	' Near enough free: the sprite patterns and the whole walk/wave/draw routine are
 	' already in ROM for the title, so this is a setup call, a mode flag and a range.

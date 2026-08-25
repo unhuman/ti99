@@ -609,14 +609,21 @@ shared horizontal one would. Their starts are set on the screen itself rather th
 `tw_init`, because that seeds *columns* for the title's horizontal patrol and 195
 would begin this one below the bottom of the screen.
 
-Cost **56 bytes free** on the combined cart, and **nothing** on the single carts --
-the vertical branch is inside `#if BOTH`, so they compile exactly as before (856/854
-free). No new ColecoVision RAM either: it reuses the existing `twx`/`twdir`/`twt`/…
-arrays, which matters where variables and the stack split 193 bytes.
+It costs **nothing** on the single carts -- the vertical branch is inside `#if BOTH`,
+so they compile exactly as before (856/854 free). No new ColecoVision RAM either: it
+reuses the existing `twx`/`twdir`/`twt`/… arrays, which matters where variables and
+the stack split 193 bytes.
 
-> **The combined cart is now at 56 bytes free and is the binding budget for anything
-> further.** Cheapest reclaim if it is needed: `CHOOSE YOUR GAME` and `PICK A BOBBLE`
-> say the same thing, and dropping either returns ~30 B.
+**The screen is three lines.** `PICK A BOBBLE` on row 3, then the two choices on rows
+11 and 13 with a blank row between, so the pair's middle is row 12 against a true
+screen middle of 11.5 -- half a row cannot be split on a character grid, and sitting
+half a row *low* balances the banner's weight at the top better than half a row high.
+
+`CHOOSE YOUR GAME` and `PRESS 1 OR 2` are both gone. The banner already says what the
+screen is for, and each entry still carries the key that picks it -- which is the part
+that actually makes the control unambiguous, not the instruction line. Dropping the
+pair **returned 80 bytes**, taking the combined cart from 56 free to **136**, which is
+the binding budget for anything further.
 
 **The title seeds its edge detector with the key already held.** Choosing on 1 and 2
 made the select screen return the instant the key goes *down*, so the player is still
