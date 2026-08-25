@@ -25,10 +25,12 @@
 	CONST LAVAY = 168		' feet at or below this pixel row are in the lava
 	CONST TOPY = 8			' ceiling: sprite top cannot go above this
 	CONST SPRHID = 209		' NOT 208 -- 208 terminates the sprite list
-	CONST MH = 12			' MOUNT HEIGHT. A 12 px figure in the 16 px cell:
-					' feet at y+12 means the top ledge needs a sprite
-					' top of 12, not 8, and 8 IS the ceiling limit --
-					' the highest platform was barely reachable.
+	CONST MH = 14			' MOUNT HEIGHT. A 12 px figure in the 16 px cell:
+					' feet at y+14 means the top ledge at y=24 needs a
+					' sprite top of 10, against a ceiling limit of 8.
+					' At 16 it needed 8 -- the limit itself, so ZERO
+					' margin. 12 gave more room but shrank the birds
+					' too far; 14 keeps two pixels and looks right.
 	CONST BLANK = 32
 	CONST PLATL = 128
 	CONST PLATM = 129
@@ -169,11 +171,11 @@ setup:
 	' FIVE PADS, and one of them is on the BASE -- that is where the player
 	' materialises, and it is the pad knights most often find blocked. y is the
 	' SPRITE TOP for a bird standing on that surface, i.e. surface - 16.
-	padx(0) = 104 : pady(0) = 148		' base            (surface 160)
-	padx(1) = 96  : pady(1) = 44		' upper middle    (surface  56)
-	padx(2) = 192 : pady(2) = 84		' right, middle   (surface  96)
-	padx(3) = 16  : pady(3) = 92		' left, middle    (surface 104)
-	padx(4) = 160 : pady(4) = 12		' top right       (surface  24)
+	padx(0) = 104 : pady(0) = 146		' base            (surface 160)
+	padx(1) = 96  : pady(1) = 42		' upper middle    (surface  56)
+	padx(2) = 192 : pady(2) = 82		' right, middle   (surface  96)
+	padx(3) = 16  : pady(3) = 90		' left, middle    (surface 104)
+	padx(4) = 160 : pady(4) = 10		' top right       (surface  24)
 	RETURN
 
 	' EROSION. Deterministic, never random -- a player has to be able to learn the
@@ -1344,10 +1346,10 @@ c_knight:
 	cky = #ky(cni) / 256
 	cdx = cpx - ckx
 	IF cpx < ckx THEN cdx = ckx - cpx
-	IF cdx > 10 THEN RETURN
+	IF cdx > 11 THEN RETURN
 	cdy = cpy - cky
 	IF cpy < cky THEN cdy = cky - cpy
-	IF cdy > 10 THEN RETURN
+	IF cdy > 11 THEN RETURN
 
 	IF cpy + 4 <= cky THEN
 		' the player's lance is higher: unhorse the knight
