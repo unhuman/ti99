@@ -79,6 +79,12 @@ spr_pt_o:	' pterodactyl, mouth OPEN -- the only target
 	DATA BYTE $00,$00,$00,$00,$80,$C0,$F0,$FC
 	DATA BYTE $FF,$80,$00,$00,$00,$80,$FF,$00
 
+spr_arm:	' the troll's forearm -- angled, not a second hand
+	DATA BYTE $03,$07,$07,$0F,$0F,$1F,$1E,$3E
+	DATA BYTE $3C,$7C,$78,$F8,$F0,$E0,$00,$00
+	DATA BYTE $C0,$C0,$80,$80,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+
 chr_plat_l:	' plat_l
 	DATA BYTE $7F,$FF,$C0,$C0,$C0,$C0,$40,$00
 

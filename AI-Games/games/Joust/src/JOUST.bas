@@ -135,6 +135,7 @@ setup:
 	DEFINE SPRITE 11,1,spr_hand	' pattern 44 -- the troll's fist
 	DEFINE SPRITE 12,1,spr_pt_s	' pattern 48 -- pterodactyl, mouth shut
 	DEFINE SPRITE 13,1,spr_pt_o	' pattern 52 -- mouth OPEN, the only target
+	DEFINE SPRITE 14,1,spr_arm	' pattern 56 -- the troll's forearm
 
 	' THE ISLANDS -- MEASURED FROM AN ARCADE SCREENSHOT, not invented. See
 	' assets/refmap.py, which classifies every pixel of a reference shot as rock
@@ -551,7 +552,14 @@ p_input:
 		IF pflp = 0 THEN
 			pflp = 1
 			IF trst = 2 THEN tresc = tresc + 1
-			#vy = 32768 - 1040
+			' ADDITIVE, not a reset. Setting the velocity outright meant the
+			' FIRST flap was the whole climb -- full power from a standing
+			' start, and further presses added nothing while it decayed. Each
+			' beat now adds to what you already have and the climb builds, so
+			' a single tap is a nudge and holding a rhythm is what gains
+			' height. Clamped so mashing cannot exceed a real climb rate.
+			#vy = #vy - 400
+			IF #vy < 32768 - 1100 THEN #vy = 32768 - 1100
 			pfa = 10			' one press, one beat of the wings
 			SOUND 0,700,12
 			sf0 = 3
@@ -1037,7 +1045,9 @@ k_one:
 	' The push is applied to the TARGET, not the velocity: steering away is subtle
 	' and keeps the attack going, whereas shoving the velocity looks like a
 	' collision they are not supposed to have (knights pass through each other).
-	FOR ksj = 0 TO NKN - 1
+	' Only against knights LATER in the list. Each pair still gets checked once a
+	' frame -- checking both ways round doubled the cost to reach the same answer.
+	FOR ksj = kni + 1 TO NKN - 1
 		IF ksj <> kni THEN
 			IF kon(ksj) = KLIVE THEN
 				ksox = #kx(ksj) / 256
@@ -1078,41 +1088,6 @@ k_one:
 	' target's, and my x is over it, I aim at the nearer END of that island
 	' instead. One pass, no state, and it composes with everything else because it
 	' only rewrites the target.
-	IF kty(kni) > kmy + 12 THEN
-		FOR kbj = 0 TO NPLAT - 1
-			kbt = ply(kbj)
-			IF kbt > kmy + 8 THEN
-				IF kbt <= kty(kni) + 8 THEN
-				IF plon(kbj) = 1 THEN
-					#kbc = kmx
-					#kbc = #kbc + 8
-					IF #kbc >= #plx1(kbj) THEN
-						IF #kbc <= #plx2(kbj) THEN
-							' over it: leave by the nearer end
-							#kbl = #kbc - #plx1(kbj)
-							#kbr = #plx2(kbj) - #kbc
-							IF #kbl < #kbr THEN
-								#kbx = #plx1(kbj)
-								IF #kbx > 22 THEN
-									ktx(kni) = #kbx - 22
-								ELSE
-									ktx(kni) = 0
-								END IF
-							ELSE
-								#kbx = #plx2(kbj)
-								IF #kbx < 233 THEN
-									ktx(kni) = #kbx + 22
-								ELSE
-									ktx(kni) = 255
-								END IF
-							END IF
-						END IF
-					END IF
-				END IF
-				END IF
-			END IF
-		NEXT kbj
-	END IF
 
 	' Climb toward the target altitude. Flapping is on a cooldown, which is what
 	' makes a tier feel eager or lazy without changing the rule.
@@ -1121,7 +1096,8 @@ k_one:
 	ELSE
 		IF kmy > kty(kni) THEN
 			kfa(kni) = 10		' they beat their wings too
-			#kvy(kni) = 32768 - 1000
+			#kvy(kni) = #kvy(kni) - 420
+			IF #kvy(kni) < 32768 - 1050 THEN #kvy(kni) = 32768 - 1050
 			' EAGERER EVERY WAVE TOO, floored so it stays a flap and not
 			' a hover. Same strategy per tier, sharper execution.
 			kfc = 14 - ktier(kni) * 4
@@ -1164,47 +1140,77 @@ k_one:
 	' Knights obey the same solid islands the player does -- an enemy that can
 	' rise through a platform the player cannot is the kind of asymmetry that
 	' reads as cheating.
-	IF #kvy(kni) < 32768 THEN
-		kc = kmx + 8
-		FOR knj = 0 TO NPLAT - 1
-			kpt = ply(knj)
-			IF kmy <= kpt + 8 THEN
-				IF kmy >= kpt THEN
-				IF plon(knj) = 1 THEN
-					IF kc >= #plx1(knj) THEN
-						IF kc <= #plx2(knj) THEN
-							#ky(kni) = kpt + 8
-							#ky(kni) = #ky(kni) * 256
-							#kvy(kni) = 32768 + 220
-						END IF
-					END IF
-				END IF
-			END IF
-			END IF
-		NEXT knj
-	END IF
 
 	' Land, and never sink into the lava: a knight that reaches the floor line
 	' over the gap simply flaps back out.
-	IF #kvy(kni) >= 32768 THEN
-		kf = kmy + 16
-		FOR knj = 0 TO NPLAT - 1
-			kpt = ply(knj)
-			IF kf >= kpt THEN
-				IF kf <= kpt + 8 THEN
-				IF plon(knj) = 1 THEN
-					kc = kmx + 8
-					IF kc >= #plx1(knj) THEN
-						IF kc <= #plx2(knj) THEN
-							#ky(kni) = kpt - 16
-							#ky(kni) = #ky(kni) * 256
-							#kvy(kni) = 32768
+	' ================= ONE PASS OVER THE ISLANDS =================
+	' This used to be THREE separate loops over all ten islands -- routing,
+	' head-bump and landing -- run for every knight, every frame. At six knights
+	' that is 180 iterations a frame of nothing but array reads, and it is why the
+	' game bogged down as the screen filled.
+	'
+	' All three ask the same first question ("is my centre over this island?"), so
+	' they are now one loop that asks it once: 60 iterations instead of 180. The
+	' behaviour is unchanged; only the number of times ply() is fetched is not.
+	kf = kmy + MH			' feet
+	kc = kmx + 8			' centre x
+	krt = 0
+	IF kty(kni) > kmy + 12 THEN krt = 1	' target below: routing may apply
+	FOR knj = 0 TO NPLAT - 1
+		kpt = ply(knj)
+		IF plon(knj) = 1 THEN
+			IF kc >= #plx1(knj) THEN
+				IF kc <= #plx2(knj) THEN
+					IF #kvy(kni) >= 32768 THEN
+						' falling: land on the surface
+						IF kf >= kpt THEN
+							IF kf <= kpt + 8 THEN
+								#ky(kni) = kpt - MH
+								#ky(kni) = #ky(kni) * 256
+								#kvy(kni) = 32768
+							END IF
+						END IF
+					ELSE
+						' rising: bounce off the underside
+						IF kmy <= kpt + 8 THEN
+							IF kmy >= kpt THEN
+								#ky(kni) = kpt + 8
+								#ky(kni) = #ky(kni) * 256
+								#kvy(kni) = 32768 + 220
+							END IF
+						END IF
+					END IF
+					' and route around it if it is between me and my target
+					IF krt = 1 THEN
+						IF kpt > kmy + 8 THEN
+							IF kpt <= kty(kni) + 8 THEN
+								#kbl = kc
+								#kbl = #kbl - #plx1(knj)
+								#kbr = #plx2(knj)
+								#kbr = #kbr - kc
+								IF #kbl < #kbr THEN
+									#kbx = #plx1(knj)
+									IF #kbx > 22 THEN
+										ktx(kni) = #kbx - 22
+									ELSE
+										ktx(kni) = 0
+									END IF
+								ELSE
+									#kbx = #plx2(knj)
+									IF #kbx < 233 THEN
+										ktx(kni) = #kbx + 22
+									ELSE
+										ktx(kni) = 255
+									END IF
+								END IF
+							END IF
 						END IF
 					END IF
 				END IF
 			END IF
-			END IF
-		NEXT knj
+		END IF
+	NEXT knj
+	IF #kvy(kni) >= 32768 THEN
 		IF kmy > LAVAY THEN
 			#kvy(kni) = 32768 - 620
 		END IF
@@ -1757,11 +1763,14 @@ troll:
 	' visually anchored to the pit it comes from.
 tr_draw:
 	SPRITE 12,trhy,trx,44,9
-	tay = trhy + 14
+	' The arm is ITS OWN sprite -- an angled forearm, not a second fist. Two hands
+	' stacked read as two trolls, which is the opposite of the one long limb the
+	' effect needs.
+	tay = trhy + 13
 	IF tay > 188 THEN
 		SPRITE 14,SPRHID,0,0,0
 	ELSE
-		SPRITE 14,tay,trx,44,6
+		SPRITE 14,tay,trx,56,6
 	END IF
 	RETURN
 
