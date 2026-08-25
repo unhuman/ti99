@@ -25,6 +25,10 @@
 	CONST LAVAY = 168		' feet at or below this pixel row are in the lava
 	CONST TOPY = 8			' ceiling: sprite top cannot go above this
 	CONST SPRHID = 209		' NOT 208 -- 208 terminates the sprite list
+	CONST MH = 12			' MOUNT HEIGHT. A 12 px figure in the 16 px cell:
+					' feet at y+12 means the top ledge needs a sprite
+					' top of 12, not 8, and 8 IS the ceiling limit --
+					' the highest platform was barely reachable.
 	CONST BLANK = 32
 	CONST PLATL = 128
 	CONST PLATM = 129
@@ -84,6 +88,7 @@
 	DIM ktx(NKN)			' target x, pixels
 	DIM kwan(NKN)			' Bounder wander timer: frames until it re-rolls
 	DIM kmat(NKN)			' materialisation countdown, frames
+	DIM kfa(NKN)			' flap animation, frames remaining
 	DIM kpad(NKN)			' which pad it is materialising on
 
 	' THE RESCUE BIRD. When an egg hatches it produces a MAN ON FOOT, not a mounted
@@ -164,11 +169,11 @@ setup:
 	' FIVE PADS, and one of them is on the BASE -- that is where the player
 	' materialises, and it is the pad knights most often find blocked. y is the
 	' SPRITE TOP for a bird standing on that surface, i.e. surface - 16.
-	padx(0) = 104 : pady(0) = 144		' base
-	padx(1) = 96  : pady(1) = 40		' upper middle
-	padx(2) = 192 : pady(2) = 80		' right, middle height
-	padx(3) = 16  : pady(3) = 88		' left, middle height
-	padx(4) = 160 : pady(4) = 8		' top right, small
+	padx(0) = 104 : pady(0) = 148		' base            (surface 160)
+	padx(1) = 96  : pady(1) = 44		' upper middle    (surface  56)
+	padx(2) = 192 : pady(2) = 84		' right, middle   (surface  96)
+	padx(3) = 16  : pady(3) = 92		' left, middle    (surface 104)
+	padx(4) = 160 : pady(4) = 12		' top right       (surface  24)
 	RETURN
 
 	' EROSION. Deterministic, never random -- a player has to be able to learn the
@@ -271,6 +276,7 @@ new_wave:
 			IF wave > 5 THEN ktier(nwi) = 1 + (nwi AND 1)
 			kfrm(nwi) = 0
 			kflp(nwi) = 10 + nwi * 7
+			kfa(nwi) = 0
 			kwan(nwi) = nwi * 11	' stagger the first wander roll
 			ktx(nwi) = 128
 			kty(nwi) = 60
@@ -462,7 +468,7 @@ p_input:
 			pflp = 1
 			IF trst = 2 THEN tresc = tresc + 1
 			#vy = 32768 - 1040
-			pfrm = 2
+			pfa = 10			' one press, one beat of the wings
 			SOUND 0,700,12
 			sf0 = 3
 		END IF
@@ -533,14 +539,19 @@ p_move:
 	END IF
 
 	' Animation: frame follows vertical motion, not a timer.
-	IF pgnd = 1 THEN
-		pfrm = 3
-		IF pin = 0 THEN pfrm = 1
+	' A flap in progress owns the frame; otherwise the pose follows the motion.
+	IF pfa > 0 THEN
+		pfa = pfa - 1
+		pfrm = 2			' wings DOWN, the power stroke
+		IF pfa < 7 THEN pfrm = 1	' sweeping back up
+		IF pfa < 4 THEN pfrm = 0	' wings UP, recovered
 	ELSE
-		IF #vy < 32768 THEN
-			pfrm = 0
+		IF pgnd = 1 THEN
+			pfrm = 3
+			IF pin = 0 THEN pfrm = 1
 		ELSE
 			pfrm = 1
+			IF #vy < 32768 THEN pfrm = 0
 		END IF
 	END IF
 	RETURN
@@ -552,7 +563,7 @@ p_land:
 	pgnd = 0
 	IF #vy < 32768 THEN RETURN
 	plf = #py / 256
-	plf = plf + 16			' feet
+	plf = plf + MH			' feet
 	plc2 = #px / 256
 	plc2 = plc2 + 8			' centre x
 	FOR pli2 = 0 TO NPLAT - 1
@@ -563,7 +574,7 @@ p_land:
 				IF plc2 >= #plx1(pli2) THEN
 					IF plc2 <= #plx2(pli2) THEN
 						pgnd = 1
-						#py = plt - 16
+						#py = plt - MH
 						#py = #py * 256
 						#vy = 32768
 					END IF
@@ -584,7 +595,7 @@ p_land:
 p_bump:
 	IF #vy >= 32768 THEN RETURN		' only while rising
 	pbh = #py / 256				' the head is the sprite's top edge
-	pbb = pbh + 15				' and this is the feet
+	pbb = pbh + MH - 1			' and this is the feet
 	pbc = #px / 256
 	pbc = pbc + 8				' centre x
 	FOR pbi = 0 TO NPLAT - 1
@@ -653,6 +664,7 @@ k_spawn:
 	kface(ksl) = 0
 	kfrm(ksl) = 1
 	kflp(ksl) = 8
+	kfa(ksl) = 0
 	kwan(ksl) = 0
 	ktx(ksl) = 128
 	kty(ksl) = 60
@@ -675,7 +687,7 @@ k_foot:
 	kmy = #ky(kni) / 256
 	kmx = #kx(kni) / 256
 	IF #kvy(kni) >= 32768 THEN
-		kf = kmy + 16
+		kf = kmy + MH
 		FOR knj = 0 TO NPLAT - 1
 			kpt = ply(knj)
 			IF kf >= kpt THEN
@@ -684,7 +696,7 @@ k_foot:
 					kc = kmx + 8
 					IF kc >= #plx1(knj) THEN
 						IF kc <= #plx2(knj) THEN
-							#ky(kni) = kpt - 16
+							#ky(kni) = kpt - MH
 							#ky(kni) = #ky(kni) * 256
 							#kvy(kni) = 32768
 							' HE STANDS STILL, lance up, waiting for his
@@ -824,9 +836,9 @@ rb_launch:
 	' case, and it is pushed back out the way it came.
 p_side:
 	psh = #py / 256
-	psb = psh + 15
+	psb = psh + MH - 1
 	psl = #px / 256
-	psr = psl + 15
+	psr = psl + MH - 1
 	FOR psi = 0 TO NPLAT - 1
 		pst = ply(psi)
 		IF psb >= pst THEN
@@ -1008,6 +1020,7 @@ k_one:
 		kflp(kni) = kflp(kni) - 1
 	ELSE
 		IF kmy > kty(kni) THEN
+			kfa(kni) = 10		' they beat their wings too
 			#kvy(kni) = 32768 - 1000
 			' EAGERER EVERY WAVE TOO, floored so it stays a flap and not
 			' a hover. Same strategy per tier, sharper execution.
@@ -1097,8 +1110,15 @@ k_one:
 		END IF
 	END IF
 
-	kfrm(kni) = 1
-	IF #kvy(kni) < 32768 THEN kfrm(kni) = 0
+	IF kfa(kni) > 0 THEN
+		kfa(kni) = kfa(kni) - 1
+		kfrm(kni) = 2
+		IF kfa(kni) < 7 THEN kfrm(kni) = 1
+		IF kfa(kni) < 4 THEN kfrm(kni) = 0
+	ELSE
+		kfrm(kni) = 1
+		IF #kvy(kni) < 32768 THEN kfrm(kni) = 0
+	END IF
 	RETURN
 
 	' BOUNDER -- wanders. A fresh destination every second or two, and only one
@@ -1324,10 +1344,10 @@ c_knight:
 	cky = #ky(cni) / 256
 	cdx = cpx - ckx
 	IF cpx < ckx THEN cdx = ckx - cpx
-	IF cdx > 11 THEN RETURN
+	IF cdx > 10 THEN RETURN
 	cdy = cpy - cky
 	IF cpy < cky THEN cdy = cky - cpy
-	IF cdy > 11 THEN RETURN
+	IF cdy > 10 THEN RETURN
 
 	IF cpy + 4 <= cky THEN
 		' the player's lance is higher: unhorse the knight
