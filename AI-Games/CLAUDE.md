@@ -224,6 +224,19 @@ cost a debugging session:
   most loaded. Corollary: once a timer decrements by a *variable* delta, any logic keyed on its
   **parity** (`t AND 1`) breaks — an even delta freezes the parity. Drive alternating states from
   their own phase counter.
+- **THE TI's ALPHA LOCK KEY SHARES A LINE WITH THE JOYSTICK'S VERTICAL AXIS.** With it
+  latched down the console reports an up/down direction that is **never released**, so
+  any menu built on `cont1.up`/`cont1.down` boots pinned to one entry and cannot be
+  moved off it -- a per-pass `IF cont1.down THEN k = 2` is recomputed every pass, so the
+  stuck axis wins every pass and no other key can ever get an edge in. No error, and it
+  looks like a broken menu rather than an input problem. `cont1.left`/`cont1.right` are
+  unaffected and are what every game here already uses for aiming/steering, which is why
+  this stays hidden until something reads the vertical axis for the first time.
+  **For a menu, prefer `cont1.key` (0-9 on both targets, 15 for nothing) and PRINT the
+  key beside each entry** -- it dodges the hazard, states its own controls, and costs
+  less code than a cursor (in Bust-A-Bobble it freed 248 bytes). Swapping a vertical
+  menu to left/right instead is a trap of its own: it works, and players still press up
+  and down.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

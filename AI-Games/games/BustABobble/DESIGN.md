@@ -529,7 +529,7 @@ regression test for the whole exercise is that `BUSTABOB_8.bin` stays **byte-ide
 ```
 ./build-ti.sh            ->  BUSTABOB_8.bin    30 arcade rounds
 ./build-ti.sh --expert   ->  BUSTAB2_8.bin     50 generated levels
-./build-ti.sh --both     ->  BUSTAB12_8.bin    both, chosen on a select screen
+./build-ti.sh --both     ->  BUSTAB12_8.bin    both, chosen before the title
 ```
 
 Each builds independently; `build-coleco.sh` takes the same flags. All three are
@@ -551,8 +551,72 @@ own count once at boot and never touch them again.
 **A select screen, not two TI menu entries.** `linkticart` packs one program entry
 per cart and cannot offer two -- and doing the choice in the game means ColecoVision
 gets the identical screen from the identical code, instead of needing a mechanism
-of its own. It sits *between* the title and the game so the title keeps carrying the
-scores, the music toggle and the difficulty, all of which apply to either game.
+of its own.
+
+**It runs BEFORE the title, and that ordering is load-bearing.** It sat between the
+title and the game at first, which broke 838: a round number means nothing until the
+set is known, so the round selector had to either guess the range for its prompt or
+skip the select screen entirely and play whatever set was last loaded -- arcade, at
+boot. Choosing first makes `lvbase`/`lvmax` true for everything downstream, so 838
+needs no special case at all. The title still carries the scores, the music toggle
+and the difficulty, all of which apply to either game; it just comes second.
+
+**PRESS 1 OR 2, and each entry is labelled with its key.** The controls went
+through both joystick axes before landing there, and both failed in instructive
+ways:
+
+* **`cont1.up`/`cont1.down`** put a `>` cursor on the list -- and it booted pinned to
+  the second entry, immovable. On the TI-99/4A the **ALPHA LOCK key shares the line
+  the joystick's vertical axis is read through**, so with it latched the console
+  reports a direction that is never released. `ssk` is recomputed every pass, so a
+  stuck axis wins every pass and no other key can get an edge in. These were the
+  only two reads of the vertical axis in the entire game -- aiming has always used
+  `cont1.left`/`cont1.right` -- which is why nothing had hit it before.
+* **`cont1.left`/`cont1.right`** fixed the pinning and traded it for a worse bug: a
+  *vertical* list that only answers to *horizontal* presses, with nothing on screen
+  saying so. Players press up and down, and nothing happens.
+
+So the choice is not a direction at all. `cont1.key` returns 0-9 on both targets (TI
+keyboard, Coleco keypad) and 15 for nothing, and the game already leans on it for
+838, `1=MUSIC` and `2=DIFFICULTY`. Printing the key beside each entry is what makes
+it unambiguous -- **the screen states its own controls instead of expecting them to
+be guessed.** Pressing the key chooses and leaves, so there is no cursor to draw, no
+fire-to-confirm and no per-pass redraw: it **freed 248 bytes** over the cursor
+version, taking the combined cart from 48 free to 296.
+
+The two tests are nested, not `ssk > 0 AND ssk < 3`: compound comparisons are
+miscompiled by the 9900 backend (§3A). And `ssk < 3` alone would catch the **0** key
+and start a game on a keypress that chose nothing.
+
+`set_screen` is **`GOSUB`'d from the top of `title_screen` and RETURNs** -- it does
+not `GOTO` the title. A routine entered by `GOSUB` and left by `GOTO` never pops its
+return address, which is invisible on the TI and fatal on ColecoVision (§3A);
+`tools/gosubtrace.py` checks it mechanically every time.
+
+### The title names the game you picked
+
+On the single carts that is settled at compile time, but the combined cart only
+learns it from the select screen -- so as a `#if EXPERT` it took the `#else` branch
+and **BUST-A-BOBBLE 2 came up under the plain BUST-A-BOBBLE title**. It is a runtime
+test there, read off `lvbase` rather than `ssel` so the title cannot disagree with
+the levels actually loaded.
+
+### The 838 prompt states its range
+
+`SELECT ROUND 1-30` in BUST-A-BOBBLE and `1-50` in BUST-A-BOBBLE 2, rather than
+leaving the player to find the end of the levels by trial.
+
+The bound is **baked into the string literal, not computed** -- and that is a measured
+decision, not laziness. Splitting `lvmax` into two digits and `VPOKE`ing them is the
+obvious way and is what this did first: ten statements, which `romcheck` priced at
+**154 bytes on a cart with 208 free**. As literals it costs **6**. The single carts
+know their range at compile time (`lvmax` is set once at boot and never changes), so
+they carry one string and no test; only the combined cart asks, and it asks `lvmax`
+rather than `ssel` so the prompt and the clamp cannot disagree.
+
+The two tests are written as equalities on purpose. If `lvmax` ever became a value
+with no matching line, **nothing** prints -- an obvious hole on screen, which beats a
+prompt confidently advertising the wrong number of rounds.
 
 ### Why the levels are generated rather than transcribed
 

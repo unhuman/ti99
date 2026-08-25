@@ -52,8 +52,14 @@ expert 50, at all three settings, 240 level-proofs in total.
 ```
 
 The **combined cart** carries both games and asks which you want on a select screen
-after the title. It is still 32 KB and still one bank: 80 levels in one table, with
-the chosen set picked by a base and a count rather than a second set of pointers.
+**before** the title -- on boot and after every game. **Press 1 or 2**; each entry
+is labelled with the key that picks it, and the title that follows names the game you
+chose. Choosing first is what lets the
+838 round selector work: it can only offer a range once it knows which game you are
+playing, and it prints that range (`SELECT ROUND 1-30` or `1-50`) rather than leaving
+you to find the end of the levels by trial. The cart is still 32 KB and still one
+bank: 80 levels in one table, with the chosen set picked by a base and a count rather
+than a second set of pointers.
 
 Cart 2 exists because players asked for more and harder levels, and because cart 1 is *measurably*
 easy: 28 of its 30 rounds clear before the ceiling drops even once. The reason turned out not to be

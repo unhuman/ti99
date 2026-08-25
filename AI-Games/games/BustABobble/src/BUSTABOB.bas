@@ -2922,10 +2922,117 @@ jug_draw:
 	NEXT jbi
 	RETURN
 
+#if BOTH
+	' THE SET-SELECT SCREEN. Only the combined cart has one, and it runs BEFORE the
+	' title -- on boot and on every return to attract mode -- rather than between the
+	' title and the game.
+	'
+	' THE ORDER IS LOAD-BEARING, not cosmetic. 838 on the title picks a round, and a
+	' round number means nothing until the set is known: with the choice made after
+	' the title, 838 had to either guess the range for its prompt or bypass the
+	' select screen entirely and play whatever set was last loaded (arcade, at boot).
+	' Choosing first makes lvbase/lvmax true for everything downstream, so 838 needs
+	' no special case at all.
+	'
+	' The title still carries the scores, the music toggle and the difficulty, all of
+	' which apply to either game, so it keeps its job -- it just comes second.
+	'
+	' A screen rather than two entries in the TI console menu, because linkticart
+	' packs one program entry per cart and cannot offer two -- and doing it in the
+	' game means ColecoVision gets exactly the same selection with the same code
+	' instead of needing a mechanism of its own.
+	'
+	' PRESS 1 OR 2 -- the key that picks each entry is printed beside it. See the
+	' note in the loop below for why this is a keypad choice and not a cursor on a
+	' joystick axis. The title resets btnr itself, so a button held through here
+	' cannot skip the title either.
+	'
+	' GOSUB'd, and it RETURNS -- it does not GOTO the title. A routine entered by
+	' GOSUB and left by GOTO never pops its return address, and on ColecoVision's
+	' 1 KB that walks the stack into the variables after a few dozen games
+	' (CLAUDE.md 3A). tools/gosubtrace.py checks this mechanically.
+set_screen:
+	GOSUB hide_sprites
+	CLS
+	PRINT AT 264,"CHOOSE YOUR GAME"
+	PRINT AT 392,"1  BUST-A-BOBBLE"
+	PRINT AT 456,"2  BUST-A-BOBBLE 2"
+	PRINT AT 586,"PRESS 1 OR 2"
+	' WHATEVER IS HELD ON ARRIVAL MUST BE RELEASED FIRST. Seeding the "last key" with
+	' the key already down means a 1 or 2 still held from the title (where they are
+	' the music and difficulty toggles) cannot fall straight through this screen.
+	sskl = cont1.key
+set_wait:
+	WAIT
+	GOSUB sfx_tick
+	musdin = 1
+	GOSUB mus_tick
+	' A KEYPAD CHOICE, NOT A CURSOR ON A JOYSTICK AXIS. This began as a > cursor moved
+	' with cont1.up/cont1.down, and on the TI that axis shares a line with ALPHA LOCK:
+	' with it latched the console reports a direction that never releases, so the menu
+	' booted with the cursor pinned on the second entry and no other key could shift
+	' it -- ssk is recomputed every pass, so a stuck axis wins every time.
+	'
+	' Moving to cont1.left/cont1.right fixed the pinning and traded it for a worse
+	' problem: a vertical list that only answers to horizontal presses, with nothing
+	' on screen saying so. Players press up and down, and nothing happens.
+	'
+	' So the choice is not a direction at all. cont1.key returns 0-9 on both targets
+	' (TI keyboard, Coleco keypad) and 15 for nothing, and this game already leans on
+	' it for 838, 1=MUSIC and 2=DIFFICULTY, so it is the proven input here. Each entry
+	' is LABELLED with the key that picks it, which is what makes it unambiguous --
+	' the screen now states its own controls instead of expecting them to be guessed.
+	' Pressing the key chooses and leaves, so there is no cursor to draw, no selection
+	' to confirm with fire, and no per-pass redraw: smaller as well as clearer.
+	ssk = cont1.key
+	IF ssk <> sskl THEN
+		sskl = ssk
+		IF ssk = 1 THEN ssel = 0
+		IF ssk = 2 THEN ssel = 1
+		' 1 AND 2 ONLY -- and note the pair of nested tests. `ssk < 3` alone would
+		' also catch the 0 key (cont1.key returns 0-9, 15 for nothing), starting a
+		' game on a keypress that chose nothing; and the two comparisons cannot be
+		' folded into one `>0 AND <3`, because the 9900 backend miscompiles compound
+		' comparisons against a stale register (CLAUDE.md 3A).
+		IF ssk > 0 THEN
+			IF ssk < 3 THEN
+				SOUND 1,500,10
+				sf1 = 3
+				GOTO set_chosen
+			END IF
+		END IF
+	END IF
+	GOTO set_wait
+
+set_chosen:
+	' The chosen set is a BASE into the 80-level table and a COUNT of rounds. The
+	' round the HUD prints is still 1..30 or 1..50, because it prints lvl, which is
+	' the round WITHIN the set -- lvbase is only ever added when indexing the data.
+	IF ssel = 0 THEN
+		lvbase = 0
+		lvmax = 30
+	ELSE
+		lvbase = 30
+		lvmax = 50
+	END IF
+	' title_screen resets stlv to 1 before calling this, so nothing should be out of
+	' range by now -- but the clamp is two bytes and it guarantees the table index
+	' stays inside the chosen set whatever reaches it.
+	IF stlv > lvmax THEN stlv = lvmax
+	RETURN
+#endif
+
 title_screen:
 	GOSUB mus_off
 	hudok = 0			' the title writes into the HUD panel; rebuild it
 	stlv = 1
+#if BOTH
+	' WHICH GAME, BEFORE ANYTHING ELSE. Everything past this line -- the title, 838,
+	' the victory test -- reads lvbase/lvmax, so the choice has to be made first.
+	' The title is silent (the tune belongs to the round), so running this straight
+	' after mus_off costs nothing musically.
+	GOSUB set_screen
+#endif
 	GOSUB hide_sprites
 	CLS
 	' Two decorative rows showing all eight bubble colours, built in the same
@@ -2969,10 +3076,22 @@ title_screen:
 	tsp = 22
 	GOSUB title_num_hi
 	GOSUB prt_badges
-#if EXPERT
+	' THE TITLE NAMES THE GAME YOU PICKED. On the single carts that is settled at
+	' compile time, but the combined cart only learns it from the select screen, so
+	' there it has to be a runtime test -- as a #if EXPERT it took the #else branch
+	' and BUST-A-BOBBLE 2 came up under the plain BUST-A-BOBBLE title.
+	'
+	' Read off lvbase rather than ssel: lvbase is what the rest of the engine
+	' actually indexes with, so the title cannot disagree with the levels you get.
+	'
 	' 15 chars at column 8 = px 64-183, centred on 15 -- the same half-character
 	' lean off the screen's 15.5 that the 13-char name has at column 9, so the two
-	' carts' titles sit in the same place rather than one looking nudged.
+	' names sit in the same place rather than one looking nudged. CLS has already
+	' run, so the shorter name cannot leave a stray "2" behind.
+#if BOTH
+	IF lvbase = 0 THEN PRINT AT 233,"BUST-A-BOBBLE"
+	IF lvbase > 0 THEN PRINT AT 232,"BUST-A-BOBBLE 2"
+#elif EXPERT
 	PRINT AT 232,"BUST-A-BOBBLE 2"
 #else
 	PRINT AT 233,"BUST-A-BOBBLE"
@@ -3064,84 +3183,10 @@ title_wait:
 	IF btnr = 0 THEN
 		IF cont1.button = 0 THEN btnr = 1
 	ELSE
-#if BOTH
-		IF cont1.button THEN GOTO set_screen
-#else
 		IF cont1.button THEN GOTO title_go
-#endif
 	END IF
 	GOTO title_wait
 
-#if BOTH
-	' THE SET-SELECT SCREEN. Only the combined cart has one, and it sits between the
-	' title and the game rather than replacing the title: the title still carries
-	' the scores, the music toggle and the difficulty, all of which apply to either
-	' game.
-	'
-	' A screen rather than two entries in the TI console menu, because linkticart
-	' packs one program entry per cart and cannot offer two -- and doing it in the
-	' game means ColecoVision gets exactly the same selection with the same code
-	' instead of needing a mechanism of its own.
-	'
-	' UP/DOWN moves, FIRE starts. The RELEASE-first rule is the same one the title
-	' uses: arriving here with the button still held from the title would otherwise
-	' start a game before the screen was read.
-set_screen:
-	GOSUB hide_sprites
-	CLS
-	PRINT AT 264,"CHOOSE YOUR GAME"
-	PRINT AT 393,"BUST-A-BOBBLE"
-	PRINT AT 457,"BUST-A-BOBBLE 2"
-	PRINT AT 582,"FIRE TO START"
-	ssel = 0
-	btnr = 0
-	sskl = 15
-set_wait:
-	WAIT
-	GOSUB sfx_tick
-	musdin = 1
-	GOSUB mus_tick
-	' Redraw both cursor cells every pass: cheaper than tracking what changed, and
-	' this screen has nothing else to do.
-	PRINT AT 391," "
-	PRINT AT 455," "
-	IF ssel = 0 THEN PRINT AT 391,">"
-	IF ssel = 1 THEN PRINT AT 455,">"
-	' Edge-triggered, or one press walks the cursor the whole way down.
-	ssk = 0
-	IF cont1.up THEN ssk = 1
-	IF cont1.down THEN ssk = 2
-	IF ssk <> sskl THEN
-		sskl = ssk
-		IF ssk = 1 THEN ssel = 0
-		IF ssk = 2 THEN ssel = 1
-		IF ssk > 0 THEN
-			SOUND 1,500,10
-			sf1 = 3
-		END IF
-	END IF
-	IF btnr = 0 THEN
-		IF cont1.button = 0 THEN btnr = 1
-	ELSE
-		IF cont1.button THEN GOTO set_chosen
-	END IF
-	GOTO set_wait
-
-set_chosen:
-	' The chosen set is a BASE into the 80-level table and a COUNT of rounds. The
-	' round the HUD prints is still 1..30 or 1..50, because it prints lvl, which is
-	' the round WITHIN the set -- lvbase is only ever added when indexing the data.
-	IF ssel = 0 THEN
-		lvbase = 0
-		lvmax = 30
-	ELSE
-		lvbase = 30
-		lvmax = 50
-	END IF
-	' The 838 round select is clamped against lvmax, so a round chosen for the other
-	' game cannot survive the switch.
-	IF stlv > lvmax THEN stlv = lvmax
-#endif
 
 title_go:
 	' THE SCORE'S BADGE BELONGS TO THE SCORE, not to the current setting. Captured
@@ -3328,14 +3373,43 @@ hide_sprites:
 	NEXT hsi
 	RETURN
 
-	' Round selector: two digits, 01-30, echoed as they are typed.
+	' Round selector: two digits, echoed as they are typed. The upper bound is the
+	' chosen set's -- 30 for BUST-A-BOBBLE, 50 for BUST-A-BOBBLE 2 -- and the prompt
+	' says so rather than leaving the player to guess where the levels stop.
 setup838:
 	' The title's two creatures were still standing either side of SELECT ROUND --
 	' CLS clears characters, not sprites, and title_walk does not run here, so they
 	' sat frozen in whatever pose they were caught in.
 	GOSUB hide_sprites
 	CLS
-	PRINT AT 266,"SELECT ROUND"
+	' THE UPPER BOUND IS PRINTED AS PART OF THE STRING, not computed. Splitting lvmax
+	' into two digits and VPOKEing them is the obvious way and it is what this did
+	' first -- ten statements, and romcheck put the price at 154 bytes on a cart with
+	' 208 free. Baked into the literal it costs 5. That is worth the small ugliness
+	' below: the combined cart's fixed area is the scarcest budget in this repo, and
+	' a round-select prompt is not where to spend a third of what is left.
+	'
+	' The single carts know their range at COMPILE time -- lvmax is set once at boot
+	' and never changes -- so they carry one string and no test at all. Only the
+	' combined cart has to ask, and it asks lvmax rather than ssel so the prompt and
+	' the clamp below cannot disagree.
+	'
+	' !! THESE LITERALS MUST TRACK THE lvmax VALUES set at boot and in set_chosen.
+	' Written as a pair of equality tests on purpose: if lvmax ever becomes a value
+	' with no matching line, NOTHING prints and the omission is obvious on screen --
+	' far better than a prompt confidently advertising the wrong number of rounds.
+	'
+	' Column 8 lines the left edge up with ENTER TWO DIGITS below it. 17 characters
+	' cannot sit exactly centred on a 32-column grid, and matching the line under it
+	' reads better than splitting the difference.
+#if BOTH
+	IF lvmax = 30 THEN PRINT AT 264,"SELECT ROUND 1-30"
+	IF lvmax = 50 THEN PRINT AT 264,"SELECT ROUND 1-50"
+#elif EXPERT
+	PRINT AT 264,"SELECT ROUND 1-50"
+#else
+	PRINT AT 264,"SELECT ROUND 1-30"
+#endif
 	PRINT AT 360,"ENTER TWO DIGITS"
 	' !! #rdp IS 16-BIT ON PURPOSE. Written `rdp = 463` -- a PLAIN variable, which is
 	' 8-BIT -- the 463 silently truncated to 207, and the typed digits appeared at
