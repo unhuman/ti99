@@ -577,6 +577,9 @@ p_input:
 		pbnc = pbnc - 1
 		RETURN
 	END IF
+	' In the troll's grip the steering does nothing. The flap above still counts --
+	' it is the only thing that does, and each one banks toward tearing free.
+	IF trst = 2 THEN RETURN
 	IF cont1.left THEN
 		pin = 1
 		pface = 1
@@ -630,8 +633,12 @@ p_move:
 	GOSUB p_bump
 	GOSUB p_land
 	GOSUB p_side
+	' Same correction for the player: it is the feet that touch the lava, not the
+	' rider's head. Measured on the top, you had to be most of a body-length under
+	' the surface before it counted.
 	IF pdead = 0 THEN
-		IF py8 >= LAVAY THEN
+		pfe = py8 + MH
+		IF pfe >= LAVAY THEN
 			IF pgnd = 0 THEN pdead = 1
 		END IF
 	END IF
@@ -1211,13 +1218,20 @@ k_one:
 		END IF
 	NEXT knj
 	IF #kvy(kni) >= 32768 THEN
-		' NOTHING FLIES BELOW THE GROUND. Knights used to be nudged upward on
-		' reaching the lava line but were free to sink past it first, so one
-		' could be seen swimming through the lava and out the far side. The
-		' floor of the world is a hard limit for them exactly as the ceiling
-		' is: clamped to it, and thrown back up.
-		IF kmy > LAVAY THEN
-			#ky(kni) = LAVAY
+		' NOTHING FLIES BELOW THE GROUND -- AND THE LINE IS THE FEET.
+		'
+		' The clamp was already here and still let knights swim through the
+		' lava, because it compared and set the sprite's TOP. Pinning the top
+		' to the lava line puts the whole 16 px body BELOW it: feet at 192,
+		' the bottom of the screen, entirely inside the lava rows. The clamp
+		' was working perfectly and holding them in exactly the place it was
+		' supposed to keep them out of.
+		'
+		' It is the FEET that must not pass the line, so the top clamps to
+		' LAVAY - MH and the test measures feet too.
+		kfe = kmy + MH
+		IF kfe > LAVAY THEN
+			#ky(kni) = LAVAY - MH
 			#ky(kni) = #ky(kni) * 256
 			#kvy(kni) = 32768 - 620
 		END IF
@@ -1768,7 +1782,12 @@ troll:
 
 	' HELD. Dragged down, steering ignored, and only flaps count. This is the one
 	' place the flap is not about height -- it is about how many you can manage.
+	' HELD. The grip stops you dead horizontally -- being dragged toward the lava
+	' while still flying across the arena made the hand look like a suggestion.
+	' Steering is ignored (see p_input) and the sideways momentum is killed, so
+	' the ONLY thing that answers is the flap.
 	trx = tpx
+	#vx = 32768
 	#py = #py + 200
 	#vy = 32768
 	trhy = tpy + 14
