@@ -1222,7 +1222,15 @@ draw_knights:
 			IF kon(dki) = KFOOT THEN
 				dky = #ky(dki) / 256
 				dkx = #kx(dki) / 256
-				dkc = 11
+				' THE MAN WEARS THE COLOUR HE WILL BECOME -- red, grey or
+				' blue, the same lookup the mounted knights use below. He
+				' already carries that tier (e_hatch set it when the egg
+				' cracked), so the colour is free, and it is the only
+				' warning you get of what is about to be flying at you:
+				' a blue man on a ledge means a Shadow Lord in a moment.
+				dkc = 8
+				IF ktier(dki) = 1 THEN dkc = 14
+				IF ktier(dki) = 2 THEN dkc = 5
 				SPRITE 1 + dki,dky,dkx,36,dkc
 			ELSE
 			IF kon(dki) = 2 THEN
