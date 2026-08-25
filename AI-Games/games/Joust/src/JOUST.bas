@@ -111,6 +111,12 @@ setup:
 	SPRITE FLICKER OFF		' all-or-nothing in CVBasic: it would strobe the
 					' player too. Instead the player is sprite 0 --
 					' highest priority, never the one the VDP drops.
+	' THE ARCADE FACE. Replaces CVBasic's stock 8x8, which is a thin generic ASCII
+	' font and reads like a BASIC listing rather than an arcade cabinet -- undoing a
+	' good deal of what the sprites are doing. 59 characters, 32-90, contiguous.
+	' Colours are left alone: a DEFINE COLOR run this long would cost another 472
+	' bytes to say "white" 59 times.
+	DEFINE CHAR 32,59,font_bits
 	DEFINE CHAR PLATL,9,chr_plat_l
 	DEFINE COLOR PLATL,9,col_chars
 	DEFINE SPRITE 0,4,spr_mount_r	' patterns 0,4,8,12  -- facing right
@@ -519,6 +525,7 @@ p_move:
 
 	GOSUB p_bump
 	GOSUB p_land
+	GOSUB p_side
 	IF pdead = 0 THEN
 		IF py8 >= LAVAY THEN
 			IF pgnd = 0 THEN pdead = 1
@@ -592,7 +599,13 @@ p_bump:
 					IF pbc <= #plx2(pbi) THEN
 						#py = pbt + 8
 						#py = #py * 256
-						#vy = 32768	' stopped dead, no bounce
+						' BOUNCED OFF, not stopped. Same rule as the
+						' ceiling: parked under a ledge you are as
+						' unreachable as parked on the roof, and the
+						' joust stops being a contest. A shove
+						' downward makes the underside a thing you
+						' glance off rather than hang from.
+						#vy = 32768 + 220
 					END IF
 				END IF
 			END IF
@@ -798,6 +811,57 @@ rb_launch:
 	NEXT rbi
 	RETURN
 
+	' NO ENTERING AN ISLAND FROM THE SIDE.
+	'
+	' p_land catches feet coming down and p_bump catches the head coming up, but
+	' NEITHER fires on something arriving horizontally: fly level into the end of a
+	' ledge and you slid straight into the rock, because the only x test was
+	' whether the CENTRE had reached the span -- by which time half the bird was
+	' already inside it.
+	'
+	' This runs AFTER both, so a landing or a bump has already snapped y clear of
+	' the band and cannot be undone here. What is left is the genuinely embedded
+	' case, and it is pushed back out the way it came.
+p_side:
+	psh = #py / 256
+	psb = psh + 15
+	psl = #px / 256
+	psr = psl + 15
+	FOR psi = 0 TO NPLAT - 1
+		pst = ply(psi)
+		IF psb >= pst THEN
+			IF psh <= pst + 7 THEN
+			IF plon(psi) = 1 THEN
+				IF psr >= #plx1(psi) THEN
+					IF psl <= #plx2(psi) THEN
+						' embedded: leave by the nearer face
+						#psc = psl
+						#psc = #psc + 8
+						#psm = #plx1(psi)
+						#psm = #psm + #plx2(psi)
+						#psm = #psm / 2
+						IF #psc < #psm THEN
+							#psx = #plx1(psi)
+							IF #psx > 16 THEN
+								#px = #psx - 16
+								#px = #px * 256
+							END IF
+						ELSE
+							#psx = #plx2(psi)
+							IF #psx < 254 THEN
+								#px = #psx + 1
+								#px = #px * 256
+							END IF
+						END IF
+						#vx = 32768
+					END IF
+				END IF
+			END IF
+			END IF
+		END IF
+	NEXT psi
+	RETURN
+
 	' ----------------------------------------------------- knight movement
 k_move:
 	FOR kni = 0 TO NKN - 1
@@ -998,7 +1062,7 @@ k_one:
 						IF kc <= #plx2(knj) THEN
 							#ky(kni) = kpt + 8
 							#ky(kni) = #ky(kni) * 256
-							#kvy(kni) = 32768
+							#kvy(kni) = 32768 + 220
 						END IF
 					END IF
 				END IF
@@ -1666,6 +1730,7 @@ sfx_tick:
 	RETURN
 
 	INCLUDE "art.bas"
+	INCLUDE "font.bas"
 
 	' Character colours, EIGHT BYTES PER CHARACTER (one per scan line) -- supply
 	' fewer and DEFINE COLOR reads whatever follows in ROM as colour data.
