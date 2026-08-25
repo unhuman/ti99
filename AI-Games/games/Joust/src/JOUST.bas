@@ -15,9 +15,9 @@
 	'   * A GOSUB left by GOTO never pops; on ColecoVision's 1 KB that is fatal.
 	' ==========================================================================
 
-	CONST GRAV = 38			' added to #vy every frame. Heavier than it looks:
+	CONST GRAV = 44			' added to #vy every frame. Heavier than it looks:
 					' Joust's mount FALLS, and the flap has to fight it
-	CONST ACCX = 40			' horizontal acceleration while steering
+	CONST ACCX = 52			' horizontal acceleration while steering
 	CONST FRIC = 12			' horizontal decay when not steering
 	CONST NPLAT = 9			' islands, DIM 0..8 -- MEASURED, see assets/refmap.py
 	CONST NKN = 6			' knights, DIM 0..5 -- SIX. Joust is meant to be crowded
@@ -33,6 +33,10 @@
 	CONST LIFECH = 134
 	CONST PADCH = 135
 	CONST NPAD = 4			' materialisation pads, DIM 0..3
+	CONST KDEAD = 0
+	CONST KLIVE = 1
+	CONST KMATZ = 2		' materialising on a pad
+	CONST KFOOT = 3		' hatched, on foot, waiting for a mount
 
 	' Velocities are stored BIASED by +32768 so that every comparison stays in
 	' unsigned territory: "rising" is #vy < 32768, never #vy < 0. 32768 itself is
@@ -68,6 +72,15 @@
 	DIM kwan(NKN)			' Bounder wander timer: frames until it re-rolls
 	DIM kmat(NKN)			' materialisation countdown, frames
 	DIM kpad(NKN)			' which pad it is materialising on
+
+	' THE RESCUE BIRD. When an egg hatches it produces a MAN ON FOOT, not a mounted
+	' knight -- and a riderless buzzard then flies in from the edge, collects him,
+	' and the pair resume the attack. That gap is the player's window: a knight on
+	' foot is helpless and can be run down for the egg score, so ignoring an egg
+	' costs you twice if you also miss the man.
+	'
+	' One bird at a time, sprite 11. A second hatch waits its turn rather than
+	' costing another sprite slot on a machine that drops the 5th on a scanline.
 
 	DIM #ex(NEGG)			' egg x, 8.8
 	DIM #ey(NEGG)			' egg y, 8.8
@@ -248,6 +261,10 @@ spawn_player:
 	pgnd = 0
 	pdead = 0
 	binv = 90			' brief spawn invulnerability, in frames
+	' HOLD PAD 0 WHILE MATERIALISING. The player occupies a pad exactly as a
+	' knight does, so nothing can arrive on top of him during the one moment he
+	' cannot defend himself.
+	padu(0) = 1
 	RETURN
 
 	' ------------------------------------------------------------ draw field
@@ -362,6 +379,7 @@ main:
 	GOSUB p_move
 	GOSUB k_spawn
 	GOSUB k_move
+	GOSUB rb_move
 	GOSUB e_move
 	GOSUB collide
 	GOSUB draw
@@ -384,14 +402,17 @@ main:
 
 	' --------------------------------------------------------------- input
 p_input:
-	IF binv > 0 THEN binv = binv - 1
+	IF binv > 0 THEN
+		binv = binv - 1
+		IF binv = 0 THEN padu(0) = 0	' materialised: release the pad
+	END IF
 
 	' FLAP IS EDGE TRIGGERED -- holding fire must not hover. The released state
 	' has to be seen before the next flap counts.
 	IF cont1.button THEN
 		IF pflp = 0 THEN
 			pflp = 1
-			#vy = 32768 - 900
+			#vy = 32768 - 1040
 			pfrm = 2
 			SOUND 0,700,12
 			sf0 = 3
@@ -406,12 +427,12 @@ p_input:
 	IF cont1.left THEN
 		pin = 1
 		pface = 1
-		IF #vx > 32768 - 900 THEN #vx = #vx - ACCX
+		IF #vx > 32768 - 1100 THEN #vx = #vx - ACCX
 	END IF
 	IF cont1.right THEN
 		pin = 1
 		pface = 0
-		IF #vx < 32768 + 900 THEN #vx = #vx + ACCX
+		IF #vx < 32768 + 1100 THEN #vx = #vx + ACCX
 	END IF
 	IF pin = 0 THEN GOSUB p_fric
 	RETURN
@@ -433,7 +454,7 @@ p_fric:
 	' ------------------------------------------------------ player movement
 p_move:
 	#vy = #vy + GRAV
-	IF #vy > 32768 + 1000 THEN #vy = 32768 + 1000	' terminal fall speed
+	IF #vy > 32768 + 1180 THEN #vy = 32768 + 1180	' terminal fall speed
 
 	' 16-bit wrap does the signed arithmetic for us: adding (v - 32768) is
 	' correct whichever side of the bias v sits on.
@@ -580,6 +601,100 @@ k_spawn:
 	sf2 = 4
 	RETURN
 
+	' A KNIGHT ON FOOT. He falls to the nearest surface and walks, and he is
+	' HELPLESS -- worth running down before his ride arrives.
+k_foot:
+	#kvy(kni) = #kvy(kni) + GRAV
+	IF #kvy(kni) > 33768 THEN #kvy(kni) = 33768
+	#ky(kni) = #ky(kni) + #kvy(kni)
+	#ky(kni) = #ky(kni) - 32768
+	kmy = #ky(kni) / 256
+	kmx = #kx(kni) / 256
+	IF #kvy(kni) >= 32768 THEN
+		kf = kmy + 16
+		FOR knj = 0 TO NPLAT - 1
+			kpt = ply(knj)
+			IF kf >= kpt THEN
+				IF kf <= kpt + 8 THEN
+				IF plon(knj) = 1 THEN
+					kc = kmx + 8
+					IF kc >= #plx1(knj) THEN
+						IF kc <= #plx2(knj) THEN
+							#ky(kni) = kpt - 16
+							#ky(kni) = #ky(kni) * 256
+							#kvy(kni) = 32768
+							' shuffle along, so he is a moving target
+							IF kface(kni) = 0 THEN
+								#kx(kni) = #kx(kni) + 96
+							ELSE
+								#kx(kni) = #kx(kni) - 96
+							END IF
+						END IF
+					END IF
+				END IF
+				END IF
+			END IF
+		NEXT knj
+	END IF
+	IF kmy > LAVAY THEN kon(kni) = KDEAD	' he fell in; no rescue
+	kfrm(kni) = 0
+	RETURN
+
+	' THE RIDERLESS BUZZARD. Flies in from the nearer screen edge, straight at the
+	' man on foot, collects him, and the pair go back on the attack.
+rb_move:
+	IF rbon = 0 THEN GOSUB rb_launch
+	IF rbon = 0 THEN RETURN
+	IF kon(rbt) <> KFOOT THEN
+		rbon = 0			' he died or was collected first
+		RETURN
+	END IF
+	rgx = #kx(rbt) / 256
+	rgy = #ky(rbt) / 256
+	IF rbx < rgx THEN
+		rbx = rbx + 3
+		rbf = 0
+	ELSE
+		rbx = rbx - 3
+		rbf = 1
+	END IF
+	IF rby < rgy THEN rby = rby + 2
+	IF rby > rgy THEN rby = rby - 2
+	rdx = rbx - rgx
+	IF rbx < rgx THEN rdx = rgx - rbx
+	rdy = rby - rgy
+	IF rby < rgy THEN rdy = rgy - rby
+	IF rdx < 7 THEN
+		IF rdy < 7 THEN
+			' MOUNTED. He is dangerous again, and moving.
+			kon(rbt) = KLIVE
+			#kvx(rbt) = 32768
+			#kvy(rbt) = 32768 - 400
+			kflp(rbt) = 6
+			kwan(rbt) = 0
+			rbon = 0
+			SOUND 1,420,11
+			sf1 = 4
+		END IF
+	END IF
+	RETURN
+
+	' Find a man with no bird on the way, and send one from the nearer edge.
+rb_launch:
+	FOR rbi = 0 TO NKN - 1
+		IF kon(rbi) = KFOOT THEN
+			rbt = rbi
+			rbon = 1
+			rgx = #kx(rbi) / 256
+			rbx = 0
+			IF rgx > 128 THEN rbx = 255
+			rby = 24
+			rbf = 0
+			RETURN
+		END IF
+	NEXT rbi
+	RETURN
+
 	' ----------------------------------------------------- knight movement
 k_move:
 	FOR kni = 0 TO NKN - 1
@@ -588,6 +703,8 @@ k_move:
 	RETURN
 
 k_one:
+	IF kon(kni) = KFOOT THEN GOSUB k_foot
+	IF kon(kni) = KFOOT THEN RETURN
 	IF kon(kni) = 2 THEN
 		kmat(kni) = kmat(kni) - 1
 		IF kmat(kni) = 0 THEN
@@ -607,8 +724,8 @@ k_one:
 	' The multiply reads #ktp2, not #ktop: on the 9900 MPY leaves the high word in
 	' r0 and reading back the variable just multiplied returns 0 (CLAUDE.md 3A).
 	#ktp2 = ktier(kni)
-	#ktop = #ktp2 * 120
-	#ktop = #ktop + 700
+	#ktop = #ktp2 * 140
+	#ktop = #ktop + 860
 	#kfast = 32768 + #ktop
 	#kslow = 32768 - #ktop
 
@@ -634,8 +751,8 @@ k_one:
 		kflp(kni) = kflp(kni) - 1
 	ELSE
 		IF kmy > kty(kni) THEN
-			#kvy(kni) = 32768 - 860
-			kflp(kni) = 18 - ktier(kni) * 5
+			#kvy(kni) = 32768 - 1000
+			kflp(kni) = 14 - ktier(kni) * 4
 		END IF
 	END IF
 
@@ -726,12 +843,16 @@ k_wander:
 		kwan(kni) = kwan(kni) - 1
 		RETURN
 	END IF
-	kwan(kni) = 28 + RANDOM(40)	' re-target often -- a Bounder that commits
+	kwan(kni) = 22 + RANDOM(30)	' re-target often -- a Bounder that commits
 					' to one heading for two seconds looks asleep
-	kr = RANDOM(4)
+	' HALF ITS ROLLS ARE THE PLAYER NOW, not a quarter. A Bounder that wanders
+	' three times out of four is scenery: it has to threaten often enough that you
+	' cannot ignore it while dealing with something else.
+	kr = RANDOM(2)
 	IF kr = 0 THEN
 		ktx(kni) = kpx
-		kty(kni) = kpy
+		kty(kni) = kpy - 4
+		IF kpy < 4 THEN kty(kni) = 0
 	ELSE
 		ktx(kni) = RANDOM(255)
 		kty(kni) = 24 + RANDOM(112)
@@ -742,8 +863,8 @@ k_wander:
 	' into a joust is a coin toss, so it wants the high side of the contact.
 k_hunt:
 	ktx(kni) = kpx
-	kty(kni) = kpy - 8
-	IF kpy < 8 THEN kty(kni) = 0
+	kty(kni) = kpy - 4
+	IF kpy < 4 THEN kty(kni) = 0
 	RETURN
 
 	' SHADOW LORD -- fast, high, and higher still as it closes. It lives in the
@@ -751,8 +872,8 @@ k_hunt:
 	' climb is the attack, not a retreat from it.
 k_lord:
 	ktx(kni) = kpx
-	kty(kni) = kpy - 20
-	IF kpy < 20 THEN kty(kni) = 0
+	kty(kni) = kpy - 12
+	IF kpy < 12 THEN kty(kni) = 0
 	klx = kpx - kmx
 	IF kmx > kpx THEN klx = kmx - kpx
 	IF klx < 48 THEN
@@ -764,12 +885,12 @@ k_lord:
 
 k_right:
 	kface(kni) = 0
-	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 28
+	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 36
 	RETURN
 
 k_left:
 	kface(kni) = 1
-	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 28
+	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 36
 	RETURN
 
 	' --------------------------------------------------------- egg movement
@@ -832,7 +953,8 @@ e_one:
 e_hatch:
 	FOR ehj = 0 TO NKN - 1
 		IF kon(ehj) = 0 THEN
-			kon(ehj) = 1
+			' ON FOOT, not mounted. The bird comes for him separately.
+			kon(ehj) = KFOOT
 			' THE TIER CYCLES: Bounder -> Hunter -> Shadow Lord -> Bounder.
 			' It does NOT cap at Shadow Lord -- capping would let a late wave
 			' settle into a stable top tier, and the arcade deliberately keeps
@@ -842,7 +964,7 @@ e_hatch:
 			#kx(ehj) = #ex(egi)
 			#ky(ehj) = #ey(egi)
 			#kvx(ehj) = 32768
-			#kvy(ehj) = 32768 - 500
+			#kvy(ehj) = 32768
 			kflp(ehj) = 20
 			kface(ehj) = 0
 			est(egi) = 0
@@ -860,6 +982,7 @@ collide:
 
 	FOR cni = 0 TO NKN - 1
 		IF kon(cni) = 1 THEN GOSUB c_knight
+		IF kon(cni) = KFOOT THEN GOSUB c_foot
 	NEXT cni
 
 	FOR cni = 0 TO NEGG - 1
@@ -914,6 +1037,28 @@ k_unhorse:
 			RETURN
 		END IF
 	NEXT kuj
+	GOSUB prt_score
+	RETURN
+
+	' RUNNING DOWN A MAN ON FOOT. He is helpless, and worth the same as the egg he
+	' came out of -- the arcade lets you collect a hatched knight before his ride
+	' arrives, and that window is the reward for watching the eggs.
+c_foot:
+	cfx = #kx(cni) / 256
+	cfy = #ky(cni) / 256
+	cdx = cpx - cfx
+	IF cpx < cfx THEN cdx = cfx - cpx
+	IF cdx > 11 THEN RETURN
+	cdy = cpy - cfy
+	IF cpy < cfy THEN cdy = cfy - cpy
+	IF cdy > 11 THEN RETURN
+	kon(cni) = KDEAD
+	ecoll = ecoll + 1
+	ceg = ecoll
+	IF ceg > 4 THEN ceg = 4
+	#score = #score + ceg * 25
+	SOUND 1,250,13
+	sf1 = 5
 	GOSUB prt_score
 	RETURN
 
@@ -984,6 +1129,13 @@ draw:
 	SPRITE 0,dry,drx,drp,drc
 	GOSUB draw_knights
 	GOSUB draw_eggs
+	IF rbon = 1 THEN
+		rbp = rbf * 16
+		rbp = rbp + 4
+		SPRITE 11,rby,rbx,rbp,7
+	ELSE
+		SPRITE 11,SPRHID,0,0,0
+	END IF
 	RETURN
 
 draw_knights:
@@ -991,6 +1143,12 @@ draw_knights:
 		IF kon(dki) = 0 THEN
 			SPRITE 1 + dki,SPRHID,0,0,0
 		ELSE
+			IF kon(dki) = KFOOT THEN
+				dky = #ky(dki) / 256
+				dkx = #kx(dki) / 256
+				dkc = 11
+				SPRITE 1 + dki,dky,dkx,36,dkc
+			ELSE
 			IF kon(dki) = 2 THEN
 				' materialising: flash, and draw nothing on alternate
 				' frames so it reads as arriving rather than lurking
@@ -1008,6 +1166,7 @@ draw_knights:
 			IF ktier(dki) = 1 THEN dkc = 14
 			IF ktier(dki) = 2 THEN dkc = 5
 			SPRITE 1 + dki,dky,dkx,dkp,dkc
+			END IF
 			END IF
 		END IF
 	NEXT dki
