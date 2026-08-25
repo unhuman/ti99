@@ -1065,8 +1065,23 @@ k_one:
 					ksdy = kmy - ksoy
 					IF kmy < ksoy THEN ksdy = ksoy - kmy
 					IF ksdy < 20 THEN
-						' too close: aim to pass on the far side of him,
-						' and off his altitude so the lances differ
+						' OVERLAPPING -- shove them apart in POSITION, not
+						' just in intent. Steering alone cannot stop two
+						' knights sharing a square: a hatched man collected
+						' where another knight already is starts inside him,
+						' and no amount of target-nudging separates two
+						' bodies that are already coincident.
+						IF ksdx < 10 THEN
+							IF ksdy < 10 THEN
+								IF kmx < ksox THEN
+									#kx(kni) = #kx(kni) - 256
+								ELSE
+									#kx(kni) = #kx(kni) + 256
+								END IF
+							END IF
+						END IF
+						' and aim to pass on the far side of him,
+						' off his altitude so the lances differ
 						IF kmx < ksox THEN
 							IF ktx(kni) > 28 THEN ktx(kni) = ktx(kni) - 28
 						ELSE
@@ -1165,6 +1180,24 @@ k_one:
 	IF kty(kni) > kmy + 12 THEN krt = 1	' target below: routing may apply
 	FOR knj = 0 TO NPLAT - 1
 		kpt = ply(knj)
+		' Y-GATE, on the one value already fetched. Nine islands in ten fail
+		' here and cost nothing further.
+		kok = 0
+		IF #kvy(kni) >= 32768 THEN
+			IF kf >= kpt THEN
+				IF kf <= kpt + 8 THEN kok = 1
+			END IF
+		ELSE
+			IF kmy <= kpt + 8 THEN
+				IF kmy >= kpt THEN kok = 1
+			END IF
+		END IF
+		IF krt = 1 THEN
+			IF kpt > kmy + 8 THEN
+				IF kpt <= kty(kni) + 8 THEN kok = 1
+			END IF
+		END IF
+		IF kok = 1 THEN
 		IF plon(knj) = 1 THEN
 			IF kc >= #plx1(knj) THEN
 				IF kc <= #plx2(knj) THEN
@@ -1215,6 +1248,7 @@ k_one:
 					END IF
 				END IF
 			END IF
+		END IF
 		END IF
 	NEXT knj
 	IF #kvy(kni) >= 32768 THEN
@@ -1337,7 +1371,7 @@ e_one:
 			ept = ply(egj)
 			IF egf >= ept THEN
 				IF egf <= ept + 8 THEN
-				IF plon(egj) = 1 THEN
+				IF plon(egj) = 1 THEN	' y-gated above: 1 read to reject
 					egc = egx + 8
 					IF egc >= #plx1(egj) THEN
 						IF egc <= #plx2(egj) THEN
@@ -1402,7 +1436,7 @@ e_rest:
 		ept = ply(egj)
 		IF egf >= ept THEN
 			IF egf <= ept + 8 THEN
-			IF plon(egj) = 1 THEN
+			IF plon(egj) = 1 THEN	' y-gated above: 1 read to reject
 				IF egc >= #plx1(egj) THEN
 					IF egc <= #plx2(egj) THEN
 						ergs = 1
@@ -1471,17 +1505,23 @@ c_knight:
 	cky = #ky(cni) / 256
 	cdx = cpx - ckx
 	IF cpx < ckx THEN cdx = ckx - cpx
-	IF cdx > 11 THEN RETURN
+	' TIGHTER THAN IT WAS. At 11 px a "collision" started while the birds were
+	' still visibly apart, and the resulting duel felt unearned.
+	IF cdx > 9 THEN RETURN
 	cdy = cpy - cky
 	IF cpy < cky THEN cdy = cky - cpy
-	IF cdy > 11 THEN RETURN
+	IF cdy > 9 THEN RETURN
 
-	IF cpy + 4 <= cky THEN
+	' AND THE TIE WINDOW IS ONE PIXEL, not four. A bounce means the lances met
+	' dead level -- it should be the rare, surprising outcome, not the usual one.
+	' At +/-3 px it was seven pixels wide out of a nine-pixel box, so MOST
+	' contacts ended in a bounce and the altitude rule barely decided anything.
+	IF cpy + 2 <= cky THEN
 		' the player's lance is higher: unhorse the knight
 		GOSUB k_unhorse
 		RETURN
 	END IF
-	IF cky + 4 <= cpy THEN
+	IF cky + 2 <= cpy THEN
 		IF binv = 0 THEN pdead = 1
 		RETURN
 	END IF
