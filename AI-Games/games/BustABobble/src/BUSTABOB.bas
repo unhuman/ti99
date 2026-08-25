@@ -796,9 +796,9 @@ mus_start:
 	' Only the state word is reprinted, not the whole line -- "1=MUSIC" is static.
 prt_musen:
 	IF musen = 1 THEN
-		PRINT AT 562,"ON "
+		SCREEN s_txt,219,562,3,1,3
 	ELSE
-		PRINT AT 562,"OFF"
+		SCREEN s_txt,216,562,3,1,3
 	END IF
 	RETURN
 
@@ -838,10 +838,10 @@ prt_badges:
 	' stranded badge behind it.
 prt_dlev:
 	dlx = 23			' EASY and HARD are four characters
-	IF dlev = 0 THEN PRINT AT 626,"EASY    "
-	IF dlev = 1 THEN PRINT AT 626,"MEDIUM  "
+	IF dlev = 0 THEN SCREEN s_txt,192,626,8,1,8
+	IF dlev = 1 THEN SCREEN s_txt,184,626,8,1,8
 	IF dlev = 1 THEN dlx = 25
-	IF dlev = 2 THEN PRINT AT 626,"HARD    "
+	IF dlev = 2 THEN SCREEN s_txt,176,626,8,1,8
 	' This is the LIVE setting -- the only badge on the title that follows the
 	' toggle. The two beside the scores are history and must not move.
 	#tna = 608 + dlx		' row 19
@@ -2115,7 +2115,7 @@ do_dead:
 		mcol = 11
 		mlen = 9
 		GOSUB msg_box
-		PRINT AT 363,"GAME OVER"
+		SCREEN s_txt,167,363,9,1,9
 		FOR ddi = 0 TO 120
 			WAIT
 			GOSUB sfx_tick
@@ -2368,12 +2368,12 @@ draw_frame:
 	IF hudok = 0 THEN
 		CLS
 		' All on column 22, aligned with the score digits below each one.
-		PRINT AT 22,"1UP"
-		PRINT AT 118,"HI"
-		PRINT AT 278,"ROUND"
+		SCREEN s_txt,222,22,3,1,3
+		SCREEN s_txt,225,118,2,1,2
+		SCREEN s_txt,67,278,5,1,5
 		' TIME in every mode now: there is only one clock, and a shot spending it
 		' does not make it something other than time.
-		PRINT AT 502,"TIME"
+		SCREEN s_txt,212,502,4,1,4
 		hudok = 1
 	END IF
 	GOSUB draw_ceiling
@@ -2862,19 +2862,19 @@ victory:
 	GOSUB hide_sprites
 	CLS
 	' Same top row as the title: SCORE flush left, HI flush right.
-	PRINT AT 0,"SCORE"
+	SCREEN s_txt,207,0,5,1,5
 	' HI MOVES ONE COLUMN LEFT (label 19-20, digits 22-30) so column 31 is free for
 	' its difficulty badge, and the score's badge sits at 15 just past its digits.
 	' The row still brackets itself: SCORE flush left, HI flush right, now with a
 	' badge on the outside of each.
-	PRINT AT 19,"HI"
+	SCREEN s_txt,225,19,2,1,2
 	tsp = 6
 	GOSUB title_num_sc
 	tsp = 22
 	GOSUB title_num_hi
 	GOSUB prt_badges
-	PRINT AT 104,"CONGRATULATIONS!"	' row 3, col 8 -- 16 chars, centred
-	PRINT AT 715,"PRESS FIRE"	' row 22, col 11. NOT row 23: that row is
+	SCREEN s_txt,110,104,16,1,16	' row 3, col 8 -- 16 chars, centred
+	SCREEN s_txt,23,715,10,1,10	' row 22, col 11. NOT row 23: that row is
 					' overscan on real hardware and clipped in
 					' Classic99 (same reason the lives moved).
 	jt = 0
@@ -2963,7 +2963,7 @@ jug_draw:
 set_screen:
 	GOSUB hide_sprites
 	CLS
-	PRINT AT 137,"PICK A BOBBLE"		' row 4, col 9
+	SCREEN s_txt,142,137,13,1,13		' row 4, col 9
 	' THE TWO CHOICES, CENTRED ON THE SCREEN. Rows 11 and 13 with a blank row between,
 	' so the pair's middle is row 12 against a true screen middle of 11.5 -- half a row
 	' cannot be split on a character grid, and sitting half a row LOW balances the
@@ -2973,8 +2973,8 @@ set_screen:
 	' already says what the screen is for, and each entry still carries the key that
 	' picks it, which is the part that actually makes the control unambiguous. Dropping
 	' both returned 56 bytes to the combined cart, which was down to 56 free.
-	PRINT AT 360,"1  BUST-A-BOBBLE"		' row 11, col 8
-	PRINT AT 424,"2  BUST-A-BOBBLE 2"	' row 13, col 8
+	SCREEN s_txt,126,360,16,1,16		' row 11, col 8
+	SCREEN s_txt,42,424,18,1,18	' row 13, col 8
 	' THE SAME TWO CREATURES PATROL THE SIDES WHILE YOU CHOOSE, one up each edge.
 	' Near enough free: the sprite patterns and the whole walk/wave/draw routine are
 	' already in ROM for the title, so this is a setup call, a mode flag and a range.
@@ -3150,12 +3150,12 @@ title_screen:
 	' "HI" then its 9. Row 0 is cols 0-31, so SCORE occupies 0-14 and HI 17-31.
 	' SCORE is flush LEFT (label col 0, digits 6-14); HI is flush RIGHT (digits
 	' 23-31, label just before it) so the two blocks bracket the row evenly.
-	PRINT AT 0,"SCORE"
+	SCREEN s_txt,207,0,5,1,5
 	' HI MOVES ONE COLUMN LEFT (label 19-20, digits 22-30) so column 31 is free for
 	' its difficulty badge, and the score's badge sits at 15 just past its digits.
 	' The row still brackets itself: SCORE flush left, HI flush right, now with a
 	' badge on the outside of each.
-	PRINT AT 19,"HI"
+	SCREEN s_txt,225,19,2,1,2
 	tsp = 6
 	GOSUB title_num_sc
 	tsp = 22
@@ -3174,23 +3174,23 @@ title_screen:
 	' names sit in the same place rather than one looking nudged. CLS has already
 	' run, so the shorter name cannot leave a stray "2" behind.
 #if BOTH
-	IF lvbase = 0 THEN PRINT AT 233,"BUST-A-BOBBLE"
-	IF lvbase > 0 THEN PRINT AT 232,"BUST-A-BOBBLE 2"
+	IF lvbase = 0 THEN SCREEN s_txt,45,233,13,1,13
+	IF lvbase > 0 THEN SCREEN s_txt,45,232,15,1,15
 #elif EXPERT
-	PRINT AT 232,"BUST-A-BOBBLE 2"
+	SCREEN s_txt,45,232,15,1,15
 #else
-	PRINT AT 233,"BUST-A-BOBBLE"
+	SCREEN s_txt,45,233,13,1,13
 #endif
-	PRINT AT 484,"2026 UNHUMAN AND CLAUDE"	' row 15, col 4
-	PRINT AT 554,"1=MUSIC"			' row 17, col 10
+	SCREEN s_txt,0,484,23,1,23	' row 15, col 4
+	SCREEN s_txt,200,554,7,1,7			' row 17, col 10
 	GOSUB prt_musen
 	' Column 5 now, because the line grew a badge on the end: label 5-16, space at
 	' 17, value 18-23, space at 24, badge at 25. Spans 5-25, centred on 15, which is
 	' where 1=MUSIC sits too. The single space either side of the value is what
 	' stops it reading as "2=DIFFICULTYEASY".
-	PRINT AT 613,"2=DIFFICULTY"		' row 19, col 5
+	SCREEN s_txt,155,613,12,1,12		' row 19, col 5
 	GOSUB prt_dlev
-	PRINT AT 710,"PRESS FIRE TO START"	' row 22, col 6
+	SCREEN s_txt,23,710,19,1,19	' row 22, col 6
 	t8 = 0
 	' SEED THE EDGE DETECTOR WITH WHAT IS ALREADY HELD, not with "nothing".
 	'
@@ -3577,14 +3577,14 @@ setup838:
 	' cannot sit exactly centred on a 32-column grid, and matching the line under it
 	' reads better than splitting the difference.
 #if BOTH
-	IF lvmax = 30 THEN PRINT AT 264,"SELECT ROUND 1-30"
-	IF lvmax = 50 THEN PRINT AT 264,"SELECT ROUND 1-50"
+	IF lvmax = 30 THEN SCREEN s_txt,77,264,17,1,17
+	IF lvmax = 50 THEN SCREEN s_txt,60,264,17,1,17
 #elif EXPERT
-	PRINT AT 264,"SELECT ROUND 1-50"
+	SCREEN s_txt,60,264,17,1,17
 #else
-	PRINT AT 264,"SELECT ROUND 1-30"
+	SCREEN s_txt,77,264,17,1,17
 #endif
-	PRINT AT 360,"ENTER TWO DIGITS"
+	SCREEN s_txt,94,360,16,1,16
 	' !! #rdp IS 16-BIT ON PURPOSE. Written `rdp = 463` -- a PLAIN variable, which is
 	' 8-BIT -- the 463 silently truncated to 207, and the typed digits appeared at
 	' row 6 col 15, ABOVE "SELECT ROUND", instead of row 14 below the prompt. No
@@ -3780,6 +3780,52 @@ mq_row:
 	DATA BYTE 221,222,221,222,221,222,221,222
 	DATA BYTE 221,222
 
+
+	' EVERY PIECE OF ON-SCREEN TEXT, AS ONE BLOB IN THE BANK.
+	'
+	' A `PRINT AT n,"TEXT"` emits 24 bytes of code AND the string itself INLINE, in
+	' the fixed area. A `SCREEN` blit of the same text emits 24 bytes of code and
+	' nothing else -- identical code size -- with the characters read from wherever
+	' you put them. So moving the text here costs nothing and returns its own length
+	' to the 24,336-byte budget, which was down to ZERO. The bank had 400 spare.
+	'
+	' ONE blob rather than a label per string: a single alignment concern instead of
+	' 32, and identical strings collapse. Strings are packed longest-first, so a
+	' shorter one that happens to be a tail of a longer one costs nothing at all.
+	'
+	' !! PADDED TO AN EVEN LENGTH. An odd-length DATA BYTE run leaves the location
+	' counter odd and silently misaligns every word table after it -- that is the
+	' aim-table corruption written up in TRUNCATION.md 1d. romcheck checks it.
+s_txt:
+	DATA BYTE 50,48,50,54,32,85,78,72	' 2026_UNH
+	DATA BYTE 85,77,65,78,32,65,78,68	' UMAN_AND
+	DATA BYTE 32,67,76,65,85,68,69,80	' _CLAUDEP
+	DATA BYTE 82,69,83,83,32,70,73,82	' RESS_FIR
+	DATA BYTE 69,32,84,79,32,83,84,65	' E_TO_STA
+	DATA BYTE 82,84,50,32,32,66,85,83	' RT2__BUS
+	DATA BYTE 84,45,65,45,66,79,66,66	' T-A-BOBB
+	DATA BYTE 76,69,32,50,83,69,76,69	' LE_2SELE
+	DATA BYTE 67,84,32,82,79,85,78,68	' CT_ROUND
+	DATA BYTE 32,49,45,53,48,83,69,76	' _1-50SEL
+	DATA BYTE 69,67,84,32,82,79,85,78	' ECT_ROUN
+	DATA BYTE 68,32,49,45,51,48,69,78	' D_1-30EN
+	DATA BYTE 84,69,82,32,84,87,79,32	' TER_TWO_
+	DATA BYTE 68,73,71,73,84,83,67,79	' DIGITSCO
+	DATA BYTE 78,71,82,65,84,85,76,65	' NGRATULA
+	DATA BYTE 84,73,79,78,83,33,49,32	' TIONS!1_
+	DATA BYTE 32,66,85,83,84,45,65,45	' _BUST-A-
+	DATA BYTE 66,79,66,66,76,69,80,73	' BOBBLEPI
+	DATA BYTE 67,75,32,65,32,66,79,66	' CK_A_BOB
+	DATA BYTE 66,76,69,50,61,68,73,70	' BLE2=DIF
+	DATA BYTE 70,73,67,85,76,84,89,71	' FICULTYG
+	DATA BYTE 65,77,69,32,79,86,69,82	' AME_OVER
+	DATA BYTE 72,65,82,68,32,32,32,32	' HARD____
+	DATA BYTE 77,69,68,73,85,77,32,32	' MEDIUM__
+	DATA BYTE 69,65,83,89,32,32,32,32	' EASY____
+	DATA BYTE 49,61,77,85,83,73,67,83	' 1=MUSICS
+	DATA BYTE 67,79,82,69,84,73,77,69	' CORETIME
+	DATA BYTE 79,70,70,79,78,32,49,85	' OFFON_1U
+	DATA BYTE 80,72,73,32	' PHI_
 	INCLUDE "artdefs.bas"
 	INCLUDE "art.bas"
 	INCLUDE "juggle.bas"

@@ -685,7 +685,33 @@ animation begin, so a click there only clutters the handover -- and with nothing
 sounded there is no decay to schedule, so the `sf1` bookkeeping goes with it. Worth
 **36 bytes**, which is most of the combined cart's headroom.
 
-> **The combined cart is at 0 bytes free -- 24,336 of 24,336 exactly.**; the single carts have ~905. `romcheck`
+### Text lives in the bank, not in the code
+
+Every piece of on-screen text is one blob in ROM bank 1, blitted with `SCREEN`.
+
+A `PRINT AT n,"TEXT"` emits **24 bytes of code AND the string itself inline**, in the
+fixed area. A `SCREEN` blit of the same text emits **24 bytes of code and nothing
+else** -- byte-for-byte the same code size -- with the characters read from wherever
+they are put. So moving the text into the bank costs nothing and returns its own
+length to the 24,336-byte budget. All 32 sites converted:
+
+| cart | before | after | gained |
+|---|---|---|---|
+| BUSTABOB | 896 | **1,100** | 204 |
+| BUSTAB2 | 894 | **1,100** | 206 |
+| BUSTAB12 | **0** | **286** | 286 |
+
+One blob rather than a label per string: a single alignment concern instead of 32,
+identical strings collapse, and packing longest-first means a shorter string that is
+a tail of a longer one costs nothing. 279 bytes of text deduped to **227**.
+
+It is padded to an even length, because an odd-length `DATA BYTE` run silently
+misaligns every word table after it (TRUNCATION.md 1d). `romcheck` checks it.
+
+> **Bank 1 is now the tighter budget on the combined cart: 172 bytes free**, against
+> 286 in the fixed area. A second bank is not an option -- the music player reads its
+> tables from bank 1 in the vblank ISR, which is only safe while exactly one bank is
+> permanently mapped.; the single carts have ~905. `romcheck`
 > fails the build on overflow, so nothing can ship truncated -- but any further change
 > to the combined cart needs the bytes found first.
 
