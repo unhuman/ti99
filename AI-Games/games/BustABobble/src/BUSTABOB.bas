@@ -3555,6 +3555,45 @@ rd_get:
 	RETURN
 
 	'
+
+	' NOTHING DATA-SHAPED IS LEFT ABOVE THE BANK DIRECTIVE. art.bas, juggle.bas and
+	' now music.bas have all moved below it; what remains in the fixed area is code
+	' and nothing else.
+	'
+	' !! THAT SENTENCE WAS UNTRUE FOR MONTHS while sitting directly beneath 136 bytes
+	' that contradicted it -- the art-pattern block (wall_pat ... txt_col, 17 DATA
+	' lines) was still above the directive. Every INCLUDE had been moved and the
+	' loose DATA in this file had simply been overlooked, and because the comment
+	' asserted the job was finished, nothing went looking. It is below the directive
+	' now, and the claim is finally accurate.
+	'
+	' The lesson is about the comment, not the bytes: a note that says "this is all
+	' done" stops the next person checking. If it cannot be verified mechanically,
+	' it should say what to check instead. `awk '/^\s*DATA/' up to the BANK line`
+	' answers this one in a second.
+	'
+	' Each move was resisted by the same argument and the argument was wrong each
+	' time: "this is read every frame / from the ISR, so it must not be in a bank."
+	' THE HAZARD IS BANK SWITCHING, NOT BANK RESIDENCY. This cart issues one
+	' `BANK SELECT 1` at startup and never switches again, so bank 1 is mapped
+	' permanently and a read from it is an ordinary ROM read -- from the main loop
+	' or from the vblank ISR, it makes no difference.
+	'
+	' !! THAT MAKES "NEVER ADD A SECOND BANK" A HARD CONSTRAINT, not a preference.
+	' It used to cost only cart size (3 loader pages + one per bank, rounded up to a
+	' power of two, so a second bank doubles 32 KB to 64 KB). It now also BREAKS THE
+	' MUSIC: with two banks the ISR could fire while the other page is selected and
+	' would read its note tables out of the wrong ROM, intermittently, with nothing
+	' to catch it. If a second bank ever becomes necessary, music.bas must come back
+	' above the directive first and the fixed area must be found the 660 bytes.
+	' LEVELS COME LAST, and on TI everything after `BANK 1` is assembled into that
+	' bank. The order matters for exactly that reason: music.bas used to be last,
+	' and if it still were, `BANK 1` would sweep the music tables into the bank
+	' too -- where the vblank ISR could not safely read them. Nothing may be
+	' INCLUDEd or defined after this point unless it also belongs in bank 1.
+#if TI994A
+	BANK 1
+#endif
 	' -------------------------------------------------------------- art data
 	'
 	' 160 = BRICK, running bond: a mortar course every 4 rows with the vertical
@@ -3622,32 +3661,6 @@ bar_colw:
 txt_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
-	' NOTHING DATA-SHAPED IS LEFT ABOVE THE BANK DIRECTIVE. art.bas, juggle.bas and
-	' now music.bas have all moved below it; what remains in the fixed area is code
-	' and nothing else.
-	'
-	' Each move was resisted by the same argument and the argument was wrong each
-	' time: "this is read every frame / from the ISR, so it must not be in a bank."
-	' THE HAZARD IS BANK SWITCHING, NOT BANK RESIDENCY. This cart issues one
-	' `BANK SELECT 1` at startup and never switches again, so bank 1 is mapped
-	' permanently and a read from it is an ordinary ROM read -- from the main loop
-	' or from the vblank ISR, it makes no difference.
-	'
-	' !! THAT MAKES "NEVER ADD A SECOND BANK" A HARD CONSTRAINT, not a preference.
-	' It used to cost only cart size (3 loader pages + one per bank, rounded up to a
-	' power of two, so a second bank doubles 32 KB to 64 KB). It now also BREAKS THE
-	' MUSIC: with two banks the ISR could fire while the other page is selected and
-	' would read its note tables out of the wrong ROM, intermittently, with nothing
-	' to catch it. If a second bank ever becomes necessary, music.bas must come back
-	' above the directive first and the fixed area must be found the 660 bytes.
-	' LEVELS COME LAST, and on TI everything after `BANK 1` is assembled into that
-	' bank. The order matters for exactly that reason: music.bas used to be last,
-	' and if it still were, `BANK 1` would sweep the music tables into the bank
-	' too -- where the vblank ISR could not safely read them. Nothing may be
-	' INCLUDEd or defined after this point unless it also belongs in bank 1.
-#if TI994A
-	BANK 1
-#endif
 	INCLUDE "artdefs.bas"
 	INCLUDE "art.bas"
 	INCLUDE "juggle.bas"
