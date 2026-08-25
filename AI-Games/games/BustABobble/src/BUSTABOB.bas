@@ -796,9 +796,9 @@ mus_start:
 	' Only the state word is reprinted, not the whole line -- "1=MUSIC" is static.
 prt_musen:
 	IF musen = 1 THEN
-		SCREEN s_txt,219,562,3,1,3
+		SCREEN s_txt,233,562,3,1,3
 	ELSE
-		SCREEN s_txt,216,562,3,1,3
+		SCREEN s_txt,227,562,3,1,3
 	END IF
 	RETURN
 
@@ -838,10 +838,10 @@ prt_badges:
 	' stranded badge behind it.
 prt_dlev:
 	dlx = 23			' EASY and HARD are four characters
-	IF dlev = 0 THEN SCREEN s_txt,192,626,8,1,8
-	IF dlev = 1 THEN SCREEN s_txt,184,626,8,1,8
+	IF dlev = 0 THEN SCREEN s_txt,187,626,8,1,8
+	IF dlev = 1 THEN SCREEN s_txt,203,626,8,1,8
 	IF dlev = 1 THEN dlx = 25
-	IF dlev = 2 THEN SCREEN s_txt,176,626,8,1,8
+	IF dlev = 2 THEN SCREEN s_txt,195,626,8,1,8
 	' This is the LIVE setting -- the only badge on the title that follows the
 	' toggle. The two beside the scores are history and must not move.
 	#tna = 608 + dlx		' row 19
@@ -2115,7 +2115,7 @@ do_dead:
 		mcol = 11
 		mlen = 9
 		GOSUB msg_box
-		SCREEN s_txt,167,363,9,1,9
+		SCREEN s_txt,178,363,9,1,9
 		FOR ddi = 0 TO 120
 			WAIT
 			GOSUB sfx_tick
@@ -2368,12 +2368,12 @@ draw_frame:
 	IF hudok = 0 THEN
 		CLS
 		' All on column 22, aligned with the score digits below each one.
-		SCREEN s_txt,222,22,3,1,3
-		SCREEN s_txt,225,118,2,1,2
-		SCREEN s_txt,67,278,5,1,5
+		SCREEN s_txt,230,22,3,1,3
+		SCREEN s_txt,236,118,2,1,2
+		SCREEN s_txt,65,278,5,1,5
 		' TIME in every mode now: there is only one clock, and a shot spending it
 		' does not make it something other than time.
-		SCREEN s_txt,212,502,4,1,4
+		SCREEN s_txt,223,502,4,1,4
 		hudok = 1
 	END IF
 	GOSUB draw_ceiling
@@ -2862,19 +2862,19 @@ victory:
 	GOSUB hide_sprites
 	CLS
 	' Same top row as the title: SCORE flush left, HI flush right.
-	SCREEN s_txt,207,0,5,1,5
+	SCREEN s_txt,218,0,5,1,5
 	' HI MOVES ONE COLUMN LEFT (label 19-20, digits 22-30) so column 31 is free for
 	' its difficulty badge, and the score's badge sits at 15 just past its digits.
 	' The row still brackets itself: SCORE flush left, HI flush right, now with a
 	' badge on the outside of each.
-	SCREEN s_txt,225,19,2,1,2
+	SCREEN s_txt,236,19,2,1,2
 	tsp = 6
 	GOSUB title_num_sc
 	tsp = 22
 	GOSUB title_num_hi
 	GOSUB prt_badges
-	SCREEN s_txt,110,104,16,1,16	' row 3, col 8 -- 16 chars, centred
-	SCREEN s_txt,23,715,10,1,10	' row 22, col 11. NOT row 23: that row is
+	SCREEN s_txt,124,104,16,1,16	' row 3, col 8 -- 16 chars, centred
+	SCREEN s_txt,21,715,10,1,10	' row 22, col 11. NOT row 23: that row is
 					' overscan on real hardware and clipped in
 					' Classic99 (same reason the lives moved).
 	jt = 0
@@ -2963,7 +2963,15 @@ jug_draw:
 set_screen:
 	GOSUB hide_sprites
 	CLS
-	SCREEN s_txt,142,137,13,1,13		' row 4, col 9
+	SCREEN s_txt,140,137,13,1,13		' row 4, col 9
+	' THE CREDIT LIVES HERE ON THE COMBINED CART, not on the title. The title carries
+	' three option lines instead of two, and a fourth line of small print crowded it;
+	' this screen has an empty band between the choices and the bottom marquee, and is
+	' the first thing seen on power-up, which is a better place for authorship anyway.
+	' Byte-neutral -- the SCREEN call moves screens and the string is already shared.
+	' Row 20, col 4: clear of the choices at 11 and 13, of the marquee on row 23, and
+	' of the creatures, which patrol columns 2-3 and 28-29.
+	SCREEN s_txt,0,645,21,1,21		' row 20, col 4
 	' THE TWO CHOICES, CENTRED ON THE SCREEN. Rows 11 and 13 with a blank row between,
 	' so the pair's middle is row 12 against a true screen middle of 11.5 -- half a row
 	' cannot be split on a character grid, and sitting half a row LOW balances the
@@ -2973,8 +2981,13 @@ set_screen:
 	' already says what the screen is for, and each entry still carries the key that
 	' picks it, which is the part that actually makes the control unambiguous. Dropping
 	' both returned 56 bytes to the combined cart, which was down to 56 free.
-	SCREEN s_txt,126,360,16,1,16		' row 11, col 8
-	SCREEN s_txt,42,424,18,1,18	' row 13, col 8
+	' COLUMN 7, NOT 8. The two entries are different lengths (16 and 18), so centring
+	' each independently would stagger their left edges and the eye reads the key
+	' column as ragged. They share a left edge instead, one column further left than
+	' the centred position, which also buys clearance from the creature patrolling
+	' columns 2-3.
+	SCREEN s_txt,92,359,16,1,16		' row 11, col 7
+	SCREEN s_txt,40,423,18,1,18	' row 13, col 7
 	' THE SAME TWO CREATURES PATROL THE SIDES WHILE YOU CHOOSE, one up each edge.
 	' Near enough free: the sprite patterns and the whole walk/wave/draw routine are
 	' already in ROM for the title, so this is a setup call, a mode flag and a range.
@@ -2984,8 +2997,16 @@ set_screen:
 	' rather than down on rows 21-23, where a window scaled larger than its client area
 	' clips them out of sight entirely.
 	'
-	' 24-160 is rows 3-20 of the patrol, both of them: with the two on opposite edges
-	' there is no reason to split the range the way a shared horizontal one would need.
+	' 16-160, both of them: with the two on opposite edges there is no reason to split
+	' the range the way a shared horizontal one would need.
+	'
+	' !! THE BOUNDS ARE NOT SYMMETRIC BECAUSE twx IS THE SPRITE'S TOP EDGE. The top
+	' marquee occupies px 0-7 and the bottom 184-191, so a patrol of 24-160 leaves 16
+	' px of air above the creature (24 - 8) but only 8 below (184 - 160 - 16): they
+	' visibly crowded the bottom rail and hung back from the top one. The 16 px of
+	' sprite height has to come off the LOWER bound, not the upper -- 16-160 gives
+	' 8 px at both ends. Anything measured against a sprite's position needs the same
+	' care: the coordinate is one corner, not the middle.
 	' The starts are set here rather than in tw_init because that seeds columns for the
 	' title's horizontal patrol -- 195 would begin this one below the bottom of the
 	' screen and walk up into view. 40 going down against 140 going up (tw_init sets
@@ -3023,8 +3044,8 @@ set_screen:
 	GOSUB tw_init
 	twvert = 1
 	twx(0) = 40 : twx(1) = 140
-	twlo(0) = 24 : twhi(0) = 160
-	twlo(1) = 24 : twhi(1) = 160
+	twlo(0) = 16 : twhi(0) = 160
+	twlo(1) = 16 : twhi(1) = 160
 	' WHATEVER IS HELD ON ARRIVAL MUST BE RELEASED FIRST. Seeding the "last key" with
 	' the key already down means a 1 or 2 still held from the title (where they are
 	' the music and difficulty toggles) cannot fall straight through this screen.
@@ -3150,12 +3171,12 @@ title_screen:
 	' "HI" then its 9. Row 0 is cols 0-31, so SCORE occupies 0-14 and HI 17-31.
 	' SCORE is flush LEFT (label col 0, digits 6-14); HI is flush RIGHT (digits
 	' 23-31, label just before it) so the two blocks bracket the row evenly.
-	SCREEN s_txt,207,0,5,1,5
+	SCREEN s_txt,218,0,5,1,5
 	' HI MOVES ONE COLUMN LEFT (label 19-20, digits 22-30) so column 31 is free for
 	' its difficulty badge, and the score's badge sits at 15 just past its digits.
 	' The row still brackets itself: SCORE flush left, HI flush right, now with a
 	' badge on the outside of each.
-	SCREEN s_txt,225,19,2,1,2
+	SCREEN s_txt,236,19,2,1,2
 	tsp = 6
 	GOSUB title_num_sc
 	tsp = 22
@@ -3174,12 +3195,12 @@ title_screen:
 	' names sit in the same place rather than one looking nudged. CLS has already
 	' run, so the shorter name cannot leave a stray "2" behind.
 #if BOTH
-	IF lvbase = 0 THEN SCREEN s_txt,45,233,13,1,13
-	IF lvbase > 0 THEN SCREEN s_txt,45,232,15,1,15
+	IF lvbase = 0 THEN SCREEN s_txt,43,233,13,1,13
+	IF lvbase > 0 THEN SCREEN s_txt,43,232,15,1,15
 #elif EXPERT
-	SCREEN s_txt,45,232,15,1,15
+	SCREEN s_txt,43,232,15,1,15
 #else
-	SCREEN s_txt,45,233,13,1,13
+	SCREEN s_txt,43,233,13,1,13
 #endif
 	' THE OPTION LIST READS 0, 1, 2 DOWNWARDS, so 0=GAME SELECT has to sit ABOVE
 	' 1=MUSIC rather than being appended below the fire prompt. Row 15 was the credit,
@@ -3194,20 +3215,19 @@ title_screen:
 	' offset untouched, and the list still comes out evenly spaced two rows apart:
 	' credit 13, select 15, music 17, difficulty 19, fire prompt 22.
 #if BOTH
-	SCREEN s_txt,0,420,23,1,23	' row 13, col 4 -- up two, making room below
-	SCREEN s_txt,228,489,13,1,13	' row 15, col 9 -- 13 chars, centred
+	SCREEN s_txt,153,489,13,1,13	' row 15, col 9 -- 13 chars, centred
 #else
-	SCREEN s_txt,0,484,23,1,23	' row 15, col 4
+	SCREEN s_txt,0,485,21,1,21	' row 15, col 4 -- the credit
 #endif
-	SCREEN s_txt,200,554,7,1,7			' row 17, col 10
+	SCREEN s_txt,211,554,7,1,7			' row 17, col 10
 	GOSUB prt_musen
 	' Column 5 now, because the line grew a badge on the end: label 5-16, space at
 	' 17, value 18-23, space at 24, badge at 25. Spans 5-25, centred on 15, which is
 	' where 1=MUSIC sits too. The single space either side of the value is what
 	' stops it reading as "2=DIFFICULTYEASY".
-	SCREEN s_txt,155,613,12,1,12		' row 19, col 5
+	SCREEN s_txt,166,613,12,1,12		' row 19, col 5
 	GOSUB prt_dlev
-	SCREEN s_txt,23,710,19,1,19	' row 22, col 6
+	SCREEN s_txt,21,710,19,1,19	' row 22, col 6
 	t8 = 0
 	' SEED THE EDGE DETECTOR WITH WHAT IS ALREADY HELD, not with "nothing".
 	'
@@ -3594,14 +3614,14 @@ setup838:
 	' cannot sit exactly centred on a 32-column grid, and matching the line under it
 	' reads better than splitting the difference.
 #if BOTH
-	IF lvmax = 30 THEN SCREEN s_txt,77,264,17,1,17
-	IF lvmax = 50 THEN SCREEN s_txt,60,264,17,1,17
+	IF lvmax = 30 THEN SCREEN s_txt,58,264,17,1,17
+	IF lvmax = 50 THEN SCREEN s_txt,75,264,17,1,17
 #elif EXPERT
-	SCREEN s_txt,60,264,17,1,17
+	SCREEN s_txt,75,264,17,1,17
 #else
-	SCREEN s_txt,77,264,17,1,17
+	SCREEN s_txt,58,264,17,1,17
 #endif
-	SCREEN s_txt,94,360,16,1,16
+	SCREEN s_txt,108,360,16,1,16
 	' !! #rdp IS 16-BIT ON PURPOSE. Written `rdp = 463` -- a PLAIN variable, which is
 	' 8-BIT -- the 463 silently truncated to 207, and the typed digits appeared at
 	' row 6 col 15, ABOVE "SELECT ROUND", instead of row 14 below the prompt. No
@@ -3815,36 +3835,35 @@ mq_row:
 	' aim-table corruption written up in TRUNCATION.md 1d. romcheck checks it.
 s_txt:
 	DATA BYTE 50,48,50,54,32,85,78,72	' 2026_UNH
-	DATA BYTE 85,77,65,78,32,65,78,68	' UMAN_AND
-	DATA BYTE 32,67,76,65,85,68,69,80	' _CLAUDEP
-	DATA BYTE 82,69,83,83,32,70,73,82	' RESS_FIR
-	DATA BYTE 69,32,84,79,32,83,84,65	' E_TO_STA
-	DATA BYTE 82,84,50,32,32,66,85,83	' RT2__BUS
-	DATA BYTE 84,45,65,45,66,79,66,66	' T-A-BOBB
-	DATA BYTE 76,69,32,50,83,69,76,69	' LE_2SELE
-	DATA BYTE 67,84,32,82,79,85,78,68	' CT_ROUND
-	DATA BYTE 32,49,45,53,48,83,69,76	' _1-50SEL
-	DATA BYTE 69,67,84,32,82,79,85,78	' ECT_ROUN
-	DATA BYTE 68,32,49,45,51,48,69,78	' D_1-30EN
-	DATA BYTE 84,69,82,32,84,87,79,32	' TER_TWO_
-	DATA BYTE 68,73,71,73,84,83,67,79	' DIGITSCO
-	DATA BYTE 78,71,82,65,84,85,76,65	' NGRATULA
-	DATA BYTE 84,73,79,78,83,33,49,32	' TIONS!1_
-	DATA BYTE 32,66,85,83,84,45,65,45	' _BUST-A-
-	DATA BYTE 66,79,66,66,76,69,80,73	' BOBBLEPI
-	DATA BYTE 67,75,32,65,32,66,79,66	' CK_A_BOB
-	DATA BYTE 66,76,69,50,61,68,73,70	' BLE2=DIF
-	DATA BYTE 70,73,67,85,76,84,89,71	' FICULTYG
-	DATA BYTE 65,77,69,32,79,86,69,82	' AME_OVER
-	DATA BYTE 72,65,82,68,32,32,32,32	' HARD____
-	DATA BYTE 77,69,68,73,85,77,32,32	' MEDIUM__
-	DATA BYTE 69,65,83,89,32,32,32,32	' EASY____
-	DATA BYTE 49,61,77,85,83,73,67,83	' 1=MUSICS
-	DATA BYTE 67,79,82,69,84,73,77,69	' CORETIME
-	DATA BYTE 79,70,70,79,78,32,49,85	' OFFON_1U
-	DATA BYTE 80,72,73,32,48,61,71,65	' PHI_0=GA
-	DATA BYTE 77,69,32,83,69,76,69,67	' ME_SELEC
-	DATA BYTE 84,32	' T_
+	DATA BYTE 85,77,65,78,32,38,32,67	' UMAN_&_C
+	DATA BYTE 76,65,85,68,69,80,82,69	' LAUDEPRE
+	DATA BYTE 83,83,32,70,73,82,69,32	' SS_FIRE_
+	DATA BYTE 84,79,32,83,84,65,82,84	' TO_START
+	DATA BYTE 50,32,32,66,85,83,84,45	' 2__BUST-
+	DATA BYTE 65,45,66,79,66,66,76,69	' A-BOBBLE
+	DATA BYTE 32,50,83,69,76,69,67,84	' _2SELECT
+	DATA BYTE 32,82,79,85,78,68,32,49	' _ROUND_1
+	DATA BYTE 45,51,48,83,69,76,69,67	' -30SELEC
+	DATA BYTE 84,32,82,79,85,78,68,32	' T_ROUND_
+	DATA BYTE 49,45,53,48,49,32,32,66	' 1-501__B
+	DATA BYTE 85,83,84,45,65,45,66,79	' UST-A-BO
+	DATA BYTE 66,66,76,69,69,78,84,69	' BBLEENTE
+	DATA BYTE 82,32,84,87,79,32,68,73	' R_TWO_DI
+	DATA BYTE 71,73,84,83,67,79,78,71	' GITSCONG
+	DATA BYTE 82,65,84,85,76,65,84,73	' RATULATI
+	DATA BYTE 79,78,83,33,80,73,67,75	' ONS!PICK
+	DATA BYTE 32,65,32,66,79,66,66,76	' _A_BOBBL
+	DATA BYTE 69,48,61,71,65,77,69,32	' E0=GAME_
+	DATA BYTE 83,69,76,69,67,84,50,61	' SELECT2=
+	DATA BYTE 68,73,70,70,73,67,85,76	' DIFFICUL
+	DATA BYTE 84,89,71,65,77,69,32,79	' TYGAME_O
+	DATA BYTE 86,69,82,69,65,83,89,32	' VEREASY_
+	DATA BYTE 32,32,32,72,65,82,68,32	' ___HARD_
+	DATA BYTE 32,32,32,77,69,68,73,85	' ___MEDIU
+	DATA BYTE 77,32,32,49,61,77,85,83	' M__1=MUS
+	DATA BYTE 73,67,83,67,79,82,69,84	' ICSCORET
+	DATA BYTE 73,77,69,79,70,70,49,85	' IMEOFF1U
+	DATA BYTE 80,79,78,32,72,73	' PON_HI
 	INCLUDE "artdefs.bas"
 	INCLUDE "art.bas"
 	INCLUDE "juggle.bas"

@@ -566,7 +566,18 @@ action: the high score is a single record shared by both sets, so a switch has t
 the record with it, and doing them together leaves no moment where a BUST-A-BOBBLE 2
 score sits under the BUST-A-BOBBLE title. `clr_scores` is shared with boot, because a
 wipe that cleared the score but left the badge would put a difficulty arrow beside a
-number that never earned it. The combined cart's title lists it as `0=GAME SELECT` on row 15, above `1=MUSIC`
+number that never earned it. **The credit moved to the select screen on the combined cart.** The title carries
+three option lines there instead of two, and a fourth line of small print crowded it;
+the select screen has an empty band between the choices and the bottom marquee, and
+is the first thing seen on power-up, which suits authorship better anyway. Byte
+neutral -- the `SCREEN` call changes screens and the string is shared.
+
+It also became **`2026 UNHUMAN & CLAUDE`**, one line on both screens. `&` was checked
+in **both** fonts before committing to it -- TI's `font_bitmaps` and ColecoVision's
+`db $40,$a0,...` at `$26` -- because the two targets carry different library fonts
+and only checking one would have shipped a blank glyph to the other.
+
+The combined cart's title lists `0=GAME SELECT` on row 15, above `1=MUSIC`
 (17) and `2=DIFFICULTY` (19), so the options read 0, 1, 2 downwards. Row 15 was the
 credit, which moves up to row 13 -- into the empty band under the bubbles -- **on the
 combined cart only**. `1=MUSIC` and `2=DIFFICULTY` deliberately do not move: both
@@ -619,7 +630,12 @@ The two tests are nested, not `ssk > 0 AND ssk < 3`: compound comparisons are
 miscompiled by the 9900 backend (§3A). And `ssk < 3` alone would catch the **0** key
 and start a game on a keypress that chose nothing.
 
-**The two creatures patrol the sides of it, one up each edge**, under a
+**The two creatures patrol the sides of it, one up each edge**, 16-160 -- not 24-160,
+because **`twx` is the sprite's TOP edge**. The top marquee occupies px 0-7 and the
+bottom 184-191, so 24-160 left 16 px of air above the creature but only 8 below: they
+crowded the bottom rail and hung back from the top one. The 16 px of sprite height
+comes off the LOWER bound, not the upper. Anything measured against a sprite position
+needs the same care -- the coordinate is one corner, not the middle, under a
 `PICK A BOBBLE` banner on row 3. Near enough free: the sprite patterns and the whole
 walk/wave/draw routine are already in ROM for the title, so this costs a setup call,
 a mode flag and a range. What the two screens share came out into `tw_init`; only the
