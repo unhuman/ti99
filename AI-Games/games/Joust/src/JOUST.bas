@@ -2000,7 +2000,11 @@ lprate:
 	IF #lpd < 60 THEN RETURN
 	#lpl = FRAME
 	lph = lpc / 10
-	#lpa = 6164			' row 0, column 20
+	' 6144 is the name table base and 20 is the column -- added as SEPARATE steps.
+	' Written as the finished address AND then given the base a second time, the
+	' write landed at 12308, well outside the name table: nothing appeared, and
+	' nothing complained. Exactly the VPOKE hazard in CLAUDE.md 3A.
+	#lpa = 20
 	#lpa = #lpa + 6144
 	lpv = 48 + lph
 	VPOKE #lpa,lpv
