@@ -2954,7 +2954,7 @@ jug_draw:
 set_screen:
 	GOSUB hide_sprites
 	CLS
-	PRINT AT 105,"PICK A BOBBLE"		' row 3, col 9
+	PRINT AT 137,"PICK A BOBBLE"		' row 4, col 9
 	' THE TWO CHOICES, CENTRED ON THE SCREEN. Rows 11 and 13 with a blank row between,
 	' so the pair's middle is row 12 against a true screen middle of 11.5 -- half a row
 	' cannot be split on a character grid, and sitting half a row LOW balances the
@@ -3056,12 +3056,11 @@ set_wait:
 		' game on a keypress that chose nothing; and the two comparisons cannot be
 		' folded into one `>0 AND <3`, because the 9900 backend miscompiles compound
 		' comparisons against a stale register (CLAUDE.md 3A).
+		' NO BEEP ON THE CHOICE. It is the last thing before the title's own music
+		' and animation start, so a click here only clutters the handover -- and with
+		' nothing sounded there is no decay to schedule either, so sf1 goes with it.
 		IF ssk > 0 THEN
-			IF ssk < 3 THEN
-				SOUND 1,500,10
-				sf1 = 3
-				GOTO set_chosen
-			END IF
+			IF ssk < 3 THEN GOTO set_chosen
 		END IF
 	END IF
 	GOTO set_wait

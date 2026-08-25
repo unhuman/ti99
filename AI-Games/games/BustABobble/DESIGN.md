@@ -614,7 +614,7 @@ so they compile exactly as before (856/854 free). No new ColecoVision RAM either
 reuses the existing `twx`/`twdir`/`twt`/… arrays, which matters where variables and
 the stack split 193 bytes.
 
-**The screen is three lines.** `PICK A BOBBLE` on row 3, then the two choices on rows
+**The screen is three lines.** `PICK A BOBBLE` on row 4, then the two choices on rows
 11 and 13 with a blank row between, so the pair's middle is row 12 against a true
 screen middle of 11.5 -- half a row cannot be split on a character grid, and sitting
 half a row *low* balances the banner's weight at the top better than half a row high.
@@ -658,10 +658,14 @@ definition, so swapping the pair is one call against a different table. `DEFINE 
 replicates across all three screen thirds automatically, which is what lets a
 full-height border animate from one call.
 
-> **The combined cart is now at 24 bytes free.** That is the whole budget for any
-> further change to it; the single carts have ~905. `romcheck` fails the build on
-> overflow, so nothing can ship truncated -- but the next feature needs bytes found
-> first.
+**The choice makes no sound.** It is the last thing before the title's own music and
+animation begin, so a click there only clutters the handover -- and with nothing
+sounded there is no decay to schedule, so the `sf1` bookkeeping goes with it. Worth
+**36 bytes**, which is most of the combined cart's headroom.
+
+> **The combined cart is at 60 bytes free**; the single carts have ~905. `romcheck`
+> fails the build on overflow, so nothing can ship truncated -- but any further change
+> to the combined cart needs the bytes found first.
 
 **The title seeds its edge detector with the key already held.** Choosing on 1 and 2
 made the select screen return the instant the key goes *down*, so the player is still
