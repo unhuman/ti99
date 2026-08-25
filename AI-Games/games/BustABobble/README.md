@@ -224,8 +224,9 @@ let a BUST-A-BOBBLE 2 score sit under the BUST-A-BOBBLE title.
 **`0` on the title wipes both scores and their difficulty badges and asks which game
 again.** It is the only way to switch games without a power cycle, and it clears and
 re-asks as a single action so there is never a moment where a record belongs to the
-other game. Neither `0` nor `838` is captioned on screen -- there is no room -- which
-is why they are written down here.
+other game. The combined cart's title lists it as `0=GAME SELECT`, above `1=MUSIC` and
+`2=DIFFICULTY`, so the options read 0, 1, 2 downwards. `838` stays uncaptioned --
+there is no room, and it is a setup shortcut rather than an everyday option.
 
 The ceiling descends on a **timer**, not a shot count — a flat **20 s every round**, the arcade's
 interval. It used to ramp 20 s down to 12 s by round 30; that was this port's invention and it made

@@ -566,7 +566,16 @@ action: the high score is a single record shared by both sets, so a switch has t
 the record with it, and doing them together leaves no moment where a BUST-A-BOBBLE 2
 score sits under the BUST-A-BOBBLE title. `clr_scores` is shared with boot, because a
 wipe that cleared the score but left the badge would put a difficulty arrow beside a
-number that never earned it. Neither `0` nor `838` is captioned -- no room for either.
+number that never earned it. The combined cart's title lists it as `0=GAME SELECT` on row 15, above `1=MUSIC`
+(17) and `2=DIFFICULTY` (19), so the options read 0, 1, 2 downwards. Row 15 was the
+credit, which moves up to row 13 -- into the empty band under the bubbles -- **on the
+combined cart only**. `1=MUSIC` and `2=DIFFICULTY` deliberately do not move: both
+draw a state badge at an offset derived from their row (`prt_musen` writes 562,
+`prt_dlev` `608 + dlx`), and a stale row-derived offset is exactly how the round
+counter once ended up drawn on the score. Moving only the credit leaves every badge
+untouched and still spaces the block evenly, two rows apart: 13, 15, 17, 19, 22.
+
+`838` stays uncaptioned -- no room, and it is a setup shortcut rather than an option.
 
 Switching games therefore needs a console reset, or `0` -- the ordinary multicart
 convention.

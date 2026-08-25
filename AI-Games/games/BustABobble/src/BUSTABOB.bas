@@ -3181,7 +3181,24 @@ title_screen:
 #else
 	SCREEN s_txt,45,233,13,1,13
 #endif
+	' THE OPTION LIST READS 0, 1, 2 DOWNWARDS, so 0=GAME SELECT has to sit ABOVE
+	' 1=MUSIC rather than being appended below the fire prompt. Row 15 was the credit,
+	' so on the combined cart the credit moves up two rows into the gap under the
+	' bubbles (rows 12-14 are empty) and the new line takes row 15.
+	'
+	' 1=MUSIC and 2=DIFFICULTY DO NOT MOVE, deliberately. Both draw a state badge at a
+	' hard-coded offset derived from their row -- prt_musen writes to 562 and prt_dlev
+	' to `608 + dlx` -- so shifting either line would mean shifting those too, and a
+	' row-derived offset going stale is exactly how the round counter ended up drawn
+	' on top of the score (TRUNCATION.md 1b). Moving only the credit keeps every badge
+	' offset untouched, and the list still comes out evenly spaced two rows apart:
+	' credit 13, select 15, music 17, difficulty 19, fire prompt 22.
+#if BOTH
+	SCREEN s_txt,0,420,23,1,23	' row 13, col 4 -- up two, making room below
+	SCREEN s_txt,228,489,13,1,13	' row 15, col 9 -- 13 chars, centred
+#else
 	SCREEN s_txt,0,484,23,1,23	' row 15, col 4
+#endif
 	SCREEN s_txt,200,554,7,1,7			' row 17, col 10
 	GOSUB prt_musen
 	' Column 5 now, because the line grew a badge on the end: label 5-16, space at
@@ -3825,7 +3842,9 @@ s_txt:
 	DATA BYTE 49,61,77,85,83,73,67,83	' 1=MUSICS
 	DATA BYTE 67,79,82,69,84,73,77,69	' CORETIME
 	DATA BYTE 79,70,70,79,78,32,49,85	' OFFON_1U
-	DATA BYTE 80,72,73,32	' PHI_
+	DATA BYTE 80,72,73,32,48,61,71,65	' PHI_0=GA
+	DATA BYTE 77,69,32,83,69,76,69,67	' ME_SELEC
+	DATA BYTE 84,32	' T_
 	INCLUDE "artdefs.bas"
 	INCLUDE "art.bas"
 	INCLUDE "juggle.bas"
