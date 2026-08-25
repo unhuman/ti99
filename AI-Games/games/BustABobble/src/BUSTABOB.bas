@@ -293,14 +293,7 @@
 	' cyan-on-light-blue. draw_sprites now reads bub_base/bub_lit, the tables
 	' genart.py emits from the same data as the character colours.
 
-	FOR i = 0 TO 7
-		sc(i) = 0
-		hs(i) = 0
-	NEXT i
-	' No high score yet, so its badge starts on easy alongside the zeroes rather
-	' than reading whatever RAM held.
-	hidlev = 0
-	scdlev = 0
+	GOSUB clr_scores
 
 	' Base addresses of the music tables, resolved once.
 	#musf = VARPTR mus_freq(0)
@@ -1678,6 +1671,21 @@ dbl_ad:
 	' this is the one place hs() is ever written, so the two cannot drift apart.
 	' Without it a 500,000 posted on easy is indistinguishable from one earned on
 	' hard, and the record means nothing.
+	' BOTH SCORES AND BOTH BADGES, ZEROED. Boot does this, and so does 0 on the
+	' title; it is one routine because a wipe that cleared the score but left the
+	' badge -- or the high score but left the score -- would put a difficulty arrow
+	' beside a number that never earned it.
+clr_scores:
+	FOR i = 0 TO 7
+		sc(i) = 0
+		hs(i) = 0
+	NEXT i
+	' No high score yet, so its badge starts on easy alongside the zeroes rather
+	' than reading whatever RAM held.
+	hidlev = 0
+	scdlev = 0
+	RETURN
+
 copy_hi:
 	FOR chi = 0 TO 7
 		hs(chi) = sc(chi)
@@ -3268,6 +3276,22 @@ title_wait:
 			musen = 1 - musen
 			GOSUB prt_musen
 		END IF
+#if BOTH
+		' 0 CLEARS THE RECORDS AND ASKS WHICH GAME AGAIN -- the only way back to the
+		' select screen without a power cycle, and it is spelled this way round on
+		' purpose. The high score is ONE record shared by both sets, so switching
+		' games has to take the record with it; wiping and re-asking as a single
+		' action leaves no moment where a BUST-A-BOBBLE 2 score sits under the
+		' BUST-A-BOBBLE title.
+		'
+		' Undocumented on screen -- there is no room for a caption, and the same is
+		' already true of 838. Both are in README.md instead.
+		IF tk = 0 THEN
+			GOSUB clr_scores
+			setdone = 0
+			GOTO title_screen
+		END IF
+#endif
 		' 2 toggles the ceiling rule. Like musen it is a PREFERENCE: set once and
 		' kept across games, unlike the 838 round which lasts one game only. 2 is
 		' not part of the 8-3-8 sequence, so it cannot interfere with it.

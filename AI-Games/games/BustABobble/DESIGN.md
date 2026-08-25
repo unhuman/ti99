@@ -560,7 +560,16 @@ and BUST-A-BOBBLE 2's score sits under the BUST-A-BOBBLE title, beaten by rounds
 was never set on. Game over now returns to the title of the game being played, which
 is the only screen that can describe that score honestly.
 
-Switching games therefore needs a console reset -- the ordinary multicart convention.
+**`0` on the title wipes both scores and both badges and asks which game again** --
+the only way to switch without a power cycle. Wiping and re-asking is deliberately ONE
+action: the high score is a single record shared by both sets, so a switch has to take
+the record with it, and doing them together leaves no moment where a BUST-A-BOBBLE 2
+score sits under the BUST-A-BOBBLE title. `clr_scores` is shared with boot, because a
+wipe that cleared the score but left the badge would put a difficulty arrow beside a
+number that never earned it. Neither `0` nor `838` is captioned -- no room for either.
+
+Switching games therefore needs a console reset, or `0` -- the ordinary multicart
+convention.
 The alternatives lost on cost, not on merit: a **second high-score record** is the
 better behaviour (each game keeps its own, switch freely) but needs `DIM hs(16)` plus
 a base offset at four access sites, ~60 bytes on a cart with 60 left; and **clearing
@@ -676,7 +685,7 @@ animation begin, so a click there only clutters the handover -- and with nothing
 sounded there is no decay to schedule, so the `sf1` bookkeeping goes with it. Worth
 **36 bytes**, which is most of the combined cart's headroom.
 
-> **The combined cart is at 36 bytes free**; the single carts have ~905. `romcheck`
+> **The combined cart is at 0 bytes free -- 24,336 of 24,336 exactly.**; the single carts have ~905. `romcheck`
 > fails the build on overflow, so nothing can ship truncated -- but any further change
 > to the combined cart needs the bytes found first.
 

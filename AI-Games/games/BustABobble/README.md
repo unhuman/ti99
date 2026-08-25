@@ -212,6 +212,20 @@ turned out to be the *palette*, not the logic.
 | Fire | space, or fire | fire button |
 | Pause | `P` | `1` |
 | Setup (starting round, lives) | type `8` `3` `8` on the title | `8` `3` `8` |
+| Music on/off | `1` on the title | `1` |
+| Difficulty | `2` on the title | `2` |
+| **Clear records / change game** *(1+2 cart)* | `0` on the title | `0` |
+
+**On the combined cart, the game is chosen once per power-up.** The select screen runs
+before the title, and game over returns to the title of the game you are playing --
+the high score is one record shared by both sets, so re-asking after every game would
+let a BUST-A-BOBBLE 2 score sit under the BUST-A-BOBBLE title.
+
+**`0` on the title wipes both scores and their difficulty badges and asks which game
+again.** It is the only way to switch games without a power cycle, and it clears and
+re-asks as a single action so there is never a moment where a record belongs to the
+other game. Neither `0` nor `838` is captioned on screen -- there is no room -- which
+is why they are written down here.
 
 The ceiling descends on a **timer**, not a shot count — a flat **20 s every round**, the arcade's
 interval. It used to ramp 20 s down to 12 s by round 30; that was this port's invention and it made
