@@ -110,6 +110,7 @@
 	DIM etier(NEGG)			' tier of the knight this egg came from
 	DIM #etm(NEGG)			' frames until the next state change
 
+	stwv = 1			' 838 on the title overrides this
 	GOSUB setup
 	GOTO title_screen
 
@@ -224,8 +225,37 @@ title_screen:
 	PRINT AT 520,"PRESS FIRE TO START"
 	PRINT AT 680,"2026 UNHUMAN & CLAUDE"
 	btnr = 0
+	t8 = 0
+	' SEED THE EDGE DETECTOR WITH WHAT IS ALREADY HELD. Seeding with 15 ("no key")
+	' asserts nothing is down when the title starts, which stops being true the
+	' moment anything precedes it -- a key still held would read as a fresh press.
+	tkl = cont1.key
 title_wait:
 	WAIT
+	' 8-3-8 OPENS THE WAVE SELECT. Edge triggered on cont1.key, which gives 0-9 on
+	' both targets (TI keyboard, Coleco keypad) and 15 for nothing -- and NOT on the
+	' joystick, whose vertical axis shares a line with ALPHA LOCK on the TI.
+	tk = cont1.key
+	IF tk <> tkl THEN
+		tkl = tk
+		IF tk = 8 THEN
+			IF t8 = 2 THEN
+				GOSUB setup838
+				GOTO new_game
+			END IF
+			t8 = 1
+		ELSE
+			IF tk = 3 THEN
+				IF t8 = 1 THEN
+					t8 = 2
+				ELSE
+					t8 = 0
+				END IF
+			ELSE
+				IF tk < 15 THEN t8 = 0
+			END IF
+		END IF
+	END IF
 	' RELEASE BEFORE PRESS. Arriving here with fire still held from the last
 	' game would otherwise start the next one before the screen was read.
 	IF btnr = 0 THEN
@@ -236,12 +266,59 @@ title_wait:
 	GOTO title_wait
 
 	' ------------------------------------------------------------- new game
+	' Wave selector: two digits, echoed as they are typed. Undocumented on screen
+	' -- there is no room for a caption -- so it lives in README.md instead.
+setup838:
+	GOSUB hide_all
+	CLS
+	PRINT AT 264,"START AT WAVE 01-99"
+	PRINT AT 360,"ENTER TWO DIGITS"
+	' !! #rdp IS 16-BIT ON PURPOSE. A plain variable is 8-BIT, so 463 would
+	' truncate to 207 and the digits would appear at row 6 instead of row 14 --
+	' silently, and looking like somebody's odd layout choice (TRUNCATION.md 1a).
+	#rdp = 463			' row 14, col 15
+	GOSUB rd_dig
+	sd1 = tdg
+	GOSUB rd_dig
+	stwv = sd1 * 10 + tdg
+	IF stwv < 1 THEN stwv = 1
+	' LET THE SECOND BEEP DECAY BEFORE LEAVING. The first digit's note is silenced
+	' by the second call's wait loop; after the second there is no loop left, and
+	' nothing between here and the game loop ticks the sound.
+	FOR sdw = 0 TO 5
+		WAIT
+		GOSUB sfx_tick
+	NEXT sdw
+	RETURN
+
+	' One digit: wait for every key to be RELEASED, then for a digit. Without the
+	' release wait the 8 that opened this screen is read as the first digit.
+rd_dig:
+rd_rel:
+	WAIT
+	GOSUB sfx_tick
+	IF cont1.key <> 15 THEN GOTO rd_rel
+rd_get:
+	WAIT
+	GOSUB sfx_tick
+	tdg = cont1.key
+	IF tdg > 9 THEN GOTO rd_get
+	#rda = #rdp
+	#rda = #rda + 6144
+	rdv = 48 + tdg
+	VPOKE #rda,rdv
+	#rdp = #rdp + 1
+	SOUND 0,500,9
+	sf0 = 3
+	RETURN
+
 new_game:
 	#score = 0			' stored in TENS of points: every award in
 					' Joust is a multiple of 50, so this is exact
 					' and 16 bits then reaches 655,350.
 	lives = 3
-	wave = 0
+	' 838 sets stwv; new_wave increments, so start one below it.
+	wave = stwv - 1
 	pover = 0
 	GOSUB new_wave
 	GOTO main
@@ -1583,7 +1660,7 @@ draw_eggs:
 	RETURN
 
 hide_all:
-	FOR hai = 0 TO 13
+	FOR hai = 0 TO 14
 		SPRITE hai,SPRHID,0,0,0
 	NEXT hai
 	RETURN
@@ -1596,6 +1673,7 @@ hide_all:
 troll:
 	IF wave < 3 THEN
 		SPRITE 12,SPRHID,0,0,0
+		SPRITE 14,SPRHID,0,0,0
 		RETURN
 	END IF
 	trw = agg
@@ -1619,6 +1697,7 @@ troll:
 			END IF
 		END IF
 		SPRITE 12,SPRHID,0,0,0
+		SPRITE 14,SPRHID,0,0,0
 		RETURN
 	END IF
 
@@ -1671,9 +1750,19 @@ troll:
 	END IF
 	RETURN
 
-	' The fist, plus a column of arm characters back down into the pit.
+	' THE FIST, AND THE ARM BEHIND IT. A hand hanging in mid-air over the lava
+	' reads as a floating object, not as something reaching OUT of the pit -- the
+	' arm is what makes it a troll. Sprite 14 is a second, CONNECTED segment held
+	' 14 px below the fist, so the two move as one limb and the reach stays
+	' visually anchored to the pit it comes from.
 tr_draw:
 	SPRITE 12,trhy,trx,44,9
+	tay = trhy + 14
+	IF tay > 188 THEN
+		SPRITE 14,SPRHID,0,0,0
+	ELSE
+		SPRITE 14,tay,trx,44,6
+	END IF
 	RETURN
 
 	' ---------------------------------------------------------- pterodactyl

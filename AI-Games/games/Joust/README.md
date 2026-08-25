@@ -29,6 +29,13 @@ disagreed.
 | Flap | Fire, or space | Fire |
 | Steer | Joystick 1 left/right | Joystick 1 left/right |
 | Start | Fire on the title | Fire |
+| **Start at a chosen wave** | type `8` `3` `8` on the title | `8` `3` `8` |
+
+`838` opens a two-digit wave selector -- handy for reaching the parts of the game
+that are otherwise a long way in: the **lava troll** appears at wave 3, the
+**bridges burn** at wave 3, **Hunters** at 4, the **pterodactyl** at 8, ledges start
+vanishing at 6, and **Shadow Lords** not until 16. It is not captioned on the title;
+there is no room for a caption, which is why it is written down here.
 
 **Flap is edge-triggered** — holding fire does not hover; each press is one impulse.
 **Nothing reads the vertical axis**: on the TI it shares a line with ALPHA LOCK, which
