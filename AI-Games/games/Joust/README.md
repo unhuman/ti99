@@ -7,7 +7,7 @@ one tier meaner.
 
 ## Status
 
-**Phases 1-3 of 8 build and run on both targets.** See `DESIGN.md` §14 for the phase
+**Phases 1-7 of 8 build and run on both targets.** See `DESIGN.md` §14 for the phase
 plan; §0 records the arcade research the design is built on, including where sources
 disagreed.
 
@@ -16,11 +16,11 @@ disagreed.
 | 1 | Flight, islands, lava, wrap, HUD, title | built |
 | 2 | Knights, altitude combat, eggs, hatching | built |
 | 3 | Waves, scoring, spare lives | built |
-| 4 | Arcade font | **next** |
-| 5 | Lava troll (wave 3+) | to do |
-| 6 | Island erosion (bridge w3, ledges w6+) | to do |
-| 7 | Pterodactyl (wave 8, and slow waves) | to do |
-| 8 | Egg & Survival waves, bonuses | to do |
+| 4 | Arcade font | built |
+| 5 | Lava troll (wave 3+) | built |
+| 6 | Island erosion (bridge w3, ledges w6+) | built |
+| 7 | Pterodactyl (wave 8, and slow waves) | built |
+| 8 | Egg & Survival waves, bonuses | **next** |
 
 ## Controls
 
@@ -74,8 +74,19 @@ to do by hand.
 
 | target | used | free |
 |---|---|---|
-| TI-99/4A program image | 10,892 / 24,336 | 13,444 |
-| ColecoVision ROM | 8,192 | — |
-| ColecoVision RAM | 230 / 814 | 584 |
+| TI-99/4A program image | 21,974 / 24,336 | 2,362 |
+| ColecoVision ROM | 16,384 | — |
+| ColecoVision RAM | 604 / 814 | 210 |
 
-Plenty of room for phases 4-8 on both machines — unusually comfortable for this repo.
+## Speed
+
+**CPU is the binding limit, not the VDP.** `DESIGN.md` §1a-1c has the measured
+numbers; the short version is that six knights of CVBasic physics do not fit in a
+TI-99 frame, and the loop runs at **~15 passes/sec on wave 1 and ~10 on wave 12**.
+
+Islands are indexed **by character row** (`ir1/ir2/ir3`) rather than scanned, which
+is what makes the per-actor test O(1) — see §1b, including why the same saving must
+*not* be taken by testing on alternate frames.
+
+`lprate` draws the measured passes/sec as two digits at row 0 column 20. **It is a
+temporary probe** and comes out once the frame rate is settled.

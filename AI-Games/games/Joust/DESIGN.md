@@ -39,18 +39,91 @@ Where sources disagree, the instruction card wins and the conflict is noted in p
 
 | question | answer |
 |---|---|
-| Loop | **Real-time**, one `WAIT` per frame, 60 Hz both targets |
-| Max moving sprites | **11** — player, 4 knights, 4 eggs, pterodactyl, troll hand |
-| Per-actor work | **O(1)**: add velocity, clamp, test ≤6 platforms, test lava |
-| Enemy AI | **Reactive, no search** — two comparisons per knight |
-| VDP reads per frame | **Zero.** No `GCHAR`, no `COINC`; platforms are a 6-entry RAM table |
-| Collisions | player↔4 knights, player↔4 eggs, player↔pterodactyl, player↔hand. Knight↔knight is **not** tested (they pass through, as in the arcade) |
+| Loop | **Real-time**, one `WAIT` per frame |
+| Max moving sprites | **13** — player, 6 knights, 4 eggs, pterodactyl, troll hand |
+| Per-actor work | **O(1)**: add velocity, clamp, **row-indexed** island test, test lava |
+| Enemy AI | **Reactive, no search**, and only on alternate frames |
+| VDP reads per frame | **Zero.** No `GCHAR`, no `COINC`; islands are a RAM table |
+| Collisions | player↔knights, player↔eggs, player↔pterodactyl, player↔hand. Knight↔knight is **not** tested (they pass through, as in the arcade) |
 
-**The binding limit is 4 sprites per scanline, not CPU.** `SPRITE FLICKER` is
-all-or-nothing in CVBasic and would strobe the player too, so it stays **off** and the
-player is **sprite 0** — the VDP drops the highest-numbered sprites, so slot 0 can never
-be the one that disappears. Slot order: player 0, knights 1-4, eggs 5-8, pterodactyl 9,
-troll hand 10.
+### 1a. What actually costs — measured, not estimated
+
+**CPU is the binding limit, not the 4-sprites-per-scanline rule.** An earlier version of
+this section claimed the opposite and it sent four optimisation passes at the wrong
+target. The numbers below come from counting instructions in the **generated `.a99`**,
+and they agree with the on-screen loop-rate probe to within a frame.
+
+A TI-99 frame buys roughly **2,000 instructions** once VDP wait states are paid.
+
+| | static instructions | ×N | share |
+|---|---|---|---|
+| `k_body` — knight physics + AI | 813 | ×6 | **4,878 (44%)** |
+| `k_one` — scalar cache in/out | 137 | ×6 | 822 |
+| `c_knight` | 119 | ×6 | 714 |
+| `e_body` | 176 | ×4 | 704 |
+| everything else | | | ~4,100 |
+| **total** | | | **~11,200 → 5.6 frames/pass → ~11 passes/sec** |
+
+Two conclusions that were **not** obvious and each cost a session to learn:
+
+- **Sprite output is free and there is nothing to batch.** `SPRITE n,y,x,f,c` never
+  touches the VDP: it writes four bytes to a RAM mirror (`update_sprite`, 8
+  instructions) and the vblank ISR blits all 128 bytes **every frame whether you wrote
+  any or not** (`cvbasic_9900_prologue.asm:813`). Measured here: 22 `SPRITE` statements,
+  140 generated instructions, mean 6.4 — all 15 sprites we push cost ~225 instructions,
+  **2% of the frame.** CVBasic has no bulk-sprite statement and does not need one.
+- **Almost all of `k_body` was one loop** — the island test, below.
+
+### 1b. Islands are indexed by row, not scanned
+
+Every actor used to test its y against all ten islands every frame. Even with a y-gate
+that is ~60 instructions × 10 = ~600 per actor, and with six knights, four eggs (twice
+each), the player (three times) and the rescue bird that is **~180 island iterations a
+frame** — more than the whole frame budget.
+
+**Every `ply()` is a multiple of 8**, so an island's surface lies in exactly one
+character row, and at most three islands share a row (the base and both bridges sit on
+row 21). `ir1/ir2/ir3(32)` index a row straight to its islands, rebuilt in
+`set_islands` after every erosion change. The scan becomes three array reads.
+
+This is **exact, not an approximation**: every action inside the loop body re-tests its
+own band, so the old gate was purely an early-out. That distinction is the whole point —
+an earlier attempt to halve the same cost by testing on **alternate frames** was *not*
+exact. The vertical clamp is 1150 in 8.8, i.e. 4.5 px/frame, so two frames is 9 px
+against an 8 px band, and knights fell straight through ledges.
+
+Three details that are not optional:
+
+- The row **above** the feet is consulted when the feet sit exactly on a row boundary.
+  The landing band is `[kpt, kpt+8]` — nine values — and a nine-wide band straddles two
+  rows precisely then. Dropping it silently narrows the band.
+- **Routing keeps the classic scan and its own y-gate** (`k_route`). It wants every
+  island *between* a knight and a target below it, which is a range, not a row. Without
+  its own gate it would be slower than the loop this replaced, because `k_isl` has none —
+  the row lookup *is* its gate.
+- The player's three loops and the rescue bird's are **body-span ranges** over 2-3 rows
+  and run once each per frame, so they keep the scan. Converting them buys little.
+
+Converted: the ×6 knight loop and both ×4 egg loops — ~100 of the ~130 per-frame
+iterations. Wave 1 went from ~12 to ~15 passes/sec.
+
+### 1c. The honest remaining gap
+
+**Six knights of CVBasic physics do not fit in a TI-99 frame.** Measured on wave 12 the
+loop runs at **10 passes/sec**; wave 1 runs at 15, and the difference is ~2 extra live
+knights plus the troll and the pterodactyl. That puts one live knight at ~0.8 frames and
+knights at **~80% of a late-wave frame**.
+
+The dials, with what each is worth:
+
+| lever | effect | cost |
+|---|---|---|
+| `NKN` 6 → 4 | ~10 → ~14 passes/sec | a less crowded arena, which is a design loss |
+| Hand-write `k_body` via CVBasic's `ASM` statement | potentially 3-4× | two versions (9900 **and** Z80), and it is most of the game |
+| Accept the rate, scale movement by the frame delta | correct *speed*, chunkier motion | jitter between whole frames (`WAIT` quantises to 60/30/20…) |
+
+`lprate` (called from `main:`) draws the measured passes/sec as two digits at row 0
+column 20. **It is temporary** and comes out once this is settled.
 
 ---
 
