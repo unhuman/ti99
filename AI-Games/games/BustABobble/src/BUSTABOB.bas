@@ -328,6 +328,7 @@
 #if BOTH
 	lvbase = 0			' the select screen sets these for real
 	lvmax = 30
+	setdone = 0			' the game is chosen ONCE, on the first title (see below)
 #elif EXPERT
 	lvbase = 0
 	lvmax = 50
@@ -3092,7 +3093,22 @@ title_screen:
 	' the victory test -- reads lvbase/lvmax, so the choice has to be made first.
 	' The title is silent (the tune belongs to the round), so running this straight
 	' after mus_off costs nothing musically.
-	GOSUB set_screen
+	'
+	' ONCE PER POWER-UP, NOT ONCE PER GAME. Every path back to attract mode comes
+	' through title_screen, so asking here unconditionally re-asked after every game
+	' -- and THE HIGH SCORE IS ONE RECORD SHARED BY BOTH SETS. Switch after a game
+	' and BUST-A-BOBBLE 2's score sits under the BUST-A-BOBBLE title, beaten by
+	' rounds it was never set on. Game over now returns to the title of the game
+	' being played, which is the only screen that can describe that score honestly.
+	'
+	' The cost is that switching games needs a console reset, which is the ordinary
+	' multicart convention and is why this beat the alternatives: a second high-score
+	' record would be the better behaviour but needs ~60 bytes of a cart with 60
+	' left, and clearing the record on a switch trades one confusion for a loss.
+	IF setdone = 0 THEN
+		setdone = 1
+		GOSUB set_screen
+	END IF
 #endif
 	GOSUB hide_sprites
 	CLS

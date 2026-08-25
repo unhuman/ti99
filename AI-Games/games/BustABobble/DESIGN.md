@@ -553,6 +553,19 @@ per cart and cannot offer two -- and doing the choice in the game means ColecoVi
 gets the identical screen from the identical code, instead of needing a mechanism
 of its own.
 
+**It runs ONCE PER POWER-UP, not once per game.** Every path back to attract mode
+comes through `title_screen`, so asking there unconditionally re-asked after every
+game -- and **the high score is one record shared by both sets**. Switch after a game
+and BUST-A-BOBBLE 2's score sits under the BUST-A-BOBBLE title, beaten by rounds it
+was never set on. Game over now returns to the title of the game being played, which
+is the only screen that can describe that score honestly.
+
+Switching games therefore needs a console reset -- the ordinary multicart convention.
+The alternatives lost on cost, not on merit: a **second high-score record** is the
+better behaviour (each game keeps its own, switch freely) but needs `DIM hs(16)` plus
+a base offset at four access sites, ~60 bytes on a cart with 60 left; and **clearing
+the record on a switch** trades one confusion for a loss. A `setdone` flag costs 24.
+
 **It runs BEFORE the title, and that ordering is load-bearing.** It sat between the
 title and the game at first, which broke 838: a round number means nothing until the
 set is known, so the round selector had to either guess the range for its prompt or
@@ -663,7 +676,7 @@ animation begin, so a click there only clutters the handover -- and with nothing
 sounded there is no decay to schedule, so the `sf1` bookkeeping goes with it. Worth
 **36 bytes**, which is most of the combined cart's headroom.
 
-> **The combined cart is at 60 bytes free**; the single carts have ~905. `romcheck`
+> **The combined cart is at 36 bytes free**; the single carts have ~905. `romcheck`
 > fails the build on overflow, so nothing can ship truncated -- but any further change
 > to the combined cart needs the bytes found first.
 
