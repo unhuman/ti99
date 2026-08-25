@@ -990,7 +990,15 @@ p_side:
 	RETURN
 
 	' ----------------------------------------------------- knight movement
+	' THINKING IS HALVED. Target choice, separation and routing are DECISIONS: they
+	' write ktx/kty, which persist between frames. Running them for every knight
+	' every frame is redundant, so half the knights decide on even frames and half
+	' on odd. Movement stays per-frame and perfectly smooth; a knight simply
+	' re-aims 30 times a second instead of 60, which is not a difference anybody
+	' can see -- and it halves the most expensive part of the loop.
 k_move:
+	kthf = FRAME
+	kthf = kthf AND 1
 	FOR kni = 0 TO NKN - 1
 		IF kon(kni) > 0 THEN GOSUB k_one
 	NEXT kni
@@ -1038,9 +1046,13 @@ k_one:
 	' Each knight steers toward a TARGET (ktx, kty) rather than at the player
 	' directly. Only the choice of target differs per tier, so the flight code
 	' below is shared and stays O(1).
-	IF ktier(kni) = 0 THEN GOSUB k_wander
-	IF ktier(kni) = 1 THEN GOSUB k_hunt
-	IF ktier(kni) = 2 THEN GOSUB k_lord
+	kth = kni AND 1
+	IF kth = kthf THEN
+		IF ktier(kni) = 0 THEN GOSUB k_wander
+		IF ktier(kni) = 1 THEN GOSUB k_hunt
+		IF ktier(kni) = 2 THEN GOSUB k_lord
+	END IF
+	IF kth = kthf THEN
 
 	' SEPARATION -- they avoid each other on the way in. Without it every knight
 	' flies the same line to the same point, they stack into a single silhouette,
@@ -1097,6 +1109,7 @@ k_one:
 			END IF
 		END IF
 	NEXT ksj
+	END IF
 
 	' ROUTE AROUND ROCK.
 	'
@@ -1118,8 +1131,15 @@ k_one:
 	ELSE
 		IF kmy > kty(kni) THEN
 			kfa(kni) = 10		' they beat their wings too
-			#kvy(kni) = #kvy(kni) - 420
-			IF #kvy(kni) < 32768 - 1050 THEN #kvy(kni) = 32768 - 1050
+			' 820, NOT 420. A knight flaps once per cooldown while gravity
+			' collects 44 every frame in between: at the Bounder's 14-frame
+			' cooldown that is 616 of sink against 420 of lift, so EVERY
+			' TIER SANK. They drifted to the floor and stayed there -- the
+			' "enemies get stuck at the bottom" report. They were trying and
+			' losing to arithmetic. A player never hit this because a player
+			' can tap every frame; a knight cannot.
+			#kvy(kni) = #kvy(kni) - 820
+			IF #kvy(kni) < 32768 - 1150 THEN #kvy(kni) = 32768 - 1150
 			' EAGERER EVERY WAVE TOO, floored so it stays a flap and not
 			' a hover. Same strategy per tier, sharper execution.
 			kfc = 14 - ktier(kni) * 4
@@ -1177,20 +1197,20 @@ k_one:
 	kf = kmy + MH			' feet
 	kc = kmx + 8			' centre x
 	krt = 0
-	IF kty(kni) > kmy + 12 THEN krt = 1	' target below: routing may apply
+	IF kth = kthf THEN
+		IF kty(kni) > kmy + 12 THEN krt = 1
+	END IF
+	IF krt = 2 THEN krt = 1	' target below: routing may apply
 	FOR knj = 0 TO NPLAT - 1
 		kpt = ply(knj)
 		' Y-GATE, on the one value already fetched. Nine islands in ten fail
 		' here and cost nothing further.
 		kok = 0
-		IF #kvy(kni) >= 32768 THEN
-			IF kf >= kpt THEN
-				IF kf <= kpt + 8 THEN kok = 1
-			END IF
-		ELSE
-			IF kmy <= kpt + 8 THEN
-				IF kmy >= kpt THEN kok = 1
-			END IF
+		IF kf >= kpt THEN
+			IF kf <= kpt + 8 THEN kok = 1		' feet in the band
+		END IF
+		IF kmy <= kpt + 7 THEN
+			IF kmy >= kpt THEN kok = 1		' head in the band, ANY direction
 		END IF
 		IF krt = 1 THEN
 			IF kpt > kmy + 8 THEN
@@ -1210,14 +1230,17 @@ k_one:
 								#kvy(kni) = 32768
 							END IF
 						END IF
-					ELSE
-						' rising: bounce off the underside
-						IF kmy <= kpt + 8 THEN
-							IF kmy >= kpt THEN
-								#ky(kni) = kpt + 8
-								#ky(kni) = #ky(kni) * 256
-								#kvy(kni) = 32768 + 220
-							END IF
+					END IF
+					' HEAD INSIDE THE ROCK -- pushed out downward whatever the
+					' knight was doing. Gating this on "rising" left one that
+					' had been shoved sideways into a ledge, or nudged there by
+					' the separation push, with its head embedded and no rule
+					' able to get it out again.
+					IF kmy >= kpt THEN
+						IF kmy <= kpt + 7 THEN
+							#ky(kni) = kpt + 8
+							#ky(kni) = #ky(kni) * 256
+							#kvy(kni) = 32768 + 220
 						END IF
 					END IF
 					' and route around it if it is between me and my target
@@ -1552,14 +1575,18 @@ k_unhorse:
 			' top of the player and reads as no egg at all.
 			#evy(kuj) = 32768 - 520
 			etier(kuj) = ktier(cni)
-			' GRACE: not collectable for half a second (30 frames at 60 Hz).
+			' GRACE: about a quarter second (16 frames). Half a second sounded
+			' right and was not -- a popped egg is often back on the rock
+			' inside 30 frames, so the window where it was both AIRBORNE and
+			' collectable could be nothing at all. It only has to last long
+			' enough for the egg to leave the joust that produced it.
 			' Without ANY grace the egg loop -- which runs later in this
 			' very frame -- eats the egg where it was laid, since it is
 			' created within collision range of the player by definition.
 			' Half a second is long enough that the egg visibly leaves the
 			' joust before it counts, and short enough that a deliberate
 			' mid-air catch is still on.
-			#etm(kuj) = 30
+			#etm(kuj) = 16
 			kud = 1
 		END IF
 		END IF
@@ -1602,7 +1629,7 @@ c_egg:
 	' erred toward missing, which is exactly what "touched it and did not get it"
 	' feels like.
 	cex = #ex(cni) / 256
-	cex = cex + 4
+	cex = cex + 7			' art occupies columns 3-10, so the middle is +7
 	cey = #ey(cni) / 256
 	cey = cey + 11
 	cpx2 = cpx + 8
