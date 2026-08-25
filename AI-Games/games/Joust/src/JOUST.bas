@@ -54,6 +54,32 @@
 	DIM ply(NPLAT)			' island surface row, pixels (all < 256)
 	DIM plon(NPLAT)			' 1 present, 0 burned away -- see erosion, below
 
+	' ROW -> ISLAND index. THE SINGLE BIGGEST PERFORMANCE STRUCTURE IN THE GAME.
+	'
+	' Every actor used to test its y against all ten islands EVERY FRAME. Even with
+	' a y-gate that is ~60 instructions x 10 islands = ~600 per actor, and with six
+	' knights, four eggs (twice each), the player (three times) and the rescue bird
+	' that is ~180 island iterations a frame -- comfortably more than a TI-99
+	' frame's entire instruction budget. It was measured, not guessed: k_body alone
+	' was 44% of the frame, and almost all of k_body was this loop.
+	'
+	' EVERY ply() IS A MULTIPLE OF 8, so an island's surface lies in exactly one
+	' character row, and at most three islands share a row (the base and both
+	' bridges all sit on row 21). So a row indexes straight to its islands and the
+	' scan becomes three array reads instead of ten gated ones.
+	'
+	' This is EXACT, not an approximation -- every action inside the loop body
+	' re-tests its own band, so the old kok gate was purely an early-out and
+	' replacing it changes no behaviour. That distinction matters: the earlier
+	' attempt to halve this cost by testing on alternate frames was NOT exact, and
+	' it let knights fall through ledges.
+	'
+	' 255 means "no island". DIMmed to 32 rows, not 24: feet at kmy + MH reach
+	' y 192+, which is row 24 and would be a one-past-end read.
+	DIM ir1(32)			' first island whose surface row is this row, or 255
+	DIM ir2(32)			' second (rows 7 and 21 have more than one)
+	DIM ir3(32)			' third  (row 21: base + both bridges)
+
 	' MATERIALISATION PADS. Nothing simply appears in mid-air in Joust: birds
 	' MATERIALISE on marked pads set into the islands. Two rules make them matter
 	' rather than being decoration, and both are the player's to exploit:
@@ -191,6 +217,33 @@ setup:
 	' ledge goes each wave, in a fixed order; and every Egg wave restores the lot,
 	' exactly as the arcade does.
 set_islands:
+	GOSUB set_isl_on
+	' REBUILD THE ROW TABLE. Must run after every erosion change, and set_isl_on is
+	' the only place plon() is written, so this is the one correct place for it.
+	FOR sii = 0 TO 31
+		ir1(sii) = 255
+		ir2(sii) = 255
+		ir3(sii) = 255
+	NEXT sii
+	FOR sii = 0 TO NPLAT - 1
+		IF plon(sii) = 1 THEN
+			sir = ply(sii) / 8
+			IF ir1(sir) = 255 THEN
+				ir1(sir) = sii
+			ELSE
+				IF ir2(sir) = 255 THEN
+					ir2(sir) = sii
+				ELSE
+					ir3(sir) = sii
+				END IF
+			END IF
+		END IF
+	NEXT sii
+	RETURN
+
+	' the erosion rules themselves -- several early RETURNs, which is why the table
+	' rebuild above wraps this rather than living inside it
+set_isl_on:
 	FOR sii = 0 TO NPLAT - 1
 		plon(sii) = 1
 	NEXT sii
@@ -1257,17 +1310,13 @@ k_body:
 	' All three ask the same first question ("is my centre over this island?"), so
 	' they are now one loop that asks it once: 60 iterations instead of 180. The
 	' behaviour is unchanged; only the number of times ply() is fetched is not.
-	' ============ COLLIDE ON THE FRAMES IT DOES NOT THINK ON =================
-	' A knight thinks on one parity; it now tests the islands on the OTHER. Each
-	' knight therefore does about half as much work per frame and never both jobs
-	' in the same frame, which is what made a busy frame expensive.
-	'
-	' SAFE BECAUSE OF THE GEOMETRY, not because it looks about right: a knight
-	' moves at most ~3 px a frame, so at most ~6 px between checks, and an island
-	' band is 8 px thick. It cannot pass through one unseen. The worst case is
-	' landing one frame late -- 16 ms, invisible.
-	kfe2 = 0
-	IF kth <> kthf THEN kfe2 = 1
+	' !! COLLISION RUNS EVERY FRAME. It was briefly moved to alternate frames on
+	' the argument that a knight moves ~3 px a frame and cannot cross an 8 px band
+	' in two. THE NUMBER WAS WRONG: the vertical clamp is 1150 in 8.8, which is
+	' 4.5 px a frame, so 9 px between checks against an 8 px band -- knights could
+	' and did pass straight through ledges. Thinking may be halved because a stale
+	' TARGET is harmless; collision may not, because a missed test is a knight
+	' inside solid rock. Reverted.
 	kf = kmy + MH			' feet
 	kc = kmx + 8			' centre x
 	krt = 0
@@ -1275,81 +1324,36 @@ k_body:
 		IF cty > kmy + 12 THEN krt = 1
 	END IF
 	IF krt = 2 THEN krt = 1	' target below: routing may apply
-	IF kfe2 = 1 THEN
-	FOR knj = 0 TO NPLAT - 1
-		kpt = ply(knj)
-		' Y-GATE, on the one value already fetched. Nine islands in ten fail
-		' here and cost nothing further.
-		kok = 0
-		IF kf >= kpt THEN
-			IF kf <= kpt + 8 THEN kok = 1		' feet in the band
+	' ISLAND TESTS -- O(1) via the row table, not O(10) over every island.
+	'
+	' This loop was 44% of the whole frame. It is now three array reads per row
+	' the knight occupies. THE BEHAVIOUR IS UNCHANGED: k_isl re-tests each band
+	' itself, so the old per-island y-gate was only ever an early-out.
+	'
+	' Two rows are consulted -- the head's and the feet's -- plus, only when the
+	' feet sit exactly on a row boundary, the row above. That last case is not
+	' optional: the landing band is [kpt, kpt+8], nine values, and a nine-wide
+	' band straddles two rows precisely when kf is a multiple of 8. Dropping it
+	' would silently narrow the band and put knights through ledges again.
+	krw = kmy / 8
+	GOSUB k_isl3
+	krw = kf / 8
+	kbw = krw * 8
+	IF kf = kbw THEN
+		IF krw > 0 THEN
+			krw = krw - 1
+			GOSUB k_isl3
+			krw = krw + 1
 		END IF
-		IF kmy <= kpt + 7 THEN
-			IF kmy >= kpt THEN kok = 1		' head in the band, ANY direction
-		END IF
-		IF krt = 1 THEN
-			IF kpt > kmy + 8 THEN
-				IF kpt <= cty + 8 THEN kok = 1
-			END IF
-		END IF
-		IF kok = 1 THEN
-		IF plon(knj) = 1 THEN
-			IF kc >= #plx1(knj) THEN
-				IF kc <= #plx2(knj) THEN
-					IF #cvy >= 32768 THEN
-						' falling: land on the surface
-						IF kf >= kpt THEN
-							IF kf <= kpt + 8 THEN
-								#cy = kpt - MH
-								#cy = #cy * 256
-								#cvy = 32768
-							END IF
-						END IF
-					END IF
-					' HEAD INSIDE THE ROCK -- pushed out downward whatever the
-					' knight was doing. Gating this on "rising" left one that
-					' had been shoved sideways into a ledge, or nudged there by
-					' the separation push, with its head embedded and no rule
-					' able to get it out again.
-					IF kmy >= kpt THEN
-						IF kmy <= kpt + 7 THEN
-							#cy = kpt + 8
-							#cy = #cy * 256
-							#cvy = 32768 + 220
-						END IF
-					END IF
-					' and route around it if it is between me and my target
-					IF krt = 1 THEN
-						IF kpt > kmy + 8 THEN
-							IF kpt <= cty + 8 THEN
-								#kbl = kc
-								#kbl = #kbl - #plx1(knj)
-								#kbr = #plx2(knj)
-								#kbr = #kbr - kc
-								IF #kbl < #kbr THEN
-									#kbx = #plx1(knj)
-									IF #kbx > 22 THEN
-										ctx = #kbx - 22
-									ELSE
-										ctx = 0
-									END IF
-								ELSE
-									#kbx = #plx2(knj)
-									IF #kbx < 233 THEN
-										ctx = #kbx + 22
-									ELSE
-										ctx = 255
-									END IF
-								END IF
-							END IF
-						END IF
-					END IF
-				END IF
-			END IF
-		END IF
-		END IF
-	NEXT knj
 	END IF
+	GOSUB k_isl3
+	' ROUTING IS THE ONE CASE THE ROW TABLE CANNOT SERVE: it wants every island
+	' BETWEEN the knight and its target, which is a range, not a row. So it keeps
+	' its own scan AND its own y-gate -- without the gate it would be slower than
+	' the loop this whole change replaced, because k_isl below deliberately has no
+	' gate of its own (the row lookup is its gate). It runs only on a think frame
+	' with the target below, so it is rare.
+	IF krt = 1 THEN GOSUB k_route
 	IF #cvy >= 32768 THEN
 		' NOTHING FLIES BELOW THE GROUND -- AND THE LINE IS THE FEET.
 		'
@@ -1385,6 +1389,99 @@ k_body:
 	' roll in four is the player, so it reads as a creature going about its
 	' business that sometimes notices you. Never a patrol: pacing a platform
 	' back and forth is what makes an enemy look like furniture.
+
+
+	' ROUTING -- islands between the knight and a target BELOW it.
+	'
+	' The one island test the row table cannot serve: this wants a RANGE of rows,
+	' not a row, so it keeps the classic scan and its own y-gate. The gate is not
+	' optional here -- k_isl deliberately has none (the row lookup IS its gate),
+	' so calling k_isl ten times from here would have been slower than the loop
+	' this whole change replaced.
+	'
+	' Steer around the NEARER edge: whichever side of the island the knight is
+	' already closer to, aim 22 px past it. Aiming at the far edge makes a knight
+	' cross the obstacle it is trying to avoid.
+k_route:
+	FOR knj = 0 TO NPLAT - 1
+		kpt = ply(knj)
+		IF kpt > kmy + 8 THEN
+			IF kpt <= cty + 8 THEN
+			IF plon(knj) = 1 THEN
+				IF kc >= #plx1(knj) THEN
+					IF kc <= #plx2(knj) THEN
+						#kbl = kc
+						#kbl = #kbl - #plx1(knj)
+						#kbr = #plx2(knj)
+						#kbr = #kbr - kc
+						IF #kbl < #kbr THEN
+							#kbx = #plx1(knj)
+							IF #kbx > 22 THEN
+								ctx = #kbx - 22
+							ELSE
+								ctx = 0
+							END IF
+						ELSE
+							#kbx = #plx2(knj)
+							IF #kbx < 233 THEN
+								ctx = #kbx + 22
+							ELSE
+								ctx = 255
+							END IF
+						END IF
+					END IF
+				END IF
+			END IF
+			END IF
+		END IF
+	NEXT knj
+	RETURN
+
+	' the up-to-three islands whose surface lies in character row krw
+k_isl3:
+	knj = ir1(krw)
+	IF knj < 255 THEN GOSUB k_isl
+	knj = ir2(krw)
+	IF knj < 255 THEN GOSUB k_isl
+	knj = ir3(krw)
+	IF knj < 255 THEN GOSUB k_isl
+	RETURN
+
+	' ONE island against one knight. Every branch re-tests its own band, so this
+	' is safe to call for any island -- which is what lets the row table replace
+	' the old scan without changing a single outcome.
+k_isl:
+	kpt = ply(knj)
+	IF plon(knj) = 1 THEN
+		IF kc >= #plx1(knj) THEN
+			IF kc <= #plx2(knj) THEN
+				IF #cvy >= 32768 THEN
+					' falling: land on the surface
+					IF kf >= kpt THEN
+						IF kf <= kpt + 8 THEN
+							#cy = kpt - MH
+							#cy = #cy * 256
+							#cvy = 32768
+						END IF
+					END IF
+				END IF
+				' HEAD INSIDE THE ROCK -- pushed out downward whatever the
+				' knight was doing. Gating this on "rising" left one that
+				' had been shoved sideways into a ledge, or nudged there by
+				' the separation push, with its head embedded and no rule
+				' able to get it out again.
+				IF kmy >= kpt THEN
+					IF kmy <= kpt + 7 THEN
+						#cy = kpt + 8
+						#cy = #cy * 256
+						#cvy = 32768 + 220
+					END IF
+				END IF
+			END IF
+		END IF
+	END IF
+	RETURN
+
 k_wander:
 	IF cwan > 0 THEN
 		cwan = cwan - 1
@@ -1498,28 +1595,20 @@ e_body:
 		egy = #gy / 256
 		egx = #gx / 256
 		egf = egy + 16
-		FOR egj = 0 TO NPLAT - 1
-			ept = ply(egj)
-			IF egf >= ept THEN
-				IF egf <= ept + 8 THEN
-				IF plon(egj) = 1 THEN	' y-gated above: 1 read to reject
-					egc = egx + 8
-					IF egc >= #plx1(egj) THEN
-						IF egc <= #plx2(egj) THEN
-							#gy = ept - 16
-							#gy = #gy * 256
-							gst = 2
-							#gtm = 240	' now the REST timer
-							' KEEP THE SIDEWAYS MOMENTUM. An egg that
-							' stops dead the instant it touches rock
-							' looks glued on; it should skid and
-							' settle. e_rest below bleeds it off.
-						END IF
-					END IF
-				END IF
+		' ISLAND TEST -- O(1) row lookup, not a scan of all ten. See the ir1/ir2/ir3
+		' comment at the DIMs: every ply() is a multiple of 8, so an island sits in one
+		' character row. 		 re-tests the band itself, so this is exact.
+		' The row above is consulted only when the feet land exactly on a boundary --
+		' the band is nine values wide and straddles two rows precisely then.
+		erw = egf / 8
+		GOSUB e_isl3
+		ebw = erw * 8
+		IF egf = ebw THEN
+			IF erw > 0 THEN
+				erw = erw - 1
+				GOSUB e_isl3
 			END IF
-			END IF
-		NEXT egj
+		END IF
 		' An egg that falls into the gap is simply gone.
 		IF egy > LAVAY THEN gst = 0
 		RETURN
@@ -1563,25 +1652,84 @@ e_rest:
 	egc = egx + 8
 	egf = egy + 16
 	ergs = 0
-	FOR egj = 0 TO NPLAT - 1
-		ept = ply(egj)
-		IF egf >= ept THEN
-			IF egf <= ept + 8 THEN
-			IF plon(egj) = 1 THEN	' y-gated above: 1 read to reject
-				IF egc >= #plx1(egj) THEN
-					IF egc <= #plx2(egj) THEN
-						ergs = 1
-					END IF
-				END IF
-			END IF
-			END IF
+	' ISLAND TEST -- O(1) row lookup, not a scan of all ten. See the ir1/ir2/ir3
+	' comment at the DIMs: every ply() is a multiple of 8, so an island sits in one
+	' character row. 	 re-tests the band itself, so this is exact.
+	' The row above is consulted only when the feet land exactly on a boundary --
+	' the band is nine values wide and straddles two rows precisely then.
+	erw = egf / 8
+	GOSUB e_rst3
+	ebw = erw * 8
+	IF egf = ebw THEN
+		IF erw > 0 THEN
+			erw = erw - 1
+			GOSUB e_rst3
 		END IF
-	NEXT egj
+	END IF
 	IF ergs = 0 THEN
 		gst = 1			' skidded off: falling again
 		#gvy = 32768
 	END IF
 	RETURN
+
+	' the up-to-three islands whose surface lies in character row erw --
+	' landing, then support. Two separate bodies because they do different work.
+e_isl3:
+	egj = ir1(erw)
+	IF egj < 255 THEN GOSUB e_isl
+	egj = ir2(erw)
+	IF egj < 255 THEN GOSUB e_isl
+	egj = ir3(erw)
+	IF egj < 255 THEN GOSUB e_isl
+	RETURN
+
+e_isl:
+		ept = ply(egj)
+		IF egf >= ept THEN
+			IF egf <= ept + 8 THEN
+			IF plon(egj) = 1 THEN	' y-gated above: 1 read to reject
+				egc = egx + 8
+				IF egc >= #plx1(egj) THEN
+					IF egc <= #plx2(egj) THEN
+						#gy = ept - 16
+						#gy = #gy * 256
+						gst = 2
+						#gtm = 240	' now the REST timer
+						' KEEP THE SIDEWAYS MOMENTUM. An egg that
+						' stops dead the instant it touches rock
+						' looks glued on; it should skid and
+						' settle. e_rest below bleeds it off.
+					END IF
+				END IF
+			END IF
+		END IF
+		END IF
+	RETURN
+
+e_rst3:
+	egj = ir1(erw)
+	IF egj < 255 THEN GOSUB e_rst
+	egj = ir2(erw)
+	IF egj < 255 THEN GOSUB e_rst
+	egj = ir3(erw)
+	IF egj < 255 THEN GOSUB e_rst
+	RETURN
+
+e_rst:
+	ept = ply(egj)
+	IF egf >= ept THEN
+		IF egf <= ept + 8 THEN
+		IF plon(egj) = 1 THEN	' y-gated above: 1 read to reject
+			IF egc >= #plx1(egj) THEN
+				IF egc <= #plx2(egj) THEN
+					ergs = 1
+				END IF
+			END IF
+		END IF
+		END IF
+	END IF
+	RETURN
+
 
 	' Hatch into the first free knight slot, one tier up. If every slot is busy
 	' the egg simply waits and tries again next frame.
