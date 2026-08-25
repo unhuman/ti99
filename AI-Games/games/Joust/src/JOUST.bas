@@ -512,6 +512,7 @@ prt_lives:
 main:
 	WAIT
 	#wvt = #wvt + 1
+	GOSUB lprate			' !! TEMPORARY -- see the note at lprate
 	GOSUB p_input
 	GOSUB p_move
 	GOSUB k_spawn
@@ -1971,6 +1972,44 @@ ptero:
 		END IF
 	END IF
 	IF binv = 0 THEN pdead = 1
+	RETURN
+
+	' ====================== TEMPORARY: LOOP RATE PROBE ======================
+	' Two digits at row 0, column 20: LOOP PASSES PER SECOND.
+	'
+	' There is a WAIT at the top of the main loop, so every pass costs at least
+	' one vblank and the achievable rates are quantised: 60, 30, 20, 15. That
+	' makes this number diagnostic rather than merely informative --
+	'
+	'   60  the loop finishes inside one frame. Any remaining sluggishness is
+	'       the EMULATOR, or the physics constants, and not the code.
+	'   30  the body overruns one frame and WAIT costs a whole second one. The
+	'       fix is to make the body cheaper, and HALF a frame of work is enough
+	'       to get back to 60 -- there is no partial credit.
+	'   20  it is overrunning two.
+	'
+	' Three optimisation passes have been made on the strength of counted array
+	' reads. This measures the thing itself, so the next pass is aimed rather
+	' than guessed -- and it tells us when to STOP, which counting never did.
+	'
+	' Remove this routine, its GOSUB and its variables once the answer is known.
+lprate:
+	lpc = lpc + 1
+	#lpd = FRAME
+	#lpd = #lpd - #lpl
+	IF #lpd < 60 THEN RETURN
+	#lpl = FRAME
+	lph = lpc / 10
+	#lpa = 6164			' row 0, column 20
+	#lpa = #lpa + 6144
+	lpv = 48 + lph
+	VPOKE #lpa,lpv
+	#lpa = #lpa + 1
+	lpv = lph * 10
+	lpv = lpc - lpv
+	lpv = 48 + lpv
+	VPOKE #lpa,lpv
+	lpc = 0
 	RETURN
 
 	' ------------------------------------------------------------ sound tick
