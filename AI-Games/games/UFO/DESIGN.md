@@ -382,8 +382,8 @@ free against the 24,336-byte cap.
 | phase | content | state |
 |---|---|---|
 | 1 | Space, starfield, ship, 8-way movement, wraparound, HUD, title, **loop probe** | **built** |
-| 2 | Force field: ring, charge, drain, recharge, half speed, colour ramp, armed rule | — |
-| 3 | Clockwise gun drift, gun dot, laser fire and flight | — |
+| 2 | Force field: ring, charge, drain, recharge, half speed, colour ramp, armed rule | **built** |
+| 3 | Clockwise gun drift, gun dot, laser fire and flight | **built** |
 | 4 | Drifters: plus/multiply spin, spawning, ram kill, laser kill, player death | — |
 | 5 | Hunter-Killers (with linking) and Light-speed Starships with guided missiles | — |
 | 6 | Chain reactions — three missiles per kill | — |
@@ -391,6 +391,9 @@ free against the 24,336-byte cap.
 | 8 | `838` setup (ships 1-9, starting difficulty), sound, difficulty escalation | — |
 
 Each phase builds and runs on **both** targets before the next begins.
+
+Phases 2 and 3 were built together: firing is what drains the field, so a shield with nothing
+to spend it on cannot be tested, and a gun with no cost attached is not the mechanic.
 
 ---
 
