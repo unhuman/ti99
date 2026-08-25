@@ -15,11 +15,12 @@
 	'   * A GOSUB left by GOTO never pops; on ColecoVision's 1 KB that is fatal.
 	' ==========================================================================
 
-	CONST GRAV = 24			' added to #vy every frame (8.8: 0.09 px/frame^2)
-	CONST ACCX = 20			' horizontal acceleration while steering
-	CONST FRIC = 10			' horizontal decay when not steering
+	CONST GRAV = 30			' added to #vy every frame. Heavier than it looks:
+					' Joust's mount FALLS, and the flap has to fight it
+	CONST ACCX = 28			' horizontal acceleration while steering
+	CONST FRIC = 12			' horizontal decay when not steering
 	CONST NPLAT = 9			' islands, DIM 0..8 -- MEASURED, see assets/refmap.py
-	CONST NKN = 4			' knights, DIM 0..3
+	CONST NKN = 6			' knights, DIM 0..5 -- SIX. Joust is meant to be crowded
 	CONST NEGG = 4			' eggs, DIM 0..3
 	CONST LAVAY = 168		' feet at or below this pixel row are in the lava
 	CONST TOPY = 8			' ceiling: sprite top cannot go above this
@@ -172,6 +173,8 @@ new_wave:
 	' KNIGHTS PER WAVE, and their tier. Difficulty is flap eagerness and top
 	' speed -- never making them flee, which reads as broken AI rather than as
 	' an easier game (CLAUDE.md 3A).
+	' THREE ON WAVE 1 AND RISING. The arcade gets hectic fast, and a wave that
+	' opens with two knights drifting about reads as a screensaver.
 	nwk = 2 + wave
 	IF nwk > NKN THEN nwk = NKN
 	FOR nwi = 0 TO NKN - 1
@@ -188,8 +191,8 @@ new_wave:
 			kty(nwi) = 60
 			' spread the spawns across the two upper platforms
 			#kx(nwi) = 4096
-			IF nwi > 1 THEN #kx(nwi) = 45056
-			#kx(nwi) = #kx(nwi) + nwi * 2048
+			IF nwi > 2 THEN #kx(nwi) = 40960
+			#kx(nwi) = #kx(nwi) + nwi * 3072
 			#ky(nwi) = 8192
 			#kvx(nwi) = 32768
 			#kvy(nwi) = 32768
@@ -342,7 +345,7 @@ p_input:
 	IF cont1.button THEN
 		IF pflp = 0 THEN
 			pflp = 1
-			#vy = 32768 - 660
+			#vy = 32768 - 760
 			pfrm = 2
 			SOUND 0,700,12
 			sf0 = 3
@@ -357,12 +360,12 @@ p_input:
 	IF cont1.left THEN
 		pin = 1
 		pface = 1
-		IF #vx > 32768 - 512 THEN #vx = #vx - ACCX
+		IF #vx > 32768 - 640 THEN #vx = #vx - ACCX
 	END IF
 	IF cont1.right THEN
 		pin = 1
 		pface = 0
-		IF #vx < 32768 + 512 THEN #vx = #vx + ACCX
+		IF #vx < 32768 + 640 THEN #vx = #vx + ACCX
 	END IF
 	IF pin = 0 THEN GOSUB p_fric
 	RETURN
@@ -384,7 +387,7 @@ p_fric:
 	' ------------------------------------------------------ player movement
 p_move:
 	#vy = #vy + GRAV
-	IF #vy > 32768 + 700 THEN #vy = 32768 + 700	' terminal fall speed
+	IF #vy > 32768 + 820 THEN #vy = 32768 + 820	' terminal fall speed
 
 	' 16-bit wrap does the signed arithmetic for us: adding (v - 32768) is
 	' correct whichever side of the bias v sits on.
@@ -497,8 +500,8 @@ k_one:
 	' The multiply reads #ktp2, not #ktop: on the 9900 MPY leaves the high word in
 	' r0 and reading back the variable just multiplied returns 0 (CLAUDE.md 3A).
 	#ktp2 = ktier(kni)
-	#ktop = #ktp2 * 90
-	#ktop = #ktop + 400
+	#ktop = #ktp2 * 100
+	#ktop = #ktop + 520
 	#kfast = 32768 + #ktop
 	#kslow = 32768 - #ktop
 
@@ -524,8 +527,8 @@ k_one:
 		kflp(kni) = kflp(kni) - 1
 	ELSE
 		IF kmy > kty(kni) THEN
-			#kvy(kni) = 32768 - 620
-			kflp(kni) = 26 - ktier(kni) * 7
+			#kvy(kni) = 32768 - 700
+			kflp(kni) = 18 - ktier(kni) * 5
 		END IF
 	END IF
 
@@ -614,7 +617,8 @@ k_wander:
 		kwan(kni) = kwan(kni) - 1
 		RETURN
 	END IF
-	kwan(kni) = 50 + RANDOM(70)
+	kwan(kni) = 28 + RANDOM(40)	' re-target often -- a Bounder that commits
+					' to one heading for two seconds looks asleep
 	kr = RANDOM(4)
 	IF kr = 0 THEN
 		ktx(kni) = kpx
@@ -651,12 +655,12 @@ k_lord:
 
 k_right:
 	kface(kni) = 0
-	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 14
+	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 20
 	RETURN
 
 k_left:
 	kface(kni) = 1
-	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 14
+	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 20
 	RETURN
 
 	' --------------------------------------------------------- egg movement
@@ -687,7 +691,7 @@ e_one:
 							#ey(egi) = ply(egj) - 16
 							#ey(egi) = #ey(egi) * 256
 							est(egi) = 2
-							#etm(egi) = 500
+							#etm(egi) = 240
 							#evx(egi) = 32768
 						END IF
 					END IF
@@ -703,7 +707,7 @@ e_one:
 	' Resting, then cracking, then a fresh knight one tier higher.
 	IF #etm(egi) > 0 THEN
 		#etm(egi) = #etm(egi) - 1
-		IF #etm(egi) = 120 THEN
+		IF #etm(egi) = 90 THEN
 			est(egi) = 3
 			SOUND 2,300,10
 			sf2 = 6
@@ -719,8 +723,12 @@ e_hatch:
 	FOR ehj = 0 TO NKN - 1
 		IF kon(ehj) = 0 THEN
 			kon(ehj) = 1
+			' THE TIER CYCLES: Bounder -> Hunter -> Shadow Lord -> Bounder.
+			' It does NOT cap at Shadow Lord -- capping would let a late wave
+			' settle into a stable top tier, and the arcade deliberately keeps
+			' turning the wheel so an ignored egg is always an escalation.
 			ktier(ehj) = etier(egi) + 1
-			IF ktier(ehj) > 2 THEN ktier(ehj) = 2
+			IF ktier(ehj) > 2 THEN ktier(ehj) = 0
 			#kx(ehj) = #ex(egi)
 			#ky(ehj) = #ey(egi)
 			#kvx(ehj) = 32768
@@ -888,7 +896,7 @@ draw_knights:
 draw_eggs:
 	FOR dei = 0 TO NEGG - 1
 		IF est(dei) = 0 THEN
-			SPRITE 5 + dei,SPRHID,0,0,0
+			SPRITE 7 + dei,SPRHID,0,0,0
 		ELSE
 			dey = #ey(dei) / 256
 			dex = #ex(dei) / 256
@@ -897,13 +905,13 @@ draw_eggs:
 				dec = 15
 				IF #etm(dei) AND 4 THEN dec = 9
 			END IF
-			SPRITE 5 + dei,dey,dex,32,dec
+			SPRITE 7 + dei,dey,dex,32,dec
 		END IF
 	NEXT dei
 	RETURN
 
 hide_all:
-	FOR hai = 0 TO 9
+	FOR hai = 0 TO 11
 		SPRITE hai,SPRHID,0,0,0
 	NEXT hai
 	RETURN
