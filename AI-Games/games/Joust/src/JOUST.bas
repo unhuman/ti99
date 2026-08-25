@@ -104,6 +104,7 @@ setup:
 	DEFINE SPRITE 4,4,spr_mount_l	' patterns 16,20,24,28 -- facing left
 	DEFINE SPRITE 8,1,spr_egg	' pattern 32
 	DEFINE SPRITE 9,1,spr_runner	' pattern 36
+	DEFINE SPRITE 10,1,spr_egg_x	' pattern 40 -- cracked, about to hatch
 
 	' THE ISLANDS -- MEASURED FROM AN ARCADE SCREENSHOT, not invented. See
 	' assets/refmap.py, which classifies every pixel of a reference shot as rock
@@ -482,7 +483,11 @@ p_move:
 	py8 = #py / 256
 	IF py8 < TOPY THEN
 		#py = 2048
-		#vy = 32768			' bonk the ceiling, stop rising
+		' PUSHED BACK DOWN, not stopped. Parked against the ceiling a bird is
+		' unreachable -- nothing can get above it, so it can neither kill nor
+		' be killed, and the joust stops being a contest. A gentle downward
+		' shove means the top of the screen is a place you pass through.
+		#vy = 32768 + 220
 	END IF
 
 	GOSUB p_bump
@@ -664,10 +669,14 @@ k_foot:
 rb_move:
 	IF rbon = 0 THEN GOSUB rb_launch
 	IF rbon = 0 THEN RETURN
+	' HIS MAN IS GONE -- collected, or fell in the lava. The bird does not vanish
+	' mid-air: it carries on across the screen and leaves. It cannot kill, cannot
+	' be killed, and does not wrap -- it simply exits and is done.
 	IF kon(rbt) <> KFOOT THEN
-		rbon = 0			' he died or was collected first
-		RETURN
+		IF rbon = 1 THEN rbon = 2
 	END IF
+	IF rbon = 2 THEN GOSUB rb_flyby
+	IF rbon <> 1 THEN RETURN
 	rgx = #kx(rbt) / 256
 	rgy = #ky(rbt) / 256
 	IF rbx < rgx THEN
@@ -679,6 +688,7 @@ rb_move:
 	END IF
 	IF rby < rgy THEN rby = rby + 2
 	IF rby > rgy THEN rby = rby - 2
+	GOSUB rb_clear
 	rdx = rbx - rgx
 	IF rbx < rgx THEN rdx = rgx - rbx
 	rdy = rby - rgy
@@ -695,6 +705,49 @@ rb_move:
 			SOUND 1,420,11
 			sf1 = 4
 		END IF
+	END IF
+	RETURN
+
+	' Flying off. Straight on in the direction it was already going, no wrap: once
+	' it is past the edge it is gone.
+rb_flyby:
+	IF rbf = 0 THEN
+		IF rbx > 248 THEN
+			rbon = 0
+			RETURN
+		END IF
+		rbx = rbx + 3
+	ELSE
+		IF rbx < 6 THEN
+			rbon = 0
+			RETURN
+		END IF
+		rbx = rbx - 3
+	END IF
+	GOSUB rb_clear
+	RETURN
+
+	' THE BIRD DOES NOT FLY THROUGH ROCK. If its box has ended up inside an
+	' island it climbs until it is clear, which reads as hopping the obstacle.
+rb_clear:
+	rbz = 0
+	FOR rbj = 0 TO NPLAT - 1
+		rpt = ply(rbj)
+		IF rby + 15 >= rpt THEN
+			IF rby <= rpt + 7 THEN
+			IF plon(rbj) = 1 THEN
+				rbc = rbx + 8
+				IF rbc >= #plx1(rbj) THEN
+					IF rbc <= #plx2(rbj) THEN
+						rbz = 1
+					END IF
+				END IF
+			END IF
+			END IF
+		END IF
+	NEXT rbj
+	IF rbz = 1 THEN
+		IF rby > 10 THEN rby = rby - 3
 	END IF
 	RETURN
 
@@ -837,7 +890,7 @@ k_one:
 	kmy = #ky(kni) / 256
 	IF kmy < TOPY THEN
 		#ky(kni) = 2048
-		#kvy(kni) = 32768
+		#kvy(kni) = 32768 + 220	' knights are pushed off the ceiling too
 	END IF
 
 	' Knights obey the same solid islands the player does -- an enemy that can
@@ -983,7 +1036,10 @@ e_one:
 							#ey(egi) = #ey(egi) * 256
 							est(egi) = 2
 							#etm(egi) = 240	' now the REST timer
-							#evx(egi) = 32768
+							' KEEP THE SIDEWAYS MOMENTUM. An egg that
+							' stops dead the instant it touches rock
+							' looks glued on; it should skid and
+							' settle. e_rest below bleeds it off.
 						END IF
 					END IF
 				END IF
@@ -995,6 +1051,9 @@ e_one:
 		RETURN
 	END IF
 
+	' Resting: still sliding, bleeding off speed, and possibly skidding clean off
+	' the edge of the island it landed on.
+	IF est(egi) = 2 THEN GOSUB e_rest
 	' Resting, then cracking, then a fresh knight one tier higher.
 	IF #etm(egi) > 0 THEN
 		#etm(egi) = #etm(egi) - 1
@@ -1006,6 +1065,48 @@ e_one:
 		RETURN
 	END IF
 	GOSUB e_hatch
+	RETURN
+
+	' FRICTION ON THE GROUND. The egg slides, slows, and stops -- and if it slides
+	' off the end of its island it falls again, which is the arcade's behaviour and
+	' makes a ledge a bad place to leave one.
+e_rest:
+	IF #evx(egi) > 32768 THEN
+		#evx(egi) = #evx(egi) - 14
+		IF #evx(egi) < 32768 THEN #evx(egi) = 32768
+	ELSE
+		IF #evx(egi) < 32768 THEN
+			#evx(egi) = #evx(egi) + 14
+			IF #evx(egi) > 32768 THEN #evx(egi) = 32768
+		END IF
+	END IF
+	IF #evx(egi) = 32768 THEN RETURN	' come to rest
+	#ex(egi) = #ex(egi) + #evx(egi)
+	#ex(egi) = #ex(egi) - 32768
+	' still supported?
+	egx = #ex(egi) / 256
+	egy = #ey(egi) / 256
+	egc = egx + 8
+	egf = egy + 16
+	ergs = 0
+	FOR egj = 0 TO NPLAT - 1
+		ept = ply(egj)
+		IF egf >= ept THEN
+			IF egf <= ept + 8 THEN
+			IF plon(egj) = 1 THEN
+				IF egc >= #plx1(egj) THEN
+					IF egc <= #plx2(egj) THEN
+						ergs = 1
+					END IF
+				END IF
+			END IF
+			END IF
+		END IF
+	NEXT egj
+	IF ergs = 0 THEN
+		est(egi) = 1			' skidded off: falling again
+		#evy(egi) = 32768
+	END IF
 	RETURN
 
 	' Hatch into the first free knight slot, one tier up. If every slot is busy
@@ -1264,11 +1365,14 @@ draw_eggs:
 			dey = #ey(dei) / 256
 			dex = #ex(dei) / 256
 			dec = 15
+			dep = 32
 			IF est(dei) = 3 THEN
-				dec = 15
+				' CRACKED, and flashing. The pattern change is the real
+				' warning; the flash only draws the eye to it.
+				dep = 40
 				IF #etm(dei) AND 4 THEN dec = 9
 			END IF
-			SPRITE 7 + dei,dey,dex,32,dec
+			SPRITE 7 + dei,dey,dex,dep,dec
 		END IF
 	NEXT dei
 	RETURN

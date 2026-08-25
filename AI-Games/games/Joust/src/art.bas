@@ -44,16 +44,22 @@ spr_mount_l:	' the same four, facing LEFT
 	DATA BYTE $FF,$FE,$FC,$F8,$38,$0C,$0E,$00
 
 spr_egg:	' egg
-	DATA BYTE $00,$00,$03,$07,$0F,$0F,$1F,$1F
-	DATA BYTE $1F,$1F,$0F,$0F,$07,$03,$00,$00
-	DATA BYTE $00,$00,$C0,$E0,$F0,$F0,$F8,$F8
-	DATA BYTE $F8,$F8,$F0,$F0,$E0,$C0,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $07,$0F,$1F,$1F,$1F,$0F,$07,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $80,$C0,$E0,$E0,$E0,$C0,$80,$00
 
 spr_runner:	' unhorsed knight, on foot
-	DATA BYTE $03,$07,$07,$03,$07,$0F,$1B,$33
-	DATA BYTE $03,$03,$07,$0C,$18,$30,$00,$00
-	DATA BYTE $00,$80,$80,$00,$80,$C0,$60,$30
-	DATA BYTE $00,$00,$80,$C0,$60,$30,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $03,$03,$0F,$17,$07,$04,$0C,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$C0,$A0,$80,$80,$C0,$00
+
+spr_egg_x:	' egg, cracked -- about to hatch
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $06,$0D,$1D,$1B,$1E,$0E,$05,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $80,$C0,$E0,$E0,$E0,$C0,$80,$00
 
 chr_plat_l:	' plat_l
 	DATA BYTE $7F,$FF,$C0,$C0,$C0,$C0,$40,$00
