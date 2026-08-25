@@ -21,8 +21,19 @@ import os
 import re
 import sys
 
+# Paths may be given explicitly (a build script passes its own sources); with none,
+# sweep every game. The default is resolved from THIS FILE's location rather than the
+# working directory, so it behaves the same whether it is run from the repo root or
+# from a game's src/ during a build.
+_args = [a for a in sys.argv[1:] if not a.startswith("-")]
+if _args:
+    _paths = sorted(_args)
+else:
+    _here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _paths = sorted(glob.glob(os.path.join(_here, "games", "*", "src", "*.bas")))
+
 hits = 0
-for path in sorted(glob.glob(os.path.join("games", "*", "src", "*.bas"))):
+for path in _paths:
     for n, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
         m = re.match(r"\s*CONST\s+(\w+)\s*=\s*(\d+)\s*$", line.split("'")[0].rstrip())
         if m and int(m.group(2)) > 255:

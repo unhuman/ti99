@@ -772,7 +772,7 @@ mf_step:
 
 	' --- eat fruit (XB 770-772) ---
 eatfruit:	PROCEDURE
-	#pt = #pt + ffp
+	#pt = #pt + #ffp
 	GOSUB killfruit
 	GOSUB hud
 	SOUND 0, 214, 13			' fruit chime (523 Hz then 659 Hz)
@@ -828,31 +828,35 @@ fruitdef:	PROCEDURE
 	IF le >= 8 THEN fl = RANDOM(7) + 1
 	IF fl = 1 THEN
 		DEFINE SPRITE 7,1,fruit_cherry
-		ffl = 8 : ffp = 10		' 100 pts
+		ffl = 8 : #ffp = 10		' 100 pts
 	END IF
 	IF fl = 2 THEN
 		DEFINE SPRITE 7,1,fruit_straw
-		ffl = 8 : ffp = 20		' 200 pts
+		ffl = 8 : #ffp = 20		' 200 pts
 	END IF
 	IF fl = 3 THEN
 		DEFINE SPRITE 7,1,fruit_orange
-		ffl = 10 : ffp = 50		' 500 pts
+		ffl = 10 : #ffp = 50		' 500 pts
 	END IF
 	IF fl = 4 THEN
 		DEFINE SPRITE 7,1,fruit_pretzel
-		ffl = 6 : ffp = 70		' 700 pts
+		ffl = 6 : #ffp = 70		' 700 pts
 	END IF
 	IF fl = 5 THEN
 		DEFINE SPRITE 7,1,fruit_apple
-		ffl = 8 : ffp = 100		' 1000 pts
+		ffl = 8 : #ffp = 100		' 1000 pts
 	END IF
 	IF fl = 6 THEN
 		DEFINE SPRITE 7,1,fruit_pear
-		ffl = 2 : ffp = 200		' 2000 pts
+		ffl = 2 : #ffp = 200		' 2000 pts
 	END IF
+	' !! #ffp IS 16-BIT ON PURPOSE. As a plain `ffp` -- an EIGHT-BIT variable -- the
+	' banana's 500 became 500 AND 255 = 244, silently, and the fruit scored 2440
+	' points instead of 5000. Every other value in this ladder is under 256 and was
+	' correct, so the table looked right and only the last prize was wrong.
 	IF fl >= 7 THEN
 		DEFINE SPRITE 7,1,fruit_banana
-		ffl = 11 : ffp = 500		' 5000 pts
+		ffl = 11 : #ffp = 500		' 5000 pts  !! 500 > 255: MUST be a # variable
 	END IF
 	END
 

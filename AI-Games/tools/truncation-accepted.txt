@@ -1,0 +1,21 @@
+# Known truncations that are DELIBERATELY NOT FIXED.
+#
+# Kept here rather than as a marker in the source, because some of these live in
+# released games whose sources must not be touched at all -- not even for a comment.
+# A gate that fires on findings already decided about is a gate people learn to
+# ignore, so each one is recorded with its reason and the check stays green.
+#
+# Format, whitespace separated:   <file>  <variable>  <value>   # why
+# Matched on the basename, so line numbers drifting does not break the entry.
+
+STRUCTRS.bas   cdf   400   # Structris countdown beep "3" -- see below
+STRUCTRS.bas   cdf   500   # Structris countdown beep "2"
+STRUCTRS.bas   cdf   640   # Structris countdown beep "1"
+#
+#   cdf is a plain 8-bit variable feeding SOUND's divisor, so 400/500/640 truncate
+#   to 144/244/128: the countdown beeps are the wrong pitches and not even in the
+#   intended order ("1" comes out HIGHER than "3" rather than lower).
+#
+#   NOT FIXED BY DECISION: Structris is released, and this is audible-only -- no
+#   timing, scoring or collision reads cdf. Reissuing a shipped game to alter three
+#   beeps is not worth it. Recorded so the next reader knows it was seen, not missed.

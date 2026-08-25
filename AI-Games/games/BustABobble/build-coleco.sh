@@ -44,6 +44,20 @@ die() { echo "ERROR: $1" >&2; exit 1; }
 [ -f "$GASM80" ]                 || die "gasm80.exe not found ($GASM80)"
 
 cd "$(dirname "$0")/src" || die "cannot find src/"
+
+# ---------------------------------------------------------------- TRUNCATION GATE
+# A plain CVBasic variable is 8-BIT and a CONST over 255 truncates -- both silently,
+# and both produce a PLAUSIBLE WRONG VALUE rather than a failure, which is why this
+# class ships. See TRUNCATION.md for every form and what each one has cost.
+#
+# These fail the build. Deliberate exceptions are marked TRUNCATION-OK in the
+# offending line's own comment, so a gate nobody can silence never becomes a gate
+# everybody ignores.
+TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
+"$TRUNCPY" ../../../tools/bigvar.py *.bas \
+    || { echo "ERROR: 8-bit truncation -- see TRUNCATION.md 1a" >&2; exit 1; }
+"$TRUNCPY" ../../../tools/bigconst.py *.bas \
+    || { echo "ERROR: CONST over 255 -- see TRUNCATION.md 1b" >&2; exit 1; }
 [ -f "$SRC" ] || die "$SRC not found in $(pwd)"
 
 echo "[1/2] CVBasic (Coleco)  $SRC -> $ASM"

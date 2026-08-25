@@ -788,9 +788,26 @@ lroll:
 	' round 1 still gives you room while looking like a chase.
 	eagg = 2 + rnd
 	IF eagg > 8 THEN eagg = 8
-	' head start before they turn on you: 5 s at round 1 down to 2 s
-	scti = 300 - rnd * 30
-	IF scti < 120 THEN scti = 120
+	' HEAD START BEFORE THEY TURN ON YOU: 5 s at round 1 down to 2 s.
+	'
+	' !! 16-BIT, AND COMPUTED IN THIS ORDER ON PURPOSE. Written `scti = 300 - rnd*30`
+	' into a PLAIN (8-bit) variable, the 300 truncated to 44 before the subtraction
+	' ever happened, so the clamp below caught it and round 1 got the SHORTEST head
+	' start (120) instead of the longest. Round 3 got the longest. The difficulty
+	' curve was inverted at exactly the rounds a new player sees, and nothing warned.
+	'
+	' The multiply reads #scth, NOT #scti, because on the 9900 MPY leaves the high
+	' word in r0 and the compiler keeps believing r0 still holds the OPERAND -- so
+	' reading back the variable that was just multiplied returns 0 (CLAUDE.md 3A).
+	' Multiplying a different variable into #scti keeps the next read honest.
+	'
+	' Clamping the SUBTRAHEND rather than the result also avoids an unsigned wrap:
+	' #var comparisons are unsigned, so `300 - rnd*30` going negative at round 11
+	' would have wrapped to ~65000 and handed out a colossal head start.
+	#scth = rnd
+	#scti = #scth * 30
+	IF #scti > 180 THEN #scti = 180		' floor the head start at 300-180 = 120
+	#scti = 300 - #scti
 	GOSUB rehome
 	FOR j = 0 TO MAXSMK - 1
 	st(j) = 0
@@ -969,7 +986,7 @@ gl_pace:
 	' Scatter timer counts REAL frames, not loop passes. Decrementing it by
 	' 1 per pass made the scatter phase last as long as the loop was slow --
 	' one of two timers whose duration drifted with the frame rate.
-	IF sct > 0 THEN GOSUB sct_tick
+	IF #sct > 0 THEN GOSUB sct_tick
 	pcr = #py / 16
 	pcc = #px / 16
 	#eacc = #eacc + espd * #fd
@@ -1500,7 +1517,7 @@ rehome:
 	estn(i) = 0
 	ecmt(i) = 0
 	NEXT i
-	sct = scti
+	#sct = #scti
 	RETURN
 
 	' skip mz whole item blocks (30 bytes each) to reach this maze's
@@ -1549,7 +1566,7 @@ sel_maze:
 
 sct_tick:
 	scta = #fd
-	IF sct > scta THEN sct = sct - scta ELSE sct = 0
+	IF #sct > scta THEN #sct = #sct - scta ELSE #sct = 0
 	RETURN
 
 	' --- player driving / turning -----------------------------------------
@@ -1881,7 +1898,7 @@ eai:
 	' preferences outright, so the cars genuinely drive away. That is
 	' deliberate and time-boxed.
 	einv = 0
-	IF sct > 0 THEN einv = 1
+	IF #sct > 0 THEN einv = 1
 	IF einv = 1 THEN hd = (hd + 2) AND 3 : vd = (vd + 2) AND 3
 	p1 = hd
 	p2 = vd
