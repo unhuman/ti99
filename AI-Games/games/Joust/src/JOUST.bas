@@ -647,12 +647,11 @@ k_foot:
 							#ky(kni) = kpt - 16
 							#ky(kni) = #ky(kni) * 256
 							#kvy(kni) = 32768
-							' shuffle along, so he is a moving target
-							IF kface(kni) = 0 THEN
-								#kx(kni) = #kx(kni) + 96
-							ELSE
-								#kx(kni) = #kx(kni) - 96
-							END IF
+							' HE STANDS STILL, lance up, waiting for his
+							' ride. A knight jogging along a ledge reads
+							' as an enemy doing something; standing still
+							' reads as one waiting to be dealt with,
+							' which is exactly what he is.
 						END IF
 					END IF
 				END IF
@@ -761,7 +760,11 @@ rb_launch:
 				rgx = #kx(rbi) / 256
 				rbx = 0
 				IF rgx > 128 THEN rbx = 255
-				rby = 24
+				' COME IN ON HIS LAYER. Launching from a fixed altitude
+				' meant the bird had to descend through whatever was in
+				' the way and would hang up on a ledge; entering level
+				' with him turns the trip into a straight run.
+				rby = #ky(rbi) / 256
 				rbf = 0
 			END IF
 		END IF
@@ -856,6 +859,54 @@ k_one:
 			END IF
 		END IF
 	NEXT ksj
+
+	' ROUTE AROUND ROCK.
+	'
+	' Steering straight at the player is useless when an island is in the way. A
+	' knight above one has no way to descend through it, so it hovers over the
+	' obstacle, drifts, flaps, and circles -- which is exactly what "the enemy
+	' cannot find him and just keeps going over and around" looks like from the
+	' outside. The player standing on the bottom-middle platform was unreachable.
+	'
+	' The fix is not a search. If an island lies BETWEEN my altitude and my
+	' target's, and my x is over it, I aim at the nearer END of that island
+	' instead. One pass, no state, and it composes with everything else because it
+	' only rewrites the target.
+	IF kty(kni) > kmy + 12 THEN
+		FOR kbj = 0 TO NPLAT - 1
+			kbt = ply(kbj)
+			IF kbt > kmy + 8 THEN
+				IF kbt <= kty(kni) + 8 THEN
+				IF plon(kbj) = 1 THEN
+					#kbc = kmx
+					#kbc = #kbc + 8
+					IF #kbc >= #plx1(kbj) THEN
+						IF #kbc <= #plx2(kbj) THEN
+							' over it: leave by the nearer end
+							#kbl = #kbc - #plx1(kbj)
+							#kbr = #plx2(kbj) - #kbc
+							IF #kbl < #kbr THEN
+								#kbx = #plx1(kbj)
+								IF #kbx > 22 THEN
+									ktx(kni) = #kbx - 22
+								ELSE
+									ktx(kni) = 0
+								END IF
+							ELSE
+								#kbx = #plx2(kbj)
+								IF #kbx < 233 THEN
+									ktx(kni) = #kbx + 22
+								ELSE
+									ktx(kni) = 255
+								END IF
+							END IF
+						END IF
+					END IF
+				END IF
+				END IF
+			END IF
+		NEXT kbj
+	END IF
 
 	' Climb toward the target altitude. Flapping is on a cooldown, which is what
 	' makes a tier feel eager or lazy without changing the rule.
