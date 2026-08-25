@@ -224,6 +224,26 @@ cost a debugging session:
   most loaded. Corollary: once a timer decrements by a *variable* delta, any logic keyed on its
   **parity** (`t AND 1`) breaks — an even delta freezes the parity. Drive alternating states from
   their own phase counter.
+- **AN ODD-LENGTH `DATA BYTE` BLOCK SILENTLY MISALIGNS EVERY WORD TABLE AFTER IT.**
+  The TMS9900 **ignores the low bit of a word address**: `mov *r0,@dst` from an odd
+  address reads the word *below* it and does not fault. CVBasic emits `even` after its
+  own string literals but **not** after a hand-written `DATA BYTE` run, so a block with
+  an odd byte count leaves the location counter odd and every `DATA` (word) table
+  defined later in that segment lands on an odd address — and reads back **shifted one
+  byte, for ever**. In Bust-A-Bobble a 33-byte marquee table put `#aimdx` on `>68FB`, so
+  `#aimdx(0)` returned **3840 instead of 0**: the aim guide dots landed 60 px apart
+  across the HUD, and a shot the player aimed straight up left at a severe angle and the
+  wrong speed. Nothing in `cvbasic` → `xas99` → `linkticart` said a word, and it hit all
+  three carts at once because the table sat outside every `#if`.
+  - The tell is **one value wrong at one index while neighbours look fine** — a shifted
+    table reads `(low byte of entry i-1) << 8 | (high byte of entry i)`, which is
+    plausible garbage for some entries and near-zero for others, so it presents as "only
+    this one case is broken" rather than as corruption.
+  - **Keep every byte block even.** Pad with an unused byte and say why in a comment.
+  - **`romcheck.py` now checks it mechanically** and fails the build: it finds every
+    `ai r0,<label>` + `mov *r0` pair (how the compiler indexes a word table), reads the
+    label's resolved address out of the `xas99` listing, and reports any that is odd.
+    Verified against the real defect, not just against a passing build.
 - **THE TI's ALPHA LOCK KEY SHARES A LINE WITH THE JOYSTICK'S VERTICAL AXIS.** With it
   latched down the console reports an up/down direction that is **never released**, so
   any menu built on `cont1.up`/`cont1.down` boots pinned to one entry and cannot be

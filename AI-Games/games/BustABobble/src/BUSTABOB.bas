@@ -3718,15 +3718,27 @@ mq_col:
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
 
-	' The alternating run every edge of the ring is blitted from. THIRTY-THREE bytes,
-	' not 32: the row-23 and left-column blits start at offset 1, so a 32-wide copy
+	' The alternating run every edge of the ring is blitted from. Thirty-three of these
+	' are used: the row-23 and left-column blits start at offset 1, so a 32-wide copy
 	' reads indices 1..32 and needs one spare on the end.
+	'
+	' !! THIRTY-FOUR BYTES, AND THE 34th IS PURE PADDING. At 33 -- an ODD length -- this
+	' block left the assembler location counter odd, and CVBasic emits no EVEN after
+	' a DATA BYTE run, so EVERY WORD TABLE DEFINED AFTER IT IN THE BANK LANDED ON AN
+	' ODD ADDRESS. #aimdx sat at >68FB, and the TMS9900 silently ignores the low bit
+	' of a word address, so MOV *R0 read the word BEFORE each entry and every vector
+	' came back shifted one byte. #aimdx(0) should be 0 and read back 3840, which put
+	' the guide dots 60 px apart across the HUD and sent a "vertical" shot off at a
+	' severe angle at the wrong speed. No error from any tool in the chain.
+	'
+	' The lesson is not about this table: ANY odd-length DATA BYTE block in the bank
+	' does this to every word table after it. Keep byte blocks even.
 mq_row:
 	DATA BYTE 221,222,221,222,221,222,221,222
 	DATA BYTE 221,222,221,222,221,222,221,222
 	DATA BYTE 221,222,221,222,221,222,221,222
 	DATA BYTE 221,222,221,222,221,222,221,222
-	DATA BYTE 221
+	DATA BYTE 221,222
 
 	INCLUDE "artdefs.bas"
 	INCLUDE "art.bas"

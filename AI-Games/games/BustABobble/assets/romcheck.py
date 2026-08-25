@@ -125,6 +125,52 @@ def data_block(path, label):
     return bytes(vals)
 
 
+def misaligned_word_tables(name):
+    """Word-indexed tables that resolved to an ODD address.
+
+    THE TMS9900 SILENTLY IGNORES THE LOW BIT OF A WORD ADDRESS. `mov *r0,@dst`
+    from an odd address reads the word BELOW it -- no fault, no warning -- so a
+    word table on an odd address reads back shifted one byte, for ever.
+
+    A table lands odd when an odd-length `DATA BYTE` block precedes it: CVBasic
+    emits `even` after its own string literals but not after a hand-written byte
+    run. A 33-byte marquee table did exactly this and put #aimdx on >68FB, so
+    #aimdx(0) read 3840 instead of 0 -- the aim guide dots landed 60px apart
+    across the HUD and a "vertical" shot left at a severe angle and the wrong
+    speed. Nothing in cvbasic -> xas99 -> linkticart said a word.
+
+    Rather than guess which blocks are odd, this finds the reads that actually
+    matter -- `ai r0,<label>` immediately followed by `mov *r0`, which is how the
+    compiler indexes a word table -- and takes each label's RESOLVED address out
+    of the assembler listing. No heuristics and no false positives: an even
+    address is correct by construction, an odd one is always this bug.
+    """
+    path = os.path.join(SRC, "%s.txt" % name)
+    if not os.path.isfile(path):
+        return None
+    lines = open(path, encoding="latin-1").read().split("\n")
+    bad, seen = {}, set()
+    for i, line in enumerate(lines):
+        m = re.search(r"ai\s+r0,(cvb_+\w+)", line)
+        if not m:
+            continue
+        # the operand word is on the continuation line that follows
+        if i + 1 >= len(lines):
+            continue
+        w = re.match(r"\s+([0-9A-Fa-f]{4})\s+([0-9A-Fa-f]{4})", lines[i + 1])
+        if not w:
+            continue
+        # and the next instruction must be the word-indexed read itself
+        nxt = " ".join(lines[i + 2:i + 4])
+        if "mov *r0" not in nxt:
+            continue
+        label, addr = m.group(1), int(w.group(2), 16)
+        seen.add(label)
+        if addr % 2:
+            bad[label] = addr
+    return sorted(bad.items()), len(seen)
+
+
 def main():
     fail = []
     banked = os.path.isfile(os.path.join(SRC, "%s_b0.bin" % NAME))
@@ -254,6 +300,25 @@ def main():
                         break
                 fail.append("%s does not round-trip into the cart: %d of %d bytes "
                             "survive" % (label, kept, len(blk)))
+
+    # --- word tables on odd addresses (read shifted, silently) ---------------
+    res = misaligned_word_tables(NAME)
+    if res is not None:
+        bad, total = res
+        print()
+        print("ALIGNMENT  (word-indexed tables; an odd address reads shifted one byte)")
+        if bad:
+            for label, addr in bad:
+                print("    %-16s >%04X  ODD" % (label, addr))
+            fail.append("%d word table(s) resolved to an ODD address. The TMS9900 "
+                        "ignores the low bit of a word address, so `mov *r0` reads "
+                        "the word BELOW each entry -- the whole table comes back "
+                        "shifted one byte, with no error from any tool. The cause is "
+                        "an odd-length DATA BYTE block earlier in the same segment "
+                        "(CVBasic emits no `even` after one). Pad it to even."
+                        % len(bad))
+        else:
+            print("    all %d word-indexed table(s) on even addresses" % total)
 
     print()
     if fail:
