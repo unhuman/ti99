@@ -210,7 +210,9 @@ new_wave:
 	' an easier game (CLAUDE.md 3A).
 	' THREE ON WAVE 1 AND RISING. The arcade gets hectic fast, and a wave that
 	' opens with two knights drifting about reads as a screensaver.
-	nwk = 2 + wave
+	' FOUR ON WAVE ONE. Three left the screen feeling empty -- with pads gating
+	' the spawns, a low count reads as the game waiting rather than starting.
+	nwk = 3 + wave
 	IF nwk > NKN THEN nwk = NKN
 	kpend = nwk			' still to materialise this wave
 	spwt = 40			' frames until the next one may appear
@@ -745,6 +747,45 @@ k_one:
 	IF ktier(kni) = 1 THEN GOSUB k_hunt
 	IF ktier(kni) = 2 THEN GOSUB k_lord
 
+	' SEPARATION -- they avoid each other on the way in. Without it every knight
+	' flies the same line to the same point, they stack into a single silhouette,
+	' and what should be four attackers reads as one fat one that you can beat with
+	' a single well-timed climb. Nudging targets apart makes them arrive from
+	' different angles and at different moments, which is what makes the attack
+	' feel deliberate rather than herd-like.
+	'
+	' The push is applied to the TARGET, not the velocity: steering away is subtle
+	' and keeps the attack going, whereas shoving the velocity looks like a
+	' collision they are not supposed to have (knights pass through each other).
+	FOR ksj = 0 TO NKN - 1
+		IF ksj <> kni THEN
+			IF kon(ksj) = KLIVE THEN
+				ksox = #kx(ksj) / 256
+				ksdx = kmx - ksox
+				IF kmx < ksox THEN ksdx = ksox - kmx
+				IF ksdx < 24 THEN
+					ksoy = #ky(ksj) / 256
+					ksdy = kmy - ksoy
+					IF kmy < ksoy THEN ksdy = ksoy - kmy
+					IF ksdy < 20 THEN
+						' too close: aim to pass on the far side of him,
+						' and off his altitude so the lances differ
+						IF kmx < ksox THEN
+							IF ktx(kni) > 28 THEN ktx(kni) = ktx(kni) - 28
+						ELSE
+							IF ktx(kni) < 227 THEN ktx(kni) = ktx(kni) + 28
+						END IF
+						IF kmy < ksoy THEN
+							IF kty(kni) > 10 THEN kty(kni) = kty(kni) - 10
+						ELSE
+							IF kty(kni) < 140 THEN kty(kni) = kty(kni) + 10
+						END IF
+					END IF
+				END IF
+			END IF
+		END IF
+	NEXT ksj
+
 	' Climb toward the target altitude. Flapping is on a cooldown, which is what
 	' makes a tier feel eager or lazy without changing the rule.
 	IF kflp(kni) > 0 THEN
@@ -1226,4 +1267,5 @@ col_chars:
 	DATA BYTE $A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8	' lava surface b
 	DATA BYTE $88,$88,$88,$88,$88,$88,$88,$88	' lava body, solid red
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' spare-life icon
-	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1	' spawn pad, magenta on black
+	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' spawn pad, CYAN -- it has to
+						' read as a pad against grey rock

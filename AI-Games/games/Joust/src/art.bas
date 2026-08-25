@@ -77,5 +77,5 @@ chr_life:	' life
 	DATA BYTE $30,$78,$78,$30,$7C,$FE,$36,$63
 
 chr_pad:	' pad
-	DATA BYTE $FF,$81,$FF,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$DB,$81,$00,$00,$00,$00
 
