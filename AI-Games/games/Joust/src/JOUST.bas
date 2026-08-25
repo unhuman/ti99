@@ -397,6 +397,12 @@ spawn_player:
 	pface = 0
 	pgnd = 0
 	pdead = 0
+	' LET GO. trst was only ever cleared at the START OF A WAVE, so a player
+	' killed BY the hand respawned still held: the new bird appeared on the pad in
+	' the middle of the arena and the hand -- which had been following the player's
+	' x -- came up through the solid floor to hold it there. Death has to release
+	' the grip, or the death repeats forever.
+	trst = 0
 	binv = 90			' brief spawn invulnerability, in frames
 	' HOLD PAD 0 WHILE MATERIALISING. The player occupies a pad exactly as a
 	' knight does, so nothing can arrive on top of him during the one moment he
@@ -760,7 +766,7 @@ k_spawn:
 	padu(ksp) = 1
 	kon(ksl) = 2				' 2 = materialising, not yet solid
 	kpad(ksl) = ksp
-	kmat(ksl) = 44
+	kmat(ksl) = 60			' one second of flashing, no more
 	#kx(ksl) = padx(ksp)
 	#kx(ksl) = #kx(ksl) * 256
 	#ky(ksl) = pady(ksp)
@@ -890,6 +896,8 @@ rb_clear:
 	rbz = 0
 	FOR rbj = 0 TO NPLAT - 1
 		rpt = ply(rbj)
+		' y first, on the value already fetched -- plon and the x span are three
+		' more array reads that almost never matter.
 		IF rby + 15 >= rpt THEN
 			IF rby <= rpt + 7 THEN
 			IF plon(rbj) = 1 THEN
@@ -1249,6 +1257,17 @@ k_body:
 	' All three ask the same first question ("is my centre over this island?"), so
 	' they are now one loop that asks it once: 60 iterations instead of 180. The
 	' behaviour is unchanged; only the number of times ply() is fetched is not.
+	' ============ COLLIDE ON THE FRAMES IT DOES NOT THINK ON =================
+	' A knight thinks on one parity; it now tests the islands on the OTHER. Each
+	' knight therefore does about half as much work per frame and never both jobs
+	' in the same frame, which is what made a busy frame expensive.
+	'
+	' SAFE BECAUSE OF THE GEOMETRY, not because it looks about right: a knight
+	' moves at most ~3 px a frame, so at most ~6 px between checks, and an island
+	' band is 8 px thick. It cannot pass through one unseen. The worst case is
+	' landing one frame late -- 16 ms, invisible.
+	kfe2 = 0
+	IF kth <> kthf THEN kfe2 = 1
 	kf = kmy + MH			' feet
 	kc = kmx + 8			' centre x
 	krt = 0
@@ -1256,6 +1275,7 @@ k_body:
 		IF cty > kmy + 12 THEN krt = 1
 	END IF
 	IF krt = 2 THEN krt = 1	' target below: routing may apply
+	IF kfe2 = 1 THEN
 	FOR knj = 0 TO NPLAT - 1
 		kpt = ply(knj)
 		' Y-GATE, on the one value already fetched. Nine islands in ten fail
@@ -1329,6 +1349,7 @@ k_body:
 		END IF
 		END IF
 	NEXT knj
+	END IF
 	IF #cvy >= 32768 THEN
 		' NOTHING FLIES BELOW THE GROUND -- AND THE LINE IS THE FEET.
 		'
@@ -1409,11 +1430,24 @@ k_lord:
 	IF kpy < 12 THEN cty = 0
 	klx = kpx - kmx
 	IF kmx > kpx THEN klx = kmx - kpx
-	IF klx < 48 THEN
-		cty = kpy - 30
-		IF kpy < 30 THEN cty = 0
+	IF klx < 56 THEN
+		' CLOSING -- commit to the attack. Aim above him, wherever he is.
+		cty = kpy - 24
+		IF kpy < 24 THEN cty = 0
+	ELSE
+		' FAR OFF -- prefer height while crossing, but only as a preference.
+		'
+		' !! THIS CLAMP USED TO APPLY ALWAYS, and it made wave 16 onward
+		' unplayable in the other direction: every knight is a Shadow Lord from
+		' there, the clamp pinned every target to y=96, and a player standing on
+		' the base at y=152 was 56 px BELOW anything the AI would ever aim at.
+		' Nothing came down. The pterodactyl still did, which is exactly what
+		' was reported -- it does not use this routine.
+		'
+		' A Shadow Lord flies high because it aims further ABOVE THE PLAYER than
+		' the other tiers do, not because it refuses to leave the ceiling.
+		IF cty > 100 THEN cty = 100
 	END IF
-	IF cty > 96 THEN cty = 96	' it belongs near the ceiling
 	RETURN
 
 k_right:
@@ -1433,17 +1467,36 @@ e_move:
 	NEXT egi
 	RETURN
 
+	' The egg lives in scalars while we work on it, exactly as the knight does --
+	' same reason, same saving. gtier is read-only here so it is loaded, not stored.
 e_one:
-	IF est(egi) = 1 THEN
-		IF #etm(egi) > 0 THEN #etm(egi) = #etm(egi) - 1
-		#evy(egi) = #evy(egi) + GRAV
-		IF #evy(egi) > 33468 THEN #evy(egi) = 33468
-		#ey(egi) = #ey(egi) + #evy(egi)
-		#ey(egi) = #ey(egi) - 32768
-		#ex(egi) = #ex(egi) + #evx(egi)
-		#ex(egi) = #ex(egi) - 32768
-		egy = #ey(egi) / 256
-		egx = #ex(egi) / 256
+	#gx = #ex(egi)
+	#gy = #ey(egi)
+	#gvx = #evx(egi)
+	#gvy = #evy(egi)
+	gst = est(egi)
+	#gtm = #etm(egi)
+	gtier = etier(egi)
+	GOSUB e_body
+	#ex(egi) = #gx
+	#ey(egi) = #gy
+	#evx(egi) = #gvx
+	#evy(egi) = #gvy
+	est(egi) = gst
+	#etm(egi) = #gtm
+	RETURN
+
+e_body:
+	IF gst = 1 THEN
+		IF #gtm > 0 THEN #gtm = #gtm - 1
+		#gvy = #gvy + GRAV
+		IF #gvy > 33468 THEN #gvy = 33468
+		#gy = #gy + #gvy
+		#gy = #gy - 32768
+		#gx = #gx + #gvx
+		#gx = #gx - 32768
+		egy = #gy / 256
+		egx = #gx / 256
 		egf = egy + 16
 		FOR egj = 0 TO NPLAT - 1
 			ept = ply(egj)
@@ -1453,10 +1506,10 @@ e_one:
 					egc = egx + 8
 					IF egc >= #plx1(egj) THEN
 						IF egc <= #plx2(egj) THEN
-							#ey(egi) = ept - 16
-							#ey(egi) = #ey(egi) * 256
-							est(egi) = 2
-							#etm(egi) = 240	' now the REST timer
+							#gy = ept - 16
+							#gy = #gy * 256
+							gst = 2
+							#gtm = 240	' now the REST timer
 							' KEEP THE SIDEWAYS MOMENTUM. An egg that
 							' stops dead the instant it touches rock
 							' looks glued on; it should skid and
@@ -1468,18 +1521,18 @@ e_one:
 			END IF
 		NEXT egj
 		' An egg that falls into the gap is simply gone.
-		IF egy > LAVAY THEN est(egi) = 0
+		IF egy > LAVAY THEN gst = 0
 		RETURN
 	END IF
 
 	' Resting: still sliding, bleeding off speed, and possibly skidding clean off
 	' the edge of the island it landed on.
-	IF est(egi) = 2 THEN GOSUB e_rest
+	IF gst = 2 THEN GOSUB e_rest
 	' Resting, then cracking, then a fresh knight one tier higher.
-	IF #etm(egi) > 0 THEN
-		#etm(egi) = #etm(egi) - 1
-		IF #etm(egi) = 90 THEN
-			est(egi) = 3
+	IF #gtm > 0 THEN
+		#gtm = #gtm - 1
+		IF #gtm = 90 THEN
+			gst = 3
 			SOUND 2,300,10
 			sf2 = 6
 		END IF
@@ -1492,21 +1545,21 @@ e_one:
 	' off the end of its island it falls again, which is the arcade's behaviour and
 	' makes a ledge a bad place to leave one.
 e_rest:
-	IF #evx(egi) > 32768 THEN
-		#evx(egi) = #evx(egi) - 14
-		IF #evx(egi) < 32768 THEN #evx(egi) = 32768
+	IF #gvx > 32768 THEN
+		#gvx = #gvx - 14
+		IF #gvx < 32768 THEN #gvx = 32768
 	ELSE
-		IF #evx(egi) < 32768 THEN
-			#evx(egi) = #evx(egi) + 14
-			IF #evx(egi) > 32768 THEN #evx(egi) = 32768
+		IF #gvx < 32768 THEN
+			#gvx = #gvx + 14
+			IF #gvx > 32768 THEN #gvx = 32768
 		END IF
 	END IF
-	IF #evx(egi) = 32768 THEN RETURN	' come to rest
-	#ex(egi) = #ex(egi) + #evx(egi)
-	#ex(egi) = #ex(egi) - 32768
+	IF #gvx = 32768 THEN RETURN	' come to rest
+	#gx = #gx + #gvx
+	#gx = #gx - 32768
 	' still supported?
-	egx = #ex(egi) / 256
-	egy = #ey(egi) / 256
+	egx = #gx / 256
+	egy = #gy / 256
 	egc = egx + 8
 	egf = egy + 16
 	ergs = 0
@@ -1525,8 +1578,8 @@ e_rest:
 		END IF
 	NEXT egj
 	IF ergs = 0 THEN
-		est(egi) = 1			' skidded off: falling again
-		#evy(egi) = 32768
+		gst = 1			' skidded off: falling again
+		#gvy = 32768
 	END IF
 	RETURN
 
@@ -1543,21 +1596,21 @@ e_hatch:
 			' It does NOT cap at Shadow Lord -- capping would let a late wave
 			' settle into a stable top tier, and the arcade deliberately keeps
 			' turning the wheel so an ignored egg is always an escalation.
-			ktier(ehj) = etier(egi) + 1
+			ktier(ehj) = gtier + 1
 			IF ktier(ehj) > 2 THEN ktier(ehj) = 0
-			#kx(ehj) = #ex(egi)
-			#ky(ehj) = #ey(egi)
+			#kx(ehj) = #gx
+			#ky(ehj) = #gy
 			#kvx(ehj) = 32768
 			#kvy(ehj) = 32768
 			kflp(ehj) = 20
 			kface(ehj) = 0
-			est(egi) = 0
+			gst = 0
 			ehd = 1
 		END IF
 		END IF
 	NEXT ehj
 	' No free slot: wait and try again shortly rather than losing the hatch.
-	IF ehd = 0 THEN #etm(egi) = 30
+	IF ehd = 0 THEN #gtm = 30
 	RETURN
 
 	' ----------------------------------------------------------- collisions
@@ -1908,7 +1961,10 @@ troll:
 	' while still flying across the arena made the hand look like a suggestion.
 	' Steering is ignored (see p_input) and the sideways momentum is killed, so
 	' the ONLY thing that answers is the flap.
-	trx = tpx
+	' THE HAND DOES NOT TRAVEL. It grabbed at a pit and it holds you over that
+	' pit; tracking the player's x let it drag itself across the arena and up
+	' through the base, which is solid rock. Your horizontal movement is stopped
+	' anyway (see p_input), so there is nothing for it to follow.
 	#vx = 32768
 	#py = #py + 200
 	#vy = 32768
