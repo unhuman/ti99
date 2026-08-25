@@ -1211,7 +1211,14 @@ k_one:
 		END IF
 	NEXT knj
 	IF #kvy(kni) >= 32768 THEN
+		' NOTHING FLIES BELOW THE GROUND. Knights used to be nudged upward on
+		' reaching the lava line but were free to sink past it first, so one
+		' could be seen swimming through the lava and out the far side. The
+		' floor of the world is a hard limit for them exactly as the ceiling
+		' is: clamped to it, and thrown back up.
 		IF kmy > LAVAY THEN
+			#ky(kni) = LAVAY
+			#ky(kni) = #ky(kni) * 256
 			#kvy(kni) = 32768 - 620
 		END IF
 	END IF
@@ -1491,9 +1498,14 @@ k_unhorse:
 			' top of the player and reads as no egg at all.
 			#evy(kuj) = 32768 - 520
 			etier(kuj) = ktier(cni)
-			' GRACE: not collectable yet. Without this the egg loop, which
-			' runs later in this very frame, eats it where it was laid.
-			#etm(kuj) = 26
+			' GRACE: not collectable for half a second (30 frames at 60 Hz).
+			' Without ANY grace the egg loop -- which runs later in this
+			' very frame -- eats the egg where it was laid, since it is
+			' created within collision range of the player by definition.
+			' Half a second is long enough that the egg visibly leaves the
+			' joust before it counts, and short enough that a deliberate
+			' mid-air catch is still on.
+			#etm(kuj) = 30
 			kud = 1
 		END IF
 		END IF
@@ -1529,14 +1541,24 @@ c_egg:
 	IF est(cni) = 1 THEN
 		IF #etm(cni) > 0 THEN RETURN
 	END IF
+	' CENTRE TO CENTRE. The egg is 8x9 drawn in the LOWER part of its cell, so its
+	' middle sits 11 px below its sprite origin while the bird's sits 8 below its
+	' own. Comparing the origins measured a distance three pixels off, which near
+	' the edge of the box is the difference between a catch and a miss -- and it
+	' erred toward missing, which is exactly what "touched it and did not get it"
+	' feels like.
 	cex = #ex(cni) / 256
+	cex = cex + 4
 	cey = #ey(cni) / 256
-	cdx = cpx - cex
-	IF cpx < cex THEN cdx = cex - cpx
-	IF cdx > 11 THEN RETURN
-	cdy = cpy - cey
-	IF cpy < cey THEN cdy = cey - cpy
-	IF cdy > 11 THEN RETURN
+	cey = cey + 11
+	cpx2 = cpx + 8
+	cpy2 = cpy + 8
+	cdx = cpx2 - cex
+	IF cpx2 < cex THEN cdx = cex - cpx2
+	IF cdx > 10 THEN RETURN
+	cdy = cpy2 - cey
+	IF cpy2 < cey THEN cdy = cey - cpy2
+	IF cdy > 10 THEN RETURN
 	est(cni) = 0
 	ecoll = ecoll + 1
 	ceg = ecoll
@@ -1654,6 +1676,14 @@ draw_eggs:
 			dex = #ex(dei) / 256
 			dec = 15
 			dep = 32
+			' NOT YET COLLECTABLE -> drawn GREY rather than white. The grace
+			' period was invisible, so an egg you touched and did not get
+			' looked like a missed collision or a dropped input rather than a
+			' rule. A rule the player cannot see is indistinguishable from a
+			' bug, and this one costs a single colour to show.
+			IF est(dei) = 1 THEN
+				IF #etm(dei) > 0 THEN dec = 14
+			END IF
 			IF est(dei) = 3 THEN
 				' CRACKED, and flashing. The pattern change is the real
 				' warning; the flash only draws the eye to it.
@@ -1766,8 +1796,13 @@ tr_draw:
 	' The arm is ITS OWN sprite -- an angled forearm, not a second fist. Two hands
 	' stacked read as two trolls, which is the opposite of the one long limb the
 	' effect needs.
-	tay = trhy + 13
-	IF tay > 188 THEN
+	' THE ARM STAYS IN THE PIT. Drawn at a fixed offset below the fist it rose out
+	' of the lava with it, and a whole troll climbing free of the pit is not what
+	' this is -- it is a limb reaching UP out of one. The forearm is therefore
+	' pinned near the lava line and only the FIST travels; the arm covers the gap
+	' between them and is hidden when the hand is close enough not to need it.
+	tay = 176
+	IF trhy > 162 THEN
 		SPRITE 14,SPRHID,0,0,0
 	ELSE
 		SPRITE 14,tay,trx,56,6
