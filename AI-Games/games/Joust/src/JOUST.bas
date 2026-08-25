@@ -91,6 +91,18 @@
 	DIM pady(NPAD)			' sprite-top y for something standing on it
 	DIM padu(NPAD)			' 0 free, 1 occupied by a materialising actor
 
+	' THE ISLAND EACH PAD STANDS ON. A pad is not free-floating scenery -- it is
+	' painted on an island's surface and actors materialise standing on it, so when
+	' erosion takes the island the pad has to go with it. Without this a pad is
+	' drawn hanging in empty air and, worse, k_spawn will happily materialise a
+	' knight on it -- standing on nothing, in the middle of the sky.
+	'
+	' Three of the five pads sit on erodible ledges, so this is not a corner case:
+	' pad 3 goes at waves 6, 10, 14...; pad 2 at 7, 11, 15...; pad 1 at 8, 12, 16...
+	' Pads 0 (the base) and 4 (the top-right sliver) are on islands that never
+	' erode, which is what guarantees k_spawn always has somewhere to put a knight.
+	DIM padi(NPAD)			' index into plon() -- 255 would mean "always present"
+
 	' THE LAVA TROLL (wave 3+). A hand comes out of a pit at a bird flying low over
 	' it, and drags it under. Flapping is the escape, and the arcade lengthens the
 	' reach and stiffens the grip as the waves pass -- so the pits stop being
@@ -210,6 +222,11 @@ setup:
 	padx(2) = 192 : pady(2) = 88		' right, middle   (surface 104)
 	padx(3) = 16  : pady(3) = 96		' left, middle    (surface 112)
 	padx(4) = 160 : pady(4) = 16		' top right       (surface  32)
+	padi(0) = 0				' BASE            -- never erodes
+	padi(1) = 5				' upper middle    -- goes at waves 8, 12, 16...
+	padi(2) = 4				' right, middle   -- goes at waves 7, 11, 15...
+	padi(3) = 3				' left, middle    -- goes at waves 6, 10, 14...
+	padi(4) = 9				' top right       -- never erodes
 	RETURN
 
 	' EROSION. Deterministic, never random -- a player has to be able to learn the
@@ -478,17 +495,20 @@ draw_field:
 		END IF
 	NEXT dfi
 
+	' NO PAD WITHOUT ITS ISLAND -- see the padi() comment at the DIMs.
 	FOR dfi = 0 TO NPAD - 1
-		dfr = pady(dfi) + 16		' the surface the pad sits on
-		dfr = dfr / 8
-		dfc = padx(dfi) / 8
-		#dfa = dfr
-		#dfa = #dfa * 32
-		#dfa = #dfa + dfc
-		#dfa = #dfa + 6144
-		VPOKE #dfa,PADCH
-		#dfa = #dfa + 1
-		VPOKE #dfa,PADCH
+		IF plon(padi(dfi)) = 1 THEN
+			dfr = pady(dfi) + 16		' the surface the pad sits on
+			dfr = dfr / 8
+			dfc = padx(dfi) / 8
+			#dfa = dfr
+			#dfa = #dfa * 32
+			#dfa = #dfa + dfc
+			#dfa = #dfa + 6144
+			VPOKE #dfa,PADCH
+			#dfa = #dfa + 1
+			VPOKE #dfa,PADCH
+		END IF
 	NEXT dfi
 
 	' The lava fills everything below the floor line.
@@ -809,9 +829,14 @@ k_spawn:
 	kspx = #px / 256
 	FOR ksi = 0 TO NPAD - 1
 		IF padu(ksi) = 0 THEN
+		' AND ITS ISLAND MUST STILL BE THERE. Nested, not `AND` -- CVBasic's 9900
+		' backend miscompiles <cmp> AND <cmp> (CLAUDE.md 3A). Pads 0 and 4 are on
+		' islands that never erode, so this can never starve the spawner.
+		IF plon(padi(ksi)) = 1 THEN
 			ksd = kspx - padx(ksi)
 			IF kspx < padx(ksi) THEN ksd = padx(ksi) - kspx
 			IF ksd > 28 THEN ksp = ksi
+		END IF
 		END IF
 	NEXT ksi
 	IF ksp = 255 THEN RETURN		' no free pad clear of the player: WAIT
