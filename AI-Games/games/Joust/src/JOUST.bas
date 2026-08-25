@@ -22,15 +22,15 @@
 	CONST NPLAT = 10		' islands, DIM 0..9 -- MEASURED, see assets/refmap.py
 	CONST NKN = 6			' knights, DIM 0..5 -- SIX. Joust is meant to be crowded
 	CONST NEGG = 4			' eggs, DIM 0..3
-	CONST LAVAY = 168		' feet at or below this pixel row are in the lava
+	CONST LAVAY = 176		' feet at or below this pixel row are in the lava
 	CONST TOPY = 8			' ceiling: sprite top cannot go above this
 	CONST SPRHID = 209		' NOT 208 -- 208 terminates the sprite list
-	CONST MH = 14			' MOUNT HEIGHT. A 12 px figure in the 16 px cell:
-					' feet at y+14 means the top ledge at y=24 needs a
-					' sprite top of 10, against a ceiling limit of 8.
-					' At 16 it needed 8 -- the limit itself, so ZERO
-					' margin. 12 gave more room but shrank the birds
-					' too far; 14 keeps two pixels and looks right.
+	CONST MH = 16			' MOUNT HEIGHT. A 12 px figure in the 16 px cell:
+					' A FULL-SIZE MOUNT. Shrinking the figure to 12 and
+					' then 14 bought headroom by making the birds
+					' smaller, which is paying in the wrong currency.
+					' Every island moved DOWN 8 px instead, which costs
+					' nothing and gives the top ledge 8 px of margin.
 	CONST BLANK = 32
 	CONST PLATL = 128
 	CONST PLATM = 129
@@ -157,25 +157,31 @@ setup:
 	' ledge over a lower one, the right side likewise but offset, and a small ledge
 	' sits alone at the top right. That asymmetry is the level design; a tidy
 	' mirror-image arena would play quite differently.
-	#plx1(0) = 40  : #plx2(0) = 207 : ply(0) = 160	' BASE, solid rock beneath
-	#plx1(1) = 0   : #plx2(1) = 39  : ply(1) = 160	' bridge left  -- burns wave 3
-	#plx1(2) = 208 : #plx2(2) = 255 : ply(2) = 160	' bridge right -- burns wave 3
-	#plx1(3) = 0   : #plx2(3) = 55  : ply(3) = 104	' left, middle height
-	#plx1(4) = 168 : #plx2(4) = 223 : ply(4) = 96	' right, middle height
-	#plx1(5) = 72  : #plx2(5) = 151 : ply(5) = 56	' upper middle, the big one
-	#plx1(6) = 88  : #plx2(6) = 143 : ply(6) = 120	' lower middle
-	#plx1(7) = 0   : #plx2(7) = 31  : ply(7) = 48	' left, high
-	#plx1(8) = 216 : #plx2(8) = 255 : ply(8) = 48	' right, high
-	#plx1(9) = 152 : #plx2(9) = 183 : ply(9) = 24	' top right, small
+	' EVERY SURFACE IS 8 PX (one character row) LOWER than the reference measure.
+	' The reference has the top ledge at 24, which with a full-size 16 px mount
+	' demands a sprite top of 8 -- and 8 is the ceiling limit itself, so the ledge
+	' was reachable only by arriving at exactly the altitude the ceiling stops you.
+	' Dropping the whole arena a row costs nothing (there is dead space at the top
+	' either way) and gives it 8 px of margin.
+	#plx1(0) = 40  : #plx2(0) = 207 : ply(0) = 168	' BASE, solid rock beneath
+	#plx1(1) = 0   : #plx2(1) = 39  : ply(1) = 168	' bridge left  -- burns wave 3
+	#plx1(2) = 208 : #plx2(2) = 255 : ply(2) = 168	' bridge right -- burns wave 3
+	#plx1(3) = 0   : #plx2(3) = 55  : ply(3) = 112	' left, middle height
+	#plx1(4) = 168 : #plx2(4) = 223 : ply(4) = 104	' right, middle height
+	#plx1(5) = 72  : #plx2(5) = 151 : ply(5) = 64	' upper middle, the big one
+	#plx1(6) = 88  : #plx2(6) = 143 : ply(6) = 128	' lower middle
+	#plx1(7) = 0   : #plx2(7) = 31  : ply(7) = 56	' left, high
+	#plx1(8) = 216 : #plx2(8) = 255 : ply(8) = 56	' right, high
+	#plx1(9) = 152 : #plx2(9) = 183 : ply(9) = 32	' top right, small
 
 	' FIVE PADS, and one of them is on the BASE -- that is where the player
 	' materialises, and it is the pad knights most often find blocked. y is the
 	' SPRITE TOP for a bird standing on that surface, i.e. surface - 16.
-	padx(0) = 104 : pady(0) = 146		' base            (surface 160)
-	padx(1) = 96  : pady(1) = 42		' upper middle    (surface  56)
-	padx(2) = 192 : pady(2) = 82		' right, middle   (surface  96)
-	padx(3) = 16  : pady(3) = 90		' left, middle    (surface 104)
-	padx(4) = 160 : pady(4) = 10		' top right       (surface  24)
+	padx(0) = 104 : pady(0) = 152		' base            (surface 168)
+	padx(1) = 96  : pady(1) = 48		' upper middle    (surface  64)
+	padx(2) = 192 : pady(2) = 88		' right, middle   (surface 104)
+	padx(3) = 16  : pady(3) = 96		' left, middle    (surface 112)
+	padx(4) = 160 : pady(4) = 16		' top right       (surface  32)
 	RETURN
 
 	' EROSION. Deterministic, never random -- a player has to be able to learn the
@@ -349,14 +355,13 @@ draw_field:
 	NEXT dfi
 
 	' The lava fills everything below the floor line.
+	' ROWS 22-23 ONLY, below the base. It used to start at row 20 -- the base's own
+	' row -- and paint over it, so the floor you were standing on was drawn as
+	' lava. Collision read the island table and was right; only the picture lied.
 	FOR dfi = 0 TO 31
-		#dfa = 640 + dfi		' row 20
+		#dfa = 704 + dfi		' row 22, the lava surface
 		#dfa = #dfa + 6144
 		VPOKE #dfa,LAVAA
-		#dfa = #dfa + 32
-		VPOKE #dfa,133
-		#dfa = #dfa + 32
-		VPOKE #dfa,133
 		#dfa = #dfa + 32
 		VPOKE #dfa,133
 	NEXT dfi
@@ -480,7 +485,13 @@ p_input:
 
 	' LEFT/RIGHT ONLY. Nothing here reads the vertical axis: on the TI it shares
 	' a line with ALPHA LOCK and reports a direction that never releases.
+	' Bounced off rock: the recoil owns the steering briefly. Flapping still works,
+	' so you are never actually helpless -- just carried.
 	pin = 0
+	IF pbnc > 0 THEN
+		pbnc = pbnc - 1
+		RETURN
+	END IF
 	IF cont1.left THEN
 		pin = 1
 		pface = 1
@@ -867,7 +878,17 @@ p_side:
 								#px = #px * 256
 							END IF
 						END IF
-						#vx = 32768
+						' BOUNCE, exactly like glancing off a
+						' knight. Stopping dead against rock is
+						' unreadable -- you cannot tell whether you
+						' hit something or the controls dropped an
+						' input. Reversing the momentum and taking
+						' the steering away for a moment MAKES the
+						' collision an event you can feel.
+						#vx = 65536 - #vx
+						pbnc = 12
+						SOUND 1,620,10
+						sf1 = 3
 					END IF
 				END IF
 			END IF
@@ -1588,11 +1609,11 @@ troll:
 		IF tpx < 40 THEN tover = 1
 		IF tpx > 207 THEN tover = 1
 		IF tover = 1 THEN
-			ttop = 176 - trr
+			ttop = 184 - trr
 			IF tpy > ttop THEN
 				trst = 1
 				trx = tpx
-				trhy = 176
+				trhy = 184
 				SOUND 2,900,11
 				sf2 = 6
 			END IF
@@ -1604,7 +1625,7 @@ troll:
 	IF trst = 1 THEN
 		' rising. It tracks sideways slowly -- you can outrun it, but not by
 		' much, and not while still climbing out of the pit.
-		IF trhy > 176 - trr THEN trhy = trhy - 3
+		IF trhy > 184 - trr THEN trhy = trhy - 3
 		IF trx < tpx THEN trx = trx + 1
 		IF trx > tpx THEN trx = trx - 1
 		GOSUB tr_draw
@@ -1622,7 +1643,7 @@ troll:
 			END IF
 		END IF
 		' gone high or gone away: let go
-		IF tpy < 176 - trr THEN trst = 0
+		IF tpy < 184 - trr THEN trst = 0
 		tover = 0
 		IF tpx < 46 THEN tover = 1
 		IF tpx > 201 THEN tover = 1
@@ -1644,7 +1665,7 @@ troll:
 		sf1 = 6
 		RETURN
 	END IF
-	IF tpy + 16 >= 184 THEN
+	IF tpy + 16 >= 190 THEN
 		pdead = 1			' pulled under
 		trst = 0
 	END IF
