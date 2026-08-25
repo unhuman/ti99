@@ -68,19 +68,44 @@ rows 21-23  lava body, and where the troll hand rises from
 Horizontal **wrap** is free: `#px` is 8.8 fixed point, so 256 px × 256 = 65536 and the
 16-bit variable wraps by itself. The top of the screen is a **ceiling** you bump against.
 
-### The six islands (pixels)
+### The nine islands — MEASURED, not invented
+
+`assets/refmap.py` downloads an arcade screenshot, classifies every pixel as rock or
+lava by colour, and prints the spans scaled from Williams' native 292×240 to our
+256×192. The layout below is that measurement.
+
+```
+y 40   ###  left                                  right  ###     two TOP ledges, at the edges
+y 56          ######## middle ledge ########
+y 88                              #### right, upper ####          overhangs the one below
+y104   #### left ledge                    right, lower ####
+y160   ################ FLOOR, FULL WIDTH ################
+              \______ solid rock only in the middle ______/
+       ~~~~~~                                        ~~~~~~       LAVA, at the EDGES
+```
 
 | # | name | x1 | x2 | surface y | notes |
 |---|---|---|---|---|---|
-| 0 | floor-left | 0 | 95 | 160 | |
-| 1 | floor-right | 160 | 255 | 160 | |
-| 2 | **bridge** | 96 | 159 | 160 | **burns away permanently at wave 3** |
-| 3 | lower-left | 16 | 79 | 120 | |
-| 4 | lower-right | 176 | 239 | 120 | |
-| 5 | mid-left | 56 | 119 | 80 | |
-| 6 | upper-right | 144 | 207 | 40 | |
+| 0 | base | 40 | 199 | 160 | the solid middle |
+| 1 | **bridge-left** | 0 | 39 | 160 | **burns at wave 3** |
+| 2 | **bridge-right** | 200 | 255 | 160 | **burns at wave 3** |
+| 3 | ledge-left | 0 | 47 | 104 | |
+| 4 | ledge-right-lower | 208 | 255 | 104 | |
+| 5 | ledge-right-upper | 168 | 215 | 88 | **overhangs #4** |
+| 6 | ledge-middle | 72 | 143 | 56 | |
+| 7 | ledge-top-left | 0 | 23 | 40 | |
+| 8 | ledge-top-right | 232 | 255 | 40 | |
 
-Seven entries, `DIM 8` (sized past the real max index, per `CLAUDE.md` §3A).
+> **THE FLOOR IS FULL WIDTH AND THE LAVA IS AT THE EDGES.** The first, hand-written
+> version of this table put the gap in the **middle** and had no bridges at all, so the
+> player fell straight through the centre of the world on wave 1. In the arcade the floor
+> spans the whole screen for waves 1-2 — you can walk over the lava — and the solid rock
+> beneath it only spans the middle, so when the **end** sections burn away at wave 3 the
+> lava is exposed at the **left and right edges**.
+
+**The two right-hand ledges overlap in x on purpose**: the upper overhangs the lower, and
+crossing the lower one halts you against it. That is arcade behaviour, and it is what
+makes the right side awkward to leave.
 
 **Islands are SOLID IN EVERY DIRECTION**, for the player and for knights alike. You
 cannot rise through one: the head bumps its underside (`ply + 8`, one character row
@@ -89,13 +114,16 @@ you must fly *around*, and a knight above you cannot be escaped by rising throug
 floor he is standing on. Knights obey the same rule, because an enemy that can pass
 through a platform the player cannot reads as cheating.
 
-**Erosion.** `plon()` is a per-island present/absent flag.
-- Wave 1-2: all present. The bridge lets you walk across the lava.
-- **Wave 3**: the bridge burns away. From here the floor has a lava gap in the middle.
-- **Wave 6+**: one further island vanishes each wave, chosen from islands 3-6 in a fixed
-  rotation so the layout is *deterministic*, never random — a player must be able to
-  learn it.
-- **Every Egg wave restores every island**, exactly as the arcade does.
+### Erosion
+
+`plon()` is a per-island present flag, recomputed at every wave start **before** the field
+is drawn. Deterministic, never random — a player must be able to learn the layout.
+
+- **Waves 1-2**: everything present; the floor is continuous and the lava unreachable.
+- **Wave 3**: both bridges burn, permanently. The lava at each edge is now live, and so
+  is the lava troll.
+- **Wave 6+**: one further ledge goes each wave, cycling islands 3→4→5→6.
+- **Every Egg wave (5, 10, 15…) restores every island**, exactly as the arcade does.
 
 ---
 

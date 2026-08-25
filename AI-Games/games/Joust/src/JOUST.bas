@@ -18,7 +18,7 @@
 	CONST GRAV = 24			' added to #vy every frame (8.8: 0.09 px/frame^2)
 	CONST ACCX = 20			' horizontal acceleration while steering
 	CONST FRIC = 10			' horizontal decay when not steering
-	CONST NPLAT = 6			' platforms, DIM 0..5
+	CONST NPLAT = 9			' islands, DIM 0..8 -- MEASURED, see assets/refmap.py
 	CONST NKN = 4			' knights, DIM 0..3
 	CONST NEGG = 4			' eggs, DIM 0..3
 	CONST LAVAY = 168		' feet at or below this pixel row are in the lava
@@ -37,7 +37,8 @@
 
 	DIM #plx1(NPLAT)		' platform left edge, pixels
 	DIM #plx2(NPLAT)		' platform right edge
-	DIM ply(NPLAT)			' platform surface row, pixels (all < 256)
+	DIM ply(NPLAT)			' island surface row, pixels (all < 256)
+	DIM plon(NPLAT)			' 1 present, 0 burned away -- see erosion, below
 
 	DIM #kx(NKN)			' knight x, 8.8
 	DIM #ky(NKN)			' knight y, 8.8
@@ -75,15 +76,56 @@ setup:
 	DEFINE SPRITE 8,1,spr_egg	' pattern 32
 	DEFINE SPRITE 9,1,spr_runner	' pattern 36
 
-	' THE PLATFORMS, in pixels. The floor is two slabs with a LAVA GAP between
-	' them -- a full-width floor would make the lava unreachable and remove the
-	' hazard the whole game is built around.
-	#plx1(0) = 0   : #plx2(0) = 95  : ply(0) = 160	' floor, left
-	#plx1(1) = 160 : #plx2(1) = 255 : ply(1) = 160	' floor, right
-	#plx1(2) = 16  : #plx2(2) = 79  : ply(2) = 120	' lower left
-	#plx1(3) = 176 : #plx2(3) = 239 : ply(3) = 120	' lower right
-	#plx1(4) = 56  : #plx2(4) = 119 : ply(4) = 80	' mid left
-	#plx1(5) = 144 : #plx2(5) = 207 : ply(5) = 40	' upper right
+	' THE ISLANDS -- MEASURED FROM AN ARCADE SCREENSHOT, not invented. See
+	' assets/refmap.py, which classifies every pixel of a reference shot as rock
+	' or lava and prints the spans scaled from Williams' 292x240 to our 256x192.
+	'
+	' !! THE FLOOR IS FULL WIDTH, AND THE LAVA IS AT THE EDGES. The first,
+	' hand-written version of this table put the gap in the MIDDLE and had no
+	' bridges at all, so the player fell through the centre of the world on wave
+	' 1. In the arcade the floor spans the whole screen for waves 1-2; the solid
+	' rock beneath it only spans the middle, so when the END sections burn away at
+	' wave 3 the lava is exposed at the LEFT AND RIGHT EDGES.
+	'
+	' The two right-hand ledges deliberately OVERLAP in x: the upper overhangs the
+	' lower, and crossing the lower one halts you against it. That is in the
+	' arcade and it is what makes the right side awkward to leave.
+	#plx1(0) = 40  : #plx2(0) = 199 : ply(0) = 160	' base, the solid middle
+	#plx1(1) = 0   : #plx2(1) = 39  : ply(1) = 160	' BRIDGE left  -- burns wave 3
+	#plx1(2) = 200 : #plx2(2) = 255 : ply(2) = 160	' BRIDGE right -- burns wave 3
+	#plx1(3) = 0   : #plx2(3) = 47  : ply(3) = 104	' left ledge
+	#plx1(4) = 208 : #plx2(4) = 255 : ply(4) = 104	' right ledge, lower
+	#plx1(5) = 168 : #plx2(5) = 215 : ply(5) = 88	' right ledge, upper (overhangs)
+	#plx1(6) = 72  : #plx2(6) = 143 : ply(6) = 56	' middle ledge
+	#plx1(7) = 0   : #plx2(7) = 23  : ply(7) = 40	' top-left ledge
+	#plx1(8) = 232 : #plx2(8) = 255 : ply(8) = 40	' top-right ledge
+	RETURN
+
+	' EROSION. Deterministic, never random -- a player has to be able to learn the
+	' layout. The bridges burn at wave 3 and stay gone; from wave 6 one further
+	' ledge goes each wave, in a fixed order; and every Egg wave restores the lot,
+	' exactly as the arcade does.
+set_islands:
+	FOR sii = 0 TO NPLAT - 1
+		plon(sii) = 1
+	NEXT sii
+	IF wave < 3 THEN RETURN			' waves 1-2: walk the whole floor
+	plon(1) = 0				' the bridges are gone for good
+	plon(2) = 0
+	sie = wave			' egg wave? then everything is back
+	WHILE sie >= 5
+		sie = sie - 5
+	WEND
+	IF sie = 0 THEN
+		plon(1) = 1
+		plon(2) = 1
+		RETURN
+	END IF
+	IF wave < 6 THEN RETURN
+	' one more ledge per wave from 6, cycling 3,4,5,6 so it is learnable
+	sin = wave - 6
+	sin = sin AND 3
+	plon(3 + sin) = 0
 	RETURN
 
 	' ---------------------------------------------------------- title screen
@@ -123,6 +165,7 @@ new_game:
 new_wave:
 	wave = wave + 1
 	ecoll = 0			' eggs collected this wave -> award ladder
+	GOSUB set_islands		' erosion first: draw_field draws what survives
 	GOSUB draw_field
 	GOSUB spawn_player
 
@@ -177,6 +220,7 @@ spawn_player:
 draw_field:
 	CLS
 	FOR dfi = 0 TO NPLAT - 1
+		IF plon(dfi) = 1 THEN
 		dfr = ply(dfi) / 8		' surface pixel row -> character row
 		dfc = #plx1(dfi) / 8
 		dfd = #plx2(dfi) / 8
@@ -184,6 +228,7 @@ draw_field:
 		#dfa = #dfa * 32
 		#dfa = #dfa + dfc
 		GOSUB draw_plat
+		END IF
 	NEXT dfi
 
 	' The lava fills everything below the floor line.
@@ -387,6 +432,7 @@ p_land:
 	plc2 = #px / 256
 	plc2 = plc2 + 8			' centre x
 	FOR pli2 = 0 TO NPLAT - 1
+		IF plon(pli2) = 1 THEN
 		IF plf >= ply(pli2) THEN
 			IF plf <= ply(pli2) + 8 THEN
 				IF plc2 >= #plx1(pli2) THEN
@@ -398,6 +444,7 @@ p_land:
 					END IF
 				END IF
 			END IF
+		END IF
 		END IF
 	NEXT pli2
 	RETURN
@@ -415,6 +462,7 @@ p_bump:
 	pbc = #px / 256
 	pbc = pbc + 8				' centre x
 	FOR pbi = 0 TO NPLAT - 1
+		IF plon(pbi) = 1 THEN
 		IF pbh <= ply(pbi) + 8 THEN
 			IF pbh >= ply(pbi) THEN
 				IF pbc >= #plx1(pbi) THEN
@@ -425,6 +473,7 @@ p_bump:
 					END IF
 				END IF
 			END IF
+		END IF
 		END IF
 	NEXT pbi
 	RETURN
@@ -511,6 +560,7 @@ k_one:
 	IF #kvy(kni) < 32768 THEN
 		kc = kmx + 8
 		FOR knj = 0 TO NPLAT - 1
+			IF plon(knj) = 1 THEN
 			IF kmy <= ply(knj) + 8 THEN
 				IF kmy >= ply(knj) THEN
 					IF kc >= #plx1(knj) THEN
@@ -522,6 +572,7 @@ k_one:
 					END IF
 				END IF
 			END IF
+			END IF
 		NEXT knj
 	END IF
 
@@ -530,6 +581,7 @@ k_one:
 	IF #kvy(kni) >= 32768 THEN
 		kf = kmy + 16
 		FOR knj = 0 TO NPLAT - 1
+			IF plon(knj) = 1 THEN
 			IF kf >= ply(knj) THEN
 				IF kf <= ply(knj) + 8 THEN
 					kc = kmx + 8
@@ -541,6 +593,7 @@ k_one:
 						END IF
 					END IF
 				END IF
+			END IF
 			END IF
 		NEXT knj
 		IF kmy > LAVAY THEN
@@ -625,6 +678,7 @@ e_one:
 		egx = #ex(egi) / 256
 		egf = egy + 16
 		FOR egj = 0 TO NPLAT - 1
+			IF plon(egj) = 1 THEN
 			IF egf >= ply(egj) THEN
 				IF egf <= ply(egj) + 8 THEN
 					egc = egx + 8
@@ -638,6 +692,7 @@ e_one:
 						END IF
 					END IF
 				END IF
+			END IF
 			END IF
 		NEXT egj
 		' An egg that falls into the gap is simply gone.
