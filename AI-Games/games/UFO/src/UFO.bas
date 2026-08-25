@@ -51,7 +51,18 @@
 					' drags one of its own kind in with it
 	CONST NMIS = 8			' missile slots, DIM 0..7. EIGHT because a
 					' chain reaction spawns three at a time
-	CONST MLIFE = 90		' missile frames before it burns out
+	CONST MLIFE = 90		' GUIDED missile frames before it burns out
+	CONST DLIFE = 32		' DEBRIS frames: 32 x 2 px = 64 px and gone.
+					' Shrapnel has a throw; it is not a weapon
+					' that follows you across the arena.
+	CONST DARM = 12			' frames before debris can hurt the PLAYER.
+					' It spawns ON the enemy that died, and if
+					' you killed that enemy by RAMMING it you
+					' are 14 px away with a field of zero -- so
+					' without this, the game's core tactic
+					' detonates three warheads in your lap.
+					' It can still chain into other enemies
+					' from frame one.
 	CONST SHIPFT = 70		' Starship frames between shots
 	CONST DYINGF = 48		' frames of sparking before the ship goes -- and
 					' YOU STILL HAVE CONTROL for all of them
@@ -87,6 +98,9 @@
 					' it each frame rather than stored, which is
 					' what makes a missile steerable for free
 	DIM mon(NMIS),mlf(NMIS)		' alive flag, frames remaining
+	DIM mgd(NMIS)			' 1 = GUIDED (a Starship fired it and it
+					'     steers), 0 = DEBRIS (dead straight)
+	DIM marm(NMIS)			' debris: frames until it can hurt you
 
 	' WHERE THE GUN IS, radius 6.8 px -- the same circle the force-field art is
 	' drawn on (assets/genart.py R_OUTER), so the gun dot sits ON the ring
@@ -892,6 +906,7 @@ ship_think:
 	mfd = gdir
 	mfx8 = ex8
 	mfy8 = ey8
+	mfg = 1				' GUIDED -- this one hunts you
 	GOSUB fire_missile
 	RETURN
 
@@ -1067,6 +1082,8 @@ kill_enemy:
 	kd = RANDOM(16)
 	mfx8 = ex8
 	mfy8 = ey8
+	mfg = 0				' DEBRIS -- straight, short, and it does
+					' not chase anybody
 	FOR kci = 0 TO 2
 		mfd = kd
 		GOSUB fire_missile
@@ -1076,9 +1093,15 @@ kill_enemy:
 	RETURN
 
 	' --------------------------------------------------------- fire missile
-	' mfd = heading, mfx8/mfy8 = where from. Silently does nothing when the
-	' pool is full, which is correct: eight missiles in the air is already a
-	' bigger cascade than the screen can show.
+	' mfd = heading, mfx8/mfy8 = where from, mfg = 1 GUIDED / 0 DEBRIS.
+	' Silently does nothing when the pool is full, which is correct: eight
+	' missiles in the air is already a bigger cascade than the screen can show.
+	'
+	' THE TWO KINDS ARE NOT THE SAME OBJECT, and the first version of this
+	' treating them as one was the worst bug in the game: chain debris
+	' inherited the Starship's guidance, so every kill launched three HOMING
+	' missiles from point-blank range. Ramming -- the tactic the whole design
+	' is built around -- became a reliable way to die.
 fire_missile:
 	fmi = 255
 	FOR fmj = 0 TO NMIS - 1
@@ -1086,7 +1109,14 @@ fire_missile:
 	NEXT fmj
 	IF fmi = 255 THEN RETURN
 	mon(fmi) = 1
-	mlf(fmi) = MLIFE
+	mgd(fmi) = mfg
+	IF mfg = 1 THEN
+		mlf(fmi) = MLIFE
+		marm(fmi) = 0		' fired from a Starship, already far away
+	ELSE
+		mlf(fmi) = DLIFE
+		marm(fmi) = DARM
+	END IF
 	mdir(fmi) = mfd
 	t8 = mfx8
 	GOSUB to88
@@ -1114,22 +1144,38 @@ upd_missiles:
 				IF #my(mi) >= 45056 THEN #my(mi) = #my(mi) - 40960
 				mx8 = #mx(mi) / 256
 				my8 = #my(mi) / 256
-				SPRITE 13 + mi,my8,mx8,44,15
 
-				' GUIDED -- but only every fourth frame, so it
-				' curves rather than snapping onto you. A missile
-				' that tracked every frame would be unavoidable.
-				mth = satt AND 3
-				IF mth = 0 THEN
-					px8 = mx8
-					py8 = my8
-					GOSUB dir_to_player
-					IF gdir <> 255 THEN
-						GOSUB step_toward_m
-						mdir(mi) = sdir
+				' Colour says which kind it is, because they
+				' behave completely differently and the player
+				' has to know which one to respect: WHITE hunts
+				' you, GREY is thrown wreckage.
+				mcl = 14
+				IF mgd(mi) = 1 THEN mcl = 15
+				SPRITE 13 + mi,my8,mx8,44,mcl
+
+				IF marm(mi) > 0 THEN marm(mi) = marm(mi) - 1
+
+				' ONLY A STARSHIP'S MISSILE STEERS, and only every
+				' fourth frame, so it curves rather than snapping
+				' onto you. Debris flies dead straight -- it is
+				' shrapnel, and shrapnel does not aim.
+				IF mgd(mi) = 1 THEN
+					mth = satt AND 3
+					IF mth = 0 THEN
+						px8 = mx8
+						py8 = my8
+						GOSUB dir_to_player
+						IF gdir <> 255 THEN
+							GOSUB step_toward_m
+							mdir(mi) = sdir
+						END IF
 					END IF
 				END IF
-				GOSUB coll_mis_player
+
+				' Debris can chain into another enemy from frame
+				' one, but cannot touch the PLAYER until it has
+				' cleared the wreck it came out of.
+				IF marm(mi) = 0 THEN GOSUB coll_mis_player
 				GOSUB coll_mis_enemy
 			END IF
 		END IF

@@ -274,12 +274,31 @@ recognisably the same species as the thing drifting past.
 
 ## 6. Missiles and chain reactions
 
-Eight slots, 2 px/frame, about a 60-frame life, and the cheapest actor in the game: add
-velocity, wrap, test one collision.
+Eight slots, 2 px/frame, and the cheapest actor in the game: add velocity, wrap, test one
+collision.
 
-**Every destroyed enemy launches three missiles on diverging headings.** Those missiles can kill
-other enemies, and each of those launches three more. Chain reactions are the scoring engine and
-the reason the missile pool is 8 rather than 4.
+**There are two kinds and they are NOT the same object.** Treating them as one was the worst
+bug this game has had:
+
+| | fired by | steers? | life | can hurt you |
+|---|---|---|---|---|
+| **Guided missile** | Light-speed Starship | **yes**, one notch every 4th frame | 90 frames | immediately |
+| **Debris** | any enemy that dies | **no** — dead straight | **32 frames (64 px)** | after **12 frames** |
+
+**Every destroyed enemy launches three pieces of debris on diverging headings.** They can kill
+other enemies, and each of those throws three more. Chain reactions are the scoring engine and
+the reason the pool is 8 rather than 4.
+
+> **Why debris must not home, and must not be lethal instantly.** Built as one object with the
+> Starship's missile, every kill launched three *homing* warheads — and debris spawns **on the
+> enemy that died**, so a kill by **ramming** put them 14 px away at the exact moment the ram had
+> dropped the field to zero. The tactic the entire design is built around became a reliable way
+> to die. Debris now flies straight, has a throw rather than a range, and cannot touch the player
+> for 12 frames — though it chains into other enemies from frame one, so the cascade is
+> undamaged.
+>
+> Colour carries the distinction because the two demand opposite responses: **white hunts you,
+> grey is thrown wreckage.**
 
 At 1/3/10 points a chain is **legible** — you watch the score tick up one kill at a time and can
 see the cascade travel. This is exactly what a ×100 scale would have destroyed, and it is why
