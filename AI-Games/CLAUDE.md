@@ -257,6 +257,22 @@ cost a debugging session:
   less code than a cursor (in Bust-A-Bobble it freed 248 bytes). Swapping a vertical
   menu to left/right instead is a trap of its own: it works, and players still press up
   and down.
+- **A `PRINT AT` PAST COLUMN 31 WRAPS ONTO THE NEXT ROW, and a HUD `VPOKE` can land INSIDE a
+  label another routine printed.** Both are arithmetic on a bare offset, so neither is visible
+  in the source and neither produces an error: the first overwrites a line you were not editing,
+  and the second reads as a *typo in the label* rather than as a misplaced value. Bust-A-Bobble
+  and Joust both position text this way; UFO!'s `838` screen shipped its difficulty digit into
+  the middle of the word `DIFFICULTY`.
+  - **`games/UFO/assets/checklayout.py` checks it mechanically** and is wired into both build
+    scripts — it parses every `PRINT AT` and every statically resolvable `#addr = <literal>` +
+    `VPOKE #addr` pair and fails on an overflow or a collision.
+  - **Its first version passed the very bug it was written for**, and the reason generalises to
+    any checker in this repo: it compared writes only against strings under the **same label**,
+    but the setup screen prints its text in `setup838` and writes its digits in `su_draw`. A row
+    only means the same thing within one **screen**, and screen boundaries are *not derivable
+    from the source* — they have to be declared. **A check whose scope is narrower than the bug
+    is worse than no check, because it reports success.**
+
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.
