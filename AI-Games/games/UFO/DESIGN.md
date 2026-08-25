@@ -186,6 +186,24 @@ anyway). Charge is the sprite **colour**:
 The flash at full charge is not decoration. "Armed" is a binary state with lethal consequences,
 and the player must be able to read it in peripheral vision while dodging.
 
+
+### 3a. Two ranges, and which one applies
+
+Contact is tested at **two** radii, and which one is in play is the whole game:
+
+| state | radius | outcome |
+|---|---|---|
+| **Armed** | `RAMR` = 14 px — the field's own radius | the enemy dies, `shld` drops to 0 |
+| **Not armed** | `HULLR` = 9 px — the bare hull | **you die** |
+
+So an unarmed ship can slip past at a distance that would have been a kill a moment earlier.
+That asymmetry is what makes the recharge *tense* rather than merely inconvenient — the field
+is not a damage buffer, it is a bigger and more dangerous silhouette that you sometimes have.
+
+X folds mod 256, because the world genuinely is 256 wide. **Y cannot**: the band is 160, so an
+8-bit difference of 97 is ambiguous between +97 and −159. Y is ordered first (`IF a >= b`) and
+then folded over the band, which costs one branch and is unambiguous.
+
 ---
 
 ## 4. Movement, aiming and firing
@@ -384,7 +402,7 @@ free against the 24,336-byte cap.
 | 1 | Space, starfield, ship, 8-way movement, wraparound, HUD, title, **loop probe** | **built** |
 | 2 | Force field: ring, charge, drain, recharge, half speed, colour ramp, armed rule | **built** |
 | 3 | Clockwise gun drift, gun dot, laser fire and flight | **built** |
-| 4 | Drifters: plus/multiply spin, spawning, ram kill, laser kill, player death | — |
+| 4 | Drifters: plus/multiply spin, spawning, ram kill, laser kill, player death | **built** |
 | 5 | Hunter-Killers (with linking) and Light-speed Starships with guided missiles | — |
 | 6 | Chain reactions — three missiles per kill | — |
 | 7 | Death sequence (sparking colour-cycle, control retained), game over, high score | — |

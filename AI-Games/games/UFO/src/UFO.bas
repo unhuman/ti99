@@ -39,6 +39,13 @@
 	CONST AIMTICK = 5		' the gun advances one step every 5 frames
 	CONST LLIFE = 40		' laser frames before it expires
 
+	' ------------------------------------------------------------- ENEMIES
+	CONST NENE = 8			' enemy slots, DIM 0..7
+	CONST ETDRIFT = 1		' random drifter -- 1 point, ZERO AI
+	CONST SPAWNT = 90		' frames between spawn attempts
+	CONST RAMR = 14			' ram range: the force field's own radius
+	CONST HULLR = 9			' hull range: what kills you with no field
+
 	' -------------------------------------------------------------- variables
 	' shld  force field, 0..SHMAX. Armed ONLY at SHMAX
 	' shtk  recharge tick
@@ -55,6 +62,10 @@
 	DIM #lx(2),#ly(2)		' laser position, 8.8
 	DIM #lvx(2),#lvy(2)		' laser velocity for this shot
 	DIM lon(2),llf(2)		' alive flag, frames remaining
+
+	DIM #ex(NENE),#ey(NENE)		' enemy position, 8.8
+	DIM #evx(NENE),#evy(NENE)	' enemy velocity, 8.8 two's complement
+	DIM ety(NENE)			' 0 dead, ETDRIFT, (more in phase 5)
 
 	' WHERE THE GUN IS, radius 6.8 px -- the same circle the force-field art is
 	' drawn on (assets/genart.py R_OUTER), so the gun dot sits ON the ring
@@ -196,6 +207,12 @@ new_game:
 	rphs = 0
 	lon(0) = 0
 	lon(1) = 0
+	FOR ni = 0 TO NENE - 1
+		ety(ni) = 0
+	NEXT ni
+	dead = 0
+	sptk = 0
+	satt = 0
 	lpc = 0
 	#lpl = 0
 
@@ -209,8 +226,15 @@ main:
 	GOSUB drift_aim
 	GOSUB fire_check
 	GOSUB upd_lasers
+	GOSUB spawn_try
+	GOSUB upd_enemies
 	GOSUB draw_ship
 	GOSUB lprate
+	' DEATH IS A STATE, NOT A JUMP. Collision detection sets `dead` and the
+	' main loop acts on it here, at the top level. Jumping out of the
+	' collision GOSUB directly would never pop its return address -- invisible
+	' on the TI's 7 KB of stack, fatal on ColecoVision's 1 KB.
+	IF dead = 1 THEN GOTO do_death
 	GOTO main
 
 	' ------------------------------------------------------------ read stick
@@ -286,6 +310,11 @@ move_ship:
 	' safely unsigned.
 	IF #shy < 4096 THEN #shy = #shy + 40960
 	IF #shy >= 45056 THEN #shy = #shy - 40960
+
+	' Published here rather than in draw_ship because collision detection runs
+	' first and needs them. srl r0,8 -- no DIV, free.
+	shx8 = #shx / 256
+	shy8 = #shy / 256
 	RETURN
 
 	' ------------------------------------------------------------- drift aim
@@ -374,9 +403,7 @@ upd_lasers:
 	' phase 4 -- otherwise the one at the player's height is the one that
 	' vanishes, exactly when it matters most.
 draw_ship:
-	shx8 = #shx / 256		' compiles to srl r0,8 -- no DIV, free
-	shy8 = #shy / 256
-	SPRITE 0,shy8,shx8,0,15		' hull, white
+	SPRITE 0,shy8,shx8,0,15		' hull, white (shx8/shy8 set in move_ship)
 
 	' THE FIELD'S COLOUR IS THE GAUGE. Black when empty climbing to blue is
 	' the manual's own description; the flash at full charge is ours, and it
@@ -407,6 +434,179 @@ draw_ship:
 	gdc = 11
 	IF shld < SHFIRE THEN gdc = 6
 	SPRITE 2,gdy,gdx,20,gdc
+	RETURN
+
+	' ------------------------------------------------------------ spawn try
+	' Drifters arrive on the FAR SIDE of the wrap: x is the player's own
+	' column plus 96 to 159, which in 8-bit arithmetic wraps by itself and so
+	' is always most of a screen away. Spawning at a uniformly random point
+	' and rejecting the near ones would sometimes reject several in a row and
+	' leave the arena empty for no reason the player can see.
+spawn_try:
+	sptk = sptk + 1
+	IF sptk < SPAWNT THEN RETURN
+	sptk = 0
+
+	si = 255
+	FOR ssi = 0 TO NENE - 1
+		IF ety(ssi) = 0 THEN si = ssi
+	NEXT ssi
+	IF si = 255 THEN RETURN		' every slot busy
+
+	t8 = shx8 + 96
+	t8 = t8 + RANDOM(64)
+	GOSUB to88
+	#ex(si) = #t88
+	t8 = 16 + RANDOM(160)
+	GOSUB to88
+	#ey(si) = #t88
+
+	GOSUB rnd_vel
+	#evx(si) = #rv
+	GOSUB rnd_vel
+	#evy(si) = #rv
+	' A satellite with no velocity at all just sits there looking broken.
+	IF #evx(si) = 0 THEN
+		IF #evy(si) = 0 THEN #evx(si) = 96
+	END IF
+	ety(si) = ETDRIFT
+	RETURN
+
+	' -------------------------------------------------------- random velocity
+	' Five speeds per axis, picked from an IF ladder rather than scaled from
+	' the 16-direction table. Scaling would need a divide, and CVBasic's
+	' 16-bit divide is UNSIGNED -- every negative component would come back
+	' as a huge positive one and every satellite would drift the same way.
+	'
+	' Twenty-five combinations is plenty for what the sources call a
+	' "semi-random, circular" drift, and it costs no table.
+rnd_vel:
+	rv = RANDOM(5)
+	#rv = 0
+	IF rv = 0 THEN #rv = 65344	' -192, i.e. -0.75 px/frame
+	IF rv = 1 THEN #rv = 65440	' -96
+	IF rv = 3 THEN #rv = 96
+	IF rv = 4 THEN #rv = 192
+	RETURN
+
+	' ------------------------------------------------- whole pixels to 8.8
+	' EIGHT DOUBLINGS, NOT `t8 * 256`. An 8-bit variable times a constant over
+	' 255 compiles to a bare CLR (CLAUDE.md 3A), so every enemy would spawn at
+	' x=0, y=0 -- in the corner, on top of each other, with nothing reporting
+	' a problem. Only called at spawn, so the eight adds cost nothing.
+to88:
+	#t88 = t8
+	#t88 = #t88 + #t88
+	#t88 = #t88 + #t88
+	#t88 = #t88 + #t88
+	#t88 = #t88 + #t88
+	#t88 = #t88 + #t88
+	#t88 = #t88 + #t88
+	#t88 = #t88 + #t88
+	#t88 = #t88 + #t88
+	RETURN
+
+	' -------------------------------------------------------- update enemies
+upd_enemies:
+	satt = satt + 1
+	FOR ei = 0 TO NENE - 1
+		IF ety(ei) <> 0 THEN
+			#ex(ei) = #ex(ei) + #evx(ei)
+			#ey(ei) = #ey(ei) + #evy(ei)
+			IF #ey(ei) < 4096 THEN #ey(ei) = #ey(ei) + 40960
+			IF #ey(ei) >= 45056 THEN #ey(ei) = #ey(ei) - 40960
+			ex8 = #ex(ei) / 256
+			ey8 = #ey(ei) / 256
+
+			' THE ORIGINAL'S OWN TRICK: flip between a PLUS and a
+			' CROSS and the shape appears to spin, because a plus
+			' turned 45 degrees IS a multiply sign. The + ei staggers
+			' the slots so they do not all flip on the same frame,
+			' which would read as the whole screen blinking.
+			eap = satt + ei
+			eap = eap AND 4
+			epn = 24
+			IF eap <> 0 THEN epn = 28
+			SPRITE 5 + ei,ey8,ex8,epn,3
+
+			GOSUB coll_player
+			GOSUB coll_lasers
+		END IF
+	NEXT ei
+	RETURN
+
+	' ------------------------------------------------------- enemy vs player
+	' TWO RANGES, AND WHICH ONE APPLIES IS THE WHOLE GAME:
+	'
+	'   ARMED  -- the FIELD touches it first (RAMR), the enemy dies, and the
+	'             field is spent. This is the tactic the original rewards.
+	'   NOT    -- there is no field, so only the HULL (HULLR) is in play, and
+	'             touching anything kills you.
+	'
+	' So an unarmed player can slip past at a distance that would have been a
+	' kill a moment earlier. That asymmetry is what makes the recharge tense
+	' rather than merely inconvenient.
+	'
+	' X folds mod 256 because the world genuinely is 256 wide. Y CANNOT: the
+	' band is 160, so an 8-bit difference of 97 is ambiguous between +97 and
+	' -159. It is ordered instead, then folded over the band.
+coll_player:
+	cdx = ex8 - shx8
+	IF cdx > 127 THEN cdx = 0 - cdx
+	IF cdx >= RAMR THEN RETURN
+	IF ey8 >= shy8 THEN
+		cdy = ey8 - shy8
+	ELSE
+		cdy = shy8 - ey8
+	END IF
+	IF cdy > 80 THEN cdy = 160 - cdy
+	IF cdy >= RAMR THEN RETURN
+
+	IF shld = SHMAX THEN
+		shld = 0
+		shtk = 0
+		GOSUB kill_enemy
+		RETURN
+	END IF
+	IF cdx >= HULLR THEN RETURN
+	IF cdy >= HULLR THEN RETURN
+	dead = 1
+	RETURN
+
+	' ------------------------------------------------------- enemy vs lasers
+coll_lasers:
+	FOR ci = 0 TO 1
+		IF ety(ei) <> 0 THEN
+			IF lon(ci) = 1 THEN
+				clx = #lx(ci) / 256
+				cly = #ly(ci) / 256
+				cdx = ex8 - clx
+				IF cdx > 127 THEN cdx = 0 - cdx
+				IF cdx < 10 THEN
+					IF ey8 >= cly THEN
+						cdy = ey8 - cly
+					ELSE
+						cdy = cly - ey8
+					END IF
+					IF cdy > 80 THEN cdy = 160 - cdy
+					IF cdy < 10 THEN
+						lon(ci) = 0
+						SPRITE 3 + ci,SPRHID,0,0,0
+						GOSUB kill_enemy
+					END IF
+				END IF
+			END IF
+		END IF
+	NEXT ci
+	RETURN
+
+	' ----------------------------------------------------------- kill enemy
+	' Phase 6 hangs the chain reaction off here: three missiles, diverging.
+kill_enemy:
+	ety(ei) = 0
+	SPRITE 5 + ei,SPRHID,0,0,0
+	#score = #score + 1
+	GOSUB prt_score
 	RETURN
 
 	' ------------------------------------------------------------- spin ring
@@ -489,6 +689,29 @@ prt_dout:
 	IF #psd = 100 THEN #psd = 10 : GOTO prt_dloop
 	IF #psd = 10 THEN #psd = 1 : GOTO prt_dloop
 	RETURN
+
+	' ---------------------------------------------------------------- death
+	' Reached by GOTO from the main loop with NO GOSUB frames outstanding, and
+	' it leaves by GOTO to the title the same way. Phase 7 replaces this with
+	' the original's sparking colour-cycle, which keeps the player in control
+	' while the ship comes apart.
+do_death:
+	SPRITE 1,SPRHID,0,0,0		' the field goes first
+	SPRITE 2,SPRHID,0,0,0
+	ddp = 48
+	FOR ddi = 0 TO 2
+		SPRITE 0,shy8,shx8,ddp,9
+		FOR ddj = 0 TO 7
+			WAIT
+		NEXT ddj
+		ddp = ddp + 4
+	NEXT ddi
+	SPRITE 0,SPRHID,0,0,0
+	FOR ddj = 0 TO 59
+		WAIT
+	NEXT ddj
+	IF #score > #hisc THEN #hisc = #score
+	GOTO title_screen
 
 	' ------------------------------------------------- TEMPORARY loop probe
 	' Two digits at row 0, column 20: measured main-loop passes per second.
