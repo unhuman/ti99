@@ -786,13 +786,13 @@ k_spawn:
 	' A KNIGHT ON FOOT. He falls to the nearest surface and walks, and he is
 	' HELPLESS -- worth running down before his ride arrives.
 k_foot:
-	#kvy(kni) = #kvy(kni) + GRAV
-	IF #kvy(kni) > 33768 THEN #kvy(kni) = 33768
-	#ky(kni) = #ky(kni) + #kvy(kni)
-	#ky(kni) = #ky(kni) - 32768
-	kmy = #ky(kni) / 256
-	kmx = #kx(kni) / 256
-	IF #kvy(kni) >= 32768 THEN
+	#cvy = #cvy + GRAV
+	IF #cvy > 33768 THEN #cvy = 33768
+	#cy = #cy + #cvy
+	#cy = #cy - 32768
+	kmy = #cy / 256
+	kmx = #cx / 256
+	IF #cvy >= 32768 THEN
 		kf = kmy + MH
 		FOR knj = 0 TO NPLAT - 1
 			kpt = ply(knj)
@@ -802,9 +802,9 @@ k_foot:
 					kc = kmx + 8
 					IF kc >= #plx1(knj) THEN
 						IF kc <= #plx2(knj) THEN
-							#ky(kni) = kpt - MH
-							#ky(kni) = #ky(kni) * 256
-							#kvy(kni) = 32768
+							#cy = kpt - MH
+							#cy = #cy * 256
+							#cvy = 32768
 							' HE STANDS STILL, lance up, waiting for his
 							' ride. A knight jogging along a ledge reads
 							' as an enemy doing something; standing still
@@ -817,8 +817,8 @@ k_foot:
 			END IF
 		NEXT knj
 	END IF
-	IF kmy > LAVAY THEN kon(kni) = KDEAD	' he fell in; no rescue
-	kfrm(kni) = 0
+	IF kmy > LAVAY THEN con = KDEAD	' he fell in; no rescue
+	cfrm = 0
 	RETURN
 
 	' THE RIDERLESS BUZZARD. Flies in from the nearer screen edge, straight at the
@@ -1005,28 +1005,82 @@ k_move:
 	NEXT kni
 	RETURN
 
+	' ============ THE CURRENT KNIGHT LIVES IN SCALARS WHILE WE WORK ON IT ======
+	'
+	' This is the real cost of the whole loop, and it was never the island tests.
+	' The per-knight code touched its arrays 115 times, and on the 9900 EVERY
+	' array element is about eight instructions -- load the index, shift it, scale
+	' it, add the base, dereference. That is ~920 instructions per knight, ~5,500
+	' for six of them, and a 60 Hz frame on this machine buys only about 5,000
+	' instructions in total once wait states are counted. The loop could not fit
+	' in a frame no matter how the tests were ordered.
+	'
+	' So the knight is COPIED INTO SCALARS once, the whole body runs on those at
+	' one instruction each, and the changed ones are written back once. Fifteen
+	' loads plus thirteen stores replaces a hundred and fifteen indexed accesses.
+	'
+	' ktier and kpad are read-only in here, so they are loaded and not stored.
+	' Anything indexed by ksj (another knight) or knj (an island) stays an array:
+	' those are genuinely different objects, not this one.
 k_one:
-	IF kon(kni) = KFOOT THEN GOSUB k_foot
-	IF kon(kni) = KFOOT THEN RETURN
-	IF kon(kni) = 2 THEN
-		kmat(kni) = kmat(kni) - 1
-		IF kmat(kni) = 0 THEN
-			kon(kni) = 1
-			padu(kpad(kni)) = 0	' the pad is free again
+	#cx = #kx(kni)
+	#cy = #ky(kni)
+	#cvx = #kvx(kni)
+	#cvy = #kvy(kni)
+	ctx = ktx(kni)
+	cty = kty(kni)
+	cflp = kflp(kni)
+	cfa = kfa(kni)
+	cfrm = kfrm(kni)
+	cface = kface(kni)
+	ctier = ktier(kni)
+	cwan = kwan(kni)
+	con = kon(kni)
+	cmat = kmat(kni)
+	cpad = kpad(kni)
+	GOSUB k_body
+	#kx(kni) = #cx
+	#ky(kni) = #cy
+	#kvx(kni) = #cvx
+	#kvy(kni) = #cvy
+	ktx(kni) = ctx
+	kty(kni) = cty
+	kflp(kni) = cflp
+	kfa(kni) = cfa
+	kfrm(kni) = cfrm
+	kface(kni) = cface
+	kwan(kni) = cwan
+	kon(kni) = con
+	kmat(kni) = cmat
+	RETURN
+
+k_body:
+	' ONE test, not two. Written as two, a man who fell in the lava during k_foot
+	' cleared his own KFOOT state and then FELL THROUGH into the mounted-knight
+	' code below -- flying, jousting and being drawn as a dead slot.
+	IF con = KFOOT THEN
+		GOSUB k_foot
+		RETURN
+	END IF
+	IF con = 2 THEN
+		cmat = cmat - 1
+		IF cmat = 0 THEN
+			con = 1
+			padu(cpad) = 0	' the pad is free again
 		END IF
 		RETURN
 	END IF
 	kpx = #px / 256
 	kpy = #py / 256
-	kmx = #kx(kni) / 256
-	kmy = #ky(kni) / 256
+	kmx = #cx / 256
+	kmy = #cy / 256
 	' !! 16-BIT, AND MULTIPLIED VIA A SEPARATE VARIABLE. As a plain `ktop` the 400
 	' truncated to 144, so the tiers came out 144 / 234 / 324-and-wrapped-to-68 --
 	' THE SHADOW LORD WOULD HAVE BEEN THE SLOWEST ENEMY IN THE GAME, the exact
 	' inversion that shipped in RALLY-X. tools/bigvar.py caught it before the build.
 	' The multiply reads #ktp2, not #ktop: on the 9900 MPY leaves the high word in
 	' r0 and reading back the variable just multiplied returns 0 (CLAUDE.md 3A).
-	#ktp2 = ktier(kni)
+	#ktp2 = ctier
 	#ktop = #ktp2 * 140
 	#ktop = #ktop + 860
 	#kagg = agg
@@ -1049,9 +1103,9 @@ k_one:
 	' below is shared and stays O(1).
 	kth = kni AND 1
 	IF kth = kthf THEN
-		IF ktier(kni) = 0 THEN GOSUB k_wander
-		IF ktier(kni) = 1 THEN GOSUB k_hunt
-		IF ktier(kni) = 2 THEN GOSUB k_lord
+		IF ctier = 0 THEN GOSUB k_wander
+		IF ctier = 1 THEN GOSUB k_hunt
+		IF ctier = 2 THEN GOSUB k_lord
 	END IF
 	IF kth = kthf THEN
 
@@ -1087,23 +1141,23 @@ k_one:
 						IF ksdx < 10 THEN
 							IF ksdy < 10 THEN
 								IF kmx < ksox THEN
-									#kx(kni) = #kx(kni) - 256
+									#cx = #cx - 256
 								ELSE
-									#kx(kni) = #kx(kni) + 256
+									#cx = #cx + 256
 								END IF
 							END IF
 						END IF
 						' and aim to pass on the far side of him,
 						' off his altitude so the lances differ
 						IF kmx < ksox THEN
-							IF ktx(kni) > 28 THEN ktx(kni) = ktx(kni) - 28
+							IF ctx > 28 THEN ctx = ctx - 28
 						ELSE
-							IF ktx(kni) < 227 THEN ktx(kni) = ktx(kni) + 28
+							IF ctx < 227 THEN ctx = ctx + 28
 						END IF
 						IF kmy < ksoy THEN
-							IF kty(kni) > 10 THEN kty(kni) = kty(kni) - 10
+							IF cty > 10 THEN cty = cty - 10
 						ELSE
-							IF kty(kni) < 140 THEN kty(kni) = kty(kni) + 10
+							IF cty < 140 THEN cty = cty + 10
 						END IF
 					END IF
 				END IF
@@ -1127,11 +1181,11 @@ k_one:
 
 	' Climb toward the target altitude. Flapping is on a cooldown, which is what
 	' makes a tier feel eager or lazy without changing the rule.
-	IF kflp(kni) > 0 THEN
-		kflp(kni) = kflp(kni) - 1
+	IF cflp > 0 THEN
+		cflp = cflp - 1
 	ELSE
-		IF kmy > kty(kni) THEN
-			kfa(kni) = 10		' they beat their wings too
+		IF kmy > cty THEN
+			cfa = 10		' they beat their wings too
 			' 820, NOT 420. A knight flaps once per cooldown while gravity
 			' collects 44 every frame in between: at the Bounder's 14-frame
 			' cooldown that is 616 of sink against 420 of lift, so EVERY
@@ -1139,11 +1193,11 @@ k_one:
 			' "enemies get stuck at the bottom" report. They were trying and
 			' losing to arithmetic. A player never hit this because a player
 			' can tap every frame; a knight cannot.
-			#kvy(kni) = #kvy(kni) - 820
-			IF #kvy(kni) < 32768 - 1150 THEN #kvy(kni) = 32768 - 1150
+			#cvy = #cvy - 820
+			IF #cvy < 32768 - 1150 THEN #cvy = 32768 - 1150
 			' EAGERER EVERY WAVE TOO, floored so it stays a flap and not
 			' a hover. Same strategy per tier, sharper execution.
-			kfc = 14 - ktier(kni) * 4
+			kfc = 14 - ctier * 4
 			kfw = agg / 4
 			IF kfc > kfw THEN
 				kfc = kfc - kfw
@@ -1151,33 +1205,33 @@ k_one:
 				kfc = 3
 			END IF
 			IF kfc < 3 THEN kfc = 3
-			kflp(kni) = kfc
+			cflp = kfc
 		END IF
 	END IF
 
 	' Steer toward the target x THE SHORTER WAY ROUND THE WRAP -- chasing across
 	' the middle when the edge is nearer is the tell of an AI that does not know
 	' the screen wraps.
-	IF ktx(kni) > kmx THEN
-		kdd = ktx(kni) - kmx
+	IF ctx > kmx THEN
+		kdd = ctx - kmx
 		IF kdd < 128 THEN GOSUB k_right ELSE GOSUB k_left
 	ELSE
-		kdd = kmx - ktx(kni)
+		kdd = kmx - ctx
 		IF kdd < 128 THEN GOSUB k_left ELSE GOSUB k_right
 	END IF
 
-	#kvy(kni) = #kvy(kni) + GRAV
-	IF #kvy(kni) > 33468 THEN #kvy(kni) = 33468
+	#cvy = #cvy + GRAV
+	IF #cvy > 33468 THEN #cvy = 33468
 
-	#ky(kni) = #ky(kni) + #kvy(kni)
-	#ky(kni) = #ky(kni) - 32768
-	#kx(kni) = #kx(kni) + #kvx(kni)
-	#kx(kni) = #kx(kni) - 32768
+	#cy = #cy + #cvy
+	#cy = #cy - 32768
+	#cx = #cx + #cvx
+	#cx = #cx - 32768
 
-	kmy = #ky(kni) / 256
+	kmy = #cy / 256
 	IF kmy < TOPY THEN
-		#ky(kni) = 2048
-		#kvy(kni) = 32768 + 220	' knights are pushed off the ceiling too
+		#cy = 2048
+		#cvy = 32768 + 220	' knights are pushed off the ceiling too
 	END IF
 
 	' Knights obey the same solid islands the player does -- an enemy that can
@@ -1199,7 +1253,7 @@ k_one:
 	kc = kmx + 8			' centre x
 	krt = 0
 	IF kth = kthf THEN
-		IF kty(kni) > kmy + 12 THEN krt = 1
+		IF cty > kmy + 12 THEN krt = 1
 	END IF
 	IF krt = 2 THEN krt = 1	' target below: routing may apply
 	FOR knj = 0 TO NPLAT - 1
@@ -1215,20 +1269,20 @@ k_one:
 		END IF
 		IF krt = 1 THEN
 			IF kpt > kmy + 8 THEN
-				IF kpt <= kty(kni) + 8 THEN kok = 1
+				IF kpt <= cty + 8 THEN kok = 1
 			END IF
 		END IF
 		IF kok = 1 THEN
 		IF plon(knj) = 1 THEN
 			IF kc >= #plx1(knj) THEN
 				IF kc <= #plx2(knj) THEN
-					IF #kvy(kni) >= 32768 THEN
+					IF #cvy >= 32768 THEN
 						' falling: land on the surface
 						IF kf >= kpt THEN
 							IF kf <= kpt + 8 THEN
-								#ky(kni) = kpt - MH
-								#ky(kni) = #ky(kni) * 256
-								#kvy(kni) = 32768
+								#cy = kpt - MH
+								#cy = #cy * 256
+								#cvy = 32768
 							END IF
 						END IF
 					END IF
@@ -1239,15 +1293,15 @@ k_one:
 					' able to get it out again.
 					IF kmy >= kpt THEN
 						IF kmy <= kpt + 7 THEN
-							#ky(kni) = kpt + 8
-							#ky(kni) = #ky(kni) * 256
-							#kvy(kni) = 32768 + 220
+							#cy = kpt + 8
+							#cy = #cy * 256
+							#cvy = 32768 + 220
 						END IF
 					END IF
 					' and route around it if it is between me and my target
 					IF krt = 1 THEN
 						IF kpt > kmy + 8 THEN
-							IF kpt <= kty(kni) + 8 THEN
+							IF kpt <= cty + 8 THEN
 								#kbl = kc
 								#kbl = #kbl - #plx1(knj)
 								#kbr = #plx2(knj)
@@ -1255,16 +1309,16 @@ k_one:
 								IF #kbl < #kbr THEN
 									#kbx = #plx1(knj)
 									IF #kbx > 22 THEN
-										ktx(kni) = #kbx - 22
+										ctx = #kbx - 22
 									ELSE
-										ktx(kni) = 0
+										ctx = 0
 									END IF
 								ELSE
 									#kbx = #plx2(knj)
 									IF #kbx < 233 THEN
-										ktx(kni) = #kbx + 22
+										ctx = #kbx + 22
 									ELSE
-										ktx(kni) = 255
+										ctx = 255
 									END IF
 								END IF
 							END IF
@@ -1275,7 +1329,7 @@ k_one:
 		END IF
 		END IF
 	NEXT knj
-	IF #kvy(kni) >= 32768 THEN
+	IF #cvy >= 32768 THEN
 		' NOTHING FLIES BELOW THE GROUND -- AND THE LINE IS THE FEET.
 		'
 		' The clamp was already here and still let knights swim through the
@@ -1289,20 +1343,20 @@ k_one:
 		' LAVAY - MH and the test measures feet too.
 		kfe = kmy + MH
 		IF kfe > LAVAY THEN
-			#ky(kni) = LAVAY - MH
-			#ky(kni) = #ky(kni) * 256
-			#kvy(kni) = 32768 - 620
+			#cy = LAVAY - MH
+			#cy = #cy * 256
+			#cvy = 32768 - 620
 		END IF
 	END IF
 
-	IF kfa(kni) > 0 THEN
-		kfa(kni) = kfa(kni) - 1
-		kfrm(kni) = 2
-		IF kfa(kni) < 7 THEN kfrm(kni) = 1
-		IF kfa(kni) < 4 THEN kfrm(kni) = 0
+	IF cfa > 0 THEN
+		cfa = cfa - 1
+		cfrm = 2
+		IF cfa < 7 THEN cfrm = 1
+		IF cfa < 4 THEN cfrm = 0
 	ELSE
-		kfrm(kni) = 1
-		IF #kvy(kni) < 32768 THEN kfrm(kni) = 0
+		cfrm = 1
+		IF #cvy < 32768 THEN cfrm = 0
 	END IF
 	RETURN
 
@@ -1311,11 +1365,11 @@ k_one:
 	' business that sometimes notices you. Never a patrol: pacing a platform
 	' back and forth is what makes an enemy look like furniture.
 k_wander:
-	IF kwan(kni) > 0 THEN
-		kwan(kni) = kwan(kni) - 1
+	IF cwan > 0 THEN
+		cwan = cwan - 1
 		RETURN
 	END IF
-	kwan(kni) = 22 + RANDOM(30)	' re-target often -- a Bounder that commits
+	cwan = 22 + RANDOM(30)	' re-target often -- a Bounder that commits
 					' to one heading for two seconds looks asleep
 	' HALF ITS ROLLS ARE THE PLAYER NOW, not a quarter. A Bounder that wanders
 	' three times out of four is scenery: it has to threaten often enough that you
@@ -1329,47 +1383,47 @@ k_wander:
 	IF kr > 0 THEN kr = 1
 	IF agg > 10 THEN kr = 0
 	IF kr = 0 THEN
-		ktx(kni) = kpx
-		kty(kni) = kpy - 4
-		IF kpy < 4 THEN kty(kni) = 0
+		ctx = kpx
+		cty = kpy - 4
+		IF kpy < 4 THEN cty = 0
 	ELSE
-		ktx(kni) = RANDOM(255)
-		kty(kni) = 24 + RANDOM(112)
+		ctx = RANDOM(255)
+		cty = 24 + RANDOM(112)
 	END IF
 	RETURN
 
 	' HUNTER -- seeks. Aims at the player, and one notch above him: level flight
 	' into a joust is a coin toss, so it wants the high side of the contact.
 k_hunt:
-	ktx(kni) = kpx
-	kty(kni) = kpy - 4
-	IF kpy < 4 THEN kty(kni) = 0
+	ctx = kpx
+	cty = kpy - 4
+	IF kpy < 4 THEN cty = 0
 	RETURN
 
 	' SHADOW LORD -- fast, high, and higher still as it closes. It lives in the
 	' top third and CLIMBS when near, because altitude decides the joust: the
 	' climb is the attack, not a retreat from it.
 k_lord:
-	ktx(kni) = kpx
-	kty(kni) = kpy - 12
-	IF kpy < 12 THEN kty(kni) = 0
+	ctx = kpx
+	cty = kpy - 12
+	IF kpy < 12 THEN cty = 0
 	klx = kpx - kmx
 	IF kmx > kpx THEN klx = kmx - kpx
 	IF klx < 48 THEN
-		kty(kni) = kpy - 30
-		IF kpy < 30 THEN kty(kni) = 0
+		cty = kpy - 30
+		IF kpy < 30 THEN cty = 0
 	END IF
-	IF kty(kni) > 96 THEN kty(kni) = 96	' it belongs near the ceiling
+	IF cty > 96 THEN cty = 96	' it belongs near the ceiling
 	RETURN
 
 k_right:
-	kface(kni) = 0
-	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 36
+	cface = 0
+	IF #cvx < #kfast THEN #cvx = #cvx + 36
 	RETURN
 
 k_left:
-	kface(kni) = 1
-	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 36
+	cface = 1
+	IF #cvx > #kslow THEN #cvx = #cvx - 36
 	RETURN
 
 	' --------------------------------------------------------- egg movement
