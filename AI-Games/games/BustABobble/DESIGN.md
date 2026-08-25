@@ -577,6 +577,17 @@ in **both** fonts before committing to it -- TI's `font_bitmaps` and ColecoVisio
 `db $40,$a0,...` at `$26` -- because the two targets carry different library fonts
 and only checking one would have shipped a blank glyph to the other.
 
+**The three option lines share a centre axis.** `1=MUSIC` spans columns 10-20 and
+`2=DIFFICULTY` spans 6-24 at the default EASY -- label 6-17, blank, value 19-22,
+blank, badge 24 -- so both centre on **15**. At column 5 the difficulty line centred
+on 14 and read a character left of the music line above it. MEDIUM is two characters
+longer, so that one line centres on 16 instead; unavoidable without padding the word,
+and it is the setting seen least.
+
+**Nudging that line means moving three things.** The label, the value and the badge
+are separate writes at independent hard-coded columns (614, 627, `608 + dlx`), so
+moving one alone detaches the value and arrow from the word they belong to.
+
 The combined cart's title lists `0=GAME SELECT` on row 15, above `1=MUSIC`
 (17) and `2=DIFFICULTY` (19), so the options read 0, 1, 2 downwards. Row 15 was the
 credit, which moves up to row 13 -- into the empty band under the bubbles -- **on the

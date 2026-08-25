@@ -837,11 +837,15 @@ prt_badges:
 	' toggle cycles back to a short word -- print six and "HARD  " leaves "UM" and a
 	' stranded badge behind it.
 prt_dlev:
-	dlx = 23			' EASY and HARD are four characters
-	IF dlev = 0 THEN SCREEN s_txt,187,626,8,1,8
-	IF dlev = 1 THEN SCREEN s_txt,203,626,8,1,8
-	IF dlev = 1 THEN dlx = 25
-	IF dlev = 2 THEN SCREEN s_txt,195,626,8,1,8
+	' !! THE LABEL, THE VALUE AND THE BADGE MOVE TOGETHER. All three are separate
+	' writes at independent hard-coded columns -- the label at 614 in the title, the
+	' value at 627 here, the badge at 608 + dlx -- so nudging the line means changing
+	' all three or the value and arrow detach from the word they belong to.
+	dlx = 24			' EASY and HARD are four characters
+	IF dlev = 0 THEN SCREEN s_txt,187,627,8,1,8
+	IF dlev = 1 THEN SCREEN s_txt,203,627,8,1,8
+	IF dlev = 1 THEN dlx = 26
+	IF dlev = 2 THEN SCREEN s_txt,195,627,8,1,8
 	' This is the LIVE setting -- the only badge on the title that follows the
 	' toggle. The two beside the scores are history and must not move.
 	#tna = 608 + dlx		' row 19
@@ -3221,11 +3225,19 @@ title_screen:
 #endif
 	SCREEN s_txt,211,554,7,1,7			' row 17, col 10
 	GOSUB prt_musen
-	' Column 5 now, because the line grew a badge on the end: label 5-16, space at
-	' 17, value 18-23, space at 24, badge at 25. Spans 5-25, centred on 15, which is
-	' where 1=MUSIC sits too. The single space either side of the value is what
-	' stops it reading as "2=DIFFICULTYEASY".
-	SCREEN s_txt,166,613,12,1,12		' row 19, col 5
+	' COLUMN 6. The line is three separate writes -- label, value, badge -- and at
+	' the default EASY they span 6-24: label 6-17, a blank at 18, value 19-22, a blank
+	' at 23, badge at 24. That centres on 15, which is exactly where 1=MUSIC sits
+	' (10-20, also centred on 15), so the two lines line up on the same axis. At
+	' column 5 the pair centred on 14 and 15 respectively and the difficulty line
+	' read a character left of the music line above it.
+	'
+	' MEDIUM is two characters longer than EASY or HARD, so its value and badge shift
+	' right and that line centres on 16 instead. Unavoidable without padding the word,
+	' and it is the setting seen least: EASY is the default and the one on screen.
+	' The single blank either side of the value is what stops it reading as
+	' "2=DIFFICULTYEASY".
+	SCREEN s_txt,166,614,12,1,12		' row 19, col 6
 	GOSUB prt_dlev
 	SCREEN s_txt,21,710,19,1,19	' row 22, col 6
 	t8 = 0
