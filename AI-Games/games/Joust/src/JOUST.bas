@@ -19,7 +19,7 @@
 					' Joust's mount FALLS, and the flap has to fight it
 	CONST ACCX = 52			' horizontal acceleration while steering
 	CONST FRIC = 12			' horizontal decay when not steering
-	CONST NPLAT = 9			' islands, DIM 0..8 -- MEASURED, see assets/refmap.py
+	CONST NPLAT = 10		' islands, DIM 0..9 -- MEASURED, see assets/refmap.py
 	CONST NKN = 6			' knights, DIM 0..5 -- SIX. Joust is meant to be crowded
 	CONST NEGG = 4			' eggs, DIM 0..3
 	CONST LAVAY = 168		' feet at or below this pixel row are in the lava
@@ -32,7 +32,7 @@
 	CONST LAVAA = 131
 	CONST LIFECH = 134
 	CONST PADCH = 135
-	CONST NPAD = 4			' materialisation pads, DIM 0..3
+	CONST NPAD = 5			' pads, DIM 0..4 -- one is on the BASE
 	CONST KDEAD = 0
 	CONST KLIVE = 1
 	CONST KMATZ = 2		' materialising on a pad
@@ -119,22 +119,33 @@ setup:
 	' The two right-hand ledges deliberately OVERLAP in x: the upper overhangs the
 	' lower, and crossing the lower one halts you against it. That is in the
 	' arcade and it is what makes the right side awkward to leave.
-	#plx1(0) = 40  : #plx2(0) = 199 : ply(0) = 160	' base, the solid middle
-	#plx1(1) = 0   : #plx2(1) = 39  : ply(1) = 160	' BRIDGE left  -- burns wave 3
-	#plx1(2) = 200 : #plx2(2) = 255 : ply(2) = 160	' BRIDGE right -- burns wave 3
-	#plx1(3) = 0   : #plx2(3) = 47  : ply(3) = 104	' left ledge
-	#plx1(4) = 208 : #plx2(4) = 255 : ply(4) = 104	' right ledge, lower
-	#plx1(5) = 168 : #plx2(5) = 215 : ply(5) = 88	' right ledge, upper (overhangs)
-	#plx1(6) = 72  : #plx2(6) = 143 : ply(6) = 56	' middle ledge
-	#plx1(7) = 0   : #plx2(7) = 23  : ply(7) = 40	' top-left ledge
-	#plx1(8) = 232 : #plx2(8) = 255 : ply(8) = 40	' top-right ledge
+	' MEASURED FROM THE REFERENCE SHOT the user supplied (assets/refmap.py does
+	' the same job on any screenshot: classify every pixel as rock / pad / lava and
+	' scale the spans from the shot's size to our 256x192).
+	'
+	' Ten islands, and the shape is not symmetric -- the left side stacks a high
+	' ledge over a lower one, the right side likewise but offset, and a small ledge
+	' sits alone at the top right. That asymmetry is the level design; a tidy
+	' mirror-image arena would play quite differently.
+	#plx1(0) = 40  : #plx2(0) = 207 : ply(0) = 160	' BASE, solid rock beneath
+	#plx1(1) = 0   : #plx2(1) = 39  : ply(1) = 160	' bridge left  -- burns wave 3
+	#plx1(2) = 208 : #plx2(2) = 255 : ply(2) = 160	' bridge right -- burns wave 3
+	#plx1(3) = 0   : #plx2(3) = 55  : ply(3) = 104	' left, middle height
+	#plx1(4) = 168 : #plx2(4) = 223 : ply(4) = 96	' right, middle height
+	#plx1(5) = 72  : #plx2(5) = 151 : ply(5) = 56	' upper middle, the big one
+	#plx1(6) = 88  : #plx2(6) = 143 : ply(6) = 120	' lower middle
+	#plx1(7) = 0   : #plx2(7) = 31  : ply(7) = 48	' left, high
+	#plx1(8) = 216 : #plx2(8) = 255 : ply(8) = 48	' right, high
+	#plx1(9) = 152 : #plx2(9) = 183 : ply(9) = 24	' top right, small
 
-	' One pad per useful island. y is the SPRITE TOP for a bird standing on that
-	' surface, i.e. surface - 16.
-	padx(0) = 96  : pady(0) = 144		' on the base
-	padx(1) = 16  : pady(1) = 88		' left ledge
-	padx(2) = 224 : pady(2) = 88		' right lower ledge
-	padx(3) = 104 : pady(3) = 40		' middle ledge
+	' FIVE PADS, and one of them is on the BASE -- that is where the player
+	' materialises, and it is the pad knights most often find blocked. y is the
+	' SPRITE TOP for a bird standing on that surface, i.e. surface - 16.
+	padx(0) = 104 : pady(0) = 144		' base
+	padx(1) = 96  : pady(1) = 40		' upper middle
+	padx(2) = 192 : pady(2) = 80		' right, middle height
+	padx(3) = 16  : pady(3) = 88		' left, middle height
+	padx(4) = 160 : pady(4) = 8		' top right, small
 	RETURN
 
 	' EROSION. Deterministic, never random -- a player has to be able to learn the
@@ -159,6 +170,8 @@ set_islands:
 	END IF
 	IF wave < 6 THEN RETURN
 	' one more ledge per wave from 6, cycling 3,4,5,6 so it is learnable
+	' Cycle 3,4,5,6 -- the four ledges a player most relies on. The high pair and
+	' the top-right sliver stay, so the arena never loses its whole upper half.
 	sin = wave - 6
 	sin = sin AND 3
 	plon(3 + sin) = 0
@@ -532,12 +545,16 @@ p_land:
 p_bump:
 	IF #vy >= 32768 THEN RETURN		' only while rising
 	pbh = #py / 256				' the head is the sprite's top edge
+	pbb = pbh + 15				' and this is the feet
 	pbc = #px / 256
 	pbc = pbc + 8				' centre x
 	FOR pbi = 0 TO NPLAT - 1
 		pbt = ply(pbi)
-		IF pbh <= pbt + 8 THEN
-			IF pbh >= pbt THEN
+		' BODY overlap, not head-only: the head can clear an 8 px band in one
+		' 4 px step while the body is still inside it, and head-only lets the
+		' player slide up through solid rock.
+		IF pbh <= pbt + 7 THEN
+			IF pbb >= pbt THEN
 			IF plon(pbi) = 1 THEN
 				IF pbc >= #plx1(pbi) THEN
 					IF pbc <= #plx2(pbi) THEN
@@ -684,15 +701,16 @@ rb_move:
 	' Find a man with no bird on the way, and send one from the nearer edge.
 rb_launch:
 	FOR rbi = 0 TO NKN - 1
-		IF kon(rbi) = KFOOT THEN
-			rbt = rbi
-			rbon = 1
-			rgx = #kx(rbi) / 256
-			rbx = 0
-			IF rgx > 128 THEN rbx = 255
-			rby = 24
-			rbf = 0
-			RETURN
+		IF rbon = 0 THEN
+			IF kon(rbi) = KFOOT THEN
+				rbt = rbi
+				rbon = 1
+				rgx = #kx(rbi) / 256
+				rbx = 0
+				IF rgx > 128 THEN rbx = 255
+				rby = 24
+				rbf = 0
+			END IF
 		END IF
 	NEXT rbi
 	RETURN
@@ -943,6 +961,7 @@ e_move:
 
 e_one:
 	IF est(egi) = 1 THEN
+		IF #etm(egi) > 0 THEN #etm(egi) = #etm(egi) - 1
 		#evy(egi) = #evy(egi) + GRAV
 		IF #evy(egi) > 33468 THEN #evy(egi) = 33468
 		#ey(egi) = #ey(egi) + #evy(egi)
@@ -963,7 +982,7 @@ e_one:
 							#ey(egi) = ept - 16
 							#ey(egi) = #ey(egi) * 256
 							est(egi) = 2
-							#etm(egi) = 240
+							#etm(egi) = 240	' now the REST timer
 							#evx(egi) = 32768
 						END IF
 					END IF
@@ -992,7 +1011,9 @@ e_one:
 	' Hatch into the first free knight slot, one tier up. If every slot is busy
 	' the egg simply waits and tries again next frame.
 e_hatch:
+	ehd = 0				' done? -- set instead of returning early
 	FOR ehj = 0 TO NKN - 1
+		IF ehd = 0 THEN
 		IF kon(ehj) = 0 THEN
 			' ON FOOT, not mounted. The bird comes for him separately.
 			kon(ehj) = KFOOT
@@ -1009,10 +1030,12 @@ e_hatch:
 			kflp(ehj) = 20
 			kface(ehj) = 0
 			est(egi) = 0
-			RETURN
+			ehd = 1
+		END IF
 		END IF
 	NEXT ehj
-	#etm(egi) = 30
+	' No free slot: wait and try again shortly rather than losing the hatch.
+	IF ehd = 0 THEN #etm(egi) = 30
 	RETURN
 
 	' ----------------------------------------------------------- collisions
@@ -1066,16 +1089,24 @@ k_unhorse:
 	SOUND 0,400,13
 	sf0 = 5
 	' Drop an egg carrying the knight's momentum.
+	kud = 0				' egg placed? -- a flag, never an early RETURN
 	FOR kuj = 0 TO NEGG - 1
+		IF kud = 0 THEN
 		IF est(kuj) = 0 THEN
 			est(kuj) = 1
 			#ex(kuj) = #kx(cni)
 			#ey(kuj) = #ky(cni)
 			#evx(kuj) = #kvx(cni)
-			#evy(kuj) = 32768
+			' POP UPWARD out of the joust, keeping the knight's sideways
+			' momentum. An egg that simply drops from where he died is on
+			' top of the player and reads as no egg at all.
+			#evy(kuj) = 32768 - 520
 			etier(kuj) = ktier(cni)
-			GOSUB prt_score
-			RETURN
+			' GRACE: not collectable yet. Without this the egg loop, which
+			' runs later in this very frame, eats it where it was laid.
+			#etm(kuj) = 26
+			kud = 1
+		END IF
 		END IF
 	NEXT kuj
 	GOSUB prt_score
@@ -1105,6 +1136,10 @@ c_foot:
 
 	' 250, 500, 750, then 1000 -- in tens, and capped.
 c_egg:
+	' An egg still in its grace period has not left the joust yet.
+	IF est(cni) = 1 THEN
+		IF #etm(cni) > 0 THEN RETURN
+	END IF
 	cex = #ex(cni) / 256
 	cey = #ey(cni) / 256
 	cdx = cpx - cex
