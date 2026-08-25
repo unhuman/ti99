@@ -3107,7 +3107,21 @@ title_screen:
 	GOSUB prt_dlev
 	PRINT AT 710,"PRESS FIRE TO START"	' row 22, col 6
 	t8 = 0
-	tkl = 15
+	' SEED THE EDGE DETECTOR WITH WHAT IS ALREADY HELD, not with "nothing".
+	'
+	' The title's keys are edge-triggered on tkl, and seeding it with 15 (no key)
+	' asserts that no key is down when the title starts -- which stopped being true
+	' the moment the select screen began choosing on 1 and 2. It returns the instant
+	' the key goes DOWN, so the player is still holding it when this loop starts: tk
+	' read 1 or 2 against a tkl of 15, that counted as a fresh press, and the choice
+	' fell straight through into 1=MUSIC or 2=DIFFICULTY. You picked a game and the
+	' music silently toggled.
+	'
+	' cont1.key here means "whatever is down right now has already been seen", so it
+	' has to be released and pressed again to register. Same rule btnr applies to the
+	' fire button on the line below, and the same one set_screen applies on the way
+	' in; the title just never needed it while nothing preceded it.
+	tkl = cont1.key
 	btnr = 0
 	' Two creatures, deliberately out of step from the first frame: different
 	' starting positions, directions, step phases and countdowns. They never sync

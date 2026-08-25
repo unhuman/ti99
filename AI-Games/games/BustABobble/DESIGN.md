@@ -588,6 +588,18 @@ The two tests are nested, not `ssk > 0 AND ssk < 3`: compound comparisons are
 miscompiled by the 9900 backend (§3A). And `ssk < 3` alone would catch the **0** key
 and start a game on a keypress that chose nothing.
 
+**The title seeds its edge detector with the key already held.** Choosing on 1 and 2
+made the select screen return the instant the key goes *down*, so the player is still
+holding it when the title's loop starts. The title's keys are edge-triggered on
+`tkl`, and seeding that with 15 ("no key") asserted something that stopped being true
+the moment anything preceded the title: 1 or 2 read against a `tkl` of 15 counted as
+a fresh press and fell straight through into `1=MUSIC` or `2=DIFFICULTY`. You picked
+a game and the music silently toggled. `tkl = cont1.key` means "whatever is down now
+has already been seen", so it must be released and pressed again -- the same rule
+`btnr` applies to fire, and the one `set_screen` applies on the way in. (`rd_dig`
+already had it: `rd_rel` spins until `cont1.key = 15`, which is why 838 never showed
+this.)
+
 `set_screen` is **`GOSUB`'d from the top of `title_screen` and RETURNs** -- it does
 not `GOTO` the title. A routine entered by `GOSUB` and left by `GOTO` never pops its
 return address, which is invisible on the TI and fatal on ColecoVision (§3A);
