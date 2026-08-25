@@ -32,6 +32,7 @@
 	CONST LAVAA = 131
 	CONST LIFECH = 134
 	CONST PADCH = 135
+	CONST ARMCH = 136
 	CONST NPAD = 5			' pads, DIM 0..4 -- one is on the BASE
 	CONST KDEAD = 0
 	CONST KLIVE = 1
@@ -57,6 +58,18 @@
 	DIM padx(NPAD)			' pad centre x, pixels
 	DIM pady(NPAD)			' sprite-top y for something standing on it
 	DIM padu(NPAD)			' 0 free, 1 occupied by a materialising actor
+
+	' THE LAVA TROLL (wave 3+). A hand comes out of a pit at a bird flying low over
+	' it, and drags it under. Flapping is the escape, and the arcade lengthens the
+	' reach and stiffens the grip as the waves pass -- so the pits stop being
+	' merely fatal and start being a place you must not loiter.
+	'   trst  0 idle, 1 reaching up, 2 has hold of you
+	'   tresc flaps banked toward getting free
+	'
+	' THE PTERODACTYL (wave 8, or any wave that drags). Faster than anything else
+	' and INVULNERABLE except to a level lance straight down an open mouth.
+	'   ptst  0 absent, 1 flying
+	'   ptmo  mouth timer; open on the low half of the cycle
 
 	DIM #kx(NKN)			' knight x, 8.8
 	DIM #ky(NKN)			' knight y, 8.8
@@ -98,13 +111,16 @@ setup:
 	SPRITE FLICKER OFF		' all-or-nothing in CVBasic: it would strobe the
 					' player too. Instead the player is sprite 0 --
 					' highest priority, never the one the VDP drops.
-	DEFINE CHAR PLATL,8,chr_plat_l
-	DEFINE COLOR PLATL,8,col_chars
+	DEFINE CHAR PLATL,9,chr_plat_l
+	DEFINE COLOR PLATL,9,col_chars
 	DEFINE SPRITE 0,4,spr_mount_r	' patterns 0,4,8,12  -- facing right
 	DEFINE SPRITE 4,4,spr_mount_l	' patterns 16,20,24,28 -- facing left
 	DEFINE SPRITE 8,1,spr_egg	' pattern 32
 	DEFINE SPRITE 9,1,spr_runner	' pattern 36
 	DEFINE SPRITE 10,1,spr_egg_x	' pattern 40 -- cracked, about to hatch
+	DEFINE SPRITE 11,1,spr_hand	' pattern 44 -- the troll's fist
+	DEFINE SPRITE 12,1,spr_pt_s	' pattern 48 -- pterodactyl, mouth shut
+	DEFINE SPRITE 13,1,spr_pt_o	' pattern 52 -- mouth OPEN, the only target
 
 	' THE ISLANDS -- MEASURED FROM AN ARCADE SCREENSHOT, not invented. See
 	' assets/refmap.py, which classifies every pixel of a reference shot as rock
@@ -215,6 +231,13 @@ new_game:
 new_wave:
 	wave = wave + 1
 	ecoll = 0			' eggs collected this wave -> award ladder
+	#wvt = 0			' frames elapsed in this wave (pterodactyl clock)
+	trst = 0
+	ptst = 0
+	' AGGRESSION RISES WITH THE WAVE, not just with the tier. A Bounder in wave 12
+	' should not fly like a Bounder in wave 1: same strategy, sharper execution.
+	agg = wave
+	IF agg > 16 THEN agg = 16
 	GOSUB set_islands		' erosion first: draw_field draws what survives
 	GOSUB draw_field
 	GOSUB spawn_player
@@ -391,11 +414,14 @@ prt_lives:
 	' ============================================================ main loop
 main:
 	WAIT
+	#wvt = #wvt + 1
 	GOSUB p_input
 	GOSUB p_move
 	GOSUB k_spawn
 	GOSUB k_move
 	GOSUB rb_move
+	GOSUB troll
+	GOSUB ptero
 	GOSUB e_move
 	GOSUB collide
 	GOSUB draw
@@ -428,6 +454,7 @@ p_input:
 	IF cont1.button THEN
 		IF pflp = 0 THEN
 			pflp = 1
+			IF trst = 2 THEN tresc = tresc + 1
 			#vy = 32768 - 1040
 			pfrm = 2
 			SOUND 0,700,12
@@ -802,6 +829,9 @@ k_one:
 	#ktp2 = ktier(kni)
 	#ktop = #ktp2 * 140
 	#ktop = #ktop + 860
+	#kagg = agg
+	#kagg = #kagg * 9
+	#ktop = #ktop + #kagg	' faster every wave, on top of the tier
 	#kfast = 32768 + #ktop
 	#kslow = 32768 - #ktop
 
@@ -915,7 +945,17 @@ k_one:
 	ELSE
 		IF kmy > kty(kni) THEN
 			#kvy(kni) = 32768 - 1000
-			kflp(kni) = 14 - ktier(kni) * 4
+			' EAGERER EVERY WAVE TOO, floored so it stays a flap and not
+			' a hover. Same strategy per tier, sharper execution.
+			kfc = 14 - ktier(kni) * 4
+			kfw = agg / 4
+			IF kfc > kfw THEN
+				kfc = kfc - kfw
+			ELSE
+				kfc = 3
+			END IF
+			IF kfc < 3 THEN kfc = 3
+			kflp(kni) = kfc
 		END IF
 	END IF
 
@@ -1011,7 +1051,14 @@ k_wander:
 	' HALF ITS ROLLS ARE THE PLAYER NOW, not a quarter. A Bounder that wanders
 	' three times out of four is scenery: it has to threaten often enough that you
 	' cannot ignore it while dealing with something else.
-	kr = RANDOM(2)
+	' ... and it hunts more often the deeper you are: by the late waves a Bounder
+	' is barely wandering at all, which is the difficulty curve doing its work
+	' without changing what a Bounder IS.
+	krn = 2
+	IF agg > 6 THEN krn = 3
+	kr = RANDOM(krn)
+	IF kr > 0 THEN kr = 1
+	IF agg > 10 THEN kr = 0
 	IF kr = 0 THEN
 		ktx(kni) = kpx
 		kty(kni) = kpy - 4
@@ -1429,9 +1476,175 @@ draw_eggs:
 	RETURN
 
 hide_all:
-	FOR hai = 0 TO 11
+	FOR hai = 0 TO 13
 		SPRITE hai,SPRHID,0,0,0
 	NEXT hai
+	RETURN
+
+	' --------------------------------------------------------------- the troll
+	' A hand out of the lava, from wave 3. It reaches for a bird flying low over a
+	' PIT -- the ground either side of the base, where the bridges burned away --
+	' and once it has hold, only flapping gets you out. Reach and grip both grow
+	' with the wave, which is what turns the pits from scenery into territory.
+troll:
+	IF wave < 3 THEN
+		SPRITE 12,SPRHID,0,0,0
+		RETURN
+	END IF
+	trw = agg
+	trr = 44 + trw * 4		' how high it can reach above the lava
+	tpy = #py / 256
+	tpx = #px / 256
+
+	IF trst = 0 THEN
+		' only over a pit, and only if you are low enough to be worth grabbing
+		tover = 0
+		IF tpx < 40 THEN tover = 1
+		IF tpx > 207 THEN tover = 1
+		IF tover = 1 THEN
+			ttop = 176 - trr
+			IF tpy > ttop THEN
+				trst = 1
+				trx = tpx
+				trhy = 176
+				SOUND 2,900,11
+				sf2 = 6
+			END IF
+		END IF
+		SPRITE 12,SPRHID,0,0,0
+		RETURN
+	END IF
+
+	IF trst = 1 THEN
+		' rising. It tracks sideways slowly -- you can outrun it, but not by
+		' much, and not while still climbing out of the pit.
+		IF trhy > 176 - trr THEN trhy = trhy - 3
+		IF trx < tpx THEN trx = trx + 1
+		IF trx > tpx THEN trx = trx - 1
+		GOSUB tr_draw
+		' caught?
+		tdy = tpy + 16
+		IF tdy >= trhy THEN
+			tdx = tpx - trx
+			IF tpx < trx THEN tdx = trx - tpx
+			IF tdx < 12 THEN
+				IF binv = 0 THEN
+					trst = 2
+					tresc = 0
+					trneed = 7 + trw
+				END IF
+			END IF
+		END IF
+		' gone high or gone away: let go
+		IF tpy < 176 - trr THEN trst = 0
+		tover = 0
+		IF tpx < 46 THEN tover = 1
+		IF tpx > 201 THEN tover = 1
+		IF tover = 0 THEN trst = 0
+		RETURN
+	END IF
+
+	' HELD. Dragged down, steering ignored, and only flaps count. This is the one
+	' place the flap is not about height -- it is about how many you can manage.
+	trx = tpx
+	#py = #py + 200
+	#vy = 32768
+	trhy = tpy + 14
+	GOSUB tr_draw
+	IF tresc >= trneed THEN
+		trst = 0
+		#vy = 32768 - 1200		' torn free, and thrown clear
+		SOUND 1,300,13
+		sf1 = 6
+		RETURN
+	END IF
+	IF tpy + 16 >= 184 THEN
+		pdead = 1			' pulled under
+		trst = 0
+	END IF
+	RETURN
+
+	' The fist, plus a column of arm characters back down into the pit.
+tr_draw:
+	SPRITE 12,trhy,trx,44,9
+	RETURN
+
+	' ---------------------------------------------------------- pterodactyl
+	' Wave 8 onward, and on ANY wave that drags -- the arcade's answer to camping.
+	' Faster than every knight, and invulnerable except to a level lance straight
+	' down an OPEN mouth, which is why its two frames differ so much: you have to
+	' be able to call the shot at speed.
+ptero:
+	IF ptst = 0 THEN
+		ptw = 0
+		IF wave >= 8 THEN ptw = 1
+		IF #wvt > 2400 THEN ptw = 1	' 40 seconds: stop hiding
+		IF ptw = 1 THEN
+			IF #wvt > 600 THEN
+				ptst = 1
+				pty = #py / 256
+				ptx = 0
+				ptf = 0
+				IF #px > 32768 THEN
+					ptx = 255
+					ptf = 1
+				END IF
+				ptmo = 0
+				SOUND 2,200,12
+				sf2 = 10
+			END IF
+		END IF
+		SPRITE 13,SPRHID,0,0,0
+		RETURN
+	END IF
+
+	ptmo = ptmo + 1
+	ptmo = ptmo AND 31
+	pgx = #px / 256
+	pgy = #py / 256
+	IF ptx < pgx THEN
+		ptx = ptx + 4
+		ptf = 0
+	ELSE
+		ptx = ptx - 4
+		ptf = 1
+	END IF
+	IF pty < pgy THEN pty = pty + 2
+	IF pty > pgy THEN pty = pty - 2
+
+	ptp = 48
+	IF ptmo < 12 THEN ptp = 52	' mouth open on the low part of the cycle
+	SPRITE 13,pty,ptx,ptp,10
+
+	IF pdead > 0 THEN RETURN
+	ptdx = pgx - ptx
+	IF pgx < ptx THEN ptdx = ptx - pgx
+	IF ptdx > 11 THEN RETURN
+	ptdy = pgy - pty
+	IF pgy < pty THEN ptdy = pty - pgy
+	IF ptdy > 11 THEN RETURN
+
+	' THE ONLY WAY TO KILL IT: mouth open, lances level, and you facing it.
+	IF ptp = 52 THEN
+		IF ptdy < 5 THEN
+			ptc = 0
+			IF pface = 0 THEN
+				IF pgx < ptx THEN ptc = 1
+			ELSE
+				IF pgx > ptx THEN ptc = 1
+			END IF
+			IF ptc = 1 THEN
+				ptst = 0
+				#score = #score + 100
+				SOUND 0,180,13
+				sf0 = 12
+				GOSUB prt_score
+				SPRITE 13,SPRHID,0,0,0
+				RETURN
+			END IF
+		END IF
+	END IF
+	IF binv = 0 THEN pdead = 1
 	RETURN
 
 	' ------------------------------------------------------------ sound tick
@@ -1467,3 +1680,4 @@ col_chars:
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' spare-life icon
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' spawn pad, CYAN -- it has to
 						' read as a pad against grey rock
+	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81	' troll arm, red -- it is lava

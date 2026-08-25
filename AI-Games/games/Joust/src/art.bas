@@ -45,9 +45,9 @@ spr_mount_l:	' the same four, facing LEFT
 
 spr_egg:	' egg
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $03,$07,$0F,$1F,$1F,$1F,$0F,$00
+	DATA BYTE $07,$0F,$1F,$1F,$3F,$3F,$1F,$0F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$80,$C0,$E0,$E0,$E0,$C0,$00
+	DATA BYTE $80,$C0,$E0,$E0,$F0,$F0,$E0,$C0
 
 spr_runner:	' unhorsed knight, on foot
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -57,9 +57,27 @@ spr_runner:	' unhorsed knight, on foot
 
 spr_egg_x:	' egg, cracked -- about to hatch
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $03,$06,$0D,$1D,$1B,$1E,$0E,$00
+	DATA BYTE $07,$0D,$1D,$1B,$3E,$3D,$1E,$0E
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$80,$C0,$E0,$E0,$E0,$C0,$00
+	DATA BYTE $80,$C0,$E0,$E0,$F0,$F0,$E0,$C0
+
+spr_hand:	' the lava troll's hand
+	DATA BYTE $00,$00,$63,$63,$67,$77,$7F,$7F
+	DATA BYTE $3F,$3F,$1F,$1F,$0F,$0F,$07,$07
+	DATA BYTE $00,$00,$18,$18,$38,$38,$F8,$F8
+	DATA BYTE $F8,$F0,$F0,$E0,$C0,$C0,$80,$80
+
+spr_pt_s:	' pterodactyl, mouth SHUT -- invulnerable
+	DATA BYTE $00,$0C,$1E,$3F,$7F,$FF,$7F,$3F
+	DATA BYTE $1F,$0F,$07,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$80,$C0,$F0,$FC
+	DATA BYTE $FF,$F8,$E0,$C0,$80,$00,$00,$00
+
+spr_pt_o:	' pterodactyl, mouth OPEN -- the only target
+	DATA BYTE $00,$0C,$1E,$3F,$7F,$FF,$7F,$3F
+	DATA BYTE $1F,$0F,$07,$02,$07,$0F,$1F,$00
+	DATA BYTE $00,$00,$00,$00,$80,$C0,$F0,$FC
+	DATA BYTE $FF,$80,$00,$00,$00,$80,$FF,$00
 
 chr_plat_l:	' plat_l
 	DATA BYTE $7F,$FF,$C0,$C0,$C0,$C0,$40,$00
@@ -84,4 +102,7 @@ chr_life:	' life
 
 chr_pad:	' pad
 	DATA BYTE $FF,$FF,$DB,$81,$00,$00,$00,$00
+
+chr_arm:	' arm
+	DATA BYTE $3C,$3C,$7E,$7E,$7E,$7E,$3C,$3C
 
