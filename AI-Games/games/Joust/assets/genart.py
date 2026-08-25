@@ -210,6 +210,16 @@ XXXXXXXX
 XXXXXXXX
 XXXXXXXX
 """,
+"pad": r"""
+XXXXXXXX
+X......X
+XXXXXXXX
+........
+........
+........
+........
+........
+""",
 "life": r"""
 ..XX....
 .XXXX...
@@ -297,7 +307,8 @@ def main():
         emit(fh, "spr_egg", sprite_bytes(EGG), "egg")
         emit(fh, "spr_runner", sprite_bytes(RUNNER), "unhorsed knight, on foot")
 
-        for name in ("plat_l", "plat_m", "plat_r", "lava_a", "lava_b", "lava_c", "life"):
+        for name in ("plat_l", "plat_m", "plat_r", "lava_a", "lava_b", "lava_c", "life",
+                     "pad"):
             emit(fh, "chr_" + name, char_bytes(CHARS[name]), name)
 
     n = os.path.getsize(out)

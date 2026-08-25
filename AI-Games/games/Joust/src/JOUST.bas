@@ -15,9 +15,9 @@
 	'   * A GOSUB left by GOTO never pops; on ColecoVision's 1 KB that is fatal.
 	' ==========================================================================
 
-	CONST GRAV = 30			' added to #vy every frame. Heavier than it looks:
+	CONST GRAV = 38			' added to #vy every frame. Heavier than it looks:
 					' Joust's mount FALLS, and the flap has to fight it
-	CONST ACCX = 28			' horizontal acceleration while steering
+	CONST ACCX = 40			' horizontal acceleration while steering
 	CONST FRIC = 12			' horizontal decay when not steering
 	CONST NPLAT = 9			' islands, DIM 0..8 -- MEASURED, see assets/refmap.py
 	CONST NKN = 6			' knights, DIM 0..5 -- SIX. Joust is meant to be crowded
@@ -31,6 +31,8 @@
 	CONST PLATR = 130
 	CONST LAVAA = 131
 	CONST LIFECH = 134
+	CONST PADCH = 135
+	CONST NPAD = 4			' materialisation pads, DIM 0..3
 
 	' Velocities are stored BIASED by +32768 so that every comparison stays in
 	' unsigned territory: "rising" is #vy < 32768, never #vy < 0. 32768 itself is
@@ -40,6 +42,17 @@
 	DIM #plx2(NPLAT)		' platform right edge
 	DIM ply(NPLAT)			' island surface row, pixels (all < 256)
 	DIM plon(NPLAT)			' 1 present, 0 burned away -- see erosion, below
+
+	' MATERIALISATION PADS. Nothing simply appears in mid-air in Joust: birds
+	' MATERIALISE on marked pads set into the islands. Two rules make them matter
+	' rather than being decoration, and both are the player's to exploit:
+	'   * a knight may not appear on the pad the PLAYER is standing on or near
+	'   * a knight may not appear at all until a pad is FREE
+	' So camping a pad denies the wave a spawn point, and standing over the last
+	' free one stalls the spawn entirely -- which is a real tactic, not a bug.
+	DIM padx(NPAD)			' pad centre x, pixels
+	DIM pady(NPAD)			' sprite-top y for something standing on it
+	DIM padu(NPAD)			' 0 free, 1 occupied by a materialising actor
 
 	DIM #kx(NKN)			' knight x, 8.8
 	DIM #ky(NKN)			' knight y, 8.8
@@ -53,6 +66,8 @@
 	DIM kty(NKN)			' target altitude, pixels -- what the AI steers to
 	DIM ktx(NKN)			' target x, pixels
 	DIM kwan(NKN)			' Bounder wander timer: frames until it re-rolls
+	DIM kmat(NKN)			' materialisation countdown, frames
+	DIM kpad(NKN)			' which pad it is materialising on
 
 	DIM #ex(NEGG)			' egg x, 8.8
 	DIM #ey(NEGG)			' egg y, 8.8
@@ -70,8 +85,8 @@ setup:
 	SPRITE FLICKER OFF		' all-or-nothing in CVBasic: it would strobe the
 					' player too. Instead the player is sprite 0 --
 					' highest priority, never the one the VDP drops.
-	DEFINE CHAR PLATL,7,chr_plat_l
-	DEFINE COLOR PLATL,7,col_chars
+	DEFINE CHAR PLATL,8,chr_plat_l
+	DEFINE COLOR PLATL,8,col_chars
 	DEFINE SPRITE 0,4,spr_mount_r	' patterns 0,4,8,12  -- facing right
 	DEFINE SPRITE 4,4,spr_mount_l	' patterns 16,20,24,28 -- facing left
 	DEFINE SPRITE 8,1,spr_egg	' pattern 32
@@ -100,6 +115,13 @@ setup:
 	#plx1(6) = 72  : #plx2(6) = 143 : ply(6) = 56	' middle ledge
 	#plx1(7) = 0   : #plx2(7) = 23  : ply(7) = 40	' top-left ledge
 	#plx1(8) = 232 : #plx2(8) = 255 : ply(8) = 40	' top-right ledge
+
+	' One pad per useful island. y is the SPRITE TOP for a bird standing on that
+	' surface, i.e. surface - 16.
+	padx(0) = 96  : pady(0) = 144		' on the base
+	padx(1) = 16  : pady(1) = 88		' left ledge
+	padx(2) = 224 : pady(2) = 88		' right lower ledge
+	padx(3) = 104 : pady(3) = 40		' middle ledge
 	RETURN
 
 	' EROSION. Deterministic, never random -- a player has to be able to learn the
@@ -177,9 +199,14 @@ new_wave:
 	' opens with two knights drifting about reads as a screensaver.
 	nwk = 2 + wave
 	IF nwk > NKN THEN nwk = NKN
+	kpend = nwk			' still to materialise this wave
+	spwt = 40			' frames until the next one may appear
+	FOR nwi = 0 TO NPAD - 1
+		padu(nwi) = 0
+	NEXT nwi
 	FOR nwi = 0 TO NKN - 1
 		kon(nwi) = 0
-		IF nwi < nwk THEN
+		IF nwi < 0 THEN
 			kon(nwi) = 1
 			ktier(nwi) = 0
 			IF wave > 2 THEN ktier(nwi) = nwi AND 1
@@ -208,8 +235,12 @@ new_wave:
 
 	' --------------------------------------------------------- spawn player
 spawn_player:
-	#px = 16384			' x = 64, in 8.8
-	#py = 20480			' y = 80
+	' THE PLAYER MATERIALISES ON A PAD as well -- pad 0, on the base, which is
+	' also why pad 0 is the one knights most often find blocked.
+	#px = padx(0)
+	#px = #px * 256
+	#py = pady(0)
+	#py = #py * 256
 	#vx = 32768
 	#vy = 32768
 	pfrm = 0
@@ -232,6 +263,19 @@ draw_field:
 		#dfa = #dfa + dfc
 		GOSUB draw_plat
 		END IF
+	NEXT dfi
+
+	FOR dfi = 0 TO NPAD - 1
+		dfr = pady(dfi) + 16		' the surface the pad sits on
+		dfr = dfr / 8
+		dfc = padx(dfi) / 8
+		#dfa = dfr
+		#dfa = #dfa * 32
+		#dfa = #dfa + dfc
+		#dfa = #dfa + 6144
+		VPOKE #dfa,PADCH
+		#dfa = #dfa + 1
+		VPOKE #dfa,PADCH
 	NEXT dfi
 
 	' The lava fills everything below the floor line.
@@ -316,6 +360,7 @@ main:
 	WAIT
 	GOSUB p_input
 	GOSUB p_move
+	GOSUB k_spawn
 	GOSUB k_move
 	GOSUB e_move
 	GOSUB collide
@@ -324,6 +369,7 @@ main:
 
 	' A wave ends only when nothing is left to fight AND nothing left to hatch.
 	mnl = 0
+	IF kpend > 0 THEN mnl = 1
 	FOR mni = 0 TO NKN - 1
 		IF kon(mni) > 0 THEN mnl = 1
 	NEXT mni
@@ -345,7 +391,7 @@ p_input:
 	IF cont1.button THEN
 		IF pflp = 0 THEN
 			pflp = 1
-			#vy = 32768 - 760
+			#vy = 32768 - 900
 			pfrm = 2
 			SOUND 0,700,12
 			sf0 = 3
@@ -360,12 +406,12 @@ p_input:
 	IF cont1.left THEN
 		pin = 1
 		pface = 1
-		IF #vx > 32768 - 640 THEN #vx = #vx - ACCX
+		IF #vx > 32768 - 900 THEN #vx = #vx - ACCX
 	END IF
 	IF cont1.right THEN
 		pin = 1
 		pface = 0
-		IF #vx < 32768 + 640 THEN #vx = #vx + ACCX
+		IF #vx < 32768 + 900 THEN #vx = #vx + ACCX
 	END IF
 	IF pin = 0 THEN GOSUB p_fric
 	RETURN
@@ -387,7 +433,7 @@ p_fric:
 	' ------------------------------------------------------ player movement
 p_move:
 	#vy = #vy + GRAV
-	IF #vy > 32768 + 820 THEN #vy = 32768 + 820	' terminal fall speed
+	IF #vy > 32768 + 1000 THEN #vy = 32768 + 1000	' terminal fall speed
 
 	' 16-bit wrap does the signed arithmetic for us: adding (v - 32768) is
 	' correct whichever side of the bias v sits on.
@@ -435,13 +481,14 @@ p_land:
 	plc2 = #px / 256
 	plc2 = plc2 + 8			' centre x
 	FOR pli2 = 0 TO NPLAT - 1
-		IF plon(pli2) = 1 THEN
-		IF plf >= ply(pli2) THEN
-			IF plf <= ply(pli2) + 8 THEN
+		plt = ply(pli2)			' ONE array read, then reject on it
+		IF plf >= plt THEN
+			IF plf <= plt + 8 THEN
+			IF plon(pli2) = 1 THEN
 				IF plc2 >= #plx1(pli2) THEN
 					IF plc2 <= #plx2(pli2) THEN
 						pgnd = 1
-						#py = ply(pli2) - 16
+						#py = plt - 16
 						#py = #py * 256
 						#vy = 32768
 					END IF
@@ -465,12 +512,13 @@ p_bump:
 	pbc = #px / 256
 	pbc = pbc + 8				' centre x
 	FOR pbi = 0 TO NPLAT - 1
-		IF plon(pbi) = 1 THEN
-		IF pbh <= ply(pbi) + 8 THEN
-			IF pbh >= ply(pbi) THEN
+		pbt = ply(pbi)
+		IF pbh <= pbt + 8 THEN
+			IF pbh >= pbt THEN
+			IF plon(pbi) = 1 THEN
 				IF pbc >= #plx1(pbi) THEN
 					IF pbc <= #plx2(pbi) THEN
-						#py = ply(pbi) + 8
+						#py = pbt + 8
 						#py = #py * 256
 						#vy = 32768	' stopped dead, no bounce
 					END IF
@@ -481,6 +529,57 @@ p_bump:
 	NEXT pbi
 	RETURN
 
+	' --------------------------------------------------------- materialising
+	' A knight appears on a PAD, never in mid-air, and only when one is free and
+	' the player is not standing on it. Camping the last free pad therefore stalls
+	' the wave -- that is the arcade's behaviour and it is a tactic worth having.
+k_spawn:
+	IF kpend = 0 THEN RETURN
+	IF spwt > 0 THEN
+		spwt = spwt - 1
+		RETURN
+	END IF
+	ksl = 255
+	FOR ksi = 0 TO NKN - 1
+		IF kon(ksi) = 0 THEN ksl = ksi
+	NEXT ksi
+	IF ksl = 255 THEN RETURN		' every slot busy; try again next frame
+	ksp = 255
+	kspx = #px / 256
+	FOR ksi = 0 TO NPAD - 1
+		IF padu(ksi) = 0 THEN
+			ksd = kspx - padx(ksi)
+			IF kspx < padx(ksi) THEN ksd = padx(ksi) - kspx
+			IF ksd > 28 THEN ksp = ksi
+		END IF
+	NEXT ksi
+	IF ksp = 255 THEN RETURN		' no free pad clear of the player: WAIT
+
+	padu(ksp) = 1
+	kon(ksl) = 2				' 2 = materialising, not yet solid
+	kpad(ksl) = ksp
+	kmat(ksl) = 44
+	#kx(ksl) = padx(ksp)
+	#kx(ksl) = #kx(ksl) * 256
+	#ky(ksl) = pady(ksp)
+	#ky(ksl) = #ky(ksl) * 256
+	#kvx(ksl) = 32768
+	#kvy(ksl) = 32768
+	kface(ksl) = 0
+	kfrm(ksl) = 1
+	kflp(ksl) = 8
+	kwan(ksl) = 0
+	ktx(ksl) = 128
+	kty(ksl) = 60
+	ktier(ksl) = 0
+	IF wave > 3 THEN ktier(ksl) = kpend AND 1
+	IF wave > 15 THEN ktier(ksl) = 2
+	kpend = kpend - 1
+	spwt = 26
+	SOUND 2,600,10
+	sf2 = 4
+	RETURN
+
 	' ----------------------------------------------------- knight movement
 k_move:
 	FOR kni = 0 TO NKN - 1
@@ -489,6 +588,14 @@ k_move:
 	RETURN
 
 k_one:
+	IF kon(kni) = 2 THEN
+		kmat(kni) = kmat(kni) - 1
+		IF kmat(kni) = 0 THEN
+			kon(kni) = 1
+			padu(kpad(kni)) = 0	' the pad is free again
+		END IF
+		RETURN
+	END IF
 	kpx = #px / 256
 	kpy = #py / 256
 	kmx = #kx(kni) / 256
@@ -500,8 +607,8 @@ k_one:
 	' The multiply reads #ktp2, not #ktop: on the 9900 MPY leaves the high word in
 	' r0 and reading back the variable just multiplied returns 0 (CLAUDE.md 3A).
 	#ktp2 = ktier(kni)
-	#ktop = #ktp2 * 100
-	#ktop = #ktop + 520
+	#ktop = #ktp2 * 120
+	#ktop = #ktop + 700
 	#kfast = 32768 + #ktop
 	#kslow = 32768 - #ktop
 
@@ -527,7 +634,7 @@ k_one:
 		kflp(kni) = kflp(kni) - 1
 	ELSE
 		IF kmy > kty(kni) THEN
-			#kvy(kni) = 32768 - 700
+			#kvy(kni) = 32768 - 860
 			kflp(kni) = 18 - ktier(kni) * 5
 		END IF
 	END IF
@@ -563,12 +670,13 @@ k_one:
 	IF #kvy(kni) < 32768 THEN
 		kc = kmx + 8
 		FOR knj = 0 TO NPLAT - 1
-			IF plon(knj) = 1 THEN
-			IF kmy <= ply(knj) + 8 THEN
-				IF kmy >= ply(knj) THEN
+			kpt = ply(knj)
+			IF kmy <= kpt + 8 THEN
+				IF kmy >= kpt THEN
+				IF plon(knj) = 1 THEN
 					IF kc >= #plx1(knj) THEN
 						IF kc <= #plx2(knj) THEN
-							#ky(kni) = ply(knj) + 8
+							#ky(kni) = kpt + 8
 							#ky(kni) = #ky(kni) * 256
 							#kvy(kni) = 32768
 						END IF
@@ -584,13 +692,14 @@ k_one:
 	IF #kvy(kni) >= 32768 THEN
 		kf = kmy + 16
 		FOR knj = 0 TO NPLAT - 1
-			IF plon(knj) = 1 THEN
-			IF kf >= ply(knj) THEN
-				IF kf <= ply(knj) + 8 THEN
+			kpt = ply(knj)
+			IF kf >= kpt THEN
+				IF kf <= kpt + 8 THEN
+				IF plon(knj) = 1 THEN
 					kc = kmx + 8
 					IF kc >= #plx1(knj) THEN
 						IF kc <= #plx2(knj) THEN
-							#ky(kni) = ply(knj) - 16
+							#ky(kni) = kpt - 16
 							#ky(kni) = #ky(kni) * 256
 							#kvy(kni) = 32768
 						END IF
@@ -655,12 +764,12 @@ k_lord:
 
 k_right:
 	kface(kni) = 0
-	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 20
+	IF #kvx(kni) < #kfast THEN #kvx(kni) = #kvx(kni) + 28
 	RETURN
 
 k_left:
 	kface(kni) = 1
-	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 20
+	IF #kvx(kni) > #kslow THEN #kvx(kni) = #kvx(kni) - 28
 	RETURN
 
 	' --------------------------------------------------------- egg movement
@@ -682,13 +791,14 @@ e_one:
 		egx = #ex(egi) / 256
 		egf = egy + 16
 		FOR egj = 0 TO NPLAT - 1
-			IF plon(egj) = 1 THEN
-			IF egf >= ply(egj) THEN
-				IF egf <= ply(egj) + 8 THEN
+			ept = ply(egj)
+			IF egf >= ept THEN
+				IF egf <= ept + 8 THEN
+				IF plon(egj) = 1 THEN
 					egc = egx + 8
 					IF egc >= #plx1(egj) THEN
 						IF egc <= #plx2(egj) THEN
-							#ey(egi) = ply(egj) - 16
+							#ey(egi) = ept - 16
 							#ey(egi) = #ey(egi) * 256
 							est(egi) = 2
 							#etm(egi) = 240
@@ -749,7 +859,7 @@ collide:
 	cpy = #py / 256
 
 	FOR cni = 0 TO NKN - 1
-		IF kon(cni) > 0 THEN GOSUB c_knight
+		IF kon(cni) = 1 THEN GOSUB c_knight
 	NEXT cni
 
 	FOR cni = 0 TO NEGG - 1
@@ -881,6 +991,15 @@ draw_knights:
 		IF kon(dki) = 0 THEN
 			SPRITE 1 + dki,SPRHID,0,0,0
 		ELSE
+			IF kon(dki) = 2 THEN
+				' materialising: flash, and draw nothing on alternate
+				' frames so it reads as arriving rather than lurking
+				dkc = 0
+				IF kmat(dki) AND 2 THEN dkc = 15
+				dky = #ky(dki) / 256
+				dkx = #kx(dki) / 256
+				SPRITE 1 + dki,dky,dkx,4,dkc
+			ELSE
 			dkp = kface(dki) * 16
 			dkp = dkp + kfrm(dki) * 4
 			dky = #ky(dki) / 256
@@ -889,6 +1008,7 @@ draw_knights:
 			IF ktier(dki) = 1 THEN dkc = 14
 			IF ktier(dki) = 2 THEN dkc = 5
 			SPRITE 1 + dki,dky,dkx,dkp,dkc
+			END IF
 		END IF
 	NEXT dki
 	RETURN
@@ -947,3 +1067,4 @@ col_chars:
 	DATA BYTE $A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8	' lava surface b
 	DATA BYTE $88,$88,$88,$88,$88,$88,$88,$88	' lava body, solid red
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' spare-life icon
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1	' spawn pad, magenta on black

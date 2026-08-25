@@ -76,3 +76,6 @@ chr_lava_c:	' lava_c
 chr_life:	' life
 	DATA BYTE $30,$78,$78,$30,$7C,$FE,$36,$63
 
+chr_pad:	' pad
+	DATA BYTE $FF,$81,$FF,$00,$00,$00,$00,$00
+
