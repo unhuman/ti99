@@ -111,19 +111,31 @@ than retrofitted.
 | 0 | ship |
 | 1 | force-field ring |
 | 2 | gun dot |
-| 3-4 | lasers |
-| 5-12 | enemies |
-| 13-20 | missiles |
+| 3-18 | enemies and missiles, **rotating** (two blocks of 8 that swap) |
+| 19-20 | the player's own lasers |
 
 The VDP drops the **highest-numbered** sprites on an over-subscribed scanline, so the player's
 three sprites are never the ones that vanish. But those three all sit at the *same* y — they
 overlap by construction — so they consume three of the four slots on every scanline the player
-occupies, and a fourth object at the player's height would be dropped **exactly when it matters
-most**.
+occupies, leaving **exactly one** slot at your own height for everything else in the game.
 
-The fix, from phase 4, is the **slot rotation** already proven in `ASTIROIDS.bas:1201`: rotate
-which enemy holds which slot each frame, so a crowded scanline *flickers* rather than making one
-specific object invisible.
+**Slot order is therefore a priority order, and the priority is: the ship, then what can kill
+you, then your own bolts.** The lasers used to sit at 3-4, ahead of every threat — and a bolt is
+born *at the gun dot*, on the player's own scanlines. Fire, and your own shot took the last slot
+while the thing closing on you was dropped: you die with nothing visible attacking you. Reported
+exactly that way, and it is why the bolts now yield. A bolt is bright, brief, and moving away
+from a place you are already looking; the missile about to hit you is the one you need to see.
+
+Within slots 3-18 the two blocks also **rotate and swap** each frame (`sprot_step`), so no entity
+is permanently behind the others — missiles at fixed high slots were the first thing dropped, and
+chain-reaction debris kills enemies across the screen, so kills appeared to happen with nothing
+near them. Same root cause, same fix as `ASTIROIDS.bas:1201`.
+
+**The rotation only works because every slot is written every frame** — drawn if the entity is
+live, hidden if it is not. Both loops therefore have an `ELSE` that hides the rotated slot;
+without it the previous occupant stays on screen. For the same reason, wholesale clears hide by
+**range** (`FOR ni = 3 TO 20`), never by entity index: with rotation an index no longer names a
+sprite.
 
 ---
 
@@ -218,11 +230,22 @@ diagonal is not faster than a straight line:
 
 **Aiming.** `aim` = 0..15, sixteen 22.5° steps, index 0 = up, increasing clockwise.
 
-While the ship is moving, `aim` advances **clockwise by one step every 5 frames** until it
-equals the joystick heading, then stops. **It never reverses and never takes the short way** —
-a heading one step counter-clockwise of the gun costs *fifteen* steps to reach, about 1.2
-seconds, and during that sweep the gun points at everything except what you want. This is
-deliberate (§0), and it is the reason ramming becomes the real tactic.
+While the ship is moving, `aim` advances **clockwise at `AIMRATE`/16 of a step per pass** until
+it equals the joystick heading, then stops. **It never reverses and never takes the short way** —
+a heading one step counter-clockwise of the gun costs *fifteen* steps to reach, and during that
+sweep the gun points at everything except what you want. This is deliberate (§0), and it is the
+reason ramming becomes the real tactic.
+
+**The rate is a FRACTION, not a divisor.** It began as `AIMTICK` — one step every N passes — which
+only offers the rates 1/N: 1/5, 1/4, 1/3. Asking for "3× the original 1/5" wants 0.6, and no
+divisor gives it. `AIMRATE` counts **sixteenths of a step per pass** and `amtk` carries the
+remainder (subtracting 16 rather than clearing, or every step would throw the remainder away and
+quietly run slow). At `AIMRATE = 10` a full 16-step sweep is ~26 passes (0.43 s) against the
+original 80 (1.33 s). `AIMRATE` must stay **under 16**, or one pass could advance two steps.
+
+The clockwise-only rule is untouched by this. That rule is what makes the gun awkward and the
+force field the weapon you rely on; the *speed* was never carrying that, it only made the
+awkwardness tedious.
 
 The **gun dot** is drawn at `shipx + adx(aim)`, `shipy + ady(aim)` from a 16-entry signed offset
 table — the same construction as `ASTIROIDS.bas:158-165`.
@@ -232,7 +255,22 @@ velocity table built the same way as `ASTIROIDS.bas:110-117`. Those tables are p
 reason recorded there and worth repeating: **CVBasic's 16-bit divide is unsigned**, so deriving
 a negative component at runtime turns it into a huge positive one.
 
-Two laser slots, 4 px/frame, about a 40-frame life.
+Two laser slots, **12 px/frame, a 10-frame life** = 9 moving passes × 12 px = **108 px**. (The
+pass that takes the counter to zero kills the bolt instead of moving it, hence 9 rather than 10.)
+It began at 4 px/frame over 40 frames (156 px), and reached this in two steps.
+
+**`LLIFE` and the velocity are not independent knobs — range is their product.** Halving the
+range while doubling the speed took the life to a *quarter*, 40 → 10. Then raising *both* range
+and speed by 50% left it **unchanged**, because more range at proportionally more speed is the
+same flight time. Change one at a time or the arithmetic will surprise you.
+
+**Tunnelling is rechecked at every speed change** — and the figure recorded here after the first
+one was **wrong**. It said "past 10 px/pass a bolt can step clean over an enemy", taking the limit
+from the hit *radius*. The limit is the window *width*: `coll_lasers` hits on `|dx| < 10 AND
+|dy| < 10`, so integer offsets −9..9 are **19 px** across, and two consecutive samples can only
+straddle that gap if they are more than 19 px apart. The fastest closing pair is a bolt (12)
+meeting a missile (2) head on = 14, comfortably inside. On the diagonals each component is 2172
+(8.49 px), so each axis is sampled about twice. **The real ceiling is ~19 px/pass, not 10.**
 
 ---
 

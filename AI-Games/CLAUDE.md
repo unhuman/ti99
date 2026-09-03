@@ -299,6 +299,58 @@ cost a debugging session:
   that returns is a tail call and is correctly not flagged. Run it over `games/*/src/*.bas` after
   any change to a game's control flow; it swept the whole repo and found one more instance
   (Astiroids' `game_over`, since fixed).
+- **`linkticart` PUTS THE CART HEADER ON EVERY 8 KB PAGE, so one program lists FOUR TIMES in
+  the TI menu -- and three of those entries are broken.** It writes the 80-byte header before
+  each loader page (`hdr`, `ram[0:8112]`, `hdr`, `ram[8112:16224]`, `hdr`, `ram[16224:24336]`)
+  and then pads to a power-of-two page count, which copies it again. The console scans each
+  page, finds four headers, and lists the program once per page. **Only page 0 is a real entry
+  point**: the other three headers were copied wholesale and point into the middle of data, so
+  selecting one runs from a bogus address -- a menu line that does nothing, or hangs.
+  - **A BANKED build hides it entirely** (the console only ever sees bank 0 during its
+    power-up scan), which is why this does not show up on every cart here and why it can look
+    like a bug in the new game rather than in the shared packer.
+  - Fix: after linking, blank the `>AA` magic at the top of pages 1+. The scan requires `>AA`
+    and skips a page without it; the loader walks the later pages as data at a fixed 80-byte
+    offset and never looks for a signature. `games/KeystoneKapers/assets/onemenuentry.py` does
+    this and is wired into that game's `build-ti.sh`.
+- **THE BUILD CHAIN IS CYGWIN AND GIT BASH SHADOWS IT — BOTH HALVES ARE SILENT.**
+  `cvbasic.exe` (and `gasm80.exe`) are **Cygwin** binaries. Git Bash is MSYS2 and puts its own
+  `msys-2.0.dll` first, so running one from a bash build script dies with
+  `cvbasic.exe: error while loading shared libraries: ?: cannot open shared object file`
+  — exit 127, no line number, nothing about the program being compiled. The same command from
+  PowerShell works, so it reads as *the toolchain is flaky under bash* rather than as one
+  directory in the wrong order, and Keystone Kapers' build script carried a "run it from
+  PowerShell instead" note for months because of it. **Put `C:\cygwin64\bin` at the FRONT of
+  `PATH`.**
+  - **And the second half: Git Bash rewrites an absolute POSIX ARGUMENT into `C:/...` before
+    handing it to a native program, which Cygwin's python does not read as absolute** — it
+    joins it onto the cwd and reports `can't open file '<cwd>/C:/Users/...'`. Relative
+    arguments are untouched, so only paths to tools *outside* the tree are affected
+    (`xas99.py`, `linkticart.py`). Pass those in the `/cygdrive/c/...` form with
+    `MSYS2_ARG_CONV_EXCL='*'` set for that one call. `games/KeystoneKapers/build-ti.sh`'s
+    `cygpy` helper does both, and detects a Cygwin interpreter with
+    `sys.platform == "cygwin"` rather than assuming one.
+- **PYTHON'S BYTECODE CACHE IS STALE FOR A WHOLE SECOND, which is long enough to matter when a
+  generator and its consumers run back to back.** `.pyc` freshness compares **whole seconds**
+  of mtime, so editing `genart.py` and re-running a script that imports it inside the same
+  second silently reuses the OLD module — the generated art, the templates and every checker
+  all come from code that no longer exists on disk. Observed as a checker insisting on a value
+  that had just been changed. `rm -rf __pycache__` as the first step of any generate stage;
+  both Keystone Kapers build scripts do.
+- **CLASSIC99 DEFAULTS TO `invertcaps=1`, so the TI sees ALPHA LOCK *DOWN* WHEN THE HOST'S
+  CAPS LOCK IS *UP*** -- the normal state of a keyboard. Combined with the ALPHA LOCK / joystick
+  vertical-axis short (`ti99-alpha-lock-joystick-vertical`), that means **`cont1.up` reads as
+  permanently pressed on a default install**. Any game that reads the vertical axis is affected
+  out of the box, not in some rare configuration.
+  - **DETECTING IT IS NOT ENOUGH -- DO NOT BLOCK ON IT.** Keystone Kapers' first version printed
+    `RELEASE ALPHA LOCK` and refused to start until the axis cleared, which on a default
+    Classic99 is never: the game sat on its title screen forever and presented as *"the title
+    comes up and it will not start."* **Calibrate instead**: sample up and down for ~40 frames
+    before any input is plausible, treat a direction held for essentially all of them as the
+    key rather than the player, say so on screen, and ignore that direction for the rest of the
+    run. A check that turns a survivable input quirk into a dead game is worse than no check.
+  - Corollary for any title screen: **do not make FIRE the only way to start.** On the TI fire
+    is TAB, which Windows also treats as a focus change; accept a digit as well.
 - **TI cart limit: 24,336 bytes** in the fixed area — `linkticart` silently truncates past it.
   Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
   - **`BANK ROM` accepts only 128, 256, 512 or 1024.** `BANK ROM 32` is rejected outright
@@ -363,6 +415,24 @@ cost a debugging session:
 - **A difficulty dial must never invert the goal.** Weakening an enemy by making it flee reads as
   broken AI, not as an easier game. Degrade the *quality* of the pursuit instead (chase on the
   worse axis, react later, move slower); the actor should always be visibly trying.
+- **A CHASE RESOLVES ON `path ÷ speed`, AND THE PATHS ARE ALMOST NEVER THE SAME LENGTH.** Two
+  speed constants sitting next to each other invite the reading "the player is 1.5× faster, so
+  the player wins", and that reading is wrong whenever the quarry's route is shorter. Keystone
+  Kapers had Kelly at 3 px/frame against Harry's 2 — and Kelly lost the race to the roof by
+  **eleven seconds every single round**, because Harry spawns beside his first escalator and
+  runs 4,104 px where Kelly runs 7,992. A 1.95× route needs more than a 1.95× speed, so pursuit
+  on foot could not close at any distance given any amount of time.
+  - **It does not present as a tuning problem, it presents as the enemy cheating** — the player
+    sees themselves visibly gaining and still never arriving. Nothing errors, and neither
+    constant is wrong on its own; the defect lives only in the ratio of two quotients.
+  - **The corollary is that the quarry's speed is then not a difficulty dial.** Once the margin
+    is set, one notch on the quarry can consume all of it: at 1.75 px/frame the slack fell from
+    11.6 s to 5.1 s, less than a single obstacle hit. Ramp the hazards instead — which is also
+    what the original manuals actually say.
+  - **Compute it, do not eyeball it.** `games/KeystoneKapers/assets/checkchase.py` walks both
+    routes out of the real constants (speeds, spawns, escalator sides, ride length, round
+    timer) and fails the build if the margin, the ordering, or the escape-inside-the-timer
+    property breaks. Copy it for any game with a pursued actor.
 - **FRAME-delta pacing is a positive feedback loop — keep per-pass work O(events), not
   O(`#fd`).** With `#fd = FRAME - #lf`, any "repeat the step `#fd` times" loop (per-pixel
   movement, per-pixel AI polling) makes a slow pass slower still: cost rises with `#fd`, which

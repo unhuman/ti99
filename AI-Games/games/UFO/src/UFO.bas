@@ -36,8 +36,30 @@
 	CONST SHMAX = 15		' ARMED only at full. Full, or vulnerable
 	CONST SHFIRE = 5		' a shot costs a third of the field
 	CONST SHTICK = 12		' +1 every 12 frames: 0 to full in ~3 seconds
-	CONST AIMTICK = 5		' the gun advances one step every 5 frames
-	CONST LLIFE = 40		' laser frames before it expires
+	' AIM RATE, as SIXTEENTHS OF A STEP PER PASS. It used to be a divisor
+	' (AIMTICK: one step every N passes), which only offers the rates 1/N --
+	' 1/5, 1/4, 1/3 -- and 3x the original 1/5 is 0.6, which is not one of
+	' them. A fraction gives any rate: 10/16 = 0.625 steps a pass, i.e. 3.1x
+	' the speed the gun used to turn at.
+	'
+	' A full 16-step sweep is now ~26 passes (0.43 s) against the old 80
+	' (1.33 s), and the worst case -- a heading one step ANTICLOCKWISE, so
+	' fifteen steps the long way round -- is ~24 passes rather than 75.
+	'
+	' The gun still only ever turns CLOCKWISE. That is the rule that makes it
+	' awkward and the reason the force field is the weapon you rely on; the
+	' speed was never what carried that, it just made the awkwardness tedious.
+	CONST AIMRATE = 10
+	CONST LLIFE = 10		' laser frames before it expires. RANGE is this
+					' times the velocity, so the two are only
+					' independent if you change one at a time:
+					'   half the range at twice the speed  -> 40 to 10
+					'   50% more of BOTH                   -> unchanged
+					' because more range at proportionally more speed
+					' is the same flight TIME. Now 9 moving passes
+					' x 12 px = 108 px. (The pass that takes the
+					' counter to zero kills the bolt instead of
+					' moving it, hence 9 rather than 10.)
 
 	' ------------------------------------------------------------- ENEMIES
 	CONST NENE = 8			' enemy slots, DIM 0..7
@@ -71,7 +93,7 @@
 	' shld  force field, 0..SHMAX. Armed ONLY at SHMAX
 	' shtk  recharge tick
 	' aim   0..15, sixteen 22.5 degree steps, 0 = up, increasing CLOCKWISE
-	' amtk  aim tick
+	' amtk  aim accumulator, SIXTEENTHS of a step (see AIMRATE)
 	' hdg   the joystick's heading as an aim index, or 255 for "not moving"
 	' fbr   fire button released since the last shot (edge trigger)
 	' #shx/#shy  ship position, 8.8. X wraps FOR FREE: 256 px x 256 = 65536
@@ -133,31 +155,49 @@
 	#aox(14)=64256 : #aoy(14)=64256
 	#aox(15)=64768 : #aoy(15)=64000
 
-	' LASER VELOCITY, 8.8, magnitude 1024 = 4 px/frame.
+	' LASER VELOCITY, 8.8, magnitude 3072 = 12 px/frame.
+	'
+	' 3x the original 1024, arrived at in two steps: doubled to 2048 (twice
+	' the speed, and LLIFE quartered so it reached half as far), then raised
+	' by half again to 3072 for 50% more speed AND 50% more range.
+	'
+	' LLIFE DID NOT CHANGE for that second step, and should not have: 50%
+	' further at 50% faster is the same flight TIME. 9 moving passes x 12 px
+	' = 108 px, against 9 x 8 = 72.
+	'
+	' TUNNELLING, rechecked at the new speed -- and the earlier note here was
+	' WRONG. It said "past 10 px/pass a bolt can step clean over an enemy",
+	' taking the limit from the hit RADIUS. The limit is the window WIDTH:
+	' coll_lasers hits on |dx| < 10 AND |dy| < 10, so the integer offsets
+	' -9..9 are 19 px across, and two consecutive samples can only straddle
+	' that if they are more than 19 px apart. The fastest closing pair is a
+	' bolt (12) meeting a missile (2) head on = 14, comfortably inside it.
+	' On the diagonals each component is 2172 (8.49 px), so each axis is
+	' sampled about twice. The real ceiling is ~19 px/pass, not 10.
 	'
 	' Negative components are written as their TWO'S COMPLEMENT (65536 - n), so
 	' the update is a plain modular add with no bias to take off and no sign to
-	' get wrong: -1024 is 64512, -946 is 64590, -724 is 64812, -392 is 65144.
+	' get wrong: -3072 is 62464, -2838 is 62698, -2172 is 63364, -1176 is 64360.
 	'
 	' PRECOMPUTED, NEVER DERIVED AT RUNTIME. CVBasic's 16-bit divide is
 	' UNSIGNED, so working these out on the fly turns every negative component
 	' into a huge positive one and every left-going shot flies right.
-	#vlxt(0)=0      : #vlyt(0)=64512
-	#vlxt(1)=392    : #vlyt(1)=64590
-	#vlxt(2)=724    : #vlyt(2)=64812
-	#vlxt(3)=946    : #vlyt(3)=65144
-	#vlxt(4)=1024   : #vlyt(4)=0
-	#vlxt(5)=946    : #vlyt(5)=392
-	#vlxt(6)=724    : #vlyt(6)=724
-	#vlxt(7)=392    : #vlyt(7)=946
-	#vlxt(8)=0      : #vlyt(8)=1024
-	#vlxt(9)=65144  : #vlyt(9)=946
-	#vlxt(10)=64812 : #vlyt(10)=724
-	#vlxt(11)=64590 : #vlyt(11)=392
-	#vlxt(12)=64512 : #vlyt(12)=0
-	#vlxt(13)=64590 : #vlyt(13)=65144
-	#vlxt(14)=64812 : #vlyt(14)=64812
-	#vlxt(15)=65144 : #vlyt(15)=64590
+	#vlxt(0)=0      : #vlyt(0)=62464
+	#vlxt(1)=1176   : #vlyt(1)=62698
+	#vlxt(2)=2172   : #vlyt(2)=63364
+	#vlxt(3)=2838   : #vlyt(3)=64360
+	#vlxt(4)=3072   : #vlyt(4)=0
+	#vlxt(5)=2838   : #vlyt(5)=1176
+	#vlxt(6)=2172   : #vlyt(6)=2172
+	#vlxt(7)=1176   : #vlyt(7)=2838
+	#vlxt(8)=0      : #vlyt(8)=3072
+	#vlxt(9)=64360  : #vlyt(9)=2838
+	#vlxt(10)=63364 : #vlyt(10)=2172
+	#vlxt(11)=62698 : #vlyt(11)=1176
+	#vlxt(12)=62464 : #vlyt(12)=0
+	#vlxt(13)=62698 : #vlyt(13)=64360
+	#vlxt(14)=63364 : #vlyt(14)=63364
+	#vlxt(15)=64360 : #vlyt(15)=62698
 
 	' HUNTER-KILLER VELOCITY, magnitude 320 = 1.25 px/frame.
 	'
@@ -214,9 +254,21 @@
 
 	' ------------------------------------------------------------------ setup
 setup:
-	SPRITE FLICKER OFF		' all-or-nothing in CVBasic: it would strobe
-					' the player too. Instead the player owns
-					' sprites 0-2, which the VDP drops LAST.
+	' SPRITE FLICKER stays OFF and we roll our own, because CVBasic's is
+	' all-or-nothing: it rotates all 32 slots, so the SHIP strobes too, and
+	' the one sprite you must never lose track of is the one you are flying.
+	'
+	' The VDP shows four sprites per scanline and drops the rest by slot
+	' order, lowest wins. The player keeps slots 0-2 permanently, so it is
+	' never dropped. Everything else -- eight enemies and eight missiles --
+	' is rotated through slots 5-20 every frame by `sprot`, so the dropping
+	' is shared out instead of always falling on the same entities.
+	'
+	' It is not cosmetic. Chain-reaction debris kills enemies across the
+	' screen, and while those missiles were permanently the highest slots
+	' they were the first thing dropped -- so kills happened with nothing
+	' visible near them, which reads as things exploding for no reason.
+	SPRITE FLICKER OFF
 
 	' The arcade face, replacing CVBasic's stock 8x8. 59 characters, 32-90,
 	' contiguous -- a gap would shift every letter after it.
@@ -401,11 +453,15 @@ respawn:
 	dying = 0
 	lon(0) = 0
 	lon(1) = 0
-	SPRITE 3,SPRHID,0,0,0
-	SPRITE 4,SPRHID,0,0,0
 	FOR ni = 0 TO NMIS - 1
 		mon(ni) = 0
-		SPRITE 13 + ni,SPRHID,0,0,0
+	NEXT ni
+	' HIDE BY RANGE, NOT BY ENTITY. With the slots rotating, an entity's
+	' index no longer names its sprite, so clearing `13 + ni` would leave
+	' whatever had rotated elsewhere still on screen. Everything above the
+	' ship's own 0-2 goes.
+	FOR ni = 3 TO 20
+		SPRITE ni,SPRHID,0,0,0
 	NEXT ni
 	GOSUB prt_lives
 	GOTO main
@@ -413,6 +469,7 @@ respawn:
 	' ------------------------------------------------------------- main loop
 main:
 	WAIT
+	GOSUB sprot_step
 	GOSUB spin_ring
 	GOSUB read_stick
 	GOSUB charge
@@ -560,9 +617,13 @@ move_ship:
 drift_aim:
 	IF hdg = 255 THEN RETURN
 	IF aim = hdg THEN RETURN
-	amtk = amtk + 1
-	IF amtk < AIMTICK THEN RETURN
-	amtk = 0
+	' Sixteenths of a step, carried between passes. Subtracting 16 rather
+	' than clearing is what keeps the rate exact -- clearing would throw the
+	' remainder away every step and quietly run slow. AIMRATE < 16, so amtk
+	' can never reach 32 and one pass can never advance two steps.
+	amtk = amtk + AIMRATE
+	IF amtk < 16 THEN RETURN
+	amtk = amtk - 16
 	aim = aim + 1
 	aim = aim AND 15		' AND, not MOD -- % compiles to a real DIV
 	RETURN
@@ -606,7 +667,7 @@ upd_lasers:
 			llf(ui) = llf(ui) - 1
 			IF llf(ui) = 0 THEN
 				lon(ui) = 0
-				SPRITE 3 + ui,SPRHID,0,0,0
+				SPRITE 19 + ui,SPRHID,0,0,0
 			ELSE
 				' Velocities are stored as two's complement, so
 				' this is a plain modular add -- and x wraps for
@@ -617,8 +678,17 @@ upd_lasers:
 				IF #ly(ui) >= 45056 THEN #ly(ui) = #ly(ui) - 40960
 				ulx = #lx(ui) / 256
 				uly = #ly(ui) / 256
-				SPRITE 3 + ui,uly,ulx,40,11
+				SPRITE 19 + ui,uly,ulx,40,11
 			END IF
+		ELSE
+			' EVERY SLOT IS WRITTEN EVERY FRAME -- the same rule the
+			' enemy and missile loops follow. Without this, any path
+			' that clears lon() without also hiding the sprite leaves
+			' the bolt frozen on screen: a kill did exactly that, and
+			' the bullet stayed sitting where the collision happened.
+			' One rule for all three, rather than a hide that has to
+			' be remembered at each of five call sites.
+			SPRITE 19 + ui,SPRHID,0,0,0
 		END IF
 	NEXT ui
 	RETURN
@@ -827,10 +897,17 @@ upd_enemies:
 				ecl = 10		' amber -- its own colour
 				GOSUB ship_think
 			END IF
-			SPRITE 5 + ei,ey8,ex8,epn,ecl
+			GOSUB esl_calc
+			SPRITE esl,ey8,ex8,epn,ecl
 
 			GOSUB coll_player
 			GOSUB coll_lasers
+		ELSE
+			' HIDE THE ROTATED SLOT even though this enemy is dead:
+			' with rotation, some other enemy occupied this slot
+			' last frame and would otherwise stay on screen.
+			GOSUB esl_calc
+			SPRITE esl,SPRHID,0,0,0
 		END IF
 	NEXT ei
 	RETURN
@@ -1047,7 +1124,7 @@ coll_lasers:
 					IF cdy > 80 THEN cdy = 160 - cdy
 					IF cdy < 10 THEN
 						lon(ci) = 0
-						SPRITE 3 + ci,SPRHID,0,0,0
+						SPRITE 19 + ci,SPRHID,0,0,0
 						GOSUB kill_enemy
 					END IF
 				END IF
@@ -1068,7 +1145,11 @@ coll_lasers:
 kill_enemy:
 	kt = ety(ei)
 	ety(ei) = 0
-	SPRITE 5 + ei,SPRHID,0,0,0
+	' esl is recomputed rather than reused: this is also reached from the
+	' missile-vs-enemy test, which sets ei = mj after the enemy loop has
+	' finished, so whatever esl held there belongs to a different enemy.
+	GOSUB esl_calc
+	SPRITE esl,SPRHID,0,0,0
 
 	kp = 1
 	IF kt = ETHUNT THEN kp = 3
@@ -1136,7 +1217,8 @@ upd_missiles:
 			mlf(mi) = mlf(mi) - 1
 			IF mlf(mi) = 0 THEN
 				mon(mi) = 0
-				SPRITE 13 + mi,SPRHID,0,0,0
+				GOSUB msl_calc
+				SPRITE msl,SPRHID,0,0,0
 			ELSE
 				#mx(mi) = #mx(mi) + #vmxt(mdir(mi))
 				#my(mi) = #my(mi) + #vmyt(mdir(mi))
@@ -1151,7 +1233,8 @@ upd_missiles:
 				' you, GREY is thrown wreckage.
 				mcl = 14
 				IF mgd(mi) = 1 THEN mcl = 15
-				SPRITE 13 + mi,my8,mx8,44,mcl
+				GOSUB msl_calc
+				SPRITE msl,my8,mx8,44,mcl
 
 				IF marm(mi) > 0 THEN marm(mi) = marm(mi) - 1
 
@@ -1178,6 +1261,12 @@ upd_missiles:
 				IF marm(mi) = 0 THEN GOSUB coll_mis_player
 				GOSUB coll_mis_enemy
 			END IF
+		ELSE
+			' Same rule as the enemy loop: a dead missile still has
+			' to clear the slot it rotated into, or last frame's
+			' occupant stays on screen.
+			GOSUB msl_calc
+			SPRITE msl,SPRHID,0,0,0
 		END IF
 	NEXT mi
 	RETURN
@@ -1219,7 +1308,8 @@ coll_mis_player:
 		shtk = 0
 		SOUND 1,600,13 : sf1 = 10
 		mon(mi) = 0
-		SPRITE 13 + mi,SPRHID,0,0,0
+		GOSUB msl_calc
+		SPRITE msl,SPRHID,0,0,0
 		RETURN
 	END IF
 	IF cdx >= HULLR THEN RETURN
@@ -1250,7 +1340,8 @@ coll_mis_enemy:
 					IF cdy < 11 THEN
 						mhit = 1
 						mon(mi) = 0
-						SPRITE 13 + mi,SPRHID,0,0,0
+						GOSUB msl_calc
+						SPRITE msl,SPRHID,0,0,0
 						' kill_enemy works on ei/ex8/ey8.
 						' Clobbering ei is safe here: the
 						' enemy loop has already finished
@@ -1356,9 +1447,9 @@ prt_dout:
 do_death:
 	SOUND 0,,0
 	SPRITE 1,SPRHID,0,0,0		' the field goes first
-	SPRITE 2,SPRHID,0,0,0
-	SPRITE 3,SPRHID,0,0,0
-	SPRITE 4,SPRHID,0,0,0
+	SPRITE 2,SPRHID,0,0,0		' then the gun dot
+	SPRITE 19,SPRHID,0,0,0		' and the bolts in flight (slots 19,20
+	SPRITE 20,SPRHID,0,0,0		' now, not 3,4 -- see sprot_step)
 	SOUND 3,6,13
 	ddp = 48
 	FOR ddi = 0 TO 2
@@ -1435,6 +1526,58 @@ prt_lives:
 		VPOKE #pla,plv
 		#pla = #pla + 1
 	NEXT pli
+	RETURN
+
+	' ------------------------------------------------------- sprite rotation
+	' OUR OWN FLICKER, covering slots 5-20 and leaving the player's 0-2 alone.
+	'
+	' Two things move each frame. `sprot` rotates each entity WITHIN its
+	' block, and the two blocks SWAP, so a missile is not permanently behind
+	' every enemy -- which it would be with fixed bases, since the VDP drops
+	' by slot order and missiles held the highest numbers.
+	'
+	' The rotation is only safe because both loops visit EVERY index every
+	' frame and write the slot either way -- drawn if live, hidden if not.
+	' Skipping the write for a dead entity would leave the previous occupant
+	' of that slot on screen, and the whole scheme depends on each of the
+	' sixteen slots being written exactly once a frame.
+	' SLOT ORDER IS A PRIORITY ORDER, and the priority is: the ship first,
+	' then WHAT CAN KILL YOU, then your own bolts.
+	'
+	'   0-2    ship, force field, gun dot -- never dropped
+	'   3-18   enemies and missiles, rotating
+	'   19,20  the player's own lasers -- dropped first
+	'
+	' The lasers used to sit at 3 and 4, ahead of every threat, and that is
+	' how you die with nothing visible attacking you. Three player sprites
+	' share the ship's scanlines, so of the VDP's four-per-scanline exactly
+	' ONE slot is left at your own height -- and a bolt is born AT THE GUN
+	' DOT, on those very scanlines. Fire, and your own shot takes the last
+	' slot while the thing closing on you is dropped.
+	'
+	' Seeing the threat matters more than seeing your own shot, so the bolts
+	' now yield. A bolt is bright, brief and moving away from a place you are
+	' already looking; the missile about to hit you is the one you need.
+sprot_step:
+	sprot = sprot + 1
+	sprot = sprot AND 7
+	eslb = 3
+	mslb = 11
+	IF (sprot AND 1) = 1 THEN eslb = 11 : mslb = 3
+	RETURN
+
+	' Slot for enemy `ei` / missile `mi`. Subroutines rather than inline
+	' arithmetic because both are needed at five call sites each, and this
+	' game's fixed area is the same 24,336-byte budget as every other cart.
+esl_calc:
+	esl = ei + sprot
+	esl = esl AND 7
+	esl = esl + eslb
+	RETURN
+msl_calc:
+	msl = mi + sprot
+	msl = msl AND 7
+	msl = msl + mslb
 	RETURN
 
 	' ------------------------------------------------- TEMPORARY loop probe
