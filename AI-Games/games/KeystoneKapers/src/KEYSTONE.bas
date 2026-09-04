@@ -114,37 +114,34 @@
 	' Harry 1 + two obstacles = four per line.
 	' Pattern numbers are genart.py's SPRITES order x 4. Move one there and
 	' this table must move with it -- nothing checks the correspondence.
+	' SPRITE PATTERNS, laid out by genart.py so the selection code is three
+	' statements rather than two mirrored branches. Everything that FACES comes
+	' in a RIGHT block and then a LEFT block of the same shape, so changing
+	' facing is one fixed offset; the LEGS do not face and are shared.
 	CONST P_KHAT = 0		' Kelly RIGHT: hat, black
 	CONST P_KFACE = 4		'              face, skin
-	CONST P_KBODY = 8		'              tunic, blue
-	CONST P_KLEG1 = 12		'              trousers, blue
-	CONST P_KLEG2 = 16
-	CONST P_KDHAT = 20		'              ducked: hat + body
-	CONST P_KDFACE = 24		'              ducked: face
-	CONST P_KLHAT = 28		' Kelly LEFT
-	CONST P_KLFACE = 32
-	CONST P_KLBODY = 36
-	CONST P_KLLEG1 = 40
-	CONST P_KLLEG2 = 44
-	CONST P_KLDHAT = 48
-	CONST P_KLDFACE = 52
-	CONST P_HBODY = 56		' Harry RIGHT: cap + body, white
-	CONST P_HFACE = 60		'              face, skin
-	CONST P_HSTRIPE = 64		'              the stripes, cap to hem
-	CONST P_HLEG1 = 68
-	CONST P_HLEG2 = 72
-	CONST P_HLBODY = 76		' Harry LEFT
-	CONST P_HLFACE = 80
-	CONST P_HLSTRIPE = 84
-	CONST P_HLLEG1 = 88
-	CONST P_HLLEG2 = 92
-	CONST P_CART = 96
-	CONST P_BALL = 100
-	CONST P_RADIO = 104
-	CONST P_PLANE = 108
-	CONST P_PLANEL = 112
-	CONST P_PLANE2 = 116		' propeller phase 2, right / left
-	CONST P_PLANEL2 = 120
+	CONST P_KBODY = 8		'              tunic, arms down
+	CONST P_KBODYB = 12		'              tunic, leading arm up
+	CONST P_KDHAT = 16		'              ducked: hat + body
+	CONST P_KDFACE = 20		'              ducked: face
+	CONST P_KFACING = 24		' add this for Kelly's LEFT set
+	' THE RUN IS FOUR FRAMES AND BOTH FACINGS SHARE THEM. In a side view "left
+	' foot forward" is the horizontal mirror of "right foot forward", so the
+	' cycle is A, B, mirror(A), mirror(B) and which way he is going lives in
+	' the hat, face and tunic. Consecutive, so a frame is P_KLEG1 + 4*phase.
+	CONST P_KLEG1 = 48
+	CONST P_HBODY = 64		' Harry RIGHT: cap + body, white
+	CONST P_HFACE = 68		'              face, skin
+	CONST P_HSTRIPE = 72		'              the stripes, cap to hem
+	CONST P_HFACING = 12		' add this for Harry's LEFT set
+	CONST P_HLEG1 = 88
+	CONST P_CART = 104
+	CONST P_BALL = 108
+	CONST P_RADIO = 112
+	CONST P_PLANE = 116
+	CONST P_PLANEL = 120
+	CONST P_PLANE2 = 124		' propeller phase 2, right / left
+	CONST P_PLANEL2 = 128
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -358,12 +355,12 @@ setup:
 	DEFINE COLOR 96,61,store_col
 	GOSUB scan_colour
 
-	DEFINE SPRITE 0,14,spr_kelly	' 0..52  four bands x two facings
-	DEFINE SPRITE 14,10,spr_harry	' 56..92
-	DEFINE SPRITE 24,1,spr_cart	' pattern 96
-	DEFINE SPRITE 25,1,spr_ball	' pattern 100
-	DEFINE SPRITE 26,1,spr_radio	' pattern 104
-	DEFINE SPRITE 27,4,spr_plane	' 108/112 right/left, 116/120 phase 2
+	DEFINE SPRITE 0,16,spr_kelly	' 0..60  facing bands x2 + 4 run frames
+	DEFINE SPRITE 16,10,spr_harry	' 64..100
+	DEFINE SPRITE 26,1,spr_cart	' pattern 104
+	DEFINE SPRITE 27,1,spr_ball	' pattern 108
+	DEFINE SPRITE 28,1,spr_radio	' pattern 112
+	DEFINE SPRITE 29,4,spr_plane	' 116/120 right/left, 124/128 phase 2
 	RETURN
 
 init_tables:
@@ -1706,30 +1703,40 @@ draw_actors:
 		kdy = kdy - DUCKH
 		' Ducked he is 8 px -- too shallow to band three ways, so the
 		' crouch is drawn BLUE with a skin face and no separate hat.
-		IF kldir = 1 THEN
-			kp = P_KDHAT
-			kf = P_KDFACE
-		ELSE
-			kp = P_KLDHAT
-			kf = P_KLDFACE
+		kp = P_KDHAT
+		kf = P_KDFACE
+		IF kldir = 0 THEN
+			kp = kp + P_KFACING
+			kf = kf + P_KFACING
 		END IF
 		SPRITE 0,kdy,klx,kp,C_KELLY
 		SPRITE 1,kdy,klx,kf,C_SKIN
 		SPRITE 2,SPRHID,0,0,0
 		SPRITE 3,SPRHID,0,0,0
 	ELSE
-		IF kldir = 1 THEN
-			kp = P_KHAT
-			kf = P_KFACE
-			kb = P_KBODY
-			kq = P_KLEG1
-			IF kanim AND 8 THEN kq = P_KLEG2
-		ELSE
-			kp = P_KLHAT
-			kf = P_KLFACE
-			kb = P_KLBODY
-			kq = P_KLLEG1
-			IF kanim AND 8 THEN kq = P_KLLEG2
+		' FOUR RUN FRAMES FROM TWO BITS of the animation counter, and no
+		' divide -- `/` compiles to a real TMS9900 DIV (CLAUDE.md 3A) and
+		' this is per-frame code. Two adjacent bits give 0,4,8,12.
+		'
+		' KELLY USES BITS 2 AND 3 AND HARRY USES 3 AND 4, because a stride
+		' has to cover about a stride's worth of ground or the figure
+		' skates. Kelly runs 4 px a frame, so four frames a pose is 16 px;
+		' Harry runs 1.75, so eight frames a pose is 14. Matching the two
+		' rates to the two speeds is what keeps both looking like running.
+		kq = P_KLEG1
+		IF kanim AND 4 THEN kq = kq + 4
+		IF kanim AND 8 THEN kq = kq + 8
+		' The leading arm lifts on the two FULL-STRIDE frames, which are the
+		' ones with the low bit clear -- that is the pairing genart.py's
+		' preview (assets/previewrun.py) renders, so the two stay in step.
+		kp = P_KHAT
+		kf = P_KFACE
+		kb = P_KBODYB
+		IF kanim AND 4 THEN kb = P_KBODY
+		IF kldir = 0 THEN
+			kp = kp + P_KFACING
+			kf = kf + P_KFACING
+			kb = kb + P_KFACING
 		END IF
 		' FOUR BANDS, EACH DRAWN AT ITS OWN y so its 16-row box covers
 		' only the rows it uses: hat -13..2, face -10..5, tunic 6..21,
@@ -1763,18 +1770,18 @@ draw_actors:
 	IF hst = 1 THEN
 		hy = hy - hsy
 	END IF
-	IF hdir = 1 THEN
-		hp = P_HBODY
-		hf = P_HFACE
-		hs = P_HSTRIPE
-		hq = P_HLEG1
-		IF hanim AND 8 THEN hq = P_HLEG2
-	ELSE
-		hp = P_HLBODY
-		hf = P_HLFACE
-		hs = P_HLSTRIPE
-		hq = P_HLLEG1
-		IF hanim AND 8 THEN hq = P_HLLEG2
+	' Same four-frame cycle and the same shared legs as Kelly -- see the note
+	' over his, and the constants.
+	hq = P_HLEG1
+	IF hanim AND 8 THEN hq = hq + 4
+	IF hanim AND 16 THEN hq = hq + 8
+	hp = P_HBODY
+	hf = P_HFACE
+	hs = P_HSTRIPE
+	IF hdir = 0 THEN
+		hp = hp + P_HFACING
+		hf = hf + P_HFACING
+		hs = hs + P_HFACING
 	END IF
 	' HE IS STRIPED FROM CAP TO HEM. Both stripe colours run the whole upper
 	' half, so both boxes span rows 0-15 and neither can be tucked away --

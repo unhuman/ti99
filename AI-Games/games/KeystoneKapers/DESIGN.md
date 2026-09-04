@@ -258,6 +258,56 @@ reads fine and is not the original.
 
 ---
 
+### 0g. The run cycle, and what a symmetric leg costs
+
+Measured off the reference video frame by frame: the original runs a **four-pose
+cycle with a forward lean**, and the arms swing with it — a skin-coloured hand
+appears beside the face on half the frames.
+
+Ours was **two poses, and both were symmetric about the centre line**. A
+symmetric leg says nothing about which way the figure is going, and mirroring
+it for the other facing produces the identical pattern — so half the sprite
+table was paying for nothing and the run read as a shuffle.
+
+**Four poses cost two drawings.** In a side view, "left foot forward" is the
+horizontal mirror of "right foot forward"; the facing lives in the hat, the
+face and the tunic, not in the legs. So the cycle is
+
+```
+A, B, mirror(A), mirror(B)
+```
+
+and **the same four patterns serve both facings**, entered at a different point
+— invisible, because the phase runs continuously anyway.
+
+**The arms swing inside the tunic's own sprite.** A skin hand would be a fourth
+box on those rows, and four is the entire per-line budget once Harry is on
+screen (§5). Moving the *arms* into the blue tunic pattern costs one extra
+pattern per facing and no boxes at all: the leading arm lifts on the two
+full-stride frames and hangs on the passing frames.
+
+**The cycle rate is matched to the speed, per character.** A pose has to cover
+about a stride's worth of ground or the figure skates. Kelly runs 4 px/frame and
+uses bits 2-3 of his counter (four frames a pose, 16 px); Harry runs 1.75 and
+uses bits 3-4 (eight frames, 14 px).
+
+**The crouch has a front now.** It was a symmetric blob, so mirroring it
+produced a nearly identical shape and ducking read as being squashed rather
+than as dropping into a crouch and still looking where you are going. The brim
+is the tell: it reaches further forward than back, the head tucks behind it,
+the back hunches over the leading knee and the feet trail.
+
+**`assets/previewrun.py` renders the whole thing from the shipped bytes** —
+every frame, both facings, both characters, plus the crouch — because a walk
+cycle cannot be judged from a table of hex. And `assets/checkchars.py` now
+covers the sprite numbers as well as the character ones: adding the four run
+frames renumbered everything after them and pushed the obstacles up by two
+sprites, so `DEFINE SPRITE 24,1,spr_cart` would have loaded the shopping cart
+straight over Harry's third leg frame. Nothing in the build would have said a
+word.
+
+---
+
 ### 0c. Second video pass — the escalator, and why the roof hid the player
 
 **The escalator was the worst-looking thing in the store, and the video says why.**

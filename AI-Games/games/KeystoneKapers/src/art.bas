@@ -12,7 +12,7 @@
 	' the right. Every block is an EVEN number of bytes -- an odd DATA BYTE run
 	' silently misaligns every word table after it (CLAUDE.md 3A).
 
-spr_kelly:	' Kelly RIGHT then LEFT: hat, face, tunic, leg1, leg2, duck-hat, duck-face. Patterns 0..52
+spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then the same LEFT (+24), then the FOUR shared run frames. Patterns 0..60
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$0F,$1F,$3F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -25,21 +25,17 @@ spr_kelly:	' Kelly RIGHT then LEFT: hat, face, tunic, leg1, leg2, duck-hat, duck
 	DATA BYTE $07,$07,$00,$00,$00,$00,$00,$00
 	DATA BYTE $E0,$70,$CC,$CC,$CC,$CC,$C0,$C0
 	DATA BYTE $E0,$E0,$00,$00,$00,$00,$00,$00
-	DATA BYTE $06,$06,$0E,$0E,$1E,$1C,$3C,$3C
+	DATA BYTE $1F,$3B,$33,$33,$33,$33,$03,$03
+	DATA BYTE $07,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $E0,$70,$CC,$CC,$C0,$C0,$C0,$C0
+	DATA BYTE $E0,$E0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $07,$07,$00,$00,$3F,$3F,$3C,$78
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $60,$60,$70,$70,$78,$38,$3C,$3C
+	DATA BYTE $FC,$E0,$00,$00,$F0,$F8,$78,$3C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $06,$06,$0E,$1C,$1C,$3C,$78,$78
+	DATA BYTE $00,$00,$0F,$0F,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $C0,$C0,$E0,$70,$70,$78,$3C,$3C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $1E,$3F,$00,$00,$3F,$3F,$18,$3C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $78,$F0,$00,$00,$FC,$F0,$70,$38
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$35,$3F,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$B0,$F0,$00,$00,$00,$00
+	DATA BYTE $00,$00,$C0,$C0,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$03,$07,$0F
@@ -53,24 +49,36 @@ spr_kelly:	' Kelly RIGHT then LEFT: hat, face, tunic, leg1, leg2, duck-hat, duck
 	DATA BYTE $07,$07,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F8,$DC,$CC,$CC,$CC,$CC,$C0,$C0
 	DATA BYTE $E0,$E0,$00,$00,$00,$00,$00,$00
-	DATA BYTE $06,$06,$0E,$0E,$1E,$1C,$3C,$3C
+	DATA BYTE $07,$0E,$33,$33,$03,$03,$03,$03
+	DATA BYTE $07,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F8,$DC,$CC,$CC,$CC,$CC,$C0,$C0
+	DATA BYTE $E0,$E0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $3F,$07,$00,$00,$0F,$1F,$1E,$3C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $60,$60,$70,$70,$78,$38,$3C,$3C
+	DATA BYTE $E0,$E0,$00,$00,$FC,$FC,$3C,$1E
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $03,$03,$07,$0E,$0E,$1E,$3C,$3C
+	DATA BYTE $00,$00,$03,$03,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $60,$60,$70,$38,$38,$3C,$1E,$1E
+	DATA BYTE $00,$00,$F0,$F0,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $1E,$0F,$00,$00,$3F,$0F,$0E,$1C
+	DATA BYTE $06,$06,$0C,$0C,$18,$18,$38,$38
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $78,$FC,$00,$00,$FC,$FC,$18,$3C
+	DATA BYTE $C0,$C0,$60,$30,$30,$18,$18,$3C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$0D,$0F,$00,$00,$00,$00
+	DATA BYTE $06,$06,$06,$0E,$0C,$0C,$1C,$1C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$AC,$FC,$00,$00,$00,$00
+	DATA BYTE $C0,$C0,$60,$60,$70,$30,$38,$78
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $03,$03,$06,$0C,$0C,$18,$18,$3C
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $60,$60,$30,$30,$18,$18,$1C,$1C
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $03,$03,$06,$06,$0E,$0C,$1C,$1E
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $60,$60,$60,$70,$30,$30,$38,$38
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
-spr_harry:	' Harry RIGHT then LEFT: white, face, stripes, leg1, leg2. Patterns 56..92
+spr_harry:	' Harry: RIGHT white/face/stripes, then the same LEFT (+12), then the FOUR shared run frames. Patterns 64..100
 	DATA BYTE $1F,$00,$0F,$00,$00,$00,$39,$00
 	DATA BYTE $30,$00,$30,$00,$0F,$00,$0F,$00
 	DATA BYTE $C0,$00,$80,$00,$00,$00,$DF,$00
@@ -83,14 +91,6 @@ spr_harry:	' Harry RIGHT then LEFT: white, face, stripes, leg1, leg2. Patterns 5
 	DATA BYTE $00,$30,$00,$07,$00,$0F,$00,$0F
 	DATA BYTE $00,$E0,$00,$00,$00,$00,$00,$FE
 	DATA BYTE $00,$18,$00,$98,$00,$C0,$00,$C0
-	DATA BYTE $0C,$0C,$1C,$1C,$3C,$38,$78,$78
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $C0,$C0,$E0,$E0,$F0,$70,$78,$78
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0D,$0D,$1D,$38,$38,$78,$F0,$F0
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $80,$80,$C0,$E0,$E0,$F0,$78,$78
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $03,$00,$01,$00,$00,$00,$FB,$00
 	DATA BYTE $3E,$00,$18,$00,$13,$00,$03,$00
 	DATA BYTE $F8,$00,$F0,$00,$00,$00,$9C,$00
@@ -103,34 +103,42 @@ spr_harry:	' Harry RIGHT then LEFT: white, face, stripes, leg1, leg2. Patterns 5
 	DATA BYTE $00,$18,$00,$19,$00,$03,$00,$03
 	DATA BYTE $00,$FC,$00,$00,$00,$00,$00,$0C
 	DATA BYTE $00,$0C,$00,$E0,$00,$F0,$00,$F0
-	DATA BYTE $03,$03,$07,$07,$0F,$0E,$1E,$1E
+	DATA BYTE $0D,$0D,$18,$18,$30,$30,$70,$70
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $30,$30,$38,$38,$3C,$1C,$1E,$1E
+	DATA BYTE $80,$80,$C0,$60,$60,$30,$30,$78
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $01,$01,$03,$07,$07,$0F,$1E,$1E
+	DATA BYTE $0D,$0D,$0C,$1C,$18,$18,$38,$38
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $B0,$B0,$B8,$1C,$1C,$1E,$0F,$0F
+	DATA BYTE $80,$80,$C0,$C0,$E0,$60,$70,$F0
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $01,$01,$03,$06,$06,$0C,$0C,$1E
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $B0,$B0,$18,$18,$0C,$0C,$0E,$0E
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $01,$01,$03,$03,$07,$06,$0E,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $B0,$B0,$30,$38,$18,$18,$1C,$1C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
-spr_cart:	' shopping cart -- jump it. Pattern 56
+spr_cart:	' shopping cart -- jump it
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $3F,$2A,$2A,$3F,$3F,$10,$38,$38
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FC,$A4,$A4,$FC,$FC,$08,$1C,$1C
 
-spr_ball:	' beach ball -- jump it LOW, duck it HIGH. Pattern 60
+spr_ball:	' beach ball -- jump it LOW, duck it HIGH
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $07,$1F,$3F,$7F,$7F,$3F,$1F,$07
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $E0,$F8,$FC,$FE,$FE,$FC,$F8,$E0
 
-spr_radio:	' cathedral radio, stationary. Pattern 64
+spr_radio:	' cathedral radio, stationary
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0C,$07,$1F,$3F,$3F,$3F,$3F,$3F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $30,$E0,$F8,$FC,$FC,$FC,$FC,$FC
 
-spr_plane:	' toy biplane -- DUCK. The only thing that kills. Patterns 68,72
+spr_plane:	' toy biplane -- DUCK. The only thing that kills.
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $19,$01,$0F,$3F,$7F,$3F,$0F,$01
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00

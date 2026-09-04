@@ -372,8 +372,30 @@ cost a debugging session:
     run. A check that turns a survivable input quirk into a dead game is worse than no check.
   - Corollary for any title screen: **do not make FIRE the only way to start.** On the TI fire
     is TAB, which Windows also treats as a focus change; accept a digit as well.
-- **TI cart limit: 24,336 bytes** in the fixed area — `linkticart` silently truncates past it.
-  Beyond that use `BANK ROM`/`BANK SELECT` (data in banks, `BANK SELECT` only from bank 0).
+- **BANK THE DATA FROM THE START — it is the default for TI builds in this repo, not a
+  rescue.** The fixed area is **24,336 bytes** (three 8,112-byte loader pages) and
+  `linkticart` silently truncates past it: no warning, and what goes missing is whatever sits
+  nearest the end, usually a `DATA` block rather than code. Keystone Kapers reached 24,304 of
+  24,336 and could not afford three hundred bytes of new sprite art; banking `art.bas` and
+  `store.bas` gave back **4,574 bytes in one change**. Retrofitting is cheap when the INCLUDEs
+  are already at the end of the file and expensive when they are not, so put the data INCLUDEs
+  last and the `BANK` directive above them from the first commit.
+  - The shape: `BANK ROM 128` (gated `#if TI994A`) near the top, `BANK SELECT 1` at setup
+    **before anything reads from the bank**, and `BANK 1` immediately above the data INCLUDEs
+    — everything after that directive assembles into the bank, so nothing but data may follow.
+  - **`BANK 1` in CVBasic is PHYSICAL bank 3 on the TI.** Banks 0-2 are the RAM-resident
+    program: the startup code copies them to `>A000` and jumps there. Do not try to reason
+    about the physical numbers; use `BANK 1` and read the emitted `bank 3` in the `.a99` if you
+    need to confirm it took.
+  - **One data bank, selected once, is the safe configuration** — with nothing to switch there
+    is no switch to miss, and data in a permanently-mapped bank can be read inside a frame.
+    CLAUDE.md's "never read during a frame" rule is about *switching*, not about banking.
+  - **Keep one readable thing OUT of the bank** (the font). A bank-selection mistake then
+    shows as "text survives, art does not" rather than a uniformly blank screen.
+  - **`wc -c` DOES NOT MEASURE A BANKED IMAGE.** The `>A000..>FFFF` window is padded to 24,576
+    bytes with `>FF` plus a two-byte trailer at `>FFFE`, so length-minus-16384 reads 24,576 for
+    every banked build whatever it contains — a phantom 240-byte overflow on a build with four
+    kilobytes free. `games/KeystoneKapers/assets/banksize.py` handles both shapes; copy it.
   - **`BANK ROM` accepts only 128, 256, 512 or 1024.** `BANK ROM 32` is rejected outright
     ("BANK ROM not 128, 256, 512 or 1024"), and a `BANK` statement without it fails with
     "Using BANK without BANK ROM" pointing at the `BANK`, not at the missing declaration. The number

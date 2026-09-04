@@ -79,6 +79,10 @@ sourced research and §13 the phase plan.
 ./build-coleco.sh    # cvbasic          -> gasm80            -> src/keystone.rom
 ```
 
+The TI build **banks the art**: `art.bas` and `store.bas` assemble into ROM bank 1, which
+frees 4.5 KB of the 24,336-byte fixed area. `assets/banksize.py` measures what is left (a
+banked image is padded, so `wc -c` reads a phantom overflow).
+
 Both scripts regenerate `src/art.bas` and `src/store.bas` first, then run the repo's
 truncation, `GOSUB`/`RETURN` and screen-layout gates, plus `checkball.py` (no beach ball is
 unavoidable), `checkchase.py` (the chase can be won on foot), `checkbands.py` (no actor's
