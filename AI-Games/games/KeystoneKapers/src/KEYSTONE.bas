@@ -34,31 +34,34 @@
 	'     a path that reads the result back.
 	' ==========================================================================
 
-	' ------------------------------------------------------- NOT BANKED (yet)
-	' THIS BLOCK USED TO CLAIM THE ART AND THE STORE MAP LIVED IN ROM BANK 1.
-	' They do not, and never have -- there is no BANK ROM, BANK or BANK SELECT
-	' anywhere in this file, and linkticart says so on every build ("Banking
-	' not detected"). Everything is in the single fixed area, which is why the
-	' size guard reports 24,3xx of 24,336 and why a few hundred bytes of new
-	' art is currently unaffordable.
+	' ---------------------------------------------------------------- BANKING
+	' THE ART AND THE STORE MAP LIVE IN ROM BANK 1 ON THE TI. The fixed area
+	' is 24,336 bytes -- three 8,112-byte loader pages -- and unbanked this
+	' program filled 24,304 of them, so there was no room left for anything at
+	' all. `linkticart` does not warn when you exceed it; it silently discards
+	' the top of the image, and what goes missing is whatever sits nearest the
+	' end, usually a DATA block rather than code. Nothing errors.
 	'
-	' The old text also asserted that a fixed area past ~16.3 KB silently
-	' corrupts a VPOKE-heavy init. This program is 24.3 KB and does not, so
-	' that hazard is either mis-stated or was fixed by something else. Do not
-	' rely on it.
+	' WHAT IS SAFE TO BANK. Everything moved here is read at SETUP (the
+	' DEFINE CHAR / DEFINE SPRITE calls) or on a screen crossing (the template
+	' blit and the escalator's phase tables) -- and, because there is exactly
+	' ONE data bank and it is selected ONCE at startup and never switched, it
+	' stays mapped for the life of the program. The rule in CLAUDE.md 3A is
+	' about SWITCHING inside a frame or under the vblank ISR; with a single
+	' permanently-selected bank there is no switch to miss. A missed
+	' BANK SELECT would return bytes from the wrong page with no error at
+	' build or run time, which is why there is only one and it is set before
+	' anything reads from it.
 	'
-	' BANKING IS STILL THE RIGHT MOVE WHEN MORE ROOM IS NEEDED, and the
-	' argument for it holds: everything worth moving -- spr_*, store_pat,
-	' store_col, font_bits, stor_tpl, the escalator phases -- is read at SETUP
-	' or on a screen crossing, never inside a frame and never by the vblank
-	' ISR, which is the condition CLAUDE.md 3A sets. That is roughly 6 KB of
-	' the fixed area. One data bank, selected ONCE at startup and never
-	' switched; a missed BANK SELECT returns bytes from the wrong page with no
-	' error at build or run time.
-	'
-	' It would also fix the TI menu listing this cart four times at source
-	' rather than by patching the packed image afterwards (onemenuentry.py):
-	' with real bank switching the console only sees bank 0 during its scan.
+	' BANK ROM 128 sizes ColecoVision's Megacart mapper, NOT the TI cart --
+	' that comes from how many bank files the assembler emits -- and it is
+	' one of only four values the compiler accepts (128/256/512/1024).
+	' The whole thing is gated on TI994A: the Coleco build is Z80 and roughly
+	' half the size, so it neither needs banking nor wants to become a
+	' Megacart image.
+	#if TI994A
+	BANK ROM 128
+	#endif
 	CONST SPRHID = 209		' NOT 208 -- 208 terminates the sprite list
 
 	' ------------------------------------------------------------- geometry
@@ -339,6 +342,13 @@ setup:
 	' HIGHEST-numbered sprites on an over-full scanline, so slot 0 is the
 	' one slot that can never disappear.
 	SPRITE FLICKER OFF
+
+	' BEFORE ANY READ FROM IT, and never switched again. Bank 0 is the only
+	' bank a BANK SELECT may be issued from, and this is the last thing that
+	' runs before the DEFINEs below start pulling art out of bank 1.
+	#if TI994A
+	BANK SELECT 1
+	#endif
 
 	DEFINE CHAR 32,59,font_bits
 	' Without this the font keeps whatever CVBasic left in the colour table,
@@ -2546,5 +2556,11 @@ sfx_tick:
 	' not) instead of producing a uniformly blank screen.
 	INCLUDE "font.bas"
 
+	' EVERYTHING BELOW THIS LINE IS ASSEMBLED INTO BANK 1, so the INCLUDE order
+	' is load-bearing and nothing but data may follow it. Putting the directive
+	' above font.bas would sweep the font in too.
+	#if TI994A
+	BANK 1
+	#endif
 	INCLUDE "art.bas"
 	INCLUDE "store.bas"

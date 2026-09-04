@@ -179,16 +179,10 @@ cygpy "$CVBASIC_DIR/linkticart.py" "$FIRST" "${NAME}_8.bin" "$CARTNAME" \
     || die "could not reduce the cart to one menu entry"
 
 # SIZE. linkticart SILENTLY DISCARDS anything past the cap; the symptom is
-# missing data at the top of the image, not a build error. The raw -b image
-# starts at >6000 and the program at >A000, so subtract 16384 before comparing --
-# getting that wrong reads as a 6 KB overflow on a build with 10 KB free.
-RAW=$(wc -c < "$FIRST")
-USED=$((RAW - 16384))
+# missing data at the top of the image, not a build error. Measuring it is not
+# a `wc -c` because a BANKED image is padded to fill the whole >A000 window --
+# see assets/banksize.py, which handles both shapes.
 echo
-if [ "$USED" -gt "$CAP" ]; then
-    die "program image is $USED bytes, $((USED - CAP)) OVER the ${CAP}-byte cap --
-     linkticart has silently discarded the top of it"
-fi
-echo "Fixed area:  $USED / $CAP bytes   ($((CAP - USED)) free)"
+"$TRUNCPY" ../assets/banksize.py "$FIRST" "$CAP"     || die "the fixed area overflowed -- see the line above"
 echo "Build OK ->  $(pwd)/${NAME}_8.bin"
 echo "Load it in Classic99 or js99er."

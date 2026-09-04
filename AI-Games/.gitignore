@@ -3,3 +3,7 @@
 # tracked one churns on every commit.
 __pycache__/
 *.pyc
+
+# xas99 bank images. linkticart appends every NAME_b*.bin it finds, so a stale
+# one from a previous build inflates the cart; the build scripts delete them.
+*_b[0-9].bin
