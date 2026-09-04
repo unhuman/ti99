@@ -122,26 +122,27 @@
 	CONST P_KFACE = 4		'              face, skin
 	CONST P_KBODY = 8		'              tunic, arms down
 	CONST P_KBODYB = 12		'              tunic, leading arm up
-	CONST P_KDHAT = 16		'              ducked: hat + body
+	CONST P_KDHAT = 16		'              ducked: the brim, black
 	CONST P_KDFACE = 20		'              ducked: face
-	CONST P_KFACING = 24		' add this for Kelly's LEFT set
+	CONST P_KDBODY = 24		'              ducked: the crouch, blue
+	CONST P_KFACING = 28		' add this for Kelly's LEFT set
 	' THE RUN IS FOUR FRAMES AND BOTH FACINGS SHARE THEM. In a side view "left
 	' foot forward" is the horizontal mirror of "right foot forward", so the
 	' cycle is A, B, mirror(A), mirror(B) and which way he is going lives in
 	' the hat, face and tunic. Consecutive, so a frame is P_KLEG1 + 4*phase.
-	CONST P_KLEG1 = 48
-	CONST P_HBODY = 64		' Harry RIGHT: cap + body, white
-	CONST P_HFACE = 68		'              face, skin
-	CONST P_HSTRIPE = 72		'              the stripes, cap to hem
+	CONST P_KLEG1 = 56
+	CONST P_HBODY = 72		' Harry RIGHT: cap + body, white
+	CONST P_HFACE = 76		'              face, skin
+	CONST P_HSTRIPE = 80		'              the stripes, cap to hem
 	CONST P_HFACING = 12		' add this for Harry's LEFT set
-	CONST P_HLEG1 = 88
-	CONST P_CART = 104
-	CONST P_BALL = 108
-	CONST P_RADIO = 112
-	CONST P_PLANE = 116
-	CONST P_PLANEL = 120
-	CONST P_PLANE2 = 124		' propeller phase 2, right / left
-	CONST P_PLANEL2 = 128
+	CONST P_HLEG1 = 96
+	CONST P_CART = 112
+	CONST P_BALL = 116
+	CONST P_RADIO = 120
+	CONST P_PLANE = 124
+	CONST P_PLANEL = 128
+	CONST P_PLANE2 = 132		' propeller phase 2, right / left
+	CONST P_PLANEL2 = 136
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -355,12 +356,12 @@ setup:
 	DEFINE COLOR 96,61,store_col
 	GOSUB scan_colour
 
-	DEFINE SPRITE 0,16,spr_kelly	' 0..60  facing bands x2 + 4 run frames
-	DEFINE SPRITE 16,10,spr_harry	' 64..100
-	DEFINE SPRITE 26,1,spr_cart	' pattern 104
-	DEFINE SPRITE 27,1,spr_ball	' pattern 108
-	DEFINE SPRITE 28,1,spr_radio	' pattern 112
-	DEFINE SPRITE 29,4,spr_plane	' 116/120 right/left, 124/128 phase 2
+	DEFINE SPRITE 0,18,spr_kelly	' 0..68  facing bands x2 + 4 run frames
+	DEFINE SPRITE 18,10,spr_harry	' 72..108
+	DEFINE SPRITE 28,1,spr_cart	' pattern 104
+	DEFINE SPRITE 29,1,spr_ball	' pattern 108
+	DEFINE SPRITE 30,1,spr_radio	' pattern 112
+	DEFINE SPRITE 31,4,spr_plane	' 116/120 right/left, 124/128 phase 2
 	RETURN
 
 init_tables:
@@ -1102,8 +1103,16 @@ move_kelly:
 		END IF
 	END IF
 	IF kmv = 1 THEN
-		kanim = kanim + 1
-		sfw = sfw + 1
+		' BY THE FRAME DELTA, like everything else that has to keep
+		' wall-clock time. These counted PASSES, and the escalator screens
+		' cost more than one frame a pass (esc_tick rewrites the step
+		' patterns there and nowhere else) -- so on exactly those two
+		' screens his legs cycled slower and his footsteps slowed with
+		' them, while he still ran at the same speed. That reads as the
+		' whole screen being sluggish. CLAUDE.md 3A: a per-pass counter is
+		' not a clock.
+		kanim = kanim + fdv
+		sfw = sfw + fdv
 	END IF
 
 	' --- boarding an escalator happens by TOUCHING it, per the manual
@@ -1500,7 +1509,7 @@ move_harry:
 			END IF
 		END IF
 	END IF
-	IF hmv > 0 THEN hanim = hanim + 1
+	IF hmv > 0 THEN hanim = hanim + fdv
 
 	' arrived: board, or go over the edge
 	IF hsc = htsc THEN
@@ -1701,17 +1710,21 @@ draw_actors:
 		' its last contents, so Kelly would duck and leave his head behind.
 		kdy = flry(klv)
 		kdy = kdy - DUCKH
-		' Ducked he is 8 px -- too shallow to band three ways, so the
-		' crouch is drawn BLUE with a skin face and no separate hat.
+		' HE KEEPS HIS BRIM. Three bands, not two: the flat black brim is
+		' the one feature that reads as Kelly at this size, and drawing the
+		' crouch as one blue mass threw it away. See the note in genart.py
+		' for why a third box is affordable here.
 		kp = P_KDHAT
 		kf = P_KDFACE
+		kb = P_KDBODY
 		IF kldir = 0 THEN
 			kp = kp + P_KFACING
 			kf = kf + P_KFACING
+			kb = kb + P_KFACING
 		END IF
-		SPRITE 0,kdy,klx,kp,C_KELLY
+		SPRITE 0,kdy,klx,kp,kcol
 		SPRITE 1,kdy,klx,kf,C_SKIN
-		SPRITE 2,SPRHID,0,0,0
+		SPRITE 2,kdy,klx,kb,C_KELLY
 		SPRITE 3,SPRHID,0,0,0
 	ELSE
 		' FOUR RUN FRAMES FROM TWO BITS of the animation counter, and no
@@ -1726,6 +1739,10 @@ draw_actors:
 		kq = P_KLEG1
 		IF kanim AND 4 THEN kq = kq + 4
 		IF kanim AND 8 THEN kq = kq + 8
+		' IN THE AIR HE HOLDS A POSE. Cycling the legs through a jump reads
+		' as running on nothing; the reference holds one stride for the
+		' whole arc.
+		IF klst = ST_JUMP THEN kq = P_KLEG1
 		' The leading arm lifts on the two FULL-STRIDE frames, which are the
 		' ones with the low bit clear -- that is the pairing genart.py's
 		' preview (assets/previewrun.py) renders, so the two stay in step.
@@ -1742,11 +1759,18 @@ draw_actors:
 		' only the rows it uses: hat -13..2, face -10..5, tunic 6..21,
 		' trousers 16..31. Splitting the hat off the tunic is what frees
 		' the cap rows for Harry's second stripe colour.
-		khy = ky - 13
+		' THE OFFSETS ARE THE BAND BOUNDARIES, and they moved when the
+		' figure was redrawn to the reference's proportions: the head is
+		' now 42% of his height, so the hat band is rows 0-5, the face 6-9
+		' and the tunic 10-15. Each box still covers only its own band --
+		' hat -10..5, face -6..9, tunic 10..25 -- which is what keeps Kelly
+		' to two boxes on any scanline. genart.py's shift() and these have
+		' to agree; assets/checkbands.py reads both and checks they do.
+		khy = ky - 10
 		SPRITE 0,khy,klx,kp,kcol
-		kfy = ky - 10
+		kfy = ky - 6
 		SPRITE 1,kfy,klx,kf,C_SKIN
-		kby = ky + 6
+		kby = ky + 10
 		SPRITE 2,kby,klx,kb,C_KELLY
 		ky2 = ky + 16
 		SPRITE 3,ky2,klx,kq,C_KELLY
@@ -1791,7 +1815,7 @@ draw_actors:
 	' make four. Worst line of a meeting: exactly four, nothing dropped.
 	IF hsc = klsc THEN
 		SPRITE 4,hy,hx,hp,C_HARRY
-		hfy = hy + 3
+		hfy = hy + 4
 		SPRITE 5,hfy,hx,hf,C_SKIN
 		SPRITE 6,hy,hx,hs,C_HSTRIPE
 		hy2 = hy + 16
@@ -1907,19 +1931,31 @@ esc_tick:
 	' the honest behaviour for a machine that is carrying you.
 	escp = escp + 1
 	IF escp > 3 THEN escp = 0
-	' ONLY THE CELLS THAT MOVE, AND ALL OF THEM. genart.py measures which
-	' those are -- the six step cells and the nine COMPOSITE copies of them
-	' that cross a floor -- and orders them first so one DEFINE CHAR covers
-	' exactly the run. It used to be "everything but the head cap", which was
-	' wrong twice over: twelve motionless cells were rewritten sixty times a
-	' second, and the composites, being separate character codes, were left
-	' out -- so the top steps of every staircase stood still while the rest
-	' of the flight climbed past them. The handrail and the frame still sit
-	' past the end of the range and still never move.
-	IF escp = 0 THEN DEFINE CHAR 101,15,esc_ph0
-	IF escp = 1 THEN DEFINE CHAR 101,15,esc_ph1
-	IF escp = 2 THEN DEFINE CHAR 101,15,esc_ph2
-	IF escp = 3 THEN DEFINE CHAR 101,15,esc_ph3
+	' ONLY THE CELLS THAT MOVE, AND ONLY THIS SCREEN'S. genart.py measures
+	' which cells move -- the step cells and the COMPOSITE copies of them
+	' that cross a floor -- and groups them WEST then EAST, because only one
+	' direction is ever on screen: screen 0 carries a west flight and screen
+	' 7 an east one.
+	'
+	' THAT HALVES THE ONLY PER-PASS WORK UNIQUE TO THESE TWO SCREENS, which
+	' is why it is here and not in a tidy-up commit. Rewriting all fifteen
+	' cells was 120 bytes of pattern table every pass; these are the two
+	' screens that visibly ran slow, and this is the only thing that runs on
+	' them and nowhere else. West writes 72 bytes now, east 48.
+	'
+	' The handrail and the frame sit past the end of both ranges and never
+	' move at all.
+	IF klsc = 0 THEN
+		IF escp = 0 THEN DEFINE CHAR 101,9,esc_phw0
+		IF escp = 1 THEN DEFINE CHAR 101,9,esc_phw1
+		IF escp = 2 THEN DEFINE CHAR 101,9,esc_phw2
+		IF escp = 3 THEN DEFINE CHAR 101,9,esc_phw3
+	ELSE
+		IF escp = 0 THEN DEFINE CHAR 110,6,esc_phe0
+		IF escp = 1 THEN DEFINE CHAR 110,6,esc_phe1
+		IF escp = 2 THEN DEFINE CHAR 110,6,esc_phe2
+		IF escp = 3 THEN DEFINE CHAR 110,6,esc_phe3
+	END IF
 	RETURN
 
 scan_canvas:
@@ -2147,7 +2183,7 @@ scan_wipe:
 	' One actor per tick, at about 10 Hz: erase where it was, draw where it
 	' is. Six VDP ops a tick, which is nothing.
 scan_tick:
-	sct = sct + 1
+	sct = sct + fdv
 	IF sct < 6 THEN RETURN
 	sct = 0
 

@@ -48,22 +48,22 @@ import os
 # Kelly 1 + Harry 1 + two obstacles = four per line, which is the VDP's limit.
 
 KELLY_TOP = """
+....########....
+....########....
+....########....
+################
+################
+..........####..
 ....######......
-...########.....
-..##########....
 ....######......
 ....######......
 ....######......
-...########.....
-..###.##.###....
-..##..####..##..
-..##..####..##..
-..##..####..##..
-..##..####..##..
-......####......
-......####......
-.....######.....
-.....######.....
+................
+..........####..
+..##############
+..##############
+..##############
+..##############
 """
 
 # THE ARMS SWING, AND THEY DO IT IN THE TUNIC'S OWN SPRITE. The reference
@@ -74,22 +74,22 @@ KELLY_TOP = """
 # pattern per facing and no boxes at all: they lift and spread on the frames
 # where the legs are at full stride, and hang on the passing frames.
 KELLY_TOP_B = """
+....########....
+....########....
+....########....
+################
+################
+..........####..
 ....######......
-...########.....
-..##########....
 ....######......
 ....######......
 ....######......
-...########.....
-..###.##.###....
-..##..####..##..
-..##..####..##..
-..##..####......
-..##..####......
-......####......
-......####......
-.....######.....
-.....######.....
+................
+..........####..
+..############..
+..############..
+..############..
+..##############
 """
 
 # THREE COLOURS PER FIGURE, AND THE HARDWARE DECIDES WHERE THE SEAMS GO.
@@ -160,14 +160,14 @@ def shift(art, n):
 # point. Four real poses for the price of the two the symmetric pair already
 # cost.
 KELLY_LEG1 = """
-.....##.##......
-.....##.##......
-....##...##.....
-....##....##....
-...##.....##....
-...##......##...
-..###......##...
-..###.....####..
+..##############
+..##############
+..####....#####.
+..####....#####.
+.#####.....####.
+.#####.....####.
+..####.....####.
+..####.....####.
 ................
 ................
 ................
@@ -179,14 +179,14 @@ KELLY_LEG1 = """
 """
 
 KELLY_LEG2 = """
-.....##.##......
-.....##.##......
-.....##..##.....
-....###..##.....
-....##...###....
-....##....##....
-...###....###...
-...###...####...
+..##############
+..##############
+..############..
+...####..#####..
+...####..#####..
+...####..#####..
+..#####..#####..
+..#####..#####..
 ................
 ................
 ................
@@ -207,14 +207,14 @@ KELLY_LEG2 = """
 # leading knee and the feet trail. Mirrored, all of that swaps and the crouch
 # faces the other way.
 KELLY_DUCK = """
-.....#########..
-.....######.....
+################
+################
 ....######......
 ....######......
-..##########....
-..###########...
-..####...####...
-.####.....####..
+..############..
+.##############.
+.####......####.
+####........####
 ................
 ................
 ................
@@ -228,35 +228,33 @@ KELLY_DUCK = """
 # Harry Hooligan.  Flat cap and a sack over the shoulder -- "not a cop" from
 # the silhouette alone, which is all you get at this size.
 HARRY_TOP = """
-...#######......
-..#########.....
-....#####.......
-....#####.......
-....#####.......
-...#######..###.
-..###..###.#####
-..##....#######.
-..##.....#####..
-..##.......##...
-..##.......##...
-.....####..##...
-....######..#...
-....######......
-....######......
-....######......
+....########....
+....########....
+################
+################
+...########.....
+...########.....
+...########.....
+...########.....
+...########.....
+...########.....
+...########.....
+..############..
+..############..
+..############..
+.##############.
+.##############.
 """
 
-# Same four-pose cycle as Kelly (see KELLY_LEG1), one column to the left --
-# Harry's hips sit there.
 HARRY_LEG1 = """
-....##.##.......
-....##.##.......
-...##...##......
-...##....##.....
-..##.....##.....
-..##......##....
-.###......##....
-.###.....####...
+..############..
+..############..
+..###......###..
+..###......###..
+.###........###.
+.###........###.
+.####......####.
+.####......####.
 ................
 ................
 ................
@@ -268,14 +266,14 @@ HARRY_LEG1 = """
 """
 
 HARRY_LEG2 = """
-....##.##.......
-....##.##.......
-....##..##......
-...###..##......
-...##...###.....
-...##....##.....
-..###....###....
-..###...####....
+..############..
+..############..
+...##########...
+....###..###....
+....###..###....
+...####..####...
+...####..####...
+..#####..#####..
 ................
 ................
 ................
@@ -286,9 +284,22 @@ HARRY_LEG2 = """
 ................
 """
 
-HAT = set(range(0, 3))          # crown and brim
-FACE = set(range(3, 6))         # the one skin band
-TORSO = set(range(6, 16))       # shoulders, arms, tunic
+
+# THE BANDS, AND THEY ARE THE REFERENCE'S PROPORTIONS RATHER THAN A GUESS.
+# Transcribed off the video onto the 2600's own pixel grid (DESIGN.md 0h), the
+# original Kelly is 8 clocks by about 19 scanlines and reads:
+#
+#     rows 0-2  crown, 4 of 8 wide          rows 5-7   face, 3 of 8
+#     row  3    brim, the FULL 8            rows 9-17  body, 6-7 of 8
+#
+# -- so his HEAD IS 42% OF HIS HEIGHT and the brim is a flat line right across
+# him. Ours was a small head on a long thin body with wire arms and separated
+# legs: a different character entirely, which is what "it does not look like
+# the video" meant. These row sets are that 42% carried onto our 24 px figure,
+# and the art above is the same silhouette at twice the horizontal resolution.
+HAT = set(range(0, 6))          # crown, the full-width brim, and its back
+FACE = set(range(6, 10))        # the one skin band
+TORSO = set(range(10, 16))      # a blank neck row, then shoulders and tunic
 
 # KELLY'S HAT IS ITS OWN SPRITE NOW, and that is what buys Harry a striped cap.
 # While hat and tunic shared a slot, that slot's box had to span rows 0-15 and
@@ -296,10 +307,10 @@ TORSO = set(range(6, 16))       # shoulders, arms, tunic
 # stripe colour up at the cap. Split, each box covers only its own band:
 # hat -13..2, face -10..5, tunic 6..21. The hat can also be BLACK again, which
 # is what the reference has.
-KELLY_HAT = shift(band(KELLY_TOP, HAT), 13)             # drawn at y-13
-KELLY_BODY = shift(band(KELLY_TOP, TORSO), -6)          # drawn at y+6
-KELLY_BODY_B = shift(band(KELLY_TOP_B, TORSO), -6)      # the arm-up frame
-KELLY_FACE = shift(band(KELLY_TOP, FACE), 10)           # drawn at y-10
+KELLY_HAT = shift(band(KELLY_TOP, HAT), 10)             # drawn at y-10
+KELLY_BODY = shift(band(KELLY_TOP, TORSO), -10)         # drawn at y+10
+KELLY_BODY_B = shift(band(KELLY_TOP_B, TORSO), -10)     # the arm-back frame
+KELLY_FACE = shift(band(KELLY_TOP, FACE), 6)            # drawn at y-6
 # HARRY WEARS STRIPES, AND HE CAN AFFORD THEM. Two colours alternating down a
 # figure needs a second sprite over the same rows, which is a THIRD box in his
 # top half -- five with Kelly's two, one past the VDP's four. He gets away with
@@ -312,15 +323,39 @@ KELLY_FACE = shift(band(KELLY_TOP, FACE), 10)           # drawn at y-10
 # the way -- that is affordable only because Kelly's hat moved into its own
 # box. His face is pushed DOWN instead (box 3..18) so it clears the cap rows,
 # where his two stripe boxes and Kelly's two already make four.
-HSTRIPE = {1, 7, 9, 11, 13, 15}
-HARRY_BODY = band(HARRY_TOP, (HAT | TORSO) - HSTRIPE)   # drawn at y
-HARRY_STRIPE = band(HARRY_TOP, (HAT | TORSO) & HSTRIPE)  # drawn at y
-HARRY_FACE = shift(band(HARRY_TOP, FACE), -3)           # drawn at y+3
+# HARRY IS SHORTER AND HIS FACE IS BIGGER. Measured the same way: about 16
+# scanlines, of which the face is a third -- a flat white cap with one black
+# band, a big skin face, a striped body and legs that split wide apart. His
+# stripes are horizontal bands about one scanline each, so at our resolution
+# they are single rows.
+# HARRY IS SHORTER AND HIS FACE IS BIGGER. Measured the same way (DESIGN.md
+# 0h): about 17 scanlines, of which the FACE is a third -- a flat white cap
+# with one black band across it, a big skin face, a striped body, and legs that
+# split wide apart. That face is the thing that makes him read as a different
+# character to Kelly at this size, and ours had it at half the size.
+HSTRIPE = {3, 12, 14}
+HCAP = set(range(0, 4))
+HFACEB = set(range(4, 11))
+HBODYB = set(range(11, 16))
+HARRY_BODY = band(HARRY_TOP, (HCAP | HBODYB) - HSTRIPE)
+HARRY_STRIPE = band(HARRY_TOP, (HCAP | HBODYB) & HSTRIPE)
+HARRY_FACE = shift(band(HARRY_TOP, HFACEB), -4)         # drawn at y+4
 
-# Ducked, Kelly is 8 px: too shallow for three bands, so it is two -- the hat
-# and body in one, the face in the other, same row rule.
-KELLY_DHAT = band(KELLY_DUCK, set(range(0, 2)) | set(range(4, 8)))
-KELLY_DFACE = band(KELLY_DUCK, set(range(2, 4)))
+# DUCKED, KELLY KEEPS HIS BRIM, and that is worth a third sprite. The crouch
+# used to be two bands -- hat and body together in BLUE, face in skin -- which
+# made the one feature that says "Kelly" at this size, the flat black brim
+# right across him, disappear the moment he ducked. He stopped looking like
+# himself and started looking like a blue lump.
+#
+# Three bands is three boxes on those eight rows instead of two. It is
+# affordable because he does not need to duck on Harry's floor -- obstacles are
+# suppressed there (DESIGN.md 5), so no biplane ever appears on it -- and if he
+# ducks there anyway the VDP drops the HIGHEST-numbered sprites, which are
+# Harry's, so the degradation lands on the crook and not on the player.
+# assets/checkbands.py checks the count rather than trusting this paragraph.
+KELLY_DHAT = band(KELLY_DUCK, set(range(0, 2)))         # the brim, BLACK
+KELLY_DFACE = band(KELLY_DUCK, set(range(2, 4)))        # the face, skin
+KELLY_DBODY = band(KELLY_DUCK, set(range(4, 8)))        # the crouch, blue
 
 # --------------------------------------------------------------------------
 # Obstacles.  All 8 px tall, all in rows 8-15.  See the note at the top.
@@ -784,12 +819,14 @@ SPRITES = [
     ("spr_kelly", [("KHAT", KELLY_HAT), ("KFACE", KELLY_FACE),
                    ("KBODY", KELLY_BODY), ("KBODYB", KELLY_BODY_B),
                    ("KDHAT", KELLY_DHAT), ("KDFACE", KELLY_DFACE),
+                   ("KDBODY", KELLY_DBODY),
                    ("KLHAT", mirror(KELLY_HAT)),
                    ("KLFACE", mirror(KELLY_FACE)),
                    ("KLBODY", mirror(KELLY_BODY)),
                    ("KLBODYB", mirror(KELLY_BODY_B)),
                    ("KLDHAT", mirror(KELLY_DHAT)),
                    ("KLDFACE", mirror(KELLY_DFACE)),
+                   ("KLDBODY", mirror(KELLY_DBODY)),
                    ("KLEG1", KELLY_LEG1), ("KLEG2", KELLY_LEG2),
                    ("KLEG3", mirror(KELLY_LEG1)),
                    ("KLEG4", mirror(KELLY_LEG2))],
@@ -1158,11 +1195,26 @@ for _i in sorted({c for c in ESC_W_GRID[0] if c is not None}):
 for _i in sorted({c for c in ESC_W_GRID[1] if c is not None}):
     _COMP.append(("ESCWD%d" % _i, _i, ESC_W_PHASES, _W_MOVE, DECK_BG))
 
-# MOVERS FIRST, so one DEFINE CHAR per phase covers exactly them and everything
-# that never changes sits past the end of the range.
-ESC_ANIM = [e for e in _PLAIN + _COMP if e[1] in e[3]]
+# MOVERS FIRST, AND WEST BEFORE EAST. One DEFINE CHAR per phase covers exactly
+# the movers and everything static sits past the end of the range -- but only
+# ONE DIRECTION is ever on screen (screen 0 carries a west flight, screen 7 an
+# east one), so grouping them by direction lets esc_tick rewrite just that half.
+#
+# THAT IS A FRAME-RATE FIX, NOT A TIDY-UP. Rewriting all fifteen cells every
+# pass is 120 bytes of pattern table, which is the only per-pass work unique to
+# those two screens -- and they were the two screens that visibly ran slow, with
+# the legs and the footsteps dragging because their counters were per-pass.
+# West needs nine cells and east six, so the write drops to 72 or 48 bytes.
+def _isw(e):
+    return e[0].startswith("ESCW")
+
+
+ESC_ANIM = ([e for e in _PLAIN + _COMP if e[1] in e[3] and _isw(e)]
+            + [e for e in _PLAIN + _COMP if e[1] in e[3] and not _isw(e)])
+ESC_ANIM_W = len([e for e in ESC_ANIM if _isw(e)])
 ESC_STATIC = [e for e in _PLAIN + _COMP if e[1] not in e[3]]
 ESC_ANIM_N = len(ESC_ANIM)
+ESC_ANIM_E = ESC_ANIM_N - ESC_ANIM_W
 
 _SPLICED = []
 for _e in CHARS_BASE:
@@ -1304,14 +1356,17 @@ def main():
         # up to the left, and mirroring turns that into up-to-the-right for an
         # east one. Four phases of two pixels covers the 8 px period.
         for p in range(PHASES):
-            blk = []
-            for _n, i, phs, _mv, _bg in ESC_ANIM:
-                blk += phs[p][i]
-            emit(fh, "esc_ph%d" % p, blk,
-                 "chars %d-%d, phase %d -- DEFINE CHAR %d,%d,esc_ph%d"
-                 % (ESC_FIRST, ESC_FIRST + ESC_ANIM_N - 1, p,
-                    ESC_FIRST, ESC_ANIM_N, p))
-            total += len(blk)
+            for tag, sel, base, n in (
+                    ("w", ESC_ANIM[:ESC_ANIM_W], ESC_FIRST, ESC_ANIM_W),
+                    ("e", ESC_ANIM[ESC_ANIM_W:],
+                     ESC_FIRST + ESC_ANIM_W, ESC_ANIM_E)):
+                blk = []
+                for _n, i, phs, _mv, _bg in sel:
+                    blk += phs[p][i]
+                emit(fh, "esc_ph%s%d" % (tag, p), blk,
+                     "chars %d-%d, phase %d -- DEFINE CHAR %d,%d,esc_ph%s%d"
+                     % (base, base + n - 1, p, base, n, tag, p))
+                total += len(blk)
         total += len(pdata) + len(cdata)
 
         # ---------------------------------------------------- scanner canvas

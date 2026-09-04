@@ -308,6 +308,90 @@ word.
 
 ---
 
+### 0h. The figures, transcribed onto the 2600's own pixel grid
+
+§0g redrew the run cycle and it still did not look like the game. The reason is
+that everything up to then had been drawn from an *impression* of the reference
+rather than from a measurement of it, and the proportions were wrong in a way
+that reads as a different character.
+
+**Recovering the grid.** The only format the video offers is 480x360 for a
+160x192 display, so neither pitch is an integer and — 2600 pixels being
+famously non-square — the two are not the same. Both had to be measured:
+
+- **Vertical** from the store: floor bars 51 video px apart, a band being 32
+  scanlines, gives **1.594 px per scanline**.
+- **Horizontal** from the sprite: a TIA player is exactly 8 clocks and his
+  widest row is 20 px, so **2.5 px per clock**.
+
+Sampling each native cell by vote (the encode is soft) then gives the real
+bitmap. `assets/cmpref.py` keeps the transcription and squashes our 16x24
+figure back down to their 8x19 to compare, because "does it look like the
+video" is a question about the silhouette, not about our extra resolution.
+
+**What the measurement said.** Kelly is 8 clocks by about 19 scanlines:
+
+```
+ 0 ..KKKK..   crown, 4 of 8            9 .....BB.   a shoulder stub
+ 3 KKKKKKKK   brim, the FULL 8        10 .BBBBBB.   body, 6-7 of 8
+ 5 ..SSS...   face, 3 of 8            18 ...KKKKK   dark feet
+```
+
+**His head is 42% of his height** and the brim is a flat line right across him.
+Ours was a small head on a long thin body with wire arms and separated legs — a
+different character entirely. Harry measures the same way at about 17 scanlines
+with the **face a third of him**, a flat white cap with one black band, a
+striped body and legs that split wide.
+
+Carrying those proportions onto our 24 px figures takes **15 of Kelly's 19 rows
+to an exact match**; the four that differ are the bottom, where the reference
+narrows to dark feet and we keep articulated legs — deliberate, because we have
+twice the horizontal resolution and a four-frame cycle to animate.
+
+**The crouch got a third sprite out of it.** It was two bands, hat and body
+together in blue, which threw away the one feature that says Kelly at this
+size. Three bands is three boxes on those eight rows; it is affordable because
+obstacles are suppressed on Harry's floor, so no biplane ever appears there and
+he need never duck level with the crook. **And in the air he now holds one
+stride** — cycling the legs through a jump reads as running on nothing.
+
+**Kelly's wider brim costs Harry two scanlines of stripe.** With the hat band
+reaching y+5, the line where Kelly's brim is level with Harry's cap carries five
+boxes. The VDP drops the highest-numbered, which is Harry's stripe sprite — the
+degradation this layout was designed around from the start. `checkbands.py`
+declares exactly that one droppable and fails on anything else, and it now
+reads the pattern numbers by NAME from genart and the draw offsets out of
+`KEYSTONE.bas`, because it had gone stale in both at once: reporting overlaps
+that were not there while no longer checking the layout that was.
+
+---
+
+### 0i. Why the escalator screens ran slow
+
+Reported from play: on the two screens with a staircase the running looked
+slower and the footsteps dragged, with the timer possibly unaffected.
+
+All three parts of that are explained by one line. `esc_tick` is **the only
+per-pass work unique to screens 0 and 7**, and it was rewriting all fifteen
+animated cells — 120 bytes of pattern table — every pass. That pushes a pass
+past one frame, so `fdv` rises above 1 there and nowhere else.
+
+- The **timer is not slower**: `tick_timer` counts down by `fdv`.
+- **Movement is not slower** either, for the same reason.
+- But `kanim`, `sfw` (the footstep period), `hanim` and `sct` all counted
+  **passes**, so the legs, the footsteps, Harry's legs and the radar all
+  stretched out exactly where the loop was heaviest. They count `fdv` now.
+
+And the cause itself is halved: only one flight direction is ever on screen —
+screen 0 carries a west one, screen 7 an east one — so genart groups the moving
+cells **west then east** and `esc_tick` writes only this screen's half. 72 bytes
+on the west screen, 48 on the east, down from 120.
+
+`escp` itself stays per-pass and must: a four-phase cycle stepped by more than
+one aliases, and the rider is locked to it (§0f).
+
+---
+
 ### 0c. Second video pass — the escalator, and why the roof hid the player
 
 **The escalator was the worst-looking thing in the store, and the video says why.**

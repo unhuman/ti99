@@ -36,19 +36,23 @@ def check_define():
     block is generated, so nothing but this ties the two together.
     """
     src = open(BAS, encoding="utf-8").read()
-    found = re.findall(r"DEFINE CHAR (\d+),(\d+),esc_ph(\d)", src)
+    found = re.findall(r"DEFINE CHAR (\d+),(\d+),esc_ph([we])(\d)", src)
     bad = []
-    if len(found) != g.PHASES:
-        bad.append("expected %d `DEFINE CHAR ...,esc_phN` statements, found %d"
-                   % (g.PHASES, len(found)))
-    for base, count, phase in found:
-        if int(base) != g.ESC_FIRST or int(count) != g.ESC_ANIM_N:
-            bad.append("KEYSTONE.bas has `DEFINE CHAR %s,%s,esc_ph%s` but "
-                       "genart.py animates chars %d-%d, so it should be "
-                       "`DEFINE CHAR %d,%d,esc_ph%s`"
-                       % (base, count, phase, g.ESC_FIRST,
-                          g.ESC_FIRST + g.ESC_ANIM_N - 1,
-                          g.ESC_FIRST, g.ESC_ANIM_N, phase))
+    # one per phase per direction: the flight is written a half at a time
+    want = {"w": (g.ESC_FIRST, g.ESC_ANIM_W),
+            "e": (g.ESC_FIRST + g.ESC_ANIM_W, g.ESC_ANIM_E)}
+    if len(found) != 2 * g.PHASES:
+        bad.append("expected %d `DEFINE CHAR ...,esc_ph{w,e}N` statements "
+                   "(one per phase per direction), found %d"
+                   % (2 * g.PHASES, len(found)))
+    for base, count, side, phase in found:
+        wb, wn = want[side]
+        if int(base) != wb or int(count) != wn:
+            bad.append("KEYSTONE.bas has `DEFINE CHAR %s,%s,esc_ph%s%s` but "
+                       "genart.py puts that half at chars %d-%d, so it should "
+                       "be `DEFINE CHAR %d,%d,esc_ph%s%s`"
+                       % (base, count, side, phase, wb, wb + wn - 1,
+                          wb, wn, side, phase))
     return bad
 
 
@@ -118,9 +122,11 @@ def main():
         for b in bad:
             print("FAIL " + b)
         return 1
-    print("OK  all %d phases reassemble into a continuous flight; "
-          "DEFINE CHAR %d,%d matches the %d cells that move"
-          % (g.PHASES, g.ESC_FIRST, g.ESC_ANIM_N, g.ESC_ANIM_N))
+    print("OK  all %d phases reassemble into a continuous flight; the west "
+          "half is DEFINE CHAR %d,%d and the east %d,%d, together the %d cells "
+          "that move"
+          % (g.PHASES, g.ESC_FIRST, g.ESC_ANIM_W,
+             g.ESC_FIRST + g.ESC_ANIM_W, g.ESC_ANIM_E, g.ESC_ANIM_N))
     return 0
 
 

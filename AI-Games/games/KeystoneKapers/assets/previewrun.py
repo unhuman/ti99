@@ -34,7 +34,7 @@ def paint(px, art, ox, oy, colour):
                 px[oy + y][ox + x] = PAL[colour]
 
 
-def figure(bands, w=16, h=40):
+def figure(bands, w=16, h=44):
     """bands = [(art, y offset, colour)] -- offsets are the game's SPRITE ys."""
     px = [[BG] * w for _ in range(h)]
     for art, dy, col in bands:
@@ -44,11 +44,11 @@ def figure(bands, w=16, h=40):
 
 def kelly(leg, swing, left):
     top = g.KELLY_TOP_B if swing else g.KELLY_TOP
-    hat = g.shift(g.band(top, g.HAT), 13)
-    face = g.shift(g.band(top, g.FACE), 10)
-    body = g.shift(g.band(top, g.TORSO), -6)
-    parts = [(hat, -13, C_HAT), (face, -10, C_SKIN),
-             (body, 6, C_KELLY), (leg, 16, C_KELLY)]
+    hat = g.shift(g.band(top, g.HAT), 10)
+    face = g.shift(g.band(top, g.FACE), 6)
+    body = g.shift(g.band(top, g.TORSO), -10)
+    parts = [(hat, -10, C_HAT), (face, -6, C_SKIN),
+             (body, 10, C_KELLY), (leg, 16, C_KELLY)]
     if left:
         parts = [(g.mirror(a), d, c) for a, d, c in parts]
     return figure(parts)
@@ -63,7 +63,7 @@ def duck(left):
 
 
 def harry(leg, left):
-    parts = [(g.HARRY_BODY, 0, C_HARRY), (g.HARRY_FACE, 3, C_SKIN),
+    parts = [(g.HARRY_BODY, 0, C_HARRY), (g.HARRY_FACE, 4, C_SKIN),
              (g.HARRY_STRIPE, 0, C_STRIPE), (leg, 16, C_HARRY)]
     if left:
         parts = [(g.mirror(a), d, c) for a, d, c in parts]

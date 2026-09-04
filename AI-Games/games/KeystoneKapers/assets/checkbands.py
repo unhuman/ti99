@@ -32,8 +32,12 @@ import os
 import re
 import sys
 
+import genart as g
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, "..", "src", "art.bas")
+BAS = os.path.join(HERE, "..", "src", "KEYSTONE.bas")
+BAS = os.path.join(HERE, "..", "src", "KEYSTONE.bas")
 
 PAL = [
     (0, 0, 0), (0, 0, 0), (33, 200, 66), (94, 220, 120),
@@ -43,8 +47,16 @@ PAL = [
 ]
 
 MAX_PER_LINE = 4                 # TMS9918 hard limit
-DROPPABLE = set()                # nothing may drop -- the offsets below buy
-                                 # enough room that everything fits
+# HARRY'S STRIPE MAY DROP, AND ONLY IT. Kelly's brim is now two rows and his
+# hat band reaches y+5, so on the two scanlines where his brim is level with
+# Harry's cap there are five boxes: Kelly's hat and face, and Harry's body,
+# stripe and face. The VDP drops the HIGHEST-numbered slots, which is slot 6 --
+# Harry's stripes -- so what is lost is two scanlines of stripe on a white
+# body, on the one line where the two are exactly level. That is the
+# degradation this layout was designed around from the start (see the note over
+# HARRY_STRIPE in genart.py): he goes plain white rather than losing a limb,
+# and the player's own figure is never touched.
+DROPPABLE = {6}
 
 # name, label, [(pattern index in block, VDP slot, colour, y offset)]
 #
@@ -53,16 +65,44 @@ DROPPABLE = set()                # nothing may drop -- the offsets below buy
 # matching offset, so the box covers only the rows the band actually uses --
 # the face at -10 covers rows -10..5, the stripes at +7 cover 7..22. Parking
 # them all at 0 was what made a meeting cost six boxes instead of four.
+# NOTHING BELOW IS A NUMBER. The patterns are looked up by NAME in genart's SPR
+# table and the offsets are READ OUT OF KEYSTONE.bas, because both moved when
+# the figures were redrawn to the reference's proportions -- and this file went
+# stale in two ways at once, reporting overlaps that were not there while no
+# longer checking the layout that was.
+#
+# (name, [(genart sprite name, VDP slot, colour, the source variable holding
+#  its y offset -- None means it is drawn at the actor's own y)])
 ACTORS = [
-    ("Kelly", "spr_kelly", [(0, 0, 1, -13),      # hat, black
-                            (1, 1, 11, -10),     # face, skin
-                            (2, 2, 4, 6),        # tunic, blue
-                            (3, 3, 4, 16)]),     # trousers, blue
-    ("Harry", "spr_harry", [(0, 4, 15, 0),       # cap + body, white
-                            (1, 5, 11, 3),       # face, skin
-                            (2, 6, 1, 0),        # stripes, cap to hem
-                            (3, 7, 15, 16)]),    # legs, white
+    ("Kelly", [("KHAT", 0, 1, "khy"),        # hat, black
+               ("KFACE", 1, 11, "kfy"),      # face, skin
+               ("KBODY", 2, 4, "kby"),       # tunic, blue
+               ("KLEG1", 3, 4, "ky2")]),     # trousers, blue
+    ("Harry", [("HBODY", 4, 15, None),       # cap + body, white
+               ("HFACE", 5, 11, "hfy"),      # face, skin
+               ("HSTRIPE", 6, 1, None),      # stripes, cap to hem
+               ("HLEG1", 7, 15, "hy2")]),    # legs, white
 ]
+
+
+def offsets():
+    """Read `<var> = ky|hy +/- n` out of the source: the real draw offsets."""
+    src = open(BAS, encoding="utf-8").read()
+    out = {}
+    for m in re.finditer(r"^\s*(\w+) = (?:ky|hy) ([-+]) (\d+)", src, re.M):
+        out[m.group(1)] = int(m.group(3)) * (-1 if m.group(2) == "-" else 1)
+    return out
+
+
+_ALL = []
+
+
+def sprite_rows(idx):
+    """Sprite `idx` of the whole table, as 16 rows of 16 bits."""
+    if not _ALL:
+        for label, _arts, _c in g.SPRITES:
+            _ALL.extend(read_block(label))
+    return rows_of(_ALL, idx)
 
 
 def read_block(label):
@@ -92,15 +132,30 @@ def rows_of(data, idx):
 
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "bands.png")
-    W, H = 40, 32
+    W, H = 40, 36
     canvas = [[(33, 200, 66)] * (W * len(ACTORS)) for _ in range(H)]
     bad = []
 
-    for a, (name, label, parts) in enumerate(ACTORS):
-        data = read_block(label)
+    off = offsets()
+    resolved = []
+    for name, parts in ACTORS:
+        rp = []
+        for sname, slot, col, var in parts:
+            if sname not in g.SPR:
+                bad.append("%s: genart has no sprite called %r" % (name, sname))
+                continue
+            dy = 0 if var is None else off.get(var)
+            if dy is None:
+                bad.append("%s: no `%s = ky/hy +/- n` in KEYSTONE.bas, so its "
+                           "draw offset could not be read" % (name, var))
+                continue
+            rp.append((g.SPR[sname] // 4, slot, col, dy))
+        resolved.append((name, rp))
+
+    for a, (name, parts) in enumerate(resolved):
         owner = {}
         for idx, slot, col, dy in parts:
-            for y, bits in enumerate(rows_of(data, idx)):
+            for y, bits in enumerate(sprite_rows(idx)):
                 if not bits:
                     continue
                 fy = y + dy
@@ -115,7 +170,7 @@ def main():
     # both actors level, which is the worst case and also the endgame chase
     for line in range(-16, H):
         covering = sorted(slot
-                          for _n, _l, parts in ACTORS
+                          for _n, parts in resolved
                           for _i, slot, _c, dy in parts
                           if dy <= line < dy + 16)
         dropped = covering[MAX_PER_LINE:]

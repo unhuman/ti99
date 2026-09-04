@@ -49,6 +49,12 @@ what a thing *is*: yellow floor lines, grey-and-black escalator slashes, a grey 
 elevator **car** (not its shaft), **Kelly black and Harry white**. Four pixel rows per level,
 one colour each, inset in a grey band the width of the screen -- as the 2600 has it.
 
+Both figures are **transcribed off the reference video onto the 2600's own pixel grid**
+rather than drawn from impression (`DESIGN.md` §0h): Kelly's head is 42% of his height with a
+flat black brim right across him, Harry's face is a third of his. `assets/cmpref.py` squashes
+ours back down to theirs to compare, and `assets/previewrun.py` renders every frame, facing
+and pose from the shipped bytes.
+
 **Kelly runs 4 px/frame, Harry 1.75** -- a ratio of 2.29 against the 2.07 measured off the
 reference video (`DESIGN.md` §0f); 2.0 exactly would leave the chase 5.2 s of slack, less than
 one obstacle hit. That is not the comfortable margin it looks like: Harry
