@@ -971,11 +971,12 @@ CHARS_BASE = [
     # centred, so eight columns at each end of rows 21-23 are not part of it.
     # They held the SPACE character, whose colour is black on CYAN -- the
     # HUD's sky, on row 0, where it belongs -- so the radar sat in a cyan
-    # strip with black margins that stopped at its own edges, and the gap
-    # above and below it read as a border round a panel rather than as space.
-    # The font's colour cannot be changed for these rows alone: the title
-    # screen prints at rows 16, 19 and 21, and blacking the bottom third of
-    # the font would take that text with it. One blank black character is
+    # strip with margins that stopped at its own edges, and the gap above and
+    # below it read as a border round a panel rather than as space. The 2600
+    # puts its scanner in a grey band the width of the screen, so this is
+    # grey. The font's colour cannot be repurposed for these rows: the title
+    # screen prints at rows 16, 19 and 21, and recolouring the bottom third
+    # of the font would take that text with it. One blank character is
     # cheaper than the alternative and cannot affect anything else.
     ("SCANBK", 0, """
 ........
@@ -986,7 +987,7 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", BLACK, BLACK),
+""", GRAY, GRAY),
 
 ]
 
@@ -1261,27 +1262,28 @@ def main():
         # spent 384 bytes to say the same thing three times over. The blocks
         # are no longer identical -- the first and last carry the margins --
         # which is why there are three of them rather than one.
-        # THE MARGIN IS BLACK, NOT GREEN, and that is the whole point of it.
+        # THE MARGIN IS GREY, NOT GREEN, and that is the whole point of it.
         # A margin inked the same as the scanner's own dark-green ground is
         # padding INSIDE the box: the box still runs from the shop floor to
         # the bottom of the screen and still touches both. And DGREEN is
         # within a few counts of the store's MGREEN on this palette, so the
         # box does not even read as a separate thing -- it reads as more
-        # store. Black margins put real space around the instrument, which
-        # is how the original has it: a green scanner floating in the black
-        # strip under the store.
+        # store. Grey is what the 2600 has: measured off the reference video,
+        # its scanner is a green box inset in a GREY band the width of the
+        # screen, with a few pixels of grey above and below it. (This was
+        # briefly black, which reads fine but is not the original.)
         scol = []
         for crow in range(3):
             for line in range(8):
                 row = crow * 8 + line
                 if row < SCAN_TOP or row >= SCAN_TOP + 16:
-                    fg = bg = BLACK
+                    fg = bg = GRAY
                 else:
                     fg = (GRAY, BLACK, WHITE, LYELL)[(row - SCAN_TOP) % 4]
                     bg = DGREEN
                 scol.append((fg << 4) | bg)
         emit(fh, "scan_col3", scol,
-             "one 8-byte block per canvas row: %d px of BLACK margin, then "
+             "one 8-byte block per canvas row: %d px of GREY margin, then "
              "furniture grey / Kelly black / Harry white / floor line yellow "
              "per 4 px level, on dark green" % SCAN_TOP)
         total += 24

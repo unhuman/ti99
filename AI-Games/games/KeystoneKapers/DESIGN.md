@@ -169,6 +169,95 @@ fails.
 
 ---
 
+### 0f. The ride, the jump onto it, and the crook's speed -- all measured
+
+**The rider was never on a step.** He moved at the staircase's slope, 2 px
+along for 1 up, and the steps moved at the same rate -- and he still floated,
+because the two were never put *in register*. The bottom tread sits 4 px above
+the floor, and the whole staircase slides another 1 px up per animation phase,
+so a rider boarding without that `+ escp` term starts up to 3 px out and stays
+out for the entire ride. Nothing about that is visible in either file: the
+rates match, the constants look right, and the rider simply travels beside the
+steps.
+
+The fix is to derive everything from **which step he is on**. The staircase is
+a straight line, so a step 4 px higher is 8 px further along it, and one number
+-- the step's height above the floor being left -- fixes the rider's x, his y,
+and the rest of the ride:
+
+```
+west  klx = 99 - 2*height        east  klx = 140 + 2*height
+```
+
+Walking on, that step is the bottom one (`4 + escp` px up) and the feet have to
+climb onto it: he rises 2 px a frame while the tread rises 1, so the gap closes
+in `4 + escp` frames and he is riding it after that. `assets/checkride.py`
+simulates every ride -- 3 floors x 2 directions x 4 phases x 4 ways on -- and
+checks the pixel under his feet is the top of a tread in the bitmap that will
+be on screen that frame.
+
+**And matching the rates was still not enough, because they were two different
+clocks.** The rider advanced by the frame delta -- `fdv` -- like everything
+else in the loop, while `esc_tick` advanced the staircase by one phase per loop
+*pass*. Those agree only while the loop keeps up. The moment a pass costs two
+frames the rider travels 4 px along and 2 up while the staircase travels 2 and
+1, and he climbs off the step he is standing on. It compounds across the ride:
+his feet start planted on a tread and end floating several pixels above it.
+
+**The obvious repair makes it worse, and that is the interesting part.**
+Pacing the animation by `fdv` too locks the pair together and *aliases*: there
+are four phases covering an 8 px period, so stepping by 2 flips the pattern
+between two positions half a period apart -- direction unreadable -- and
+stepping by 3 runs the sequence 0,3,2,1, which is the **wagon-wheel effect**.
+The staircase visibly carries its steps *downward* while the rider goes up. A
+4-phase cycle can only be stepped by one, whatever the frame rate.
+
+So the animation is the clock, and **the rider is paced from it**: both advance
+by a fixed 2-across-and-1-up per pass. That is the only arrangement in which
+they cannot drift, and it is what "the player moves at the rate the steps carry
+him" actually means. The price is that a ride takes 36 *passes* rather than 36
+frames, so it slows when the loop does -- honest behaviour for a machine that
+is carrying you, and the two screens with a staircase are the busiest in the
+game (`esc_tick` alone rewrites 120 bytes of pattern table per pass).
+
+`checkride.py` reads both clocks out of the source and fails if they differ, if
+the phase is stepped by more than one, or if a foot leaves a tread at any of
+frame deltas 1, 2 or 3. All three of those shipped at least once.
+
+**A jump at the staircase used to be cut short.** Boarding fired the moment he
+entered the foot's 24 px zone, which zeroed his height in mid-air and dropped
+him at the bottom of the flight -- so aiming a jump at the steps was strictly
+worse than walking. Now the arc finishes and the staircase is simply what he
+lands on: the step under him follows from his x, and he boards when his feet
+*cross* its height coming down. Only the bottom three steps are within a 14 px
+apex at 4 px a step, so it is a ladder rather than a divide.
+
+**The crook was too slow, and by a measurable amount.** Tracked off the
+reference video frame by frame, the 2600's Kelly covers **0.40 screen widths a
+second** and its Harry **0.193** -- a ratio of **2.07**. Ours was 2.67. (The
+absolute speeds cannot be copied: ours are ~2.3x the original's, because our
+Kelly is charged three full traverses where the original's player picks a much
+shorter path.) Harry is now 1.75 px/frame, a ratio of 2.29.
+
+2.0 would match the original exactly and cannot be used. **Our** routes are not
+the original's -- Kelly's is 1.95x Harry's -- so a speed ratio of 2.0 leaves him
+5.2 s ahead at the escape edge, less than one beach ball. 1.75 leaves 10.1 s.
+
+**That margin only became visible once the check stopped ignoring the lift.**
+`checkchase.py` charged Kelly the full on-foot route and nothing else, which is
+not a conservative assumption but a route no player takes: the shaft is on
+screen 3, *on his way* from his spawn to floor 1's escalator, and it carries him
+two floors. Modelling only the foot route made the chase look 5 s tighter than
+it is -- and that phantom tightness was being used to argue the crook's speed
+down. A check that is wrong in the safe direction still shapes the design, and
+here it was shaping it wrongly.
+
+**The scanner's surround is GREY, not black.** Also measured: the 2600 insets
+its scanner in a grey band the width of the screen. It was briefly black, which
+reads fine and is not the original.
+
+---
+
 ### 0c. Second video pass — the escalator, and why the roof hid the player
 
 **The escalator was the worst-looking thing in the store, and the video says why.**
@@ -563,18 +652,21 @@ consequences fall out, none of them special-cased:
   (`difficulty-dial-must-not-invert-goal`). Running is what this character is **for** — the
   rule is about enemies that abandon their goal, and Harry's goal is to get away.
 
-- He runs at a flat **1.5 px/frame** (90 px/s), at every Krook. Not 2, not a per-Krook
+- He runs at a flat **1.75 px/frame** (105 px/s), at every Krook. Not 2, not a per-Krook
   ramp — §4a is the whole reason, and it is arithmetic rather than taste.
-- He rides **escalators** exactly as Kelly does, at the same `ESCF` = 40 frames a flight.
-  He does **not** use the elevator: the car is Kelly's shortcut and Kelly's alone, and it
-  is the one asymmetry that pays for Kelly's much longer route (§4a).
+- He rides **escalators** exactly as Kelly does, standing on a step, 36 frames a flight
+  less the animation phase (§0f). He does **not** use the elevator: the car is Kelly's
+  shortcut and Kelly's alone, and it is the one asymmetry that pays for Kelly's much
+  longer route (§4a).
 - **He never goes down.** The chase is therefore a race up a zig-zag, and Kelly's only
   advantages are raw speed and the elevator.
 - **He starts on the player's screen** (screen 7, floor 2), not at the elevator door the
-  research names. On a *scrolling* display those are compatible — the arcade shows you the
-  crook the moment the round begins, and can do so from anywhere nearby. With a flipped view
-  (§2a) they are not: screen 3 means four screens away and invisible. Seeing what you are
-  chasing wins.
+  research names. The reason given here used to be that "the arcade shows you the crook the
+  moment the round begins" — **and the video says it does not**: at a round start the 2600
+  shows Kelly alone on the ground floor, with the crook nowhere on screen and findable only
+  on the scanner. So the honest reason is the flipped view (§2a): screen 3 would put him
+  four screens away and invisible for the opening seconds, and this port has no scroll to
+  soften that. It is a deliberate divergence, not a reading of the original.
 - When fleeing, the side comparison carries a **16 px dead band**. Comparing raw positions
   makes him flip direction every time Kelly crosses his centre by a pixel, which on screen is
   not fleeing, it is a vibration — and it reads as the crook being broken rather than cornered.
@@ -589,7 +681,7 @@ the obstacles."*
 
 ---
 
-## 4a. The chase arithmetic — why 4 against 1.5
+## 4a. The chase arithmetic — why 4 against 1.75
 
 **A chase resolves on `path ÷ speed`, not on speed.** This is the one number in the game that
 neither constant shows you, and getting it wrong does not look like a tuning problem — it
@@ -612,29 +704,38 @@ foot could never close, at any distance, given any amount of time. The elevator 
 shortcut, it was the only way to win — and a player who mistimed the car had already lost the
 round without being told.
 
-The fix is Kelly at **4** and Harry at **1.5**:
+The fix is Kelly at **4** and Harry at **1.75**:
 
 | | route | rides | to the roof edge |
 |---|---|---|---|
-| Kelly, 4 px/frame | 7,992 px | 3 × 40 f | **35.3 s** |
-| Harry, 1.5 px/frame | 4,104 px | 2 × 40 f | **46.9 s** |
+| Kelly, 4 px/frame, **by lift** | 1,121 + 863 + 2,008 px | 1 ride + a worst-case 12.8 s wait | **30.1 s** |
+| Kelly, 4 px/frame, on foot | 7,992 px | 3 rides | 35.1 s |
+| Harry, 1.75 px/frame | 4,104 px | 2 rides | **40.2 s** |
 
-**11.6 seconds of slack, and that is the whole budget.** One beach ball costs 9 s, so Kelly
-can absorb exactly one mistake and still win on foot; the elevator is what buys back the rest.
-Harry still escapes at 46.9 s against a 50-second clock, so *"escaped off the roof"* stays the
-loss that actually happens and the timer stays the backstop behind it.
+**10.1 seconds of slack.** One beach ball costs 9 s, so Kelly can absorb a mistake and still
+make the catch. Harry escapes at 40.2 s against a 50-second clock, so *"escaped off the roof"*
+stays the loss that actually happens and the timer stays the backstop behind it.
 
-**And this is why Harry's speed is not the difficulty dial.** Raising him one notch, to 1.75,
-cuts the slack to 5.1 s — less than a single obstacle hit, i.e. the round becomes unwinnable
-on foot again. At 2.0 it is 0.2 s. There is no room in this geometry for a per-Krook ramp on
-the crook, and the ramp that used to be described here (`HSPD(krook)`, "closing on Kelly as
-the Krooks go by") was never implemented — which is the only reason the game was playable at
-all. Difficulty ramps on the obstacles (`obsp`, and the ball arcs of §5a).
+**THE LIFT IS PART OF THAT AND LEAVING IT OUT DISTORTED THE DESIGN.** This section, and the
+check, used to charge Kelly the full on-foot route and nothing else. That is not a
+conservative assumption — it is a route no player takes: the shaft is on screen 3, *on his
+way* from his spawn to floor 1's escalator, and it carries him two floors for the price of a
+wait. Modelling only the foot route made the chase look 5 s tighter than it is, and that
+phantom tightness was then used, right here, to argue the crook's speed down to 1.5. A check
+that errs in the safe direction still shapes the design; this one shaped it wrongly.
+
+**Harry's speed is still not the difficulty dial.** 2.0 — the ratio measured off the original
+(§0f) — leaves 5.2 s, less than a single obstacle hit. There is no room in this geometry for
+a per-Krook ramp on the crook, and the ramp that used to be described here (`HSPD(krook)`,
+"closing on Kelly as the Krooks go by") was never implemented — which is the only reason the
+game was playable at all. Difficulty ramps on the obstacles (`obsp`, and the ball arcs
+of §5a).
 
 **`assets/checkchase.py` checks all of it mechanically** and is wired into both build scripts.
-It reads `WALKSP`, `hsp4`, both spawns, `stor_esc`, `ESCF` and `TIMEL` out of the source,
-walks both routes, and fails if Harry is not slower than Kelly, if Kelly's margin drops below
-8 s, or if Harry can no longer escape inside the timer. It was run against the old constants
+It reads `WALKSP`, `hsp4`, both spawns, `stor_esc`, `ESCRISE`, the lift's timings and `TIMEL`
+out of the source, walks Kelly's two routes and Harry's one, and fails if Harry is not slower
+than Kelly, if Kelly's margin drops below 8 s, or if Harry can no longer escape inside the
+timer. It was run against the old constants
 first and correctly reports them as `-10.9 s` — a check that passes on the defect it was
 written for is worse than no check (`check-scope-narrower-than-bug`), so it was tested against
 the known-bad input before being trusted on the good one.

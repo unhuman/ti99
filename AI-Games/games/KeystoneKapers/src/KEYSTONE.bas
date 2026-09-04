@@ -206,23 +206,29 @@
 	' (east), its head tread at 23-31 and 224-232. An actor rides between
 	' those, so the numbers here are the ART's, and moving the art without
 	' moving them puts the rider beside the escalator rather than on it.
-	CONST ESCWL = 88		' west FOOT: ride UP from here
-	CONST ESCWR = 112
-	CONST ESCEL = 144		' east FOOT: ride UP from here
-	CONST ESCER = 168
-	' The head of the flight below arrives at THIS band's far end, so the same
-	' staircase is ridden back DOWN from its top.
-	' THE FEET RIDE THE STEPS. A step is 8 across for 4 up, so a rider must
-	' move 2 px sideways for every 1 up or they drift off the staircase. The
-	' treads span 72 px horizontally against the floors' 40 px of height, so
-	' the sideways travel finishes in 36 frames and the last 4 are the step
-	' off onto the landing.
-	CONST ESCRUN = 36		' frames of travel along the steps
+	' THE RIDER STANDS ON A STEP, and everything about the ride follows from
+	' WHICH ONE. The staircase is a straight line -- a step 4 px higher is 8
+	' px further along it -- so one number, the step's height above the floor
+	' being left, fixes both the rider's x and the rest of the ride:
+	'
+	'     west  klx = 99 - 2*height        east  klx = 140 + 2*height
+	'
+	' The bottom step is 4 px up, so a rider walking on boards at klx = 91
+	' (west) or 148 (east); the head step is 40 up, so the ride ends at 19 or
+	' 220. Those are the ART's numbers -- the foot tread is drawn at x 95-103
+	' west and 152-160 east, the head tread at 23-31 and 224-232 -- so moving
+	' the art without moving these puts the rider beside the staircase.
+	'
+	' THE PHASE MATTERS. The steps climb 1 px a frame and the animation runs
+	' four 1 px phases, so the bottom step is 4 + escp px up, not 4. Boarding
+	' without that term leaves the feet up to 3 px out of register with the
+	' tread and the whole ride drifts, which is exactly what "he floats
+	' beside the steps" looked like.
 	CONST ESCFX = 91		' west foot: rider's x when boarding
 	CONST ESCFXE = 148		' east foot
 	CONST ESCHX = 19		' west head: rider's x on arrival
 	CONST ESCHXE = 220		' east head
-	CONST ESCF = 40			' frames to ride one flight
+	CONST ESCRISE = 40		' floor to floor, and the ride's length
 
 	CONST TIMEL = 50		' seconds per Krook
 	CONST HITPEN = 9		' seconds a cart / ball / radio costs
@@ -651,7 +657,7 @@ start_krook:
 	hx = 120
 	hdir = 1
 	hst = 0
-	hsf = 0
+	hsy = 0
 
 	elvl = 1			' the car starts where Harry does
 	elst = 0
@@ -695,14 +701,24 @@ start_krook:
 	' resolves on PATH / SPEED, and Kelly needs to be more than TWICE
 	' Harry's speed before he is ahead at all. See DESIGN.md 4a.
 	'
-	' 4 px/frame against 1.5 puts Kelly at the escape edge 11.6 s before
-	' Harry gets there -- enough to absorb one beach ball (9 s) and still
-	' win, and no more. Raising Harry even to 1.75 cuts that to 5.1 s, i.e.
-	' one hit makes the round unwinnable on foot, so THE PER-KROOK DIAL IS
-	' NOT HIS SPEED. It is the obstacles, which is also the only dial the
-	' manual names (`obsp` above, and the ball arcs). assets/checkchase.py
-	' checks all of this mechanically -- run it if you touch these numbers.
-	hsp4 = 6			' 1.50 px/frame, every Krook
+	' 1.75, AND THE NUMBER IS MEASURED, NOT GUESSED. Tracked off the
+	' reference video (DESIGN.md 4a), the 2600's Kelly covers 0.40 screen
+	' widths a second and its Harry 0.193 -- a ratio of 2.07. At 1.5 ours
+	' was 2.67 and the crook visibly strolled. 1.75 brings it to 2.29.
+	'
+	' 2.0 would match the original exactly and still cannot be used, because
+	' OUR routes are not the original's: Kelly's is 1.95x Harry's here, so a
+	' speed ratio of 2.0 leaves him 5.2 s ahead at the escape edge -- less
+	' than one beach ball (9 s). At 1.75 he is 10.1 s ahead, which absorbs a
+	' hit. That figure counts the LIFT, which is on his way and carries him
+	' two floors; the foot-only route is 5 s worse and is not the route
+	' anybody takes.
+	'
+	' THE PER-KROOK DIAL IS STILL NOT HIS SPEED. It is the obstacles, which
+	' is also the only dial the manual names (`obsp` above, and the ball
+	' arcs). assets/checkchase.py checks all of this mechanically -- run it
+	' if you touch these numbers.
+	hsp4 = 7			' 1.75 px/frame, every Krook
 	hacc = 0
 	hspd = 2
 
@@ -940,25 +956,32 @@ read_input:
 move_kelly:
 	' --- riding: no input, invincible, and the ride finishes itself
 	IF klst = ST_ESC THEN
-		esf = esf - fdv
-		IF esf > 200 THEN esf = 0	' 8-bit underflow guard
-		' RIDE ALONG THE FLIGHT, NOT STRAIGHT UP IT. klx used to be snapped to
-		' the destination at boarding and only y was interpolated, so Kelly
-		' jumped sideways and then rose vertically THROUGH the staircase
-		' instead of travelling on it.
+		' HE IS STANDING ON A STEP, so he moves at the STEP's rate: 2 px
+		' across and 1 up PER PASS -- the staircase's own slope, and exactly
+		' what one phase of esc_tick moves the pattern by.
 		'
-		' THE FEET RIDE THE STEPS: 2 px across for every 1 up, which is the
-		' staircase's own slope. The treads span less than the floors' 40 px
-		' of height, so the sideways travel finishes first (ESCRUN frames)
-		' and the rest is the step up onto the landing.
-		kry = ESCF - esf
-		khx = kry
-		IF khx > ESCRUN THEN khx = ESCRUN
-		khx = khx + khx
-		IF esxr = 1 THEN klx = esxs + khx ELSE klx = esxs - khx
-		IF esf = 0 THEN
+		' NOT `fdv`, WHICH IS THE WHOLE POINT. Everything else in this loop
+		' is paced by the frame delta, and pacing him that way too made him
+		' outrun the steps the moment a pass cost more than one frame: his
+		' feet started planted on a tread and ended floating above it.
+		' Pacing the ANIMATION by fdv instead is worse -- four phases cannot
+		' be stepped by 2 or 3 without aliasing, and the staircase runs
+		' backwards (see esc_tick). The only arrangement that cannot drift
+		' is the one where both are driven by the same fixed step, so the
+		' rider is clocked by the pass, like the steps he is standing on.
+		'
+		' THE FIRST FEW PASSES ARE THE STEP ON. Walking on, his feet are on
+		' the floor and the bottom tread is 4 to 7 px above them, so he
+		' climbs at 2 px a pass until he catches it (the tread is rising at
+		' 1, so the gap closes at 1 a pass) and then rides with it. Jumping
+		' on he lands ON a tread, so eson is 0 and this never runs.
+		IF esy < eson THEN esy = esy + 1
+		esy = esy + 1
+		IF esxr = 1 THEN klx = klx + 2 ELSE klx = klx - 2
+		IF esy >= ESCRISE THEN
 			klv = klv + 1
 			klst = ST_RUN
+			IF esxr = 1 THEN klx = ESCHXE ELSE klx = ESCHX
 		END IF
 		RETURN
 	END IF
@@ -980,6 +1003,7 @@ move_kelly:
 
 	' --- jumping: the arc is a table, so the apex is exactly 14
 	IF klst = ST_JUMP THEN
+		kjp = kjh
 		kjf = kjf + fdv
 		IF kjf > 29 THEN
 			kjf = 0
@@ -1069,10 +1093,6 @@ move_kelly:
 	END IF
 
 	' --- boarding an escalator happens by TOUCHING it, per the manual
-	' BOARDABLE MID-JUMP. Only a running Kelly could take an escalator, so
-	' jumping at it -- the natural thing to do when a cart is in the way --
-	' sailed straight over the boarding zone and landed him past it. The
-	' ride zeroes the jump height, so he simply lands on the steps.
 	IF klst = ST_RUN THEN GOSUB try_esc
 	IF klst = ST_JUMP THEN GOSUB try_esc
 	RETURN
@@ -1132,29 +1152,90 @@ try_esc:
 	esd = PEEK(#esa)
 	IF esd = 255 THEN RETURN
 	kcx = klx + 8
+	' HOW FAR ALONG THE FLIGHT HE IS, measured from its head, in the flight's
+	' own x. A step's centre sits at 8 x its index, so the bottom step (9)
+	' owns 68..76, the one above it 60..68, and so on up. Both directions
+	' land on the same numbers because the east flight is the west one
+	' mirrored. The `+ escp` terms are the animation: the whole staircase
+	' slides 2 px along and 1 px up per phase, and a rider who ignores that
+	' boards up to 3 px out of register and drifts for the whole ride.
 	IF esd = 0 THEN
 		IF klsc <> 0 THEN RETURN
-		IF kcx < ESCWL THEN RETURN
-		IF kcx > ESCWR THEN RETURN
+		esw = kcx + escp
+		esw = esw + escp
+		' left of the head this underflows, which the range tests below
+		' catch: it comes out around 240, not around 0
+		esw = esw - 27
 	ELSE
 		IF klsc <> 7 THEN RETURN
-		IF kcx < ESCEL THEN RETURN
-		IF kcx > ESCER THEN RETURN
+		esw = 228
+		esw = esw + escp
+		esw = esw + escp
+		IF kcx > esw THEN RETURN
+		esw = esw - kcx
+	END IF
+
+	' --- WALKING ON. The whole foot of the flight boards, as it always did,
+	'     and it is always the bottom step: he is on the floor, and the
+	'     bottom step is the only one his feet can reach from there.
+	IF klst = ST_RUN THEN
+		IF esw > 86 THEN RETURN
+		IF esw < 60 THEN RETURN
+		esy0 = 4
+		esy0 = esy0 + escp
+	ELSE
+		' --- COMING DOWN ON IT. The arc is allowed to finish and the
+		'     staircase is simply what he lands on. This used to share
+		'     the walking path, which boarded the instant he entered
+		'     the foot's 24 px zone: that zeroed his height in mid-air
+		'     and dropped him at the bottom of the flight, so a jump
+		'     aimed at the steps was cut short every time.
+		'
+		'     Only the bottom three steps are in reach of a 14 px apex
+		'     at 4 px a step, so this is a ladder, not a divide.
+		IF esw > 76 THEN RETURN
+		IF esw < 52 THEN RETURN
+		esy0 = 12
+		IF esw > 59 THEN esy0 = 8
+		IF esw > 67 THEN esy0 = 4
+		esy0 = esy0 + escp
+		' HE MUST CROSS IT, not merely be under it. Without the
+		' previous height he would board on the way UP -- and standing
+		' beneath the high end of a staircase, on the floor below,
+		' counts as "below a step" all day long. It is also what keeps
+		' him off a step the arc cannot reach: kjp never exceeds the
+		' apex, so a step above it is never crossed and no separate
+		' reach test is needed.
+		IF kjp <= esy0 THEN RETURN
+		IF kjh > esy0 THEN RETURN
+	END IF
+	GOSUB esc_ride
+	RETURN
+
+	' ------------------------------------------------------ getting on one
+	' ONE ROUTINE FOR BOTH WAYS ON, because everything follows from esy0 --
+	' the height above this floor of the step being boarded. The staircase is
+	' a straight line, so a step 4 px higher is 8 px further along it:
+	'
+	'     west  klx = 99 - 2*esy0        east  klx = 140 + 2*esy0
+	'
+	' Walking on, the feet are still on the floor and have to climb onto that
+	' step, so the ride starts at 0 and `eson` runs the catch-up. Jumping on,
+	' he is already at the step's height, so it starts there with none.
+esc_ride:
+	kjh = 0
+	esy = esy0
+	eson = 0
+	' WALKING ON is exactly "klst is still ST_RUN", tested before it is
+	' changed below -- no separate flag needed.
+	IF klst = ST_RUN THEN
+		esy = 0
+		eson = esy0 + esy0
 	END IF
 	klst = ST_ESC
-	esf = ESCF
-	kjh = 0
-	' Board at the FOOT and stay there -- move_kelly walks him up the flight.
-	' The head is west of the foot on a west escalator and east of it on an
-	' east one, so the travel direction is the escalator's own side.
-	IF esd = 0 THEN
-		esxs = ESCFX
-		esxr = 0
-	ELSE
-		esxs = ESCFXE
-		esxr = 1
-	END IF
-	klx = esxs
+	esxr = esd			' esd is already 0 west / 1 east
+	klx = 99 - esy0 - esy0
+	IF esd = 1 THEN klx = 140 + esy0 + esy0
 	sfe = 1
 	RETURN
 
@@ -1264,15 +1345,12 @@ move_harry:
 		' HE RIDES IT TOO, and on the steps rather than beside them. He used
 		' to hold still for the whole flight and then appear at the top,
 		' which read as him teleporting up a floor -- the same fault Kelly
-		' had. Same 2-px-across-per-1-up as the player, for the same reason.
-		hsf = hsf - fdv
-		IF hsf > 200 THEN hsf = 0
-		hry = ESCF - hsf
-		hhx = hry
-		IF hhx > ESCRUN THEN hhx = ESCRUN
-		hhx = hhx + hhx
-		IF hesd = 0 THEN hx = hsxs - hhx ELSE hx = hsxs + hhx
-		IF hsf = 0 THEN
+		' had. Same fixed 2-across-per-1-up PER PASS as the player, clocked
+		' by the animation for the same reason (see move_kelly).
+		IF hsy < hson THEN hsy = hsy + 1
+		hsy = hsy + 1
+		IF hesd = 0 THEN hx = hx - 2 ELSE hx = hx + 2
+		IF hsy >= ESCRISE THEN
 			hlv = hlv + 1
 			hst = 0
 			IF hesd = 0 THEN hx = ESCHX ELSE hx = ESCHXE
@@ -1354,6 +1432,14 @@ move_harry:
 	' loop and not a divide: hacc is under 4 on entry and hsp4 is at most 8,
 	' so it can never need a third. `%` and `/` both compile to a real
 	' TMS9900 DIV (CLAUDE.md 3A) and this runs every frame.
+	'
+	' 7, NOT 6, AND THE REASON IS MEASURED. Tracked off the reference video
+	' (DESIGN.md 4a), the 2600's Kelly covers 0.40 screen widths a second and
+	' its Harry 0.193 -- a ratio of 2.07. At hsp4 = 6 ours was 2.67, and the
+	' crook visibly strolled. 7 brings it to 2.29. 8 would match the original
+	' exactly and cannot be used: Kelly's route here is 1.95x Harry's, so a
+	' speed ratio of 2.0 leaves the on-foot chase 0.2 s of slack, which is no
+	' chase at all. checkchase.py holds the line.
 	hacc = hacc + hsp4
 	hspd = 0
 	IF hacc > 3 THEN
@@ -1410,9 +1496,19 @@ move_harry:
 			IF hlv = 3 THEN
 				escapd = 1
 			ELSE
+				' ON THE BOTTOM STEP, not wherever he happened to
+				' stop. He walks to within 6 px of the foot, which
+				' is not close enough to stand on a tread.
+				' ON THE BOTTOM STEP, not wherever he stopped:
+				' he walks to within 6 px of the foot, which is
+				' not close enough to stand on a tread.
 				hst = 1
-				hsf = ESCF
-				hsxs = hx
+				hsy = 0
+				hson = 8
+				hson = hson + escp
+				hson = hson + escp
+				hx = ESCFX - escp - escp
+				IF hesd = 1 THEN hx = ESCFXE + escp + escp
 			END IF
 		END IF
 	END IF
@@ -1577,13 +1673,12 @@ draw_actors:
 	ky = ky - STANDH
 	ky = ky - kjh
 	IF klst = ST_ESC THEN
-		' Carried along the flight: interpolate by the frames remaining.
-		' klv is still the band being LEFT until the ride completes, so up
-		' subtracts from that floor's height and down adds to it.
-		kry = ESCF - esf			' 1 px a frame: the floors are 40 apart
+		' Standing on a step: esy IS the height of that step above the floor
+		' he boarded from, so his feet are exactly on its tread. klv is still
+		' the band being LEFT until the ride completes.
 		ky = flry(klv)
 		ky = ky - STANDH
-		ky = ky - kry
+		ky = ky - esy
 	END IF
 
 	IF klst = ST_DUCK THEN
@@ -1649,8 +1744,7 @@ draw_actors:
 	hy = flry(hlv)
 	hy = hy - STANDH
 	IF hst = 1 THEN
-		hry = ESCF - hsf
-		hy = hy - hry
+		hy = hy - hsy
 	END IF
 	IF hdir = 1 THEN
 		hp = P_HBODY
@@ -1772,11 +1866,21 @@ esc_tick:
 	IF klsc > 0 THEN
 		IF klsc < 7 THEN RETURN
 	END IF
-	' EVERY FRAME, AND THAT IS THE POINT. A rider moves 2 px across and 1 up
-	' per frame, and a phase advances the steps by exactly the same 2 and 1.
-	' Ticking any slower left the steps crawling under a rider who slid up
-	' the staircase instead of standing on it. Matching the two rates is
-	' what makes them ride rather than hover.
+	' ONE PHASE PER PASS, AND NEVER MORE. There are four phases covering an
+	' 8 px period, so advancing by the frame delta ALIASES: at fdv 2 the
+	' pattern flips between two positions half a period apart and the
+	' direction stops being readable, and at fdv 3 the sequence runs 0,3,2,1
+	' -- the staircase visibly runs BACKWARDS, carrying its steps down while
+	' the rider goes up. That is the wagon-wheel effect, and no amount of
+	' phase arithmetic fixes it: a 4-phase cycle can only be stepped by 1.
+	'
+	' So the ANIMATION is the clock here, and the rider is paced from it --
+	' see move_kelly, which advances him by the same fixed 2-and-1 per pass
+	' rather than by fdv. Locking the two together is the only way they
+	' cannot drift, and it is what "the player moves at the rate the steps
+	' carry him" actually means. The cost is that a ride takes 36 passes
+	' rather than 36 frames, so it slows down when the loop does -- which is
+	' the honest behaviour for a machine that is carrying you.
 	escp = escp + 1
 	IF escp > 3 THEN escp = 0
 	' ONLY THE CELLS THAT MOVE, AND ALL OF THEM. genart.py measures which

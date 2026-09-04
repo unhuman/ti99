@@ -217,6 +217,27 @@ cost a debugging session:
   n=100 → ~1100 Hz, n=250 → ~450 Hz, n=900 → ~124 Hz. In Puzzle Bobble this had a *high ping*
   standing in for the ceiling's low clunk and four effects silently masked, none of which
   produced any error.
+- **TWO THINGS THAT MUST MOVE TOGETHER MUST SHARE ONE CLOCK -- AND IF ONE OF THEM IS A
+  CYCLIC ANIMATION, THAT CLOCK CANNOT BE THE FRAME DELTA.** Movement is normally paced by
+  `fdv` and animation by the loop pass; while the loop keeps up those agree, so the pairing
+  looks right in the source and on screen. Both failure modes are silent and both shipped:
+  - **Paced apart, the actor drifts.** A rider on an escalator advanced `2*fdv` px along
+    the steps while the steps advanced 2 per pass, so his feet started planted on a tread
+    and ended floating several pixels above it. It *compounds*, so it does not read as a
+    one-frame glitch. And the screens where the two must agree are usually the busiest
+    (that animation rewrote 120 bytes of pattern table per pass), so the delta is largest
+    exactly where the mismatch shows.
+  - **Paced together by `fdv`, the animation ALIASES.** A 4-phase cycle over an 8 px period
+    stepped by 2 flips between two positions half a period apart (direction unreadable);
+    stepped by 3 it runs 0,3,2,1 -- the **wagon-wheel effect**, and the escalator visibly
+    carried its steps *downward* while the rider went up. **A cyclic animation can only be
+    stepped by one, whatever the frame rate.**
+  So: make the animation the clock and pace the actor *from it* -- both by a fixed step per
+  pass. The ride then takes N passes rather than N frames and slows when the loop does,
+  which is the honest behaviour for a machine that is carrying you. **A checker for this
+  must simulate `fdv > 1`** (the code is correct at 1, which is what a desk check and a fast
+  emulator both exercise) **and must read both clocks out of the source and compare them** --
+  `games/KeystoneKapers/assets/checkride.py` does, and names all three failures.
 - **A per-pass counter is not a clock.** Anything timed — a beep interval, a countdown, a
   telegraph — must decrement by the frame delta, not once per loop pass, or it slows down exactly
   when the loop gets busy. That is the same root cause as movement slowing (§3A's FRAME-delta

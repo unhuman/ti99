@@ -146,6 +146,8 @@ rm -rf ../assets/__pycache__
     || die "a radar row is the wrong colour -- run assets/checkscan.py"
 "$TRUNCPY" ../assets/checkchars.py > /dev/null \
     || die "a hand-written character number is stale -- run assets/checkchars.py"
+"$TRUNCPY" ../assets/checkride.py > /dev/null \
+    || die "a rider's feet leave the escalator steps -- run assets/checkride.py"
 
 echo "[1/3] cvbasic    $SRC -> $NAME.a99"
 rm -f "$NAME.a99"

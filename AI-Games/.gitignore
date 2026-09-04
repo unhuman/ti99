@@ -1,0 +1,5 @@
+# Python bytecode. The build scripts delete these every run (a stale .pyc
+# is read for a whole second after its source changes -- CLAUDE.md 3A), so a
+# tracked one churns on every commit.
+__pycache__/
+*.pyc

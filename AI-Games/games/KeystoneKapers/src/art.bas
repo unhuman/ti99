@@ -276,7 +276,7 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
 	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
 	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
-	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
+	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
 
 esc_ph0:	' chars 101-115, phase 0 -- DEFINE CHAR 101,15,esc_ph0
 	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
@@ -356,10 +356,10 @@ esc_ph3:	' chars 101-115, phase 3 -- DEFINE CHAR 101,15,esc_ph3
 	' CVBasic left in the colour table, which on a green store made the HUD
 	' unreadable.
 
-scan_col3:	' one 8-byte block per canvas row: 4 px of BLACK margin, then furniture grey / Kelly black / Harry white / floor line yellow per 4 px level, on dark green
-	DATA BYTE $11,$11,$11,$11,$EC,$1C,$FC,$BC
+scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then furniture grey / Kelly black / Harry white / floor line yellow per 4 px level, on dark green
+	DATA BYTE $EE,$EE,$EE,$EE,$EC,$1C,$FC,$BC
 	DATA BYTE $EC,$1C,$FC,$BC,$EC,$1C,$FC,$BC
-	DATA BYTE $EC,$1C,$FC,$BC,$11,$11,$11,$11
+	DATA BYTE $EC,$1C,$FC,$BC,$EE,$EE,$EE,$EE
 
 	' code map, for the source to reference:
 	'   96  SLAB

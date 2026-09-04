@@ -22,7 +22,7 @@ the only obstacle whose answer changes while it is in the air.
 | Long running jump | fire **+** a direction |
 | Duck (under biplanes) | joystick **down** |
 | Enter / leave the elevator | joystick **up** / **down** |
-| Ride an escalator (**up only**) | walk into its foot, or jump onto it |
+| Ride an escalator (**up only**) | walk into its foot, or land a jump on a step |
 
 **TI-99/4A: ALPHA LOCK.** It shares a line with the joystick's vertical axis, so latched down
 it reports a direction that never releases. The title screen **measures the axis for 40 frames
@@ -38,21 +38,25 @@ which means the TI sees ALPHA LOCK *down* when your Caps Lock is *up*.)
 connects upward**, and it alternates: floor 1 climbs at the **west** end, floor 2 at the
 **east**, floor 3 at the **west**. Kelly starts at the east entrance, so reaching the roof on
 foot is **three full traverses of the store** — one per floor. Escalators run **up only**:
-walk into a flight's foot, or jump onto it, and the steps carry you at their own speed. The
+walk into a flight's foot and you step up onto the bottom tread; jump at it and the arc
+finishes, landing you on whichever of the bottom three steps it comes down over. Either way
+your feet are **on a step**, and it carries you at its own speed. The
 **elevator in the centre** is the only way down — fast, and it serves all three shopping
 floors but not the roof.
 
 The **scanner** along the bottom shows all four levels at once, and it is colour-coded by
 what a thing *is*: yellow floor lines, grey-and-black escalator slashes, a grey bar at the
 elevator **car** (not its shaft), **Kelly black and Harry white**. Four pixel rows per level,
-one colour each, floating in a black strip under the store.
+one colour each, inset in a grey band the width of the screen -- as the 2600 has it.
 
-**Kelly runs 4 px/frame, Harry 1.5.** That is not the comfortable margin it looks like: Harry
-spawns beside floor 2's escalator and runs 4,104 px to the roof edge where Kelly runs 7,992,
-so Kelly needs to be more than *twice* Harry's speed just to be ahead. He arrives 11.6 seconds
-before Harry does — enough to absorb one nine-second obstacle and still make the catch on
-foot, and no more. `DESIGN.md` §4a has the arithmetic; `assets/checkchase.py` enforces it at
-build time.
+**Kelly runs 4 px/frame, Harry 1.75** -- a ratio of 2.29 against the 2.07 measured off the
+reference video (`DESIGN.md` §0f); 2.0 exactly would leave the chase 5.2 s of slack, less than
+one obstacle hit. That is not the comfortable margin it looks like: Harry
+spawns beside floor 2's escalator and runs 4,104 px to the roof edge where Kelly runs 7,992
+on foot, so Kelly needs to be more than *twice* Harry's speed just to be ahead. Taking the
+lift — which is on his way — he arrives 10.1 seconds before Harry does, enough to absorb one
+nine-second obstacle and still make the catch. `DESIGN.md` §4a has the arithmetic;
+`assets/checkchase.py` enforces it at build time.
 
 ## Status
 
@@ -80,9 +84,10 @@ truncation, `GOSUB`/`RETURN` and screen-layout gates, plus `checkball.py` (no be
 unavoidable), `checkchase.py` (the chase can be won on foot), `checkbands.py` (no actor's
 colour bands overflow the 4-sprites-per-line limit), `checkesc.py` (every escalator phase
 reassembles, and the animated character range matches the cells that move) and
-`checkscan.py` (every radar row is coloured for what is drawn on it) and `checkchars.py`
-(every hand-written character number still points at the character it names). The TI script
-also checks the 24,336-byte fixed-area cap.
+`checkscan.py` (every radar row is coloured for what is drawn on it), `checkchars.py` (every
+hand-written character number still points at the character it names) and `checkride.py`
+(a rider's feet are on a drawn step every frame of every ride). The TI script also checks the
+24,336-byte fixed-area cap.
 
 > `cvbasic.exe` is a **Cygwin** binary and Git Bash's own MSYS2 runtime shadows it, so it
 > used to die with `cannot open shared object file` — exit 127, no other clue — while the
