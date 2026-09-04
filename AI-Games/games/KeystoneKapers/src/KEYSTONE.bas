@@ -190,17 +190,17 @@
 	CONST CH_SLAB = 96
 	CONST CH_ECAR = 100
 	CONST CH_EDOOR = 99
-	CONST CH_WALL = 148
-	CONST CH_KOPIC = 149
-	CONST CH_EDHALF = 154
-	CONST CH_SCANBK = 156		' blank black, the strip either side of the radar
-	CONST CH_BAG = 151
+	CONST CH_WALL = 142
+	CONST CH_KOPIC = 143
+	CONST CH_EDHALF = 148
+	CONST CH_SCANBK = 150		' blank black, the strip either side of the radar
+	CONST CH_BAG = 145
 	' NAMED, because this was the literal 113 and the escalator rework
 	' renumbered the character table underneath it. 113 became EXITC, so
 	' the second collectible quietly drew an EXIT DOOR in the aisle -- a
 	' plausible-looking box, no error, and nothing to connect it to a
 	' change made somewhere else entirely.
-	CONST CH_CASE = 152
+	CONST CH_CASE = 146
 
 	' the elevator doorway, in pixels and columns
 	CONST ELXL = 112
@@ -365,10 +365,42 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,61,store_pat
-	DEFINE COLOR 96,61,store_col
+	DEFINE CHAR 96,55,store_pat
+	DEFINE COLOR 96,55,store_col
+	GOSUB esc_deck_col
 	GOSUB scan_colour
 
+	GOTO after_deck
+
+	' THE ROOF CROSSING, COLOURED FOR SCREEN THIRD 0 ONLY.
+	'
+	' A flight crossing into the roof shows the grey-and-white DECK behind
+	' it; one crossing into a shop floor shows the yellow FLOOR BAR. Same
+	' pixels, different surface -- and the two surfaces are never in the same
+	' third, because a roof crossing is screen row 5 and a shop one is row 10
+	' or 15. So both use the same characters, DEFINE COLOR paints them as the
+	' floor bar in all three thirds, and this repaints third 0 as the deck.
+	'
+	' Worth a loop because those characters ANIMATE: two sets meant rewriting
+	' nine patterns a pass on the west screen instead of six, and define_char
+	' triples every byte (see esc_tick).
+esc_deck_col:
+	#eda = VARPTR esc_deck(0)
+	FOR edi = 0 TO 5
+		edc = PEEK(#eda)
+		#eda = #eda + 1
+		#edb = 8192			' third 0's colour table
+		#edb = #edb + edc * 8.
+		FOR edj = 0 TO 7
+			edv = PEEK(#eda)
+			#eda = #eda + 1
+			VPOKE #edb,edv
+			#edb = #edb + 1
+		NEXT edj
+	NEXT edi
+	RETURN
+
+after_deck:
 	DEFINE SPRITE 0,18,spr_kelly	' 0..68  facing bands x2 + 4 run frames
 	DEFINE SPRITE 18,10,spr_harry	' 72..108
 	DEFINE SPRITE 28,1,spr_cart	' pattern 104
@@ -1252,14 +1284,17 @@ try_esc:
 		IF esw > 59 THEN esy0 = 8
 		IF esw > 67 THEN esy0 = 4
 		esy0 = esy0 + escp
-		' HE MUST CROSS IT, not merely be under it. Without the
-		' previous height he would board on the way UP -- and standing
-		' beneath the high end of a staircase, on the floor below,
-		' counts as "below a step" all day long. It is also what keeps
-		' him off a step the arc cannot reach: kjp never exceeds the
-		' apex, so a step above it is never crossed and no separate
-		' reach test is needed.
-		IF kjp <= esy0 THEN RETURN
+		' HE MUST BE COMING DOWN, and at or below the step. Requiring him
+		' to CROSS that step's exact height in a single frame was too
+		' strict: he covers 4 px a frame, so a given step is under him
+		' for about two frames of the descent, and if his height did not
+		' happen to pass through that step's own height in those two he
+		' sailed clean over the staircase and landed on the floor beyond
+		' it. Coming-down-and-at-or-below is the rule a floor uses.
+		'
+		' Only the bottom three steps are in range (above), so "below a
+		' step" can never mean one the arc could not have reached.
+		IF kjh > kjp THEN RETURN
 		IF kjh > esy0 THEN RETURN
 	END IF
 	GOSUB esc_ride
@@ -1970,24 +2005,32 @@ esc_tick:
 	' direction is ever on screen: screen 0 carries a west flight and screen
 	' 7 an east one.
 	'
-	' THAT HALVES THE ONLY PER-PASS WORK UNIQUE TO THESE TWO SCREENS, which
-	' is why it is here and not in a tidy-up commit. Rewriting all fifteen
-	' cells was 120 bytes of pattern table every pass; these are the two
-	' screens that visibly ran slow, and this is the only thing that runs on
-	' them and nowhere else. West writes 72 bytes now, east 48.
+	' THIS IS THE ONLY PER-PASS WORK UNIQUE TO THESE TWO SCREENS, and it is
+	' `define_char`, which in bitmap mode is LDIRVM3 -- the TRIPLE copy, once
+	' per screen third. It therefore costs three times what the character
+	' count suggests, which is why these screens run slower than the rest.
+	'
+	' THE WEST SCREEN USED TO COST HALF AS MUCH AGAIN, because it carries TWO
+	' flights: floor 1's crosses into a shop floor and floor 3's into the
+	' roof, so it needed both composite sets -- nine characters against the
+	' east's six, 216 bytes a pass against 144. It measured 20 passes a
+	' second where the east screen managed 24-26. The two sets are
+	' PIXEL-IDENTICAL and are never wanted in the same screen THIRD, so they
+	' share their characters now and are told apart by the per-third colour
+	' table (see esc_deck_col in setup). Six either side.
 	'
 	' The handrail and the frame sit past the end of both ranges and never
 	' move at all.
 	IF klsc = 0 THEN
-		IF escp = 0 THEN DEFINE CHAR 101,9,esc_phw0
-		IF escp = 1 THEN DEFINE CHAR 101,9,esc_phw1
-		IF escp = 2 THEN DEFINE CHAR 101,9,esc_phw2
-		IF escp = 3 THEN DEFINE CHAR 101,9,esc_phw3
+		IF escp = 0 THEN DEFINE CHAR 101,6,esc_phw0
+		IF escp = 1 THEN DEFINE CHAR 101,6,esc_phw1
+		IF escp = 2 THEN DEFINE CHAR 101,6,esc_phw2
+		IF escp = 3 THEN DEFINE CHAR 101,6,esc_phw3
 	ELSE
-		IF escp = 0 THEN DEFINE CHAR 110,6,esc_phe0
-		IF escp = 1 THEN DEFINE CHAR 110,6,esc_phe1
-		IF escp = 2 THEN DEFINE CHAR 110,6,esc_phe2
-		IF escp = 3 THEN DEFINE CHAR 110,6,esc_phe3
+		IF escp = 0 THEN DEFINE CHAR 107,6,esc_phe0
+		IF escp = 1 THEN DEFINE CHAR 107,6,esc_phe1
+		IF escp = 2 THEN DEFINE CHAR 107,6,esc_phe2
+		IF escp = 3 THEN DEFINE CHAR 107,6,esc_phe3
 	END IF
 	RETURN
 

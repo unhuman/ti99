@@ -224,6 +224,15 @@ game (`esc_tick` alone rewrites 120 bytes of pattern table per pass).
 the phase is stepped by more than one, or if a foot leaves a tread at any of
 frame deltas 1, 2 or 3. All three of those shipped at least once.
 
+**And then it let him jump clean THROUGH the staircase.** Boarding required
+his height to *cross* a step's exact height in one frame, which is too strict:
+he covers 4 px a frame, so a given step is under him for about two frames of
+the descent, and if his arc did not happen to pass through that step's own
+height in those two he sailed over the whole flight and landed on the floor
+beyond it. The rule is now the one a floor uses -- coming down, and at or below
+the step. It cannot over-reach because only the bottom three steps are in
+range at all.
+
 **A jump at the staircase used to be cut short.** Boarding fired the moment he
 entered the foot's 24 px zone, which zeroed his height in mid-air and dropped
 him at the bottom of the flight -- so aiming a jump at the steps was strictly
@@ -440,6 +449,26 @@ on the west screen, 48 on the east, down from 120.
 
 `escp` itself stays per-pass and must: a four-phase cycle stepped by more than
 one aliases, and the rider is locked to it (§0f).
+
+**AND THE WEST SCREEN COST HALF AS MUCH AGAIN, because it carries TWO
+flights.** Not because two staircases are twice the work -- they share their
+patterns -- but because the two cross *different surfaces*: floor 1's flight
+crosses into a shop floor and floor 3's into the roof, so it needed both the
+BAR composites and the DECK ones. Nine animated characters against the east
+screen's six; 216 bytes a pass against 144.
+
+The two composite sets are **pixel-identical**. They are the same flight over a
+different background, and they differ only in colour -- and **they are never
+wanted in the same screen third**: a roof crossing is screen row 5 and a shop
+one is row 10 or 15. The TMS9918 colours each third from its own table, so one
+character can be the deck up top and the floor bar lower down. `DEFINE COLOR`
+paints them as the bar in all three thirds and `esc_deck_col` repaints third 0
+as the deck, once, at setup. Six characters either side now, and the whole
+store table lost six entries with them.
+
+That invariant is the price of the trick, so `checkesc.py` gates it: it reads
+the band rows and the escalator sides out of the source, works out which third
+each crossing lands in, and fails if a roof one and a shop one ever share.
 
 **MEASURED, and the headline is not the escalator.** A debug pass-counter on the
 HUD says the loop runs at **24-26 passes a second everywhere**, dropping to

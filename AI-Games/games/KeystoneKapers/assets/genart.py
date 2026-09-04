@@ -862,6 +862,15 @@ SPRITES = [
 # have to agree with. A sprite is four patterns wide, so the n-th sprite in
 # this table is pattern 4n -- and every one of those numbers is written by
 # hand in the source, where nothing but assets/checkchars.py connects the two.
+# the third-0 colour override for the deck crossing: (char, 8 colour bytes)
+def _deck_table():
+    out = []
+    for i in ESC_DECK:
+        out.append(CODES["ESCWB%d" % i])
+        out += [(BLACK << 4) | c for c in DECK_BG]
+    return out
+
+
 SPR = {}
 _n = 0
 for _label, _arts, _c in SPRITES:
@@ -1199,8 +1208,22 @@ for _w, _grid, _phs, _mv in (("ESCW", ESC_W_GRID, ESC_W_PHASES, _W_MOVE),
         _COMP.append(("%sB%d" % (_w, _i), _i, _phs, _mv, BAR_BG))
 for _i in sorted({c for c in ESC_W_GRID[0] if c is not None}):
     _COMP.append(("ESCWR%d" % _i, _i, ESC_W_PHASES, _W_MOVE, ROOFAIR_BG))
-for _i in sorted({c for c in ESC_W_GRID[1] if c is not None}):
-    _COMP.append(("ESCWD%d" % _i, _i, ESC_W_PHASES, _W_MOVE, DECK_BG))
+# THE DECK CROSSING RE-USES THE BAR CHARACTERS, coloured differently PER
+# SCREEN THIRD. The two composites are pixel-identical -- same flight pattern,
+# different surface behind it -- and the surfaces are never in the same third:
+# the roof deck a flight crosses is row 5 and the shop floor is row 15 or 10.
+# The TMS9918 colours each third from its own table, so one character can be
+# the deck up top and the floor bar lower down.
+#
+# THAT IS A FRAME-RATE FIX. The west screen carries TWO flights -- floor 1's
+# into a shop floor and floor 3's into the roof -- so it needed both composite
+# sets and rewrote NINE characters a pass where the east screen rewrote six.
+# `define_char` is LDIRVM3, the triple copy, so that was 216 bytes against 144,
+# and the west screen measured 20 passes/second against the east's 24-26.
+# Sharing the characters brings it to six either side.
+#
+# `esc_deck` below is the third-0 colour override, applied once at setup.
+ESC_DECK = sorted({c for c in ESC_W_GRID[1] if c is not None})
 
 # MOVERS FIRST, AND WEST BEFORE EAST. One DEFINE CHAR per phase covers exactly
 # the movers and everything static sits past the end of the range -- but only
@@ -1447,6 +1470,14 @@ def main():
              "furniture grey / Kelly black / Harry white / floor line yellow "
              "per 4 px level, on dark green" % SCAN_TOP)
         total += 24
+
+        # THE ROOF CROSSING'S COLOURS, for screen third 0 only. See the note
+        # over ESC_DECK: the deck and the floor bar share their characters and
+        # are told apart by which third they are in.
+        emit(fh, "esc_deck", _deck_table(),
+             "%d x (char, 8 colour bytes) -- write into the THIRD-0 colour "
+             "table at 8192 + char*8, once, at setup" % len(ESC_DECK))
+        total += len(_deck_table())
 
         fh.write("\n\t' code map, for the source to reference:\n")
         for name, code, art, fg, bg in CHARS:

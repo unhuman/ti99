@@ -168,15 +168,12 @@ spr_plane:	' toy biplane -- DUCK. The only thing that kills.
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.
 
-store_pat:	' 61 chars, 8 bytes each
+store_pat:	' 55 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
-	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
-	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
@@ -217,9 +214,6 @@ store_pat:	' 61 chars, 8 bytes each
 	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F0,$F0,$1C,$07,$01,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$C0,$70,$1C,$07
-	DATA BYTE $00,$00,$00,$00,$C0,$70,$1C,$07
-	DATA BYTE $19,$0C,$0F,$0F,$0F,$03,$00,$00
-	DATA BYTE $C0,$70,$1C,$07,$01,$00,$00,$00
 	DATA BYTE $33,$33,$FB,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $3C,$7E,$5A,$3C,$7E,$66,$66,$42
@@ -243,9 +237,6 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$12,$12,$12
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$12,$12,$12
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$12,$12,$12
-	DATA BYTE $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
-	DATA BYTE $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
-	DATA BYTE $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
 	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
 	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
 	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
@@ -280,9 +271,6 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
 	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
 	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
-	DATA BYTE $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
-	DATA BYTE $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
-	DATA BYTE $1F,$1F,$1E,$1E,$1E,$1E,$1E,$1E
 	DATA BYTE $87,$87,$87,$87,$87,$87,$87,$87
 	DATA BYTE $F2,$F2,$F2,$F2,$F2,$F2,$F2,$F2
 	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
@@ -294,10 +282,7 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
 
-esc_phw0:	' chars 101-109, phase 0 -- DEFINE CHAR 101,9,esc_phw0
-	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
-	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
-	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
+esc_phw0:	' chars 101-106, phase 0 -- DEFINE CHAR 101,6,esc_phw0
 	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
@@ -305,7 +290,7 @@ esc_phw0:	' chars 101-109, phase 0 -- DEFINE CHAR 101,9,esc_phw0
 	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
 
-esc_phe0:	' chars 110-115, phase 0 -- DEFINE CHAR 110,6,esc_phe0
+esc_phe0:	' chars 107-112, phase 0 -- DEFINE CHAR 107,6,esc_phe0
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$FF,$FE,$F8,$E3
 	DATA BYTE $FF,$FE,$F8,$E3,$8F,$3F,$FF,$FC
@@ -313,10 +298,7 @@ esc_phe0:	' chars 110-115, phase 0 -- DEFINE CHAR 110,6,esc_phe0
 	DATA BYTE $00,$00,$00,$00,$FF,$FE,$F8,$E3
 	DATA BYTE $FF,$FE,$F8,$E3,$8F,$3F,$FF,$FC
 
-esc_phw1:	' chars 101-109, phase 1 -- DEFINE CHAR 101,9,esc_phw1
-	DATA BYTE $FC,$7C,$1C,$C7,$F1,$FC,$FF,$3F
-	DATA BYTE $00,$00,$00,$FC,$FC,$7C,$1C,$C7
-	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$FC
+esc_phw1:	' chars 101-106, phase 1 -- DEFINE CHAR 101,6,esc_phw1
 	DATA BYTE $FC,$7C,$1C,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$FC,$FC,$7C,$1C,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$FC
@@ -324,7 +306,7 @@ esc_phw1:	' chars 101-109, phase 1 -- DEFINE CHAR 101,9,esc_phw1
 	DATA BYTE $00,$00,$00,$FC,$FC,$7C,$1C,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$FC
 
-esc_phe1:	' chars 110-115, phase 1 -- DEFINE CHAR 110,6,esc_phe1
+esc_phe1:	' chars 107-112, phase 1 -- DEFINE CHAR 107,6,esc_phe1
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$3F
 	DATA BYTE $00,$00,$00,$3F,$3F,$3E,$38,$E3
 	DATA BYTE $3F,$3E,$38,$E3,$8F,$3F,$FF,$FC
@@ -332,10 +314,7 @@ esc_phe1:	' chars 110-115, phase 1 -- DEFINE CHAR 110,6,esc_phe1
 	DATA BYTE $00,$00,$00,$3F,$3F,$3E,$38,$E3
 	DATA BYTE $3F,$3E,$38,$E3,$8F,$3F,$FF,$FC
 
-esc_phw2:	' chars 101-109, phase 2 -- DEFINE CHAR 101,9,esc_phw2
-	DATA BYTE $F0,$70,$1F,$C7,$F1,$FC,$FF,$3F
-	DATA BYTE $00,$00,$F0,$F0,$F0,$70,$1F,$C7
-	DATA BYTE $01,$00,$00,$00,$00,$00,$F0,$F0
+esc_phw2:	' chars 101-106, phase 2 -- DEFINE CHAR 101,6,esc_phw2
 	DATA BYTE $F0,$70,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$F0,$F0,$F0,$70,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$F0,$F0
@@ -343,7 +322,7 @@ esc_phw2:	' chars 101-109, phase 2 -- DEFINE CHAR 101,9,esc_phw2
 	DATA BYTE $00,$00,$F0,$F0,$F0,$70,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$F0,$F0
 
-esc_phe2:	' chars 110-115, phase 2 -- DEFINE CHAR 110,6,esc_phe2
+esc_phe2:	' chars 107-112, phase 2 -- DEFINE CHAR 107,6,esc_phe2
 	DATA BYTE $80,$00,$00,$00,$00,$00,$0F,$0F
 	DATA BYTE $00,$00,$0F,$0F,$0F,$0E,$F8,$E3
 	DATA BYTE $0F,$0E,$F8,$E3,$8F,$3F,$FF,$FC
@@ -351,10 +330,7 @@ esc_phe2:	' chars 110-115, phase 2 -- DEFINE CHAR 110,6,esc_phe2
 	DATA BYTE $00,$00,$0F,$0F,$0F,$0E,$F8,$E3
 	DATA BYTE $0F,$0E,$F8,$E3,$8F,$3F,$FF,$FC
 
-esc_phw3:	' chars 101-109, phase 3 -- DEFINE CHAR 101,9,esc_phw3
-	DATA BYTE $C0,$7F,$1F,$C7,$F1,$FC,$FF,$3F
-	DATA BYTE $00,$C0,$C0,$C0,$C0,$7F,$1F,$C7
-	DATA BYTE $01,$00,$00,$00,$00,$C0,$C0,$C0
+esc_phw3:	' chars 101-106, phase 3 -- DEFINE CHAR 101,6,esc_phw3
 	DATA BYTE $C0,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$C0,$C0,$C0,$C0,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$C0,$C0,$C0
@@ -362,7 +338,7 @@ esc_phw3:	' chars 101-109, phase 3 -- DEFINE CHAR 101,9,esc_phw3
 	DATA BYTE $00,$C0,$C0,$C0,$C0,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$C0,$C0,$C0
 
-esc_phe3:	' chars 110-115, phase 3 -- DEFINE CHAR 110,6,esc_phe3
+esc_phe3:	' chars 107-112, phase 3 -- DEFINE CHAR 107,6,esc_phe3
 	DATA BYTE $80,$00,$00,$00,$00,$03,$03,$03
 	DATA BYTE $00,$03,$03,$03,$03,$FE,$F8,$E3
 	DATA BYTE $03,$FE,$F8,$E3,$8F,$3F,$FF,$FC
@@ -385,6 +361,15 @@ scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then furnitur
 	DATA BYTE $EC,$1C,$FC,$BC,$EC,$1C,$FC,$BC
 	DATA BYTE $EC,$1C,$FC,$BC,$EE,$EE,$EE,$EE
 
+esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at 8192 + char*8, once, at setup
+	DATA BYTE $83,$1F,$1F,$1E,$1E,$1E,$1E,$1E
+	DATA BYTE $1E,$84,$1F,$1F,$1E,$1E,$1E,$1E
+	DATA BYTE $1E,$1E,$68,$1F,$1F,$1E,$1E,$1E
+	DATA BYTE $1E,$1E,$1E,$69,$1F,$1F,$1E,$1E
+	DATA BYTE $1E,$1E,$1E,$1E,$6A,$1F,$1F,$1E
+	DATA BYTE $1E,$1E,$1E,$1E,$1E,$85,$1F,$1F
+	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E
+
 	' code map, for the source to reference:
 	'   96  SLAB
 	'   97  SHELFT
@@ -397,53 +382,47 @@ scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then furnitur
 	'   104 ESCWB5
 	'   105 ESCWB6
 	'   106 ESCWB7
-	'   107 ESCWD5
-	'   108 ESCWD6
-	'   109 ESCWD7
-	'   110 ESCE5
-	'   111 ESCE6
-	'   112 ESCE7
-	'   113 ESCEB5
-	'   114 ESCEB6
-	'   115 ESCEB7
-	'   116 ESCW0
-	'   117 ESCW1
-	'   118 ESCW2
-	'   119 ESCW3
-	'   120 ESCW4
-	'   121 ESCW8
-	'   122 ESCW9
-	'   123 ESCW10
-	'   124 ESCW11
-	'   125 ESCE0
-	'   126 ESCE1
-	'   127 ESCE2
-	'   128 ESCE3
-	'   129 ESCE4
-	'   130 ESCE8
-	'   131 ESCE9
-	'   132 ESCE10
-	'   133 ESCE11
-	'   134 ESCWB3
-	'   135 ESCWB4
-	'   136 ESCWB8
-	'   137 ESCEB0
-	'   138 ESCEB4
-	'   139 ESCEB8
-	'   140 ESCWR0
-	'   141 ESCWR1
-	'   142 ESCWR2
-	'   143 ESCWR3
-	'   144 ESCWD3
-	'   145 ESCWD4
-	'   146 ESCWD8
-	'   147 PARAP
-	'   148 WALL
-	'   149 KOPIC
-	'   150 EXITC
-	'   151 BAG
-	'   152 CASE
-	'   153 ROOFS
-	'   154 EDHALF
-	'   155 ENDWALL
-	'   156 SCANBK
+	'   107 ESCE5
+	'   108 ESCE6
+	'   109 ESCE7
+	'   110 ESCEB5
+	'   111 ESCEB6
+	'   112 ESCEB7
+	'   113 ESCW0
+	'   114 ESCW1
+	'   115 ESCW2
+	'   116 ESCW3
+	'   117 ESCW4
+	'   118 ESCW8
+	'   119 ESCW9
+	'   120 ESCW10
+	'   121 ESCW11
+	'   122 ESCE0
+	'   123 ESCE1
+	'   124 ESCE2
+	'   125 ESCE3
+	'   126 ESCE4
+	'   127 ESCE8
+	'   128 ESCE9
+	'   129 ESCE10
+	'   130 ESCE11
+	'   131 ESCWB3
+	'   132 ESCWB4
+	'   133 ESCWB8
+	'   134 ESCEB0
+	'   135 ESCEB4
+	'   136 ESCEB8
+	'   137 ESCWR0
+	'   138 ESCWR1
+	'   139 ESCWR2
+	'   140 ESCWR3
+	'   141 PARAP
+	'   142 WALL
+	'   143 KOPIC
+	'   144 EXITC
+	'   145 BAG
+	'   146 CASE
+	'   147 ROOFS
+	'   148 EDHALF
+	'   149 ENDWALL
+	'   150 SCANBK

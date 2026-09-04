@@ -425,7 +425,9 @@ def esc_cap_bytes():
     groups = (
         (ESC_W_GRID, ESC_C0_W, "ESCW", "ESCWB"),    # west, into a shop floor
         (ESC_E_GRID, ESC_C0_E, "ESCE", "ESCEB"),    # east, into a shop floor
-        (ESC_W_GRID, ESC_C0_W, "ESCWR", "ESCWD"),   # west, into the ROOF
+        # the ROOF crossing uses the SAME characters as the shop-floor one;
+        # they are coloured apart by screen third (see genart.py's ESC_DECK)
+        (ESC_W_GRID, ESC_C0_W, "ESCWR", "ESCWB"),   # west, into the ROOF
     )
     for grid, c0, pre0, pre1 in groups:
         for r, pre in ((0, pre0), (1, pre1)):

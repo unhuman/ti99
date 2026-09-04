@@ -73,9 +73,54 @@ def assemble(grid, cells):
     return px
 
 
+def check_thirds():
+    """The roof and shop-floor crossings must never want the same screen third.
+
+    They share their characters -- same pixels, different surface behind them --
+    and are told apart ONLY by the per-third colour table, which is what lets
+    the west screen animate six characters a pass instead of nine. If a layout
+    change ever put a roof crossing and a shop-floor crossing in the same third
+    the two would have to be one colour, and one of them would be painted onto
+    the wrong surface. Nothing else in the build would notice: it is a colour,
+    not an error.
+
+    A flight's cap lands on the FLOOR ROW of the band above it, which is that
+    band's top row plus 4. Bands are read out of the source so this follows a
+    layout change rather than assuming one.
+    """
+    src = open(BAS, encoding="utf-8").read()
+    rows = []
+    for m in re.finditer(r"#bdst\((\d)\) = (\d+)", src):
+        rows.append((int(m.group(1)), int(m.group(2)) // 32))
+    rows = dict(rows)
+    if len(rows) != 4:
+        return ["could not read #bdst() -- the band rows are unknown, so the "
+                "per-third colour assumption is unchecked"]
+    m = re.search(r"stor_esc:.*?\n\s*DATA BYTE\s+([0-9,\s]+)",
+                  open(os.path.join(HERE, "..", "src", "store.bas"),
+                       encoding="utf-8").read(), re.S)
+    if not m:
+        return ["stor_esc not found"]
+    side = [int(v) for v in m.group(1).split(",")][:4]
+
+    deck, bar = set(), set()
+    for lv in range(3):
+        if side[lv] > 1:
+            continue
+        cap_row = rows[lv + 1] + 4          # the floor row of the band above
+        third = cap_row // 8
+        (deck if lv + 1 == 3 else bar).add((third, cap_row, lv))
+    clash = {t for t, _r, _l in deck} & {t for t, _r, _l in bar}
+    if clash:
+        return ["a roof crossing and a shop-floor crossing both land in screen "
+                "third %s, so they cannot share characters: %s"
+                % (sorted(clash), sorted(deck | bar))]
+    return []
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "esc.png")
-    bad = check_define()
+    bad = check_define() + check_thirds()
     frames = []
 
     for name, grid, phases, mirrored in (
@@ -122,9 +167,10 @@ def main():
         for b in bad:
             print("FAIL " + b)
         return 1
-    print("OK  all %d phases reassemble into a continuous flight; the west "
-          "half is DEFINE CHAR %d,%d and the east %d,%d, together the %d cells "
-          "that move"
+    print("OK  all %d phases reassemble into a continuous flight; the roof "
+          "and shop-floor crossings are in different screen thirds so they "
+          "share characters; the west half is DEFINE CHAR %d,%d and the east "
+          "%d,%d, together the %d cells that move"
           % (g.PHASES, g.ESC_FIRST, g.ESC_ANIM_W,
              g.ESC_FIRST + g.ESC_ANIM_W, g.ESC_ANIM_E, g.ESC_ANIM_N))
     return 0

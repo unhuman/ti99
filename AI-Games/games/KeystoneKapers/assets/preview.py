@@ -122,6 +122,12 @@ def main():
     # like a bug in the new artwork rather than in the previewer.
     last = 96 + len(pat) // 8 - 1
 
+    # esc_deck: (char, 8 colour bytes) x N -- third 0's override
+    dk = read_bytes(art, "esc_deck")
+    deck = {}
+    for k in range(0, len(dk), 9):
+        deck[dk[k]] = dk[k + 1:k + 9]
+
     for lv in range(4):
         top = 1 + (3 - lv) * 5            # band's top screen row
         t = idx[lv * 8 + scr]
@@ -135,6 +141,14 @@ def main():
                 for line in range(8):
                     bits = pat[o + line]
                     cb = col[o + line]
+                    # THE COLOUR TABLE IS PER SCREEN THIRD, and one character
+                    # relies on it: a flight crossing the roof shows the deck
+                    # behind it and one crossing a shop floor shows the bar,
+                    # from the SAME pixels (genart's ESC_DECK). Third 0 is
+                    # repainted at setup, so model that here or this previewer
+                    # quietly shows the wrong surface on the roof.
+                    if (top + r) < 8 and code in deck:
+                        cb = deck[code][line]
                     fg, bg = PAL[cb >> 4], PAL[cb & 15]
                     y = (top + r) * 8 + line
                     for b in range(8):

@@ -81,6 +81,10 @@ SCREEN = {
     # Writes the COLOUR table at >2000, which is neither the name table
     # nor the pattern table, so it can collide with nothing here.
     "font_colour": "COLR", "scan_colour": "COLR", "store_colour": "COLR",
+    # repaints screen third 0's colour table so a flight crossing the roof
+    # shows the deck behind it and one crossing a shop floor shows the bar --
+    # same characters, told apart by which third they are in
+    "esc_deck_col": "COLR",
 }
 
 # THE HUD, DECLARED. Every field on row 0 as (name, row, col, width). The
