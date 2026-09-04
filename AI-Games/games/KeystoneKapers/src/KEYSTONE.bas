@@ -34,24 +34,31 @@
 	'     a path that reads the result back.
 	' ==========================================================================
 
-	' ---------------------------------------------------------------- BANKING
-	' THE ART AND THE STORE MAP LIVE IN ROM BANK 1 ON THE TI, and that is not a
-	' size optimisation -- it is a CORRECTNESS fix. A CVBasic TI build whose
-	' fixed area runs past ~16.3 KB spills into the third loader page, and
-	' builds that big silently corrupt a VPOKE-heavy init: the cart starts and
-	' the screen stays blank. The failure WANDERS with layout and is not
-	' monotonic in size, so it looks like a different bug every rebuild.
-	' Unbanked this program was 18,530 bytes and did exactly that.
+	' ------------------------------------------------------- NOT BANKED (yet)
+	' THIS BLOCK USED TO CLAIM THE ART AND THE STORE MAP LIVED IN ROM BANK 1.
+	' They do not, and never have -- there is no BANK ROM, BANK or BANK SELECT
+	' anywhere in this file, and linkticart says so on every build ("Banking
+	' not detected"). Everything is in the single fixed area, which is why the
+	' size guard reports 24,3xx of 24,336 and why a few hundred bytes of new
+	' art is currently unaffordable.
 	'
-	' Everything banked here is read at SETUP (DEFINE CHAR/SPRITE) or on a
-	' screen crossing (the SCREEN blit) -- never inside a frame, and never by
-	' the vblank ISR, which is the condition CLAUDE.md 3A sets for banking.
-	' There is only one data bank, so it is selected ONCE at startup and never
+	' The old text also asserted that a fixed area past ~16.3 KB silently
+	' corrupts a VPOKE-heavy init. This program is 24.3 KB and does not, so
+	' that hazard is either mis-stated or was fixed by something else. Do not
+	' rely on it.
+	'
+	' BANKING IS STILL THE RIGHT MOVE WHEN MORE ROOM IS NEEDED, and the
+	' argument for it holds: everything worth moving -- spr_*, store_pat,
+	' store_col, font_bits, stor_tpl, the escalator phases -- is read at SETUP
+	' or on a screen crossing, never inside a frame and never by the vblank
+	' ISR, which is the condition CLAUDE.md 3A sets. That is roughly 6 KB of
+	' the fixed area. One data bank, selected ONCE at startup and never
 	' switched; a missed BANK SELECT returns bytes from the wrong page with no
 	' error at build or run time.
 	'
-	' It also fixes the TI menu listing this cart four times: with real bank
-	' switching the console only ever sees bank 0 during its power-up scan.
+	' It would also fix the TI menu listing this cart four times at source
+	' rather than by patching the packed image afterwards (onemenuentry.py):
+	' with real bank switching the console only sees bank 0 during its scan.
 	CONST SPRHID = 209		' NOT 208 -- 208 terminates the sprite list
 
 	' ------------------------------------------------------------- geometry
