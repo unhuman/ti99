@@ -83,7 +83,20 @@
 	CONST XWALL = 232		' furthest left edge at the store's east wall
 	CONST XWALW = 8			' nearest left edge at the west wall
 	CONST STANDH = 24		' Kelly standing -- TWO SPRITES tall
-	CONST DUCKH = 8			' Kelly ducked
+	' KELLY DUCKED. It was 8 px, which is not a crouch -- it is a squash, with
+	' no room to draw a figure bending in a DIRECTION. 11 px is, and the
+	' biplane is raised to match (obh below, and the hitbox in coll_obst):
+	' with the plane at 12..18 an 11 px crouch clears it and a 24 px standing
+	' Kop does not. The apex is 14, so a jump still cannot clear it either --
+	' the plane stays the one obstacle that must be ducked.
+	'
+	' AND 11 IS THE CEILING, not a preference. Duckable means the obstacle
+	' clears the crouch, jumpable means it clears under the apex; raising the
+	' crouch raises the duckable floor, so past 11 a band of beach-ball
+	' heights is neither. A sweep of every crouch height against every ball
+	' hitbox puts the limit at 11, and shrinking the ball does not move it --
+	' the apex is what binds. assets/checkball.py fails the build on it.
+	CONST DUCKH = 11		' Kelly ducked -- bent over, not squashed
 	CONST CATCHR = 12		' catch / hit radius, centre to centre
 
 	' Kelly states
@@ -878,7 +891,7 @@ load_band:
 			obh(li) = 0
 			obp(li) = lx AND 31
 			obht(li) = 0
-			IF lk = OB_PLANE THEN obh(li) = 10
+			IF lk = OB_PLANE THEN obh(li) = 12
 			IF lk = OB_RADIO THEN obs(li) = 0
 ld_skip:
 		NEXT ls
@@ -1034,6 +1047,11 @@ move_kelly:
 	IF klst = ST_RUN THEN
 		IF inb = 1 THEN
 			IF jrel = 1 THEN
+				' LATCH THE ARC'S DIRECTION HERE, once, and fly
+				' it -- see the note over the running block.
+				kjdx = 0
+				IF inr = 1 THEN kjdx = 1
+				IF inl = 1 THEN kjdx = 2
 				klst = ST_JUMP
 				kjf = 1
 				kjh = jarc(1)
@@ -1068,6 +1086,18 @@ move_kelly:
 	' screen 8 and set him to 232 -- a 22 px snap BACKWARDS. He reached the
 	' wall and was thrown off it. Testing the limit BEFORE the step means he
 	' arrives at the wall and stays there, which is what a wall does.
+	' IN THE AIR HE IS BALLISTIC. The horizontal direction is fixed at
+	' take-off and the stick is ignored until he lands: steering in mid-air
+	' is not a jump, it is flight, and it also let him flip which way he was
+	' facing halfway through an arc. kjdx is 0 for a standing jump, 1 for a
+	' running one to the right, 2 to the left.
+	IF klst = ST_JUMP THEN
+		inl = 0
+		inr = 0
+		IF kjdx = 1 THEN inr = 1
+		IF kjdx = 2 THEN inl = 1
+	END IF
+
 	kmv = 0
 	IF inl = 1 THEN
 		kldir = 0
@@ -1592,8 +1622,11 @@ coll_obst:
 					oht = ohb + 4
 				END IF
 				IF ck = OB_PLANE THEN
-					ohb = 10
-					oht = 16
+					' raised so an 11 px crouch clears it and
+					' still inside the 14 px apex plus a 24 px
+					' Kop, so it stays unjumpable
+					ohb = 12
+					oht = 18
 				END IF
 				IF kfh < oht THEN
 					IF ohb < ktop THEN chit = 1
@@ -1768,9 +1801,9 @@ draw_actors:
 		' to agree; assets/checkbands.py reads both and checks they do.
 		khy = ky - 10
 		SPRITE 0,khy,klx,kp,kcol
-		kfy = ky - 6
+		kfy = ky - 5
 		SPRITE 1,kfy,klx,kf,C_SKIN
-		kby = ky + 10
+		kby = ky + 11
 		SPRITE 2,kby,klx,kb,C_KELLY
 		ky2 = ky + 16
 		SPRITE 3,ky2,klx,kq,C_KELLY

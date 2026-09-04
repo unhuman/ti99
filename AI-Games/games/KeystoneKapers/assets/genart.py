@@ -53,17 +53,17 @@ KELLY_TOP = """
 ....########....
 ################
 ################
-..........####..
+..##......####..
+....########....
 ....######......
 ....######......
 ....######......
-....######......
-................
-..........####..
-..##############
-..##############
-..##############
-..##############
+......####......
+....####........
+....########....
+....##########..
+....##########..
+....##########..
 """
 
 # THE ARMS SWING, AND THEY DO IT IN THE TUNIC'S OWN SPRITE. The reference
@@ -79,17 +79,17 @@ KELLY_TOP_B = """
 ....########....
 ################
 ################
-..........####..
+..##......####..
+....########....
 ....######......
 ....######......
 ....######......
-....######......
-................
-..........####..
+......####......
+........####....
+....########....
 ..############..
 ..############..
-..############..
-..##############
+..##########....
 """
 
 # THREE COLOURS PER FIGURE, AND THE HARDWARE DECIDES WHERE THE SEAMS GO.
@@ -160,14 +160,14 @@ def shift(art, n):
 # point. Four real poses for the price of the two the symmetric pair already
 # cost.
 KELLY_LEG1 = """
-..##############
-..##############
-..####....#####.
-..####....#####.
-.#####.....####.
-.#####.....####.
-..####.....####.
-..####.....####.
+....##########..
+..############..
+..############..
+..####....####..
+..####....####..
+.#####....#####.
+.#####....#####.
+.#####....#####.
 ................
 ................
 ................
@@ -179,10 +179,10 @@ KELLY_LEG1 = """
 """
 
 KELLY_LEG2 = """
-..##############
-..##############
+....##########..
 ..############..
-...####..#####..
+..############..
+..############..
 ...####..#####..
 ...####..#####..
 ..#####..#####..
@@ -207,17 +207,17 @@ KELLY_LEG2 = """
 # leading knee and the feet trail. Mirrored, all of that swaps and the crouch
 # faces the other way.
 KELLY_DUCK = """
-################
-################
-....######......
-....######......
+.######.........
+.##########.....
 ..############..
-.##############.
+...#############
+......##########
+......##########
+.......########.
+.......######...
+..############..
+..####....####..
 .####......####.
-####........####
-................
-................
-................
 ................
 ................
 ................
@@ -298,8 +298,8 @@ HARRY_LEG2 = """
 # the video" meant. These row sets are that 42% carried onto our 24 px figure,
 # and the art above is the same silhouette at twice the horizontal resolution.
 HAT = set(range(0, 6))          # crown, the full-width brim, and its back
-FACE = set(range(6, 10))        # the one skin band
-TORSO = set(range(10, 16))      # a blank neck row, then shoulders and tunic
+FACE = set(range(6, 11))        # the one skin band
+TORSO = set(range(11, 16))      # shoulders and tunic; the legs sprite is 16-23
 
 # KELLY'S HAT IS ITS OWN SPRITE NOW, and that is what buys Harry a striped cap.
 # While hat and tunic shared a slot, that slot's box had to span rows 0-15 and
@@ -308,9 +308,9 @@ TORSO = set(range(10, 16))      # a blank neck row, then shoulders and tunic
 # hat -13..2, face -10..5, tunic 6..21. The hat can also be BLACK again, which
 # is what the reference has.
 KELLY_HAT = shift(band(KELLY_TOP, HAT), 10)             # drawn at y-10
-KELLY_BODY = shift(band(KELLY_TOP, TORSO), -10)         # drawn at y+10
-KELLY_BODY_B = shift(band(KELLY_TOP_B, TORSO), -10)     # the arm-back frame
-KELLY_FACE = shift(band(KELLY_TOP, FACE), 6)            # drawn at y-6
+KELLY_BODY = shift(band(KELLY_TOP, TORSO), -11)         # drawn at y+11
+KELLY_BODY_B = shift(band(KELLY_TOP_B, TORSO), -11)     # the arm-back frame
+KELLY_FACE = shift(band(KELLY_TOP, FACE), 5)            # drawn at y-5
 # HARRY WEARS STRIPES, AND HE CAN AFFORD THEM. Two colours alternating down a
 # figure needs a second sprite over the same rows, which is a THIRD box in his
 # top half -- five with Kelly's two, one past the VDP's four. He gets away with
@@ -353,9 +353,16 @@ HARRY_FACE = shift(band(HARRY_TOP, HFACEB), -4)         # drawn at y+4
 # ducks there anyway the VDP drops the HIGHEST-numbered sprites, which are
 # Harry's, so the degradation lands on the crook and not on the player.
 # assets/checkbands.py checks the count rather than trusting this paragraph.
-KELLY_DHAT = band(KELLY_DUCK, set(range(0, 2)))         # the brim, BLACK
-KELLY_DFACE = band(KELLY_DUCK, set(range(2, 4)))        # the face, skin
-KELLY_DBODY = band(KELLY_DUCK, set(range(4, 8)))        # the crouch, blue
+# HE BENDS OVER NOW, HE DOES NOT SQUASH -- and 11 px is exactly as tall as the
+# crouch can be. Duckable means the obstacle's hitbox clears the crouch;
+# jumpable means it clears under the 14 px apex. Raise the crouch and the
+# duckable floor rises with it, so past 11 there is a band of beach-ball
+# heights that is NEITHER -- assets/checkball.py refuses that, and a sweep of
+# every crouch height and every ball hitbox says 11 is the ceiling. Shrinking
+# the ball does not help: the apex is what binds.
+KELLY_DHAT = band(KELLY_DUCK, set(range(4, 6)))         # the brim, BLACK
+KELLY_DFACE = band(KELLY_DUCK, set(range(6, 8)))        # the face, skin
+KELLY_DBODY = band(KELLY_DUCK, set(range(0, 4)) | set(range(8, 11)))
 
 # --------------------------------------------------------------------------
 # Obstacles.  All 8 px tall, all in rows 8-15.  See the note at the top.

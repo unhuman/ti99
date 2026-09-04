@@ -45,10 +45,10 @@ def figure(bands, w=16, h=44):
 def kelly(leg, swing, left):
     top = g.KELLY_TOP_B if swing else g.KELLY_TOP
     hat = g.shift(g.band(top, g.HAT), 10)
-    face = g.shift(g.band(top, g.FACE), 6)
-    body = g.shift(g.band(top, g.TORSO), -10)
-    parts = [(hat, -10, C_HAT), (face, -6, C_SKIN),
-             (body, 10, C_KELLY), (leg, 16, C_KELLY)]
+    face = g.shift(g.band(top, g.FACE), 5)
+    body = g.shift(g.band(top, g.TORSO), -11)
+    parts = [(hat, -10, C_HAT), (face, -5, C_SKIN),
+             (body, 11, C_KELLY), (leg, 16, C_KELLY)]
     if left:
         parts = [(g.mirror(a), d, c) for a, d, c in parts]
     return figure(parts)
@@ -56,7 +56,8 @@ def kelly(leg, swing, left):
 
 def duck(left):
     """The crouch: two bands, hat+body blue and the face skin, at FLOORY-8."""
-    parts = [(g.KELLY_DHAT, 16, C_KELLY), (g.KELLY_DFACE, 16, C_SKIN)]
+    parts = [(g.KELLY_DBODY, 13, C_KELLY), (g.KELLY_DHAT, 13, C_HAT),
+             (g.KELLY_DFACE, 13, C_SKIN)]
     if left:
         parts = [(g.mirror(a), d, c) for a, d, c in parts]
     return figure(parts)

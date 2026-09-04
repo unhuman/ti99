@@ -366,6 +366,57 @@ that were not there while no longer checking the layout that was.
 
 ---
 
+### 0j. The animation ran backwards, and one frame is not a facing
+
+The figures were transcribed (§0h) and the run still looked wrong: he faced the
+way he had come. The transcription was right; the *frame it came from* was not.
+
+A single frame does not establish a facing. The one used was from a moment
+where Kelly was **turning** -- his x wandered 240, 234, 234, 236, 234 -- and its
+body leaned the other way from a real run. Building the base art on it meant
+`kldir = 1` (right) selected a left-facing figure and the entire animation,
+both directions, came out inverted.
+
+The fix is a rule rather than a redraw: **take the frame from the middle of the
+longest monotone run.** `dirs.py` searches for exactly that, and it finds a
+127-frame rightward stretch. Transcribed from inside it, the right-facing
+figure has the shoulder stub on the LEFT and the body inset a clock either
+side. Laid out row-for-row against that, `cmpref.py` now reports **18 of 19
+rows identical** -- the one that differs is the reference's dark feet, which a
+single-colour legs sprite cannot do.
+
+### 0k. The crouch bends over, and 11 px is the ceiling
+
+The crouch was 8 px, which is not a crouch: there is no room at that height to
+draw a figure bending in a *direction*, so it read as a squash however it was
+mirrored. It is 11 px now -- rump high and behind, back sloping down and
+forward, the black brim thrust out ahead, the face tucked under it.
+
+**11 is a limit, not a preference,** and the reasoning generalises to any
+duck-or-jump obstacle. Duckable means the obstacle's hitbox clears the crouch;
+jumpable means it clears under the 14 px apex. Raising the crouch raises the
+duckable floor, so past some height a band of beach-ball heights is *neither* --
+an obstacle that cannot be avoided at all. A sweep of every crouch height
+against every ball hitbox puts the break at 12, and shrinking the ball does not
+move it: **the apex is what binds**, and the apex cannot rise because a 24 px
+Kelly plus a 14 px jump already sits 2 px under the band ceiling.
+
+The biplane is raised to match (12..18 rather than 10..16), which was the
+reviewer's suggestion and is what buys the extra three pixels: an 11 px crouch
+clears it, a 24 px standing Kop does not, and a jump still cannot -- so it stays
+the one obstacle that must be ducked. `assets/checkball.py` fails the build on
+any dead band, and it caught this at 16 px before it could ship.
+
+### 0l. The jump is ballistic
+
+The stick used to steer him in mid-air, because the running block ran during
+`ST_JUMP` like any other state. That is not a jump, it is flight -- and it also
+let him flip which way he was *facing* halfway through an arc. The horizontal
+direction is now latched at take-off (`kjdx`) and the stick ignored until he
+lands.
+
+---
+
 ### 0i. Why the escalator screens ran slow
 
 Reported from play: on the two screens with a staircase the running looked
@@ -389,6 +440,19 @@ on the west screen, 48 on the east, down from 120.
 
 `escp` itself stays per-pass and must: a four-phase cycle stepped by more than
 one aliases, and the rider is locked to it (§0f).
+
+**MEASURED, and the headline is not the escalator.** A debug pass-counter on the
+HUD says the loop runs at **24-26 passes a second everywhere**, dropping to
+**20** on the west screen with two flights. So the game is at ~25 Hz, not 60,
+and `fdv` is about 2.4 all the time; the escalator costs a further ~20% on top
+of that. Everything paced by `fdv` -- movement, the timer, the animation and
+footsteps since this section -- keeps correct wall-clock time regardless. What
+does not is anything locked to the pass: the steps and the rider, which
+therefore run at 25/60 of their intended speed. **That is the residual
+sluggishness, and closing it means raising the loop rate itself**, which is a
+profiling job on the whole main loop rather than anything escalator-specific.
+`define_char` compounds it: in bitmap mode it calls LDIRVM3, the *triple* copy,
+so nine characters is 216 bytes of VRAM per pass and not 72.
 
 ---
 
