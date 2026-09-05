@@ -65,6 +65,9 @@ each step -- 100 points a unit on Krooks 1-9, 200 on 10-15, 300 from 16.
 
 **Money bags and suitcases are worth 50 each**, and a radio or a prize takes whatever fixture it stands in with it -- a pillar, a beam top or a whole counter -- rather than punching a hole through it.
 
+**A city stands behind the roof**, so the shopping carts up there can actually be seen --
+a grey cart on a grey backdrop could not.
+
 **Support beams run floor to floor.** They are part of the building, not scenery on top of
 it -- see DESIGN.md 0k2 for why they have to be stamped in after the bands are drawn.
 

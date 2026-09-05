@@ -204,11 +204,31 @@ def t_roof(kind):
     # against a dark blue field and could not be seen at all up here. The grey
     # backdrop is the half of that fix the sky colour does not cover: it puts
     # a light neutral behind the figure at the height he actually occupies.
+    # THE SKYLINE, THREE ROWS DEEP. Row 3 is a continuous wall of brick at the
+    # height an actor and a cart actually occupy; rows 2 and 1 are the
+    # roofline. A flat grey backdrop stood here and swallowed the roof's
+    # shopping carts whole -- see the note over BLDGW in genart.py.
+    #
+    # ROW 1 USED TO BE THE PARAPET, a crenellated band of medium red across the
+    # whole screen. Above a lit skyline it stopped reading as a horizon and
+    # started reading as a ROW OF FLAMES. It is gone, and the tallest buildings
+    # take that row instead -- so the city is three characters at its highest
+    # rather than two, which is what it wanted anyway.
+    #
+    # Written out rather than generated: one row of 32 numbers, meant to look
+    # deliberate rather than random, and it never changes.
+    #   0 sky        1 low block   2 tall block
+    #   3 full char  4 full + a low top   5 full + a tall top
+    SKYLINE = [2, 4, 1, 0, 3, 5, 2, 1, 0, 4, 3, 1, 2, 5, 4, 0,
+               1, 3, 2, 4, 0, 2, 5, 3, 1, 0, 4, 2, 3, 1, 5, 2]
+    ROW1 = (SKY, SKY, SKY, SKY, BLDGL, BLDGH)
+    ROW2 = (SKY, BLDGL, BLDGH, BLDGW, BLDGW, BLDGW)
     t = blank(SKY)
     for c in range(W):
-        t[1][c] = PARAP        # the horizon, on every roof screen
-        t[2][c] = ROOFBG
-        t[3][c] = ROOFBG
+        h = SKYLINE[c]
+        t[1][c] = ROW1[h]
+        t[2][c] = ROW2[h]
+        t[3][c] = BLDGW
     # No arrival art for the west escalator: the flight is drawn in the band
     # BELOW and its top meets this deck, same as every other floor.
     if kind == "east":
@@ -216,13 +236,17 @@ def t_roof(kind):
         for c in range(28, 31):
             t[2][c] = EXITC
             t[3][c] = EXITC
-        t[3][31] = PARAP
-        t[2][31] = PARAP
+        # THE LAST OF THE PARAPET. Its crenellated red read as flames beside
+        # the lit skyline, the same as the band across row 1 did, so the
+        # building carries on to the screen edge instead -- which is also a
+        # plainer statement of what the edge IS: the end of the roof.
+        t[3][31] = BLDGW
+        t[2][31] = BLDGW
     slab_row(t[4])
     for c in range(W):
         t[4][c] = ROOFS
     if kind == "east":
-        t[4][31] = PARAP
+        t[4][31] = ROOFS       # the deck runs to the edge, as it must
     return t
 
 
@@ -251,7 +275,12 @@ TID = {name: i for i, (name, _) in enumerate(TEMPLATES)}
 # A beam is a column that is COUNTR for all four AIR rows. A counter is COUNTR
 # too, but only in the bottom half, so it is not one.
 def _beam_cols(t):
-    return [c for c in range(W) if all(t[r][c] == COUNTR for r in range(4))]
+    # THE END WALL COUNTS AS ONE. It is a full-height column of brick at the
+    # extreme edge, and like a pillar it stopped three pixels under the floor
+    # above -- so the building's own outside wall had a green stripe through it
+    # at every storey. Whatever fills all four air rows gets its top stamped.
+    return [c for c in range(W)
+            if all(t[r][c] in (COUNTR, ENDWALL) for r in range(4))]
 
 A, B, EW, EE, EL = "T_AISLE_A", "T_AISLE_B", "T_ESC_W", "T_ESC_E", "T_ELEV"
 RF, RW, RE = "T_ROOF", "T_ROOF_W", "T_ROOF_E"
@@ -578,10 +607,16 @@ def main():
         # into the slab row above (see draw_screen): a template only knows
         # its own band, and the row a beam has to reach belongs to the band
         # above it, whose template is chosen independently per screen.
+        # COLUMN PLUS ONE, because 0 has to mean "no more" AND column 0 is a
+        # real place -- it is where the WEST end wall stands. Stored raw, the
+        # terminator swallowed it: every west wall on every floor was skipped,
+        # so the building's left-hand side had no support reaching the storey
+        # above while the right-hand side did. The east wall at column 31 was
+        # fine, which is exactly why it took so long to see.
         emit(fh, "stor_pil",
              [c for _n, t in TEMPLATES
-              for c in (_beam_cols(t) + [0, 0, 0, 0])[:4]],
-             "per template: up to 4 support-beam columns, 0 ends")
+              for c in ([x + 1 for x in _beam_cols(t)] + [0, 0, 0, 0])[:4]],
+             "per template: up to 4 support-beam columns PLUS ONE, 0 ends")
         emit(fh, "stor_esc", ESC_SIDE + [0] * 4,
              "per level: 0 = climbs west, 1 = east, 255 = no escalator (padded even)")
 

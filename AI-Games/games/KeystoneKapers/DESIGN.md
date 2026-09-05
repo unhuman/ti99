@@ -706,6 +706,79 @@ pass, so a crossing reads as a cut. `hide_play` covers 0-23 only: the radar's
 three sprites belong to the instrument rather than to the screen, and blinking
 them out every crossing would be a new fault in place of the old one.
 
+### 6h. The city behind the roof
+
+The roof band was a flat grey panel, chosen so Kelly (dark blue) would not
+vanish against the sky. It worked for him and hid the roof's own hazard: a
+shopping cart is grey, and it disappeared completely. **One neutral cannot
+serve a dark actor and a light hazard at once.**
+
+A skyline solves both precisely because it is not one colour. Dark brick with
+lit windows cut against cyan sky means anything crossing it is against brick
+for part of its width and sky for the rest. The windows are the character's
+FOREGROUND and the wall its background, which is how one cell carries both, and
+the per-row background is what lets a single cell be sky-above-wall for a
+roofline.
+
+Three details that each took a pass to see:
+
+* **Row 1 used to be the parapet** -- a crenellated band of medium red across
+  the whole screen. As a horizon above flat grey it read fine; above a lit
+  skyline it reads as a **row of flames**. Removed, and the tallest buildings
+  take that row, so the city is three characters at its highest.
+* **The building tops were exposed windows.** Both top characters put their
+  windows in the first brick row, so every block was cut off through a row of
+  lit windows and read as sliced rather than finished. One solid row at the top
+  of each.
+* **The flight that crosses into the roof** kept a grey backdrop in its
+  composites -- right when the band was a grey panel, and a grey rectangle cut
+  out of the city afterwards.
+
+### 6i. Walls, and a terminator that ate a real column
+
+The building's outside wall gets the same treatment as a pillar: it fills all
+four air rows, so `_beam_cols` counts it and `beam_tops` carries it up through
+the floor above. Two faults were in the way, and the first is the more
+interesting.
+
+**COLUMN 0 WAS THE TABLE'S TERMINATOR.** `stor_pil` stored raw column numbers
+with 0 meaning "no more entries" -- and column 0 is a real place: it is where
+the WEST end wall stands. Every west wall on every floor was silently skipped,
+while the east wall at column 31 worked perfectly, so it presented as an
+intermittent problem rather than a systematic one. Columns are stored as
+**column + 1** now. `preview.py` had the identical bug *and* stopped at band 1
+where the game does three, which is why every render agreed with it.
+
+**AND THE WALL'S CAP IS BRICK, NOT A GREY BLOCK.** `SLABP` carries a solid
+support up through the bar, which is right for a pillar and wrong for bonded
+brickwork; `SLABE` and `ROOFSE` cut the pattern in. The first version took its
+three rows straight off the end of the wall's own cycle -- rows 5, 6, 7 -- and
+row 5 is a MORTAR course, so a green line ran between the bar and the top of
+the wall. Beside the pillars' solid grey it read as the wall not quite
+reaching. Two courses of brick then the mortar keeps the wall's 2-and-1 rhythm
+and puts something solid against the bar.
+
+**The pillars are deliberately NOT aligned between floors.** Making them line
+up was tried and reverted: it is a different building, and it was not what the
+edge problem was about.
+
+### 6j. Hazards: one decision, made when the screen is drawn
+
+No sprite hazard stands on the floor the crook is standing on. Radios are
+exempt -- they are characters, they do not move, and a fixture he runs past is
+not what the rule is about.
+
+**THE DECISION IS MADE IN `load_band` AND NEVER REVISITED.** It began as a test
+in the draw loop and another in the collision test, both re-evaluated every
+frame, so the hazards came and went as Harry walked on and off the screen: run
+him to the edge and a floor's worth of balls appeared out of nothing behind
+him. A rule about what a screen CONTAINS cannot be a per-frame question,
+because the answer changes while the player is looking at it.
+
+Zeroing the kind at load also made both tests unnecessary -- an obstacle that
+was never loaded cannot be drawn and cannot hit anybody -- and the version with
+one decision is thirty bytes SMALLER than the version with two guards.
+
 ### 0m. What the video actually measures
 
 Everything below is measured off the longplay, not inferred. The calibration

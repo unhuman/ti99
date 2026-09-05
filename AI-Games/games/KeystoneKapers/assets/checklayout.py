@@ -61,6 +61,9 @@ SCREEN = {
 
     "new_game": "GAME", "start_krook": "GAME", "main": "GAME",
     "draw_screen": "GAME", "draw_prizes": "GAME", "draw_car": "GAME",
+    "beam_one": "GAME",       # one band's beam tops, into the band above
+    "radio_band": "GAME",     # one band's radios
+    "prize_one": "GAME",      # one band's collectible
     "esc_cap_draw": "GAME",   # the escalator handrail's top turn,
                               # stamped into the floor above
     "beam_tops": "GAME",      # support-beam tops, likewise stamped into the

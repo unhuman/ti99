@@ -161,14 +161,25 @@ def main():
             for c in range(32):
                 name[top + r][c] = tpl[base + r * 32 + c]
 
+    # THE BEAM TOPS, and this had the SAME TWO FAULTS the game did -- which is
+    # why it agreed with the bug and showed nothing wrong. It stopped at band 1
+    # where the game does all three, and it read the stored column raw, so
+    # column 0 (the west end wall) looked like the table's terminator and was
+    # skipped on every floor.
     pil = read_bytes(store, "stor_pil")
-    for lv in range(2):                   # bands 0 and 1 only, as the game does
+    for lv in range(3):
         top = 1 + (3 - lv) * 5
         base = idx[lv * 8 + scr] * 4
         for k in range(4):
-            c = pil[base + k]
-            if c:
-                name[top - 1][c] = g.CODES["SLABP"]
+            v = pil[base + k]
+            if not v:
+                continue
+            c = v - 1                     # stored as column PLUS ONE
+            roof = (lv == 2)
+            wall = c in (0, 31)
+            name[top - 1][c] = g.CODES[
+                ("ROOFSE" if wall else "ROOFSP") if roof
+                else ("SLABE" if wall else "SLABP")]
 
     for row in range(24):
         for c in range(32):

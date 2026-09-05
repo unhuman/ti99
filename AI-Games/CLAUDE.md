@@ -723,3 +723,19 @@ for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.m
   **Hide the sprites before the blit, not after** — the normal draw puts them back on the same
   pass. Hide only the ones that belong to the screen: a HUD or radar sprite blinking out on
   every crossing is a new fault in place of the old one.
+
+- **A SENTINEL VALUE THAT IS ALSO A VALID VALUE WILL EAT THE VALID ONE, AND ONLY HALF THE TIME.**
+  Keystone Kapers stored a table of support-beam COLUMNS with 0 meaning "no more entries" — and
+  column 0 is where the west end wall stands. Every west wall was silently skipped while the east
+  wall at column 31 worked perfectly, so it read as intermittent rather than systematic, and the
+  half that worked kept "proving" the mechanism was fine. Store `value + 1` (or use a separate
+  count) whenever 0 is in the domain.
+  - The previewer had the identical bug, so every render agreed with the defect. **When a checker
+    and the code are written from the same assumption, the checker cannot see the assumption.**
+- **VERIFY GEOMETRY BY SAMPLING PIXELS, NOT BY LOOKING AT A SCALED SCREENSHOT.** Three separate
+  "confirmations" in one session were wrong: a capture taken during a between-rounds message, a
+  comparison of one floor's pillar columns against a bar carrying a *different* floor's beam tops,
+  and a column index computed from an assumed 3× emulator scale when the window actually scales to
+  fit and clips the right edge. A two-pixel detail does not survive eyeballing a 4× crop. Print the
+  RGB at a computed coordinate, or simulate the draw from the data and print the resulting
+  character codes.

@@ -185,7 +185,9 @@
 	CONST C_HSTRIPE = 1		' Harry's stripes -- the sprite that is
 					' allowed to drop when he is level with Kelly
 	CONST C_HARRY = 15		' white -- and the white dot on the scanner
-	CONST C_CART = 14
+	' WHITE. The reference's carts are white wire baskets, and grey put them
+	' a shade off the pillars and the roof deck they cross.
+	CONST C_CART = 15
 	' RED, measured off gameplay video (DESIGN.md 0b) -- it was light yellow,
 	' which came from a static screenshot. Red also happens to be the most
 	' legible choice on the green store, and this is the obstacle whose right
@@ -213,36 +215,38 @@
 	' scan_escc writes this into the flight's own character. It is the only
 	' run-time colour left -- the two actors are sprites and carry theirs.
 	CONST SC_KOP = 28		' black on dark green
-	CONST CH_SHELFT = 97		' a counter's top half -- what wipe_shelf walks
+	CONST CH_SHELFT = 99		' a counter's top half -- what wipe_shelf walks
 	CONST CH_SLAB = 96
 	' THE VICTROLA IS FOUR CELLS. Its top-right cell has two versions and the
 	' sound marks live there, so the pulse is one VPOKE of a different
 	' CHARACTER CODE -- not a DEFINE CHAR, which in bitmap mode is LDIRVM3's
 	' triple copy (CLAUDE.md 3A) and would cost three times its size every
 	' time it blinked.
-	CONST CH_RADTL0 = 99
-	CONST CH_RADTL1 = 101
-	CONST CH_RADTR0 = 100
-	CONST CH_RADTR1 = 102
-	CONST CH_RADBL = 103
-	CONST CH_RADBR = 104
-	CONST CH_ROOFS = 160		' the roof surface
-	CONST CH_ROOFSP = 161		' the roof with a beam under it
-	CONST CH_SLABP = 165		' the same bar with a beam under it
-	CONST CH_ECAR = 107
-	CONST CH_EDOOR = 106
-	CONST CH_WALL = 149
-	CONST CH_KOPIC = 150
-	CONST CH_EDHALF = 162
-	CONST CH_SCANBK = 164		' blank black, the strip either side of the radar
-	CONST CH_BAGTL = 152		' the prizes are 2x2 now
-	CONST CH_BAGTR = 153
-	CONST CH_BAGBL = 154
-	CONST CH_BAGBR = 155
-	CONST CH_CASETL = 156
-	CONST CH_CASETR = 157
-	CONST CH_CASEBL = 158
-	CONST CH_CASEBR = 159
+	CONST CH_RADTL0 = 101
+	CONST CH_RADTL1 = 103
+	CONST CH_RADTR0 = 102
+	CONST CH_RADTR1 = 104
+	CONST CH_RADBL = 105
+	CONST CH_RADBR = 106
+	CONST CH_ROOFS = 162		' the roof surface
+	CONST CH_SLABE = 97		' the bar with BRICK carried up through it
+	CONST CH_ROOFSE = 98		' and the roof deck likewise
+	CONST CH_ROOFSP = 163		' the roof with a beam under it
+	CONST CH_SLABP = 170		' the same bar with a beam under it
+	CONST CH_ECAR = 109
+	CONST CH_EDOOR = 108
+	CONST CH_WALL = 151
+	CONST CH_KOPIC = 152
+	CONST CH_EDHALF = 167
+	CONST CH_SCANBK = 169		' blank black, the strip either side of the radar
+	CONST CH_BAGTL = 154		' the prizes are 2x2 now
+	CONST CH_BAGTR = 155
+	CONST CH_BAGBL = 156
+	CONST CH_BAGBR = 157
+	CONST CH_CASETL = 158
+	CONST CH_CASETR = 159
+	CONST CH_CASEBL = 160
+	CONST CH_CASEBR = 161
 	' NAMED, because this was the literal 113 and the escalator rework
 	' renumbered the character table underneath it. 113 became EXITC, so
 	' the second collectible quietly drew an EXIT DOOR in the aisle -- a
@@ -436,8 +440,8 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,70,store_pat
-	DEFINE COLOR 96,70,store_col
+	DEFINE CHAR 96,75,store_pat
+	DEFINE COLOR 96,75,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 
@@ -902,9 +906,30 @@ start_krook:
 	'
 	' They are put back by the normal draw on the same pass, so the crossing
 	' reads as a cut rather than as a dissolve with ghosts in it.
+	' EACH BAND IS FINISHED BEFORE THE FRAME IT IS DRAWN IN ENDS, and the
+	' bands go TOP DOWN. Both halves of that matter.
+	'
+	' The blit paints the template -- shelves, pillars and all -- and the
+	' radios and prizes then take out the fixtures they stand in. Those two
+	' used to be four frames apart: all four bands blitted with a WAIT
+	' between them, and only afterwards the clearing. So every screen change
+	' showed its counters and beams for several frames and then erased them,
+	' which reads as the shop flickering rather than as it being drawn.
+	'
+	' TOP DOWN because a band's beam tops are stamped into the SLAB ROW OF
+	' THE BAND ABOVE. Going bottom-up, band 1's blit would paint over the
+	' beam tops band 0 had just put there. Going top-down the band above is
+	' always already drawn, so everything a band needs -- its own cells and
+	' the row it borrows overhead -- is final by the time its WAIT arrives.
+	'
+	' `3 - dq` rather than `FOR dlv = 3 TO 0 STEP -1`: dlv is an unsigned
+	' byte, so counting down past zero wraps to 255 and the loop never ends
+	' (CLAUDE.md 3A).
 draw_screen:
 	GOSUB hide_play
-	FOR dlv = 0 TO 3
+	GOSUB load_band
+	FOR dq = 0 TO 3
+		dlv = 3 - dq
 		dix = lv8(dlv)
 		dix = dix + klsc
 		#dta = #stix + dix
@@ -912,16 +937,19 @@ draw_screen:
 		#dsrc = #tsrc(dt)
 		#ddst = #bdst(dlv)
 		SCREEN stor_tpl,#dsrc,#ddst,32,5,32
+		' finish this band before the frame ends -- see the note above
+		bt = dlv
+		GOSUB beam_one
+		rdall = 1
+		rbn = dlv
+		GOSUB radio_band
+		plv = dlv
+		GOSUB prize_one
 		WAIT			' VDP writes are buffered per frame and a
 					' burst past a few dozen is silently
 					' dropped -- one band per frame
-	NEXT dlv
-	GOSUB beam_tops
+	NEXT dq
 	GOSUB esc_cap_draw
-	GOSUB load_band
-	rdall = 1
-	GOSUB radio_draw
-	GOSUB draw_prizes
 	GOSUB draw_car
 	RETURN
 
@@ -950,25 +978,40 @@ draw_screen:
 	'
 	' So the roof gets its own version of the stamp. A beam HOLDS THE ROOF
 	' UP and must reach it; the shaft merely stops beneath it.
-beam_tops:
-	FOR bt = 0 TO 2
-		bti = lv8(bt)
-		bti = bti + klsc
-		#bta = #stix + bti
-		#btp = #stpl + PEEK(#bta) * 4.
-		#btr = #bdst(bt)
-		#btr = #btr + 6112		' 6144 - 32: the row ABOVE the band
-		FOR btj = 0 TO 3
-			btc = PEEK(#btp)
-			#btp = #btp + 1
-			IF btc > 0 THEN
-				#btw = #btr + btc
-				btk = CH_SLABP
-				IF bt = 2 THEN btk = CH_ROOFSP
-				VPOKE #btw,btk
+beam_one:
+	IF bt > 2 THEN RETURN		' the roof has no band above it
+	bti = lv8(bt)
+	bti = bti + klsc
+	#bta = #stix + bti
+	#btp = #stpl + PEEK(#bta) * 4.
+	#btr = #bdst(bt)
+	#btr = #btr + 6112		' 6144 - 32: the row ABOVE the band
+	FOR btj = 0 TO 3
+		btc = PEEK(#btp)
+		#btp = #btp + 1
+		IF btc > 0 THEN
+			' STORED AS COLUMN PLUS ONE. Zero is the terminator and
+			' column 0 is a real place -- the west end wall -- so the
+			' raw column could not be used for both.
+			btc = btc - 1
+			#btw = #btr + btc
+			' A WALL'S TOP IS BRICK; A PILLAR'S IS SOLID. The end walls
+			' are the only beams at the extreme columns, and cutting
+			' the brick pattern into the bar above them carries the
+			' bond through instead of capping it with a grey block.
+			btk = CH_SLABP
+			IF bt = 2 THEN btk = CH_ROOFSP
+			IF btc = 0 THEN
+				btk = CH_SLABE
+				IF bt = 2 THEN btk = CH_ROOFSE
 			END IF
-		NEXT btj
-	NEXT bt
+			IF btc = 31 THEN
+				btk = CH_SLABE
+				IF bt = 2 THEN btk = CH_ROOFSE
+			END IF
+			VPOKE #btw,btk
+		END IF
+	NEXT btj
 	RETURN
 
 	' THE HANDRAIL'S TOP TURN BELONGS TO THE FLOOR ABOVE. The staircase fills
@@ -1076,6 +1119,30 @@ load_band:
 			' original's "double radios" level.
 			IF ls = 1 THEN
 				IF krk < 6 THEN lk = 0
+			END IF
+			' NO SPRITE HAZARD ON THE FLOOR THE CROOK IS STANDING ON,
+			' AND THE DECISION IS MADE HERE -- once, as the screen is
+			' drawn, and never revisited while it is on screen.
+			'
+			' It was a test in the draw loop and another in the
+			' collision test, both re-evaluated every frame, so the
+			' hazards came and went as Harry walked on and off the
+			' screen: run him to the edge and a floor's worth of balls
+			' appeared out of nothing behind him. A rule about what
+			' this screen CONTAINS cannot be a per-frame question --
+			' the answer changes while the player is looking at it.
+			'
+			' Zeroing the kind here also makes both of those tests
+			' unnecessary: an obstacle that was never loaded cannot be
+			' drawn and cannot hit anybody.
+			'
+			' Radios are exempt. They are characters rather than
+			' sprites, they do not move, and a fixture the crook runs
+			' past is not what this rule is about.
+			IF lk <> OB_RADIO THEN
+				IF hsc = klsc THEN
+					IF hlv = llv THEN lk = 0
+				END IF
 			END IF
 			obk(li) = lk
 			' A RADIO NEEDS A CELL, NOT A PIXEL, because it is drawn as
@@ -1206,72 +1273,70 @@ bp_done:
 	' Not sprites: a band already carries Kelly plus three obstacles, which is
 	' exactly four per scanline, and the VDP drops the fifth outright. A prize
 	' that vanishes when the floor gets busy would read as a scoring bug.
-draw_prizes:
-	FOR plv = 0 TO 3
-		pix = lv8(plv)
-		pix = pix + klsc
-		#pca = #stco + pix
-		#pca = #pca + pix		' 2 bytes per band
-		pk = PEEK(#pca)
-		#pcb = #pca + 1
-		pc = PEEK(#pcb)
-		' already collected this Krook?
-		pby = plv
-		pbi = klsc
-		pmk = msk(pbi)
-		IF takn(pby) AND pmk THEN pk = 0
-		cok(plv) = pk
-		coc(plv) = pc
-		IF pk > 0 THEN
-			' TWO BY TWO, standing on the slab: band rows 2 and 3, the
-			' same two the radios use. One character could not say
-			' "money bag" rather than "yellow blob", and everything
-			' else on the floor is sixteen pixels.
-			#pva = 6144
-			#pva = #pva + #bdst(plv)
-			#pva = #pva + 64		' row 2 of the band
-			#pva = #pva + pc
-			' AND THE FIXTURE BEHIND IT GOES AWAY, for the same reason
-			' a radio's does: a pillar fills all four air rows, so a
-			' prize on one would leave its top half hanging above.
-			pch = CH_WALL
-			#pvb = #pva - 64
-			VPOKE #pvb,pch
-			#pvc = #pvb + 1
-			VPOKE #pvc,pch
-			#pvb = #pva - 32
-			VPOKE #pvb,pch
-			#pvc = #pvb + 1
-			VPOKE #pvc,pch
-			' and the beam top hanging above it
-			#bca = #pva - 96
-			GOSUB beam_clear
-			#bca = #bca + 1
-			GOSUB beam_clear
-			' and the rest of the counter it stands in
-			#wsa = #pva - 1
-			wsd = 0
-			GOSUB wipe_shelf
-			#wsa = #pva + 2
-			wsd = 1
-			GOSUB wipe_shelf
-			pch = CH_BAGTL
-			IF pk = 2 THEN pch = CH_CASETL
-			VPOKE #pva,pch
-			pch = CH_BAGTR
-			IF pk = 2 THEN pch = CH_CASETR
-			#pvb = #pva + 1
-			VPOKE #pvb,pch
-			pch = CH_BAGBL
-			IF pk = 2 THEN pch = CH_CASEBL
-			#pvb = #pva + 32
-			VPOKE #pvb,pch
-			pch = CH_BAGBR
-			IF pk = 2 THEN pch = CH_CASEBR
-			#pvc = #pvb + 1
-			VPOKE #pvc,pch
-		END IF
-	NEXT plv
+prize_one:
+	pix = lv8(plv)
+	pix = pix + klsc
+	#pca = #stco + pix
+	#pca = #pca + pix		' 2 bytes per band
+	pk = PEEK(#pca)
+	#pcb = #pca + 1
+	pc = PEEK(#pcb)
+	' already collected this Krook?
+	pby = plv
+	pbi = klsc
+	pmk = msk(pbi)
+	IF takn(pby) AND pmk THEN pk = 0
+	cok(plv) = pk
+	coc(plv) = pc
+	IF pk > 0 THEN
+		' TWO BY TWO, standing on the slab: band rows 2 and 3, the
+		' same two the radios use. One character could not say
+		' "money bag" rather than "yellow blob", and everything
+		' else on the floor is sixteen pixels.
+		#pva = 6144
+		#pva = #pva + #bdst(plv)
+		#pva = #pva + 64		' row 2 of the band
+		#pva = #pva + pc
+		' AND THE FIXTURE BEHIND IT GOES AWAY, for the same reason
+		' a radio's does: a pillar fills all four air rows, so a
+		' prize on one would leave its top half hanging above.
+		pch = CH_WALL
+		#pvb = #pva - 64
+		VPOKE #pvb,pch
+		#pvc = #pvb + 1
+		VPOKE #pvc,pch
+		#pvb = #pva - 32
+		VPOKE #pvb,pch
+		#pvc = #pvb + 1
+		VPOKE #pvc,pch
+		' and the beam top hanging above it
+		#bca = #pva - 96
+		GOSUB beam_clear
+		#bca = #bca + 1
+		GOSUB beam_clear
+		' and the rest of the counter it stands in
+		#wsa = #pva - 1
+		wsd = 0
+		GOSUB wipe_shelf
+		#wsa = #pva + 2
+		wsd = 1
+		GOSUB wipe_shelf
+		pch = CH_BAGTL
+		IF pk = 2 THEN pch = CH_CASETL
+		VPOKE #pva,pch
+		pch = CH_BAGTR
+		IF pk = 2 THEN pch = CH_CASETR
+		#pvb = #pva + 1
+		VPOKE #pvb,pch
+		pch = CH_BAGBL
+		IF pk = 2 THEN pch = CH_CASEBL
+		#pvb = #pva + 32
+		VPOKE #pvb,pch
+		pch = CH_BAGBR
+		IF pk = 2 THEN pch = CH_CASEBR
+		#pvc = #pvb + 1
+		VPOKE #pvc,pch
+	END IF
 	RETURN
 
 	' ----------------------------------------------------- the elevator car
@@ -1750,15 +1815,23 @@ beam_clear:
 		bcw = CH_ROOFS
 		VPOKE #bca,bcw
 	END IF
+	IF bcv = CH_SLABE THEN
+		bcw = CH_SLAB
+		VPOKE #bca,bcw
+	END IF
+	IF bcv = CH_ROOFSE THEN
+		bcw = CH_ROOFS
+		VPOKE #bca,bcw
+	END IF
 	RETURN
 
-radio_draw:
-	FOR ri = 0 TO 7
+	' ONE BAND'S RADIOS. rbn is the band and its two obstacle slots are
+	' rbn*2 and rbn*2+1, so the caller does not have to know the mapping.
+radio_band:
+	rlo = rbn + rbn
+	rhi = rlo + 1
+	FOR ri = rlo TO rhi
 		IF obk(ri) = OB_RADIO THEN
-			rbn = 0
-			IF ri > 1 THEN rbn = 1
-			IF ri > 3 THEN rbn = 2
-			IF ri > 5 THEN rbn = 3
 			#rva = 6144
 			#rva = #rva + #bdst(rbn)
 			#rva = #rva + 64		' band row 2
@@ -1818,6 +1891,14 @@ radio_draw:
 	' actually flips -- otherwise this would be eight VDP writes every pass
 	' for a picture that had not changed (CLAUDE.md 3A: bursts past a few
 	' dozen a frame are silently dropped).
+	' EVERY BAND'S RADIOS -- what the pulse needs, since it repaints the top
+	' cells wherever they are.
+radio_draw:
+	FOR rbn = 0 TO 3
+		GOSUB radio_band
+	NEXT rbn
+	RETURN
+
 radio_tick:
 	rnow = 0
 	IF fphs AND 8 THEN rnow = 1
@@ -2188,10 +2269,6 @@ harry_down:
 coll_obst:
 	IF klst = ST_ESC THEN RETURN		' riding is invincible, per the
 	IF klst = ST_ELEV THEN RETURN		' manual: "until you step out"
-	' Harry's level carries no obstacles -- see the matching note in the
-	' draw loop. Nothing is drawn there, so nothing may hit you there.
-	IF klv = hlv THEN RETURN
-
 	kfh = kjh
 	kh = STANDH
 	IF klst = ST_DUCK THEN kh = DUCKH
@@ -2506,14 +2583,23 @@ draw_actors:
 		IF di > 1 THEN dbn = 1
 		IF di > 3 THEN dbn = 2
 		IF di > 5 THEN dbn = 3
-		' THE CROOK'S OWN LEVEL IS ALWAYS CLEAR. Once you are on Harry's
-		' floor the round is a foot race you can actually see, and a biplane
-		' arriving in the middle of it takes the Kop away for reasons that
-		' have nothing to do with the chase. Clearing the band is done HERE,
-		' by suppressing the draw, and again in coll_obst by refusing the
-		' collision -- both, because a hidden sprite that can still hit you
-		' is the worst version of this.
-		IF dbn = hlv THEN dk = 0
+		' NO SPRITE HAZARD ON THE FLOOR THE CROOK IS STANDING ON -- but
+		' only while he is on THIS SCREEN. Once you are face to face the
+		' round is a foot race you can see, and a ball arriving in the
+		' middle of it costs nine seconds for reasons that have nothing to
+		' do with the chase.
+		'
+		' THE SCREEN TEST IS WHAT MAKES IT INVISIBLE. Clearing his whole
+		' floor regardless of screen meant the cleared band moved with him,
+		' so every time he changed storeys one floor's hazards vanished and
+		' another's appeared in the same instant -- and with all four bands
+		' in view at once that reads as objects hopping between levels. Now
+		' it only happens on the screen he is actually on, where the reason
+		' for it is standing right there.
+		'
+		' Radios are unaffected: they are characters, drawn straight into
+		' the name table, and a fixture the crook happens to run past is
+		' not the thing this rule is about.
 		' THE RADIO IS NOT A SPRITE ANY MORE -- it is four characters,
 		' stamped by draw_radios after the band blit. Zeroing the local
 		' copy hides both its slots; obk() is untouched, so coll_obst
@@ -2647,15 +2733,15 @@ esc_tick:
 	' The handrail and the frame sit past the end of both ranges and never
 	' move at all.
 	IF klsc = 0 THEN
-		IF escp = 0 THEN DEFINE CHAR 108,6,esc_phw0
-		IF escp = 1 THEN DEFINE CHAR 108,6,esc_phw1
-		IF escp = 2 THEN DEFINE CHAR 108,6,esc_phw2
-		IF escp = 3 THEN DEFINE CHAR 108,6,esc_phw3
+		IF escp = 0 THEN DEFINE CHAR 110,6,esc_phw0
+		IF escp = 1 THEN DEFINE CHAR 110,6,esc_phw1
+		IF escp = 2 THEN DEFINE CHAR 110,6,esc_phw2
+		IF escp = 3 THEN DEFINE CHAR 110,6,esc_phw3
 	ELSE
-		IF escp = 0 THEN DEFINE CHAR 114,6,esc_phe0
-		IF escp = 1 THEN DEFINE CHAR 114,6,esc_phe1
-		IF escp = 2 THEN DEFINE CHAR 114,6,esc_phe2
-		IF escp = 3 THEN DEFINE CHAR 114,6,esc_phe3
+		IF escp = 0 THEN DEFINE CHAR 116,6,esc_phe0
+		IF escp = 1 THEN DEFINE CHAR 116,6,esc_phe1
+		IF escp = 2 THEN DEFINE CHAR 116,6,esc_phe2
+		IF escp = 3 THEN DEFINE CHAR 116,6,esc_phe3
 	END IF
 	RETURN
 
@@ -2933,7 +3019,17 @@ scan_tick:
 	say = say + 4				' the top margin, then band row 0
 	sdy = 167
 	sdy = sdy + say
-	SPRITE 26,sdy,120,P_RADCAR,C_RCAR
+	' 118, NOT 120, AND THE TWO HAVE TO BE WORKED OUT THE SAME WAY. A marker
+	' is three pixels wide and the car is five, so putting both left edges at
+	' the same x leaves their CENTRES two apart -- and an actor standing dead
+	' centre in the lift read as standing at its left-hand edge.
+	'
+	' An actor in the shaft is at store x 120 on screen 3, which is canvas
+	' 3*16 + 120/16 = 55, so his three pixels are screen 119-121 and his
+	' centre is 120. Five pixels centred on 120 start at 118. The character
+	' version had the same two-pixel error (char column 7, bits 248, screen
+	' 120-124) and the sprite inherited it.
+	SPRITE 26,sdy,118,P_RADCAR,C_RCAR
 
 	' -- Kelly. dotx 0..127 across the store, doty 0..23 down it; the canvas
 	' is characters 8-23 of rows 21-23, so screen x is 64 + dotx.
