@@ -632,6 +632,80 @@ rule, `if lv == 3 and k not in (PLANE, NONE): k = NONE`, which had been silently
 deleting every roof obstacle: the roof carts restored two revisions earlier had
 never actually appeared.
 
+### 6e. Fixtures give way to what stands in front of them
+
+A radio or a prize is 2x2 and sits in band rows 2-3. Whatever the template put
+there has to go, and "whatever" turned out to be three separate things, each
+found only once the last was fixed:
+
+1. **The pillar's top half.** A pillar fills all four air rows and the object
+   covers the lower two, so it left a grey stub hanging with nothing under it.
+2. **The beam top above that.** `beam_tops` stamps the floor bar with the
+   support carried up through it into the slab row above every pillar, and it
+   runs BEFORE the objects are placed -- so clearing the pillar left three grey
+   pixels dangling out of the ceiling. `beam_clear` puts it back, and it
+   **tests** the cell rather than assuming: the row above the top shopping
+   floor is the roof deck, and writing a floor bar over it would punch a hole
+   in the roof.
+3. **The rest of the counter.** A shelf run is five cells and the object covers
+   two, so it punched a hole through the middle and left the ends either side.
+   A counter reads as one object, so the whole unit goes: `wipe_shelf` walks
+   outward along row 2 while the cell is still a shelf top, clearing top and
+   bottom halves together, bounded at eight steps.
+
+**The prizes are 2x2 as well.** One character is eight pixels square, which is
+not enough to say "money bag" rather than "yellow blob" when everything it
+sits among is sixteen. That needed character space: the store ran to 158 with
+the scanner starting at 160, so the scanner moved to **208** -- it wants 48
+contiguous codes and 208..255 is 48 exactly -- and the store now has 96..207.
+Collecting one erases all four cells; it used to erase one and leave three
+quarters of a bag that no longer scored.
+
+### 6f. The roof owes the floor below its air -- but not to the beams
+
+Every shop floor's slab is five pixels of bar over **three of green**, and those
+three are the air at the top of the storey underneath. The roof surface was two
+white rows over six of GREY, so the top shopping floor got grey where it should
+have had air, and the lift shaft -- which runs to the top of its band --
+appeared to carry straight on into the roof. It read as the housing being
+taller on that floor than on the others.
+
+Giving `ROOFS` its three green rows fixed the shaft and broke the **beams**,
+which is the opposite requirement: a beam HOLDS THE ROOF UP and has to reach
+it, while the shaft merely stops beneath it. So the roof has its own version of
+the stamp, `ROOFSP` -- grey all the way down, `SLABP`'s opposite number -- and
+`beam_tops` now covers all three shopping floors instead of stopping at two.
+It stopped at two because band 2's ceiling already ran into grey, which was
+true only while the roof had no air under it.
+
+### 6g. Three timing faults, one shape
+
+All three are the same mistake: **work that outlives the loop that was supposed
+to finish it.**
+
+**The radar's lift car flickered.** `scan_elev` erased its three cells and put
+them back every tick, whether or not the car had moved, so several times a
+second there was a window with the pixels off. It is a sprite now (slot 26,
+below the two markers, so they pass over it for free) and there is no erase at
+all. `scan_elev` and `scan_clr1` went with it.
+
+**A long beep opened the next round.** Not a sounding tone -- a PENDING one. A
+set `sf*` flag is an effect waiting for the next pass of the main loop, and
+between a capture and the next Krook the main loop does not run, so anything
+latched during the round (a hit as Harry was caught, the bonus Kop the tally
+just awarded) survived the silence and fired on the new round's first pass with
+a fresh decay counter. Silencing the channels cannot help; `snd_off` drops the
+flags too.
+
+**The old screen's sprites stood on the new one.** `draw_screen` WAITs between
+bands -- one band a frame, because a burst of VDP writes past a few dozen is
+silently dropped -- so painting a screen takes several frames, and for all of
+them the previous screen's actors and obstacles were still on top of it. They
+are hidden BEFORE the blit now and put back by the normal draw on the same
+pass, so a crossing reads as a cut. `hide_play` covers 0-23 only: the radar's
+three sprites belong to the instrument rather than to the screen, and blinking
+them out every crossing would be a new fault in place of the old one.
+
 ### 0m. What the video actually measures
 
 Everything below is measured off the longplay, not inferred. The calibration

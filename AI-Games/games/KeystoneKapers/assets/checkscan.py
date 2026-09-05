@@ -153,8 +153,13 @@ def main():
         # THE FURNITURE, read out of the routines that actually draw it. The
         # escalator is a diagonal spanning two rows: the head on the grey row
         # and the foot on the black one below, which the manual draws black
-        # anyway. The car is one row, grey.
-        for label in ("scan_escs", "scan_elev"):
+        # anyway.
+        #
+        # THE LIFT CAR IS NOT HERE ANY MORE. It was characters that scan_elev
+        # erased and redrew every tick whether or not the car had moved, and
+        # that erase-then-draw window several times a second is what made it
+        # flicker. It is a sprite now, checked with the other two below.
+        for label in ("scan_escs",):
             rows = []
             run(rt, label, {"fl": lv, "elvl": lv},
                 stop=lambda _n, e: rows.append(e.get("say")))
@@ -202,11 +207,11 @@ def main():
         run(rt, "scan_tick",
             {"klv": lv, "hlv": lv, "klsc": 0, "hsc": 0, "klx": 0, "hx": 0,
              "say": 0, "elvl": lv}, stop=spr)
-        if len(ys) != 2:
-            bad.append("scan_tick places %d radar sprites, expected 2 "
-                       "(the Kop and the crook)" % len(ys))
+        if len(ys) != 3:
+            bad.append("scan_tick places %d radar sprites, expected 3 "
+                       "(the car, the Kop and the crook)" % len(ys))
             continue
-        for who, y in zip(("Kelly", "Harry"), ys):
+        for who, y in zip(("the car", "Kelly", "Harry"), ys):
             if y is None:
                 bad.append("%s's marker on level %d: its screen y could not "
                            "be resolved" % (who, lv))

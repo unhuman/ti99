@@ -156,20 +156,22 @@
 	' look it up from. checkchars.py is what holds it honest.
 	CONST P_HFACING = 16		' add this for Harry's LEFT set
 	CONST P_HLEG1 = 104
-	CONST P_RADDOT = 132		' the radar marker, both actors
+	CONST P_RADCAR = 132		' the radar's lift car
+	CONST C_RCAR = 14		' grey, like the furniture it replaced
+	CONST P_RADDOT = 136		' the radar marker, both actors
 	CONST C_RKOP = 1		' the Kop, black on the scanner
 	CONST C_RCROOK = 15		' the crook, white
 	CONST P_CART = 120
 	CONST P_BALL = 124
 	CONST P_RADIO = 128
-	CONST P_PLANE = 136
-	CONST P_PLANEL = 140
+	CONST P_PLANE = 140
+	CONST P_PLANEL = 144
 	' THE PROPELLER IS ITS OWN SPRITE so it can be its own colour. Two
 	' phases, each facing: A is the near-solid disc, B the broken blades.
-	CONST P_PROPA = 144
-	CONST P_PROPAL = 148
-	CONST P_PROPB = 152
-	CONST P_PROPBL = 156
+	CONST P_PROPA = 148
+	CONST P_PROPAL = 152
+	CONST P_PROPB = 156
+	CONST P_PROPBL = 160
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -211,6 +213,7 @@
 	' scan_escc writes this into the flight's own character. It is the only
 	' run-time colour left -- the two actors are sprites and carry theirs.
 	CONST SC_KOP = 28		' black on dark green
+	CONST CH_SHELFT = 97		' a counter's top half -- what wipe_shelf walks
 	CONST CH_SLAB = 96
 	' THE VICTROLA IS FOUR CELLS. Its top-right cell has two versions and the
 	' sound marks live there, so the pulse is one VPOKE of a different
@@ -223,20 +226,28 @@
 	CONST CH_RADTR1 = 102
 	CONST CH_RADBL = 103
 	CONST CH_RADBR = 104
-	CONST CH_SLABP = 158		' the same bar with a beam under it
+	CONST CH_ROOFS = 160		' the roof surface
+	CONST CH_ROOFSP = 161		' the roof with a beam under it
+	CONST CH_SLABP = 165		' the same bar with a beam under it
 	CONST CH_ECAR = 107
 	CONST CH_EDOOR = 106
 	CONST CH_WALL = 149
 	CONST CH_KOPIC = 150
-	CONST CH_EDHALF = 155
-	CONST CH_SCANBK = 157		' blank black, the strip either side of the radar
-	CONST CH_BAG = 152
+	CONST CH_EDHALF = 162
+	CONST CH_SCANBK = 164		' blank black, the strip either side of the radar
+	CONST CH_BAGTL = 152		' the prizes are 2x2 now
+	CONST CH_BAGTR = 153
+	CONST CH_BAGBL = 154
+	CONST CH_BAGBR = 155
+	CONST CH_CASETL = 156
+	CONST CH_CASETR = 157
+	CONST CH_CASEBL = 158
+	CONST CH_CASEBR = 159
 	' NAMED, because this was the literal 113 and the escalator rework
 	' renumbered the character table underneath it. 113 became EXITC, so
 	' the second collectible quietly drew an EXIT DOOR in the aisle -- a
 	' plausible-looking box, no error, and nothing to connect it to a
 	' change made somewhere else entirely.
-	CONST CH_CASE = 153
 
 	' the elevator doorway, in pixels and columns
 	CONST ELXL = 112
@@ -425,8 +436,8 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,63,store_pat
-	DEFINE COLOR 96,63,store_col
+	DEFINE CHAR 96,70,store_pat
+	DEFINE COLOR 96,70,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 
@@ -466,8 +477,9 @@ after_deck:
 	DEFINE SPRITE 30,1,spr_cart	' pattern 104
 	DEFINE SPRITE 31,1,spr_ball	' pattern 108
 	DEFINE SPRITE 32,1,spr_radio	' pattern 112
-	DEFINE SPRITE 33,1,spr_raddot	' the radar marker, both actors
-	DEFINE SPRITE 34,6,spr_plane	' body R/L, then prop A and B, R/L
+	DEFINE SPRITE 33,1,spr_radcar
+	DEFINE SPRITE 34,1,spr_raddot	' the radar marker, both actors
+	DEFINE SPRITE 35,6,spr_plane	' body R/L, then prop A and B, R/L
 	RETURN
 
 init_tables:
@@ -566,7 +578,7 @@ scan_colour:
 		#sca = 8192
 		IF sci = 1 THEN #sca = 10240
 		IF sci = 2 THEN #sca = 12288
-		#sca = #sca + 1280		' char 160, the canvas
+		#sca = #sca + 1664		' char 208, the canvas
 		FOR scr = 0 TO 2
 			FOR scc = 0 TO 15
 				#scs = #scb
@@ -880,7 +892,18 @@ start_krook:
 	' rather than every frame. RallyX's pan repaints 576 chars every time the
 	' camera moves one cell; this repaints 640 about once every two seconds
 	' of running.
+	' SPRITES OFF BEFORE THE BLIT, NOT AFTER IT. This routine WAITs between
+	' bands -- one band a frame, because a burst of VDP writes past a few
+	' dozen in one frame is silently dropped -- so painting the new screen
+	' takes several frames, and for all of them the OLD screen's actors and
+	' obstacles were still sitting on top of it. Following Harry through a
+	' seam showed him and every cart from the floor he had just left,
+	' standing on a shop that was assembling itself underneath them.
+	'
+	' They are put back by the normal draw on the same pass, so the crossing
+	' reads as a cut rather than as a dissolve with ghosts in it.
 draw_screen:
+	GOSUB hide_play
 	FOR dlv = 0 TO 3
 		dix = lv8(dlv)
 		dix = dix + klsc
@@ -918,8 +941,17 @@ draw_screen:
 	' Bands 0 and 1 only. Band 2's top row is the ROOF DECK, which is grey
 	' over grey with no green to bridge, and the roof itself has no band
 	' above it at all.
+	' BANDS 0 TO 2 -- ALL THREE SHOPPING FLOORS. It used to stop at 1,
+	' because band 2's ceiling is the ROOF DECK and the deck had no green
+	' under it: a beam there already ran straight into grey and needed
+	' nothing. Giving the roof its three green rows (so the lift shaft stops
+	' under it, like every other floor) took that away, and the top floor's
+	' beams started falling three pixels short.
+	'
+	' So the roof gets its own version of the stamp. A beam HOLDS THE ROOF
+	' UP and must reach it; the shaft merely stops beneath it.
 beam_tops:
-	FOR bt = 0 TO 1
+	FOR bt = 0 TO 2
 		bti = lv8(bt)
 		bti = bti + klsc
 		#bta = #stix + bti
@@ -931,7 +963,9 @@ beam_tops:
 			#btp = #btp + 1
 			IF btc > 0 THEN
 				#btw = #btr + btc
-				VPOKE #btw,CH_SLABP
+				btk = CH_SLABP
+				IF bt = 2 THEN btk = CH_ROOFSP
+				VPOKE #btw,btk
 			END IF
 		NEXT btj
 	NEXT bt
@@ -1189,14 +1223,53 @@ draw_prizes:
 		cok(plv) = pk
 		coc(plv) = pc
 		IF pk > 0 THEN
-			' the air row directly above the slab
+			' TWO BY TWO, standing on the slab: band rows 2 and 3, the
+			' same two the radios use. One character could not say
+			' "money bag" rather than "yellow blob", and everything
+			' else on the floor is sixteen pixels.
 			#pva = 6144
 			#pva = #pva + #bdst(plv)
-			#pva = #pva + 96		' row 3 of the band
+			#pva = #pva + 64		' row 2 of the band
 			#pva = #pva + pc
-			pch = CH_BAG
-			IF pk = 2 THEN pch = CH_CASE
+			' AND THE FIXTURE BEHIND IT GOES AWAY, for the same reason
+			' a radio's does: a pillar fills all four air rows, so a
+			' prize on one would leave its top half hanging above.
+			pch = CH_WALL
+			#pvb = #pva - 64
+			VPOKE #pvb,pch
+			#pvc = #pvb + 1
+			VPOKE #pvc,pch
+			#pvb = #pva - 32
+			VPOKE #pvb,pch
+			#pvc = #pvb + 1
+			VPOKE #pvc,pch
+			' and the beam top hanging above it
+			#bca = #pva - 96
+			GOSUB beam_clear
+			#bca = #bca + 1
+			GOSUB beam_clear
+			' and the rest of the counter it stands in
+			#wsa = #pva - 1
+			wsd = 0
+			GOSUB wipe_shelf
+			#wsa = #pva + 2
+			wsd = 1
+			GOSUB wipe_shelf
+			pch = CH_BAGTL
+			IF pk = 2 THEN pch = CH_CASETL
 			VPOKE #pva,pch
+			pch = CH_BAGTR
+			IF pk = 2 THEN pch = CH_CASETR
+			#pvb = #pva + 1
+			VPOKE #pvb,pch
+			pch = CH_BAGBL
+			IF pk = 2 THEN pch = CH_CASEBL
+			#pvb = #pva + 32
+			VPOKE #pvb,pch
+			pch = CH_BAGBR
+			IF pk = 2 THEN pch = CH_CASEBR
+			#pvc = #pvb + 1
+			VPOKE #pvc,pch
 		END IF
 	NEXT plv
 	RETURN
@@ -1633,6 +1706,52 @@ upd_elev:
 	'
 	' rdall = 1 paints all four cells, 0 repaints only the top-right one --
 	' the pulse. Same address arithmetic either way, so the two cannot drift.
+	' A BEAM TOP HANGS OUT OF THE FLOOR ABOVE, and the beam it belongs to has
+	' just been taken away. `beam_tops` stamps SLABP -- the floor bar with the
+	' support carried up through its lower three pixel rows -- into the slab
+	' row above every pillar, and it runs BEFORE the radios and prizes are
+	' placed. Clearing a pillar's own cells therefore left three grey pixels
+	' dangling from the ceiling with nothing under them.
+	'
+	' TESTED, NOT ASSUMED: only SLABP is put back to SLAB. The row above the
+	' top shopping floor is the ROOF DECK, a different character altogether,
+	' and writing a floor bar over it would punch a hole in the roof.
+	' A SHELF RUN IS FIVE CELLS WIDE and a radio covers two, so one standing
+	' on a counter punched a hole through its middle and left the ends either
+	' side -- the same incoherence the dangling pillar had, and worse, because
+	' a counter reads as one object. The whole unit goes: walk outward along
+	' the band's row 2 while the cell is still a shelf top, clearing it and
+	' its bottom half together.
+	'
+	' Bounded at eight steps. The runs are five, so eight is slack rather
+	' than a guess -- and an unbounded walk would run off the end of the row
+	' if the name table ever held something unexpected.
+wipe_shelf:
+	wsn = 8
+ws_loop:
+	IF wsn = 0 THEN RETURN
+	wsv = VPEEK(#wsa)
+	IF wsv <> CH_SHELFT THEN RETURN
+	wsc = CH_WALL
+	VPOKE #wsa,wsc
+	#wsb = #wsa + 32
+	VPOKE #wsb,wsc
+	IF wsd = 0 THEN #wsa = #wsa - 1 ELSE #wsa = #wsa + 1
+	wsn = wsn - 1
+	GOTO ws_loop
+
+beam_clear:
+	bcv = VPEEK(#bca)
+	IF bcv = CH_SLABP THEN
+		bcw = CH_SLAB
+		VPOKE #bca,bcw
+	END IF
+	IF bcv = CH_ROOFSP THEN
+		bcw = CH_ROOFS
+		VPOKE #bca,bcw
+	END IF
+	RETURN
+
 radio_draw:
 	FOR ri = 0 TO 7
 		IF obk(ri) = OB_RADIO THEN
@@ -1654,6 +1773,35 @@ radio_draw:
 			IF rphs = 1 THEN rch = CH_RADTR1
 			VPOKE #rvb,rch
 			IF rdall = 1 THEN
+				' THE FIXTURE IT STANDS IN FRONT OF GOES AWAY.
+				' A pillar fills its band's four air rows and the
+				' radio covers only the lower two, so a radio
+				' placed on one left the pillar's top half
+				' hanging in the air above it -- a grey stub with
+				' nothing under it. Shelves are covered outright
+				' by the radio's own two rows, so only the rows
+				' ABOVE need clearing.
+				#rvb = #rva - 64
+				rch = CH_WALL
+				VPOKE #rvb,rch
+				#rvc = #rvb + 1
+				VPOKE #rvc,rch
+				#rvb = #rva - 32
+				VPOKE #rvb,rch
+				#rvc = #rvb + 1
+				VPOKE #rvc,rch
+				' and the beam top hanging above it
+				#bca = #rva - 96
+				GOSUB beam_clear
+				#bca = #bca + 1
+				GOSUB beam_clear
+				' and the rest of the counter it stands in
+				#wsa = #rva - 1
+				wsd = 0
+				GOSUB wipe_shelf
+				#wsa = #rva + 2
+				wsd = 1
+				GOSUB wipe_shelf
 				#rvb = #rva + 32
 				rch = CH_RADBL
 				VPOKE #rvb,rch
@@ -2140,11 +2288,21 @@ coll_prize:
 	' remember it is gone, so it does not come back on the next crossing
 	pmk = msk(klsc)
 	takn(klv) = takn(klv) OR pmk
+	' ALL FOUR CELLS. It erased one, which is what a prize used to be; the
+	' other three stayed on screen as three quarters of a money bag that no
+	' longer scored anything.
 	#pva = 6144
 	#pva = #pva + #bdst(klv)
-	#pva = #pva + 96
+	#pva = #pva + 64			' row 2 -- the prize's top left
 	#pva = #pva + coc(klv)
-	VPOKE #pva,CH_WALL
+	pcw = CH_WALL
+	VPOKE #pva,pcw
+	#pvb = #pva + 1
+	VPOKE #pvb,pcw
+	#pvb = #pva + 32
+	VPOKE #pvb,pcw
+	#pvc = #pvb + 1
+	VPOKE #pvc,pcw
 	#addv = 5				' 50 points, in units of ten
 	GOSUB add_score
 	sfp = 1
@@ -2402,8 +2560,19 @@ draw_actors:
 	NEXT di
 	RETURN
 
+	' THE PLAYFIELD'S SPRITES ONLY -- 0-23. The radar's three (24-26) belong
+	' to the instrument rather than to the screen: blinking them out on every
+	' crossing would put a new fault where the old one was, and the radar is
+	' the one thing that should be steady while the store changes around it.
+hide_play:
+	FOR hi = 0 TO 23
+		SPRITE hi,SPRHID,0,0,0
+	NEXT hi
+	RETURN
+
 hide_all:
-	FOR hi = 0 TO 25
+	GOSUB hide_play
+	FOR hi = 24 TO 26
 		SPRITE hi,SPRHID,0,0,0
 	NEXT hi
 	RETURN
@@ -2503,9 +2672,14 @@ scan_canvas:
 		#sva = #sva + 672		' row 21
 		IF sr = 1 THEN #sva = #sva + 32
 		IF sr = 2 THEN #sva = #sva + 64
-		sc2 = 160
-		IF sr = 1 THEN sc2 = 176
-		IF sr = 2 THEN sc2 = 192
+		' 208, NOT 160. The store's own characters reached 158 with the
+		' scanner starting at 160, which left one code free and no room
+		' for a prize worth looking at. The scanner wants 48 contiguous
+		' codes and 208..255 is 48 exactly, so it moved to the top and
+		' the store got 96..207.
+		sc2 = 208
+		IF sr = 1 THEN sc2 = 224
+		IF sr = 2 THEN sc2 = 240
 		' ALL 32 COLUMNS, not just the canvas's 16. The eight cells at each
 		' end held the SPACE character, whose colour is black on CYAN --
 		' right for the HUD on row 0, wrong here, because it left the radar
@@ -2671,56 +2845,6 @@ scan_escc:
 	VPOKE #sdx,SC_KOP
 	RETURN
 
-	' THE ELEVATOR MARKER TRACKS THE CAR, which is the whole point of it. It
-	' used to be a static bar on all three shopping floors -- that says where
-	' the shaft is, which never changes and which the player already knows,
-	' and says nothing about the one fact that matters: whether the car is
-	' where you are. Erase, move, redraw, exactly like an actor's dot.
-	' ONE ROW NOW, AND WIDER FOR IT. The band is four pixel rows and each
-	' one carries a single colour, so the car's grey row is the same row the
-	' escalator heads use; spending a second row on it would put half the
-	' car on Kelly's BLACK row, where it would read as the Kop. Five pixels
-	' across at a fixed centre column tells it from a three-pixel actor dot
-	' without needing the height.
-scan_elev:
-	IF selo = 1 THEN
-		sdm = 248
-		#sda = #sela
-		GOSUB scan_clr1
-		#sda = #selb
-		GOSUB scan_clr1
-		#sda = #selc
-		GOSUB scan_clr1
-	END IF
-	fl = elvl
-	GOSUB scan_base
-	sccol = 7
-	fm1 = 248				' x 56-60
-	' THREE ROWS, like everything else in the band. One row made the car a
-	' hairline that vanished the moment a marker went past it.
-	say = fbase
-	GOSUB scan_pat
-	#sela = #sda
-	GOSUB scan_or1
-	say = fbase + 1
-	GOSUB scan_pat
-	#selb = #sda
-	GOSUB scan_or1
-	say = fbase + 2
-	GOSUB scan_pat
-	#selc = #sda
-	GOSUB scan_or1
-	selo = 1
-	RETURN
-
-	' One row, for the elevator bar. The actors' erase is three rows deep.
-scan_clr1:
-	svn = NOT sdm
-	sva = VPEEK(#sda)
-	sva = sva AND svn
-	VPOKE #sda,sva
-	RETURN
-
 	' fbase = the top pixel row of level fl's FOUR px band, without a
 	' multiply. Four levels at four rows is 16 of the canvas's 24 pixel
 	' rows, and the other eight are deliberately empty -- four above and
@@ -2744,9 +2868,9 @@ scan_or1:
 scan_pat:
 	scrow = say / 8
 	scpr = say AND 7
-	sc3 = 160
-	IF scrow = 1 THEN sc3 = 176
-	IF scrow = 2 THEN sc3 = 192
+	sc3 = 208
+	IF scrow = 1 THEN sc3 = 224
+	IF scrow = 2 THEN sc3 = 240
 	sc3 = sc3 + sccol
 	#sda = 4096
 	#sda = #sda + sc3 * 8.
@@ -2796,7 +2920,20 @@ scan_tick:
 	' tick because erasing a character-based marker ANDed bits out of
 	' whatever it was standing on; there is nothing left to rub it away. The
 	' car still redraws itself, because the car actually moves.
-	GOSUB scan_elev
+	' -- the lift car. IT WAS FLICKERING, and the cause was not the drawing
+	' but the ERASING: scan_elev cleared its three cells and put them back
+	' every tick, whether or not the car had moved, so several times a second
+	' there was a window with the pixels off. A sprite has no erase at all --
+	' it is placed, and the VDP does the rest -- and slot 26 sits BELOW the
+	' two markers, so the Kop and the crook pass over it without either of
+	' them having to know the car exists.
+	say = 3 - elvl
+	say = say + say
+	say = say + say				' (3-lv) * 4
+	say = say + 4				' the top margin, then band row 0
+	sdy = 167
+	sdy = sdy + say
+	SPRITE 26,sdy,120,P_RADCAR,C_RCAR
 
 	' -- Kelly. dotx 0..127 across the store, doty 0..23 down it; the canvas
 	' is characters 8-23 of rows 21-23, so screen x is 64 + dotx.
@@ -3098,6 +3235,21 @@ snd_off:
 	sht = 0
 	spt = 0
 	swt = 0
+	' AND THE EFFECTS THAT HAVE NOT HAPPENED YET. A set sf* flag is a sound
+	' waiting for the next pass of the main loop -- and between a capture and
+	' the next Krook the main loop does not run, so anything latched during
+	' the round (a hit as Harry was caught, the bonus Kop the tally just
+	' awarded) survived the silence and fired on the first pass of the NEW
+	' round. Silencing the channels does not help: the flag plays a fresh
+	' note afterwards, with a fresh decay counter, which is why it came out
+	' as one long tone over the start of a level that had earned nothing.
+	sfj = 0
+	sfh = 0
+	sfp = 0
+	sfe = 0
+	sfk = 0
+	sfl = 0
+	sfw = 0
 	RETURN
 
 pause_beat:

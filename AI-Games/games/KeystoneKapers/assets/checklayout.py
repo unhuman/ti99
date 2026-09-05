@@ -82,6 +82,9 @@ SCREEN = {
     "scan_mark": "PATT",      # a marker's three rows, pattern AND colour
     "scan_wipe1": "PATT",     # and giving the character its base colour back
     "scan_escc": "PATT",      # the flight's own colour, per character
+    "beam_clear": "GAME",     # putting a beam top back when its pillar goes
+    "wipe_shelf": "GAME",     # taking the whole counter, not a hole in it
+    "ws_loop": "GAME",        # its loop body, which does the actual writing
     "scan_clr": "PATT", "scan_tick": "PATT",
     "scan_addr": "PATT", "scan_wipe": "PATT", "scan_furn": "PATT",
     "scan_or1": "PATT", "scan_pat": "PATT", "scan_base": "PATT",

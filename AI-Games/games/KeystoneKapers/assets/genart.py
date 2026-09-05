@@ -938,6 +938,27 @@ SPRITES = [
     # almost all waste -- and worth it, because as a SPRITE it needs no colour
     # table, no erase, and no priority arithmetic: it simply draws over the
     # furniture. One shape serves both actors; only the colour differs.
+    # THE RADAR'S LIFT CAR, five by three. A sprite for the same reason the
+    # two markers are: it MOVES, and a moving thing drawn into character
+    # patterns has to be erased before it is redrawn.
+    ("spr_radcar", [("RADCAR", """#####...........
+#####...........
+#####...........
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+""")], "radar lift car"),
+
     ("spr_raddot", [("RADDOT", """###.............
 ###.............
 ###.............
@@ -1229,29 +1250,117 @@ CHARS_BASE = [
 ########
 """, WHITE, DBLUE),
 
-    ("BAG", 0, """
-..####..
-.##..##.
-########
-########
-##.##.##
-########
-.######.
-..####..
+    # A PRIZE IS 2x2 NOW. One character is eight pixels square, which is not
+    # enough to say "money bag" rather than "yellow blob" -- and the hazards it
+    # sits among are all sixteen. Four cells apiece, bottom-aligned so they
+    # stand on the floor, and named <thing><T|B><L|R>.
+    ("BAGTL", 0, """
+........
+........
+.....#..
+......##
+.....###
+....####
+...#####
+..######
 """, LYELL, MGREEN),
 
-    ("CASE", 0, """
-...##...
-.######.
+    ("BAGTR", 0, """
+........
+........
+#.......
+##......
+###.....
+####....
+#####...
+######..
+""", LYELL, MGREEN),
+
+    ("BAGBL", 0, """
+.#######
 ########
 ########
-###..###
 ########
 ########
+.#######
+..######
+...#####
+""", LYELL, MGREEN),
+
+    ("BAGBR", 0, """
+#######.
+########
+########
+########
+########
+#######.
+######..
+#####...
+""", LYELL, MGREEN),
+
+    ("CASETL", 0, """
+........
+......##
+.....#..
+.....#..
+########
+########
+##......
+##....##
+""", DRED, MGREEN),
+
+    ("CASETR", 0, """
+........
+##......
+..#.....
+..#.....
+########
+########
+......##
+##....##
+""", DRED, MGREEN),
+
+    ("CASEBL", 0, """
+##....##
+##......
+##......
+########
+########
+########
+.##.....
+........
+""", DRED, MGREEN),
+
+    ("CASEBR", 0, """
+##....##
+......##
+......##
+########
+########
+########
+.....##.
 ........
 """, DRED, MGREEN),
 
     ("ROOFS", 0, """
+########
+########
+........
+........
+........
+........
+........
+........
+""", WHITE, [GRAY] * 5 + [MGREEN] * 3),
+
+    # THE SAME ROOF WITH A BEAM CARRIED UP THROUGH IT. The green rows above
+    # give the top shopping floor its air -- which is right for the lift shaft,
+    # which stops under the roof, and wrong for a SUPPORT BEAM, which holds the
+    # roof up and has to reach it. Grey all the way down, so the beam's own
+    # grey runs into it without a seam. It is SLABP's opposite number: the
+    # shop floors get a bar with a beam under it, the roof gets a deck with
+    # one under it.
+    ("ROOFSP", 0, """
 ########
 ########
 ........
@@ -1382,7 +1491,9 @@ BAR_BG = [LYELL] + [DYELL] * 4 + [MGREEN] * 3
 # Composites for that crossing therefore need the roof's colours, not the
 # store's -- the same idea, different palette. Only the WEST flight climbs to
 # the roof (floor 3's escalator is at the west end), so only it needs them.
-DECK_BG = [WHITE, WHITE] + [GRAY] * 6      # roof row 4, the deck itself
+DECK_BG = [WHITE, WHITE] + [GRAY] * 3 + [MGREEN] * 3   # roof row 4, and
+                                           # the three green rows it owes
+                                           # the floor below (see ROOFS)
 ROOFAIR_BG = [GRAY] * 8                    # roof row 3, the grey backdrop
 
 # (name, cell index, that direction's phases, that direction's movers, bg)
@@ -1501,7 +1612,7 @@ if _frozen:
 # store table grew past it, which would have had the two silently overwriting
 # each other's patterns -- so the overlap is now checked, below, rather than
 # left to be noticed on screen.
-SCAN_FIRST, SCAN_N = 160, 48
+SCAN_FIRST, SCAN_N = 208, 48
 
 # The first pixel row of the instrument inside its 24-row canvas -- the top
 # margin. Four levels of four rows is 16, so the same number is left at the

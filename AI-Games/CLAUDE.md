@@ -705,3 +705,21 @@ for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.m
   thing is three pixels tall in a three-pixel band, because its last row then sits on whatever
   it was meant not to touch. Bias the y by −1 and put the bias in the CHECKER too, or the check
   agrees with the bug.
+
+- **A LATCHED EFFECT FLAG IS A SOUND THAT HAS NOT HAPPENED YET, AND SILENCING THE CHANNELS DOES
+  NOT CANCEL IT.** Keystone Kapers sets `sf*` flags that the main loop's sound routine consumes
+  on its next pass. Between a capture and the next round the main loop does not run — so a hit
+  latched as the round ended, or a bonus life the tally just awarded, survived a full
+  `SOUND ch,0,0` on every channel and then fired on the FIRST pass of the new round, with a
+  fresh decay counter. It presents as "a long beep at the start of a level that earned nothing".
+  - Generalises to any deferred event consumed by a loop that stops: a "silence everything"
+    routine must clear the **pending** queue as well as the current state, or the pause simply
+    postpones the noise into a context where it makes no sense.
+- **A MULTI-FRAME BLIT LEAVES THE PREVIOUS STATE'S SPRITES STANDING ON TOP OF IT.** A screen
+  redraw that `WAIT`s between bands (necessary — a burst past a few dozen VDP writes in one
+  frame is silently dropped) takes several frames, and sprites are not part of the name table,
+  so they keep drawing throughout. Following an actor through a screen seam showed him and every
+  obstacle from the floor he had just left, standing on a shop assembling itself underneath.
+  **Hide the sprites before the blit, not after** — the normal draw puts them back on the same
+  pass. Hide only the ones that belong to the screen: a HUD or radar sprite blinking out on
+  every crossing is a new fault in place of the old one.

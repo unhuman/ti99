@@ -154,6 +154,12 @@ spr_radio:	' cathedral radio, stationary
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $30,$E0,$F8,$FC,$FC,$FC,$FC,$FC
 
+spr_radcar:	' radar lift car
+	DATA BYTE $F8,$F8,$F8,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+
 spr_raddot:	' radar marker -- Kop and crook
 	DATA BYTE $E0,$E0,$E0,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -190,7 +196,7 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. YELLOW body over 
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.
 
-store_pat:	' 63 chars, 8 bytes each
+store_pat:	' 70 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
@@ -247,8 +253,15 @@ store_pat:	' 63 chars, 8 bytes each
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $18,$3C,$7E,$7E,$7E,$7E,$FF,$00
 	DATA BYTE $FF,$81,$BD,$A5,$A5,$BD,$81,$FF
-	DATA BYTE $3C,$66,$FF,$FF,$DB,$FF,$7E,$3C
-	DATA BYTE $18,$7E,$FF,$FF,$E7,$FF,$FF,$00
+	DATA BYTE $00,$00,$04,$03,$07,$0F,$1F,$3F
+	DATA BYTE $00,$00,$80,$C0,$E0,$F0,$F8,$FC
+	DATA BYTE $7F,$FF,$FF,$FF,$FF,$7F,$3F,$1F
+	DATA BYTE $FE,$FF,$FF,$FF,$FF,$FE,$FC,$F8
+	DATA BYTE $00,$03,$04,$04,$FF,$FF,$C0,$C3
+	DATA BYTE $00,$C0,$20,$20,$FF,$FF,$03,$C3
+	DATA BYTE $C3,$C0,$C0,$FF,$FF,$FF,$60,$00
+	DATA BYTE $C3,$03,$03,$FF,$FF,$FF,$06,$00
+	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
 	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
 	DATA BYTE $DF,$DF,$00,$FB,$FB,$00,$DF,$DF
@@ -313,7 +326,14 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
 	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
 	DATA BYTE $B2,$B2,$B2,$B2,$B2,$B2,$B2,$B2
+	DATA BYTE $B2,$B2,$B2,$B2,$B2,$B2,$B2,$B2
+	DATA BYTE $B2,$B2,$B2,$B2,$B2,$B2,$B2,$B2
+	DATA BYTE $B2,$B2,$B2,$B2,$B2,$B2,$B2,$B2
 	DATA BYTE $62,$62,$62,$62,$62,$62,$62,$62
+	DATA BYTE $62,$62,$62,$62,$62,$62,$62,$62
+	DATA BYTE $62,$62,$62,$62,$62,$62,$62,$62
+	DATA BYTE $62,$62,$62,$62,$62,$62,$62,$62
+	DATA BYTE $FE,$FE,$FE,$FE,$FE,$F2,$F2,$F2
 	DATA BYTE $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
 	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
 	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
@@ -385,7 +405,7 @@ esc_phe3:	' chars 114-119, phase 3 -- DEFINE CHAR 114,6,esc_phe3
 	DATA BYTE $03,$FE,$F8,$E3,$8F,$3F,$FF,$FC
 
 	' -------------------------------------------------- scanner canvas
-	' Chars 160-207: 16 cols x 3 rows over screen rows 21-23. Blank to start;
+	' Chars 208-255: 16 cols x 3 rows over screen rows 21-23. Blank to start;
 	' dots are plotted by VPOKEing the PATTERN table (rows 21-23 sit in the
 	' third screen third, so every scanner pattern is at base 4096).
 
@@ -400,13 +420,13 @@ scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then a 3 px b
 	DATA BYTE $EC,$EC,$EC,$BC,$EE,$EE,$EE,$EE
 
 esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at 8192 + char*8, once, at setup
-	DATA BYTE $8A,$1F,$1F,$1E,$1E,$1E,$1E,$1E
-	DATA BYTE $1E,$8B,$1F,$1F,$1E,$1E,$1E,$1E
-	DATA BYTE $1E,$1E,$6F,$1F,$1F,$1E,$1E,$1E
-	DATA BYTE $1E,$1E,$1E,$70,$1F,$1F,$1E,$1E
-	DATA BYTE $1E,$1E,$1E,$1E,$71,$1F,$1F,$1E
-	DATA BYTE $1E,$1E,$1E,$1E,$1E,$8C,$1F,$1F
-	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E
+	DATA BYTE $8A,$1F,$1F,$1E,$1E,$1E,$12,$12
+	DATA BYTE $12,$8B,$1F,$1F,$1E,$1E,$1E,$12
+	DATA BYTE $12,$12,$6F,$1F,$1F,$1E,$1E,$1E
+	DATA BYTE $12,$12,$12,$70,$1F,$1F,$1E,$1E
+	DATA BYTE $1E,$12,$12,$12,$71,$1F,$1F,$1E
+	DATA BYTE $1E,$1E,$12,$12,$12,$8C,$1F,$1F
+	DATA BYTE $1E,$1E,$1E,$12,$12,$12
 
 	' code map, for the source to reference:
 	'   96  SLAB
@@ -465,10 +485,17 @@ esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at
 	'   149 WALL
 	'   150 KOPIC
 	'   151 EXITC
-	'   152 BAG
-	'   153 CASE
-	'   154 ROOFS
-	'   155 EDHALF
-	'   156 ENDWALL
-	'   157 SCANBK
-	'   158 SLABP
+	'   152 BAGTL
+	'   153 BAGTR
+	'   154 BAGBL
+	'   155 BAGBR
+	'   156 CASETL
+	'   157 CASETR
+	'   158 CASEBL
+	'   159 CASEBR
+	'   160 ROOFS
+	'   161 ROOFSP
+	'   162 EDHALF
+	'   163 ENDWALL
+	'   164 SCANBK
+	'   165 SLABP
