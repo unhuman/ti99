@@ -726,14 +726,14 @@ Three details that each took a pass to see:
   the whole screen. As a horizon above flat grey it read fine; above a lit
   skyline it reads as a **row of flames**. Removed, and the tallest buildings
   take that row instead.
-* **They take only HALF of it.** Row 1 may hold `BLDGQ` (2 px of wall) or
-  `BLDGM` (4 px) and nothing deeper, so the tallest building on the horizon is
-  **20 px -- two whole characters of wall plus half of a third**. The six steps
-  are 8, 11, 14, 16, 18 and 20 px. Letting row 1 carry a full-height top made
-  the city three characters tall, which crowds the roof the player is actually
-  running across: the horizon stops being a backdrop and starts competing with
-  the deck. `BLDGQ` and `BLDGM` are slices taken off the **bottom** of the
-  wall, so their courses and windows line up with `BLDGW` cell to cell.
+* **They take ALL of it.** Row 1 holds either `BLDGM` (4 px of wall) or a full
+  `BLDGW`, so the tallest building on the horizon is **24 px -- three whole
+  characters, a full character above the flat roofline**. The six steps are 8,
+  11, 14, 16, 20 and 24 px. The band's own row 0 stays sky, and that last row
+  is what keeps the skyline a horizon rather than a wall: the city reaches the
+  top of its area and stops. `BLDGM` is a slice taken off the **bottom** of the
+  wall (rows 4-7), so its courses and windows line up with `BLDGW` cell to
+  cell.
 * **The building tops were exposed windows.** Both top characters put their
   windows in the first brick row, so every block was cut off through a row of
   lit windows and read as sliced rather than finished. One solid row at the top

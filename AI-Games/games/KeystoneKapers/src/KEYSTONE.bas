@@ -232,13 +232,13 @@
 	CONST CH_SLABE = 97		' the bar with BRICK carried up through it
 	CONST CH_ROOFSE = 98		' and the roof deck likewise
 	CONST CH_ROOFSP = 163		' the roof with a beam under it
-	CONST CH_SLABP = 172		' the same bar with a beam under it
+	CONST CH_SLABP = 171		' the same bar with a beam under it
 	CONST CH_ECAR = 109
 	CONST CH_EDOOR = 108
 	CONST CH_WALL = 151
 	CONST CH_KOPIC = 152
-	CONST CH_EDHALF = 169
-	CONST CH_SCANBK = 171		' blank black, the strip either side of the radar
+	CONST CH_EDHALF = 168
+	CONST CH_SCANBK = 170		' blank black, the strip either side of the radar
 	CONST CH_BAGTL = 154		' the prizes are 2x2 now
 	CONST CH_BAGTR = 155
 	CONST CH_BAGBL = 156
@@ -440,8 +440,8 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,77,store_pat
-	DEFINE COLOR 96,77,store_col
+	DEFINE CHAR 96,76,store_pat
+	DEFINE COLOR 96,76,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 
