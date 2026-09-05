@@ -1077,7 +1077,39 @@ load_band:
 				obx(li) = stag
 			END IF
 			obh(li) = 0
+			' THE BALL IS ON THE GROUND WHEN HE GETS TO IT.
+			'
+			' The bounce phase used to be `lx AND 31` -- a byte out of
+			' the placement table, which is to say arbitrary. Run onto
+			' a screen and the first ball might be at the bottom of its
+			' arc, where a jump clears it, or at the top, where it has
+			' to be ducked, and nothing on the way in told you which.
+			' Sometimes you could keep running and jump it; sometimes
+			' the same approach at the same speed could not be jumped
+			' at all. That is not difficulty, it is a coin toss.
+			'
+			' So the phase is worked BACKWARDS from the meeting. He
+			' closes 4 px a pass and the ball 2, so they meet in
+			' (gap / 6) passes; the phase advances one a pass and wraps
+			' at 32, so seeding it with the NEGATIVE of that lands it on
+			' phase 0 -- the ground -- exactly as they arrive.
+			'
+			' The gap is the same either way round: he enters at one
+			' wall and the ball starts `stag` in from the other, so it
+			' is 232 - stag whichever direction the floor runs.
+			'
+			' It stays forgiving rather than exact. The arc is flat near
+			' the bottom, so anything within eight passes either side is
+			' still under the jump; and it only holds for an unbroken
+			' run, which is the case the player is entitled to read off
+			' the screen. Duck, stop or take a hit and everything after
+			' is out of step again -- which is the game.
 			obp(li) = lx AND 31
+			IF lk = OB_BALL THEN
+				obg = 232 - stag
+				GOSUB ball_phase
+				obp(li) = obq
+			END IF
 			obht(li) = 0
 			IF lk = OB_PLANE THEN obh(li) = 16
 			IF lk = OB_RADIO THEN
@@ -1119,6 +1151,22 @@ rc_loop:
 	ocx = ocx - 8
 	ocn = ocn + 1
 	GOTO rc_loop
+
+	' gap / 6, and then 32 minus it: the phase that will have wrapped to zero
+	' by the time they meet. Repeated subtraction because `/` compiles to a
+	' real TMS9900 DIV (CLAUDE.md 3A), and this runs once per ball when a
+	' screen loads rather than in a frame.
+ball_phase:
+	obq = 0
+bp_loop:
+	IF obg < 6 THEN GOTO bp_done
+	obg = obg - 6
+	obq = obq + 1
+	IF obq > 31 THEN obq = 0
+	GOTO bp_loop
+bp_done:
+	IF obq > 0 THEN obq = 32 - obq
+	RETURN
 
 	' ------------------------------------------------- collectibles as CHARS
 	' Not sprites: a band already carries Kelly plus three obstacles, which is
@@ -2751,8 +2799,14 @@ scan_tick:
 	GOSUB scan_elev
 
 	' -- Kelly. dotx 0..127 across the store, doty 0..23 down it; the canvas
-	' is characters 8-23 of rows 21-23, so screen x is 64 + dotx and screen y
-	' is 168 + doty.
+	' is characters 8-23 of rows 21-23, so screen x is 64 + dotx.
+	'
+	' 167, NOT 168. The VDP puts a sprite's top line at y + 1, so a sprite
+	' asked for the canvas's own row lands one pixel low -- which on a
+	' three-pixel marker in a three-pixel band means its bottom row sits on
+	' the yellow floor line. The character markers this replaced were poked
+	' straight into the pattern table and needed no such bias, which is
+	' exactly why it was easy to carry the old number across.
 	sax = klsc
 	sax = sax + sax
 	sax = sax + sax
@@ -2769,7 +2823,7 @@ scan_tick:
 						' must not touch it.
 	sdx = 64
 	sdx = sdx + sax
-	sdy = 168
+	sdy = 167
 	sdy = sdy + say
 	SPRITE 24,sdy,sdx,P_RADDOT,C_RKOP
 
@@ -2787,7 +2841,7 @@ scan_tick:
 	say = say + 4
 	sdx = 64
 	sdx = sdx + sax
-	sdy = 168
+	sdy = 167
 	sdy = sdy + say
 	SPRITE 25,sdy,sdx,P_RADDOT,C_RCROOK
 	RETURN

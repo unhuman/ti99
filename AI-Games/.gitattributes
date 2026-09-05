@@ -1,0 +1,14 @@
+# THE BUILD SCRIPTS MUST KEEP LF IN THE WORKING TREE.
+#
+# core.autocrlf is true on this machine, so a checkout hands every text file
+# CRLF -- and bash cannot run a script with CRLF line endings. It does not fail
+# on the carriage returns themselves; it reports
+#     build-ti.sh: line 37: syntax error near unexpected token `$'{\r''
+# which reads as a broken script rather than as a line-ending problem, and it
+# happens after any fresh checkout rather than after an edit, so nothing in the
+# session points at the cause.
+*.sh text eol=lf
+
+# The CVBasic sources and the generated assembly are read by Cygwin tools for
+# the same reason.
+*.bas text eol=lf

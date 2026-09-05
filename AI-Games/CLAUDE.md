@@ -692,3 +692,16 @@ for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.m
     change of heading has a visible cause.
   - And check WHERE the override sits. Placed below the movement it only reached the animation
     counter: the actor faced the right way, played the run cycle, and travelled zero pixels.
+
+- **`core.autocrlf=true` MAKES EVERY SHELL SCRIPT UNRUNNABLE AFTER A CHECKOUT.** Git stores LF
+  and hands the working tree CRLF, and bash does not fail on the carriage returns themselves —
+  it reports `syntax error near unexpected token $'{\r'`, which reads as a broken script rather
+  than as a line-ending problem. It appears after a *checkout* rather than after an edit, so
+  nothing in the session points at the cause. Pin it in `.gitattributes` (`*.sh text eol=lf`,
+  and the same for any source a Cygwin tool reads) rather than converting the files by hand,
+  which only lasts until the next checkout.
+- **THE VDP PUTS A SPRITE'S TOP LINE AT y + 1.** Replacing a character-drawn marker with a
+  sprite carries the old y across and everything lands one pixel low — which matters when the
+  thing is three pixels tall in a three-pixel band, because its last row then sits on whatever
+  it was meant not to touch. Bias the y by −1 and put the bias in the CHECKER too, or the check
+  agrees with the bug.

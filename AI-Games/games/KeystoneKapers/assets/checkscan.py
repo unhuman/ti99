@@ -181,10 +181,17 @@ def main():
     #
     # There is no colour to check any more -- a sprite carries its own, so the
     # merge that made Kelly blink cannot happen -- and no pixels to erase. What
-    # is still easy to get wrong is the row: the canvas is characters 8-23 of
-    # screen rows 21-23, so a marker's screen y is 168 + its canvas row, and it
-    # has to land in the three rows of a floor's AIR. Row 3 of a band is the
-    # yellow floor line and nothing may touch it.
+    # is still easy to get wrong is the row.
+    #
+    # THE VDP PUTS A SPRITE'S TOP LINE AT y + 1. The canvas is characters 8-23
+    # of screen rows 21-23, so canvas row r is screen row 168 + r -- and a
+    # sprite asked for y therefore inks canvas row y + 1 - 168. Miss that bias
+    # and a three-pixel marker in a three-pixel band puts its bottom row on the
+    # yellow floor line, which is exactly what happened when the character
+    # markers (poked straight into the pattern table, no bias) were replaced by
+    # sprites and the old number came across with them.
+    #
+    # Row 3 of a band is the floor line and nothing may touch it.
     for lv in range(4):
         ys = []
 
@@ -203,14 +210,15 @@ def main():
             if y is None:
                 bad.append("%s's marker on level %d: its screen y could not "
                            "be resolved" % (who, lv))
-            elif not 168 <= y <= 191:
-                bad.append("%s's marker on level %d is at screen y %d, off "
-                           "the scanner's rows 168-191" % (who, lv, y))
+            elif not 167 <= y <= 188:
+                bad.append("%s's marker on level %d is at sprite y %d, which "
+                           "inks canvas rows %d-%d -- outside the scanner's 24"
+                           % (who, lv, y, y + 1 - 168, y + 3 - 168))
             else:
                 # it is three pixels tall, so the LAST row matters too
                 for k in range(3):
                     check("%s's marker row %d" % (who, k),
-                          y - 168 + k, "GRAY", lv)
+                          y + 1 - 168 + k, "GRAY", lv)
 
     # THE THREE RUN-TIME COLOURS MUST ALL DIFFER FROM EACH OTHER. Two of
     # them being equal is not a colour-table error -- the table is fine -- it
