@@ -212,16 +212,23 @@ def t_roof(kind):
     # ROW 1 USED TO BE THE PARAPET, a crenellated band of medium red across the
     # whole screen. Above a lit skyline it stopped reading as a horizon and
     # started reading as a ROW OF FLAMES. It is gone, and the tallest buildings
-    # take that row instead -- so the city is three characters at its highest
-    # rather than two, which is what it wanted anyway.
+    # take that row instead.
+    #
+    # THEY TAKE ONLY HALF OF IT. Row 1 may hold BLDGQ (2px) or BLDGM (4px) and
+    # nothing deeper, so the tallest building on the horizon is 20 pixels --
+    # two whole characters of wall plus half of a third. Letting row 1 carry a
+    # full-height top made the city three characters tall, which crowded the
+    # roof the player is actually running across.
+    #
+    # Heights, in pixels, from the six steps below:  8  11  14  16  18  20
     #
     # Written out rather than generated: one row of 32 numbers, meant to look
     # deliberate rather than random, and it never changes.
-    #   0 sky        1 low block   2 tall block
-    #   3 full char  4 full + a low top   5 full + a tall top
+    #   0 sky        1 low block          2 tall block
+    #   3 full char  4 full + a 2px top   5 full + a 4px top
     SKYLINE = [2, 4, 1, 0, 3, 5, 2, 1, 0, 4, 3, 1, 2, 5, 4, 0,
                1, 3, 2, 4, 0, 2, 5, 3, 1, 0, 4, 2, 3, 1, 5, 2]
-    ROW1 = (SKY, SKY, SKY, SKY, BLDGL, BLDGH)
+    ROW1 = (SKY, SKY, SKY, SKY, BLDGQ, BLDGM)
     ROW2 = (SKY, BLDGL, BLDGH, BLDGW, BLDGW, BLDGW)
     t = blank(SKY)
     for c in range(W):

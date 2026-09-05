@@ -232,13 +232,13 @@
 	CONST CH_SLABE = 97		' the bar with BRICK carried up through it
 	CONST CH_ROOFSE = 98		' and the roof deck likewise
 	CONST CH_ROOFSP = 163		' the roof with a beam under it
-	CONST CH_SLABP = 170		' the same bar with a beam under it
+	CONST CH_SLABP = 172		' the same bar with a beam under it
 	CONST CH_ECAR = 109
 	CONST CH_EDOOR = 108
 	CONST CH_WALL = 151
 	CONST CH_KOPIC = 152
-	CONST CH_EDHALF = 167
-	CONST CH_SCANBK = 169		' blank black, the strip either side of the radar
+	CONST CH_EDHALF = 169
+	CONST CH_SCANBK = 171		' blank black, the strip either side of the radar
 	CONST CH_BAGTL = 154		' the prizes are 2x2 now
 	CONST CH_BAGTR = 155
 	CONST CH_BAGBL = 156
@@ -440,8 +440,8 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,75,store_pat
-	DEFINE COLOR 96,75,store_col
+	DEFINE CHAR 96,77,store_pat
+	DEFINE COLOR 96,77,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 
@@ -1805,6 +1805,24 @@ ws_loop:
 	wsn = wsn - 1
 	GOTO ws_loop
 
+	' A PILLAR'S CAP MAY BE CLEARED; AN END WALL'S MAY NOT. beam_one stamps
+	' both into the slab row of the band above, but they mean different
+	' things. SLABP is the top of a free-standing pillar: a radio or a prize
+	' stands in front of the pillar, so leaving its cap up there hangs a grey
+	' stub over the fixture and that is what this routine exists to remove.
+	' SLABE and ROOFSE are written ONLY at column 0 and column 31 -- read
+	' beam_one, they are the two edge cases -- and there they are the
+	' BUILDING'S OUTSIDE WALL, carrying its brick bond up through the floor
+	' above. Clearing those took the support out from under the storey above
+	' at the very edge of the screen, so the second floor visibly rested on
+	' nothing.
+	'
+	' It could only ever show on the ESCALATOR screens, which is exactly how
+	' it was reported -- one side, then mirrored on the other. The flight
+	' fills the middle of an escalator band, so that screen's radio or prize
+	' is pushed right out against the end wall; on every other screen no
+	' fixture sits close enough for the two-cell clear at #bca and #bca+1 to
+	' reach column 0 or 31.
 beam_clear:
 	bcv = VPEEK(#bca)
 	IF bcv = CH_SLABP THEN
@@ -1812,14 +1830,6 @@ beam_clear:
 		VPOKE #bca,bcw
 	END IF
 	IF bcv = CH_ROOFSP THEN
-		bcw = CH_ROOFS
-		VPOKE #bca,bcw
-	END IF
-	IF bcv = CH_SLABE THEN
-		bcw = CH_SLAB
-		VPOKE #bca,bcw
-	END IF
-	IF bcv = CH_ROOFSE THEN
 		bcw = CH_ROOFS
 		VPOKE #bca,bcw
 	END IF

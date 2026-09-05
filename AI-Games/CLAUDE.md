@@ -294,6 +294,32 @@ cost a debugging session:
     from the source* — they have to be declared. **A check whose scope is narrower than the bug
     is worse than no check, because it reports success.**
 
+- **A ROUTINE THAT ERASES SCENERY WILL ERASE STRUCTURE TOO, AND THE SYMPTOM IS
+  A BUILDING THAT STANDS ON NOTHING.** Anything drawn on top of a tile map needs
+  a matching "take the fixture with it" pass -- pull down the pillar top, wipe
+  the rest of the counter -- and that pass matches on the CHARACTER CODE. If one
+  code is used for both a removable fixture and a permanent part of the world,
+  the erase hits both. Keystone Kapers' `beam_clear` cleared all four floor-bar
+  cap characters, two of which (`SLABE`, `ROOFSE`) are written only at column 0
+  and column 31 and are the **building's outside wall**: a radio placed beside
+  the wall silently deleted the second floor's support.
+  - **It presented as a bug in the DRAWING code, and it is not.** The report was
+    "only the escalator screens, and mirrored on the other side" -- a clean,
+    specific, structural-sounding clue. Four passes over the templates, the
+    beam-column table, the blit order and the head-cap columns all came back
+    correct, because they were: the damage was done *afterwards*, by a routine
+    whose entire job is removing things. **When every input to a drawing looks
+    right, stop re-reading the drawing code and enumerate what writes to those
+    cells LATER.**
+  - The screen-type correlation was real but indirect: the escalator flight
+    fills the middle of its band, so those screens are the only ones where a
+    fixture lands close enough for a two-cell clear to reach the edge column.
+    **A "this only happens on screens of type X" clue can point at where the
+    ACTORS end up, not at how type X is built.**
+  - Fix by making the distinction provable from the data: give permanent
+    structure its own character codes and never match them in an erase. Do not
+    guard on the coordinate -- the coordinate is a fact about this layout, the
+    code is a fact about what the cell means.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

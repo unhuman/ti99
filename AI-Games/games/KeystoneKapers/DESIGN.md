@@ -725,7 +725,15 @@ Three details that each took a pass to see:
 * **Row 1 used to be the parapet** -- a crenellated band of medium red across
   the whole screen. As a horizon above flat grey it read fine; above a lit
   skyline it reads as a **row of flames**. Removed, and the tallest buildings
-  take that row, so the city is three characters at its highest.
+  take that row instead.
+* **They take only HALF of it.** Row 1 may hold `BLDGQ` (2 px of wall) or
+  `BLDGM` (4 px) and nothing deeper, so the tallest building on the horizon is
+  **20 px -- two whole characters of wall plus half of a third**. The six steps
+  are 8, 11, 14, 16, 18 and 20 px. Letting row 1 carry a full-height top made
+  the city three characters tall, which crowds the roof the player is actually
+  running across: the horizon stops being a backdrop and starts competing with
+  the deck. `BLDGQ` and `BLDGM` are slices taken off the **bottom** of the
+  wall, so their courses and windows line up with `BLDGW` cell to cell.
 * **The building tops were exposed windows.** Both top characters put their
   windows in the first brick row, so every block was cut off through a row of
   lit windows and read as sliced rather than finished. One solid row at the top
@@ -761,6 +769,29 @@ and puts something solid against the bar.
 **The pillars are deliberately NOT aligned between floors.** Making them line
 up was tried and reverted: it is a different building, and it was not what the
 edge problem was about.
+
+**AND THEN A FIXTURE ERASED THE CAP AGAIN -- ONLY ON THE ESCALATOR SCREENS.**
+`beam_clear` exists to pull a beam top down when a radio or a prize stands
+where one would hang (6f, point 2), and it cleared **all four** cap characters.
+Two of those are not caps at all: `SLABE` and `ROOFSE` are written by
+`beam_tops` at column 0 and column 31 and nowhere else -- read the two edge
+tests -- and there they are the **building's outside wall**. Clearing them
+replaced the brickwork with a plain bar and the storey above stood on nothing
+at the extreme edge of the screen.
+
+It could only ever appear on an **escalator screen**, which is exactly how it
+was reported -- one side, then mirrored on the other. The flight fills the
+middle of an escalator band, so that screen's radio or prize is pushed right
+out against the end wall; on every other screen no fixture sits close enough
+for the two-cell clear at `#bca` and `#bca+1` to reach column 0 or 31. That is
+also why four rounds of reading the tables found nothing: **the templates, the
+beam-column table and the draw order were all correct**, and the damage was
+done afterwards by a routine whose whole purpose is to remove structure.
+
+`beam_clear` now handles `SLABP` and `ROOFSP` only. The distinction is
+provable rather than positional: a pillar cap is something a fixture may stand
+in front of, an end-wall cap is permanent structure, and the character code
+already says which is which.
 
 ### 6j. Hazards: one decision, made when the screen is drawn
 
