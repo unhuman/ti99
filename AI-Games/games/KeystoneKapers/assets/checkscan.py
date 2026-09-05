@@ -79,6 +79,9 @@ def run(rt, label, env, stop=None):
         ln = COMMENT.sub("", ln.rstrip())
         if not ln:
             continue
+        if ln.lstrip().startswith("SPRITE ") and stop:
+            stop("SPRITE", env)
+            continue
         m = GOSUB.match(ln)
         if m:
             if m.group(1) == "scan_base":
@@ -115,7 +118,11 @@ def main():
         if row < g.SCAN_TOP or row >= g.SCAN_TOP + 4 * BAND:
             colour.append(None)          # margin
         else:
-            colour.append((g.GRAY, g.BLACK, g.WHITE, g.LYELL)[
+            # THE TABLE ONLY HAS TWO ROLES NOW: three rows of a floor's
+            # air, and its yellow line. The Kop and the crook are coloured
+            # per CHARACTER at run time (scan_mark), which is what lets both
+            # of them be three pixels tall instead of one.
+            colour.append((g.GRAY, g.GRAY, g.GRAY, g.LYELL)[
                 (row - g.SCAN_TOP) % BAND])
 
     def check(what, row, want, lv):
@@ -152,7 +159,7 @@ def main():
             run(rt, label, {"fl": lv, "elvl": lv},
                 stop=lambda _n, e: rows.append(e.get("say")))
             for r in [r for r in rows if r is not None]:
-                check(label, r, "GRAY" if r == fbase else "BLACK", lv)
+                check(label, r, "GRAY", lv)
 
         # THE FLOOR LINE is the one thing scan_furn draws full width, so it
         # is found by its VPOKE rather than by matching `say = fbase + N`
@@ -169,28 +176,89 @@ def main():
                 floor = row
         check("floor line", floor, "LYELL", lv)
 
-    # the two dots, from scan_tick's own arithmetic
+    # THE TWO MARKERS ARE SPRITES, and what has to be checked about them is
+    # the one thing a sprite cannot get right by itself: WHERE it lands.
+    #
+    # There is no colour to check any more -- a sprite carries its own, so the
+    # merge that made Kelly blink cannot happen -- and no pixels to erase. What
+    # is still easy to get wrong is the row: the canvas is characters 8-23 of
+    # screen rows 21-23, so a marker's screen y is 168 + its canvas row, and it
+    # has to land in the three rows of a floor's AIR. Row 3 of a band is the
+    # yellow floor line and nothing may touch it.
     for lv in range(4):
-        rows = []
+        ys = []
+
+        def spr(n, e, ys=ys):
+            if n == "SPRITE":
+                ys.append(e.get("sdy"))
+
         run(rt, "scan_tick",
             {"klv": lv, "hlv": lv, "klsc": 0, "hsc": 0, "klx": 0, "hx": 0,
-             "say": 0, "elvl": lv},
-            stop=lambda n, e: rows.append(e.get("say")) if n == "scan_addr"
-            else None)
-        if len(rows) != 2:
-            bad.append("scan_tick plots %d dots, expected 2 (Kelly, Harry)"
-                       % len(rows))
+             "say": 0, "elvl": lv}, stop=spr)
+        if len(ys) != 2:
+            bad.append("scan_tick places %d radar sprites, expected 2 "
+                       "(the Kop and the crook)" % len(ys))
+            continue
+        for who, y in zip(("Kelly", "Harry"), ys):
+            if y is None:
+                bad.append("%s's marker on level %d: its screen y could not "
+                           "be resolved" % (who, lv))
+            elif not 168 <= y <= 191:
+                bad.append("%s's marker on level %d is at screen y %d, off "
+                           "the scanner's rows 168-191" % (who, lv, y))
+            else:
+                # it is three pixels tall, so the LAST row matters too
+                for k in range(3):
+                    check("%s's marker row %d" % (who, k),
+                          y - 168 + k, "GRAY", lv)
+
+    # THE THREE RUN-TIME COLOURS MUST ALL DIFFER FROM EACH OTHER. Two of
+    # them being equal is not a colour-table error -- the table is fine -- it
+    # is a marker that cannot be told from the furniture it stands on, or a
+    # Kop that cannot be told from the crook. That has happened here twice
+    # (a grey car drawn on a grey floor line), and neither time did any
+    # per-row check see it, because per-row is not where the fault was.
+    src = open(BAS, encoding="utf-8").read()
+    cols = {}
+    for name in ("SC_KOP",):
+        m = re.search(r"^\s*CONST %s = (\d+)" % name, src, re.M)
+        if not m:
+            bad.append("CONST %s is missing -- the markers have no colour" % name)
         else:
-            check("Kelly's dot", rows[0], "BLACK", lv)
-            check("Harry's dot", rows[1], "WHITE", lv)
+            cols[name] = int(m.group(1))
+    seen = {}
+    for name, v in sorted(cols.items()):
+        if v in seen:
+            bad.append("%s and %s are both %d, so one cannot be told from the "
+                       "other on screen" % (seen[v], name, v))
+        seen[v] = name
+    for name, v in sorted(cols.items()):
+        if (v & 15) != g.DGREEN:
+            bad.append("%s has background %d, not the canvas's dark green (%d)"
+                       % (name, v & 15, g.DGREEN))
+
+    # THE TWO SPRITE COLOURS MUST DIFFER FROM EACH OTHER. They are the only
+    # thing separating the Kop from the crook now that the blink is gone, and
+    # they are two bare integers sitting a long way apart in the source.
+    spr = {}
+    for name in ("C_RKOP", "C_RCROOK"):
+        m = re.search(r"^\s*CONST %s = (\d+)" % name, src, re.M)
+        if not m:
+            bad.append("CONST %s is missing -- a radar marker has no colour"
+                       % name)
+        else:
+            spr[name] = int(m.group(1))
+    if len(spr) == 2 and spr["C_RKOP"] == spr["C_RCROOK"]:
+        bad.append("C_RKOP and C_RCROOK are both %d, so the Kop and the crook "
+                   "are the same colour on the radar" % spr["C_RKOP"])
 
     if bad:
         for b in bad:
             print("FAIL: " + b)
         return 1
-    print("radar OK -- %d px margin top and bottom, 4 levels x %d px; "
-          "escalator heads and the car grey, Kelly black, Harry white, "
-          "floor lines yellow" % (g.SCAN_TOP, BAND))
+    print("radar OK -- %d px margin top and bottom, 4 levels x %d px; three "
+          "rows of grey air and a yellow line each, furniture in characters "
+          "and the two actors as sprites over it" % (g.SCAN_TOP, BAND))
     return 0
 
 

@@ -86,9 +86,9 @@
 	' KELLY DUCKED. It was 8 px, which is not a crouch -- it is a squash, with
 	' no room to draw a figure bending in a DIRECTION. 11 px is, and the
 	' biplane is raised to match (obh below, and the hitbox in coll_obst):
-	' with the plane at 12..18 an 11 px crouch clears it and a 24 px standing
-	' Kop does not. The apex is 14, so a jump still cannot clear it either --
-	' the plane stays the one obstacle that must be ducked.
+	' with the plane at 16..22 an 11 px crouch passes five pixels under it and
+	' a 24 px standing Kop does not. The apex is 14, so a jump still cannot
+	' clear it either -- the plane stays the one obstacle that must be ducked.
 	'
 	' AND 11 IS THE CEILING, not a preference. Duckable means the obstacle
 	' clears the crouch, jumpable means it clears under the apex; raising the
@@ -147,15 +147,29 @@
 	CONST P_HBODY = 72		' Harry RIGHT: cap + body, white
 	CONST P_HFACE = 76		'              face, skin
 	CONST P_HSTRIPE = 80		'              the stripes, cap to hem
-	CONST P_HFACING = 12		' add this for Harry's LEFT set
-	CONST P_HLEG1 = 96
-	CONST P_CART = 112
-	CONST P_BALL = 116
-	CONST P_RADIO = 120
-	CONST P_PLANE = 124
-	CONST P_PLANEL = 128
-	CONST P_PLANE2 = 132		' propeller phase 2, right / left
-	CONST P_PLANEL2 = 136
+	CONST P_HBODYB = 84		'              torso, arms the other way
+	' 16, NOT 12: the right-hand set grew a fourth entry when Harry got a
+	' second torso frame, so the left set starts four patterns further on.
+	' renumber.py rewrites every other P_ constant from genart's table but
+	' deliberately leaves this one alone -- it is an OFFSET between two
+	' groups, not a pattern number, and there is nothing in the table to
+	' look it up from. checkchars.py is what holds it honest.
+	CONST P_HFACING = 16		' add this for Harry's LEFT set
+	CONST P_HLEG1 = 104
+	CONST P_RADDOT = 132		' the radar marker, both actors
+	CONST C_RKOP = 1		' the Kop, black on the scanner
+	CONST C_RCROOK = 15		' the crook, white
+	CONST P_CART = 120
+	CONST P_BALL = 124
+	CONST P_RADIO = 128
+	CONST P_PLANE = 136
+	CONST P_PLANEL = 140
+	' THE PROPELLER IS ITS OWN SPRITE so it can be its own colour. Two
+	' phases, each facing: A is the near-solid disc, B the broken blades.
+	CONST P_PROPA = 144
+	CONST P_PROPAL = 148
+	CONST P_PROPB = 152
+	CONST P_PROPBL = 156
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -179,28 +193,50 @@
 	' THE ONE THING THAT KILLS GETS ITS OWN COLOUR. Everything else in the
 	' store costs nine seconds; the biplane costs a Kop, and a player has no
 	' way to learn that except by losing one. Red says it before they do.
-	' LIGHT GREEN, from gameplay video (DESIGN.md 0b) -- it was light red. The
-	' original's plane is DARK green with a light green propeller arc, which a
-	' one-colour TMS9918 sprite cannot do; see the note over PLANE_R in
-	' genart.py for why a second sprite is not affordable. Light green keeps
-	' the hue and keeps the killer visible.
-	CONST C_PLANE = 3
+	' YELLOW BODY OVER A BLACK DETAIL LAYER -- cockpit and spinning propeller.
+	' One TMS9918 sprite has one colour, so this takes two, and the second is
+	' affordable because of PRIORITY: it goes in a HIGH slot (16-23), and the
+	' VDP drops the highest-numbered sprites on an overfull scan line. So the
+	' thing that vanishes when Kelly, a plane and a high ball share a line is
+	' the detail -- cosmetic -- and never the plane the player must dodge.
+	'
+	' The body is HOLED where the cockpit goes. A lower slot number wins, so
+	' the black layer can only show through where the yellow has nothing.
+	CONST C_PLANE = 11		' yellow body
+	CONST C_PROP = 1		' black cockpit and propeller
 
 	' store chars
+	' THE FLIGHT'S COLOUR, as (fg << 4) | DGREEN. The colour table only knows
+	' ROWS, and a flight has to be black on a row whose base is grey, so
+	' scan_escc writes this into the flight's own character. It is the only
+	' run-time colour left -- the two actors are sprites and carry theirs.
+	CONST SC_KOP = 28		' black on dark green
 	CONST CH_SLAB = 96
-	CONST CH_ECAR = 100
-	CONST CH_EDOOR = 99
-	CONST CH_WALL = 142
-	CONST CH_KOPIC = 143
-	CONST CH_EDHALF = 148
-	CONST CH_SCANBK = 150		' blank black, the strip either side of the radar
-	CONST CH_BAG = 145
+	' THE VICTROLA IS FOUR CELLS. Its top-right cell has two versions and the
+	' sound marks live there, so the pulse is one VPOKE of a different
+	' CHARACTER CODE -- not a DEFINE CHAR, which in bitmap mode is LDIRVM3's
+	' triple copy (CLAUDE.md 3A) and would cost three times its size every
+	' time it blinked.
+	CONST CH_RADTL0 = 99
+	CONST CH_RADTL1 = 101
+	CONST CH_RADTR0 = 100
+	CONST CH_RADTR1 = 102
+	CONST CH_RADBL = 103
+	CONST CH_RADBR = 104
+	CONST CH_SLABP = 158		' the same bar with a beam under it
+	CONST CH_ECAR = 107
+	CONST CH_EDOOR = 106
+	CONST CH_WALL = 149
+	CONST CH_KOPIC = 150
+	CONST CH_EDHALF = 155
+	CONST CH_SCANBK = 157		' blank black, the strip either side of the radar
+	CONST CH_BAG = 152
 	' NAMED, because this was the literal 113 and the escalator rework
 	' renumbered the character table underneath it. 113 became EXITC, so
 	' the second collectible quietly drew an EXIT DOOR in the aisle -- a
 	' plausible-looking box, no error, and nothing to connect it to a
 	' change made somewhere else entirely.
-	CONST CH_CASE = 146
+	CONST CH_CASE = 153
 
 	' the elevator doorway, in pixels and columns
 	CONST ELXL = 112
@@ -251,8 +287,30 @@
 	CONST ESCHXE = 220		' east head
 	CONST ESCRISE = 40		' floor to floor, and the ride's length
 
-	CONST TIMEL = 50		' seconds per Krook
-	CONST HITPEN = 9		' seconds a cart / ball / radio costs
+	' TIMER UNITS PER KROOK, AND A UNIT IS NOT A SECOND. Measured off the
+	' reference video (DESIGN.md 0m): the original counts 50 down to 0 and a
+	' unit lasts 1.99 s, so a round is about 100 seconds. TICKFR below is
+	' what makes it so here.
+	CONST TIMEL = 50		' timer units per Krook
+	' FRAMES PER TIMER UNIT. 120, not 60, and this is not cosmetic -- it is
+	' what makes a round finishable. Everything that MOVES in this game is
+	' paced per loop PASS, and the loop runs about 25 passes a second, so
+	' Kelly's 4 px a pass is ~100 px/s (the reference's Kelly is 102, so the
+	' speeds match). The timer, though, is paced by the frame DELTA -- real
+	' wall-clock time. At 60 frames a unit the round was 50 real seconds
+	' while Kelly's route to the roof takes about 72, so the clock ran out
+	' before either of them could get there and every round ended on a
+	' timeout. checkchase.py hid it by assuming 60 passes a second; it now
+	' models the real rate.
+	CONST TICKFR = 120
+	' NINE TIMER UNITS -- not ten, and not nine seconds. Every source says a
+	' cart, ball or radio costs "9 seconds", and what they mean is the number
+	' on the HUD, because that is what the manual calls seconds. So the
+	' DISPLAYED count drops by 9. A unit is about two real seconds
+	' (DESIGN.md 0m), which makes one careless cart cost roughly eighteen --
+	' close to a fifth of the round, and the reason the refractory latch
+	' below matters so much.
+	CONST HITPEN = 9		' timer units a cart / ball / radio costs
 	CONST HITREF = 45		' frames before the SAME obstacle can charge
 					' again. See coll_obst -- clearing the latch
 					' on the first non-overlapping frame is not
@@ -285,6 +343,7 @@
 	DIM obd(8)			' 0 = moving left, 1 = right
 	DIM obs(8)			' speed
 	DIM obh(8)			' art-bottom height above the slab
+	DIM obc(8)			' cell column, radios only -- they are chars
 	DIM obp(8)			' bounce phase, balls only
 	DIM obht(8)			' hit refractory, per obstacle -- see coll_obst
 
@@ -320,6 +379,7 @@ main:
 					' usable parity.
 
 	GOSUB read_input
+	GOSUB radio_tick
 	GOSUB move_kelly
 	GOSUB upd_elev
 	GOSUB upd_obst
@@ -365,8 +425,8 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,55,store_pat
-	DEFINE COLOR 96,55,store_col
+	DEFINE CHAR 96,63,store_pat
+	DEFINE COLOR 96,63,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 
@@ -402,11 +462,12 @@ esc_deck_col:
 
 after_deck:
 	DEFINE SPRITE 0,18,spr_kelly	' 0..68  facing bands x2 + 4 run frames
-	DEFINE SPRITE 18,10,spr_harry	' 72..108
-	DEFINE SPRITE 28,1,spr_cart	' pattern 104
-	DEFINE SPRITE 29,1,spr_ball	' pattern 108
-	DEFINE SPRITE 30,1,spr_radio	' pattern 112
-	DEFINE SPRITE 31,4,spr_plane	' 116/120 right/left, 124/128 phase 2
+	DEFINE SPRITE 18,12,spr_harry	' 72..100, two torso frames each way
+	DEFINE SPRITE 30,1,spr_cart	' pattern 104
+	DEFINE SPRITE 31,1,spr_ball	' pattern 108
+	DEFINE SPRITE 32,1,spr_radio	' pattern 112
+	DEFINE SPRITE 33,1,spr_raddot	' the radar marker, both actors
+	DEFINE SPRITE 34,6,spr_plane	' body R/L, then prop A and B, R/L
 	RETURN
 
 init_tables:
@@ -477,6 +538,7 @@ init_tables:
 	#stob = VARPTR stor_ob(0)
 	#stco = VARPTR stor_co(0)
 	#stes = VARPTR stor_esc(0)
+	#stpl = VARPTR stor_pil(0)
 	#stac = VARPTR stor_arc(0)
 	#stcp = VARPTR esc_cap(0)
 	RETURN
@@ -617,12 +679,21 @@ title_wait:
 
 	' ------------------------------------------------------- 838 setup page
 setup838:
+	' THE DEFAULTS BELONG HERE TOO, not only in new_game. They were applied
+	' when a game STARTED, so a player who opened this page first -- which is
+	' the whole point of advertising it on the title -- was shown "KOPS 0"
+	' and "START LEVEL 00" and had to press 1 and 2 to get to numbers that
+	' meant anything. The page has to show the settings it is about to use.
+	IF kops0 = 0 THEN kops0 = 4
+	IF krk0 = 0 THEN krk0 = 1
 	CLS
 	PRINT AT 68,"SETUP"
 	PRINT AT 164,"1 KOPS"
-	PRINT AT 228,"2 START KROOK"
-	PRINT AT 356,"FIRE WHEN READY"
+	PRINT AT 228,"2 START LEVEL"
+	PRINT AT 292,"LEVEL 1-20 - HAZARDS ARRIVE"
+	PRINT AT 324,"AS IT RISES - SEE DESIGN 0P"
 	PRINT AT 420,"PRESS 1 OR 2 TO CHANGE"
+	PRINT AT 484,"FIRE WHEN READY"
 su_loop:
 	WAIT
 	GOSUB su_draw
@@ -718,6 +789,8 @@ start_krook:
 	hdir = 1
 	hst = 0
 	hsy = 0
+	hrun = 0
+	hrund = 0
 
 	elvl = 1			' the car starts where Harry does
 	elst = 0
@@ -725,7 +798,7 @@ start_krook:
 	eldn = 0
 
 	tsec = TIMEL
-	tfr = 60
+	tfr = TICKFR
 	tout = 0
 	dead = 0
 	caught = 0
@@ -740,17 +813,28 @@ start_krook:
 	' CHANGES: low balls have to be jumped, high ones cannot be jumped at
 	' all and have to be ducked, and the arc is capped below standing height
 	' so no ball is ever free to run under. See DESIGN.md 5a.
+	' TALL BALLS FROM KROOK 5, which is where the original swaps them in --
+	' "levels 1-4 short bouncing balls, level 5 tall" (DESIGN.md 0p). The
+	' third arc is ours, and it waits until 10.
 	arcs = 0
-	IF krk > 3 THEN arcs = 1
-	IF krk > 8 THEN arcs = 2
+	IF krk > 4 THEN arcs = 1
+	IF krk > 9 THEN arcs = 2
 	#arcb = #stac
 	IF arcs = 1 THEN #arcb = #arcb + 32
 	IF arcs = 2 THEN #arcb = #arcb + 64
 
-	' Obstacle speed rises with the Krook -- the one dial the manual names.
-	obsp = 1
-	IF krk > 4 THEN obsp = 2
-	IF krk > 9 THEN obsp = 3
+	' SPEED IS PER KIND, AND EACH RAMPS ON THE KROOK THE ORIGINAL RAMPS IT
+	' (DESIGN.md 0p): carts get faster at 7, biplanes at 8, and the ball's
+	' dial is its APEX, not its speed. The base of 2 is measured, not
+	' guessed -- carts were tracked in the reference at 0.80 px/frame
+	' (48 px/s) and 1.21 (73 px/s), which at this loop's ~25 passes a second
+	' is exactly 2 and 3 px per pass. So the two speeds the original uses are
+	' the two speeds that were on screen.
+	obsp = 2			' beach balls
+	ocsp = 2			' shopping carts
+	IF krk > 6 THEN ocsp = 3
+	opsp = 2			' biplanes
+	IF krk > 7 THEN opsp = 3
 
 	' HARRY'S SPEED IS IN QUARTER PIXELS, AND IT DOES NOT RAMP. It used to be
 	' 2 px/frame against Kelly's 3, which sounds like a comfortable 1.5x --
@@ -809,10 +893,48 @@ draw_screen:
 					' burst past a few dozen is silently
 					' dropped -- one band per frame
 	NEXT dlv
+	GOSUB beam_tops
 	GOSUB esc_cap_draw
 	GOSUB load_band
+	rdall = 1
+	GOSUB radio_draw
 	GOSUB draw_prizes
 	GOSUB draw_car
+	RETURN
+
+	' A SUPPORT BEAM HAS TO REACH THE FLOOR IT HOLDS UP, AND THAT FLOOR IS
+	' NOT IN ITS OWN BAND. A beam fills its band's four air rows, so its top
+	' pixel sits under the slab row of the band ABOVE -- and a slab row is
+	' five pixels of bar over three of green (see SLAB), so the beam stopped
+	' three pixels short of the bar on every storey. It read as a beam that
+	' misses the floor, which is exactly what it was.
+	'
+	' It cannot be drawn into either template. The beam belongs to the band
+	' below and the row belongs to the band above, and the two templates are
+	' chosen independently per screen, so no template knows both. So the
+	' band blits go down first and the tops are stamped afterwards, from a
+	' per-template column table -- the same shape as the escalator's head cap.
+	'
+	' Bands 0 and 1 only. Band 2's top row is the ROOF DECK, which is grey
+	' over grey with no green to bridge, and the roof itself has no band
+	' above it at all.
+beam_tops:
+	FOR bt = 0 TO 1
+		bti = lv8(bt)
+		bti = bti + klsc
+		#bta = #stix + bti
+		#btp = #stpl + PEEK(#bta) * 4.
+		#btr = #bdst(bt)
+		#btr = #btr + 6112		' 6144 - 32: the row ABOVE the band
+		FOR btj = 0 TO 3
+			btc = PEEK(#btp)
+			#btp = #btp + 1
+			IF btc > 0 THEN
+				#btw = #btr + btc
+				VPOKE #btw,CH_SLABP
+			END IF
+		NEXT btj
+	NEXT bt
 	RETURN
 
 	' THE HANDRAIL'S TOP TURN BELONGS TO THE FLOOR ABOVE. The staircase fills
@@ -893,12 +1015,46 @@ load_band:
 			#loa = #loa + 1
 			IF ls = 2 THEN GOTO ld_skip
 			li = lb + ls
-			' The second one arrives at Krook 2.
+			' THE HAZARDS ARRIVE ONE PER KROOK, which is the original's
+			' progression and not a ramp of one dial (DESIGN.md 0p):
+			'
+			'   1  short beach balls, and nothing else
+			'   2  + radios          5  balls go tall
+			'   3  + shopping carts  6  a second hazard per floor
+			'   4  + biplanes        7  carts faster   8+ planes faster
+			'
+			' A hazard that has not arrived yet becomes a BALL rather
+			' than nothing, so a floor is never empty and Krook 1 is
+			' the "short balls" screen the guides describe. This is
+			' also why there are no biplanes on Krook 1: the one thing
+			' that costs a whole Kop should not be the first thing a
+			' new player meets.
+			IF lk = OB_RADIO THEN
+				IF krk < 2 THEN lk = OB_BALL
+			END IF
+			IF lk = OB_CART THEN
+				IF krk < 3 THEN lk = OB_BALL
+			END IF
+			IF lk = OB_PLANE THEN
+				IF krk < 4 THEN lk = OB_BALL
+			END IF
+			' The second one per floor arrives at Krook 6 -- the
+			' original's "double radios" level.
 			IF ls = 1 THEN
-				IF krk < 2 THEN lk = 0
+				IF krk < 6 THEN lk = 0
 			END IF
 			obk(li) = lk
+			' A RADIO NEEDS A CELL, NOT A PIXEL, because it is drawn as
+			' characters. Divided by repeated subtraction: `/` compiles
+			' to a real TMS9900 DIV (CLAUDE.md 3A), and this runs once
+			' per screen where the divide would run per obstacle -- so
+			' the loop is the cheaper of the two, and the only one that
+			' cannot be got wrong by a rounding rule.
+			obc(li) = 0
+			' PER KIND, not one global speed (see start_krook).
 			obs(li) = obsp
+			IF lk = OB_CART THEN obs(li) = ocsp
+			IF lk = OB_PLANE THEN obs(li) = opsp
 			' THEY COME FROM THE FAR SIDE. Kelly walked into this screen
 			' from one edge, so the obstacles start at the OTHER edge and
 			' run toward him. Crossing a seam then always presents an
@@ -923,12 +1079,46 @@ load_band:
 			obh(li) = 0
 			obp(li) = lx AND 31
 			obht(li) = 0
-			IF lk = OB_PLANE THEN obh(li) = 12
-			IF lk = OB_RADIO THEN obs(li) = 0
+			IF lk = OB_PLANE THEN obh(li) = 16
+			IF lk = OB_RADIO THEN
+				obs(li) = 0
+				' PLACED, NOT STAGGERED. A radio does not move, so
+				' the oncoming-stream stagger the rolling hazards
+				' use says nothing about it -- it just puts a
+				' fixture at an arbitrary offset. The original
+				' CENTRES a lone one and SPLITS a pair
+				' symmetrically about the centre; measured off the
+				' reference, two sit at 0.26 and 0.68 of the
+				' screen (midpoint 0.47) and one sits near the
+				' middle. 56 and 184 put their centres at 64 and
+				' 192, whose midpoint is 128 -- dead centre -- and
+				' all three are multiples of 8, so each lands on a
+				' cell boundary with no rounding.
+				obx(li) = 120
+				IF krk > 5 THEN
+					obx(li) = 56
+					IF ls = 1 THEN obx(li) = 184
+				END IF
+				ocx = obx(li)
+				GOSUB rad_col
+				obc(li) = ocn
+			END IF
 ld_skip:
 		NEXT ls
 	NEXT llv
 	RETURN
+
+	' obx / 8, by repeated subtraction. `/` compiles to a real TMS9900 DIV
+	' (CLAUDE.md 3A) and this is the only place the game needs one; at most
+	' thirty passes, run once per obstacle when a screen loads and never in a
+	' frame, so the loop is cheaper than the instruction.
+rad_col:
+	ocn = 0
+rc_loop:
+	IF ocx < 8 THEN RETURN
+	ocx = ocx - 8
+	ocn = ocn + 1
+	GOTO rc_loop
 
 	' ------------------------------------------------- collectibles as CHARS
 	' Not sprites: a band already carries Kelly plus three obstacles, which is
@@ -1324,7 +1514,6 @@ esc_ride:
 	esxr = esd			' esd is already 0 west / 1 east
 	klx = 99 - esy0 - esy0
 	IF esd = 1 THEN klx = 140 + esy0 + esy0
-	sfe = 1
 	RETURN
 
 	' ------------------------------------------------------------- elevator
@@ -1382,6 +1571,65 @@ upd_elev:
 	elst = 0
 	elt = ELWAIT
 	IF klsc = 3 THEN GOSUB draw_car
+	RETURN
+
+	' THE VICTROLA, AS CHARACTERS. It never moves, so a sprite spent a
+	' scan-line slot on something that can be painted once when the screen is
+	' drawn -- and at one 16x16 sprite it could only ever be one colour and
+	' one size. Four cells is twice the area for no sprite at all.
+	'
+	' It stands ON the slab, so it fills the band's rows 2 and 3; row 4 is
+	' the floor bar itself and draw_prizes uses row 3 for a collectible,
+	' which is why the two never share a screen (genstore keeps prizes off
+	' the screens that carry hazards).
+	'
+	' rdall = 1 paints all four cells, 0 repaints only the top-right one --
+	' the pulse. Same address arithmetic either way, so the two cannot drift.
+radio_draw:
+	FOR ri = 0 TO 7
+		IF obk(ri) = OB_RADIO THEN
+			rbn = 0
+			IF ri > 1 THEN rbn = 1
+			IF ri > 3 THEN rbn = 2
+			IF ri > 5 THEN rbn = 3
+			#rva = 6144
+			#rva = #rva + #bdst(rbn)
+			#rva = #rva + 64		' band row 2
+			#rva = #rva + obc(ri)
+			' BOTH top cells carry the pulse now -- the sound comes
+			' out of the crown, so it is symmetric about it.
+			rch = CH_RADTL0
+			IF rphs = 1 THEN rch = CH_RADTL1
+			VPOKE #rva,rch
+			#rvb = #rva + 1
+			rch = CH_RADTR0
+			IF rphs = 1 THEN rch = CH_RADTR1
+			VPOKE #rvb,rch
+			IF rdall = 1 THEN
+				#rvb = #rva + 32
+				rch = CH_RADBL
+				VPOKE #rvb,rch
+				#rvb = #rvb + 1
+				rch = CH_RADBR
+				VPOKE #rvb,rch
+			END IF
+		END IF
+	NEXT ri
+	RETURN
+
+	' THE SOUND PULSE. Driven off fphs, which already ticks once per pass and
+	' is immune to the frame delta, and repainted only when the phase BIT
+	' actually flips -- otherwise this would be eight VDP writes every pass
+	' for a picture that had not changed (CLAUDE.md 3A: bursts past a few
+	' dozen a frame are silently dropped).
+radio_tick:
+	rnow = 0
+	IF fphs AND 8 THEN rnow = 1
+	IF rnow <> rphs THEN
+		rphs = rnow
+		rdall = 0
+		GOSUB radio_draw
+	END IF
 	RETURN
 
 	' ======================================================================
@@ -1442,6 +1690,39 @@ move_harry:
 			hlv = hlv + 1
 			hst = 0
 			IF hesd = 0 THEN hx = ESCHX ELSE hx = ESCHXE
+		END IF
+		RETURN
+	END IF
+
+	' GOING DOWN, WHICH KELLY CANNOT DO. An escalator only ever carries you
+	' up, so the flight whose TOP lands on this floor is a one-way exit that
+	' belongs to the crook alone -- he steps on at the head and rides it the
+	' wrong way. Same fixed step per pass as the climb, and the same reason:
+	' the steps are the clock (0f).
+	IF hst = 2 THEN
+		IF hsy < hson THEN hsy = hsy + 1
+		hsy = hsy + 1
+		IF hesd = 0 THEN hx = hx + 2 ELSE hx = hx - 2
+		IF hsy >= ESCRISE THEN
+			hlv = hlv - 1
+			hst = 0
+			hsy = 0
+			IF hesd = 0 THEN hx = ESCFX ELSE hx = ESCFXE
+			' AND HE KEEPS GOING. A flight's foot IS its boarding
+			' point, so landing there put him back on the step he had
+			' just ridden down -- next pass he stepped on and climbed
+			' straight into the Kop who had chased him off it. The
+			' escape was a loop with a free catch at the end.
+			'
+			' So he runs for the far end and will not board anything
+			' while he does. Away from the flight is also away from
+			' the Kop, who is still up on the floor above and has to
+			' come down after him. It is a FLAG, not a count -- see
+			' the two things that clear it, both of which the player
+			' can see happen.
+			hrun = 1
+			hrund = 1
+			IF hesd = 1 THEN hrund = 0
 		END IF
 		RETURN
 	END IF
@@ -1528,6 +1809,42 @@ move_harry:
 	' exactly and cannot be used: Kelly's route here is 1.95x Harry's, so a
 	' speed ratio of 2.0 leaves the on-foot chase 0.2 s of slack, which is no
 	' chase at all. checkchase.py holds the line.
+	' STILL RUNNING FROM THE STAIRS -- and this has to come BEFORE the move,
+	' not after it. It sat below the two `IF hmv` blocks, where all it could
+	' still reach was the animation counter: he faced the right way, played
+	' the run cycle and did not travel a pixel. He stood at the foot of the
+	' flight looking busy.
+	'
+	' TWO THINGS END THE RUN, AND BOTH ARE VISIBLE ON SCREEN.
+	'
+	' THE KOP ARRIVING ON THIS FLOOR OUTRANKS IT. This used to override the
+	' flee as well as the climb, so for the whole of the run he held one
+	' heading no matter where Kelly was -- and ran straight into him without
+	' appearing to notice he was there. The flee above has already worked out
+	' which way is away; clearing the run simply lets it stand.
+	'
+	' AND REACHING THE END WALL ENDS IT. It used to be a count of passes,
+	' which expired somewhere in the middle of a floor and turned him round
+	' for no reason the player could see. Running until the wall means every
+	' change of direction has something on screen behind it.
+	IF hrun > 0 THEN
+		IF hlv = klv THEN
+			hrun = 0
+		ELSE
+			hmv = 1
+			IF hrund = 0 THEN hmv = 2
+			IF hrund = 1 THEN
+				IF hsc = 7 THEN
+					IF hx >= XWALL THEN hrun = 0
+				END IF
+			ELSE
+				IF hsc = 0 THEN
+					IF hx <= XWALW THEN hrun = 0
+				END IF
+			END IF
+		END IF
+	END IF
+
 	hacc = hacc + hsp4
 	hspd = 0
 	IF hacc > 3 THEN
@@ -1576,6 +1893,22 @@ move_harry:
 	END IF
 	IF hmv > 0 THEN hanim = hanim + fdv
 
+	' CORNERED, HE DROPS A FLOOR. Running him into an end wall used to be the
+	' end of it -- the chase always finished in the same corner, and a crook
+	' with nowhere left to go is not much of a chase. The flight coming UP to
+	' this floor lands at one of the two ends, and he can ride it back down;
+	' Kelly cannot follow, because an escalator only goes up.
+	'
+	' Only while FLEEING. Left alone he is climbing, and a crook who rode
+	' down every stairhead he passed would never reach the roof at all.
+	IF hlv > 0 THEN
+		IF hlv = klv THEN
+			IF hst = 0 THEN
+				GOSUB harry_down
+			END IF
+		END IF
+	END IF
+
 	' arrived: board, or go over the edge
 	IF hsc = htsc THEN
 		hdx = hx - htx
@@ -1584,6 +1917,11 @@ move_harry:
 			IF hlv = 3 THEN
 				escapd = 1
 			ELSE
+				' not while he is still clearing the stairs --
+				' see the note over hrun above. The roof escape
+				' is deliberately NOT guarded: that is the round
+				' ending, not a boarding.
+				IF hrun > 0 THEN RETURN
 				' ON THE BOTTOM STEP, not wherever he happened to
 				' stop. He walks to within 6 px of the foot, which
 				' is not close enough to stand on a tread.
@@ -1600,6 +1938,29 @@ move_harry:
 			END IF
 		END IF
 	END IF
+	RETURN
+
+	' Is he standing at the head of the flight that comes UP to his floor?
+	' That flight belongs to the floor BELOW, so its side is read one entry
+	' back down the table, and 255 there means that floor has none.
+harry_down:
+	#hda = #stes + hlv
+	#hda = #hda - 1
+	hdsd = PEEK(#hda)
+	IF hdsd > 1 THEN RETURN
+	hdsc = 0
+	IF hdsd = 1 THEN hdsc = 7
+	IF hsc <> hdsc THEN RETURN
+	hdtx = ESCHX
+	IF hdsd = 1 THEN hdtx = ESCHXE
+	IF hx > hdtx THEN hddx = hx - hdtx ELSE hddx = hdtx - hx
+	IF hddx > 10 THEN RETURN
+	hesd = hdsd
+	hst = 2
+	hsy = 0
+	hson = 8
+	hson = hson + escp
+	hson = hson + escp
 	RETURN
 
 	' ======================================================================
@@ -1657,11 +2018,16 @@ coll_obst:
 					oht = ohb + 4
 				END IF
 				IF ck = OB_PLANE THEN
-					' raised so an 11 px crouch clears it and
-					' still inside the 14 px apex plus a 24 px
-					' Kop, so it stays unjumpable
-					ohb = 12
-					oht = 18
+					' FIVE PIXELS OF DAYLIGHT OVER THE CROUCH,
+					' not one. At 12 the plane cleared an 11 px
+					' crouch by a single pixel, so a duck that
+					' plainly worked still looked like a squeak
+					' and a duck a frame late was a hit. 16 is
+					' as high as it can go and still catch a
+					' 24 px standing Kop, and 14 (the apex) is
+					' under it, so it stays unjumpable.
+					ohb = 16
+					oht = 22
 				END IF
 				IF kfh < oht THEN
 					IF ohb < ktop THEN chit = 1
@@ -1692,9 +2058,20 @@ do_hit:
 	IF tsec > HITPEN THEN tsec = tsec - HITPEN ELSE tsec = 0
 	IF tsec = 0 THEN tout = 1
 	knock = 20
-	klst = ST_RUN
-	kjf = 0
-	kjh = 0
+	' A HIT DOES NOT END A JUMP. This used to force ST_RUN and zero the arc,
+	' which dropped him straight down out of mid-air onto whatever he happened
+	' to be over -- and since the arc is ballistic and ignores the stick once
+	' he is airborne (0l), that read as the game taking the controls away
+	' rather than as a hit landing. The penalty is the nine units and the
+	' knock flash; where he comes down is still his own arc.
+	'
+	' A ducking Kop is still stood up, because the crouch is a held pose and
+	' there is nothing to interrupt.
+	IF klst <> ST_JUMP THEN
+		klst = ST_RUN
+		kjf = 0
+		kjh = 0
+	END IF
 	sfh = 1
 	GOSUB hud_time
 	RETURN
@@ -1729,9 +2106,18 @@ coll_prize:
 coll_harry:
 	IF hlv <> klv THEN RETURN
 	IF hsc <> klsc THEN RETURN
-	kcx = klx + 8
-	hcx = hx + 8
-	IF kcx > hcx THEN hdd = kcx - hcx ELSE hdd = hcx - kcx
+	' NO +8 ON EITHER SIDE, AND THAT IS THE FIX RATHER THAN A TIDY-UP. Both
+	' centres are the left edge plus eight, so the eight cancels in the
+	' difference -- but adding it first OVERFLOWED THE BYTE. Harry walks to
+	' x 253 before he crosses a seam, and 253 + 8 wraps to 5, so a Kop
+	' standing at the far LEFT of the screen measured five pixels to a crook
+	' walking off the far RIGHT and arrested him across the whole store.
+	'
+	' Nothing warned: both are plain 8-bit variables, the wrap is silent, and
+	' the catch it produces looks like a generous hitbox rather than like
+	' arithmetic. The obstacle test has the same shape but cannot reach it --
+	' obx tops out at 240 and klx at XWALL, so neither sum passes 255.
+	IF klx > hx THEN hdd = klx - hx ELSE hdd = hx - klx
 	IF hdd < CATCHR THEN caught = 1
 	RETURN
 
@@ -1862,12 +2248,19 @@ draw_actors:
 	IF hst = 1 THEN
 		hy = hy - hsy
 	END IF
+	IF hst = 2 THEN
+		hy = hy + hsy		' going the other way down the same flight
+	END IF
 	' Same four-frame cycle and the same shared legs as Kelly -- see the note
 	' over his, and the constants.
 	hq = P_HLEG1
 	IF hanim AND 8 THEN hq = hq + 4
 	IF hanim AND 16 THEN hq = hq + 8
+	' HIS ARMS SWING, on the same bit of the animation counter that picks the
+	' legs -- so the arm that is forward is the one opposite the leading leg,
+	' which is what running looks like.
 	hp = P_HBODY
+	IF hanim AND 8 THEN hp = P_HBODYB
 	hf = P_HFACE
 	hs = P_HSTRIPE
 	IF hdir = 0 THEN
@@ -1902,6 +2295,7 @@ draw_actors:
 	FOR di = 0 TO 7
 		dk = obk(di)
 		ds = di + 8			' 0-3 Kelly; 4-7 Harry
+		ds8 = ds + 8			' 16-23: propellers, lowest priority
 		dbn = 0
 		IF di > 1 THEN dbn = 1
 		IF di > 3 THEN dbn = 2
@@ -1914,8 +2308,14 @@ draw_actors:
 		' collision -- both, because a hidden sprite that can still hit you
 		' is the worst version of this.
 		IF dbn = hlv THEN dk = 0
+		' THE RADIO IS NOT A SPRITE ANY MORE -- it is four characters,
+		' stamped by draw_radios after the band blit. Zeroing the local
+		' copy hides both its slots; obk() is untouched, so coll_obst
+		' still sees it and it still costs nine seconds.
+		IF dk = OB_RADIO THEN dk = 0
 		IF dk = 0 THEN
 			SPRITE ds,SPRHID,0,0,0
+			SPRITE ds8,SPRHID,0,0,0
 		ELSE
 			dy = flry(dbn)
 			dy = dy - 16
@@ -1923,31 +2323,39 @@ draw_actors:
 			dp = P_CART
 			dc = C_CART
 			IF dk = OB_BALL THEN dp = P_BALL : dc = C_BALL
-			IF dk = OB_RADIO THEN dp = P_RADIO : dc = C_RADIO
+			dpr = 0
 			IF dk = OB_PLANE THEN
-				' THE PROP SPINS. A static arc reads as a decal
-				' painted on the nose; two frames alternating
-				' between a broken arc and a solid disc is what
-				' makes it a toy that is flying at you. fphs is
-				' the existing flash phase -- it ticks once per
-				' pass and is already immune to the frame delta.
+				' THE PROP SPINS, in its own colour and its own
+				' sprite. A static arc reads as a decal painted
+				' on the nose; two phases alternating between a
+				' near-solid disc and broken blades is what makes
+				' it a toy that is flying at you. fphs is the
+				' existing flash phase -- it ticks once per pass
+				' and is already immune to the frame delta.
 				IF obd(di) = 0 THEN
 					dp = P_PLANEL
-					IF fphs AND 4 THEN dp = P_PLANEL2
+					dpr = P_PROPAL
+					IF fphs AND 4 THEN dpr = P_PROPBL
 				ELSE
 					dp = P_PLANE
-					IF fphs AND 4 THEN dp = P_PLANE2
+					dpr = P_PROPA
+					IF fphs AND 4 THEN dpr = P_PROPB
 				END IF
 				dc = C_PLANE
 			END IF
 			dxx = obx(di)
 			SPRITE ds,dy,dxx,dp,dc
+			IF dpr > 0 THEN
+				SPRITE ds8,dy,dxx,dpr,C_PROP
+			ELSE
+				SPRITE ds8,SPRHID,0,0,0
+			END IF
 		END IF
 	NEXT di
 	RETURN
 
 hide_all:
-	FOR hi = 0 TO 15
+	FOR hi = 0 TO 25
 		SPRITE hi,SPRHID,0,0,0
 	NEXT hi
 	RETURN
@@ -2022,15 +2430,15 @@ esc_tick:
 	' The handrail and the frame sit past the end of both ranges and never
 	' move at all.
 	IF klsc = 0 THEN
-		IF escp = 0 THEN DEFINE CHAR 101,6,esc_phw0
-		IF escp = 1 THEN DEFINE CHAR 101,6,esc_phw1
-		IF escp = 2 THEN DEFINE CHAR 101,6,esc_phw2
-		IF escp = 3 THEN DEFINE CHAR 101,6,esc_phw3
+		IF escp = 0 THEN DEFINE CHAR 108,6,esc_phw0
+		IF escp = 1 THEN DEFINE CHAR 108,6,esc_phw1
+		IF escp = 2 THEN DEFINE CHAR 108,6,esc_phw2
+		IF escp = 3 THEN DEFINE CHAR 108,6,esc_phw3
 	ELSE
-		IF escp = 0 THEN DEFINE CHAR 107,6,esc_phe0
-		IF escp = 1 THEN DEFINE CHAR 107,6,esc_phe1
-		IF escp = 2 THEN DEFINE CHAR 107,6,esc_phe2
-		IF escp = 3 THEN DEFINE CHAR 107,6,esc_phe3
+		IF escp = 0 THEN DEFINE CHAR 114,6,esc_phe0
+		IF escp = 1 THEN DEFINE CHAR 114,6,esc_phe1
+		IF escp = 2 THEN DEFINE CHAR 114,6,esc_phe2
+		IF escp = 3 THEN DEFINE CHAR 114,6,esc_phe3
 	END IF
 	RETURN
 
@@ -2084,16 +2492,21 @@ scan_canvas:
 	' exactly one colour here:
 	'
 	'   +0  GREY    escalator head, and the elevator car
-	'   +1  BLACK   Kelly -- and the escalator's FOOT, which the manual
-	'               draws black anyway, so the diagonal spans both rows
-	'   +2  WHITE   Harry
-	'   +3  YELLOW  the floor line
+	'   +1  GREY    the air of that floor
+	'   +2  GREY
+	'   +3  YELLOW  the floor line -- and NOTHING else goes here
 	'
-	' Four is the floor: the Kop, the crook, the furniture and the floor
-	' lines are four different colours and none of them can share. Shrinking
-	' from six bought eight empty pixel rows, four above the instrument and
-	' four below, so it no longer butts against the shop floor above it or
-	' the bottom of the screen.
+	' THE FIRST THREE ROWS ARE THE FLOOR'S AIR AND EVERYTHING LIVES IN THEM:
+	' the escalator's three-step diagonal, the lift car, and both actors, all
+	' three pixels tall. They are grey in the table, and the Kop and the
+	' crook recolour their own CHARACTER as they move (scan_mark) -- which is
+	' what lets both of them fill the band instead of getting a pixel row
+	' each. Eight pixels of this canvas is half a screen of the store, so
+	' they are almost never in one character; when they are, they merge.
+	'
+	' Shrinking from six rows bought eight empty pixel rows, four above the
+	' instrument and four below, so it no longer butts against the shop floor
+	' above it or the bottom of the screen.
 	'
 	' The dots are erased by ANDing their bits out, so anything sharing a row
 	' with one is rubbed away wherever an actor has passed -- which is why
@@ -2117,14 +2530,21 @@ scan_furn:
 			' so a west escalator reads as climbing to the left and
 			' an east one to the right -- which is the thing you
 			' actually need to know when deciding which way to run.
+			' THREE STEPS, one per row of the band's air. Two pixels on each
+			' of two rows was a lean nobody could read at this size; three
+			' rows of two, each two pixels further along, is a diagonal. It
+			' stops at band row 2 -- row 3 is the floor line and nothing
+			' may touch that.
 			IF fes = 0 THEN
 				sccol = 0
-				fm1 = 192		' x 0-1, head (upper row)
-				fm2 = 48		' x 2-3, foot (lower row)
+				fm1 = 192		' x 0-1, head (top row)
+				fm2 = 48		' x 2-3
+				fm3 = 12		' x 4-5, foot
 			ELSE
 				sccol = 15
 				fm1 = 3			' x 126-127, head
-				fm2 = 12		' x 124-125, foot
+				fm2 = 12		' x 124-125
+				fm3 = 48		' x 122-123, foot
 			END IF
 			say = fbase
 			GOSUB scan_pat
@@ -2132,6 +2552,10 @@ scan_furn:
 			say = fbase + 1
 			GOSUB scan_pat
 			fm1 = fm2
+			GOSUB scan_or1
+			say = fbase + 2
+			GOSUB scan_pat
+			fm1 = fm3
 			GOSUB scan_or1
 		END IF
 		WAIT
@@ -2151,23 +2575,52 @@ scan_escs:
 		' on the upper row and the FOOT on the lower, so a west escalator
 		' reads as climbing to the left and an east one to the right --
 		' which is what you need when deciding which way to run.
+		' THREE STEPS, one per row of the band's air. Two pixels on each
+		' of two rows was a lean nobody could read at this size; three
+		' rows of two, each two pixels further along, is a diagonal. It
+		' stops at band row 2 -- row 3 is the floor line and nothing
+		' may touch that.
 		IF fes = 0 THEN
 			sccol = 0
-			fm1 = 192		' x 0-1, head (upper row)
-			fm2 = 48		' x 2-3, foot (lower row)
+			fm1 = 192		' x 0-1, head (top row)
+			fm2 = 48		' x 2-3
+			fm3 = 12		' x 4-5, foot
 		ELSE
 			sccol = 15
 			fm1 = 3			' x 126-127, head
-			fm2 = 12		' x 124-125, foot
+			fm2 = 12		' x 124-125
+			fm3 = 48		' x 122-123, foot
 		END IF
 		say = fbase
 		GOSUB scan_pat
 		GOSUB scan_or1
+		GOSUB scan_escc
 		say = fbase + 1
 		GOSUB scan_pat
 		fm1 = fm2
 		GOSUB scan_or1
+		GOSUB scan_escc
+		say = fbase + 2
+		GOSUB scan_pat
+		fm1 = fm3
+		GOSUB scan_or1
+		GOSUB scan_escc
 	NEXT fl
+	RETURN
+
+	' THE FLIGHT IS BLACK, and it has to be written per character because the
+	' colour table only knows rows -- the same reason the two actors carry
+	' their own colour (scan_mark).
+	'
+	' This runs BEFORE the markers every tick, which is the whole ordering
+	' the radar needs: the lift car is painted first and the flights next, so
+	' a Kop or a crook standing on either of them paints over it. Nothing
+	' moves aside to make room -- the pixels are simply ORed together and the
+	' last colour written wins, so an actor in the lift shaft shows as an
+	' actor rather than shifting anywhere.
+scan_escc:
+	#sdx = #sda + 8192
+	VPOKE #sdx,SC_KOP
 	RETURN
 
 	' THE ELEVATOR MARKER TRACKS THE CAR, which is the whole point of it. It
@@ -2183,17 +2636,31 @@ scan_escs:
 	' without needing the height.
 scan_elev:
 	IF selo = 1 THEN
-		#sda = #sela
 		sdm = 248
+		#sda = #sela
+		GOSUB scan_clr1
+		#sda = #selb
+		GOSUB scan_clr1
+		#sda = #selc
 		GOSUB scan_clr1
 	END IF
 	fl = elvl
 	GOSUB scan_base
 	sccol = 7
 	fm1 = 248				' x 56-60
+	' THREE ROWS, like everything else in the band. One row made the car a
+	' hairline that vanished the moment a marker went past it.
 	say = fbase
 	GOSUB scan_pat
 	#sela = #sda
+	GOSUB scan_or1
+	say = fbase + 1
+	GOSUB scan_pat
+	#selb = #sda
+	GOSUB scan_or1
+	say = fbase + 2
+	GOSUB scan_pat
+	#selc = #sda
 	GOSUB scan_or1
 	selo = 1
 	RETURN
@@ -2263,28 +2730,29 @@ scan_tick:
 	IF sct < 6 THEN RETURN
 	sct = 0
 
-	' -- erase both old dots
-	' Erase with the mask each dot was DRAWN with, not whatever sdm happens
-	' to hold now. Using the current mask clears a bit the dot never set and
-	' leaves the real one lit, so the scanner slowly fills with a trail of
-	' stale dots -- which reads as the radar being broken rather than as an
-	' off-by-one in a variable.
-	IF sold = 1 THEN
-		#sda = #skoa
-		sdm = skom
-		GOSUB scan_clr
-		#sda = #shoa
-		sdm = shom
-		GOSUB scan_clr
-	END IF
-	' THE DOTS NOW FILL THE BAND, so they sit on top of the furniture rather
-	' than beside it, and erasing one takes a bite out of whatever it was
-	' standing on. Putting the escalators and the car back every tick is far
-	' cheaper than tracking which pixels belonged to whom.
-	GOSUB scan_escs
+	' THE TWO ACTORS ARE SPRITES; EVERYTHING ELSE IS CHARACTERS.
+	'
+	' That split is what makes the instrument simple. The floor lines, the
+	' flights and the lift car do not move relative to the canvas, so they
+	' are pixels in the scanner's own characters and cost nothing to keep.
+	' The Kop and the crook DO move, and as sprites they need no colour
+	' table, no erase and no priority arithmetic -- they draw over the
+	' furniture because sprites always do, and nothing shifts to make room.
+	'
+	' IT ALSO REMOVED THE BLINK. Kelly flashed because a pixel row of this
+	' canvas can only carry one colour, so at close range the two markers
+	' merged and the blink was the only thing left to tell them apart. Two
+	' sprites are two colours wherever they stand.
+	'
+	' The furniture is drawn ONCE, by scan_furn. It used to be redrawn every
+	' tick because erasing a character-based marker ANDed bits out of
+	' whatever it was standing on; there is nothing left to rub it away. The
+	' car still redraws itself, because the car actually moves.
 	GOSUB scan_elev
 
-	' -- Kelly. dotx 0..127 across the store, doty 0..23 down it.
+	' -- Kelly. dotx 0..127 across the store, doty 0..23 down it; the canvas
+	' is characters 8-23 of rows 21-23, so screen x is 64 + dotx and screen y
+	' is 168 + doty.
 	sax = klsc
 	sax = sax + sax
 	sax = sax + sax
@@ -2295,21 +2763,17 @@ scan_tick:
 	say = 3 - klv
 	say = say + say
 	say = say + say				' (3-lv) * 4
-	say = say + 5				' the 4 px top margin, then row +1:
-						' KELLY IS ROW +1 AND HARRY IS ROW +2, and
-						' they cannot share one: a pixel row carries
-						' exactly one colour, and the whole point is
-						' that the Kop reads black and the crook
-						' white. One row each, three pixels wide.
-	GOSUB scan_addr
-	#skoa = #sda
-	skom = sdm
-	' Kelly BLINKS -- that is what tells him from Harry with one colour
-	IF fphs AND 16 THEN
-		GOSUB scan_set
-	END IF
+	say = say + 4				' the top margin, then band row 0.
+						' Rows 0-2 are that floor's air; row 3
+						' is the yellow line and the marker
+						' must not touch it.
+	sdx = 64
+	sdx = sdx + sax
+	sdy = 168
+	sdy = sdy + say
+	SPRITE 24,sdy,sdx,P_RADDOT,C_RKOP
 
-	' -- Harry
+	' -- Harry, the same three rows in the other colour
 	sax = hsc
 	sax = sax + sax
 	sax = sax + sax
@@ -2320,56 +2784,12 @@ scan_tick:
 	say = 3 - hlv
 	say = say + say
 	say = say + say
-	say = say + 6				' margin + row +2
-	GOSUB scan_addr
-	#shoa = #sda
-	shom = sdm
-	GOSUB scan_set
-	sold = 1
-	RETURN
-
-	' (sax 0..127, say 0..23) -> pattern address #sda + bit mask sdm
-scan_addr:
-	sccol = sax / 8
-	scrow = say / 8
-	scpr = say AND 7
-	sc3 = 160
-	IF scrow = 1 THEN sc3 = 176
-	IF scrow = 2 THEN sc3 = 192
-	sc3 = sc3 + sccol
-	#sda = 4096
-	#sda = #sda + sc3 * 8.
-	#sda = #sda + scpr
-	' TWO PIXELS WIDE, AND NOTE THE `7 -`. In a pattern byte 0x80 is the
-	' LEFTMOST pixel, so an x offset has to be subtracted from 7 rather than
-	' used as the shift directly. It was used directly, which MIRRORED every
-	' dot inside its own character -- a silent error of up to 7 px that reads
-	' as the radar being approximate rather than as being wrong.
-	' THREE pixels wide now, not two: the dot lost a row when the furniture
-	' took two, so it gets the ink back sideways.
-	sbx = sax AND 7
-	IF sbx > 5 THEN sbx = 5
-	sdm = msk(7 - sbx)
-	sdm = sdm + msk(6 - sbx)
-	sdm = sdm + msk(5 - sbx)
-	RETURN
-
-	' ONE ROW EACH. Kelly is band row +1 and Harry +2, because a pixel row
-	' carries exactly one colour and the two have to be told apart by colour
-	' -- black Kop, white crook -- rather than by blinking. One pixel on a
-	' 128x24 canvas is a speck rather than a marker, so what the dot cannot
-	' have in height it takes in width: three pixels across.
-scan_set:
-	sva = VPEEK(#sda)
-	sva = sva OR sdm
-	VPOKE #sda,sva
-	RETURN
-
-scan_clr:
-	svn = NOT sdm
-	sva = VPEEK(#sda)
-	sva = sva AND svn
-	VPOKE #sda,sva
+	say = say + 4
+	sdx = 64
+	sdx = sdx + sax
+	sdy = 168
+	sdy = sdy + say
+	SPRITE 25,sdy,sdx,P_RADDOT,C_RCROOK
 	RETURN
 
 	' ======================================================================
@@ -2462,7 +2882,7 @@ tick_timer:
 	IF tfr > fdv THEN
 		tfr = tfr - fdv
 	ELSE
-		tfr = tfr + 60
+		tfr = tfr + TICKFR
 		tfr = tfr - fdv
 		IF tsec = 0 THEN
 			tout = 1
@@ -2501,43 +2921,76 @@ tick_flash:
 	' ======================================================================
 do_catch:
 	caught = 0
-	GOSUB hide_all
 	PRINT AT 331,"  GOT HIM!  "
-	' Capture bonus: seconds remaining x 100 / 200 / 300 by Krook band.
-	' 1-8 / 9-16 / 17+ is the manual's split; a secondary source says
-	' 1-9 / 10-15 / 16+ and DESIGN.md 0 records the disagreement.
-	bmul = 10				' units of ten -> 100 points
-	IF krk > 8 THEN bmul = 20
-	IF krk > 16 THEN bmul = 30
-	GOSUB calc_bonus
-	#addv = #bonus
-	GOSUB add_score
-	GOSUB pause_beat
+	GOSUB snd_off			' nothing rings on through the count
+	' THE CAST STAYS ON SCREEN FOR THE COUNT. Hiding everything first threw
+	' away the picture the player had just earned -- Kelly stood over Harry
+	' where the catch happened -- and turned the bonus into a separate screen
+	' that could have belonged to any round. They stay, the clock empties into
+	' the score, and only then does the board clear.
+	GOSUB bonus_count
+	' A SECOND to read the finished tally, then clear.
+	FOR bwi = 1 TO 60
+		WAIT
+	NEXT bwi
+	GOSUB snd_off
+	GOSUB hide_all
 	krk = krk + 1
 	GOSUB start_krook
 	GOTO main
 
-	' REPEATED ADDITION, not a multiply, and deliberately so. Two separate
-	' hazards meet on this one line: `tsec * bmul.` is invalid because the `.`
-	' suffix marks a 16-bit CONSTANT and both of these are variables, and a
-	' plain `tsec * bmul` would be an 8-bit product -- a 50-second capture in
-	' the x300 band pays 15,000, which is six times past a byte. Multiplying
-	' properly would then land on the MPY/r0 hazard, where a 16-bit var read
-	' straight after being multiplied returns the product's HIGH word.
+	' THE BONUS IS COUNTED OUT, NOT AWARDED. Dropping the whole sum into the
+	' score in one frame tells the player a number; ticking the clock down a
+	' unit at a time, with the score climbing and a beat under each step,
+	' tells them what the number was FOR. It is the pay-off for every second
+	' they saved, and every arcade game of this era spends a moment on it.
 	'
-	' At most 50 adds, once per capture. Nothing about this is a hot path.
+	' It also costs nothing to get right: the loop already has to run down
+	' `tsec`, so the animation IS the calculation, and the repeated-addition
+	' note below stops applying -- each step adds one band's worth.
 	'
-	' The guard matters: a COMPUTED `FOR 1 TO 0` still runs its body once in
-	' CVBasic, so catching Harry on the very last tick would pay a full
-	' multiplier instead of nothing.
-calc_bonus:
-	#bonus = 0
-	IF tsec > 0 THEN
-		FOR bi = 1 TO tsec
-			#bonus = #bonus + bmul
-		NEXT bi
-	END IF
-	RETURN
+	' x100 for Krooks 1-9, x200 for 10-15, x300 from 16. Two independent
+	' sources agree on those bands; the manual's own wording suggests
+	' 1-8 / 9-16 / 17+ and DESIGN.md 0 records the disagreement.
+	'
+	' #bval MUST BE 16-BIT: 300 does not fit in a byte, and a plain variable
+	' would silently truncate it to 44 (CLAUDE.md 3A).
+bonus_count:
+	#bval = 100
+	IF krk > 9 THEN #bval = 200
+	IF krk > 15 THEN #bval = 300
+bn_loop:
+	IF tsec = 0 THEN RETURN
+	tsec = tsec - 1
+	GOSUB hud_time
+	#addv = #bval
+	GOSUB add_score
+	' One tick per unit, with its own note-off. Channel 2, which the effect
+	' table uses for the upper voice of a two-note effect, so this cannot
+	' cancel a sustained tone on channel 1 (CLAUDE.md 3A: two SOUNDs on one
+	' channel back to back just cancel the first).
+	SOUND 2,300,13
+	FOR bwi = 1 TO 3
+		WAIT
+	NEXT bwi
+	SOUND 2,0,0
+	FOR bwi = 1 TO 2
+		WAIT
+	NEXT bwi
+	GOTO bn_loop
+
+	' `calc_bonus` USED TO LIVE HERE and computed the whole sum by repeated
+	' addition, to dodge two hazards at once: `tsec * bmul` is an 8-bit
+	' product (a 50-unit capture in the x300 band pays 15,000, six times past
+	' a byte), and multiplying properly lands on the MPY/r0 hazard where a
+	' 16-bit variable read straight after being multiplied returns the
+	' product's high word. Counting the bonus out a unit at a time (above)
+	' removes the multiply entirely rather than working around it -- the loop
+	' the player watches IS the arithmetic.
+	'
+	' It also fixed the last-tick case for free: `bn_loop` tests `tsec = 0`
+	' on entry, where the old `FOR bi = 1 TO tsec` would have run its body
+	' once and paid a full multiplier for no time at all (CLAUDE.md 3A).
 
 do_escape:
 	escapd = 0
@@ -2576,7 +3029,14 @@ lose_kop:
 	' counters are not ticked inside this loop -- a tone still sounding when
 	' the pause starts would hang for its whole duration, which is the classic
 	' CVBasic sticky-audio failure.
-pause_beat:
+	' EVERY CHANNEL OFF, AND THE DECAY COUNTERS WITH THEM. The counters are
+	' ticked by the main loop, so anything still sounding when the loop stops
+	' -- for a capture, a death, the bonus count -- sustains for as long as
+	' whatever replaced the loop takes. That is where the long beep over the
+	' bonus tally came from: not the tally's own note, which turns itself off
+	' after every unit, but a footstep or a hit that was still ringing when
+	' Harry was caught.
+snd_off:
 	SOUND 0,0,0
 	SOUND 1,0,0
 	SOUND 2,0,0
@@ -2584,6 +3044,10 @@ pause_beat:
 	sht = 0
 	spt = 0
 	swt = 0
+	RETURN
+
+pause_beat:
+	GOSUB snd_off
 	FOR pbi = 0 TO 90
 		WAIT
 	NEXT pbi

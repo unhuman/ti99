@@ -652,3 +652,43 @@ for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.m
 > keep the committed source at its normal starting level. **Verify the open window is running the new
 > cart** — an emulator left open from an earlier build shows stale behavior and reads as "your fix
 > didn't work."
+
+- **TWO CLOCKS IN ONE LOOP IS A UNITS BUG A RATIO TEST CANNOT SEE.** If the actors are
+  advanced once per **loop pass** (`x = x + SPEED` in the main loop) while a timer is
+  advanced by the **frame delta**, the game has two different time bases and the loop rate
+  silently becomes a difficulty dial. Keystone Kapers ran `WALKSP = 4` px per *pass* at ~25
+  passes/s -- 100 px/s, which happened to match the reference exactly -- against a clock
+  ticking in real seconds. Kelly needs **72 s** to reach the roof and Harry **96 s** to
+  escape; the round was **50 s**, so it always ended on a timeout and one of the two loss
+  conditions could never fire at all.
+  - **`checkchase.py` passed on every run**, because it converted *both* routes with
+    `FPS = 60`. Halving a number on both sides of a comparison leaves the comparison intact,
+    so every relative assertion — "Harry is slower than Kelly", "Kelly arrives first" — stayed
+    true. The error only appears when the actors are compared against something measured in
+    **different** units. A ratio test cannot catch a units error; a checker needs at least one
+    absolute anchor.
+  - The tell is a constant whose name implies a unit it does not have. `WALKSP = 4 ' px per
+    frame` was px per *pass*. **Before trusting any speed constant, find where it is spent**
+    and confirm the loop's actual rate — do not read it off the comment.
+
+- **A CENTRING OFFSET ADDED BEFORE A DISTANCE WILL WRAP THE BYTE, AND THE BUG LOOKS LIKE A
+  GENEROUS HITBOX.** Keystone Kapers measured the catch as
+  `kcx = klx + 8 : hcx = hx + 8 : |kcx - hcx|`. Harry walks to x 253 before crossing a screen
+  seam, so `hx + 8` wrapped to 5 and a Kop at the far LEFT read as five pixels from a crook
+  walking off the far RIGHT — arresting him across the whole store. Nothing warns: both are
+  plain 8-bit variables and the wrap is silent.
+  - **The offset cancels in a difference**, so the fix is to delete it, not to widen the type:
+    `|(a+k) - (b+k)| == |a - b|`. Any per-actor offset applied to BOTH sides before subtracting
+    is dead arithmetic that can only introduce overflow.
+  - The tell is a hit that fires at *maximum* separation rather than minimum — the wrap makes
+    the two extremes of the range adjacent.
+- **AN OVERRIDE THAT IGNORES THE STATE IT OVERRIDES WILL CONTRADICT IT IN FULL VIEW.** A "run
+  away for a while" mode bolted on top of an enemy's normal AI beat the *flee* as well as the
+  goal-seeking, so the crook held one heading regardless of where the player was and ran
+  straight into him. Written as a **default the other rules can outrank** — cleared the moment
+  the player appears on his floor — the same code reads as deliberate.
+  - Its sibling: **a mode ended by a timer changes direction with nothing on screen to explain
+    it.** End it on a world event instead (reaching a wall, the player arriving) so every
+    change of heading has a visible cause.
+  - And check WHERE the override sits. Placed below the movement it only reached the animation
+    counter: the actor faced the right way, played the run cycle, and travelled zero pixels.

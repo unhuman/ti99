@@ -18,6 +18,8 @@ import os
 import re
 import sys
 
+import genart as g
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "..", "src")
 
@@ -89,17 +91,35 @@ def draw_scanner(px, art, store):
         put(0, floor, 128, True)
 
         if lv < 3:                             # that floor's up escalator
-            if esc[lv] == 0:
-                put(0, fbase, 2, True)
-                put(2, fbase + 1, 2, True)
-            else:
-                put(126, fbase, 2, True)
-                put(124, fbase + 1, 2, True)
+            # Three steps down the band's air, leaning the way it climbs, and
+            # BLACK -- scan_escc colours the flight's own character, so taking
+            # the colour from the table here would show it grey and hide the
+            # very thing that separates it from the lift car.
+            for k, x in enumerate((0, 2, 4) if esc[lv] == 0 else (126, 124, 122)):
+                for i in range(2):
+                    if 0 <= x + i < 128:
+                        px[Y0 + fbase + k][X0 + x + i] = PAL[g.BLACK]
 
-    # the car, on floor 2, and the two actors somewhere plausible
-    put(56, cs.run(rt, "scan_base", {"fl": 1})["fbase"], 5, True)
-    put(40, cs.run(rt, "scan_base", {"fl": 0})["fbase"] + 1, 3, True)
-    put(88, cs.run(rt, "scan_base", {"fl": 2})["fbase"] + 2, 3, True)
+    # THE CAR AND THE TWO ACTORS ALL FILL THE AIR -- three rows each, none of
+    # them touching the floor line on row 3.
+    #
+    # The actors are painted in their OWN colours rather than the table's,
+    # because that is what the game does: the band is grey in scan_col3 and
+    # scan_mark recolours the character an actor is standing in. A previewer
+    # that took the colour from the table alone would show two grey markers
+    # and hide exactly the thing that makes them readable.
+    KOP, CROOK = PAL[g.BLACK], PAL[g.WHITE]
+
+    def block(x, y0, w, col):
+        for k in range(3):
+            for i in range(w):
+                if 0 <= x + i < 128:
+                    px[Y0 + y0 + k][X0 + x + i] = col
+
+    for k in range(3):
+        put(56, cs.run(rt, "scan_base", {"fl": 1})["fbase"] + k, 5, True)
+    block(40, cs.run(rt, "scan_base", {"fl": 0})["fbase"], 3, KOP)
+    block(88, cs.run(rt, "scan_base", {"fl": 2})["fbase"], 3, CROOK)
 
 
 def main():
@@ -128,13 +148,32 @@ def main():
     for k in range(0, len(dk), 9):
         deck[dk[k]] = dk[k + 1:k + 9]
 
+    # THE NAME TABLE IS BUILT FIRST AND PAINTED SECOND, because not every cell
+    # comes from a template. `beam_tops` in the source stamps a support beam's
+    # top into the slab row of the band ABOVE it after the bands are blitted --
+    # a row no template owns -- so a previewer that paints straight out of the
+    # templates shows the three-pixel gap the stamp exists to close.
+    name = [[0] * 32 for _ in range(24)]
     for lv in range(4):
         top = 1 + (3 - lv) * 5            # band's top screen row
-        t = idx[lv * 8 + scr]
-        base = t * 160
+        base = idx[lv * 8 + scr] * 160
         for r in range(5):
             for c in range(32):
-                code = tpl[base + r * 32 + c]
+                name[top + r][c] = tpl[base + r * 32 + c]
+
+    pil = read_bytes(store, "stor_pil")
+    for lv in range(2):                   # bands 0 and 1 only, as the game does
+        top = 1 + (3 - lv) * 5
+        base = idx[lv * 8 + scr] * 4
+        for k in range(4):
+            c = pil[base + k]
+            if c:
+                name[top - 1][c] = g.CODES["SLABP"]
+
+    for row in range(24):
+        for c in range(32):
+                code = name[row][c]
+                top, r = row, 0
                 if code < 96 or code > last:
                     continue
                 o = (code - 96) * 8

@@ -76,6 +76,10 @@ def slab_row(row):
 # character wide, spaced regularly down the aisle. The pillars are what give
 # the store depth and a sense of travel as the screens flip; a grey slab in
 # the same shape as the blue one gave neither.
+PIL_A = (4, 11, 20, 27)
+PIL_B = (7, 15, 24)
+
+
 def _pillars(t, cols):
     for c in cols:
         for r in range(4):
@@ -91,7 +95,7 @@ def _counter(t, c0, c1):
 
 def t_aisle_a():
     t = blank(WALL)
-    _pillars(t, (4, 11, 20, 27))
+    _pillars(t, PIL_A)
     _counter(t, 14, 19)
     slab_row(t[4])
     return t
@@ -99,7 +103,7 @@ def t_aisle_a():
 
 def t_aisle_b():
     t = blank(WALL)
-    _pillars(t, (7, 15, 24))
+    _pillars(t, PIL_B)
     _counter(t, 2, 6)
     _counter(t, 18, 23)
     slab_row(t[4])
@@ -236,6 +240,19 @@ TEMPLATES = [
 ]
 TID = {name: i for i, (name, _) in enumerate(TEMPLATES)}
 
+
+# WHICH COLUMNS CARRY A SUPPORT BEAM IS READ BACK OFF THE TEMPLATE, not kept
+# beside it. The first version had a hand-written table -- and because the same
+# tuple both drew the beams and filled the table, the two could not disagree,
+# so the guard checking them against each other passed on every input including
+# the broken ones. Deriving it means there is only one source and nothing left
+# to check but the width (below).
+#
+# A beam is a column that is COUNTR for all four AIR rows. A counter is COUNTR
+# too, but only in the bottom half, so it is not one.
+def _beam_cols(t):
+    return [c for c in range(W) if all(t[r][c] == COUNTR for r in range(4))]
+
 A, B, EW, EE, EL = "T_AISLE_A", "T_AISLE_B", "T_ESC_W", "T_ESC_E", "T_ELEV"
 RF, RW, RE = "T_ROOF", "T_ROOF_W", "T_ROOF_E"
 NW, NE = "T_END_W", "T_END_E"
@@ -298,8 +315,18 @@ def obstacles():
         0: [CART, BALL, RADIO],
         1: [BALL, CART, PLANE],
         2: [CART, PLANE, BALL],
-        3: [PLANE, NONE, PLANE],
+        # THE ROOF DOES CARRY OBSTACLES -- a cart was tracked crossing it in
+        # the reference at 0.80 px/frame (DESIGN.md 0m). Carts, though, not
+        # biplanes: a cart costs time, and the roof is where the round is
+        # decided, so the one hazard that costs a whole Kop stays off it.
+        3: [CART, NONE, CART],
     }
+    # WHICH HAZARD EACH FLOOR OWNS. One apiece, so a floor has an identity
+    # the player can learn, and so nothing appears to change storeys when they
+    # cross a screen seam. The roof gets carts -- one was tracked crossing it
+    # in the reference (0m) -- and never biplanes, because that is where the
+    # round is decided and a biplane costs a whole Kop.
+    FLOORKIND = {0: BALL, 1: RADIO, 2: PLANE, 3: CART}
     xs = [40, 150, 96]          # slot 0, 1, 2 starting x -- spread across
     out = []
     for lv in range(4):
@@ -314,13 +341,24 @@ def obstacles():
             if scr in (0, 3, 7):
                 out += [NONE, 0] * 3
                 continue
-            # ONE KIND PER BAND. A floor carrying a cart AND a ball asks two
-            # different questions at once -- jump this, read that one's phase --
-            # and the answer to one is the wrong answer to the other. Two of the
-            # same thing is a floor with a rule; one of each is a floor with a
-            # trick. The kind rotates by screen and level so the store still
-            # varies, just never within a single stretch of floor.
-            bandkind = palette[lv][(scr + lv) % 3]
+            # ONE KIND PER FLOOR, AND IT DOES NOT CHANGE AS YOU WALK. A
+            # floor carrying a cart AND a ball asks two different questions at
+            # once -- jump this, read that one's phase -- and the answer to one
+            # is the wrong answer to the other. Two of the same thing is a
+            # floor with a rule; one of each is a floor with a trick.
+            #
+            # IT USED TO ROTATE BY SCREEN as well, `palette[lv][(scr+lv) % 3]`,
+            # for variety across the store. On screen that reads as the hazards
+            # CHANGING FLOORS: cross a seam and the balls you were tracking on
+            # the floor below are suddenly carts, and balls are a storey up
+            # instead. All four bands are visible at once here, so the swap
+            # happens in full view and looks like objects teleporting between
+            # levels rather than like a new stretch of shop.
+            #
+            # The variety comes from the Krook ramp instead (0p): every floor
+            # is beach balls on Krook 1, and radios, carts and biplanes arrive
+            # one per round, each on the floor that owns it.
+            bandkind = FLOORKIND[lv]
             for s in range(3):
                 k = bandkind
                 x = (xs[s] + scr * 23) % 232
@@ -328,8 +366,6 @@ def obstacles():
                     x = 120 if _clear_x(tpl, 120) else 0
                     if not _clear_x(tpl, x):
                         k = NONE
-                if lv == 3 and k not in (PLANE, NONE):
-                    k = NONE            # the roof is open sky, not an aisle
                 out += [k, x]
     return out
 
@@ -383,8 +419,24 @@ def collectibles():
 # The 6..8 overlap is what guarantees there is no height at which the ball can
 # be neither jumped nor ducked; an unavoidable hazard is not difficulty.
 def bounce_arcs():
+    """The three bounce heights, and the LOWEST one is 9 for a reason.
+
+    A BALL AT THE TOP OF ITS ARC MUST NOT BE JUMPABLE. The rule the player is
+    meant to learn is "jump it low, duck it high", and at an apex of 8 the low
+    arc broke it: the hitbox is the middle four pixels of the eight-pixel art,
+    so apex 8 puts it at 10..14, and Kelly's jump apex is exactly 14. The hit
+    test is `kfh < oht`, and 14 < 14 is false -- he sailed over it by a single
+    pixel of arithmetic, which taught the wrong lesson on the one arc a new
+    player meets first.
+
+    Nine puts the band at 11..15 and 14 < 15 is true, so the top of every arc
+    is a duck. It still clears the crouch: DUCKH is 11 and the test is
+    `ohb < ktop`, so 11 < 11 is false and ducking passes under it. Both ends
+    of that are one pixel wide, which is why assets/checkball.py sweeps every
+    crouch height against every apex rather than trusting the arithmetic here.
+    """
     out = []
-    for apex in (8, 10, 12):
+    for apex in (9, 10, 12):
         for t in range(32):
             u = (t - 16) / 16.0
             h = apex * (1.0 - u * u)
@@ -477,6 +529,13 @@ def main():
             tpl += t[r]
     assert len(tpl) == len(TEMPLATES) * W * H
 
+    for name, cols in ((n, _beam_cols(t)) for n, t in TEMPLATES):
+        if len(cols) > 4:
+            raise SystemExit(
+                "%s has %d support beams and stor_pil has room for four: %r. "
+                "Widen the table in BOTH this emit and beam_tops' inner FOR."
+                % (name, len(cols), cols))
+
     idx = []
     for lv in range(4):
         for scr in range(8):
@@ -514,6 +573,15 @@ def main():
              "jump height per frame, 30 frames")
         emit(fh, "esc_cap", esc_cap_bytes(),
              "head cap: (col,char) pairs, west then east, 0,0 ends each")
+        # WHICH COLUMNS A TEMPLATE STANDS ITS SUPPORT BEAMS IN, four bytes
+        # apiece, 0 ending the run. The beam tops are stamped at run time
+        # into the slab row above (see draw_screen): a template only knows
+        # its own band, and the row a beam has to reach belongs to the band
+        # above it, whose template is chosen independently per screen.
+        emit(fh, "stor_pil",
+             [c for _n, t in TEMPLATES
+              for c in (_beam_cols(t) + [0, 0, 0, 0])[:4]],
+             "per template: up to 4 support-beam columns, 0 ends")
         emit(fh, "stor_esc", ESC_SIDE + [0] * 4,
              "per level: 0 = climbs west, 1 = east, 255 = no escalator (padded even)")
 

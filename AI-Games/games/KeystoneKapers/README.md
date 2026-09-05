@@ -6,7 +6,8 @@ Garry Kitchen's **Keystone Kapers** (Activision, Atari 2600, 1983), for the **TI
 Officer Keystone Kelly has fifty seconds to run Harry Hooligan down inside Southwick's
 Emporium — a department store **eight screens wide and four levels tall** — before Harry
 reaches the roof and disappears. Shopping carts, beach balls and cathedral radios cost nine
-seconds each; toy biplanes cost a Kop.
+seconds each; toy biplanes cost a Kop. The roof carries **carts but no biplanes** -- the last
+few strides can cost you time, never a Kop.
 
 **Watch the beach balls.** They bounce, and their apex grows with the Krook — a low one has to
 be jumped, and **a high one cannot be jumped at all: you have to duck under it.** No ball ever
@@ -30,7 +31,7 @@ at boot and ignores whichever direction is stuck**, so the game stays playable e
 just says `ALPHA LOCK DOWN - IGNORED` and carries on. (Classic99 defaults to `invertcaps=1`,
 which means the TI sees ALPHA LOCK *down* when your Caps Lock is *up*.)
 
-`838` on the title opens a setup screen for the number of Kops and the starting Krook.
+`838` on the title opens a setup screen for the number of Kops and the **starting level** (1-20). It is deliberately **unadvertised** -- a hidden code in the Activision idiom, not a menu entry -- so nothing on the title screen mentions it.
 
 ## The store
 
@@ -43,6 +44,27 @@ finishes, landing you on whichever of the bottom three steps it comes down over.
 your feet are **on a step**, and it carries you at its own speed. The
 **elevator in the centre** is the only way down — fast, and it serves all three shopping
 floors but not the roof.
+
+**The clock is not seconds.** It counts **50 units** down to 0 and a unit is **two seconds**,
+measured off the reference video (DESIGN.md 0m) -- so a round is about **100 seconds**. It used
+to be one second a unit, which made the round unfinishable: Kelly needs ~72 s to reach the roof
+and Harry ~96 s to escape, so at 50 s the clock beat both of them every time and Harry could
+never get away at all.
+
+**Each floor has its own hazard** -- beach balls at the bottom, radios above them, biplanes
+above those, shopping carts on the roof -- and it does not change as you walk. **Corner the
+crook and he rides an escalator back DOWN**, which you cannot: they only go up.
+
+**The hazards arrive one per round.** Krook 1 is short beach balls and nothing else; radios
+join at 2, shopping carts at 3, **biplanes at 4**, the balls go tall at 5, a second hazard per
+floor at 6, and carts and planes speed up at 7 and 8. That is the original's progression, and
+`assets/checklevels.py` fails the build if any of it drifts.
+
+**Catch Harry and the clock is counted into your score**, a unit at a time with a tick under
+each step -- 100 points a unit on Krooks 1-9, 200 on 10-15, 300 from 16.
+
+**Support beams run floor to floor.** They are part of the building, not scenery on top of
+it -- see DESIGN.md 0k2 for why they have to be stamped in after the bands are drawn.
 
 The **scanner** along the bottom shows all four levels at once, and it is colour-coded by
 what a thing *is*: yellow floor lines, grey-and-black escalator slashes, a grey bar at the

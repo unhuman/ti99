@@ -110,7 +110,7 @@ how the scanner is furnished, and what the HUD does as the clock runs out.
 | Shopping cart | a **white wire basket** — a mesh of uprights between two rails — on a solid black wheeled base |
 | Beach ball | a **solid red disc**, not a ring |
 | Cathedral radio | **yellow**, an arched case widest at the foot with two small prongs on top |
-| Toy biplane | **dark green**, with the propeller drawn as a **light-green dashed arc** above the nose |
+| Toy biplane | **dark green** body with a **light-green** propeller — two sprites; drawn from above so it reads as an aircraft (0n) |
 | Money bag / case | **yellow box with a black handle** |
 | Scanner | green field, **yellow horizontal lines per floor**, **black diagonal slashes** for escalators, a **pale block** for the elevator, and a white dot per actor — exactly the furniture §6 draws |
 | Low time | the HUD digits and the Kop hats **change colour** as the clock runs down |
@@ -410,11 +410,400 @@ against every ball hitbox puts the break at 12, and shrinking the ball does not
 move it: **the apex is what binds**, and the apex cannot rise because a 24 px
 Kelly plus a 14 px jump already sits 2 px under the band ceiling.
 
-The biplane is raised to match (12..18 rather than 10..16), which was the
-reviewer's suggestion and is what buys the extra three pixels: an 11 px crouch
-clears it, a 24 px standing Kop does not, and a jump still cannot -- so it stays
-the one obstacle that must be ducked. `assets/checkball.py` fails the build on
-any dead band, and it caught this at 16 px before it could ship.
+The biplane is raised to match, which was the reviewer's suggestion and is what
+buys the extra pixels: an 11 px crouch clears it, a 24 px standing Kop does not,
+and a jump still cannot -- so it stays the one obstacle that must be ducked.
+`assets/checkball.py` fails the build on any dead band, and it caught this at
+16 px before it could ship.
+
+It now flies at **16..22**, not 12..18. At 12 the crouch passed under it by a
+single pixel, so a duck that plainly worked still looked like a squeak and a
+duck one frame late was a hit -- the *window* was correct and the *reading* was
+not. 16 is as high as it can go and still catch a 24 px standing Kop, and the
+14 px apex is under it, so raising it costs nothing and buys five pixels of
+visible daylight.
+
+**The pose is a bend at the waist, and where the HEAD goes is the whole read.**
+A squat keeps the head up and compresses the body under it; a bend puts the head
+forward and down with the back gone horizontal above it and the legs still under
+the hips, behind. The first eleven-pixel crouch had the head buried under a flat
+slab of back with the legs splayed underneath, and it read as a dive -- which is
+why "it is still a squish" survived the change from eight pixels to eleven. The
+back is now a wedge high and to the **rear**, the hat is clear of it with a
+crown and a brim projecting **forward** over the face, and the legs stay under
+the hips. So the silhouette has a front and a back and points the way he faces.
+
+**The reference could not settle this one.** About 2,700 sampled frames of the
+longplay were searched for a ducking Kelly -- by figure height, by moving-blob
+height, and by requiring the hat/face/tunic stack -- and the player never ducks
+in any of them; the height sits at a flat 29 video px throughout. (The two
+shortest hits were the Activision logo.) So unlike the run cycle (§0h) this pose
+is reasoned from the mechanic, not transcribed, and it is recorded here so the
+search is not run a third time.
+
+### 0p. How the levels actually advance
+
+Researched, not invented: two independent readings of the published level guides
+agree on this table, and `assets/checklevels.py` now reads every threshold back
+out of the source and fails the build if one moves.
+
+| Krook | what changes |
+|---|---|
+| **1** | short beach balls, **and nothing else** |
+| **2** | + cathedral radios |
+| **3** | + shopping carts (slow) |
+| **4** | + biplanes (slow) |
+| **5** | the balls go **tall** -- they stop being jumpable and must be ducked |
+| **6** | a **second** hazard per floor ("double radios") |
+| **7** | carts get faster |
+| **8+** | biplanes get faster; after this the levels stop changing |
+
+**There are no biplanes on Krook 1**, which is the point of the whole ramp: the
+one hazard that costs a *life* rather than nine seconds is the fourth thing the
+player meets, not the first. Our previous model had the hazard *kind* fixed per
+floor by a static table and only the *speed* ramping, so a new player met a
+biplane on the first screen of the first round.
+
+The static placement table stays -- it still decides *where* on each floor a
+hazard sits. What is new is a gate on the way in: a hazard that has not arrived
+yet becomes a **beach ball** rather than nothing, so a floor is never empty and
+Krook 1 is exactly the "short balls" screen the guides describe.
+
+#### Enemy speeds, per kind, from the video
+
+One global `obsp` could not express this, because the original ramps carts and
+biplanes on *different* rounds. Each kind now carries its own speed:
+
+| kind | px per pass | why |
+|---|---|---|
+| beach ball | 2 | measured at 0.82 px/frame = 49 px/s |
+| shopping cart | 2, then **3** from Krook 7 | measured at 0.80 (48 px/s) **and** 1.21 (73 px/s) |
+| biplane | 2, then **3** from Krook 8 | same two speeds |
+| cathedral radio | 0 | stationary |
+
+The base of 2 is not a guess. Carts were tracked in the reference at 0.80 and
+1.21 px/frame, and at this loop's ~25 passes a second those are **exactly 2 and
+3 px per pass** -- so the two speeds the original puts on screen are the two
+speeds here. The old ramp started at 1 (25 px/s), which was half the slowest
+cart the reference ever showed.
+
+#### Scoring
+
+* time remaining x **100** on Krooks 1-9, x **200** on 10-15, x **300** from 16;
+* money bags and suitcases **50** each;
+* a spare Kop every **10,000** points.
+
+The x100/x200/x300 bands now have two independent sources. The manual's own
+wording suggests 1-8 / 9-16 / 17+ instead, and that disagreement is recorded in
+section 0 -- the published guides win here because two of them agree.
+
+#### The bonus is counted out, not awarded
+
+Dropping the whole sum into the score in one frame tells the player a number.
+Ticking the clock down a unit at a time -- score climbing, a beat under each
+step -- tells them what the number was *for*, and it is the pay-off for every
+second they saved. `bonus_count` does it in about a tenth of a second per unit.
+
+It also **removed** code rather than adding it. The old `calc_bonus` summed the
+bonus by repeated addition to dodge two hazards at once: `tsec * bmul` is an
+8-bit product (a 50-unit capture in the x300 band pays 15,000, six times past a
+byte), and multiplying properly lands on the MPY/r0 hazard where a 16-bit
+variable read straight after being multiplied returns the product's high word.
+Counting it out a unit at a time makes the loop the player watches *be* the
+arithmetic, so there is no multiply to work around. It fixes the last-tick case
+for free as well: `bn_loop` tests `tsec = 0` on entry, where the old
+`FOR bi = 1 TO tsec` would have run its body once and paid a full multiplier for
+no time at all.
+
+#### The aeroplane is yellow, over black
+
+Two sprites, and the trick is **priority**: a lower sprite number wins on the
+TMS9918, and the body sits in slots 8-15 with the detail in 16-23. So the black
+layer can only show through where the yellow has *nothing* -- which means the
+cockpit is a **hole** in the body, filled from beneath, while the propeller
+needs no hole because it hangs off the nose where the body has no pixels. The
+detail being the low-priority half is deliberate: when Kelly, a plane and a high
+ball share a scan line the VDP drops the highest-numbered sprite, so what
+disappears is decoration and never the plane the player has to duck.
+
+### 6a. The scanner: characters underneath, sprites on top
+
+The instrument is split by what MOVES, and that turned out to be the whole
+design.
+
+| | drawn as | why |
+|---|---|---|
+| floor lines, flights, lift shaft | **characters** | fixed relative to the canvas; cost nothing to keep |
+| the lift car | **characters**, redrawn on move | moves rarely, and only vertically |
+| Kelly and Harry | **sprites** (24, 25) | move constantly, and need to be over everything |
+
+Four rows a level, 4 px of grey margin top and bottom. Rows 0-2 are that
+floor's **air** and row 3 is its **yellow line**, which nothing else touches.
+The flights are a three-step diagonal down the air, leaning the way they climb;
+the car is three pixels tall; and both actors are three-pixel sprites over the
+top.
+
+**Why sprites for the actors and nothing else.** A colour byte covers one 8x1
+scan line of one CHARACTER, so a whole pixel row of this canvas can only be one
+colour. As characters the Kop and the crook could therefore have a row each and
+stood a single pixel high, and the two attempts to make them taller both cost
+something else: five rows a level put the floor line on the escalator's grey
+row and made the lift car -- also grey, also there -- vanish into it completely;
+six rows took the margin and read as too big. Per-character colouring did work,
+and it is what a sprite gives away for free.
+
+As sprites they need no colour table, no erase and no priority arithmetic: they
+draw over the furniture because sprites always do, and nothing shifts to make
+room. **The blink went with it.** Kelly flashed only because two markers inside
+one character merged into one colour; two sprites are two colours wherever they
+stand. And the furniture is drawn ONCE rather than every tick, because there is
+no longer a marker erase ANDing bits out of whatever it stood on.
+
+It also removed code: `scan_mark`, `scan_wipe1`, `scan_set`, `scan_clr` and
+`scan_addr` all existed to paint, erase or recolour a marker made of character
+pixels. **790 bytes came back.**
+
+One thing to watch, and it is the same class as the vanished lift car: the
+Kop's marker is black and the flights are black, so where he stands on one --
+the extreme end of a floor that has an escalator -- he is briefly invisible.
+`checkscan.py` checks that the two SPRITE colours differ from each other; it
+cannot check this one, because a sprite over a character is not something the
+colour table knows about.
+
+### 6b. What the crook does when he is cornered
+
+He rides the flight that comes UP to his floor back DOWN, which Kelly cannot do
+-- an escalator only goes up. Without it the chase always ended in the same
+corner, and a crook with nowhere to go is not a chase.
+
+Three things went wrong on the way, and all three have the same shape: **an
+override that ignores the state it overrides will eventually contradict it in
+full view.**
+
+1. **He rode straight back up.** A flight's foot IS its boarding point, so
+   landing there put him on the step he had just come down. He now runs for the
+   far end and boards nothing while he does.
+2. **He stood still instead of running.** The run override sat BELOW the two
+   `IF hmv` movement blocks, where the only thing it could still reach was the
+   animation counter: he faced the right way, played the run cycle and
+   travelled zero pixels.
+3. **He ran into the Kop without noticing, and turned round for no reason.**
+   The override beat the flee as well as the climb, so he held one heading
+   whatever Kelly did; and it was a count of passes, which expired mid-floor.
+   It is a flag now, cleared by exactly two things the player can see: **the Kop
+   arriving on his floor** (the flee outranks it) and **reaching the end wall**.
+
+### 6c. Two arithmetic faults worth remembering
+
+**The catch wrapped around the screen.** `coll_harry` centred both actors
+before measuring:
+
+```
+kcx = klx + 8
+hcx = hx + 8          ' hx reaches 253 -> 261 -> wraps to 5
+```
+
+Harry walks to x 253 before crossing a seam, so a Kop at the far LEFT measured
+five pixels to a crook walking off the far RIGHT and arrested him across the
+whole store. The `+ 8` cancels in a difference, so removing it fixes the wrap
+and is less work. The obstacle test has the same shape but cannot reach it:
+`obx` tops out at 240 and `klx` at `XWALL`.
+
+**A ball at the top of its arc could be jumped.** The hitbox is the middle four
+pixels of the eight-pixel art, so an apex of 8 put it at 10..14 against a jump
+apex of exactly 14 -- and `kfh < oht` is false at 14 < 14. He cleared it by one
+pixel of arithmetic, on the one arc a new player meets first. Nine makes it
+11..15. `checkball.py` now reports the split cleanly: 25 of 32 frames jumpable
+and 7 duckable on the low arc, which partition exactly, so the top of every arc
+is a duck and no frame is free.
+
+### 6d. Hazards stay on their own floor
+
+The placement table used to pick a floor's hazard as `palette[lv][(scr+lv) % 3]`
+-- it rotated by SCREEN, for variety across the store. All four bands are
+visible at once here, so crossing a seam swapped the kinds in full view: the
+balls being tracked on one floor became carts, and balls appeared a storey up.
+It reads as objects teleporting between levels.
+
+Each floor now owns one hazard for the whole store -- **balls on 1, radios on 2,
+biplanes on 3, carts on the roof** -- and the variety comes from the Krook ramp
+(0p), which brings them in one per round. Fixing this also uncovered a leftover
+rule, `if lv == 3 and k not in (PLANE, NONE): k = NONE`, which had been silently
+deleting every roof obstacle: the roof carts restored two revisions earlier had
+never actually appeared.
+
+### 0m. What the video actually measures
+
+Everything below is measured off the longplay, not inferred. The calibration
+first, because every number depends on it:
+
+* the playfield is **456 video px** wide and that is our **256 px**;
+* a band is **51 video px** tall and that is our **40**;
+* the capture is **30 fps** against a 60 Hz console, so **one video frame is two
+  console frames**.
+
+#### The timer is not seconds -- it is a unit of about two seconds
+
+It counts **50 down to 0**, and a unit lasts **59.75 video frames = 1.99 s**.
+Measured twice, independently:
+
+1. **Directly.** 50 at frame 360, 49 at 420, 48 at 480, 47 at 540, 46 at 599 --
+   239 frames for four ticks.
+2. **End to end.** Finding every frame whose timer reads 50 gives five round
+   starts in the sample; the gaps are 83.8, 52.8, **98.5**, 65.8 and 82.7 s.
+   A full 50-unit round at 1.99 s is **99.5 s**, and the longest observed round
+   is 98.5 -- a round that nearly timed out. The short ones are Harry caught
+   early.
+
+So the manual's "50 seconds" is 50 *timer units*, and a round is about **100
+seconds** of play. The digits are a count, not a clock.
+
+#### The speeds already match -- because they are paced per PASS, not per frame
+
+The reference Kelly covers **102 px/s**. Ours covers **~100 px/s**, and the
+arithmetic that gets there is the thing to understand, because reading the
+constant alone gives the wrong answer twice over:
+
+> `WALKSP = 4` is **4 px per LOOP PASS**, and the loop runs at about **25
+> passes a second**, not 60. So Kelly's real speed is 4 x 25 = 100 px/s.
+
+An earlier draft of this section read `WALKSP = 4` as px per *frame*, concluded
+we ran 2.35x too fast, and recommended no change on the grounds that a 2x-fast
+clock cancelled it. **Both halves of that were wrong.** The speeds were never
+fast; the clock alone was.
+
+| object | reference px/frame | as a fraction of reference Kelly | ours, as a fraction of our Kelly |
+|---|---|---|---|
+| shopping cart, roof | 0.80 | 0.47 | 0.25 - 0.75 |
+| shopping cart, floor 1 | 1.21 | 0.71 | (same range) |
+| beach ball, horizontal | 0.82 | 0.48 | (same range) |
+
+A cart runs at roughly half the player's speed in both games, so **the object
+speeds need no change**. The **clock did**, and it was not cosmetic.
+
+#### The clock was the one thing out of step, and it made the round unfinishable
+
+Everything that moves is advanced once per loop pass. The timer is the one
+thing paced by the frame **delta** -- i.e. in real seconds. At 60 frames a unit
+a round was 50 real seconds, and Kelly's route to the roof takes **72**. The
+clock ran out before either man could get near the roof, so every round ended
+on a timeout and Harry's escape -- one of the game's two loss conditions --
+could never happen at all.
+
+`checkchase.py` reported this as healthy on every run, because it converted
+both routes with `FPS = 60`. Halving a number on both sides of a comparison
+leaves the comparison intact, which is exactly why the bug was invisible: the
+margin between Kelly and Harry was right, and only their relationship to the
+*clock* was wrong. It now models **25 passes/s** and reads `TICKFR` for the
+real round length:
+
+| | before (FPS=60) | now (25 passes/s, 120-frame unit) |
+|---|---|---|
+| Kelly to the roof | 30.1 s | **72.2 s** |
+| Harry escapes at | 40.2 s | **96.4 s** |
+| round length | 50 s | **100 s** |
+
+And that is the reference: five measured rounds ran 83.8 / 52.8 / **98.5** /
+65.8 / 82.7 s against a 100 s cap, with the longest one nearly timing out --
+which is precisely a Harry who escapes at 96.4 s.
+
+**The lesson for any future checker here:** a ratio test cannot catch a units
+error. Both actors were converted with the same wrong constant, so every
+*relative* assertion still passed; it took comparing them against something
+measured in different units -- the clock -- for the mistake to show.
+
+#### The advancement arithmetic, in the units that matter
+
+At 102 px/s a reference screen takes 2.51 s, so a floor of eight screens is
+about 20 s and a 100 s round buys **five floor-traverses**. Ours, at ~100 px/s
+and a 100 s round: 2.56 s a screen, 20.5 s a floor -- **4.9 traverses**. The
+same game. That is the number to hold constant if the speeds are ever retuned:
+not px/frame, and not seconds, but *floor-traverses per round*.
+
+Note what this makes fragile. Movement is per pass and the clock is per second,
+so **the loop rate is a difficulty dial nobody declared**: at 20 passes/s (the
+west screen) Kelly covers 80 px/s and the same round buys 3.9 traverses. Frame-
+pacing the actors would remove that, at the cost of re-tuning every speed to
+px/frame and re-deriving the chase; it is not done here, and this is where to
+start if it ever is.
+
+#### Objects on the roof
+
+A shopping cart was tracked crossing the **roof** band at 0.80 px/frame, so the
+roof is not a clear run -- it carries obstacles like any other floor, and 0k2's
+first version (which emptied it) was wrong. Restored as **carts only**: a cart
+costs time, and the roof is where the round is decided, so the one hazard that
+costs a whole Kop stays off it.
+
+#### What this pass did NOT establish
+
+No ducking frame exists in the sample (0k), and the reference's own biplane is
+a blob rather than an aeroplane (0n). Screens-per-floor and escalator placement
+were not re-measured here; those remain as recorded in section 4.
+
+### 0n. The aeroplane, and the policeman's helmet
+
+**The plane is drawn from above.** Zoomed off the video the original is a small
+dark-green body with a light-green dashed arc over it -- at 2600 resolution
+that is all there was room for, and copied literally it reads as a bug. Three
+attempts at a side-on biplane failed for a reason worth recording: a side view
+needs two wings, two struts, a fuselage and a fin, and at sixteen pixels those
+collapse into **three parallel bars that read as a grid**. From above an
+aeroplane is one shape -- a long fuselage with swept wings and a nose that runs
+out ahead of them -- and nothing else on screen resembles it.
+
+**And it is two colours after all.** A TMS9918 sprite has one colour, so a
+dark-green body with a light-green propeller takes two sprites, and all sixteen
+slots were spoken for (0-3 Kelly, 4-7 Harry, 8-15 obstacles). The way through
+is **priority**: the VDP drops the *highest-numbered* sprites on an overfull
+scan line, so the propellers live in slots **16-23**. When Kelly, a plane and a
+high beach ball share a line -- the only case that exceeds four -- what
+disappears is a propeller, which is decoration, and never the plane the player
+has to duck. The body no longer carries the prop, so it is one pattern per
+facing instead of two, and the two prop phases cost only two patterns net.
+
+**The Kop wears a custodian helmet.** The reference is inconsistent with
+itself: the figure on the playfield wears a flat-brimmed bowler, while the HUD's
+spare-Kop icons are unmistakable **bobby helmets** -- a tall dome with a boss on
+the crown and a modest brim. Both now follow the HUD, because that is the one a
+player reads as a policeman. The old HUD icon was a whole little figure and at
+eight pixels it read as an animal; a silhouette that small has room for exactly
+one idea, and the helmet is the one that says Kop.
+
+### 0k2. Roof obstacles, and beams that reach the floor above
+
+Two things the reviewer caught in the same pass, both of which are about what
+the screen *says* rather than about what it computes.
+
+**Carts on the roof, but not biplanes.** The roof band used to draw from a
+palette of two biplanes, and emptying it entirely was an over-correction -- a
+cart was later tracked crossing the roof in the reference (0m). It is still the
+band where the chase is decided rather than survived, so the palette is carts
+only: a cart costs nine seconds, a biplane costs a Kop, and a kill arriving in
+that window turns the finish into a coin toss the player cannot see coming.
+
+**Support beams have to reach the floor they hold up, and that floor is not in
+their own band.** A beam fills its band's four air rows, so its top pixel sits
+directly under the *slab row of the band above*; a slab row is five pixels of
+bar over three of green (see `SLAB`), so every beam stopped three pixels short
+of the bar. It did not read as a rounding error, it read as a beam that misses
+the floor.
+
+It cannot be drawn into either template. The beam belongs to the band below and
+the row belongs to the band above, and the two templates are chosen
+independently per screen, so **no template knows both**. So the band blits go
+down first and `beam_tops` stamps the tops afterwards from a per-template column
+table (`stor_pil`) -- the same shape as the escalator's head cap, and for the
+same reason. The stamped character is `SLABP`: the floor bar with those three
+green rows in the beam's grey instead.
+
+Bands 0 and 1 only. Band 2's top row is the roof deck, which is grey over grey
+with no green to bridge, and the roof has no band above it at all -- which is
+exactly the two floors the reviewer named.
+
+`assets/preview.py` models the stamp. A previewer that painted straight out of
+the templates would still show the gap, which is the §0i lesson again: a check
+narrower than the thing it checks reports success.
 
 ### 0l. The jump is ballistic
 
@@ -685,9 +1074,10 @@ discover. Two consequences follow from it, and the art must respect both:
 
 - **Ground obstacles are 8 px tall**, drawn in the bottom half of their 16×16 sprite box.
   A 14 px jump clears a cart with room to spare.
-- **Biplanes fly with their bottom edge 10 px above the surface.** Standing Kelly (16 px) is
-  struck; ducking Kelly (8 px) passes under. The duck is not a dodge, it is a height change.
-  A biplane is **not** jumpable — clearing it would need 16 px of apex and there are only 14.
+- **Biplanes fly with their bottom edge 16 px above the surface** (hitbox 16..22). Standing
+  Kelly (24 px) is struck; ducking Kelly (11 px) passes five pixels under. The duck is not a
+  dodge, it is a height change. A biplane is **not** jumpable — the apex is 14, under the
+  plane, so a jump puts Kelly's body straight through it. See §0k for why 16 is the ceiling.
 - **Beach balls move through both windows**, which is what makes §5a the tightest arithmetic
   in the game: the jump arc and the duck gap have to meet without leaving a height at which
   the ball cannot be avoided at all, and the arc is capped below standing height so no ball is
@@ -993,7 +1383,8 @@ hidden sprite that can still kill you is the worst possible version of this.
 | Shopping cart | rolls, 1–3 px/frame, wraps at the screen edge | **jump** | −9 s |
 | Beach ball | rolls and **bounces** 8 / 10 / 12 px by Krook | **jump it low, duck under it high** — see §5a | −9 s |
 | Cathedral radio | **stationary** | **jump** | −9 s |
-| Toy biplane | flies at head height, 2–4 px/frame; floors 2–3 and the roof | **duck** | **a Kop** |
+| Toy biplane | flies at head height, 2 px/pass and 3 from Krook 8; **not before Krook 4**, and never on the roof | **duck** | **a Kop** |
+| *(the roof carries **carts**, not biplanes — see 0m)* | | | |
 | Money bag | static, on a surface | walk into it | **+50** |
 | Suitcase | static, on a surface | walk into it | **+50** |
 
@@ -1103,7 +1494,7 @@ Which forces three numbers to be chosen together, not tuned independently:
   a box of 6 px or more collapses the seam to nothing and a box of 8 px opens a **dead band at
   `Bb` = 7** where neither answer works. The hitbox inset *is* the seam.
 
-**Difficulty raises the apex, never the answer.** The three arcs are **8 / 10 / 12** px:
+**Difficulty raises the apex, never the answer.** The three arcs are **9 / 10 / 12** px:
 Krook 1–3 tops out at the very top of the jump band, 4–8 goes duck-only at the peak while
 staying jumpable lower down, and 9+ sits at the cap. The ball never stops being avoidable and
 never becomes free; it stops being avoidable the *same way*, which is a dial that raises what
@@ -1145,7 +1536,7 @@ cheap, and each one was added because its absence was visible:
 | **Elevator doors** | 3 | open → part-open → shut, redrawn only when the phase changes |
 | **Escalator steps** | 4 | `esc_tick`, by rewriting four character *patterns* |
 | Elevator car | position | its own travel |
-| Scanner: Kelly's dot | blink | distinguishes him from Harry in one colour (§6) |
+| Scanner: Kelly's marker | *(none)* | he was a blinking character cell; both markers are sprites now and carry their own colour (§6a) |
 
 **The propeller is the only moving part a toy plane has.** Drawn static it reads
 as a decal painted on the nose; the alternation is what makes it a thing flying

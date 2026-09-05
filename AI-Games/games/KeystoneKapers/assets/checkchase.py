@@ -32,7 +32,21 @@ SRC  = os.path.join(HERE, '..', 'src')
 MARGIN = 8.0    # seconds of slack Kelly must have on Harry's whole climb.
                 # One beach ball costs 9 s, so anything under this means a
                 # single mistake makes the round unwinnable.
-FPS    = 60.0
+# PASSES PER SECOND, NOT FRAMES. Everything that moves is advanced once per
+# LOOP PASS -- `klx = klx + WALKSP`, `hx = hx + hspd` -- and the loop does not
+# run at 60 Hz. It was measured in play at 24-26 passes a second on ordinary
+# screens and 20 on the west one (two escalator flights), so 25 is the honest
+# figure and the west screen is the pessimistic one.
+#
+# THIS CONSTANT BEING 60 IS WHAT HID A BROKEN ROUND. With it the checker
+# reported Kelly reaching the roof in 30 s against a 50 s timer -- comfortable.
+# The real numbers are 2.4x that: 72 s of wall clock against a timer that,
+# at 60 frames a unit, ran out at 50. The round could not be completed by the
+# intended route and the checker said OK on every run. The timer is paced by
+# the frame delta and therefore in real seconds; the actors are not; a checker
+# that converts both with the same number cannot see the gap between them.
+PASSES = 25.0
+FPS    = PASSES
 
 def read(name):
     with open(os.path.join(SRC, name), encoding='utf-8', errors='replace') as f:
@@ -78,6 +92,10 @@ ESCRISE = const(bas, 'ESCRISE')
 RIDE_SLOW = ESCRISE - 4                 # boarding on phase 0
 RIDE_FAST = ESCRISE - 7                 # boarding on phase 3
 TIMEL  = const(bas, 'TIMEL')
+# A TIMER UNIT IS NOT A SECOND (DESIGN.md 0m). The round is TIMEL units of
+# TICKFR frames, and the timer is the one thing here paced in real time.
+TICKFR = const(bas, 'TICKFR')
+ROUND  = TIMEL * TICKFR / 60.0
 
 # THE ELEVATOR IS PART OF KELLY'S ROUTE AND LEAVING IT OUT DISTORTED THE GAME.
 # This used to charge Kelly the full on-foot route -- four end-to-end traverses
@@ -192,8 +210,8 @@ for i, (first, sp4) in enumerate(bands):
     margin = ht - kt
     print('%-14s Harry %.2f px/frame, route %s px' %
           (label, hspd, '+'.join(str(r) for _, r in hlegs)))
-    print('%-14s escapes at %5.1f s (timer %d s), Kelly is there %5.1f s earlier'
-          % ('', ht, TIMEL, margin))
+    print('%-14s escapes at %5.1f s (round %.0f s), Kelly is there %5.1f s earlier'
+          % ('', ht, ROUND, margin))
     if hspd >= WALKSP:
         fail.append('%s: Harry %.2f px/frame is not slower than Kelly %d -- '
                     'he cannot be caught once he flees' % (label, hspd, WALKSP))
@@ -201,10 +219,10 @@ for i, (first, sp4) in enumerate(bands):
         fail.append('%s: Kelly beats Harry to the roof by only %.1f s '
                     '(need %.1f) -- one obstacle hit makes the round '
                     'unwinnable' % (label, margin, MARGIN))
-    if ht >= TIMEL:
+    if ht >= ROUND:
         fail.append('%s: Harry needs %.1f s to escape but the round is %d s -- '
                     'he can never escape, so that loss condition is dead'
-                    % (label, ht, TIMEL))
+                    % (label, ht, ROUND))
     print()
 
 if fail:

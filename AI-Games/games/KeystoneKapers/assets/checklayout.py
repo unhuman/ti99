@@ -63,6 +63,10 @@ SCREEN = {
     "draw_screen": "GAME", "draw_prizes": "GAME", "draw_car": "GAME",
     "esc_cap_draw": "GAME",   # the escalator handrail's top turn,
                               # stamped into the floor above
+    "beam_tops": "GAME",      # support-beam tops, likewise stamped into the
+                              # slab row of the band above
+    "radio_draw": "GAME",     # the victrola, four cells stamped into the
+                              # band's air rows after the blit
     "coll_prize": "GAME", "scan_canvas": "GAME",
     "hud_all": "GAME", "hud_score": "GAME", "hud_time": "GAME",
     "hud_kops": "GAME", "prt_digits": "GAME", "prt_dloop": "GAME",
@@ -74,7 +78,11 @@ SCREEN = {
     # These write the PATTERN table (base 4096), not the name table, so they
     # can never collide with a printed string. Mapped anyway, because an
     # unmapped drawing routine has to fail rather than be silently skipped.
-    "scan_set": "PATT", "scan_clr": "PATT", "scan_tick": "PATT",
+    "scan_set": "PATT",
+    "scan_mark": "PATT",      # a marker's three rows, pattern AND colour
+    "scan_wipe1": "PATT",     # and giving the character its base colour back
+    "scan_escc": "PATT",      # the flight's own colour, per character
+    "scan_clr": "PATT", "scan_tick": "PATT",
     "scan_addr": "PATT", "scan_wipe": "PATT", "scan_furn": "PATT",
     "scan_or1": "PATT", "scan_pat": "PATT", "scan_base": "PATT",
     "scan_clr1": "PATT", "scan_escs": "PATT", "scan_elev": "PATT",

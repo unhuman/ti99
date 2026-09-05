@@ -14,9 +14,9 @@
 
 spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then the same LEFT (+24), then the FOUR shared run frames. Patterns 0..60
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$0F,$0F,$0F,$FF,$FF,$30
+	DATA BYTE $00,$00,$03,$07,$0F,$0F,$0F,$3F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$F0,$F0,$F0,$FF,$FF,$3C
+	DATA BYTE $00,$00,$C0,$E0,$F0,$F0,$F0,$FC
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$0F,$0F,$0F,$0F,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -29,22 +29,22 @@ spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then t
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F0,$F0,$FC,$FC,$F0,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$03,$03,$00,$00
+	DATA BYTE $00,$00,$00,$00,$01,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$FF,$FF,$00,$00
+	DATA BYTE $00,$78,$FC,$FC,$FE,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$01,$01
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FE,$F8
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $7E,$7F,$3F,$1F,$00,$00,$00,$00
-	DATA BYTE $3F,$3C,$78,$00,$00,$00,$00,$00
-	DATA BYTE $00,$E0,$FC,$FF,$00,$00,$00,$00
-	DATA BYTE $FC,$3C,$1E,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$F8,$78,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$0F,$0F,$0F,$FF,$FF,$3C
+	DATA BYTE $3F,$7F,$7F,$3F,$3F,$3F,$3E,$3E
+	DATA BYTE $7F,$73,$E1,$00,$00,$00,$00,$00
+	DATA BYTE $00,$C0,$C0,$C0,$80,$00,$00,$00
+	DATA BYTE $00,$80,$C0,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$F0,$F0,$F0,$FF,$FF,$0C
+	DATA BYTE $00,$00,$03,$07,$0F,$0F,$0F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$C0,$E0,$F0,$F0,$F0,$FC
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$0F,$03,$03,$03,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -57,18 +57,18 @@ spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then t
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$F0,$FC,$FC,$FC,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$FF,$FF,$00,$00
+	DATA BYTE $00,$1E,$3F,$3F,$7F,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$C0,$C0,$00,$00
+	DATA BYTE $00,$00,$00,$00,$80,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$7F,$1F
+	DATA BYTE $00,$00,$00,$00,$00,$1F,$1E,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$80,$80
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$07,$3F,$FF,$00,$00,$00,$00
-	DATA BYTE $3F,$3C,$78,$00,$00,$00,$00,$00
-	DATA BYTE $7E,$FE,$FC,$F8,$00,$00,$00,$00
-	DATA BYTE $FC,$3C,$1E,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$03,$03,$03,$01,$00,$00,$00
+	DATA BYTE $00,$01,$03,$00,$00,$00,$00,$00
+	DATA BYTE $FC,$FE,$FE,$FC,$FC,$FC,$7C,$7C
+	DATA BYTE $FE,$CE,$87,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$3F,$3F,$3C,$3C,$7C,$7C,$7C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FC,$FC,$FC,$3C,$3C,$3E,$3E,$3E
@@ -87,30 +87,38 @@ spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then t
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
 spr_harry:	' Harry: RIGHT white/face/stripes, then the same LEFT (+12), then the FOUR shared run frames. Patterns 64..100
-	DATA BYTE $0F,$0F,$FF,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$3F,$00,$3F,$00,$7F
-	DATA BYTE $F0,$F0,$FF,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$FC,$00,$FC,$00,$FE
-	DATA BYTE $1F,$1F,$1F,$1F,$1F,$1F,$1F,$00
+	DATA BYTE $07,$0F,$1F,$00,$00,$00,$00,$00
+	DATA BYTE $00,$1F,$07,$37,$37,$00,$0F,$00
+	DATA BYTE $E0,$F0,$F8,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F8,$EC,$E0,$E0,$00,$F0,$00
+	DATA BYTE $07,$07,$07,$03,$03,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $E0,$E0,$E0,$E0,$E0,$E0,$E0,$00
+	DATA BYTE $E0,$E0,$E0,$C0,$C0,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$FF,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$3F,$00,$7F,$00
-	DATA BYTE $00,$00,$00,$FF,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$FC,$00,$FE,$00
-	DATA BYTE $0F,$0F,$FF,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$3F,$00,$3F,$00,$7F
-	DATA BYTE $F0,$F0,$FF,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$FC,$00,$FC,$00,$FE
-	DATA BYTE $07,$07,$07,$07,$07,$07,$07,$00
+	DATA BYTE $00,$00,$00,$1F,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$0F,$00,$1F
+	DATA BYTE $00,$00,$00,$F8,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$F0,$00,$F8
+	DATA BYTE $07,$0F,$1F,$00,$00,$00,$00,$00
+	DATA BYTE $00,$1F,$37,$07,$07,$00,$0F,$00
+	DATA BYTE $E0,$F0,$F8,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F8,$E0,$EC,$EC,$00,$F0,$00
+	DATA BYTE $07,$0F,$1F,$00,$00,$00,$00,$00
+	DATA BYTE $00,$1F,$37,$07,$07,$00,$0F,$00
+	DATA BYTE $E0,$F0,$F8,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F8,$E0,$EC,$EC,$00,$F0,$00
+	DATA BYTE $07,$07,$07,$03,$03,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F8,$F8,$F8,$F8,$F8,$F8,$F8,$00
+	DATA BYTE $E0,$E0,$E0,$C0,$C0,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$FF,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$3F,$00,$7F,$00
-	DATA BYTE $00,$00,$00,$FF,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$FC,$00,$FE,$00
+	DATA BYTE $00,$00,$00,$1F,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$0F,$00,$1F
+	DATA BYTE $00,$00,$00,$F8,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$F0,$00,$F8
+	DATA BYTE $07,$0F,$1F,$00,$00,$00,$00,$00
+	DATA BYTE $00,$1F,$07,$37,$37,$00,$0F,$00
+	DATA BYTE $E0,$F0,$F8,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F8,$EC,$E0,$E0,$00,$F0,$00
 	DATA BYTE $3F,$3F,$38,$38,$70,$70,$78,$78
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FC,$FC,$1C,$1C,$0E,$0E,$1E,$1E
@@ -146,31 +154,52 @@ spr_radio:	' cathedral radio, stationary
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $30,$E0,$F8,$FC,$FC,$FC,$FC,$FC
 
-spr_plane:	' toy biplane -- DUCK. The only thing that kills.
+spr_raddot:	' radar marker -- Kop and crook
+	DATA BYTE $E0,$E0,$E0,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $19,$01,$0F,$3F,$7F,$3F,$0F,$01
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $98,$80,$F0,$FC,$F6,$FC,$F0,$80
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $19,$01,$0F,$3F,$6F,$3F,$0F,$01
+
+spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. YELLOW body over a BLACK detail layer (cockpit + spinning propeller); the detail sits in a HIGH slot so an overfull scanline drops it and not the plane.
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $98,$80,$F0,$FC,$FE,$FC,$F0,$80
+	DATA BYTE $00,$0C,$1E,$3F,$79,$3F,$1E,$0C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$01,$0F,$3F,$7F,$3F,$0F,$01
+	DATA BYTE $00,$00,$00,$80,$FC,$80,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$80,$F0,$FC,$F6,$FC,$F0,$80
+	DATA BYTE $00,$00,$00,$01,$3F,$01,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$01,$0F,$3F,$6F,$3F,$0F,$01
+	DATA BYTE $00,$30,$78,$FC,$9E,$FC,$78,$30
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$80,$F0,$FC,$FE,$FC,$F0,$80
+	DATA BYTE $00,$00,$00,$00,$06,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$02,$01,$01,$01,$02,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$40,$80,$80,$80,$40,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$60,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$06,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$02,$01,$00,$01,$00,$01,$02
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$40,$80,$00,$80,$00,$80,$40
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$60,$00,$00,$00
 
 	' ------------------------------------------------ store characters
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.
 
-store_pat:	' 55 chars, 8 bytes each
+store_pat:	' 63 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $00,$00,$0C,$03,$0F,$3F,$7F,$FF
+	DATA BYTE $00,$00,$30,$C0,$F0,$FC,$FE,$FF
+	DATA BYTE $30,$00,$00,$03,$0F,$3F,$7F,$FF
+	DATA BYTE $0C,$00,$00,$C0,$F0,$FC,$FE,$FF
+	DATA BYTE $C6,$C6,$C6,$C6,$FF,$CF,$FF,$C0
+	DATA BYTE $63,$63,$63,$63,$FF,$F3,$FF,$03
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -216,7 +245,7 @@ store_pat:	' 55 chars, 8 bytes each
 	DATA BYTE $00,$00,$00,$00,$C0,$70,$1C,$07
 	DATA BYTE $33,$33,$FB,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $3C,$7E,$5A,$3C,$7E,$66,$66,$42
+	DATA BYTE $18,$3C,$7E,$7E,$7E,$7E,$FF,$00
 	DATA BYTE $FF,$81,$BD,$A5,$A5,$BD,$81,$FF
 	DATA BYTE $3C,$66,$FF,$FF,$DB,$FF,$7E,$3C
 	DATA BYTE $18,$7E,$FF,$FF,$E7,$FF,$FF,$00
@@ -224,10 +253,18 @@ store_pat:	' 55 chars, 8 bytes each
 	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
 	DATA BYTE $DF,$DF,$00,$FB,$FB,$00,$DF,$DF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 
 store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$B2,$B2,$B2
-	DATA BYTE $44,$44,$44,$44,$44,$44,$44,$44
+	DATA BYTE $75,$75,$75,$55,$55,$55,$55,$55
+	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
+	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
+	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
+	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
+	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
+	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
+	DATA BYTE $12,$12,$12,$12,$12,$12,$12,$12
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
 	DATA BYTE $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
 	DATA BYTE $F7,$F7,$F7,$F7,$F7,$F7,$F7,$F7
@@ -273,7 +310,7 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
 	DATA BYTE $87,$87,$87,$87,$87,$87,$87,$87
 	DATA BYTE $F2,$F2,$F2,$F2,$F2,$F2,$F2,$F2
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
 	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
 	DATA BYTE $B2,$B2,$B2,$B2,$B2,$B2,$B2,$B2
 	DATA BYTE $62,$62,$62,$62,$62,$62,$62,$62
@@ -281,8 +318,9 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
 	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
+	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BE,$BE,$BE
 
-esc_phw0:	' chars 101-106, phase 0 -- DEFINE CHAR 101,6,esc_phw0
+esc_phw0:	' chars 108-113, phase 0 -- DEFINE CHAR 108,6,esc_phw0
 	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
@@ -290,7 +328,7 @@ esc_phw0:	' chars 101-106, phase 0 -- DEFINE CHAR 101,6,esc_phw0
 	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
 
-esc_phe0:	' chars 107-112, phase 0 -- DEFINE CHAR 107,6,esc_phe0
+esc_phe0:	' chars 114-119, phase 0 -- DEFINE CHAR 114,6,esc_phe0
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$FF,$FE,$F8,$E3
 	DATA BYTE $FF,$FE,$F8,$E3,$8F,$3F,$FF,$FC
@@ -298,7 +336,7 @@ esc_phe0:	' chars 107-112, phase 0 -- DEFINE CHAR 107,6,esc_phe0
 	DATA BYTE $00,$00,$00,$00,$FF,$FE,$F8,$E3
 	DATA BYTE $FF,$FE,$F8,$E3,$8F,$3F,$FF,$FC
 
-esc_phw1:	' chars 101-106, phase 1 -- DEFINE CHAR 101,6,esc_phw1
+esc_phw1:	' chars 108-113, phase 1 -- DEFINE CHAR 108,6,esc_phw1
 	DATA BYTE $FC,$7C,$1C,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$FC,$FC,$7C,$1C,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$FC
@@ -306,7 +344,7 @@ esc_phw1:	' chars 101-106, phase 1 -- DEFINE CHAR 101,6,esc_phw1
 	DATA BYTE $00,$00,$00,$FC,$FC,$7C,$1C,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$FC
 
-esc_phe1:	' chars 107-112, phase 1 -- DEFINE CHAR 107,6,esc_phe1
+esc_phe1:	' chars 114-119, phase 1 -- DEFINE CHAR 114,6,esc_phe1
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$3F
 	DATA BYTE $00,$00,$00,$3F,$3F,$3E,$38,$E3
 	DATA BYTE $3F,$3E,$38,$E3,$8F,$3F,$FF,$FC
@@ -314,7 +352,7 @@ esc_phe1:	' chars 107-112, phase 1 -- DEFINE CHAR 107,6,esc_phe1
 	DATA BYTE $00,$00,$00,$3F,$3F,$3E,$38,$E3
 	DATA BYTE $3F,$3E,$38,$E3,$8F,$3F,$FF,$FC
 
-esc_phw2:	' chars 101-106, phase 2 -- DEFINE CHAR 101,6,esc_phw2
+esc_phw2:	' chars 108-113, phase 2 -- DEFINE CHAR 108,6,esc_phw2
 	DATA BYTE $F0,$70,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$F0,$F0,$F0,$70,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$F0,$F0
@@ -322,7 +360,7 @@ esc_phw2:	' chars 101-106, phase 2 -- DEFINE CHAR 101,6,esc_phw2
 	DATA BYTE $00,$00,$F0,$F0,$F0,$70,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$F0,$F0
 
-esc_phe2:	' chars 107-112, phase 2 -- DEFINE CHAR 107,6,esc_phe2
+esc_phe2:	' chars 114-119, phase 2 -- DEFINE CHAR 114,6,esc_phe2
 	DATA BYTE $80,$00,$00,$00,$00,$00,$0F,$0F
 	DATA BYTE $00,$00,$0F,$0F,$0F,$0E,$F8,$E3
 	DATA BYTE $0F,$0E,$F8,$E3,$8F,$3F,$FF,$FC
@@ -330,7 +368,7 @@ esc_phe2:	' chars 107-112, phase 2 -- DEFINE CHAR 107,6,esc_phe2
 	DATA BYTE $00,$00,$0F,$0F,$0F,$0E,$F8,$E3
 	DATA BYTE $0F,$0E,$F8,$E3,$8F,$3F,$FF,$FC
 
-esc_phw3:	' chars 101-106, phase 3 -- DEFINE CHAR 101,6,esc_phw3
+esc_phw3:	' chars 108-113, phase 3 -- DEFINE CHAR 108,6,esc_phw3
 	DATA BYTE $C0,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$C0,$C0,$C0,$C0,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$C0,$C0,$C0
@@ -338,7 +376,7 @@ esc_phw3:	' chars 101-106, phase 3 -- DEFINE CHAR 101,6,esc_phw3
 	DATA BYTE $00,$C0,$C0,$C0,$C0,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$C0,$C0,$C0
 
-esc_phe3:	' chars 107-112, phase 3 -- DEFINE CHAR 107,6,esc_phe3
+esc_phe3:	' chars 114-119, phase 3 -- DEFINE CHAR 114,6,esc_phe3
 	DATA BYTE $80,$00,$00,$00,$00,$03,$03,$03
 	DATA BYTE $00,$03,$03,$03,$03,$FE,$F8,$E3
 	DATA BYTE $03,$FE,$F8,$E3,$8F,$3F,$FF,$FC
@@ -356,73 +394,81 @@ esc_phe3:	' chars 107-112, phase 3 -- DEFINE CHAR 107,6,esc_phe3
 	' CVBasic left in the colour table, which on a green store made the HUD
 	' unreadable.
 
-scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then furniture grey / Kelly black / Harry white / floor line yellow per 4 px level, on dark green
-	DATA BYTE $EE,$EE,$EE,$EE,$EC,$1C,$FC,$BC
-	DATA BYTE $EC,$1C,$FC,$BC,$EC,$1C,$FC,$BC
-	DATA BYTE $EC,$1C,$FC,$BC,$EE,$EE,$EE,$EE
+scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then a 3 px band of furniture GREY and a yellow floor line, per 4 px level, on dark green. The Kop and the crook are coloured PER CHARACTER at run time -- see scan_set
+	DATA BYTE $EE,$EE,$EE,$EE,$EC,$EC,$EC,$BC
+	DATA BYTE $EC,$EC,$EC,$BC,$EC,$EC,$EC,$BC
+	DATA BYTE $EC,$EC,$EC,$BC,$EE,$EE,$EE,$EE
 
 esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at 8192 + char*8, once, at setup
-	DATA BYTE $83,$1F,$1F,$1E,$1E,$1E,$1E,$1E
-	DATA BYTE $1E,$84,$1F,$1F,$1E,$1E,$1E,$1E
-	DATA BYTE $1E,$1E,$68,$1F,$1F,$1E,$1E,$1E
-	DATA BYTE $1E,$1E,$1E,$69,$1F,$1F,$1E,$1E
-	DATA BYTE $1E,$1E,$1E,$1E,$6A,$1F,$1F,$1E
-	DATA BYTE $1E,$1E,$1E,$1E,$1E,$85,$1F,$1F
+	DATA BYTE $8A,$1F,$1F,$1E,$1E,$1E,$1E,$1E
+	DATA BYTE $1E,$8B,$1F,$1F,$1E,$1E,$1E,$1E
+	DATA BYTE $1E,$1E,$6F,$1F,$1F,$1E,$1E,$1E
+	DATA BYTE $1E,$1E,$1E,$70,$1F,$1F,$1E,$1E
+	DATA BYTE $1E,$1E,$1E,$1E,$71,$1F,$1F,$1E
+	DATA BYTE $1E,$1E,$1E,$1E,$1E,$8C,$1F,$1F
 	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E
 
 	' code map, for the source to reference:
 	'   96  SLAB
 	'   97  SHELFT
-	'   98  COUNTR
-	'   99  SHAFT
-	'   100 ECAR
-	'   101 ESCW5
-	'   102 ESCW6
-	'   103 ESCW7
-	'   104 ESCWB5
-	'   105 ESCWB6
-	'   106 ESCWB7
-	'   107 ESCE5
-	'   108 ESCE6
-	'   109 ESCE7
-	'   110 ESCEB5
-	'   111 ESCEB6
-	'   112 ESCEB7
-	'   113 ESCW0
-	'   114 ESCW1
-	'   115 ESCW2
-	'   116 ESCW3
-	'   117 ESCW4
-	'   118 ESCW8
-	'   119 ESCW9
-	'   120 ESCW10
-	'   121 ESCW11
-	'   122 ESCE0
-	'   123 ESCE1
-	'   124 ESCE2
-	'   125 ESCE3
-	'   126 ESCE4
-	'   127 ESCE8
-	'   128 ESCE9
-	'   129 ESCE10
-	'   130 ESCE11
-	'   131 ESCWB3
-	'   132 ESCWB4
-	'   133 ESCWB8
-	'   134 ESCEB0
-	'   135 ESCEB4
-	'   136 ESCEB8
-	'   137 ESCWR0
-	'   138 ESCWR1
-	'   139 ESCWR2
-	'   140 ESCWR3
-	'   141 PARAP
-	'   142 WALL
-	'   143 KOPIC
-	'   144 EXITC
-	'   145 BAG
-	'   146 CASE
-	'   147 ROOFS
-	'   148 EDHALF
-	'   149 ENDWALL
-	'   150 SCANBK
+	'   98  SHELFB
+	'   99  RADTL0
+	'   100 RADTR0
+	'   101 RADTL1
+	'   102 RADTR1
+	'   103 RADBL
+	'   104 RADBR
+	'   105 COUNTR
+	'   106 SHAFT
+	'   107 ECAR
+	'   108 ESCW5
+	'   109 ESCW6
+	'   110 ESCW7
+	'   111 ESCWB5
+	'   112 ESCWB6
+	'   113 ESCWB7
+	'   114 ESCE5
+	'   115 ESCE6
+	'   116 ESCE7
+	'   117 ESCEB5
+	'   118 ESCEB6
+	'   119 ESCEB7
+	'   120 ESCW0
+	'   121 ESCW1
+	'   122 ESCW2
+	'   123 ESCW3
+	'   124 ESCW4
+	'   125 ESCW8
+	'   126 ESCW9
+	'   127 ESCW10
+	'   128 ESCW11
+	'   129 ESCE0
+	'   130 ESCE1
+	'   131 ESCE2
+	'   132 ESCE3
+	'   133 ESCE4
+	'   134 ESCE8
+	'   135 ESCE9
+	'   136 ESCE10
+	'   137 ESCE11
+	'   138 ESCWB3
+	'   139 ESCWB4
+	'   140 ESCWB8
+	'   141 ESCEB0
+	'   142 ESCEB4
+	'   143 ESCEB8
+	'   144 ESCWR0
+	'   145 ESCWR1
+	'   146 ESCWR2
+	'   147 ESCWR3
+	'   148 PARAP
+	'   149 WALL
+	'   150 KOPIC
+	'   151 EXITC
+	'   152 BAG
+	'   153 CASE
+	'   154 ROOFS
+	'   155 EDHALF
+	'   156 ENDWALL
+	'   157 SCANBK
+	'   158 SLABP

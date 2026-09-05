@@ -129,6 +129,7 @@ rm -rf ../assets/__pycache__
 # inside the round timer.
 "$TRUNCPY" ../assets/checkchase.py > /dev/null \
     || die "the chase does not resolve -- run assets/checkchase.py"
+"$TRUNCPY" ../assets/checklevels.py > /dev/null     || die "the Krook progression has drifted -- run assets/checklevels.py"
 "$TRUNCPY" ../assets/checkbands.py > /dev/null \
     || die "an actor colour band overlaps -- run assets/checkbands.py"
 "$TRUNCPY" ../assets/checkesc.py > /dev/null \
