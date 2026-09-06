@@ -196,7 +196,10 @@
 	' the Kop vanished in the one place the game most wants you to go. Both
 	' halves of that are now fixed: the hat has its own sprite, and the shaft
 	' is GREY -- the reference's dark green is indistinguishable from the
-	' store's medium green on this VDP, so it needed replacing anyway.
+	' store's own ground on this VDP, so it needed replacing anyway. That is
+	' MORE true now, not less: the store's ground has since moved to dark
+	' green itself (genart's STORE_BG), so a dark-green shaft would now be
+	' the identical byte.
 	CONST C_KHAT = 1
 	CONST C_SKIN = 11		' the one skin band, both actors
 	CONST C_HSTRIPE = 1		' Harry's stripes -- the sprite that is

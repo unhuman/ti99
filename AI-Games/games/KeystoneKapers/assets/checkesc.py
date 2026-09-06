@@ -152,7 +152,7 @@ def main():
         from PIL import Image
         W, H = g.FLIGHT_W, g.FLIGHT_H
         im = Image.new("RGB", (W, H * len(frames) + 2 * (len(frames) - 1)),
-                       (33, 200, 66))
+                       g.PALETTE_RGB[g.STORE_BG])
         for i, px in enumerate(frames):
             for y in range(H):
                 for x in range(W):

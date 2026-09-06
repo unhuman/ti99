@@ -62,7 +62,7 @@ What the 2600 actually looks like, and what we now draw:
 
 | element | 2600 | here |
 |---|---|---|
-| Store interior | flat medium green, wall to wall | `MGREEN` |
+| Store interior | flat medium green, wall to wall | `STORE_BG` = `DGREEN` — see §0d-bis |
 | Floors | thick **olive bars** with a light top edge | ← *corrected, see 0b* |
 | Storefronts | blue counters on the floor + narrow white pillars | ← *corrected, see 0b* |
 | Sky strip | blue-violet; orange skyline above the roof deck | **`CYAN`** + `MRED` — see 0c |
@@ -143,6 +143,41 @@ fails with the list of bases to move, rather than letting two tables quietly
 overwrite each other's patterns.
 
 ---
+
+### 0d-bis. The store's ground is a ROLE, not a colour
+
+The shop floor moved from medium green (2) to **dark green (12)** on request —
+the only darker green the TMS9918 has, so this dial has exactly two positions.
+Measured off the emulator at fixed coordinates rather than judged by eye:
+Classic99 paints the shop floor `(34,204,51)` before and `(34,187,34)` after,
+over 84,000 identical pixels of the same region.
+
+**The interesting part is not the colour, it is that fifty-six of the eighty-
+seven store characters carry it.** On this VDP a character's "background" *is*
+what an unlit pixel shows, so the ground is spelled out once per character:
+every blank cell, every escalator tread, both end walls, the display cases, the
+bags, the radio, the roof deck's lower rows. Spelling a colour out fifty-six
+times means the next person to darken the shop has to find all fifty-six, and
+the ones they miss are single cells in the middle of a wall — which read as
+dirt, not as a bug.
+
+So it is now one name, `STORE_BG`, in `genart.py`. **The substitution was only
+safe because medium green was never a FOREGROUND**, and that was checked over
+the built `CHARS` table rather than assumed: 0 characters ink with it, 56 sit on
+it. If that ever stops being true this cannot stay a rename.
+
+`previewrun.py`, `checkbands.py` and `checkesc.py` now **derive** the RGB from
+`genart.STORE_BG` instead of carrying `(33, 200, 66)` as a literal. That is not
+tidiness: `previewrun.py` has drifted out of step with the game three times
+already, and a preview that lags the thing it previews does not merely fail to
+help, it accuses the wrong file. `checkesc.py` needed exactly one colour and had
+no palette table at all, so the canonical one now lives in
+`genart.PALETTE_RGB` rather than becoming a fourth copy.
+
+**The scanner was already dark green**, so its canvas and the store are now the
+identical byte. It still reads as a separate object because its margin is
+**grey** — which was the whole reason for the grey, and is more true now than
+when it was written.
 
 ### 0e. A character number written by hand is a bug waiting for a rename
 
@@ -1561,12 +1596,17 @@ The same burst also shows the **steps do not scroll** — no step animation is
 needed, which is worth knowing before building one.
 
 **DARK GREEN IS NOT A COLOUR ON THIS MACHINE, NOT NEXT TO MEDIUM GREEN.**
-TMS9918 colour 12 is (33,176,59) and colour 2 is (33,200,66). Twice now the
-reference's "darker green than the store" was copied literally and twice the
-thing simply vanished: first the escalator band, then the elevator shaft. Where
-the reference uses dark green *against* medium green, use **black** — it keeps
-the relationship (this is the dark thing in a green wall) with contrast the
-hardware can deliver. The shaft is black, the car cyan, and the shaft now runs
+TMS9918 colour 12 is (33,176,59) and colour 2 is (33,200,66) — 12% down in the
+green channel, identical in red and blue. Twice now the reference's "darker
+green than the store" was copied literally and twice the thing simply vanished:
+first the escalator band, then the elevator shaft. Where the reference uses dark
+green *against* medium green, use **black** — it keeps the relationship (this is
+the dark thing in a green wall) with contrast the hardware can deliver.
+
+That the two greens do not read as two colours is exactly why the store's own
+ground could be moved from 2 to 12 (§0d-bis) without redrawing anything: it is a
+change of *shade*, not of colour. The pair is unusable as a contrast and
+perfectly good as a single darker ground. Both statements are the same fact. The shaft is black, the car cyan, and the shaft now runs
 the **full** band height as the reference draws it rather than starting a row
 down.
 

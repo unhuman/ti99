@@ -182,7 +182,7 @@ def rows_of(data, idx):
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "bands.png")
     W, H = 40, 36
-    canvas = [[(33, 200, 66)] * (W * len(ACTORS)) for _ in range(H)]
+    canvas = [[PAL[g.STORE_BG]] * (W * len(ACTORS)) for _ in range(H)]
     bad = []
 
     check_complete(bad)

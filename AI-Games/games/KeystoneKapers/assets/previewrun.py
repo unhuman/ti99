@@ -17,7 +17,8 @@ PAL = [(0, 0, 0), (0, 0, 0), (33, 200, 66), (94, 220, 120),
        (84, 85, 237), (125, 118, 252), (212, 82, 77), (66, 235, 245),
        (252, 85, 84), (255, 121, 120), (212, 193, 84), (230, 206, 128),
        (33, 176, 59), (201, 91, 186), (204, 204, 204), (255, 255, 255)]
-BG = (33, 200, 66)          # the store's green
+BG = PAL[g.STORE_BG]        # the store's green, DERIVED -- this file has
+                            # drifted from the game three times already
 
 C_KELLY, C_SKIN, C_HARRY, C_STRIPE = 4, 11, 15, 1
 C_HAT = 1        # the game draws Kelly's hat BLACK, in its own sprite

@@ -1346,12 +1346,61 @@ for _label, _arts, _c in SPRITES:
 
 
 # The TMS9918's sixteen colours. Its two GREENS are nearly the same to the eye
-# (12 is (33,176,59), 2 is (33,200,66)), which is a trap the reference walks
-# straight into -- see the note on the store characters below.
+# (12 is (33,176,59), 2 is (33,200,66)) -- 12% down in the green channel and
+# nothing at all in red or blue. That closeness is a trap in one direction and
+# the whole point in the other: see STORE_BG below.
 TRANSP, BLACK, MGREEN, LGREEN = 0, 1, 2, 3
 DBLUE, LBLUE, DRED, CYAN = 4, 5, 6, 7
 MRED, LRED, DYELL, LYELL = 8, 9, 10, 11
 DGREEN, MAGENTA, GRAY, WHITE = 12, 13, 14, 15
+
+# THE STORE'S GROUND, AS A ROLE RATHER THAN A COLOUR. Fifty-six of the eighty-
+# seven store characters are drawn on it -- every blank cell, every escalator
+# tread, both end walls, the display cases, the radio -- because on this VDP a
+# character's "background" IS what an unlit pixel shows. Spelling the colour out
+# fifty-six times means the next person to darken the shop has to find all
+# fifty-six, and the ones they miss are single cells in the middle of a wall
+# that read as dirt rather than as a bug.
+#
+# SAFE TO SUBSTITUTE BECAUSE MGREEN WAS NEVER A FOREGROUND -- checked over the
+# built CHARS table, not assumed: 0 characters ink with it, 56 sit on it. If
+# that ever stops being true this cannot stay a rename.
+#
+# Dark green is the only darker green the hardware has. There is no third
+# option, so this dial has exactly two positions.
+STORE_BG = DGREEN
+
+# THE SUITCASE'S BODY. It is drawn as an OUTLINE -- side walls, a lid band, a
+# clasp and two feet -- so everything between the walls was whatever "empty"
+# meant, which is the shop floor. On screen that is a red frame with the store
+# visible straight through it rather than an object standing in front of it.
+#
+# It costs NOTHING to fill, and that is a fact about where the outline sits
+# rather than luck. Two colours per 8x1 scan line means a row can only have one
+# background, so a row that carries BOTH store floor and case interior cannot
+# have both. Checked row by row over the 2x2 block: on every interior row the
+# outline reaches both outer columns, so those rows contain no store floor at
+# all. The rows that DO show floor -- the handle rows above the lid, and the
+# gap between the two feet below the base -- carry no interior. The split is
+# exactly at the character boundary, four rows each, which is why this is a
+# colour-table change and not a redraw.
+#
+# BLACK rather than a second red: it keeps every line that is already drawn.
+# The walls, the clasp and the lid all stay DRED and now read against the body
+# instead of against the shop. A lighter red would have been the two-greens
+# mistake in another hue -- MRED (252,85,84) against DRED (212,82,77) differs
+# in one channel by the same margin that makes the two greens one colour.
+CASE_FILL = BLACK
+
+# The palette as RGB, for the offline previewers and checkers. Kept HERE so a
+# tool that needs one colour does not have to carry a sixteen-entry table it
+# will then have to keep correct -- checkesc.py needed exactly one and had none.
+PALETTE_RGB = [
+    (0, 0, 0), (0, 0, 0), (33, 200, 66), (94, 220, 120),
+    (84, 85, 237), (125, 118, 252), (212, 82, 77), (66, 235, 245),
+    (252, 85, 84), (255, 121, 120), (212, 193, 84), (230, 206, 128),
+    (33, 176, 59), (201, 91, 186), (204, 204, 204), (255, 255, 255),
+]
 
 # --------------------------------------------------------------------------
 # STORE CHARACTERS.  8x8 patterns plus an 8-byte colour block each: this is the
@@ -1368,9 +1417,12 @@ DGREEN, MAGENTA, GRAY, WHITE = 12, 13, 14, 15
 #   * The floor is a THICK OLIVE BAR with a light top row, not a hairline --
 #     three colours in one character, which is why some entries carry a LIST
 #     of eight colours rather than one pair.
-#   * DARK GREEN IS NOT A COLOUR next to medium green on this VDP (12 is
-#     (33,176,59), 2 is (33,200,66)). Where the reference uses it against the
-#     store -- the lift shaft -- use GREY instead.
+#   * DARK GREEN AND MEDIUM GREEN DO NOT READ AS TWO COLOURS on this VDP (12
+#     is (33,176,59), 2 is (33,200,66)). That is why the lift shaft is GREY
+#     even though the reference draws it in the other green -- and it is why
+#     moving the store's own ground from 2 to 12 (STORE_BG) is a change of
+#     shade and not of colour, which is what was wanted. The pair is unusable
+#     as a CONTRAST and perfectly good as a single darker ground.
 #   * The sky is CYAN because Kelly's tunic is dark blue and he vanished
 #     against a dark blue sky on the roof.
 #   * Blank cells still need their own code: what they show is their
@@ -1389,7 +1441,7 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", LYELL, [DYELL, DYELL, DYELL, DYELL, DYELL, MGREEN, MGREEN, MGREEN]),
+""", LYELL, [DYELL, DYELL, DYELL, DYELL, DYELL, STORE_BG, STORE_BG, STORE_BG]),
 
 
     ("SLABE", 0, """
@@ -1401,7 +1453,7 @@ CHARS_BASE = [
 ##.#####
 ##.#####
 ........
-""", [LYELL] * 5 + [GRAY] * 3, [DYELL] * 5 + [MGREEN] * 3),
+""", [LYELL] * 5 + [GRAY] * 3, [DYELL] * 5 + [STORE_BG] * 3),
 
     ("ROOFSE", 0, """
 ########
@@ -1412,7 +1464,7 @@ CHARS_BASE = [
 ##.#####
 ##.#####
 ........
-""", [WHITE] * 5 + [GRAY] * 3, [GRAY] * 5 + [MGREEN] * 3),
+""", [WHITE] * 5 + [GRAY] * 3, [GRAY] * 5 + [STORE_BG] * 3),
 
     ("SHELFT", 0, """
 ########
@@ -1446,7 +1498,7 @@ CHARS_BASE = [
 ..######
 .#######
 ########
-""", BLACK, MGREEN),
+""", BLACK, STORE_BG),
 
     ("RADTR0", 0, """
 ........
@@ -1457,7 +1509,7 @@ CHARS_BASE = [
 ######..
 #######.
 ########
-""", BLACK, MGREEN),
+""", BLACK, STORE_BG),
 
     ("RADTL1", 0, """
 ..##....
@@ -1468,7 +1520,7 @@ CHARS_BASE = [
 ..######
 .#######
 ########
-""", BLACK, MGREEN),
+""", BLACK, STORE_BG),
 
     ("RADTR1", 0, """
 ....##..
@@ -1479,7 +1531,7 @@ CHARS_BASE = [
 ######..
 #######.
 ########
-""", BLACK, MGREEN),
+""", BLACK, STORE_BG),
 
     ("RADBL", 0, """
 ##...##.
@@ -1490,7 +1542,7 @@ CHARS_BASE = [
 ##..####
 ########
 ##......
-""", BLACK, MGREEN),
+""", BLACK, STORE_BG),
 
     ("RADBR", 0, """
 .##...##
@@ -1501,7 +1553,7 @@ CHARS_BASE = [
 ####..##
 ########
 ......##
-""", BLACK, MGREEN),
+""", BLACK, STORE_BG),
 
     ("COUNTR", 0, """
 ########
@@ -1579,7 +1631,7 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", WHITE, MGREEN),
+""", WHITE, STORE_BG),
 
     # BLACK ON CYAN, which is what the HUD row already is -- `font_colour`
     # paints the whole font black-on-cyan (colour byte 23) and this sits in
@@ -1621,7 +1673,7 @@ CHARS_BASE = [
 ....####
 ...#####
 ..######
-""", LYELL, MGREEN),
+""", LYELL, STORE_BG),
 
     ("BAGTR", 0, """
 ........
@@ -1632,7 +1684,7 @@ CHARS_BASE = [
 ####....
 #####...
 ######..
-""", LYELL, MGREEN),
+""", LYELL, STORE_BG),
 
     ("BAGBL", 0, """
 .#######
@@ -1643,7 +1695,7 @@ CHARS_BASE = [
 .#######
 ..######
 ...#####
-""", LYELL, MGREEN),
+""", LYELL, STORE_BG),
 
     ("BAGBR", 0, """
 #######.
@@ -1654,7 +1706,7 @@ CHARS_BASE = [
 #######.
 ######..
 #####...
-""", LYELL, MGREEN),
+""", LYELL, STORE_BG),
 
     ("CASETL", 0, """
 ........
@@ -1665,7 +1717,7 @@ CHARS_BASE = [
 ########
 ##......
 ##....##
-""", DRED, MGREEN),
+""", DRED, [STORE_BG] * 4 + [CASE_FILL] * 4),
 
     ("CASETR", 0, """
 ........
@@ -1676,7 +1728,7 @@ CHARS_BASE = [
 ########
 ......##
 ##....##
-""", DRED, MGREEN),
+""", DRED, [STORE_BG] * 4 + [CASE_FILL] * 4),
 
     ("CASEBL", 0, """
 ##....##
@@ -1687,7 +1739,7 @@ CHARS_BASE = [
 ########
 .##.....
 ........
-""", DRED, MGREEN),
+""", DRED, [CASE_FILL] * 6 + [STORE_BG] * 2),
 
     ("CASEBR", 0, """
 ##....##
@@ -1698,7 +1750,7 @@ CHARS_BASE = [
 ########
 .....##.
 ........
-""", DRED, MGREEN),
+""", DRED, [CASE_FILL] * 6 + [STORE_BG] * 2),
 
     ("ROOFS", 0, """
 ########
@@ -1709,7 +1761,7 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", WHITE, [GRAY] * 5 + [MGREEN] * 3),
+""", WHITE, [GRAY] * 5 + [STORE_BG] * 3),
 
     # THE SAME ROOF WITH A BEAM CARRIED UP THROUGH IT. The green rows above
     # give the top shopping floor its air -- which is right for the lift shaft,
@@ -1995,7 +2047,7 @@ CHARS_BASE = [
 ........
 ##.#####
 ##.#####
-""", GRAY, MGREEN),
+""", GRAY, STORE_BG),
 
     # THE STRIP EITHER SIDE OF THE SCANNER. The canvas is 16 chars wide and
     # centred, so eight columns at each end of rows 21-23 are not part of it.
@@ -2076,7 +2128,7 @@ def _used(grid):
 # with those as the BACKGROUND and black as the foreground, a character shows
 # the bar wherever the flight is not -- so the floor runs across underneath the
 # staircase instead of being punched through by it.
-BAR_BG = [LYELL] + [DYELL] * 4 + [MGREEN] * 3
+BAR_BG = [LYELL] + [DYELL] * 4 + [STORE_BG] * 3
 
 # THE ROOF IS NOT A SHOPPING FLOOR AND IS NOT COLOURED LIKE ONE. The flight up
 # from floor 3 crosses into the roof band, where the "floor" is the grey DECK
@@ -2084,7 +2136,7 @@ BAR_BG = [LYELL] + [DYELL] * 4 + [MGREEN] * 3
 # Composites for that crossing therefore need the roof's colours, not the
 # store's -- the same idea, different palette. Only the WEST flight climbs to
 # the roof (floor 3's escalator is at the west end), so only it needs them.
-DECK_BG = [WHITE, WHITE] + [GRAY] * 3 + [MGREEN] * 3   # roof row 4, and
+DECK_BG = [WHITE, WHITE] + [GRAY] * 3 + [STORE_BG] * 3   # roof row 4, and
                                            # the three green rows it owes
                                            # the floor below (see ROOFS)
 ROOFAIR_BG = [DRED] * 8                    # roof row 3: the skyline's own
@@ -2092,8 +2144,8 @@ ROOFAIR_BG = [DRED] * 8                    # roof row 3: the skyline's own
                                            # cut a grey hole in the city
 
 # (name, cell index, that direction's phases, that direction's movers, bg)
-_PLAIN = [("ESCW%d" % i, i, ESC_W_PHASES, _W_MOVE, MGREEN) for i in _used(ESC_W_GRID)] \
-       + [("ESCE%d" % i, i, ESC_E_PHASES, _E_MOVE, MGREEN) for i in _used(ESC_E_GRID)]
+_PLAIN = [("ESCW%d" % i, i, ESC_W_PHASES, _W_MOVE, STORE_BG) for i in _used(ESC_W_GRID)] \
+       + [("ESCE%d" % i, i, ESC_E_PHASES, _E_MOVE, STORE_BG) for i in _used(ESC_E_GRID)]
 
 _COMP = []
 for _w, _grid, _phs, _mv in (("ESCW", ESC_W_GRID, ESC_W_PHASES, _W_MOVE),
@@ -2342,9 +2394,9 @@ def main():
         # THE MARGIN IS GREY, NOT GREEN, and that is the whole point of it.
         # A margin inked the same as the scanner's own dark-green ground is
         # padding INSIDE the box: the box still runs from the shop floor to
-        # the bottom of the screen and still touches both. And DGREEN is
-        # within a few counts of the store's MGREEN on this palette, so the
-        # box does not even read as a separate thing -- it reads as more
+        # the bottom of the screen and still touches both. And the scanner's
+        # ground is now EXACTLY the store's (both STORE_BG), so the box does
+        # not read as a separate thing at all -- it reads as more
         # THIS IS ONLY THE BASE. Every row of a level's three-pixel band is
         # grey here, and the two actors are recoloured a character at a time as
         # they move (scan_set / scan_clr in the source).

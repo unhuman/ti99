@@ -78,6 +78,8 @@ what a thing *is*: yellow floor lines, grey-and-black escalator slashes, a grey 
 elevator **car** (not its shaft), **Kelly black and Harry white**. Four pixel rows per level,
 one colour each, inset in a grey band the width of the screen -- as the 2600 has it.
 
+The shop floor is TMS9918 **dark green (12)**, not medium green — the only darker green the hardware has. It lives in `genart.py` as one name, `STORE_BG`, because **56 of the 87 store characters carry it as their background** and a colour spelled out 56 times is a colour somebody will miss a cell of; the previewers and checkers derive their RGB from it rather than repeating the literal (`DESIGN.md` §0d-bis).
+
 Both figures are **transcribed off the reference video onto the 2600's own pixel grid**
 rather than drawn from impression (`DESIGN.md` §0h): Kelly's head is 42% of his height with a
 flat black brim right across him, Harry's face is a third of his. `assets/cmpref.py` squashes
