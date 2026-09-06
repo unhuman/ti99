@@ -412,6 +412,26 @@ trousers stayed white with nothing wrong anywhere. `split_stripes` and `cut` in
 genart.py now guarantee the two never share a pixel, for the torso and the legs
 alike.
 
+**AN ARM READS AS AN ARM WHEN THERE IS BACKGROUND BETWEEN IT AND THE BODY.**
+This is the one that took four attempts. Every earlier version drew the arm
+FLUSH against the torso on the same row -- so it was not a limb at all, it was
+that row of the shirt being wider, and the only part that stuck out far enough
+to be seen separately was two pixels of hand. That is what "stumpy" meant, both
+times it was said.
+
+Each arm is a **three-pixel diagonal over two rows**: it touches the torso at
+the shoulder and then steps away, so from its second row on there is a clear
+gap of green between the arm and the body. It reaches column 14 in front and
+column 0 behind -- five and four pixels clear of a torso only six wide -- and
+because it crosses a band row and a white row it is striped like the sleeve it
+is. Frame A carries the forward arm high and the back arm low; frame B swaps
+them, which is what arms do when the legs swap.
+
+The corollary is worth stating plainly, because it invalidates the two rules
+below it as *sufficient* conditions: **length alone does not make an arm, and
+neither does contrast with the row above.** Separation does. A three-pixel arm
+with green under it reads; a ten-pixel one welded to the torso does not.
+
 **WHAT MAKES AN ARM READ IS THE ROW BESIDE IT, NOT THE ARM.** Measured off the
 2600 sprite: one row of the swing runs from **-1.8 to +4.1 clocks** against a
 3-clock torso -- a single bar right across him -- the next is torso width with a
