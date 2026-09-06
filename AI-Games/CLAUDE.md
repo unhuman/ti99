@@ -320,6 +320,26 @@ cost a debugging session:
     structure its own character codes and never match them in an erase. Do not
     guard on the coordinate -- the coordinate is a fact about this layout, the
     code is a fact about what the cell means.
+- **A PATTERN BLANKED IN ONE SCREEN THIRD IS INVISIBLE FROM EVERY OTHER THIRD,
+  SO PROBING THE NAME TABLE PROVES NOTHING.** In bitmap mode the pattern and
+  colour tables are three independent copies, one per eight rows. Write zeros
+  over character N in the bottom third and it still draws correctly in the top
+  two: on screen it becomes a cell of its own background colour, in the bottom
+  eight rows only. The name table still says N, the templates still say N, and
+  every check built on either agrees that nothing is wrong.
+  - Keystone Kapers' `scan_wipe` cleared its radar canvas with a hand-computed
+    `4096 + SCAN_FIRST*8`. `SCAN_FIRST` later moved from 160 to 208 and the
+    address did not, so it blanked the 48 characters *below* the canvas --
+    including the building's outside wall and a pillar cap. The ground floor's
+    wall vanished while the identical wall one storey up was perfect, for
+    months, and only on the two screens that carry an end wall.
+  - **A raw VRAM address is a character code in disguise.** A renumbering tool
+    that rewrites `CONST CH_*` from the art tables will not touch it, which is
+    exactly why it goes stale in silence. Derive it or gate it.
+  - **A probe that copies the character somewhere else to look at it cannot see
+    this** -- the copy renders from the third it was copied into. To test a
+    suspected glyph problem, read the pattern bytes, or put the probe in the
+    same third as the fault.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

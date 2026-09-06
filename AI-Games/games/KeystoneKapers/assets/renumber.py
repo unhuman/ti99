@@ -84,6 +84,22 @@ def main():
 
     src = re.sub(r"DEFINE SPRITE (\d+),(\d+),(spr_\w+)", fix_sprite, src)
 
+    # THE RADAR CANVAS'S PATTERN ADDRESS IS A CHARACTER CODE IN DISGUISE.
+    # scan_wipe blanks the canvas by writing zeros straight into the pattern
+    # table's bottom third, and the base of that is 4096 + SCAN_FIRST*8. It
+    # was hand-computed once, SCAN_FIRST later moved, and the line silently
+    # went on zeroing the 48 characters below the canvas -- two of which are
+    # the outside wall and a pillar cap, so the ground floor's structure
+    # vanished into its own background colour. Nothing else in this file was
+    # looking at raw VRAM addresses, which is why it was not caught here.
+    def fix_wipe(m):
+        want = 4096 + g.SCAN_FIRST * 8
+        if int(m.group(1)) != want:
+            changed.append("scan_wipe base %s -> %d" % (m.group(1), want))
+        return "#swa = %d			' 4096 + SCAN_FIRST*8" % want
+
+    src = re.sub(r"#swa = (\d+)	+' 4096 \+ SCAN_FIRST\*8", fix_wipe, src)
+
     # the store block's own size
     n = len(g.CHARS)
     def fix_store(m):

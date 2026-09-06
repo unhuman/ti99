@@ -804,7 +804,43 @@ outside wall, and on the roof it would have punched green through the skyline.
 `wall_clear` replaces it and tests for the thing it is allowed to remove --
 `COUNTR`, a pillar or a counter -- rather than trusting the position.
 
-**IT WAS VISIBLE AS A FLICKER, NOT AS A HOLE.** `draw_screen` blits a band and
+**AND THE ONE THAT WAS ACTUALLY BEING REPORTED WAS NEITHER.** The ground
+floor's outside wall stayed missing after both of the fixes above, on screens 0
+and 7 only, mirrored side to side. Probing the name table said it was there --
+four separate times, at draw and every frame, cap and body. It was: the cell
+held `ENDWALL` throughout. **The GLYPH was empty, and only in one screen
+third.**
+
+`scan_wipe` blanks the radar canvas by writing zeros into the pattern table's
+bottom third, whose base is `4096 + SCAN_FIRST*8`. That was hand-computed as
+`4096 + 160*8` when `SCAN_FIRST` was 160; art added later moved it to 208 and
+nothing moved this with it. So the wipe zeroed the 48 characters *below* the
+canvas and never touched the canvas at all -- and two of those are structure:
+`ENDWALL` (the outside wall) and `SLABP` (a pillar's cap). It also took the
+bottom halves of a suitcase prize.
+
+Rows 16-23 are the bottom third, so a character blanked there draws perfectly
+in bands 1, 2 and the roof and falls back to its own background colour on the
+**ground floor**. `ENDWALL` appears on screens 0 and 7 and nowhere else, which
+is precisely why it presented as "only the escalator screens". The ground
+floor's pillars had been losing their brick cap the same way, on every screen,
+for as long.
+
+Three lessons, all of them expensive:
+
+* **A probe that copies a character somewhere else to look at it cannot see
+  this.** The HUD is the top third, so the copy rendered from a different
+  pattern and looked perfect while the original was blank.
+* **A raw VRAM address is a character code in disguise.** `renumber.py`
+  rewrites every `CONST CH_*` from genart's tables, which is exactly why this
+  one -- an address, not a constant -- went stale silently. It now maintains
+  the `scan_wipe` base too, and `checkstruct.py` fails the build if the two
+  disagree.
+* **"The name table is correct" is not "the screen is correct."** Four rounds
+  of reading templates, tables and draw order all came back clean because the
+  drawing was clean.
+
+**AND ONE OF THEM WAS VISIBLE AS A FLICKER, NOT AS A HOLE.** `draw_screen` blits a band and
 then corrects it in the same pass, and the raster does not stop in between. The
 `WAIT` sat at the *end* of the loop body, so a band's burst began wherever the
 CPU happened to be in the frame; if the beam passed those rows between the blit

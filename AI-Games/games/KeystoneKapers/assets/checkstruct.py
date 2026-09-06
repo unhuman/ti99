@@ -98,6 +98,32 @@ def main():
             if m.group(1) in struct:
                 bad.append((name, m.group(1)))
 
+    # AND THE OTHER WAY TO ERASE STRUCTURE IS TO BLANK ITS GLYPH.
+    # scan_wipe zeros the radar canvas's patterns in the pattern table's
+    # BOTTOM THIRD. If its base does not match genart's SCAN_FIRST it blanks
+    # 48 unrelated characters instead -- and a pattern blanked in one third
+    # only is invisible from every other third, so the name table, the
+    # templates and every probe of them all agree that nothing is wrong.
+    # That is how the ground floor's outside wall stayed missing through
+    # four rounds of looking straight at it.
+    import importlib
+    g = importlib.import_module("genart")
+    want = 4096 + g.SCAN_FIRST * 8
+    m = re.search(r"#swa = (\d+)", src)
+    if not m:
+        print("FAIL  scan_wipe's base address is gone -- this check cannot "
+              "verify the radar canvas no longer overlaps the store's chars")
+        return 1
+    got = int(m.group(1))
+    if got != want:
+        print("FAIL  scan_wipe starts at %d (character %d) but genart puts the "
+              "radar canvas at %d (character %d). It will blank the patterns "
+              "of %d characters that are NOT the canvas, in the bottom third "
+              "only -- invisible everywhere but rows 16-23."
+              % (got, (got - 4096) // 8, want, g.SCAN_FIRST, g.SCAN_N))
+        return 1
+    print("scan_wipe base %d == 4096 + SCAN_FIRST(%d)*8" % (got, g.SCAN_FIRST))
+
     print("end-wall caps (derived from beam_one's edge tests): %s"
           % ", ".join(sorted(struct)))
     if bad:

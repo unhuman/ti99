@@ -3008,7 +3008,33 @@ scan_pat:
 	' actually binds. Paced in bursts: a few hundred VDP writes in a single
 	' frame are silently dropped (CLAUDE.md 3A).
 scan_wipe:
-	#swa = 5376			' 4096 + 160*8, the canvas patterns
+	' THIS ADDRESS IS A CHARACTER CODE IN DISGUISE, AND IT WENT STALE.
+	' 4096 is the pattern table's BOTTOM THIRD -- rows 16-23, which is
+	' band 0 and the radar together -- and the canvas characters begin at
+	' genart's SCAN_FIRST, so the base is 4096 + SCAN_FIRST*8. It was
+	' written out by hand as 4096 + 160*8 when SCAN_FIRST was 160; art
+	' added later moved SCAN_FIRST to 208 and nothing moved this with it,
+	' so the wipe zeroed the 48 characters BELOW the canvas and never
+	' touched the canvas at all.
+	'
+	' Two of those forty-eight are STRUCTURE. ENDWALL is the building's
+	' outside wall and SLABP is a pillar's cap. Blanking a pattern in ONE
+	' THIRD leaves a character that draws correctly everywhere else and
+	' falls back to its own background colour here -- so the GROUND FLOOR's
+	' outside wall turned into plain green while the identical wall one
+	' storey up was perfect, and the ground floor's pillars lost the brick
+	' carried up through the bar above them. ENDWALL appears only on
+	' screens 0 and 7, which is exactly why it was reported as happening
+	' only on the escalator screens, mirrored side to side.
+	'
+	' The name table was correct the whole time. Probing it said so, four
+	' times. It was the GLYPH that was empty, in one third only -- which a
+	' probe that copies the character somewhere else to look at it cannot
+	' see, because the copy renders from a different third's pattern.
+	'
+	' renumber.py rewrites this line from genart.SCAN_FIRST, and
+	' checkstruct.py fails the build if the two disagree.
+	#swa = 5760			' 4096 + SCAN_FIRST*8, the canvas patterns
 	FOR swj = 0 TO 5
 		FOR swi = 0 TO 63
 			VPOKE #swa,0
