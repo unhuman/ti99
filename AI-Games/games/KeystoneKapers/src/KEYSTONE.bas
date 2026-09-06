@@ -159,22 +159,25 @@
 	' look it up from. checkchars.py is what holds it honest.
 	CONST P_HFACING = 20		' add this for Harry's LEFT set
 	CONST P_HLEG1 = 112
-	CONST P_RADCAR = 140		' the radar's lift car
+	CONST P_HLEGS1 = 128		' the same four poses again, in BLACK: the
+					' stripes carrying on down the legs, and
+					' the shoes
+	CONST P_RADCAR = 156		' the radar's lift car
 	CONST C_RCAR = 14		' grey, like the furniture it replaced
-	CONST P_RADDOT = 144		' the radar marker, both actors
+	CONST P_RADDOT = 160		' the radar marker, both actors
 	CONST C_RKOP = 1		' the Kop, black on the scanner
 	CONST C_RCROOK = 15		' the crook, white
-	CONST P_CART = 128
-	CONST P_BALL = 132
-	CONST P_RADIO = 136
-	CONST P_PLANE = 148
-	CONST P_PLANEL = 152
+	CONST P_CART = 144
+	CONST P_BALL = 148
+	CONST P_RADIO = 152
+	CONST P_PLANE = 164
+	CONST P_PLANEL = 168
 	' THE PROPELLER IS ITS OWN SPRITE so it can be its own colour. Two
 	' phases, each facing: A is the near-solid disc, B the broken blades.
-	CONST P_PROPA = 156
-	CONST P_PROPAL = 160
-	CONST P_PROPB = 164
-	CONST P_PROPBL = 168
+	CONST P_PROPA = 172
+	CONST P_PROPAL = 176
+	CONST P_PROPB = 180
+	CONST P_PROPBL = 184
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -482,13 +485,13 @@ esc_deck_col:
 
 after_deck:
 	DEFINE SPRITE 0,18,spr_kelly	' 0..68  facing bands x2 + 4 run frames
-	DEFINE SPRITE 18,14,spr_harry	' 72..100, two torso frames each way
-	DEFINE SPRITE 32,1,spr_cart	' pattern 104
-	DEFINE SPRITE 33,1,spr_ball	' pattern 108
-	DEFINE SPRITE 34,1,spr_radio	' pattern 112
-	DEFINE SPRITE 35,1,spr_radcar
-	DEFINE SPRITE 36,1,spr_raddot	' the radar marker, both actors
-	DEFINE SPRITE 37,6,spr_plane	' body R/L, then prop A and B, R/L
+	DEFINE SPRITE 18,18,spr_harry	' 72..100, two torso frames each way
+	DEFINE SPRITE 36,1,spr_cart	' pattern 104
+	DEFINE SPRITE 37,1,spr_ball	' pattern 108
+	DEFINE SPRITE 38,1,spr_radio	' pattern 112
+	DEFINE SPRITE 39,1,spr_radcar
+	DEFINE SPRITE 40,1,spr_raddot	' the radar marker, both actors
+	DEFINE SPRITE 41,6,spr_plane	' body R/L, then prop A and B, R/L
 	RETURN
 
 init_tables:
@@ -2580,6 +2583,12 @@ draw_actors:
 	hq = P_HLEG1
 	IF hanim AND 8 THEN hq = hq + 4
 	IF hanim AND 16 THEN hq = hq + 8
+	' THE LEG STRIPES AND THE SHOES ARE THE SAME POSE IN BLACK, and they are
+	' derived FROM hq rather than reproducing the two IFs. Two copies of the
+	' same phase arithmetic is two clocks, and the day one of them changed
+	' the shoes would walk half a stride behind the feet.
+	hqs = hq - P_HLEG1
+	hqs = hqs + P_HLEGS1
 	' HIS ARMS SWING, on the same bit of the animation counter that picks the
 	' legs -- so the arm that is forward is the one opposite the leading leg,
 	' which is what running looks like.
@@ -2606,16 +2615,26 @@ draw_actors:
 	' make four. Worst line of a meeting: exactly four, nothing dropped.
 	IF hsc = klsc THEN
 		SPRITE 4,hy,hx,hp,C_HARRY
-		hfy = hy + 4
+		' y+3, NOT y+4: the hat lost its brim and is three rows now, so his
+		' face starts one row higher. The face box still clears the hat rows,
+		' which is the whole reason it is offset at all.
+		hfy = hy + 3
 		SPRITE 5,hfy,hx,hf,C_SKIN
 		SPRITE 6,hy,hx,hs,C_HSTRIPE
 		hy2 = hy + 16
 		SPRITE 7,hy2,hx,hq,C_HARRY
+		' SLOT 8 IS THE HIGHEST OF HIS FOUR ON PURPOSE. Down on the leg rows
+		' he has only these two boxes -- the other three are sixteen rows up --
+		' so meeting Kelly is two against two, exactly the per-line limit. If
+		' anything ever does overflow here the VDP keeps the four lowest, so
+		' what goes is the stripe, and he loses his shoes rather than his legs.
+		SPRITE 8,hy2,hx,hqs,C_HSTRIPE
 	ELSE
 		SPRITE 4,SPRHID,0,0,0
 		SPRITE 5,SPRHID,0,0,0
 		SPRITE 6,SPRHID,0,0,0
 		SPRITE 7,SPRHID,0,0,0
+		SPRITE 8,SPRHID,0,0,0
 	END IF
 
 	' Obstacles: slots 8-15, TWO per band. An actor costs two sprite BOXES on

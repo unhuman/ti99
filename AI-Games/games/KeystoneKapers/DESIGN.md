@@ -353,10 +353,34 @@ from shoulder to hem, and **the arms are those same bands extended sideways**
 side of him. So an arm's upper row lands on a band and its lower row between
 two, and it is striped exactly like the torso it grows out of.
 
-That means the bands run every other row -- `HSTRIPE = {10, 12, 14}`, leaving
-white on 9, 11, 13 and 15, plus row 3 for the cap's own black band. It was
-`{3, 13, 15}`: two bands down near the waist with nothing above them, which
-reads as a belt rather than as a shirt.
+That means the bands run every other row -- `HSTRIPE = {0, 2, 10, 12, 14}`,
+leaving white between them. It was `{3, 13, 15}`: two bands down near the waist
+with nothing above them, which reads as a belt rather than as a shirt.
+
+**AND THEY RUN THE WHOLE FIGURE, HAT TO SHOES.**
+
+* **The hat is three rows, black-white-black, and has no brim.** It was a wide
+  flat brim before -- which is *Kelly's* silhouette, and at this size it made
+  the two of them read as the same character in two colours. Harry's is a soft
+  box cap sitting on the head and no wider than it. Losing the brim row moves
+  his face band up to rows 3-8, so the face sprite is drawn at `hy+3` rather
+  than `hy+4`; it still clears the hat rows, which is the only reason that box
+  is offset at all.
+* **The legs are striped too, and the same sprite paints the SHOES.** The
+  shirt's bands sit on body rows 10, 12 and 14, so the next in the rhythm are
+  body rows 16, 18 and 20 -- leg rows 0, 2 and 4, because the leg sprite is
+  drawn sixteen pixels lower. Keeping the rhythm across the join is what makes
+  him one striped figure rather than a striped shirt over white trousers.
+* **A shoe cannot be a band.** It is the lowest row of each leg, and the two
+  legs do not end on the same row -- that is what a stride *is* -- so it is
+  written out per pose beside the stripe.
+
+That costs a **fourth sprite box**, and it is affordable because of where it
+sits: down on the leg rows Harry has only these two boxes, the other three
+being sixteen rows up, so meeting Kelly is two against two -- exactly the
+per-line limit of §5. It is also the **highest-numbered** of his four, so if
+anything ever does overflow the VDP keeps the four lowest and he loses his
+shoes rather than his legs.
 
 **`HARRY_STRIPE` is no longer one drawing shared by both frames.** It could not
 be: the arms move on the band rows, so a shared drawing would have left a black
