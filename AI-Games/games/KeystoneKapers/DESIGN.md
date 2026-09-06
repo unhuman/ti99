@@ -328,15 +328,21 @@ That height difference is most of the cue at this size. His two frames are now
 
 * **stride** -- trailing leg swept back with the foot two rows off the ground,
   leading leg reaching forward with its foot planted;
-* **passing** -- the previous leading leg standing straight under the hips,
-  the other folded through with the knee driven forward and its foot stopping
-  **two rows short of the ground**.
+* **passing** -- the same two legs, closed up under him.
 
-Both halves of that second pose are load-bearing. At a one-pixel gap the
-support leg and the raised one merge into a white block with a nick in it and
-the pose stops reading as a stride at all -- the same failure as the symmetric
-legs, one step further on -- so there are two clear columns between them. And a
-raised foot level with the planted one just reads as standing.
+**BOTH FEET ARE ON THE GROUND IN EVERY FRAME, and that is measured, not a
+simplification.** In each reference frame the two leg blobs sit on the *same*
+scanline, always: the 2600 sprite never lifts a foot. What changes between
+poses is only how far apart they are -- about 1.5 clocks closed, nearly 4 at
+the widest stride.
+
+That is the whole difference between a run and a wobble. An earlier version
+lifted the trailing foot two rows off the floor in one pose and folded a knee
+up in the other, which made the two frames different SHAPES; alternating
+between two shapes is a dance. Varying one shape's spread is a stride. Anything
+that changes the figure's silhouette between adjacent frames -- a lifted foot,
+a folded knee, a dropped hip -- will read as bobbing at four frames a pose, and
+no amount of care inside the individual drawings fixes it.
 
 **His arms were detached blobs.** Two pixels of arm with a one-pixel gap
 between them and the torso reads as a lump beside the body, not a limb, and
@@ -392,9 +398,11 @@ genart.py now guarantee the two never share a pixel, for the torso and the legs
 alike.
 
 **WHAT MAKES AN ARM READ IS THE ROW BESIDE IT, NOT THE ARM.** Measured off the
-2600 sprite: its torso is about three clocks and an arm row runs two clocks
-past it, so **an arm row is roughly twice the width of a torso row** -- and the
-rows ALTERNATE, a long one then a torso-width one. A version with four long
+2600 sprite: one row of the swing runs from **-1.8 to +4.1 clocks** against a
+3-clock torso -- a single bar right across him -- the next is torso width with a
+**detached hand at about +4.5**, and the next is a shorter bar out to -1.0. So
+the rows ALTERNATE, long then short, and an arm row is roughly twice the width
+of a torso row. A version with four long
 rows in a row does not read as arms at all, it reads as wider stripes, which is
 exactly what it looked like.
 
