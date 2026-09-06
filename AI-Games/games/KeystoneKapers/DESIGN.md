@@ -391,18 +391,27 @@ trousers stayed white with nothing wrong anywhere. `split_stripes` and `cut` in
 genart.py now guarantee the two never share a pixel, for the torso and the legs
 alike.
 
-**THE ARMS CROSS HIM, AND THE COLOURS INVERT WHERE THEY DO.** A limb that
-starts at the shoulder can only be five or six pixels long on a sixteen-wide
-figure, and it reads as a man holding his elbows in. Each arm now runs ten
-columns -- from mid-torso, where it passes behind him, out past the edge of the
-sprite. The crossing section would vanish into the body if it took its row's
-colour, so it takes the **opposite** one: a black sleeve over a white row, a
-white sleeve over a black band. That is the whole reason the split is done cell
-by cell rather than by whole rows.
+**WHAT MAKES AN ARM READ IS THE ROW BESIDE IT, NOT THE ARM.** Measured off the
+2600 sprite: its torso is about three clocks and an arm row runs two clocks
+past it, so **an arm row is roughly twice the width of a torso row** -- and the
+rows ALTERNATE, a long one then a torso-width one. A version with four long
+rows in a row does not read as arms at all, it reads as wider stripes, which is
+exactly what it looked like.
 
-It also means a figure row can carry both colours, which `checkbands.py`
-used to call a failure -- see the note there on why the row rule became a pixel
-rule.
+The reference also carries **detached hand blobs**, one beside the face and one
+out past the body with a clear gap between. They are what stop an arm ending in
+a blunt edge, and they cost two pixels. So each arm here is a long band row, the
+torso-width row beside it, and a two-pixel hand one row further down and
+further out.
+
+The arms are kept **disjoint from the torso**, which means no cell is both and
+`split_stripes` finds no crossing -- every band simply takes its row's colour.
+The crossing machinery stays because it is the general case: were an arm ever
+drawn *over* the body, its cells would take the **opposite** colour to their row
+(a black sleeve on a white row, a white sleeve on a black band) so the limb
+stays visible instead of vanishing into the torso. That is why the split is done
+cell by cell rather than by whole rows, and why `checkbands.py`'s row rule had
+to become a pixel rule -- see the note there.
 
 **AND IT GOES IN SLOT 27, NOT SLOT 8.** The sprite slots are allocated in
 blocks -- 0-3 Kelly, 4-7 Harry, **8-15 the obstacles**, 16-23 their
@@ -428,6 +437,19 @@ starts after everything in the right-hand one.
 
 The hem came in from twelve cells to eight to match the body -- at twelve it
 read as a skirt.
+
+---
+
+**AND THE CROUCH KEEPS ITS MASS.** Kelly's ducked body narrowed to five pixels
+through the middle, so ducking did not read as a man bending -- it read as the
+figure shrinking to a smudge and popping back. **A crouch does not lose volume,
+it redistributes it:** the back rounds up and the haunches thicken as the height
+comes down. The widest rows of the ducked body are now wider than his standing
+torso, and nothing tapers below the shoulders except the legs. It is safe to
+widen because the ducked body is the whole silhouette with the hat and face
+drawn *over* it from lower slots, so extra width can only add bulk at the edges
+and can never disturb the brim, which is the one feature that says Kelly at this
+size.
 
 ---
 
