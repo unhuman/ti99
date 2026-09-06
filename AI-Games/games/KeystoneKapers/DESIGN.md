@@ -382,6 +382,28 @@ per-line limit of §5. It is also the **highest-numbered** of his four, so if
 anything ever does overflow the VDP keeps the four lowest and he loses his
 shoes rather than his legs.
 
+**AND A BLACK SPRITE BEHIND A SOLID WHITE ONE IS INVISIBLE.** The two halves
+of a striped figure must be **complementary** -- the stripe shows through
+*holes* in the body, it is never painted over it -- because the lower-numbered
+sprite wins every shared pixel and the legs are slot 7 against the stripe's 27.
+The first version drew a full white leg with the stripe underneath, so his
+trousers stayed white with nothing wrong anywhere. `split_stripes` and `cut` in
+genart.py now guarantee the two never share a pixel, for the torso and the legs
+alike.
+
+**THE ARMS CROSS HIM, AND THE COLOURS INVERT WHERE THEY DO.** A limb that
+starts at the shoulder can only be five or six pixels long on a sixteen-wide
+figure, and it reads as a man holding his elbows in. Each arm now runs ten
+columns -- from mid-torso, where it passes behind him, out past the edge of the
+sprite. The crossing section would vanish into the body if it took its row's
+colour, so it takes the **opposite** one: a black sleeve over a white row, a
+white sleeve over a black band. That is the whole reason the split is done cell
+by cell rather than by whole rows.
+
+It also means a figure row can carry both colours, which `checkbands.py`
+used to call a failure -- see the note there on why the row rule became a pixel
+rule.
+
 **AND IT GOES IN SLOT 27, NOT SLOT 8.** The sprite slots are allocated in
 blocks -- 0-3 Kelly, 4-7 Harry, **8-15 the obstacles**, 16-23 their
 propellers, 24-26 the radar -- so the "next free" slot after Harry's four is

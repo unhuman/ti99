@@ -6,10 +6,17 @@ carries one colour, so that is the only way to get several colours into a
 figure -- and it brings two failure modes that are silent and show up only as
 "the sprite looks wrong".
 
-1. TWO SPRITES WITH PIXELS ON THE SAME ROW. The bands must not overlap: if the
-   hat sprite and the face sprite both light a pixel on row 7, that row shows
-   two colours fighting for one place and the art does not say which wins.
-   This is the "window blind" rule, and it is a hard failure.
+1. TWO SPRITES LIGHTING THE SAME PIXEL. If the hat sprite and the face sprite
+   both light row 7 column 5, that pixel has two colours fighting for one place
+   and the art does not say which wins. A hard failure.
+
+   This used to be tested per ROW, which was a fair proxy while every band was
+   a horizontal stripe -- no two bands shared a row, so sharing one meant
+   overlapping. Harry's arms now cross his body, and where they do the two
+   colours INVERT so the limb stays visible: a white sleeve over a black band,
+   a black sleeve over a white one. That is two colours on one row, at
+   different columns, deliberately. The row rule called it a failure; the pixel
+   rule catches the real thing and lets this through.
 
 2. TOO MANY SPRITE BOXES ON A SCANLINE. The VDP counts sprite BOXES per
    scanline, not pixels -- a 16x16 sprite occupies all 16 of its lines whether
@@ -56,7 +63,15 @@ MAX_PER_LINE = 4                 # TMS9918 hard limit
 # degradation this layout was designed around from the start (see the note over
 # HARRY_STRIPE in genart.py): he goes plain white rather than losing a limb,
 # and the player's own figure is never touched.
-DROPPABLE = {6}
+#
+# SLOT 27 -- his leg stripes and shoes -- IS DROPPABLE FOR THE SAME REASON, and
+# on the same terms. Harry's FACE box is drawn at hy+3, so it spans figure rows
+# 3 to 18 and reaches three rows into his legs; on those three rows a meeting
+# puts five boxes on the line (Kelly's two, Harry's face, leg and leg-stripe).
+# The VDP drops the highest, which is 27, so what is lost is the hem stripe on
+# three scanlines when the two are exactly level. Same bargain as slot 6: he
+# goes plainer, never partial.
+DROPPABLE = {6, 27}
 
 # name, label, [(pattern index in block, VDP slot, colour, y offset)]
 #
@@ -81,8 +96,42 @@ ACTORS = [
     ("Harry", [("HBODY", 4, 15, None),       # cap + body, white
                ("HFACE", 5, 11, "hfy"),      # face, skin
                ("HSTRIPE", 6, 1, None),      # stripes, cap to hem
-               ("HLEG1", 7, 15, "hy2")]),    # legs, white
+               ("HLEG1", 7, 15, "hy2"),      # legs, white
+               ("HLEGS1", 27, 1, "hy2")]),   # leg stripes + shoes, black
 ]
+
+
+def check_complete(bad):
+    """Every band an actor actually DRAWS must appear in ACTORS.
+
+    This table is hand-written, so it is a second copy of a decision the source
+    already makes -- and a second copy silently goes stale. It did: Harry grew
+    a fourth band for his leg stripes and shoes, the table was not updated, and
+    the check went on passing while that sprite was drawn UNDER a solid white
+    leg and never appeared at all. A check whose scope is narrower than the bug
+    reports success, which is worse than not running.
+
+    So the slots are read back out of the source. An actor's draw lines are the
+    ones positioned at its own x variable (`hx` for Harry, `klx` for Kelly);
+    anything drawn there and not listed here is a band nothing is checking.
+    """
+    src = open(BAS, encoding="utf-8").read()
+    xvar = {"Kelly": "klx", "Harry": "hx"}
+    for name, parts in ACTORS:
+        listed = set(slot for _s, slot, _c, _v in parts)
+        drawn = set()
+        for m in re.finditer(r"^\s*SPRITE (\d+),\s*\w+,\s*(\w+),", src, re.M):
+            if m.group(2) == xvar[name]:
+                drawn.add(int(m.group(1)))
+        missing = sorted(drawn - listed)
+        if missing:
+            bad.append("%s draws sprite slot(s) %s that ACTORS does not list, "
+                       "so nothing checks them for overlap or for the per-line "
+                       "box count" % (name, missing))
+        extra = sorted(listed - drawn)
+        if extra:
+            bad.append("ACTORS lists slot(s) %s for %s that the source never "
+                       "draws" % (extra, name))
 
 
 def offsets():
@@ -136,6 +185,7 @@ def main():
     canvas = [[(33, 200, 66)] * (W * len(ACTORS)) for _ in range(H)]
     bad = []
 
+    check_complete(bad)
     off = offsets()
     resolved = []
     for name, parts in ACTORS:
@@ -152,6 +202,18 @@ def main():
             rp.append((g.SPR[sname] // 4, slot, col, dy))
         resolved.append((name, rp))
 
+    # THE TEST IS PER PIXEL, NOT PER ROW. It used to be per row, which was a
+    # fair proxy while every band WAS a horizontal stripe: no two bands shared
+    # a row, so sharing one meant overlapping. Harry's arms now swing across
+    # his body, and where they cross, the two colours INVERT so the limb stays
+    # visible -- a white sleeve over a black band and a black sleeve over a
+    # white one. That puts both colours on one row, at different columns, on
+    # purpose.
+    #
+    # The hazard was never the row. It is two sprites lighting the SAME PIXEL,
+    # where the art does not say which colour wins. So that is what is checked,
+    # and it is strictly stronger than the row rule where it matters: a genuine
+    # overlap still fails, and a legitimate one no longer does.
     for a, (name, parts) in enumerate(resolved):
         owner = {}
         for idx, slot, col, dy in parts:
@@ -159,10 +221,16 @@ def main():
                 if not bits:
                     continue
                 fy = y + dy
-                if fy in owner and owner[fy] != slot:
-                    bad.append("%s: figure row %d carries pixels from slot %d "
-                               "AND slot %d" % (name, fy, owner[fy], slot))
-                owner[fy] = slot
+                for px in range(16):
+                    if not bits & (0x8000 >> px):
+                        continue
+                    key = (fy, px)
+                    if key in owner and owner[key] != slot:
+                        bad.append("%s: figure pixel row %d col %d is lit by "
+                                   "slot %d AND slot %d -- two colours in one "
+                                   "place and the art does not say which wins"
+                                   % (name, fy, px, owner[key], slot))
+                    owner[key] = slot
                 for x in range(16):
                     if bits & (0x8000 >> x) and fy < H:
                         canvas[fy][a * W + 12 + x] = PAL[col]
