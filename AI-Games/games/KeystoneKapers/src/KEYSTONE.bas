@@ -240,17 +240,41 @@
 	CONST CH_SLABE = 97		' the bar with BRICK carried up through it
 	CONST CH_ROOFSE = 98		' and the roof deck likewise
 	CONST CH_ROOFSP = 163		' the roof with a beam under it
-	CONST CH_SLABP = 174		' the same bar with a beam under it
+	CONST CH_SLABP = 182		' the same bar with a beam under it
 	CONST CH_ECAR = 109
 	CONST CH_EDOOR = 108
 	CONST CH_WALL = 151
 	CONST CH_KOPIC = 152
 	CONST CH_EDHALF = 168
-	CONST CH_EDOORS = 169		' the same three, for the doorway's BOTTOM
-	CONST CH_ECARS = 170		' row: identical above, with the floor bar's
-	CONST CH_EDHALFS = 171		' two colours as a step along the bottom
+	CONST CH_ECARS = 169		' the car's row-3 sill
+	CONST CH_ECARL = 174		' and the four columns of the OPEN car:
+	CONST CH_ECARR = 175		' the end ones carry 4px of jamb, so the
+	CONST CH_ECARLT = 176		' box is 32px and the opening 24. Each
+	CONST CH_ECARRT = 177		' needs a header twin and a sill twin;
+	CONST CH_ECARLS = 178		' renumber.py fills every one of these
+	CONST CH_ECARRS = 179
+	CONST CH_EDHALFS = 170		' two colours as a step along the bottom
+	CONST CH_EDOORS = 171		' and the SHUT door's own sill: the threshold
+					' belongs to the landing, not to the car
 	CONST ELSTEP = 2		' and how tall that step is, in pixels
-	CONST CH_SCANBK = 173		' blank black, the strip either side of the radar
+	' HOW FAR THE RIDER RISES, WHICH IS NOT THE SAME NUMBER, and conflating
+	' the two is what left Kelly a pixel short of being in the car.
+	'
+	' ELSTEP is a fact about the ART: the lip is two character-graphics pixels
+	' proud of the shop floor, exact and unambiguous. ELRIDE is where the
+	' SPRITE has to sit to look like it is standing on that lip -- and a
+	' sprite is not placed the way a character is. The VDP puts a sprite's
+	' top line at y + 1, so a rider lifted by exactly the drawn step height
+	' renders one pixel into it rather than on it.
+	'
+	' Keeping them as one constant made that impossible to express: the
+	' comment even claimed the shared value meant "the drawing and the
+	' standing height can only ever agree", when agreeing is precisely what
+	' they must not do.
+	CONST ELRIDE = 3		' ELSTEP + the VDP's one-line sprite bias
+	CONST CH_EDHALFT = 172		' and the HEADER row: half lintel above,
+	CONST CH_ECART = 173		' half doorway below (renumber.py fills these)
+	CONST CH_SCANBK = 181		' blank black, the strip either side of the radar
 	CONST CH_BAGTL = 154		' the prizes are 2x2 now
 	CONST CH_BAGTR = 155
 	CONST CH_BAGBL = 156
@@ -452,8 +476,8 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,79,store_pat
-	DEFINE COLOR 96,79,store_col
+	DEFINE CHAR 96,87,store_pat
+	DEFINE COLOR 96,87,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 
@@ -1379,34 +1403,72 @@ prize_one:
 draw_car:
 	IF klsc <> 3 THEN RETURN
 	FOR clv = 0 TO 2
-		cch = CH_EDOOR
-		IF clv = elvl THEN
-			IF eldp = 2 THEN cch = CH_ECAR
-			IF eldp = 1 THEN cch = CH_EDHALF
-		END IF
-		' THE BOTTOM ROW IS THE SAME DOOR WITH A STEP ALONG ITS FOOT. Every
-		' state needs its own stepped twin -- shut, part-open and open -- or
-		' the lip would blink out for the two frames the doors are moving.
-		cchs = CH_EDOORS
-		IF clv = elvl THEN
-			IF eldp = 2 THEN cchs = CH_ECARS
-			IF eldp = 1 THEN cchs = CH_EDHALFS
-		END IF
-		FOR crw = 1 TO 3
+		' 0 shut, 1 part-open, 2 open -- and only ONE floor is ever anything
+		' but shut, because there is only one car.
+		cst = 0
+		IF clv = elvl THEN cst = eldp
+		FOR crw = 0 TO 3
 			#cva = 6144
 			#cva = #cva + #bdst(clv)
-			#cva = #cva + 32
+			IF crw > 0 THEN #cva = #cva + 32
 			IF crw = 2 THEN #cva = #cva + 32
 			IF crw = 3 THEN #cva = #cva + 64
 			#cva = #cva + ELCOL
-			ccw = cch
-			IF crw = 3 THEN ccw = cchs
 			FOR ccl = 0 TO 3
+				GOSUB car_cell
 				VPOKE #cva,ccw
 				#cva = #cva + 1
 			NEXT ccl
 		NEXT crw
 	NEXT clv
+	RETURN
+
+	' ONE CELL OF THE DOORWAY, from its column (ccl 0-3), its band row
+	' (crw 0-3) and the door state (cst). Four columns and four rows, so
+	' sixteen cells, and the three interesting things about a cell are all
+	' edges: column 0 and column 3 carry the JAMB, row 0 carries the LINTEL
+	' and row 3 the SILL.
+	'
+	' THE SILL IS REVEALED AS THE DOORS PART, which falls out of this rather
+	' than being arranged: shut, every cell is plain door and there is no
+	' sill to see; part-open, only the middle two columns show car and sill;
+	' open, all four do. A sill sitting under a shut door would be a ledge
+	' with nothing behind it.
+	'
+	' Nested IFs, never `ccl > 0 AND ccl < 3` -- the 9900 backend miscompiles
+	' a compare-AND-compare (CLAUDE.md 3A).
+car_cell:
+	ccw = CH_EDOOR
+	' THE SILL IS THERE WHETHER THE DOORS ARE OR NOT. Set before the door
+	' states so a shut door gets it, and so do the two JAMB columns of a
+	' part-open one -- which the cst=1 branch below never touches. The step
+	' is then continuous across all four columns of the frame on every
+	' floor, including the three the car is not on.
+	IF crw = 3 THEN ccw = CH_EDOORS
+	IF cst = 1 THEN
+		IF ccl > 0 THEN
+			IF ccl < 3 THEN
+				ccw = CH_EDHALF
+				IF crw = 0 THEN ccw = CH_EDHALFT
+				IF crw = 3 THEN ccw = CH_EDHALFS
+			END IF
+		END IF
+	END IF
+	IF cst = 2 THEN
+		ccw = CH_ECAR
+		IF crw = 0 THEN ccw = CH_ECART
+		IF crw = 3 THEN ccw = CH_ECARS
+		IF ccl = 0 THEN
+			ccw = CH_ECARL
+			IF crw = 0 THEN ccw = CH_ECARLT
+			IF crw = 3 THEN ccw = CH_ECARLS
+		END IF
+		IF ccl = 3 THEN
+			ccw = CH_ECARR
+			IF crw = 0 THEN ccw = CH_ECARRT
+			IF crw = 3 THEN ccw = CH_ECARRS
+		END IF
+	END IF
 	RETURN
 
 	' ======================================================================
@@ -2516,10 +2578,14 @@ draw_actors:
 
 	' RIDING, HE STANDS ON THE STEP. The lip is two pixels proud of the shop
 	' floor, so a rider whose feet stayed at floor level would be standing
-	' through it. Lifting him by ELSTEP is what turns boarding into stepping
-	' UP into the car -- the same two pixels the doorway grew, so the drawing
-	' and the standing height can only ever agree.
-	IF klst = ST_ELEV THEN ky = ky - ELSTEP
+	' through it. Lifting him is what turns boarding into stepping UP into
+	' the car.
+	'
+	' BY ELRIDE, NOT ELSTEP -- three pixels, not the two the doorway grew.
+	' See the constants: the extra one is the VDP's sprite placement, not a
+	' fudge, and using the drawn step height directly left him a pixel short
+	' of being in the car.
+	IF klst = ST_ELEV THEN ky = ky - ELRIDE
 
 	IF klst = ST_DUCK THEN
 		' 8 px, one sprite, sitting on the floor. The top half is HIDDEN

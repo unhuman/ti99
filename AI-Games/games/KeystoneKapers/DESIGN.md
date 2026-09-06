@@ -906,7 +906,7 @@ lip** along the bottom of the doorway, in the floor bar's own two colours --
 `LYELL` over `DYELL`, exactly how `SLAB` lights its own top edge -- so it reads
 as the same material as the floor it stands on rather than as a stripe painted
 on the wall. The doors then open **above** the lip instead of through it, and a
-rider is drawn `ELSTEP` higher, so boarding is visibly stepping UP into the car.
+rider is drawn higher, so boarding is visibly stepping UP into the car.
 
 * **Two pixels is the whole budget.** Three eats into a doorway that is only
   four rows tall; one is invisible beside a five-pixel floor bar.
@@ -915,10 +915,33 @@ rider is drawn `ELSTEP` higher, so boarding is visibly stepping UP into the car.
   the two frames the doors are moving, which reads as the step falling off.
   Hence `EDOORS`, `ECARS` and `EDHALFS`: identical to their originals above row
   6, and identical to each other below it.
-* **The drawing and the standing height come from the same constant.** `ELSTEP`
-  is both how far the doorway's art was raised and how far the rider is lifted,
-  so the two cannot drift apart -- a rider whose feet stayed at floor level
-  would be standing through the step.
+* **THE SILL IS PART OF THE BUILDING, NOT PART OF THE CAR**, so it is drawn on
+  every floor whether the car is there or not. It was originally left off the
+  shut state, on the reasoning that "a sill under a shut door would be a ledge
+  with nothing behind it" -- which sounds right and is wrong. A real lift
+  threshold is a plate set into the *landing* floor in front of the doors; it
+  belongs to the storey, not to the car, and you see it whether the car has
+  arrived or not. Without it the doorway sat flush with the wall on the three
+  floors the car was not on, and the lift read as a painted rectangle rather
+  than something you could walk into. `car_cell` therefore sets the sill
+  **before** the door-state branches, which also covers the two jamb columns of
+  a part-open door that the part-open branch never touches.
+* **THE DRAWN STEP AND THE RIDER'S LIFT ARE DIFFERENT NUMBERS**, and the design
+  originally made them one constant on the grounds that sharing it meant "the
+  drawing and the standing height can only ever agree". Agreeing is precisely
+  what they must not do.
+
+  `ELSTEP` (2) is a fact about the **art**: the lip is two character-graphics
+  pixels proud of the shop floor, exact and unambiguous. `ELRIDE` (3) is where
+  the **sprite** must sit to look like it is standing on that lip -- and a
+  sprite is not placed the way a character is, because **the VDP puts a
+  sprite's top line at y + 1** (`tms9918-sprite-y-208-terminates`' sibling
+  hazard). A rider lifted by exactly the drawn step height renders one pixel
+  *into* it rather than on it.
+
+  Holding them in one constant made the correct answer inexpressible, and the
+  comment claiming the shared value was a safety property is what kept the
+  off-by-one looking like a rounding opinion rather than a bug.
 
 ### 6h. The city behind the roof
 

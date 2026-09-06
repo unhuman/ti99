@@ -184,11 +184,14 @@ def t_elev():
     t = blank(WALL)
     c0, c1 = ELEV_COLS
     r0, r1 = ELEV_ROWS
+    # NO OUTBOARD POSTS. The jambs are four pixels wide and live inside the
+    # doorway's own end columns (see ECARL in genart.py), so the columns either
+    # side of it are ordinary wall.
     for r in range(r0, r1 + 1):
-        t[r][c0 - 1] = SHAFT
-        t[r][c1 + 1] = SHAFT
         for c in range(c0, c1 + 1):
-            t[r][c] = EDOOR
+            # the bottom row of the doorway carries the threshold, so the
+            # static map agrees with what draw_car paints over it
+            t[r][c] = EDOORS if r == r1 else EDOOR
     for c in range(4, 9):
         t[2][c] = SHELFT
         t[3][c] = SHELFB
