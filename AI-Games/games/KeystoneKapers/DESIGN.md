@@ -2343,6 +2343,83 @@ Each phase builds on **both** targets before the next one starts.
 
 ---
 
+## 13a. Planned: parallax the roof skyline
+
+**Ready to implement — costed and designed, not started.** Written down here
+rather than left in a task list so it survives the session.
+
+The city behind the roof is identical on every screen, so crossing a seam up
+there gives no sense of travel: the foreground jumps a whole screen and the
+horizon does not move at all. The buildings read as wallpaper rather than as
+distance.
+
+**The change.** Shift the skyline **2 characters per screen**, opposite to the
+player — exit LEFT and the buildings shift RIGHT, exit RIGHT and they shift
+LEFT. That is a 2/32 = **1/16 parallax rate** against the foreground: slow
+enough to read as far away, fast enough to be visible on a single crossing.
+
+### What it costs
+
+| | cost | headroom after |
+|---|---|---|
+| ROM bank | **+800 B** — 5 extra roof templates × 160 (3 roof templates become 8) | 1,483 of 8,192 free |
+| Fixed area | **~40 B** — five more `#tsrc(n) = m` lines | 814 free |
+| RAM | **10 B** — `DIM #tsrc(15)` instead of `(10)` | — |
+| New code | **none** | — |
+
+### Why it needs no code
+
+`stor_ix[lv*8 + scr]` already selects a template per (level, screen). Eight
+roof templates with the skyline pre-shifted drop straight into that index, and
+the roof band stays an ordinary `SCREEN` blit like every other band — so
+`checkbands.py` and `checkstruct.py` need no teaching either.
+
+### The implementation
+
+1. `t_roof()` in `assets/genstore.py`: sample `SKYLINE[(c + 2 * scr) & 31]`
+   instead of `SKYLINE[c]`, and emit one template per screen. Screens 0 and 7
+   keep their head-house and exit furniture on top of their own offset.
+2. `KEYSTONE.bas`: extend `#tsrc` to 15 entries and point `lv3`'s eight index
+   slots at the new templates.
+
+**Direction check**, because parallax sense is easy to invert and impossible to
+spot in a still: `skyline[s][c] = SKYLINE[(c + 2s) & 31]` means screen `s+1`'s
+column `c` shows what screen `s` had at column `c+2` — the buildings move LEFT
+as the player moves east. That is correct.
+
+### THE COSTING WAS WRONG THE FIRST TIME, AND THE REASON GENERALISES
+
+The first analysis said eight roof templates "does not fit" — 8 × 160 = 1,280
+bytes against a fixed area with 372 free — and recommended stamping the
+skyline in at run time instead.
+
+That is backwards. **`store.bas` is INCLUDEd after the `BANK 1` directive, so
+template data lands in ROM bank space**, which is two-thirds empty. The option
+dismissed as too expensive is the cheap one; the run-time stamp recommended in
+its place is the expensive one, because it needs new **code**, and code is the
+budget that is actually scarce.
+
+**The general lesson: "does it fit" is meaningless without asking WHICH budget
+it lands in.** This game has three that behave nothing like each other — the
+24,336-byte fixed area (scarce, holds all code), the 8 KB data bank (roomy),
+and Coleco's 814 bytes of RAM. `CLAUDE.md` §3A already says moving data out of
+a bank into code "makes things worse"; this was the same error in the other
+direction, costing bank-resident data against the fixed area and concluding the
+cheap thing was unaffordable.
+
+### Watch for
+
+- The skyline spans rows 0–2 with different characters per building height
+  (`ROW0`/`ROW1`/`ROW2` in `t_roof`); all three rows shift together.
+- Rows 3 and 4 — the solid brick wall and the deck — must **not** shift.
+- The shift wraps every 16 screens, so over 8 screens you see half a cycle and
+  nothing repeats across the store.
+- It spends about a quarter of the remaining bank, and bank space is what art
+  expansion will want next. Not pressing at 1,483 free, but worth knowing
+  before something larger needs it.
+
+---
+
 ## 14. Acceptance criteria
 
 - Runs at **60 Hz on both targets** with 14 actors moving, no frame misses.
