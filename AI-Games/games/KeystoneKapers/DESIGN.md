@@ -329,20 +329,43 @@ That height difference is most of the cue at this size. His two frames are now
 * **stride** -- trailing leg swept back with the foot two rows off the ground,
   leading leg reaching forward with its foot planted;
 * **passing** -- the previous leading leg standing straight under the hips,
-  the other folded through with the knee driven forward and the foot tucked up
-  behind it.
+  the other folded through with the knee driven forward and its foot stopping
+  **two rows short of the ground**.
+
+Both halves of that second pose are load-bearing. At a one-pixel gap the
+support leg and the raised one merge into a white block with a nick in it and
+the pose stops reading as a stride at all -- the same failure as the symmetric
+legs, one step further on -- so there are two clear columns between them. And a
+raised foot level with the planted one just reads as standing.
 
 **His arms were detached blobs.** Two pixels of arm with a one-pixel gap
 between them and the torso reads as a lump beside the body, not a limb, and
 both frames put them at the same height so they swapped sides without ever
 looking like they were swinging. They connect at the shoulder now, and the
-**forward arm is high** (hand up by the chest) while the **back arm is low**
-(hand behind the hip) -- opposition, which is the other half of the cue.
+**forward arm is high** while the **back arm is low** -- opposition, which is
+the other half of the cue. Each arm is **two rows thick along its whole
+length** and tilts as it goes: a one-row spike reads as a stick.
 
-The arms stay on rows 10-12 because `HARRY_STRIPE` is **one drawing shared by
-both frames** (§5's sprite budget): a stripe on a row where an arm moves leaves
-a black bar hanging in mid-air on the frame without the arm. The stripes are on
-rows 3, 13 and 15, all torso in both frames.
+**AND THE ARMS ARE THE STRIPES.** Going back to the video settles what the
+arms should be made of. Harry is a stack of alternating light and dark bands
+from shoulder to hem, and **the arms are those same bands extended sideways**
+-- which is what makes them read as arms rather than as things stuck on the
+side of him. So an arm's upper row lands on a band and its lower row between
+two, and it is striped exactly like the torso it grows out of.
+
+That means the bands run every other row -- `HSTRIPE = {10, 12, 14}`, leaving
+white on 9, 11, 13 and 15, plus row 3 for the cap's own black band. It was
+`{3, 13, 15}`: two bands down near the waist with nothing above them, which
+reads as a belt rather than as a shirt.
+
+**`HARRY_STRIPE` is no longer one drawing shared by both frames.** It could not
+be: the arms move on the band rows, so a shared drawing would have left a black
+bar hanging in mid-air on the frame without the arm -- which is why the stripes
+used to be pushed down to rows the arms never touched. A second drawing costs
+**one more sprite pattern and no extra sprite box** (the stripe already has a
+box of its own), so §5's per-line budget is untouched; it is 32 bytes of
+pattern table. `P_HFACING` goes 16 -> 20 with it, since the left-hand set
+starts after everything in the right-hand one.
 
 The hem came in from twelve cells to eight to match the body -- at twelve it
 read as a skirt.

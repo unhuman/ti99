@@ -147,31 +147,34 @@
 	CONST P_HBODY = 72		' Harry RIGHT: cap + body, white
 	CONST P_HFACE = 76		'              face, skin
 	CONST P_HSTRIPE = 80		'              the stripes, cap to hem
-	CONST P_HBODYB = 84		'              torso, arms the other way
-	' 16, NOT 12: the right-hand set grew a fourth entry when Harry got a
-	' second torso frame, so the left set starts four patterns further on.
+	CONST P_HSTRIPEB = 84		'              the stripes, arms the other way
+	CONST P_HBODYB = 88		'              torso, arms the other way
+	' 20, NOT 16 OR 12: the right-hand set grows an entry every time Harry
+	' gains a frame, and the left set starts after ALL of it. It went 12 -> 16
+	' when he got a second torso frame and 16 -> 20 when the stripes stopped
+	' being one drawing shared by both frames.
 	' renumber.py rewrites every other P_ constant from genart's table but
 	' deliberately leaves this one alone -- it is an OFFSET between two
 	' groups, not a pattern number, and there is nothing in the table to
 	' look it up from. checkchars.py is what holds it honest.
-	CONST P_HFACING = 16		' add this for Harry's LEFT set
-	CONST P_HLEG1 = 104
-	CONST P_RADCAR = 132		' the radar's lift car
+	CONST P_HFACING = 20		' add this for Harry's LEFT set
+	CONST P_HLEG1 = 112
+	CONST P_RADCAR = 140		' the radar's lift car
 	CONST C_RCAR = 14		' grey, like the furniture it replaced
-	CONST P_RADDOT = 136		' the radar marker, both actors
+	CONST P_RADDOT = 144		' the radar marker, both actors
 	CONST C_RKOP = 1		' the Kop, black on the scanner
 	CONST C_RCROOK = 15		' the crook, white
-	CONST P_CART = 120
-	CONST P_BALL = 124
-	CONST P_RADIO = 128
-	CONST P_PLANE = 140
-	CONST P_PLANEL = 144
+	CONST P_CART = 128
+	CONST P_BALL = 132
+	CONST P_RADIO = 136
+	CONST P_PLANE = 148
+	CONST P_PLANEL = 152
 	' THE PROPELLER IS ITS OWN SPRITE so it can be its own colour. Two
 	' phases, each facing: A is the near-solid disc, B the broken blades.
-	CONST P_PROPA = 148
-	CONST P_PROPAL = 152
-	CONST P_PROPB = 156
-	CONST P_PROPBL = 160
+	CONST P_PROPA = 156
+	CONST P_PROPAL = 160
+	CONST P_PROPB = 164
+	CONST P_PROPBL = 168
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -479,13 +482,13 @@ esc_deck_col:
 
 after_deck:
 	DEFINE SPRITE 0,18,spr_kelly	' 0..68  facing bands x2 + 4 run frames
-	DEFINE SPRITE 18,12,spr_harry	' 72..100, two torso frames each way
-	DEFINE SPRITE 30,1,spr_cart	' pattern 104
-	DEFINE SPRITE 31,1,spr_ball	' pattern 108
-	DEFINE SPRITE 32,1,spr_radio	' pattern 112
-	DEFINE SPRITE 33,1,spr_radcar
-	DEFINE SPRITE 34,1,spr_raddot	' the radar marker, both actors
-	DEFINE SPRITE 35,6,spr_plane	' body R/L, then prop A and B, R/L
+	DEFINE SPRITE 18,14,spr_harry	' 72..100, two torso frames each way
+	DEFINE SPRITE 32,1,spr_cart	' pattern 104
+	DEFINE SPRITE 33,1,spr_ball	' pattern 108
+	DEFINE SPRITE 34,1,spr_radio	' pattern 112
+	DEFINE SPRITE 35,1,spr_radcar
+	DEFINE SPRITE 36,1,spr_raddot	' the radar marker, both actors
+	DEFINE SPRITE 37,6,spr_plane	' body R/L, then prop A and B, R/L
 	RETURN
 
 init_tables:
@@ -2583,7 +2586,13 @@ draw_actors:
 	hp = P_HBODY
 	IF hanim AND 8 THEN hp = P_HBODYB
 	hf = P_HFACE
+	' THE STRIPES SWING WITH HIM. His bands run shoulder to hem and his arms
+	' are those same bands extended sideways, so the stripe drawing changes
+	' between frames exactly as the body does -- it is not one shared picture
+	' any more (genart.py, over HARRY_STRIPE). Same bit of the counter, so the
+	' two can never disagree.
 	hs = P_HSTRIPE
+	IF hanim AND 8 THEN hs = P_HSTRIPEB
 	IF hdir = 0 THEN
 		hp = hp + P_HFACING
 		hf = hf + P_HFACING
