@@ -88,9 +88,9 @@ spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then t
 
 spr_harry:	' Harry: RIGHT white/face/stripes, then the same LEFT (+12), then the FOUR shared run frames. Patterns 64..100
 	DATA BYTE $0F,$0F,$1F,$00,$00,$00,$00,$00
-	DATA BYTE $00,$1F,$0F,$37,$37,$00,$0F,$00
+	DATA BYTE $00,$1F,$0F,$3F,$6F,$00,$0F,$00
 	DATA BYTE $C0,$C0,$C0,$00,$00,$00,$00,$00
-	DATA BYTE $00,$E0,$D8,$E0,$E0,$00,$C0,$00
+	DATA BYTE $00,$E0,$F8,$C0,$C0,$00,$C0,$00
 	DATA BYTE $0F,$0F,$0F,$0F,$07,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $80,$C0,$80,$00,$80,$00,$00,$00
@@ -100,13 +100,13 @@ spr_harry:	' Harry: RIGHT white/face/stripes, then the same LEFT (+12), then the
 	DATA BYTE $00,$00,$00,$FC,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$C0,$00,$E0
 	DATA BYTE $0F,$0F,$1F,$00,$00,$00,$00,$00
-	DATA BYTE $00,$1F,$37,$0F,$0F,$00,$0F,$00
+	DATA BYTE $00,$1F,$7F,$0F,$0F,$00,$0F,$00
 	DATA BYTE $C0,$C0,$C0,$00,$00,$00,$00,$00
-	DATA BYTE $00,$E0,$E0,$D8,$D8,$00,$C0,$00
+	DATA BYTE $00,$E0,$C0,$F0,$D8,$00,$C0,$00
 	DATA BYTE $03,$03,$03,$00,$00,$00,$00,$00
-	DATA BYTE $00,$07,$1B,$07,$07,$00,$03,$00
+	DATA BYTE $00,$07,$1F,$03,$03,$00,$03,$00
 	DATA BYTE $F0,$F0,$F8,$00,$00,$00,$00,$00
-	DATA BYTE $00,$F8,$F0,$EC,$EC,$00,$F0,$00
+	DATA BYTE $00,$F8,$F0,$FC,$F6,$00,$F0,$00
 	DATA BYTE $01,$03,$01,$00,$01,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F0,$F0,$F0,$F0,$E0,$00,$00,$00
@@ -116,24 +116,24 @@ spr_harry:	' Harry: RIGHT white/face/stripes, then the same LEFT (+12), then the
 	DATA BYTE $00,$00,$00,$FC,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$F0,$00,$F8
 	DATA BYTE $03,$03,$03,$00,$00,$00,$00,$00
-	DATA BYTE $00,$07,$07,$1B,$1B,$00,$03,$00
+	DATA BYTE $00,$07,$03,$0F,$1B,$00,$03,$00
 	DATA BYTE $F0,$F0,$F8,$00,$00,$00,$00,$00
-	DATA BYTE $00,$F8,$EC,$F0,$F0,$00,$F0,$00
-	DATA BYTE $3F,$3F,$38,$38,$70,$70,$78,$78
+	DATA BYTE $00,$F8,$FE,$F0,$F0,$00,$F0,$00
+	DATA BYTE $1F,$1F,$38,$70,$E0,$E0,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FC,$FC,$1C,$1C,$0E,$0E,$1E,$1E
+	DATA BYTE $E0,$E0,$E0,$F0,$70,$38,$38,$7C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $3F,$3F,$1F,$0E,$0E,$1E,$1E,$3E
+	DATA BYTE $1F,$1F,$0E,$0E,$0E,$0E,$0E,$1F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FC,$FC,$F8,$70,$70,$78,$78,$7C
+	DATA BYTE $E0,$E0,$E0,$70,$38,$70,$E0,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $3F,$3F,$38,$38,$70,$70,$78,$78
+	DATA BYTE $07,$07,$07,$0F,$0E,$1C,$1C,$3E
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FC,$FC,$1C,$1C,$0E,$0E,$1E,$1E
+	DATA BYTE $F8,$F8,$1C,$0E,$07,$07,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $3F,$3F,$1F,$0E,$0E,$1E,$1E,$3E
+	DATA BYTE $07,$07,$07,$0E,$1C,$0E,$07,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FC,$FC,$F8,$70,$70,$78,$78,$7C
+	DATA BYTE $F8,$F8,$70,$70,$70,$70,$70,$F8
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
 spr_cart:	' shopping cart -- jump it

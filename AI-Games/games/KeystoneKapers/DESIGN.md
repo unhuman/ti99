@@ -315,6 +315,38 @@ sprites, so `DEFINE SPRITE 24,1,spr_cart` would have loaded the shopping cart
 straight over Harry's third leg frame. Nothing in the build would have said a
 word.
 
+**AND HARRY'S OWN LEGS WERE STILL SYMMETRIC LONG AFTER THIS WAS WRITTEN.**
+§0g fixed Kelly. Harry kept a pair of mirror-symmetric leg frames -- both legs
+splayed equally either side of the hips -- which is a FRONT view, and no amount
+of work on his head could stop him reading as facing the player. Two rounds of
+redrawing the cap, the nose and the torso changed nothing, because the legs are
+where a running figure states its direction.
+
+A side-view runner **scissors**: one leg leads and one trails, and the trailing
+foot sits *higher* than the leading one because the knee is folded up behind.
+That height difference is most of the cue at this size. His two frames are now
+
+* **stride** -- trailing leg swept back with the foot two rows off the ground,
+  leading leg reaching forward with its foot planted;
+* **passing** -- the previous leading leg standing straight under the hips,
+  the other folded through with the knee driven forward and the foot tucked up
+  behind it.
+
+**His arms were detached blobs.** Two pixels of arm with a one-pixel gap
+between them and the torso reads as a lump beside the body, not a limb, and
+both frames put them at the same height so they swapped sides without ever
+looking like they were swinging. They connect at the shoulder now, and the
+**forward arm is high** (hand up by the chest) while the **back arm is low**
+(hand behind the hip) -- opposition, which is the other half of the cue.
+
+The arms stay on rows 10-12 because `HARRY_STRIPE` is **one drawing shared by
+both frames** (§5's sprite budget): a stripe on a row where an arm moves leaves
+a black bar hanging in mid-air on the frame without the arm. The stripes are on
+rows 3, 13 and 15, all torso in both frames.
+
+The hem came in from twelve cells to eight to match the body -- at twelve it
+read as a skirt.
+
 ---
 
 ### 0h. The figures, transcribed onto the 2600's own pixel grid

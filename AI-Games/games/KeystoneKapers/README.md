@@ -82,6 +82,8 @@ flat black brim right across him, Harry's face is a third of his. `assets/cmpref
 ours back down to theirs to compare, and `assets/previewrun.py` renders every frame, facing
 and pose from the shipped bytes.
 
+Harry runs in **side profile** -- legs scissored with the trailing foot kicked up behind, arms swinging in opposition off the shoulder. Symmetric legs are a front view, and they were why he read as facing the player however his head was drawn.
+
 **Kelly runs 4 px/frame, Harry 1.75** -- a ratio of 2.29 against the 2.07 measured off the
 reference video (`DESIGN.md` §0f); 2.0 exactly would leave the chase 5.2 s of slack, less than
 one obstacle hit. That is not the comfortable margin it looks like: Harry
