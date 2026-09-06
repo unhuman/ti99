@@ -214,25 +214,27 @@ def t_roof(kind):
     # started reading as a ROW OF FLAMES. It is gone, and the tallest buildings
     # take that row instead.
     #
-    # THEY TAKE ALL OF IT. Row 1 may hold BLDGM (4px) or a full BLDGW, so the
-    # tallest building on the horizon is 24 pixels -- THREE whole characters,
-    # a full character above the flat roofline -- with the band's own row 0
-    # left as sky above it. That last row of sky is what keeps it a horizon
-    # rather than a wall: the city reaches the top of its area and stops.
+    # AND THE TALLEST REACH INTO ROW 0. The skyline now uses all four of the
+    # band's rows above the deck: row 3 is always solid wall, rows 2 and 1 may
+    # be a full storey, and the very tallest carry a 4px BLDGM into row 0. The
+    # top of the city is 28 pixels -- three and a half characters, with 4px of
+    # sky still above it, which is enough to keep it reading as a horizon.
     #
-    # Heights, in pixels, from the six steps below:  8  11  14  16  20  24
+    # Heights, in pixels, from the six steps below:  8  11  14  20  24  28
     #
     # Written out rather than generated: one row of 32 numbers, meant to look
     # deliberate rather than random, and it never changes.
-    #   0 sky        1 low block          2 tall block
-    #   3 full char  4 full + a 4px top   5 full + a FULL top
+    #   0 sky              1 low block   2 tall block
+    #   3 full + a 4px top  4 two full    5 two full + a 4px top
     SKYLINE = [2, 4, 1, 0, 3, 5, 2, 1, 0, 4, 3, 1, 2, 5, 4, 0,
                1, 3, 2, 4, 0, 2, 5, 3, 1, 0, 4, 2, 3, 1, 5, 2]
-    ROW1 = (SKY, SKY, SKY, SKY, BLDGM, BLDGW)
+    ROW0 = (SKY, SKY, SKY, SKY, SKY, BLDGM)
+    ROW1 = (SKY, SKY, SKY, BLDGM, BLDGW, BLDGW)
     ROW2 = (SKY, BLDGL, BLDGH, BLDGW, BLDGW, BLDGW)
     t = blank(SKY)
     for c in range(W):
         h = SKYLINE[c]
+        t[0][c] = ROW0[h]
         t[1][c] = ROW1[h]
         t[2][c] = ROW2[h]
         t[3][c] = BLDGW

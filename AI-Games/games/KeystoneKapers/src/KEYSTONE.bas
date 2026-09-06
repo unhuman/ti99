@@ -216,6 +216,8 @@
 	' run-time colour left -- the two actors are sprites and carry theirs.
 	CONST SC_KOP = 28		' black on dark green
 	CONST CH_SHELFT = 99		' a counter's top half -- what wipe_shelf walks
+	CONST CH_COUNTR = 107		' a pillar/counter column: the ONLY thing a
+					' fixture may erase (renumber.py fills this)
 	CONST CH_SLAB = 96
 	' THE VICTROLA IS FOUR CELLS. Its top-right cell has two versions and the
 	' sound marks live there, so the pulse is one VPOKE of a different
@@ -929,6 +931,17 @@ draw_screen:
 	GOSUB hide_play
 	GOSUB load_band
 	FOR dq = 0 TO 3
+		' WAIT FIRST, NOT LAST. A band is blitted and then corrected -- the
+		' beam top stamped on, the pillar under a radio taken off -- and the
+		' raster does not stop while that happens. Starting the burst in the
+		' middle of a frame let the raster pass the band between the blit and
+		' the correction, so the uncorrected version was shown for a frame:
+		' at round start, after CLS, that reads as a support beam appearing
+		' and being rubbed out. Beginning at vblank gives the whole burst a
+		' clear run at the rows before the beam reaches them. It also still
+		' gives each band its own frame, which is what stops a VDP write
+		' burst past a few dozen from being silently dropped.
+		WAIT
 		dlv = 3 - dq
 		dix = lv8(dlv)
 		dix = dix + klsc
@@ -945,9 +958,6 @@ draw_screen:
 		GOSUB radio_band
 		plv = dlv
 		GOSUB prize_one
-		WAIT			' VDP writes are buffered per frame and a
-					' burst past a few dozen is silently
-					' dropped -- one band per frame
 	NEXT dq
 	GOSUB esc_cap_draw
 	GOSUB draw_car
@@ -1300,15 +1310,14 @@ prize_one:
 		' AND THE FIXTURE BEHIND IT GOES AWAY, for the same reason
 		' a radio's does: a pillar fills all four air rows, so a
 		' prize on one would leave its top half hanging above.
-		pch = CH_WALL
-		#pvb = #pva - 64
-		VPOKE #pvb,pch
-		#pvc = #pvb + 1
-		VPOKE #pvc,pch
-		#pvb = #pva - 32
-		VPOKE #pvb,pch
-		#pvc = #pvb + 1
-		VPOKE #pvc,pch
+		#wca = #pva - 64
+		GOSUB wall_clear
+		#wca = #wca + 1
+		GOSUB wall_clear
+		#wca = #pva - 32
+		GOSUB wall_clear
+		#wca = #wca + 1
+		GOSUB wall_clear
 		' and the beam top hanging above it
 		#bca = #pva - 96
 		GOSUB beam_clear
@@ -1835,6 +1844,26 @@ beam_clear:
 	END IF
 	RETURN
 
+	' THE SAME DISTINCTION ONE ROW LOWER. A radio or a prize stands in the
+	' bottom half of a band, so the two cells above it have to be cleared or
+	' the pillar it covers keeps its top half hanging in the air. That clear
+	' used to be an unconditional green VPOKE, which is only correct when the
+	' cell really is a pillar: at column 0 and 31 it is the OUTSIDE WALL, and
+	' on the roof it is the SKYLINE. Painting green over either punched a
+	' two-row hole through the building -- and because the band is blitted and
+	' then corrected within the same pass, you could watch it happen at round
+	' start: the wall went up and was taken straight back down again.
+	'
+	' So it tests for the thing it is allowed to remove rather than trusting
+	' the position. COUNTR is a pillar or a counter; anything else stays.
+wall_clear:
+	wcv = VPEEK(#wca)
+	IF wcv = CH_COUNTR THEN
+		wcw = CH_WALL
+		VPOKE #wca,wcw
+	END IF
+	RETURN
+
 	' ONE BAND'S RADIOS. rbn is the band and its two obstacle slots are
 	' rbn*2 and rbn*2+1, so the caller does not have to know the mapping.
 radio_band:
@@ -1864,15 +1893,14 @@ radio_band:
 				' nothing under it. Shelves are covered outright
 				' by the radio's own two rows, so only the rows
 				' ABOVE need clearing.
-				#rvb = #rva - 64
-				rch = CH_WALL
-				VPOKE #rvb,rch
-				#rvc = #rvb + 1
-				VPOKE #rvc,rch
-				#rvb = #rva - 32
-				VPOKE #rvb,rch
-				#rvc = #rvb + 1
-				VPOKE #rvc,rch
+				#wca = #rva - 64
+				GOSUB wall_clear
+				#wca = #wca + 1
+				GOSUB wall_clear
+				#wca = #rva - 32
+				GOSUB wall_clear
+				#wca = #wca + 1
+				GOSUB wall_clear
 				' and the beam top hanging above it
 				#bca = #rva - 96
 				GOSUB beam_clear

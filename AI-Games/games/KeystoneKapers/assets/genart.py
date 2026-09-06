@@ -1436,16 +1436,21 @@ CHARS_BASE = [
     # characters, a full character above the flat roofline, and this is the
     # step just under it.
     #
-    # A slice of the wall taken from its BOTTOM (rows 4-7), so the windows
-    # land where BLDGW's do and the courses line up cell to cell.
+    # ITS TOP ROW IS SOLID, and that is the whole point of not taking a plain
+    # slice off the bottom of the wall. Rows 4-7 of BLDGW are window, window,
+    # blank, blank -- so a straight slice cuts the roofline through a row of
+    # LIT WINDOWS and the building reads as sawn off rather than finished, with
+    # yellow spilling over its top edge. The windows move down one row instead:
+    # solid, window, window, blank. BLDGL and BLDGH already do this; BLDGM was
+    # added later and brought the fault back with it.
     ("BLDGM", 0, """
 ........
 ........
 ........
 ........
-.##..##.
-.##..##.
 ........
+.##..##.
+.##..##.
 ........
 """, LYELL, [CYAN] * 4 + [DRED] * 4),
 

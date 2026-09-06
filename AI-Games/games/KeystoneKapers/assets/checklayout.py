@@ -86,6 +86,7 @@ SCREEN = {
     "scan_wipe1": "PATT",     # and giving the character its base colour back
     "scan_escc": "PATT",      # the flight's own colour, per character
     "beam_clear": "GAME",     # putting a beam top back when its pillar goes
+    "wall_clear": "GAME",     # taking a pillar down where a fixture stands
     "wipe_shelf": "GAME",     # taking the whole counter, not a hole in it
     "ws_loop": "GAME",        # its loop body, which does the actual writing
     "scan_clr": "PATT", "scan_tick": "PATT",

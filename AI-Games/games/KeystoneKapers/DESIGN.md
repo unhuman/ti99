@@ -726,18 +726,21 @@ Three details that each took a pass to see:
   the whole screen. As a horizon above flat grey it read fine; above a lit
   skyline it reads as a **row of flames**. Removed, and the tallest buildings
   take that row instead.
-* **They take ALL of it.** Row 1 holds either `BLDGM` (4 px of wall) or a full
-  `BLDGW`, so the tallest building on the horizon is **24 px -- three whole
-  characters, a full character above the flat roofline**. The six steps are 8,
-  11, 14, 16, 20 and 24 px. The band's own row 0 stays sky, and that last row
-  is what keeps the skyline a horizon rather than a wall: the city reaches the
-  top of its area and stops. `BLDGM` is a slice taken off the **bottom** of the
-  wall (rows 4-7), so its courses and windows line up with `BLDGW` cell to
-  cell.
+* **They take ALL of it, and the tallest reach into row 0.** The skyline uses
+  every row of the band above the deck: row 3 is always solid wall, rows 2 and
+  1 may be a full storey, and the tallest carry a 4 px `BLDGM` into row 0. The
+  six steps are **8, 11, 14, 20, 24 and 28 px** -- the top of the city is three
+  and a half characters, with 4 px of sky still above it, which is enough to
+  keep it reading as a horizon rather than a wall. `BLDGM`'s courses and
+  windows line up with `BLDGW` cell to cell.
 * **The building tops were exposed windows.** Both top characters put their
   windows in the first brick row, so every block was cut off through a row of
   lit windows and read as sliced rather than finished. One solid row at the top
-  of each.
+  of each. **`BLDGM` brought the fault back** when it was added: a straight
+  4 px slice off the bottom of `BLDGW` is window, window, blank, blank, so the
+  new half-height roofline spilled yellow over its own top edge while the
+  full-height tops beside it looked finished. Its windows moved down a row --
+  solid, window, window, blank. Any future partial top needs the same cover.
 * **The flight that crosses into the roof** kept a grey backdrop in its
   composites -- right when the band was a grey panel, and a grey rectangle cut
   out of the city afterwards.
@@ -792,6 +795,24 @@ done afterwards by a routine whose whole purpose is to remove structure.
 provable rather than positional: a pillar cap is something a fixture may stand
 in front of, an end-wall cap is permanent structure, and the character code
 already says which is which.
+
+**AND THE SAME FAULT SAT ONE ROW LOWER.** Clearing the *cap* was only half of
+it: a radio or a prize also blanks the two cells directly above itself, to take
+down the upper half of the pillar it covers, and that was an unconditional
+green `VPOKE`. Correct for a pillar; at column 0 or 31 it painted over the
+outside wall, and on the roof it would have punched green through the skyline.
+`wall_clear` replaces it and tests for the thing it is allowed to remove --
+`COUNTR`, a pillar or a counter -- rather than trusting the position.
+
+**IT WAS VISIBLE AS A FLICKER, NOT AS A HOLE.** `draw_screen` blits a band and
+then corrects it in the same pass, and the raster does not stop in between. The
+`WAIT` sat at the *end* of the loop body, so a band's burst began wherever the
+CPU happened to be in the frame; if the beam passed those rows between the blit
+and the correction, the uncorrected band was shown for a frame. After `CLS` at
+round start that reads as a support beam appearing and being rubbed out. The
+`WAIT` is now at the **top** of the body, so every band's burst starts at
+vblank with a clear run at its own rows -- and each band still gets its own
+frame, which is what keeps a VDP write burst from being silently dropped.
 
 ### 6j. Hazards: one decision, made when the screen is drawn
 

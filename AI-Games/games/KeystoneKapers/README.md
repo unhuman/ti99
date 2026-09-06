@@ -63,7 +63,7 @@ floor at 6, and carts and planes speed up at 7 and 8. That is the original's pro
 **Catch Harry and the clock is counted into your score**, a unit at a time with a tick under
 each step -- 100 points a unit on Krooks 1-9, 200 on 10-15, 300 from 16.
 
-**Money bags and suitcases are worth 50 each**, and a radio or a prize takes whatever fixture it stands in with it -- a pillar, a beam top or a whole counter -- rather than punching a hole through it. The building's own outside wall is the exception: it is structure, not a fixture, and its brick cap stays put.
+**Money bags and suitcases are worth 50 each**, and a radio or a prize takes whatever fixture it stands in with it -- a pillar, a beam top or a whole counter -- rather than punching a hole through it. The building itself is the exception: the outside wall and the skyline are structure, not fixtures, and a radio standing beside one leaves it alone.
 
 **A city stands behind the roof**, so the shopping carts up there can actually be seen --
 a grey cart on a grey backdrop could not.
