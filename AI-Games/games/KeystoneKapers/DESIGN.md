@@ -328,7 +328,9 @@ That height difference is most of the cue at this size. His two frames are now
 
 * **stride** -- trailing leg swept back with the foot two rows off the ground,
   leading leg reaching forward with its foot planted;
-* **passing** -- the same two legs, closed up under him.
+* **passing** -- the planted leg in almost exactly the same place, and the
+  other swinging through with its **knee out to column 12 and its foot tucked
+  one row off the floor**.
 
 **BOTH FEET ARE ON THE GROUND IN EVERY FRAME, and that is measured, not a
 simplification.** In each reference frame the two leg blobs sit on the *same*
@@ -336,13 +338,23 @@ scanline, always: the 2600 sprite never lifts a foot. What changes between
 poses is only how far apart they are -- about 1.5 clocks closed, nearly 4 at
 the widest stride.
 
-That is the whole difference between a run and a wobble. An earlier version
-lifted the trailing foot two rows off the floor in one pose and folded a knee
-up in the other, which made the two frames different SHAPES; alternating
-between two shapes is a dance. Varying one shape's spread is a stride. Anything
-that changes the figure's silhouette between adjacent frames -- a lifted foot,
-a folded knee, a dropped hip -- will read as bobbing at four frames a pose, and
-no amount of care inside the individual drawings fixes it.
+That is *nearly* the whole difference between a run and a wobble, and getting
+it exactly right took overshooting in both directions. One version lifted the
+trailing foot two rows and folded the knee high in the other pose: both frames
+were different SHAPES, and alternating between two shapes is a dance. The
+correction planted both feet in both poses, which is smooth and completely
+stiff -- no knee ever bends.
+
+**The variable is not the lift, it is HOW MUCH OF THE FIGURE MOVES WITH IT.**
+The planted leg is in almost the same place in both poses, so the silhouette
+barely changes; only the swinging leg travels, and it is free to bend its knee
+right out and lift its foot clear of the floor. A bent knee reads from the
+**kink in the leg**, not from the height of the hips.
+
+The general form: at four frames a pose, anything that moves the whole figure
+between adjacent frames -- a dropped hip, both legs relocating, a change of
+stance width *and* height at once -- reads as bobbing, however careful the
+individual drawings are. Moving one limb never does.
 
 **His arms were detached blobs.** Two pixels of arm with a one-pixel gap
 between them and the torso reads as a lump beside the body, not a limb, and

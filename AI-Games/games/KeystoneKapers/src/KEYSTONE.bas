@@ -801,15 +801,30 @@ start_krook:
 	kjh = 0
 	kanim = 0
 
-	' HARRY STARTS ON THE PLAYER'S SCREEN, one floor up. The research says
-	' "the second-floor elevator door", which is screen 3 -- but the arcade
-	' shows you the crook the moment the round begins, and it cannot do that
-	' if he is four screens away. On a scrolling display those two facts are
-	' compatible; with a flipped view (DESIGN.md 2a) they are not, and being
-	' able to SEE what you are chasing wins. He is still on floor 2.
+	' HARRY STARTS ON FLOOR 2 AT THE WEST EDGE OF SCREEN 7, and that is as
+	' far left as the clock allows. The research says "the second-floor
+	' elevator door", which is screen 3, and it cannot be done:
+	'
+	'   spawn      escape     round
+	'   screen 3   119.9 s    100 s   -- impossible
+	'   screen 5   108.1 s    100 s   -- impossible
+	'   screen 6   102.3 s    100 s   -- impossible
+	'   screen 7    96.4 s    100 s   -- 3.6 s of room
+	'
+	' His escape route ZIGZAGS -- east along floor 2 to its escalator, WEST
+	' along floor 3 to that one, then east again along the roof to the door
+	' -- so a screen further west is paid for three times over: about six
+	' seconds each, against 3.6 to spare. Starting him at the lift would
+	' mean he could never escape at all, and one of the two loss conditions
+	' would quietly stop existing.
+	'
+	' WITHIN screen 7 it is nearly free -- the west edge costs 2.4 s -- so
+	' that is where he stands: as far towards the lift as he can get without
+	' taking the escape away. assets/checkchase.py holds this honest and
+	' fails the build if he cannot escape inside the round.
 	hlv = 1
 	hsc = 7
-	hx = 120
+	hx = 16
 	hdir = 1
 	hst = 0
 	hsy = 0
