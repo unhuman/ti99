@@ -1671,6 +1671,51 @@ CHARS_BASE = [
 ##....##
 """, BLACK, CYAN),
 
+    # THE BOTTOM ROW OF THE DOORWAY CARRIES A STEP, and these are the three
+    # door states again with it. The lift car's floor does not sit level with
+    # the shop floor -- there is a lip, the way a real car stops a fraction
+    # high -- so the bottom two pixels of the doorway are the FLOOR BAR's own
+    # two colours, light over dark. The doors then open ABOVE the lip rather
+    # than through it, and Kelly rises those two pixels as he boards, so he is
+    # visibly standing ON something instead of sliding into a hole in the wall.
+    #
+    # Two pixels is the whole budget: three eats the doorway and one is
+    # invisible next to a five-pixel floor bar. The colours are LYELL over
+    # DYELL because that is exactly how SLAB lights its own top edge, so the
+    # step reads as the same material as the floor it stands on.
+    ("EDOORS", 0, """
+........
+........
+........
+........
+........
+........
+########
+........
+""", [WHITE] * 6 + [LYELL, LYELL], [GRAY] * 6 + [DYELL, DYELL]),
+
+    ("ECARS", 0, """
+........
+........
+........
+........
+........
+........
+########
+........
+""", [WHITE] * 6 + [LYELL, LYELL], [CYAN] * 6 + [DYELL, DYELL]),
+
+    ("EDHALFS", 0, """
+##....##
+##....##
+##....##
+##....##
+##....##
+##....##
+########
+........
+""", [BLACK] * 6 + [LYELL, LYELL], [CYAN] * 6 + [DYELL, DYELL]),
+
     # ON THE FLOOR'S OWN GREEN, not a darker one. The mortar between the
     # bricks is the BACKGROUND, and it was dark green while the air on every
     # shopping floor is medium -- so the end wall read as a dark green panel

@@ -60,6 +60,8 @@ join at 2, shopping carts at 3, **biplanes at 4**, the balls go tall at 5, a sec
 floor at 6, and carts and planes speed up at 7 and 8. That is the original's progression, and
 `assets/checklevels.py` fails the build if any of it drifts.
 
+The lift has a **step**: a two-pixel lip in the floor bar's own colours along the bottom of the doorway, with the doors opening above it, so boarding reads as stepping up into the car.
+
 **Catch Harry and the clock is counted into your score**, a unit at a time with a tick under
 each step -- 100 points a unit on Krooks 1-9, 200 on 10-15, 300 from 16.
 

@@ -899,6 +899,27 @@ pass, so a crossing reads as a cut. `hide_play` covers 0-23 only: the radar's
 three sprites belong to the instrument rather than to the screen, and blinking
 them out every crossing would be a new fault in place of the old one.
 
+### 6g-bis. The lift has a step, and Kelly stands on it
+
+The car's floor does not sit level with the shop floor. There is a **two-pixel
+lip** along the bottom of the doorway, in the floor bar's own two colours --
+`LYELL` over `DYELL`, exactly how `SLAB` lights its own top edge -- so it reads
+as the same material as the floor it stands on rather than as a stripe painted
+on the wall. The doors then open **above** the lip instead of through it, and a
+rider is drawn `ELSTEP` higher, so boarding is visibly stepping UP into the car.
+
+* **Two pixels is the whole budget.** Three eats into a doorway that is only
+  four rows tall; one is invisible beside a five-pixel floor bar.
+* **Every door state needs its own stepped twin** -- shut, part-open and open.
+  Sharing one stepped character across the states would blink the lip out for
+  the two frames the doors are moving, which reads as the step falling off.
+  Hence `EDOORS`, `ECARS` and `EDHALFS`: identical to their originals above row
+  6, and identical to each other below it.
+* **The drawing and the standing height come from the same constant.** `ELSTEP`
+  is both how far the doorway's art was raised and how far the rider is lifted,
+  so the two cannot drift apart -- a rider whose feet stayed at floor level
+  would be standing through the step.
+
 ### 6h. The city behind the roof
 
 The roof band was a flat grey panel, chosen so Kelly (dark blue) would not

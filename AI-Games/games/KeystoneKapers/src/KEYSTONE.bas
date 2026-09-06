@@ -240,13 +240,17 @@
 	CONST CH_SLABE = 97		' the bar with BRICK carried up through it
 	CONST CH_ROOFSE = 98		' and the roof deck likewise
 	CONST CH_ROOFSP = 163		' the roof with a beam under it
-	CONST CH_SLABP = 171		' the same bar with a beam under it
+	CONST CH_SLABP = 174		' the same bar with a beam under it
 	CONST CH_ECAR = 109
 	CONST CH_EDOOR = 108
 	CONST CH_WALL = 151
 	CONST CH_KOPIC = 152
 	CONST CH_EDHALF = 168
-	CONST CH_SCANBK = 170		' blank black, the strip either side of the radar
+	CONST CH_EDOORS = 169		' the same three, for the doorway's BOTTOM
+	CONST CH_ECARS = 170		' row: identical above, with the floor bar's
+	CONST CH_EDHALFS = 171		' two colours as a step along the bottom
+	CONST ELSTEP = 2		' and how tall that step is, in pixels
+	CONST CH_SCANBK = 173		' blank black, the strip either side of the radar
 	CONST CH_BAGTL = 154		' the prizes are 2x2 now
 	CONST CH_BAGTR = 155
 	CONST CH_BAGBL = 156
@@ -448,8 +452,8 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,76,store_pat
-	DEFINE COLOR 96,76,store_col
+	DEFINE CHAR 96,79,store_pat
+	DEFINE COLOR 96,79,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 
@@ -1380,6 +1384,14 @@ draw_car:
 			IF eldp = 2 THEN cch = CH_ECAR
 			IF eldp = 1 THEN cch = CH_EDHALF
 		END IF
+		' THE BOTTOM ROW IS THE SAME DOOR WITH A STEP ALONG ITS FOOT. Every
+		' state needs its own stepped twin -- shut, part-open and open -- or
+		' the lip would blink out for the two frames the doors are moving.
+		cchs = CH_EDOORS
+		IF clv = elvl THEN
+			IF eldp = 2 THEN cchs = CH_ECARS
+			IF eldp = 1 THEN cchs = CH_EDHALFS
+		END IF
 		FOR crw = 1 TO 3
 			#cva = 6144
 			#cva = #cva + #bdst(clv)
@@ -1387,8 +1399,10 @@ draw_car:
 			IF crw = 2 THEN #cva = #cva + 32
 			IF crw = 3 THEN #cva = #cva + 64
 			#cva = #cva + ELCOL
+			ccw = cch
+			IF crw = 3 THEN ccw = cchs
 			FOR ccl = 0 TO 3
-				VPOKE #cva,cch
+				VPOKE #cva,ccw
 				#cva = #cva + 1
 			NEXT ccl
 		NEXT crw
@@ -2499,6 +2513,13 @@ draw_actors:
 		ky = ky - STANDH
 		ky = ky - esy
 	END IF
+
+	' RIDING, HE STANDS ON THE STEP. The lip is two pixels proud of the shop
+	' floor, so a rider whose feet stayed at floor level would be standing
+	' through it. Lifting him by ELSTEP is what turns boarding into stepping
+	' UP into the car -- the same two pixels the doorway grew, so the drawing
+	' and the standing height can only ever agree.
+	IF klst = ST_ELEV THEN ky = ky - ELSTEP
 
 	IF klst = ST_DUCK THEN
 		' 8 px, one sprite, sitting on the floor. The top half is HIDDEN

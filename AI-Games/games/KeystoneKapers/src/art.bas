@@ -220,7 +220,7 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. YELLOW body over 
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.
 
-store_pat:	' 76 chars, 8 bytes each
+store_pat:	' 79 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$00,$00,$00,$00,$DF,$DF,$00
 	DATA BYTE $FF,$FF,$00,$00,$00,$DF,$DF,$00
@@ -294,6 +294,9 @@ store_pat:	' 76 chars, 8 bytes each
 	DATA BYTE $00,$00,$00,$66,$66,$00,$66,$00
 	DATA BYTE $00,$00,$00,$00,$00,$66,$66,$00
 	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$00
+	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$FF,$00
 	DATA BYTE $DF,$DF,$00,$FB,$FB,$00,$DF,$DF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
@@ -372,6 +375,9 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $B7,$B7,$B6,$B6,$B6,$B6,$B6,$B6
 	DATA BYTE $B7,$B7,$B7,$B7,$B6,$B6,$B6,$B6
 	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
+	DATA BYTE $FE,$FE,$FE,$FE,$FE,$FE,$BA,$BA
+	DATA BYTE $F7,$F7,$F7,$F7,$F7,$F7,$BA,$BA
+	DATA BYTE $17,$17,$17,$17,$17,$17,$BA,$BA
 	DATA BYTE $E2,$E2,$E2,$E2,$E2,$E2,$E2,$E2
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BE,$BE,$BE
@@ -538,6 +544,9 @@ esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at
 	'   166 BLDGH
 	'   167 BLDGM
 	'   168 EDHALF
-	'   169 ENDWALL
-	'   170 SCANBK
-	'   171 SLABP
+	'   169 EDOORS
+	'   170 ECARS
+	'   171 EDHALFS
+	'   172 ENDWALL
+	'   173 SCANBK
+	'   174 SLABP

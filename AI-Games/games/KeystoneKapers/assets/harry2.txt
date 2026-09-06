@@ -1,0 +1,61 @@
+; Harry Hooligan -- frame 2 of 4, FACING LEFT.
+;
+;   #   black      0   white      -   skin      .   transparent
+;
+; The grid is 16 wide by 24 tall. Edit the 24 lines below and hand the file
+; back; every line that is exactly 16 of those four characters is read as art
+; and everything else (these ; lines, blank lines, notes) is ignored, so add
+; whatever comments you like.
+;
+; RULES THE HARDWARE IMPOSES:
+;
+;  1. Each cell is ONE character. 0 and # are two sprites overlaid and the
+;     white one wins any shared pixel, so a # underneath a 0 is invisible.
+;     They have to be complementary, never both.
+;  2. Skin (-) only on rows 3-8. The face is its own sprite, parked off the
+;     torso rows on purpose -- that is what stopped his stripes being dropped
+;     when Kelly draws level. Skin elsewhere means moving that box and costs a
+;     sprite back on the torso; ask and I will check whether it fits.
+;  3. Rows 0-15 are one sprite and rows 16-23 a second, drawn 16px lower.
+;     Draw across the seam freely -- it is just two objects.
+;  4. Row 23 is the floor line. Feet sit there.
+;
+; WHAT IS FREE TO CHANGE:
+;
+;  * All four leg poses can be completely independent -- they are already four
+;    separate patterns in ROM. Frames 3 and 4 only happen to be mirrors today.
+;  * BUT the legs are currently shared between facings (only hat, face and
+;    torso mirror), which works because the four poses are symmetric AS A SET.
+;    If yours are not, say so: per-facing legs cost 128 bytes and there are
+;    about 700 free.
+;  * The torso/arms are two drawings shared across the four steps, which is why
+;    frames 1 and 3 have identical upper halves, as do 2 and 4. Four distinct
+;    ones cost another 128 bytes.
+;  * More than four steps is possible too -- the animation counter has bits
+;    spare. Just tell me how many you are giving me.
+;
+;    0123456789012345
+......#####.....   ; row  0  hat
+......00000.....   ; row  1
+......#####.....   ; row  2
+......------....   ; row  3  face starts
+.......-----....   ; row  4
+......------....   ; row  5
+.......-----....   ; row  6
+........----....   ; row  7
+.......----.....   ; row  8
+.....00000000...   ; row  9  shoulders
+......########..   ; row 10
+...000000000.000   ; row 11
+.###..######....   ; row 12
+......000000....   ; row 13
+......######....   ; row 14
+.....00000000...   ; row 15
+...########.....   ; row 16  legs sprite starts
+...00000000.....   ; row 17
+..###...###.....   ; row 18
+..000....000....   ; row 19
+.###......###...   ; row 20
+.000.....000....   ; row 21
+.000....###.....   ; row 22
+#####...........   ; row 23  floor line
