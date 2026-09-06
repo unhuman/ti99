@@ -2630,10 +2630,13 @@ draw_actors:
 	' make four. Worst line of a meeting: exactly four, nothing dropped.
 	IF hsc = klsc THEN
 		SPRITE 4,hy,hx,hp,C_HARRY
-		' y+3, NOT y+4: the hat lost its brim and is three rows now, so his
-		' face starts one row higher. The face box still clears the hat rows,
-		' which is the whole reason it is offset at all.
-		hfy = hy + 3
+		' y-7, with the pattern at the BOTTOM of its box. The face occupies
+		' figure rows 3-8 either way; what changes is where the BOX reaches,
+		' and the VDP counts boxes. Drawn at y+3 it spanned rows 3-18 and put
+		' a third Harry box on every torso row -- five on a line with Kelly's
+		' two, so the VDP dropped his stripes whenever they were level. Drawn
+		' at y-7 the box spans -7..8 and the torso rows carry two boxes.
+		hfy = hy - 7
 		SPRITE 5,hfy,hx,hf,C_SKIN
 		SPRITE 6,hy,hx,hs,C_HSTRIPE
 		hy2 = hy + 16

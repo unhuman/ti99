@@ -384,11 +384,13 @@ with nothing above them, which reads as a belt rather than as a shirt.
   his face band up to rows 3-8, so the face sprite is drawn at `hy+3` rather
   than `hy+4`; it still clears the hat rows, which is the only reason that box
   is offset at all.
-* **The legs are striped too, and the same sprite paints the SHOES.** The
-  shirt's bands sit on body rows 10, 12 and 14, so the next in the rhythm are
-  body rows 16, 18 and 20 -- leg rows 0, 2 and 4, because the leg sprite is
-  drawn sixteen pixels lower. Keeping the rhythm across the join is what makes
-  him one striped figure rather than a striped shirt over white trousers.
+* **The legs are striped too, and the same sprite paints the SHOES -- but at
+  HALF the frequency.** Transcribed off the video onto the 2600's own grid, the
+  trousers run two rows white then two rows black against the shirt's
+  alternating single rows. Drawn at the shirt's pitch they read as MORE SHIRT:
+  one long striped column with feet on the end, which is precisely what "his
+  torso is too long" describes. Same number of bands, half the frequency, and
+  the join between body and legs becomes visible again.
 * **A shoe cannot be a band.** It is the lowest row of each leg, and the two
   legs do not end on the same row -- that is what a stride *is* -- so it is
   written out per pose beside the stripe.
@@ -432,6 +434,20 @@ drawn *over* the body, its cells would take the **opposite** colour to their row
 stays visible instead of vanishing into the torso. That is why the split is done
 cell by cell rather than by whole rows, and why `checkbands.py`'s row rule had
 to become a pixel rule -- see the note there.
+
+**AND HIS STRIPES VANISHED WHENEVER KELLY DREW LEVEL.** Reported from play,
+and it was the box count. The VDP counts sprite BOXES per scanline, not pixels,
+so where a box *reaches* is what costs. Harry's face box was drawn at `hy+3`,
+which means it spans figure rows **3 to 18** -- the whole torso and the top of
+the legs -- so every torso row carried three Harry boxes. With Kelly's two that
+is five on a line, one over the limit, and the VDP drops the highest-numbered:
+his stripes.
+
+The fix costs nothing. The face occupies figure rows 3-8 either way; what
+changes is where the *box* reaches. Pushing the pattern to the **bottom** of its
+16-row box and drawing the box at `hy-7` spans rows -7..8 instead, so the torso
+rows carry body and stripe only. Harry costs two there, a meeting is four, and
+nothing drops at all. `checkbands.py` now reports no overflow anywhere.
 
 **AND IT GOES IN SLOT 27, NOT SLOT 8.** The sprite slots are allocated in
 blocks -- 0-3 Kelly, 4-7 Harry, **8-15 the obstacles**, 16-23 their
