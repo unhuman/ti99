@@ -384,13 +384,14 @@ with nothing above them, which reads as a belt rather than as a shirt.
   his face band up to rows 3-8, so the face sprite is drawn at `hy+3` rather
   than `hy+4`; it still clears the hat rows, which is the only reason that box
   is offset at all.
-* **The legs are striped too, and the same sprite paints the SHOES -- but at
-  HALF the frequency.** Transcribed off the video onto the 2600's own grid, the
-  trousers run two rows white then two rows black against the shirt's
-  alternating single rows. Drawn at the shirt's pitch they read as MORE SHIRT:
-  one long striped column with feet on the end, which is precisely what "his
-  torso is too long" describes. Same number of bands, half the frequency, and
-  the join between body and legs becomes visible again.
+* **The legs are striped too, at the shirt's own pitch, and the same sprite
+  paints the SHOES.** The bands sit on body rows 10, 12 and 14 and carry on
+  down leg rows 0, 2 and 4. Banding them two rows at a time was tried, on the
+  reading that the trousers run coarser than the shirt on the 2600 grid and
+  that a single striped column is what "his torso is too long" describes --
+  and it looked considerably worse in motion. Reverted. The measurement may
+  well be right about the reference; it is not right about this figure at this
+  size.
 * **A shoe cannot be a band.** It is the lowest row of each leg, and the two
   legs do not end on the same row -- that is what a stride *is* -- so it is
   written out per pose beside the stripe.
