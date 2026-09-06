@@ -549,6 +549,228 @@ def split_stripes(top, arms, bands):
     return (nl + nl.join(white) + nl, nl + nl.join(black) + nl)
 
 
+# ==========================================================================
+# HARRY'S RUN COMES FROM 1.txt .. 4.txt -- four hand-drawn 16x24 poses.
+#
+# OUR HEAD, THEIR BODY. The drawn frames carry their own head, and it is not
+# the one the rest of the game was built around -- the cap sits differently and
+# the face band would land on the wrong rows, which would break HFACEB and the
+# separate face sprite with it. So rows 0-7 are taken from the HARRY_TOP art
+# above (unchanged, still the head we drew) and rows 8-23 from the new frame.
+# The seam is row 8, which is the neck in both, so nothing has to be redrawn to
+# make them meet.
+#
+# WHAT EACH FRAME PROVIDES:
+#   rows  0-7   head      -- discarded, ours is used instead
+#   rows  8-15  torso and arms  -> the TOP sprite's lower half
+#   rows 16-23  legs            -> the LEG sprite
+#
+# FOUR LEG POSES, ONE PER FILE, and this is the real gain. The cycle in
+# KEYSTONE.bas already indexes four (hanim AND 8, AND 16) but only two were
+# ever drawn -- HLEG3/HLEG4 were the first two MIRRORED, which is a decent
+# cheat for a stride but reads as a limp next to four genuine poses. Now each
+# beat is its own drawing and no mirroring is involved.
+#
+# TWO BODY POSES, from files 1 and 3 -- the extremes of the arm swing. The
+# source picks the body on `hanim AND 8`, so it can only use two; taking the
+# extremes rather than adjacent frames makes the swing read at that rate.
+
+
+NL = chr(10)
+
+
+def _load_run(n):
+    """One of the new 16x24 running frames as 24 rows of 16 characters."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "%d.txt" % n)
+    rows = [r.rstrip(NL).rstrip("\r") for r in open(p, encoding="utf-8")]
+    rows = [(r + "." * 16)[:16] for r in rows if r.strip() != ""]
+    if len(rows) != 24:
+        raise SystemExit("%d.txt has %d rows, expected 24" % (n, len(rows)))
+    return rows
+
+
+_HEAD = HARRY_TOP.strip(NL).split(NL)[:8]       # the head we keep
+_BLANK16 = NL + NL.join(["." * 16] * 16) + NL
+
+
+# THE TORSO IS DRAWN IN PROFILE, and this is the thing that was making the run
+# look wrong however the timing was fixed.
+#
+# The drawn frames give Harry arms on BOTH sides -- cols 2-4 and 10-13 -- which
+# is a figure seen FROM THE FRONT. His head is in profile. A front-facing body
+# cannot produce a side-view gait: the legs then read as splaying sideways
+# rather than swinging fore-and-aft, and no amount of correcting the cycle
+# rate, the passing pose or the arm phase can fix a body that is facing the
+# wrong way. Every one of those fixes was real and none of them addressed this.
+#
+# So the torso is a narrow profile column with ONE arm, swinging along the
+# direction of travel. Mirroring it (see _swap_arms) then gives the opposite
+# phase for free and correctly: in profile, the same arm forward and back IS
+# the swing, where mirroring a front-on torso just swapped two arms that were
+# both always visible.
+#
+# The LEGS keep the drawn poses -- a stride reaching forward and back is the
+# same silhouette either way up, so those were never the problem.
+HARRY_TORSO_SIDE = """
+.....#####......
+.....#####.##...
+.....######.##..
+.....#####..##..
+.....#####......
+.....#####......
+......####......
+"""
+
+
+def _compose_top(n):
+    """Our head (rows 0-7), the frame's neck (row 8), a PROFILE torso (9-15).
+
+    n still selects the frame so the neck matches the drawing it came from,
+    but the torso no longer comes from the file -- see the note above.
+    """
+    torso = HARRY_TORSO_SIDE.strip(NL).split(NL)
+    return NL + NL.join(_HEAD + _load_run(n)[8:9] + torso) + NL
+
+
+def _leg_split(n):
+    """One leg pose, split into its WHITE half and its DARK half.
+
+    Two rules, and the second is the one that matters:
+
+      * TROUSERS ARE STRIPED like the shirt -- alternate rows dark.
+      * THE SHOE IS WHERE A LIMB ENDS, found by looking for it.
+
+    THE OBVIOUS RULE DOES NOT WORK. "The lowest two pixels of each column"
+    sounds right -- it handles a splayed stride, where the two feet are never
+    at the same height -- and it turns the whole leg black. These legs are
+    thin DIAGONALS, so most columns contain only one or two pixels in total
+    and every one of them is among its own column's lowest two. The rule was
+    written for upright legs and silently ate the drawing.
+
+    So find the ends instead: a pixel is a limb END if nothing is set on the
+    row below within one column either side (the limb does not continue), and
+    the shoe is every end plus the row directly above it. That is local to
+    each leg, needs no notion of how many legs there are, and works whatever
+    the stride is doing.
+    """
+    return _leg_split_rows(_load_run(n)[16:24])
+
+
+def _leg_split_rows(rows):
+    def on(r, c):
+        return 0 <= r < 8 and 0 <= c < 16 and rows[r][c] == "#"
+
+    ends = {(r, c) for r in range(8) for c in range(16)
+            if on(r, c) and not any(on(r + 1, c + d) for d in (-1, 0, 1))}
+    shoe = ends | {(r - 1, c) for (r, c) in ends}
+
+    white, dark = [], []
+    for r in range(8):
+        wr, dr = [], []
+        for c in range(16):
+            if not on(r, c):
+                wr.append(".")
+                dr.append(".")
+                continue
+            if (r, c) in shoe or (r % 2) == 0:
+                wr.append(".")
+                dr.append("#")
+            else:
+                wr.append("#")
+                dr.append(".")
+        white.append("".join(wr))
+        dark.append("".join(dr))
+    pad = ["." * 16] * 8
+    return (NL + NL.join(white + pad) + NL, NL + NL.join(dark + pad) + NL)
+
+
+HARRY_TOP = _compose_top(1)
+
+
+def _swap_arms(top):
+    """The same figure with the arms on the other side.
+
+    THE SECOND BODY FRAME CAME FROM 3.txt AND HAD NO ARMS AT ALL -- its torso
+    is a plain block, nothing protruding. So the two frames were "arms out"
+    and "arms absent", and alternating them reads as the arms FLICKERING on
+    and off rather than swinging. That is the other half of the jig.
+
+    Mirroring rows 9-15 gives a genuine opposite swing: the arm that was
+    forward goes back and vice versa. Rows 0-8 are left alone, so the head and
+    face are untouched -- mirroring those would flip his features and break
+    HFACEB's rows into the bargain.
+
+    Legs mirror for the same reason and it is correct for the same reason: a
+    run is symmetric, so the opposite phase IS the same drawing reversed.
+    """
+    rows = top.strip(NL).split(NL)
+    return NL + NL.join(rows[:9] + [r[::-1] for r in rows[9:]]) + NL
+
+
+HARRY_TOP_B = _swap_arms(HARRY_TOP)
+# NO ARM MASK ANY MORE. It existed so a sleeve crossing the torso could invert
+# its stripe and read as a limb in front of the body. The new poses draw the
+# arms OUTSIDE the torso silhouette, so there is nothing to cross and nothing
+# to invert -- and a mask that no longer matches the art would invert pixels
+# at random. The bands now run straight across, which is what a striped jersey
+# does anyway.
+HARRY_ARMS = _BLANK16
+HARRY_ARMS_B = _BLANK16
+
+# A RUN IS FOUR BEATS: stride, recovery, opposite stride, opposite recovery.
+# All four drawn frames lead with the SAME leg -- the left reaches down-left in
+# every one of them -- so the cycle had two strides and two near-strides and
+# never once brought the trailing leg through. It read as a shuffle, and the
+# specific thing missing was the BENT KNEE: at speed the rear leg folds, swings
+# the knee forward past the body and only then straightens. Without that beat
+# a figure looks like it is being dragged along on stiff legs.
+#
+# So beat 1 is the drawn stride, beat 2 is a recovery drawn here, and beats 3
+# and 4 are those two MIRRORED. Mirroring is right for legs, not a shortcut: a
+# run is symmetric, so the opposite stride genuinely is the same drawing the
+# other way round, and the legs take no facing offset (the same four serve both
+# directions) precisely because of that symmetry.
+HARRY_LEG_SWING = """
+......####......
+......##.##.....
+.....##..##.....
+.....##...##....
+.....##...##....
+.....##..##.....
+.....##.##......
+...####.........
+"""
+# THIS IS THE PASSING POSE, AND "PASSING" IS THE WHOLE POINT: the legs are
+# TOGETHER, spanning about cols 3-11, against the stride's cols 1-14. That
+# contrast -- wide, together, wide the other way, together -- is what reads as
+# the legs CROSSING and swapping over. The first version of this pose kept
+# them apart, with the swinging knee thrown out sideways, so the cycle went
+# splay / splay / splay / splay: four poses, no crossing, and the eye saw a jig
+# because nothing ever passed anything.
+#
+# Reading down the swinging leg: knee forward and IN (rows 2-4), shin folding
+# back under the body (rows 5-6), foot finishing one row clear of the ground
+# while the other is planted flat on row 7. It stays close to the support leg
+# throughout, which is what makes it read as going past it rather than beside
+# it.
+
+_SWING = HARRY_LEG_SWING.strip(NL).split(NL)
+
+HARRY_LEG1, HARRY_LEG1S = _leg_split(1)                     # stride
+HARRY_LEG2, HARRY_LEG2S = _leg_split_rows(_SWING)           # recovery
+
+
+def _flip(art):
+    """Reverse each row. mirror() lives further down the file and the run
+    cycle wants to stay in one piece, so the beats are flipped here."""
+    return NL + NL.join(r[::-1] for r in art.strip(NL).split(NL)) + NL
+
+
+HARRY_LEG3 = _flip(HARRY_LEG1)
+HARRY_LEG3S = _flip(HARRY_LEG1S)
+HARRY_LEG4 = _flip(HARRY_LEG2)
+HARRY_LEG4S = _flip(HARRY_LEG2S)
+
 TORSO_MASK = HARRY_TORSO.strip(chr(10)).split(chr(10))
 HARRY_BODY, HARRY_STRIPE = split_stripes(HARRY_TOP, HARRY_ARMS, HSTRIPE)
 HARRY_BODY_B, HARRY_STRIPE_B = split_stripes(HARRY_TOP_B, HARRY_ARMS_B, HSTRIPE)
@@ -1116,12 +1338,16 @@ SPRITES = [
                    ("HLSTRIPE", mirror(HARRY_STRIPE)),
                    ("HLSTRIPEB", mirror(HARRY_STRIPE_B)),
                    ("HLBODYB", mirror(HARRY_BODY_B)),
+                   # STRIDE, RECOVERY, and both MIRRORED -- see the note
+                   # over HARRY_LEG_SWING. Mirroring is correct here rather
+                   # than a shortcut: a run is symmetric, so the opposite
+                   # stride IS the same drawing reversed. Legs take no facing
+                   # offset for the same reason, so these four serve both
+                   # directions.
                    ("HLEG1", HARRY_LEG1), ("HLEG2", HARRY_LEG2),
-                   ("HLEG3", mirror(HARRY_LEG1)),
-                   ("HLEG4", mirror(HARRY_LEG2)),
+                   ("HLEG3", HARRY_LEG3), ("HLEG4", HARRY_LEG4),
                    ("HLEGS1", HARRY_LEG1S), ("HLEGS2", HARRY_LEG2S),
-                   ("HLEGS3", mirror(HARRY_LEG1S)),
-                   ("HLEGS4", mirror(HARRY_LEG2S))],
+                   ("HLEGS3", HARRY_LEG3S), ("HLEGS4", HARRY_LEG4S)],
      "Harry: RIGHT white/face/stripes, then the same LEFT (+12), then the "
      "FOUR shared run frames. Patterns 64..100"),
     ("spr_cart", [("CART", CART)], "shopping cart -- jump it"),

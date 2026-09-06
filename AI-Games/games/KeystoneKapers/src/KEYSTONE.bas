@@ -2303,7 +2303,17 @@ move_harry:
 			END IF
 		END IF
 	END IF
-	IF hmv > 0 THEN hanim = hanim + fdv
+	' THE CYCLE ADVANCES BY PIXELS TRAVELLED, NOT BY TIME. This was `+ fdv`,
+	' which is a clock -- and Harry's speed is a QUARTER-PIXEL ACCUMULATOR, so
+	' hspd is 0 on a third of his frames. On every one of those the legs took
+	' another step while the ground did not move, which is precisely what
+	' scrubbing your feet looks like. It is the classic foot-slip: the legs
+	' and the world running off two different clocks.
+	'
+	' Advancing by hspd locks the stride to the floor -- he cannot take a step
+	' without covering ground, or cover ground without taking one, at any
+	' speed, including the frames where the accumulator gives him nothing.
+	IF hmv > 0 THEN hanim = hanim + hspd
 
 	' CORNERED, HE DROPS A FLOOR. Running him into an end wall used to be the
 	' end of it -- the chase always finished in the same corner, and a crook
@@ -2694,16 +2704,31 @@ draw_actors:
 	' HIS ARMS SWING, on the same bit of the animation counter that picks the
 	' legs -- so the arm that is forward is the one opposite the leading leg,
 	' which is what running looks like.
+	' THE ARMS SWING ONCE PER FULL LEG CYCLE, ON BIT 16 -- not on bit 8.
+	'
+	' Bit 8 is one BEAT, and the legs take four of them (bits 8 and 16). So an
+	' arm swing keyed to bit 8 completed twice for every one pass of the legs:
+	' the top half of him flapping at double the speed of the bottom half.
+	' That is the jig. It is not a drawing problem and no amount of redrawing
+	' the legs would have touched it.
+	'
+	' On bit 16 the arms hold through beats 1-2 and swap for 3-4, which is
+	' also the right PHASE: beat 1 leads with one leg and beat 3 with the
+	' other, so the arm opposite the leading leg is forward in each -- which
+	' is what running looks like.
 	hp = P_HBODY
-	IF hanim AND 8 THEN hp = P_HBODYB
+	IF hanim AND 16 THEN hp = P_HBODYB
 	hf = P_HFACE
 	' THE STRIPES SWING WITH HIM. His bands run shoulder to hem and his arms
 	' are those same bands extended sideways, so the stripe drawing changes
 	' between frames exactly as the body does -- it is not one shared picture
 	' any more (genart.py, over HARRY_STRIPE). Same bit of the counter, so the
 	' two can never disagree.
+	' Same bit as the body, necessarily -- the stripes ARE the body, drawn in
+	' the other colour. Keyed to a different bit they would swing apart from
+	' the shirt they belong to.
 	hs = P_HSTRIPE
-	IF hanim AND 8 THEN hs = P_HSTRIPEB
+	IF hanim AND 16 THEN hs = P_HSTRIPEB
 	IF hdir = 0 THEN
 		hp = hp + P_HFACING
 		hf = hf + P_HFACING
@@ -2715,6 +2740,36 @@ draw_actors:
 	' FACE is pushed DOWN instead (hy+3, box 3..18) so it clears the cap
 	' rows, where his two stripe boxes plus Kelly's hat and face already
 	' make four. Worst line of a meeting: exactly four, nothing dropped.
+	' HE RISES A PIXEL ON THE RECOVERY BEATS. A runner is highest at mid-flight
+	' and lowest at contact; with the body pinned at a constant y, alternating
+	' legs under a motionless torso reads as a dance rather than as travel.
+	'
+	' One pixel is enough at this size, and it lifts the BODY ONLY -- the legs
+	' keep their y, so the planted foot stays on the floor and the figure
+	' stretches at the waist instead of hopping. Lifting the legs too would be
+	' a jump.
+	'
+	' Beats 2 and 4 are the recoveries, which is exactly `hanim AND 8`.
+	'
+	' Safe because HARRY'S COLLISION HAS NO VERTICAL COMPONENT: he is caught on
+	' `same level AND |dx| < CATCHR`. Doing this to Kelly would desynchronise
+	' his sprite from the ball and biplane windows in DESIGN.md 5a, which is
+	' why it is not done to him.
+	' THE WHOLE FIGURE RISES, legs included, rather than the body stretching
+	' away from the feet. Two reasons, and the second was not the first plan:
+	'
+	'   * It is what a run does. Mid-flight BOTH feet are off the ground, so
+	'     lifting the legs with the body is the correct pose, not a compromise.
+	'   * Lifting the body alone opens a one-pixel gap at the waist, and the
+	'     torso's bottom row and the legs' top row do not align across it --
+	'     green shows through and he reads as coming apart.
+	'
+	' It also keeps `hfy = hy - 7` and `hy2 = hy + 16` LITERAL, which is not a
+	' cosmetic concern: assets/checkbands.py reads each band's draw offset by
+	' parsing those exact expressions. Bobbing a differently-named variable
+	' made them unreadable and the gate failed the build -- correctly. A
+	' checker that can no longer see what it checks has to fail, not shrug.
+	IF hanim AND 8 THEN hy = hy - 1
 	IF hsc = klsc THEN
 		SPRITE 4,hy,hx,hp,C_HARRY
 		' y-7, with the pattern at the BOTTOM of its box. The face occupies
@@ -3644,16 +3699,31 @@ sfx_tick:
 	END IF
 	RETURN
 
-	' The font stays in bank 0: it is small, and keeping one readable thing
-	' unbanked makes a bank-selection mistake obvious (text survives, art does
-	' not) instead of producing a uniformly blank screen.
-	INCLUDE "font.bas"
-
 	' EVERYTHING BELOW THIS LINE IS ASSEMBLED INTO BANK 1, so the INCLUDE order
-	' is load-bearing and nothing but data may follow it. Putting the directive
-	' above font.bas would sweep the font in too.
+	' is load-bearing and nothing but data may follow it.
+	'
+	' THE FONT IS NOW IN THE BANK TOO, and it used to be deliberately outside:
+	' keeping one readable thing in bank 0 means a bank-selection mistake shows
+	' as "text survives, art does not" rather than a uniformly blank screen,
+	' which is a genuinely useful thing to have when a bank goes wrong.
+	'
+	' It was given up for 472 bytes, because the fixed area had 342 left and
+	' that diagnostic is worth less than the ability to keep building. Two
+	' things make it a fair trade rather than a straight loss:
+	'
+	'   * `BANK SELECT 1` already runs BEFORE `DEFINE CHAR 32,59,font_bits`
+	'     (see setup), so nothing about the read order had to change. If that
+	'     ever stops being true the font goes blank at boot, immediately and
+	'     unmistakably -- a loud failure, not a subtle one.
+	'   * The alternative on the table was banking the 29 PRINT AT literals,
+	'     which recovers LESS (about 360 bytes net after the reader routine)
+	'     and would blind assets/checklayout.py, whose whole method is parsing
+	'     `PRINT AT n,"literal"` to catch a string running past column 31 or
+	'     a HUD poke landing inside a label. Trading a diagnostic for bytes is
+	'     one thing; trading a build gate for fewer bytes is another.
 	#if TI994A
 	BANK 1
 	#endif
+	INCLUDE "font.bas"
 	INCLUDE "art.bas"
 	INCLUDE "store.bas"

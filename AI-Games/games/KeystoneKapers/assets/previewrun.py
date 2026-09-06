@@ -63,9 +63,23 @@ def duck(left):
     return figure(parts)
 
 
-def harry(leg, left):
-    parts = [(g.HARRY_BODY, 0, C_HARRY), (g.HARRY_FACE, 4, C_SKIN),
-             (g.HARRY_STRIPE, 0, C_STRIPE), (leg, 16, C_HARRY)]
+def harry(leg, legs, body, stripe, left):
+    """FIVE sprites, at the game's own y offsets. Keep these in step with
+    draw_actors -- this preview drifted out of date and then blamed the art.
+
+    It had the face at +4 when the game moved it to -7 (the box was lifted so
+    it stops reaching down through the torso rows), and it never drew the leg
+    stripes at all. The result was a Harry with his head in his chest and no
+    shoes, which reads as broken ART -- and the art was fine. A preview that
+    lags the thing it previews is worse than no preview: it does not just fail
+    to help, it actively accuses the wrong file.
+
+        body     +0    stripe   +0    face  -7
+        legs    +16    legs stripe  +16
+    """
+    parts = [(body, 0, C_HARRY), (stripe, 0, C_STRIPE),
+             (g.HARRY_FACE, -7, C_SKIN),
+             (leg, 16, C_HARRY), (legs, 16, C_STRIPE)]
     if left:
         parts = [(g.mirror(a), d, c) for a, d, c in parts]
     return figure(parts)
@@ -74,16 +88,20 @@ def harry(leg, left):
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "run.png")
     A, B = g.KELLY_LEG1, g.KELLY_LEG2
-    HA, HB = g.HARRY_LEG1, g.HARRY_LEG2
+    # HARRY'S FOUR BEATS, exactly as the game clocks them: the legs step
+    # through all four poses on bits 3 and 4 of hanim, while the body only has
+    # two and alternates on bit 3. So beat n takes leg n and body (n AND 1).
+    HFRAMES = [(g.HARRY_LEG1, g.HARRY_LEG1S, g.HARRY_BODY, g.HARRY_STRIPE),
+               (g.HARRY_LEG2, g.HARRY_LEG2S, g.HARRY_BODY_B, g.HARRY_STRIPE_B),
+               (g.HARRY_LEG3, g.HARRY_LEG3S, g.HARRY_BODY, g.HARRY_STRIPE),
+               (g.HARRY_LEG4, g.HARRY_LEG4S, g.HARRY_BODY_B, g.HARRY_STRIPE_B)]
     # the cycle the game plays: A, B, mirror(A), mirror(B)
     kr = [kelly(A, True, False), kelly(B, False, False),
           kelly(g.mirror(A), True, False), kelly(g.mirror(B), False, False)]
     kl = [kelly(g.mirror(A), True, True), kelly(g.mirror(B), False, True),
           kelly(A, True, True), kelly(B, False, True)]
-    hr = [harry(HA, False), harry(HB, False),
-          harry(g.mirror(HA), False), harry(g.mirror(HB), False)]
-    hl = [harry(g.mirror(HA), True), harry(g.mirror(HB), True),
-          harry(HA, True), harry(HB, True)]
+    hr = [harry(l, ls, b, st, False) for l, ls, b, st in HFRAMES]
+    hl = [harry(l, ls, b, st, True) for l, ls, b, st in HFRAMES]
 
     # the crouch, both ways, beside a standing frame for scale
     dk = [duck(False), kelly(A, True, False), duck(True), kelly(A, True, True)]
