@@ -340,6 +340,25 @@ cost a debugging session:
     this** -- the copy renders from the third it was copied into. To test a
     suspected glyph problem, read the pattern bytes, or put the probe in the
     same third as the fault.
+- **SPRITE SLOTS ARE A SHARED NUMBER SPACE, AND "THE NEXT FREE ONE" USUALLY IS
+  NOT.** Slot numbers are typically handed out in blocks -- player, enemy,
+  hazards, HUD -- with the blocks only written down in a comment, so adding a
+  sprite to an actor and taking the number right after its last one lands in
+  the middle of somebody else's block. Both writers succeed; whichever runs
+  later in the frame wins.
+  - Keystone Kapers gave Harry a fourth sprite at slot 8. Slots 8-15 are the
+    OBSTACLES, and the obstacle pass runs later in the same routine, so his new
+    leg stripes were written and overwritten every frame. **Two symptoms,
+    neither an error:** the stripes never appeared, and *a ball flickered
+    somewhere it did not belong* -- obstacle 0 dragged to Harry's position and
+    pattern for part of each frame and then put back. The second was reported
+    as a flicker-control regression, which is what it looks like.
+  - Grep for every `SPRITE <n>` **and** every computed slot (`SPRITE ds`,
+    `ds = di + 8`) before picking a number, and put the block map in the source
+    next to the allocation rather than in a design doc.
+  - Check the hide/reset paths too: a `FOR i = 0 TO 23` that blanks sprites
+    will not cover a slot outside its range, and widening it may blank a block
+    it was deliberately skipping.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

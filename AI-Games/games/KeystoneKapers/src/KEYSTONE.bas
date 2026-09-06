@@ -2623,18 +2623,25 @@ draw_actors:
 		SPRITE 6,hy,hx,hs,C_HSTRIPE
 		hy2 = hy + 16
 		SPRITE 7,hy2,hx,hq,C_HARRY
-		' SLOT 8 IS THE HIGHEST OF HIS FOUR ON PURPOSE. Down on the leg rows
-		' he has only these two boxes -- the other three are sixteen rows up --
-		' so meeting Kelly is two against two, exactly the per-line limit. If
-		' anything ever does overflow here the VDP keeps the four lowest, so
-		' what goes is the stripe, and he loses his shoes rather than his legs.
-		SPRITE 8,hy2,hx,hqs,C_HSTRIPE
+		' SLOT 27, AND NOT 8. THE SLOTS ARE ALLOCATED IN BLOCKS: 0-3 Kelly,
+		' 4-7 Harry, 8-15 the obstacles, 16-23 their propellers, 24-26 the
+		' radar. Slot 8 is the FIRST OBSTACLE, and the obstacle pass runs later
+		' in this same routine -- so his leg stripes were written and then
+		' overwritten every single frame, and his trousers stayed white with no
+		' error anywhere. The free block starts at 27.
+		'
+		' Being the highest-numbered of his four is also what we want: down on
+		' the leg rows he has only these two boxes (the other three are sixteen
+		' rows up), so meeting Kelly is two against two, exactly the per-line
+		' limit -- and if anything ever does overflow, the VDP keeps the four
+		' LOWEST, so what goes is the stripe. He loses his shoes, not his legs.
+		SPRITE 27,hy2,hx,hqs,C_HSTRIPE
 	ELSE
 		SPRITE 4,SPRHID,0,0,0
 		SPRITE 5,SPRHID,0,0,0
 		SPRITE 6,SPRHID,0,0,0
 		SPRITE 7,SPRHID,0,0,0
-		SPRITE 8,SPRHID,0,0,0
+		SPRITE 27,SPRHID,0,0,0
 	END IF
 
 	' Obstacles: slots 8-15, TWO per band. An actor costs two sprite BOXES on
@@ -2720,6 +2727,10 @@ hide_play:
 	FOR hi = 0 TO 23
 		SPRITE hi,SPRHID,0,0,0
 	NEXT hi
+	' Harry's leg stripes live at 27, outside the 0-23 block, because 8-23
+	' belong to the obstacles and their propellers. The loop cannot simply be
+	' widened -- 24-26 are the RADAR, which this routine must leave alone.
+	SPRITE 27,SPRHID,0,0,0
 	RETURN
 
 hide_all:

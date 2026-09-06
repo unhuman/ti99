@@ -382,6 +382,19 @@ per-line limit of §5. It is also the **highest-numbered** of his four, so if
 anything ever does overflow the VDP keeps the four lowest and he loses his
 shoes rather than his legs.
 
+**AND IT GOES IN SLOT 27, NOT SLOT 8.** The sprite slots are allocated in
+blocks -- 0-3 Kelly, 4-7 Harry, **8-15 the obstacles**, 16-23 their
+propellers, 24-26 the radar -- so the "next free" slot after Harry's four is
+the FIRST OBSTACLE, and the obstacle pass runs later in the same routine. The
+first version wrote his leg stripes there and had them overwritten every
+frame. Two symptoms, neither of them an error: his trousers stayed white, and
+a **ball flickered somewhere it did not belong** -- obstacle 0 being dragged to
+Harry's position and pattern for part of every frame and then put back. That
+second one reads as a flicker-control problem, which is what it was reported
+as; `SPRITE FLICKER OFF` had not moved. `hide_play` gets an explicit
+`SPRITE 27` too: its loop stops at 23 and cannot simply be widened, because
+24-26 are the radar and it must leave those alone.
+
 **`HARRY_STRIPE` is no longer one drawing shared by both frames.** It could not
 be: the arms move on the band rows, so a shared drawing would have left a black
 bar hanging in mid-air on the frame without the arm -- which is why the stripes
