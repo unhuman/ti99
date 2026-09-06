@@ -49,8 +49,10 @@ def main():
             changed.append("%s_%s %d -> %d" % (kind, name, old, new))
         return "CONST %s_%s = %d" % (kind, name, new)
 
-    # P_KFACING / P_HFACING are OFFSETS between the two facings, not codes.
-    src = re.sub(r"CONST (CH|P)_(?!KFACING|HFACING)(\w+) = (\d+)", fix_const, src)
+    # P_*FACING are OFFSETS between the two facings, not codes. Listed longest
+    # first so HLEGFACING is not half-matched by HFACING.
+    src = re.sub(r"CONST (CH|P)_(?!HLEGFACING|KFACING|HFACING)(\w+) = (\d+)",
+                 fix_const, src)
 
     # the escalator's animated block: first code and the two counts
     def fix_esc(m):

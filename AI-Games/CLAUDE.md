@@ -238,6 +238,48 @@ cost a debugging session:
   must simulate `fdv > 1`** (the code is correct at 1, which is what a desk check and a fast
   emulator both exercise) **and must read both clocks out of the source and compare them** --
   `games/KeystoneKapers/assets/checkride.py` does, and names all three failures.
+- **A MIRROR IS ONLY WORTH TWO DRAWINGS IF THE DRAWING IS ASYMMETRIC, AND AN
+  "EVERY OTHER FRAME" ANIMATION CYCLE IS USUALLY TWO POSES.** Both halves cost a
+  session in Keystone Kapers and both present identically -- as an actor whose
+  legs go back and forth between two positions -- while every existing check
+  passes, because the numbers are all consistent: the right patterns are loaded
+  at the right addresses and drawn on the right beats. They are just the same
+  picture twice.
+  - **The mirror half.** "Four poses cost two drawings: left-foot-forward is the
+    mirror of right-foot-forward" is sound, and Kelly's legs were drawn as two
+    parallel vertical columns -- apart in one pose, together in the other. A pair
+    of vertical legs mirrors to itself. His four beats differed by **4 px and
+    8 px**, and 4 of those 4 were the hip row sliding two columns sideways
+    because it had been given the tunic's hem shape, which is not its own mirror.
+  - **The every-other-frame half.** In an 8-frame run cycle **frame n+4 is the
+    same pose with the legs swapped**, and a side-view silhouette cannot tell
+    those apart. So frames 1, 3, 5, 8 -- which alternate the leading leg
+    correctly -- play as A, B, A, B. Order them so the unavoidable near-duplicates
+    sit *opposite* each other in the cycle, not adjacent.
+  - **RANK ON THE CLOSEST PAIR ANYWHERE IN THE CYCLE, NOT THE CONSECUTIVE STEP.**
+    The consecutive step is the reassuring number and it is the wrong one: the
+    bad set scored 49 px between adjacent beats and 7 px between beats 1 and 3.
+  - **A striped actor is split across complementary sprites, so measure the whole
+    figure.** Harry's white leg layer holds 10 px of 33; two of his four beats
+    were **byte-identical** in it while the black stripes-and-shoes layer they are
+    drawn with differed by 34. Measuring one half alone calls the same art a
+    two-frame cycle or a four-frame one depending which half it is handed.
+  - **`games/KeystoneKapers/assets/checkanim.py` gates it** -- it reads each
+    band's beats out of the `.bas` itself (base assignment plus the following
+    `IF <clock> AND <bit> THEN v = v + n` lines, never a table of its own),
+    resolves them through the art generator's sprite table, adds the derived
+    bands back in, and fails on any two beats within 10 px. It also fails when
+    two bands of one figure run on different clock bits -- four leg poses against
+    two torso poses is two clocks in one body, which reads as flapping. It was
+    run against the defective art before being trusted, and failed on it.
+  - **A MEASURED DEFECT THAT IS DELIBERATELY KEPT NEEDS A NAMED EXEMPTION, NOT A
+    LOWERED THRESHOLD.** The Kop's two-frame cycle was redrawn twice and the
+    redraw rejected both times -- the reviewer wanted yesterday's animation back.
+    Relaxing MINDIFF until he passed would have blinded the check for every OTHER
+    band at the same moment, which is how a gate quietly stops being one. The
+    exemption lists the band by name with its reason, still MEASURES it, and
+    still prints its 4 px on every build; only the failure is suppressed, so the
+    number moves in plain sight if the art ever gets worse.
 - **A per-pass counter is not a clock.** Anything timed — a beep interval, a countdown, a
   telegraph — must decrement by the frame delta, not once per loop pass, or it slows down exactly
   when the loop gets busy. That is the same root cause as movement slowing (§3A's FRAME-delta

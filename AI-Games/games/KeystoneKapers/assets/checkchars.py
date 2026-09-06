@@ -49,7 +49,8 @@ DEFSPR_RE = re.compile(r"^\s*DEFINE SPRITE (\d+),(\d+),(\w+)")
 # The two FACING constants are offsets, not patterns: adding one to a figure's
 # RIGHT band gives its LEFT one, which only works while genart keeps the two
 # blocks the same shape and the same distance apart.
-FACING = {"KFACING": ("KHAT", "KLHAT"), "HFACING": ("HBODY", "HLBODY")}
+FACING = {"KFACING": ("KHAT", "KLHAT"), "HFACING": ("HBODY", "HLBODY"),
+          "HLEGFACING": ("HLEG1", "HLLEG1")}
 
 
 def main():

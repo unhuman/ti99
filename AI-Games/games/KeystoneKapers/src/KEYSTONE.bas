@@ -144,40 +144,51 @@
 	' cycle is A, B, mirror(A), mirror(B) and which way he is going lives in
 	' the hat, face and tunic. Consecutive, so a frame is P_KLEG1 + 4*phase.
 	CONST P_KLEG1 = 56
-	CONST P_HBODY = 72		' Harry RIGHT: cap + body, white
-	CONST P_HFACE = 76		'              face, skin
-	CONST P_HSTRIPE = 80		'              the stripes, cap to hem
-	CONST P_HSTRIPEB = 84		'              the stripes, arms the other way
-	CONST P_HBODYB = 88		'              torso, arms the other way
-	' 20, NOT 16 OR 12: the right-hand set grows an entry every time Harry
-	' gains a frame, and the left set starts after ALL of it. It went 12 -> 16
-	' when he got a second torso frame and 16 -> 20 when the stripes stopped
-	' being one drawing shared by both frames.
+	' FOUR TORSOS AND FOUR STRIPE LAYERS, consecutive: a beat is
+	' P_HBODY + 4*phase, the same arithmetic as P_KLEG1 and P_HLEG1. They come
+	' from the run-cycle sheet (assets/sheet2harry.py -> harryrun1..4.txt), so
+	' the arms and shoulders are DRAWN for each beat rather than being one
+	' torso with its arms flipped.
+	CONST P_HBODY = 72		' Harry RIGHT: cap + body, white, 4 beats
+	CONST P_HSTRIPE = 88		'              the stripes, cap to hem, 4 beats
+	CONST P_HFACE = 104		'              face, skin
+	' 36, NOT 20: the right-hand set grows an entry every time Harry gains a
+	' frame, and the left set starts after ALL of it. It went 12 -> 16 when he
+	' got a second torso frame, 16 -> 20 when the stripes stopped being one
+	' drawing shared by both frames, and 20 -> 36 when the run went to four
+	' drawn beats (4 bodies + 4 stripes + 1 face = 9 patterns of 4).
 	' renumber.py rewrites every other P_ constant from genart's table but
 	' deliberately leaves this one alone -- it is an OFFSET between two
 	' groups, not a pattern number, and there is nothing in the table to
 	' look it up from. checkchars.py is what holds it honest.
-	CONST P_HFACING = 20		' add this for Harry's LEFT set
-	CONST P_HLEG1 = 112
-	CONST P_HLEGS1 = 128		' the same four poses again, in BLACK: the
+	CONST P_HFACING = 36		' add this for Harry's LEFT set
+	CONST P_HLEG1 = 144
+	CONST P_HLEGS1 = 160		' the same four poses again, in BLACK: the
 					' stripes carrying on down the legs, and
 					' the shoes
-	CONST P_RADCAR = 156		' the radar's lift car
+	' 32: four white poses plus four black ones, so the LEFT set starts after
+	' both. The legs used to share one set between the facings -- fine while
+	' the stride stayed inside the body's width, and plainly wrong once the
+	' sheet's poses reached the full 16 columns: he ran left with his back
+	' foot leading. Applied to hq and hqs together, in the same IF that turns
+	' the torso round, so a facing can never be half-applied.
+	CONST P_HLEGFACING = 32
+	CONST P_RADCAR = 220		' the radar's lift car
 	CONST C_RCAR = 14		' grey, like the furniture it replaced
-	CONST P_RADDOT = 160		' the radar marker, both actors
+	CONST P_RADDOT = 224		' the radar marker, both actors
 	CONST C_RKOP = 1		' the Kop, black on the scanner
 	CONST C_RCROOK = 15		' the crook, white
-	CONST P_CART = 144
-	CONST P_BALL = 148
-	CONST P_RADIO = 152
-	CONST P_PLANE = 164
-	CONST P_PLANEL = 168
+	CONST P_CART = 208
+	CONST P_BALL = 212
+	CONST P_RADIO = 216
+	CONST P_PLANE = 228
+	CONST P_PLANEL = 232
 	' THE PROPELLER IS ITS OWN SPRITE so it can be its own colour. Two
 	' phases, each facing: A is the near-solid disc, B the broken blades.
-	CONST P_PROPA = 172
-	CONST P_PROPAL = 176
-	CONST P_PROPB = 180
-	CONST P_PROPBL = 184
+	CONST P_PROPA = 236
+	CONST P_PROPAL = 240
+	CONST P_PROPB = 244
+	CONST P_PROPBL = 248
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -513,13 +524,13 @@ esc_deck_col:
 
 after_deck:
 	DEFINE SPRITE 0,18,spr_kelly	' 0..68  facing bands x2 + 4 run frames
-	DEFINE SPRITE 18,18,spr_harry	' 72..100, two torso frames each way
-	DEFINE SPRITE 36,1,spr_cart	' pattern 104
-	DEFINE SPRITE 37,1,spr_ball	' pattern 108
-	DEFINE SPRITE 38,1,spr_radio	' pattern 112
-	DEFINE SPRITE 39,1,spr_radcar
-	DEFINE SPRITE 40,1,spr_raddot	' the radar marker, both actors
-	DEFINE SPRITE 41,6,spr_plane	' body R/L, then prop A and B, R/L
+	DEFINE SPRITE 18,34,spr_harry	' 72..100, two torso frames each way
+	DEFINE SPRITE 52,1,spr_cart	' pattern 104
+	DEFINE SPRITE 53,1,spr_ball	' pattern 108
+	DEFINE SPRITE 54,1,spr_radio	' pattern 112
+	DEFINE SPRITE 55,1,spr_radcar
+	DEFINE SPRITE 56,1,spr_raddot	' the radar marker, both actors
+	DEFINE SPRITE 57,6,spr_plane	' body R/L, then prop A and B, R/L
 	RETURN
 
 init_tables:
@@ -2693,6 +2704,15 @@ draw_actors:
 	' Same four-frame cycle and the same shared legs as Kelly -- see the note
 	' over his, and the constants.
 	hq = P_HLEG1
+	' BITS 3 AND 4: one pose per 8 px of travel, a 32 px four-beat cycle.
+	' `hanim` advances by `hspd`, which is PIXELS MOVED THIS PASS, so a pose
+	' is a DISTANCE and not a duration -- it cannot drift with the frame rate
+	' or scrub his feet at any speed.
+	'
+	' HALVING THIS WAS TRIED AND IS WORSE. Bits 4 and 5 put a pose on 16 px
+	' and the cycle on 64, which is closer to a real stride for a figure 24 px
+	' tall and was rejected on sight. Do not re-derive it from his height; the
+	' faster cadence is what the reference reads like at this size.
 	IF hanim AND 8 THEN hq = hq + 4
 	IF hanim AND 16 THEN hq = hq + 8
 	' THE LEG STRIPES AND THE SHOES ARE THE SAME POSE IN BLACK, and they are
@@ -2716,8 +2736,12 @@ draw_actors:
 	' also the right PHASE: beat 1 leads with one leg and beat 3 with the
 	' other, so the arm opposite the leading leg is forward in each -- which
 	' is what running looks like.
+	' THE TORSO RUNS ON THE SAME TWO BITS AS THE LEGS. With four drawn poses
+	' the shoulders and arms swing WITH the stride; the old two-frame body had
+	' a clock of its own, which is what read as a flap rather than a run.
 	hp = P_HBODY
-	IF hanim AND 16 THEN hp = P_HBODYB
+	IF hanim AND 8 THEN hp = hp + 4
+	IF hanim AND 16 THEN hp = hp + 8
 	hf = P_HFACE
 	' THE STRIPES SWING WITH HIM. His bands run shoulder to hem and his arms
 	' are those same bands extended sideways, so the stripe drawing changes
@@ -2727,12 +2751,18 @@ draw_actors:
 	' Same bit as the body, necessarily -- the stripes ARE the body, drawn in
 	' the other colour. Keyed to a different bit they would swing apart from
 	' the shirt they belong to.
-	hs = P_HSTRIPE
-	IF hanim AND 16 THEN hs = P_HSTRIPEB
+	' DERIVED FROM hp, not recomputed. The stripe layer IS the body layer in
+	' the other colour, so a second copy of the beat arithmetic would be a
+	' second clock -- and the day one of them changed, his stripes would swing
+	' half a stride behind his shirt. Same reason hqs comes from hq.
+	hs = hp - P_HBODY
+	hs = hs + P_HSTRIPE
 	IF hdir = 0 THEN
 		hp = hp + P_HFACING
 		hf = hf + P_HFACING
 		hs = hs + P_HFACING
+		hq = hq + P_HLEGFACING
+		hqs = hqs + P_HLEGFACING
 	END IF
 	' HE IS STRIPED FROM CAP TO HEM. Both stripe colours run the whole upper
 	' half, so both boxes span rows 0-15 and neither can be tucked away --
@@ -2749,7 +2779,10 @@ draw_actors:
 	' stretches at the waist instead of hopping. Lifting the legs too would be
 	' a jump.
 	'
-	' Beats 2 and 4 are the recoveries, which is exactly `hanim AND 8`.
+	' Beats 2 and 4 are the recoveries, which is exactly `hanim AND 8` -- the
+	' cycle's LOW beat bit. IT MUST MOVE WITH THE BEAT BITS ABOVE IT: on the
+	' wrong bit he rises and falls twice per stride, a second clock inside one
+	' figure, which is the flapping of DESIGN.md 0j2 in the vertical.
 	'
 	' Safe because HARRY'S COLLISION HAS NO VERTICAL COMPONENT: he is caught on
 	' `same level AND |dx| < CATCHR`. Doing this to Kelly would desynchronise

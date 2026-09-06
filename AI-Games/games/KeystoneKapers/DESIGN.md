@@ -300,6 +300,15 @@ about a stride's worth of ground or the figure skates. Kelly runs 4 px/frame and
 uses bits 2-3 of his counter (four frames a pose, 16 px); Harry runs 1.75 and
 uses bits 3-4 (eight frames, 14 px).
 
+**Halving Harry's cadence was tried and is worse.** `hanim` advances by pixels
+moved, so a pose is a distance: bits 4-5 put one pose on 16 px and the cycle on
+64, which is nearer a real stride for a figure 24 px tall and was rejected on
+sight. Reverted to 8 px a pose. The arithmetic argument from his height is
+seductive and wrong at this size -- do not re-derive it. Bit tests only halve or
+double in any case (a divide is out: `/` compiles to a real TMS9900 DIV in
+per-frame code), so if the cadence ever needs work it is the POSES that have to
+change, not the rate.
+
 **The crouch has a front now.** It was a symmetric blob, so mirroring it
 produced a nearly identical shape and ducking read as being squashed rather
 than as dropping into a crouch and still looking where you are going. The brim
@@ -490,7 +499,8 @@ used to be pushed down to rows the arms never touched. A second drawing costs
 **one more sprite pattern and no extra sprite box** (the stripe already has a
 box of its own), so §5's per-line budget is untouched; it is 32 bytes of
 pattern table. `P_HFACING` goes 16 -> 20 with it, since the left-hand set
-starts after everything in the right-hand one.
+starts after everything in the right-hand one. (It is **36** now -- see §0j2,
+where the two torso frames became four drawn ones.)
 
 The hem came in from twelve cells to eight to match the body -- at twelve it
 read as a skirt.
@@ -586,6 +596,170 @@ figure has the shoulder stub on the LEFT and the body inset a clock either
 side. Laid out row-for-row against that, `cmpref.py` now reports **18 of 19
 rows identical** -- the one that differs is the reference's dark feet, which a
 single-colour legs sprite cannot do.
+
+### 0j2. Four DRAWN torsos, from a run-cycle sheet -- and the legs finally get a facing
+
+Harry's run kept reading as a shuffle through every fix in 0g-0j, and the last
+reason was arithmetic rather than draughtsmanship: **his legs stepped through
+four poses while his torso alternated between two.** `hanim` bits 3 and 4 chose
+the leg, bit 4 alone chose the body. Two clocks in one figure -- so the arms
+completed a swing in half the time the legs completed a stride, and on two of
+the four beats the arm was in a position no runner's arm reaches with that leg
+forward. Whatever bit the body was keyed to, it flapped.
+
+The fix is more drawings, not more code. A supplied **eight-frame run-cycle
+sheet** (`assets/ref2600/runcycle-sheet.png`) provides the poses, and
+`assets/sheet2harry.py` writes four of them out as `harryrun1..4.txt`, 16x24
+each, with **our own head already grafted over rows 0-8**. genart reads the
+text files, so the build depends on no imaging library and the frames stay
+hand-editable.
+
+**WHICH four is measured, and the obvious answer is wrong.** Taking every other
+frame -- 1, 3, 5, 8 -- alternates the leading leg correctly and its
+*consecutive* steps are a healthy 49 px, which is the number that looks
+reassuring. It still plays as two poses. In an eight-frame run cycle
+**frame n+4 is the same pose with the legs swapped**, and a side-view
+silhouette of a symmetric figure cannot tell those two apart, so every-other-
+frame gives you A, B, A, B. Measured on this sheet:
+
+| | | | |
+|---|---|---|---|
+| 1 vs 5 | 16 px | 3 vs 8 | **7 px** |
+| 1 vs 2 | 11 px | 3 vs 4 | 18 px |
+
+The trailing leg sweeps down-LEFT in frames 1, 2 and 5 and down-RIGHT in 3, 4,
+6, 7 and 8; within each group they are near-duplicates. It was reported from
+play as *"the legs just seem to be going back and forth"*, which is exactly
+what a cycle of A, B, A, B is.
+
+**The right metric is the closest pair ANYWHERE in the cycle, not the
+consecutive step.** `1 -> 4 -> 5 -> 3` still alternates left, right, left,
+right, and puts the two unavoidable near-duplicates *opposite* each other
+rather than adjacent: closest pair 16 px, smallest consecutive step 50. 16 is
+the best any alternating set can do here, because the sheet offers only three
+left-sweep frames and all three are within 16 px of one another.
+
+Every band now steps on the **same two bits**:
+
+```
+hq = P_HLEG1  : IF hanim AND 8 THEN hq = hq + 4 : IF hanim AND 16 THEN hq = hq + 8
+hp = P_HBODY  : IF hanim AND 8 THEN hp = hp + 4 : IF hanim AND 16 THEN hp = hp + 8
+hs = hp - P_HBODY : hs = hs + P_HSTRIPE
+```
+
+**The stripes are DERIVED from the body, never recomputed.** The stripe layer
+*is* the body layer in the other colour, so a second copy of the beat
+arithmetic would be a second clock -- and the day one of them changed, his
+stripes would swing half a stride behind his shirt. Same reason `hqs` comes
+from `hq`.
+
+Three things followed from grafting a real body onto our head, and all three
+cost a version:
+
+* **The neck is a LOCAL MINIMUM, not the narrowest row.** The narrowest row in
+  the upper third of a running silhouette is the top of the *scalp* -- two
+  pixels of head -- so cutting there grafts the sheet's whole head on under
+  ours. Walk down from the head's widest row to the first dip instead.
+* **Scale isotropically, anchored on the neck.** Fitting each body's own ink
+  bounding box to the sprite stretches it by a different amount in every frame
+  (an outstretched arm widens the box) and centres the *box* rather than the
+  *body*, so the torso slides out from under the head. One scale for both axes,
+  taken from the height, with the neck's centre pinned to column 7.
+* **A silhouette flatters.** Judge it striped, the way the game draws it: the
+  bands chop the figure up and thin limbs lose whole rows to the black half.
+
+**AND THE LEGS NOW TAKE A FACING.** They used not to, on the stated grounds
+that a running leg looks the same either way. That was true of the old poses,
+which barely left the body's own width -- and false the moment the sheet's
+stride reached the full sixteen columns with one leg forward and one trailing.
+Unmirrored, left-running Harry had his **back foot leading and his front foot
+dragging behind him**: not a subtle wrongness, and it only appeared because the
+art got better. `P_HLEGFACING = 32` (four white poses plus four black ones) is
+added to `hq` and `hqs` inside the same `IF hdir = 0` that turns the torso
+round, so a facing can never be half-applied.
+
+Costs, measured:
+
+| | before | after |
+|---|---|---|
+| Harry's sprite patterns | 18 | 34 |
+| sprites defined, of 64 | 55 | **63** |
+| `P_HFACING` | 20 | **36** |
+| fixed area free | 814 B | 770 B |
+| `art.bas` (banked) | 3,614 B | 3,870 B |
+
+The pattern table is the binding one: **63 of 64 sprites**, one spare. Anything
+else Harry gains from here has to displace something.
+
+`assets/previewrun.py` drifted out of date for the third time doing this and
+was corrected twice in one sitting -- once for the two-torso `HFRAMES` table,
+once for the leg mirroring. It is the file that shows whether the change
+worked, so **it is the file most likely to be describing the previous version**;
+check it against `draw_actors` before believing what it draws.
+
+---
+
+### 0j3. The Kop runs two frames, and that is now a decision rather than an accident
+
+Chasing Harry's cycle turned up the same arithmetic in the player, older and
+worse. §0g's scheme for Kelly is sound -- four poses cost two drawings, because
+"left foot forward" is the mirror of "right foot forward" and the facing lives
+in the hat and the tunic. **The drawings underneath it are two pairs of
+parallel vertical legs**, apart in one pose and together in the other, and
+mirroring a pair of vertical legs gives back very nearly the same picture.
+Measured on the shipped bytes:
+
+```
+beat1 -> beat3   4 px        beat2 -> beat4   8 px
+```
+
+and 4 of those 4 pixels are the hip row sliding two columns sideways, because
+it was given the tunic's hem shape (columns 4-13) which is not its own mirror.
+So the Kop genuinely runs a **two-frame cycle with each frame shown twice**.
+
+**It was redrawn to scissor and the redraw was rejected on sight.** Two
+different attempts, in fact -- one from this line of work and one from another
+session running in parallel, which also split `KLEG3`/`KLEG4` out into separate
+drawings on the (correct) observation that the mirror was saving drawing effort
+rather than ROM. Both were reverted to `e9564ee` at the reviewer's request:
+*"the animation from yesterday for the kop was better, so restore that."*
+**Harry is the figure under improvement; the Kop is finished.**
+
+That leaves a measured defect that is deliberately being kept, which is exactly
+the situation an automated check handles badly. The wrong response is to drop
+the threshold until he passes -- that blinds the check for every *other* band
+at the same time, which is how a gate stops being one. `assets/checkanim.py`
+therefore carries a **named exemption with its reason**: `kq` is still
+measured, its 4 px is still printed on every build, and only the failure is
+suppressed. If the Kop's art ever gets worse, the number moves in plain sight.
+
+**`assets/checkanim.py` asks the one question none of the other checks did.**
+Every existing check asks whether the numbers are consistent -- and they were:
+the right patterns were loaded at the right addresses and drawn on the right
+beats. They were just the same picture twice. So this one reads the beats out
+of `KEYSTONE.bas` itself (base assignment plus the following `IF <clock> AND
+<bit>` lines, never a table of its own), resolves them through genart's sprite
+table, and fails if any two beats of one cycle are within 10 px.
+
+Two things it has to do that were learned the hard way:
+
+* **Compare the whole figure, not the one sprite it names.** A striped actor is
+  split across complementary patterns, so most of the ink can sit in the half
+  the band does not name -- Harry's white leg layer holds 10 px of 33, and two
+  of his four beats were *byte-identical* in it while the black layer they are
+  drawn with differed by 34. Measuring one half alone would call the same art a
+  two-frame cycle or a four-frame one depending which half it was handed. It
+  adds the derived bands (`hqs`, `hs`) back in. `checkanim_test.py` made the
+  same mistake in the opposite direction on its first run -- comparing Harry's
+  white torso alone gave 9 px and 6 px and failed art that is correct.
+* **Check that every band of one figure runs on the same clock bits.** Four leg
+  poses against two torso poses is two clocks in one body, which is §0j2's
+  flapping. A band derived from another (`hs = hp - P_HBODY`) is the correct
+  way to avoid it and is recognised as such.
+
+It was run against the defective art before being trusted, and failed on it:
+`hq` closest pair 0 px, `hp` 5 px, `kq` 4 px. Harry is now at 28 and 25; the
+Kop stays at 4, on purpose.
 
 ### 0k. The crouch bends over, and 11 px is the ceiling
 

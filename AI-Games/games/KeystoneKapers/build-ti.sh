@@ -139,9 +139,17 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/checkchase.py > /dev/null \
     || die "the chase does not resolve -- run assets/checkchase.py"
 "$TRUNCPY" ../assets/checklevels.py > /dev/null     || die "the Krook progression has drifted -- run assets/checklevels.py"
-"$TRUNCPY" ../assets/checkstruct.py > /dev/null \n    || die "an erase routine clears the outside wall's cap -- run assets/checkstruct.py"
+"$TRUNCPY" ../assets/checkstruct.py > /dev/null \
+    || die "an erase routine clears the outside wall's cap -- run assets/checkstruct.py"
 "$TRUNCPY" ../assets/checkbands.py > /dev/null \
     || die "an actor colour band overlaps -- run assets/checkbands.py"
+# A run cycle whose beats are the SAME PICTURE has fewer frames than it
+# looks like, and every other check here passes on it: the right patterns
+# are loaded at the right addresses and drawn on the right beats. Kelly
+# shipped a four-beat cycle whose beats 1 and 3 differed by 4 px, and
+# Harry's legs a set of four in which two were byte-identical.
+"$TRUNCPY" ../assets/checkanim.py > /dev/null \
+    || die "a run cycle has repeated beats -- run assets/checkanim.py"
 "$TRUNCPY" ../assets/checkesc.py > /dev/null \
     || die "an escalator animation phase is torn -- run assets/checkesc.py"
 "$TRUNCPY" ../assets/checkscan.py > /dev/null \
