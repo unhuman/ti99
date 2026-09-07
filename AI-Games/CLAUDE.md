@@ -280,7 +280,24 @@ cost a debugging session:
     exemption lists the band by name with its reason, still MEASURES it, and
     still prints its 4 px on every build; only the failure is suppressed, so the
     number moves in plain sight if the art ever gets worse.
-- **A per-pass counter is not a clock.** Anything timed — a beep interval, a countdown, a
+- **ANCHOR A GENERATED-ART EDIT ON THE THING'S NAME, NEVER ON ITS COLOUR OR
+  ITS BYTES.** Two edits meant for one character in Keystone Kapers' art table
+  matched on `""", WHITE, GRAY),` instead, which four characters shared. Both
+  hit the FIRST of them, so the lift shaft was recoloured twice and the intended
+  character never changed at all. **Nothing failed**: both are real characters,
+  both ended up with plausible colours, every generator and gate passed, and the
+  only symptom was a white band across the roof bar where a pillar met it --
+  reported as a drawing bug in the pillars, which is not where the edit went.
+  Colour arguments, pattern rows and byte lists all repeat across an art table
+  by design; the name is the only unique thing in the entry.
+- **A LABEL CAN BE PRINTED FROM MORE THAN ONE PLACE, AND A LAYOUT CHECK CANNOT
+  SEE THE ONE YOU MISSED.** Moving the HUD's `TIME` two columns right produced
+  `TIMEME` on screen, because a flash routine blinks the same label when the
+  clock runs low and carried its own copy of the column. A checker that tests
+  each write for overflow and collision passes: two writes of the same string at
+  different columns collide with nothing and overflow nothing. Grep for the
+  literal, not for the routine that appears to own it.
+ Anything timed — a beep interval, a countdown, a
   telegraph — must decrement by the frame delta, not once per loop pass, or it slows down exactly
   when the loop gets busy. That is the same root cause as movement slowing (§3A's FRAME-delta
   item), and it is worst for warning cues, which become least reliable precisely when the frame is

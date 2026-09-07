@@ -1370,6 +1370,40 @@ DGREEN, MAGENTA, GRAY, WHITE = 12, 13, 14, 15
 # option, so this dial has exactly two positions.
 STORE_BG = DGREEN
 
+# THE SKYLINE'S BACKDROP, ONE ENTRY PER SCAN LINE, TOP TO BOTTOM. This VDP
+# colours an 8x1 line at a time, which is exactly the shape of a vertical
+# gradient -- so a sunset behind the city costs nothing but a table. The roof
+# band's three sky rows are twenty-four scan lines: light blue at the top,
+# then magenta, red, light red and yellow down to the solid wall of buildings
+# that closes the band.
+#
+# IT IS INDEXED BY ROW, WHICH IS WHY THE SKY AND THE PARTIAL BUILDINGS COME IN
+# ROW-SPECIFIC VARIANTS. A character does not know where it is placed, so a
+# gradient that changes down the screen cannot be one shared cell: SKY0/1/2 and
+# BLDGM0/1 exist for that reason and for no other. BLDGL and BLDGH are row 2
+# only and BLDGW is solid building, so those need no twin.
+# THE HUD'S OWN GROUND. The score line is font characters on dark blue, and
+# anything else drawn up there -- the reserve-Kop hats are the only thing --
+# has to be on the same colour or it shows as a box of the wrong shade around
+# the icon. It was CYAN, left over from when the whole font was.
+HUD_BG = DBLUE
+
+# SIX EVEN BANDS OF FOUR SCAN LINES. Dark blue reaches half a character below
+# the score line, so the HUD does not stop at a hard edge; light blue drops
+# into the top half of what magenta had; and the rest is unchanged. The band
+# was LBLUE 4, MAGENTA 8, MRED 4, LRED 4, DYELL 4 -- one band twice the height
+# of its neighbours, which is what made it read as a stripe rather than as a
+# fade.
+SKYGRAD = [
+    [DBLUE] * 4 + [LBLUE] * 4,        # roof row 0 -- the HUD's blue, then sky
+    [MAGENTA] * 4 + [MRED] * 4,       # roof row 1
+    [LRED] * 4 + [DYELL] * 4,         # roof row 2
+]
+
+# The buildings themselves are flat GREY, so the colour in the band is the sky
+# behind them rather than the city. Their windows stay lit.
+BLDG_BODY = GRAY
+
 # THE SUITCASE'S BODY. It is drawn as an OUTLINE -- side walls, a lid band, a
 # clasp and two feet -- so everything between the walls was whatever "empty"
 # meant, which is the shop floor. On screen that is a red frame with the store
@@ -1464,7 +1498,7 @@ CHARS_BASE = [
 ##.#####
 ##.#####
 ........
-""", [WHITE] * 5 + [GRAY] * 3, [GRAY] * 5 + [STORE_BG] * 3),
+""", [LYELL] * 5 + [GRAY] * 3, [DYELL] * 5 + [STORE_BG] * 3),
 
     ("SHELFT", 0, """
 ########
@@ -1491,47 +1525,47 @@ CHARS_BASE = [
 
     ("RADTL0", 0, """
 ........
-........
-....##..
+.......#
+...##...
 ......##
 ....####
 ..######
 .#######
 ########
-""", BLACK, STORE_BG),
+""", [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
     ("RADTR0", 0, """
 ........
-........
-..##....
+#.......
+...##...
 ##......
 ####....
 ######..
 #######.
 ########
-""", BLACK, STORE_BG),
+""", [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
     ("RADTL1", 0, """
-..##....
-........
+.....##.
+.##.....
 ........
 ......##
 ....####
 ..######
 .#######
 ########
-""", BLACK, STORE_BG),
+""", [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
     ("RADTR1", 0, """
-....##..
-........
+.##.....
+.....##.
 ........
 ##......
 ####....
 ######..
 #######.
 ########
-""", BLACK, STORE_BG),
+""", [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
     ("RADBL", 0, """
 ##...##.
@@ -1611,7 +1645,7 @@ CHARS_BASE = [
 ########
 """, MRED, CYAN),
 
-    ("SKY", 0, """
+    ("SKY0", 0, """
 ........
 ........
 ........
@@ -1620,7 +1654,30 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", WHITE, CYAN),
+""", WHITE, SKYGRAD[0]),
+
+    ("SKY1", 0, """
+........
+........
+........
+........
+........
+........
+........
+........
+""", WHITE, SKYGRAD[1]),
+
+    ("SKY2", 0, """
+........
+........
+........
+........
+........
+........
+........
+........
+""", WHITE, SKYGRAD[2]),
+
 
     ("WALL", 0, """
 ........
@@ -1647,7 +1704,7 @@ CHARS_BASE = [
 .######.
 ########
 ........
-""", BLACK, CYAN),
+""", BLACK, HUD_BG),
 
     ("EXITC", 0, """
 ########
@@ -1761,7 +1818,7 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", WHITE, [GRAY] * 5 + [STORE_BG] * 3),
+""", LYELL, [DYELL] * 5 + [STORE_BG] * 3),
 
     # THE SAME ROOF WITH A BEAM CARRIED UP THROUGH IT. The green rows above
     # give the top shopping floor its air -- which is right for the lift shaft,
@@ -1779,7 +1836,25 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", WHITE, GRAY),
+""", LYELL, [DYELL] * 5 + [GRAY] * 3),
+
+    # THE TALLEST BUILDINGS STOP A QUARTER OF A CHARACTER SHORT. Filling
+    # the band outright ran them into the score line, so the sky above the
+    # city was a hard edge rather than the top of a fade, and the gradient
+    # had nowhere to begin. Two pixels of the HUD's own blue on top of the
+    # row-0 cell is the whole change: the buildings read as ending, every
+    # column now has some sky under the score line, and those two lines are
+    # there to carry a cornice later if one is wanted.
+    ("BLDGW0", 0, """
+........
+.##..##.
+.##..##.
+........
+.##..##.
+.##..##.
+........
+........
+""", LYELL, SKYGRAD[0][:2] + [BLDG_BODY] * 6),
 
     ("BLDGW", 0, """
 ........
@@ -1790,7 +1865,7 @@ CHARS_BASE = [
 .##..##.
 ........
 ........
-""", LYELL, DRED),
+""", LYELL, BLDG_BODY),
 
     # A building TOP: sky above, wall below. The per-row background is what
     # makes a roofline possible in a single cell -- five rows of sky over
@@ -1804,7 +1879,7 @@ CHARS_BASE = [
 ........
 .##..##.
 ........
-""", LYELL, [CYAN] * 5 + [DRED] * 3),
+""", LYELL, SKYGRAD[2][:5] + [BLDG_BODY] * 3),
 
     ("BLDGH", 0, """
 ........
@@ -1815,7 +1890,7 @@ CHARS_BASE = [
 ........
 .##..##.
 ........
-""", LYELL, [CYAN] * 2 + [DRED] * 6),
+""", LYELL, SKYGRAD[2][:2] + [BLDG_BODY] * 6),
 
     # THE HALF-HEIGHT TOP, which is the skyline's second-tallest step. The
     # city is drawn over three rows -- a solid row of wall, a middle row that
@@ -1831,7 +1906,7 @@ CHARS_BASE = [
     # yellow spilling over its top edge. The windows move down one row instead:
     # solid, window, window, blank. BLDGL and BLDGH already do this; BLDGM was
     # added later and brought the fault back with it.
-    ("BLDGM", 0, """
+    ("BLDGM0", 0, """
 ........
 ........
 ........
@@ -1840,7 +1915,19 @@ CHARS_BASE = [
 .##..##.
 .##..##.
 ........
-""", LYELL, [CYAN] * 4 + [DRED] * 4),
+""", LYELL, SKYGRAD[0][:4] + [BLDG_BODY] * 4),
+
+    ("BLDGM1", 0, """
+........
+........
+........
+........
+........
+.##..##.
+.##..##.
+........
+""", LYELL, SKYGRAD[1][:4] + [BLDG_BODY] * 4),
+
 
     ("ROOFBG", 0, """
 ........
@@ -1853,16 +1940,6 @@ CHARS_BASE = [
 ........
 """, WHITE, GRAY),
 
-    ("EDHALF", 0, """
-##....##
-##....##
-##....##
-##....##
-##....##
-##....##
-##....##
-##....##
-""", BLACK, CYAN),
 
     # THE BOTTOM ROW OF THE DOORWAY CARRIES A STEP, and these are the three
     # door states again with it. The lift car's floor does not sit level with
@@ -1887,16 +1964,6 @@ CHARS_BASE = [
 ........
 """, [WHITE] * 6 + [LYELL, LYELL], [CYAN] * 6 + [DYELL, DYELL]),
 
-    ("EDHALFS", 0, """
-##....##
-##....##
-##....##
-##....##
-##....##
-##....##
-########
-........
-""", [BLACK] * 6 + [LYELL, LYELL], [CYAN] * 6 + [DYELL, DYELL]),
 
     # THE SILL IS PART OF THE BUILDING, NOT PART OF THE DOOR, so it is there
     # when the doors are SHUT as well. This is that case: a plain door panel
@@ -1933,16 +2000,6 @@ CHARS_BASE = [
     # One per door state, like the stepped row at the other end: sharing a
     # single header would blink the top of the opening shut for the two frames
     # the doors are moving.
-    ("EDHALFT", 0, """
-........
-........
-........
-........
-##....##
-##....##
-##....##
-##....##
-""", [WHITE] * 4 + [BLACK] * 4, [GRAY] * 4 + [CYAN] * 4),
 
     ("ECART", 0, """
 ........
@@ -1953,65 +2010,42 @@ CHARS_BASE = [
 ........
 ........
 ........
-""", WHITE, [GRAY] * 4 + [CYAN] * 4),
+""", WHITE, [GRAY] * 4 + [WHITE] + [CYAN] * 3),
 
-    # THE JAMBS LIVE INSIDE THE DOORWAY'S OWN END COLUMNS. Making the frame a
-    # column of its own cost a whole character either side, and a doorway with
-    # eight pixels of jamb around thirty-two of opening is a heavier frame than
-    # the thing it frames. So the posts moved in: the first and last of the
-    # four doorway columns carry four pixels of jamb and four of door, which
-    # narrows BOTH the box (40 px to 32) and the opening (32 to 24) by half a
-    # character on each side, and leaves the box centred on the screen.
+    # THE JAMBS LIVE IN THE WALL, NOT IN THE DOORWAY -- and this is the second
+    # time they have moved. They began as whole columns of their own, which put
+    # eight pixels of jamb around thirty-two of opening: a heavier frame than
+    # the thing it framed. The fix was to move them INSIDE the doorway's own end
+    # columns, four pixels of jamb beside four of door, which narrowed the box
+    # from 40 px to 32 -- and narrowed the OPENING from 32 to 24 with it. That
+    # second number is the one that mattered: the lift is what the player is
+    # trying to get into, and a quarter of it had been spent on its own frame.
     #
-    # Only the OPEN state needs them. Shut, jamb and door are both grey and a
-    # plain EDOOR already is the composite; half-open, the doors still cover
-    # these two columns, so they are grey as well -- which means the sill is
-    # revealed as the doors part, rather than being there all along.
-    ("ECARL", 0, """
-####....
-####....
-####....
-####....
-####....
-####....
-####....
-####....
-""", GRAY, CYAN),
+    # They are back out in the wall, but as FOUR pixels rather than eight. The
+    # column either side of the doorway is ordinary wall (see t_elev), so its
+    # inner half can carry the post and its outer half stays shop floor -- two
+    # colours in one character, which is all this VDP allows and exactly enough.
+    # The box is 40 px again and the opening is the full 32, a third wider than
+    # before, and it costs two characters where the inboard version cost six:
+    # the jamb is now the same picture on every row and in every door state, so
+    # it needs no header twin, no sill twin and no left/right pair per state.
+    #
+    # AND IT IS STATIC. Being part of the wall rather than part of the car, it
+    # is drawn once by the template and never touched again -- car_cell lost
+    # both of its column special-cases with it. The frame no longer appears
+    # only when the doors open, which is what a door frame should do anyway.
+    ("EJAMBL", 0, """
+....####
+....####
+....####
+....####
+....####
+....####
+....####
+....####
+""", GRAY, STORE_BG),
 
-    ("ECARR", 0, """
-....####
-....####
-....####
-....####
-....####
-....####
-....####
-....####
-""", GRAY, CYAN),
-
-    ("ECARLT", 0, """
-########
-########
-########
-########
-####....
-####....
-####....
-####....
-""", GRAY, CYAN),
-
-    ("ECARRT", 0, """
-########
-########
-########
-########
-....####
-....####
-....####
-....####
-""", GRAY, CYAN),
-
-    ("ECARLS", 0, """
+    ("EJAMBR", 0, """
 ####....
 ####....
 ####....
@@ -2020,18 +2054,7 @@ CHARS_BASE = [
 ####....
 ####....
 ####....
-""", GRAY, [CYAN] * 6 + [LYELL, DYELL]),
-
-    ("ECARRS", 0, """
-....####
-....####
-....####
-....####
-....####
-....####
-....####
-....####
-""", GRAY, [CYAN] * 6 + [LYELL, DYELL]),
+""", GRAY, STORE_BG),
 
     # ON THE FLOOR'S OWN GREEN, not a darker one. The mortar between the
     # bricks is the BACKGROUND, and it was dark green while the air on every
@@ -2130,16 +2153,21 @@ def _used(grid):
 # staircase instead of being punched through by it.
 BAR_BG = [LYELL] + [DYELL] * 4 + [STORE_BG] * 3
 
-# THE ROOF IS NOT A SHOPPING FLOOR AND IS NOT COLOURED LIKE ONE. The flight up
-# from floor 3 crosses into the roof band, where the "floor" is the grey DECK
-# (two white rows over grey) and the air above it is grey rather than green.
-# Composites for that crossing therefore need the roof's colours, not the
-# store's -- the same idea, different palette. Only the WEST flight climbs to
-# the roof (floor 3's escalator is at the west end), so only it needs them.
-DECK_BG = [WHITE, WHITE] + [GRAY] * 3 + [STORE_BG] * 3   # roof row 4, and
+# THE ROOF'S DECK IS A FLOOR BAR, and now looks like one. It has been white
+# over grey, and briefly black over grey, and both read as a different KIND of
+# thing from the three bars below it -- which it is not: it is the floor the
+# player runs along at the top of the building. It is the same light-yellow
+# highlight over olive over the green air of the floor below, and it uses the
+# extra height it has to give the highlight TWO rows rather than one.
+#
+# The air above it is still the skyline, not green, so composites for the
+# flight that climbs into this band need this list rather than BAR_BG. Only the
+# WEST flight climbs to the roof (floor 3's escalator is at the west end), so
+# only it needs them.
+DECK_BG = [LYELL] * 2 + [DYELL] * 3 + [STORE_BG] * 3   # roof row 4, and
                                            # the three green rows it owes
                                            # the floor below (see ROOFS)
-ROOFAIR_BG = [DRED] * 8                    # roof row 3: the skyline's own
+ROOFAIR_BG = [BLDG_BODY] * 8                    # roof row 3: the skyline's own
                                            # brick, so the flight does not
                                            # cut a grey hole in the city
 

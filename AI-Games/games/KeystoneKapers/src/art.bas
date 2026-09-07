@@ -284,16 +284,16 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. YELLOW body over 
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.
 
-store_pat:	' 87 chars, 8 bytes each
+store_pat:	' 85 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$00,$00,$00,$00,$DF,$DF,$00
 	DATA BYTE $FF,$FF,$00,$00,$00,$DF,$DF,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $00,$00,$0C,$03,$0F,$3F,$7F,$FF
-	DATA BYTE $00,$00,$30,$C0,$F0,$FC,$FE,$FF
-	DATA BYTE $30,$00,$00,$03,$0F,$3F,$7F,$FF
-	DATA BYTE $0C,$00,$00,$C0,$F0,$FC,$FE,$FF
+	DATA BYTE $00,$01,$18,$03,$0F,$3F,$7F,$FF
+	DATA BYTE $00,$80,$18,$C0,$F0,$FC,$FE,$FF
+	DATA BYTE $06,$60,$00,$03,$0F,$3F,$7F,$FF
+	DATA BYTE $60,$06,$00,$C0,$F0,$FC,$FE,$FF
 	DATA BYTE $C6,$C6,$C6,$C6,$FF,$CF,$FF,$C0
 	DATA BYTE $63,$63,$63,$63,$FF,$F3,$FF,$03
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
@@ -341,6 +341,9 @@ store_pat:	' 87 chars, 8 bytes each
 	DATA BYTE $00,$00,$00,$00,$C0,$70,$1C,$07
 	DATA BYTE $33,$33,$FB,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $18,$3C,$7E,$7E,$7E,$7E,$FF,$00
 	DATA BYTE $FF,$81,$BD,$A5,$A5,$BD,$81,$FF
 	DATA BYTE $00,$00,$04,$03,$07,$0F,$1F,$3F
@@ -354,21 +357,16 @@ store_pat:	' 87 chars, 8 bytes each
 	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$66,$66,$00,$66,$66,$00,$00
+	DATA BYTE $00,$66,$66,$00,$66,$66,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$66,$00
 	DATA BYTE $00,$00,$00,$66,$66,$00,$66,$00
 	DATA BYTE $00,$00,$00,$00,$00,$66,$66,$00
-	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$C3,$C3
+	DATA BYTE $00,$00,$00,$00,$00,$66,$66,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$00
-	DATA BYTE $C3,$C3,$C3,$C3,$C3,$C3,$FF,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$00
-	DATA BYTE $00,$00,$00,$00,$C3,$C3,$C3,$C3
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
 	DATA BYTE $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
-	DATA BYTE $FF,$FF,$FF,$FF,$F0,$F0,$F0,$F0
-	DATA BYTE $FF,$FF,$FF,$FF,$0F,$0F,$0F,$0F
 	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
-	DATA BYTE $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
 	DATA BYTE $DF,$DF,$00,$FB,$FB,$00,$DF,$DF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
@@ -376,13 +374,13 @@ store_pat:	' 87 chars, 8 bytes each
 store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BC,$BC,$BC
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$EC,$EC,$EC
-	DATA BYTE $FE,$FE,$FE,$FE,$FE,$EC,$EC,$EC
+	DATA BYTE $BA,$BA,$BA,$BA,$BA,$EC,$EC,$EC
 	DATA BYTE $75,$75,$75,$55,$55,$55,$55,$55
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
-	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
-	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
-	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
-	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $FC,$FC,$FC,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $FC,$FC,$FC,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $FC,$FC,$FC,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $FC,$FC,$FC,$1C,$1C,$1C,$1C,$1C
 	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
 	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
@@ -424,13 +422,16 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
-	DATA BYTE $16,$16,$16,$16,$16,$16,$16,$16
-	DATA BYTE $16,$16,$16,$16,$16,$16,$16,$16
-	DATA BYTE $16,$16,$16,$16,$16,$16,$16,$16
-	DATA BYTE $16,$16,$16,$16,$16,$16,$16,$16
+	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
+	DATA BYTE $1E,$1E,$1E,$1E,$1E,$1E,$1E,$1E
 	DATA BYTE $87,$87,$87,$87,$87,$87,$87,$87
+	DATA BYTE $F4,$F4,$F4,$F4,$F5,$F5,$F5,$F5
+	DATA BYTE $FD,$FD,$FD,$FD,$F8,$F8,$F8,$F8
+	DATA BYTE $F9,$F9,$F9,$F9,$FA,$FA,$FA,$FA
 	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
-	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14
 	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
@@ -440,24 +441,19 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $6C,$6C,$6C,$6C,$61,$61,$61,$61
 	DATA BYTE $61,$61,$61,$61,$61,$61,$6C,$6C
 	DATA BYTE $61,$61,$61,$61,$61,$61,$6C,$6C
-	DATA BYTE $FE,$FE,$FE,$FE,$FE,$FC,$FC,$FC
-	DATA BYTE $FE,$FE,$FE,$FE,$FE,$FE,$FE,$FE
-	DATA BYTE $B6,$B6,$B6,$B6,$B6,$B6,$B6,$B6
-	DATA BYTE $B7,$B7,$B7,$B7,$B7,$B6,$B6,$B6
-	DATA BYTE $B7,$B7,$B6,$B6,$B6,$B6,$B6,$B6
-	DATA BYTE $B7,$B7,$B7,$B7,$B6,$B6,$B6,$B6
-	DATA BYTE $17,$17,$17,$17,$17,$17,$17,$17
+	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BC,$BC,$BC
+	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BE,$BE,$BE
+	DATA BYTE $B4,$B4,$BE,$BE,$BE,$BE,$BE,$BE
+	DATA BYTE $BE,$BE,$BE,$BE,$BE,$BE,$BE,$BE
+	DATA BYTE $B9,$B9,$B9,$B9,$BA,$BE,$BE,$BE
+	DATA BYTE $B9,$B9,$BE,$BE,$BE,$BE,$BE,$BE
+	DATA BYTE $B4,$B4,$B4,$B4,$BE,$BE,$BE,$BE
+	DATA BYTE $BD,$BD,$BD,$BD,$BE,$BE,$BE,$BE
 	DATA BYTE $F7,$F7,$F7,$F7,$F7,$F7,$BA,$BA
-	DATA BYTE $17,$17,$17,$17,$17,$17,$BA,$BA
 	DATA BYTE $FE,$FE,$FE,$FE,$FE,$FE,$BA,$BA
-	DATA BYTE $FE,$FE,$FE,$FE,$17,$17,$17,$17
-	DATA BYTE $FE,$FE,$FE,$FE,$F7,$F7,$F7,$F7
-	DATA BYTE $E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7
-	DATA BYTE $E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7
-	DATA BYTE $E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7
-	DATA BYTE $E7,$E7,$E7,$E7,$E7,$E7,$E7,$E7
-	DATA BYTE $E7,$E7,$E7,$E7,$E7,$E7,$EB,$EA
-	DATA BYTE $E7,$E7,$E7,$E7,$E7,$E7,$EB,$EA
+	DATA BYTE $FE,$FE,$FE,$FE,$FF,$F7,$F7,$F7
+	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
+	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
 	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BE,$BE,$BE
@@ -542,13 +538,13 @@ scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then a 3 px b
 	DATA BYTE $EC,$EC,$EC,$BC,$EE,$EE,$EE,$EE
 
 esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at 8192 + char*8, once, at setup
-	DATA BYTE $8C,$1F,$1F,$1E,$1E,$1E,$1C,$1C
-	DATA BYTE $1C,$8D,$1F,$1F,$1E,$1E,$1E,$1C
-	DATA BYTE $1C,$1C,$71,$1F,$1F,$1E,$1E,$1E
-	DATA BYTE $1C,$1C,$1C,$72,$1F,$1F,$1E,$1E
-	DATA BYTE $1E,$1C,$1C,$1C,$73,$1F,$1F,$1E
-	DATA BYTE $1E,$1E,$1C,$1C,$1C,$8E,$1F,$1F
-	DATA BYTE $1E,$1E,$1E,$1C,$1C,$1C
+	DATA BYTE $8C,$1B,$1B,$1A,$1A,$1A,$1C,$1C
+	DATA BYTE $1C,$8D,$1B,$1B,$1A,$1A,$1A,$1C
+	DATA BYTE $1C,$1C,$71,$1B,$1B,$1A,$1A,$1A
+	DATA BYTE $1C,$1C,$1C,$72,$1B,$1B,$1A,$1A
+	DATA BYTE $1A,$1C,$1C,$1C,$73,$1B,$1B,$1A
+	DATA BYTE $1A,$1A,$1C,$1C,$1C,$8E,$1B,$1B
+	DATA BYTE $1A,$1A,$1A,$1C,$1C,$1C
 
 	' code map, for the source to reference:
 	'   96  SLAB
@@ -606,35 +602,33 @@ esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at
 	'   148 ESCWR2
 	'   149 ESCWR3
 	'   150 PARAP
-	'   151 WALL
-	'   152 KOPIC
-	'   153 EXITC
-	'   154 BAGTL
-	'   155 BAGTR
-	'   156 BAGBL
-	'   157 BAGBR
-	'   158 CASETL
-	'   159 CASETR
-	'   160 CASEBL
-	'   161 CASEBR
-	'   162 ROOFS
-	'   163 ROOFSP
-	'   164 BLDGW
-	'   165 BLDGL
-	'   166 BLDGH
-	'   167 BLDGM
-	'   168 EDHALF
-	'   169 ECARS
-	'   170 EDHALFS
-	'   171 EDOORS
-	'   172 EDHALFT
-	'   173 ECART
-	'   174 ECARL
-	'   175 ECARR
-	'   176 ECARLT
-	'   177 ECARRT
-	'   178 ECARLS
-	'   179 ECARRS
-	'   180 ENDWALL
-	'   181 SCANBK
-	'   182 SLABP
+	'   151 SKY0
+	'   152 SKY1
+	'   153 SKY2
+	'   154 WALL
+	'   155 KOPIC
+	'   156 EXITC
+	'   157 BAGTL
+	'   158 BAGTR
+	'   159 BAGBL
+	'   160 BAGBR
+	'   161 CASETL
+	'   162 CASETR
+	'   163 CASEBL
+	'   164 CASEBR
+	'   165 ROOFS
+	'   166 ROOFSP
+	'   167 BLDGW0
+	'   168 BLDGW
+	'   169 BLDGL
+	'   170 BLDGH
+	'   171 BLDGM0
+	'   172 BLDGM1
+	'   173 ECARS
+	'   174 EDOORS
+	'   175 ECART
+	'   176 EJAMBL
+	'   177 EJAMBR
+	'   178 ENDWALL
+	'   179 SCANBK
+	'   180 SLABP

@@ -250,25 +250,24 @@
 	CONST CH_RADTR1 = 104
 	CONST CH_RADBL = 105
 	CONST CH_RADBR = 106
-	CONST CH_ROOFS = 162		' the roof surface
+	CONST CH_ROOFS = 165		' the roof surface
 	CONST CH_SLABE = 97		' the bar with BRICK carried up through it
 	CONST CH_ROOFSE = 98		' and the roof deck likewise
-	CONST CH_ROOFSP = 163		' the roof with a beam under it
-	CONST CH_SLABP = 182		' the same bar with a beam under it
+	CONST CH_ROOFSP = 166		' the roof with a beam under it
+	CONST CH_SLABP = 180		' the same bar with a beam under it
 	CONST CH_ECAR = 109
 	CONST CH_EDOOR = 108
-	CONST CH_WALL = 151
-	CONST CH_KOPIC = 152
-	CONST CH_EDHALF = 168
-	CONST CH_ECARS = 169		' the car's row-3 sill
-	CONST CH_ECARL = 174		' and the four columns of the OPEN car:
-	CONST CH_ECARR = 175		' the end ones carry 4px of jamb, so the
-	CONST CH_ECARLT = 176		' box is 32px and the opening 24. Each
-	CONST CH_ECARRT = 177		' needs a header twin and a sill twin;
-	CONST CH_ECARLS = 178		' renumber.py fills every one of these
-	CONST CH_ECARRS = 179
-	CONST CH_EDHALFS = 170		' two colours as a step along the bottom
-	CONST CH_EDOORS = 171		' and the SHUT door's own sill: the threshold
+	CONST CH_WALL = 154
+	CONST CH_KOPIC = 155
+	CONST CH_ECARS = 173		' the car's row-3 sill
+	' THE OPEN CAR IS NOW THREE CHARACTERS, NOT NINE. Its end columns used to
+	' carry four pixels of jamb apiece -- a 32px box with a 24px opening --
+	' and each of those needed a header twin and a sill twin. The jambs moved
+	' out into the wall column either side (EJAMBL/EJAMBR, drawn by t_elev and
+	' never touched at run time), so every doorway column is now plain car:
+	' the opening is the full 32px and six constants went with the six
+	' characters.
+	CONST CH_EDOORS = 174		' and the SHUT door's own sill: the threshold
 					' belongs to the landing, not to the car
 	CONST ELSTEP = 2		' and how tall that step is, in pixels
 	' HOW FAR THE RIDER RISES, WHICH IS NOT THE SAME NUMBER, and conflating
@@ -286,17 +285,16 @@
 	' standing height can only ever agree", when agreeing is precisely what
 	' they must not do.
 	CONST ELRIDE = 3		' ELSTEP + the VDP's one-line sprite bias
-	CONST CH_EDHALFT = 172		' and the HEADER row: half lintel above,
-	CONST CH_ECART = 173		' half doorway below (renumber.py fills these)
-	CONST CH_SCANBK = 181		' blank black, the strip either side of the radar
-	CONST CH_BAGTL = 154		' the prizes are 2x2 now
-	CONST CH_BAGTR = 155
-	CONST CH_BAGBL = 156
-	CONST CH_BAGBR = 157
-	CONST CH_CASETL = 158
-	CONST CH_CASETR = 159
-	CONST CH_CASEBL = 160
-	CONST CH_CASEBR = 161
+	CONST CH_ECART = 175		' half doorway below (renumber.py fills these)
+	CONST CH_SCANBK = 179		' blank black, the strip either side of the radar
+	CONST CH_BAGTL = 157		' the prizes are 2x2 now
+	CONST CH_BAGTR = 158
+	CONST CH_BAGBL = 159
+	CONST CH_BAGBR = 160
+	CONST CH_CASETL = 161
+	CONST CH_CASETR = 162
+	CONST CH_CASEBL = 163
+	CONST CH_CASEBR = 164
 	' NAMED, because this was the literal 113 and the escalator rework
 	' renumbered the character table underneath it. 113 became EXITC, so
 	' the second collectible quietly drew an EXIT DOOR in the aisle -- a
@@ -308,7 +306,12 @@
 	CONST ELXR = 143
 	CONST ELCOL = 14		' first of 4 doorway columns
 	CONST ELWAIT = 100		' frames stopped at a floor
-	CONST ELMOVE = 45		' frames in transit between floors
+	' TWO SECONDS BETWEEN FLOORS. `elt` counts down by `fdv`, the FRAME
+	' delta, so this is real frames and not loop passes -- 120 of them is
+	' 2.0 s on both 60 Hz targets, and it stays 2.0 s when the loop gets
+	' busy. It was 45 (0.75 s), which is faster than a lift has any business
+	' being and gave the doors barely time to read as opening.
+	CONST ELMOVE = 120		' frames in transit between floors
 	CONST ELDOOR = 15		' frames the doors spend part-open
 	CONST ELOPEN = 85		' = ELWAIT - ELDOOR, as a literal: a CONST
 					' built from other CONSTs is exactly the
@@ -385,7 +388,7 @@
 	' ---------------------------------------------------------------- tables
 	DIM flry(4)			' floor surface y, by level
 	DIM #bdst(4)			' band name-table offset, by level
-	DIM #tsrc(10)			' template source offset, by template id
+	DIM #tsrc(15)			' template source offset, by template id
 	DIM lv8(4)			' lv*8, so no multiply lands on an index
 	DIM jarc(32)			' the jump arc: 30 frames, apex 14
 	DIM msk(8)
@@ -490,10 +493,11 @@ setup:
 	' Without this the font keeps whatever CVBasic left in the colour table,
 	' which over a green store made the HUD unreadable.
 	GOSUB font_colour
-	DEFINE CHAR 96,87,store_pat
-	DEFINE COLOR 96,87,store_col
+	DEFINE CHAR 96,85,store_pat
+	DEFINE COLOR 96,85,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
+	GOSUB floor0_colour
 
 	GOTO after_deck
 
@@ -564,6 +568,12 @@ init_tables:
 	#tsrc(7) = 1120
 	#tsrc(8) = 1280
 	#tsrc(9) = 1440
+	' Five more since the roof gained a template per screen (DESIGN.md 13a).
+	#tsrc(10) = 1600
+	#tsrc(11) = 1760
+	#tsrc(12) = 1920
+	#tsrc(13) = 2080
+	#tsrc(14) = 2240
 
 	lv8(0) = 0
 	lv8(1) = 8
@@ -626,6 +636,55 @@ init_tables:
 	' the table shipped 384 bytes to say 24 bytes' worth. Same trick as the
 	' font: write the colour table directly. See font_colour for where >2000
 	' and the >800 mirror stride come from.
+	' NOTHING IS UNDER THE GROUND FLOOR, SO NOTHING SHOULD BE GREEN THERE.
+	' A floor bar is five pixels of yellow over three of the green air
+	' belonging to the floor BELOW it (see SLAB), which is right for three of
+	' the four bars and wrong for the last one: below floor 0 there is no
+	' floor, only the scanner, and the green read as a strip of shop with
+	' nothing in it.
+	'
+	' NO NEW CHARACTER IS NEEDED, BECAUSE THE COLOUR TABLE HAS THREE COPIES
+	' -- one per eight screen rows -- and the bands land such that each bar
+	' sits in a different third:
+	'
+	'     band 0 roof   rows  1-5    bar row  5   third 0
+	'     band 1        rows  6-10   bar row 10   third 1
+	'     band 2        rows 11-15   bar row 15   third 1
+	'     band 3 GROUND rows 16-20   bar row 20   third 2
+	'
+	' so recolouring SLAB in third 2 alone reaches the ground floor's bar and
+	' nothing else. The same third also holds the scanner, but the scanner
+	' does not use these characters. This is the same mechanism that once hid
+	' a bug for months (CLAUDE.md 3A, the blanked-in-one-third note) used
+	' deliberately for once.
+	'
+	' Only the three bottom lines change, and only their BACKGROUND: SLAB has
+	' no ink there and SLABE's brick keeps its grey.
+floor0_colour:
+	#f0a = 12288			' colour table, bottom screen third
+	#f0b = CH_SLAB
+	#f0b = #f0b + #f0b
+	#f0b = #f0b + #f0b
+	#f0b = #f0b + #f0b		' CH_SLAB * 8
+	#f0a = #f0a + #f0b
+	#f0a = #f0a + 5			' its last three scan lines
+	FOR f0i = 0 TO 2
+		VPOKE #f0a,177		' LYELL on BLACK -- no ink, so the
+		#f0a = #f0a + 1		' background is all that shows
+	NEXT f0i
+	#f0a = 12288
+	#f0b = CH_SLABE
+	#f0b = #f0b + #f0b
+	#f0b = #f0b + #f0b
+	#f0b = #f0b + #f0b
+	#f0a = #f0a + #f0b
+	#f0a = #f0a + 5
+	FOR f0i = 0 TO 2
+		VPOKE #f0a,225		' GRAY brick on BLACK
+		#f0a = #f0a + 1
+	NEXT f0i
+	RETURN
+
 scan_colour:
 	#scb = VARPTR scan_col3(0)
 	FOR sci = 0 TO 2
@@ -660,7 +719,12 @@ font_colour:
 		#fca = #fca + 256		' char 32, the first the font uses
 		FOR fcj = 0 TO 7
 			FOR fck = 0 TO 58
-				VPOKE #fca,23	' BLACK on CYAN
+				' BLACK ON DARK BLUE. One value, written
+				' once at boot, colours the HUD and the
+				' title screen together -- they are the
+				' same 59 characters, so there is nothing
+				' to keep in step and no second pass.
+				VPOKE #fca,20
 				#fca = #fca + 1
 			NEXT fck
 			WAIT
@@ -734,7 +798,12 @@ title_wait:
 	IF tk = 3 THEN
 		IF t838 = 1 THEN t838 = 2
 	END IF
-	IF t838 = 3 THEN t838 = 0 : GOSUB setup838 : GOTO title_screen
+	' STRAIGHT INTO THE GAME, NOT BACK TO THE TITLE. Anyone who has typed
+	' 8-3-8 and set the number of Kops has already decided to play; bouncing
+	' them back to the title to press FIRE again is a second decision nobody
+	' asked for. RETURN leaves title_screen the same way FIRE does, so the
+	' caller runs new_game next either way.
+	IF t838 = 3 THEN t838 = 0 : GOSUB setup838 : RETURN
 	' FIRE **or** 1. On the TI, joystick fire is TAB, which is neither
 	' guessable nor forgiving -- Windows treats a stray TAB as a focus change
 	' and moves the whole window away. Accepting a plain digit as well costs
@@ -1454,17 +1523,25 @@ draw_car:
 car_cell:
 	ccw = CH_EDOOR
 	' THE SILL IS THERE WHETHER THE DOORS ARE OR NOT. Set before the door
-	' states so a shut door gets it, and so do the two JAMB columns of a
+	' states so a shut door gets it, and so do the two OUTER columns of a
 	' part-open one -- which the cst=1 branch below never touches. The step
-	' is then continuous across all four columns of the frame on every
-	' floor, including the three the car is not on.
+	' is then continuous across all four columns of the opening on every
+	' floor, including the three the car is not on. It spans the opening and
+	' not the jambs: EJAMBL/EJAMBR sit in the wall column either side and
+	' stand on the floor beside the threshold, which is where a door post
+	' goes.
 	IF crw = 3 THEN ccw = CH_EDOORS
+	' PART-OPEN: the middle two columns are car, the outer two are still door.
+	' Identical to the open state below except for which columns it covers,
+	' which is what a door sliding back into its pockets looks like -- and it
+	' is only expressible now that the jambs have moved out into the wall and
+	' left all four doorway columns free.
 	IF cst = 1 THEN
 		IF ccl > 0 THEN
 			IF ccl < 3 THEN
-				ccw = CH_EDHALF
-				IF crw = 0 THEN ccw = CH_EDHALFT
-				IF crw = 3 THEN ccw = CH_EDHALFS
+				ccw = CH_ECAR
+				IF crw = 0 THEN ccw = CH_ECART
+				IF crw = 3 THEN ccw = CH_ECARS
 			END IF
 		END IF
 	END IF
@@ -1472,16 +1549,6 @@ car_cell:
 		ccw = CH_ECAR
 		IF crw = 0 THEN ccw = CH_ECART
 		IF crw = 3 THEN ccw = CH_ECARS
-		IF ccl = 0 THEN
-			ccw = CH_ECARL
-			IF crw = 0 THEN ccw = CH_ECARLT
-			IF crw = 3 THEN ccw = CH_ECARLS
-		END IF
-		IF ccl = 3 THEN
-			ccw = CH_ECARR
-			IF crw = 0 THEN ccw = CH_ECARRT
-			IF crw = 3 THEN ccw = CH_ECARRS
-		END IF
 	END IF
 	RETURN
 
@@ -3382,8 +3449,10 @@ scan_tick:
 	' HUD
 	' ======================================================================
 hud_all:
-	PRINT AT 0,"SCORE"
-	PRINT AT 14,"TIME"
+	' TWO COLUMNS IN FROM THE LEFT. The score line ran hard against the
+	' screen edge, which the TI's overscan eats on a real set.
+	PRINT AT 2,"SCORE"
+	PRINT AT 16,"TIME"
 	GOSUB hud_score
 	GOSUB hud_time
 	GOSUB hud_kops
@@ -3394,7 +3463,7 @@ hud_all:
 	' one capture, which is already past a byte and well on the way to a word.
 hud_score:
 	#psv = #score
-	#psa = 6150
+	#psa = 6152
 	#psd = 10000
 	GOSUB prt_digits
 	VPOKE #psa,48				' the fixed trailing zero
@@ -3402,7 +3471,7 @@ hud_score:
 
 hud_time:
 	#psv = tsec
-	#psa = 6163
+	#psa = 6165
 	#psd = 10
 	GOSUB prt_digits
 	RETURN
@@ -3415,8 +3484,12 @@ hud_time:
 hud_kops:
 	spare = 0
 	IF kops > 0 THEN spare = kops - 1
-	#pla = 6170
-	FOR pli = 0 TO 5
+	' ONE COLUMN, NOT TWO, AND FIVE CELLS, NOT SIX. The row ends at column
+	' 31: six hats from column 27 would run over onto row 1, which is the
+	' wrap checklayout.py exists to catch. Five is what fits, so a game set
+	' to more than six Kops shows five hats and the rest are implied.
+	#pla = 6171
+	FOR pli = 0 TO 4
 		plv2 = 32
 		IF pli < spare THEN plv2 = CH_KOPIC
 		VPOKE #pla,plv2
@@ -3489,7 +3562,7 @@ tick_flash:
 	IF tsec > 9 THEN
 		IF tflon = 0 THEN
 			tflon = 1
-			PRINT AT 14,"TIME"
+			PRINT AT 16,"TIME"
 		END IF
 		RETURN
 	END IF
@@ -3497,7 +3570,7 @@ tick_flash:
 	IF fphs AND 16 THEN tfl = 1
 	IF tfl <> tflon THEN
 		tflon = tfl
-		IF tfl = 1 THEN PRINT AT 14,"TIME" ELSE PRINT AT 14,"    "
+		IF tfl = 1 THEN PRINT AT 16,"TIME" ELSE PRINT AT 16,"    "
 	END IF
 	RETURN
 

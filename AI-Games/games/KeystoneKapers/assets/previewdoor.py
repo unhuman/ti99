@@ -58,29 +58,17 @@ def car_cell(cst, crw, ccl):
         ccw = C["EDOORS"]
     if cst == 1:
         if 0 < ccl < 3:
-            ccw = C["EDHALF"]
+            ccw = C["ECAR"]
             if crw == 0:
-                ccw = C["EDHALFT"]
+                ccw = C["ECART"]
             if crw == 3:
-                ccw = C["EDHALFS"]
+                ccw = C["ECARS"]
     if cst == 2:
         ccw = C["ECAR"]
         if crw == 0:
             ccw = C["ECART"]
         if crw == 3:
             ccw = C["ECARS"]
-        if ccl == 0:
-            ccw = C["ECARL"]
-            if crw == 0:
-                ccw = C["ECARLT"]
-            if crw == 3:
-                ccw = C["ECARLS"]
-        if ccl == 3:
-            ccw = C["ECARR"]
-            if crw == 0:
-                ccw = C["ECARRT"]
-            if crw == 3:
-                ccw = C["ECARRS"]
     return ccw
 
 

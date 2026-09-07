@@ -65,7 +65,7 @@ What the 2600 actually looks like, and what we now draw:
 | Store interior | flat medium green, wall to wall | `STORE_BG` = `DGREEN` — see §0d-bis |
 | Floors | thick **olive bars** with a light top edge | ← *corrected, see 0b* |
 | Storefronts | blue counters on the floor + narrow white pillars | ← *corrected, see 0b* |
-| Sky strip | blue-violet; orange skyline above the roof deck | **`CYAN`** + `MRED` — see 0c |
+| Sky strip | blue-violet; orange skyline above the roof deck | *superseded — see §0d-quater* | **`CYAN`** + `MRED` — see 0c |
 | Roof deck | grey | `GRAY`, and it now backs the whole roof band |
 | Score | **white**; timer and Kop hats **black** | ← *corrected, see 0b* |
 
@@ -178,6 +178,210 @@ no palette table at all, so the canonical one now lives in
 identical byte. It still reads as a separate object because its margin is
 **grey** — which was the whole reason for the grey, and is more true now than
 when it was written.
+
+### 0d-ter. The lift's jambs move out of the doorway, and the opening gains a third
+
+The doorway is four characters, 32 px. Its end columns each carried **four
+pixels of jamb beside four of door**, so the opening the player was actually
+aiming at was **24 px** — a quarter of the lift spent framing itself.
+
+The jambs had been there for a reason. They began as whole columns of their
+own, which put eight pixels of post around thirty-two of opening: a heavier
+frame than the thing it framed. Moving them inboard fixed the proportion and
+paid for it out of the opening, which is the number that matters — the lift is
+what the player is trying to get into.
+
+**They are outboard again, at four pixels instead of eight.** The column either
+side of the doorway is ordinary wall (`t_elev` said so in as many words), so
+its inner half can carry the post while its outer half stays shop floor: two
+colours in one character, which is all this VDP allows and exactly enough. The
+box is 40 px again and the opening is the **full 32**, a third wider.
+
+| | box | opening | characters |
+|---|---|---|---|
+| outboard posts, 8 px | 48 px | 32 px | 2 columns of wall spent |
+| inboard, 4 px | 32 px | **24 px** | 6 |
+| outboard, 4 px | 40 px | **32 px** | **2** |
+
+**It costs two characters where the inboard version cost six.** A jamb that
+lives in the wall is the same picture on every row and in every door state, so
+it needs no header twin, no sill twin, and no left/right pair per state —
+`ECARL`, `ECARR`, `ECARLT`, `ECARRT`, `ECARLS` and `ECARRS` are all gone, with
+their six `CONST CH_*` and both of `car_cell`'s column special-cases. The
+character table went 87 → 83 and the fixed area gained 126 bytes.
+
+**And the frame is static now.** Being part of the wall rather than part of the
+car, it is drawn once by the template and never touched at run time. The old
+jambs only existed in the OPEN state — shut and half-open, those columns were
+plain grey door — so the frame literally appeared as the doors parted. A door
+frame should not do that.
+
+The threshold still spans the **opening only**. It is the plate between the
+jambs, and the jambs stand on the floor beside it, which is where a door post
+goes.
+
+### 0d-quater. A sunset behind a grey city, and a per-scan-line gradient
+
+The roof band was cyan sky over a red-brick skyline with lit windows, a white
+line along the top of the deck and green under it. It is now **grey buildings
+against a sunset**:
+
+| roof band scan lines | |
+|---|---|
+| 8–11 | light blue — the sky above every building |
+| 12–19 | magenta |
+| 20–23 | red |
+| 24–27 | light red |
+| 28–31 | yellow |
+| 32–39 | the solid wall of grey buildings that closes the band |
+| 40–41 | **black** deck line (was white) |
+| 42–44 | grey deck |
+| 45–47 | **black** under the deck (was the shop's green) |
+
+**A VERTICAL GRADIENT IS FREE ON THIS HARDWARE, AND THAT IS NOT A COINCIDENCE.**
+The TMS9918 colours an 8×1 scan line at a time — the constraint that costs us a
+colour everywhere else (§0d) is exactly the shape of a gradient. `SKYGRAD` in
+`genart.py` is one entry per scan line and the whole sunset is a table.
+
+**What it costs is ROW VARIANTS, because a character does not know where it is
+placed.** A gradient that changes down the screen cannot be a single shared
+cell, so the sky and the two partial-building cells come in one variant per
+roof row: `SKY0/1/2` and `BLDGM0/1`. `BLDGL` and `BLDGH` are row 2 only and
+`BLDGW` is solid building, so those need no twin — five characters became
+eight, and the table went 80 → 85.
+
+**The windows stay lit yellow.** Grey buildings with dark windows read as a
+wall rather than as a city, and the yellow is the only thing left saying these
+are buildings at all once the red went.
+
+`ROOFAIR_BG`, the backdrop the escalator composites use where the flight
+crosses the skyline's solid row, follows `BLDG_BODY` rather than carrying its
+own copy of the colour — it existed so the flight would not cut a hole in the
+city, and it has to keep meaning that after a repaint.
+
+---
+
+### 0d-quinquies. The door animation, not just the door
+
+Widening the opening (§0d-ter) fixed the wrong number. The **fully open** state
+is what that changed, and the part the player actually watches is the frame
+**between** shut and open -- which was still a pair of four-pixel slits drawn as
+their own cells (`EDHALF` and its header and sill twins). Eight pixels of car
+out of a thirty-two pixel opening: the doors barely appeared to move.
+
+Part-open is now simply **the car seen through the middle two columns**, which
+is only expressible because the jambs left the doorway and freed all four:
+
+```
+shut  ....########################################....   car =  0 px
+part  ....############CCCCCCCCCCCCCCCC############....   car = 16 px
+open  ....####CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC####....   car = 32 px
+```
+
+Double what it was, symmetric, and it **reuses the car own cells** rather than
+needing three of its own -- `EDHALF`, `EDHALFT` and `EDHALFS` are gone with
+their constants, so the character table went 83 -> 80 before the roof work put
+five back.
+
+The lesson is one this file keeps relearning from a different direction:
+*"make the opening wider"* and *"make the opening ANIMATION wider"* are
+different requests, and the first was the one that got implemented. The
+measurement that would have caught it is the same one that fixed it -- print
+every state of the animation side by side, not just the extreme.
+
+---
+
+### 0d-sexies. The score line, the gradient, and a lift that takes its time
+
+**The HUD moved two columns in from the left** — it ran hard against the screen
+edge, which a real set's overscan eats. `SCORE` to column 2, its digits to 8,
+`TIME` to 16, its digits to 21.
+
+**The reserve-Kop hats moved ONE column, not two, and lost a slot.** The row
+ends at column 31: six hats from column 27 would wrap onto row 1, which is
+precisely the failure `checklayout.py` exists to catch. Five is what fits, so a
+game set to more than six Kops shows five hats and the rest are implied.
+
+**AND THE HATS WERE ON THE WRONG GROUND.** `KOPIC` was `BLACK` on `CYAN`, left
+from when the whole font was, so once the score line went dark blue each hat
+carried a cyan box around it. It is `HUD_BG` now — a *named* colour, because the
+HUD's ground is a role shared by the font colour table and by anything else
+drawn up there, and the two must not drift apart.
+
+**The gradient is six even bands of four scan lines.** Dark blue reaches half a
+character below the score line so the HUD does not stop at a hard edge, and
+light blue drops into the top half of what magenta had:
+
+```
+DBLUE 4   LBLUE 4   MAGENTA 4   MRED 4   LRED 4   DYELL 4
+```
+
+It was `LBLUE 4, MAGENTA 8, MRED 4, LRED 4, DYELL 4` — one band twice the height
+of its neighbours, which is what made it read as a stripe rather than as a fade.
+
+**ONLY THE TOP OF THE SKYLINE GOES UP, AND THAT IS A CONSTRAINT RATHER THAN A
+PREFERENCE.** The gradient's bottom band -- the yellow -- lives on band lines
+20-23, and roof row 3 is solid building from line 24 down, so a column shows
+yellow only if its building is SHORTER than twelve pixels. Raising every step by
+four (`8 11 14 20 24 28` -> `12 14 20 24 28 32`) put every column at twelve or
+more and **the yellow disappeared from the sky entirely** -- reported from play
+as exactly that, one build after it was added.
+
+So the two tallest steps gain four pixels each and the three short ones are
+untouched: `8 11 14 20 24 28` -> `8 11 14 20 28 32`. The tallest now fills the
+whole band and meets the score line's blue; the low blocks still cut down far
+enough to let the yellow through. No new characters -- the taller steps just
+take a cell higher up.
+
+**AND THE TALLEST BUILDINGS STOP A QUARTER OF A CHARACTER SHORT.** Filling the
+band outright ran them into the score line, so the sky above the city was a hard
+edge rather than the top of a fade and the gradient had nowhere to begin. Two
+pixels of the HUD own blue on the row-0 cell (`BLDGW0`) is the whole change:
+every column now shows some sky under the score line, and those two lines are
+there to carry a cornice later if one is wanted.
+
+**The window lights stayed light yellow.** Dark yellow was tried on the
+reasoning that against grey buildings the light yellow is the brightest thing on
+the screen; on the machine it was simply hard to see. Reverted.
+
+**THE VICTROLA BROADCASTS: THREE WHITE MARKS, THEN FOUR.** Its sound marks were
+one per top cell -- two in each phase -- and inked BLACK like the horn below
+them, so a radio that is meant to be blaring looked like a radio with two
+smudges over it. They are WHITE now and the phases count 3 and 4, which is what
+reads as broadcasting rather than as flickering.
+
+It cost no redraw of the horn and no extra character, and that is the
+per-scan-line colour model paying off rather than luck: the marks live on rows
+0-2 and the horn starts at row 3, so `[WHITE] * 3 + [BLACK] * 5` inks each half
+of the cell without the two ever sharing a line. They were put on their own rows
+when the victrola was first drawn, for the pulse; that is what made this a
+colour change.
+
+**THE CAR HAS A WHITE TOP EDGE, AND IT MEASURES THE OPENING.** `ECART` is the
+doorway header row -- four scan lines of grey lintel, then the car below it --
+so its first car line is the roof of the cage. White there separates the car
+from the lintel it slides under, and because part-open uses the same cell for
+the middle two columns, the highlight is exactly as wide as the part that has
+opened: 16 px part-open, 32 px open. One colour byte, no new character.
+
+**8-3-8 now starts the game rather than returning to the title.** Anyone who has
+typed the code and set the number of Kops has already decided to play; bouncing
+them back to press FIRE again is a second decision nobody asked for. The branch
+`RETURN`s from `title_screen` the same way FIRE does, so the caller runs
+`new_game` next either way.
+
+**The lift takes two seconds between floors**, up from 0.75. `elt` counts down
+by `fdv`, the FRAME delta, so `ELMOVE = 120` is real frames on both 60 Hz
+targets and stays two seconds when the loop gets busy — unlike anything counted
+in loop passes (§0f-bis). At 45 frames the doors barely had time to read as
+opening.
+
+**A HUD LABEL CAN BE PRINTED FROM MORE THAN ONE PLACE.** Moving `TIME` two
+columns produced `TIMEME` on screen: `tick_flash` blinks the same label when the
+clock runs low and had its own copy of the column. Nothing in the build could
+see it — `checklayout.py` checks each write for overflow and collision, and two
+writes of the same string at different columns collide with *nothing*. Grep for
+the literal, not just for the routine that owns it.
 
 ### 0e. A character number written by hand is a bug waiting for a rename
 
@@ -2557,10 +2761,12 @@ Each phase builds on **both** targets before the next one starts.
 
 ---
 
-## 13a. Planned: parallax the roof skyline
+## 13a. Parallax the roof skyline
 
-**Ready to implement — costed and designed, not started.** Written down here
-rather than left in a task list so it survives the session.
+**DONE.** The costing below was written before the work and is left as written;
+what shipped matched it to the byte -- 40 bytes of fixed area (638 free -> 598)
+and 800 in the bank, no new code. Kept in full because the costing was wrong the
+FIRST time and the reason it was wrong is the reusable part.
 
 The city behind the roof is identical on every screen, so crossing a seam up
 there gives no sense of travel: the foreground jumps a whole screen and the
@@ -2588,13 +2794,19 @@ roof templates with the skyline pre-shifted drop straight into that index, and
 the roof band stays an ordinary `SCREEN` blit like every other band — so
 `checkbands.py` and `checkstruct.py` need no teaching either.
 
-### The implementation
+### The implementation, as built
 
-1. `t_roof()` in `assets/genstore.py`: sample `SKYLINE[(c + 2 * scr) & 31]`
-   instead of `SKYLINE[c]`, and emit one template per screen. Screens 0 and 7
-   keep their head-house and exit furniture on top of their own offset.
-2. `KEYSTONE.bas`: extend `#tsrc` to 15 entries and point `lv3`'s eight index
-   slots at the new templates.
+1. `t_roof()` in `assets/genstore.py` takes the screen it is for and samples
+   `SKYLINE[(c + 2 * scr) & 31]`; `TEMPLATES` names eight roof entries,
+   `T_ROOF0`..`T_ROOF7`. Screens 0 and 7 keep their head-house and exit
+   furniture on top of their own offset.
+2. `KEYSTONE.bas`: `DIM #tsrc(15)` and five more `#tsrc(n)` lines; `INDEX`s
+   roof row became `[R0 R1 R2 R3 R4 R5 R6 R7]`.
+
+**Verified on the generated templates, not by eye** -- parallax sense is
+invisible in a still. Screen s+1 column c equals screen s column c+2 for rows
+0-2 across all six plain screens, and rows 3 and 4 are byte-identical on every
+screen, so the wall at actor height and the deck underfoot do not slide.
 
 **Direction check**, because parallax sense is easy to invert and impossible to
 spot in a still: `skyline[s][c] = SKYLINE[(c + 2s) & 31]` means screen `s+1`'s

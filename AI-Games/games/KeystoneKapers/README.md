@@ -78,6 +78,12 @@ what a thing *is*: yellow floor lines, grey-and-black escalator slashes, a grey 
 elevator **car** (not its shaft), **Kelly black and Harry white**. Four pixel rows per level,
 one colour each, inset in a grey band the width of the screen -- as the 2600 has it.
 
+The score line sits two columns in from the edge on **dark blue**, with the reserve-Kop hats one column in (five of them — six would wrap off the row). The lift takes **two seconds** between floors.
+
+The roof is **grey buildings against a sunset** -- light blue at the top, then magenta, red, light red and yellow down to the skyline, with a black deck line and black beneath it. A vertical gradient is free on this VDP (it colours one 8x1 scan line at a time), but it costs **row variants**: a character cannot know which row it was placed in, so the sky and the partial buildings come in one per roof row (`DESIGN.md` §0d-quater).
+
+The lift's door jambs sit in the **wall column either side** of the doorway, four pixels wide, so all four doorway characters are car and the opening is the full **32 px** rather than 24. They used to sit inside the doorway's own end columns, which spent a quarter of the opening framing it and needed six characters to do it (a header twin and a sill twin for each side); a jamb in the wall is one picture on every row in every door state, so it needs two. It is also **static** now — the old frame only existed while the doors were open, so it appeared as they parted (`DESIGN.md` §0d-ter).
+
 The shop floor is TMS9918 **dark green (12)**, not medium green — the only darker green the hardware has. It lives in `genart.py` as one name, `STORE_BG`, because **56 of the 87 store characters carry it as their background** and a colour spelled out 56 times is a colour somebody will miss a cell of; the previewers and checkers derive their RGB from it rather than repeating the literal (`DESIGN.md` §0d-bis).
 
 Both figures are **transcribed off the reference video onto the 2600's own pixel grid**

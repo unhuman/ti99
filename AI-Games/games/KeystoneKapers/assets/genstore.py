@@ -184,13 +184,24 @@ def t_elev():
     t = blank(WALL)
     c0, c1 = ELEV_COLS
     r0, r1 = ELEV_ROWS
-    # NO OUTBOARD POSTS. The jambs are four pixels wide and live inside the
-    # doorway's own end columns (see ECARL in genart.py), so the columns either
-    # side of it are ordinary wall.
+    # OUTBOARD POSTS, FOUR PIXELS WIDE. The jambs used to live inside the
+    # doorway's own end columns, which cost a quarter of the opening to frame
+    # it. They are in the WALL column either side now (see EJAMBL in
+    # genart.py): the inner half of that character is the post and the outer
+    # half is still shop floor, which is two colours in one cell and all this
+    # VDP allows.
+    #
+    # THEY ARE PART OF THE MAP, not part of the car. A door frame does not
+    # appear when the doors open, and drawing it here means car_cell never has
+    # to know about it -- which is what let its two column special-cases go.
     for r in range(r0, r1 + 1):
+        t[r][c0 - 1] = EJAMBL
+        t[r][c1 + 1] = EJAMBR
         for c in range(c0, c1 + 1):
             # the bottom row of the doorway carries the threshold, so the
-            # static map agrees with what draw_car paints over it
+            # static map agrees with what draw_car paints over it. The
+            # threshold spans the OPENING only -- it is the plate between the
+            # jambs, and the jambs stand on the floor beside it.
             t[r][c] = EDOORS if r == r1 else EDOOR
     for c in range(4, 9):
         t[2][c] = SHELFT
@@ -199,8 +210,26 @@ def t_elev():
     return t
 
 
-def t_roof(kind):
-    """kind: 'plain', 'west' (the escalator head-house), 'east' (the exit)."""
+def t_roof(kind, scr=0):
+    """kind: 'plain', 'west' (the escalator head-house), 'east' (the exit).
+
+    `scr` is WHICH SCREEN this template is for, and it exists to give the city
+    parallax. The skyline is sampled two columns further along per screen, so
+    crossing a seam slides the horizon by 2 of 32 -- a 1/16 rate against the
+    foreground, slow enough to read as distance and fast enough to see in one
+    crossing. Without it the buildings are identical on all eight screens and
+    the roof reads as wallpaper: the foreground jumps a whole screen and the
+    horizon does not move at all.
+
+    DIRECTION, because parallax sense is easy to invert and impossible to spot
+    in a still: screen s+1 column c shows what screen s had at column c+2, so
+    the buildings travel LEFT as the player runs EAST. That is correct -- the
+    far thing moves against you, more slowly.
+
+    Only rows 0-2 shift. Row 3 is the solid wall of building at the height an
+    actor occupies and row 4 is the deck the player runs on; both are the same
+    on every screen, and sliding either would be sliding the floor.
+    """
     # THE ROOF IS SKY, THEN SKYLINE, THEN GREY -- in that order, top to bottom,
     # which is what the reference shows and what the first version got wrong.
     # It was sky all the way down to the deck, so Kelly (dark blue) stood
@@ -231,12 +260,29 @@ def t_roof(kind):
     #   3 full + a 4px top  4 two full    5 two full + a 4px top
     SKYLINE = [2, 4, 1, 0, 3, 5, 2, 1, 0, 4, 3, 1, 2, 5, 4, 0,
                1, 3, 2, 4, 0, 2, 5, 3, 1, 0, 4, 2, 3, 1, 5, 2]
-    ROW0 = (SKY, SKY, SKY, SKY, SKY, BLDGM)
-    ROW1 = (SKY, SKY, SKY, BLDGM, BLDGW, BLDGW)
-    ROW2 = (SKY, BLDGL, BLDGH, BLDGW, BLDGW, BLDGW)
-    t = blank(SKY)
+    # ROW-SPECIFIC SKY. The backdrop is a gradient down the band (SKYGRAD in
+    # genart.py), and a character cannot know which row it was placed in, so
+    # the sky and the two partial buildings come in one variant per row.
+    # ONLY THE TOP OF THE SKYLINE GOES UP, and that restriction is not
+    # cosmetic. The gradient's bottom band -- the yellow -- lives on band
+    # lines 20-23, and row 3 is solid building from line 24 down, so a column
+    # only shows yellow if its building is SHORTER than twelve pixels. Raising
+    # every step by four (8 11 14 20 24 28 -> 12 14 20 24 28 32) put every
+    # column at twelve or more and the yellow vanished from the sky entirely.
+    #
+    # So the two TALLEST steps gain four pixels each and the three short ones
+    # are untouched:
+    #
+    #     8  11  14  20  24  28   ->   8  11  14  20  28  32
+    #
+    # The tallest now fills the whole band and meets the score line's own
+    # blue; the low blocks still cut down far enough to let the yellow through.
+    ROW0 = (SKY0, SKY0, SKY0, SKY0, BLDGM0, BLDGW0)
+    ROW1 = (SKY1, SKY1, SKY1, BLDGM1, BLDGW, BLDGW)
+    ROW2 = (SKY2, BLDGL, BLDGH, BLDGW, BLDGW, BLDGW)
+    t = blank(SKY0)
     for c in range(W):
-        h = SKYLINE[c]
+        h = SKYLINE[(c + 2 * scr) & 31]
         t[0][c] = ROW0[h]
         t[1][c] = ROW1[h]
         t[2][c] = ROW2[h]
@@ -268,9 +314,22 @@ TEMPLATES = [
     ("T_ESC_W", t_escalator(west=True)),
     ("T_ESC_E", t_escalator(west=False)),
     ("T_ELEV", t_elev()),
-    ("T_ROOF", t_roof("plain")),
-    ("T_ROOF_W", t_roof("west")),
-    ("T_ROOF_E", t_roof("east")),
+    # ONE ROOF TEMPLATE PER SCREEN, so the skyline can differ across the
+    # store (see t_roof). Screen 0 carries the head-house and screen 7 the
+    # exit door, on top of their own offsets. Five more templates than the
+    # three this replaced -- 800 bytes, and they land in the ROM BANK with
+    # store.bas rather than in the fixed area, which is the only reason this
+    # is cheap. See DESIGN.md 13a for the costing, and for the first version
+    # of it that charged bank data against the fixed area and concluded the
+    # cheap option was unaffordable.
+    ("T_ROOF0", t_roof("west", 0)),
+    ("T_ROOF1", t_roof("plain", 1)),
+    ("T_ROOF2", t_roof("plain", 2)),
+    ("T_ROOF3", t_roof("plain", 3)),
+    ("T_ROOF4", t_roof("plain", 4)),
+    ("T_ROOF5", t_roof("plain", 5)),
+    ("T_ROOF6", t_roof("plain", 6)),
+    ("T_ROOF7", t_roof("east", 7)),
     ("T_END_W", t_endwall(west=True)),
     ("T_END_E", t_endwall(west=False)),
 ]
@@ -295,7 +354,8 @@ def _beam_cols(t):
             if all(t[r][c] in (COUNTR, ENDWALL) for r in range(4))]
 
 A, B, EW, EE, EL = "T_AISLE_A", "T_AISLE_B", "T_ESC_W", "T_ESC_E", "T_ELEV"
-RF, RW, RE = "T_ROOF", "T_ROOF_W", "T_ROOF_E"
+R0, R1, R2, R3 = "T_ROOF0", "T_ROOF1", "T_ROOF2", "T_ROOF3"
+R4, R5, R6, R7 = "T_ROOF4", "T_ROOF5", "T_ROOF6", "T_ROOF7"
 NW, NE = "T_END_W", "T_END_E"
 
 # INDEX[lv][scr].  lv 0 = floor 1 (bottom band), lv 3 = roof.
@@ -314,7 +374,7 @@ INDEX = [
     [EW, A, B, EL, A, B, A, NE],    # lv0  floor 1  -- climbs WEST
     [NW, B, A, EL, B, A, B, EE],    # lv1  floor 2  -- climbs EAST
     [EW, A, B, EL, A, B, A, NE],    # lv2  floor 3  -- climbs WEST
-    [RW, RF, RF, RF, RF, RF, RF, RE],  # lv3  roof   -- exit at the EAST edge
+    [R0, R1, R2, R3, R4, R5, R6, R7],  # lv3  roof -- one per screen, exit EAST
 ]
 
 # Which end each floor's working escalator is at: 0 = west, 1 = east, 255 = none
@@ -539,7 +599,7 @@ def esc_cap_bytes():
 def preview():
     glyph = {SLAB: "=", SHELFT: "T", SHELFB: "L", COUNTR: "c",
              SHAFT: "|", EDOOR: "D", ECAR: "C",
-             PARAP: "^", SKY: ".", WALL: " ", KOPIC: "k",
+             PARAP: "^", SKY0: ".", SKY1: ".", SKY2: ".", WALL: " ", KOPIC: "k",
              EXITC: "E", ROOFS: "~", ROOFBG: ",", ENDWALL: "H"}
     # Built from CODES, not from a fixed count: the flight has been resliced
     # several times and a hard-coded 6 silently stopped covering it.
