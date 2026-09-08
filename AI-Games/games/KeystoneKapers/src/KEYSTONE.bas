@@ -850,7 +850,6 @@ title_draw:
 	PRINT AT 486,"JUMP CARTS AND LOW BALLS"
 	PRINT AT 518,"DUCK PLANES AND HIGH ONES"
 
-	PRINT AT 614,"FIRE TO START"
 	PRINT AT 678,"2026 UNHUMAN AND CLAUDE"
 	' The NOTICE is redrawn on every title visit even though the MEASUREMENT
 	' happens once -- it is information about the machine, and the CLS above
@@ -893,53 +892,42 @@ alock_loop:
 	RETURN
 
 title_input:
+	' THE PROMPT IS PRINTED HERE, NOT WITH THE REST OF THE TITLE, because
+	' this is the moment the game starts listening -- and it is a whole
+	' second after the title appears.
+	'
+	' title_draw runs early on purpose (DESIGN.md 0d-nonies) so the screen
+	' arrives instead of filling in, but setup_rest, init_tables and the
+	' ALPHA LOCK sample all run AFTER it. For about a second the title is up,
+	' finished, and completely deaf. A player types 8-3-8 into that window and
+	' the first digit lands in nothing -- then a following 3-8 completes the
+	' code, because the 8 they typed second is still standing as state. That
+	' is exactly how it was reported, twice, and it is not noise: it is the
+	' screen lying about being ready.
+	'
+	' RallyX and Bust-A-Bobble never showed this because they draw their
+	' titles when they are already listening. Keystone cannot -- the whole
+	' point of the early draw is that it is early -- so the PROMPT waits
+	' instead, and its arrival is the cue that the screen is awake.
+	PRINT AT 614,"FIRE TO START"
 	tkl = 15
-	tkr = 15
-	tkn = 0
 title_wait:
 	WAIT
-	' A KEY MUST BE HELD FOR THREE FRAMES TO COUNT.
+	' Edge-triggered: cont1.key returns the same value on every pass while a
+	' key is held, so without this one press would be read as many.
 	'
-	' ALPHA LOCK shorts a keyboard line, and Classic99 defaults to invertcaps
-	' so it reads DOWN with the host's Caps Lock UP -- the normal state of a
-	' keyboard. cont1.key then returns values nobody pressed, a frame or two at
-	' a time.
+	' NO FRAME FILTER. There was one -- a key had to hold for three passes to
+	' count -- added to defend against ALPHA LOCK noise that turned out not to
+	' be the problem. It cost real presses instead: 8-3-8 needed a retry and
+	' the FIRE button could be missed outright. The diagnosis was wrong and
+	' the cure was worse than the disease.
 	'
-	' That is fatal to the sequence below SPECIFICALLY BECAUSE its reset is
-	' strict: anything that is not the next digit puts t838 back to 0, which is
-	' what stops 8,5,3,8 opening the page. A spurious read BETWEEN the player's
-	' own presses does exactly the same thing, so typing 8-3-8 cleared itself
-	' halfway and appeared to do nothing -- and then typing 3-8 worked, because
-	' the final 8 of the failed attempt was still standing as state. Reported
-	' from play in precisely that shape.
-	'
-	' Three frames is 50 ms. A human press is several times that and the noise
-	' is one or two, so the filter separates them cleanly. tkn caps AT the
-	' threshold and the test is for equality, so a held key is accepted once
-	' rather than on every frame it is down.
-	tk = cont1.key
-	IF tk = tkr THEN
-		IF tkn < 3 THEN tkn = tkn + 1
-	ELSE
-		tkr = tk
-		tkn = 1
-	END IF
-	IF tkn <> 3 THEN GOTO title_hold
-	' 8-3-8 opens the setup screen. cont1.key rather than a cursor: the
-	' vertical axis is exactly what ALPHA LOCK poisons, so a menu built on
-	' up/down would boot pinned to one entry.
+	' The reset below is RallyX's: anything that is not the next digit puts
+	' the sequence back to 0, so 8,5,3,8 does not open the page. That is
+	' proven code and it is not what was failing here.
 	tk = cont1.key
 	IF tk <> tkl THEN
 		tkl = tk
-		' NEXT STATE COMPUTED FROM THIS STATE AND THIS KEY, which is what lets
-		' the reset be the DEFAULT rather than a case. Written as a sequence of
-		' overrides -- 8 arms, then the two advances outrank it -- the fallout
-		' is that anything else lands on 0 without a line of its own.
-		'
-		' The `tk < 10` guard is load-bearing: cont1.key returns 15 for nothing
-		' pressed, and the edge test fires on RELEASE as well as on press, so
-		' without it every key let go of would reset the sequence it had just
-		' advanced.
 		IF tk < 10 THEN
 			tnx = 0
 			IF tk = 8 THEN tnx = 1
@@ -948,31 +936,7 @@ title_wait:
 			t838 = tnx
 		END IF
 	END IF
-title_hold:
-	' STRAIGHT INTO THE GAME, NOT BACK TO THE TITLE. Anyone who has typed
-	' 8-3-8 and set the number of Kops has already decided to play; bouncing
-	' them back to the title to press FIRE again is a second decision nobody
-	' asked for. RETURN leaves title_input the same way FIRE does, so the
-	' caller runs new_game next either way.
 	IF t838 = 3 THEN t838 = 0 : GOSUB setup838 : RETURN
-	' FIRE ONLY, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT.
-	'
-	' `1` used to start the game as well, because on the TI joystick fire is
-	' TAB -- neither guessable nor forgiving, since Windows treats a stray TAB
-	' as a focus change and moves the whole window away. CLAUDE.md 3A still
-	' says not to make FIRE the only way out of a title screen, and this screen
-	' is the named exception.
-	'
-	' WHAT IT BUYS IS THE 838 SEQUENCE. Every digit on this screen now means
-	' exactly one thing: a step of the cheat code, or a reset of it. While `1`
-	' also meant START, mistyping one digit of 8-3-8 did not merely reset the
-	' sequence -- it began a game, which is a far worse outcome than having to
-	' type the code again, and it is the single most likely typo since 1 is
-	' next to nothing on the sequence but adjacent to everything on a keypad.
-	'
-	' The hazard the digit guarded against is real but recoverable: a TAB that
-	' moves focus leaves the title on screen and the player clicks back. A
-	' game started by accident cannot be undone at all.
 	IF cont1.button THEN RETURN
 	GOTO title_wait
 

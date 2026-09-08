@@ -69,6 +69,7 @@ OVERWRITE_OK = {
 
 SCREEN = {
     "title_draw": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
+    "title_input": "TITLE",   # prints the prompt, once input is live
 
     "setup838": "SETUP",
     "su_tens": "SETUP", "su_ones": "SETUP",
