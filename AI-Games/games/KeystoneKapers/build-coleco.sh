@@ -159,6 +159,28 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/checkride.py > /dev/null \
     || die "a rider's feet leave the escalator steps -- run assets/checkride.py"
 
+# snd_off is a HAND-WRITTEN list of channels and counters, and it went stale
+# twice without a word: the footstep moved to the noise channel and snd_off
+# still named only 0-2, so a step ringing at a capture hissed through the whole
+# bonus tally; and the prize arpeggio's counter was added later than the list,
+# so a prize taken late in a round dinged over the start of the next one. Both
+# were reported from play. This derives the required set from sfx_tick itself
+# rather than keeping a second list that could go stale the same way, and it was
+# run against the defective source first -- it failed on both.
+"$TRUNCPY" ../assets/checksound.py > /dev/null \
+    || die "a sound can outlive its round -- run assets/checksound.py"
+
+# A flight is a diagonal and the jump's apex is 14 px, so an arc can fly OVER
+# the three treads it could land on and then meet the riser of the fourth,
+# which is above the apex -- passing from above the staircase to below it and
+# landing on the floor underneath. Reported from play, and rare because it
+# needs a launch inside a 40 px band. This sweeps every launch position on both
+# flights, every animation phase, frame delta and jump direction; it EXECUTES
+# the boarding rule parsed out of try_esc rather than a copy of it, and
+# assets/checkjump_test.py proves it still rejects the rule that shipped the bug.
+"$TRUNCPY" ../assets/checkjump.py > /dev/null \
+    || die "a jump can pass through an escalator -- run assets/checkjump.py"
+
 echo "[1/2] cvbasic (Coleco)  $SRC -> $ASM"
 rm -f "$ASM"
 "$CVBASIC_DIR/cvbasic.exe" "$SRC" "$ASM" "$CVBASIC_DIR/" \

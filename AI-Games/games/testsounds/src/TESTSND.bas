@@ -74,7 +74,27 @@
 	catfst(2) = 14 : catnum(2) = 3		' 3 TIME UP
 	catfst(3) = 17 : catnum(3) = 10		' 4 PICKUP
 	catfst(4) = 27 : catnum(4) = 8		' 5 HIT
-	catfst(5) = 35 : catnum(5) = 3		' 6 TALLY
+	catfst(5) = 35 : catnum(5) = 9		' 6 TALLY
+
+	' NOTHING HERE IS ZERO UNTIL IT IS SET. TI RAM comes up holding whatever
+	' it held, and CVBasic does not clear variables at startup -- so `cat`,
+	' `catcur()`, `klast` and `blast` all began as garbage. Three
+	' consecutive boots opened on PICKUP, on TALLY/B and on TALLY/D, none of
+	' which anybody chose.
+	'
+	' It is worse than a wrong marker. A garbage `klast` equal to the first
+	' key pressed SWALLOWS that key, because the reader is edge-triggered;
+	' and a garbage `catcur` means FIRE starts stepping from the middle of a
+	' set. On a bench whose whole job is to say which variant you just heard,
+	' state nobody set is state that can lie about the answer.
+	'
+	' 15 is cont1.key's "nothing", so the first real press is an edge.
+	cat = 0
+	klast = 15
+	blast = 0
+	FOR ci = 0 TO NCAT - 1
+		catcur(ci) = 0
+	NEXT ci
 
 	GOSUB scan_fx
 	GOSUB draw_menu
@@ -269,7 +289,7 @@ draw_menu:
 	PRINT AT 162,"3 TIME UP   3"
 	PRINT AT 194,"4 PICKUP   10"
 	PRINT AT 226,"5 HIT       8"
-	PRINT AT 258,"6 TALLY     3"
+	PRINT AT 258,"6 TALLY     9"
 	PRINT AT 322,"FIRE STEPS THROUGH THEM"
 	PRINT AT 354,"A IS THE MEASURED ONE"
 	PRINT AT 418,"MEASURED FROM THE 2600"
@@ -756,6 +776,117 @@ fx_data:
 	DATA BYTE 2,3,4,12,  1,255,0,0
 	DATA BYTE 2,3,4,12,  1,255,0,0
 	DATA BYTE 9,3,4,13
+	DATA BYTE 0,0,0,0
+
+	' B's TICKS ARE RIGHT AND B's ENDING IS NOT. The accent is divisor 44 --
+	' 2,542 Hz -- which is a shriek on a square wave and the same complaint
+	' the pickup earned before it was rewritten. These four keep B's ten
+	' blips exactly and differ ONLY in how the count stops, so what is being
+	' compared is one decision rather than a whole effect.
+	'
+	' The tick is 1,036 Hz throughout (divisor byte 27, times four).
+	'
+	' D -- the accent an OCTAVE BELOW the ticks, 518 Hz. A count that lands
+	' by dropping, which is what a cadence does; nothing in the effect goes
+	' higher than the counting itself.
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 8,0,54,13
+	DATA BYTE 0,0,0,0
+
+	' E -- a FIFTH BELOW, 699 Hz. Less final than the octave and closer to
+	' the ticks, so it reads as the last blip being leaned on rather than as
+	' a separate note.
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 8,0,40,13
+	DATA BYTE 0,0,0,0
+
+	' F -- NO ACCENT AT ALL: the last blip is simply held four times as long,
+	' at the tick's own pitch. The plainest possible answer, and worth having
+	' on the bench because an accent may be the wrong idea rather than the
+	' right idea at the wrong pitch.
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 8,0,27,13
+	DATA BYTE 0,0,0,0
+
+	' G -- a two-step FALL: one more tick at pitch, then the octave under it.
+	' The drop is the whole gesture, and hearing the interval move is more
+	' definite than arriving at the low note cold.
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 4,0,27,13
+	DATA BYTE 8,0,54,13
+	DATA BYTE 0,0,0,0
+
+	' H -- B's TEN TICKS AND NOTHING AFTER THEM. The count stops when the
+	' counting stops.
+	'
+	' THIS ONE IS ALSO A DIAGNOSTIC. D ends on divisor 216 -- 518 Hz, an
+	' OCTAVE BELOW its own ticks -- and was still reported as ending on a
+	' high note. Either an ending at any pitch is unwelcome there, or
+	' something other than the table is sounding. H has no final step at all,
+	' so if a high note still arrives at the end of it, the fault is in the
+	' player or the note-off and not in any variant's data.
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 0,0,0,0
+
+	' I -- ten ticks and a plainly LOW close: 259 Hz, two octaves under the
+	' ticks and below anything else in the effect. If an ending is wanted at
+	' all, this is as far from a high note as the count can land.
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 2,0,27,12,  2,255,0,0
+	DATA BYTE 10,0,108,12
 	DATA BYTE 0,0,0,0
 
 	' END OF TABLE

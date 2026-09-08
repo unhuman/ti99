@@ -25,11 +25,13 @@ the only obstacle whose answer changes while it is in the air.
 | Enter / leave the elevator | joystick **up** / **down** |
 | Ride an escalator (**up only**) | walk into its foot, or land a jump on a step |
 
-**TI-99/4A: ALPHA LOCK.** It shares a line with the joystick's vertical axis, so latched down
-it reports a direction that never releases. The title screen **measures the axis for 40 frames
-at boot and ignores whichever direction is stuck**, so the game stays playable either way — it
-just says `ALPHA LOCK DOWN - IGNORED` and carries on. (Classic99 defaults to `invertcaps=1`,
-which means the TI sees ALPHA LOCK *down* when your Caps Lock is *up*.)
+**TI-99/4A: ALPHA LOCK.** It shares a line with the joystick's vertical axis, so latched down it
+can report a direction that never releases — which matters here, where down is the duck and up
+is the lift. There **used to be a 40-frame calibration** that sampled the axis at boot and
+ignored whichever direction looked stuck. It has been removed: it never once fired, eight other
+games in this repo read the vertical axis with no such guard and have never shown the fault, and
+it caused two input bugs of its own. If a stuck axis ever does turn up it is unmistakable — Kelly
+ducks or rides the lift without being asked. (`DESIGN.md` §0e-sexies.)
 
 `838` on the title opens a setup screen: **three typed digits** -- one for the number of Kops, two for the starting level -- and the last one starts the game. Out-of-range levels are clamped to 1-20 rather than refused, so there is nothing to get stuck in. It is deliberately **unadvertised** -- a hidden code in the Activision idiom, not a menu entry -- so nothing on the title screen mentions it (`DESIGN.md` §0d-octies).
 
@@ -70,6 +72,10 @@ each step -- 100 points a unit on Krooks 1-9, 200 on 10-15, 300 from 16.
 **A city stands behind the roof**, so the shopping carts up there can actually be seen --
 a grey cart on a grey backdrop could not.
 
+**An escalator is solid all the way up.** The jump's apex is 14 px and a flight rises 4 px every 8 px along the floor, so an arc can clear the three treads it could land on and then meet the riser of the fourth -- which it cannot clear. It used to pass through and land on the floor beneath the staircase. Landing is now "at or below the flight, having been above it", which catches a riser hit on the way up as well as a tread hit on the way down, while leaving the walkable floor underneath alone. `assets/checkjump.py` sweeps 108,000 arcs and gates the build (`DESIGN.md` §0e-nonies).
+
+**The elevator keeps its place between rounds.** It is part of the building, so it no longer snaps back to floor 1 whenever a round ends -- which also stopped its cycle being learnable from a fixed start (`DESIGN.md` §0e-octies).
+
 **Support beams run floor to floor.** They are part of the building, not scenery on top of
 it -- see DESIGN.md 0k2 for why they have to be stamped in after the bands are drawn.
 
@@ -85,6 +91,8 @@ one colour each, inset in a grey band the width of the screen -- as the 2600 has
 **Harry starts at the lift** and runs at 2.25 px a pass -- the only quarter-pixel speed that lets him reach the roof inside the round (93.7 s of 100) while still losing the race to Kelly by 9.4 s. One notch slower and he can never escape; one faster and a single obstacle hit makes the round unwinnable (`DESIGN.md` §0f-bis).
 
 **The run and the jump are measured, not invented** -- taken off an Atari 2600 recording via `games/testsounds`, the sound bench built for the purpose. The footstep is a burst of white noise six times a second (it was two alternating tones, fifteen times a second); the jump is a 415/188 Hz warble (it was a rising sweep). `DESIGN.md` §0e-ter.
+
+**The bonus tally counts rather than ratchets** -- a 1,036 Hz blip per timer unit, two frames on and two off, and nothing after the last one. The measured 2600 tally is noise, and ten noise bursts in a row sound like a mechanism being wound; the pitch is also what keeps the count from sitting in the same register as the clock it is emptying. Two closing accents were tried and both rejected, an octave apart, which is what proved the objection was to the extra note rather than to its pitch (`DESIGN.md` §0e-ter).
 
 **Getting hit stops the store** for exactly as long as the hit sounds -- Kelly, the hazards, the lift and the radios all hold still, which is how the nine-second penalty reads as an event rather than as a number quietly changing. **Harry and the clock keep going**, so the freeze is a cost and not a rest. `DESIGN.md` §0e-septies.
 

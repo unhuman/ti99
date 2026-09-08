@@ -402,6 +402,55 @@ cost a debugging session:
     `ai r0,<label>` + `mov *r0` pair (how the compiler indexes a word table), reads the
     label's resolved address out of the `xas99` listing, and reports any that is odd.
     Verified against the real defect, not just against a passing build.
+- **A "STOP EVERYTHING" ROUTINE THAT ENUMERATES STATE BY HAND GOES STALE, AND
+  NOTHING TELLS YOU.** Keystone Kapers' `snd_off` silences the chip and clears
+  the effect latches between rounds. It named channels 0, 1 and 2 and four decay
+  counters, and it was correct when written. Then the footstep moved to the
+  **noise** channel and the prize arpeggio gained a counter, and neither joined
+  the list. Two sounds outlived their round: a footstep ringing when the crook
+  was caught hissed through the entire bonus tally, and a prize taken late in a
+  round dinged over the start of the next one.
+  - **The routine looks finished in every state**, because nothing in it says
+    what the complete set is. Reading it will not find the bug; only comparing
+    it against the producer will.
+  - **Zeroing a decay counter does not silence anything.** These counters emit
+    their note-off on the pass they reach zero, so assigning zero by hand skips
+    the very write that would have stopped the sound. The channel needs its own
+    explicit off.
+  - Fix it by **deriving the set from the producer**: `assets/checksound.py`
+    reads every channel `sfx_tick` writes and every variable it tests in an
+    `IF` -- exactly the state that can make a sound on a later pass -- and fails
+    if `snd_off` misses one. A second hand-kept list inside the checker would
+    have gone stale identically. Run against the defective source it named both
+    faults and a third nobody had noticed.
+- **A PROXY CONDITION THAT AGREES WITH THE REAL RULE IN THE COMMON CASE IS AN
+  EDGE CASE WAITING.** Keystone Kapers boarded an escalator from a jump only if
+  the arc was **descending**. That is true of every ordinary landing and it is
+  not the rule: the rule is "he has arrived on the staircase from outside it".
+  A flight is a diagonal and the jump's apex is 14 px, so an arc can clear the
+  three treads it could land on and then meet the riser of the fourth, at 16 --
+  which is above the apex. That collision happens while still **rising**, so the
+  proxy rejected it and the player went through the staircase onto the floor
+  underneath.
+  - **Replace the proxy with the property.** "Has been above the surface during
+    this jump" is one byte and covers both a tread hit on the way down and a
+    riser hit on the way up -- and its complement is exactly the walkable floor
+    beneath the flight, which must keep working.
+  - **The bug's rarity is a fingerprint of a launch window, not of flaky input.**
+    It needed a 40 px band of starting positions; the reporter said "this is
+    rare", which is what a geometric edge case sounds like from play.
+  - **A sweep is the only honest answer to "check all scenarios".**
+    `assets/checkjump.py` runs 108,000 arcs -- every launch x, both flights,
+    every animation phase, frame delta, jump direction and accumulator phase.
+    Two construction rules made it trustworthy: the geometry is modelled in the
+    checker (ground truth) while the **boarding rule is parsed out of the `.bas`
+    and executed**, so it cannot drift from the game; and an unrecognised
+    statement is a **hard error, not a skip** -- when the fix added a block `IF`
+    the interpreter stopped rather than silently ignoring two lines, which would
+    have left it passing everything. Its extractor then had that exact bug
+    (stopping at the first `END IF`, which now closed the inner block), and only
+    `checkjump_test.py` -- which types out the rule that shipped the fault and
+    asserts the sweep rejects it -- proved the clean run meant anything.
 - **A SCREEN THAT IS DRAWN AND NOT LISTENING IS NOT UP YET, AND EVERY SYMPTOM OF
   THE GAP LOOKS LIKE AN INPUT BUG.** Drawing a menu before the setup that follows
   it is an obvious win and measures like one -- Keystone Kapers' title went from

@@ -1110,6 +1110,16 @@ new_game:
 	takn(1) = 0
 	takn(2) = 0
 	takn(3) = 0
+	' THE LIFT STARTS WHERE HARRY DOES, ONCE A GAME. It used to be set in
+	' start_krook, which runs at the top of every round and every life, so
+	' the car snapped back to floor 1 whenever anything ended -- a fixture
+	' of the store teleporting between levels. It keeps running across a
+	' round boundary now: wherever it was when the Krook was caught is
+	' where it is when the next one starts.
+	elvl = 1
+	elst = 0
+	elt = ELWAIT
+	eldn = 0
 	GOSUB start_krook
 	RETURN
 
@@ -1215,11 +1225,12 @@ start_krook:
 	hrun = 0
 	hrund = 0
 
-	elvl = 1			' the car starts where Harry does
-	elst = 0
-	elt = ELWAIT
-	eldn = 0
-
+	' THE LIFT IS NOT RESET HERE -- see new_game. It is part of the
+	' building, and the building does not rearrange itself because a Krook
+	' got away or a Kop was lost. Putting the car back on floor 1 with its
+	' doors just opening at the top of every round also made its cycle
+	' predictable in a way it is not meant to be: the player learned one
+	' arrival time and it was right every round.
 	tsec = TIMEL
 	tfr = TICKFR
 	tout = 0
@@ -1990,6 +2001,10 @@ move_kelly:
 				kjh = jarc(1)
 				jrel = 0
 				sfj = 1
+				' HE HAS NOT BEEN OVER A FLIGHT YET. esyp is
+				' what tells a landing from a walk UNDER the
+				' stairs -- see try_esc.
+				esyp = 0
 			END IF
 		END IF
 	END IF
@@ -2208,23 +2223,46 @@ try_esc:
 		'     Only the bottom three steps are in reach of a 14 px apex
 		'     at 4 px a step, so this is a ladder, not a divide.
 		IF esw > 76 THEN RETURN
-		IF esw < 52 THEN RETURN
-		esy0 = 12
-		IF esw > 59 THEN esy0 = 8
-		IF esw > 67 THEN esy0 = 4
+		' THE SURFACE UNDER HIM, ANYWHERE ON THE FLIGHT -- not just the
+		' bottom three treads. A 14 px apex can only LAND on 4, 8 and 12,
+		' which is why the ladder used to stop there, and that is what let
+		' an arc go through the staircase: it flew over those three and
+		' met the riser of the fourth, at 16, which is above the apex and
+		' cannot be cleared. Nothing was watching that far up the flight,
+		' so he passed from above the treads to below them and came down
+		' on the floor underneath. Reported from play as "I was able to
+		' jump through the escalator", and rare because it needs a
+		' launch inside a 40 px band.
+		esy0 = 4
+		IF esw < 68 THEN esy0 = 8
+		IF esw < 60 THEN esy0 = 12
+		IF esw < 52 THEN esy0 = 16
+		IF esw < 44 THEN esy0 = 20
+		IF esw < 36 THEN esy0 = 24
+		IF esw < 28 THEN esy0 = 28
+		IF esw < 20 THEN esy0 = 32
+		IF esw < 12 THEN esy0 = 36
+		IF esw < 4 THEN esy0 = 40
 		esy0 = esy0 + escp
-		' HE MUST BE COMING DOWN, and at or below the step. Requiring him
-		' to CROSS that step's exact height in a single frame was too
-		' strict: he covers 4 px a frame, so a given step is under him
-		' for about two frames of the descent, and if his height did not
-		' happen to pass through that step's own height in those two he
-		' sailed clean over the staircase and landed on the floor beyond
-		' it. Coming-down-and-at-or-below is the rule a floor uses.
+		' ABOVE THE SURFACE: not a landing, but remember that he was up
+		' there. This is the whole state the rule needs.
+		IF kjh > esy0 THEN
+			esyp = 1
+			RETURN
+		END IF
+		' AT OR BELOW IT, AND HE HAS BEEN ABOVE IT -- so he has arrived on
+		' the staircase from outside, either by falling onto a tread or by
+		' running into a riser on the way up. Both are landings.
 		'
-		' Only the bottom three steps are in range (above), so "below a
-		' step" can never mean one the arc could not have reached.
-		IF kjh > kjp THEN RETURN
-		IF kjh > esy0 THEN RETURN
+		' THE OLD TEST WAS "he must be coming down", and that is what is
+		' gone. It is true of the ordinary case and false of the one that
+		' broke: a riser is hit while still RISING. Descent was never the
+		' point -- having been outside the staircase is.
+		'
+		' AT OR BELOW IT AND NEVER ABOVE IT is the floor beneath the
+		' flight, which is walkable and always was. esyp = 0 leaves it
+		' alone, so a jump taken under the stairs stays under them.
+		IF esyp = 0 THEN RETURN
 	END IF
 	GOSUB esc_ride
 	RETURN
@@ -4244,12 +4282,19 @@ bn_loop:
 	GOSUB hud_time
 	#addv = #bval
 	GOSUB add_score
-	' One tick per unit, with its own note-off. Channel 2, which the effect
-	' table uses for the upper voice of a two-note effect, so this cannot
-	' cancel a sustained tone on channel 1 (CLAUDE.md 3A: two SOUNDs on one
-	' channel back to back just cancel the first).
-	SOUND 2,300,13
-	FOR bwi = 1 TO 3
+	' TESTSOUNDS TALLY B -- a blip that COUNTS rather than a buzz that
+	' ratchets. Two frames on and two off at 1,036 Hz (divisor 108), against
+	' the 373 Hz it was: the pitch is what separates a count from the
+	' timer's own low tick, and the shorter gap makes ten of them a run
+	' rather than a queue.
+	'
+	' Channel 2 stays. The effect table uses it for the upper voice of a
+	' two-note effect, so a tick here cannot cancel a sustained tone on
+	' channel 1 (CLAUDE.md 3A: two SOUNDs on one channel back to back just
+	' cancel the first). The bench plays B on channel 0 because the bench
+	' has nothing else running.
+	SOUND 2,108,12
+	FOR bwi = 1 TO 2
 		WAIT
 	NEXT bwi
 	SOUND 2,0,0
@@ -4257,6 +4302,20 @@ bn_loop:
 		WAIT
 	NEXT bwi
 	GOTO bn_loop
+
+	' AND IT ENDS ON ITS LAST BLIP -- there is no closing accent.
+	'
+	' Two were tried. The bench's own ending for this variant rose a fourth,
+	' to 2,542 Hz, and a square wave there is a shriek -- the same fault the
+	' pickup was rewritten for. Dropping it an OCTAVE BELOW the ticks, to
+	' 518 Hz, was reported the same way, and that one cannot be too high by
+	' any measure: it is the lowest note in the effect.
+	'
+	' So the complaint is not the pitch, it is the extra note. A tally is
+	' arithmetic, and arithmetic finishes when the last term is added; a
+	' flourish after it is a second event the player has to interpret, and
+	' the HUD has already said the clock is empty. The count stops when the
+	' counting stops.
 
 	' `calc_bonus` USED TO LIVE HERE and computed the whole sum by repeated
 	' addition, to dodge two hazards at once: `tsec * bmul` is an 8-bit
@@ -4352,13 +4411,34 @@ lose_kop:
 	' after every unit, but a footstep or a hit that was still ringing when
 	' Harry was caught.
 snd_off:
+	' EVERY CHANNEL sfx_tick CAN WRITE, AND CHANNEL 3 IS ONE OF THEM. This
+	' routine was written when the footstep was a pair of tones on channel 0
+	' and it still named only 0, 1 and 2 after the footstep moved to the
+	' NOISE channel. So a step ringing when Harry was caught was never turned
+	' off: it hissed through the whole bonus tally and did not stop until the
+	' next round's first footstep happened to reset it.
+	'
+	' Zeroing sot does NOT silence it. The counter only emits its note-off on
+	' the pass it reaches zero, so setting it to zero by hand skips the very
+	' write that would have stopped the sound.
 	SOUND 0,0,0
 	SOUND 1,0,0
 	SOUND 2,0,0
+	SOUND 3,0,0
+	' AND EVERY COUNTER, INCLUDING THE ARPEGGIO'S. spz walks the prize's
+	' three notes over thirteen passes and was the one counter this list
+	' never learned about -- so a prize collected in the last moments of a
+	' round survived the silence and played its remaining notes on the first
+	' pass of the NEXT one, arriving as a ding over a level that had just
+	' been drawn.
 	sot = 0
 	sht = 0
 	spt = 0
 	swt = 0
+	spz = 0
+	' The warble's phase, so a jump after a round break always starts on the
+	' same note rather than on whichever one the last jump left behind.
+	swf = 0
 	' AND THE EFFECTS THAT HAVE NOT HAPPENED YET. A set sf* flag is a sound
 	' waiting for the next pass of the main loop -- and between a capture and
 	' the next Krook the main loop does not run, so anything latched during

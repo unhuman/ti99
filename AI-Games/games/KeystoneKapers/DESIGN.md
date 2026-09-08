@@ -813,6 +813,78 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-nonies. A jump could go through an escalator
+
+Reported from play as *"I was able to jump through the escalator to the floor.
+This is rare."* Rare was the tell: it needs a particular launch point, not a
+particular input.
+
+**A flight is a diagonal and the apex is 14 px.** In `esw` -- distance along the
+flight from its head -- the bottom tread sits at height 4, and every 8 px
+further along the floor the surface steps up another 4. So an arc launched near
+the foot and heading up-flight clears treads 4, 8 and 12, and then meets the
+riser of the fourth at **16, which is above the apex and cannot be cleared**. It
+went from above the staircase to below it, which in a side view is straight
+through, and landed on the floor underneath.
+
+`try_esc` could not catch it for two reasons that are each correct about the
+ordinary case:
+
+* its jump branch only looked at `esw` 52..76 -- the three treads a 14 px apex
+  can land ON. Nothing was watching further up the flight, because nothing could
+  land there.
+* it required the arc to be **descending**. A riser is hit while still *rising*.
+
+**The fix is a surface and a latch.** The ladder now runs the whole flight, and
+the descending test is replaced by `esyp` -- "has he been above the staircase
+during this jump". Landing is then *at or below the surface, having been above
+it*, which covers both falling onto a tread and running into a riser. Its
+complement is the floor **underneath** the flight, which is walkable and always
+was: a jump taken under the stairs never gets above the surface, so `esyp` stays
+0 and it is left alone.
+
+**Descent was never the point** -- having been outside the staircase was. The old
+test was a proxy that happened to agree with the right rule everywhere except
+here.
+
+#### THE SWEEP, AND WHY IT EXECUTES THE RULE RATHER THAN COPYING IT
+
+`assets/checkjump.py` simulates **108,000 arcs**: every launch x on the screen
+carrying each flight, both flights, all four animation phases, all five frame
+deltas the pacer can produce, three jump directions and four accumulator
+phases. It fails on any arc that is strictly above the surface on one pass and
+strictly below it on the next without boarding.
+
+Two things about its construction are the transferable part:
+
+* **The staircase is modelled here; the boarding rule is executed from the
+  source.** The surface comes from `ESCRISE` and the step pitch -- ground truth,
+  and deliberately not read from `try_esc`, because `try_esc` is what is on
+  trial. The rule itself is parsed out of the `.bas` and interpreted, so it
+  cannot drift away from the game the way a re-typed copy would.
+* **An unrecognised statement is a hard error, not a skip.** When the fix
+  introduced a block `IF`, the interpreter stopped and said so rather than
+  quietly ignoring two lines -- which would have left it passing everything.
+  That is the same failure the extractor then had: it stopped at the first
+  `END IF`, which now belonged to the inner block, and silently truncated the
+  rule to its first two statements.
+
+`assets/checkjump_test.py` types out the rule that shipped the bug and asserts
+the sweep rejects it (2,352 of 108,000 arcs), then asserts the current rule
+passes. Without it the sweep's clean run would only prove it cannot see.
+
+### 0e-octies. The lift keeps its place between rounds
+
+`elvl`, `elst`, `elt` and `eldn` were set in `start_krook`, which runs at the top
+of every round **and** every life -- so the car snapped back to floor 1 with its
+doors just opening whenever anything ended. A fixture of the store teleporting
+because a Krook got away.
+
+It also made the cycle predictable in a way it is not meant to be: the player
+learned one arrival time and it was right at the start of every round. The lift
+now initialises once in `new_game` and runs across round boundaries -- wherever
+it was when the Krook was caught is where it is when the next one starts.
+
 ### 0e-septies. A hit stops the store, and nothing else
 
 Nine seconds is the heaviest thing that happens in this game and it used to
@@ -1022,6 +1094,93 @@ does. The recording shows about **415 Hz alternating with 188** for roughly 280 
 to 628: the toggle and the sweep arithmetic that came out were larger than what
 replaced them. Channel 0 now carries only the jump, and the noise channel is in
 use for the first time.
+
+#### snd_off WAS A HAND-WRITTEN LIST, AND IT WENT STALE TWICE
+
+Two sounds outlived their round, both reported from play in one sitting:
+
+* **White noise that would not stop.** A footstep still ringing when Harry was
+  caught hissed through the whole bonus tally and beyond. `snd_off` silenced
+  channels 0, 1 and 2 -- it was written when the footstep was a pair of tones on
+  channel 0, and never learned that the footstep had moved to the **noise**
+  channel. Zeroing `sot` does not help: a decay counter emits its note-off on the
+  pass it reaches zero, so assigning zero by hand skips the very write that would
+  have stopped the sound.
+* **A ding over a freshly drawn level.** The prize arpeggio's counter `spz` was
+  added after the list and never joined it, so a prize collected late in a round
+  played its remaining notes on the first pass of the next one.
+
+Both are the same defect: a routine whose correctness depends on a hand-kept
+enumeration of everything another routine can start. Nothing in `snd_off` says
+what the complete set is, so it looks finished in every state.
+
+**`assets/checksound.py` derives the set from `sfx_tick` instead.** Every channel
+`sfx_tick` writes must appear in `snd_off` as an explicit `SOUND n,0,0`, and
+every variable `sfx_tick` tests in an `IF` -- the latches and the decay counters,
+exactly the state that can make a sound on a later pass -- must be zeroed there.
+Keeping a second list inside the checker would have gone stale the same way. Run
+against the defective source first, it named both faults and a third (`swf`, the
+warble's phase) before either had been fixed by hand.
+
+#### THE BONUS TALLY IS A BLIP THAT COUNTS, NOT A BUZZ THAT RATCHETS
+
+`testsounds` **TALLY B**, chosen off the bench against the measured 2600 tick (A)
+and an accelerating variant (C). The measurement says the original's tally is
+*noise* -- and noise is what it stayed until ten of them were played in a row,
+which is the only way a tally can be judged. A run of noise bursts ratchets; it
+sounds like a mechanism being wound rather than like something being counted.
+
+**One blip per timer unit, 1,036 Hz, two frames on and two off.** It was 373 Hz
+for three frames on and two off. Two things changed and both matter over a run:
+
+* **The pitch separates it from the clock.** 373 Hz sits in the same register as
+  the timer's own low tick, so the count read as more of the thing that had just
+  run out. A fourth above it reads as arithmetic.
+* **The shorter gap makes ten of them a phrase.** At five frames a unit a
+  fifty-unit capture is four seconds of evenly spaced beeps, which is a queue.
+  Four frames is quick enough that the run has a shape.
+
+**AND IT ENDS ON ITS LAST BLIP** -- the bench carries this as **TALLY H**, which
+is B with the final step deleted and nothing put in its place. There is no closing
+accent, and getting to
+that took two rejected attempts and one wrong diagnosis.
+
+The reasoning for an accent is sound on paper: ten identical blips that simply
+stop leave the player waiting for an eleventh, so the count should resolve. The
+bench's own ending for B rose a fourth, to 2,542 Hz, and was rejected as a shriek
+-- the same fault the pickup was rewritten for. **The diagnosis was the pitch**,
+so it was moved an OCTAVE BELOW the ticks, to 518 Hz.
+
+**That was rejected in exactly the same words**, and it cannot be too high by any
+measure: 518 Hz is the lowest note anywhere in the effect. The report that settled
+it was *"if it plays over and over it's fine, but as it finishes there's that
+sound"* -- the objection was never to a frequency, it was to **there being an
+extra note at all**.
+
+A tally is arithmetic, and arithmetic finishes when the last term is added. A
+flourish after it is a second event the player has to interpret, arriving exactly
+when there is nothing left to say -- and the HUD has already shown the clock
+empty. The count stops when the counting stops.
+
+**The transferable part is the diagnosis, not the note.** A complaint that names a
+property ("it's high pitched") is a description of the symptom, and the obvious
+reading -- change that property -- was tried and failed. Moving the note to the
+opposite extreme and getting the identical complaint is what proved the property
+was not the subject. If a fix that inverts the named cause changes nothing, the
+named cause was not the cause.
+
+**Channel 2 stays**, though the bench plays B on channel 0. The effect table uses
+channel 2 for the upper voice of a two-note effect, so a tick here cannot cancel a
+sustained tone on channel 1 (CLAUDE.md §3A: two `SOUND`s on one channel back to
+back just cancel the first). The bench has nothing else running and can use
+whatever channel it likes -- **a variant's channel is a property of the bench, not
+of the sound**, and porting one across means keeping the game's own allocation.
+
+**The bench's divisor byte is multiplied by four** before it reaches `SOUND`
+(`play_fx` doubles it twice, because a plain CVBasic variable is 8-bit and a real
+divisor does not fit). So B's `27` is divisor **108** and its accent's `11` is
+**44**. Reading the table as literal divisors would have transposed the whole
+effect four octaves up.
 
 #### THE ANALYSIS GOT ITS OWN FIRST PASS WRONG, WHICH IS THE TRANSFERABLE PART
 
