@@ -520,6 +520,25 @@ cost a debugging session:
     `'Kelly %d px/frame'` for a constant that was px per PASS, and a `climb_by_lift`
     that summed frames and passes into one number. Both were correct when written
     and both silently stopped being so.
+- **A KEYPRESS THAT DISMISSES ONE SCREEN MUST NOT ACT IN THE NEXT, AND THIS COSTS
+  A FIX PER SCREEN.** The press is still down when the next screen starts reading,
+  so it arrives there as input nobody gave. Keystone Kapers paid for this four
+  separate times before anyone wrote it down:
+  - the cheat code's final `8` was typed into the setup page's first field;
+  - the sound bench played a variant on boot from the cart-select keypress;
+  - the title screen's own `8-3-8` was broken by spurious reads between presses;
+  - and FIRE on the title made the player JUMP on the first frame of the round.
+  - **Wait for the RELEASE, not for a different value.** An edge-triggered read is
+    not enough: the value has not changed yet, it is simply still there. The fix
+    that works everywhere is to spin until the control reads idle before the new
+    screen starts listening.
+  - **But CAP THE WAIT.** A stuck or shorted line turns "wait for release" into a
+    dead game, which is worse than the bug -- the same mistake as blocking on an
+    ALPHA LOCK check that can never clear. Give up after a second and carry on.
+  - **A latch reset in the new screen may not be enough.** Clearing the jump's
+    release flag when the round starts is obviously correct and did not fix it in
+    play; waiting for the button did. When two latches interact, stop reasoning
+    about their order and wait for the physical thing.
 - **HIDING A SPRITE *AFTER* DRAWING IT SHOWS IT, whenever the routine can span a
   vblank.** CVBasic's `SPRITE` writes a RAM mirror that the vblank ISR copies to
   VRAM, so a draw-then-hide in one pass is only invisible if no vblank falls

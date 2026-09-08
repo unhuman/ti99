@@ -498,6 +498,29 @@ boot:
 	GOSUB title_draw
 first_title:
 	GOSUB title_input
+	' LET GO OF FIRE BEFORE PLAY BEGINS.
+	'
+	' title_input returns ON the press, so the button is still down when the
+	' round starts and read_input sees it on the very first pass. jrel is
+	' supposed to absorb that -- start_krook clears it, so the latch demands a
+	' release before the first jump -- and in play it did not, reported twice.
+	' Rather than keep reasoning about the order of two latches, this waits
+	' for the thing itself: the key that said "start" is not in the buffer any
+	' more when the loop begins.
+	'
+	' CAPPED AT A SECOND, AND THAT IS THE WHOLE POINT OF THE COUNTER. A stuck
+	' or shorted fire line would otherwise hang the game on a black screen for
+	' ever, which is exactly the mistake the ALPHA LOCK check made in its first
+	' version -- refusing to start until a condition cleared that never would.
+	' A survivable input quirk must not become a dead game, so after sixty
+	' frames it gives up and plays anyway.
+	brw = 0
+btn_rel:
+	WAIT
+	brw = brw + 1
+	IF brw > 60 THEN GOTO btn_go
+	IF cont1.button THEN GOTO btn_rel
+btn_go:
 	GOSUB new_game
 	GOTO main
 
@@ -1106,6 +1129,21 @@ start_krook:
 	klst = ST_RUN
 	kjf = 0
 	kjh = 0
+	' THE FIRE THAT STARTED THE ROUND IS NOT ALSO A JUMP. jrel is the jump's
+	' release latch -- the button has to come UP between jumps -- and it was
+	' never reset when play began, so it carried its value in from whatever
+	' happened last. Press FIRE on the title with jrel left at 1 and Kelly
+	' jumps on the first frame of the round, having been told to do so by the
+	' keypress that only meant "start".
+	'
+	' It hid on the very first game of a session, because CVBasic zeroes its
+	' variables and jrel = 0 already means "wait for a release" -- so it only
+	' appeared on the SECOND round onwards, which reads as intermittent.
+	'
+	' start_krook is the one place worth doing this: new_game, losing a life
+	' and advancing a Krook all pass through here, so every entry into play
+	' demands a fresh press.
+	jrel = 0
 	kanim = 0
 
 	' HARRY STARTS ON FLOOR 2 AT THE WEST EDGE OF SCREEN 7, and that is as
@@ -3987,6 +4025,14 @@ hud_score:
 	#psv = #score
 	#psa = 6152
 	#psd = 10000
+	' BLANK THE LEADING ZEROS. 000050 reads as a six-digit number that happens
+	' to be small; 50 reads as a score. Every arcade cabinet this is imitating
+	' does the latter.
+	'
+	' All five digits may be blanked, not four: the fixed trailing zero below
+	' is always printed, so a score of nothing still shows a "0" and the field
+	' is never empty.
+	pszs = 1
 	GOSUB prt_digits
 	VPOKE #psa,48				' the fixed trailing zero
 	RETURN
@@ -3995,6 +4041,11 @@ hud_time:
 	#psv = tsec
 	#psa = 6165
 	#psd = 10
+	' THE CLOCK STAYS PADDED. A countdown is a fixed-width field the player
+	' glances at -- "05" holds its place where "5" jumps a column, and a
+	' number that moves while it falls is harder to read at speed. Only the
+	' score is suppressed.
+	pszs = 0
 	GOSUB prt_digits
 	RETURN
 
@@ -4031,6 +4082,16 @@ prt_dsub:
 	GOTO prt_dsub
 prt_dout:
 	psv2 = 48 + psn
+	' pszs: 0 = pad, 1 = still blanking leading zeros, 2 = past them. The
+	' caller sets 0 or 1 and this walks it to 2 at the first digit that
+	' matters, so a zero INSIDE the number (the 0 of 1024) still prints.
+	IF pszs = 1 THEN
+		IF psn = 0 THEN
+			psv2 = 32
+		ELSE
+			pszs = 2
+		END IF
+	END IF
 	VPOKE #psa,psv2
 	#psa = #psa + 1
 	IF #psd = 10000 THEN #psd = 1000 : GOTO prt_dloop
@@ -4117,7 +4178,17 @@ tick_flash:
 	' ======================================================================
 do_catch:
 	caught = 0
-	PRINT AT 331,"  GOT HIM!  "
+	' THE SAME BOX THE LOSSES GET. It was one line at row 10 column 11, a
+	' different width in a different place from HE GOT AWAY and TIME UP -- so
+	' the good outcome and the bad ones did not look like the same kind of
+	' announcement, and the odd one out was the one the player earns.
+	'
+	' Thirteen wide at column 10, blank dark blue above and below: every font
+	' character is black on HUD_BG, so a row of spaces is a solid bar and the
+	' frame costs two strings and no new characters (see lose_kop).
+	PRINT AT 330,"             "
+	PRINT AT 362,"  GOT HIM!   "
+	PRINT AT 394,"             "
 	GOSUB snd_off			' nothing rings on through the count
 	' THE CAST STAYS ON SCREEN FOR THE COUNT. Hiding everything first threw
 	' away the picture the player had just earned -- Kelly stood over Harry

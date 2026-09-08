@@ -815,6 +815,51 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-quinquies. The HUD, the catch box, and a keypress that leaked into play
+
+**The score drops its leading zeros.** `000050` reads as a six-digit number that
+happens to be small; `50` reads as a score. All five digits may be blanked rather
+than four, because `hud_score` always prints a fixed trailing zero -- so a score
+of nothing still shows one `0` and the field is never empty. The clock stays
+padded: a countdown is a fixed-width field you glance at, and `05` holds its
+column where `5` would jump one.
+
+The suppression is a flag on `prt_digits` so the two callers choose independently,
+and it walks to "past the leading zeros" at the first significant digit -- a zero
+*inside* the number still prints.
+
+**Yes, the score is stored in tens.** `#score` counts tens and `hud_score` appends
+the fixed `0`, so five stored digits display six. Worth knowing that the ceiling is
+the STORAGE, not the field: `#score` is 16-bit, so it caps at 65,535 tens =
+655,350 points, where the six-character field would show 999,990.
+
+**`GOT HIM!` gets the same box as the losses.** It was one line, 12 characters, at
+row 10 column 11 -- a different width in a different place from `HE GOT AWAY` and
+`TIME UP!`, so the good outcome and the bad ones did not read as the same kind of
+announcement, and the odd one out was the one the player earns.
+
+#### THE FIRE THAT STARTED THE ROUND WAS ALSO A JUMP
+
+`jrel` is the jump's release latch -- the button must come up between jumps -- and
+it was never reset when play began, so it carried its value in from whatever
+happened last. Press FIRE on the title with `jrel` left at 1 and Kelly jumps on
+the first frame, told to do so by the keypress that only meant "start".
+
+**It hid on the first game of a session.** CVBasic zeroes its variables and
+`jrel = 0` already means "wait for a release", so it appeared only from the second
+round onward -- which reads as intermittent rather than as a rule.
+
+Clearing it in `start_krook` (the one place `new_game`, losing a life and advancing
+a Krook all pass through) was the obvious fix and **was not sufficient in play**,
+twice. Rather than keep reasoning about the ordering of two latches, the boot now
+waits for the button itself to be released before `new_game` -- the key that said
+"start" is not down when the loop begins.
+
+**Capped at one second**, and that cap is the point. A stuck or shorted fire line
+would otherwise hang the game on a black screen for ever, which is exactly the
+mistake the ALPHA LOCK check made in its first version: refusing to start until a
+condition cleared that never would.
+
 ### 0e-quater. Four things found by playing it
 
 **Kelly starts mid-screen.** He was at x 224 against the east wall at 232, so a
