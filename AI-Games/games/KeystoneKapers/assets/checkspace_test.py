@@ -34,12 +34,18 @@ import checkspace as cs
 def main():
     src = cs.read(cs.BAS)
     store = cs.read(cs.STORE)
-    walk = cs.const(src, "WALKSP")
+    # THE SAME UNITS AS checkspace, AND THAT IS THE WHOLE POINT OF RE-DERIVING
+    # THEM HERE RATHER THAN IMPORTING THEM: if this file computed the window a
+    # different way it would agree with a broken checkspace. It computed it the
+    # OLD way -- the arc's length times a per-PASS speed -- and the arc is
+    # indexed by `kjf`, which advances by the frame delta, so both files were
+    # inflating every closing distance by about 2.4x together.
+    walk = cs.const(src, "KWALK64")
     hold, air = cs.jump_arc(store)
     slow = min(cs.hazard_speeds(src))
-    close = walk + slow
-    together = hold * close
-    between = air * close
+    close = (walk + slow) / 64.0            # px per frame
+    together = int(hold * close)
+    between = int(air * close) + 1
     shipped = cs.const(src, "HAZGAP")
 
     print("checkspace_test -- one jump clears both at <= %d px, landing "
@@ -68,6 +74,13 @@ def main():
     print("  the two that were played:")
     good &= check("shipped, screens 4/5/6", 70, False)
     good &= check("first fix attempt", 176, False)
+    print()
+    print("  and the one the OLD, inflated model waved through:")
+    # 48 was chosen when this arithmetic said one jump cleared both at <= 54 px.
+    # In frames it clears 21, so 48 was the dangerous middle all along: the
+    # player clears the first hazard and comes down onto the second. It was
+    # played and reported exactly that way.
+    good &= check("the 2.4x-inflated choice", 48, False)
 
     print()
     print("  and the one that is shipped now:")

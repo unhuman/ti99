@@ -815,6 +815,104 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0f-quater. Everything that moves now moves by elapsed frames
+
+Harry went to real-time pacing first (§0f-ter) and Kelly and the hazards were
+left per-pass, deliberately. Reading them to finish the job turned up **two live
+mismatches**, so this was a correctness fix rather than a tidy-up:
+
+* **Kelly's legs already ran on the frame delta while his body did not.**
+  `kanim = kanim + fdv` against `klx ± WALKSP` once per pass, so his stride
+  slipped against the ground whenever the loop was busy. The first fix had moved
+  `kanim` from passes to the frame delta, which traded one mismatch for another.
+  It is an **odometer** now -- `kanim = kanim + kspd`, pixels travelled, exactly
+  like Harry's `hanim`.
+* **The jump was frame-paced and the ball's bounce was pass-paced.**
+  `kjf = kjf + fdv` against `obp + 1` per pass. So whether a jump cleared a ball
+  depended on how busy the screen was, and the frame-by-frame property
+  `checkball.py` proves was exact only at `fdv = 1`.
+
+**One shared `pace_step`** now serves Harry, Kelly, each hazard kind and the
+bounce phase: `pacc` in and out, `psp64` in (sixty-fourths of a pixel per frame),
+`pspd` out. Harry had the only copy; folding his into it returned about 180 bytes
+and is most of what the rest cost.
+
+**Constants, all in sixty-fourths per frame:** Kelly `KWALK64 = 111`, hazards 51
+and 76 (were 2 and 3 px/pass), bounce `BOUNCE64 = 25`.
+
+#### CONVERTING A PER-PASS SPEED, USE THE BEST CASE AND NOT THE AVERAGE
+
+`KWALK64` was 102 first, which is 4 px/pass at the measured average of 23.8
+passes/s = 95.6 px/s. The average is the wrong statistic. What Kelly actually did
+depended on the screen:
+
+| screen | passes/s | old speed | now |
+|---|---|---|---|
+| light | 26 | **104 px/s** | 104 |
+| lift / escalator | 20 | 80 px/s | 104 |
+
+**A chase spends most of its time on light screens**, so matching the average cost
+him 8% exactly where it is decided -- and the crook was already per-frame, so he
+did not change and the ratio quietly dropped. Played, it read as only just
+catching him on the last screen, where the chase used to end around TIME 23.
+
+111/64 is 104.1 px/s: his best case, made constant. He is now **at least as fast
+as he ever was on any screen** rather than faster on some and slower on others,
+and the modelled margin goes 10.6 s -> 17.3 s (the old, pre-conversion model
+claimed 14.2). The corollary is general: converting a per-pass speed to real time
+is not a neutral re-expression unless the loop rate is constant, and it never is.
+
+Raising it further is available and was not taken -- 115 gives 20.0 s and 120 gives
+23.1 s, both faster than the player has ever moved, which changes the feel of
+running rather than restoring it. It also shortens hazard warning time: closing
+speed sets `checkspace`'s reaction budget, and at 111 the nearer hazard still
+gives 62 frames.
+
+**The bounce keeps its period.** Stepping the phase by `fdv` would have fixed the
+clock and wrecked the game -- a 32-phase arc dropping from ~1.35 s to ~0.55 s,
+balls 2.4× faster everywhere. 25/64 of a phase per frame is 23.4 phases a second
+against the 23.8 it ran at.
+
+**Accumulate per KIND, not per slot.** Three calls a pass serve all eight
+obstacles. Per-slot would have been up to eight calls of O(`fdv`) work every pass
+-- the positive feedback loop CLAUDE.md §3A warns about, in the routine whose whole
+job is to take the loop rate out of the game's behaviour. `obs()` went with it:
+it only ever held a copy of the kind's speed.
+
+**The escalator rides stay per-pass**, both actors', for the reason they always
+have: a rider is locked to the step animation and that clock cannot be the frame
+delta.
+
+#### AND THE GAP BETWEEN TWO HAZARDS WAS NEVER CLEARABLE
+
+`checkspace.py` multiplied the jump arc's length by a **per-pass** speed. The arc
+is indexed by `kjf`, which advances by the frame delta, so **its entries are frames
+and always were** -- every closing distance it printed was about 2.4× too large:
+
+| | old model | corrected |
+|---|---|---|
+| one jump clears both at | ≤ 54 px | **≤ 21 px** |
+| landing between needs | ≥ 168 px | **≥ 67 px** |
+
+`HAZGAP` was 48, chosen because 48 ≤ 54. Against the real numbers 48 is **the
+dangerous middle**: too far apart to clear together, too close to land between.
+That is precisely what was reported from play -- *"they seem closer together,
+making them harder to jump over"* -- the player clears the first and comes down
+onto the second.
+
+**This is not a regression from the re-pacing.** The real closing distance was
+~70 px before and ~67 px after; only the model was wrong. The gap has been
+unclearable since it was set.
+
+**And the land-between option is impossible here**, which is why it never came up:
+`WARNPX = 120` of reaction distance caps the gap at 57, and landing between needs
+67. So `HAZGAP = 20` -- one jump clears both, with 157 px of warning. Two hazards
+20 px apart read as one wide obstacle, which is the honest description of a pair
+you must jump as one.
+
+`checkspace_test.py` now rejects 70, 176 **and 48**, and pins the boundary at
+21/22.
+
 ### 0p-bis. Two hazards on a floor: there are two safe gaps and only one fits
 
 From Krook 6 a floor carries two hazards. Kelly closes on an oncoming ball at

@@ -81,7 +81,9 @@ def assign(src, var, after=None):
 bas   = read('KEYSTONE.bas')
 store = read('store.bas')
 
-WALKSP = const(bas, 'WALKSP')
+WALKSP = const(bas, 'WALKSP')           # px per PASS, the old unit -- kept
+                                       # only because comments still quote it
+KWALK64 = const(bas, 'KWALK64')        # sixty-fourths of a px per FRAME
 # A RIDE IS ESCRISE FRAMES MINUS THE ANIMATION PHASE. The rider climbs 1 px
 # a frame with the steps, from the floor to the one above, and the bottom step
 # is 4 + escp px up when he gets on -- so a ride takes 36, 35, 34 or 33 frames
@@ -138,13 +140,25 @@ EL_RIDE_UP    = 2 * ELMOVE + ELWAIT
 # unreachable. The crook arrived two thirds of a screen short of his own escape
 # and nothing in the build disagreed. A checker that can express a speed the
 # machine cannot is worse than no checker, so the ceiling is parsed here.
-mv = bas[bas.find('hacc = hacc + '):]
-DRAINS = len(re.findall(r"IF\s+hacc\s*>\s*\d+\s+THEN", mv[:400]))
-um = re.search(r"IF\s+hacc\s*>\s*(\d+)\s+THEN", mv)
-if not DRAINS or not um:
-    sys.exit('checkchase: could not read the speed accumulator -- the source '
+#
+# IT IS NOW ONE SHARED ROUTINE, `pace_step`, and every paced actor calls it --
+# Harry, Kelly, each hazard kind and the bounce phase. So the ceiling read here
+# is the ceiling for ALL of them, which is the point: one place to get wrong
+# instead of four. The parse is anchored on the routine's label rather than on
+# Harry's variable names, which is what it used to key off and what broke the
+# moment the code moved.
+mv = bas[bas.find('pace_step:'):]
+if 'pace_step:' not in bas:
+    sys.exit('checkchase: pace_step not found -- the shared accumulator has '
+             'moved or been renamed, and its ceiling is now unmodelled')
+DRAINS = len(re.findall(r"IF\s+pacc\s*>\s*\d+\s+THEN", mv[:600]))
+um = re.search(r"IF\s+pacc\s*>\s*(\d+)\s+THEN", mv)
+cm = re.search(r"IF\s+pfd\s*>\s*(\d+)\s+THEN", mv)
+if not DRAINS or not um or not cm:
+    sys.exit('checkchase: could not read the shared accumulator -- the source '
              'shape changed and the ceiling is now unmodelled')
-UNIT = int(um.group(1)) + 1             # 4 for quarters, 16 for sixteenths
+UNIT = int(um.group(1)) + 1             # 4 for quarters, 64 for sixty-fourths
+CLAMP = int(cm.group(1))                # frames of catch-up allowed in one pass
 
 # Harry's per-Krook speed, in accumulator units: a base plus `IF krk > N` steps.
 sk = bas[bas.find('start_krook:'):]
@@ -206,26 +220,42 @@ def climb(lv, world_x, px_per_step, ride=None):
 def climb_by_lift(world_x, px_per_frame):
     """Kelly's other route: run to the shaft, ride floor 1 to floor 3, then
     take floor 3's escalator to the roof. The car does not serve the roof, so
-    the last climb is on foot either way."""
-    frames = abs(ELX - world_x) / px_per_frame          # to the shaft
-    frames += EL_WAIT_WORST + EL_RIDE_UP                # wait, then ride
+    the last climb is on foot either way.
+
+    
+    RUNNING IN FRAMES, WAITING AND RIDING IN PASSES, returned separately.
+
+    They used to be added together, which was correct while Kelly walked once
+    per pass -- everything shared a unit. Now that he walks by elapsed frames
+    they cannot be summed here, and summing them anyway is exactly the units
+    error that made the original defect invisible: halving a number on both
+    sides of a comparison leaves the comparison intact, so every relative
+    assertion stays true and nothing fails.
+    """
+    walk = abs(ELX - world_x) / px_per_frame             # to the shaft
+    rides = EL_WAIT_WORST + EL_RIDE_UP                   # wait, then ride
     x = ELX
-    side = esc[2]                                       # floor 3's escalator
+    side = esc[2]                                        # floor 3's escalator
     if side > 1:
-        return None, []
+        return None, None, []
     legs = [(0, abs(ELX - world_x)), (2, abs(BOARD[side] - x))]
-    frames += abs(BOARD[side] - x) / px_per_frame + RIDE_SLOW
+    walk += abs(BOARD[side] - x) / px_per_frame
+    rides += RIDE_SLOW
     x = LAND[side]
     run = abs(ROOF_ESCAPE - x)
-    frames += run / px_per_frame
+    walk += run / px_per_frame
     legs.append((3, run))
-    return frames, legs
+    return walk, rides, legs
 
 
-# Kelly is per-pass end to end, so his walking and riding share a unit and can
-# be added before converting. Harry cannot -- see climb().
+# BOTH ACTORS ARE NOW THE SAME SHAPE: walking in real frames, riding in loop
+# passes, each converted at its own rate. Kelly used to be per-pass end to end,
+# so his two numbers could be added before converting; they cannot any more, and
+# adding them would be a units error a ratio test cannot see -- the one that made
+# the original defect invisible (see the header).
 def kelly_time(walk, rides):
-    return (walk + rides) / FPS
+    """Walking in real frames, riding in loop passes, each in its own rate."""
+    return walk / 60.0 + rides / FPS
 
 
 def harry_time(walk, rides):
@@ -235,21 +265,25 @@ def harry_time(walk, rides):
 kelly_lv = assign(sk, 'klv'); kelly_x = assign(sk, 'klsc') * 256 + assign(sk, 'klx')
 harry_lv = assign(sk, 'hlv'); harry_x = assign(sk, 'hsc')  * 256 + assign(sk, 'hx')
 
-kfwalk, kfride, kflegs = climb(kelly_lv, kelly_x, float(WALKSP))
-kfoot = kfwalk + kfride
-klift, kllegs = climb_by_lift(kelly_x, float(WALKSP))
-print('Kelly  %d px/frame, spawns lv%d x%d' % (WALKSP, kelly_lv, kelly_x))
+KWALK = KWALK64 / 64.0                  # px per frame, as the machine spends it
+kfwalk, kfride, kflegs = climb(kelly_lv, kelly_x, KWALK)
+kfoot = kelly_time(kfwalk, kfride)
+klwalk, klride, kllegs = climb_by_lift(kelly_x, KWALK)
+print('Kelly  %.2f px/frame, spawns lv%d x%d' % (KWALK, kelly_lv, kelly_x))
 print('       on foot   %s px  ->  %5.1f s'
-      % ('+'.join(str(r) for _, r in kflegs), kfoot / FPS))
-if klift is not None and kelly_lv == 0:
+      % ('+'.join(str(r) for _, r in kflegs), kfoot))
+if klwalk is not None and kelly_lv == 0:
+    klift = kelly_time(klwalk, klride)
     print('       by lift   %s px + a worst-case %.1f s wait  ->  %5.1f s'
           % ('+'.join(str(r) for _, r in kllegs),
-             (EL_WAIT_WORST + EL_RIDE_UP) / FPS, klift / FPS))
-    kf = min(kfoot, klift)
+             (EL_WAIT_WORST + EL_RIDE_UP) / FPS, klift))
+    kt = min(kfoot, klift)
     which = 'the lift' if klift < kfoot else 'on foot'
 else:
-    kf, which = kfoot, 'on foot'
-kt = kf / FPS
+    kt, which = kfoot, 'on foot'
+# ALREADY SECONDS. kelly_time converts, and this divided by FPS a second time --
+# which reported the whole climb as 2.5 s and still said the chase resolved,
+# because Kelly arriving impossibly early passes every test in this file.
 print('       best %s: %5.1f s' % (which, kt))
 print()
 

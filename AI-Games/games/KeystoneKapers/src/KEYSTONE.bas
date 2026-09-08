@@ -79,7 +79,28 @@
 	' traverse. A chase resolves on PATH / SPEED, not on speed, and the two
 	' quotients were equal, so pursuit on foot could never close. At 4 the
 	' climb is 25 s against Harry's 45, and the elevator buys back more.
-	CONST WALKSP = 4		' px per frame
+	CONST WALKSP = 4		' px per PASS -- the old unit, kept only for
+					' the checkers' arithmetic and the comments
+					' that quote it. Nothing moves by it now.
+	' SIXTY-FOURTHS OF A PIXEL PER FRAME, which is what he actually walks by.
+	'
+	' HIS OLD BEST-CASE SPEED, MADE CONSTANT -- not his old average. WALKSP was
+	' 4 px per loop PASS, so what he actually did depended on the screen: 104 px/s
+	' on a light one at 26 passes/s, 80 px/s on the lift and escalator screens at
+	' 20. Matching the MEASURED AVERAGE of 23.8 passes/s gave 95.6 px/s (102/64),
+	' which is the same average and an 8% loss on exactly the screens a chase
+	' spends most of its time crossing -- the crook was already per-frame and did
+	' not change, so the ratio that decides the chase quietly dropped. Played, it
+	' read as only just catching him on the last screen.
+	'
+	' 111/64 is 104.1 px/s: his best case, everywhere. He is now at least as fast
+	' as he ever was on any screen rather than faster on some and slower on
+	' others, and the chase margin goes from 10.6 s to 17.3 s.
+	CONST KWALK64 = 111
+	' The bounce phase, in sixty-fourths of a phase per frame. 32 phases at
+	' 25/64 per frame is 1.37 s an arc, against the 1.35 s one phase per pass
+	' gives at 23.8 passes a second.
+	CONST BOUNCE64 = 25
 	CONST XWALL = 232		' furthest left edge at the store's east wall
 	CONST XWALW = 8			' nearest left edge at the west wall
 	CONST STANDH = 24		' Kelly standing -- TWO SPRITES tall
@@ -335,7 +356,7 @@
 	' is one obstacle taken with one well-timed jump, which is also what the
 	' original's paired hazards read like. assets/checkspace.py checks all of
 	' it and checkspace_test.py proves it rejects 70 and 176 alike.
-	CONST HAZGAP = 48
+	CONST HAZGAP = 20
 	CONST ELDOOR = 15		' frames the doors spend part-open
 	CONST ELOPEN = 85		' = ELWAIT - ELDOOR, as a literal: a CONST
 					' built from other CONSTs is exactly the
@@ -433,7 +454,6 @@
 	DIM obk(8)			' kind, 0 = empty
 	DIM obx(8)			' x within the screen
 	DIM obd(8)			' 0 = moving left, 1 = right
-	DIM obs(8)			' speed
 	DIM obh(8)			' art-bottom height above the slab
 	DIM obc(8)			' cell column, radios only -- they are chars
 	DIM obp(8)			' bounce phase, balls only
@@ -1148,11 +1168,16 @@ start_krook:
 	' (48 px/s) and 1.21 (73 px/s), which at this loop's ~25 passes a second
 	' is exactly 2 and 3 px per pass. So the two speeds the original uses are
 	' the two speeds that were on screen.
-	obsp = 2			' beach balls
-	ocsp = 2			' shopping carts
-	IF krk > 6 THEN ocsp = 3
-	opsp = 2			' biplanes
-	IF krk > 7 THEN opsp = 3
+	' SIXTY-FOURTHS OF A PIXEL PER FRAME, not whole pixels per loop pass.
+	' 2 px a pass at the measured 23.8 passes a second is 47.6 px/s, which is
+	' 0.79 px a frame -- 51/64. 3 px a pass is 1.19 px a frame -- 76/64. Same
+	' speeds on screen; they simply no longer slow down on a busy screen while
+	' the round clock keeps running (DESIGN.md 0f-ter).
+	obsp = 51			' beach balls    (was 2 px/pass)
+	ocsp = 51			' shopping carts (was 2 px/pass)
+	IF krk > 6 THEN ocsp = 76	'                (was 3 px/pass)
+	opsp = 51			' biplanes       (was 2 px/pass)
+	IF krk > 7 THEN opsp = 76
 
 	' HARRY'S SPEED IS IN QUARTER PIXELS, AND IT DOES NOT RAMP. It used to be
 	' 2 px/frame against Kelly's 3, which sounds like a comfortable 1.5x --
@@ -1491,9 +1516,11 @@ load_band:
 			' cannot be got wrong by a rounding rule.
 			obc(li) = 0
 			' PER KIND, not one global speed (see start_krook).
-			obs(li) = obsp
-			IF lk = OB_CART THEN obs(li) = ocsp
-			IF lk = OB_PLANE THEN obs(li) = opsp
+			' THE SPEED IS A PROPERTY OF THE KIND, and obs() only ever
+			' held a copy of it -- set from the kind here, zeroed for a
+			' radio below, and read in one place. upd_obst derives it
+			' from obk() instead, which is 8 bytes of RAM back and one
+			' fewer thing that can disagree with itself.
 			' THEY COME FROM THE FAR SIDE. Kelly walked into this screen
 			' from one edge, so the obstacles start at the OTHER edge and
 			' run toward him. Crossing a seam then always presents an
@@ -1585,7 +1612,6 @@ load_band:
 			obht(li) = 0
 			IF lk = OB_PLANE THEN obh(li) = 16
 			IF lk = OB_RADIO THEN
-				obs(li) = 0
 				' PLACED, NOT STAGGERED. A radio does not move, so
 				' the oncoming-stream stagger the rolling hazards
 				' use says nothing about it -- it just puts a
@@ -1922,6 +1948,15 @@ move_kelly:
 		IF kjdx = 2 THEN inl = 1
 	END IF
 
+	' HIS STEP FOR THIS PASS, IN WHOLE PIXELS. Computed whether or not he is
+	' moving: the accumulator drains in the same pass it fills, so standing
+	' still banks nothing and he cannot lurch on the first pass of a walk.
+	pacc = kacc
+	psp64 = KWALK64
+	GOSUB pace_step
+	kacc = pacc
+	kspd = pspd
+
 	kmv = 0
 	IF inl = 1 THEN
 		kldir = 0
@@ -1929,13 +1964,13 @@ move_kelly:
 		IF klsc = 0 THEN
 			IF klx > XWALW THEN
 				kroom = klx - XWALW
-				IF kroom < WALKSP THEN klx = XWALW ELSE klx = klx - WALKSP
+				IF kroom < kspd THEN klx = XWALW ELSE klx = klx - kspd
 			END IF
 		ELSE
-			IF klx < WALKSP THEN
+			IF klx < kspd THEN
 				GOSUB cross_west
 			ELSE
-				klx = klx - WALKSP
+				klx = klx - kspd
 			END IF
 		END IF
 	END IF
@@ -1945,28 +1980,30 @@ move_kelly:
 		IF klsc = 7 THEN
 			IF klx < XWALL THEN
 				kroom = XWALL - klx
-				IF kroom < WALKSP THEN klx = XWALL ELSE klx = klx + WALKSP
+				IF kroom < kspd THEN klx = XWALL ELSE klx = klx + kspd
 			END IF
 		ELSE
 			kroom = 255 - klx
-			IF kroom < WALKSP THEN
+			IF kroom < kspd THEN
 				GOSUB cross_east
 			ELSE
-				klx = klx + WALKSP
+				klx = klx + kspd
 			END IF
 		END IF
 	END IF
 	IF kmv = 1 THEN
-		' BY THE FRAME DELTA, like everything else that has to keep
-		' wall-clock time. These counted PASSES, and the escalator screens
-		' cost more than one frame a pass (esc_tick rewrites the step
-		' patterns there and nowhere else) -- so on exactly those two
-		' screens his legs cycled slower and his footsteps slowed with
-		' them, while he still ran at the same speed. That reads as the
-		' whole screen being sluggish. CLAUDE.md 3A: a per-pass counter is
-		' not a clock.
-		kanim = kanim + fdv
-		sfw = sfw + fdv
+		' AN ODOMETER, NOT A CLOCK -- pixels travelled, exactly like
+		' Harry's hanim. It counted PASSES once, which made his legs cycle
+		' slower on the escalator screens while he still ran at the same
+		' speed; that was fixed by counting the frame DELTA instead, which
+		' traded one mismatch for another -- his legs then kept wall-clock
+		' time while his body still moved once per pass, so his stride
+		' slipped against the ground whenever the loop was busy.
+		'
+		' Distance settles it. A pose per 8 px at any frame rate, and a
+		' footstep is a stride rather than a tick.
+		kanim = kanim + kspd
+		sfw = sfw + kspd
 	END IF
 
 	' --- boarding an escalator happens by TOUCHING it, per the manual
@@ -2408,10 +2445,54 @@ radio_tick:
 	' OBSTACLES
 	' ======================================================================
 upd_obst:
+	' ONE ACCUMULATOR PER KIND, NOT PER SLOT. Every hazard of a kind moves at
+	' that kind's speed, so three calls a pass serve all eight slots.
+	'
+	' Per-slot would have meant up to eight calls of O(fdv) work every pass --
+	' the positive feedback loop CLAUDE.md 3A warns about, where a slow pass is
+	' made slower by the very code meant to take the loop rate out of the
+	' game's behaviour. It also saves the eight bytes an obacc() would cost,
+	' and ColecoVision RAM is the tighter budget.
+	pacc = oacb
+	psp64 = obsp
+	GOSUB pace_step
+	oacb = pacc
+	ospb = pspd
+	pacc = oacc
+	psp64 = ocsp
+	GOSUB pace_step
+	oacc = pacc
+	ospc = pspd
+	pacc = oacp
+	psp64 = opsp
+	GOSUB pace_step
+	oacp = pacc
+	ospp = pspd
+	' THE BOUNCE PHASE, ON THE SAME CLOCK AS THE JUMP AND AT ITS OLD PERIOD.
+	'
+	' The jump has always advanced by the frame delta (`kjf = kjf + fdv`) while
+	' the bounce advanced once per PASS -- so whether a jump cleared a ball
+	' depended on how busy the screen was, and the frame-by-frame property
+	' checkball.py proves was exact only at fdv = 1.
+	'
+	' Stepping the phase by fdv directly would fix the clock and wreck the
+	' game: a 32-phase arc would drop from about 1.35 s to 0.55 s, balls
+	' bouncing 2.4x faster everywhere. So it gets a fraction of its own --
+	' 25/64 of a phase per frame is 23.4 phases a second, against the 23.8 it
+	' runs at today. Same bounce, now the same clock as the thing that has to
+	' clear it.
+	pacc = obac
+	psp64 = BOUNCE64
+	GOSUB pace_step
+	obac = pacc
+	obph = pspd
 	FOR ui = 0 TO 7
 		uk = obk(ui)
 		IF uk > 0 THEN
-			us = obs(ui)
+			us = 0
+			IF uk = OB_BALL THEN us = ospb
+			IF uk = OB_CART THEN us = ospc
+			IF uk = OB_PLANE THEN us = ospp
 			IF us > 0 THEN
 				' THEY WRAP. They do not turn round at the wall.
 				' A bouncing obstacle is a pendulum: it has a near
@@ -2433,14 +2514,58 @@ upd_obst:
 			' hitbox is the middle 4 px of the 8 px art, which is
 			' what opens the three-pixel seam in DESIGN.md 5a.
 			IF uk = OB_BALL THEN
-				up = obp(ui) + 1
-				IF up > 31 THEN up = 0
+				' obph, not 1 -- and the wrap SUBTRACTS 32 rather
+				' than zeroing, because a clamped catch-up pass can
+				' advance the phase by as much as five and zeroing
+				' would quietly restart the arc from its foot.
+				up = obp(ui) + obph
+				IF up > 31 THEN up = up - 32
 				obp(ui) = up
 				#uaa = #arcb + up
 				obh(ui) = PEEK(#uaa)
 			END IF
 		END IF
 	NEXT ui
+	RETURN
+
+	' ONE STEP OF A FRACTIONAL SPEED, FOR WHOEVER IS MOVING.
+	'
+	' `pacc` in and out, `psp64` in (sixty-fourths of a pixel per FRAME),
+	' `pspd` out (whole pixels this pass). CVBasic has no locals, so the caller
+	' stages its own accumulator in and takes it back out; that costs four
+	' statements against the fourteen this used to be, written out per actor.
+	'
+	' Harry had the only copy. Kelly, the hazards and the bounce phase all need
+	' the same thing -- everything the round clock judges has to advance by
+	' ELAPSED FRAMES, or the loop rate becomes a difficulty dial and where the
+	' player stands decides the outcome (DESIGN.md 0f-ter).
+	'
+	' TWO DRAINS CAP THE STEP AT 2 PER FRAME whatever psp64 says (CLAUDE.md
+	' 3A: N drains cap the speed at N, and the surplus leaks into a byte that
+	' wraps). Every caller is under that: Kelly 102/64 = 1.6, the fastest
+	' hazard 76/64 = 1.2, Harry 57/64 = 0.9, the bounce phase 25/64 = 0.4.
+	'
+	' FIVE FRAMES, AND THREE WAS TOO FEW. At 2 px a frame five frames is 10 px,
+	' and to skip a position window an actor must start outside it on one side
+	' and land outside on the other, which needs 12. Three was the original bug
+	' in miniature: the lift screen runs at almost exactly 20 passes a second,
+	' which IS fdv = 3, so every hitch there lost a frame. The clamp exists for
+	' a genuine stall and at five it only fires for one.
+pace_step:
+	pfd = fdv
+	IF pfd > 5 THEN pfd = 5
+	pspd = 0
+	FOR pfi = 1 TO pfd
+		pacc = pacc + psp64
+		IF pacc > 63 THEN
+			pspd = pspd + 1
+			pacc = pacc - 64
+		END IF
+		IF pacc > 63 THEN
+			pspd = pspd + 1
+			pacc = pacc - 64
+		END IF
+	NEXT pfi
 	RETURN
 
 	' ======================================================================
@@ -2663,18 +2788,10 @@ move_harry:
 	'             it himself -- so Harry over ~18 px could pass through the Kop
 	'             between two passes without either sample being inside it.
 	'
-	' FIVE FRAMES, AND THREE WAS TOO FEW. With two drains he moves at most 2 px
-	' a frame, so five frames is 10 px -- and to skip the window he would have
-	' to start outside it on one side and land outside it on the other, which
-	' needs a step of 12. Ten is safe with a pixel to spare, and 10 + 4 = 14
-	' against a 23-wide catch band.
-	'
-	' It was three, and three was the same bug in miniature. The lift screen
-	' runs at almost exactly 20 passes a second, which IS fdv = 3, so every
-	' momentary hitch there pushed past the clamp and he lost that frame --
-	' measured as TIME 02 left on the lift screen against TIME 04 on a light
-	' one, where before the real-time change it had been 00 against 09. The
-	' clamp only exists for a genuine stall, and at five it only fires there.
+	' The clamp and the drains live in pace_step now, with the reasoning; the
+	' numbers above are what sized them. Measured: TIME 02 on the lift screen
+	' against TIME 04 on a light one when the clamp was 3, and 00 against 09
+	' before any of this.
 	'
 	' The ESCALATOR RIDE is deliberately untouched: it returns above this,
 	' clocked one step per pass to stay locked to the moving staircase. A rider
@@ -2685,20 +2802,11 @@ move_harry:
 	' `hanim` still advances by hspd and is still an ODOMETER -- pixels
 	' travelled, not time -- so the run cycle stays locked to the ground at any
 	' rate. A 9 px step moves it exactly one pose of its 8 px beat.
-	hfd = fdv
-	IF hfd > 5 THEN hfd = 5
-	hspd = 0
-	FOR hfi = 1 TO hfd
-		hacc = hacc + hsp64
-		IF hacc > 63 THEN
-			hspd = hspd + 1
-			hacc = hacc - 64
-		END IF
-		IF hacc > 63 THEN
-			hspd = hspd + 1
-			hacc = hacc - 64
-		END IF
-	NEXT hfi
+	pacc = hacc
+	psp64 = hsp64
+	GOSUB pace_step
+	hacc = pacc
+	hspd = pspd
 
 	IF hmv = 1 THEN
 		hdir = 1
@@ -3072,8 +3180,15 @@ draw_actors:
 		' Harry runs 1.75, so eight frames a pose is 14. Matching the two
 		' rates to the two speeds is what keeps both looking like running.
 		kq = P_KLEG1
-		IF kanim AND 4 THEN kq = kq + 4
-		IF kanim AND 8 THEN kq = kq + 8
+		' BITS 3 AND 4, NOT 2 AND 3 -- A POSE EVERY 8 PIXELS, which is
+		' Harry's beat (hanim AND 8 / AND 16) and now means the same thing,
+		' because both counters hold pixels travelled. On the old 4-count
+		' beat an odometer would have flipped his legs every single pass at
+		' 4 px a pass, which is a blur rather than a run. checkanim reads
+		' these bits out of the source, and fails if two bands of one figure
+		' run on different ones -- so the body below moves with them.
+		IF kanim AND 8 THEN kq = kq + 4
+		IF kanim AND 16 THEN kq = kq + 8
 		' IN THE AIR HE HOLDS A POSE. Cycling the legs through a jump reads
 		' as running on nothing; the reference holds one stride for the
 		' whole arc.
@@ -3084,7 +3199,7 @@ draw_actors:
 		kp = P_KHAT
 		kf = P_KFACE
 		kb = P_KBODYB
-		IF kanim AND 4 THEN kb = P_KBODY
+		IF kanim AND 8 THEN kb = P_KBODY
 		IF kldir = 0 THEN
 			kp = kp + P_KFACING
 			kf = kf + P_KFACING

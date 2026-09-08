@@ -496,6 +496,30 @@ cost a debugging session:
   - Check the hide/reset paths too: a `FOR i = 0 TO 23` that blanks sprites
     will not cover a slot outside its range, and widening it may blank a block
     it was deliberately skipping.
+- **WHEN YOU CHANGE A UNIT, THE CHECKER THAT STILL PASSES IS THE SUSPICIOUS ONE.**
+  Keystone Kapers moved its hazards from px-per-pass to 64ths-of-a-px-per-frame,
+  which changed the constants from `2` to `51`. Every gate still passed.
+  `checkspace.py` was cheerfully printing `closing 55 px/pass` -- Kelly's 4 plus
+  the hazard's new 51 -- and passing *because* a nonsense closing speed makes
+  "one jump clears both" trivially true. **A units change should break something;
+  if nothing breaks, the checks are not reading the units.**
+  - **The deeper error it exposed had been there for months.** The file multiplied
+    the JUMP ARC's length by a PER-PASS speed, and the arc is indexed by a counter
+    that advances by the frame delta -- so its entries are frames, and every
+    closing distance came out ~2.4x too large. The hazard gap had been chosen
+    against those inflated numbers and was in the "dangerous middle" the file
+    exists to reject: too far apart to clear in one jump, too close to land
+    between. It had been reported from play and not recognised.
+  - **A checker's self-test that re-derives the model by hand will re-derive the
+    bug.** `checkspace_test.py` computed the same window the same wrong way, so
+    the two agreed perfectly. Re-deriving is still right -- importing the numbers
+    would make the test vacuous -- but the test must be re-derived from the
+    SOURCE's units, and every historical bad case kept as a case. The gap that
+    shipped is now one of them.
+  - **The tell that a unit is lying is a label.** `checkchase.py` printed
+    `'Kelly %d px/frame'` for a constant that was px per PASS, and a `climb_by_lift`
+    that summed frames and passes into one number. Both were correct when written
+    and both silently stopped being so.
 - **DUPLICATION IS FOUND BY MEASURING, NOT BY READING -- AND THE BIGGEST CLONE IS
   USUALLY INVISIBLE.** Keystone Kapers has been rescued from the ROM cap three
   times by spotting two pieces of code doing one job, every time by reading, which

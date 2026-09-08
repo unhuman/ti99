@@ -2,7 +2,7 @@
 """Two hazards on one floor must be takeable, and must not start on the player.
 
 THERE ARE ONLY TWO SAFE GAPS, AND THE SCREEN FITS ONLY ONE OF THEM. Kelly closes
-on an oncoming ball at `WALKSP + 2` = 6 px a pass, and the jump arc holds its
+on an oncoming ball at (KWALK64 + obsp)/64 px a FRAME, and the jump arc holds its
 14 px apex for 9 passes and is airborne for 28. So:
 
     gap <= 9 x 6 = 54 px    ONE JUMP CLEARS BOTH
@@ -114,27 +114,39 @@ def main():
     src = read(BAS)
     store = read(STORE)
 
-    walk = const(src, "WALKSP")
+    walk = const(src, "KWALK64")
     gap = const(src, "HAZGAP")
     hold, air = jump_arc(store)
     speeds = hazard_speeds(src)
     base, off = stagger_rule(src)
 
+    # FRAMES AND SIXTY-FOURTHS OF A PIXEL, WHICH IS WHAT THE MACHINE USES.
+    #
+    # This multiplied the arc's length by a per-PASS speed, and the arc is
+    # indexed by `kjf`, which advances by the frame delta -- so its entries are
+    # FRAMES and always were. Passes are about 2.4 frames, so every closing
+    # distance printed here came out roughly 2.4x too large, and the gap the
+    # game ships was chosen against those inflated numbers.
+    #
+    # Both sides are per-frame now: Kelly by KWALK64 and the hazards by obsp
+    # and friends, all in sixty-fourths of a pixel per frame.
+    #
     # The SLOWEST hazard is the worst case for clearing a pair together: the
     # slower it closes, the fewer pixels the apex hold covers.
     slow = min(speeds)
-    together = hold * (walk + slow)
-    between = air * (walk + slow)
+    close = (walk + slow) / 64.0            # px per frame
+    together = int(hold * close)
+    between = int(air * close) + 1
     near = SPAN - STAG0_MAX - gap
 
-    print("jump holds its apex %d passes and is airborne %d; closing %d px/pass"
-          % (hold, air, walk + slow))
+    print("jump holds its apex %d frames and is airborne %d; closing %.2f "
+          "px/frame" % (hold, air, close))
     print("  one jump clears both at   <= %3d px" % together)
     print("  landing between needs     >= %3d px" % between)
     print("  HAZGAP is %d px -- %s" % (gap, verdict(gap, together, between)
                                        or "THE DANGEROUS MIDDLE"))
-    print("  nearer hazard at entry:   >= %3d px (%.1f passes of warning)"
-          % (near, near / float(walk + slow)))
+    print("  nearer hazard at entry:   >= %3d px (%.1f frames of warning)"
+          % (near, near / close))
 
     bad = []
 
