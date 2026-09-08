@@ -42,6 +42,13 @@ CHANGES = {
     "second hazard per floor": (r"IF ls = 1 THEN\s*\n\s*IF krk < (\d+) THEN lk = 0", 6),
     "carts faster": (r"IF krk > (\d+) THEN ocsp", 7),
     "biplanes faster": (r"IF krk > (\d+) THEN opsp", 8),
+    # HOW MANY FLOORS CARRY A HAZARD AT ALL. The kind-arrival gates above turn
+    # a hazard that has not arrived into a beach ball rather than nothing, so
+    # without these two every floor was occupied from Krook 1 -- four identical
+    # balls in view at once, where the original is "merely a few". Floor 1 joins
+    # on Krook 2 and the roof on Krook 3.
+    "floor 1 occupied": (r"IF krk < (\d+) THEN\s*\n\s*IF llv = 1 THEN lk = 0", 2),
+    "roof occupied": (r"IF krk < (\d+) THEN\s*\n\s*IF llv = 3 THEN lk = 0", 3),
 }
 
 

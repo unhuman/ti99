@@ -139,6 +139,15 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/checkchase.py > /dev/null \
     || die "the chase does not resolve -- run assets/checkchase.py"
 "$TRUNCPY" ../assets/checklevels.py > /dev/null     || die "the Krook progression has drifted -- run assets/checklevels.py"
+# TWO HAZARDS ON ONE FLOOR MUST BE FAR ENOUGH APART TO LAND BETWEEN.
+# Every other check here asks about ONE hazard: checkball sweeps a single
+# ball against the jump and the crouch, checklevels pins when the second
+# one arrives. Neither can see whether a PAIR is takeable. The gap shipped
+# at 46 px west of the lift and 70 px east of it, against the 168 a jump
+# eats -- so from Krook 6 there was no screen where the two could both be
+# jumped. checkspace_test.py proves this rejects all five of those.
+"$TRUNCPY" ../assets/checkspace.py > /dev/null \
+    || die "two hazards on a floor are too close -- run assets/checkspace.py"
 "$TRUNCPY" ../assets/checkstruct.py > /dev/null \
     || die "an erase routine clears the outside wall's cap -- run assets/checkstruct.py"
 "$TRUNCPY" ../assets/checkbands.py > /dev/null \

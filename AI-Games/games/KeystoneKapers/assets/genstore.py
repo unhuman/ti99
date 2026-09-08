@@ -214,12 +214,17 @@ def t_roof(kind, scr=0):
     """kind: 'plain', 'west' (the escalator head-house), 'east' (the exit).
 
     `scr` is WHICH SCREEN this template is for, and it exists to give the city
-    parallax. The skyline is sampled two columns further along per screen, so
-    crossing a seam slides the horizon by 2 of 32 -- a 1/16 rate against the
-    foreground, slow enough to read as distance and fast enough to see in one
-    crossing. Without it the buildings are identical on all eight screens and
+    parallax. The skyline is sampled ONE column further along per screen, so
+    crossing a seam slides the horizon by 1 of 32 -- a 1/32 rate against the
+    foreground. Without it the buildings are identical on all eight screens and
     the roof reads as wallpaper: the foreground jumps a whole screen and the
     horizon does not move at all.
+
+    IT WAS TWO COLUMNS AND THAT WAS TOO MUCH TO FOLLOW. The rate has to be slow
+    enough that the eye reads the far city as the SAME city seen from further
+    along -- at two columns a crossing changed enough of the silhouette that
+    the continuity broke and it read as a different skyline rather than a moved
+    one. Distance is sold by moving very little, not by moving visibly.
 
     DIRECTION, because parallax sense is easy to invert and impossible to spot
     in a still: screen s+1 column c shows what screen s had at column c+2, so
@@ -282,7 +287,7 @@ def t_roof(kind, scr=0):
     ROW2 = (SKY2, BLDGL, BLDGH, BLDGW, BLDGW, BLDGW)
     t = blank(SKY0)
     for c in range(W):
-        h = SKYLINE[(c + 2 * scr) & 31]
+        h = SKYLINE[(c + scr) & 31]
         t[0][c] = ROW0[h]
         t[1][c] = ROW1[h]
         t[2][c] = ROW2[h]
@@ -381,10 +386,19 @@ INDEX = [
 ESC_SIDE = [0, 1, 0, 255]
 
 # --------------------------------------------------------------------------
-# OBSTACLES.  Three slots per band; slot 0 is always live, slot 1 arrives at
-# Krook 2 and slot 2 at Krook 4.  THREE IS THE HARD CAP and it is not a taste
-# decision: a band already carries Kelly, and the VDP shows four sprites per
-# scanline and simply drops the fifth.
+# OBSTACLES.  The table stores THREE slots per band, but only TWO are ever
+# live: load_band reads the third to keep the six-bytes-per-band stride and
+# throws it away.  Slot 0 is always live; slot 1 arrives at KROOK 6 -- the
+# original's "double radios" round.
+#
+# TWO IS THE HARD CAP and it is not a taste decision: the band already carries
+# Kelly AND, on his own floor, Harry, and the VDP shows four sprites per
+# scanline and simply drops the fifth.  Three was the original number and it
+# was sized against Kelly alone.
+#
+# (This comment said "three slots, slot 1 at Krook 2, slot 2 at Krook 4" long
+# after all three of those numbers had changed.  The authority is
+# assets/checklevels.py, which reads every threshold back out of the source.)
 #
 # Kinds: 0 none, 1 cart, 2 ball, 3 radio, 4 biplane.
 # Biplanes only fly on floors 2 and 3 and the roof -- they are the one thing
@@ -395,9 +409,16 @@ ESC_SIDE = [0, 1, 0, 255]
 # level-design bug that looks like one.
 NONE, CART, BALL, RADIO, PLANE = 0, 1, 2, 3, 4
 
-_BUSY = {  # columns that must stay clear, per template
+# Columns that must stay clear, per template. Only the escalator entries can
+# ever fire: screens 0, 3 and 7 carry no obstacles at all (see obstacles()), so
+# the elevator's and the roof's end screens are excluded before _clear_x is
+# ever consulted. The roof entries are kept for the day that changes -- and
+# they are named T_ROOF0/T_ROOF7 because the roof gained a template per screen
+# when the skyline was given parallax (DESIGN.md 13a). They said T_ROOF_W and
+# T_ROOF_E for exactly as long as it took to notice, matching nothing.
+_BUSY = {
     "T_ESC_W": (0, 8), "T_ESC_E": (23, 31), "T_ELEV": (12, 19),
-    "T_ROOF_W": (0, 5), "T_ROOF_E": (26, 31),
+    "T_ROOF0": (0, 5), "T_ROOF7": (26, 31),
 }
 
 
@@ -411,17 +432,10 @@ def _clear_x(tplname, x):
 
 def obstacles():
     """Deterministic, hand-shaped placement -- a level, not a slot machine."""
-    # per level, the palette the floor draws from
-    palette = {
-        0: [CART, BALL, RADIO],
-        1: [BALL, CART, PLANE],
-        2: [CART, PLANE, BALL],
-        # THE ROOF DOES CARRY OBSTACLES -- a cart was tracked crossing it in
-        # the reference at 0.80 px/frame (DESIGN.md 0m). Carts, though, not
-        # biplanes: a cart costs time, and the roof is where the round is
-        # decided, so the one hazard that costs a whole Kop stays off it.
-        3: [CART, NONE, CART],
-    }
+    # (A per-level `palette` dict lived here, rotating the hazard KIND by
+    # screen. It was abandoned -- see the note below on why cross-screen swaps
+    # read as objects hopping between storeys -- but the dict was left behind
+    # and sat unread for months, which is worse than either decision.)
     # WHICH HAZARD EACH FLOOR OWNS. One apiece, so a floor has an identity
     # the player can learn, and so nothing appears to change storeys when they
     # cross a screen seam. The roof gets carts -- one was tracked crossing it
@@ -496,45 +510,54 @@ def collectibles():
 # BOUNCE ARCS.  Three of them, 32 frames each -- and the apex is the ONLY thing
 # that changes with the Krook.
 #
-# THE HEIGHTS ARE 8 / 10 / 12, not the 4 / 8 / 12 they started at. The old low
-# arc was a stub: the ball barely left the floor, which looked wrong next to a
-# 2600 beach ball and gave the early game nothing to read. It was only that low
-# because the ORIGINAL jump could not reliably clear anything taller -- the arc
-# touched its apex for four frames, so a taller ball meant a frame-perfect
-# jump. Now that the jump holds 14 px for nine frames, the balls can bounce the
-# height they are supposed to.
+# THE HEIGHTS ARE 8 / 10 / 12, and the point of the first one is that it can
+# be JUMPED AT EVERY POINT OF ITS BOUNCE.
 #
-# In art-bottom pixels above the slab, with the ball's hitbox being the middle
-# 4 px of its 8 px art, Kelly standing 16 px, ducked 8 px and jumping to 14:
+# In art-bottom pixels above the slab, with the ball's hitbox the middle 4 px
+# of its 8 px art, and the SHIPPED figures -- Kelly standing 24, ducked 11,
+# jumping to 14 -- the two windows do not overlap at all:
 #
-#   jumpable   while  apex <= 8     (at 14 px of lift, a higher ball clips him)
-#   duckable   while  apex >= 6     (ducked he is 8 px tall)
-#   FREE       while  apex >= 14    -- which is why the cap is 12
+#   jumpable   while  bb <= 8
+#   duckable   while  bb >= 9
+#   FREE       never  (bb + 2 < 24 always, so standing is always a hit)
 #
-# so the three arcs land exactly on the three regimes of DESIGN.md 5a:
+# so the apex alone decides HOW MUCH of a round's bounce demands a duck:
 #
-#   apex  8   the top of the JUMP band -- jump it, and it is a real hop now
-#   apex 10   duck-only at the peak, jumpable lower down: read the phase
-#   apex 12   duck-only, and two pixels clear of becoming free
+#   apex  9   25 frames jump,  7 duck -- Krooks 1-4
+#   apex 10   19 frames jump, 13 duck -- Krooks 5-9
+#   apex 12   15 frames jump, 17 duck -- Krooks 10+
 #
-# The 6..8 overlap is what guarantees there is no height at which the ball can
-# be neither jumped nor ducked; an unavoidable hazard is not difficulty.
+# The top of every arc is a duck, and the taller the ball bounces the more of
+# its cycle that is. Ducking is in the vocabulary from the first ball.
+#
+# There is no height at which the ball can be neither jumped nor ducked, which
+# is what assets/checkball.py actually asserts (that, and that no frame is
+# clearable standing).
 def bounce_arcs():
     """The three bounce heights, and the LOWEST one is 9 for a reason.
 
-    A BALL AT THE TOP OF ITS ARC MUST NOT BE JUMPABLE. The rule the player is
-    meant to learn is "jump it low, duck it high", and at an apex of 8 the low
-    arc broke it: the hitbox is the middle four pixels of the eight-pixel art,
-    so apex 8 puts it at 10..14, and Kelly's jump apex is exactly 14. The hit
-    test is `kfh < oht`, and 14 < 14 is false -- he sailed over it by a single
-    pixel of arithmetic, which taught the wrong lesson on the one arc a new
-    player meets first.
+    A BALL AT THE TOP OF ITS ARC MUST NOT BE JUMPABLE, on every arc including
+    the first. The rule the player is meant to learn is "jump it low, duck it
+    high", and it is meant to be learnable from the opening screen -- what
+    changes with the Krook is how MUCH of the bounce is duck-only, because the
+    ball bounces higher, not whether ducking exists at all.
 
-    Nine puts the band at 11..15 and 14 < 15 is true, so the top of every arc
-    is a duck. It still clears the crouch: DUCKH is 11 and the test is
-    `ohb < ktop`, so 11 < 11 is false and ducking passes under it. Both ends
-    of that are one pixel wide, which is why assets/checkball.py sweeps every
-    crouch height against every apex rather than trusting the arithmetic here.
+    At apex 9 the hitbox sits at 11..15 against a jump apex of exactly 14. The
+    hit test is `kfh < oht` and 14 < 15 is true, so the top of the arc is a
+    duck. It still clears the crouch: DUCKH is 11 and the test is `ohb < ktop`,
+    so 11 < 11 is false and ducking passes under it.
+
+    EIGHT WAS TRIED AND REJECTED. It puts the band at 10..14, and 14 < 14 is
+    false, so the jump clears it by a single pixel of arithmetic and the low
+    arc becomes jumpable on all 32 frames. The published guides do read that
+    way -- level 5 is where "the balls start to bounce higher" -- but the call
+    here is that the duck should be in the vocabulary from the first ball and
+    that later rounds get MORE of it, not the first sight of it. Reverted at
+    the reviewer's word, twice.
+
+    Both ends of this are one pixel wide, which is why assets/checkball.py
+    sweeps every crouch height against every apex rather than trusting the
+    arithmetic here.
     """
     out = []
     for apex in (9, 10, 12):
@@ -696,10 +719,11 @@ def main():
         co = collectibles()
         ba = bounce_arcs()
         emit(fh, "stor_ob", ob,
-             "[lv*8+scr] -> 3 x (kind, x). Slot 1 from Krook 2, slot 2 from Krook 4")
+             "[lv*8+scr] -> 3 x (kind, x). Slot 1 from Krook 6; slot 2 is "
+             "never loaded -- it keeps the 6-byte stride")
         emit(fh, "stor_co", co, "[lv*8+scr] -> (kind, column). 0 = nothing here")
         emit(fh, "stor_arc", ba,
-             "3 bounce arcs x 32 frames, apex 4 / 8 / 12 -- see DESIGN.md 5a")
+             "3 bounce arcs x 32 frames, apex 8 / 10 / 12 -- see DESIGN.md 5a")
 
     live = sum(1 for i in range(0, len(ob), 2) if ob[i])
     prizes = sum(1 for i in range(0, len(co), 2) if co[i])

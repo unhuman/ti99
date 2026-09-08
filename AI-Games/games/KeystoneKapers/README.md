@@ -78,6 +78,16 @@ what a thing *is*: yellow floor lines, grey-and-black escalator slashes, a grey 
 elevator **car** (not its shaft), **Kelly black and Harry white**. Four pixel rows per level,
 one colour each, inset in a grey band the width of the screen -- as the 2600 has it.
 
+**The end of a round is one dark blue box** in the middle of the store: the reason you lost the Kop, with `GAME OVER` stacked above it when that was the last one. It no longer clears the screen, which used to make the end of the game look like the end of the program (`DESIGN.md` §0d-septies).
+
+**Harry walks by real time**, not once per loop pass -- so a busy screen cannot starve him of steps and his escape lands in the same place wherever the player happens to be standing. It used to range from failing outright on the lift screen to escaping with eighteen seconds in hand on a light one (`DESIGN.md` §0f-ter).
+
+**Harry starts at the lift** and runs at 2.25 px a pass -- the only quarter-pixel speed that lets him reach the roof inside the round (93.7 s of 100) while still losing the race to Kelly by 9.4 s. One notch slower and he can never escape; one faster and a single obstacle hit makes the round unwinnable (`DESIGN.md` §0f-bis).
+
+**Getting hit clears that floor s hazards** until you re-enter the screen -- nine seconds is penalty enough without having to walk back out through them. Radios stay: they are characters on the shelf, not sprites.
+
+**Level 1 is deliberately sparse**: two of the four floors carry a hazard, three from Krook 2, all four from Krook 3. Krook 5 is where the balls bounce higher and more of each bounce has to be ducked, and Krook 6 the first round with two hazards on a floor — spaced `HAZGAP` = 48 px, which is inside the window where **one jump clears both** (`DESIGN.md` §0p, §0p-bis).
+
 The score line sits two columns in from the edge on **dark blue**, with the reserve-Kop hats one column in (five of them — six would wrap off the row). The lift takes **two seconds** between floors.
 
 The roof is **grey buildings against a sunset** -- light blue at the top, then magenta, red, light red and yellow down to the skyline, with a black deck line and black beneath it. A vertical gradient is free on this VDP (it colours one 8x1 scan line at a time), but it costs **row variants**: a character cannot know which row it was placed in, so the sky and the partial buildings come in one per roof row (`DESIGN.md` §0d-quater).

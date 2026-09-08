@@ -32,8 +32,15 @@ SRC  = os.path.join(HERE, '..', 'src')
 MARGIN = 8.0    # seconds of slack Kelly must have on Harry's whole climb.
                 # One beach ball costs 9 s, so anything under this means a
                 # single mistake makes the round unwinnable.
-# PASSES PER SECOND, NOT FRAMES. Everything that moves is advanced once per
-# LOOP PASS -- `klx = klx + WALKSP`, `hx = hx + hspd` -- and the loop does not
+# PASSES PER SECOND, NOT FRAMES -- for everything still paced that way.
+#
+# HARRY IS THE EXCEPTION NOW: he walks by the frame delta, so his stride is in
+# real frames and does not depend on this figure at all. That is the whole point
+# of the change -- the loop rate varies 20-26 by screen, and while he was paced
+# per pass it silently decided whether he escaped (DESIGN.md 0f-ter). His
+# escalator rides are still passes, and climb() keeps the two apart.
+#
+# Kelly is still per pass -- `klx = klx + WALKSP` -- and the loop does not
 # run at 60 Hz. It was measured in play at 24-26 passes a second on ordinary
 # screens and 20 on the west one (two escalator flights), so 25 is the honest
 # figure and the west screen is the pessimistic one.
@@ -117,13 +124,35 @@ ELX    = ELSCR * 256 + (const(bas, 'ELXL') + const(bas, 'ELXR')) // 2
 EL_WAIT_WORST = 4 * ELMOVE + 4 * ELWAIT
 EL_RIDE_UP    = 2 * ELMOVE + ELWAIT
 
-# Harry's per-Krook speed, in quarter pixels: a base plus `IF krk > N THEN` steps.
+# THE ACCUMULATOR'S CEILING, READ OUT OF THE SOURCE RATHER THAN ASSUMED.
+#
+# Harry's speed is a fraction spent as whole pixels: `hacc = hacc + hsp64`, then
+# a run of `IF hacc > N THEN hspd = k : hacc = hacc - (N+1)` drain steps. EACH
+# DRAIN CAN SPEND ONE WHOLE PIXEL, so the number of them is a hard cap on his
+# speed no matter what the constant says.
+#
+# This file used to compute `hspd = sp4 / 4.0` and model whatever it was given.
+# When the constant was set to 9 quarter-pixels against a two-drain accumulator,
+# the runtime delivered a flat 2.0 px/pass and this check confidently reported
+# 2.25 -- a bracket of three candidate speeds in which two rows were physically
+# unreachable. The crook arrived two thirds of a screen short of his own escape
+# and nothing in the build disagreed. A checker that can express a speed the
+# machine cannot is worse than no checker, so the ceiling is parsed here.
+mv = bas[bas.find('hacc = hacc + '):]
+DRAINS = len(re.findall(r"IF\s+hacc\s*>\s*\d+\s+THEN", mv[:400]))
+um = re.search(r"IF\s+hacc\s*>\s*(\d+)\s+THEN", mv)
+if not DRAINS or not um:
+    sys.exit('checkchase: could not read the speed accumulator -- the source '
+             'shape changed and the ceiling is now unmodelled')
+UNIT = int(um.group(1)) + 1             # 4 for quarters, 16 for sixteenths
+
+# Harry's per-Krook speed, in accumulator units: a base plus `IF krk > N` steps.
 sk = bas[bas.find('start_krook:'):]
-base = re.search(r"^\s*hsp4\s*=\s*(\d+)", sk, re.M)
+base = re.search(r"^\s*hsp64\s*=\s*(\d+)", sk, re.M)
 if not base:
-    sys.exit('checkchase: hsp4 base not found in start_krook')
+    sys.exit('checkchase: hsp64 base not found in start_krook')
 bands = [(1, int(base.group(1)))]
-for m in re.finditer(r"^\s*IF\s+krk\s*>\s*(\d+)\s+THEN\s+hsp4\s*=\s*(\d+)", sk, re.M):
+for m in re.finditer(r"^\s*IF\s+krk\s*>\s*(\d+)\s+THEN\s+hsp64\s*=\s*(\d+)", sk, re.M):
     bands.append((int(m.group(1)) + 1, int(m.group(2))))
 
 # Escalator side per level: 0 = climbs west, 1 = east, 255 = none.
@@ -139,25 +168,39 @@ BOARD = {0: 0 * 256 + 32, 1: 7 * 256 + 224}
 LAND  = {0: 0 * 256 + 8,  1: 7 * 256 + 232}
 ROOF_ESCAPE = 7 * 256 + 224     # move_harry: hlv=3 -> htsc 7, htx 224
 
-def climb(lv, world_x, px_per_frame, ride=None):
-    """Frames for an actor starting on level `lv` at `world_x` to reach the roof
-    escape edge, running every leg end to end and riding each escalator."""
+def climb(lv, world_x, px_per_step, ride=None):
+    """Reach the roof escape edge: running every leg end to end, riding each
+    escalator.
+
+    RETURNS WALKING AND RIDING SEPARATELY, BECAUSE THEY ARE NO LONGER IN THE
+    SAME UNIT. Kelly is paced per loop PASS throughout, so both of his numbers
+    are passes. Harry now walks by the frame DELTA -- one accumulate per elapsed
+    frame -- so his walking is in FRAMES, while his escalator rides stay per
+    pass, locked to the moving staircase (DESIGN.md 0f: a rider stepped by the
+    delta drifts off the treads or makes the steps run backwards).
+
+    Adding the two together and dividing by one rate, as this did, is exactly
+    the units error CLAUDE.md warns about -- and it is invisible to a ratio
+    test, because halving a number on both sides of a comparison leaves the
+    comparison intact. The caller converts each in its own unit.
+    """
     if ride is None:
         ride = RIDE_SLOW
-    frames, legs = 0.0, []
+    walk, rides, legs = 0.0, 0.0, []
     while lv < 3:
         side = esc[lv]
         if side > 1:
             sys.exit('checkchase: level %d has no working escalator' % lv)
         run = abs(BOARD[side] - world_x)
-        frames += run / px_per_frame + ride
+        walk += run / px_per_step
+        rides += ride
         legs.append((lv, run))
         world_x = LAND[side]
         lv += 1
     run = abs(ROOF_ESCAPE - world_x)
-    frames += run / px_per_frame
+    walk += run / px_per_step
     legs.append((3, run))
-    return frames, legs
+    return walk, rides, legs
 
 
 def climb_by_lift(world_x, px_per_frame):
@@ -178,10 +221,22 @@ def climb_by_lift(world_x, px_per_frame):
     legs.append((3, run))
     return frames, legs
 
+
+# Kelly is per-pass end to end, so his walking and riding share a unit and can
+# be added before converting. Harry cannot -- see climb().
+def kelly_time(walk, rides):
+    return (walk + rides) / FPS
+
+
+def harry_time(walk, rides):
+    """Walking in real frames, riding in loop passes, each in its own rate."""
+    return walk / 60.0 + rides / FPS
+
 kelly_lv = assign(sk, 'klv'); kelly_x = assign(sk, 'klsc') * 256 + assign(sk, 'klx')
 harry_lv = assign(sk, 'hlv'); harry_x = assign(sk, 'hsc')  * 256 + assign(sk, 'hx')
 
-kfoot, kflegs = climb(kelly_lv, kelly_x, float(WALKSP))
+kfwalk, kfride, kflegs = climb(kelly_lv, kelly_x, float(WALKSP))
+kfoot = kfwalk + kfride
 klift, kllegs = climb_by_lift(kelly_x, float(WALKSP))
 print('Kelly  %d px/frame, spawns lv%d x%d' % (WALKSP, kelly_lv, kelly_x))
 print('       on foot   %s px  ->  %5.1f s'
@@ -199,14 +254,21 @@ print('       best %s: %5.1f s' % (which, kt))
 print()
 
 fail = []
-for i, (first, sp4) in enumerate(bands):
+for i, (first, sp16) in enumerate(bands):
     last  = bands[i + 1][0] - 1 if i + 1 < len(bands) else None
     label = 'Krooks %d-%d' % (first, last) if last else 'Krooks %d+' % first
-    hspd  = sp4 / 4.0
+    want  = sp16 / float(UNIT)
+    hspd  = min(want, DRAINS)
+    if want > DRAINS:
+        fail.append('%s: the speed says %.4f px/pass but the accumulator has '
+                    'only %d drain steps, so the crook can never exceed %d. '
+                    'Add a drain or lower the constant -- as written he runs '
+                    'at %d and every number below is fiction.'
+                    % (label, want, DRAINS, DRAINS, DRAINS))
     # the quarry gets the FAST ride and Kelly the slow one, so the margin
     # reported is the worst case rather than the average
-    hf, hlegs = climb(harry_lv, harry_x, hspd, RIDE_FAST)
-    ht = hf / FPS
+    hwalk, hride, hlegs = climb(harry_lv, harry_x, hspd, RIDE_FAST)
+    ht = harry_time(hwalk, hride)
     margin = ht - kt
     print('%-14s Harry %.2f px/frame, route %s px' %
           (label, hspd, '+'.join(str(r) for _, r in hlegs)))

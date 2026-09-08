@@ -280,6 +280,84 @@ cost a debugging session:
     exemption lists the band by name with its reason, still MEASURES it, and
     still prints its 4 px on every build; only the failure is suppressed, so the
     number moves in plain sight if the art ever gets worse.
+- **A FRACTIONAL-SPEED ACCUMULATOR IS CAPPED BY ITS NUMBER OF DRAIN STEPS, AND
+  THE CHECKER WILL NOT KNOW.** Keystone Kapers spends a quarter-pixel speed as
+  whole pixels with `hacc = hacc + hsp4` then a run of
+  `IF hacc > 3 THEN hspd = N : hacc = hacc - 4`. **Each step can spend one pixel,
+  so N steps cap the speed at N px per pass no matter what the constant says.**
+  With two steps and `hsp4 = 9` the crook ran at a flat 2.0 while every comment,
+  the design table and `checkchase.py` all said 2.25; the surplus leaked into an
+  8-bit accumulator that wrapped every 256 passes. Nothing failed -- he simply
+  arrived two thirds of a screen short of his own escape.
+  - The comment above it stated the invariant correctly (*"hacc is under 4 on
+    entry and hsp4 is at most 8, so it can never need a third"*) and was **not
+    re-read when the constant changed**. Write the invariant AND check it.
+  - **The model must parse the accumulator, not the constant.** `checkchase.py`
+    now counts the drain steps out of the source and fails on a speed they
+    cannot deliver, instead of dividing and believing the answer.
+- **THE LOOP RATE IS A DIFFICULTY DIAL, AND WHERE THE PLAYER STANDS TURNS IT.**
+  Anything paced per loop PASS moves slower in real time on a busy screen, while
+  anything paced by the frame DELTA -- a countdown clock, typically -- does not.
+  In Keystone Kapers the crook is per-pass and the round timer is per-frame, so
+  the same uninterrupted escape finished with **TIME 09 in hand from a light
+  screen and TIME 00 from the lift screen**. Measured, not inferred: a pass
+  counter gave 2,335 passes over ~98 s (23.8/s) against the model's assumed 25.
+  Raising the quarry's speed papers over it. **The fix is to pace the actor off
+  the same clock as the thing that judges it** -- in Keystone Kapers the crook now
+  accumulates once per elapsed FRAME rather than once per pass, and the spread
+  collapsed from 00-vs-09 timer units to 04-vs-04.
+  - **A per-frame accumulator wants a FINER unit and FEWER drain steps.** His
+    step drops under a pixel a frame, so two drains suffice where three were
+    needed per pass -- and the finer unit is what makes the speed tunable: in
+    sixteenths one notch was six seconds of his route, in sixty-fourths one and
+    a half.
+  - **CLAMP THE PER-PASS STEP, AND NOT TOO TIGHTLY.** Position tests sample once
+    a pass and do not interpolate, so a big step can jump an arrival window or
+    pass through a catch radius. But clamping at 3 frames re-created the original
+    bug in miniature, because the slowest screen *is* 3 frames a pass: every
+    hitch there lost a frame. Size the clamp off the narrowest window, not off
+    the typical delta.
+  - **WHEN A TIMING IS TUNED AGAINST A MODEL YOU DO NOT FULLY TRUST, ASK WHICH
+    DIRECTION IS SURVIVABLE.** Keystone Kapers' checker reads seven seconds
+    optimistic against measured play, and the crook was left arriving about eight
+    seconds early rather than shaved to the buzzer. The errors are not symmetric:
+    early costs a little tension, late means he **never escapes at all**, which
+    deletes one of the two ways to lose a round -- silently, because the game
+    still runs perfectly well without it. Spend the margin on the side where
+    being wrong is cheap, and record it as a decision so it does not read as an
+    unfinished tuning job.
+  - **A rider on a cyclic animation stays on the animation's clock** -- it cannot
+    move to the frame delta without drifting off or aliasing. Mixing the two
+    within one actor is correct, and the model has to count them in their own
+    units (adding passes to frames and dividing by one rate is a units error a
+    ratio test cannot see).
+- **A DEBUG READOUT THAT COSTS ANYTHING WILL MEASURE ITSELF.** Five digit-print
+  calls per pass dropped the measured rate from 24 to 21 -- the instrument was
+  three passes a second of the thing it was reporting. Print once a second, not
+  once a pass. Two more traps in the same fifty lines: computing the answer on
+  the machine (a route length in pixels) was **150 bytes over the cart cap** when
+  reporting the raw position and doing the arithmetic offline was free; and
+  holding `FRAME` in a plain variable wrapped at 256 and reported 1 pass a second
+  (`bigvar.py` catches a literal over 255, not a variable handed one at runtime).
+- **A PROPERTY OF A PAIR IS INVISIBLE TO EVERY CHECK WRITTEN ABOUT ONE OF THEM.**
+  Keystone Kapers gates each hazard hard -- checkball.py sweeps a single ball
+  against the jump and the crouch frame by frame, checklevels.py pins the round
+  each hazard arrives on. Both were right, and from the round where a floor
+  starts carrying TWO hazards the pair was unclearable on every screen: the gap
+  was 46 px on one side of the lift and 70 on the other, against the 168 px of
+  closing distance one jump consumes, so the player cleared the first and came
+  down onto the second. Neither check could see it, because neither asks a
+  question about two objects.
+  - **The asymmetry is what gets REPORTED, and it is not the fault.** It
+    surfaced as "on the left and right of the elevator they seem closer
+    together" -- true, and a distraction: both sides were already below the
+    floor. The difference was two placement bytes; the defect was that the
+    spacing had never been derived from anything.
+  - Derive the spacing from the mechanic that must fit through it (here the
+    jump s airborne frames times the closing speed), name it, and check it.
+    games/KeystoneKapers/assets/checkspace.py does, and REPORTS rather than
+    fails on the one case the screen cannot satisfy -- a check that demands the
+    impossible is a check somebody deletes.
 - **ANCHOR A GENERATED-ART EDIT ON THE THING'S NAME, NEVER ON ITS COLOUR OR
   ITS BYTES.** Two edits meant for one character in Keystone Kapers' art table
   matched on `""", WHITE, GRAY),` instead, which four characters shared. Both

@@ -383,6 +383,226 @@ see it — `checklayout.py` checks each write for overflow and collision, and tw
 writes of the same string at different columns collide with *nothing*. Grep for
 the literal, not just for the routine that owns it.
 
+### 0d-septies. One box for the end of a round, and GAME OVER stacks on top of it
+
+Losing a Kop and losing the *last* Kop used to be two unrelated presentations: a
+single line of text on the playfield for the reason, then -- if that was the last
+one -- a `CLS` and two words on an empty field. Clearing the screen made the end
+of the game look like the end of the *program*, and the two messages never
+appeared together, so the player who ran out of time on their last life was told
+only one of the two things that had just happened.
+
+Both are now one box, drawn in the middle of the store:
+
+```
+row  8   [                ]      <- only when it is the last Kop
+row  9   [   GAME OVER    ]      <- only when it is the last Kop
+row 10   [                ]
+row 11   [  HE GOT AWAY   ]      <- the reason, always this row
+row 12   [                ]
+```
+
+**THE BOX IS THE FONT'S OWN BACKGROUND.** Every font character is black on
+`HUD_BG` (dark blue, §0d-sexies), so a row of *spaces* is already a solid dark
+blue bar. The frame costs two strings and no new characters, and it separates
+cleanly from the playfield because nothing else down there is that colour.
+
+**Thirteen wide, which is the longest message plus one space either side.**
+`HE GOT AWAY` and `THE BIPLANE` are both eleven. Every string is padded to
+exactly thirteen so the edges are straight, and printing at column 10 spans
+columns 10-22 -- centre 16, which is the screen's. (The old single line started
+at column 11 and sat visibly right of centre.)
+
+**The reason is always on the same row, and that is what lets one layout serve
+both cases.** Losing a Kop draws the three rows around it; losing the last one
+draws two *more on top*, so `GAME OVER` appears above the reason rather than
+replacing it. Putting the reason on a different row per case would need
+`PRINT AT` with a variable, and every other `PRINT` in the program uses a
+constant.
+
+**The reason became a CODE (`rsn`) set at the point of death and drawn later.**
+It has to be *decided* in `do_death`, before `dead`/`tout` are cleared -- reading
+those flags after clearing them made the biplane test dead code and every biplane
+death say `TIME UP` -- but it has to be *drawn* after `GAME OVER` has had its
+chance to claim the rows above. Deciding and drawing are no longer the same step.
+
+**Order matters more than it looks:** the box is drawn, *then* the pause runs,
+*then* the Kop is taken off the HUD. The pause is what makes the message
+readable; drawing after it would flash the box for one frame before the screen
+was rebuilt for the next round.
+
+### 0f-bis. Harry starts at the lift, and that set his speed
+
+He used to spawn at the west edge of screen 7, chosen because it was as far
+towards the lift as he could get **without taking the escape away**. He starts
+at the lift itself now, and the arithmetic that made screen 7 the limit is what
+decided his new speed.
+
+His route zigzags -- east along floor 2 to its escalator, west along floor 3 to
+that one, east again along the roof to the door -- so moving him west lengthens
+it three times over. From screen 3 it is **5,120 px** against the 4,208 he
+walked from screen 7. At his old 1.75 px a pass that is 105 s of a 100 s round:
+**he could never escape at all**, and one of the two loss conditions would
+quietly have stopped existing.
+
+**2.25 px a pass is the only quarter-pixel value that works**, and the bracket
+either side of it is one notch wide:
+
+| `hsp4` | px/pass | Harry escapes at | |
+|---|---|---|---|
+| 8 | 2.00 | 105.0 s | never escapes |
+| **9** | **2.25** | **93.7 s** | Kelly is there 9.4 s earlier |
+| 10 | 2.50 | 84.6 s | Kelly 0.3 s earlier -- one hit and it is unwinnable |
+
+At 10 the round is decided by whether Kelly is ever touched; at 8 there is no
+chase. This is CLAUDE.md's warning about a quarry's speed not being a difficulty
+dial, in three lines of arithmetic -- and 93.7 s of a 100 s round is as close to
+"escapes as the timer expires" as quarter-pixel speeds reach.
+
+The margin that remains is the **round's**, not the chase's: Kelly still has to
+get there first, and does, by 9.4 s -- a little over one obstacle hit.
+`assets/checkchase.py` walks both routes out of these constants and fails the
+build on either side of the bracket.
+
+### 0f-ter. The crook walks by real time, so the player's screen stops mattering
+
+**The symptom.** Identical uninterrupted rounds finished differently depending on
+where the player was standing:
+
+| where the player stood | before | after |
+|---|---|---|
+| the lift screen | **TIME 00** -- ran out of clock | **TIME 04** |
+| an escalator screen | TIME 01 | **TIME 04** |
+| a light screen | TIME 09 | TIME 04 |
+
+**The cause.** Everything that MOVES was paced per loop PASS while the CLOCK is
+paced by the frame delta, in real time. A busy screen slows the loop, so the
+crook covered less ground per real second and the clock did not slow with him.
+Instrumented, a whole round came to **2,335 passes over ~98 s = 23.8 passes a
+second** against the 25 the model assumed, and the lift and escalator screens are
+slower again (20 with two flights).
+
+**The change.** His walk accumulates once per ELAPSED FRAME rather than once per
+pass, so he covers the same ground per real second wherever anybody stands. Three
+details carry the whole risk:
+
+* **The unit went to SIXTY-FOURTHS with two drains.** Per-frame accumulation puts
+  his step under a pixel, so two drains are ample where the per-pass version
+  needed three -- and the finer unit is what makes the speed tunable at all. In
+  sixteenths one notch was about **six seconds** of his route; in sixty-fourths it
+  is about one and a half.
+* **The step is clamped to five frames' worth.** Two tests sample his position
+  once a pass and neither interpolates: arrival is an eleven-pixel window
+  (`hdx < 6`) and the catch is a 23-wide band (`hdd < CATCHR`). Five frames is
+  10 px, and skipping the window needs 12. **Three was too few** -- the lift
+  screen runs at almost exactly 20 passes a second, which *is* `fdv = 3`, so
+  every hitch there pushed past the clamp and he lost that frame. That produced
+  the intermediate reading of TIME 02 against TIME 04, which is the same bug in
+  miniature.
+* **The escalator ride is deliberately untouched.** It returns before the walk
+  code, still one step per pass, locked to the moving staircase -- a rider
+  advanced by the delta either drifts off the treads or makes the steps run
+  backwards (§0f, CLAUDE.md S3A). It is ~3% of his journey.
+
+`hanim` needed nothing: it is an odometer, advancing by pixels travelled rather
+than by time, so the run cycle stays locked to the ground at any rate.
+
+**Kelly was deliberately left per-pass**, on the reviewer's call, so on a busy
+screen he is still slightly slower than the crook. Verified as acceptable by a
+full chase run: the crook was caught at the top-floor escalator with 23 timer
+units still on the clock.
+
+#### EARLY IS THE SAFE SIDE TO BE WRONG ON, AND THAT SETTLES THE LAST FEW SECONDS
+
+`checkchase.py` says he escapes at **98.5 s**; measured play says about **91**
+(TIME 04 of a 50-unit, ~2 s-per-unit clock). It is consistent across runs and
+across screens, so something in the model is wrong -- most likely what it charges
+for the two escalator rides, or the exact point the escape triggers.
+
+**The speed was NOT shaved to close it, and that is a decision rather than a
+loose end.** THE TWO ERRORS ARE NOT SYMMETRIC. A crook who arrives a few seconds
+early costs a little tension. A crook who arrives a few seconds late **never
+escapes at all**, which deletes one of the two ways to lose a round and does it
+silently -- the game still works, it just quietly stops being able to end that
+way. Trimming six seconds to reach the buzzer, using a model that disagrees with
+the machine by more than six, is a bet with that on the downside.
+
+So TIME 04 stands: he escapes with about eight seconds in hand, from every
+screen. The seven-second gap between the model and the machine is still worth
+finding -- most likely what the model charges for the two escalator rides, or the
+exact point the escape triggers -- but it is an accuracy problem in the checker,
+not a fault in the game.
+
+### 0p-ter. A hit clears the floor, until you re-enter the screen
+
+Nine seconds is a heavy penalty on a fifty-unit clock, and taking it while still
+standing among the things that charged it is how one mistake becomes three --
+especially with a second hazard 48 px behind the first. So a hit **zeroes that
+band s sprite hazards**, and they stay gone until the screen is re-entered.
+
+**It costs no state and no timer.** load_band repopulates a band from the
+template, and it runs only on a seam crossing or a round start, so "until the
+screen is re-entered" is already the natural lifetime of the thing being
+cleared. Leave, come back, and the hazards are simply placed again.
+
+**Radios are exempt**, for the same reason they are exempt from the crook s-floor
+rule: they are CHARACTERS stamped into the name table rather than sprites, so
+zeroing the kind would stop them colliding while leaving them plainly visible on
+the shelf. A fixture that is still there has to still be there.
+
+This is separate from obht(), which stays. That is a per-OBSTACLE refractory
+that stops one object charging twice without an intervening clear frame -- it is
+what makes a bouncing ball you are standing under cost nine seconds once rather
+than once per bounce. The row clear is a per-FLOOR mercy after the penalty has
+already been paid; the two solve different problems and neither replaces the
+other.
+
+### 0p-bis. Two hazards on a floor: there are two safe gaps and only one fits
+
+From Krook 6 a floor carries two hazards. Kelly closes on an oncoming ball at
+`WALKSP + 2` = 6 px a pass, and the jump arc **holds its 14 px apex for 9
+passes** and is **airborne for 28**. So exactly two gaps are survivable:
+
+```
+gap <=  54 px    ONE JUMP CLEARS BOTH        (9 apex passes x 6)
+gap >= 168 px    HE CAN LAND BETWEEN THEM    (28 airborne passes x 6)
+```
+
+Anything between is **the dangerous middle** — too far apart to take together,
+too close to land between.
+
+**What shipped was a difference of two placement bytes.** The second hazard sat
+at `(lx AND 63) + 64`, giving 46 px on screens 1 and 2 and 70 px on 4, 5 and 6.
+Screens 2 and 4 flank the lift, which is how it surfaced: *"on the left and
+right of the elevator they seem closer together"*. 46 px is inside the one-jump
+window and fine; **70 px is squarely in the dangerous middle**. The asymmetry
+was the symptom; the fault was that the gap had never been derived from
+anything.
+
+**AND THE SECOND WINDOW IS NOT AVAILABLE ON THIS SCREEN.** The first fix sized
+the gap at 176 px so a jump would fit between the pair, and that made it worse.
+`stag` is distance from the **far** edge, so widening the gap moves the second
+hazard *toward* the player: at 176 px it starts about 64 px from the wall he
+walks in through. Reported immediately — *"the 2nd ball seems to be placed
+where the player is entering, and immediately the player cannot dodge"*.
+
+`HAZGAP` is **48 px**: inside the one-jump window with margin, identical on
+every screen because slot 1 is measured from slot 0's own stagger, and leaving
+the nearer hazard at least **129 px** — 21 passes — of clear ground at entry.
+The pair reads as one obstacle taken with one well-timed jump.
+
+**NO EXISTING CHECK COULD SEE ANY OF IT.** `checkball.py` sweeps a *single* ball
+against the jump and the crouch and is right about every frame; `checklevels.py`
+pins *when* the second hazard arrives and is right about that. Neither asks
+whether two hazards that are each individually fair are fair **together** — a
+property of a pair is invisible to every check written about one of them.
+
+`assets/checkspace.py` asks both halves: the gap must land in one of the two
+windows, **and** the nearer hazard must not start in the doorway — because the
+first fix satisfied the first half and failed the second.
+`checkspace_test.py` holds it to both known-bad inputs, 70 px and 176 px, which
+fail for opposite reasons.
+
 ### 0e. A character number written by hand is a bug waiting for a rename
 
 The character table is **generated and automatically de-duplicated**, so a code
@@ -1074,6 +1294,28 @@ The static placement table stays -- it still decides *where* on each floor a
 hazard sits. What is new is a gate on the way in: a hazard that has not arrived
 yet becomes a **beach ball** rather than nothing, so a floor is never empty and
 Krook 1 is exactly the "short balls" screen the guides describe.
+
+#### AND THAT SUBSTITUTION IS WHY KROOK 1 WAS TOO BUSY
+
+"A floor is never empty" plus "every floor owns a hazard" means **all four
+floors carried a ball from Krook 1** -- and all four bands are on screen at
+once, so four identical balls were in view at all times. The guides say the
+first round "starts out with **merely a few** beach balls". Four at once, on
+every populated screen, is not a few.
+
+The per-band *count* was never the problem: only one slot is live until Krook 6.
+What had no ramp was the number of **occupied floors**, and it now has one:
+
+| Krook | floors carrying a hazard |
+|---|---|
+| **1** | 2 of 4 -- floors 0 and 2 |
+| **2** | 3 of 4 -- floor 1 joins |
+| **3+** | all four -- the roof joins last |
+
+**Alternating rather than clearing the top or bottom half**, so the empty floors
+do not stack into a visibly dead region that reads as a bug rather than as a
+gentle opening. The **roof is last** because that is where the round is decided.
+`checklevels.py` pins both thresholds like every other Krook number.
 
 #### Enemy speeds, per kind, from the video
 
@@ -2378,17 +2620,40 @@ Which forces three numbers to be chosen together, not tuned independently:
 
 - **Jump apex 14 px**, against 16 px of headroom — 2 px short of the band ceiling, because an
   arc that bonks is silently truncated (`platformer-jump-headroom-ceiling`).
-- **Ducked height 8 px**, one char row.
+- **Ducked height 11 px.** (This block's arithmetic above still shows the 8 px crouch it
+  was written against, and the seam it computes from it. The crouch became 11 px when it
+  was redrawn to bend over rather than squash — see §0k — and at the shipped numbers there
+  is **no seam at all**: jumpable while `Bb <= 8`, duckable while `Bb >= 9`, an exact partition.
+  §6c has the current account, and `checkball.py` reads the real constants rather than any of
+  this prose.)
 - **The ball's collision box is 4 px tall inside an 8 px sprite** — inset 2 px top and bottom,
   in the player's favour. That inset is not cosmetic generosity: `apex - duck_height = 6`, so
   a box of 6 px or more collapses the seam to nothing and a box of 8 px opens a **dead band at
   `Bb` = 7** where neither answer works. The hitbox inset *is* the seam.
 
-**Difficulty raises the apex, never the answer.** The three arcs are **9 / 10 / 12** px:
-Krook 1–3 tops out at the very top of the jump band, 4–8 goes duck-only at the peak while
-staying jumpable lower down, and 9+ sits at the cap. The ball never stops being avoidable and
-never becomes free; it stops being avoidable the *same way*, which is a dial that raises what
-the player must read rather than taking the answer away
+**Difficulty raises the apex, never the answer.** The three arcs are **9 / 10 / 12** px, and
+which of them is in play is the whole of the ball's difficulty:
+
+| Krook | apex | jumpable | duckable |
+|---|---|---|---|
+| 1–4 | 9 px | 25 of 32 frames | 7 |
+| 5–9 | 10 px | 19 | 13 |
+| 10+ | 12 px | 15 | 17 |
+
+The top of every arc is a duck, including the first, and **the taller the ball bounces the more
+of its cycle that is**. Ducking is in the vocabulary from the opening screen; what the later
+rounds add is how much of the bounce demands it.
+
+**A FULLY JUMPABLE LOW ARC WAS TRIED AND REJECTED.** At apex 8 the band is 10..14, and the hit
+test `kfh < oht` makes 14 < 14 false, so the jump clears it and the low arc becomes jumpable on
+all 32 frames. The published guides do read that way — level 5 is where "the balls start to
+bounce higher", and the advice there is "don't jump over the beach balls when they bounce high
+up". The call here went the other way, twice, and it is the reviewer's: **the duck belongs in the
+vocabulary from the first ball**, and later rounds should add more of it rather than the first
+sight of it. Recorded so it is not re-derived from the guides a third time.
+
+The ball never stops being avoidable and never becomes free; it stops being avoidable the *same
+way*, which is a dial that raises what the player must read rather than taking the answer away
 (`difficulty-dial-must-not-invert-goal`).
 
 **The low arc used to be 4 px, and that was a bug wearing a number's clothes.** A ball that
@@ -2773,10 +3038,15 @@ there gives no sense of travel: the foreground jumps a whole screen and the
 horizon does not move at all. The buildings read as wallpaper rather than as
 distance.
 
-**The change.** Shift the skyline **2 characters per screen**, opposite to the
+**The change.** Shift the skyline **1 character per screen**, opposite to the
 player — exit LEFT and the buildings shift RIGHT, exit RIGHT and they shift
-LEFT. That is a 2/32 = **1/16 parallax rate** against the foreground: slow
-enough to read as far away, fast enough to be visible on a single crossing.
+LEFT. That is a 1/32 **parallax rate** against the foreground.
+
+**It was two characters first, and two was too fast to follow.** The rate has to
+be slow enough that the eye reads the far city as the *same* city seen from
+further along; at two columns a crossing changed enough of the silhouette that
+the continuity broke, and it read as a *different* skyline rather than a moved
+one. Distance is sold by moving very little, not by moving visibly.
 
 ### What it costs
 
@@ -2797,7 +3067,7 @@ the roof band stays an ordinary `SCREEN` blit like every other band — so
 ### The implementation, as built
 
 1. `t_roof()` in `assets/genstore.py` takes the screen it is for and samples
-   `SKYLINE[(c + 2 * scr) & 31]`; `TEMPLATES` names eight roof entries,
+   `SKYLINE[(c + scr) & 31]`; `TEMPLATES` names eight roof entries,
    `T_ROOF0`..`T_ROOF7`. Screens 0 and 7 keep their head-house and exit
    furniture on top of their own offset.
 2. `KEYSTONE.bas`: `DIM #tsrc(15)` and five more `#tsrc(n)` lines; `INDEX`s
@@ -2854,7 +3124,7 @@ cheap thing was unaffordable.
 - Kelly clears an 8 px obstacle at the top of his jump, and passes under a biplane ducked, on
   every one of the four bands.
 - **Swept over every `Bb` from 0 to the 14 px cap, the beach ball is avoidable at every single
-  height** — jump below 11, duck above 7. No dead band, verified by sweep and not by playing,
+  height** — jump at `Bb <= 8`, duck at `Bb >= 9`. No dead band, verified by sweep and not by playing,
   because a one-pixel hole would present as an occasional unfair hit and never as a
   reproducible bug.
 - A high-bouncing ball on a late Krook **cannot be jumped and cannot be run under standing**.

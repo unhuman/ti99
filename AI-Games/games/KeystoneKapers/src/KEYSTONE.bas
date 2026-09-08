@@ -312,6 +312,33 @@
 	' busy. It was 45 (0.75 s), which is faster than a lift has any business
 	' being and gave the doors barely time to read as opening.
 	CONST ELMOVE = 120		' frames in transit between floors
+	' HOW FAR THE SECOND HAZARD ON A FLOOR TRAILS THE FIRST, in pixels.
+	'
+	' THERE ARE ONLY TWO SAFE ANSWERS AND THE SCREEN ONLY FITS ONE OF THEM.
+	' Kelly closes on an oncoming ball at WALKSP + 2 = 6 px a pass, so:
+	'
+	'   <= 54 px   ONE JUMP CLEARS BOTH -- the arc holds its 14 px apex for
+	'              nine passes, which is 54 px of closing distance
+	'   >= 168 px  he can LAND BETWEEN them -- the arc is airborne for 28
+	'              passes, which is 168 px
+	'
+	' Anything in between is the dangerous middle: too far to clear together,
+	' too close to land between. The gap shipped at 46 px west of the lift and
+	' 70 px east of it -- 46 is inside the first window and 70 is squarely in
+	' that middle, which is the asymmetry that got reported.
+	'
+	' The second window does not fit. `stag` is distance from the FAR edge, so
+	' a bigger gap moves the second hazard TOWARD the player: at 168 px it
+	' starts within 72 px of the wall he walks in through, and at 176 it lands
+	' essentially on top of him with no time to read it. That was tried and it
+	' is worse than the bug it replaced.
+	'
+	' So 48 -- inside the one-jump window with margin, uniform on every screen,
+	' and it leaves the nearer hazard at least 192 px away at entry. The pair
+	' is one obstacle taken with one well-timed jump, which is also what the
+	' original's paired hazards read like. assets/checkspace.py checks all of
+	' it and checkspace_test.py proves it rejects 70 and 176 alike.
+	CONST HAZGAP = 48
 	CONST ELDOOR = 15		' frames the doors spend part-open
 	CONST ELOPEN = 85		' = ELWAIT - ELDOOR, as a literal: a CONST
 					' built from other CONSTs is exactly the
@@ -922,20 +949,52 @@ start_krook:
 	'   screen 6   102.3 s    100 s   -- impossible
 	'   screen 7    96.4 s    100 s   -- 3.6 s of room
 	'
-	' His escape route ZIGZAGS -- east along floor 2 to its escalator, WEST
-	' along floor 3 to that one, then east again along the roof to the door
-	' -- so a screen further west is paid for three times over: about six
-	' seconds each, against 3.6 to spare. Starting him at the lift would
-	' mean he could never escape at all, and one of the two loss conditions
-	' would quietly stop existing.
+	' HE STARTS AT THE LIFT NOW, AND THAT COST HIM A SPEED CHANGE.
 	'
-	' WITHIN screen 7 it is nearly free -- the west edge costs 2.4 s -- so
-	' that is where he stands: as far towards the lift as he can get without
-	' taking the escape away. assets/checkchase.py holds this honest and
-	' fails the build if he cannot escape inside the round.
+	' His escape route ZIGZAGS -- east along floor 2 to its escalator, WEST
+	' along floor 3 to that one, then east again along the roof to the door.
+	' From the lift on screen 3 that is 5,120 px against the 4,208 he walked
+	' from screen 7, so at his old 1.75 px a pass he needed 105 s of a 100 s
+	' round: he could never escape at all, and one of the two loss conditions
+	' would quietly have stopped existing. This block used to say exactly that
+	' and conclude the lift was impossible. It was impossible AT THAT SPEED.
+	'
+	' AND QUARTER-PIXELS COULD NOT EXPRESS THE ANSWER. A quarter of a pixel
+	' per pass is worth about TEN SECONDS of his route, so the two candidate
+	' values straddled the buzzer with nothing in between:
+	'
+	'   2.00 px/pass   escapes at 102.4 s of a 100 s round   never escapes
+	'   2.25 px/pass   escapes at  91.0 s                    nine seconds early
+	'
+	' Worse, 2.25 was not reachable at all: the accumulator below had two
+	' drain steps and therefore a hard ceiling of 2 px a pass, so hsp4 = 9
+	' silently delivered 2.00 and he fell two thirds of a screen short of his
+	' own escape. See the accumulator comment for the full account.
+	'
+	' Sixteenths with three drains put the step at about 2.5 s instead of 10,
+	' and hsp64 = 35 (2.1875 px/pass) lands him at 96.3 s of the 100 --
+	' escaping as the timer expires, which is what was asked for.
+	'
+	' 35 AND NOT 34, AND THE DIFFERENCE IS THE PLAYER'S OWN SCREEN. Measured
+	' in play at 34: standing on an ordinary screen he escaped with one timer
+	' unit left, and standing on the ELEVATOR screen he ran out of clock --
+	' same route, same constant, decided by where the player happened to be.
+	' Everything that moves is paced per loop PASS while the clock is paced in
+	' real FRAMES, so a busy screen slows Harry in real time and the clock does
+	' not slow with him. A whole round measured 2,335 passes over about 98 s --
+	' 23.8 a second, not the 25 the model assumes -- and the heavy screens are
+	' slower again. 35 buys the margin that covers the worst of them. The
+	' underlying split is recorded in DESIGN.md 0f-ter; this constant only
+	' papers over it.
+	'
+	' The margin
+	' that remains is the ROUND's, not the chase's: Kelly still has to get
+	' there first, and does. assets/checkchase.py walks both routes out of
+	' these constants, models the drain ceiling, and fails the build if the
+	' configured speed is one the accumulator cannot deliver.
 	hlv = 1
-	hsc = 7
-	hx = 16
+	hsc = 3
+	hx = 128
 	hdir = 1
 	hst = 0
 	hsy = 0
@@ -1012,7 +1071,7 @@ start_krook:
 	' is also the only dial the manual names (`obsp` above, and the ball
 	' arcs). assets/checkchase.py checks all of this mechanically -- run it
 	' if you touch these numbers.
-	hsp4 = 7			' 1.75 px/frame, every Krook
+	hsp64 = 57			' 0.891 px per FRAME, every Krook
 	hacc = 0
 	hspd = 2
 
@@ -1262,6 +1321,34 @@ load_band:
 			IF ls = 1 THEN
 				IF krk < 6 THEN lk = 0
 			END IF
+			' AND HOW MANY FLOORS CARRY ONE AT ALL. The gates above
+			' decide what KIND a hazard is; this decides whether the
+			' floor has one.
+			'
+			' The kind-arrival rule downgrades anything that has not
+			' arrived yet to a beach ball rather than leaving the floor
+			' empty, so that a floor is never bare -- and the effect on
+			' Krook 1 was a ball on all FOUR floors of every populated
+			' screen. All four bands are on screen at once, so that is
+			' four identical balls in view at all times, which is not
+			' what "merely a few beach balls" describes.
+			'
+			' Per-band count was never the problem: only one slot is
+			' live until Krook 6. It is the number of OCCUPIED FLOORS,
+			' and it had no ramp at all.
+			'
+			' Floors 1 and 3 stay clear on Krook 1, floor 1 joins on
+			' Krook 2, and the roof on Krook 3. ALTERNATING rather than
+			' clearing the top or bottom half, so the empty floors do
+			' not stack into a visibly dead region that reads as a bug
+			' -- and the ROOF is last, because that is where the round
+			' is decided.
+			IF krk < 2 THEN
+				IF llv = 1 THEN lk = 0
+			END IF
+			IF krk < 3 THEN
+				IF llv = 3 THEN lk = 0
+			END IF
 			' NO SPRITE HAZARD ON THE FLOOR THE CROOK IS STANDING ON,
 			' AND THE DECISION IS MADE HERE -- once, as the screen is
 			' drawn, and never revisited while it is on screen.
@@ -1306,11 +1393,44 @@ load_band:
 			' always the direction the danger comes from.
 			'
 			' The table's x becomes a stagger from that edge rather than
-			' an absolute position, and the slot index spreads the three
-			' of them a screen-third apart so they arrive in sequence
-			' instead of as one wall.
+			' an absolute position, and the slot index spreads them out
+			' so they arrive in sequence instead of as one wall.
+			'
+			' THE SECOND ONE IS A FIXED DISTANCE BEHIND THE FIRST, AND
+			' THAT DISTANCE IS SET BY THE JUMP.
+			'
+			' It used to be `(lx AND 63) + 64` -- a masked byte out of
+			' the placement table plus a constant -- so the gap between
+			' the two hazards was whatever those two bytes happened to
+			' differ by. Measured across the five populated screens it
+			' came out 46, 46, 70, 70, 70 px. Screens 2 and 4 flank the
+			' elevator, so the store had a visibly tighter pair on one
+			' side of it than the other, which is exactly how it was
+			' reported from play.
+			'
+			' Both numbers are too small, which is the real fault. Kelly
+			' closes on an oncoming hazard at WALKSP + the hazard's own
+			' speed = 6 px a pass, and a jump lasts about 30 passes, so
+			' a jump eats ~120 px of closing distance. At 46 or 70 there
+			' is NO screen where he can land between the two: he clears
+			' the first and comes down on the second.
+			'
+			' HAZGAP is that distance with margin. The first hazard
+			' still lands where the table puts it, so the placement
+			' variety is unchanged; only the pairing is now a fact about
+			' the jump rather than an accident of two bytes.
+			' assets/checkspace.py measures it and fails the build.
+			' THE SECOND SLOT IS MEASURED FROM THE FIRST, not from its
+			' own table byte. Adding HAZGAP to its own `lx AND 63` would
+			' still leave the GAP varying by up to 63 px between screens
+			' -- the same fault in a politer form, and the reason the two
+			' sides of the elevator differed in the first place. Holding
+			' slot 0's stagger and adding to that makes the gap exactly
+			' HAZGAP on every screen, while slot 0 still lands wherever
+			' the table puts it, so the placement variety is untouched.
 			stag = lx AND 63
-			IF ls = 1 THEN stag = stag + 64
+			IF ls = 0 THEN stg0 = stag
+			IF ls = 1 THEN stag = stg0 + HAZGAP
 			IF ls = 2 THEN stag = stag + 128
 			IF entdir = 0 THEN
 				obd(li) = 0			' from the EAST, heading west
@@ -2287,13 +2407,28 @@ move_harry:
 		END IF
 	END IF
 
-	' THE QUARTER-PIXEL ACCUMULATOR. hx is one unsigned byte per screen (2),
-	' so there is nowhere to keep a fraction -- the fraction lives here and
-	' is spent as whole pixels. hsp4 = 6 walks 1,2,1,2 (1.5 px/frame); 7
-	' walks 1,2,2,2 over four frames (1.75); 8 is a flat 2. Two IFs, not a
-	' loop and not a divide: hacc is under 4 on entry and hsp4 is at most 8,
-	' so it can never need a third. `%` and `/` both compile to a real
-	' TMS9900 DIV (CLAUDE.md 3A) and this runs every frame.
+	' THE SIXTEENTH-PIXEL ACCUMULATOR. hx is one unsigned byte per screen
+	' (2), so there is nowhere to keep a fraction -- the fraction lives here
+	' and is spent as whole pixels. THREE IFs, not a loop and not a divide:
+	' `%` and `/` both compile to a real TMS9900 DIV (CLAUDE.md 3A) and this
+	' runs every pass.
+	'
+	' THE NUMBER OF DRAINS IS A CEILING ON THE SPEED, AND THAT IS THE WHOLE
+	' POINT OF THIS COMMENT. Each IF can spend one whole pixel, so N drains
+	' cap hspd at N px per pass NO MATTER WHAT hsp64 SAYS. The invariant is:
+	'
+	'     hacc is under 16 on entry, and hsp64 is at most 48,
+	'     so hacc is under 64 here and three drains always suffice.
+	'
+	' KEEP hsp64 <= 48. This was quarter-pixels with TWO drains and the same
+	' invariant written the same way -- "hsp4 is at most 8, so it can never
+	' need a third" -- and it was correct until somebody set hsp4 = 9 without
+	' re-reading it. The crook then ran at a flat 2.0 px/pass while every
+	' comment, the design table and assets/checkchase.py all said 2.25, and
+	' the surplus quarter leaked into hacc and wrapped the byte every 256
+	' passes. Nothing failed; he simply arrived two thirds of a screen short
+	' of his own escape. checkchase.py now counts these IFs and refuses a
+	' speed the drains cannot deliver.
 	'
 	' 7, NOT 6, AND THE REASON IS MEASURED. Tracked off the reference video
 	' (DESIGN.md 4a), the 2600's Kelly covers 0.40 screen widths a second and
@@ -2338,16 +2473,73 @@ move_harry:
 		END IF
 	END IF
 
-	hacc = hacc + hsp4
+	' HE WALKS BY REAL TIME, NOT BY LOOP PASS -- one accumulate-and-drain per
+	' ELAPSED FRAME rather than per pass. Everything that moves here used to be
+	' per pass while the CLOCK is paced by the frame delta, so a busy screen
+	' slowed Harry in real seconds and the clock did not slow with him: the
+	' same uninterrupted escape finished with nine timer units in hand from a
+	' light screen and none at all from the lift screen, decided by where the
+	' player happened to be standing. Now he covers the same ground per second
+	' wherever anybody is (DESIGN.md 0f-ter).
+	'
+	' A LOOP, NOT A MULTIPLY. `*` compiles to a real TMS9900 MPY, and reading a
+	' 16-bit variable straight after one returns the product's HIGH word
+	' (CLAUDE.md 3A). fdv is 1..3 here, so this is at most three adds.
+	'
+	' SIXTY-FOURTHS, AND ONLY TWO DRAINS -- both fall out of accumulating per
+	' FRAME instead of per pass. He covers under a pixel a frame, so two drains
+	' are ample where the per-pass version needed three; and the finer unit is
+	' what makes the speed tunable at all. In sixteenths one step was about six
+	' SECONDS of his route, so nothing landed near the buzzer; in sixty-fourths
+	' it is about one and a half. Keep hsp64 <= 128: hacc is under 64 on entry,
+	' so 64 + 128 stays inside a byte and two drains always suffice.
+	'
+	' AND THE STEP IS CLAMPED TO THREE FRAMES' WORTH, WHICH IS NOT A DETAIL.
+	' Two tests sample his position once a pass and neither interpolates:
+	'
+	'   ARRIVAL   `hdx < 6` around the escalator or the roof door -- an ELEVEN
+	'             pixel window. A step over 10 px can jump clean across it and
+	'             he never arrives at all.
+	'   THE CATCH `hdd < CATCHR` is 12, a 23-wide band, and Kelly closes 4 of
+	'             it himself -- so Harry over ~18 px could pass through the Kop
+	'             between two passes without either sample being inside it.
+	'
+	' FIVE FRAMES, AND THREE WAS TOO FEW. With two drains he moves at most 2 px
+	' a frame, so five frames is 10 px -- and to skip the window he would have
+	' to start outside it on one side and land outside it on the other, which
+	' needs a step of 12. Ten is safe with a pixel to spare, and 10 + 4 = 14
+	' against a 23-wide catch band.
+	'
+	' It was three, and three was the same bug in miniature. The lift screen
+	' runs at almost exactly 20 passes a second, which IS fdv = 3, so every
+	' momentary hitch there pushed past the clamp and he lost that frame --
+	' measured as TIME 02 left on the lift screen against TIME 04 on a light
+	' one, where before the real-time change it had been 00 against 09. The
+	' clamp only exists for a genuine stall, and at five it only fires there.
+	'
+	' The ESCALATOR RIDE is deliberately untouched: it returns above this,
+	' clocked one step per pass to stay locked to the moving staircase. A rider
+	' advanced by the frame delta either drifts off the treads or makes the
+	' steps run backwards (CLAUDE.md 3A, DESIGN.md 0f). It is about 3% of his
+	' journey.
+	'
+	' `hanim` still advances by hspd and is still an ODOMETER -- pixels
+	' travelled, not time -- so the run cycle stays locked to the ground at any
+	' rate. A 9 px step moves it exactly one pose of its 8 px beat.
+	hfd = fdv
+	IF hfd > 5 THEN hfd = 5
 	hspd = 0
-	IF hacc > 3 THEN
-		hspd = 1
-		hacc = hacc - 4
-	END IF
-	IF hacc > 3 THEN
-		hspd = 2
-		hacc = hacc - 4
-	END IF
+	FOR hfi = 1 TO hfd
+		hacc = hacc + hsp64
+		IF hacc > 63 THEN
+			hspd = hspd + 1
+			hacc = hacc - 64
+		END IF
+		IF hacc > 63 THEN
+			hspd = hspd + 1
+			hacc = hacc - 64
+		END IF
+	NEXT hfi
 
 	IF hmv = 1 THEN
 		hdir = 1
@@ -2557,6 +2749,27 @@ do_hit:
 	IF tsec > HITPEN THEN tsec = tsec - HITPEN ELSE tsec = 0
 	IF tsec = 0 THEN tout = 1
 	knock = 20
+	' THE FLOOR CLEARS WHEN YOU ARE HIT, and stays clear until you re-enter
+	' the screen. Nine seconds is a heavy penalty on a fifty-unit clock, and
+	' taking it while still standing among the things that charged it -- with
+	' a second hazard 48 px behind the first -- is how one mistake becomes
+	' three. Clearing the row makes the penalty a single event you can walk
+	' away from.
+	'
+	' NOTHING RESTORES IT HERE. load_band repopulates the band from the
+	' template, and it runs only on a seam crossing or a round start, so
+	' "until the screen is re-entered" costs no state and no timer: leave and
+	' come back and the hazards are simply placed again.
+	'
+	' RADIOS ARE EXEMPT, for the reason they are exempt from the crook's-floor
+	' rule: they are CHARACTERS stamped into the name table, not sprites, so
+	' zeroing the kind would stop them colliding while leaving them plainly
+	' visible on the shelf. A fixture that is still there has to still be
+	' there. Only the sprite hazards -- balls, carts, biplanes -- come off.
+	chb = klv + klv
+	IF obk(chb) <> OB_RADIO THEN obk(chb) = 0
+	chb = chb + 1
+	IF obk(chb) <> OB_RADIO THEN obk(chb) = 0
 	' A HIT DOES NOT END A JUMP. This used to force ST_RUN and zero the arc,
 	' which dropped him straight down out of mid-air onto whatever he happened
 	' to be over -- and since the arc is ballistic and ignores the stick once
@@ -3653,32 +3866,68 @@ bn_loop:
 
 do_escape:
 	escapd = 0
-	GOSUB hide_all
-	PRINT AT 331," HE GOT AWAY "
+	rsn = 0
 	GOTO lose_kop
 
 	' Two ways to lose a Kop here, and the message has to be read BEFORE the
 	' flags are cleared -- clearing first made the biplane test dead code and
 	' every biplane death say TIME UP.
 do_death:
-	GOSUB hide_all
-	IF dead = 1 THEN
-		PRINT AT 331," THE BIPLANE "
-	ELSE
-		PRINT AT 331,"  TIME UP!   "
-	END IF
+	rsn = 2
+	IF dead = 1 THEN rsn = 1
 	tout = 0
 	dead = 0
 lose_kop:
+	GOSUB hide_all
+	' THE MESSAGE BOX, ON THE GAME SCREEN AND NOT INSTEAD OF IT.
+	'
+	' It used to CLS before GAME OVER, so the last thing the player saw was
+	' the store being deleted and then two words on an empty field -- which
+	' reads as the program ending rather than as the game ending. The store
+	' stays; the message sits in the middle of it.
+	'
+	' THE BOX IS THE FONT'S OWN BACKGROUND. Every font character is black on
+	' HUD_BG (dark blue), so a row of SPACES is a solid dark blue bar. A blank
+	' row above and below the text is a frame for the price of two strings and
+	' no new characters, and it reads against the store because nothing else on
+	' the playfield is that colour.
+	'
+	' THIRTEEN WIDE, WHICH IS THE LONGEST MESSAGE PLUS ONE EITHER SIDE.
+	' HE GOT AWAY and THE BIPLANE are both eleven. Every string below is padded
+	' to exactly thirteen so the box has straight edges, and column 10 puts it
+	' at columns 10-22 -- centre 16, the screen's.
+	'
+	' THE REASON IS ALWAYS ON THE SAME ROW, and that is what lets one layout
+	' serve both cases. Losing a life draws three rows around it; losing the
+	' last one draws two more ON TOP, so GAME OVER appears above the reason
+	' rather than replacing it. Printing the reason at a different row for each
+	' case would need `PRINT AT` with a variable, and every other PRINT in this
+	' program uses a constant.
+	PRINT AT 330,"             "
+	IF rsn = 0 THEN PRINT AT 362," HE GOT AWAY "
+	IF rsn = 1 THEN PRINT AT 362," THE BIPLANE "
+	IF rsn = 2 THEN PRINT AT 362,"  TIME UP!   "
+	PRINT AT 394,"             "
+	' The reason is read during THIS beat, before anything else happens. It
+	' used to be printed ahead of the pause and the pause is what makes it
+	' readable, so the box has to be drawn first and the Kop taken away after.
 	GOSUB pause_beat
 	IF kops > 0 THEN kops = kops - 1
 	GOSUB hud_kops
 	IF kops = 0 THEN
-		GOSUB hide_all
-		CLS
-		PRINT AT 331,"   GAME OVER   "
+		PRINT AT 266,"             "
+		PRINT AT 298,"  GAME OVER  "
 		GOSUB pause_beat
 		GOSUB pause_beat
+		' 8-3-8 IS FORGOTTEN WHEN THE GAME ENDS. krk0 and kops0 are
+		' globals, so a starting Krook or Kop count typed on the setup
+		' screen otherwise applied to every game after it -- including one
+		' started by somebody who never saw the screen and had no way to
+		' know why they began on level 12 with two Kops. Zeroing them lets
+		' new_game's own defaults take over; typing 8-3-8 again sets them
+		' again, which is the only place they should ever come from.
+		krk0 = 0
+		kops0 = 0
 		GOTO boot
 	END IF
 	GOSUB start_krook

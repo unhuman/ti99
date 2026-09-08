@@ -100,6 +100,7 @@ SCREEN = {
     # shows the deck behind it and one crossing a shop floor shows the bar --
     # same characters, told apart by which third they are in
     "esc_deck_col": "COLR", "floor0_colour": "COLR",
+    # TEMPORARY -- see CONST DBGHUD in KEYSTONE.bas
 }
 
 # THE HUD, DECLARED. Every field on row 0 as (name, row, col, width). The
