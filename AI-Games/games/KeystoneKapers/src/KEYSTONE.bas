@@ -451,11 +451,36 @@
 	' klv 0..3 (0 = floor 1, 3 = roof), klsc 0..7, klx 0..255
 	' Harry the same. NOTHING in this program is a world coordinate.
 
-	GOSUB setup
+	' THE TITLE IS DRAWN AS SOON AS IT CAN BE, NOT WHEN EVERYTHING IS READY.
+	'
+	' Only the font is needed to put text on screen. The store characters, the
+	' store colours, the escalator deck, the radar canvas and eight sprite sets
+	' are needed by new_game -- which does not run until the player presses
+	' start -- so they have no business standing between the loader and the
+	' first thing the player sees. Moving them behind the title does not make
+	' the machine do less work; it makes all of it happen while there is
+	' something to read, which is the difference between a title that appears
+	' and a title that fills in.
+	GOSUB setup_font
+	GOSUB title_draw
+	GOSUB setup_rest
 	GOSUB init_tables
+	' ONCE PER POWER-ON, NOT ONCE PER GAME. It samples a physical latch, so the
+	' answer cannot change while the machine is on -- and re-running it was
+	' actively wrong, not merely slow: it used to sit inside the title routine,
+	' which `GOTO boot` re-enters after every game over, so a player still
+	' holding a direction when the title came back had that direction read as a
+	' stuck line and disabled for the whole next game.
+	GOSUB alock_cal
+	GOTO first_title
 
 boot:
-	GOSUB title_screen
+	' Coming back from a game over the store is still on screen, so the title
+	' has to be redrawn. First time through it is already up -- drawing it again
+	' would be harmless but would undo the point of the order above.
+	GOSUB title_draw
+first_title:
+	GOSUB title_input
 	GOSUB new_game
 	GOTO main
 
@@ -501,7 +526,7 @@ main:
 	' ======================================================================
 	' ONE-TIME SETUP
 	' ======================================================================
-setup:
+setup_font:
 	' Flicker stays OFF. CVBasic's is all-or-nothing -- it rotates all 32
 	' slots, so Kelly would strobe too, and he is the one thing the player
 	' must never lose. He is sprite 0 instead: the VDP drops the
@@ -517,9 +542,26 @@ setup:
 	#endif
 
 	DEFINE CHAR 32,59,font_bits
-	' Without this the font keeps whatever CVBasic left in the colour table,
-	' which over a green store made the HUD unreadable.
-	GOSUB font_colour
+	' Without this the font keeps whatever CVBasic left in the colour table --
+	' white on transparent -- which over a green store made the HUD unreadable.
+	'
+	' THIS WAS A VPOKE LOOP AND IT WAS THE SLOWEST THING IN THE BOOT: 1,416
+	' writes of one constant, paced by 24 WAITs, which is what made the title
+	' fill in visibly instead of appearing. DEFINE COLOR does the same job in a
+	' single call with interrupts off, and it writes all three screen thirds
+	' itself -- define_color always takes the LDIRVM3 triple-copy path, which is
+	' also why esc_deck_col and floor0_colour below CANNOT use it: they patch
+	' one third each.
+	'
+	' The table is 472 identical bytes (genfont.py emits it beside the glyphs).
+	' It reads as waste and is not: it lives in the data bank, which had 860
+	' bytes spare, while the loop it replaced cost time in the one place the
+	' player is made to wait.
+	DEFINE COLOR 32,59,font_col
+	RETURN
+
+	' EVERYTHING THE TITLE DOES NOT NEED. Runs after the title is on screen.
+setup_rest:
 	DEFINE CHAR 96,85,store_pat
 	DEFINE COLOR 96,85,store_col
 	GOSUB esc_deck_col
@@ -661,8 +703,10 @@ init_tables:
 	' Paced: a few hundred VDP writes in one frame are silently dropped.
 	' THE SCANNER'S COLOURS ARE THREE BLOCKS REPEATED SIXTEEN TIMES EACH, so
 	' the table shipped 384 bytes to say 24 bytes' worth. Same trick as the
-	' font: write the colour table directly. See font_colour for where >2000
-	' and the >800 mirror stride come from.
+	' font: write the colour table directly. >2000 is the colour table's base
+	' and >800 the stride between screen thirds -- the same layout DEFINE COLOR
+	' walks for us in setup_font, which this cannot use because it is cheaper to
+	' expand 24 bytes here than to ship 384 in the bank.
 	' NOTHING IS UNDER THE GROUND FLOOR, SO NOTHING SHOULD BE GREEN THERE.
 	' A floor bar is five pixels of yellow over three of the green air
 	' belonging to the floor BELOW it (see SLAB), which is right for three of
@@ -738,31 +782,14 @@ scan_colour:
 	NEXT sci
 	RETURN
 
-font_colour:
-	FOR fci = 0 TO 2
-		#fca = 8192
-		IF fci = 1 THEN #fca = 10240
-		IF fci = 2 THEN #fca = 12288
-		#fca = #fca + 256		' char 32, the first the font uses
-		FOR fcj = 0 TO 7
-			FOR fck = 0 TO 58
-				' BLACK ON DARK BLUE. One value, written
-				' once at boot, colours the HUD and the
-				' title screen together -- they are the
-				' same 59 characters, so there is nothing
-				' to keep in step and no second pass.
-				VPOKE #fca,20
-				#fca = #fca + 1
-			NEXT fck
-			WAIT
-		NEXT fcj
-	NEXT fci
-	RETURN
-
 	' ======================================================================
 	' TITLE
 	' ======================================================================
-title_screen:
+	' DRAWING THE TITLE AND WAITING ON IT ARE TWO ROUTINES, because the boot
+	' does something between them: the rest of setup runs while this is on
+	' screen. They used to be one, which is why the title could not be shown
+	' until everything was ready.
+title_draw:
 	GOSUB hide_all
 	CLS
 	PRINT AT 68,"KEYSTONE KAPERS"
@@ -779,6 +806,11 @@ title_screen:
 
 	PRINT AT 614,"FIRE OR 1 TO START"
 	PRINT AT 678,"2026 UNHUMAN AND CLAUDE"
+	' The NOTICE is redrawn on every title visit even though the MEASUREMENT
+	' happens once -- it is information about the machine, and the CLS above
+	' just wiped it.
+	IF vstuck > 0 THEN PRINT AT 578,"ALPHA LOCK DOWN - IGNORED"
+	RETURN
 
 	' ------------------------------------------- ALPHA LOCK, CALIBRATED
 	' On the TI, ALPHA LOCK shares a line with the joystick's VERTICAL axis.
@@ -798,20 +830,23 @@ title_screen:
 	' been given. A direction held for essentially all of them is not a player
 	' -- it is the key. Record it, say so, and then IGNORE that direction for
 	' the whole game, which makes ALPHA LOCK harmless instead of fatal.
+alock_cal:
 	alku = 0
 	alkd = 0
 	alkn = 0
-alock_cal:
+alock_loop:
 	WAIT
 	alkn = alkn + 1
 	IF cont1.up THEN alku = alku + 1
 	IF cont1.down THEN alkd = alkd + 1
-	IF alkn < 40 THEN GOTO alock_cal
+	IF alkn < 40 THEN GOTO alock_loop
 	vstuck = 0
 	IF alku > 35 THEN vstuck = 1
 	IF alkd > 35 THEN vstuck = 2
 	IF vstuck > 0 THEN PRINT AT 578,"ALPHA LOCK DOWN - IGNORED"
+	RETURN
 
+title_input:
 	tkl = 15
 title_wait:
 	WAIT
@@ -841,7 +876,7 @@ title_wait:
 	' STRAIGHT INTO THE GAME, NOT BACK TO THE TITLE. Anyone who has typed
 	' 8-3-8 and set the number of Kops has already decided to play; bouncing
 	' them back to the title to press FIRE again is a second decision nobody
-	' asked for. RETURN leaves title_screen the same way FIRE does, so the
+	' asked for. RETURN leaves title_input the same way FIRE does, so the
 	' caller runs new_game next either way.
 	IF t838 = 3 THEN t838 = 0 : GOSUB setup838 : RETURN
 	' FIRE **or** 1. On the TI, joystick fire is TAB, which is neither

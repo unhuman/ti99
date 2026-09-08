@@ -496,6 +496,42 @@ cost a debugging session:
   - Check the hide/reset paths too: a `FOR i = 0 TO 23` that blanks sprites
     will not cover a slot outside its range, and widening it may blank a block
     it was deliberately skipping.
+- **A CONSTANT COLOUR FILL BELONGS IN A TABLE, NOT IN A `VPOKE` LOOP -- AND THE
+  TABLE OF IDENTICAL BYTES IS THE CHEAP OPTION.** Filling a font's colour table by
+  hand costs 8 bytes per character per screen third (59 chars = 1,416 writes) and
+  has to be paced with `WAIT`s, because a VDP burst past a few dozen writes in one
+  frame is silently dropped. `DEFINE COLOR n,count,table` does the same job in one
+  synchronous call with interrupts off. In Keystone Kapers that loop was 24 of the
+  33 paced frames in the whole boot, and it is what made the title screen fill in
+  visibly instead of appearing.
+  - **The table is not the expensive part.** 472 identical bytes reads as waste,
+    but ROM is three budgets (see above) and it goes in the abundant one; deleting
+    the routine *returned* 80 bytes of the scarce one. Reaching for the loop to
+    "save space" spends the budget that matters to save the one that does not --
+    the same inversion as moving banked data into code.
+  - **`define_color` ALWAYS does the triple copy** (`bl @LDIRVM3` in the generated
+    assembly), so it cannot patch one screen third. A routine that colours a single
+    third has to stay a `VPOKE` loop; check which you have before converting.
+- **DRAW THE FIRST SCREEN AS SOON AS THE FONT EXISTS, NOT WHEN SETUP IS DONE.**
+  Boot-time asset loading naturally gets written as one block with the title after
+  it, and then every byte of it is time the player spends watching nothing. Almost
+  none of it is needed to draw text. Splitting setup so the title is drawn after
+  the font and before everything else does not reduce the work -- it moves the work
+  behind something worth looking at, which is what the player actually experiences
+  as speed. Keystone Kapers went from 4.03 s to 2.62 s with no work removed beyond
+  the fill above.
+  - **Check the re-entry path, not just first boot.** The title routine is usually
+    also the game-over destination, so splitting it can leave the second visit
+    drawing nothing or re-running boot-time work.
+- **A ONCE-PER-POWER-ON HARDWARE PROBE INSIDE THE TITLE ROUTINE RUNS ONCE PER GAME,
+  AND THE RE-RUNS ARE WRONG.** Keystone Kapers samples the joystick's vertical axis
+  for 40 frames to detect a latched ALPHA LOCK (§3A above), then ignores that
+  direction for the run. It lived inside the title routine, which `GOTO boot`
+  re-enters after every game over. The probe's whole validity rests on being taken
+  **before any input is plausible** -- on a return to the title that is false, so a
+  player still holding a direction had it read as a stuck key and **disabled for the
+  next game**. Hoist any calibration whose answer cannot change to the one-time boot
+  path; redraw its notice per screen if the screen is cleared.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

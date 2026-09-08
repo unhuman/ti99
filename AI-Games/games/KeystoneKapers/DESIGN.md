@@ -431,6 +431,74 @@ chance to claim the rows above. Deciding and drawing are no longer the same step
 readable; drawing after it would flash the box for one frame before the screen
 was rebuilt for the next round.
 
+### 0d-nonies. The title is drawn as soon as it can be, not when everything is ready
+
+The title took **3-4 seconds** to appear after the cart was selected, and it filled
+in visibly rather than arriving. Neither cause was the drawing: `CLS` compiles to a
+single hardware `FILVRM` of 768 bytes with interrupts off, and `DEFINE CHAR` /
+`DEFINE COLOR` are synchronous triple copies. It was our own boot.
+
+**Cause one: one constant, written 1,416 times.** `font_colour` filled the font's
+colour table a byte at a time -- 59 characters x 8 scan lines x 3 screen thirds --
+paced by 24 `WAIT`s, because a VDP burst past a few dozen writes in one frame is
+silently dropped. It is now a single `DEFINE COLOR 32,59,font_col` against a table
+of 472 identical bytes.
+
+That table looks like waste and is not. **The scarce budget is the fixed area, not
+the bank**: the bytes go in the data bank, which had 860 spare, and deleting the
+routine *returned* 80 bytes of fixed area. `define_color` always takes the LDIRVM3
+triple-copy path (verified in the generated assembly, `bl @LDIRVM3`), which is also
+why `esc_deck_col` and `floor0_colour` cannot use it -- they patch a single screen
+third each.
+
+**Cause two: the title was drawn last.** Only the font is needed to put text on
+screen. The store characters, the store colours, the escalator deck, the radar
+canvas and eight sprite sets are needed by `new_game`, which does not run until the
+player presses start -- so they had no business standing between the loader and the
+first thing the player sees. `setup` split into `setup_font` and `setup_rest`, and
+the title routine into `title_draw` and `title_input`:
+
+```basic
+GOSUB setup_font        ' BANK SELECT, font chars, DEFINE COLOR font
+GOSUB title_draw        ' <-- READABLE HERE
+GOSUB setup_rest        ' store, deck, radar, sprites
+GOSUB init_tables
+GOSUB alock_cal
+GOTO first_title
+boot:
+GOSUB title_draw        ' after a game over the store is on screen
+first_title:
+GOSUB title_input
+```
+
+This makes the machine do no less work. It makes all of it happen while there is
+something to read, which is the difference between a title that appears and a title
+that fills in. **Measured: 4.03 s to a settled title, now 2.62 s**, and three
+intermediate frames instead of six.
+
+#### AND THE ALPHA LOCK CALIBRATION WAS BEING PAID EVERY GAME
+
+The 40-frame sample sat inside the title routine, and `GOTO boot` re-enters that
+after every game over -- so it re-ran per game, along with a re-print of its notice.
+It samples a **physical latch**, so once per power-on is enough.
+
+**Re-running it was not merely slow, it was wrong.** The sample cannot tell a
+latched key from a held stick, which is the whole point of taking it before any
+input is plausible. On a return to the title that assumption is gone: a player still
+holding up or down when the title came back had that direction read as a stuck line
+and **disabled for the whole next game**. Moving it to first boot removes a failure
+mode as well as 40 frames.
+
+The notice is still redrawn on every title visit -- `title_draw`'s `CLS` wipes it,
+and it is information about the machine rather than a measurement.
+
+**Not changed:** `scan_colour`'s 9 waits (0.15 s, and it now runs behind the title
+where nothing can see it -- collapsing it would need its 24-byte table expanded to
+384 in the bank). And the custom font stays: CVBasic's runtime already loads its own
+ASCII face before our code runs, so ours is not functionally required, but it is a
+deliberate arcade face (`genfont.py`) and `DEFINE CHAR` is one synchronous call, so dropping
+it would buy 472 bank bytes and no time at all.
+
 ### 0d-octies. The 838 page types its numbers instead of cycling to them
 
 The setup page reached by `838` used to CYCLE each field -- `1` stepped the Kop

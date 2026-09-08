@@ -54,7 +54,7 @@ VPOKE_RE = re.compile(r"^\s*VPOKE #(\w+),")
 # WHICH SCREEN EACH ROUTINE PAINTS. This has to be written down; nothing in
 # the source says it, and a row only means something within one screen.
 SCREEN = {
-    "title_screen": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
+    "title_draw": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
 
     "setup838": "SETUP",
     "su_tens": "SETUP", "su_ones": "SETUP",

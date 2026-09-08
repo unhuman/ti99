@@ -68,3 +68,75 @@ font_bits:
 	DATA BYTE $88,$88,$50,$20,$50,$88,$88,$00	' X
 	DATA BYTE $88,$88,$50,$20,$20,$20,$20,$00	' Y
 	DATA BYTE $F8,$08,$10,$20,$40,$80,$F8,$00	' Z
+
+	' THE COLOUR TABLE, 472 bytes of the same value ($14 = black ink on dark blue).
+	'
+	' Loaded with DEFINE COLOR 32,59,font_col, which is ONE synchronous call that
+	' writes all three screen thirds (define_color always does the LDIRVM3 triple
+	' copy). It replaced a VPOKE loop that wrote this one value 1,416 times paced by
+	' 24 WAITs -- the largest scripted delay in the boot, and the reason the title
+	' screen used to fill in visibly rather than appearing at once.
+	'
+	' EIGHT BYTES PER CHARACTER, not one. Supply fewer and DEFINE COLOR reads
+	' whatever follows in ROM as colour data, with no error at build or run time.
+
+font_col:
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' space
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' !
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' "
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' #
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' $
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' %
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' &
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' '
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' (
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' )
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' *
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' +
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' ,
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' -
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' .
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' /
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 0
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 1
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 2
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 3
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 4
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 5
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 6
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 7
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 8
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 9
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' :
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' ;
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' <
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' =
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' >
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' ?
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' @
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' A
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' B
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' C
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' D
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' E
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' F
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' G
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' H
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' I
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' J
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' K
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' L
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' M
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' N
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' O
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' P
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' Q
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' R
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' S
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' T
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' U
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' V
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' W
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' X
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' Y
+	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' Z
