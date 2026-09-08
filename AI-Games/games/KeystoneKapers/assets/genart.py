@@ -1721,49 +1721,71 @@ CHARS_BASE = [
     # enough to say "money bag" rather than "yellow blob" -- and the hazards it
     # sits among are all sixteen. Four cells apiece, bottom-aligned so they
     # stand on the floor, and named <thing><T|B><L|R>.
+    #
+    # THE BAG READS AS A BAG BECAUSE OF THE NECK, NOT THE BODY. It used to be a
+    # rounded diamond, which at this size is a yellow blob whichever way you
+    # squint at it. The silhouette now goes knot -> neck -> black tie -> body,
+    # top to bottom, and the tie is what makes the shape above it read as
+    # gathered cloth rather than as a lid.
+    #
+    # THE DOLLAR SIGN COSTS THE BAG ITS SHADING, and that is the trade. Two
+    # colours per scan line is the whole budget: on a row carrying the $ they
+    # are spent on ink and bag, which leaves none for the green behind. So
+    # every row the $ touches (8-14) is FULL WIDTH bag -- there is no green on
+    # those rows to run out of. The rows that ARE silhouetted against the store
+    # (the knot, the tie, the shoulders, the base) carry no $.
+    #
+    # WHICH MEANS `#` FLIPS MEANING PART-WAY DOWN THE FIGURE. On rows 0-7 and
+    # on row 15, `#` is the bag and `.` is the store floor. On rows 8-14 it is
+    # the other way round: `#` is the black $ and `.` is the bag. Both are
+    # expressed in the per-row colour lists rather than in the patterns, which
+    # is why the bottom half looks inside-out read as art.
+    #
+    # The glyph is six columns wide at columns 5-10, whose centre is 7.5 -- the
+    # figure's own centre, so it is centred exactly rather than nearly.
     ("BAGTL", 0, """
 ........
-........
-.....#..
-......##
-.....###
-....####
-...#####
+..##....
 ..######
-""", LYELL, STORE_BG),
+...#####
+.....###
+..######
+.#######
+########
+""", [LYELL] * 5 + [BLACK] + [LYELL] * 2, STORE_BG),
 
     ("BAGTR", 0, """
 ........
-........
-#.......
-##......
-###.....
-####....
-#####...
+....##..
 ######..
-""", LYELL, STORE_BG),
+#####...
+###.....
+######..
+#######.
+########
+""", [LYELL] * 5 + [BLACK] + [LYELL] * 2, STORE_BG),
 
     ("BAGBL", 0, """
+.......#
+.....###
+.....##.
+.....###
+........
+.....###
+.......#
 .#######
-########
-########
-########
-########
-.#######
-..######
-...#####
-""", LYELL, STORE_BG),
+""", [BLACK] * 7 + [LYELL], [LYELL] * 7 + [STORE_BG]),
 
     ("BAGBR", 0, """
+#.......
+###.....
+........
+###.....
+.##.....
+###.....
+#.......
 #######.
-########
-########
-########
-########
-#######.
-######..
-#####...
-""", LYELL, STORE_BG),
+""", [BLACK] * 7 + [LYELL], [LYELL] * 7 + [STORE_BG]),
 
     ("CASETL", 0, """
 ........

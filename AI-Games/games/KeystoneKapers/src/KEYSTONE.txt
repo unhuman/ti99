@@ -2,7 +2,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      **** ****     > KEYSTONE.a99
 0001               	; CVBasic compiler v0.9.2 Mar/12/2026
 0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a KEYSTONE.bas KEYSTONE.a99 /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/
-0003               	; Created: Mon Sep  7 20:55:51 2026
+0003               	; Created: Mon Sep  7 21:11:43 2026
 0004               
 0005      0000     COLECO:	equ 0
 0006      0000     SG1000:	equ 0
@@ -20268,26 +20268,26 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      6BC4 BDA5     
      6BC6 A5BD     
      6BC8 81FF     
-14456               	; 	DATA BYTE $00,$00,$04,$03,$07,$0F,$1F,$3F
-14457 6BCA 0000     	byte >00,>00,>04,>03,>07,>0f,>1f,>3f
-     6BCC 0403     
-     6BCE 070F     
-     6BD0 1F3F     
-14458               	; 	DATA BYTE $00,$00,$80,$C0,$E0,$F0,$F8,$FC
-14459 6BD2 0000     	byte >00,>00,>80,>c0,>e0,>f0,>f8,>fc
-     6BD4 80C0     
-     6BD6 E0F0     
-     6BD8 F8FC     
-14460               	; 	DATA BYTE $7F,$FF,$FF,$FF,$FF,$7F,$3F,$1F
-14461 6BDA 7FFF     	byte >7f,>ff,>ff,>ff,>ff,>7f,>3f,>1f
-     6BDC FFFF     
-     6BDE FF7F     
-     6BE0 3F1F     
-14462               	; 	DATA BYTE $FE,$FF,$FF,$FF,$FF,$FE,$FC,$F8
-14463 6BE2 FEFF     	byte >fe,>ff,>ff,>ff,>ff,>fe,>fc,>f8
-     6BE4 FFFF     
-     6BE6 FFFE     
-     6BE8 FCF8     
+14456               	; 	DATA BYTE $00,$30,$3F,$1F,$07,$3F,$7F,$FF
+14457 6BCA 0030     	byte >00,>30,>3f,>1f,>07,>3f,>7f,>ff
+     6BCC 3F1F     
+     6BCE 073F     
+     6BD0 7FFF     
+14458               	; 	DATA BYTE $00,$0C,$FC,$F8,$E0,$FC,$FE,$FF
+14459 6BD2 000C     	byte >00,>0c,>fc,>f8,>e0,>fc,>fe,>ff
+     6BD4 FCF8     
+     6BD6 E0FC     
+     6BD8 FEFF     
+14460               	; 	DATA BYTE $01,$07,$06,$07,$00,$07,$01,$7F
+14461 6BDA 0107     	byte >01,>07,>06,>07,>00,>07,>01,>7f
+     6BDC 0607     
+     6BDE 0007     
+     6BE0 017F     
+14462               	; 	DATA BYTE $80,$E0,$00,$E0,$60,$E0,$80,$FE
+14463 6BE2 80E0     	byte >80,>e0,>00,>e0,>60,>e0,>80,>fe
+     6BE4 00E0     
+     6BE6 60E0     
+     6BE8 80FE     
 14464               	; 	DATA BYTE $00,$03,$04,$04,$FF,$FF,$C0,$C3
 14465 6BEA 0003     	byte >00,>03,>04,>04,>ff,>ff,>c0,>c3
      6BEC 0404     
@@ -20696,26 +20696,26 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      6E6C F4F4     
      6E6E F4F4     
      6E70 F4F4     
-14629               	; 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
-14630 6E72 BCBC     	byte >bc,>bc,>bc,>bc,>bc,>bc,>bc,>bc
+14629               	; 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$1C,$BC,$BC
+14630 6E72 BCBC     	byte >bc,>bc,>bc,>bc,>bc,>1c,>bc,>bc
      6E74 BCBC     
-     6E76 BCBC     
+     6E76 BC1C     
      6E78 BCBC     
-14631               	; 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
-14632 6E7A BCBC     	byte >bc,>bc,>bc,>bc,>bc,>bc,>bc,>bc
+14631               	; 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$1C,$BC,$BC
+14632 6E7A BCBC     	byte >bc,>bc,>bc,>bc,>bc,>1c,>bc,>bc
      6E7C BCBC     
-     6E7E BCBC     
+     6E7E BC1C     
      6E80 BCBC     
-14633               	; 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
-14634 6E82 BCBC     	byte >bc,>bc,>bc,>bc,>bc,>bc,>bc,>bc
-     6E84 BCBC     
-     6E86 BCBC     
-     6E88 BCBC     
-14635               	; 	DATA BYTE $BC,$BC,$BC,$BC,$BC,$BC,$BC,$BC
-14636 6E8A BCBC     	byte >bc,>bc,>bc,>bc,>bc,>bc,>bc,>bc
-     6E8C BCBC     
-     6E8E BCBC     
-     6E90 BCBC     
+14633               	; 	DATA BYTE $1B,$1B,$1B,$1B,$1B,$1B,$1B,$BC
+14634 6E82 1B1B     	byte >1b,>1b,>1b,>1b,>1b,>1b,>1b,>bc
+     6E84 1B1B     
+     6E86 1B1B     
+     6E88 1BBC     
+14635               	; 	DATA BYTE $1B,$1B,$1B,$1B,$1B,$1B,$1B,$BC
+14636 6E8A 1B1B     	byte >1b,>1b,>1b,>1b,>1b,>1b,>1b,>bc
+     6E8C 1B1B     
+     6E8E 1B1B     
+     6E90 1BBC     
 14637               	; 	DATA BYTE $6C,$6C,$6C,$6C,$61,$61,$61,$61
 14638 6E92 6C6C     	byte >6c,>6c,>6c,>6c,>61,>61,>61,>61
      6E94 6C6C     

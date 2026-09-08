@@ -111,7 +111,7 @@ how the scanner is furnished, and what the HUD does as the clock runs out.
 | Beach ball | a **solid red disc**, not a ring |
 | Cathedral radio | **yellow**, an arched case widest at the foot with two small prongs on top |
 | Toy biplane | **dark green** body with a **light-green** propeller — two sprites; drawn from above so it reads as an aircraft (0n) |
-| Money bag / case | **yellow box with a black handle** |
+| Money bag / case | **yellow box with a black handle** (ours: a tied sack stamped `$`, and a case) |
 | Scanner | green field, **yellow horizontal lines per floor**, **black diagonal slashes** for escalators, a **pale block** for the elevator, and a white dot per actor — exactly the furniture §6 draws |
 | Low time | the HUD digits and the Kop hats **change colour** as the clock runs down |
 
@@ -1508,6 +1508,29 @@ the scanner starting at 160, so the scanner moved to **208** -- it wants 48
 contiguous codes and 208..255 is 48 exactly -- and the store now has 96..207.
 Collecting one erases all four cells; it used to erase one and leave three
 quarters of a bag that no longer scored.
+
+**THE BAG READS AS A BAG BECAUSE OF ITS NECK, NOT ITS BODY.** Sixteen pixels
+bought the space but not the shape: the first version was a rounded diamond,
+which at any size is a yellow blob. It now goes, top to bottom, **fanned ends ->
+neck -> black tie -> body**, and the tie is what makes the cloth above it read as
+*gathered* rather than as a lid. The ends turn up one row above the bar, which is
+the whole difference between a bow and a bowl -- two rows of that flare and it
+reads as a cup.
+
+**The dollar sign costs the bag its shading, and that is the trade.** Two colours
+per scan line is the entire budget (§0d): on a row carrying the `$` they are
+spent on ink and bag, leaving none for the store floor behind. So **every row the
+`$` touches is full-width bag** -- rows 8-14, where there is no green left to run
+out of. The rows that *are* silhouetted against the store (the flare, the neck,
+the tie, the base chamfer) carry no `$`.
+
+Which means **`#` flips meaning part-way down the figure**. On rows 0-7 and on row
+15, `#` is the bag and `.` is the store; on rows 8-14 it is the other way round,
+`#` the black `$` and `.` the bag. Both are said in the per-row colour lists
+rather than in the patterns, which is why the bottom half looks inside-out read
+as art -- worth knowing before editing it. The glyph is six columns wide at
+columns 5-10, whose centre is 7.5: the figure's own centre, so it is centred
+exactly rather than nearly.
 
 ### 6f. The roof owes the floor below its air -- but not to the beams
 
