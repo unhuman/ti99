@@ -496,6 +496,52 @@ cost a debugging session:
   - Check the hide/reset paths too: a `FOR i = 0 TO 23` that blanks sprites
     will not cover a slot outside its range, and widening it may blank a block
     it was deliberately skipping.
+- **DUPLICATION IS FOUND BY MEASURING, NOT BY READING -- AND THE BIGGEST CLONE IS
+  USUALLY INVISIBLE.** Keystone Kapers has been rescued from the ROM cap three
+  times by spotting two pieces of code doing one job, every time by reading, which
+  does not scale past a few thousand lines. Two tools now do it mechanically and
+  are worth copying to any game here:
+  - **`romprofile.py`** attributes the fixed area to routines from the **xas99
+    listing's addresses** (`build-ti.sh` already emits one with `-L`), not from
+    source lines. Two traps, both silent: a label line in the listing has **no
+    address column of its own**, so a label must be bound to the first emitted
+    address after it; and CVBasic emits its **own internal labels** between the
+    named ones, so binding every label credits each routine only the bytes up to
+    its first `IF`. Get either wrong and everything is attributed to the runtime.
+  - **`romclones.py`** finds repeated statement runs and ranks them by removable
+    bytes. **That ranking is a reading list, not a work list** -- a short clone
+    folded into a `GOSUB` costs the call, the return and the parameter staging, so
+    folding one can lose.
+  - **The largest clone the sweep found was one nothing on screen could show**: a
+    routine computed the radar's escalator diagonals and then called the routine
+    that computes the same rows again. Both were pure functions of the same loop
+    variable and the write was an OR, so the duplicate was a provable no-op --
+    192 bytes that no screenshot could have found, because the affected art is
+    three pixel rows tall and the emulator crops the bottom of the screen. Prove
+    that class of thing by **replaying both versions against a model of the
+    target memory**, over every input combination.
+  - **The big routines are usually NOT where the clones are.** The three largest
+    here are a fifth of the game and the detector finds almost nothing in them:
+    their duplication is structural -- the same algorithm over different
+    variables -- which a text matcher cannot see and a `GOSUB` cannot cheaply
+    fold.
+- **A REACHABILITY CHECK THAT MODELS ONLY EXPLICIT JUMPS WILL CALL LIVE CODE
+  DEAD.** A dead-label sweep over Keystone Kapers reported `tick_flash` --
+  the low-time warning -- as unreachable: nothing `GOSUB`s or `GOTO`s it, and
+  `git log -S "GOSUB tick_flash"` found no commit that ever had. It runs fine.
+  It is entered by **FALL-THROUGH** from the routine above it, which ends without
+  a `RETURN` and drops into the next label, and which says so in a comment. In
+  CVBasic that is ordinary control flow, not a trick.
+  - **A false alarm during a delete-things pass is worse than a missed byte.**
+    Deleting it would have removed a working feature and the ROM saving would
+    have looked like a win. Any "unused" list must model fall-through -- a label
+    is reachable if the statement before it can complete -- or be treated as
+    suspects to confirm rather than a work list.
+  - This is the mirror of the scope trap below (a check narrower than the bug
+    reports success): a model narrower than the control flow reports a **failure
+    that is not there**. Both cost the same trust.
+  - The rest of the same sweep was sound: two assignments the compiler itself
+    flagged as never read, and three CONSTs matched nowhere in the text.
 - **A CONSTANT COLOUR FILL BELONGS IN A TABLE, NOT IN A `VPOKE` LOOP -- AND THE
   TABLE OF IDENTICAL BYTES IS THE CHEAP OPTION.** Filling a font's colour table by
   hand costs 8 bytes per character per screen third (59 chars = 1,416 writes) and

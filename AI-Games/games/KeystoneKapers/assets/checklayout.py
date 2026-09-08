@@ -100,7 +100,7 @@ SCREEN = {
     # repaints screen third 0's colour table so a flight crossing the roof
     # shows the deck behind it and one crossing a shop floor shows the bar --
     # same characters, told apart by which third they are in
-    "esc_deck_col": "COLR", "floor0_colour": "COLR",
+    "esc_deck_col": "COLR", "floor0_colour": "COLR", "f0_rows": "COLR",
     # TEMPORARY -- see CONST DBGHUD in KEYSTONE.bas
 }
 

@@ -431,6 +431,82 @@ chance to claim the rows above. Deciding and drawing are no longer the same step
 readable; drawing after it would flash the box for one frame before the screen
 was rebuilt for the next round.
 
+### 0d-decies. Duplication, found by measuring rather than by reading
+
+Three times this game has been rescued from the 24,336-byte cap by finding two
+pieces of code doing the same job -- the prize erase and the radio erase becoming
+one `wipe_2x2`, the 838 page's two draw routines, the font colour fill a table
+already held. Every one was found by reading, which does not scale to 4,200 lines.
+So a sweep, with two new tools.
+
+**`assets/romprofile.py`** attributes the fixed area to routines, from the xas99
+listing's real addresses rather than from source lines (which would weight
+comments equally with code). Each CVBasic label becomes a `cvb_NAME` in the
+assembly; a routine's cost is the distance to the next one. The catch that makes
+or breaks it: **a label line in the listing has no address column of its own**, so
+the label has to be bound to the first emitted address that follows it, and
+CVBasic's own internal labels have to be ignored or every routine is credited only
+the bytes up to its first `IF`.
+
+**`assets/romclones.py`** finds repeated statement runs -- strip comments,
+normalise, index every window, extend while every occurrence still matches. It
+ranks by removable bytes, and that ranking is a **reading list, not a work list**:
+a short clone factored into a `GOSUB` costs the call, the return and any parameter
+staging, so folding one can easily lose.
+
+#### WHAT THE SWEEP FOUND
+
+| | bytes |
+|---|---|
+| `scan_furn` drew the escalator diagonals that `scan_escs` draws a moment later | **192** |
+| `floor0_colour`'s two identical eleven-statement blocks -> `f0_rows` | 96 |
+| the two radar dots, thirteen statements of identical arithmetic -> `scan_dot` | 64 |
+| `sold`, assigned twice and read never; three CONSTs read nowhere | 12 |
+
+**364 bytes, and the largest was invisible.** `scan_furn` computed the escalator
+diagonals and `scan_escs`, called from its last line, computed the same three rows
+for the same three floors -- `scan_base`, the side lookup, the masks and
+`scan_pat` are all pure functions of `fl`, and `scan_or1` is an OR, so doing it
+twice cannot differ from doing it once. It is the shape a routine takes when a
+feature is split out and the original is left behind: `scan_escs` is that block
+plus the colour write added later, and it had inherited a copy of the explanatory
+comment as well as the code.
+
+**A screenshot could not have settled it.** The radar is three pixel rows tall and
+Classic99 crops the bottom of the screen at every window size. It was proved by
+replaying both versions against a model of the pattern table for all eight
+escalator-side combinations -- the same discipline as §0m's "verify geometry by
+sampling pixels, not by looking at a scaled screenshot".
+
+#### WHAT THE SWEEP DID NOT TOUCH
+
+`draw_actors` (2,012 B), `move_harry` (1,720) and `move_kelly` (1,098) are the
+three largest routines and between them a fifth of the game, but the clone
+detector finds almost nothing in them: their duplication is **structural, not
+textual**. `move_harry` and `move_kelly` are the same algorithm over different
+variables, and folding them means one routine with a subject parameter, touching
+both actors' movement at once -- a change with real behavioural risk, and one that
+would collide head-on with the outstanding work to pace Kelly by real time. It is
+a deliberate decision to leave, not an omission.
+
+#### AND ONE FALSE ALARM WORTH KEEPING
+
+The sweep also reported **`tick_flash` as unreachable** -- nothing `GOSUB`s or
+`GOTO`s it, and `git log -S "GOSUB tick_flash"` finds no commit that ever did. It
+looked like the low-time warning had never worked.
+
+**It works.** `tick_flash` is entered by **fall-through** from `tick_timer`, which
+runs off the end of its own body into the label below it -- and says so in a
+comment two lines up: *"falls through to the flash -- no GOTO, so the whole
+routine stays on one traceable path."* A reachability check that models only
+explicit jumps cannot see that, and reported a live feature as dead.
+
+Deleting it would have removed a working warning and the bytes would have looked
+like a win. This is the mirror of §13's "a check whose scope is narrower than the
+bug reports success": here the model was narrower than the control flow, so it
+reported a **failure that was not there**. Both directions cost the same amount of
+trust, and a false alarm is the more dangerous one during a delete-things pass.
+
 ### 0d-nonies. The title is drawn as soon as it can be, not when everything is ready
 
 The title took **3-4 seconds** to appear after the cart was selected, and it filled

@@ -180,7 +180,6 @@
 	CONST C_RCROOK = 15		' the crook, white
 	CONST P_CART = 208
 	CONST P_BALL = 212
-	CONST P_RADIO = 216
 	CONST P_PLANE = 228
 	CONST P_PLANEL = 232
 	' THE PROPELLER IS ITS OWN SPRITE so it can be its own colour. Two
@@ -213,7 +212,6 @@
 	' legible choice on the green store, and this is the obstacle whose right
 	' answer changes in mid-air, so it is the one the player most needs to see.
 	CONST C_BALL = 8
-	CONST C_RADIO = 10
 	' THE ONE THING THAT KILLS GETS ITS OWN COLOUR. Everything else in the
 	' store costs nine seconds; the biplane costs a Kop, and a player has no
 	' way to learn that except by losing one. Red says it before they do.
@@ -269,7 +267,6 @@
 	' characters.
 	CONST CH_EDOORS = 174		' and the SHUT door's own sill: the threshold
 					' belongs to the landing, not to the car
-	CONST ELSTEP = 2		' and how tall that step is, in pixels
 	' HOW FAR THE RIDER RISES, WHICH IS NOT THE SAME NUMBER, and conflating
 	' the two is what left Kelly a pixel short of being in the car.
 	'
@@ -732,26 +729,32 @@ init_tables:
 	' Only the three bottom lines change, and only their BACKGROUND: SLAB has
 	' no ink there and SLABE's brick keeps its grey.
 floor0_colour:
+	' TWO CHARACTERS, THE SAME THREE SCAN LINES, ONE ROUTINE. Both blocks
+	' were written out in full and differed only in which character and which
+	' colour byte -- eleven statements twice, including the multiply-by-eight
+	' done by doubling (`*` compiles to a real TMS9900 MPY, which clobbers r0,
+	' CLAUDE.md 3A).
+	f0c = CH_SLAB
+	f0v = 177			' LYELL on BLACK -- no ink, so the
+	GOSUB f0_rows			' background is all that shows
+	f0c = CH_SLABE
+	f0v = 225			' GRAY brick on BLACK
+	GOSUB f0_rows
+	RETURN
+
+	' The last three scan lines of character f0c, in the BOTTOM SCREEN THIRD
+	' only -- which is why this cannot be a DEFINE COLOR: that always writes
+	' all three thirds (define_color takes the LDIRVM3 path unconditionally).
+f0_rows:
 	#f0a = 12288			' colour table, bottom screen third
-	#f0b = CH_SLAB
+	#f0b = f0c
 	#f0b = #f0b + #f0b
 	#f0b = #f0b + #f0b
-	#f0b = #f0b + #f0b		' CH_SLAB * 8
+	#f0b = #f0b + #f0b		' f0c * 8
 	#f0a = #f0a + #f0b
 	#f0a = #f0a + 5			' its last three scan lines
 	FOR f0i = 0 TO 2
-		VPOKE #f0a,177		' LYELL on BLACK -- no ink, so the
-		#f0a = #f0a + 1		' background is all that shows
-	NEXT f0i
-	#f0a = 12288
-	#f0b = CH_SLABE
-	#f0b = #f0b + #f0b
-	#f0b = #f0b + #f0b
-	#f0b = #f0b + #f0b
-	#f0a = #f0a + #f0b
-	#f0a = #f0a + 5
-	FOR f0i = 0 TO 2
-		VPOKE #f0a,225		' GRAY brick on BLACK
+		VPOKE #f0a,f0v
 		#f0a = #f0a + 1
 	NEXT f0i
 	RETURN
@@ -1120,7 +1123,6 @@ start_krook:
 	caught = 0
 	escapd = 0
 	knock = 0
-	sold = 0
 	tflon = 0
 	sct = 0
 	fphs = 0
@@ -3528,43 +3530,23 @@ scan_furn:
 			GOSUB scan_pat
 			VPOKE #sda,255
 		NEXT fc
-		' this floor's UP escalator, at whichever end it lives
-		IF fl < 3 THEN
-			#fea = #stes + fl
-			fes = PEEK(#fea)
-			' A DIAGONAL, AND IT LEANS THE WAY THE FLIGHT RUNS. The
-			' HEAD goes on the upper row and the FOOT on the lower,
-			' so a west escalator reads as climbing to the left and
-			' an east one to the right -- which is the thing you
-			' actually need to know when deciding which way to run.
-			' THREE STEPS, one per row of the band's air. Two pixels on each
-			' of two rows was a lean nobody could read at this size; three
-			' rows of two, each two pixels further along, is a diagonal. It
-			' stops at band row 2 -- row 3 is the floor line and nothing
-			' may touch that.
-			IF fes = 0 THEN
-				sccol = 0
-				fm1 = 192		' x 0-1, head (top row)
-				fm2 = 48		' x 2-3
-				fm3 = 12		' x 4-5, foot
-			ELSE
-				sccol = 15
-				fm1 = 3			' x 126-127, head
-				fm2 = 12		' x 124-125
-				fm3 = 48		' x 122-123, foot
-			END IF
-			say = fbase
-			GOSUB scan_pat
-			GOSUB scan_or1
-			say = fbase + 1
-			GOSUB scan_pat
-			fm1 = fm2
-			GOSUB scan_or1
-			say = fbase + 2
-			GOSUB scan_pat
-			fm1 = fm3
-			GOSUB scan_or1
-		END IF
+		' THE ESCALATOR DIAGONALS USED TO BE DRAWN HERE TOO, and it was dead
+		' work: scan_escs runs immediately below and draws the same three rows
+		' for the same three floors. Every input is a pure function of fl --
+		' scan_base, the side lookup, the masks, scan_pat -- and scan_or1 is an
+		' OR, so doing it twice cannot differ from doing it once. Sixteen
+		' statements, about 320 bytes, and nine VDP writes a floor that nothing
+		' on screen could reflect.
+		'
+		' It is the shape a routine takes when a feature is split out and the
+		' original is left behind -- scan_escs is this block plus the colour
+		' write that was added later, and it carried a copy of the explanatory
+		' comment as well as the code.
+		'
+		' A SCREENSHOT COULD NOT HAVE SETTLED IT: the radar is three pixel rows
+		' tall and Classic99 clips the bottom of the screen. It was proved by
+		' replaying both versions against a model of the pattern table for all
+		' eight escalator-side combinations.
 		WAIT
 	NEXT fl
 	GOSUB scan_escs
@@ -3703,7 +3685,6 @@ scan_wipe:
 		NEXT swi
 		WAIT
 	NEXT swj
-	sold = 0
 	RETURN
 
 	' One actor per tick, at about 10 Hz: erase where it was, draw where it
@@ -3756,23 +3737,42 @@ scan_tick:
 	' 120-124) and the sprite inherited it.
 	SPRITE 26,sdy,118,P_RADCAR,C_RCAR
 
-	' -- Kelly. dotx 0..127 across the store, doty 0..23 down it; the canvas
-	' is characters 8-23 of rows 21-23, so screen x is 64 + dotx.
+	' -- the two markers. dotx 0..127 across the store, doty 0..23 down it;
+	' the canvas is characters 8-23 of rows 21-23, so screen x is 64 + dotx.
+	'
+	' ONE DOT, FROM A SCREEN, AN X AND A FLOOR. Kelly and the crook are the
+	' same thirteen statements of arithmetic with different inputs, and they
+	' were written out twice.
+	sdsc = klsc
+	sdxp = klx
+	sdlv = klv
+	GOSUB scan_dot
+	SPRITE 24,sdy,sdx,P_RADDOT,C_RKOP
+	sdsc = hsc
+	sdxp = hx
+	sdlv = hlv
+	GOSUB scan_dot
+	SPRITE 25,sdy,sdx,P_RADDOT,C_RCROOK
+	RETURN
+
+	' sdsc/sdxp/sdlv in, sdx/sdy out. The bias and the row meanings that used
+	' to be explained twice are explained here once.
 	'
 	' 167, NOT 168. The VDP puts a sprite's top line at y + 1, so a sprite
 	' asked for the canvas's own row lands one pixel low -- which on a
-	' three-pixel marker in a three-pixel band means its bottom row sits on
-	' the yellow floor line. The character markers this replaced were poked
-	' straight into the pattern table and needed no such bias, which is
-	' exactly why it was easy to carry the old number across.
-	sax = klsc
+	' three-pixel marker in a three-pixel band means its bottom row sits on the
+	' yellow floor line. The character markers this replaced were poked
+	' straight into the pattern table and needed no such bias, which is exactly
+	' why it was easy to carry the old number across.
+scan_dot:
+	sax = sdsc
 	sax = sax + sax
 	sax = sax + sax
 	sax = sax + sax
 	sax = sax + sax				' screen * 16
-	sxf = klx / 16
+	sxf = sdxp / 16
 	sax = sax + sxf
-	say = 3 - klv
+	say = 3 - sdlv
 	say = say + say
 	say = say + say				' (3-lv) * 4
 	say = say + 4				' the top margin, then band row 0.
@@ -3783,25 +3783,6 @@ scan_tick:
 	sdx = sdx + sax
 	sdy = 167
 	sdy = sdy + say
-	SPRITE 24,sdy,sdx,P_RADDOT,C_RKOP
-
-	' -- Harry, the same three rows in the other colour
-	sax = hsc
-	sax = sax + sax
-	sax = sax + sax
-	sax = sax + sax
-	sax = sax + sax
-	sxf = hx / 16
-	sax = sax + sxf
-	say = 3 - hlv
-	say = say + say
-	say = say + say
-	say = say + 4
-	sdx = 64
-	sdx = sdx + sax
-	sdy = 167
-	sdy = sdy + say
-	SPRITE 25,sdy,sdx,P_RADDOT,C_RCROOK
 	RETURN
 
 	' ======================================================================
