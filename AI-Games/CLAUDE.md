@@ -520,6 +520,31 @@ cost a debugging session:
     `'Kelly %d px/frame'` for a constant that was px per PASS, and a `climb_by_lift`
     that summed frames and passes into one number. Both were correct when written
     and both silently stopped being so.
+- **HIDING A SPRITE *AFTER* DRAWING IT SHOWS IT, whenever the routine can span a
+  vblank.** CVBasic's `SPRITE` writes a RAM mirror that the vblank ISR copies to
+  VRAM, so a draw-then-hide in one pass is only invisible if no vblank falls
+  between the two writes. A long draw routine on a busy screen spans two or three
+  frames, so the intermediate state is latched constantly. In Keystone Kapers the
+  player flickered at the floor he had just left while riding the lift, which
+  reads as a drawing bug and is not one. **Decide visibility BEFORE drawing** --
+  it costs one test and the mirror never holds a position to be caught with.
+- **A STRICT INPUT RESET AND A NOISY KEY LINE DESTROY EACH OTHER.** On the TI,
+  ALPHA LOCK shorts a keyboard line (and Classic99 defaults to `invertcaps`, so it
+  reads DOWN with the host's Caps Lock UP), and `cont1.key` then returns values
+  nobody pressed for a frame or two at a time. A cheat-code state machine whose
+  reset is deliberately strict -- anything that is not the next digit clears it,
+  so `8,5,3,8` cannot work -- is cleared by that noise too, so the code typed
+  correctly does nothing.
+  - **The symptom names the cause if you read it carefully**: "8-3-8 does nothing,
+    then 3-8 works". The trailing 8 of the failed attempt was still standing as
+    state, which only happens if the reset fired *between* the player's presses.
+  - **Fix it with a stability filter, not by weakening the reset.** Require the
+    key to hold for three frames (50 ms); a human press is several times that and
+    the noise is one or two. Cap the counter AT the threshold and test for
+    equality, so a held key is accepted once rather than every frame.
+  - This is the same short behind two earlier Keystone bugs -- the setup page
+    opening on its own, and the cheat code's final digit being typed into its
+    first field. **Any new `cont1.key` reader on this machine inherits it.**
 - **DUPLICATION IS FOUND BY MEASURING, NOT BY READING -- AND THE BIGGEST CLONE IS
   USUALLY INVISIBLE.** Keystone Kapers has been rescued from the ROM cap three
   times by spotting two pieces of code doing one job, every time by reading, which

@@ -53,6 +53,20 @@ VPOKE_RE = re.compile(r"^\s*VPOKE #(\w+),")
 
 # WHICH SCREEN EACH ROUTINE PAINTS. This has to be written down; nothing in
 # the source says it, and a row only means something within one screen.
+# WRITING THE SAME CELLS IS SOMETIMES THE MECHANISM, not the bug. Each entry is
+# a (VPOKE routine, PRINT routine) pair that overlaps ON PURPOSE, with the reason
+# it is allowed to.
+#
+# NAMED, NOT SILENCED. The check still runs, still finds the pair, and still
+# prints it under "deliberate overwrites" on every build -- only the FAILURE is
+# suppressed. Relaxing the rule instead would blind it to every OTHER overlap at
+# the same moment, which is how a gate quietly stops being one (CLAUDE.md 3A).
+OVERWRITE_OK = {
+    ("prt_dout", "tick_flash"):
+        "the low-time flash blanks the TIME digits and hud_time rewrites them "
+        "on the next beat -- writing the same cells IS the blink",
+}
+
 SCREEN = {
     "title_draw": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
 
@@ -126,6 +140,7 @@ def main():
     lines = open(SRC, encoding="utf-8").read().split("\n")
 
     bad = []
+    allowed = []
     prints = []          # (lineno, label, row, col, text)
     pokes = []           # (lineno, label, row, col, varname)
     unchecked = []       # (lineno, label, varname)
@@ -203,11 +218,21 @@ def main():
                 continue
             if tcol <= pcol < tcol + len(text):
                 ch = text[pcol - tcol]
+                why = OVERWRITE_OK.get((plabel, tlabel))
+                if why:
+                    allowed.append("%s over %s at row %d col %d -- %s"
+                                   % (plabel, tlabel, prow, pcol, why))
+                    continue
                 bad.append("line %d (%s): VPOKE #%s writes row %d col %d, which "
                            "is INSIDE the string printed at line %d (%r) -- it "
                            "lands on the %r"
                            % (pn, plabel, var, prow, pcol, tn, text, ch))
 
+    if allowed:
+        print("deliberate overwrites, still measured:")
+        for a in sorted(set(allowed)):
+            print("  %s" % a)
+        print()
     for n, label, row, col, text in prints:
         print("  %-5s row %2d col %2d  %-32r %s"
               % (screen_of(label), row, col, text, label))

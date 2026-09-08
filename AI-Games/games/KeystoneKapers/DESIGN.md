@@ -815,6 +815,51 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-quater. Four things found by playing it
+
+**Kelly starts mid-screen.** He was at x 224 against the east wall at 232, so a
+quarter of the screen behind him was wall he could never use and the round opened
+with him pinned rather than placed. 120 is the middle of the walkable range
+(`XWALW` 8 to `XWALL` 232). It shortens his first traverse by ~100 px and the
+chase margin went 17.3 s -> 18.3 s.
+
+**The low-time warning is silent, and the number flashes with the label.** There
+was a beep a second under ten, and the last ten seconds are the busiest part of a
+round -- a repeating tone arrives exactly when the player most needs to hear the
+hazards, and it was competing with the prize arpeggio for channel 2. Blinking the
+word alone left the digits steady, so the thing actually running out was the one
+part of the HUD not asking to be looked at.
+
+Two writes rather than one blank spanning both, because the label is columns
+16-19 and the number 21-22 and a single string across them overlaps what
+`hud_time` writes. `checklayout.py` caught that and was right to; the collision is
+the mechanism here, so it now carries a **named exemption** that still reports the
+pair on every build. Relaxing the rule instead would have blinded it to every
+other overlap at the same moment.
+
+**The first step off the mark is always heard.** `sfw` is a distance -- a step
+every fifteen pixels -- so a short tap moved Kelly a few pixels and made no sound
+at all. That does not read as a short step, it reads as the controls being
+ignored, and it is worst where a player taps rather than holds: lining up a jump,
+edging round a hazard. Priming the accumulator to the threshold on the
+standing-to-moving transition fires the next pass. It does not cheat the rate,
+because the trigger subtracts the threshold rather than zeroing and the pixels
+actually travelled still carry.
+
+#### THE LIFT FLICKER WAS AN ISR RACE, NOT A DRAWING BUG
+
+Riding with the doors shut, Kelly flickered at the floor he had just left. He was
+being drawn at his old position and hidden a few lines later, both in the same
+pass -- and that is not free. `SPRITE` writes a RAM mirror which the vblank ISR
+copies to VRAM, so **a vblank landing between the draw and the hide latches the
+visible state for a frame**. `draw_actors` is long (Kelly, Harry, eight
+obstacles) and a pass on the lift screen spans two or three frames, so it happened
+constantly.
+
+Deciding *before* drawing costs one test and cannot race the ISR at all: the
+mirror never holds a position to be caught with. **Hide-after-draw is a bug
+whenever the routine can span a vblank**, which on this machine is most of them.
+
 ### 0e-ter. The run and the jump, measured instead of invented
 
 Both effects were hand-picked divisors that had never been compared with

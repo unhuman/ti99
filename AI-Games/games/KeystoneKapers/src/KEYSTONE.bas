@@ -871,8 +871,37 @@ alock_loop:
 
 title_input:
 	tkl = 15
+	tkr = 15
+	tkn = 0
 title_wait:
 	WAIT
+	' A KEY MUST BE HELD FOR THREE FRAMES TO COUNT.
+	'
+	' ALPHA LOCK shorts a keyboard line, and Classic99 defaults to invertcaps
+	' so it reads DOWN with the host's Caps Lock UP -- the normal state of a
+	' keyboard. cont1.key then returns values nobody pressed, a frame or two at
+	' a time.
+	'
+	' That is fatal to the sequence below SPECIFICALLY BECAUSE its reset is
+	' strict: anything that is not the next digit puts t838 back to 0, which is
+	' what stops 8,5,3,8 opening the page. A spurious read BETWEEN the player's
+	' own presses does exactly the same thing, so typing 8-3-8 cleared itself
+	' halfway and appeared to do nothing -- and then typing 3-8 worked, because
+	' the final 8 of the failed attempt was still standing as state. Reported
+	' from play in precisely that shape.
+	'
+	' Three frames is 50 ms. A human press is several times that and the noise
+	' is one or two, so the filter separates them cleanly. tkn caps AT the
+	' threshold and the test is for equality, so a held key is accepted once
+	' rather than on every frame it is down.
+	tk = cont1.key
+	IF tk = tkr THEN
+		IF tkn < 3 THEN tkn = tkn + 1
+	ELSE
+		tkr = tk
+		tkn = 1
+	END IF
+	IF tkn <> 3 THEN GOTO title_hold
 	' 8-3-8 opens the setup screen. cont1.key rather than a cursor: the
 	' vertical axis is exactly what ALPHA LOCK poisons, so a menu built on
 	' up/down would boot pinned to one entry.
@@ -896,6 +925,7 @@ title_wait:
 			t838 = tnx
 		END IF
 	END IF
+title_hold:
 	' STRAIGHT INTO THE GAME, NOT BACK TO THE TITLE. Anyone who has typed
 	' 8-3-8 and set the number of Kops has already decided to play; bouncing
 	' them back to the title to press FIRE again is a second decision nobody
@@ -1054,12 +1084,21 @@ new_game:
 	RETURN
 
 start_krook:
-	' Kelly starts at the FIRST-FLOOR EAST ENTRANCE -- the far end of the
-	' store from floor 1's escalator, which is what makes the climb to the
-	' roof three full traverses rather than two.
+	' Kelly starts MID-SCREEN on the first floor's east end. He used to start
+	' at x 224, hard against the east wall at 232 -- the far end of the store
+	' from floor 1's escalator, which made the climb three full traverses.
+	'
+	' Standing in the corner is a bad first frame: a quarter of the screen
+	' behind him is wall he can never use, and the round opens with the player
+	' pinned rather than placed. 120 is the middle of the walkable range
+	' (XWALW 8 to XWALL 232), so he starts with room on both sides and the
+	' first thing he does is a choice rather than the only move available.
+	'
+	' It shortens his route by about a hundred pixels, which the chase can
+	' afford -- see checkchase.py, and DESIGN.md 0f-quater for the margin.
 	klv = 0
 	klsc = 7
-	klx = 224
+	klx = 120
 	kldir = 0
 	entdir = 1			' he starts at the east entrance, so the
 					' first floor's traffic comes at him from
@@ -1992,6 +2031,19 @@ move_kelly:
 		END IF
 	END IF
 	IF kmv = 1 THEN
+		' THE FIRST STEP OFF THE MARK IS ALWAYS HEARD. sfw is a distance --
+		' a step every fifteen pixels -- so a short tap of the stick moved
+		' him a few pixels and made NO sound at all. That does not read as
+		' a short step, it reads as the controls being ignored, and it is
+		' worst exactly where a player taps rather than holds: lining up a
+		' jump, or edging around a hazard.
+		'
+		' Priming the accumulator to the threshold makes the very next pass
+		' fire. It does not cheat the RATE: the trigger subtracts fifteen
+		' rather than zeroing, so the pixels actually travelled still carry
+		' into the following step and a held run comes out at 6.9 a second
+		' either way.
+		IF kmvl = 0 THEN sfw = 15
 		' AN ODOMETER, NOT A CLOCK -- pixels travelled, exactly like
 		' Harry's hanim. It counted PASSES once, which made his legs cycle
 		' slower on the escalator screens while he still ran at the same
@@ -2005,6 +2057,10 @@ move_kelly:
 		kanim = kanim + kspd
 		sfw = sfw + kspd
 	END IF
+	' Whether he moved THIS pass, for the test above to compare against next
+	' pass. Set unconditionally and after the block, so a pass spent standing
+	' still re-arms the first step for whenever he sets off again.
+	kmvl = kmv
 
 	' --- boarding an escalator happens by TOUCHING it, per the manual
 	IF klst = ST_RUN THEN GOSUB try_esc
@@ -3103,6 +3159,28 @@ coll_harry:
 	' DRAWING THE ACTORS
 	' ======================================================================
 draw_actors:
+	' RIDING WITH THE DOORS SHUT: HIDE HIM AND DO NOT DRAW HIM AT ALL.
+	'
+	' This test used to sit AFTER his sprites had been written, so every pass
+	' placed him at his old floor and then hid him again. That is not free.
+	' CVBasic's SPRITE writes a RAM mirror which the vblank ISR copies to
+	' VRAM, so a vblank landing BETWEEN the draw and the hide latches the
+	' visible state for a frame -- and draw_actors is long (Kelly, Harry,
+	' eight obstacles) while a pass on the lift screen spans two or three
+	' frames, so it happened constantly. He flickered at the floor he had
+	' just left, which reads as a drawing bug rather than as a journey.
+	'
+	' Deciding BEFORE drawing costs one test and cannot race the ISR at all:
+	' the mirror never holds a position to be caught with.
+	IF klst = ST_ELEV THEN
+		IF eldp = 0 THEN
+			SPRITE 0,SPRHID,0,0,0
+			SPRITE 1,SPRHID,0,0,0
+			SPRITE 2,SPRHID,0,0,0
+			SPRITE 3,SPRHID,0,0,0
+			GOTO draw_harry
+		END IF
+	END IF
 	' KELLY FLASHES WHILE HE IS KNOCKED ABOUT. Hitting an obstacle set a
 	' 20-frame `knock` and took nine seconds off the clock, and NOTHING on
 	' screen said so -- the time simply went. A flash is the arcade's own
@@ -3226,18 +3304,7 @@ draw_actors:
 		SPRITE 3,ky2,klx,kq,C_KELLY
 	END IF
 
-	' WITH THE DOORS SHUT, KELLY IS NOT ON SCREEN. He used to ride the lift
-	' in plain sight, standing over the shaft art with the doors closed in
-	' front of him, which reads as a drawing bug rather than as a journey.
-	IF klst = ST_ELEV THEN
-		IF eldp = 0 THEN
-			SPRITE 0,SPRHID,0,0,0
-			SPRITE 1,SPRHID,0,0,0
-			SPRITE 2,SPRHID,0,0,0
-			SPRITE 3,SPRHID,0,0,0
-		END IF
-	END IF
-
+draw_harry:
 	' Harry: sprites 3, 4 and 5, banded the same way
 	hy = flry(hlv)
 	hy = hy - STANDH
@@ -4005,7 +4072,6 @@ tick_timer:
 		tsec = tsec - 1
 		GOSUB hud_time
 		IF tsec = 0 THEN tout = 1
-		IF tsec < 10 THEN sfl = 1
 	END IF
 	' falls through to the flash -- no GOTO, so the whole routine stays on
 	' one traceable path
@@ -4018,6 +4084,7 @@ tick_flash:
 		IF tflon = 0 THEN
 			tflon = 1
 			PRINT AT 16,"TIME"
+			GOSUB hud_time
 		END IF
 		RETURN
 	END IF
@@ -4025,7 +4092,22 @@ tick_flash:
 	IF fphs AND 16 THEN tfl = 1
 	IF tfl <> tflon THEN
 		tflon = tfl
-		IF tfl = 1 THEN PRINT AT 16,"TIME" ELSE PRINT AT 16,"    "
+		' BOTH THE LABEL AND THE NUMBER. Blinking the word alone left the
+		' digits sitting there steady, so the thing that was actually
+		' running out was the one part of the HUD not asking to be looked
+		' at -- and with the beep gone this is the only warning there is.
+		'
+		' Two writes rather than one seven-character blank across both:
+		' the label is columns 16-19 and the number 21-22, and a single
+		' string spanning them would overlap what hud_time writes, which
+		' is exactly what checklayout.py exists to catch.
+		IF tfl = 1 THEN
+			PRINT AT 16,"TIME"
+			GOSUB hud_time
+		ELSE
+			PRINT AT 16,"    "
+			PRINT AT 21,"  "
+		END IF
 	END IF
 	RETURN
 
@@ -4207,7 +4289,6 @@ snd_off:
 	sfp = 0
 	sfe = 0
 	sfk = 0
-	sfl = 0
 	sfw = 0
 	RETURN
 
@@ -4306,12 +4387,12 @@ sfx_tick:
 		IF swt = 0 THEN SOUND 0,0,0
 	END IF
 
-	' one beep per second under ten, off its own phase counter
-	IF sfl = 1 THEN
-		sfl = 0
-		SOUND 2,700,12
-		spt = 8
-	END IF
+	' THE LOW-TIME WARNING IS SILENT. There was a beep a second under ten, and
+	' it was the wrong instrument for the job: the last ten seconds are the
+	' busiest part of a round, so a repeating tone arrives exactly when the
+	' player most needs to hear the hazards, and it fought the prize arpeggio
+	' for channel 2 as well. The flash says the same thing and says it in the
+	' place the player is already looking.
 
 	' FOOTSTEPS ARE NOISE, AND ON THE NOISE CHANNEL -- testsounds variant A.
 	'
