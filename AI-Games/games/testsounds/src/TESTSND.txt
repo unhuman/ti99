@@ -1,0 +1,4615 @@
+XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
+     **** ****     > TESTSND.a99
+0001               	; CVBasic compiler v0.9.2 Mar/12/2026
+0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a TESTSND.bas TESTSND.a99 /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/
+0003               	; Created: Tue Sep  8 14:42:53 2026
+0004               
+0005      0000     COLECO:	equ 0
+0006      0000     SG1000:	equ 0
+0007      0000     MSX:	equ 0
+0008      0000     FM_SUPPORT:	equ 0
+0009      0000     SGM:	equ 0
+0010      0000     SVI:	equ 0
+0011      0000     SORD:	equ 0
+0012      0000     MEMOTECH:	equ 0
+0013      0000     EINSTEIN:	equ 0
+0014      0000     CPM:	equ 0
+0015      0000     PENCIL:	equ 0
+0016      0000     PV2000:	equ 0
+0017      0001     TI99:	equ 1
+0018      0000     NABU:	equ 0
+0019      0000     SMS:	equ 0
+0020               
+0021      0000     CVBASIC_MUSIC_PLAYER:	equ 0
+0022      0000     CVBASIC_COMPRESSION:	equ 0
+0023      0000     CVBASIC_BANK_SWITCHING:	equ 0
+0024      0000     CVBASIC_BANK_ROM_SIZE:	equ 0
+0025      0000     COLECO_SPINNER:	equ 0
+0026               
+0027      2080     BASE_RAM:	equ >2080	; Base of RAM
+0028      1F80     RAM_SIZE:	equ >1f80	; Base of RAM
+0029      4000     STACK:	equ >4000	; Base stack pointer
+0030      8800     VDP:	equ >8800	; VDP port (write)
+0031      8C00     VDPR:	equ >8c00	; VDP port (read)
+0032               
+0033               ;
+0034               ; CVBasic prologue (BASIC compiler, 9900 target)
+0035               ;
+0036               ; by Tursi
+0037               ; https//harmlesslion.com
+0038               ;
+0039               ; based on code by
+0040               ;
+0041               ; by Oscar Toledo G.
+0042               ; https//nanochess.org/
+0043               ;
+0044               ; Creation date Aug/05/2024.
+0045               ; Revision date Aug/06/2024. Ported music player from Z80 CVBasic.
+0046               ; Revision date Aug/07/2024. Ported Pletter decompressor from Z80 CVBasic.
+0047               ;                            Added VDP delays.
+0048               ; Revision date Aug/12/2024. Rewrite started for TMS9900 cpu
+0049               ; Revision date Aug/16/2024. Corrected bug in define_char_unpack.
+0050               ; Revision date Aug/18/2024. Ported bugfixes to TMS9900 version
+0051               ; Revision date Aug/30/2024. All samples except pletter and banking working on TMS9900 version
+0052               ; Revision date Oct/15/2024. Added LDIRMV.
+0053               ; Revision date May/03/2025. Fix for unpack3 which was using the stack pointer as a temp register
+0054               
+0055               ;
+0056               ; Platforms supported:
+0057               ; o TI-99/4A with 32k Memory Expansion
+0058               
+0059               ; this is intended to be assembled by xdt99, no console ROM dependencies
+0060               ;   cvbasic --ti994a test1.bas test1.a99
+0061               ;   xas99.py -R test1.a99
+0062               
+0063               ; When looking at this - remember that JUMP and BRANCH have the /opposite/
+0064               ; meanings to the 6502 - JUMP is the short relative one, and BRANCH is absolute.
+0065               
+0066               ;
+0067               ; CVBasic variables in scratchpad.
+0068               ;
+0069               
+0070               ; don't warn on branch/jump optimizations or unused variables
+0071               ;: warn-opts = off
+0072               ;: warn-symbols = off
+0073               
+0074               ; use original (possibly incorrectly ported) random
+0075      0000     OLD_RND equ 0
+0076               
+0077               ; We have to use our own workspace, not GPLWS, because the interrupt routine makes it unsafe to
+0078               ; use r11, which we kind of need! So that eats 32 bytes of RAM but means most of the register
+0079               ; restrictions I wrote this code on (avoid R1, avoid R6, avoid R13-R15) are lifted.
+0080      8300     mywp      equ >8300
+0081      8320     myintwp   equ >8320
+0082               
+0083               ; data storage in scratchpad
+0084                   dorg >8340
+0085               
+0086               ; used to track scratchpad variables
+0087      8340     firstsp         equ $
+0088               
+0089 8340          read_pointer    bss 2       ; for data/read statements
+0090 8342          cursor		    bss 2       ; screen position
+0091 8344          pletter_off	    bss 2       ; Used by Pletter
+0092               
+0093               ; joystick bytes
+0094 8346          joy1_data	    bss 1       ; keep these bytes together and even aligned
+0095 8347          joy2_data	    bss 1
+0096               
+0097 8348          key1_data	    bss 1       ; byte - keyboard - keep these bytes together and even aligned
+0098 8349          key2_data	    bss 1       ; byte - keyboard (not used)
+0099               
+0100 834A          frame	        bss 2       ; word
+0101 834C          lfsr		    bss 2       ; word MUST BE EVEN ALIGNED
+0102               
+0103 834E          mode            bss 1
+0104 834F          flicker         bss 1
+0105               
+0106 8350          ntsc            bss 1
+0107               
+0148               
+0154               
+0155               ; used to track scratchpad variables
+0156                   even
+0157      8352     lastsp              equ $
+0158               
+0159               ; While we don't mean to USE the console ROM, for interrupts we
+0160               ; are forced to interface with some of it. We need these addresses
+0161               ; to minimize what it does so we can maximize our use of scratchpad.
+0162               ; While I'd like to use the cassette hook - requires only 10 instructions
+0163               ; and only uses 6 words of scratchpad, we can't here because it
+0164               ; loses the return address, meaning you can only use it if you
+0165               ; know where your LIMI 2 is and interrupts are otherwise disabled. So
+0166               ; we have to use the longer but more standard interrupt hook, which also
+0167               ; reads VDP status for us (no choice).
+0168               
+0169      8379     intcnt              equ >8379   ; interrupt counter byte, adds 1 (from GPLWS r14) every frame
+0170      837B     vdp_status          equ >837B   ; VDP status byte mirror
+0171      83C2     intwsr1             equ >83c2   ; INT WS R1  - interrupt control flags - must be >8000
+0172      83C4     intwsr2             equ >83c4   ; INT WS R2  - address of user interrupt routine (point to int_handler)
+0173      83D6     intwsr11            equ >83d6   ; screen timeout counter - must be odd (init to 1, is inct every frame)
+0174      83DA     intwsr13            equ >83da   ; INT WS R13 - used for interrupt call (word)
+0175      83DC     intwsr14            equ >83dc   ; INT WS R14 - used for interrupt call (word)
+0176      83DE     intwsr15            equ >83de   ; INT WS R15 - used for interrupt call (word)
+0177      83F6     gplwsr11            equ >83f6   ; GPL WS R11 - return address to interrupt ROM (not used, but overwritten each int)
+0178      83F8     gplwsr12            equ >83f8   ; GPL WS R12 - used for cassette test and interrupt hook test (zeroed each int)
+0179      83FA     gplwsr13            equ >83fa   ; GPL WS R13 - used in my interrupt handler
+0180      83FC     gplwsr14            equ >83fc   ; GPL WS R14 - flags used to detect cassette - must be >0108 (or at least >0020 clear)
+0181      83FE     gplwsr15            equ >83fe   ; GPL WS R15 - base address of VDP for status read - must be >8C02
+0182               
+0183               ; Some hardware equates
+0184      83C0     INTWS     equ >83C0     ; interrupt calling Workspace
+0185      83E0     GPLWP     equ >83E0     ; we use this one
+0186      8400     SOUND     equ >8400
+0187      8800     VDPDATA   equ >8800
+0188      8802     VDPSTATUS equ >8802
+0189      8C00     VDPWDATA  equ >8c00
+0190      8C02     VDPWADR   equ >8c02
+0191               
+0192               ; cartridge header for all ROM pages
+0193               ; this might do weird things to bank 0 but we have to chop it up anyway...
+0194                   bank all,>6000
+0195               
+0196 6000 AA01         data >aa01,>0100,>0000,proglist,>0000,>0000
+     6002 0100     
+     6004 0000     
+     6006 600C     
+     6008 0000     
+     600A 0000     
+0197               proglist
+0198 600C 0000         data >0000,SFIRST
+     600E 6026     
+0199 6010 14           byte 20
+0200 6011   43         text 'CVBASIC GAME        *'    ; 20 characters to allow name to be hex edited
+     6012 5642     
+     6014 4153     
+     6016 4943     
+     6018 2047     
+     601A 414D     
+     601C 4520     
+     601E 2020     
+     6020 2020     
+     6022 2020     
+     6024 202A     
+0201               
+0202               ; startup code copies the first three banks to 24k RAM (always) and jumps there
+0203               SFIRST
+0204 6026 04E0  34     clr @>6000      ; set bank 0 - last shared instruction
+     6028 6000     
+0205               
+0206                   bank 0
+0207               
+0208 602A 0203  20     li r3,3         ; how many banks
+     602C 0003     
+0209 602E 0204  20     li r4,>6000     ; from bank
+     6030 6000     
+0210 6032 0200  20     li r0,>a000     ; target in RAM
+     6034 A000     
+0211               SFLP
+0212 6036 04F4  30     clr *r4+        ; set the bank
+0213 6038 0201  20     li r1,>6050     ; from address
+     603A 6050     
+0214 603C 0202  20     li r2,>1FB0     ; count
+     603E 1FB0     
+0215               SFLP2
+0216 6040 CC31  46     mov *r1+,*r0+   ; move words
+0217 6042 0642  14     dect r2         ; count down
+0218 6044 16FD  14     jne SFLP2
+0219 6046 0603  14     dec r3          ; count down pages
+0220 6048 16F6  14     jne SFLP
+0221               CODEST
+0222 604A 0460  28     b @START        ; jump to startup code in RAM
+     604C A980     
+0223               
+0224               ; fixed program in high RAM - magic bank number higher than normally legal
+0225               ; this will be chopped up and inserted into the first three banks
+0226               ; we're still in bank 0 - this will result in a gap in the output binary
+0227               ; that we can use to put the pieces together more easily.
+0228                   aorg >a000
+0229               
+0230               ; Utility functions
+0231               
+0232               ; Write register to VDP - R0 = reg in MSB, data in LSB
+0233               WRTVDP
+0234 A000 0260  22     ori r0,>8000
+     A002 8000     
+0235 A004 1002  14     jmp SETRD
+0236               
+0237               ; Set VDP for write address - address in R0
+0238               SETWRT
+0239 A006 0260  22     ori r0,>4000
+     A008 4000     
+0240               ; fall through
+0241               
+0242               ; Set VDP for read address - address in R0
+0243               SETRD
+0244 A00A 06C0  14     swpb r0
+0245 A00C D800  30     movb r0,@VDPWADR
+     A00E 8C02     
+0246 A010 06C0  14     swpb r0
+0247 A012 D800  30     movb r0,@VDPWADR
+     A014 8C02     
+0248 A016 045B  20     b *r11
+0249               
+0250               ; Write byte to VDP - address in R0, data in MSB R2
+0251               ; Inline address set to avoid needing to cache r11
+0252               WRTVRM
+0253 A018 0260  22     ori r0,>4000
+     A01A 4000     
+0254 A01C 06C0  14     swpb r0
+0255 A01E D800  30     movb r0,@VDPWADR
+     A020 8C02     
+0256 A022 06C0  14     swpb r0
+0257 A024 D800  30     movb r0,@VDPWADR
+     A026 8C02     
+0258               ; No need to delay after setting a write address - there's no VRAM access
+0259 A028 D802  30     movb r2,@VDPWDATA
+     A02A 8C00     
+0260 A02C 045B  20     b *r11
+0261               
+0262               ; Read byte from VDP - address in R0, data returned in MSB R0
+0263               ; Inline address set to avoid needing to cache r11
+0264               RDVRM
+0265 A02E 06C0  14     swpb r0
+0266 A030 D800  30     movb r0,@VDPWADR
+     A032 8C02     
+0267 A034 06C0  14     swpb r0
+0268 A036 D800  30     movb r0,@VDPWADR
+     A038 8C02     
+0269 A03A 1000  14     nop
+0270 A03C D020  30     movb @VDPDATA,r0
+     A03E 8800     
+0271 A040 045B  20     b *r11
+0272               
+0273               ; Fill VRAM - address in R0, byte in R2, count in R3
+0274               ; Original: address in pointer, byte in temp, count in temp2 (ZP)
+0275               ; Inline address set to avoid needing to cache r11
+0276               FILVRM
+0277 A042 0260  22     ori r0,>4000
+     A044 4000     
+0278 A046 06C0  14     swpb r0
+0279 A048 D800  30     movb r0,@VDPWADR
+     A04A 8C02     
+0280 A04C 06C0  14     swpb r0
+0281 A04E D800  30     movb r0,@VDPWADR
+     A050 8C02     
+0282               ; No need to delay after setting a write address - there's no VRAM access
+0283               !1
+0284 A052 D802  30     movb r2,@VDPWDATA
+     A054 8C00     
+0285 A056 0603  14     dec r3
+0286 A058 16FC  14     jne -!1
+0287 A05A 045B  20     b *r11
+0288               
+0289               ; Read VRAM - address in R0, CPU data at R2, count in R3
+0290               ; Inline address set to avoid needing to cache r11
+0291               LDIRMV
+0292 A05C 06C0  14     swpb r0
+0293 A05E D800  30     movb r0,@VDPWADR
+     A060 8C02     
+0294 A062 06C0  14     swpb r0
+0295 A064 D800  30     movb r0,@VDPWADR
+     A066 8C02     
+0296 A068 06C0  14     swpb r0
+0297 A06A 06C0  14     swpb r0
+0298               !1
+0299 A06C DCA0  44     movb @VDPDATA,*r2+
+     A06E 8800     
+0300 A070 0603  14     dec r3
+0301 A072 16FC  14     jne -!1
+0302 A074 045B  20     b *r11
+0303               
+0304               ; Load VRAM - address in R0, CPU data at R2, count in R3
+0305               ; Original: address in pointer, CPU address at temp, count in temp2
+0306               ; Inline address set to avoid needing to cache r11
+0307               LDIRVM
+0308 A076 0260  22     ori r0,>4000
+     A078 4000     
+0309 A07A 06C0  14     swpb r0
+0310 A07C D800  30     movb r0,@VDPWADR
+     A07E 8C02     
+0311 A080 06C0  14     swpb r0
+0312 A082 D800  30     movb r0,@VDPWADR
+     A084 8C02     
+0313               ; No need to delay after setting a write address - there's no VRAM access
+0314               !1
+0315 A086 D832  40     movb *r2+,@VDPWDATA
+     A088 8C00     
+0316 A08A 0603  14     dec r3
+0317 A08C 16FC  14     jne -!1
+0318 A08E 045B  20     b *r11
+0319               
+0320               ; Define a pattern three times with 2k offsets - used for bitmap color and pattern tables
+0321               ; Load VRAM 3 times with offset - address in R0, CPU data at R2, count in R3
+0322               ; Original: address in pointer, CPU address at temp, count in temp2
+0323               LDIRVM3
+0324 A090 C10B  18     mov r11,r4      ; save return address
+0325 A092 C142  18     mov r2,r5       ; save CPU address
+0326 A094 C1C3  18     mov r3,r7       ; save count
+0327 A096 06A0  32     bl @LDIRVM
+     A098 A076     
+0328 A09A 0220  22     ai r0,>0800     ; the OR'd mask doesn't matter
+     A09C 0800     
+0329 A09E C085  18     mov r5,r2       ; restore CPU
+0330 A0A0 C0C7  18     mov r7,r3       ; restore count
+0331 A0A2 06A0  32     bl @LDIRVM
+     A0A4 A076     
+0332 A0A6 0220  22     ai r0,>0800     ; the OR'd mask doesn't matter
+     A0A8 0800     
+0333 A0AA C085  18     mov r5,r2
+0334 A0AC C0C7  18     mov r7,r3
+0335 A0AE C2C4  18     mov r4,r11      ; for tail recursion
+0336 A0B0 10E2  14     jmp LDIRVM
+0337               
+0338               ; Disable screen by setting VDP register 1 to >a2
+0339               DISSCR
+0340 A0B2 0300  22     limi 0
+     A0B4 0000     
+0341 A0B6 0200  20     li r0,>81a2
+     A0B8 81A2     
+0342               DISSCR2
+0343 A0BA 06C0  14     swpb r0
+0344 A0BC D800  30     movb r0,@VDPWADR
+     A0BE 8C02     
+0345 A0C0 06C0  14     swpb r0
+0346 A0C2 D800  30     movb r0,@VDPWADR
+     A0C4 8C02     
+0347 A0C6 0300  22     limi 2
+     A0C8 0002     
+0348 A0CA 045B  20     b *r11
+0349               
+0350               ; enable screen by setting VDP register 1 to >E2
+0351               ENASCR
+0352 A0CC 0300  22     limi 0
+     A0CE 0000     
+0353 A0D0 0200  20     li r0,>81e2
+     A0D2 81E2     
+0354 A0D4 10F2  14     jmp DISSCR2
+0355               
+0356               ; copy a set of blocks of data to VDP, offset by 32 bytes each
+0357               ; address in R8, CPU data at R9, count per row in R6 (MSB), number rows in R4 (MSB), CPU stride in R5 (MSB) (VDP stride fixed at 32)
+0358               ; original: address in pointer, CPU address at temp, count per row in temp2, num rows in temp2+1, stride in YYXX
+0359               CPYBLK
+0360 A0D6 C1CB  18     mov r11,r7      ; save return
+0361 A0D8 0986  32     srl r6,8
+0362 A0DA 0984  32     srl r4,8
+0363 A0DC 0985  32     srl r5,8        ; bytes to words
+0364 A0DE 0300  22     limi 0
+     A0E0 0000     
+0365               !1
+0366 A0E2 C008  18     mov r8,r0       ; get vdp address
+0367 A0E4 C089  18     mov r9,r2       ; get cpu address
+0368 A0E6 C0C6  18     mov r6,r3       ; get count
+0369 A0E8 06A0  32     bl @LDIRVM      ; copy one row
+     A0EA A076     
+0370 A0EC A245  18     a r5,r9         ; add stride to CPU address
+0371 A0EE 0228  22     ai r8,32        ; add 32 to VDP
+     A0F0 0020     
+0372 A0F2 0604  14     dec r4          ; count down rows
+0373 A0F4 16F6  14     jne -!1         ; loop till done
+0374 A0F6 0300  22     limi 2
+     A0F8 0002     
+0375 A0FA 0457  20     b *r7           ; back to caller
+0376               
+0377               ; clear screen and reset cursor to >1800
+0378               cls
+0379 A0FC C10B  18     mov r11,r4      ; save return
+0380 A0FE 0200  20     li r0,>1800     ; SIT address
+     A100 1800     
+0381 A102 C800  30     mov r0,@cursor  ; save cursor
+     A104 8342     
+0382 A106 0202  20     li r2,>2000     ; byte to write
+     A108 2000     
+0383 A10A 0203  20     li r3,768       ; number of bytes
+     A10C 0300     
+0384 A10E 0300  22     limi 0          ; ints off
+     A110 0000     
+0385 A112 06A0  32     bl @FILVRM      ; write them
+     A114 A042     
+0386 A116 0300  22     limi 2          ; ints back on
+     A118 0002     
+0387 A11A 0454  20     b *r4           ; back to caller
+0388               
+0389               ; copy a string to screen at cursor - address enforced
+0390               ; CPU address in R2, length in R3
+0391               print_string
+0392 A11C C10B  18     mov r11,r4      ; save return
+0393 A11E C020  30     mov @cursor,r0  ; get cursor pos
+     A120 8342     
+0394 A122 0240  22     andi r0,>07ff   ; enforce position - pretty large range though? 80 column support maybe?
+     A124 07FF     
+0395 A126 0220  22     ai r0,>1800     ; add is safer than OR, and we have that option
+     A128 1800     
+0396 A12A A803  30     a r3,@cursor    ; add the count to cursor (might as well do it now!)
+     A12C 8342     
+0397 A12E 0300  22     limi 0
+     A130 0000     
+0398 A132 06A0  32     bl @LDIRVM      ; do the write
+     A134 A076     
+0399 A136 0300  22     limi 2
+     A138 0002     
+0400 A13A 0454  20     b *r4           ; back to caller
+0401               
+0402               ; emit a 16-bit number as decimal with leading zero masking at cursor
+0403               ; R0 - number to print
+0404               ; original number in YYAA?
+0405               print_number
+0406 A13C 0300  22     limi 0              ; interrupts off so we can hold the VDP address
+     A13E 0000     
+0407 A140 04C5  14     clr r5              ; leading zero flag
+0408               print_number5
+0409 A142 0201  20     li r1,10000         ; divisor
+     A144 2710     
+0410 A146 C10B  18     mov r11,r4
+0411 A148 06A0  32     bl @print_digit
+     A14A A18A     
+0412 A14C C2C4  18     mov r4,r11
+0413               print_number4
+0414 A14E 0201  20     li r1,1000          ; divisor
+     A150 03E8     
+0415 A152 C10B  18     mov r11,r4
+0416 A154 06A0  32     bl @print_digit
+     A156 A18A     
+0417 A158 C2C4  18     mov r4,r11
+0418               print_number3
+0419 A15A 0201  20     li r1,100           ; divisor
+     A15C 0064     
+0420 A15E C10B  18     mov r11,r4
+0421 A160 06A0  32     bl @print_digit
+     A162 A18A     
+0422 A164 C2C4  18     mov r4,r11
+0423               print_number2
+0424 A166 0201  20     li r1,10
+     A168 000A     
+0425 A16A C10B  18     mov r11,r4
+0426 A16C 06A0  32     bl @print_digit
+     A16E A18A     
+0427 A170 C2C4  18     mov r4,r11
+0428               print_number1
+0429 A172 0201  20     li r1,1
+     A174 0001     
+0430 A176 0245  22     andi r5,>00ff
+     A178 00FF     
+0431 A17A 0265  22     ori r5,>0100
+     A17C 0100     
+0432 A17E C10B  18     mov r11,r4
+0433 A180 06A0  32     bl @print_digit
+     A182 A18A     
+0434 A184 0300  22     limi 2              ; ints on
+     A186 0002     
+0435 A188 0454  20     b *r4               ; back to caller
+0436               
+0437               print_digit
+0438 A18A C18B  18     mov r11,r6
+0439 A18C 04C2  14     clr r2
+0440 A18E 3C81 128     div r1,r2
+0441 A190 0222  22     ai r2,>30
+     A192 0030     
+0442 A194 0282  22     ci r2,>30
+     A196 0030     
+0443 A198 160B  14     jne !3
+0444 A19A 0285  22     ci r5,>0100
+     A19C 0100     
+0445 A19E 1401  14     jhe !4
+0446 A1A0 0456  20     b *r6
+0447               !4
+0448 A1A2 0285  22     ci r5,>0200
+     A1A4 0200     
+0449 A1A6 1A02  14     jl !6
+0450 A1A8 C085  18     mov r5,r2
+0451 A1AA 1606  14     jne print_char2
+0452               !6
+0453 A1AC 0202  20     li r2,>30
+     A1AE 0030     
+0454               !3
+0455 A1B0 0245  22     andi r5,>00ff
+     A1B2 00FF     
+0456 A1B4 0265  22     ori r5,>0100
+     A1B6 0100     
+0457               print_char2
+0458 A1B8 C020  30     mov @cursor,r0      ; get cursor
+     A1BA 8342     
+0459 A1BC 0240  22     andi r0,>07ff       ; enforce position - large range for two screen pages
+     A1BE 07FF     
+0460 A1C0 0220  22     ai r0,>1800         ; add is safer than OR, and we have that option
+     A1C2 1800     
+0461 A1C4 06A0  32     bl @SETWRT          ; set write address
+     A1C6 A006     
+0462 A1C8 06C2  14     swpb r2
+0463 A1CA D802  30     movb r2,@VDPWDATA
+     A1CC 8C00     
+0464 A1CE 05A0  26     inc @cursor         ; track it
+     A1D0 8342     
+0465 A1D2 0456  20     b *r6
+0466               print_char
+0467 A1D4 C18B  18     mov r11,r6
+0468 A1D6 0460  28     b @print_char2
+     A1D8 A1B8     
+0469               
+0470               ; Load sprite definitions: Sprite number in R4, CPU data in R0, count of sprites in R5 (MSB)
+0471               ; Original: pointer = sprite number, temp = CPU address, a = number sprites
+0472               ; Note: sprites are all expected to be double-size 16x16, 32 bytes each, so sprite char 1 is character 4
+0473               ; Sprite pattern table at >3800
+0474               define_sprite
+0475 A1DA C20B  18     mov r11,r8          ; save return
+0476 A1DC C080  18     mov r0,r2           ; Source data.
+0477 A1DE C004  18     mov r4,r0           ; VRAM target.
+0478 A1E0 0A50  26     sla r0,5            ; sprite number times 32 for bytes
+0479 A1E2 0220  22     ai r0,>3800         ; add VDP base
+     A1E4 3800     
+0480 A1E6 C0C5  18     mov r5,r3		; Length.
+0481 A1E8 0983  32     srl r3,8            ; make int
+0482 A1EA 0A53  26     sla r3,5            ; count times 32
+0483 A1EC 0300  22     limi 0              ; ints off
+     A1EE 0000     
+0484 A1F0 06A0  32     bl @LDIRVM          ; do the copy
+     A1F2 A076     
+0485 A1F4 0300  22     limi 2              ; ints on
+     A1F6 0002     
+0486 A1F8 0458  20     b *r8               ; back to caller
+0487               
+0488               ; Load character definitions: Char number in R1, CPU data in R2, count in R3 (MSB)
+0489               ; Original: pointer = char number, temp = CPU address, a = number chars
+0490               ; Note this loads the pattern three times if in bitmap mode (MODE&0x04)
+0491               ; Pattern table at >0000
+0492               define_char
+0493 A1FA C20B  18     mov r11,r8          ; save return
+0494 A1FC C080  18     mov r0,r2           ; source data
+0495 A1FE C004  18     mov r4,r0           ; move input to scratch
+0496 A200 0A30  22     sla r0,3            ; char number times 8 (VDP base is 0, so already there)
+0497 A202 C0C5  18     mov r5,r3
+0498 A204 0983  32     srl r3,8            ; make word
+0499 A206 0A33  22     sla r3,3            ; count times 8
+0500 A208 D160  30     movb @mode,r5       ; get mode flags
+     A20A 834E     
+0501 A20C 0245  22     andi r5,>0800
+     A20E 0800     
+0502 A210 1607  14     jne !1              ; not in bitmap mode, do a single copy
+0503               
+0504 A212 0300  22     limi 0              ; ints off
+     A214 0000     
+0505 A216 06A0  32     bl @LDIRVM3         ; do the triple copy
+     A218 A090     
+0506 A21A 0300  22     limi 2              ; ints on
+     A21C 0002     
+0507 A21E 0458  20     b *r8               ; back to caller
+0508               
+0509               !1
+0510 A220 0300  22     limi 0              ; ints off
+     A222 0000     
+0511 A224 06A0  32     bl @LDIRVM          ; do the single copy
+     A226 A076     
+0512 A228 0300  22     limi 2              ; ints on
+     A22A 0002     
+0513 A22C 0458  20     b *r8               ; back to caller
+0514               
+0515               ; Load bitmap color definitions: Char number in R1, CPU data in R2, count in R3 (MSB)
+0516               ; Original: pointer = char number, temp = CPU address, a = number chars
+0517               ; Note: always does the triple copy. Color table at >2000
+0518               define_color
+0519 A22E C20B  18     mov r11,r8          ; save return
+0520 A230 C080  18     mov r0,r2           ; source data
+0521 A232 C004  18     mov r4,r0           ; move input to scratch
+0522 A234 0A30  22     sla r0,3            ; char number times 8
+0523 A236 0220  22     ai r0,>2000         ; add base address
+     A238 2000     
+0524 A23A C0C5  18     mov r5,r3
+0525 A23C 0983  32     srl r3,8            ; make word
+0526 A23E 0A33  22     sla r3,3            ; count times 8
+0527 A240 0300  22     limi 0              ; ints off
+     A242 0000     
+0528 A244 06A0  32     bl @LDIRVM3         ; do the triple copy
+     A246 A090     
+0529 A248 0300  22     limi 2              ; ints on
+     A24A 0002     
+0530 A24C 0458  20     b *r8               ; back to caller
+0531               
+0532               ; Update sprite entry - copy data (4 bytes) to sprite table mirror at sprites
+0533               ; R4 = sprite number, R5 = byte 1, r6 = byte 2, r7 = byte 3, r0 = byte 4 (all MSB)
+0534               ; Original: A = sprite number, source data at sprite_data
+0535               update_sprite
+0536 A24E 0984  32     srl r4,8            ; make word
+0537 A250 0A24  20     sla r4,2            ; x4 for address
+0538 A252 0224  22     ai r4,sprites       ; sprite mirror address
+     A254 2000     
+0539 A256 DD05  32     movb r5,*r4+        ; move bytes
+0540 A258 DD06  32     movb r6,*r4+        ; move bytes
+0541 A25A DD07  32     movb r7,*r4+        ; move bytes
+0542 A25C DD00  32     movb r0,*r4+        ; move bytes
+0543 A25E 045B  20     b *r11
+0544               
+0545               ; SGN R0 - return 1, -1 or 0 as 16 bit
+0546               _sgn16
+0547 A260 C000  18     mov r0,r0       ; check for zero
+0548 A262 1306  14     jeq !1          ; if yes, we're done
+0549 A264 0240  22     andi r0,>8000   ; check for negative
+     A266 8000     
+0550 A268 1302  14     jeq !2          ; was not
+0551 A26A 0700  14     seto r0         ; was negative, make it -1
+0552 A26C 045B  20     b *r11          ; back to caller
+0553               !2
+0554 A26E 0580  14     inc r0          ; we know it was zero, and we want 1
+0555               !1
+0556 A270 045B  20     b *r11          ; back to caller
+0557               
+0558               ; 16-bit signed modulo. R1 % R2 = R0 - 9900 doesn't do signed divide
+0559               ; original was stack%stack=YYAA
+0560               ; Remainder is negative if the dividend was negative
+0561               _mod16s
+0562 A272 04C0  14     clr r0          ; make dividend 32-bit
+0563 A274 C082  18     mov r2,r2       ; check divisor for zero
+0564 A276 130A  14     jeq !1
+0565 A278 0742  18     abs r2          ; make sure divisor is positive
+0566 A27A C041  18     mov r1,r1       ; check sign of dividend
+0567 A27C 1505  14     jgt !2          ; go do the faster positive version
+0568               
+0569 A27E 0741  18     abs r1          ; was negative, make it positive
+0570 A280 3C02 128     div r2,r0       ; do the division => r2=quotient, r3=remainder
+0571 A282 0501  14     neg r1          ; make remainder negative
+0572 A284 C001  18     mov r1,r0       ; into r0
+0573 A286 045B  20     b *r11
+0574               
+0575               !2
+0576 A288 3C02 128     div r2,r0       ; do the division => r2=quotient, r3=remainder
+0577 A28A C001  18     mov r1,r0       ; into r0
+0578               !1
+0579 A28C 045B  20     b *r11
+0580               
+0581               ; 16-bit signed divide. R1 / R2 = R0 - 9900 doesn't do signed divide
+0582               ; original was stack/stack=YYAA
+0583               ; Remainder is negative if the signs differ
+0584               _div16s
+0585 A28E 04C0  14     clr r0          ; make dividend 32-bit
+0586 A290 C0C2  18     mov r2,r3       ; check divisor for zero
+0587 A292 1308  14     jeq !1          ;
+0588 A294 28C1  18     xor r1,r3
+0589 A296 0742  18     abs r2
+0590 A298 0741  18     abs r1          ; might as well make them positive now that we have copies
+0591 A29A 3C02 128     div r2,r0       ; do the divide => r0=quotient, r1=remainder
+0592 A29C 0243  22     andi r3,>8000   ; mask out sign bit
+     A29E 8000     
+0593 A2A0 1301  14     jeq !1          ; skip ahead to positive version
+0594               
+0595 A2A2 0500  14     neg r0          ; negate the result
+0596               !1
+0597 A2A4 045B  20     b *r11
+0598               
+0599               ; Random number generator - return in R0, (complex one uses R3,R4, simpler one only R0)
+0600               ; Original output into YYAA
+0601               random
+0628               ; simpler one from dreamcast days...
+0629 A2A6 C020  30     mov @lfsr,r0        ; get seed
+     A2A8 834C     
+0630 A2AA 0910  18     srl r0,1            ; shift
+0631 A2AC 1702  14     jnc .rand1          ; jump if no 1
+0632 A2AE 2820  34     xor @rmask,r0       ; xor new bits
+     A2B0 A2B8     
+0633               .rand1
+0634 A2B2 C800  30     mov r0,@lfsr        ; save the output
+     A2B4 834C     
+0635 A2B6 045B  20     b *r11
+0636               rmask
+0637 A2B8 B400         data >b400          ; mask for 16 bit
+0639               
+0640               ; Set SN Frequency: R0=frequency code, R2=channel command (MSB)
+0641               ; Original: A=least significant byte  X=channel command  Y=most significant byte
+0642               sn76489_freq
+0643 A2BA C0C0  18     mov r0,r3
+0644 A2BC 0243  22     andi r3,>000f
+     A2BE 000F     
+0645 A2C0 06C3  14     swpb r3
+0646 A2C2 F083  18     socb r3,r2
+0647 A2C4 D802  30     movb r2,@SOUND  ; cmd and least significant nibble
+     A2C6 8400     
+0648 A2C8 0940  24     srl r0,4
+0649 A2CA 0240  22     andi r0,>003f
+     A2CC 003F     
+0650 A2CE 06C0  14     swpb r0
+0651 A2D0 D800  30     movb r0,@SOUND  ; most significant byte
+     A2D2 8400     
+0652 A2D4 045B  20     b *r11
+0653               
+0654               ; Set SN volume: R0=volume (MSB, inverse of attenuation), R2=channel command (MSB)
+0655               ; Original: A=volume (inverse of attenuation), X=channel command
+0656               sn76489_vol
+0657 A2D6 0540  14     inv r0
+0658 A2D8 0240  22     andi r0,>0f00
+     A2DA 0F00     
+0659 A2DC F002  18     socb r2,r0
+0660 A2DE D800  30     movb r0,@SOUND
+     A2E0 8400     
+0661 A2E2 045B  20     b *r11
+0662               
+0663               ; Set noise type: R0=Noise type (MSB)
+0664               ; original: A=noise command
+0665               sn76489_control
+0666 A2E4 0240  22     andi r0,>0f00
+     A2E6 0F00     
+0667 A2E8 0260  22     ori r0,>e000
+     A2EA E000     
+0668 A2EC D800  30     movb r0,@SOUND
+     A2EE 8400     
+0669 A2F0 045B  20     b *r11
+0670               
+0671               ; Set up vdp generic settings - R0 should be preloaded with a register in MSB, data in LSB
+0672               ; R2 should contain the color table entry (in MSB), R3 the bitmap table (in MSB). Rest is
+0673               ; hard coded. WARNING: Disables interrupts but does not re-enable them.
+0674               vdp_generic_mode
+0675 A2F2 C10B  18     mov r11,r4      ; save return
+0676 A2F4 0300  22     limi 0          ; ints off
+     A2F6 0000     
+0677               
+0678 A2F8 06A0  32     bl @WRTVDP      ; caller must set up this one
+     A2FA A000     
+0679 A2FC 0200  20     li r0,>01a2     ; VDP mode, screen off
+     A2FE 01A2     
+0680 A300 06A0  32     bl @WRTVDP
+     A302 A000     
+0681 A304 0200  20     li r0,>0206     ; >1800 pattern table
+     A306 0206     
+0682 A308 06A0  32     bl @WRTVDP
+     A30A A000     
+0683 A30C 0200  20     li r0,>0003     ; for color table
+     A30E 0003     
+0684 A310 F002  18     socb r2,r0
+0685 A312 06C0  14     swpb r0
+0686 A314 06A0  32     bl @WRTVDP
+     A316 A000     
+0687 A318 0200  20     li r0,>0004     ; for pattern table
+     A31A 0004     
+0688 A31C F003  18     socb r3,r0
+0689 A31E 06C0  14     swpb r0
+0690 A320 06A0  32     bl @WRTVDP
+     A322 A000     
+0691 A324 0200  20     li r0,>0536     ; >1b00 for sprite attribute table
+     A326 0536     
+0692 A328 06A0  32     bl @WRTVDP
+     A32A A000     
+0693 A32C 0200  20     li r0,>0607     ; >3800 for sprite pattern table
+     A32E 0607     
+0694 A330 06A0  32     bl @WRTVDP
+     A332 A000     
+0695 A334 0200  20     li r0,>0701     ; default screen color
+     A336 0701     
+0696 A338 06A0  32     bl @WRTVDP
+     A33A A000     
+0697 A33C 0454  20     b *r4
+0698               
+0699               ; set up VDP mode 0
+0700               mode_0
+0701 A33E C20B  18     mov r11,r8      ; careful - we call vdp_generic_mode and LDIRVM3
+0702 A340 0200  20     li r0,>0800     ; bit we want to clear
+     A342 0800     
+0703 A344 5800  30     szcb r0,@mode
+     A346 834E     
+0704               
+0705 A348 0202  20     li r2,>ff00	    ; $2000 for color table.
+     A34A FF00     
+0706 A34C 0203  20     li r3,>0300	    ; $0000 for bitmaps
+     A34E 0300     
+0707 A350 0200  20     li r0,>0002     ; r0 setting
+     A352 0002     
+0708 A354 06A0  32     bl @vdp_generic_mode    ; interrupts are now off
+     A356 A2F2     
+0709               
+0710 A358 0200  20     li r0,>0100     ; target in VDP memory
+     A35A 0100     
+0711 A35C 0202  20     li r2,font_bitmaps  ; CPU memory source
+     A35E A674     
+0712 A360 0203  20     li r3,>0300     ; number of bytes
+     A362 0300     
+0713 A364 06A0  32     bl @LDIRVM3
+     A366 A090     
+0714               
+0715 A368 0300  22     limi 2
+     A36A 0002     
+0716 A36C 0300  22     limi 0
+     A36E 0000     
+0717               
+0718 A370 0200  20     li r0,>2000
+     A372 2000     
+0719 A374 0202  20     li r2,>f000
+     A376 F000     
+0720 A378 0203  20     li r3,>1800     ; fill color table with white on transparent
+     A37A 1800     
+0721 A37C 06A0  32     bl @FILVRM
+     A37E A042     
+0722               
+0723 A380 0300  22     limi 2
+     A382 0002     
+0724 A384 06A0  32     bl @cls
+     A386 A0FC     
+0725 A388 C2C8  18     mov r8,r11      ; restore return address, and fall through to vdp_generic_sprites
+0726               
+0727               ; Initialize sprite table
+0728               vdp_generic_sprites
+0729 A38A C20B  18     mov r11,r8      ; save return address
+0730 A38C 0200  20     li r0,>1b00     ; sprite attribute table in VDP
+     A38E 1B00     
+0731 A390 0202  20     li r2,>d100     ; off screen, and otherwise unimportant
+     A392 D100     
+0732 A394 0203  20     li r3,128       ; number of bytes
+     A396 0080     
+0733               
+0734 A398 0300  22     limi 0
+     A39A 0000     
+0735 A39C 06A0  32     bl @FILVRM
+     A39E A042     
+0736               
+0737 A3A0 0200  20     li r0,sprites
+     A3A2 2000     
+0738 A3A4 0202  20     li r2,>d1d1     ; write 2 bytes at a time
+     A3A6 D1D1     
+0739 A3A8 0203  20     li r3,128
+     A3AA 0080     
+0740               !1
+0741 A3AC CC02  34     mov r2,*r0+     ; initialize CPU mirror
+0742 A3AE 0643  14     dect r3
+0743 A3B0 16FD  14     jne -!1
+0744               
+0745 A3B2 0200  20     li r0,>01e2     ; screen on
+     A3B4 01E2     
+0746 A3B6 06A0  32     bl @WRTVDP
+     A3B8 A000     
+0747               
+0748 A3BA 0300  22     limi 2
+     A3BC 0002     
+0749 A3BE 0458  20     b *r8
+0750               
+0751               ; set up VDP mode 1
+0752               mode_1
+0753 A3C0 C20B  18     mov r11,r8      ; careful - we call vdp_generic_mode and LDIRVM3
+0754 A3C2 0200  20     li r0,>0800     ; bit we want to clear
+     A3C4 0800     
+0755 A3C6 5800  30     szcb r0,@mode
+     A3C8 834E     
+0756               
+0757 A3CA 0202  20     li r2,>ff00	    ; $2000 for color table.
+     A3CC FF00     
+0758 A3CE 0203  20     li r3,>0300	    ; $0000 for bitmaps
+     A3D0 0300     
+0759 A3D2 0200  20     li r0,>0002     ; r0 setting
+     A3D4 0002     
+0760 A3D6 06A0  32     bl @vdp_generic_mode    ; interrupts are now off
+     A3D8 A2F2     
+0761               
+0762 A3DA 0200  20     li r0,>0000
+     A3DC 0000     
+0763 A3DE 0202  20     li r2,>0000
+     A3E0 0000     
+0764 A3E2 0203  20     li r3,>1800
+     A3E4 1800     
+0765 A3E6 06A0  32     bl @FILVRM      ; clear pattern table
+     A3E8 A042     
+0766               
+0767 A3EA 0300  22     limi 2
+     A3EC 0002     
+0768               
+0769 A3EE 0200  20     li r0,>2000
+     A3F0 2000     
+0770 A3F2 0202  20     li r2,>f000
+     A3F4 F000     
+0771 A3F6 0203  20     li r3,>1800
+     A3F8 1800     
+0772               
+0773 A3FA 0300  22     limi 0
+     A3FC 0000     
+0774 A3FE 06A0  32     bl @FILVRM      ; init color table
+     A400 A042     
+0775 A402 0300  22     limi 2
+     A404 0002     
+0776               
+0777 A406 0200  20     li r0,>5800     ; >1800 with the write bit set
+     A408 5800     
+0778 A40A 04C3  14     clr r3          ; value to write
+0779               
+0780               !1
+0781 A40C 0300  22     limi 0          ; write the screen image table, but pause every 32 bytes for interrupts
+     A40E 0000     
+0782               
+0783 A410 06C0  14     swpb r0
+0784 A412 D800  30     movb r0,@VDPWADR
+     A414 8C02     
+0785 A416 06C0  14     swpb r0
+0786 A418 D800  30     movb r0,@VDPWADR
+     A41A 8C02     
+0787               
+0788 A41C 0202  20     li r2,32
+     A41E 0020     
+0789               
+0790               !2
+0791 A420 D803  30     movb r3,@VDPWDATA
+     A422 8C00     
+0792 A424 0223  22     ai r3,>0100
+     A426 0100     
+0793 A428 0602  14     dec r2
+0794 A42A 16FA  14     jne -!2
+0795               
+0796 A42C 0300  22     limi 2
+     A42E 0002     
+0797 A430 0220  22     ai r0,32
+     A432 0020     
+0798 A434 0280  22     ci r0,>5b00
+     A436 5B00     
+0799 A438 1AE9  14     jl -!1
+0800               
+0801 A43A C2C8  18     mov r8,r11      ; restore return address
+0802 A43C 10A6  14     jmp vdp_generic_sprites     ; using tail recursion
+0803               
+0804               ; Set up VDP mode 2
+0805               mode_2
+0806 A43E C20B  18     mov r11,r8      ; careful - we call vdp_generic_mode and LDIRVM3
+0807 A440 0200  20     li r0,>0800     ; bit we want to set
+     A442 0800     
+0808 A444 F800  30     socb r0,@mode
+     A446 834E     
+0809               
+0810 A448 0202  20     li r2,>8000	    ; $2000 for color table.
+     A44A 8000     
+0811 A44C 0203  20     li r3,>0000	    ; $0000 for bitmaps
+     A44E 0000     
+0812 A450 0200  20     li r0,>0000     ; r0 setting
+     A452 0000     
+0813 A454 06A0  32     bl @vdp_generic_mode    ; interrupts are now off
+     A456 A2F2     
+0814               
+0815 A458 0200  20     li r0,>0100
+     A45A 0100     
+0816 A45C 0202  20     li r2,font_bitmaps
+     A45E A674     
+0817 A460 0203  20     li r3,>0300
+     A462 0300     
+0818 A464 06A0  32     bl @LDIRVM      ; load character set
+     A466 A076     
+0819               
+0820 A468 0300  22     limi 2
+     A46A 0002     
+0821 A46C 0300  22     limi 0
+     A46E 0000     
+0822               
+0823 A470 0200  20     li r0,>2000
+     A472 2000     
+0824 A474 0202  20     li r2,>f000
+     A476 F000     
+0825 A478 0203  20     li r3,>0020
+     A47A 0020     
+0826 A47C 06A0  32     bl @FILVRM      ; init color table
+     A47E A042     
+0827               
+0828 A480 0300  22     limi 2
+     A482 0002     
+0829 A484 06A0  32     bl @cls         ; clear screen
+     A486 A0FC     
+0830 A488 C2C8  18     mov r8,r11      ; restore return
+0831 A48A 0460  28     b @vdp_generic_sprites
+     A48C A38A     
+0832               
+0833               ; this is where interrupts happen every frame
+0834               ; Unlike a normal TI application, this one runs with interrupts ON,
+0835               ; so all operations need to be sure to protect VDP address with LIMI 0,
+0836               ; as well as any operations that might need to manipulate data managed
+0837               ; by this interrupt. We enter via the normal user hook, so WP is on
+0838               ; GPLWS, interrupts are off, and the VDP is already reset and status
+0839               ; stashed on vdp_status (>837b). Our return address to the ROM is in
+0840               ; r11, but we are NOT going to use it so that we don't need to reserve
+0841               ; r8 for whatever nonsense it does. That means we need to load intws
+0842               ; and RTWP ourselves at the end. We are on our own workspace so we
+0843               ; don't have to worry about the main app's workspace.
+0844               int_handler
+0845               ; first copy the sprite table
+0846 A48E 02E0  18     lwpi myintwp        ; separate safe workspace
+     A490 8320     
+0847               
+0851               
+0852 A492 020B  20     li r11,>005b        ; >1b00 with the write bit added, and byte flipped
+     A494 005B     
+0853 A496 D80B  30     movb r11,@VDPWADR   ; SAL address
+     A498 8C02     
+0854 A49A 06CB  14     swpb r11
+0855 A49C D80B  30     movb r11,@VDPWADR   ; going to copy the sprite table to VDP
+     A49E 8C02     
+0856               
+0857 A4A0 D2E0  30     movb @mode,r11
+     A4A2 834E     
+0858 A4A4 024B  22     andi r11,>0400      ; if bit >04 (inhibit flicker) is cleared, jump ahead to rotate
+     A4A6 0400     
+0859 A4A8 130A  14     jeq !4
+0860               
+0861 A4AA 04CB  14     clr r11             ; else we're going to just write it straight across
+0862 A4AC 020C  20     li r12,128
+     A4AE 0080     
+0863 A4B0 020D  20     li r13,sprites
+     A4B2 2000     
+0864               !7
+0865 A4B4 D83D  40     movb *r13+,@VDPWDATA
+     A4B6 8C00     
+0866 A4B8 060C  14     dec r12
+0867 A4BA 16FC  14     jne -!7
+0868 A4BC 101B  14     jmp !5
+0869               
+0870               !4
+0871 A4BE D2E0  30     movb @flicker,r11   ; here we write it rotated every frame
+     A4C0 834F     
+0872 A4C2 022B  22     ai r11,>0400
+     A4C4 0400     
+0873 A4C6 024B  22     andi r11,>7f00
+     A4C8 7F00     
+0874 A4CA D80B  30     movb r11,@flicker
+     A4CC 834F     
+0875 A4CE 06CB  14     swpb r11            ; make count
+0876 A4D0 020C  20     li r12,32           ; count
+     A4D2 0020     
+0877               
+0878               !6
+0879 A4D4 022B  22     ai r11,sprites        ; this is still faster than separate incs
+     A4D6 2000     
+0880 A4D8 D83B  40     movb *r11+,@VDPWDATA  ; copy one sprite
+     A4DA 8C00     
+0881 A4DC D83B  40     movb *r11+,@VDPWDATA  ; no delay needed
+     A4DE 8C00     
+0882 A4E0 D83B  40     movb *r11+,@VDPWDATA
+     A4E2 8C00     
+0883 A4E4 D81B  38     movb *r11,@VDPWDATA   ; small optimization, since we have an add coming anyway
+     A4E6 8C00     
+0884 A4E8 022B  22     ai r11,-(sprites-1)   ; remove address and add the rest of the increment
+     A4EA E001     
+0885 A4EC 024B  22     andi r11,>007F        ; clamp it in range
+     A4EE 007F     
+0886 A4F0 060C  14     dec r12
+0887 A4F2 16F0  14     jne -!6
+0888               !5
+0889               
+0890               ; next read the joysticks - output needs to be 21xxLDRU - 1 and 2 are button and button2 respectively
+0891               ; We don't have a button 2. We also need to read the keyboard and fill in key1_data. key2_data we
+0892               ; will leave unused. Note key1_data expects Coleco-style 0-9,10-*,11-#,15=not pressed, but we can throw
+0893               ; everything else as ASCII. We could do a split keyboard for 2 players, but I guess we'll leave it for now.
+0894               ; joy1
+0895 A4F4 020C  20     li r12,>0024    ; CRU base of select output
+     A4F6 0024     
+0896 A4F8 020D  20     li r13,>0600    ; joystick 1 column
+     A4FA 0600     
+0897 A4FC 30CD  30     ldcr r13,3      ; select it
+0898 A4FE 0B7C  30     src r12,7       ; delay
+0899 A500 020C  20     li r12,>0006    ; CRU base of return read
+     A502 0006     
+0900 A504 360D  48     stcr r13,8      ; read 8 bits (we could get away with fewer, but be consistent)
+0901 A506 06A0  32     bl @convert_joystick
+     A508 A5C8     
+0902 A50A D80C  30     movb r12,@joy1_data
+     A50C 8346     
+0903               
+0904               ; joy2
+0905 A50E 020C  20     li r12,>0024    ; CRU base of select output
+     A510 0024     
+0906 A512 020D  20     li r13,>0700    ; joystick 2 column
+     A514 0700     
+0907 A516 30CD  30     ldcr r13,3      ; select it
+0908 A518 0B7C  30     src r12,7       ; delay
+0909 A51A 020C  20     li r12,>0006    ; CRU base of return read
+     A51C 0006     
+0910 A51E 360D  48     stcr r13,8      ; read 8 bits (we could get away with fewer, but be consistent)
+0911 A520 06A0  32     bl @convert_joystick
+     A522 A5C8     
+0912 A524 D80C  30     movb r12,@joy2_data
+     A526 8347     
+0913               
+0914               ; do a quick modifier read for button 2 (control and fctn for joy 1 and 2 respectively)
+0915 A528 020C  20     li r12,>0024    ; CRU base of select output
+     A52A 0024     
+0916 A52C 04CD  14     clr r13         ; modifiers
+0917 A52E 30CD  30     ldcr r13,3      ; select it
+0918 A530 0B7C  30     src r12,7       ; delay
+0919 A532 020C  20     li r12,>0006    ; CRU base of return read
+     A534 0006     
+0920 A536 360D  48     stcr r13,8      ; read 8 bits (we could get away with fewer, but be consistent)
+0921 A538 020C  20     li r12,>4000    ; control
+     A53A 4000     
+0922 A53C 020B  20     li r11,>8000    ; button 2 bit
+     A53E 8000     
+0923 A540 274C  18     czc r12,r13
+0924 A542 1602  14     jne .noc1b2
+0925 A544 F80B  30     socb r11,@joy1_data
+     A546 8346     
+0926               .noc1b2
+0927 A548 020C  20     li r12,>1000    ; fctn
+     A54A 1000     
+0928 A54C 274C  18     czc r12,r13
+0929 A54E 1602  14     jne .noc2b2
+0930 A550 F80B  30     socb r11,@joy2_data
+     A552 8347     
+0931               .noc2b2
+0932               
+0933               ; key1 - this is a very simple read with no modifiers, it just gives access to the letters and numbers
+0934 A554 04CB  14     clr r11         ; column
+0935               !key1
+0936 A556 020C  20     li r12,>0024    ; CRU base of select output
+     A558 0024     
+0937 A55A 30CB  30     ldcr r11,3      ; select column
+0938 A55C 0B7C  30     src r12,7       ; delay
+0939 A55E 020C  20     li r12,>0006    ; CRU base of return read
+     A560 0006     
+0940 A562 360D  48     stcr r13,8      ; get the bits
+0941 A564 020C  20     li r12,7        ; bit search
+     A566 0007     
+0942               !key2
+0943 A568 0A1C  18     sla r12,1
+0944 A56A 276C  34     czc @masktable(r12),r13    ; bit set?
+     A56C A638     
+0945 A56E 1607  14     jne !key3       ; continue
+0946 A570 091C  18     srl r12,1
+0947 A572 095B  26     srl r11,5
+0948 A574 A2CC  18     a r12,r11       ; calculate table offset
+0949 A576 D82B  46     movb @keyboard_table(r11),@key1_data    ; might be a dead key, but that's okay
+     A578 A608     
+     A57A 8348     
+0950 A57C 100D  14     jmp !key4
+0951               
+0952               !key3
+0953 A57E 091C  18     srl r12,1
+0954 A580 060C  14     dec r12
+0955 A582 15F2  14     jgt -!key2
+0956 A584 13F1  14     jeq -!key2      ; we don't have a jump if not negative
+0957               
+0958 A586 022B  22     ai r11,>0100
+     A588 0100     
+0959 A58A 028B  22     ci r11,>0600
+     A58C 0600     
+0960 A58E 16E3  14     jne -!key1
+0961               
+0962 A590 020B  20     li r11,>0f00
+     A592 0F00     
+0963 A594 D80B  30     movb r11,@key1_data     ; no key was pressed
+     A596 8348     
+0964               !key4
+0965               
+0966               ; check for quit - attempts to work it into the above were not working
+0967               ; borrowed from console ROM
+0968 A598 020C  20     li r12,>0024
+     A59A 0024     
+0969 A59C 30CC  30     ldcr r12,3
+0970 A59E 0B7C  30     src r12,7
+0971 A5A0 020C  20     li r12,>0006
+     A5A2 0006     
+0972 A5A4 360B  48     stcr r11,8
+0973 A5A6 020C  20     li r12,>1100
+     A5A8 1100     
+0974 A5AA 26CC  18     czc r12,r11
+0975 A5AC 1604  14     jne .noquit
+0976 A5AE 04E0  26     clr @intwsr2
+     A5B0 83C4     
+0977 A5B2 0420  42     blwp @>0000
+     A5B4 0000     
+0978               .noquit
+0979               
+0986               
+0987 A5B6 05A0  26     inc @frame
+     A5B8 834A     
+0988 A5BA 0200  20     li r0,3
+     A5BC 0003     
+0989 A5BE A800  30     a r0,@lfsr  ; Make LFSR more random
+     A5C0 834C     
+0990               
+1006               
+1007               
+1008               ; restore the saved bank
+1013               
+1014               ; get back the interrupt workspace and return
+1015 A5C2 02E0  18     lwpi INTWS
+     A5C4 83C0     
+1016 A5C6 0380  18     RTWP
+1017               
+1018               ; given a joystick read in r13, return bits in r12
+1019               ; The final output is 8 bits:
+1020               ; 21xxLDRU - 1 and 2 are button and button2 respectively
+1021               ; NOTE: if called by the compiler, this won't act as expected
+1022               convert_joystick
+1023 A5C8 04CC  14     clr r12
+1024 A5CA 2760  34     czc @joystick_table,r13
+     A5CC A5FE     
+1025 A5CE 1602  14     jne !j1
+1026 A5D0 026C  22     ori r12,>0800
+     A5D2 0800     
+1027               !j1
+1028 A5D4 2760  34     czc @joystick_table+2,r13
+     A5D6 A600     
+1029 A5D8 1602  14     jne !j2
+1030 A5DA 026C  22     ori r12,>0400
+     A5DC 0400     
+1031               !j2
+1032 A5DE 2760  34     czc @joystick_table+4,r13
+     A5E0 A602     
+1033 A5E2 1602  14     jne !j3
+1034 A5E4 026C  22     ori r12,>0200
+     A5E6 0200     
+1035               !j3
+1036 A5E8 2760  34     czc @joystick_table+6,r13
+     A5EA A604     
+1037 A5EC 1602  14     jne !j4
+1038 A5EE 026C  22     ori r12,>0100
+     A5F0 0100     
+1039               !j4
+1040 A5F2 2760  34     czc @joystick_table+8,r13
+     A5F4 A606     
+1041 A5F6 1602  14     jne !j5
+1042 A5F8 026C  22     ori r12,>4000
+     A5FA 4000     
+1043               !j5
+1044 A5FC 045B  20     b *r11
+1045               
+1046               joystick_table
+1047 A5FE 0200         data >0200,>0800,>0400,>1000,>0100    ; LDRU1
+     A600 0800     
+     A602 0400     
+     A604 1000     
+     A606 0100     
+1048               
+1049               ; By columns, then rows. 8 Rows per column. No shift states - converted to the Coleco returns
+1050               ; for numbers, , and . become ; and #. Control is control1 button2, and Fctn is control2 button2
+1051               keyboard_table
+1052 A608 3D20         byte 61,32,11,15,254,15,255,15  ; '=',' ',enter,n/a,fctn,shift,ctrl,n/a
+     A60A 0B0F     
+     A60C FE0F     
+     A60E FF0F     
+1053 A610 2E4C         byte 46,76,79,9,2,83,87,88      ; '.','L','O','9','2','S','W','X'
+     A612 4F09     
+     A614 0253     
+     A616 5758     
+1054 A618 2C4B         byte 44,75,73,8,3,68,69,67      ; ',','K','I','8','3','D','E','C'
+     A61A 4908     
+     A61C 0344     
+     A61E 4543     
+1055 A620 4D4A         byte 77,74,85,7,4,70,82,86      ; 'M','J','U','7','4','F','R','V'
+     A622 5507     
+     A624 0446     
+     A626 5256     
+1056 A628 4E48         byte 78,72,89,6,5,71,84,66      ; 'N','H','Y','6','5','G','T','B'
+     A62A 5906     
+     A62C 0547     
+     A62E 5442     
+1057 A630 0A3B         byte 10,59,80,0,1,65,81,90      ; '/',';','P','0','1','A','Q','Z'
+     A632 5000     
+     A634 0141     
+     A636 515A     
+1058               
+1059               masktable
+1060 A638 0100         data >0100,>0200,>0400,>0800,>1000,>2000,>4000,>8000
+     A63A 0200     
+     A63C 0400     
+     A63E 0800     
+     A640 1000     
+     A642 2000     
+     A644 4000     
+     A646 8000     
+1061 A648 0F00         data >0f00
+1062               
+1063               ; wait for frame to increment
+1064               wait
+1065 A64A C020  30     mov @frame,r0
+     A64C 834A     
+1066               !1
+1067 A64E 8800  30     c r0,@frame
+     A650 834A     
+1068 A652 13FD  14     jeq -!1
+1069 A654 045B  20     b *r11
+1070               
+1071               ; initialize music system
+1072               music_init
+1073               ; mute sound chip
+1074 A656 0200  20     li r0,>9fbf
+     A658 9FBF     
+1075 A65A D800  30     movb r0,@SOUND
+     A65C 8400     
+1076 A65E 06C0  14     swpb r0
+1077 A660 D800  30     movb r0,@SOUND
+     A662 8400     
+1078 A664 0200  20     li r0,>dfff
+     A666 DFFF     
+1079 A668 D800  30     movb r0,@SOUND
+     A66A 8400     
+1080 A66C 06C0  14     swpb r0
+1081 A66E D800  30     movb r0,@SOUND
+     A670 8400     
+1082               
+1084               ; return if we don't have the player compiled in
+1085 A672 045B  20     b *r11
+1087               
+1088               ; all the rest of the player is under this if
+1525               
+1526               
+1819               
+1820               ; Required for Creativision because it doesn't provide an ASCII charset.
+1821               ; Kept for TI to reduce dependence on the console and because it looks
+1822               ; better than the caps.
+1823               ;
+1824               ; My personal font for TMS9928.
+1825               ;
+1826               ; Patterned after the TMS9928 programming manual 6x8 letters
+1827               ; with better lowercase letters, also I made a proper
+1828               ; AT sign.
+1829               ;
+1830               font_bitmaps
+1831 A674 0000         byte >00,>00,>00,>00,>00,>00,>00,>00      ; >20 space
+     A676 0000     
+     A678 0000     
+     A67A 0000     
+1832 A67C 2020         byte >20,>20,>20,>20,>20,>00,>20,>00      ; >21 !
+     A67E 2020     
+     A680 2000     
+     A682 2000     
+1833 A684 5050         byte >50,>50,>50,>00,>00,>00,>00,>00      ; >22 "
+     A686 5000     
+     A688 0000     
+     A68A 0000     
+1834 A68C 5050         byte >50,>50,>f8,>50,>f8,>50,>50,>00      ; >23 #
+     A68E F850     
+     A690 F850     
+     A692 5000     
+1835 A694 2078         byte >20,>78,>a0,>70,>28,>f0,>20,>00      ; >24 >
+     A696 A070     
+     A698 28F0     
+     A69A 2000     
+1836 A69C C0C8         byte >c0,>c8,>10,>20,>40,>98,>18,>00      ; >25 %
+     A69E 1020     
+     A6A0 4098     
+     A6A2 1800     
+1837 A6A4 40A0         byte >40,>a0,>40,>a0,>a8,>90,>68,>00      ; >26 &
+     A6A6 40A0     
+     A6A8 A890     
+     A6AA 6800     
+1838 A6AC 6020         byte >60,>20,>40,>00,>00,>00,>00,>00      ; >27 '
+     A6AE 4000     
+     A6B0 0000     
+     A6B2 0000     
+1839 A6B4 1020         byte >10,>20,>40,>40,>40,>20,>10,>00      ; >28 (
+     A6B6 4040     
+     A6B8 4020     
+     A6BA 1000     
+1840 A6BC 4020         byte >40,>20,>10,>10,>10,>20,>40,>00      ; >29 )
+     A6BE 1010     
+     A6C0 1020     
+     A6C2 4000     
+1841 A6C4 00A8         byte >00,>a8,>70,>20,>70,>a8,>00,>00      ; >2a *
+     A6C6 7020     
+     A6C8 70A8     
+     A6CA 0000     
+1842 A6CC 0020         byte >00,>20,>20,>f8,>20,>20,>00,>00      ; >2b +
+     A6CE 20F8     
+     A6D0 2020     
+     A6D2 0000     
+1843 A6D4 0000         byte >00,>00,>00,>00,>00,>60,>20,>40      ; >2c ,
+     A6D6 0000     
+     A6D8 0060     
+     A6DA 2040     
+1844 A6DC 0000         byte >00,>00,>00,>fc,>00,>00,>00,>00      ; >2d -
+     A6DE 00FC     
+     A6E0 0000     
+     A6E2 0000     
+1845 A6E4 0000         byte >00,>00,>00,>00,>00,>00,>60,>00      ; >2e .
+     A6E6 0000     
+     A6E8 0000     
+     A6EA 6000     
+1846 A6EC 0008         byte >00,>08,>10,>20,>40,>80,>00,>00      ; >2f /
+     A6EE 1020     
+     A6F0 4080     
+     A6F2 0000     
+1847 A6F4 7088         byte >70,>88,>98,>a8,>c8,>88,>70,>00      ; >30 0
+     A6F6 98A8     
+     A6F8 C888     
+     A6FA 7000     
+1848 A6FC 2060         byte >20,>60,>20,>20,>20,>20,>f8,>00      ; >31 1
+     A6FE 2020     
+     A700 2020     
+     A702 F800     
+1849 A704 7088         byte >70,>88,>08,>10,>60,>80,>f8,>00      ; >32 2
+     A706 0810     
+     A708 6080     
+     A70A F800     
+1850 A70C 7088         byte >70,>88,>08,>30,>08,>88,>70,>00      ; >33 3
+     A70E 0830     
+     A710 0888     
+     A712 7000     
+1851 A714 3050         byte >30,>50,>90,>90,>f8,>10,>10,>00      ; >34 4
+     A716 9090     
+     A718 F810     
+     A71A 1000     
+1852 A71C F880         byte >f8,>80,>f0,>08,>08,>08,>f0,>00      ; >35 5
+     A71E F008     
+     A720 0808     
+     A722 F000     
+1853 A724 3040         byte >30,>40,>80,>f0,>88,>88,>70,>00      ; >36 6
+     A726 80F0     
+     A728 8888     
+     A72A 7000     
+1854 A72C F808         byte >f8,>08,>10,>20,>20,>20,>20,>00      ; >37 7
+     A72E 1020     
+     A730 2020     
+     A732 2000     
+1855 A734 7088         byte >70,>88,>88,>70,>88,>88,>70,>00      ; >38 8
+     A736 8870     
+     A738 8888     
+     A73A 7000     
+1856 A73C 7088         byte >70,>88,>88,>78,>08,>10,>60,>00      ; >39 9
+     A73E 8878     
+     A740 0810     
+     A742 6000     
+1857 A744 0000         byte >00,>00,>00,>60,>00,>60,>00,>00      ; >3a
+     A746 0060     
+     A748 0060     
+     A74A 0000     
+1858 A74C 0000         byte >00,>00,>00,>60,>00,>60,>20,>40      ; >3b *
+     A74E 0060     
+     A750 0060     
+     A752 2040     
+1859 A754 1020         byte >10,>20,>40,>80,>40,>20,>10,>00      ; >3c <
+     A756 4080     
+     A758 4020     
+     A75A 1000     
+1860 A75C 0000         byte >00,>00,>f8,>00,>f8,>00,>00,>00      ; >3d =
+     A75E F800     
+     A760 F800     
+     A762 0000     
+1861 A764 0804         byte >08,>04,>02,>01,>02,>04,>08,>00      ; >3e >
+     A766 0201     
+     A768 0204     
+     A76A 0800     
+1862 A76C 7088         byte >70,>88,>08,>10,>20,>00,>20,>00      ; >3f ?
+     A76E 0810     
+     A770 2000     
+     A772 2000     
+1863 A774 7088         byte >70,>88,>98,>a8,>98,>80,>70,>00      ; >40 @
+     A776 98A8     
+     A778 9880     
+     A77A 7000     
+1864 A77C 2050         byte >20,>50,>88,>88,>f8,>88,>88,>00      ; >41 A
+     A77E 8888     
+     A780 F888     
+     A782 8800     
+1865 A784 F088         byte >f0,>88,>88,>f0,>88,>88,>f0,>00      ; >42 B
+     A786 88F0     
+     A788 8888     
+     A78A F000     
+1866 A78C 7088         byte >70,>88,>80,>80,>80,>88,>70,>00      ; >43 C
+     A78E 8080     
+     A790 8088     
+     A792 7000     
+1867 A794 F088         byte >f0,>88,>88,>88,>88,>88,>f0,>00      ; >44 D
+     A796 8888     
+     A798 8888     
+     A79A F000     
+1868 A79C F880         byte >f8,>80,>80,>f0,>80,>80,>f8,>00      ; >45 E
+     A79E 80F0     
+     A7A0 8080     
+     A7A2 F800     
+1869 A7A4 F880         byte >f8,>80,>80,>f0,>80,>80,>80,>00      ; >46 F
+     A7A6 80F0     
+     A7A8 8080     
+     A7AA 8000     
+1870 A7AC 7088         byte >70,>88,>80,>b8,>88,>88,>70,>00      ; >47 G
+     A7AE 80B8     
+     A7B0 8888     
+     A7B2 7000     
+1871 A7B4 8888         byte >88,>88,>88,>f8,>88,>88,>88,>00      ; >48 H
+     A7B6 88F8     
+     A7B8 8888     
+     A7BA 8800     
+1872 A7BC 7020         byte >70,>20,>20,>20,>20,>20,>70,>00      ; >49 I
+     A7BE 2020     
+     A7C0 2020     
+     A7C2 7000     
+1873 A7C4 0808         byte >08,>08,>08,>08,>88,>88,>70,>00      ; >4A J
+     A7C6 0808     
+     A7C8 8888     
+     A7CA 7000     
+1874 A7CC 8890         byte >88,>90,>a0,>c0,>a0,>90,>88,>00      ; >4B K
+     A7CE A0C0     
+     A7D0 A090     
+     A7D2 8800     
+1875 A7D4 8080         byte >80,>80,>80,>80,>80,>80,>f8,>00      ; >4C L
+     A7D6 8080     
+     A7D8 8080     
+     A7DA F800     
+1876 A7DC 88D8         byte >88,>d8,>a8,>a8,>88,>88,>88,>00      ; >4D M
+     A7DE A8A8     
+     A7E0 8888     
+     A7E2 8800     
+1877 A7E4 88C8         byte >88,>c8,>c8,>a8,>98,>98,>88,>00      ; >4E N
+     A7E6 C8A8     
+     A7E8 9898     
+     A7EA 8800     
+1878 A7EC 7088         byte >70,>88,>88,>88,>88,>88,>70,>00      ; >4F O
+     A7EE 8888     
+     A7F0 8888     
+     A7F2 7000     
+1879 A7F4 F088         byte >f0,>88,>88,>f0,>80,>80,>80,>00      ; >50 P
+     A7F6 88F0     
+     A7F8 8080     
+     A7FA 8000     
+1880 A7FC 7088         byte >70,>88,>88,>88,>88,>a8,>90,>68      ; >51 Q
+     A7FE 8888     
+     A800 88A8     
+     A802 9068     
+1881 A804 F088         byte >f0,>88,>88,>f0,>a0,>90,>88,>00      ; >52 R
+     A806 88F0     
+     A808 A090     
+     A80A 8800     
+1882 A80C 7088         byte >70,>88,>80,>70,>08,>88,>70,>00      ; >53 S
+     A80E 8070     
+     A810 0888     
+     A812 7000     
+1883 A814 F820         byte >f8,>20,>20,>20,>20,>20,>20,>00      ; >54 T
+     A816 2020     
+     A818 2020     
+     A81A 2000     
+1884 A81C 8888         byte >88,>88,>88,>88,>88,>88,>70,>00      ; >55 U
+     A81E 8888     
+     A820 8888     
+     A822 7000     
+1885 A824 8888         byte >88,>88,>88,>88,>50,>50,>20,>00      ; >56 V
+     A826 8888     
+     A828 5050     
+     A82A 2000     
+1886 A82C 8888         byte >88,>88,>88,>a8,>a8,>d8,>88,>00      ; >57 W
+     A82E 88A8     
+     A830 A8D8     
+     A832 8800     
+1887 A834 8888         byte >88,>88,>50,>20,>50,>88,>88,>00      ; >58 X
+     A836 5020     
+     A838 5088     
+     A83A 8800     
+1888 A83C 8888         byte >88,>88,>88,>70,>20,>20,>20,>00      ; >59 Y
+     A83E 8870     
+     A840 2020     
+     A842 2000     
+1889 A844 F808         byte >f8,>08,>10,>20,>40,>80,>f8,>00      ; >5A Z
+     A846 1020     
+     A848 4080     
+     A84A F800     
+1890 A84C 7860         byte >78,>60,>60,>60,>60,>60,>78,>00      ; >5B [
+     A84E 6060     
+     A850 6060     
+     A852 7800     
+1891 A854 0080         byte >00,>80,>40,>20,>10,>08,>00,>00      ; >5C \
+     A856 4020     
+     A858 1008     
+     A85A 0000     
+1892 A85C F030         byte >F0,>30,>30,>30,>30,>30,>F0,>00      ; >5D ]
+     A85E 3030     
+     A860 3030     
+     A862 F000     
+1893 A864 2050         byte >20,>50,>88,>00,>00,>00,>00,>00      ; >5E
+     A866 8800     
+     A868 0000     
+     A86A 0000     
+1894 A86C 0000         byte >00,>00,>00,>00,>00,>00,>f8,>00      ; >5F _
+     A86E 0000     
+     A870 0000     
+     A872 F800     
+1895 A874 4020         byte >40,>20,>10,>00,>00,>00,>00,>00      ; >60
+     A876 1000     
+     A878 0000     
+     A87A 0000     
+1896 A87C 0000         byte >00,>00,>68,>98,>88,>98,>68,>00      ; >61 a
+     A87E 6898     
+     A880 8898     
+     A882 6800     
+1897 A884 8080         byte >80,>80,>f0,>88,>88,>88,>f0,>00      ; >62 b
+     A886 F088     
+     A888 8888     
+     A88A F000     
+1898 A88C 0000         byte >00,>00,>78,>80,>80,>80,>78,>00      ; >63 c
+     A88E 7880     
+     A890 8080     
+     A892 7800     
+1899 A894 0808         byte >08,>08,>68,>98,>88,>98,>68,>00      ; >64 d
+     A896 6898     
+     A898 8898     
+     A89A 6800     
+1900 A89C 0000         byte >00,>00,>70,>88,>f8,>80,>70,>00      ; >65 e
+     A89E 7088     
+     A8A0 F880     
+     A8A2 7000     
+1901 A8A4 3048         byte >30,>48,>40,>e0,>40,>40,>40,>00      ; >66 f
+     A8A6 40E0     
+     A8A8 4040     
+     A8AA 4000     
+1902 A8AC 0000         byte >00,>00,>78,>88,>88,>78,>08,>70      ; >67 g
+     A8AE 7888     
+     A8B0 8878     
+     A8B2 0870     
+1903 A8B4 8080         byte >80,>80,>f0,>88,>88,>88,>88,>00      ; >68 h
+     A8B6 F088     
+     A8B8 8888     
+     A8BA 8800     
+1904 A8BC 2000         byte >20,>00,>60,>20,>20,>20,>70,>00      ; >69 i
+     A8BE 6020     
+     A8C0 2020     
+     A8C2 7000     
+1905 A8C4 0800         byte >08,>00,>18,>08,>88,>88,>70,>00      ; >6a j
+     A8C6 1808     
+     A8C8 8888     
+     A8CA 7000     
+1906 A8CC 8080         byte >80,>80,>88,>90,>e0,>90,>88,>00      ; >6b k
+     A8CE 8890     
+     A8D0 E090     
+     A8D2 8800     
+1907 A8D4 6020         byte >60,>20,>20,>20,>20,>20,>70,>00      ; >6c l
+     A8D6 2020     
+     A8D8 2020     
+     A8DA 7000     
+1908 A8DC 0000         byte >00,>00,>d0,>a8,>a8,>a8,>a8,>00      ; >6d m
+     A8DE D0A8     
+     A8E0 A8A8     
+     A8E2 A800     
+1909 A8E4 0000         byte >00,>00,>b0,>c8,>88,>88,>88,>00      ; >6e n
+     A8E6 B0C8     
+     A8E8 8888     
+     A8EA 8800     
+1910 A8EC 0000         byte >00,>00,>70,>88,>88,>88,>70,>00      ; >6f o
+     A8EE 7088     
+     A8F0 8888     
+     A8F2 7000     
+1911 A8F4 0000         byte >00,>00,>f0,>88,>88,>88,>f0,>80      ; >70 p
+     A8F6 F088     
+     A8F8 8888     
+     A8FA F080     
+1912 A8FC 0000         byte >00,>00,>78,>88,>88,>88,>78,>08      ; >71 q
+     A8FE 7888     
+     A900 8888     
+     A902 7808     
+1913 A904 0000         byte >00,>00,>b8,>c0,>80,>80,>80,>00      ; >72 r
+     A906 B8C0     
+     A908 8080     
+     A90A 8000     
+1914 A90C 0000         byte >00,>00,>78,>80,>70,>08,>f0,>00      ; >73 s
+     A90E 7880     
+     A910 7008     
+     A912 F000     
+1915 A914 2020         byte >20,>20,>f8,>20,>20,>20,>20,>00      ; >74 t
+     A916 F820     
+     A918 2020     
+     A91A 2000     
+1916 A91C 0000         byte >00,>00,>88,>88,>88,>98,>68,>00      ; >75 u
+     A91E 8888     
+     A920 8898     
+     A922 6800     
+1917 A924 0000         byte >00,>00,>88,>88,>88,>50,>20,>00      ; >76 v
+     A926 8888     
+     A928 8850     
+     A92A 2000     
+1918 A92C 0000         byte >00,>00,>88,>a8,>a8,>a8,>50,>00      ; >77 w
+     A92E 88A8     
+     A930 A8A8     
+     A932 5000     
+1919 A934 0000         byte >00,>00,>88,>50,>20,>50,>88,>00      ; >78 x
+     A936 8850     
+     A938 2050     
+     A93A 8800     
+1920 A93C 0000         byte >00,>00,>88,>88,>98,>68,>08,>70      ; >79 y
+     A93E 8888     
+     A940 9868     
+     A942 0870     
+1921 A944 0000         byte >00,>00,>f8,>10,>20,>40,>f8,>00      ; >7a z
+     A946 F810     
+     A948 2040     
+     A94A F800     
+1922 A94C 1820         byte >18,>20,>20,>40,>20,>20,>18,>00      ; >7b {
+     A94E 2040     
+     A950 2020     
+     A952 1800     
+1923 A954 2020         byte >20,>20,>20,>20,>20,>20,>20,>00      ; >7c |
+     A956 2020     
+     A958 2020     
+     A95A 2000     
+1924 A95C C020         byte >c0,>20,>20,>10,>20,>20,>c0,>00      ; >7d }
+     A95E 2010     
+     A960 2020     
+     A962 C000     
+1925 A964 0000         byte >00,>00,>40,>a8,>10,>00,>00,>00      ; >7e
+     A966 40A8     
+     A968 1000     
+     A96A 0000     
+1926 A96C 7070         byte >70,>70,>20,>f8,>20,>70,>50,>00      ; >7f
+     A96E 20F8     
+     A970 2070     
+     A972 5000     
+1927               
+1928               
+1929               ; The stack is simulated using R10. It's not used in
+1930               ; these functions but the compiled code will need it.
+1931               ; To push: dect r10, mov r0,*r10
+1932               ; To pop:  mov *r10+,r0
+1933               ; However, for JSR a function is helpful - call this like:
+1934               ; bl @jsr
+1935               ; data <function_address>
+1936               jsr
+1937 A974 C3BB  30     mov *r11+,r14       ; get the jump address
+1938 A976 064A  14     dect r10            ; make room on stack
+1939 A978 C68B  30     mov r11,*r10        ; save return address
+1940 A97A 069E  24     bl *r14             ; new subroutine call, we can come back here
+1941 A97C C2FA  30     mov *r10+,r11       ; get real return off stack - warning, all basic functions do this inline rather than return
+1942 A97E 045B  20     b *r11              ; back to caller
+1943               
+1944               ; entry code - we should enter with ints off anyway
+1945               START
+1946 A980 0300  22     limi 0
+     A982 0000     
+1947 A984 02E0  18     lwpi mywp           ; get our private workspace
+     A986 8300     
+1948 A988 020A  20     li R10,>4000        ; pseudo stack pointer
+     A98A 4000     
+1949 A98C D820  42     movb @>8802,@vdp_status  ; clear any pending VDP interrupt and initialize vdp_status if needed
+     A98E 8802     
+     A990 837B     
+1950               
+1951 A992 0200  20     li r0,>0182         ; select 16k, magnified, blank, no ints
+     A994 0182     
+1952 A996 06A0  32     bl @wrtvdp          ; other ports write this twice... maybe to be 100% sure no NMI happens? We don't have that problem.
+     A998 A000     
+1953               
+1954 A99A 0200  20     li r0,firstsp       ; clear variables in scratchpad
+     A99C 8340     
+1955               stlp1
+1956 A99E 04F0  30     clr *r0+
+1957 A9A0 0280  22     ci r0,lastsp
+     A9A2 8352     
+1958 A9A4 1AFC  14     jl stlp1
+1959               
+1960 A9A6 0200  20     li r0,>2000         ; clear lower 8k RAM
+     A9A8 2000     
+1961               stlp2
+1962 A9AA 04F0  30     clr *r0+
+1963 A9AC 0280  22     ci r0,>4000
+     A9AE 4000     
+1964 A9B0 16FC  14     jne stlp2
+1965               
+1966 A9B2 0200  20     li r0,>0f0f
+     A9B4 0F0F     
+1967 A9B6 C800  30     mov r0,@key1_data   ; gets both - no key is >0f return
+     A9B8 8348     
+1968               
+1969 A9BA 06A0  32     bl @music_init
+     A9BC A656     
+1970 A9BE 06A0  32     bl @mode_0
+     A9C0 A33E     
+1971               
+1972 A9C2 0200  20     li r0,int_handler
+     A9C4 A48E     
+1973 A9C6 C800  30     mov r0,@intwsr2     ; set interrupt function
+     A9C8 83C4     
+1974 A9CA 0200  20     li r0,>8000
+     A9CC 8000     
+1975 A9CE C800  30     mov r0,@intwsr1     ; disable most console ROM interrupt handling
+     A9D0 83C2     
+1976 A9D2 0201  20     li r1,1
+     A9D4 0001     
+1977 A9D6 C801  30     mov r1,@intwsr11    ; make sure screen timeout is odd so it never triggers
+     A9D8 83D6     
+1978 A9DA 0201  20     li r1,>0108
+     A9DC 0108     
+1979 A9DE C801  30     mov r1,@gplwsr14    ; GPL status flags, should already be this, but be sure
+     A9E0 83FC     
+1980 A9E2 D801  30     movb r1,@ntsc       ; init ntsc flag to true - we actually do not have a good way to detect
+     A9E4 8350     
+1981 A9E6 0201  20     li r1,>8c02
+     A9E8 8C02     
+1982 A9EA C801  30     mov r1,@gplwsr15    ; Address of VDP for GPL - should already be this, but be sure
+     A9EC 83FE     
+1983               
+1984               ;;; CVBasic code starts here
+1985               	; 	' ======================================================================
+1986               	; 	' TESTSOUNDS -- a bench for Keystone Kapers' sound effects
+1987               	; 	' ======================================================================
+1988               	; 	' A DIGIT PICKS THE CATEGORY, A LETTER PLAYS THE VARIANT. Press 4 for
+1989               	; 	' PICKUP, then C and H and C again -- one key each, and the category stays
+1990               	; 	' where it is. The ">" says which one is held.
+1991               	; 	'
+1992               	; 	' IT USED TO CYCLE, and cycling is fine for hearing a set once and useless
+1993               	; 	' for the thing you actually do with it: A/B a PAIR over and over until one
+1994               	; 	' of them is obviously right. Cycling makes you walk past everything in
+1995               	; 	' between and lose the comparison on the way.
+1996               	; 	'
+1997               	; 	' LETTERS WORK BECAUSE THE TI RETURNS THEM. cont1.key on the TI-99/4A gives
+1998               	; 	' uppercase ASCII from the keyboard as well as the stock 0-9 -- the keypad
+1999               	; 	' digits come back as 0-9 and the letters as 65 upwards, so the two ranges
+2000               	; 	' cannot collide. This was very nearly built on digits alone in the belief
+2001               	; 	' that cont1.key was keypad-only; that is true of the ColecoVision and it
+2002               	; 	' is not true here.
+2003               	; 	'
+2004               	; 	' ON COLECOVISION THERE IS NO KEYBOARD, so FIRE is kept as a way through
+2005               	; 	' the variants of the held category. The bench is a TI tool in practice,
+2006               	; 	' but a control scheme that silently does nothing on the other target is
+2007               	; 	' not one worth shipping.
+2008               	; 	'
+2009               	; 	' Anything else is IGNORED -- an unknown key, a digit above 6, a letter
+2010               	; 	' past the end of the category. Not clamped: a four-variant category does
+2011               	; 	' nothing on E-J rather than quietly replaying its last one and leaving you
+2012               	; 	' wondering whether you misheard.
+2013               	; 	'
+2014               	; 	' WHY IT EXISTS. The game's effects were hand-picked divisors that had
+2015               	; 	' never been compared with anything. These are measured off an Atari 2600
+2016               	; 	' recording (assets/sfxref.md has the workings and the method), and tuning
+2017               	; 	' them by editing the game, rebuilding and playing to the right screen is
+2018               	; 	' hopeless -- here it is a keypress.
+2019               	; 	'
+2020               	; 	' VARIANT A OF EVERY CATEGORY IS THE MEASURED ONE. The rest are departures
+2021               	; 	' from it, so the reference is always one key away and the comparison is
+2022               	; 	' never against memory.
+2023               	; 	'
+2024               	; 	' WHAT THE REFERENCE SAYS, and the first pass of the analysis got this
+2025               	; 	' wrong in a way worth recording. Autocorrelation reported every effect as
+2026               	; 	' noise, because the running sound plays underneath all of them and drags
+2027               	; 	' the confidence of a pitch estimate down. Direct energy measurement at
+2028               	; 	' fixed frequencies says otherwise: only the RUNNING and the TALLY ticks
+2029               	; 	' are noise, and the pickup RISES where the hit FALLS -- which is the
+2030               	; 	' difference between a reward and a penalty, and the thing the first pass
+2031               	; 	' hid by filing both as "noise, about 660 ms".
+2032               	; 	'
+2033               	; 	' Dual target: TI-99/4A and ColecoVision, same SN76489 either way.
+2034               	;
+2035               	; 	CONST SILENCE = 255		' a step's channel meaning "everything off"
+2036      00FF     const_SILENCE	equ >00ff
+2037               	; 	CONST NOISE = 3			' SN76489 channel 3 is the noise generator
+2038      0003     const_NOISE	equ >0003
+2039               	; 	CONST ENDTAB = 255		' a step's FRAME count meaning "end of table"
+2040      00FF     const_ENDTAB	equ >00ff
+2041               	; 	CONST NOWAIT = 254		' ... and one meaning "set it and carry on"
+2042      00FE     const_NOWAIT	equ >00fe
+2043               	; 	CONST NCAT = 6
+2044      0006     const_NCAT	equ >0006
+2045               	;
+2046               	; 	DIM stp(4)
+2047               	; 	DIM #fxoff(48)			' where each effect starts, in bytes
+2048               	; 	DIM catfst(NCAT)		' first effect of each category
+2049               	; 	DIM catnum(NCAT)		' how many variants it has
+2050               	; 	DIM catcur(NCAT)		' which one plays next
+2051               	;
+2052               	; 	SOUND 0,,0
+2053 A9EE 04C0  14 	clr r0
+2054 A9F0 0202  20 	li r2,>9000
+     A9F2 9000     
+2055 A9F4 06A0  32 	bl @jsr
+     A9F6 A974     
+2056 A9F8 A2D6     	data sn76489_vol
+2057               	; 	SOUND 1,,0
+2058 A9FA 04C0  14 	clr r0
+2059 A9FC 0202  20 	li r2,>b000
+     A9FE B000     
+2060 AA00 06A0  32 	bl @jsr
+     AA02 A974     
+2061 AA04 A2D6     	data sn76489_vol
+2062               	; 	SOUND 2,,0
+2063 AA06 04C0  14 	clr r0
+2064 AA08 0202  20 	li r2,>d000
+     AA0A D000     
+2065 AA0C 06A0  32 	bl @jsr
+     AA0E A974     
+2066 AA10 A2D6     	data sn76489_vol
+2067               	; 	SOUND 3,,0
+2068 AA12 04C0  14 	clr r0
+2069 AA14 0202  20 	li r2,>f000
+     AA16 F000     
+2070 AA18 06A0  32 	bl @jsr
+     AA1A A974     
+2071 AA1C A2D6     	data sn76489_vol
+2072               	;
+2073               	; 	' THE CATEGORY MAP. Effects are numbered in the order they appear in
+2074               	; 	' fx_data; these say which run belongs to which key. It is a hand-written
+2075               	; 	' index into generated-looking data, so it is the thing most likely to
+2076               	; 	' drift -- if a category plays the wrong sound, look here first.
+2077               	; 	catfst(0) = 0  : catnum(0) = 10		' 1 RUN
+2078 AA1E 04C0  14 	clr r0
+2079 AA20 D800  38 	movb r0,@array_CATFST
+     AA22 210E     
+2080 AA24 0200  20 	li r0,2560   ; 10*256
+     AA26 0A00     
+2081 AA28 D800  38 	movb r0,@array_CATNUM
+     AA2A 2108     
+2082               	; 	catfst(1) = 10 : catnum(1) = 4		' 2 JUMP
+2083 AA2C 0200  20 	li r0,2560   ; 10*256
+     AA2E 0A00     
+2084 AA30 D800  38 	movb r0,@array_CATFST+1
+     AA32 210F     
+2085 AA34 0200  20 	li r0,1024   ; 4*256
+     AA36 0400     
+2086 AA38 D800  38 	movb r0,@array_CATNUM+1
+     AA3A 2109     
+2087               	; 	catfst(2) = 14 : catnum(2) = 3		' 3 TIME UP
+2088 AA3C 0200  20 	li r0,3584   ; 14*256
+     AA3E 0E00     
+2089 AA40 D800  38 	movb r0,@array_CATFST+2
+     AA42 2110     
+2090 AA44 0200  20 	li r0,768   ; 3*256
+     AA46 0300     
+2091 AA48 D800  38 	movb r0,@array_CATNUM+2
+     AA4A 210A     
+2092               	; 	catfst(3) = 17 : catnum(3) = 10		' 4 PICKUP
+2093 AA4C 0200  20 	li r0,4352   ; 17*256
+     AA4E 1100     
+2094 AA50 D800  38 	movb r0,@array_CATFST+3
+     AA52 2111     
+2095 AA54 0200  20 	li r0,2560   ; 10*256
+     AA56 0A00     
+2096 AA58 D800  38 	movb r0,@array_CATNUM+3
+     AA5A 210B     
+2097               	; 	catfst(4) = 27 : catnum(4) = 8		' 5 HIT
+2098 AA5C 0200  20 	li r0,6912   ; 27*256
+     AA5E 1B00     
+2099 AA60 D800  38 	movb r0,@array_CATFST+4
+     AA62 2112     
+2100 AA64 0200  20 	li r0,2048   ; 8*256
+     AA66 0800     
+2101 AA68 D800  38 	movb r0,@array_CATNUM+4
+     AA6A 210C     
+2102               	; 	catfst(5) = 35 : catnum(5) = 3		' 6 TALLY
+2103 AA6C 0200  20 	li r0,8960   ; 35*256
+     AA6E 2300     
+2104 AA70 D800  38 	movb r0,@array_CATFST+5
+     AA72 2113     
+2105 AA74 0200  20 	li r0,768   ; 3*256
+     AA76 0300     
+2106 AA78 D800  38 	movb r0,@array_CATNUM+5
+     AA7A 210D     
+2107               	;
+2108               	; 	GOSUB scan_fx
+2109 AA7C 06A0  32 	bl @jsr
+     AA7E A974     
+2110 AA80 AC0C     	data cvb_SCAN_FX
+2111               	; 	GOSUB draw_menu
+2112 AA82 06A0  32 	bl @jsr
+     AA84 A974     
+2113 AA86 AEBE     	data cvb_DRAW_MENU
+2114               	;
+2115               	; 	' WAIT FOR RELEASE BEFORE LISTENING TO ANYTHING. The keypress that chose
+2116               	; 	' this cart from the TI menu is still being reported on the first pass in
+2117               	; 	' here, so without this the program plays a variant nobody asked for --
+2118               	; 	' and worse, ADVANCES that category to B, so the first deliberate press
+2119               	; 	' gives the wrong one and every letter after it is off by one.
+2120               	; 	'
+2121               	; 	' Same fault and same fix as the 838 page in Keystone Kapers, where the
+2122               	; 	' final 8 of the cheat code was being typed into the first field.
+2123               	; boot_rel:
+2124               cvb_BOOT_REL
+2125               	; 	WAIT
+2126 AA88 06A0  32 	bl @jsr
+     AA8A A974     
+2127 AA8C A64A     	data wait
+2128               	; 	IF cont1.key <> 15 THEN GOTO boot_rel
+2129 AA8E D020  30 	movb @key1_data,r0
+     AA90 8348     
+2130 AA92 0201  20 	li r1,3840   ; 15*256
+     AA94 0F00     
+2131 AA96 9001  18 	cb r1,r0
+2132 AA98 1602  14 	jne cv2
+2133 AA9A 0460  28 	b @cv1
+     AA9C AAA2     
+2134               cv2
+2135 AA9E 0460  28 	b @cvb_BOOT_REL
+     AAA0 AA88     
+2136               cv1
+2137               	;
+2138               	; main:
+2139               cvb_MAIN
+2140               	; 	WAIT
+2141 AAA2 06A0  32 	bl @jsr
+     AAA4 A974     
+2142 AAA6 A64A     	data wait
+2143               	; 	' FIRE steps through the held category's variants -- the ColecoVision way
+2144               	; 	' in, where there is no keyboard to type a letter on. Edge-triggered, or
+2145               	; 	' holding it would run through the whole set in a tenth of a second.
+2146               	; 	b = 0
+2147 AAA8 04C0  14 	clr r0
+2148 AAAA D800  38 	movb r0,@cvb_B
+     AAAC 2080     
+2149               	; 	IF cont1.button THEN b = 1
+2150 AAAE D020  30 	movb @joy1_data,r0
+     AAB0 8346     
+2151 AAB2 0201  20 	li r1,16384   ; 64*256
+     AAB4 4000     
+2152 AAB6 0541  14 	inv r1
+2153 AAB8 5001  18 	szcb r1,r0
+2154 AABA 1602  14 	jne cv4
+2155 AABC 0460  28 	b @cv3
+     AABE AAC8     
+2156               cv4
+2157 AAC0 0200  20 	li r0,256   ; 1*256
+     AAC2 0100     
+2158 AAC4 D800  38 	movb r0,@cvb_B
+     AAC6 2080     
+2159               cv3
+2160               	; 	IF b <> blast THEN
+2161 AAC8 D020  34 	movb @cvb_B,r0
+     AACA 2080     
+2162 AACC 9020  34 	cb @cvb_BLAST,r0
+     AACE 2095     
+2163 AAD0 1602  14 	jne cv6
+2164 AAD2 0460  28 	b @cv5
+     AAD4 AB24     
+2165               cv6
+2166               	; 		blast = b
+2167 AAD6 D820  54 	movb @cvb_B,@cvb_BLAST
+     AAD8 2080     
+     AADA 2095     
+2168               	; 		IF b = 1 THEN
+2169 AADC D020  34 	movb @cvb_B,r0
+     AADE 2080     
+2170 AAE0 0201  20 	li r1,256   ; 1*256
+     AAE2 0100     
+2171 AAE4 9001  18 	cb r1,r0
+2172 AAE6 1302  14 	jeq cv8
+2173 AAE8 0460  28 	b @cv7
+     AAEA AB24     
+2174               cv8
+2175               	; 			v = catcur(cat) + 1
+2176 AAEC D020  34 	movb @cvb_CAT,r0
+     AAEE 2082     
+2177 AAF0 0980  32 	srl r0,8
+2178 AAF2 0220  22 	ai r0,array_CATCUR
+     AAF4 2102     
+2179 AAF6 D010  26 	movb *r0,r0
+2180 AAF8 0220  22 	ai r0,256	; 1
+     AAFA 0100     
+2181 AAFC D800  38 	movb r0,@cvb_V
+     AAFE 2083     
+2182               	; 			IF v >= catnum(cat) THEN v = 0
+2183 AB00 D020  34 	movb @cvb_CAT,r0
+     AB02 2082     
+2184 AB04 0980  32 	srl r0,8
+2185 AB06 0220  22 	ai r0,array_CATNUM
+     AB08 2108     
+2186 AB0A D050  26 	movb *r0,r1
+2187 AB0C D020  34 	movb @cvb_V,r0
+     AB0E 2083     
+2188 AB10 9040  18 	cb r0,r1
+2189 AB12 1402  14 	jhe cv10
+2190 AB14 0460  28 	b @cv9
+     AB16 AB1E     
+2191               cv10
+2192 AB18 04C0  14 	clr r0
+2193 AB1A D800  38 	movb r0,@cvb_V
+     AB1C 2083     
+2194               cv9
+2195               	; 			GOSUB play_one
+2196 AB1E 06A0  32 	bl @jsr
+     AB20 A974     
+2197 AB22 ABCC     	data cvb_PLAY_ONE
+2198               	; 		END IF
+2199               cv7
+2200               	; 	END IF
+2201               cv5
+2202               	; 	' EDGE-TRIGGERED. cont1.key returns the same value on every pass while a
+2203               	; 	' key is held, so without this one press would replay for as long as a
+2204               	; 	' finger is on it.
+2205               	; 	k = cont1.key
+2206 AB24 D820  50 	movb @key1_data,@cvb_K
+     AB26 8348     
+     AB28 2081     
+2207               	; 	IF k = klast THEN GOTO main
+2208 AB2A D020  34 	movb @cvb_K,r0
+     AB2C 2081     
+2209 AB2E 9020  34 	cb @cvb_KLAST,r0
+     AB30 2084     
+2210 AB32 1302  14 	jeq cv12
+2211 AB34 0460  28 	b @cv11
+     AB36 AB3C     
+2212               cv12
+2213 AB38 0460  28 	b @cvb_MAIN
+     AB3A AAA2     
+2214               cv11
+2215               	; 	klast = k
+2216 AB3C D820  54 	movb @cvb_K,@cvb_KLAST
+     AB3E 2081     
+     AB40 2084     
+2217               	;
+2218               	; 	' --- a digit 1-6 HOLDS a category. It plays nothing: picking what to
+2219               	; 	' --- listen to and listening to it are separate acts, and merging them
+2220               	; 	' --- means every category change costs you a sound you did not ask for.
+2221               	; 	IF k >= 1 THEN
+2222 AB42 D020  34 	movb @cvb_K,r0
+     AB44 2081     
+2223 AB46 0201  20 	li r1,256   ; 1*256
+     AB48 0100     
+2224 AB4A 9040  18 	cb r0,r1
+2225 AB4C 1402  14 	jhe cv14
+2226 AB4E 0460  28 	b @cv13
+     AB50 AB7E     
+2227               cv14
+2228               	; 		IF k <= NCAT THEN
+2229 AB52 D020  34 	movb @cvb_K,r0
+     AB54 2081     
+2230 AB56 0201  20 	li r1,1792   ; 7*256
+     AB58 0700     
+2231 AB5A 9040  18 	cb r0,r1
+2232 AB5C 1A02  14 	jl cv16
+2233 AB5E 0460  28 	b @cv15
+     AB60 AB7E     
+2234               cv16
+2235               	; 			GOSUB clear_mark
+2236 AB62 06A0  32 	bl @jsr
+     AB64 A974     
+2237 AB66 B0DE     	data cvb_CLEAR_MARK
+2238               	; 			cat = k - 1
+2239 AB68 D020  34 	movb @cvb_K,r0
+     AB6A 2081     
+2240 AB6C 0220  22 	ai r0,65280	; -1
+     AB6E FF00     
+2241 AB70 D800  38 	movb r0,@cvb_CAT
+     AB72 2082     
+2242               	; 			GOSUB show_mark
+2243 AB74 06A0  32 	bl @jsr
+     AB76 A974     
+2244 AB78 B0D2     	data cvb_SHOW_MARK
+2245               	; 			GOTO main
+2246 AB7A 0460  28 	b @cvb_MAIN
+     AB7C AAA2     
+2247               	; 		END IF
+2248               cv15
+2249               	; 	END IF
+2250               cv13
+2251               	;
+2252               	; 	' --- a letter A-J plays that variant of the held category. 65 is "A".
+2253               	; 	IF k >= 65 THEN
+2254 AB7E D020  34 	movb @cvb_K,r0
+     AB80 2081     
+2255 AB82 0201  20 	li r1,16640   ; 65*256
+     AB84 4100     
+2256 AB86 9040  18 	cb r0,r1
+2257 AB88 1402  14 	jhe cv18
+2258 AB8A 0460  28 	b @cv17
+     AB8C ABC8     
+2259               cv18
+2260               	; 		IF k <= 74 THEN
+2261 AB8E D020  34 	movb @cvb_K,r0
+     AB90 2081     
+2262 AB92 0201  20 	li r1,19200   ; 75*256
+     AB94 4B00     
+2263 AB96 9040  18 	cb r0,r1
+2264 AB98 1A02  14 	jl cv20
+2265 AB9A 0460  28 	b @cv19
+     AB9C ABC8     
+2266               cv20
+2267               	; 			v = k - 65
+2268 AB9E D020  34 	movb @cvb_K,r0
+     ABA0 2081     
+2269 ABA2 0220  22 	ai r0,48896	; -65
+     ABA4 BF00     
+2270 ABA6 D800  38 	movb r0,@cvb_V
+     ABA8 2083     
+2271               	; 			IF v < catnum(cat) THEN GOSUB play_one
+2272 ABAA D020  34 	movb @cvb_CAT,r0
+     ABAC 2082     
+2273 ABAE 0980  32 	srl r0,8
+2274 ABB0 0220  22 	ai r0,array_CATNUM
+     ABB2 2108     
+2275 ABB4 D050  26 	movb *r0,r1
+2276 ABB6 D020  34 	movb @cvb_V,r0
+     ABB8 2083     
+2277 ABBA 9040  18 	cb r0,r1
+2278 ABBC 1A02  14 	jl cv22
+2279 ABBE 0460  28 	b @cv21
+     ABC0 ABC8     
+2280               cv22
+2281 ABC2 06A0  32 	bl @jsr
+     ABC4 A974     
+2282 ABC6 ABCC     	data cvb_PLAY_ONE
+2283               cv21
+2284               	; 		END IF
+2285               cv19
+2286               	; 	END IF
+2287               cv17
+2288               	; 	GOTO main
+2289 ABC8 0460  28 	b @cvb_MAIN
+     ABCA AAA2     
+2290               	;
+2291               	; 	' One variant of the held category, and remember it as the current one so
+2292               	; 	' FIRE carries on from wherever the last letter left off.
+2293               	; play_one:
+2294               cvb_PLAY_ONE
+2295               	; 	catcur(cat) = v
+2296 ABCC D060  34 	movb @cvb_V,r1
+     ABCE 2083     
+2297 ABD0 D020  34 	movb @cvb_CAT,r0
+     ABD2 2082     
+2298 ABD4 0980  32 	srl r0,8
+2299 ABD6 0220  22 	ai r0,array_CATCUR
+     ABD8 2102     
+2300 ABDA D401  30 	movb r1,*r0
+2301               	; 	fx = catfst(cat)
+2302 ABDC D020  34 	movb @cvb_CAT,r0
+     ABDE 2082     
+2303 ABE0 0980  32 	srl r0,8
+2304 ABE2 0220  22 	ai r0,array_CATFST
+     ABE4 210E     
+2305 ABE6 D810  46 	movb *r0,@cvb_FX
+     ABE8 2094     
+2306               	; 	fx = fx + v
+2307 ABEA D020  34 	movb @cvb_FX,r0
+     ABEC 2094     
+2308 ABEE B020  34 	ab @cvb_V,r0
+     ABF0 2083     
+2309 ABF2 D800  38 	movb r0,@cvb_FX
+     ABF4 2094     
+2310               	; 	GOSUB show_variant
+2311 ABF6 06A0  32 	bl @jsr
+     ABF8 A974     
+2312 ABFA B156     	data cvb_SHOW_VARIANT
+2313               	; 	GOSUB play_fx
+2314 ABFC 06A0  32 	bl @jsr
+     ABFE A974     
+2315 AC00 ACAE     	data cvb_PLAY_FX
+2316               	; 	GOSUB show_ready
+2317 AC02 06A0  32 	bl @jsr
+     AC04 A974     
+2318 AC06 B0A2     	data cvb_SHOW_READY
+2319               	; 	RETURN
+2320 AC08 C03A  30 	mov *r10+,r0
+2321 AC0A 0450  20 	b *r0
+2322               	;
+2323               	; 	' ----------------------------------------------------------------------
+2324               	; 	' THE TABLE
+2325               	; 	' ----------------------------------------------------------------------
+2326               	; 	' An effect is a run of FOUR-BYTE STEPS: frames to hold, which channel, a
+2327               	; 	' value, and a volume. A step of 0 frames ends the effect; a step of 255
+2328               	; 	' frames ends the whole table.
+2329               	; 	'
+2330               	; 	'     channel 0-2   a TONE. The value is the divisor over four, because a
+2331               	; 	'                   divisor runs to 1023 and a DATA BYTE stops at 255.
+2332               	; 	'                   Pitch is 3579545 / (32 * divisor), so a SMALLER
+2333               	; 	'                   divisor is a HIGHER note -- sweeps read backwards from
+2334               	; 	'                   how they are written, which has caught this repo out.
+2335               	; 	'     channel 3     NOISE. The value is the register, 0-7: 0-3 periodic
+2336               	; 	'                   ("buzzy", nearly pitched), 4-7 white, and within each
+2337               	; 	'                   the rate falls as the number rises. 3 and 7 clock the
+2338               	; 	'                   noise from tone channel 2 instead, making it tunable.
+2339               	; 	'     channel 255   silence, for the gaps in a cadence.
+2340               	; 	'
+2341               	; 	' EFFECTS USED TO BE A FIXED EIGHT STEPS, so the player could skip to one
+2342               	; 	' by multiplying. That meant padding every short effect with zero-frame
+2343               	; 	' steps, and getting the count wrong made every later effect play somebody
+2344               	; 	' else's data -- silently, because the bytes were all valid. Scanning the
+2345               	; 	' table once at boot to record where each effect starts costs a few
+2346               	; 	' hundred bytes of a cart with twenty thousand free, removes the trap
+2347               	; 	' entirely, and is what lets the tally run for ten counts instead of four.
+2348               	; scan_fx:
+2349               cvb_SCAN_FX
+2350               	; 	RESTORE fx_data
+2351 AC0C 0200  20 	li r0,cvb_FX_DATA
+     AC0E B214     
+2352 AC10 C800  30 	mov r0,@read_pointer
+     AC12 8340     
+2353               	; 	nfx = 0
+2354 AC14 04C0  14 	clr r0
+2355 AC16 D800  38 	movb r0,@cvb_NFX
+     AC18 2085     
+2356               	; 	#cnt = 0
+2357 AC1A 04E0  34 	clr @cvb__CNT
+     AC1C 2086     
+2358               	; 	#fxoff(0) = 0
+2359 AC1E 04E0  34 	clr @array__FXOFF
+     AC20 20A2     
+2360               	; scan_loop:
+2361               cvb_SCAN_LOOP
+2362               	; 	READ BYTE b0
+2363 AC22 C060  30 	mov @read_pointer,r1
+     AC24 8340     
+2364 AC26 D011  26 	movb *r1,r0
+2365 AC28 05A0  26 	inc @read_pointer
+     AC2A 8340     
+2366 AC2C D800  38 	movb r0,@cvb_B0
+     AC2E 208C     
+2367               	; 	IF b0 = ENDTAB THEN RETURN
+2368 AC30 0201  20 	li r1,65280   ; 255*256
+     AC32 FF00     
+2369 AC34 9001  18 	cb r1,r0
+2370 AC36 1302  14 	jeq cv24
+2371 AC38 0460  28 	b @cv23
+     AC3A AC40     
+2372               cv24
+2373 AC3C C03A  30 	mov *r10+,r0
+2374 AC3E 0450  20 	b *r0
+2375               cv23
+2376               	; 	' the other three bytes of the step are consumed and DISCARDED -- this
+2377               	; 	' pass only wants to know where each effect begins. Read into the same
+2378               	; 	' scratch the player uses rather than three named variables nothing ever
+2379               	; 	' reads, which the compiler rightly complains about.
+2380               	; 	READ BYTE sb
+2381 AC40 C060  30 	mov @read_pointer,r1
+     AC42 8340     
+2382 AC44 D011  26 	movb *r1,r0
+2383 AC46 05A0  26 	inc @read_pointer
+     AC48 8340     
+2384 AC4A D800  38 	movb r0,@cvb_SB
+     AC4C 209A     
+2385               	; 	READ BYTE sb
+2386 AC4E C060  30 	mov @read_pointer,r1
+     AC50 8340     
+2387 AC52 D011  26 	movb *r1,r0
+2388 AC54 05A0  26 	inc @read_pointer
+     AC56 8340     
+2389 AC58 D800  38 	movb r0,@cvb_SB
+     AC5A 209A     
+2390               	; 	READ BYTE sb
+2391 AC5C C060  30 	mov @read_pointer,r1
+     AC5E 8340     
+2392 AC60 D011  26 	movb *r1,r0
+2393 AC62 05A0  26 	inc @read_pointer
+     AC64 8340     
+2394 AC66 D800  38 	movb r0,@cvb_SB
+     AC68 209A     
+2395               	; 	#cnt = #cnt + 4
+2396 AC6A C020  34 	mov @cvb__CNT,r0
+     AC6C 2086     
+2397 AC6E 0220  22 	ai r0,4
+     AC70 0004     
+2398 AC72 C800  38 	mov r0,@cvb__CNT
+     AC74 2086     
+2399               	; 	IF b0 = 0 THEN
+2400 AC76 D020  34 	movb @cvb_B0,r0
+     AC78 208C     
+2401 AC7A 1302  14 	jeq cv26
+2402 AC7C 0460  28 	b @cv25
+     AC7E ACAA     
+2403               cv26
+2404               	; 		nfx = nfx + 1
+2405 AC80 D020  34 	movb @cvb_NFX,r0
+     AC82 2085     
+2406 AC84 0220  22 	ai r0,256	; 1
+     AC86 0100     
+2407 AC88 D800  38 	movb r0,@cvb_NFX
+     AC8A 2085     
+2408               	; 		IF nfx < 48 THEN #fxoff(nfx) = #cnt
+2409 AC8C 0201  20 	li r1,12288   ; 48*256
+     AC8E 3000     
+2410 AC90 9040  18 	cb r0,r1
+2411 AC92 1A02  14 	jl cv28
+2412 AC94 0460  28 	b @cv27
+     AC96 ACAA     
+2413               cv28
+2414 AC98 C060  34 	mov @cvb__CNT,r1
+     AC9A 2086     
+2415 AC9C D020  34 	movb @cvb_NFX,r0
+     AC9E 2085     
+2416 ACA0 0980  32 	srl r0,8
+2417 ACA2 0A10  18 	sla r0,1
+2418 ACA4 0220  22 	ai r0,array__FXOFF
+     ACA6 20A2     
+2419 ACA8 C401  30 	mov r1,*r0
+2420               cv27
+2421               	; 	END IF
+2422               cv25
+2423               	; 	GOTO scan_loop
+2424 ACAA 0460  28 	b @cvb_SCAN_LOOP
+     ACAC AC22     
+2425               	;
+2426               	; 	' ----------------------------------------------------------------------
+2427               	; 	' THE PLAYER
+2428               	; 	' ----------------------------------------------------------------------
+2429               	; play_fx:
+2430               cvb_PLAY_FX
+2431               	; 	RESTORE fx_data
+2432 ACAE 0200  20 	li r0,cvb_FX_DATA
+     ACB0 B214     
+2433 ACB2 C800  30 	mov r0,@read_pointer
+     ACB4 8340     
+2434               	; 	#skip = #fxoff(fx)
+2435 ACB6 D020  34 	movb @cvb_FX,r0
+     ACB8 2094     
+2436 ACBA 0980  32 	srl r0,8
+2437 ACBC 0A10  18 	sla r0,1
+2438 ACBE 0220  22 	ai r0,array__FXOFF
+     ACC0 20A2     
+2439 ACC2 C810  46 	mov *r0,@cvb__SKIP
+     ACC4 2092     
+2440               	; 	IF #skip > 0 THEN
+2441 ACC6 C020  34 	mov @cvb__SKIP,r0
+     ACC8 2092     
+2442 ACCA 0201  20 	li r1,1
+     ACCC 0001     
+2443 ACCE 8040  18 	c r0,r1
+2444 ACD0 1402  14 	jhe cv30
+2445 ACD2 0460  28 	b @cv29
+     ACD4 ACFE     
+2446               cv30
+2447               	; 		' A COMPUTED `FOR 1 TO 0` STILL RUNS ITS BODY ONCE in CVBasic, so
+2448               	; 		' effect 0 needs the guard or it skips four bytes into itself.
+2449               	; 		FOR #si = 1 TO #skip
+2450 ACD6 0200  20 	li r0,1
+     ACD8 0001     
+2451 ACDA C800  38 	mov r0,@cvb__SI
+     ACDC 208E     
+2452               cv31
+2453               	; 			READ BYTE sb
+2454 ACDE C060  30 	mov @read_pointer,r1
+     ACE0 8340     
+2455 ACE2 D011  26 	movb *r1,r0
+2456 ACE4 05A0  26 	inc @read_pointer
+     ACE6 8340     
+2457 ACE8 D800  38 	movb r0,@cvb_SB
+     ACEA 209A     
+2458               	; 		NEXT #si
+2459 ACEC 05A0  34 	inc @cvb__SI
+     ACEE 208E     
+2460 ACF0 C020  34 	mov @cvb__SKIP,r0
+     ACF2 2092     
+2461 ACF4 8800  34 	c r0,@cvb__SI
+     ACF6 208E     
+2462 ACF8 1A02  14 	jl cv32
+2463 ACFA 0460  28 	b @cv31
+     ACFC ACDE     
+2464               cv32
+2465               	; 	END IF
+2466               cv29
+2467               	; step_loop:
+2468               cvb_STEP_LOOP
+2469               	; 	FOR pb = 0 TO 3
+2470 ACFE 04C0  14 	clr r0
+2471 AD00 D800  38 	movb r0,@cvb_PB
+     AD02 2098     
+2472               cv33
+2473               	; 		READ BYTE sb
+2474 AD04 C060  30 	mov @read_pointer,r1
+     AD06 8340     
+2475 AD08 D011  26 	movb *r1,r0
+2476 AD0A 05A0  26 	inc @read_pointer
+     AD0C 8340     
+2477 AD0E D800  38 	movb r0,@cvb_SB
+     AD10 209A     
+2478               	; 		stp(pb) = sb
+2479 AD12 C040  18 	mov r0,r1
+2480 AD14 D020  34 	movb @cvb_PB,r0
+     AD16 2098     
+2481 AD18 0980  32 	srl r0,8
+2482 AD1A 0220  22 	ai r0,array_STP
+     AD1C 209E     
+2483 AD1E D401  30 	movb r1,*r0
+2484               	; 	NEXT pb
+2485 AD20 D020  34 	movb @cvb_PB,r0
+     AD22 2098     
+2486 AD24 0220  22 	ai r0,256	; 1
+     AD26 0100     
+2487 AD28 D800  38 	movb r0,@cvb_PB
+     AD2A 2098     
+2488 AD2C 0201  20 	li r1,1024   ; 4*256
+     AD2E 0400     
+2489 AD30 9040  18 	cb r0,r1
+2490 AD32 1402  14 	jhe cv34
+2491 AD34 0460  28 	b @cv33
+     AD36 AD04     
+2492               cv34
+2493               	; 	IF stp(0) = 0 THEN GOTO fx_done
+2494 AD38 D020  34 	movb @array_STP,r0
+     AD3A 209E     
+2495 AD3C 1302  14 	jeq cv36
+2496 AD3E 0460  28 	b @cv35
+     AD40 AD46     
+2497               cv36
+2498 AD42 0460  28 	b @cvb_FX_DONE
+     AD44 AE8A     
+2499               cv35
+2500               	; 	IF stp(0) = ENDTAB THEN GOTO fx_done
+2501 AD46 D020  34 	movb @array_STP,r0
+     AD48 209E     
+2502 AD4A 0201  20 	li r1,65280   ; 255*256
+     AD4C FF00     
+2503 AD4E 9001  18 	cb r1,r0
+2504 AD50 1302  14 	jeq cv38
+2505 AD52 0460  28 	b @cv37
+     AD54 AD5A     
+2506               cv38
+2507 AD56 0460  28 	b @cvb_FX_DONE
+     AD58 AE8A     
+2508               cv37
+2509               	; 	IF stp(1) = SILENCE THEN
+2510 AD5A D020  34 	movb @array_STP+1,r0
+     AD5C 209F     
+2511 AD5E 0201  20 	li r1,65280   ; 255*256
+     AD60 FF00     
+2512 AD62 9001  18 	cb r1,r0
+2513 AD64 1302  14 	jeq cv40
+2514 AD66 0460  28 	b @cv39
+     AD68 AD86     
+2515               cv40
+2516               	; 		SOUND 0,,0
+2517 AD6A 04C0  14 	clr r0
+2518 AD6C 0202  20 	li r2,>9000
+     AD6E 9000     
+2519 AD70 06A0  32 	bl @jsr
+     AD72 A974     
+2520 AD74 A2D6     	data sn76489_vol
+2521               	; 		SOUND 3,,0
+2522 AD76 04C0  14 	clr r0
+2523 AD78 0202  20 	li r2,>f000
+     AD7A F000     
+2524 AD7C 06A0  32 	bl @jsr
+     AD7E A974     
+2525 AD80 A2D6     	data sn76489_vol
+2526               	; 	ELSE
+2527 AD82 0460  28 	b @cv41
+     AD84 AE4A     
+2528               cv39
+2529               	; 		IF stp(1) = NOISE THEN
+2530 AD86 D020  34 	movb @array_STP+1,r0
+     AD88 209F     
+2531 AD8A 0201  20 	li r1,768   ; 3*256
+     AD8C 0300     
+2532 AD8E 9001  18 	cb r1,r0
+2533 AD90 1302  14 	jeq cv43
+2534 AD92 0460  28 	b @cv42
+     AD94 ADB2     
+2535               cv43
+2536               	; 			SOUND 3,stp(2),stp(3)
+2537 AD96 D020  34 	movb @array_STP+2,r0
+     AD98 20A0     
+2538 AD9A 06A0  32 	bl @jsr
+     AD9C A974     
+2539 AD9E A2E4     	data sn76489_control
+2540 ADA0 D020  34 	movb @array_STP+3,r0
+     ADA2 20A1     
+2541 ADA4 0202  20 	li r2,>f000
+     ADA6 F000     
+2542 ADA8 06A0  32 	bl @jsr
+     ADAA A974     
+2543 ADAC A2D6     	data sn76489_vol
+2544               	; 		ELSE
+2545 ADAE 0460  28 	b @cv44
+     ADB0 AE4A     
+2546               cv42
+2547               	; 			' back to a real divisor, in a 16-bit variable -- a plain
+2548               	; 			' one is 8-bit and would wrap at 255
+2549               	; 			#div = stp(2)
+2550 ADB2 D020  34 	movb @array_STP+2,r0
+     ADB4 20A0     
+2551 ADB6 0980  32 	srl r0,8
+2552 ADB8 C800  38 	mov r0,@cvb__DIV
+     ADBA 2088     
+2553               	; 			#div = #div + #div
+2554 ADBC A020  34 	a @cvb__DIV,r0
+     ADBE 2088     
+2555 ADC0 C800  38 	mov r0,@cvb__DIV
+     ADC2 2088     
+2556               	; 			#div = #div + #div
+2557 ADC4 A020  34 	a @cvb__DIV,r0
+     ADC6 2088     
+2558 ADC8 C800  38 	mov r0,@cvb__DIV
+     ADCA 2088     
+2559               	; 			' THE CHANNEL IS A LITERAL IN EVERY CVBasic SOUND, so this
+2560               	; 			' dispatches rather than passing stp(1) through. It used to
+2561               	; 			' write channel 0 whatever the step said, which was fine
+2562               	; 			' while nothing layered and silently wrong the moment
+2563               	; 			' something did.
+2564               	; 			IF stp(1) = 0 THEN SOUND 0,#div,stp(3)
+2565 ADCC D020  34 	movb @array_STP+1,r0
+     ADCE 209F     
+2566 ADD0 1302  14 	jeq cv46
+2567 ADD2 0460  28 	b @cv45
+     ADD4 ADF2     
+2568               cv46
+2569 ADD6 C020  34 	mov @cvb__DIV,r0
+     ADD8 2088     
+2570 ADDA 0202  20 	li r2,>8000
+     ADDC 8000     
+2571 ADDE 06A0  32 	bl @jsr
+     ADE0 A974     
+2572 ADE2 A2BA     	data sn76489_freq
+2573 ADE4 D020  34 	movb @array_STP+3,r0
+     ADE6 20A1     
+2574 ADE8 0202  20 	li r2,>9000
+     ADEA 9000     
+2575 ADEC 06A0  32 	bl @jsr
+     ADEE A974     
+2576 ADF0 A2D6     	data sn76489_vol
+2577               cv45
+2578               	; 			IF stp(1) = 1 THEN SOUND 1,#div,stp(3)
+2579 ADF2 D020  34 	movb @array_STP+1,r0
+     ADF4 209F     
+2580 ADF6 0201  20 	li r1,256   ; 1*256
+     ADF8 0100     
+2581 ADFA 9001  18 	cb r1,r0
+2582 ADFC 1302  14 	jeq cv48
+2583 ADFE 0460  28 	b @cv47
+     AE00 AE1E     
+2584               cv48
+2585 AE02 C020  34 	mov @cvb__DIV,r0
+     AE04 2088     
+2586 AE06 0202  20 	li r2,>a000
+     AE08 A000     
+2587 AE0A 06A0  32 	bl @jsr
+     AE0C A974     
+2588 AE0E A2BA     	data sn76489_freq
+2589 AE10 D020  34 	movb @array_STP+3,r0
+     AE12 20A1     
+2590 AE14 0202  20 	li r2,>b000
+     AE16 B000     
+2591 AE18 06A0  32 	bl @jsr
+     AE1A A974     
+2592 AE1C A2D6     	data sn76489_vol
+2593               cv47
+2594               	; 			IF stp(1) = 2 THEN SOUND 2,#div,stp(3)
+2595 AE1E D020  34 	movb @array_STP+1,r0
+     AE20 209F     
+2596 AE22 0201  20 	li r1,512   ; 2*256
+     AE24 0200     
+2597 AE26 9001  18 	cb r1,r0
+2598 AE28 1302  14 	jeq cv50
+2599 AE2A 0460  28 	b @cv49
+     AE2C AE4A     
+2600               cv50
+2601 AE2E C020  34 	mov @cvb__DIV,r0
+     AE30 2088     
+2602 AE32 0202  20 	li r2,>c000
+     AE34 C000     
+2603 AE36 06A0  32 	bl @jsr
+     AE38 A974     
+2604 AE3A A2BA     	data sn76489_freq
+2605 AE3C D020  34 	movb @array_STP+3,r0
+     AE3E 20A1     
+2606 AE40 0202  20 	li r2,>d000
+     AE42 D000     
+2607 AE44 06A0  32 	bl @jsr
+     AE46 A974     
+2608 AE48 A2D6     	data sn76489_vol
+2609               cv49
+2610               	; 		END IF
+2611               cv44
+2612               	; 	END IF
+2613               cv41
+2614               	; 	' A BED IS SET AND LEFT RUNNING. NOWAIT steps do not hold up the
+2615               	; 	' sequence, so a low sustained tone can be started on channel 1 and the
+2616               	; 	' ticks then play OVER it on channel 3 -- which is the only way to layer
+2617               	; 	' when every step otherwise waits for itself.
+2618               	; 	'
+2619               	; 	' SILENCE above deliberately kills only channels 0 and 3, the tick
+2620               	; 	' channels, so a bed survives it and stops at fx_done with everything else.
+2621               	; 	IF stp(0) = NOWAIT THEN GOTO step_loop
+2622 AE4A D020  34 	movb @array_STP,r0
+     AE4C 209E     
+2623 AE4E 0201  20 	li r1,65024   ; 254*256
+     AE50 FE00     
+2624 AE52 9001  18 	cb r1,r0
+2625 AE54 1302  14 	jeq cv52
+2626 AE56 0460  28 	b @cv51
+     AE58 AE5E     
+2627               cv52
+2628 AE5A 0460  28 	b @cvb_STEP_LOOP
+     AE5C ACFE     
+2629               cv51
+2630               	; 	FOR pw = 1 TO stp(0)
+2631 AE5E 0200  20 	li r0,256   ; 1*256
+     AE60 0100     
+2632 AE62 D800  38 	movb r0,@cvb_PW
+     AE64 2099     
+2633               cv53
+2634               	; 		WAIT
+2635 AE66 06A0  32 	bl @jsr
+     AE68 A974     
+2636 AE6A A64A     	data wait
+2637               	; 	NEXT pw
+2638 AE6C D020  34 	movb @cvb_PW,r0
+     AE6E 2099     
+2639 AE70 0220  22 	ai r0,256	; 1
+     AE72 0100     
+2640 AE74 D800  38 	movb r0,@cvb_PW
+     AE76 2099     
+2641 AE78 D020  34 	movb @array_STP,r0
+     AE7A 209E     
+2642 AE7C 9800  34 	cb r0,@cvb_PW
+     AE7E 2099     
+2643 AE80 1A02  14 	jl cv54
+2644 AE82 0460  28 	b @cv53
+     AE84 AE66     
+2645               cv54
+2646               	; 	GOTO step_loop
+2647 AE86 0460  28 	b @cvb_STEP_LOOP
+     AE88 ACFE     
+2648               	; fx_done:
+2649               cvb_FX_DONE
+2650               	; 	' EVERY EFFECT NEEDS AN EXPLICIT NOTE-OFF. SOUND latches, so without this
+2651               	; 	' the last step plays until the next keypress -- and a BED would outlive
+2652               	; 	' its effect entirely, which is why all four channels are named here and
+2653               	; 	' not just the two an effect usually touches.
+2654               	; 	SOUND 0,,0
+2655 AE8A 04C0  14 	clr r0
+2656 AE8C 0202  20 	li r2,>9000
+     AE8E 9000     
+2657 AE90 06A0  32 	bl @jsr
+     AE92 A974     
+2658 AE94 A2D6     	data sn76489_vol
+2659               	; 	SOUND 1,,0
+2660 AE96 04C0  14 	clr r0
+2661 AE98 0202  20 	li r2,>b000
+     AE9A B000     
+2662 AE9C 06A0  32 	bl @jsr
+     AE9E A974     
+2663 AEA0 A2D6     	data sn76489_vol
+2664               	; 	SOUND 2,,0
+2665 AEA2 04C0  14 	clr r0
+2666 AEA4 0202  20 	li r2,>d000
+     AEA6 D000     
+2667 AEA8 06A0  32 	bl @jsr
+     AEAA A974     
+2668 AEAC A2D6     	data sn76489_vol
+2669               	; 	SOUND 3,,0
+2670 AEAE 04C0  14 	clr r0
+2671 AEB0 0202  20 	li r2,>f000
+     AEB2 F000     
+2672 AEB4 06A0  32 	bl @jsr
+     AEB6 A974     
+2673 AEB8 A2D6     	data sn76489_vol
+2674               	; 	RETURN
+2675 AEBA C03A  30 	mov *r10+,r0
+2676 AEBC 0450  20 	b *r0
+2677               	;
+2678               	; 	' ----------------------------------------------------------------------
+2679               	; 	' THE SCREEN
+2680               	; 	' ----------------------------------------------------------------------
+2681               	; draw_menu:
+2682               cvb_DRAW_MENU
+2683               	; 	CLS
+2684 AEBE 06A0  32 	bl @jsr
+     AEC0 A974     
+2685 AEC2 A0FC     	data cls
+2686               	; 	PRINT AT 34,"TESTSOUNDS"
+2687 AEC4 0200  20 	li r0,34
+     AEC6 0022     
+2688 AEC8 C800  30 	mov r0,@cursor
+     AECA 8342     
+2689 AECC 0202  20 	li r2,cv55
+     AECE AEDE     
+2690 AED0 0203  20 	li r3,10
+     AED2 000A     
+2691 AED4 06A0  32 	bl @jsr
+     AED6 A974     
+2692 AED8 A11C     	data print_string
+2693 AEDA 0460  28 	b @cv56
+     AEDC AEE8     
+2694               cv55
+2695 AEDE 5445     	byte >54,>45,>53,>54,>53,>4f,>55,>4e
+     AEE0 5354     
+     AEE2 534F     
+     AEE4 554E     
+2696 AEE6 4453     	byte >44,>53
+2697               	even
+2698               cv56
+2699               	; 	PRINT AT 66,"DIGIT PICKS LETTER PLAYS"
+2700 AEE8 0200  20 	li r0,66
+     AEEA 0042     
+2701 AEEC C800  30 	mov r0,@cursor
+     AEEE 8342     
+2702 AEF0 0202  20 	li r2,cv57
+     AEF2 AF02     
+2703 AEF4 0203  20 	li r3,24
+     AEF6 0018     
+2704 AEF8 06A0  32 	bl @jsr
+     AEFA A974     
+2705 AEFC A11C     	data print_string
+2706 AEFE 0460  28 	b @cv58
+     AF00 AF1A     
+2707               cv57
+2708 AF02 4449     	byte >44,>49,>47,>49,>54,>20,>50,>49
+     AF04 4749     
+     AF06 5420     
+     AF08 5049     
+2709 AF0A 434B     	byte >43,>4b,>53,>20,>4c,>45,>54,>54
+     AF0C 5320     
+     AF0E 4C45     
+     AF10 5454     
+2710 AF12 4552     	byte >45,>52,>20,>50,>4c,>41,>59,>53
+     AF14 2050     
+     AF16 4C41     
+     AF18 5953     
+2711               	even
+2712               cv58
+2713               	; 	PRINT AT 98,"1 RUN      10"
+2714 AF1A 0200  20 	li r0,98
+     AF1C 0062     
+2715 AF1E C800  30 	mov r0,@cursor
+     AF20 8342     
+2716 AF22 0202  20 	li r2,cv59
+     AF24 AF34     
+2717 AF26 0203  20 	li r3,13
+     AF28 000D     
+2718 AF2A 06A0  32 	bl @jsr
+     AF2C A974     
+2719 AF2E A11C     	data print_string
+2720 AF30 0460  28 	b @cv60
+     AF32 AF42     
+2721               cv59
+2722 AF34 3120     	byte >31,>20,>52,>55,>4e,>20,>20,>20
+     AF36 5255     
+     AF38 4E20     
+     AF3A 2020     
+2723 AF3C 2020     	byte >20,>20,>20,>31,>30
+     AF3E 2031     
+     AF40 30       
+2724               	even
+2725               cv60
+2726               	; 	PRINT AT 130,"2 JUMP      4"
+2727 AF42 0200  20 	li r0,130
+     AF44 0082     
+2728 AF46 C800  30 	mov r0,@cursor
+     AF48 8342     
+2729 AF4A 0202  20 	li r2,cv61
+     AF4C AF5C     
+2730 AF4E 0203  20 	li r3,13
+     AF50 000D     
+2731 AF52 06A0  32 	bl @jsr
+     AF54 A974     
+2732 AF56 A11C     	data print_string
+2733 AF58 0460  28 	b @cv62
+     AF5A AF6A     
+2734               cv61
+2735 AF5C 3220     	byte >32,>20,>4a,>55,>4d,>50,>20,>20
+     AF5E 4A55     
+     AF60 4D50     
+     AF62 2020     
+2736 AF64 2020     	byte >20,>20,>20,>20,>34
+     AF66 2020     
+     AF68 34       
+2737               	even
+2738               cv62
+2739               	; 	PRINT AT 162,"3 TIME UP   3"
+2740 AF6A 0200  20 	li r0,162
+     AF6C 00A2     
+2741 AF6E C800  30 	mov r0,@cursor
+     AF70 8342     
+2742 AF72 0202  20 	li r2,cv63
+     AF74 AF84     
+2743 AF76 0203  20 	li r3,13
+     AF78 000D     
+2744 AF7A 06A0  32 	bl @jsr
+     AF7C A974     
+2745 AF7E A11C     	data print_string
+2746 AF80 0460  28 	b @cv64
+     AF82 AF92     
+2747               cv63
+2748 AF84 3320     	byte >33,>20,>54,>49,>4d,>45,>20,>55
+     AF86 5449     
+     AF88 4D45     
+     AF8A 2055     
+2749 AF8C 5020     	byte >50,>20,>20,>20,>33
+     AF8E 2020     
+     AF90 33       
+2750               	even
+2751               cv64
+2752               	; 	PRINT AT 194,"4 PICKUP   10"
+2753 AF92 0200  20 	li r0,194
+     AF94 00C2     
+2754 AF96 C800  30 	mov r0,@cursor
+     AF98 8342     
+2755 AF9A 0202  20 	li r2,cv65
+     AF9C AFAC     
+2756 AF9E 0203  20 	li r3,13
+     AFA0 000D     
+2757 AFA2 06A0  32 	bl @jsr
+     AFA4 A974     
+2758 AFA6 A11C     	data print_string
+2759 AFA8 0460  28 	b @cv66
+     AFAA AFBA     
+2760               cv65
+2761 AFAC 3420     	byte >34,>20,>50,>49,>43,>4b,>55,>50
+     AFAE 5049     
+     AFB0 434B     
+     AFB2 5550     
+2762 AFB4 2020     	byte >20,>20,>20,>31,>30
+     AFB6 2031     
+     AFB8 30       
+2763               	even
+2764               cv66
+2765               	; 	PRINT AT 226,"5 HIT       8"
+2766 AFBA 0200  20 	li r0,226
+     AFBC 00E2     
+2767 AFBE C800  30 	mov r0,@cursor
+     AFC0 8342     
+2768 AFC2 0202  20 	li r2,cv67
+     AFC4 AFD4     
+2769 AFC6 0203  20 	li r3,13
+     AFC8 000D     
+2770 AFCA 06A0  32 	bl @jsr
+     AFCC A974     
+2771 AFCE A11C     	data print_string
+2772 AFD0 0460  28 	b @cv68
+     AFD2 AFE2     
+2773               cv67
+2774 AFD4 3520     	byte >35,>20,>48,>49,>54,>20,>20,>20
+     AFD6 4849     
+     AFD8 5420     
+     AFDA 2020     
+2775 AFDC 2020     	byte >20,>20,>20,>20,>38
+     AFDE 2020     
+     AFE0 38       
+2776               	even
+2777               cv68
+2778               	; 	PRINT AT 258,"6 TALLY     3"
+2779 AFE2 0200  20 	li r0,258
+     AFE4 0102     
+2780 AFE6 C800  30 	mov r0,@cursor
+     AFE8 8342     
+2781 AFEA 0202  20 	li r2,cv69
+     AFEC AFFC     
+2782 AFEE 0203  20 	li r3,13
+     AFF0 000D     
+2783 AFF2 06A0  32 	bl @jsr
+     AFF4 A974     
+2784 AFF6 A11C     	data print_string
+2785 AFF8 0460  28 	b @cv70
+     AFFA B00A     
+2786               cv69
+2787 AFFC 3620     	byte >36,>20,>54,>41,>4c,>4c,>59,>20
+     AFFE 5441     
+     B000 4C4C     
+     B002 5920     
+2788 B004 2020     	byte >20,>20,>20,>20,>33
+     B006 2020     
+     B008 33       
+2789               	even
+2790               cv70
+2791               	; 	PRINT AT 322,"FIRE STEPS THROUGH THEM"
+2792 B00A 0200  20 	li r0,322
+     B00C 0142     
+2793 B00E C800  30 	mov r0,@cursor
+     B010 8342     
+2794 B012 0202  20 	li r2,cv71
+     B014 B024     
+2795 B016 0203  20 	li r3,23
+     B018 0017     
+2796 B01A 06A0  32 	bl @jsr
+     B01C A974     
+2797 B01E A11C     	data print_string
+2798 B020 0460  28 	b @cv72
+     B022 B03C     
+2799               cv71
+2800 B024 4649     	byte >46,>49,>52,>45,>20,>53,>54,>45
+     B026 5245     
+     B028 2053     
+     B02A 5445     
+2801 B02C 5053     	byte >50,>53,>20,>54,>48,>52,>4f,>55
+     B02E 2054     
+     B030 4852     
+     B032 4F55     
+2802 B034 4748     	byte >47,>48,>20,>54,>48,>45,>4d
+     B036 2054     
+     B038 4845     
+     B03A 4D       
+2803               	even
+2804               cv72
+2805               	; 	PRINT AT 354,"A IS THE MEASURED ONE"
+2806 B03C 0200  20 	li r0,354
+     B03E 0162     
+2807 B040 C800  30 	mov r0,@cursor
+     B042 8342     
+2808 B044 0202  20 	li r2,cv73
+     B046 B056     
+2809 B048 0203  20 	li r3,21
+     B04A 0015     
+2810 B04C 06A0  32 	bl @jsr
+     B04E A974     
+2811 B050 A11C     	data print_string
+2812 B052 0460  28 	b @cv74
+     B054 B06C     
+2813               cv73
+2814 B056 4120     	byte >41,>20,>49,>53,>20,>54,>48,>45
+     B058 4953     
+     B05A 2054     
+     B05C 4845     
+2815 B05E 204D     	byte >20,>4d,>45,>41,>53,>55,>52,>45
+     B060 4541     
+     B062 5355     
+     B064 5245     
+2816 B066 4420     	byte >44,>20,>4f,>4e,>45
+     B068 4F4E     
+     B06A 45       
+2817               	even
+2818               cv74
+2819               	; 	PRINT AT 418,"MEASURED FROM THE 2600"
+2820 B06C 0200  20 	li r0,418
+     B06E 01A2     
+2821 B070 C800  30 	mov r0,@cursor
+     B072 8342     
+2822 B074 0202  20 	li r2,cv75
+     B076 B086     
+2823 B078 0203  20 	li r3,22
+     B07A 0016     
+2824 B07C 06A0  32 	bl @jsr
+     B07E A974     
+2825 B080 A11C     	data print_string
+2826 B082 0460  28 	b @cv76
+     B084 B09C     
+2827               cv75
+2828 B086 4D45     	byte >4d,>45,>41,>53,>55,>52,>45,>44
+     B088 4153     
+     B08A 5552     
+     B08C 4544     
+2829 B08E 2046     	byte >20,>46,>52,>4f,>4d,>20,>54,>48
+     B090 524F     
+     B092 4D20     
+     B094 5448     
+2830 B096 4520     	byte >45,>20,>32,>36,>30,>30
+     B098 3236     
+     B09A 3030     
+2831               	even
+2832               cv76
+2833               	; 	GOSUB show_mark
+2834 B09C 06A0  32 	bl @jsr
+     B09E A974     
+2835 B0A0 B0D2     	data cvb_SHOW_MARK
+2836               	; show_ready:
+2837               cvb_SHOW_READY
+2838               	; 	PRINT AT 482,"PRESS A DIGIT     "
+2839 B0A2 0200  20 	li r0,482
+     B0A4 01E2     
+2840 B0A6 C800  30 	mov r0,@cursor
+     B0A8 8342     
+2841 B0AA 0202  20 	li r2,cv77
+     B0AC B0BC     
+2842 B0AE 0203  20 	li r3,18
+     B0B0 0012     
+2843 B0B2 06A0  32 	bl @jsr
+     B0B4 A974     
+2844 B0B6 A11C     	data print_string
+2845 B0B8 0460  28 	b @cv78
+     B0BA B0CE     
+2846               cv77
+2847 B0BC 5052     	byte >50,>52,>45,>53,>53,>20,>41,>20
+     B0BE 4553     
+     B0C0 5320     
+     B0C2 4120     
+2848 B0C4 4449     	byte >44,>49,>47,>49,>54,>20,>20,>20
+     B0C6 4749     
+     B0C8 5420     
+     B0CA 2020     
+2849 B0CC 2020     	byte >20,>20
+2850               	even
+2851               cv78
+2852               	; 	RETURN
+2853 B0CE C03A  30 	mov *r10+,r0
+2854 B0D0 0450  20 	b *r0
+2855               	;
+2856               	; 	' The variant letter goes beside its own line. VPOKE rather than PRINT AT
+2857               	; 	' because the row is computed: PRINT AT wants a constant everywhere else
+2858               	; 	' in this program and there is no reason to make an exception.
+2859               	; 	' The ">" against whichever category FIRE has landed on. Two routines
+2860               	; 	' rather than a redraw of the block: the variant letters written beside
+2861               	; 	' each line have to survive a category change, and redrawing the menu
+2862               	; 	' would wipe the record of what has already been tried.
+2863               	; show_mark:
+2864               cvb_SHOW_MARK
+2865               	; 	mk = 62				' ">"
+2866 B0D2 0200  20 	li r0,15872   ; 62*256
+     B0D4 3E00     
+2867 B0D6 D800  38 	movb r0,@cvb_MK
+     B0D8 2096     
+2868               	; 	GOTO mark_put
+2869 B0DA 0460  28 	b @cvb_MARK_PUT
+     B0DC B0E6     
+2870               	; clear_mark:
+2871               cvb_CLEAR_MARK
+2872               	; 	mk = 32				' a space
+2873 B0DE 0200  20 	li r0,8192   ; 32*256
+     B0E0 2000     
+2874 B0E2 D800  38 	movb r0,@cvb_MK
+     B0E4 2096     
+2875               	; mark_put:
+2876               cvb_MARK_PUT
+2877               	; 	#ma = 6144
+2878 B0E6 0200  20 	li r0,6144
+     B0E8 1800     
+2879 B0EA C800  38 	mov r0,@cvb__MA
+     B0EC 208A     
+2880               	; 	#ma = #ma + 96			' row 3, col 0 -- the RUN line
+2881 B0EE 0220  22 	ai r0,96
+     B0F0 0060     
+2882 B0F2 C800  38 	mov r0,@cvb__MA
+     B0F4 208A     
+2883               	; 	mr = cat
+2884 B0F6 D820  54 	movb @cvb_CAT,@cvb_MR
+     B0F8 2082     
+     B0FA 2097     
+2885               	; 	mr = mr + mr
+2886 B0FC D020  34 	movb @cvb_MR,r0
+     B0FE 2097     
+2887 B100 B020  34 	ab @cvb_MR,r0
+     B102 2097     
+2888 B104 D800  38 	movb r0,@cvb_MR
+     B106 2097     
+2889               	; 	mr = mr + mr
+2890 B108 B020  34 	ab @cvb_MR,r0
+     B10A 2097     
+2891 B10C D800  38 	movb r0,@cvb_MR
+     B10E 2097     
+2892               	; 	mr = mr + mr
+2893 B110 B020  34 	ab @cvb_MR,r0
+     B112 2097     
+2894 B114 D800  38 	movb r0,@cvb_MR
+     B116 2097     
+2895               	; 	mr = mr + mr
+2896 B118 B020  34 	ab @cvb_MR,r0
+     B11A 2097     
+2897 B11C D800  38 	movb r0,@cvb_MR
+     B11E 2097     
+2898               	; 	mr = mr + mr			' cat * 32, one screen row
+2899 B120 B020  34 	ab @cvb_MR,r0
+     B122 2097     
+2900 B124 D800  38 	movb r0,@cvb_MR
+     B126 2097     
+2901               	; 	#ma = #ma + mr
+2902 B128 0980  32 	srl r0,8
+2903 B12A C040  18 	mov r0,r1
+2904 B12C C020  34 	mov @cvb__MA,r0
+     B12E 208A     
+2905 B130 A001  18 	a r1,r0
+2906 B132 C800  38 	mov r0,@cvb__MA
+     B134 208A     
+2907               	; 	VPOKE #ma,mk
+2908 B136 D020  34 	movb @cvb_MK,r0
+     B138 2096     
+2909 B13A 064A  14 	dect r10
+2910 B13C C680  30 	mov r0,*r10
+2911 B13E C020  34 	mov @cvb__MA,r0
+     B140 208A     
+2912 B142 C0BA  30 	mov *r10+,r2
+2913 B144 0300  22 	limi 0
+     B146 0000     
+2914 B148 06A0  32 	bl @JSR
+     B14A A974     
+2915 B14C A018     	data WRTVRM
+2916 B14E 0300  22 	limi 2
+     B150 0002     
+2917               	; 	RETURN
+2918 B152 C03A  30 	mov *r10+,r0
+2919 B154 0450  20 	b *r0
+2920               	;
+2921               	; show_variant:
+2922               cvb_SHOW_VARIANT
+2923               	; 	#va = 6144
+2924 B156 0200  20 	li r0,6144
+     B158 1800     
+2925 B15A C800  38 	mov r0,@cvb__VA
+     B15C 2090     
+2926               	; 	#va = #va + 98			' row 3, col 2 -- the RUN line
+2927 B15E 0220  22 	ai r0,98
+     B160 0062     
+2928 B162 C800  38 	mov r0,@cvb__VA
+     B164 2090     
+2929               	; 	vr = cat
+2930 B166 D820  54 	movb @cvb_CAT,@cvb_VR
+     B168 2082     
+     B16A 209C     
+2931               	; 	vr = vr + vr
+2932 B16C D020  34 	movb @cvb_VR,r0
+     B16E 209C     
+2933 B170 B020  34 	ab @cvb_VR,r0
+     B172 209C     
+2934 B174 D800  38 	movb r0,@cvb_VR
+     B176 209C     
+2935               	; 	vr = vr + vr
+2936 B178 B020  34 	ab @cvb_VR,r0
+     B17A 209C     
+2937 B17C D800  38 	movb r0,@cvb_VR
+     B17E 209C     
+2938               	; 	vr = vr + vr
+2939 B180 B020  34 	ab @cvb_VR,r0
+     B182 209C     
+2940 B184 D800  38 	movb r0,@cvb_VR
+     B186 209C     
+2941               	; 	vr = vr + vr
+2942 B188 B020  34 	ab @cvb_VR,r0
+     B18A 209C     
+2943 B18C D800  38 	movb r0,@cvb_VR
+     B18E 209C     
+2944               	; 	vr = vr + vr			' cat * 32, one screen row
+2945 B190 B020  34 	ab @cvb_VR,r0
+     B192 209C     
+2946 B194 D800  38 	movb r0,@cvb_VR
+     B196 209C     
+2947               	; 	#va = #va + vr
+2948 B198 0980  32 	srl r0,8
+2949 B19A C040  18 	mov r0,r1
+2950 B19C C020  34 	mov @cvb__VA,r0
+     B19E 2090     
+2951 B1A0 A001  18 	a r1,r0
+2952 B1A2 C800  38 	mov r0,@cvb__VA
+     B1A4 2090     
+2953               	; 	#va = #va + 16			' out past the longest label
+2954 B1A6 0220  22 	ai r0,16
+     B1A8 0010     
+2955 B1AA C800  38 	mov r0,@cvb__VA
+     B1AC 2090     
+2956               	; 	vc = 65
+2957 B1AE 0200  20 	li r0,16640   ; 65*256
+     B1B0 4100     
+2958 B1B2 D800  38 	movb r0,@cvb_VC
+     B1B4 209B     
+2959               	; 	vc = vc + catcur(cat)		' A, B, C, D
+2960 B1B6 D020  34 	movb @cvb_CAT,r0
+     B1B8 2082     
+2961 B1BA 0980  32 	srl r0,8
+2962 B1BC 0220  22 	ai r0,array_CATCUR
+     B1BE 2102     
+2963 B1C0 D050  26 	movb *r0,r1
+2964 B1C2 D020  34 	movb @cvb_VC,r0
+     B1C4 209B     
+2965 B1C6 B001  18 	ab r1,r0
+2966 B1C8 D800  38 	movb r0,@cvb_VC
+     B1CA 209B     
+2967               	; 	VPOKE #va,vc
+2968 B1CC 064A  14 	dect r10
+2969 B1CE C680  30 	mov r0,*r10
+2970 B1D0 C020  34 	mov @cvb__VA,r0
+     B1D2 2090     
+2971 B1D4 C0BA  30 	mov *r10+,r2
+2972 B1D6 0300  22 	limi 0
+     B1D8 0000     
+2973 B1DA 06A0  32 	bl @JSR
+     B1DC A974     
+2974 B1DE A018     	data WRTVRM
+2975 B1E0 0300  22 	limi 2
+     B1E2 0002     
+2976               	; 	PRINT AT 482,"PLAYING           "
+2977 B1E4 0200  20 	li r0,482
+     B1E6 01E2     
+2978 B1E8 C800  30 	mov r0,@cursor
+     B1EA 8342     
+2979 B1EC 0202  20 	li r2,cv79
+     B1EE B1FE     
+2980 B1F0 0203  20 	li r3,18
+     B1F2 0012     
+2981 B1F4 06A0  32 	bl @jsr
+     B1F6 A974     
+2982 B1F8 A11C     	data print_string
+2983 B1FA 0460  28 	b @cv80
+     B1FC B210     
+2984               cv79
+2985 B1FE 504C     	byte >50,>4c,>41,>59,>49,>4e,>47,>20
+     B200 4159     
+     B202 494E     
+     B204 4720     
+2986 B206 2020     	byte >20,>20,>20,>20,>20,>20,>20,>20
+     B208 2020     
+     B20A 2020     
+     B20C 2020     
+2987 B20E 2020     	byte >20,>20
+2988               	even
+2989               cv80
+2990               	; 	RETURN
+2991 B210 C03A  30 	mov *r10+,r0
+2992 B212 0450  20 	b *r0
+2993               	;
+2994               	; 	' ----------------------------------------------------------------------
+2995               	; 	' THE EFFECTS -- frames, channel, value, volume
+2996               	; 	' ----------------------------------------------------------------------
+2997               	; 	' 60 frames a second, so a frame is about 17 ms. Divisors over four:
+2998               	; 	'   188 Hz = 595 -> 149    415 Hz = 270 -> 68
+2999               	; 	'   235 Hz = 476 -> 119    523 Hz = 214 -> 54
+3000               	; 	'   264 Hz = 424 -> 106    659 Hz = 170 -> 42
+3001               	; 	'   295 Hz = 379 ->  95   1028 Hz = 109 -> 27
+3002               	; 	'   371 Hz = 301 ->  75   1568 Hz =  71 -> 18
+3003               	; 	'                         2543 Hz =  44 -> 11
+3004               	; fx_data:
+3005               cvb_FX_DATA
+3006               	; 	' ================= 1 RUN =================
+3007               	; 	' A -- measured: a 64 ms white-noise burst every 165 ms.
+3008               	; 	DATA BYTE 4,3,4,12,  6,255,0,0
+3009 B214 0403     	byte >04,>03,>04,>0c,>06,>ff,>00,>00
+     B216 040C     
+     B218 06FF     
+     B21A 0000     
+3010               	; 	DATA BYTE 4,3,4,12,  6,255,0,0
+3011 B21C 0403     	byte >04,>03,>04,>0c,>06,>ff,>00,>00
+     B21E 040C     
+     B220 06FF     
+     B222 0000     
+3012               	; 	DATA BYTE 4,3,4,12,  6,255,0,0
+3013 B224 0403     	byte >04,>03,>04,>0c,>06,>ff,>00,>00
+     B226 040C     
+     B228 06FF     
+     B22A 0000     
+3014               	; 	DATA BYTE 4,3,4,12,  6,255,0,0
+3015 B22C 0403     	byte >04,>03,>04,>0c,>06,>ff,>00,>00
+     B22E 040C     
+     B230 06FF     
+     B232 0000     
+3016               	; 	DATA BYTE 4,3,4,12,  6,255,0,0
+3017 B234 0403     	byte >04,>03,>04,>0c,>06,>ff,>00,>00
+     B236 040C     
+     B238 06FF     
+     B23A 0000     
+3018               	; 	DATA BYTE 4,3,4,12,  6,255,0,0
+3019 B23C 0403     	byte >04,>03,>04,>0c,>06,>ff,>00,>00
+     B23E 040C     
+     B240 06FF     
+     B242 0000     
+3020               	; 	DATA BYTE 0,0,0,0
+3021 B244 0000     	byte >00,>00,>00,>00
+     B246 0000     
+3022               	;
+3023               	; 	' B -- the same cadence at a slower noise rate: heavier, more of a thud.
+3024               	; 	DATA BYTE 4,3,6,12,  6,255,0,0
+3025 B248 0403     	byte >04,>03,>06,>0c,>06,>ff,>00,>00
+     B24A 060C     
+     B24C 06FF     
+     B24E 0000     
+3026               	; 	DATA BYTE 4,3,6,12,  6,255,0,0
+3027 B250 0403     	byte >04,>03,>06,>0c,>06,>ff,>00,>00
+     B252 060C     
+     B254 06FF     
+     B256 0000     
+3028               	; 	DATA BYTE 4,3,6,12,  6,255,0,0
+3029 B258 0403     	byte >04,>03,>06,>0c,>06,>ff,>00,>00
+     B25A 060C     
+     B25C 06FF     
+     B25E 0000     
+3030               	; 	DATA BYTE 4,3,6,12,  6,255,0,0
+3031 B260 0403     	byte >04,>03,>06,>0c,>06,>ff,>00,>00
+     B262 060C     
+     B264 06FF     
+     B266 0000     
+3032               	; 	DATA BYTE 4,3,6,12,  6,255,0,0
+3033 B268 0403     	byte >04,>03,>06,>0c,>06,>ff,>00,>00
+     B26A 060C     
+     B26C 06FF     
+     B26E 0000     
+3034               	; 	DATA BYTE 4,3,6,12,  6,255,0,0
+3035 B270 0403     	byte >04,>03,>06,>0c,>06,>ff,>00,>00
+     B272 060C     
+     B274 06FF     
+     B276 0000     
+3036               	; 	DATA BYTE 0,0,0,0
+3037 B278 0000     	byte >00,>00,>00,>00
+     B27A 0000     
+3038               	;
+3039               	; 	' C -- PERIODIC noise instead of white. Nearly a pitch, so it reads as a
+3040               	; 	' shoe on a hard floor rather than as a hiss.
+3041               	; 	DATA BYTE 4,3,1,12,  6,255,0,0
+3042 B27C 0403     	byte >04,>03,>01,>0c,>06,>ff,>00,>00
+     B27E 010C     
+     B280 06FF     
+     B282 0000     
+3043               	; 	DATA BYTE 4,3,1,12,  6,255,0,0
+3044 B284 0403     	byte >04,>03,>01,>0c,>06,>ff,>00,>00
+     B286 010C     
+     B288 06FF     
+     B28A 0000     
+3045               	; 	DATA BYTE 4,3,1,12,  6,255,0,0
+3046 B28C 0403     	byte >04,>03,>01,>0c,>06,>ff,>00,>00
+     B28E 010C     
+     B290 06FF     
+     B292 0000     
+3047               	; 	DATA BYTE 4,3,1,12,  6,255,0,0
+3048 B294 0403     	byte >04,>03,>01,>0c,>06,>ff,>00,>00
+     B296 010C     
+     B298 06FF     
+     B29A 0000     
+3049               	; 	DATA BYTE 4,3,1,12,  6,255,0,0
+3050 B29C 0403     	byte >04,>03,>01,>0c,>06,>ff,>00,>00
+     B29E 010C     
+     B2A0 06FF     
+     B2A2 0000     
+3051               	; 	DATA BYTE 4,3,1,12,  6,255,0,0
+3052 B2A4 0403     	byte >04,>03,>01,>0c,>06,>ff,>00,>00
+     B2A6 010C     
+     B2A8 06FF     
+     B2AA 0000     
+3053               	; 	DATA BYTE 0,0,0,0
+3054 B2AC 0000     	byte >00,>00,>00,>00
+     B2AE 0000     
+3055               	;
+3056               	; 	' D -- a crisper tick: 2 frames on, 8 off. Same 6 a second, less of it.
+3057               	; 	DATA BYTE 2,3,4,13,  8,255,0,0
+3058 B2B0 0203     	byte >02,>03,>04,>0d,>08,>ff,>00,>00
+     B2B2 040D     
+     B2B4 08FF     
+     B2B6 0000     
+3059               	; 	DATA BYTE 2,3,4,13,  8,255,0,0
+3060 B2B8 0203     	byte >02,>03,>04,>0d,>08,>ff,>00,>00
+     B2BA 040D     
+     B2BC 08FF     
+     B2BE 0000     
+3061               	; 	DATA BYTE 2,3,4,13,  8,255,0,0
+3062 B2C0 0203     	byte >02,>03,>04,>0d,>08,>ff,>00,>00
+     B2C2 040D     
+     B2C4 08FF     
+     B2C6 0000     
+3063               	; 	DATA BYTE 2,3,4,13,  8,255,0,0
+3064 B2C8 0203     	byte >02,>03,>04,>0d,>08,>ff,>00,>00
+     B2CA 040D     
+     B2CC 08FF     
+     B2CE 0000     
+3065               	; 	DATA BYTE 2,3,4,13,  8,255,0,0
+3066 B2D0 0203     	byte >02,>03,>04,>0d,>08,>ff,>00,>00
+     B2D2 040D     
+     B2D4 08FF     
+     B2D6 0000     
+3067               	; 	DATA BYTE 2,3,4,13,  8,255,0,0
+3068 B2D8 0203     	byte >02,>03,>04,>0d,>08,>ff,>00,>00
+     B2DA 040D     
+     B2DC 08FF     
+     B2DE 0000     
+3069               	; 	DATA BYTE 0,0,0,0
+3070 B2E0 0000     	byte >00,>00,>00,>00
+     B2E2 0000     
+3071               	;
+3072               	; 	' E -- THE TALLY'S TICK, at about ten a second. Two frames on rather than
+3073               	; 	' four, which is half the burst -- and a short tick can be repeated much
+3074               	; 	' faster before it smears into a drone. This is what the game plays now.
+3075               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3076 B2E4 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B2E6 040C     
+     B2E8 04FF     
+     B2EA 0000     
+3077               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3078 B2EC 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B2EE 040C     
+     B2F0 04FF     
+     B2F2 0000     
+3079               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3080 B2F4 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B2F6 040C     
+     B2F8 04FF     
+     B2FA 0000     
+3081               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3082 B2FC 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B2FE 040C     
+     B300 04FF     
+     B302 0000     
+3083               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3084 B304 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B306 040C     
+     B308 04FF     
+     B30A 0000     
+3085               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3086 B30C 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B30E 040C     
+     B310 04FF     
+     B312 0000     
+3087               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3088 B314 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B316 040C     
+     B318 04FF     
+     B31A 0000     
+3089               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3090 B31C 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B31E 040C     
+     B320 04FF     
+     B322 0000     
+3091               	; 	DATA BYTE 0,0,0,0
+3092 B324 0000     	byte >00,>00,>00,>00
+     B326 0000     
+3093               	;
+3094               	; 	' F -- the same tick at fifteen a second, which is the rate the old TONE
+3095               	; 	' footsteps fired at. Worth hearing: the rate was never the whole problem,
+3096               	; 	' the tone was, and this says how much of it was which.
+3097               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3098 B328 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B32A 040C     
+     B32C 02FF     
+     B32E 0000     
+3099               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3100 B330 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B332 040C     
+     B334 02FF     
+     B336 0000     
+3101               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3102 B338 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B33A 040C     
+     B33C 02FF     
+     B33E 0000     
+3103               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3104 B340 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B342 040C     
+     B344 02FF     
+     B346 0000     
+3105               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3106 B348 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B34A 040C     
+     B34C 02FF     
+     B34E 0000     
+3107               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3108 B350 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B352 040C     
+     B354 02FF     
+     B356 0000     
+3109               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3110 B358 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B35A 040C     
+     B35C 02FF     
+     B35E 0000     
+3111               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3112 B360 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B362 040C     
+     B364 02FF     
+     B366 0000     
+3113               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3114 B368 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B36A 040C     
+     B36C 02FF     
+     B36E 0000     
+3115               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3116 B370 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B372 040C     
+     B374 02FF     
+     B376 0000     
+3117               	; 	DATA BYTE 0,0,0,0
+3118 B378 0000     	byte >00,>00,>00,>00
+     B37A 0000     
+3119               	;
+3120               	; 	' G -- VERY FAST, BARE. One frame on, two off: twenty a second, and about
+3121               	; 	' as short as a tick can be and still exist. This is the tick-tick-tick on
+3122               	; 	' its own, so the pad variants below can be judged against it.
+3123               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3124 B37C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B37E 040C     
+     B380 02FF     
+     B382 0000     
+3125               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3126 B384 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B386 040C     
+     B388 02FF     
+     B38A 0000     
+3127               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3128 B38C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B38E 040C     
+     B390 02FF     
+     B392 0000     
+3129               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3130 B394 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B396 040C     
+     B398 02FF     
+     B39A 0000     
+3131               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3132 B39C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B39E 040C     
+     B3A0 02FF     
+     B3A2 0000     
+3133               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3134 B3A4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3A6 040C     
+     B3A8 02FF     
+     B3AA 0000     
+3135               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3136 B3AC 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3AE 040C     
+     B3B0 02FF     
+     B3B2 0000     
+3137               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3138 B3B4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3B6 040C     
+     B3B8 02FF     
+     B3BA 0000     
+3139               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3140 B3BC 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3BE 040C     
+     B3C0 02FF     
+     B3C2 0000     
+3141               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3142 B3C4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3C6 040C     
+     B3C8 02FF     
+     B3CA 0000     
+3143               	; 	DATA BYTE 0,0,0,0
+3144 B3CC 0000     	byte >00,>00,>00,>00
+     B3CE 0000     
+3145               	;
+3146               	; 	' H -- the same ticks over a LOW SUSTAINED PAD, 188 Hz at volume 4 on
+3147               	; 	' channel 1. The pad is set once and left running; the ticks play over it
+3148               	; 	' on the noise channel. Quiet enough to be felt rather than heard, which
+3149               	; 	' is the point -- it gives the ticks something to sit on instead of
+3150               	; 	' rattling in silence.
+3151               	; 	DATA BYTE 254,1,149,4
+3152 B3D0 FE01     	byte >fe,>01,>95,>04
+     B3D2 9504     
+3153               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3154 B3D4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3D6 040C     
+     B3D8 02FF     
+     B3DA 0000     
+3155               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3156 B3DC 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3DE 040C     
+     B3E0 02FF     
+     B3E2 0000     
+3157               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3158 B3E4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3E6 040C     
+     B3E8 02FF     
+     B3EA 0000     
+3159               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3160 B3EC 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3EE 040C     
+     B3F0 02FF     
+     B3F2 0000     
+3161               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3162 B3F4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3F6 040C     
+     B3F8 02FF     
+     B3FA 0000     
+3163               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3164 B3FC 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B3FE 040C     
+     B400 02FF     
+     B402 0000     
+3165               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3166 B404 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B406 040C     
+     B408 02FF     
+     B40A 0000     
+3167               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3168 B40C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B40E 040C     
+     B410 02FF     
+     B412 0000     
+3169               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3170 B414 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B416 040C     
+     B418 02FF     
+     B41A 0000     
+3171               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3172 B41C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B41E 040C     
+     B420 02FF     
+     B422 0000     
+3173               	; 	DATA BYTE 0,0,0,0
+3174 B424 0000     	byte >00,>00,>00,>00
+     B426 0000     
+3175               	;
+3176               	; 	' I -- ticks over a pad that BREATHES, 188 Hz against 235 every eight
+3177               	; 	' frames. A flat pad can turn into a drone the ear stops hearing; a slow
+3178               	; 	' one keeps suggesting effort without ever asking for attention.
+3179               	; 	DATA BYTE 254,1,149,4
+3180 B428 FE01     	byte >fe,>01,>95,>04
+     B42A 9504     
+3181               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3182 B42C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B42E 040C     
+     B430 02FF     
+     B432 0000     
+3183               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3184 B434 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B436 040C     
+     B438 02FF     
+     B43A 0000     
+3185               	; 	DATA BYTE 254,1,119,4
+3186 B43C FE01     	byte >fe,>01,>77,>04
+     B43E 7704     
+3187               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3188 B440 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B442 040C     
+     B444 02FF     
+     B446 0000     
+3189               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3190 B448 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B44A 040C     
+     B44C 02FF     
+     B44E 0000     
+3191               	; 	DATA BYTE 254,1,149,4
+3192 B450 FE01     	byte >fe,>01,>95,>04
+     B452 9504     
+3193               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3194 B454 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B456 040C     
+     B458 02FF     
+     B45A 0000     
+3195               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3196 B45C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B45E 040C     
+     B460 02FF     
+     B462 0000     
+3197               	; 	DATA BYTE 254,1,119,4
+3198 B464 FE01     	byte >fe,>01,>77,>04
+     B466 7704     
+3199               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3200 B468 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B46A 040C     
+     B46C 02FF     
+     B46E 0000     
+3201               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3202 B470 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B472 040C     
+     B474 02FF     
+     B476 0000     
+3203               	; 	DATA BYTE 254,1,149,4
+3204 B478 FE01     	byte >fe,>01,>95,>04
+     B47A 9504     
+3205               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3206 B47C 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B47E 040C     
+     B480 02FF     
+     B482 0000     
+3207               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3208 B484 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B486 040C     
+     B488 02FF     
+     B48A 0000     
+3209               	; 	DATA BYTE 0,0,0,0
+3210 B48C 0000     	byte >00,>00,>00,>00
+     B48E 0000     
+3211               	;
+3212               	; 	' J -- TICK-TOCK rather than tick-tick: the noise rate alternates between
+3213               	; 	' registers 4 and 6, so one foot lands brighter than the other. Two feet,
+3214               	; 	' not a ratchet -- and it costs nothing but a second value.
+3215               	; 	DATA BYTE 254,1,149,4
+3216 B490 FE01     	byte >fe,>01,>95,>04
+     B492 9504     
+3217               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3218 B494 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B496 040C     
+     B498 02FF     
+     B49A 0000     
+3219               	; 	DATA BYTE 1,3,6,12,  2,255,0,0
+3220 B49C 0103     	byte >01,>03,>06,>0c,>02,>ff,>00,>00
+     B49E 060C     
+     B4A0 02FF     
+     B4A2 0000     
+3221               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3222 B4A4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B4A6 040C     
+     B4A8 02FF     
+     B4AA 0000     
+3223               	; 	DATA BYTE 1,3,6,12,  2,255,0,0
+3224 B4AC 0103     	byte >01,>03,>06,>0c,>02,>ff,>00,>00
+     B4AE 060C     
+     B4B0 02FF     
+     B4B2 0000     
+3225               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3226 B4B4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B4B6 040C     
+     B4B8 02FF     
+     B4BA 0000     
+3227               	; 	DATA BYTE 1,3,6,12,  2,255,0,0
+3228 B4BC 0103     	byte >01,>03,>06,>0c,>02,>ff,>00,>00
+     B4BE 060C     
+     B4C0 02FF     
+     B4C2 0000     
+3229               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3230 B4C4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B4C6 040C     
+     B4C8 02FF     
+     B4CA 0000     
+3231               	; 	DATA BYTE 1,3,6,12,  2,255,0,0
+3232 B4CC 0103     	byte >01,>03,>06,>0c,>02,>ff,>00,>00
+     B4CE 060C     
+     B4D0 02FF     
+     B4D2 0000     
+3233               	; 	DATA BYTE 1,3,4,12,  2,255,0,0
+3234 B4D4 0103     	byte >01,>03,>04,>0c,>02,>ff,>00,>00
+     B4D6 040C     
+     B4D8 02FF     
+     B4DA 0000     
+3235               	; 	DATA BYTE 1,3,6,12,  2,255,0,0
+3236 B4DC 0103     	byte >01,>03,>06,>0c,>02,>ff,>00,>00
+     B4DE 060C     
+     B4E0 02FF     
+     B4E2 0000     
+3237               	; 	DATA BYTE 0,0,0,0
+3238 B4E4 0000     	byte >00,>00,>00,>00
+     B4E6 0000     
+3239               	;
+3240               	; 	' ================= 2 JUMP =================
+3241               	; 	' A -- measured: 415 Hz warbling against 188, about 280 ms.
+3242               	; 	DATA BYTE 2,0,68,12,  2,0,149,12
+3243 B4E8 0200     	byte >02,>00,>44,>0c,>02,>00,>95,>0c
+     B4EA 440C     
+     B4EC 0200     
+     B4EE 950C     
+3244               	; 	DATA BYTE 2,0,68,12,  2,0,149,12
+3245 B4F0 0200     	byte >02,>00,>44,>0c,>02,>00,>95,>0c
+     B4F2 440C     
+     B4F4 0200     
+     B4F6 950C     
+3246               	; 	DATA BYTE 2,0,68,12,  2,0,149,12
+3247 B4F8 0200     	byte >02,>00,>44,>0c,>02,>00,>95,>0c
+     B4FA 440C     
+     B4FC 0200     
+     B4FE 950C     
+3248               	; 	DATA BYTE 2,0,68,12,  2,0,149,12
+3249 B500 0200     	byte >02,>00,>44,>0c,>02,>00,>95,>0c
+     B502 440C     
+     B504 0200     
+     B506 950C     
+3250               	; 	DATA BYTE 0,0,0,0
+3251 B508 0000     	byte >00,>00,>00,>00
+     B50A 0000     
+3252               	;
+3253               	; 	' B -- the same warble twice as fast: more urgent, less of a wobble.
+3254               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3255 B50C 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B50E 440C     
+     B510 0100     
+     B512 950C     
+3256               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3257 B514 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B516 440C     
+     B518 0100     
+     B51A 950C     
+3258               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3259 B51C 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B51E 440C     
+     B520 0100     
+     B522 950C     
+3260               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3261 B524 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B526 440C     
+     B528 0100     
+     B52A 950C     
+3262               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3263 B52C 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B52E 440C     
+     B530 0100     
+     B532 950C     
+3264               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3265 B534 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B536 440C     
+     B538 0100     
+     B53A 950C     
+3266               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3267 B53C 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B53E 440C     
+     B540 0100     
+     B542 950C     
+3268               	; 	DATA BYTE 1,0,68,12,  1,0,149,12
+3269 B544 0100     	byte >01,>00,>44,>0c,>01,>00,>95,>0c
+     B546 440C     
+     B548 0100     
+     B54A 950C     
+3270               	; 	DATA BYTE 0,0,0,0
+3271 B54C 0000     	byte >00,>00,>00,>00
+     B54E 0000     
+3272               	;
+3273               	; 	' C -- a rising sweep instead of a warble: reads as leaving the ground.
+3274               	; 	DATA BYTE 3,0,149,12
+3275 B550 0300     	byte >03,>00,>95,>0c
+     B552 950C     
+3276               	; 	DATA BYTE 3,0,106,12
+3277 B554 0300     	byte >03,>00,>6a,>0c
+     B556 6A0C     
+3278               	; 	DATA BYTE 3,0,75,12
+3279 B558 0300     	byte >03,>00,>4b,>0c
+     B55A 4B0C     
+3280               	; 	DATA BYTE 3,0,54,12
+3281 B55C 0300     	byte >03,>00,>36,>0c
+     B55E 360C     
+3282               	; 	DATA BYTE 5,0,42,12
+3283 B560 0500     	byte >05,>00,>2a,>0c
+     B562 2A0C     
+3284               	; 	DATA BYTE 0,0,0,0
+3285 B564 0000     	byte >00,>00,>00,>00
+     B566 0000     
+3286               	;
+3287               	; 	' D -- a short noise burst, no pitch at all. The cheapest option, and
+3288               	; 	' worth hearing before deciding the warble is necessary.
+3289               	; 	DATA BYTE 17,3,5,12
+3290 B568 1103     	byte >11,>03,>05,>0c
+     B56A 050C     
+3291               	; 	DATA BYTE 0,0,0,0
+3292 B56C 0000     	byte >00,>00,>00,>00
+     B56E 0000     
+3293               	;
+3294               	; 	' ================= 3 TIME UP =================
+3295               	; 	' A -- measured: a warble wandering 235-371 Hz for about 430 ms.
+3296               	; 	DATA BYTE 4,0,119,12
+3297 B570 0400     	byte >04,>00,>77,>0c
+     B572 770C     
+3298               	; 	DATA BYTE 4,0,106,12
+3299 B574 0400     	byte >04,>00,>6a,>0c
+     B576 6A0C     
+3300               	; 	DATA BYTE 4,0,75,12
+3301 B578 0400     	byte >04,>00,>4b,>0c
+     B57A 4B0C     
+3302               	; 	DATA BYTE 4,0,106,12
+3303 B57C 0400     	byte >04,>00,>6a,>0c
+     B57E 6A0C     
+3304               	; 	DATA BYTE 4,0,119,12
+3305 B580 0400     	byte >04,>00,>77,>0c
+     B582 770C     
+3306               	; 	DATA BYTE 4,0,106,12
+3307 B584 0400     	byte >04,>00,>6a,>0c
+     B586 6A0C     
+3308               	; 	DATA BYTE 0,0,0,0
+3309 B588 0000     	byte >00,>00,>00,>00
+     B58A 0000     
+3310               	;
+3311               	; 	' B -- a two-tone alarm on the same pitches, slower and even. More
+3312               	; 	' deliberate: this is the sound that ends a round.
+3313               	; 	DATA BYTE 8,0,119,13
+3314 B58C 0800     	byte >08,>00,>77,>0d
+     B58E 770D     
+3315               	; 	DATA BYTE 8,0,75,13
+3316 B590 0800     	byte >08,>00,>4b,>0d
+     B592 4B0D     
+3317               	; 	DATA BYTE 8,0,119,13
+3318 B594 0800     	byte >08,>00,>77,>0d
+     B596 770D     
+3319               	; 	DATA BYTE 8,0,75,13
+3320 B598 0800     	byte >08,>00,>4b,>0d
+     B59A 4B0D     
+3321               	; 	DATA BYTE 0,0,0,0
+3322 B59C 0000     	byte >00,>00,>00,>00
+     B59E 0000     
+3323               	;
+3324               	; 	' C -- a long fall. Reads as running down rather than as an alarm.
+3325               	; 	DATA BYTE 5,0,75,13
+3326 B5A0 0500     	byte >05,>00,>4b,>0d
+     B5A2 4B0D     
+3327               	; 	DATA BYTE 5,0,95,12
+3328 B5A4 0500     	byte >05,>00,>5f,>0c
+     B5A6 5F0C     
+3329               	; 	DATA BYTE 6,0,106,12
+3330 B5A8 0600     	byte >06,>00,>6a,>0c
+     B5AA 6A0C     
+3331               	; 	DATA BYTE 7,0,119,11
+3332 B5AC 0700     	byte >07,>00,>77,>0b
+     B5AE 770B     
+3333               	; 	DATA BYTE 9,0,149,10
+3334 B5B0 0900     	byte >09,>00,>95,>0a
+     B5B2 950A     
+3335               	; 	DATA BYTE 0,0,0,0
+3336 B5B4 0000     	byte >00,>00,>00,>00
+     B5B6 0000     
+3337               	;
+3338               	; 	' ================= 4 PICKUP =================
+3339               	; 	' HIGH IS NOT THE SAME AS HAPPY. The 2600 tops its pickup out at 2543 Hz,
+3340               	; 	' and copying that was a mistake: TIA's timbre is soft enough to carry it,
+3341               	; 	' and an SN76489 square at 2543 Hz is a shriek. A reward the player earns
+3342               	; 	' fifty times a round must not be the most piercing thing on the machine.
+3343               	; 	'
+3344               	; 	' So A is kept as the MEASURED one -- this bench's whole convention is that
+3345               	; 	' A is the reference -- and B onwards top out between 523 and 784 Hz, which
+3346               	; 	' is where a square wave still sounds like a note rather than a whistle.
+3347               	; 	'
+3348               	; 	' They are built on INTERVALS rather than on measurements. A rise reads as
+3349               	; 	' positive, but an arbitrary rise reads as a sweep; a major arpeggio reads
+3350               	; 	' as an arrival, and arriving is what collecting something is. Divisors:
+3351               	; 	'   C4 262 Hz = 107   G4 392 = 71    E5 659 = 42
+3352               	; 	'   E4 330 Hz =  85   A4 440 = 64    G5 784 = 36
+3353               	; 	'   F4 349 Hz =  80   C5 523 = 54
+3354               	;
+3355               	; 	' A -- MEASURED, and kept only as the reference. 295 Hz then 2543. This is
+3356               	; 	' the one the complaint is about.
+3357               	; 	DATA BYTE 7,0,95,12
+3358 B5B8 0700     	byte >07,>00,>5f,>0c
+     B5BA 5F0C     
+3359               	; 	DATA BYTE 26,0,11,12
+3360 B5BC 1A00     	byte >1a,>00,>0b,>0c
+     B5BE 0B0C     
+3361               	; 	DATA BYTE 0,0,0,0
+3362 B5C0 0000     	byte >00,>00,>00,>00
+     B5C2 0000     
+3363               	;
+3364               	; 	' B -- a C major arpeggio, C4 E4 G4, landing on C5 and holding. Tops at
+3365               	; 	' 523 Hz. The hold is what makes it an arrival rather than a blip.
+3366               	; 	DATA BYTE 6,0,107,12
+3367 B5C4 0600     	byte >06,>00,>6b,>0c
+     B5C6 6B0C     
+3368               	; 	DATA BYTE 6,0,85,12
+3369 B5C8 0600     	byte >06,>00,>55,>0c
+     B5CA 550C     
+3370               	; 	DATA BYTE 6,0,71,12
+3371 B5CC 0600     	byte >06,>00,>47,>0c
+     B5CE 470C     
+3372               	; 	DATA BYTE 15,0,54,12
+3373 B5D0 0F00     	byte >0f,>00,>36,>0c
+     B5D2 360C     
+3374               	; 	DATA BYTE 0,0,0,0
+3375 B5D4 0000     	byte >00,>00,>00,>00
+     B5D6 0000     
+3376               	;
+3377               	; 	' C -- the same shape an octave up, C5 E5 G5, topping at 784 Hz and fading
+3378               	; 	' out rather than stopping. Brighter than B without ever getting shrill.
+3379               	; 	DATA BYTE 6,0,54,12
+3380 B5D8 0600     	byte >06,>00,>36,>0c
+     B5DA 360C     
+3381               	; 	DATA BYTE 6,0,42,12
+3382 B5DC 0600     	byte >06,>00,>2a,>0c
+     B5DE 2A0C     
+3383               	; 	DATA BYTE 8,0,36,12
+3384 B5E0 0800     	byte >08,>00,>24,>0c
+     B5E2 240C     
+3385               	; 	DATA BYTE 5,0,36,10
+3386 B5E4 0500     	byte >05,>00,>24,>0a
+     B5E6 240A     
+3387               	; 	DATA BYTE 4,0,36,7
+3388 B5E8 0400     	byte >04,>00,>24,>07
+     B5EA 2407     
+3389               	; 	DATA BYTE 4,0,36,4
+3390 B5EC 0400     	byte >04,>00,>24,>04
+     B5EE 2404     
+3391               	; 	DATA BYTE 0,0,0,0
+3392 B5F0 0000     	byte >00,>00,>00,>00
+     B5F2 0000     
+3393               	;
+3394               	; 	' D -- two intervals only: C4 up a fourth to F4, then up to C5. Fewer
+3395               	; 	' notes, more weight on each. Tops at 523 Hz.
+3396               	; 	DATA BYTE 8,0,107,12
+3397 B5F4 0800     	byte >08,>00,>6b,>0c
+     B5F6 6B0C     
+3398               	; 	DATA BYTE 8,0,80,12
+3399 B5F8 0800     	byte >08,>00,>50,>0c
+     B5FA 500C     
+3400               	; 	DATA BYTE 17,0,54,12
+3401 B5FC 1100     	byte >11,>00,>36,>0c
+     B5FE 360C     
+3402               	; 	DATA BYTE 0,0,0,0
+3403 B600 0000     	byte >00,>00,>00,>00
+     B602 0000     
+3404               	;
+3405               	; 	' E -- the simplest thing that can read as a reward: G4 up a fourth to C5,
+3406               	; 	' held. Two notes, 392 to 523 Hz. Hard to get lost under the footsteps and
+3407               	; 	' hard to grow tired of.
+3408               	; 	DATA BYTE 12,0,71,12
+3409 B604 0C00     	byte >0c,>00,>47,>0c
+     B606 470C     
+3410               	; 	DATA BYTE 21,0,54,12
+3411 B608 1500     	byte >15,>00,>36,>0c
+     B60A 360C     
+3412               	; 	DATA BYTE 0,0,0,0
+3413 B60C 0000     	byte >00,>00,>00,>00
+     B60E 0000     
+3414               	;
+3415               	; 	' F -- B's arpeggio taken quickly, then a long fading hold on top. The
+3416               	; 	' quick part is the pickup and the hold is the satisfaction.
+3417               	; 	DATA BYTE 4,0,107,12
+3418 B610 0400     	byte >04,>00,>6b,>0c
+     B612 6B0C     
+3419               	; 	DATA BYTE 4,0,85,12
+3420 B614 0400     	byte >04,>00,>55,>0c
+     B616 550C     
+3421               	; 	DATA BYTE 4,0,71,12
+3422 B618 0400     	byte >04,>00,>47,>0c
+     B61A 470C     
+3423               	; 	DATA BYTE 10,0,54,12
+3424 B61C 0A00     	byte >0a,>00,>36,>0c
+     B61E 360C     
+3425               	; 	DATA BYTE 6,0,54,10
+3426 B620 0600     	byte >06,>00,>36,>0a
+     B622 360A     
+3427               	; 	DATA BYTE 5,0,54,7
+3428 B624 0500     	byte >05,>00,>36,>07
+     B626 3607     
+3429               	; 	DATA BYTE 0,0,0,0
+3430 B628 0000     	byte >00,>00,>00,>00
+     B62A 0000     
+3431               	;
+3432               	; 	' G -- the WARMEST option, and it never leaves the middle: E4 G4 A4, tops
+3433               	; 	' at 440 Hz. Worth hearing against B to find out how low a reward can sit
+3434               	; 	' and still read as one.
+3435               	; 	DATA BYTE 8,0,85,12
+3436 B62C 0800     	byte >08,>00,>55,>0c
+     B62E 550C     
+3437               	; 	DATA BYTE 8,0,71,12
+3438 B630 0800     	byte >08,>00,>47,>0c
+     B632 470C     
+3439               	; 	DATA BYTE 17,0,64,12
+3440 B634 1100     	byte >11,>00,>40,>0c
+     B636 400C     
+3441               	; 	DATA BYTE 0,0,0,0
+3442 B638 0000     	byte >00,>00,>00,>00
+     B63A 0000     
+3443               	;
+3444               	; 	' H -- rise and SETTLE: C5 E5 G5 then back to E5. It resolves instead of
+3445               	; 	' stopping at the top, which is the difference between a phrase and a
+3446               	; 	' fragment -- and the drop at the end keeps the last thing heard low.
+3447               	; 	DATA BYTE 6,0,54,12
+3448 B63C 0600     	byte >06,>00,>36,>0c
+     B63E 360C     
+3449               	; 	DATA BYTE 6,0,42,12
+3450 B640 0600     	byte >06,>00,>2a,>0c
+     B642 2A0C     
+3451               	; 	DATA BYTE 8,0,36,12
+3452 B644 0800     	byte >08,>00,>24,>0c
+     B646 240C     
+3453               	; 	DATA BYTE 13,0,42,12
+3454 B648 0D00     	byte >0d,>00,>2a,>0c
+     B64A 2A0C     
+3455               	; 	DATA BYTE 0,0,0,0
+3456 B64C 0000     	byte >00,>00,>00,>00
+     B64E 0000     
+3457               	;
+3458               	; 	' C ENDS TOO HIGH, AND THERE ARE TWO WAYS TO SAY SO. C rises C5 E5 G5 and
+3459               	; 	' fades on G5 at 784 Hz. Either the whole phrase is too high, or only the
+3460               	; 	' note it is left sitting on is -- these are the two answers, because they
+3461               	; 	' are different fixes and only one of them can be right.
+3462               	;
+3463               	; 	' I -- THE WHOLE PHRASE, A THIRD LOWER. Same shape, same fade, built on
+3464               	; 	' A4 C5 E5 instead: it tops out at 659 Hz rather than 784 and lands there.
+3465               	; 	' Choose this one if C was bright all the way through.
+3466               	; 	DATA BYTE 6,0,64,12
+3467 B650 0600     	byte >06,>00,>40,>0c
+     B652 400C     
+3468               	; 	DATA BYTE 6,0,54,12
+3469 B654 0600     	byte >06,>00,>36,>0c
+     B656 360C     
+3470               	; 	DATA BYTE 8,0,42,12
+3471 B658 0800     	byte >08,>00,>2a,>0c
+     B65A 2A0C     
+3472               	; 	DATA BYTE 5,0,42,10
+3473 B65C 0500     	byte >05,>00,>2a,>0a
+     B65E 2A0A     
+3474               	; 	DATA BYTE 4,0,42,7
+3475 B660 0400     	byte >04,>00,>2a,>07
+     B662 2A07     
+3476               	; 	DATA BYTE 4,0,42,4
+3477 B664 0400     	byte >04,>00,>2a,>04
+     B666 2A04     
+3478               	; 	DATA BYTE 0,0,0,0
+3479 B668 0000     	byte >00,>00,>00,>00
+     B66A 0000     
+3480               	;
+3481               	; 	' J -- ONLY THE ENDING. C's exact climb, C5 E5 G5, but it does not STAY on
+3482               	; 	' the top note: it settles back to E5 and fades there. The peak still
+3483               	; 	' happens, so the phrase keeps its lift, and the last thing left ringing
+3484               	; 	' is 659 Hz instead of 784. Choose this one if C was fine until it stopped.
+3485               	; 	DATA BYTE 6,0,54,12
+3486 B66C 0600     	byte >06,>00,>36,>0c
+     B66E 360C     
+3487               	; 	DATA BYTE 6,0,42,12
+3488 B670 0600     	byte >06,>00,>2a,>0c
+     B672 2A0C     
+3489               	; 	DATA BYTE 6,0,36,12
+3490 B674 0600     	byte >06,>00,>24,>0c
+     B676 240C     
+3491               	; 	DATA BYTE 5,0,42,11
+3492 B678 0500     	byte >05,>00,>2a,>0b
+     B67A 2A0B     
+3493               	; 	DATA BYTE 5,0,42,8
+3494 B67C 0500     	byte >05,>00,>2a,>08
+     B67E 2A08     
+3495               	; 	DATA BYTE 5,0,42,5
+3496 B680 0500     	byte >05,>00,>2a,>05
+     B682 2A05     
+3497               	; 	DATA BYTE 0,0,0,0
+3498 B684 0000     	byte >00,>00,>00,>00
+     B686 0000     
+3499               	;
+3500               	; 	' ================= 5 HIT =================
+3501               	; 	' A -- measured: the jump's warble, then a tail FALLING to 235 Hz and
+3502               	; 	' holding. About 650 ms. The fall is what separates it from the jump.
+3503               	; 	DATA BYTE 2,0,68,13,  2,0,149,13
+3504 B688 0200     	byte >02,>00,>44,>0d,>02,>00,>95,>0d
+     B68A 440D     
+     B68C 0200     
+     B68E 950D     
+3505               	; 	DATA BYTE 2,0,68,13,  2,0,149,13
+3506 B690 0200     	byte >02,>00,>44,>0d,>02,>00,>95,>0d
+     B692 440D     
+     B694 0200     
+     B696 950D     
+3507               	; 	DATA BYTE 2,0,68,13,  2,0,149,13
+3508 B698 0200     	byte >02,>00,>44,>0d,>02,>00,>95,>0d
+     B69A 440D     
+     B69C 0200     
+     B69E 950D     
+3509               	; 	DATA BYTE 5,0,106,12
+3510 B6A0 0500     	byte >05,>00,>6a,>0c
+     B6A2 6A0C     
+3511               	; 	DATA BYTE 18,0,119,10
+3512 B6A4 1200     	byte >12,>00,>77,>0a
+     B6A6 770A     
+3513               	; 	DATA BYTE 0,0,0,0
+3514 B6A8 0000     	byte >00,>00,>00,>00
+     B6AA 0000     
+3515               	;
+3516               	; 	' B -- a smooth fall, no warble. The mirror of PICKUP B, and the pair
+3517               	; 	' should be obvious with eyes shut.
+3518               	; 	DATA BYTE 4,0,42,13
+3519 B6AC 0400     	byte >04,>00,>2a,>0d
+     B6AE 2A0D     
+3520               	; 	DATA BYTE 4,0,68,13
+3521 B6B0 0400     	byte >04,>00,>44,>0d
+     B6B2 440D     
+3522               	; 	DATA BYTE 5,0,95,12
+3523 B6B4 0500     	byte >05,>00,>5f,>0c
+     B6B6 5F0C     
+3524               	; 	DATA BYTE 6,0,119,11
+3525 B6B8 0600     	byte >06,>00,>77,>0b
+     B6BA 770B     
+3526               	; 	DATA BYTE 8,0,149,10
+3527 B6BC 0800     	byte >08,>00,>95,>0a
+     B6BE 950A     
+3528               	; 	DATA BYTE 0,0,0,0
+3529 B6C0 0000     	byte >00,>00,>00,>00
+     B6C2 0000     
+3530               	;
+3531               	; 	' C -- noise into a falling tone: an impact, then the consequence.
+3532               	; 	DATA BYTE 6,3,6,13
+3533 B6C4 0603     	byte >06,>03,>06,>0d
+     B6C6 060D     
+3534               	; 	DATA BYTE 6,0,106,12
+3535 B6C8 0600     	byte >06,>00,>6a,>0c
+     B6CA 6A0C     
+3536               	; 	DATA BYTE 8,0,119,11
+3537 B6CC 0800     	byte >08,>00,>77,>0b
+     B6CE 770B     
+3538               	; 	DATA BYTE 12,0,149,9
+3539 B6D0 0C00     	byte >0c,>00,>95,>09
+     B6D2 9509     
+3540               	; 	DATA BYTE 0,0,0,0
+3541 B6D4 0000     	byte >00,>00,>00,>00
+     B6D6 0000     
+3542               	;
+3543               	; 	' D -- a low buzz on periodic noise. No pitch to argue with, and it does
+3544               	; 	' not compete with the music the way a held tone does.
+3545               	; 	DATA BYTE 30,3,2,13
+3546 B6D8 1E03     	byte >1e,>03,>02,>0d
+     B6DA 020D     
+3547               	; 	DATA BYTE 8,3,2,9
+3548 B6DC 0803     	byte >08,>03,>02,>09
+     B6DE 0209     
+3549               	; 	DATA BYTE 0,0,0,0
+3550 B6E0 0000     	byte >00,>00,>00,>00
+     B6E2 0000     
+3551               	;
+3552               	; 	' E -- THE MEASURED SHAPE AT THE MEASURED LENGTH. The 415/188 warble, then
+3553               	; 	' a tail falling to 235 and holding, over the full 660 ms the recording
+3554               	; 	' shows -- the warble is the impact and the fall is the consequence.
+3555               	; 	DATA BYTE 2,0,68,13,  2,0,149,13
+3556 B6E4 0200     	byte >02,>00,>44,>0d,>02,>00,>95,>0d
+     B6E6 440D     
+     B6E8 0200     
+     B6EA 950D     
+3557               	; 	DATA BYTE 2,0,68,13,  2,0,149,13
+3558 B6EC 0200     	byte >02,>00,>44,>0d,>02,>00,>95,>0d
+     B6EE 440D     
+     B6F0 0200     
+     B6F2 950D     
+3559               	; 	DATA BYTE 2,0,68,13,  2,0,149,13
+3560 B6F4 0200     	byte >02,>00,>44,>0d,>02,>00,>95,>0d
+     B6F6 440D     
+     B6F8 0200     
+     B6FA 950D     
+3561               	; 	DATA BYTE 2,0,68,13,  2,0,149,13
+3562 B6FC 0200     	byte >02,>00,>44,>0d,>02,>00,>95,>0d
+     B6FE 440D     
+     B700 0200     
+     B702 950D     
+3563               	; 	DATA BYTE 4,0,95,12
+3564 B704 0400     	byte >04,>00,>5f,>0c
+     B706 5F0C     
+3565               	; 	DATA BYTE 6,0,106,12
+3566 B708 0600     	byte >06,>00,>6a,>0c
+     B70A 6A0C     
+3567               	; 	DATA BYTE 20,0,119,11
+3568 B70C 1400     	byte >14,>00,>77,>0b
+     B70E 770B     
+3569               	; 	DATA BYTE 0,0,0,0
+3570 B710 0000     	byte >00,>00,>00,>00
+     B712 0000     
+3571               	;
+3572               	; 	' F -- a TWO-STAGE fall: quick at first, then slow. Things that drop do
+3573               	; 	' not fall at a constant rate, and the ear knows it.
+3574               	; 	DATA BYTE 3,0,42,13
+3575 B714 0300     	byte >03,>00,>2a,>0d
+     B716 2A0D     
+3576               	; 	DATA BYTE 3,0,54,13
+3577 B718 0300     	byte >03,>00,>36,>0d
+     B71A 360D     
+3578               	; 	DATA BYTE 4,0,68,12
+3579 B71C 0400     	byte >04,>00,>44,>0c
+     B71E 440C     
+3580               	; 	DATA BYTE 6,0,95,12
+3581 B720 0600     	byte >06,>00,>5f,>0c
+     B722 5F0C     
+3582               	; 	DATA BYTE 9,0,119,11
+3583 B724 0900     	byte >09,>00,>77,>0b
+     B726 770B     
+3584               	; 	DATA BYTE 14,0,149,10
+3585 B728 0E00     	byte >0e,>00,>95,>0a
+     B72A 950A     
+3586               	; 	DATA BYTE 0,0,0,0
+3587 B72C 0000     	byte >00,>00,>00,>00
+     B72E 0000     
+3588               	;
+3589               	; 	' G -- a noise ATTACK and then the fall. The collision and the aftermath
+3590               	; 	' as two separate sounds, which is what a crash actually is.
+3591               	; 	DATA BYTE 5,3,6,13
+3592 B730 0503     	byte >05,>03,>06,>0d
+     B732 060D     
+3593               	; 	DATA BYTE 3,0,68,13
+3594 B734 0300     	byte >03,>00,>44,>0d
+     B736 440D     
+3595               	; 	DATA BYTE 5,0,95,12
+3596 B738 0500     	byte >05,>00,>5f,>0c
+     B73A 5F0C     
+3597               	; 	DATA BYTE 8,0,119,11
+3598 B73C 0800     	byte >08,>00,>77,>0b
+     B73E 770B     
+3599               	; 	DATA BYTE 18,0,149,9
+3600 B740 1200     	byte >12,>00,>95,>09
+     B742 9509     
+3601               	; 	DATA BYTE 0,0,0,0
+3602 B744 0000     	byte >00,>00,>00,>00
+     B746 0000     
+3603               	;
+3604               	; 	' H -- the warble WITHOUT the fall, held low and long. Nine seconds is a
+3605               	; 	' heavy penalty and a sound that just sits there says so; worth hearing
+3606               	; 	' against E to decide whether the fall is doing any work.
+3607               	; 	DATA BYTE 2,0,119,13,  2,0,149,13
+3608 B748 0200     	byte >02,>00,>77,>0d,>02,>00,>95,>0d
+     B74A 770D     
+     B74C 0200     
+     B74E 950D     
+3609               	; 	DATA BYTE 2,0,119,13,  2,0,149,13
+3610 B750 0200     	byte >02,>00,>77,>0d,>02,>00,>95,>0d
+     B752 770D     
+     B754 0200     
+     B756 950D     
+3611               	; 	DATA BYTE 2,0,119,13,  2,0,149,13
+3612 B758 0200     	byte >02,>00,>77,>0d,>02,>00,>95,>0d
+     B75A 770D     
+     B75C 0200     
+     B75E 950D     
+3613               	; 	DATA BYTE 2,0,119,13,  2,0,149,13
+3614 B760 0200     	byte >02,>00,>77,>0d,>02,>00,>95,>0d
+     B762 770D     
+     B764 0200     
+     B766 950D     
+3615               	; 	DATA BYTE 2,0,119,13,  2,0,149,13
+3616 B768 0200     	byte >02,>00,>77,>0d,>02,>00,>95,>0d
+     B76A 770D     
+     B76C 0200     
+     B76E 950D     
+3617               	; 	DATA BYTE 2,0,119,13,  2,0,149,13
+3618 B770 0200     	byte >02,>00,>77,>0d,>02,>00,>95,>0d
+     B772 770D     
+     B774 0200     
+     B776 950D     
+3619               	; 	DATA BYTE 16,0,149,11
+3620 B778 1000     	byte >10,>00,>95,>0b
+     B77A 950B     
+3621               	; 	DATA BYTE 0,0,0,0
+3622 B77C 0000     	byte >00,>00,>00,>00
+     B77E 0000     
+3623               	;
+3624               	; 	' ================= 6 TALLY =================
+3625               	; 	' TEN COUNTS, not four. A tally is judged over a RUN of them -- whether it
+3626               	; 	' nags, whether it drags -- and four ticks tells you nothing about that.
+3627               	; 	'
+3628               	; 	' A -- measured: a 67 ms tick against the 2600's 64, ten times, ending on
+3629               	; 	' the longer accent it plays at the end of a group.
+3630               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3631 B780 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B782 040C     
+     B784 02FF     
+     B786 0000     
+3632               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3633 B788 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B78A 040C     
+     B78C 02FF     
+     B78E 0000     
+3634               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3635 B790 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B792 040C     
+     B794 02FF     
+     B796 0000     
+3636               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3637 B798 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B79A 040C     
+     B79C 02FF     
+     B79E 0000     
+3638               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3639 B7A0 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B7A2 040C     
+     B7A4 02FF     
+     B7A6 0000     
+3640               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3641 B7A8 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B7AA 040C     
+     B7AC 02FF     
+     B7AE 0000     
+3642               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3643 B7B0 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B7B2 040C     
+     B7B4 02FF     
+     B7B6 0000     
+3644               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3645 B7B8 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B7BA 040C     
+     B7BC 02FF     
+     B7BE 0000     
+3646               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3647 B7C0 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B7C2 040C     
+     B7C4 02FF     
+     B7C6 0000     
+3648               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3649 B7C8 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B7CA 040C     
+     B7CC 02FF     
+     B7CE 0000     
+3650               	; 	DATA BYTE 7,3,4,13
+3651 B7D0 0703     	byte >07,>03,>04,>0d
+     B7D2 040D     
+3652               	; 	DATA BYTE 0,0,0,0
+3653 B7D4 0000     	byte >00,>00,>00,>00
+     B7D6 0000     
+3654               	;
+3655               	; 	' B -- the same ten as a TONE blip rather than noise. Reads as counting
+3656               	; 	' rather than as ratcheting.
+3657               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3658 B7D8 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B7DA 1B0C     
+     B7DC 02FF     
+     B7DE 0000     
+3659               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3660 B7E0 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B7E2 1B0C     
+     B7E4 02FF     
+     B7E6 0000     
+3661               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3662 B7E8 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B7EA 1B0C     
+     B7EC 02FF     
+     B7EE 0000     
+3663               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3664 B7F0 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B7F2 1B0C     
+     B7F4 02FF     
+     B7F6 0000     
+3665               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3666 B7F8 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B7FA 1B0C     
+     B7FC 02FF     
+     B7FE 0000     
+3667               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3668 B800 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B802 1B0C     
+     B804 02FF     
+     B806 0000     
+3669               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3670 B808 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B80A 1B0C     
+     B80C 02FF     
+     B80E 0000     
+3671               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3672 B810 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B812 1B0C     
+     B814 02FF     
+     B816 0000     
+3673               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3674 B818 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B81A 1B0C     
+     B81C 02FF     
+     B81E 0000     
+3675               	; 	DATA BYTE 2,0,27,12,  2,255,0,0
+3676 B820 0200     	byte >02,>00,>1b,>0c,>02,>ff,>00,>00
+     B822 1B0C     
+     B824 02FF     
+     B826 0000     
+3677               	; 	DATA BYTE 8,0,11,13
+3678 B828 0800     	byte >08,>00,>0b,>0d
+     B82A 0B0D     
+3679               	; 	DATA BYTE 0,0,0,0
+3680 B82C 0000     	byte >00,>00,>00,>00
+     B82E 0000     
+3681               	;
+3682               	; 	' C -- ten ticks that ACCELERATE, ending on the accent. A tally that
+3683               	; 	' speeds up says "nearly done" without a number.
+3684               	; 	DATA BYTE 2,3,4,12,  5,255,0,0
+3685 B830 0203     	byte >02,>03,>04,>0c,>05,>ff,>00,>00
+     B832 040C     
+     B834 05FF     
+     B836 0000     
+3686               	; 	DATA BYTE 2,3,4,12,  5,255,0,0
+3687 B838 0203     	byte >02,>03,>04,>0c,>05,>ff,>00,>00
+     B83A 040C     
+     B83C 05FF     
+     B83E 0000     
+3688               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3689 B840 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B842 040C     
+     B844 04FF     
+     B846 0000     
+3690               	; 	DATA BYTE 2,3,4,12,  4,255,0,0
+3691 B848 0203     	byte >02,>03,>04,>0c,>04,>ff,>00,>00
+     B84A 040C     
+     B84C 04FF     
+     B84E 0000     
+3692               	; 	DATA BYTE 2,3,4,12,  3,255,0,0
+3693 B850 0203     	byte >02,>03,>04,>0c,>03,>ff,>00,>00
+     B852 040C     
+     B854 03FF     
+     B856 0000     
+3694               	; 	DATA BYTE 2,3,4,12,  3,255,0,0
+3695 B858 0203     	byte >02,>03,>04,>0c,>03,>ff,>00,>00
+     B85A 040C     
+     B85C 03FF     
+     B85E 0000     
+3696               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3697 B860 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B862 040C     
+     B864 02FF     
+     B866 0000     
+3698               	; 	DATA BYTE 2,3,4,12,  2,255,0,0
+3699 B868 0203     	byte >02,>03,>04,>0c,>02,>ff,>00,>00
+     B86A 040C     
+     B86C 02FF     
+     B86E 0000     
+3700               	; 	DATA BYTE 2,3,4,12,  1,255,0,0
+3701 B870 0203     	byte >02,>03,>04,>0c,>01,>ff,>00,>00
+     B872 040C     
+     B874 01FF     
+     B876 0000     
+3702               	; 	DATA BYTE 2,3,4,12,  1,255,0,0
+3703 B878 0203     	byte >02,>03,>04,>0c,>01,>ff,>00,>00
+     B87A 040C     
+     B87C 01FF     
+     B87E 0000     
+3704               	; 	DATA BYTE 9,3,4,13
+3705 B880 0903     	byte >09,>03,>04,>0d
+     B882 040D     
+3706               	; 	DATA BYTE 0,0,0,0
+3707 B884 0000     	byte >00,>00,>00,>00
+     B886 0000     
+3708               	;
+3709               	; 	' END OF TABLE
+3710               	; 	DATA BYTE 255,0,0,0
+3711 B888 FF00     	byte >ff,>00,>00,>00
+     B88A 0000     
+3712               SLAST
+3713               
+3714               ;;; CV BASIC Epilogue
+3715               
+3716               ; data in low RAM
+3717                   dorg >2000
+3718               
+3719               ; must be even aligned
+3720               ; mirror for sprite table
+3721 2000          sprites	    bss 128
+3722               
+3723               ; Vars can start at >2080
+3724                   dorg >2080
+3725               
+3726               cvb_B:
+3727 2080          	bss 1
+3728               cvb_K:
+3729 2081          	bss 1
+3730               cvb_CAT:
+3731 2082          	bss 1
+3732               cvb_V:
+3733 2083          	bss 1
+3734               cvb_KLAST:
+3735 2084          	bss 1
+3736               cvb_NFX:
+3737 2085          	bss 1
+3738               cvb__CNT:
+3739 2086          	bss 2
+3740               cvb__DIV:
+3741 2088          	bss 2
+3742               cvb__MA:
+3743 208A          	bss 2
+3744               cvb_B0:
+3745 208C          	bss 1
+3746               	even
+3747               cvb__SI:
+3748 208E          	bss 2
+3749               cvb__VA:
+3750 2090          	bss 2
+3751               cvb__SKIP:
+3752 2092          	bss 2
+3753               cvb_FX:
+3754 2094          	bss 1
+3755               cvb_BLAST:
+3756 2095          	bss 1
+3757               cvb_MK:
+3758 2096          	bss 1
+3759               cvb_MR:
+3760 2097          	bss 1
+3761               cvb_PB:
+3762 2098          	bss 1
+3763               cvb_PW:
+3764 2099          	bss 1
+3765               cvb_SB:
+3766 209A          	bss 1
+3767               cvb_VC:
+3768 209B          	bss 1
+3769               cvb_VR:
+3770 209C          	bss 1
+3771               	even
+3772               array_STP:
+3773 209E          	bss 4
+3774               array__FXOFF:
+3775 20A2          	bss 96
+3776               array_CATCUR:
+3777 2102          	bss 6
+3778               array_CATNUM:
+3779 2108          	bss 6
+3780               array_CATFST:
+3781 210E          	bss 6
+3782               ram_end:

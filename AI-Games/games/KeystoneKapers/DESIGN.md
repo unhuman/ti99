@@ -815,6 +815,51 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-ter. The run and the jump, measured instead of invented
+
+Both effects were hand-picked divisors that had never been compared with
+anything. They are now `testsounds` variant A -- measured off an Atari 2600
+recording (`games/testsounds/assets/sfxref.md` has the method and the workings).
+
+**The footstep is NOISE, on the noise channel.** It was two alternating tones on
+channel 0. The recording says a footstep is a short burst of white noise, and
+channel 3 was sitting unused while the footsteps and the jump sweep shared
+channel 0 and had to take turns. Register 4 (white, fastest rate) at volume 12 --
+against the old 7, because noise reads quieter than a tone at the same level.
+
+**Six a second, not fifteen.** `sfw` counts pixels travelled and fired a step
+every 7 px. At 104 px/s that is about **fifteen a second**, which is a machine gun
+rather than a run. The 2600 plays one every **165 ms**, so at our speed that is
+every 17 px -- `sfw > 16`.
+
+**The jump is a warble, not a sweep.** It was a rising sweep, divisor 500 down to
+120 in steps of 40. Invented rather than measured, and the wrong *shape*: a sweep
+reads as something departing, which is a reasonable idea and not what the original
+does. The recording shows about **415 Hz alternating with 188** for roughly 280 ms
+-- eight ticks alternating between divisors 270 and 595, which is four cycles.
+
+**It cost nothing and freed a channel.** The fixed area went from 588 bytes free
+to 628: the toggle and the sweep arithmetic that came out were larger than what
+replaced them. Channel 0 now carries only the jump, and the noise channel is in
+use for the first time.
+
+#### THE ANALYSIS GOT ITS OWN FIRST PASS WRONG, WHICH IS THE TRANSFERABLE PART
+
+Autocorrelation reported **every** effect as noise. The running sound plays
+underneath all of them, and its hiss drags the confidence of a pitch estimate
+below any sensible threshold -- so a clean tone with footsteps over it scores 0.4
+and gets filed as noise. Only the running and the tally ticks actually are.
+
+That hid the most important distinction in the set: **the pickup rises and the hit
+falls**. Filed as "both noise, both about 660 ms" they were the same sound, when
+they are the difference between a reward and a penalty. Measuring energy at fixed
+frequencies (Goertzel) rather than periodicity does not have this problem -- it
+says where the energy *is*, so a sweep shows as the peak walking up the column.
+
+**Classify with a spectrogram; only measure pitch on something already known to be
+tonal.** And what transfers from a different sound chip is the *shape* -- rising
+against falling, warble against steady, and the durations -- not the timbre.
+
 ### 0e-bis. The radio, redrawn as openwork
 
 The radio's body was three **wide** green slots under a solid arch, which at

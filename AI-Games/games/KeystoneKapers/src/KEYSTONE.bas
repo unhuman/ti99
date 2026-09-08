@@ -4229,7 +4229,7 @@ pause_beat:
 sfx_tick:
 	IF sfj = 1 THEN
 		sfj = 0
-		#swp = 500
+		swf = 0
 		swt = 8
 	END IF
 	IF sfh = 1 THEN
@@ -4237,12 +4237,41 @@ sfx_tick:
 		SOUND 1,900,13
 		sht = 20
 	END IF
+	' A PRIZE IS AN ARPEGGIO -- testsounds PICKUP C. C5, E5, G5, then a fade
+	' on the top note: it RISES, which is what makes it read as a reward
+	' rather than as an event, and it ARRIVES, because a major triad resolves
+	' where an arbitrary rise just stops.
+	'
+	' It was two notes struck together on two channels and held. That needed
+	' both channels for one sound, said nothing in particular, and had no
+	' shape at all -- a chord is a texture, and this wants to be a phrase.
+	'
+	' NOT THE MEASURED ONE, ON PURPOSE. The 2600 tops its pickup out at
+	' 2543 Hz, and a square wave there is a shriek; TIA's softer timbre
+	' carries it and the SN76489's does not. This peaks at 784 Hz. Copying the
+	' recording would have been faithful and unpleasant, and the player earns
+	' this sound dozens of times a round.
 	IF sfp = 1 THEN
 		sfp = 0
-		SOUND 2,200,13			' two notes need two channels --
-		SOUND 1,160,11			' back to back on one just cancels
-		spt = 12
-		sht = 12
+		spz = 13
+	END IF
+	' ONE CHANNEL, WALKED THROUGH BY A COUNTDOWN. sfx_tick runs once a pass at
+	' about 42 ms, so thirteen passes is the bench's 550 ms; the note and the
+	' volume are chosen from the count rather than stored in a table, which
+	' for six phases is smaller than the table would be.
+	'
+	' Divisors: C5 523 Hz = 214, E5 659 = 170, G5 784 = 143.
+	IF spz > 0 THEN
+		pzd = 143			' G5, the note it lands and fades on
+		pzv = 12
+		IF spz > 11 THEN pzd = 214	' C5
+		IF spz > 9 THEN IF spz < 12 THEN pzd = 170	' E5
+		IF spz < 7 THEN pzv = 10
+		IF spz < 5 THEN pzv = 7
+		IF spz < 3 THEN pzv = 4
+		SOUND 2,pzd,pzv
+		spz = spz - 1
+		IF spz = 0 THEN SOUND 2,0,0
 	END IF
 	IF sfe = 1 THEN
 		sfe = 0
@@ -4256,10 +4285,23 @@ sfx_tick:
 	END IF
 
 	' the jump sweep: divisor falling = pitch rising
+	' THE JUMP IS A WARBLE, NOT A SWEEP -- testsounds variant A, measured off
+	' the 2600 at about 415 Hz alternating with 188 for roughly 280 ms.
+	'
+	' It used to be a rising sweep, 500 down to 120 in steps of 40. That was
+	' invented rather than measured, and it had the wrong SHAPE: a sweep reads
+	' as something departing, which is a fine idea and is not what the original
+	' does. Eight ticks alternating is four cycles of warble, which is what the
+	' recording shows.
+	'
+	' 270 is 415 Hz and 595 is 188 Hz (divisor = 3579545 / (32 * f), so a
+	' SMALLER divisor is a HIGHER note -- the pair reads backwards from how it
+	' is written).
 	IF swt > 0 THEN
 		swt = swt - 1
-		#swp = #swp - 40
-		IF #swp < 120 THEN #swp = 120
+		swf = 1 - swf
+		#swp = 270
+		IF swf = 1 THEN #swp = 595
 		SOUND 0,#swp,12
 		IF swt = 0 THEN SOUND 0,0,0
 	END IF
@@ -4271,14 +4313,60 @@ sfx_tick:
 		spt = 8
 	END IF
 
-	' footsteps
-	IF sfw > 6 THEN
-		sfw = 0
+	' FOOTSTEPS ARE NOISE, AND ON THE NOISE CHANNEL -- testsounds variant A.
+	'
+	' They were two alternating TONES on channel 0, which is neither what the
+	' original does nor a good use of a channel: the recording says a footstep
+	' is a short burst of white noise, and channel 3 was sitting unused while
+	' the footsteps and the jump sweep shared channel 0 and had to take turns.
+	'
+	' TESTSOUNDS RUN D: a SHORT tick at the measured RATE.
+	'
+	' The two dials are independent and both were tried at the bench. The
+	' 2600 plays a 64 ms burst every 165 ms -- six a second -- and variant A
+	' copies both. Ten a second was tried on the way here and reads as
+	' hurrying rather than running. What D changes is not the cadence but the
+	' TICK: two frames rather than four, and a notch louder to carry at half
+	' the length. Same six a second, less of it.
+	'
+	' EIGHT A SECOND, AND THE ACCUMULATOR NOW CARRIES ITS REMAINDER.
+	'
+	' sfw counted pixels and the trigger did `sfw = 0`, THROWING AWAY whatever
+	' was past the threshold. kspd is about four pixels a pass, so a threshold
+	' of 17 did not fire at 17 -- it fired at the first multiple past it, about
+	' 20, and every rate this was ever set to came out slower than the number
+	' said: the "six a second" was 5.2 and the "ten" that read as hurrying was
+	' really 8.7. Subtracting the threshold instead keeps the fraction, so the
+	' rate is what it claims to be at any walking speed.
+	'
+	' 104 px/s over 15 px is 6.9 a second -- between the 8.0 that read as
+	' slightly hurried and the 6.1 that read as trudging. The dial is this one
+	' constant and the subtraction below, which must stay threshold + 1 or the
+	' carry is wrong.
+	'
+	' SOT = 2 IS THE SHORTEST TICK THERE IS, and 1 is SILENCE. The decay block
+	' below runs LATER IN THE SAME sfx_tick, so a count of 1 is decremented to
+	' zero on the pass that set it and the note-off fires before the sound has
+	' lasted any time at all. 2 survives to the next pass, which is one pass of
+	' sound -- about 42 ms against the bench's 33, as close as a per-pass timer
+	' gets, and the reason the bench and the game cannot sound identical.
+	'
+	' Register 4 is white noise at the fastest rate.
+	'
+	' VOLUME 9, WHICH IS UNDER EVERYTHING ELSE ON PURPOSE. The hit, the prize
+	' and the jump are 12 and 13, and they happen ONCE; footsteps play for the
+	' whole round. At 13 they were level with the events they are supposed to
+	' sit beneath, so the effects that carry information had nothing to stand
+	' out from. The tone version was 7 for the same reason -- noise does read
+	' quieter than a tone at the same number, which is why this is 9 and not
+	' back to 7.
+	IF sfw > 14 THEN
+		sfw = sfw - 15
+		' STILL SILENT DURING THE JUMP, but now that is a CHOICE rather than
+		' a channel conflict -- he is off the ground, so there is nothing to
+		' make a footstep with.
 		IF swt = 0 THEN
-			stf = 1 - stf
-			#stp = 800
-			IF stf = 1 THEN #stp = 860
-			SOUND 0,#stp,7
+			SOUND 3,4,9
 			sot = 2
 		END IF
 	END IF
@@ -4287,7 +4375,7 @@ sfx_tick:
 	' animation pauses, or a tone hangs.
 	IF sot > 0 THEN
 		sot = sot - 1
-		IF sot = 0 THEN SOUND 0,0,0
+		IF sot = 0 THEN SOUND 3,0,0
 	END IF
 	IF sht > 0 THEN
 		sht = sht - 1
