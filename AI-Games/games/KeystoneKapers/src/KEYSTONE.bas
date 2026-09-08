@@ -804,7 +804,7 @@ title_draw:
 	PRINT AT 486,"JUMP CARTS AND LOW BALLS"
 	PRINT AT 518,"DUCK PLANES AND HIGH ONES"
 
-	PRINT AT 614,"FIRE OR 1 TO START"
+	PRINT AT 614,"FIRE TO START"
 	PRINT AT 678,"2026 UNHUMAN AND CLAUDE"
 	' The NOTICE is redrawn on every title visit even though the MEASUREMENT
 	' happens once -- it is information about the machine, and the CLS above
@@ -879,12 +879,25 @@ title_wait:
 	' asked for. RETURN leaves title_input the same way FIRE does, so the
 	' caller runs new_game next either way.
 	IF t838 = 3 THEN t838 = 0 : GOSUB setup838 : RETURN
-	' FIRE **or** 1. On the TI, joystick fire is TAB, which is neither
-	' guessable nor forgiving -- Windows treats a stray TAB as a focus change
-	' and moves the whole window away. Accepting a plain digit as well costs
-	' one line and removes the only way to be stuck on this screen.
+	' FIRE ONLY, AND THAT IS A DECISION RATHER THAN AN OVERSIGHT.
+	'
+	' `1` used to start the game as well, because on the TI joystick fire is
+	' TAB -- neither guessable nor forgiving, since Windows treats a stray TAB
+	' as a focus change and moves the whole window away. CLAUDE.md 3A still
+	' says not to make FIRE the only way out of a title screen, and this screen
+	' is the named exception.
+	'
+	' WHAT IT BUYS IS THE 838 SEQUENCE. Every digit on this screen now means
+	' exactly one thing: a step of the cheat code, or a reset of it. While `1`
+	' also meant START, mistyping one digit of 8-3-8 did not merely reset the
+	' sequence -- it began a game, which is a far worse outcome than having to
+	' type the code again, and it is the single most likely typo since 1 is
+	' next to nothing on the sequence but adjacent to everything on a keypad.
+	'
+	' The hazard the digit guarded against is real but recoverable: a TAB that
+	' moves focus leaves the title on screen and the player clicks back. A
+	' game started by accident cannot be undone at all.
 	IF cont1.button THEN RETURN
-	IF tk = 1 THEN RETURN
 	GOTO title_wait
 
 	' 8-3-8 IS EDGE-TRIGGERED AND ANY STRAY DIGIT RESETS IT (see title_wait).

@@ -534,6 +534,21 @@ treat as a focus change, so "do not make FIRE the only way out" applies here as
 much as on the title. The clamp is what makes that safe -- no typed pair can be
 refused, so there is no state to be stuck in.
 
+#### AND `1` NO LONGER STARTS THE GAME
+
+The title accepted `1` as well as FIRE, because TI fire is TAB and CLAUDE.md §3A
+says not to make FIRE the only way out of a title screen. That is now a **named
+exception**, taken on purpose.
+
+What it buys is the cheat code. Every digit on the title now means exactly one
+thing: a step of `8-3-8`, or a reset of it. While `1` also meant START, mistyping
+one digit did not merely reset the sequence -- **it began a game**, which is a far
+worse outcome than having to type the code again. The two hazards are not
+symmetric: a stray TAB that moves the window leaves the title on screen and the
+player clicks back, while a game started by accident cannot be undone at all.
+
+The prompt says `FIRE TO START`.
+
 #### THE CHEAT CODE WAS TYPING ITSELF INTO THE FIRST FIELD
 
 `cont1.key` still reports the sequence's final `8` on the first pass inside
