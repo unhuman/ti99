@@ -63,6 +63,7 @@ SCREEN = {
     "draw_screen": "GAME", "draw_prizes": "GAME", "draw_car": "GAME",
     "beam_one": "GAME",       # one band's beam tops, into the band above
     "radio_band": "GAME",     # one band's radios
+    "wipe_2x2":   "GAME",     # a prize collected or a radio hit off the floor
     "prize_one": "GAME",      # one band's collectible
     "esc_cap_draw": "GAME",   # the escalator handrail's top turn,
                               # stamped into the floor above

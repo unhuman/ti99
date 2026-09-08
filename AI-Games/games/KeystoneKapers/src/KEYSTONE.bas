@@ -2235,6 +2235,56 @@ radio_draw:
 	NEXT rbn
 	RETURN
 
+	' THE BAND'S HAZARDS COME OFF THE FLOOR AFTER A HIT (do_hit). It lives
+	' beside radio_band because the radio half of it is the awkward half.
+haz_gone:
+	rgi = klv + klv
+	GOSUB haz_off
+	rgi = rgi + 1
+	GOSUB haz_off
+	RETURN
+
+	' ONE SLOT OFF THE FLOOR. Zeroing the kind is the whole job for a SPRITE
+	' hazard -- a cart, a ball, a biplane -- because the draw pass reads the
+	' kind and simply stops putting it anywhere.
+	'
+	' A RADIO ALSO HAS TO BE UNDRAWN, which is the only reason this is not one
+	' line. It is four CHARACTERS in the name table, so zeroing the kind alone
+	' stops it hurting you while leaving it sitting there in plain sight.
+	' CH_WALL goes back, exactly as it does for a collected prize -- and since
+	' the counter or pillar it stood in front of was already cleared to make
+	' room for it (radio_band), there is nothing underneath to restore.
+haz_off:
+	IF obk(rgi) = 0 THEN RETURN
+	IF obk(rgi) = OB_RADIO THEN
+		w2c = obc(rgi)
+		GOSUB wipe_2x2
+	END IF
+	obk(rgi) = 0
+	RETURN
+
+	' ERASING A 2x2 PROP, AND THERE ARE TWO OF THEM: a collected prize and a
+	' radio taken off the floor by a hit. Same four cells, same band row, same
+	' CH_WALL going back -- the only thing that differs is the column, so the
+	' column is the argument and the band is always the player's own.
+	'
+	' 6208 IS 6144 + 64 FOLDED, which is legal because it is a bare literal
+	' rather than a CONST (CLAUDE.md 3A: a CONST over 255 is truncated to its
+	' low byte, a literal is not).
+wipe_2x2:
+	#w2a = 6208				' name table, band row 2
+	#w2a = #w2a + #bdst(klv)
+	#w2a = #w2a + w2c
+	w2w = CH_WALL
+	VPOKE #w2a,w2w
+	#w2b = #w2a + 1
+	VPOKE #w2b,w2w
+	#w2b = #w2a + 32
+	VPOKE #w2b,w2w
+	#w2b = #w2b + 1
+	VPOKE #w2b,w2w
+	RETURN
+
 radio_tick:
 	rnow = 0
 	IF fphs AND 8 THEN rnow = 1
@@ -2756,20 +2806,19 @@ do_hit:
 	' three. Clearing the row makes the penalty a single event you can walk
 	' away from.
 	'
+	' BOTH SLOTS, WHATEVER IS IN THEM. Radios used to be exempt: they are
+	' CHARACTERS stamped into the name table rather than sprites, so zeroing
+	' the kind would have stopped them colliding while leaving them plainly
+	' visible on the shelf, and a fixture that is still there has to still be
+	' there. That was a reason to UNDRAW them, not a reason to keep them --
+	' and it left the one hazard that cannot leave on its own as the only one
+	' the mercy did not cover. haz_off now takes the characters with it.
+	'
 	' NOTHING RESTORES IT HERE. load_band repopulates the band from the
 	' template, and it runs only on a seam crossing or a round start, so
 	' "until the screen is re-entered" costs no state and no timer: leave and
 	' come back and the hazards are simply placed again.
-	'
-	' RADIOS ARE EXEMPT, for the reason they are exempt from the crook's-floor
-	' rule: they are CHARACTERS stamped into the name table, not sprites, so
-	' zeroing the kind would stop them colliding while leaving them plainly
-	' visible on the shelf. A fixture that is still there has to still be
-	' there. Only the sprite hazards -- balls, carts, biplanes -- come off.
-	chb = klv + klv
-	IF obk(chb) <> OB_RADIO THEN obk(chb) = 0
-	chb = chb + 1
-	IF obk(chb) <> OB_RADIO THEN obk(chb) = 0
+	GOSUB haz_gone
 	' A HIT DOES NOT END A JUMP. This used to force ST_RUN and zero the arc,
 	' which dropped him straight down out of mid-air onto whatever he happened
 	' to be over -- and since the arc is ballistic and ignores the stick once
@@ -2807,18 +2856,8 @@ coll_prize:
 	' ALL FOUR CELLS. It erased one, which is what a prize used to be; the
 	' other three stayed on screen as three quarters of a money bag that no
 	' longer scored anything.
-	#pva = 6144
-	#pva = #pva + #bdst(klv)
-	#pva = #pva + 64			' row 2 -- the prize's top left
-	#pva = #pva + coc(klv)
-	pcw = CH_WALL
-	VPOKE #pva,pcw
-	#pvb = #pva + 1
-	VPOKE #pvb,pcw
-	#pvb = #pva + 32
-	VPOKE #pvb,pcw
-	#pvc = #pvb + 1
-	VPOKE #pvc,pcw
+	w2c = coc(klv)
+	GOSUB wipe_2x2
 	#addv = 5				' 50 points, in units of ten
 	GOSUB add_score
 	sfp = 1

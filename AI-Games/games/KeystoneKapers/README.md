@@ -84,7 +84,7 @@ one colour each, inset in a grey band the width of the screen -- as the 2600 has
 
 **Harry starts at the lift** and runs at 2.25 px a pass -- the only quarter-pixel speed that lets him reach the roof inside the round (93.7 s of 100) while still losing the race to Kelly by 9.4 s. One notch slower and he can never escape; one faster and a single obstacle hit makes the round unwinnable (`DESIGN.md` §0f-bis).
 
-**Getting hit clears that floor s hazards** until you re-enter the screen -- nine seconds is penalty enough without having to walk back out through them. Radios stay: they are characters on the shelf, not sprites.
+**Getting hit clears that floor's hazards** until you re-enter the screen -- nine seconds is penalty enough without having to walk back out through them. Radios go too: they are characters on the shelf rather than sprites, so they are erased from the name table rather than just switched off.
 
 **Level 1 is deliberately sparse**: two of the four floors carry a hazard, three from Krook 2, all four from Krook 3. Krook 5 is where the balls bounce higher and more of each bounce has to be ducked, and Krook 6 the first round with two hazards on a floor — spaced `HAZGAP` = 48 px, which is inside the window where **one jump clears both** (`DESIGN.md` §0p, §0p-bis).
 

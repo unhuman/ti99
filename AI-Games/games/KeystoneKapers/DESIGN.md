@@ -533,27 +533,43 @@ finding -- most likely what the model charges for the two escalator rides, or th
 exact point the escape triggers -- but it is an accuracy problem in the checker,
 not a fault in the game.
 
-### 0p-ter. A hit clears the floor, until you re-enter the screen
+### 0p-ter. A hit clears the floor -- ALL of it -- until you re-enter the screen
 
 Nine seconds is a heavy penalty on a fifty-unit clock, and taking it while still
 standing among the things that charged it is how one mistake becomes three --
-especially with a second hazard 48 px behind the first. So a hit **zeroes that
-band s sprite hazards**, and they stay gone until the screen is re-entered.
+especially with a second hazard 48 px behind the first. So a hit **zeroes both of
+that band's hazard slots**, whatever is in them, and they stay gone until the
+screen is re-entered.
 
-**It costs no state and no timer.** load_band repopulates a band from the
+**It costs no state and no timer.** `load_band` repopulates a band from the
 template, and it runs only on a seam crossing or a round start, so "until the
-screen is re-entered" is already the natural lifetime of the thing being
-cleared. Leave, come back, and the hazards are simply placed again.
+screen is re-entered" is already the natural lifetime of the thing being cleared.
+Leave, come back, and the hazards are simply placed again.
 
-**Radios are exempt**, for the same reason they are exempt from the crook s-floor
-rule: they are CHARACTERS stamped into the name table rather than sprites, so
-zeroing the kind would stop them colliding while leaving them plainly visible on
-the shelf. A fixture that is still there has to still be there.
+**Radios used to be exempt, and that was the wrong conclusion from a real
+problem.** They are CHARACTERS stamped into the name table rather than sprites,
+so zeroing the kind stops them colliding while leaving them plainly visible on
+the shelf -- and a fixture that is still there has to still be there. But that is
+a reason to **undraw** them, not a reason to keep them: it left the one hazard
+that *cannot leave on its own* as the only one the mercy did not cover. A cart or
+a ball is already travelling and wraps away; a radio just sits there, so walking
+clear of it means walking its whole width, at a walking pace, with `obht()`
+expiring the moment you touch it again.
 
-This is separate from obht(), which stays. That is a per-OBSTACLE refractory
+**So `haz_off` takes the characters with it.** Zeroing the kind is the whole job
+for a sprite hazard, because the draw pass reads the kind and stops putting it
+anywhere. For a radio, `CH_WALL` goes back over its four cells as well -- exactly
+what a collected prize does, and since the counter or pillar it stood in front of
+was already cleared to make room for it (`radio_band`), there is nothing
+underneath to restore.
+
+Prize and radio share one `wipe_2x2`, and that sharing is what paid for the
+change: the fixed area had 174 bytes free and the first version was 50 over.
+
+This is separate from `obht()`, which stays. That is a per-OBSTACLE refractory
 that stops one object charging twice without an intervening clear frame -- it is
 what makes a bouncing ball you are standing under cost nine seconds once rather
-than once per bounce. The row clear is a per-FLOOR mercy after the penalty has
+than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
