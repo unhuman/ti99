@@ -1523,15 +1523,26 @@ CHARS_BASE = [
 """, LBLUE, LBLUE),
 
 
+    # THE CATHEDRAL RADIO, drawn by the reviewer as a 16x16 grid (the working
+    # copies are assets/radio1-3.txt).
+    #
+    # THE ARCH IS OPENWORK NOW, not a solid silhouette, and rows 4-6 of it are
+    # repeated in BOTH sound-mark frames below. They have to stay identical: the
+    # frames alternate several times a second, so a difference of one pixel
+    # anywhere below the marks reads as the whole cabinet flickering rather than
+    # as the dots pulsing. Only rows 0-2 are allowed to differ between them.
+    #
+    # Rows 0-2 are WHITE -- the broadcast marks -- and rows 3-7 are BLACK, which
+    # is what the split colour list says.
     ("RADTL0", 0, """
 ........
 .......#
 ...##...
 ......##
-....####
-..######
-.#######
-########
+....##..
+..##..##
+.#..##..
+######..
 """, [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
     ("RADTR0", 0, """
@@ -1539,10 +1550,10 @@ CHARS_BASE = [
 #.......
 ...##...
 ##......
-####....
-######..
-#######.
-########
+..##....
+##..##..
+..##..#.
+..######
 """, [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
     ("RADTL1", 0, """
@@ -1550,10 +1561,10 @@ CHARS_BASE = [
 .##.....
 ........
 ......##
-....####
-..######
-.#######
-########
+....##..
+..##..##
+.#..##..
+######..
 """, [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
     ("RADTR1", 0, """
@@ -1561,32 +1572,37 @@ CHARS_BASE = [
 .....##.
 ........
 ##......
-####....
-######..
-#######.
-########
+..##....
+##..##..
+..##..#.
+..######
 """, [WHITE] * 3 + [BLACK] * 5, STORE_BG),
 
+    # THE CABINET, latticed all the way down and standing on two wide feet.
+    #
+    # ONLY BLACK AND THE FLOOR. Two colours per scan line is the whole budget,
+    # so `#` is the cabinet and `.` is the shop floor seen through it -- the
+    # holes are not a colour of their own, they are the room behind.
     ("RADBL", 0, """
-##...##.
-##...##.
-##...##.
-##...##.
+##...###
+#######.
+##...###
+#######.
+##...###
 ########
-##..####
-########
-##......
+##..##..
+######..
 """, BLACK, STORE_BG),
 
     ("RADBR", 0, """
-.##...##
-.##...##
-.##...##
-.##...##
+###...##
+.#######
+###...##
+.#######
+###...##
 ########
-####..##
-########
-......##
+..##..##
+..######
 """, BLACK, STORE_BG),
 
     ("COUNTR", 0, """

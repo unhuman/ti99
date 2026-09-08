@@ -2,7 +2,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      **** ****     > KEYSTONE.a99
 0001               	; CVBasic compiler v0.9.2 Mar/12/2026
 0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a KEYSTONE.bas KEYSTONE.a99 /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/
-0003               	; Created: Tue Sep  8 11:13:02 2026
+0003               	; Created: Tue Sep  8 12:28:00 2026
 0004               
 0005      0000     COLECO:	equ 0
 0006      0000     SG1000:	equ 0
@@ -20721,36 +20721,36 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      6BDC FFFF     
      6BDE FFFF     
      6BE0 FFFF     
-14573               	; 	DATA BYTE $00,$01,$18,$03,$0F,$3F,$7F,$FF
-14574 6BE2 0001     	byte >00,>01,>18,>03,>0f,>3f,>7f,>ff
+14573               	; 	DATA BYTE $00,$01,$18,$03,$0C,$33,$4C,$FC
+14574 6BE2 0001     	byte >00,>01,>18,>03,>0c,>33,>4c,>fc
      6BE4 1803     
-     6BE6 0F3F     
-     6BE8 7FFF     
-14575               	; 	DATA BYTE $00,$80,$18,$C0,$F0,$FC,$FE,$FF
-14576 6BEA 0080     	byte >00,>80,>18,>c0,>f0,>fc,>fe,>ff
+     6BE6 0C33     
+     6BE8 4CFC     
+14575               	; 	DATA BYTE $00,$80,$18,$C0,$30,$CC,$32,$3F
+14576 6BEA 0080     	byte >00,>80,>18,>c0,>30,>cc,>32,>3f
      6BEC 18C0     
-     6BEE F0FC     
-     6BF0 FEFF     
-14577               	; 	DATA BYTE $06,$60,$00,$03,$0F,$3F,$7F,$FF
-14578 6BF2 0660     	byte >06,>60,>00,>03,>0f,>3f,>7f,>ff
+     6BEE 30CC     
+     6BF0 323F     
+14577               	; 	DATA BYTE $06,$60,$00,$03,$0C,$33,$4C,$FC
+14578 6BF2 0660     	byte >06,>60,>00,>03,>0c,>33,>4c,>fc
      6BF4 0003     
-     6BF6 0F3F     
-     6BF8 7FFF     
-14579               	; 	DATA BYTE $60,$06,$00,$C0,$F0,$FC,$FE,$FF
-14580 6BFA 6006     	byte >60,>06,>00,>c0,>f0,>fc,>fe,>ff
+     6BF6 0C33     
+     6BF8 4CFC     
+14579               	; 	DATA BYTE $60,$06,$00,$C0,$30,$CC,$32,$3F
+14580 6BFA 6006     	byte >60,>06,>00,>c0,>30,>cc,>32,>3f
      6BFC 00C0     
-     6BFE F0FC     
-     6C00 FEFF     
-14581               	; 	DATA BYTE $C6,$C6,$C6,$C6,$FF,$CF,$FF,$C0
-14582 6C02 C6C6     	byte >c6,>c6,>c6,>c6,>ff,>cf,>ff,>c0
-     6C04 C6C6     
-     6C06 FFCF     
-     6C08 FFC0     
-14583               	; 	DATA BYTE $63,$63,$63,$63,$FF,$F3,$FF,$03
-14584 6C0A 6363     	byte >63,>63,>63,>63,>ff,>f3,>ff,>03
-     6C0C 6363     
-     6C0E FFF3     
-     6C10 FF03     
+     6BFE 30CC     
+     6C00 323F     
+14581               	; 	DATA BYTE $C7,$FE,$C7,$FE,$C7,$FF,$CC,$FC
+14582 6C02 C7FE     	byte >c7,>fe,>c7,>fe,>c7,>ff,>cc,>fc
+     6C04 C7FE     
+     6C06 C7FF     
+     6C08 CCFC     
+14583               	; 	DATA BYTE $E3,$7F,$E3,$7F,$E3,$FF,$33,$3F
+14584 6C0A E37F     	byte >e3,>7f,>e3,>7f,>e3,>ff,>33,>3f
+     6C0C E37F     
+     6C0E E3FF     
+     6C10 333F     
 14585               	; 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 14586 6C12 FFFF     	byte >ff,>ff,>ff,>ff,>ff,>ff,>ff,>ff
      6C14 FFFF     

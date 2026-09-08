@@ -1,0 +1,50 @@
+Keystone Kapers -- the cathedral radio, 16 x 16 (four 8x8 characters).
+
+FULL-HEIGHT SLATS -- six 1 px slats, centre post, no cross-bar
+
+'#' is BLACK ink, '.' is the shop floor showing through (STORE_BG, dark green).
+Rows must be exactly 16 characters and there must be exactly 16 of them.
+
+ROWS 0-7 ARE THE CROWN and are NOT yours to change here -- they are RADTL0 and
+RADTR0, and rows 0-2 carry the animated sound marks, which are WHITE and have a
+second frame (RADTL1/RADTR1) that has to stay in step with them. Edit them in
+assets/genart.py if you want to.
+
+ROWS 8-15 ARE THE BODY -- RADBL and RADBR, left half and right half. This is the
+part to redraw.
+
+THREE THINGS WORTH KNOWING BEFORE YOU DRAW:
+
+  * TWO COLOURS PER SCAN LINE. Every row here is black plus the floor green, and
+    that is the whole budget. A third colour on any row is not available.
+
+  * THE BODY IS FULL WIDTH, so columns 0 and 15 of rows 8-14 are inside the
+    cabinet, not outside it. Row 15 is the exception: the gap between the feet is
+    genuinely the floor behind the radio.
+
+  * A HOLE TWO PIXELS TALL HAS NO DIRECTION. A field of 2x2 holes reads as a
+    checkerboard rather than as a grille, whatever you do with the spacing --
+    that draft was rejected. One pixel wide and several tall is what makes the
+    eye read slats.
+
+Hand it back and it goes into assets/genart.py as RADBL / RADBR.
+
+     0123456789012345
+     0000000000111111
+
+ 0   ................  crown
+ 1   .......##.......  crown
+ 2   ...##......##...  crown
+ 3   ......####......  crown
+ 4   ....########....  crown
+ 5   ..############..  crown
+ 6   .##############.  crown
+ 7   ################  crown
+ 8   ################  body
+ 9   ##.#.#.##.#.#.##  body
+10   ##.#.#.##.#.#.##  body
+11   ##.#.#.##.#.#.##  body
+12   ##.#.#.##.#.#.##  body
+13   ##.#.#.##.#.#.##  body
+14   ##..########..##  body
+15   ##............##  body

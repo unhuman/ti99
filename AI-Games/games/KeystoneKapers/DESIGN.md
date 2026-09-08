@@ -815,6 +815,48 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-bis. The radio, redrawn as openwork
+
+The radio's body was three **wide** green slots under a solid arch, which at
+sixteen pixels reads as a doorway or a bookcase rather than the front of a
+wireless. It is now openwork throughout: a latticed arch over a cabinet with a
+centre channel and two wide feet.
+
+**Three of my drafts were rejected before the reviewer drew it, and the failures
+are the useful part:**
+
+* **An even lattice of 2×2 holes** fixed the texture and lost the object. An even
+  field of holes is a *pattern*, and the cabinet vanished into it — reported as
+  *"basically just checkmarks"*.
+* **The same lattice broken by a cross-bar** did not help, because **a hole two
+  pixels tall has no direction**. Still a checkerboard, just a stripier one.
+* **One-pixel slats, five tall**, did read as a grille — direction is what says
+  "slats in a cabinet" rather than "tiling" — but the verdict was that it had
+  gone too far the other way. The answer was not a finer grille; it was to open
+  up the arch as well, so the whole object is one idea instead of a solid top on
+  a perforated bottom.
+
+The shipped drawing is the reviewer's, kept in `assets/radio4.txt` alongside the
+three drafts it replaced (`radio1-3.txt`) in an editable 16×16 form.
+
+#### ROW 7 BELONGS TO FOUR CHARACTERS, NOT TWO
+
+The broadcast marks animate between two poses, `RADTL0`/`RADTR0` and
+`RADTL1`/`RADTR1`, and **only rows 0–2 may differ between them**. Everything below
+is the same cabinet drawn twice. Opening the crown's base (row 7) meant changing
+it in all four, and getting that wrong does not look like a drawing mistake — the
+whole shoulder pulses in time with the dots, which reads as the radio strobing
+rather than transmitting.
+
+The same is true of rows 4–6, which the openwork arch also changed. Any edit below
+row 2 has to be made twice; the check is to render both frames and compare.
+
+**Only black and the floor.** Two colours per scan line is the entire budget, so
+`#` is the cabinet and `.` is the shop floor seen through it — the holes are not a
+colour of their own, they are the room behind. A lighter green for the holes was
+tried and rejected: the radio is a black object, and lighting them makes it a
+different one.
+
 ### 0f-quater. Everything that moves now moves by elapsed frames
 
 Harry went to real-time pacing first (§0f-ter) and Kelly and the hazards were
