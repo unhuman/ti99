@@ -424,6 +424,13 @@
 	' close to a fifth of the round, and the reason the refractory latch
 	' below matters so much.
 	CONST HITPEN = 9		' timer units a cart / ball / radio costs
+	' HOW LONG A HIT SOUNDS, IN LOOP PASSES -- and therefore how long the
+	' store stands still for one. The two are the same number on purpose:
+	' the freeze is meant to last exactly as long as the noise, so a change
+	' to one that did not move the other would leave either a silent pause
+	' or a sound playing over a resumed game. Passes, not frames, because
+	' both counters are spent once per pass in sfx_tick and the main loop.
+	CONST HITSND = 20
 	CONST HITREF = 45		' frames before the SAME obstacle can charge
 					' again. See coll_obst -- clearing the latch
 					' on the first non-overlapping frame is not
@@ -468,35 +475,35 @@
 	' klv 0..3 (0 = floor 1, 3 = roof), klsc 0..7, klx 0..255
 	' Harry the same. NOTHING in this program is a world coordinate.
 
-	' THE TITLE IS DRAWN AS SOON AS IT CAN BE, NOT WHEN EVERYTHING IS READY.
+	' EVERYTHING IS BUILT BEFORE THE TITLE IS DRAWN, NOT BEHIND IT.
 	'
-	' Only the font is needed to put text on screen. The store characters, the
-	' store colours, the escalator deck, the radar canvas and eight sprite sets
-	' are needed by new_game -- which does not run until the player presses
-	' start -- so they have no business standing between the loader and the
-	' first thing the player sees. Moving them behind the title does not make
-	' the machine do less work; it makes all of it happen while there is
-	' something to read, which is the difference between a title that appears
-	' and a title that fills in.
+	' The opposite order was tried first, on the reasoning that only the font
+	' is needed to put text on a screen: draw the title immediately, then
+	' define the store characters, the store colours, the escalator deck, the
+	' radar canvas and eight sprite sets while the player reads it. None of
+	' that is touched until new_game, so nothing was out of order.
+	'
+	' IT MADE THE TITLE APPEAR SOONER AND ARRIVE DEAD. A third of a second of
+	' a finished screen that was not yet reading the keyboard -- long enough to
+	' swallow the first digit of 8-3-8, and reported as a start press that did
+	' not take. A menu the player cannot act on is not up yet, whatever is
+	' painted on it.
+	'
+	' So the work moved back in front. The screen appears later and is live on
+	' the frame it appears, and the prompt printed on it is honest rather than
+	' hopeful. The cost lands once, on a black screen at power-on, where there
+	' is nothing to act on anyway.
+	'
+	' And it stays once: `GOTO boot` after a game over re-enters BELOW this, so
+	' a second game reaches its title in a single redraw.
 	GOSUB setup_font
-	GOSUB title_draw
 	GOSUB setup_rest
 	GOSUB init_tables
-	' ONCE PER POWER-ON, NOT ONCE PER GAME. It samples a physical latch, so the
-	' answer cannot change while the machine is on -- and re-running it was
-	' actively wrong, not merely slow: it used to sit inside the title routine,
-	' which `GOTO boot` re-enters after every game over, so a player still
-	' holding a direction when the title came back had that direction read as a
-	' stuck line and disabled for the whole next game.
-	GOSUB alock_cal
-	GOTO first_title
 
 boot:
 	' Coming back from a game over the store is still on screen, so the title
-	' has to be redrawn. First time through it is already up -- drawing it again
-	' would be harmless but would undo the point of the order above.
+	' has to be redrawn; the first time through, this is its first draw.
 	GOSUB title_draw
-first_title:
 	GOSUB title_input
 	' LET GO OF FIRE BEFORE PLAY BEGINS.
 	'
@@ -538,20 +545,58 @@ main:
 					' decrements by a variable delta has no
 					' usable parity.
 
-	GOSUB read_input
-	GOSUB radio_tick
-	GOSUB move_kelly
-	GOSUB upd_elev
-	GOSUB upd_obst
+	' THE STORE STOPS FOR A HIT. THE CHASE DOES NOT.
+	'
+	' Nine seconds off the clock is the heaviest thing that happens in this
+	' game and it used to happen in silence and in motion: the number
+	' changed, a flash played, and the player kept running. Holding the
+	' screen for exactly as long as the hit SOUNDS makes the penalty an event
+	' rather than a bookkeeping entry -- the arcade's own idiom, and the
+	' reason the 2600 original pauses here too.
+	'
+	' WHAT KEEPS RUNNING IS THE POINT. Harry is still escaping and the clock
+	' is still burning, so the freeze is a cost and not a rest: stopping
+	' those as well would turn the penalty into free time. It also keeps the
+	' two things the player is racing on their own clocks, which is the whole
+	' argument of section 0f-ter -- a pause that stopped the timer would make
+	' the price of a hit depend on how long the pause happened to be.
+	'
+	' esc_tick stays with Harry, not with the store. He rides the escalator
+	' on the animation's clock (CLAUDE.md: a rider and its cyclic animation
+	' share one clock or the rider drifts off it), so freezing the steps
+	' under a moving Harry would slide him up a stationary staircase.
+	'
+	' Kelly cannot be hit on an escalator or in the lift -- obstacles live on
+	' floor bands -- so nothing that IS frozen has a rider on it.
+	IF hfz = 0 THEN
+		GOSUB read_input
+		GOSUB radio_tick
+		GOSUB move_kelly
+		GOSUB upd_elev
+		GOSUB upd_obst
+	END IF
 	GOSUB move_harry
-	GOSUB coll_obst
-	GOSUB coll_prize
+	IF hfz = 0 THEN
+		GOSUB coll_obst
+		GOSUB coll_prize
+	END IF
 	GOSUB coll_harry
 	GOSUB draw_actors
 	GOSUB tick_timer
 	GOSUB scan_tick
 	GOSUB esc_tick
 	GOSUB sfx_tick
+
+	' AND THE FLOOR CLEARS WHEN THE FREEZE ENDS, not when the hit lands.
+	' Doing it on the hit wiped the hazards out from under a player who was
+	' still being told they had been hit -- the thing that hit them vanished
+	' before the sound for it had finished. Deferring it means the freeze
+	' shows the collision standing still, and the mercy arrives with the
+	' resumption rather than instead of it.
+	IF hfz > 0 THEN
+		hfz = hfz - 1
+		IF hfz = 0 THEN GOSUB haz_gone
+	END IF
 
 	' STATES, NOT JUMPS. Every one of these is reached with no outstanding
 	' GOSUB frames; leaving a collision routine by GOTO would never pop its
@@ -600,7 +645,11 @@ setup_font:
 	DEFINE COLOR 32,59,font_col
 	RETURN
 
-	' EVERYTHING THE TITLE DOES NOT NEED. Runs after the title is on screen.
+	' EVERYTHING THE TITLE DOES NOT NEED -- and it still runs BEFORE the
+	' title, because a title that is up and not listening is worse than one
+	' that is a second late. Kept separate from setup_font because `boot`
+	' re-enters below it: a game over redraws the title without rebuilding a
+	' store that is already defined.
 setup_rest:
 	DEFINE CHAR 96,85,store_pat
 	DEFINE COLOR 96,85,store_col
@@ -854,42 +903,36 @@ title_draw:
 	' The NOTICE is redrawn on every title visit even though the MEASUREMENT
 	' happens once -- it is information about the machine, and the CLS above
 	' just wiped it.
-	IF vstuck > 0 THEN PRINT AT 578,"ALPHA LOCK DOWN - IGNORED"
 	RETURN
 
-	' ------------------------------------------- ALPHA LOCK, CALIBRATED
-	' On the TI, ALPHA LOCK shares a line with the joystick's VERTICAL axis.
-	' Latched down it reports a direction that is NEVER RELEASED. Every other
-	' game in this repo dodges this by not reading up/down at all; this one
-	' cannot, because down is the duck and up is the elevator.
+	' NO ALPHA LOCK CALIBRATION, AND THERE USED TO BE ONE.
 	'
-	' THE FIRST VERSION OF THIS REFUSED TO START UNTIL THE AXIS CLEARED, AND
-	' THAT WAS THE WRONG CALL. Classic99 defaults to invertcaps=1, so the TI
-	' sees ALPHA LOCK DOWN when the host's Caps Lock is UP -- the normal
-	' state. The game then sat on its title screen for ever waiting for a
-	' condition the player had no reason to suspect, which presents as "the
-	' title comes up and it will not start". A check that turns a survivable
-	' input quirk into a dead game is worse than no check.
+	' The premise was that ALPHA LOCK shares a line with the joystick's
+	' VERTICAL axis, so a latched key reports a direction that is never
+	' released -- fatal here, where down is the duck and up is the lift. The
+	' guard sampled the axis for forty frames before listening and then
+	' ignored any direction that had been held for essentially all of them.
 	'
-	' So: sample the axis for 40 frames BEFORE any input can reasonably have
-	' been given. A direction held for essentially all of them is not a player
-	' -- it is the key. Record it, say so, and then IGNORE that direction for
-	' the whole game, which makes ALPHA LOCK harmless instead of fatal.
-alock_cal:
-	alku = 0
-	alkd = 0
-	alkn = 0
-alock_loop:
-	WAIT
-	alkn = alkn + 1
-	IF cont1.up THEN alku = alku + 1
-	IF cont1.down THEN alkd = alkd + 1
-	IF alkn < 40 THEN GOTO alock_loop
-	vstuck = 0
-	IF alku > 35 THEN vstuck = 1
-	IF alkd > 35 THEN vstuck = 2
-	IF vstuck > 0 THEN PRINT AT 578,"ALPHA LOCK DOWN - IGNORED"
-	RETURN
+	' IT WAS REMOVED BECAUSE THE PREMISE DOES NOT HOLD UP.
+	'
+	'   * CLAUDE.md claimed every other game here dodged the problem by not
+	'     reading up/down. EIGHT of them do read it -- Adventire, Astiroids,
+	'     HardHatMack, Ms. Pac-Man, RallyX, Structris, UFO, Bust-A-Bobble --
+	'     and not one has a calibration or has ever shown the fault.
+	'   * It never fired on the machine this is developed on: the notice it
+	'     prints when it detects a stuck axis has never appeared.
+	'   * The original evidence was that the game "came up and would not
+	'     start" -- and the first version BLOCKED until the axis cleared. That
+	'     symptom is indistinguishable from the several input bugs since found
+	'     and fixed for real: keys arriving at a screen that was not listening
+	'     yet. The diagnosis was probably one of those.
+	'
+	' It also cost two bugs of its own: forty frames of a drawn but deaf title
+	' screen, which swallowed the first digit of 8-3-8, and a wrong theory
+	' about keyboard noise that led to a filter which ate real presses.
+	'
+	' If a stuck axis ever does appear it will be obvious -- the player will
+	' duck or ride the lift without asking -- and the guard is in the history.
 
 title_input:
 	' THE PROMPT IS PRINTED HERE, NOT WITH THE REST OF THE TITLE, because
@@ -1184,6 +1227,7 @@ start_krook:
 	caught = 0
 	escapd = 0
 	knock = 0
+	hfz = 0
 	tflon = 0
 	sct = 0
 	fphs = 0
@@ -1865,8 +1909,6 @@ read_input:
 	' A direction the title measured as stuck is the ALPHA LOCK key, not the
 	' player. Dropping it here rather than at each use means duck, elevator
 	' entry and elevator exit all get the same treatment automatically.
-	IF vstuck = 1 THEN inu = 0
-	IF vstuck = 2 THEN ind = 0
 	RETURN
 
 	' ======================================================================
@@ -3074,6 +3116,10 @@ do_hit:
 	IF tsec > HITPEN THEN tsec = tsec - HITPEN ELSE tsec = 0
 	IF tsec = 0 THEN tout = 1
 	knock = 20
+	' ONE PASS LONGER THAN THE SOUND, because the sound does not start here.
+	' sfh is a latch that sfx_tick consumes on the NEXT pass, so the note
+	' runs passes 2..HITSND+1 of the freeze and this ends with it.
+	hfz = HITSND + 1
 	' THE FLOOR CLEARS WHEN YOU ARE HIT, and stays clear until you re-enter
 	' the screen. Nine seconds is a heavy penalty on a fifty-unit clock, and
 	' taking it while still standing among the things that charged it -- with
@@ -3093,7 +3139,9 @@ do_hit:
 	' template, and it runs only on a seam crossing or a round start, so
 	' "until the screen is re-entered" costs no state and no timer: leave and
 	' come back and the hazards are simply placed again.
-	GOSUB haz_gone
+	'
+	' THE CALL ITSELF IS IN THE MAIN LOOP, at the end of the freeze -- see
+	' the hfz block there for why.
 	' A HIT DOES NOT END A JUMP. This used to force ST_RUN and zero the arc,
 	' which dropped him straight down out of mid-air onto whatever he happened
 	' to be over -- and since the arc is ballistic and ignores the stick once
@@ -4351,7 +4399,7 @@ sfx_tick:
 	IF sfh = 1 THEN
 		sfh = 0
 		SOUND 1,900,13
-		sht = 20
+		sht = HITSND
 	END IF
 	' A PRIZE IS AN ARPEGGIO -- testsounds PICKUP C. C5, E5, G5, then a fade
 	' on the top note: it RISES, which is what makes it read as a reward

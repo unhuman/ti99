@@ -86,7 +86,9 @@ one colour each, inset in a grey band the width of the screen -- as the 2600 has
 
 **The run and the jump are measured, not invented** -- taken off an Atari 2600 recording via `games/testsounds`, the sound bench built for the purpose. The footstep is a burst of white noise six times a second (it was two alternating tones, fifteen times a second); the jump is a 415/188 Hz warble (it was a rising sweep). `DESIGN.md` §0e-ter.
 
-**Getting hit clears that floor's hazards** until you re-enter the screen -- nine seconds is penalty enough without having to walk back out through them. Radios go too: they are characters on the shelf rather than sprites, so they are erased from the name table rather than just switched off.
+**Getting hit stops the store** for exactly as long as the hit sounds -- Kelly, the hazards, the lift and the radios all hold still, which is how the nine-second penalty reads as an event rather than as a number quietly changing. **Harry and the clock keep going**, so the freeze is a cost and not a rest. `DESIGN.md` §0e-septies.
+
+**Then that floor's hazards clear** until you re-enter the screen -- nine seconds is penalty enough without having to walk back out through them. The clear happens when the freeze ends, not when the hit lands, so the thing that hit you is still there while you are being told about it. Radios go too: they are characters on the shelf rather than sprites, so they are erased from the name table rather than just switched off.
 
 **Level 1 is deliberately sparse**: two of the four floors carry a hazard, three from Krook 2, all four from Krook 3. Krook 5 is where the balls bounce higher and more of each bounce has to be ducked, and Krook 6 the first round with two hazards on a floor — spaced `HAZGAP` = 48 px, which is inside the window where **one jump clears both** (`DESIGN.md` §0p, §0p-bis).
 

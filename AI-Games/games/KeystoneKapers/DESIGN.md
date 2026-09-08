@@ -527,50 +527,48 @@ triple-copy path (verified in the generated assembly, `bl @LDIRVM3`), which is a
 why `esc_deck_col` and `floor0_colour` cannot use it -- they patch a single screen
 third each.
 
-**Cause two: the title was drawn last.** Only the font is needed to put text on
-screen. The store characters, the store colours, the escalator deck, the radar
-canvas and eight sprite sets are needed by `new_game`, which does not run until the
-player presses start -- so they had no business standing between the loader and the
-first thing the player sees. `setup` split into `setup_font` and `setup_rest`, and
-the title routine into `title_draw` and `title_input`:
+**Cause two was the boot order, and the fix for it was later REVERTED -- see
+below.** Cause one stands on its own and is where the real time went.
+
+The reverted change interleaved the title with the setup: `setup` split into
+`setup_font` and `setup_rest`, the title routine into `title_draw` and
+`title_input`, and the title was drawn between them. Only the font is needed to put
+text on a screen, and the store characters, colours, escalator deck, radar canvas
+and sprite sets are not read until `new_game`, so nothing was out of order. It
+measured **4.03 s to a settled title, now 2.62 s**, with three intermediate frames
+instead of six.
+
+**It was reverted because those 1.4 seconds were bought with a dead screen.** The
+title was drawn, complete and readable, while `setup_rest` and `init_tables` ran --
+and nothing was reading the keyboard during them. Section 0e-sexies has the rest.
+The split routines were kept; only the order changed back:
 
 ```basic
 GOSUB setup_font        ' BANK SELECT, font chars, DEFINE COLOR font
-GOSUB title_draw        ' <-- READABLE HERE
 GOSUB setup_rest        ' store, deck, radar, sprites
 GOSUB init_tables
-GOSUB alock_cal
-GOTO first_title
 boot:
-GOSUB title_draw        ' after a game over the store is on screen
-first_title:
+GOSUB title_draw        ' <-- READABLE AND LIVE HERE
 GOSUB title_input
 ```
 
-This makes the machine do no less work. It makes all of it happen while there is
-something to read, which is the difference between a title that appears and a title
-that fills in. **Measured: 4.03 s to a settled title, now 2.62 s**, and three
-intermediate frames instead of six.
+**Keeping the split still pays**, because `boot` re-enters below the setup: a
+second game reaches its title in one redraw instead of rebuilding a store that is
+already defined.
 
-#### AND THE ALPHA LOCK CALIBRATION WAS BEING PAID EVERY GAME
+#### AND THE ALPHA LOCK CALIBRATION WAS 40 MORE FRAMES OF IT
 
 The 40-frame sample sat inside the title routine, and `GOTO boot` re-enters that
-after every game over -- so it re-ran per game, along with a re-print of its notice.
-It samples a **physical latch**, so once per power-on is enough.
+after every game over, so it re-ran per game. Moving it to first boot removed a
+failure mode as well: the sample cannot tell a latched key from a held stick, so on
+a *return* to the title a player still holding a direction had it read as a stuck
+line and **disabled for the whole next game**.
 
-**Re-running it was not merely slow, it was wrong.** The sample cannot tell a
-latched key from a held stick, which is the whole point of taking it before any
-input is plausible. On a return to the title that assumption is gone: a player still
-holding up or down when the title came back had that direction read as a stuck line
-and **disabled for the whole next game**. Moving it to first boot removes a failure
-mode as well as 40 frames.
+**The whole routine is gone now** -- section 0e-sexies -- so this is history. It
+matters only as the other two thirds of the dead-title window.
 
-The notice is still redrawn on every title visit -- `title_draw`'s `CLS` wipes it,
-and it is information about the machine rather than a measurement.
-
-**Not changed:** `scan_colour`'s 9 waits (0.15 s, and it now runs behind the title
-where nothing can see it -- collapsing it would need its 24-byte table expanded to
-384 in the bank). And the custom font stays: CVBasic's runtime already loads its own
+**Not changed:** `scan_colour`'s 9 waits (0.15 s, on the black screen before the
+title -- collapsing it would need its 24-byte table expanded to 384 in the bank). And the custom font stays: CVBasic's runtime already loads its own
 ASCII face before our code runs, so ours is not functionally required, but it is a
 deliberate arcade face (`genfont.py`) and `DEFINE CHAR` is one synchronous call, so dropping
 it would buy 472 bank bytes and no time at all.
@@ -814,6 +812,98 @@ what makes a bouncing ball you are standing under cost nine seconds once rather
 than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
+
+### 0e-septies. A hit stops the store, and nothing else
+
+Nine seconds is the heaviest thing that happens in this game and it used to
+happen in motion: the number changed, Kelly flashed, and everything carried on.
+The penalty read as bookkeeping rather than as an event, and the flash had to do
+all the work of saying so.
+
+**The store now holds still for exactly as long as the hit sounds.** `do_hit`
+sets `hfz`, and while it is non-zero the main loop skips `read_input`,
+`radio_tick`, `move_kelly`, `upd_elev`, `upd_obst`, `coll_obst` and
+`coll_prize`. The obstacle that hit him stays on screen, stopped, next to a
+flashing Kop.
+
+**What keeps running is the point of it.**
+
+| runs during the freeze | why |
+|---|---|
+| `move_harry` | he is still escaping -- the freeze is a cost, not a rest |
+| `tick_timer` | the clock is the real enemy; stopping it would refund the penalty |
+| `scan_tick` | the radar tracks Harry, so it tracks what is still moving |
+| `esc_tick` | Harry rides the escalator on the animation's clock |
+| `coll_harry` | a Harry who runs into a stunned Kop is still caught |
+| `draw_actors`, `sfx_tick` | the freeze has to be visible and audible |
+
+`esc_tick` is the one that could look misplaced. It is scenery, but it is also
+Harry's clock: CLAUDE.md's rule is that a rider and its cyclic animation share
+one clock or the rider drifts off it, so freezing the steps under a moving Harry
+would slide him up a stationary staircase. Nothing that IS frozen has a rider --
+Kelly cannot be hit on an escalator or in the lift, because obstacles live on
+floor bands.
+
+**The freeze length is the sound length, by name.** `CONST HITSND = 20` passes
+sets both `sht` and (plus one) `hfz`. The extra pass is because `sfh` is a latch
+`sfx_tick` consumes on the *following* pass, so the note runs passes 2..21 of a
+21-pass freeze and the two end together. Two counters that must agree should not
+be two literals.
+
+**And the floor clear moved to the END of the freeze.** `haz_gone` used to run
+inside `do_hit`, which wiped the hazards out from under a player who was still
+being told they had been hit -- the thing that hit them vanished before the sound
+for it finished. It now fires on the pass `hfz` reaches zero, so the freeze shows
+the collision standing still and the mercy arrives *with* the resumption instead
+of in place of it.
+
+### 0e-sexies. A title that is drawn and not listening is not up yet
+
+The screen appeared, complete and readable, about a second before it would answer
+a key. Reported three ways over as many sessions -- `8-3-8` losing its first digit,
+a start press that did not take, and finally *"FIRE TO START is delayed"* -- and
+diagnosed wrongly twice, first as ALPHA LOCK noise (which produced a stability
+filter that ate real presses) and then as a labelling problem.
+
+**It was the boot order**, section 0d-nonies: the title was deliberately drawn
+early and `setup_rest`, `init_tables` and a 40-frame ALPHA LOCK sample all ran
+after it. Nothing polled input during them.
+
+**Both halves of the window are gone.**
+
+*The setup moved back in front of the draw.* The title now appears later and is
+live on the frame it appears. That trade is not close: a menu the player cannot act
+on is not up, whatever is painted on it, and the extra second lands on a black
+screen at power-on where there is nothing to act on anyway. It is also paid once --
+`boot` re-enters below the setup, so a game over returns to the title in one
+redraw.
+
+*And the ALPHA LOCK guard was removed outright:*
+
+* `CLAUDE.md` claimed every other game here avoided the problem by not reading
+  up/down. **Eight of them read it** and none has a calibration or has ever shown
+  the fault.
+* It never fired here: the notice it prints on detecting a stuck axis has never
+  appeared.
+* Its original evidence -- "the title comes up and it will not start" -- is
+  indistinguishable from the input bugs since found and fixed for real, and the
+  first version of the guard *blocked* until the axis cleared.
+
+It also caused two bugs: two thirds of the deaf window above, and the wrong theory
+about keyboard noise that led to the stability filter. A guard that has never
+caught anything, and has twice been the thing that broke, is not carrying its
+weight.
+
+**The prompt stays in `title_input`** rather than moving back into `title_draw`.
+There is no gap between them to mark any more, but printing it from the routine
+that does the reading keeps the two together: if anything ever slides between the
+draw and the poll again, the prompt slides with it and says so.
+
+**The general shape, worth keeping:** an optimisation that reorders work around a
+user-visible moment has to account for what the program can DO at that moment, not
+only what it shows. "Draw it as early as possible" measured beautifully and was
+wrong, and every symptom it produced looked like an input bug rather than like the
+scheduling change that caused it.
 
 ### 0e-quinquies. The HUD, the catch box, and a keypress that leaked into play
 

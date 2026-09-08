@@ -402,6 +402,50 @@ cost a debugging session:
     `ai r0,<label>` + `mov *r0` pair (how the compiler indexes a word table), reads the
     label's resolved address out of the `xas99` listing, and reports any that is odd.
     Verified against the real defect, not just against a passing build.
+- **A SCREEN THAT IS DRAWN AND NOT LISTENING IS NOT UP YET, AND EVERY SYMPTOM OF
+  THE GAP LOOKS LIKE AN INPUT BUG.** Drawing a menu before the setup that follows
+  it is an obvious win and measures like one -- Keystone Kapers' title went from
+  4.03 s to 2.62 s. What it actually bought was a **finished, readable, deaf**
+  screen: `setup_rest`, `init_tables` and a 40-frame calibration all ran after the
+  draw and nothing polled input during them.
+  - **It was reported three times over three sessions and misdiagnosed twice**, as
+    `8-3-8` losing its first digit, then a start press that did not take, then
+    *"FIRE TO START is delayed"*. The first diagnosis was keyboard noise and
+    produced a three-frame stability filter that ate REAL presses; the second was
+    that the prompt needed to be printed later so its arrival marked the moment.
+    Neither is the fault. Both made it worse.
+  - **The fix is to put the work back in front of the draw**, not to shrink it or
+    to label it. The screen appears later and is live on the frame it appears; the
+    extra time lands on a black screen where there is nothing to act on. Keeping
+    the routines split still pays, because the re-entry label sits BELOW the setup
+    and a second game redraws the title without rebuilding anything.
+  - **The general rule: an optimisation that reorders work around a user-visible
+    moment has to account for what the program can DO at that moment, not only
+    what it shows.** Anything that puts a prompt on screen before the loop that
+    reads it is this bug, and it will be reported as flaky input.
+- **THE ALPHA LOCK / VERTICAL-AXIS GUARD WAS REMOVED, AND THE ENTRY BELOW WAS
+  PARTLY WRONG.** It claimed "every other game in this repo dodges this by not
+  reading up/down at all". **Eight of them read it** -- Adventire, Astiroids,
+  HardHatMack, Ms. Pac-Man, RallyX, Structris, UFO, Bust-A-Bobble -- and none has
+  a calibration or has ever shown the fault. Keystone Kapers was the only game
+  that guarded against it and the only one with trouble.
+  - **It never fired.** The notice it prints on detecting a stuck axis has never
+    appeared on the machine this is developed on.
+  - **The original evidence is suspect.** The symptom was "the title comes up and
+    it will not start", and the first version of the guard BLOCKED until the axis
+    cleared. That is indistinguishable from the several input bugs since found
+    and fixed for real -- keys arriving at a screen not yet listening. The
+    diagnosis was probably one of those.
+  - **It cost two bugs of its own**: forty frames of a drawn but deaf title
+    screen, which swallowed the first digit of `8-3-8` and could lose a button
+    press; and a wrong theory about keyboard noise that led to a stability filter
+    which ate real presses.
+  - **Do not re-add a guard on this without reproducing the fault first.** If a
+    stuck axis appears it is obvious -- the player ducks or rides the lift
+    without asking. The removed code is in the history.
+  - The mechanism below is still true as electronics, and `invertcaps` is still
+    the Classic99 default. What is not established is that it causes a problem in
+    practice.
 - **THE TI's ALPHA LOCK KEY SHARES A LINE WITH THE JOYSTICK'S VERTICAL AXIS.** With it
   latched down the console reports an up/down direction that is **never released**, so
   any menu built on `cont1.up`/`cont1.down` boots pinned to one entry and cannot be
