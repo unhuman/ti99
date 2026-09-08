@@ -812,18 +812,31 @@ alock_cal:
 	IF alkd > 35 THEN vstuck = 2
 	IF vstuck > 0 THEN PRINT AT 578,"ALPHA LOCK DOWN - IGNORED"
 
+	tkl = 15
 title_wait:
 	WAIT
 	' 8-3-8 opens the setup screen. cont1.key rather than a cursor: the
 	' vertical axis is exactly what ALPHA LOCK poisons, so a menu built on
 	' up/down would boot pinned to one entry.
 	tk = cont1.key
-	IF tk = 8 THEN
-		IF t838 = 0 THEN t838 = 1
-		IF t838 = 2 THEN t838 = 3
-	END IF
-	IF tk = 3 THEN
-		IF t838 = 1 THEN t838 = 2
+	IF tk <> tkl THEN
+		tkl = tk
+		' NEXT STATE COMPUTED FROM THIS STATE AND THIS KEY, which is what lets
+		' the reset be the DEFAULT rather than a case. Written as a sequence of
+		' overrides -- 8 arms, then the two advances outrank it -- the fallout
+		' is that anything else lands on 0 without a line of its own.
+		'
+		' The `tk < 10` guard is load-bearing: cont1.key returns 15 for nothing
+		' pressed, and the edge test fires on RELEASE as well as on press, so
+		' without it every key let go of would reset the sequence it had just
+		' advanced.
+		IF tk < 10 THEN
+			tnx = 0
+			IF tk = 8 THEN tnx = 1
+			IF t838 = 1 THEN IF tk = 3 THEN tnx = 2
+			IF t838 = 2 THEN IF tk = 8 THEN tnx = 3
+			t838 = tnx
+		END IF
 	END IF
 	' STRAIGHT INTO THE GAME, NOT BACK TO THE TITLE. Anyone who has typed
 	' 8-3-8 and set the number of Kops has already decided to play; bouncing
@@ -839,57 +852,82 @@ title_wait:
 	IF tk = 1 THEN RETURN
 	GOTO title_wait
 
+	' 8-3-8 IS EDGE-TRIGGERED AND ANY STRAY DIGIT RESETS IT (see title_wait).
+	'
+	' It used to read cont1.key raw every pass and test only for the digit it
+	' wanted next. That worked -- but only because 8-3-8 ALTERNATES, so holding
+	' 8 cannot advance past the first step. It is an accident of the sequence
+	' rather than a design, and it had two costs: 8,5,3,9,8 opened this page as
+	' readily as 8,3,8, and a key that READS as held for many frames got a free
+	' walk through the state machine.
+	'
+	' That second one is not hypothetical on this machine. ALPHA LOCK shorts a
+	' keyboard line -- and Classic99 defaults to invertcaps, so it reads DOWN
+	' with the host's Caps Lock UP -- and this page was reached twice from
+	' single keypresses while testing an unrelated change.
+	'
+	' The reset is the DEFAULT rather than a test for a particular wrong digit:
+	' Bust-A-Bobble resets only on a stray 3 and still lets 8,5,3,8 through.
 	' ------------------------------------------------------- 838 setup page
 setup838:
-	' THE DEFAULTS BELONG HERE TOO, not only in new_game. They were applied
-	' when a game STARTED, so a player who opened this page first -- which is
-	' the whole point of advertising it on the title -- was shown "KOPS 0"
-	' and "START LEVEL 00" and had to press 1 and 2 to get to numbers that
-	' meant anything. The page has to show the settings it is about to use.
-	IF kops0 = 0 THEN kops0 = 4
-	IF krk0 = 0 THEN krk0 = 1
 	CLS
-	PRINT AT 68,"SETUP"
-	PRINT AT 164,"1 KOPS"
-	PRINT AT 228,"2 START LEVEL"
-	PRINT AT 292,"LEVEL 1-20 - HAZARDS ARRIVE"
-	PRINT AT 324,"AS IT RISES - SEE DESIGN 0P"
-	PRINT AT 420,"PRESS 1 OR 2 TO CHANGE"
-	PRINT AT 484,"FIRE WHEN READY"
-su_loop:
-	WAIT
-	GOSUB su_draw
-	sk = cont1.key
-	IF sk = 1 THEN
-		IF sur = 0 THEN
-			kops0 = kops0 + 1
-			IF kops0 > 9 THEN kops0 = 1
-			sur = 12
-		END IF
-	END IF
-	IF sk = 2 THEN
-		IF sur = 0 THEN
-			krk0 = krk0 + 1
-			IF krk0 > 20 THEN krk0 = 1
-			sur = 12
-		END IF
-	END IF
-	IF sk = 15 THEN sur = 0
-	IF sur > 0 THEN sur = sur - 1
-	IF cont1.button THEN RETURN
-	GOTO su_loop
-
-	' The digits go at a COLUMN CHOSEN NOT TO LAND IN THE LABEL. UFO shipped
-	' its difficulty digit into the middle of the word DIFFICULTY, which
-	' reads as a typo in the label rather than as a misplaced value --
-	' assets/checklayout.py now fails the build on it.
-su_draw:
-	#sua = 6308
-	#sua = #sua + 12
+	' ONE PROMPT AT A TIME, NOTHING ELSE ON THE SCREEN, AND NO NUMBERS UNTIL
+	' THEY ARE TYPED. There is no heading and no instructions: a page showing
+	' exactly one question does not need to explain that one digit answers it,
+	' and the second question does not exist until the first is answered.
+	'
+	' Showing the CURRENT values first was the obvious thing and it cost more
+	' than it gave -- two draw routines, a "fire keeps what is shown" escape to
+	' make the display mean something, and the defaults had to be applied here
+	' as well as in new_game so the page had numbers to show at all. None of it
+	' survives: every digit on screen is one the player just typed. Four
+	' strings became two, a two-field loop became a straight line, and the page
+	' got SMALLER while getting quieter.
+	PRINT AT 164,"KOPS 1-9"
+	' DEBOUNCE THE 8 THAT OPENED THIS PAGE. cont1.key still reports it on the
+	' first pass in here, so the Kops field read it as the answer and the page
+	' came up showing 8 before the player had touched anything -- typing 8-3-8
+	' set the Kop count to 8 as a side effect of the cheat code. Waiting for the
+	' key to be RELEASED is the whole fix, and the same wait sits before every
+	' later digit so one held key cannot answer two questions.
+	GOSUB su_rel
+	GOSUB su_key
+	' 0 is not a playable count, so it CLAMPS like the level does rather than
+	' being ignored, which would look like a dropped keypress.
+	kops0 = sk
+	IF kops0 < 1 THEN kops0 = 1
+	#sua = 6320			' row 5, col 16 -- beside KOPS
 	sud = 48 + kops0
 	VPOKE #sua,sud
-	#sua = 6372
-	#sua = #sua + 18
+	GOSUB su_rel
+	PRINT AT 228,"LEVEL 01-20"
+	' The TENS digit is echoed as it is typed, so the field is never half a
+	' number with nothing on screen to say so. 6384 is row 7 column 16 -- the
+	' same column as the Kop count above it, so the two values line up.
+	GOSUB su_key
+	sud1 = sk
+	#sua = 6384
+	sud = 48 + sk
+	VPOKE #sua,sud
+	GOSUB su_rel
+	GOSUB su_key
+	' sud1 * 10 BY ADDITION. `*` compiles to a real TMS9900 MPY, which clobbers
+	' r0 and makes the next read of the multiplied variable return the
+	' product's high word (CLAUDE.md 3A). Doubling and adding is ten times with
+	' none of that, and the largest value it can build is 99 -- inside a byte.
+	krk0 = sud1 + sud1
+	sud1 = krk0 + krk0
+	sud1 = sud1 + sud1
+	krk0 = krk0 + sud1
+	krk0 = krk0 + sk
+	IF krk0 < 1 THEN krk0 = 1
+	IF krk0 > 20 THEN krk0 = 20
+	' BOTH LEVEL DIGITS ARE REDRAWN, because the clamp may have changed the one
+	' already on screen. The clamp is silent by design -- there is no error to
+	' dismiss and nothing to retype -- so 80 typed for 08 has to be SEEN landing
+	' on 20, or it reads as the page ignoring the second digit. The wait below
+	' is what gives it time to be read.
+	#sua = 6384
 	sut = krk0
 	sud = 48
 su_tens:
@@ -902,6 +940,27 @@ su_ones:
 	#sua = #sua + 1
 	sud = 48 + sut
 	VPOKE #sua,sud
+	FOR sud = 0 TO 40
+		WAIT
+	NEXT sud
+	RETURN
+
+	' TYPING THE LAST DIGIT STARTS THE GAME -- there is no confirm step and no
+	' way to back out. Someone who has typed a Kop count and a level has already
+	' decided to play, and it means the page is left with KEYS ALONE: fire on
+	' the TI is TAB, which Windows may treat as a focus change, and "do not make
+	' FIRE the only way out" (CLAUDE.md 3A) applies here as much as on the
+	' title. The clamp is what makes that safe -- no typed pair can be refused,
+	' so there is no state to be stuck in.
+su_rel:
+	WAIT
+	IF cont1.key <> 15 THEN GOTO su_rel
+	RETURN
+
+su_key:
+	WAIT
+	sk = cont1.key
+	IF sk > 9 THEN GOTO su_key
 	RETURN
 
 	' ======================================================================

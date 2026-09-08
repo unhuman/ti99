@@ -56,7 +56,7 @@ VPOKE_RE = re.compile(r"^\s*VPOKE #(\w+),")
 SCREEN = {
     "title_screen": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
 
-    "setup838": "SETUP", "su_loop": "SETUP", "su_draw": "SETUP",
+    "setup838": "SETUP",
     "su_tens": "SETUP", "su_ones": "SETUP",
 
     "new_game": "GAME", "start_krook": "GAME", "main": "GAME",

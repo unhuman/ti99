@@ -31,7 +31,7 @@ at boot and ignores whichever direction is stuck**, so the game stays playable e
 just says `ALPHA LOCK DOWN - IGNORED` and carries on. (Classic99 defaults to `invertcaps=1`,
 which means the TI sees ALPHA LOCK *down* when your Caps Lock is *up*.)
 
-`838` on the title opens a setup screen for the number of Kops and the **starting level** (1-20). It is deliberately **unadvertised** -- a hidden code in the Activision idiom, not a menu entry -- so nothing on the title screen mentions it.
+`838` on the title opens a setup screen: **three typed digits** -- one for the number of Kops, two for the starting level -- and the last one starts the game. Out-of-range levels are clamped to 1-20 rather than refused, so there is nothing to get stuck in. It is deliberately **unadvertised** -- a hidden code in the Activision idiom, not a menu entry -- so nothing on the title screen mentions it (`DESIGN.md` §0d-octies).
 
 ## The store
 

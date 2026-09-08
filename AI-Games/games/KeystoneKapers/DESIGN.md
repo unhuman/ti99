@@ -431,6 +431,89 @@ chance to claim the rows above. Deciding and drawing are no longer the same step
 readable; drawing after it would flash the box for one frame before the screen
 was rebuilt for the next round.
 
+### 0d-octies. The 838 page types its numbers instead of cycling to them
+
+The setup page reached by `838` used to CYCLE each field -- `1` stepped the Kop
+count, `2` stepped the start level, both wrapping at the top. Reaching level 20
+took nineteen presses, and overshooting meant going round again: **the setting
+that most wants reaching was the most expensive one**, which is backwards for a
+page whose entire purpose is skipping ahead. Worst case was about 28 presses.
+
+It now asks for **three digits** and is done. Kops is one digit, the level is
+two, and the result is **clamped** to 1-20 rather than refused -- which is what
+lets a two-digit field cover a twenty-round range with no rejection path to get
+stuck in. This is Bust-A-Bobble's `setup838` (`BUSTABOB.bas:3602`), which reaches
+any round in two presses; RallyX's single-digit prompt is cheaper still but caps
+at 10, so it cannot express this range at all.
+
+**One prompt at a time, and no number on screen the player did not type.**
+`KOPS 1-9` appears alone; answering it brings up `LEVEL 01-20`. There is no
+heading and no instructions, because a page showing exactly one question does not
+need to explain that one digit answers it.
+
+Pre-displaying the *current* values was the obvious first version and it cost far
+more than it gave: two draw routines, a "fire keeps what is shown" escape to make
+the display mean anything, and the defaults had to be applied on the page as well
+as in `new_game` so there was something to show. Removing all of it is why the
+typed page ended up **cheaper than the cycling one it replaced** -- the fixed area
+went from 134 bytes free to **270**, having passed through 26 with the version
+that still showed the current settings.
+
+**Typing the last digit starts the game.** No confirm step and no way back out:
+someone who has typed a Kop count and a level has already decided to play, and it
+means the page is left with KEYS ALONE. Fire on the TI is TAB, which Windows may
+treat as a focus change, so "do not make FIRE the only way out" applies here as
+much as on the title. The clamp is what makes that safe -- no typed pair can be
+refused, so there is no state to be stuck in.
+
+#### THE CHEAT CODE WAS TYPING ITSELF INTO THE FIRST FIELD
+
+`cont1.key` still reports the sequence's final `8` on the first pass inside
+`setup838`, so the Kops field read it as the answer: **typing `8-3-8` set the Kop
+count to 8** as a side effect of the cheat code, before the player had touched
+anything. Waiting for the key to be RELEASED (`su_rel`) is the whole fix, and the
+same wait sits before every later digit so one held key cannot answer two
+questions.
+
+#### AND THE SEQUENCE ITSELF IS NOW EDGE-TRIGGERED
+
+`title_wait` used to read `cont1.key` raw every pass and test only for the digit
+it wanted next. That worked -- but only because `8-3-8` **alternates**, so holding
+`8` cannot advance past the first step. It is an accident of the sequence rather
+than a design, and it had two costs: `8,5,3,9,8` opened the page as readily as
+`8,3,8`, and a key that *reads* as held for many frames got a free walk through
+the state machine.
+
+That second one is not hypothetical on this machine. ALPHA LOCK shorts a keyboard
+line -- and Classic99 defaults to `invertcaps`, so it reads DOWN with the host's
+Caps Lock UP -- and **a cold boot with no keys pressed at all landed on the setup
+page with an 8 already in the field**, reproducibly. A hidden code that opens
+itself is not hidden.
+
+The reset is the DEFAULT rather than a test for a particular wrong digit:
+
+```basic
+IF tk <> tkl THEN
+    tkl = tk
+    IF tk < 10 THEN            ' 15 means nothing pressed, and the edge
+        tnx = 0                ' fires on RELEASE as well as on press
+        IF tk = 8 THEN tnx = 1
+        IF t838 = 1 THEN IF tk = 3 THEN tnx = 2
+        IF t838 = 2 THEN IF tk = 8 THEN tnx = 3
+        t838 = tnx
+    END IF
+END IF
+```
+
+Computing the next state from this state and this key is what lets the reset be
+the default rather than a case. Bust-A-Bobble resets only on a stray `3` and still
+lets `8,5,3,8` through; RallyX's bare `tseq = 0` before the re-arm is the strictest
+of the three, and this is that.
+
+**The `tk < 10` guard is load-bearing.** `cont1.key` returns 15 for nothing
+pressed and the edge fires on release, so without it every key let go of would
+reset the sequence it had just advanced.
+
 ### 0f-bis. Harry starts at the lift, and that set his speed
 
 He used to spawn at the west edge of screen 7, chosen because it was as far
