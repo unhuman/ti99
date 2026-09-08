@@ -1239,7 +1239,7 @@ start_krook:
 	escapd = 0
 	knock = 0
 	hfz = 0
-	tflon = 0
+	tflon = 1		' the TIME field starts drawn
 	sct = 0
 	fphs = 0
 
@@ -4088,6 +4088,15 @@ hud_score:
 	RETURN
 
 hud_time:
+	' NOT WHILE THE FIELD IS BLANKED. Every caller here -- the tick, the
+	' nine-second penalty, the bonus tally -- wants the digits to show the
+	' current value, and none of them knows about the low-time flash. If
+	' they wrote regardless, a tick landing in a blank phase would put the
+	' number back on its own and leave the word missing.
+	'
+	' Nothing is lost by skipping: the next on-phase calls time_show, which
+	' comes straight back here and draws whatever the value is by then.
+	IF tflon = 0 THEN RETURN
 	#psv = tsec
 	#psa = 6165
 	#psd = 10
@@ -4192,17 +4201,12 @@ tick_timer:
 	' frame is busiest, which is when the player needs it most.
 tick_flash:
 	IF tsec > 9 THEN
-		IF tflon = 0 THEN
-			tflon = 1
-			PRINT AT 16,"TIME"
-			GOSUB hud_time
-		END IF
+		GOSUB time_show
 		RETURN
 	END IF
 	tfl = 0
 	IF fphs AND 16 THEN tfl = 1
 	IF tfl <> tflon THEN
-		tflon = tfl
 		' BOTH THE LABEL AND THE NUMBER. Blinking the word alone left the
 		' digits sitting there steady, so the thing that was actually
 		' running out was the one part of the HUD not asking to be looked
@@ -4213,13 +4217,30 @@ tick_flash:
 		' string spanning them would overlap what hud_time writes, which
 		' is exactly what checklayout.py exists to catch.
 		IF tfl = 1 THEN
-			PRINT AT 16,"TIME"
-			GOSUB hud_time
+			GOSUB time_show
 		ELSE
+			tflon = 0
 			PRINT AT 16,"    "
 			PRINT AT 21,"  "
 		END IF
 	END IF
+	RETURN
+
+	' THE WHOLE FIELD BACK UP, WORD AND DIGITS TOGETHER. tflon is not just
+	' "is the flash on", it is "is the TIME field currently drawn" -- and
+	' hud_time honours it, which is what keeps the two halves in step.
+	'
+	' They used to drift apart. tick_timer calls hud_time on EVERY tick,
+	' including ticks that land in a blank phase, so the digits were
+	' repainted while the word stayed blank. It showed at the worst moment:
+	' the round ending on `00` with no TIME beside it, because the tick that
+	' wrote the last 00 happened to fall in a blank and the loop then
+	' stopped, leaving the field frozen half-drawn.
+time_show:
+	IF tflon = 1 THEN RETURN
+	tflon = 1
+	PRINT AT 16,"TIME"
+	GOSUB hud_time
 	RETURN
 
 	' ======================================================================
@@ -4273,6 +4294,10 @@ do_catch:
 	' #bval MUST BE 16-BIT: 300 does not fit in a byte, and a plain variable
 	' would silently truncate it to 44 (CLAUDE.md 3A).
 bonus_count:
+	' THE CLOCK IS ABOUT TO BE COUNTED DOWN, so the field has to be up --
+	' the round can end on any phase of the low-time flash, and a tally
+	' running into a blanked field would draw nothing at all.
+	GOSUB time_show
 	#bval = 100
 	IF krk > 9 THEN #bval = 200
 	IF krk > 15 THEN #bval = 300
@@ -4344,6 +4369,10 @@ do_death:
 	tout = 0
 	dead = 0
 lose_kop:
+	' AND THE SAME BEFORE THE MESSAGE BOX. Losing on the clock means the
+	' flash was running, so without this the last thing the player sees is
+	' whichever half of the field the final pass happened to leave behind.
+	GOSUB time_show
 	GOSUB hide_all
 	' THE MESSAGE BOX, ON THE GAME SCREEN AND NOT INSTEAD OF IT.
 	'

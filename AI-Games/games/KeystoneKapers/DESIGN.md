@@ -1044,6 +1044,27 @@ the mechanism here, so it now carries a **named exemption** that still reports t
 pair on every build. Relaxing the rule instead would have blinded it to every
 other overlap at the same moment.
 
+**AND THE TWO HALVES GOT OUT OF STEP.** Reported as the game ending on `00` with
+no `TIME` beside it. `tick_timer` calls `hud_time` on **every** tick, and a tick
+can land in a blank phase -- so the digits were repainted on their own while the
+word stayed blank. The round then ended and froze the field half-drawn.
+
+`tflon` was already the answer and was being read as the wrong question. It is not
+"is the flash on", it is **"is the TIME field currently drawn"** -- so `hud_time`
+now honours it and returns without writing while the field is blanked. Nothing is
+lost: the next on-phase calls `time_show`, which comes straight back to
+`hud_time` and draws whatever the value is by then.
+
+`time_show` is the one routine that puts the field back up, word and digits
+together, and the restore that used to be inlined in `tick_flash` is now a call to
+it. `bonus_count` and `lose_kop` call it too: a round can end on any phase of the
+flash, and a tally counting into a blanked field would draw nothing at all.
+
+**The general shape: two things drawn as one field need one flag that owns
+whether the field is up.** Every caller of `hud_time` wants the current value and
+none of them knows about the flash; asking each of them to check would be the
+same hand-kept enumeration that made `snd_off` go stale.
+
 **The first step off the mark is always heard.** `sfw` is a distance -- a step
 every fifteen pixels -- so a short tap moved Kelly a few pixels and made no sound
 at all. That does not read as a short step, it reads as the controls being

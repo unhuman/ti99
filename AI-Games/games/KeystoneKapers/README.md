@@ -53,6 +53,8 @@ to be one second a unit, which made the round unfinishable: Kelly needs ~72 s to
 and Harry ~96 s to escape, so at 50 s the clock beat both of them every time and Harry could
 never get away at all.
 
+**Under ten units the TIME field blinks** -- the word and the digits together, and there is no beep: the last ten seconds are the busiest part of a round, and a repeating tone arrives exactly when the player most needs to hear the hazards. The two halves are one field with one flag owning whether it is up, so they cannot get out of step (`DESIGN.md` 0e-quinquies).
+
 **Each floor has its own hazard** -- beach balls at the bottom, radios above them, biplanes
 above those, shopping carts on the roof -- and it does not change as you walk. **Corner the
 crook and he rides an escalator back DOWN**, which you cannot: they only go up.

@@ -65,6 +65,12 @@ OVERWRITE_OK = {
     ("prt_dout", "tick_flash"):
         "the low-time flash blanks the TIME digits and hud_time rewrites them "
         "on the next beat -- writing the same cells IS the blink",
+    ("prt_dout", "time_show"):
+        "time_show puts the whole TIME field back up -- the word AND the "
+        "digits, via hud_time -- so it writes the same cells the flash blanked",
+    ("time_show", "tick_flash"):
+        "the two halves of one blink: time_show draws the field, tick_flash "
+        "blanks it, and they share the label and the digit cells by design",
 }
 
 SCREEN = {
@@ -90,7 +96,7 @@ SCREEN = {
     "hud_all": "GAME", "hud_score": "GAME", "hud_time": "GAME",
     "hud_kops": "GAME", "prt_digits": "GAME", "prt_dloop": "GAME",
     "prt_dsub": "GAME", "prt_dout": "GAME", "add_score": "GAME",
-    "tick_timer": "GAME", "tick_flash": "GAME",
+    "tick_timer": "GAME", "tick_flash": "GAME", "time_show": "GAME",
     "do_catch": "GAME", "do_escape": "GAME", "do_death": "GAME",
     "lose_kop": "GAME",
 
