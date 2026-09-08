@@ -813,6 +813,62 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-decies. Harry stands on the escalator, in a slot he gives back
+
+He rode flights running on the spot. None of his four drawings can stand in --
+all four are mid-stride and there is no passing pose with the feet together --
+so standing needed its own art.
+
+**And there was nowhere to put it.** The sprite pattern table holds SIXTY-FOUR
+16x16 sprites and the game uses sixty-three. A standing Harry facing both ways
+is EIGHT patterns: he is striped, so he is split across complementary sprites,
+and each of body, stripe layer, leg and leg stripe needs a mirror. Eight into
+one does not go, and there was no slack to find -- the only exact duplicate in
+the whole table is `KLHAT`, which equals `KHAT` because a hat is symmetric, and
+the next-closest mirrored pair differs by twelve pixels.
+
+**So he borrows.** `esc_stand` copies the standing art over four slots when he
+steps onto a flight and `esc_run` puts the running art back when he steps off.
+A ride is rare and long -- a few seconds, a handful of times a round -- so two
+block copies are free, where four permanent slots do not exist at any price.
+
+Two things make it fit:
+
+* **Only one facing is live at a time.** He is riding in one direction, so only
+  that mirror needs to be resident. The target is the same four slots whichever
+  way he rides; the borrowed slot carries whichever mirror the ride needs, and
+  `draw_harry` points at it AFTER the facing has been applied, because the art
+  already carries it.
+* **The borrowed slots are ADJACENT**, so a swap is one `DEFINE SPRITE` and not
+  four. The loan is his own four right-facing running bodies, sprites 18-21 --
+  the one run of the table guaranteed idle exactly when it is needed, since
+  while he stands none of his running bodies is drawn and nothing else in the
+  game touches them. A sprite can be pointed at any pattern, so the borrowed
+  slots need not hold the kind of thing they normally hold: standing body,
+  stripes, leg and leg stripe go into 18, 19, 20, 21 in that order.
+
+  **This is not a tidiness point, it is the whole feasibility.** Borrowing the
+  four slots that normally hold those four kinds meant twelve DEFINE SPRITEs
+  across the three call sites, which came to **132 bytes MORE than the fixed
+  area had**. The adjacent version fits with 30 bytes to spare.
+
+**The run art has to be put back from somewhere**, and it cannot be read out of
+the middle of `spr_harry` -- `DEFINE SPRITE` takes a label, not an offset into
+one. So the four running bodies appear a second time under their own label, in
+the DATA BANK, which is the budget with room in it.
+
+`esc_run` is also called from `start_krook`, because a round can end while he
+is still on a flight and a borrowed slot nobody gave back would put a standing
+Harry into the middle of the next round s run cycle. Same shape as `snd_off`:
+the routine that undoes a thing has to run on every path out, not just the tidy
+one.
+
+**`checkchars.py` verifies the loan** rather than being told to ignore it. The
+`P_HST*` constants are aliases for another sprite s pattern number, so the gate
+checks each against the sprite it borrows -- which is exactly the number a
+renumber would move out from under `esc_stand`, and the symptom would be a
+standing pose appearing in the middle of the run cycle rather than any error.
+
 ### 0e-nonies. A jump could go through an escalator
 
 Reported from play as *"I was able to jump through the escalator to the floor.

@@ -194,6 +194,29 @@
 	' foot leading. Applied to hq and hqs together, in the same IF that turns
 	' the torso round, so a facing can never be half-applied.
 	CONST P_HLEGFACING = 32
+	' THE FOUR SLOTS HARRY BORROWS WHILE HE RIDES -- his own four RIGHT-
+	' FACING RUNNING BODIES, sprites 18..21.
+	'
+	' The pattern table holds 64 sprites and the game uses 63, so a standing
+	' pose cannot have slots of its own: it is eight patterns, because a
+	' striped figure is split across complementary sprites and needs both
+	' facings. It does not need any. Only ONE facing is live during a ride,
+	' and while he stands NONE of his running bodies is drawn -- draw_harry
+	' points every one of his sprites at the borrowed patterns instead. So
+	' esc_stand copies the standing art over 18..21 and esc_run puts the
+	' running bodies back.
+	'
+	' THEY ARE ADJACENT ON PURPOSE, and that is what makes it affordable. A
+	' sprite can be pointed at any pattern, so the borrowed slots need not
+	' hold the kind of thing they normally hold: body, stripes, legs and leg
+	' stripes go into 18, 19, 20, 21 in that order and one DEFINE SPRITE
+	' moves all four. Borrowing the four slots that NORMALLY hold those kinds
+	' meant four separate copies per swap -- twelve calls, and 132 bytes more
+	' than the fixed area had.
+	CONST P_HSTB = 72		' over HBODY
+	CONST P_HSTS = 76		' over HBODY2
+	CONST P_HSTL = 80		' over HBODY3
+	CONST P_HSTLS = 84		' over HBODY4
 	CONST P_RADCAR = 220		' the radar's lift car
 	CONST C_RCAR = 14		' grey, like the furniture it replaced
 	CONST P_RADDOT = 224		' the radar marker, both actors
@@ -1222,6 +1245,7 @@ start_krook:
 	hdir = 1
 	hst = 0
 	hsy = 0
+	GOSUB esc_run
 	hrun = 0
 	hrund = 0
 
@@ -2267,6 +2291,51 @@ try_esc:
 	GOSUB esc_ride
 	RETURN
 
+	' HE STANDS ON THE STAIRS, IN A SLOT HE BORROWS.
+	'
+	' hsw is which art is resident: 0 running, 1 standing-right, 2
+	' standing-left. Both routines return immediately when nothing has to
+	' change, so a ride costs one set of copies rather than one per pass.
+	'
+	' THE FACING COMES FROM THE FLIGHT, NOT FROM hdir. Riding UP he travels
+	' towards the flight's head -- west for a west flight -- and riding DOWN
+	' he travels the other way along the same staircase, so the direction is
+	' the pair (hst, hesd) and not either one alone. hdir is set from it here
+	' so the FACE, which is not borrowed, agrees with the body.
+	'
+	' Nested IFs rather than `hst = 1 AND hesd = 1`: CVBasic's 9900 backend
+	' miscompiles a compound comparison (CLAUDE.md 3A).
+esc_stand:
+	hsd = 0
+	IF hst = 1 THEN
+		IF hesd = 1 THEN hsd = 1
+	END IF
+	IF hst = 2 THEN
+		IF hesd = 0 THEN hsd = 1
+	END IF
+	hdir = hsd
+	hsd = hsd + 1
+	IF hsw = hsd THEN RETURN
+	hsw = hsd
+	IF hsd = 2 THEN
+		DEFINE SPRITE 18,4,spr_hstand
+	ELSE
+		DEFINE SPRITE 18,4,spr_hstandl
+	END IF
+	RETURN
+
+	' AND THE RUN GOES BACK. Called when he steps off, and again from
+	' start_krook -- a round can end while he is still on a flight, and a
+	' borrowed slot nobody gave back would put a standing Harry into the
+	' middle of the next round's run cycle. Same shape as snd_off: the
+	' routine that stops a thing has to run on every path out, not just the
+	' tidy one.
+esc_run:
+	IF hsw = 0 THEN RETURN
+	hsw = 0
+	DEFINE SPRITE 18,4,spr_hbod4
+	RETURN
+
 	' ------------------------------------------------------ getting on one
 	' ONE ROUTINE FOR BOTH WAYS ON, because everything follows from esy0 --
 	' the height above this floor of the step being boarded. The staircase is
@@ -2724,6 +2793,7 @@ move_harry:
 		IF hsy >= ESCRISE THEN
 			hlv = hlv + 1
 			hst = 0
+			GOSUB esc_run
 			IF hesd = 0 THEN hx = ESCHX ELSE hx = ESCHXE
 		END IF
 		RETURN
@@ -2741,6 +2811,7 @@ move_harry:
 		IF hsy >= ESCRISE THEN
 			hlv = hlv - 1
 			hst = 0
+			GOSUB esc_run
 			hsy = 0
 			IF hesd = 0 THEN hx = ESCFX ELSE hx = ESCFXE
 			' AND HE KEEPS GOING. A flight's foot IS its boarding
@@ -3029,6 +3100,7 @@ move_harry:
 				' he walks to within 6 px of the foot, which is
 				' not close enough to stand on a tread.
 				hst = 1
+				GOSUB esc_stand
 				hsy = 0
 				hson = 8
 				hson = hson + escp
@@ -3057,6 +3129,7 @@ harry_down:
 	IF hddx > 10 THEN RETURN
 	hesd = hdsd
 	hst = 2
+	GOSUB esc_stand
 	hsy = 0
 	hson = 8
 	hson = hson + escp
@@ -3465,6 +3538,17 @@ draw_harry:
 		hq = hq + P_HLEGFACING
 		hqs = hqs + P_HLEGFACING
 	END IF
+	' ON A FLIGHT HE STANDS, and the pose is in the borrowed slots -- AFTER
+	' the facing block, because the borrowed art already carries the facing
+	' (esc_stand wrote the mirror the ride needs). The FACE keeps its own
+	' facing above and is not borrowed: it does not change between running
+	' and standing, so there is nothing to swap.
+	IF hst > 0 THEN
+		hp = P_HSTB
+		hs = P_HSTS
+		hq = P_HSTL
+		hqs = P_HSTLS
+	END IF
 	' HE IS STRIPED FROM CAP TO HEM. Both stripe colours run the whole upper
 	' half, so both boxes span rows 0-15 and neither can be tucked away --
 	' affordable only because Kelly's hat moved into a box of its own. His
@@ -3503,7 +3587,12 @@ draw_harry:
 	' parsing those exact expressions. Bobbing a differently-named variable
 	' made them unreadable and the gate failed the build -- correctly. A
 	' checker that can no longer see what it checks has to fail, not shrug.
-	IF hanim AND 8 THEN hy = hy - 1
+	' THE RECOVERY LIFT IS A RUNNING THING. Standing on a step he would
+	' bob a pixel against a staircase that is itself moving, which reads as
+	' the step dropping out from under him.
+	IF hst = 0 THEN
+		IF hanim AND 8 THEN hy = hy - 1
+	END IF
 	IF hsc = klsc THEN
 		SPRITE 4,hy,hx,hp,C_HARRY
 		' y-7, with the pattern at the BOTTOM of its box. The face occupies

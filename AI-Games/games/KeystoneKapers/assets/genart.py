@@ -669,10 +669,34 @@ HARRY_TOP4 = _top(4)
 # no longer matches the art would invert pixels at random.
 HARRY_ARMS = _BLANK16
 
+def _load_stand():
+    """Harry standing still -- assets/harrystand.txt, same 24x16 form.
+
+    HE RIDES ESCALATORS STANDING, and every one of his four drawings is
+    mid-stride: there is no passing pose among them with the feet together, so
+    none of them can stand in. Head rows are the same grafted cap and face as
+    the run frames, so this meets them at row 8 like they meet each other.
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "harrystand.txt")
+    rows = [r.rstrip(NL).rstrip("\r") for r in open(p, encoding="utf-8")]
+    rows = [(r + "." * 16)[:16] for r in rows if r.strip() != ""]
+    if len(rows) != 24:
+        raise SystemExit("harrystand.txt has %d rows, expected 24" % len(rows))
+    return rows
+
+
+HARRY_STAND = _load_stand()
+HARRY_STAND_TOP = NL + NL.join(HARRY_STAND[:16]) + NL
+HARRY_SLEG, HARRY_SLEGS = _leg_split_rows(HARRY_STAND[16:24])
+
 HARRY_LEG1, HARRY_LEG1S = _legs(1)
 HARRY_LEG2, HARRY_LEG2S = _legs(2)
 HARRY_LEG3, HARRY_LEG3S = _legs(3)
 HARRY_LEG4, HARRY_LEG4S = _legs(4)
+
+HARRY_SBODY, HARRY_SSTRIPE = split_stripes(HARRY_STAND_TOP, _BLANK16,
+                                           HSTRIPE)
 
 TORSO_MASK = HARRY_TORSO.strip(chr(10)).split(chr(10))
 HARRY_BODY, HARRY_STRIPE = split_stripes(HARRY_TOP, HARRY_ARMS, HSTRIPE)
@@ -1331,6 +1355,59 @@ def _deck_table():
         out.append(CODES["ESCWB%d" % i])
         out += [(BLACK << 4) | c for c in DECK_BG]
     return out
+
+
+# ===========================================================================
+# THE SWAP SET -- PATTERNS WITH NO SLOT OF THEIR OWN
+# ===========================================================================
+#
+# The sprite pattern table holds SIXTY-FOUR 16x16 sprites and the game uses
+# sixty-three. A standing Harry facing both ways is eight patterns -- body and
+# stripe layer, leg and stripe layer, each mirrored -- because a striped figure
+# is split across complementary sprites. Eight into one does not go.
+#
+# SO HE BORROWS. These are emitted as their own labels, outside SPRITES, and
+# never loaded at startup. When Harry steps onto a flight the game DEFINE
+# SPRITEs the standing art over BEAT 4 of his right-facing set, and puts the
+# running art back when he steps off. A ride is a rare, long event -- a few
+# seconds, a handful of times a round -- so four 32-byte block copies at each
+# end are free, where four permanent slots do not exist at any price.
+#
+# ONE FACING IS LIVE AT A TIME, which is what makes it fit. He is riding in one
+# direction, so only that mirror is needed; the other is simply not resident.
+# That is why the target is always the RIGHT-facing beat 4 whichever way he
+# rides -- the borrowed slot carries whichever mirror the ride needs, and
+# draw_harry points at it after the facing has already been applied.
+#
+# THE RUN ART HAS TO BE PUT BACK FROM SOMEWHERE, and it cannot be read out of
+# the middle of spr_harry -- DEFINE SPRITE takes a label, not an offset into
+# one. So beat 4's four patterns appear a second time here under their own
+# labels, 128 bytes in the DATA BANK, which is the budget with room in it.
+# FOUR CONSECUTIVE SLOTS, so a swap is ONE block copy rather than four.
+#
+# The loan is Harry's four RIGHT-FACING RUNNING BODIES -- sprites 18..21. They
+# are the only thing in the table that is guaranteed idle exactly when it is
+# needed: while he is standing on a flight, draw_harry points at the borrowed
+# patterns and no running body of his is referenced at all, and nothing else
+# in the game ever draws them.
+#
+# Their being ADJACENT is the whole economy. Body, stripe, leg and leg-stripe
+# are four different kinds and live in four different runs of the table, so
+# borrowing "the four things standing needs" would have meant four DEFINE
+# SPRITEs per swap and three swaps in the source -- twelve calls, which came
+# to 132 bytes MORE than the fixed area had. A sprite can be pointed at any
+# pattern number, so the four borrowed slots do not have to correspond to what
+# they normally hold: standing body, stripe, leg and leg-stripe go into
+# 18, 19, 20, 21 in that order and draw_harry reads them from there.
+SPRITES_SWAP = [
+    ("spr_hstand", [HARRY_SBODY, HARRY_SSTRIPE, HARRY_SLEG, HARRY_SLEGS],
+     "standing RIGHT: body, stripes, legs, leg stripes -- over sprites 18-21"),
+    ("spr_hstandl", [mirror(HARRY_SBODY), mirror(HARRY_SSTRIPE),
+                     mirror(HARRY_SLEG), mirror(HARRY_SLEGS)],
+     "the same four, LEFT"),
+    ("spr_hbod4", [HARRY_BODY, HARRY_BODY2, HARRY_BODY3, HARRY_BODY4],
+     "the four running bodies again, to give the slots back"),
+]
 
 
 SPR = {}
@@ -2372,6 +2449,16 @@ def main():
             emit(fh, label, data, comment)
             total += len(data)
             pat += 4 * len(arts)
+
+        # NOT COUNTED IN `pat`. These have no slot -- they are copied over a
+        # borrowed one at runtime. See the note over SPRITES_SWAP.
+        fh.write("\n\t' ---------------------------- borrowed at runtime, "
+                 "no slot of their own\n")
+        for label, arts, comment in SPRITES_SWAP:
+            data = []
+            for a in arts:
+                data += sprite_bytes(a)
+            emit(fh, label, data, comment)
 
         # ------------------------------------------------------------- chars
         fh.write("\n\t' ------------------------------------------------ store characters\n")

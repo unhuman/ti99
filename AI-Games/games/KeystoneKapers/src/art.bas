@@ -280,6 +280,62 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. YELLOW body over 
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$60,$00,$00,$00
 
+	' ---------------------------- borrowed at runtime, no slot of their own
+
+spr_hstand:	' standing RIGHT: body, stripes, legs, leg stripes -- over sprites 18-21
+	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$0F,$00,$1F,$00,$1F,$00,$0F
+	DATA BYTE $00,$C0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$E0,$00,$F0,$00,$E0,$00,$C0
+	DATA BYTE $07,$00,$07,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$1F,$00,$1F,$00,$0F,$00
+	DATA BYTE $C0,$00,$C0,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$F0,$00,$F0,$00,$E0,$00
+	DATA BYTE $00,$0F,$00,$0F,$00,$0F,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$C0,$00,$80,$00,$80,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $0F,$00,$0F,$00,$0F,$00,$0F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $C0,$00,$80,$00,$80,$00,$80,$F0
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+
+spr_hstandl:	' the same four, LEFT
+	DATA BYTE $00,$03,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$07,$00,$0F,$00,$07,$00,$03
+	DATA BYTE $00,$E0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F0,$00,$F8,$00,$F8,$00,$F0
+	DATA BYTE $03,$00,$03,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$0F,$00,$0F,$00,$07,$00
+	DATA BYTE $E0,$00,$E0,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$F8,$00,$F8,$00,$F0,$00
+	DATA BYTE $00,$03,$00,$01,$00,$01,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F0,$00,$F0,$00,$F0,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $03,$00,$01,$00,$01,$00,$01,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$00,$F0,$00,$F0,$00,$F0,$F0
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+
+spr_hbod4:	' the four running bodies again, to give the slots back
+	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$67,$00,$6F,$00,$0F,$00,$1E
+	DATA BYTE $00,$C0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F0,$00,$80,$00,$E0,$00,$F0
+	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$37,$00,$0F,$00,$0F,$00,$FF
+	DATA BYTE $00,$C0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F0,$00,$C0,$00,$E0,$00,$F0
+	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$0F,$00,$0F,$00,$0F,$00,$1F
+	DATA BYTE $00,$C0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$C0,$00,$F8,$00,$FC,$00,$F8
+	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$0F,$00,$0F,$00,$1F,$00,$FF
+	DATA BYTE $00,$C0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$F8,$00,$80,$00,$E0,$00,$F0
+
 	' ------------------------------------------------ store characters
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.

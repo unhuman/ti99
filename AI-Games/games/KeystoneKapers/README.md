@@ -78,6 +78,8 @@ a grey cart on a grey backdrop could not.
 
 **The elevator keeps its place between rounds.** It is part of the building, so it no longer snaps back to floor 1 whenever a round ends -- which also stopped its cycle being learnable from a fixed start (`DESIGN.md` §0e-octies).
 
+**Harry stands still on an escalator** instead of running on the spot. The sprite pattern table was full -- 63 of its 64 slots -- so the standing pose has no slot of its own: it is copied over four he is not using while he rides, and the running art is put back when he steps off (`DESIGN.md` 0e-decies).
+
 **Support beams run floor to floor.** They are part of the building, not scenery on top of
 it -- see DESIGN.md 0k2 for why they have to be stamped in after the bands are drawn.
 

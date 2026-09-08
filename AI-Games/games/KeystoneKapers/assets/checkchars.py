@@ -44,6 +44,19 @@ BAS = os.path.join(HERE, "..", "src", "KEYSTONE.bas")
 CONST_RE = re.compile(r"^\s*CONST CH_(\w+)\s*=\s*(\d+)")
 LOAD_RE = re.compile(r"^\s*DEFINE (CHAR|COLOR) (\d+),(\d+),store_(pat|col)")
 PCONST_RE = re.compile(r"^\s*CONST P_(\w+)\s*=\s*(\d+)")
+
+# HARRY BORROWS BEAT 4 WHILE HE RIDES. The sprite table is full (63 of 64), so
+# his standing pose has no slot: esc_stand copies it over these four and
+# esc_run puts the run art back. The constants are therefore aliases for
+# another sprite's pattern number, not names of their own.
+SWAP_LABELS = set(l for l, _a, _c in g.SPRITES_SWAP)
+
+BORROWED = {
+    "HSTB": "HBODY",
+    "HSTS": "HBODY2",
+    "HSTL": "HBODY3",
+    "HSTLS": "HBODY4",
+}
 DEFSPR_RE = re.compile(r"^\s*DEFINE SPRITE (\d+),(\d+),(\w+)")
 
 # The two FACING constants are offsets, not patterns: adding one to a figure's
@@ -59,6 +72,7 @@ def main():
     seen = 0
     loads = 0
     defspr = 0
+    swapped = 0
 
     for n, ln in enumerate(src, 1):
         m = CONST_RE.match(ln)
@@ -80,7 +94,20 @@ def main():
         if m:
             name, pat = m.group(1), int(m.group(2))
             seen += 1
-            if name in FACING:
+            if name in BORROWED:
+                # A BORROWED SLOT IS NOT A SPRITE NAME, it is the pattern
+                # number of an existing one that gets overwritten at runtime.
+                # Checking it against the sprite it borrows is stronger than
+                # checking it against itself: this is exactly the number a
+                # renumber would move out from under esc_stand, and the
+                # symptom would be a standing pose appearing in the middle of
+                # the run cycle rather than any kind of error.
+                lend = BORROWED[name]
+                if g.SPR[lend] != pat:
+                    bad.append("line %d: CONST P_%s = %d, but %s -- the "
+                               "sprite it borrows -- is at %d"
+                               % (n, name, pat, lend, g.SPR[lend]))
+            elif name in FACING:
                 right, left = FACING[name]
                 want = g.SPR[left] - g.SPR[right]
                 if pat != want:
@@ -102,6 +129,13 @@ def main():
         if m:
             base, count, label = int(m.group(1)), int(m.group(2)), m.group(3)
             defspr += 1
+            if label in SWAP_LABELS:
+                swapped += 1
+            if label in SWAP_LABELS:
+                # LOADED AT RUNTIME, NOT AT STARTUP. These have no slot of
+                # their own; the index they are written to is the borrowed one
+                # and is checked through the P_HST* constants above.
+                continue
             if label not in g.SPR_FIRST:
                 bad.append("line %d: DEFINE SPRITE loads %r, which genart does "
                            "not emit" % (n, label))
@@ -142,6 +176,9 @@ def main():
     if loads != 2:
         bad.append("expected 2 store-table loads (DEFINE CHAR + DEFINE COLOR), "
                    "found %d" % loads)
+    # The startup loads must still cover every table in SPRITES exactly
+    # once; the runtime swaps are counted separately and excluded above.
+    defspr -= swapped
     if defspr != len([1 for _l, _a, _c in g.SPRITES]):
         bad.append("genart emits %d sprite tables but the source has %d "
                    "DEFINE SPRITE calls -- one is never loaded"
