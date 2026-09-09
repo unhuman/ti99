@@ -80,12 +80,20 @@ a grey cart on a grey backdrop could not.
 
 **Harry stands still on an escalator** instead of running on the spot. The sprite pattern table was full -- 63 of its 64 slots -- so the standing pose has no slot of its own: it is copied over four he is not using while he rides, and the running art is put back when he steps off (`DESIGN.md` 0e-decies).
 
-**The title screen is a marquee** -- a ring of lamps round the dark blue field,
-after the Activision title card, in clusters of three top and bottom. The whole
-frame is bank data drawn by the same walker as the text, so it cost the code
-budget nothing. `assets/prevtitle.py` renders it offline from the shipped bytes,
-because the emulator clips the right-hand columns at every window size
-(`DESIGN.md` 0e-terdecies).
+**The title screen is a marquee that chases.** A ring of lamps round the dark
+blue field, three lit and one dark all the way round, and the dark one travels
+while the screen waits for you. It costs no name-table writes at all: every cell
+of the frame is one of four bulb characters by its position, and the chase
+redefines which pattern is blank -- two `DEFINE CHAR`s per step instead of
+ninety-two pokes. The name above it is drawn as whole KERNED words, three cells
+tall, sliced on the character grid so a cell can hold parts of two letters
+(`DESIGN.md` 0e-quaterdecies).
+
+The whole card -- frame, name and text -- is bank data drawn by one walker, so it
+costs the code budget almost nothing. `assets/prevtitle.py` renders it offline
+from the shipped bytes, because the emulator clips the right-hand columns at
+every window size and a full-width frame is exactly what a screenshot cannot
+check.
 
 **The title screen and the message boxes are data, not code.** They live in a
 ROM bank as display lists and are drawn by one shared routine, so changing what

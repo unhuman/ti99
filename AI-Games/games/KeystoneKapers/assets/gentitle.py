@@ -1,37 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""The title screen, as data -- writes src/title.bas.
+"""The title screen, as data -- writes src/title.bas and src/titlefont.bas.
 
 WHY THE TITLE IS A TABLE
 ------------------------
 It was twelve `PRINT AT n,"..."` statements, and CVBasic embeds a string literal
 in the FIXED AREA -- the one budget that cannot be grown (linkticart writes
 exactly three loader pages and discards the rest; they are the 32K expansion's
-RAM at >A000, not cart ROM). 190 characters of title text sat in the scarcest
-place in the program.
+RAM at >A000, not cart ROM).
 
-Here it is a display list in a ROM bank, walked by a dozen statements in
-`title_draw`. That buys the bytes back once -- and, more usefully, means the
-title's content and layout stop costing code at all. A better title screen
-becomes an edit to THIS FILE plus a rebuild, not a fight with the byte cap.
+Here the whole screen is a display list in a ROM bank, walked by a dozen
+statements in `title_draw`: the marquee, the name and every line of text are the
+same `row, col, bytes` runs. Changing the title costs bank bytes, of which there
+are thousands, instead of code bytes, of which there are hundreds.
 
 THIS FILE IS THE SINGLE SOURCE OF TRUTH for what the title says, and
-`checklayout.py` imports `TITLE` from here rather than parsing `PRINT AT` out of
-the source. That matters: the whole method of that gate is reading `PRINT AT
-n,"literal"` to catch a string running past column 31 or a write landing inside
-another label, and moving the text into a table would otherwise have made the
-title INVISIBLE to it -- trading a build gate for bytes. Importing keeps the
-coverage and keeps one copy of the text.
+`checklayout.py` imports from here rather than parsing `PRINT AT` out of the
+source -- that gate's whole method is reading those literals, so moving the text
+into a table would otherwise have made the title invisible to it.
 
 THE FORMAT is a flat list of runs:
 
     row, col, length, byte * length      repeated
     255                                  ends it
 
-Row and column rather than a 16-bit screen offset, because reassembling a 16-bit
-offset from two bytes needs a multiply, and on the TMS9900 `MPY` clobbers r0 --
-reading the product's variable on the next line returns the HIGH word (CLAUDE.md
-3A). `row * 32` by five doublings has no such hazard and is smaller.
+Row and column rather than a 16-bit screen offset, because reassembling one from
+two bytes needs a multiply, and on the TMS9900 `MPY` clobbers r0 -- the next line
+that reads the product gets the HIGH word (CLAUDE.md 3A). Five doublings do not.
 """
 
 import io
@@ -39,224 +34,233 @@ import os
 import sys
 
 import genart
-import titleface
+import titleword
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, os.pardir, 'src', 'title.bas')
-# THE DISPLAY FACE GOES IN A SEPARATE FILE because it goes in a different BANK.
-# It is 640 bytes of pattern and colour and bank 1 had 370 free -- but it is
-# read once, by a DEFINE at setup, so it belongs in bank 2 with the font.
+# The name's artwork goes in a separate file because it goes in a different
+# BANK: it is read once, by a DEFINE at setup, so it belongs in bank 2 with the
+# font rather than in bank 1 with everything read during play.
 FACE_OUT = os.path.join(HERE, os.pardir, 'src', 'titlefont.bas')
 
-# Where the display face is loaded is decided by titleface.FREE_RUNS -- the
-# character table has no run long enough for it, so it goes in two pieces. See
-# the note there; the first attempt at a single block ran into the radar.
-
 COLS = 32
+END = 255
 
-# (row, column, text). The character codes ARE ASCII: the font is loaded with
-# `DEFINE CHAR 32,59`, so codes 32..90 are space through 'Z' and a byte of text
-# needs no translation.
-#
-# `FIRE TO START` is deliberately NOT here. It is printed by `title_input`, the
-# routine that does the reading, so its arrival marks the moment the screen goes
-# live -- see DESIGN.md 0e-sexies. Moving it into this table would print it with
-# the rest and undo that.
 # ---------------------------------------------------------------------------
-# THE MARQUEE FRAME
+# THE MARQUEE
 # ---------------------------------------------------------------------------
 #
-# A ring of bulbs around the screen, after the Activision title card: a theatre
-# marquee. The reference has a white panel inside a black surround; ours keeps
-# the dark blue field it already had, so the bulbs sit straight on it and the
-# screen still has exactly one background colour.
+# Three lamps, one dark cell, all the way round -- the reference's own rhythm,
+# on every side rather than just the top.
 #
-# IT NEEDS NO NEW MECHANISM. A bulb is one character and the frame is just runs
-# of characters at fixed positions -- which is precisely what the display list
-# already is. So the whole frame is bank data, drawn by the same `run_list`
-# walker as the text, and costs the fixed area nothing at all.
+# IT IS ONE CONTINUOUS RING, not four runs that happen to meet. Walking the
+# perimeter and lighting `i mod 4 < 3` makes the corners fall out of the rhythm
+# automatically, which is what a real marquee does and what four independently
+# laid-out sides cannot do: those give a four-lamp run at one corner and a
+# double gap at another, and no amount of shuffling the ends fixes both.
 #
-# DENSE ALONG THE TOP AND BOTTOM, SPARSE DOWN THE SIDES, which is how the
-# reference reads and is not an economy: bulbs every other cell horizontally
-# give a run of lamps, while the sides carry fewer, further apart. It is also
-# much cheaper -- a horizontal run is ONE entry of 28 bytes, but a vertical one
-# would be a separate three-byte entry per bulb, so sparse sides cost a
-# fraction of dense ones.
-FRAME_TOP, FRAME_BOT = 1, 22
-FRAME_L, FRAME_R = 1, 30
+# THE FRAME'S SIZE IS CHOSEN SO THE RING CLOSES. A perimeter that is not a
+# multiple of four has a seam where the pattern restarts. Rows 1..21 by columns
+# 2..28 gives 92, which is 23 clusters exactly -- and it keeps two columns clear
+# on the left, three on the right and two rows at the bottom, so nothing is lost
+# to a real set's overscan.
+FRAME_TOP, FRAME_BOT = 1, 21
+FRAME_L, FRAME_R = 2, 28
 
-# CLUSTERS OF THREE, as the reference has them -- three lamps, a gap, three
-# lamps. Every-other-cell was tried first and reads as a dotted rule rather than
-# a marquee: it is the grouping that says "sign", not the bulbs.
-#
-# THE CLUSTERS ARE PLACED, NOT REPEATED, and that is the whole trick. Repeating
-# "###." across the width leaves whatever the width happens to give at the
-# right-hand end; mirroring a repeated half instead puts two clusters back to
-# back at the seam, which came out as a SEVEN-BULB RUN through the middle of the
-# top row -- symmetric, and plainly wrong.
-#
-# So a fixed number of clusters is spread across the width and the remainder
-# goes into the GAPS, distributed from the middle outwards so the row stays a
-# palindrome. Gaps of two and three read as even; a doubled cluster does not.
-#
-# SIX, NOT SEVEN. Seven clusters in thirty cells cannot be symmetric at all --
-# the middle one would have to start at 13.5 -- and it leaves single-cell gaps
-# that make the lamps touch.
-CLUSTERS = 6
-
-# rows down each side. Evenly spaced between the corners, and deliberately not
-# every row: at one per row the sides read as two solid bars.
-SIDE_ROWS = [4, 7, 10, 13, 16, 19]
+CLUSTER, GAP = 3, 1
+PERIOD = CLUSTER + GAP
 
 
-def bulb():
-    """The bulb's character code, taken from genart rather than typed here.
+def bulb(phase):
+    """The character code for a perimeter cell in phase 0..3.
 
-    A HAND-WRITTEN CHARACTER NUMBER IS A BUG WAITING FOR A RENAME -- the store
-    table has been renumbered before and a literal here would have gone stale
-    silently, drawing whatever now occupies that code.
+    EVERY cell of the frame is a bulb character -- including the dark ones.
+    A space would be cheaper in the table and would make the chase impossible:
+    the animation works by redefining which of the four PATTERNS is blank, so a
+    cell that is a space can never light up.
     """
-    return genart.CODES["BULB"]
+    return genart.CODES["BULB%d" % phase]
 
 
-def bulb_row(width, n=None):
-    """[bool] -- `n` clusters of three, spread symmetrically across `width`."""
-    n = CLUSTERS if n is None else n
-    gaps_n = n - 1
-    spare = width - 3 * n
-    if spare < gaps_n:
-        raise SystemExit(
-            "a %d-cell marquee row cannot hold %d clusters of three with a gap "
-            "between each -- it needs %d cells and has %d"
-            % (width, n, 4 * n - 1, width))
-    gaps = [spare // gaps_n] * gaps_n
-    # THE REMAINDER GOES INTO SYMMETRIC PAIRS OF GAPS, working outwards from
-    # the middle. Handing it out one gap at a time in "distance from centre"
-    # order is not the same thing and does not stay a palindrome -- it produced
-    # [2,3,3,2,2], which is a sign that leans right.
-    extra = spare % gaps_n
-    mid = gaps_n // 2
-    if extra % 2 and gaps_n % 2:
-        gaps[mid] += 1          # the exact middle can take one on its own
-        extra -= 1
-    lo = mid - 1
-    hi = mid + 1 if gaps_n % 2 else mid
-    while extra >= 2 and lo >= 0:
-        gaps[lo] += 1
-        gaps[hi] += 1
-        extra -= 2
-        lo -= 1
-        hi += 1
-    if gaps != gaps[::-1]:
-        # a palindrome is the point; say so rather than drawing a lopsided sign
-        raise SystemExit("marquee gaps %r are not symmetric" % (gaps,))
-
+def perimeter():
+    """[(row, col)] clockwise from the top-left corner, each cell once."""
     out = []
-    for i in range(n):
-        out += [True] * 3
-        if i < gaps_n:
-            out += [False] * gaps[i]
-    return out
-
-
-def big_runs():
-    """The display-face words, as display-list runs.
-
-    A letter is two cells across and two down, so a word is TWO runs: the top
-    halves of every letter, then the bottom halves. That keeps it in the same
-    `row, col, bytes` format as the rest of the table and needs nothing new in
-    the walker.
-    """
-    out = []
-    for row, col, word in BIG:
-        top, bot = [], []
-        for ch in word:
-            if ch == " ":
-                top += [" ", " "]
-                bot += [" ", " "]
-                continue
-            q = [titleface.code_of(ch, i) for i in range(4)]
-            top += [chr(q[0]), chr(q[1])]
-            bot += [chr(q[2]), chr(q[3])]
-        out.append((row, col, "".join(top)))
-        out.append((row + 1, col, "".join(bot)))
+    for c in range(FRAME_L, FRAME_R + 1):
+        out.append((FRAME_TOP, c))
+    for r in range(FRAME_TOP + 1, FRAME_BOT + 1):
+        out.append((r, FRAME_R))
+    for c in range(FRAME_R - 1, FRAME_L - 1, -1):
+        out.append((FRAME_BOT, c))
+    for r in range(FRAME_BOT - 1, FRAME_TOP, -1):
+        out.append((r, FRAME_L))
     return out
 
 
 def frame_runs():
-    """The marquee, as display-list runs."""
-    ch = chr(bulb())
-    width = FRAME_R - FRAME_L + 1
-    row = "".join(ch if lit else " " for lit in bulb_row(width))
-    out = [(FRAME_TOP, FRAME_L, row), (FRAME_BOT, FRAME_L, row)]
-    for r in SIDE_ROWS:
-        out.append((r, FRAME_L, ch))
-        out.append((r, FRAME_R, ch))
+    """The marquee as display-list runs -- horizontals long, sides per cell."""
+    ring = perimeter()
+    if len(ring) % PERIOD:
+        raise SystemExit(
+            "the marquee ring is %d cells, which is not a whole number of "
+            "%d-cell clusters -- the pattern would restart at a seam. Rows "
+            "%d..%d by columns %d..%d gives %d; try a frame one row or one "
+            "column different."
+            % (len(ring), PERIOD, FRAME_TOP, FRAME_BOT, FRAME_L, FRAME_R,
+               len(ring)))
+
+    # EVERY cell carries its phase, dark ones included -- see bulb().
+    phase = {}
+    for i, rc in enumerate(ring):
+        phase[rc] = i % PERIOD
+
+    out = []
+    # the horizontal sides are one run each -- 27 cells for three bytes of
+    # header, where a per-cell entry would cost four bytes per lamp
+    for row in (FRAME_TOP, FRAME_BOT):
+        text = "".join(chr(bulb(phase[(row, c)]))
+                       for c in range(FRAME_L, FRAME_R + 1))
+        out.append((row, FRAME_L, text))
+    # the verticals cannot be one run, so each is its own single-cell entry
+    for r in range(FRAME_TOP + 1, FRAME_BOT):
+        for c in (FRAME_L, FRAME_R):
+            out.append((r, c, chr(bulb(phase[(r, c)]))))
     return out
 
 
-# The text, centred inside the frame -- columns 2..29, so the middle is 16.
+# ---------------------------------------------------------------------------
+# THE NAME
+# ---------------------------------------------------------------------------
 #
-# `DUCK PLANES AND HIGH ONES` used to start at column 6, which put its last
-# character in column 30 -- the frame's right-hand column. The generator's own
-# double-write check catches that, which is why the text moved rather than the
-# frame.
-# LAID OUT AS A TITLE CARD, after the Activision original: the name stacked and
-# spaced at the top, then who made it, then who made this.
+# Drawn as whole KERNED WORDS and sliced on the character grid -- see
+# titleword.py. Each word is three cells tall, so it is three runs.
 #
-# THE TITLE IS SPACED, NOT ENLARGED. `K E Y S T O N E` reads as a display line
-# at a glance where `KEYSTONE` reads as a sentence, and it costs nothing: two
-# genuinely large letters would need a 2x2 cell each -- about ten distinct
-# letters, forty characters, some 640 bytes of pattern and colour -- and bank 1
-# has 362 free. That is a real option, but it needs the store art moved to bank
-# 2 first (it is read once at setup, so it qualifies), and it is a bigger change
-# than a layout.
+# The interior is rows 2..20 by columns 3..27, so the centre column is 15.
+BIG = [
+    (4, 9, "KEYSTONE"),         # 12 cells wide
+    (8, 11, "KAPERS"),          # 9 cells -- a blank row between the two
+]
+
+
+def word_cells():
+    """{cell pattern: [(row, col)]} -- every cell the words need, deduped."""
+    want = {}
+    for row, col, word in BIG:
+        grid = titleword.cells(word)
+        for cy, cells_row in enumerate(grid):
+            for cx, cell in enumerate(cells_row):
+                if "#" not in "".join(cell):
+                    continue        # blank -- the space character serves
+                want.setdefault(tuple(cell), []).append((row + cy, col + cx))
+    return want
+
+
+def free_codes():
+    """Character codes nothing else uses, derived rather than written down.
+
+    THE FIRST VERSION OF THIS WAS A LITERAL and it collided with the radar
+    canvas: the name's S and T came out as the scanner's green diagonals, on a
+    screen with no radar on it, because the clash is in the PATTERN table and
+    has nothing to do with what is displayed. Deriving it from genart means a
+    future character cannot quietly land on top of the title.
+    """
+    used = [False] * 256
+    for i in range(32, 32 + 59):                    # the font
+        used[i] = True
+    for _n, code, _a, _f, _b in genart.CHARS:       # the store art
+        used[code] = True
+    for i in range(genart.SCAN_FIRST,
+                   genart.SCAN_FIRST + genart.SCAN_N):
+        used[i] = True                              # the radar canvas
+    runs, start = [], None
+    for i in range(256):
+        if not used[i] and start is None:
+            start = i
+        if used[i] and start is not None:
+            runs.append((start, i - start))
+            start = None
+    if start is not None:
+        runs.append((start, 256 - start))
+    return sorted(runs, key=lambda r: -r[1])
+
+
+def allocate():
+    """(codes {cell: code}, blocks [(first, count)], patterns [bytes])."""
+    want = word_cells()
+    order = sorted(want, key=lambda k: min(want[k]))
+    runs = free_codes()
+    have = sum(n for _s, n in runs)
+    if len(order) > have:
+        raise SystemExit(
+            "the title's name needs %d character codes and only %d are free "
+            "(%s). Narrow the letters in titleword.py -- the advance decides "
+            "the cell count."
+            % (len(order), have,
+               ", ".join("%d..%d" % (s, s + n - 1) for s, n in runs)))
+
+    codes, blocks, pats = {}, [], []
+    i = 0
+    for start, count in runs:
+        if i >= len(order):
+            break
+        n = min(count, len(order) - i)
+        blocks.append((start, n))
+        for k in range(n):
+            codes[order[i + k]] = start + k
+            pats += titleword.char_bytes(list(order[i + k]))
+        i += n
+    return codes, blocks, pats
+
+
+def big_runs():
+    """The name, as display-list runs -- three per word."""
+    codes = allocate()[0]
+    out = []
+    for row, col, word in BIG:
+        grid = titleword.cells(word)
+        for cy, cells_row in enumerate(grid):
+            text = ""
+            for cell in cells_row:
+                key = tuple(cell)
+                text += chr(codes[key]) if key in codes else " "
+            out.append((row + cy, col, text))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# THE TEXT
+# ---------------------------------------------------------------------------
+#
+# Centred on column 15, the middle of the interior.
+#
+# `FIRE TO START` is deliberately NOT here. It is printed by `title_input`, the
+# routine that does the reading, so its arrival marks the moment the screen goes
+# live -- see DESIGN.md 0e-sexies.
 #
 # THE ATTRIBUTION IS DELIBERATELY WORDED. The reference card reads
 # `COPYRIGHT 1983,1984 ACTIVISION`, which is THEIR notice about THEIR program;
-# reproducing it here would say this cart is that program. `ORIGINAL 1983
-# ACTIVISION` credits where the game came from and leaves our own line to say
-# what this is -- honest homage rather than an imitation of a rights notice.
-# THE NAME IS DRAWN IN THE DISPLAY FACE, two cells per letter, so it is two
-# rows of the name table per word -- see big_runs. Spacing the ordinary font out
-# was the previous approximation and it still read as body text with gaps in it.
-BIG = [
-    (3, 8, "KEYSTONE"),         # 8 letters x 2 cells = 16 cells, centred
-    (6, 10, "KAPERS"),          # 6 x 2 = 12 cells
-]
-
+# reproducing it would say this cart is that program. `ORIGINAL 1983 ACTIVISION`
+# credits where the game came from and leaves our own line to say what this is.
+# NOTHING RUNS TO THE FRAME. The interior is columns 3..27, and a 25-character
+# line fills it exactly -- which put the text hard against the side lamps and
+# read as crowding rather than as a card. Every line is now 23 or fewer, so
+# there is a clear column inside the marquee on both sides.
 TITLE = [
-    (9, 8, "BY GARRY KITCHEN"),
-    (11, 4, "ORIGINAL 1983 ACTIVISION"),
-    (12, 4, "2026 UNHUMAN AND CLAUDE"),
-
-    (14, 5, "STICK RUN     FIRE JUMP"),
-    (15, 3, "DOWN DUCK     UP ELEVATOR"),
-
-    (17, 4, "JUMP CARTS AND LOW BALLS"),
-    (18, 3, "DUCK PLANES AND HIGH ONES"),
+    (13, 8, "BY GARRY KITCHEN"),
+    (15, 4, "2026 UNHUMAN AND CLAUDE"),
 ]
 
-# THE END-OF-ROUND MESSAGE BOXES, same format, same walker.
+# ---------------------------------------------------------------------------
+# THE END-OF-ROUND MESSAGE BOXES, same format, same walker
+# ---------------------------------------------------------------------------
 #
-# Each is a whole SCENE -- the blank bar above, the text, the blank bar below --
-# rather than three separate writes, so a call site is one address and one
-# GOSUB instead of three PRINT ATs. The blank rows are repeated in every scene
-# and that is deliberate: they cost bank bytes, which are plentiful, to save
-# fixed-area bytes, which are not. Spending the abundant budget for the scarce
-# one is the whole point (CLAUDE.md 3A warns about doing it backwards).
+# Each is a whole SCENE -- blank bar, text, blank bar -- so a call site is one
+# address and one GOSUB instead of three PRINT ATs. The blank rows repeat in
+# every scene deliberately: they cost bank bytes, which are plentiful, to save
+# fixed-area bytes, which are not.
 #
-# THIRTEEN WIDE AT COLUMN 10, which is the longest message plus one space each
-# side, centred on the screen's own centre. Every font character is black on
-# the HUD's dark blue, so a row of SPACES is a solid bar -- the frame costs no
-# new characters. Every string is padded to exactly 13 so the box has straight
-# edges; the generator checks it.
-#
-# THE ROWS ARE THE ONES THE PRINT ATs USED, and they were checked rather than
-# assumed: 330 = row 10 col 10, 362 = row 11, 394 = row 12, so the reason box's
-# TOP row is 10. GAME OVER was 266 = row 8 and 298 = row 9, which is two rows
-# above the box, not three. Getting either wrong moves the message and nothing
-# in the build would have said so.
+# THE ROWS ARE THE ONES THE PRINT ATs USED, checked rather than assumed:
+# 330 = row 10 col 10, 362 = row 11, 394 = row 12, so the reason box's top row
+# is 10. GAME OVER was 266 = row 8 and 298 = row 9 -- two rows above, not three.
 BOX_ROW, BOX_COL, BOX_W = 10, 10, 13
 
 MESSAGES = {
@@ -264,21 +268,14 @@ MESSAGES = {
     "msg_away":   ["             ", " HE GOT AWAY ", "             "],
     "msg_plane":  ["             ", " THE BIPLANE ", "             "],
     "msg_timeup": ["             ", "  TIME UP!   ", "             "],
-    # stacked ABOVE the reason, two rows higher, so GAME OVER appears with the
-    # reason rather than replacing it
     "msg_over":   ["             ", "  GAME OVER  "],
 }
 
-# where each scene's first row sits: the reason boxes at row 10, the GAME OVER
-# overlay two rows above them so it stacks ON TOP of the reason rather than
-# replacing it
 MSG_ROW = {
     "msg_gothim": BOX_ROW, "msg_away": BOX_ROW,
     "msg_plane": BOX_ROW, "msg_timeup": BOX_ROW,
     "msg_over": BOX_ROW - 2,
 }
-
-END = 255
 
 
 def runs_of(name):
@@ -289,10 +286,10 @@ def runs_of(name):
 
 def table(runs=None):
     """A display list as bytes, with the checks that make it safe."""
-    out = []
-    seen = {}
     if runs is None:
         runs = frame_runs() + big_runs() + TITLE
+    art = set(allocate()[0].values()) | set(genart.CODES["BULB%d" % p] for p in range(4))
+    out, seen = [], {}
     for row, col, text in runs:
         if not 0 <= row < 24:
             raise SystemExit("row %d is off screen: %r" % (row, text))
@@ -303,43 +300,83 @@ def table(runs=None):
                 % (text, row, col, col + len(text)))
         if len(text) > 255:
             raise SystemExit("%r is longer than one length byte" % text)
-        for c in range(col, col + len(text)):
+        for i, ch in enumerate(text):
+            c = col + i
+            if ch == " ":
+                continue            # a run's own padding writes nothing new
             if (row, c) in seen:
                 raise SystemExit(
                     "row %d column %d is written twice: %r and %r"
                     % (row, c, seen[(row, c)], text))
             seen[(row, c)] = text
-        for ch in text:
-            if ord(ch) == bulb():
-                continue            # a marquee bulb, from the store table
-            if ord(ch) in titleface.codes():
-                continue            # a display-face quadrant
+            if ord(ch) in art:
+                continue
             if not 32 <= ord(ch) <= 90:
                 raise SystemExit(
-                    "%r contains %r, which is outside the loaded font "
-                    "(codes 32..90)" % (text, ch))
+                    "%r contains %r, outside the loaded font (32..90)"
+                    % (text, ch))
         out += [row, col, len(text)] + [ord(c) for c in text]
     out.append(END)
-    # EVERY DATA BLOCK MUST BE AN EVEN NUMBER OF BYTES. An odd run leaves the
+    # EVERY DATA BLOCK MUST BE AN EVEN NUMBER OF BYTES -- an odd run leaves the
     # assembler's location counter odd and silently misaligns every word table
-    # defined after it (CLAUDE.md 3A). A second terminator is the cheapest
-    # padding there is -- the walker stops at the first.
+    # after it (CLAUDE.md 3A). A second terminator is the cheapest padding.
     if len(out) % 2:
         out.append(END)
     return out
 
 
 def main():
+    titleword.check_heights()
+    codes, blocks, pats = allocate()
+    cbyte = (genart.WHITE << 4) | genart.HUD_BG
+
+    with io.open(FACE_OUT, 'w', encoding='utf-8', newline='') as fh:
+        fh.write("\t' ==================================================\n")
+        fh.write("\t' THE TITLE'S NAME -- whole kerned words, sliced\n")
+        fh.write("\t' Generated by assets/gentitle.py from titleword.py.\n")
+        fh.write("\t' Do not edit here; edit the glyphs and rebuild.\n")
+        fh.write("\t'\n")
+        fh.write("\t' %d distinct cells; blanks use the space character and\n"
+                 % len(codes))
+        fh.write("\t' repeated cells share a code. setup_font must load them\n")
+        fh.write("\t' with EXACTLY these arguments:\n")
+        for k, (start, count) in enumerate(blocks):
+            fh.write("\t'     DEFINE CHAR  %3d,%2d,tfont_pat%d\n"
+                     % (start, count, k))
+            fh.write("\t'     DEFINE COLOR %3d,%2d,tfont_col%d\n"
+                     % (start, count, k))
+        fh.write("\t'\n")
+        fh.write("\t' LIVES IN BANK 2 -- read once by those DEFINEs.\n")
+        fh.write("\t' ==================================================\n")
+        at = 0
+        for k, (start, count) in enumerate(blocks):
+            chunk = pats[at * 8:(at + count) * 8]
+            at += count
+            fh.write("\ntfont_pat%d:\t' codes %d..%d\n"
+                     % (k, start, start + count - 1))
+            for i in range(0, len(chunk), 8):
+                fh.write("\tDATA BYTE %s\n"
+                         % ",".join("$%02X" % b for b in chunk[i:i + 8]))
+            # EIGHT COLOUR BYTES PER CHARACTER, one per scan line, not one
+            fh.write("\ntfont_col%d:\n" % k)
+            n = count * 8
+            for i in range(0, n, 8):
+                fh.write("\tDATA BYTE %s\n"
+                         % ",".join(["$%02X" % cbyte] * min(8, n - i)))
+    print("wrote %s -- %d distinct cells in %d block(s) (%s), %d bytes"
+          % (os.path.normpath(FACE_OUT), len(codes), len(blocks),
+             ", ".join("%d..%d" % (a, a + n - 1) for a, n in blocks),
+             len(pats) * 2))
+
     data = table()
     with io.open(OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")
         fh.write("\t' THE TITLE SCREEN, AS A DISPLAY LIST\n")
         fh.write("\t' Generated by assets/gentitle.py -- do not edit here.\n")
-        fh.write("\t' Edit TITLE in that file and rebuild.\n")
         fh.write("\t'\n")
-        fh.write("\t' row, col, length, then `length` ASCII bytes; 255 ends.\n")
-        fh.write("\t' Walked by title_draw. Lives in a ROM bank, so the text\n")
-        fh.write("\t' costs no fixed-area bytes at all.\n")
+        fh.write("\t' row, col, length, then `length` bytes; 255 ends.\n")
+        fh.write("\t' Walked by title_draw, and by do_catch and lose_kop for\n")
+        fh.write("\t' the message boxes below.\n")
         fh.write("\t' ==================================================\n")
         fh.write("\ntitle_tbl:\n")
         for i in range(0, len(data), 8):
@@ -348,69 +385,21 @@ def main():
 
         fh.write("\n\t' ---- the end-of-round message boxes, same format\n")
         for name in sorted(MESSAGES):
-            block = table(runs_of(name))
             for t in MESSAGES[name]:
                 if len(t) != BOX_W:
                     raise SystemExit(
                         "%s line %r is %d wide, not %d -- the box would have "
                         "a ragged edge" % (name, t, len(t), BOX_W))
+            block = table(runs_of(name))
             fh.write("\n%s:\n" % name)
             for i in range(0, len(block), 8):
                 fh.write("\tDATA BYTE %s\n"
                          % ",".join(str(b) for b in block[i:i + 8]))
 
-    # ---- the display face, into its own file for bank 2 ----
-    face = titleface.patterns()
-    runsdef = titleface.blocks()
-    cbyte = (genart.WHITE << 4) | genart.HUD_BG
-    with io.open(FACE_OUT, 'w', encoding='utf-8', newline='') as fh:
-        fh.write("\t' ==================================================\n")
-        fh.write("\t' THE TITLE'S DISPLAY FACE -- 16x16 letters\n")
-        fh.write("\t' Generated by assets/gentitle.py from titleface.py.\n")
-        fh.write("\t' Do not edit here; edit the glyphs and rebuild.\n")
-        fh.write("\t'\n")
-        fh.write("\t' Four characters per letter: TL TR BL BR, in the order\n")
-        fh.write("\t' %s\n" % " ".join(titleface.letters()))
-        fh.write("\t'\n")
-        fh.write("\t' IN TWO PIECES, because the character table has no run\n")
-        fh.write("\t' long enough -- see titleface.FREE_RUNS. setup_font must\n")
-        fh.write("\t' load them with EXACTLY these arguments:\n")
-        for k, (start, count) in enumerate(runsdef):
-            fh.write("\t'     DEFINE CHAR  %3d,%2d,tfont_pat%d\n"
-                     % (start, count, k))
-            fh.write("\t'     DEFINE COLOR %3d,%2d,tfont_col%d\n"
-                     % (start, count, k))
-        fh.write("\t'\n")
-        fh.write("\t' LIVES IN BANK 2 -- read once by those DEFINEs, never\n")
-        fh.write("\t' during play.\n")
-        fh.write("\t' ==================================================\n")
-        at = 0
-        for k, (start, count) in enumerate(runsdef):
-            chunk = face[at * 8:(at + count) * 8]
-            at += count
-            fh.write("\ntfont_pat%d:\t' codes %d..%d\n"
-                     % (k, start, start + count - 1))
-            for i in range(0, len(chunk), 8):
-                fh.write("\tDATA BYTE %s\n"
-                         % ",".join("$%02X" % b for b in chunk[i:i + 8]))
-            # EIGHT COLOUR BYTES PER CHARACTER, one per scan line -- not one
-            # (CLAUDE.md 3A). Lamp-white letters on the HUD's dark blue.
-            fh.write("\ntfont_col%d:\n" % k)
-            n = count * 8
-            for i in range(0, n, 8):
-                fh.write("\tDATA BYTE %s\n"
-                         % ",".join(["$%02X" % cbyte] * min(8, n - i)))
-    print("wrote %s -- %d letters, %d characters in %d blocks (%s), %d bytes"
-          % (os.path.normpath(FACE_OUT), len(titleface.letters()),
-             len(face) // 8, len(runsdef),
-             ", ".join("%d..%d" % (a, a + n - 1) for a, n in runsdef),
-             len(face) * 2))
-
     runs = frame_runs() + big_runs() + TITLE
-    chars = sum(len(t) for _r, _c, t in runs)
-    print("wrote %s -- %d runs (%d frame, %d display), %d characters, %d bytes"
+    print("wrote %s -- %d runs (%d marquee, %d name), %d bytes"
           % (os.path.normpath(OUT), len(runs), len(frame_runs()),
-             len(big_runs()), chars, len(data)))
+             len(big_runs()), len(data)))
     return 0
 
 

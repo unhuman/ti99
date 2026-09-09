@@ -813,6 +813,132 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-quaterdecies. The title card: kerned words, a marquee ring, and a chase
+
+The first marquee was three passes from right, and every wrong turn was a
+different lesson.
+
+#### THE NAME IS DRAWN AS WORDS, NOT LETTERS
+
+Giving every letter its own 2x2 block of characters puts every letter on an
+8-pixel boundary. That is a grid, not typesetting: the spacing cannot vary,
+nothing can tuck under anything, and it reads as separate stamps. The reference
+is KERNED -- fitted together and drawn as one image.
+
+So `titleword.py` composites the letters into a WORD bitmap at a 12-pixel
+advance and only then slices it on the character grid. A cell may hold parts of
+two letters; that is the point.
+
+**THE BUDGET CHOSE THE WIDTH, not taste.** The character table has 63 codes
+free (font 32..90, store art 96..184, radar canvas 208..255). Three cells tall
+is what the name needs to look like a sign, and at a 13-pixel advance the two
+words want 69 cells -- it does not fit at any price short of moving the store
+art to another bank. At 12 it is 63 exactly, and deduping brings it to **44
+distinct cells**: blank cells use the space character and eleven cells repeat
+between the two words. Condensed is not a compromise; the reference's own face
+is tall and narrow.
+
+**ONE CAP HEIGHT, ASSERTED.** The first face ran from eleven rows to thirteen
+with tops and bottoms on different lines, which reads as letters sitting at
+different depths -- obvious on screen, invisible in the source.
+`check_heights()` requires every letter to occupy rows 2..21, and it caught `O`
+and `S` short on BOTH passes of the redraw. The round letters are the ones that
+drift: a flat-topped letter's extent is obvious from its first row, a bowl's
+depends on how many rows the curve takes.
+
+#### THE MARQUEE IS ONE CONTINUOUS RING
+
+Laying out four sides independently is the wrong shape of solution. It gives a
+four-lamp run at one corner and a double gap at another, and no amount of
+adjusting the ends fixes both. Walking the PERIMETER and lighting `i mod 4 < 3`
+makes the corners fall out of the rhythm the way a real marquee's do.
+
+**That constrains the frame's size.** A perimeter that is not a multiple of four
+has a seam where the pattern restarts. Rows 1..21 by columns 2..28 gives **92 --
+23 clusters exactly** -- and still keeps two columns clear on the left, three on
+the right and two rows at the bottom, so nothing is lost to a real set's
+overscan. `frame_runs` refuses a frame that does not close and says which way to
+change it.
+
+Three earlier attempts at the rhythm, each wrong in its own way and worth
+keeping because none is obviously wrong on paper:
+
+* **Repeating `###.`** leaves whatever the width gives at the right-hand end --
+  a two-bulb stub.
+* **Mirroring a repeated half** fixes the ends and butts two clusters together
+  at the seam: a seven-bulb run through the middle of the top row. Symmetric,
+  and plainly wrong.
+* **Spreading a fixed number of clusters and pushing the remainder into the
+  gaps** gives gaps of two and three -- even, symmetric, and not a marquee.
+
+#### THE CHASE COSTS NO NAME-TABLE WRITES
+
+Every cell of the frame is a bulb CHARACTER, including the dark ones. A space
+would be cheaper in the table and would make the animation impossible: a cell
+that is a space can never light up.
+
+Each cell carries its phase 0..3 by position round the ring, and each phase has
+its own character code. The chase then works by **redefining which of the four
+patterns is blank** -- the dark cell travels all the way round the sign without
+a single byte of the name table changing. At any moment exactly one lamp is
+blank, so a step lights the one that was and blanks the next: **two
+`DEFINE CHAR`s per step**, against ninety-two pokes. Six frames a step, about
+ten a second.
+
+**AND THE CHARACTER NUMBER IS ARITHMETIC, NOT A BRANCH.** The first version
+dispatched on the phase -- four `IF`s, eight `DEFINE CHAR`s -- and cost about
+**three hundred bytes** for that picture. `DEFINE CHAR` takes an EXPRESSION for
+the character number, so `CH_BULB0 + bphs` collapses the whole thing to two
+calls and no ladder: 478 bytes free where there had been 266. A four-way branch
+over consecutive things is nearly always arithmetic wearing a disguise.
+
+**TWO CALLS, NOT FIVE.** Lighting all four and then darkening one is the same
+result and reads more simply, but two separate `DEFINE`s can have a vblank
+between them -- the sign would show every lamp lit for one frame per step, a
+flash rather than a chase. Changing only the two lamps that actually change
+cannot do that, and the capture confirms it: the lit count holds at 47-48 across
+frames instead of spiking.
+
+**ONE INITIALISATION HAS TO AGREE WITH THE ART.** genart ships BULB0..2 lit and
+BULB3 blank, so `bphs` starts at 3. Left at 0 the first step would light a lamp
+that is already lit and darken a second, and the sign would lose a lamp on every
+pass round. Nothing else needs resetting: every rotation is a valid
+three-and-one, so a title reached after a game over carries on from wherever the
+last chase stopped.
+
+**IT NEARLY DIED IN THE ART GENERATOR.** `genart` merges characters with
+identical patterns to save codes, which is right almost always -- and it
+collapsed `BULB0`, `BULB1` and `BULB2` into one code, because all three ship
+with the same lit picture and differ only once the chase starts rotating them.
+Three quarters of the sign would have blinked together and the chase would have
+been a flash. There was already an exemption for animated escalator cells for
+exactly this reason ("two flight cells can look identical while the steps are at
+rest"); the bulbs joined it.
+
+**THE ANIMATION SITS BELOW THE INPUT READS**, deliberately. This loop's history
+is input bugs -- a screen drawn but not listening, a keypress eaten by a
+stability filter -- so nothing decorative goes in front of the polling. A
+dropped frame of animation is invisible; a dropped keypress took three sessions
+to find.
+
+#### AND A COLLISION THE PREVIEWER COULD NOT SEE
+
+The name's characters were first loaded as one 40-character block at 182, which
+ran into the radar canvas at 208: `S` and `T` came out as the scanner's green
+diagonals, on a screen with no radar on it, because the clash is in the PATTERN
+table and has nothing to do with what is displayed.
+
+`assets/prevtitle.py` **agreed with the bug** -- it painted from the generated
+blocks and had the face exactly where the generator said, so it showed a perfect
+title. Only the emulator disagreed. The previewer is still worth having, because
+Classic99 clips the right-hand columns at every window size and a full-width
+frame is precisely what a screenshot cannot verify; but it complements the
+hardware rather than replacing it.
+
+`free_codes()` now derives the free ranges from `genart` instead of a literal,
+so a future character cannot quietly land on the title -- which it promptly had
+to, when the four bulbs pushed the store art from 181 to 184.
+
 ### 0e-terdecies. The title gets a marquee, and it costs no code at all
 
 After the Activision title card: a ring of lamps round the screen. The reference

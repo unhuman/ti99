@@ -213,6 +213,23 @@
 	' moves all four. Borrowing the four slots that NORMALLY hold those kinds
 	' meant four separate copies per swap -- twelve calls, and 132 bytes more
 	' than the fixed area had.
+	' THE MARQUEE'S FOUR LAMP CHARACTERS, one per phase of the chase.
+	'
+	' Every cell of the title's frame is one of these -- the dark ones too.
+	' Three ship lit and BULB3 ships blank, which draws the static
+	' three-and-one rhythm; the chase then moves the dark cell round the sign
+	' by REDEFINING which pattern is blank, so nothing in the name table is
+	' ever rewritten. Two DEFINE CHARs per step against ninety-two pokes.
+	'
+	' They are consecutive by construction (genart emits them together) but
+	' the numbers are still written out, because checkchars.py verifies each
+	' against genart's own table and would catch a renumber.
+	CONST CH_BULB0 = 181
+	CONST CH_BULB1 = 182
+	CONST CH_BULB2 = 183
+	CONST CH_BULB3 = 184
+	CONST BULBFR = 6		' frames per chase step -- 10 a second
+
 	CONST P_HSTB = 72		' over HBODY
 	CONST P_HSTS = 76		' over HBODY2
 	CONST P_HSTL = 80		' over HBODY3
@@ -702,10 +719,10 @@ setup_font:
 	'
 	' The arguments come from titleface.FREE_RUNS; gentitle.py prints them
 	' into the top of titlefont.bas and checkchars.py verifies them.
-	DEFINE CHAR 182,26,tfont_pat0
-	DEFINE COLOR 182,26,tfont_col0
-	DEFINE CHAR 0,14,tfont_pat1
-	DEFINE COLOR 0,14,tfont_col1
+	DEFINE CHAR 0,32,tfont_pat0
+	DEFINE COLOR 0,32,tfont_col0
+	DEFINE CHAR 185,12,tfont_pat1
+	DEFINE COLOR 185,12,tfont_col1
 
 	' AND BACK TO BANK 1 FOR THE REST OF THE PROGRAM. Everything below this
 	' line -- setup_rest's DEFINEs, the template blits, every table read in
@@ -722,8 +739,14 @@ setup_font:
 	' re-enters below it: a game over redraws the title without rebuilding a
 	' store that is already defined.
 setup_rest:
-	DEFINE CHAR 96,86,store_pat
-	DEFINE COLOR 96,86,store_col
+	DEFINE CHAR 96,89,store_pat
+	DEFINE COLOR 96,89,store_col
+	' WHICH MARQUEE LAMP IS DARK, matching what the DEFINE above just loaded:
+	' genart ships BULB0..2 lit and BULB3 blank. This is the only place the
+	' two have to agree, and they must -- with `bphs` left at 0 the first step
+	' would light a lamp that is already lit and darken a second one, and the
+	' sign would lose a lamp on every pass round.
+	bphs = 3
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 	GOSUB floor0_colour
@@ -978,6 +1001,12 @@ title_draw:
 	CLS
 	#tta = VARPTR title_tbl(0)
 	GOSUB run_list
+	' NOTHING TO RESET BUT THE COUNTER. Every rotation of the four lamps is a
+	' valid three-and-one, so a title reached after a game over simply carries
+	' on from wherever the last chase stopped -- and `bphs` still names the
+	' dark one, so the state is already consistent. Re-lighting all four here
+	' would cost four DEFINEs to change nothing.
+	bfr = BULBFR
 	RETURN
 
 	' THE WALKER, CALLED WITH #tta ALREADY SET. The title screen and the
@@ -1061,10 +1090,44 @@ title_input:
 	' titles when they are already listening. Keystone cannot -- the whole
 	' point of the early draw is that it is early -- so the PROMPT waits
 	' instead, and its arrival is the cue that the screen is awake.
-	PRINT AT 649,"FIRE TO START"
+	PRINT AT 617,"FIRE TO START"
 	tkl = 15
 title_wait:
 	WAIT
+	' THE MARQUEE CHASES WHILE THE TITLE WAITS.
+	'
+	' ONLY TWO CHARACTERS CHANGE PER STEP. At any moment exactly one of the
+	' four lamps is blank; a step lights the one that was blank and blanks the
+	' next one round. Redefining all four would be twice the work for the same
+	' picture.
+	'
+	' IT IS BELOW THE INPUT READS, deliberately. This loop's history is input
+	' bugs -- a screen that was drawn but not listening, a keypress eaten by a
+	' stability filter -- so nothing that is merely decoration goes in front of
+	' the polling. A dropped frame of animation is invisible; a dropped
+	' keypress is what took three sessions to find.
+	' `bphs` IS WHICH LAMP IS DARK, and a step is: light that one, move on,
+	' darken the next. The character number is arithmetic rather than a
+	' four-way branch -- DEFINE CHAR takes an expression, so the whole chase
+	' is two calls and no `IF` ladder. The ladder version was eight DEFINE
+	' CHARs across four branches and cost about three hundred bytes for the
+	' same picture.
+	'
+	' TWO CALLS, NOT FIVE. Lighting all four and then darkening one is the
+	' same result and reads more simply, but two separate DEFINEs can have a
+	' vblank between them, so the sign would show ALL lamps lit for a frame
+	' every step -- a flash rather than a chase. Only ever changing the two
+	' lamps that actually change cannot do that.
+	bfr = bfr - 1
+	IF bfr = 0 THEN
+		bfr = BULBFR
+		bcode = CH_BULB0 + bphs
+		DEFINE CHAR bcode,1,bulb_lit
+		bphs = bphs + 1
+		IF bphs > 3 THEN bphs = 0
+		bcode = CH_BULB0 + bphs
+		DEFINE CHAR bcode,1,bulb_off
+	END IF
 	' Edge-triggered: cont1.key returns the same value on every pass while a
 	' key is held, so without this one press would be read as many.
 	'

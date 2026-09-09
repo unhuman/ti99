@@ -94,9 +94,9 @@ def main():
     # character table because no single run is long enough, and a previewer
     # that assumed one contiguous block would draw the letters in the wrong
     # place while agreeing with itself.
-    import titleface
+    import gentitle
     seen = 0
-    for k, (start, count) in enumerate(titleface.blocks()):
+    for k, (start, count) in enumerate(gentitle.allocate()[1]):
         tpat = read_block(os.path.join(SRC, 'titlefont.bas'), 'tfont_pat%d' % k)
         tcol = read_block(os.path.join(SRC, 'titlefont.bas'), 'tfont_col%d' % k)
         for i in range(count):
@@ -117,7 +117,7 @@ def main():
 
     # FIRE TO START is printed by title_input, not from the table
     for k, ch in enumerate("FIRE TO START"):
-        name[20][9 + k] = ord(ch)
+        name[19][9 + k] = ord(ch)
 
     W, H = 32 * 8, 24 * 8
     px = [[PAL[g.HUD_BG]] * W for _ in range(H)]

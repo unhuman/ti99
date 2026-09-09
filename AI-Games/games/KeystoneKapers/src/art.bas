@@ -340,7 +340,7 @@ spr_hbod4:	' the four running bodies again, to give the slots back
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.
 
-store_pat:	' 86 chars, 8 bytes each
+store_pat:	' 89 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$00,$00,$00,$00,$DF,$DF,$00
 	DATA BYTE $FF,$FF,$00,$00,$00,$DF,$DF,$00
@@ -427,6 +427,9 @@ store_pat:	' 86 chars, 8 bytes each
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
 store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BC,$BC,$BC
@@ -515,6 +518,15 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BE,$BE,$BE
 	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+
+bulb_lit:	' a lit marquee lamp
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+
+bulb_off:	' and a dark one
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
 esc_phw0:	' chars 110-115, phase 0 -- DEFINE CHAR 110,6,esc_phw0
 	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
@@ -690,4 +702,7 @@ esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at
 	'   178 ENDWALL
 	'   179 SCANBK
 	'   180 SLABP
-	'   181 BULB
+	'   181 BULB0
+	'   182 BULB1
+	'   183 BULB2
+	'   184 BULB3

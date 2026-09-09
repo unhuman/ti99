@@ -1542,6 +1542,32 @@ PALETTE_RGB = [
 # Identical entries are merged automatically further down, so listing SHELFB
 # beside SHELFT (or ROOFBG beside SHAFT) costs nothing -- they resolve to one
 # character code.
+# THE TWO MARQUEE PATTERNS, named so the animation can DEFINE CHAR them
+# directly. `bulb_lit` and `bulb_off` are emitted as their own blocks in
+# art.bas -- in BANK 1, because title_wait reads them every few frames while
+# the title is up and bank 1 is the one that is always mapped.
+BULB_LIT = """
+........
+..####..
+.######.
+.######.
+.######.
+.######.
+..####..
+........
+"""
+
+BULB_OFF = """
+........
+........
+........
+........
+........
+........
+........
+........
+"""
+
 CHARS_BASE = [
     ("SLAB", 0, """
 ########
@@ -2220,26 +2246,29 @@ CHARS_BASE = [
 ........
 """, LYELL, [DYELL, DYELL, DYELL, DYELL, DYELL, GRAY, GRAY, GRAY]),
 
-    # A MARQUEE BULB, for the title screen's frame -- one lamp per cell, with a
-    # pixel of dark blue all round it so a run of them reads as separate bulbs
-    # rather than a stripe. Six across and six down inside an eight-pixel cell,
-    # corners clipped so it reads round at this size.
+    # FOUR MARQUEE BULBS, ONE PER PHASE OF THE CHASE.
     #
-    # WHITE ON THE HUD'S OWN DARK BLUE, which is what the title screen is
-    # cleared to, so the frame sits on the field with no panel behind it and no
-    # second background colour anywhere on the screen. The TMS9918 gives one
-    # foreground and one background per character ROW, and this uses one pair
-    # for the whole cell, so there is nothing to clash with.
-    ("BULB", 0, """
-........
-..####..
-.######.
-.######.
-.######.
-.######.
-..####..
-........
-""", WHITE, HUD_BG),
+    # One lamp per cell, with a pixel of dark blue all round it so a run reads
+    # as separate bulbs rather than a stripe. White on the HUD's own dark blue,
+    # which is what the title screen is cleared to, so the frame sits on the
+    # field with no panel behind it and no second background colour anywhere --
+    # the TMS9918 gives one foreground and one background per character ROW and
+    # this uses one pair for the whole cell.
+    #
+    # WHY FOUR IDENTICAL-LOOKING CHARACTERS. The marquee's rhythm is three lit
+    # and one dark, repeating, so every cell of the frame belongs to a phase
+    # 0..3 by its position round the perimeter. Give each phase its own
+    # CHARACTER CODE and the chase costs no name-table writes at all: rotating
+    # which code is blank moves the dark cell all the way round the sign, and
+    # that is two DEFINE CHARs per step rather than ninety-two pokes.
+    #
+    # So three of these ship lit and BULB3 ships blank -- the static frame --
+    # and title_wait redefines two of them per step. The COLOURS never change;
+    # a blank pattern in white-on-dark-blue is simply a dark cell.
+    ("BULB0", 0, BULB_LIT, WHITE, HUD_BG),
+    ("BULB1", 0, BULB_LIT, WHITE, HUD_BG),
+    ("BULB2", 0, BULB_LIT, WHITE, HUD_BG),
+    ("BULB3", 0, BULB_OFF, WHITE, HUD_BG),
 
 ]
 
@@ -2388,7 +2417,13 @@ for _n, _c, _a, _f, _b in _SPLICED:
     # while the steps are at rest and differ the moment they move, so merging
     # them on their phase-0 picture would make one of them draw the other's
     # animation. Cheaper to spend three characters than to reason about it.
-    if _n.startswith("ESCW") or _n.startswith("ESCE"):
+    #
+    # THE MARQUEE BULBS ARE THE SAME CASE and caught it immediately: BULB0,
+    # BULB1 and BULB2 ship with the SAME lit picture and differ only once the
+    # chase starts rotating which of the four is dark. Merged, all three
+    # resolved to one code, three quarters of the sign would have blinked
+    # together, and the chase would have been a flash.
+    if _n.startswith("ESCW") or _n.startswith("ESCE") or _n.startswith("BULB"):
         _key = (_n,) + _key
     if _key not in _seen:
         _seen[_key] = 96 + len(CHARS)
@@ -2496,6 +2531,11 @@ def main():
             cdata += colour_block(name, fg, bg)
         emit(fh, "store_pat", pdata, "%d chars, 8 bytes each" % len(CHARS))
         emit(fh, "store_col", cdata, "EIGHT colour bytes per char, not one")
+
+        # THE MARQUEE'S TWO STATES, for the title's chase. Named blocks rather
+        # than offsets into store_pat, because DEFINE CHAR takes a label.
+        emit(fh, "bulb_lit", char_bytes(BULB_LIT), "a lit marquee lamp")
+        emit(fh, "bulb_off", char_bytes(BULB_OFF), "and a dark one")
 
         # Four phases x four characters x 8 bytes = 128 bytes, and it animates
         # every escalator on the screen at once. Steps travel UP the flight,
