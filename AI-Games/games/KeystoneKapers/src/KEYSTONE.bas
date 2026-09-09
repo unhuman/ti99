@@ -118,7 +118,11 @@
 	' hitbox puts the limit at 11, and shrinking the ball does not move it --
 	' the apex is what binds. assets/checkball.py fails the build on it.
 	CONST DUCKH = 11		' Kelly ducked -- bent over, not squashed
-	CONST CATCHR = 12		' catch / hit radius, centre to centre
+	CONST CATCHR = 12
+	' HOW CLOSE VERTICALLY A CATCH NEEDS. A floor is a whole storey apart, so
+	' anything under a character row means they are genuinely level; a rider
+	' eight pixels up a flight is already clear of a Kop standing beside it.
+	CONST CATCHV = 8		' catch / hit radius, centre to centre
 
 	' Kelly states
 	CONST ST_RUN = 0
@@ -3460,6 +3464,33 @@ coll_prize:
 coll_harry:
 	IF hlv <> klv THEN RETURN
 	IF hsc <> klsc THEN RETURN
+	' AND THEY HAVE TO BE AT THE SAME HEIGHT, NOT MERELY ON THE SAME FLOOR.
+	'
+	' `hlv` does not change until a ride ENDS -- a crook stepping onto a
+	' flight keeps the floor he left until he arrives at the next one. So
+	' while he was most of a storey up or down the stairs he still counted as
+	' standing on the floor he started from, and a Kop who ran over the head
+	' of the flight arrested him through the floor. Reported from play:
+	' "I run over top of him, even though we do not touch".
+	'
+	' It is the same shape of bug as the catch that fired at MAXIMUM
+	' separation: a test that is right about one axis and silent about the
+	' other, where the silent one happens to be true nearly all the time.
+	'
+	' UNSIGNED-SAFE. Riding up is above the shared floor and riding down is
+	' below it, which is a signed quantity, and CVBasic's variables are not.
+	' So both are collected as POSITIVE heights on opposite sides -- Kelly's
+	' climb plus Harry's descent on one side, Harry's climb on the other --
+	' and the difference is taken between two numbers that cannot go
+	' negative. Two riders passing on the same flight measure the sum of
+	' their heights, which is exactly the distance between them.
+	hva = 0
+	IF klst = ST_ESC THEN hva = esy
+	IF hst = 2 THEN hva = hva + hsy
+	hvb = 0
+	IF hst = 1 THEN hvb = hsy
+	IF hva > hvb THEN hvd = hva - hvb ELSE hvd = hvb - hva
+	IF hvd >= CATCHV THEN RETURN
 	' NO +8 ON EITHER SIDE, AND THAT IS THE FIX RATHER THAN A TIDY-UP. Both
 	' centres are the left edge plus eight, so the eight cancels in the
 	' difference -- but adding it first OVERFLOWED THE BYTE. Harry walks to

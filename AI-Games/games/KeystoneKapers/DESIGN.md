@@ -813,6 +813,37 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-quindecies. A catch through the floor
+
+Reported from play: *"when harry is going down an escalator and I run over top
+of him, even though we do not touch, it counted as catching him".*
+
+`coll_harry` tested the same FLOOR and the horizontal distance. But `hlv` does
+not change until a ride ENDS -- a crook stepping onto a flight keeps the floor he
+left until he arrives at the next one -- so while he was most of a storey up or
+down the stairs he still counted as standing where he started, and a Kop running
+over the head of the flight arrested him through the floor.
+
+**It is the same shape as the catch that fired at MAXIMUM separation** (0e-bis,
+the `+8` that wrapped the byte): a test that is right about one axis and silent
+about the other, where the silent one happens to be true nearly all the time. A
+floor is a whole storey, so "same floor" reads as "same place" until something
+is halfway between two of them.
+
+The test now also requires them to be at the same HEIGHT, within a character row.
+
+**THE ARITHMETIC IS UNSIGNED-SAFE, AND THAT IS THE ONLY SUBTLE PART.** Riding up
+is above the shared floor and riding down is below it -- a signed quantity, and
+CVBasic's variables are not signed. So both are collected as POSITIVE heights on
+opposite sides: Kelly's climb plus Harry's descent on one side, Harry's climb on
+the other, and the difference is taken between two numbers that cannot go
+negative. Two riders passing on the same flight then measure the SUM of their
+heights, which is exactly the distance between them.
+
+Checked against the true signed separation over every combination of ride state
+and height -- **zero mismatches** -- and the reported case stops catching once
+Harry is eight pixels down the flight.
+
 ### 0e-quaterdecies. The title card: kerned words, a marquee ring, and a chase
 
 The first marquee was three passes from right, and every wrong turn was a

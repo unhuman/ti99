@@ -122,6 +122,11 @@ one colour each, inset in a grey band the width of the screen -- as the 2600 has
 
 **The end of a round is one dark blue box** in the middle of the store: the reason you lost the Kop, with `GAME OVER` stacked above it when that was the last one. It no longer clears the screen, which used to make the end of the game look like the end of the program (`DESIGN.md` §0d-septies).
 
+**A catch needs you level with him, not just on his floor.** A crook riding an
+escalator keeps the floor he left until he arrives at the next one, so running
+over the head of a flight used to arrest him through the floor while he was most
+of a storey below (`DESIGN.md` 0e-quindecies).
+
 **Harry walks by real time**, not once per loop pass -- so a busy screen cannot starve him of steps and his escape lands in the same place wherever the player happens to be standing. It used to range from failing outright on the lift screen to escaping with eighteen seconds in hand on a light one (`DESIGN.md` §0f-ter).
 
 **Harry starts at the lift** and runs at 2.25 px a pass -- the only quarter-pixel speed that lets him reach the roof inside the round (93.7 s of 100) while still losing the race to Kelly by 9.4 s. One notch slower and he can never escape; one faster and a single obstacle hit makes the round unwinnable (`DESIGN.md` §0f-bis).
