@@ -642,11 +642,29 @@ setup_font:
 	' one slot that can never disappear.
 	SPRITE FLICKER OFF
 
-	' BEFORE ANY READ FROM IT, and never switched again. Bank 0 is the only
-	' bank a BANK SELECT may be issued from, and this is the last thing that
-	' runs before the DEFINEs below start pulling art out of bank 1.
+	' THE ONE AND ONLY BANK SWITCH THE PROGRAM EVER MAKES, and it happens
+	' here, before the first frame.
+	'
+	' There are two data banks now. Bank 1 holds everything read while the
+	' game is running -- sprite and store art, the templates, the lookup
+	' tables -- and it is selected at the end of this routine and never
+	' changed again, so every VARPTR/PEEK read in the program is reading a
+	' page that is permanently mapped. That is the property that makes
+	' banking safe here: a missed BANK SELECT returns bytes from the wrong
+	' page with no error at build or run time, so the safest number of
+	' switches during play is none.
+	'
+	' Bank 2 exists to hold data that is read ONCE, at setup, and never
+	' again. The font is exactly that: two DEFINEs copy it into VRAM and
+	' nothing reads font_bits or font_col for the rest of the run. So it can
+	' live on a page that is mapped for the length of those two statements.
+	'
+	' IF THIS EVER FAILS IT FAILS LOUDLY. Select the wrong bank here and the
+	' font is garbage on the title screen, immediately and unmistakably --
+	' which is the same diagnostic the font used to provide by staying out of
+	' the banks altogether, recovered for free.
 	#if TI994A
-	BANK SELECT 1
+	BANK SELECT 2
 	#endif
 
 	DEFINE CHAR 32,59,font_bits
@@ -666,6 +684,36 @@ setup_font:
 	' bytes spare, while the loop it replaced cost time in the one place the
 	' player is made to wait.
 	DEFINE COLOR 32,59,font_col
+
+	' AND THE TITLE'S DISPLAY FACE, WHICH IS HERE FOR THE SAME REASON THE
+	' FONT IS. Forty characters -- ten letters, four cells each -- drawn at
+	' 16x16 so the game's name reads as a name rather than as a line of body
+	' text. It is 640 bytes of pattern and colour and bank 1 had 370 free, so
+	' it could not go there; it did not need to, because it is read ONCE, by
+	' these two statements, and never again.
+	'
+	' Loading it inside the bank-2 window the font already opens means the
+	' program still makes exactly ONE bank switch in its life.
+	' IN TWO PIECES, AND THE SPLIT IS NOT TIDINESS. The character table has
+	' 0..31, 91..95 and 182..207 free -- sixty-three codes, but the longest
+	' run is thirty-two and the face needs forty. Loading it as one block at
+	' 182 ran it into the RADAR CANVAS at 208, and S and T came out as the
+	' scanner's green diagonals on a screen with no radar on it.
+	'
+	' The arguments come from titleface.FREE_RUNS; gentitle.py prints them
+	' into the top of titlefont.bas and checkchars.py verifies them.
+	DEFINE CHAR 182,26,tfont_pat0
+	DEFINE COLOR 182,26,tfont_col0
+	DEFINE CHAR 0,14,tfont_pat1
+	DEFINE COLOR 0,14,tfont_col1
+
+	' AND BACK TO BANK 1 FOR THE REST OF THE PROGRAM. Everything below this
+	' line -- setup_rest's DEFINEs, the template blits, every table read in
+	' the main loop -- comes out of bank 1, and nothing switches away from it
+	' again.
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 	' EVERYTHING THE TITLE DOES NOT NEED -- and it still runs BEFORE the
@@ -674,8 +722,8 @@ setup_font:
 	' re-enters below it: a game over redraws the title without rebuilding a
 	' store that is already defined.
 setup_rest:
-	DEFINE CHAR 96,85,store_pat
-	DEFINE COLOR 96,85,store_col
+	DEFINE CHAR 96,86,store_pat
+	DEFINE COLOR 96,86,store_col
 	GOSUB esc_deck_col
 	GOSUB scan_colour
 	GOSUB floor0_colour
@@ -907,26 +955,64 @@ scan_colour:
 	' does something between them: the rest of setup runs while this is on
 	' screen. They used to be one, which is why the title could not be shown
 	' until everything was ready.
+	' THE TITLE IS A DISPLAY LIST IN A ROM BANK, not twelve PRINT ATs.
+	'
+	' CVBasic embeds a string literal in the FIXED AREA, which is the only
+	' budget that cannot be grown -- linkticart writes exactly three loader
+	' pages and discards the rest, and they are the 32K expansion's RAM at
+	' >A000 rather than cart ROM. 190 characters of title text were sitting
+	' in the scarcest place in the program.
+	'
+	' AND THE REAL POINT IS WHAT IT COSTS NEXT TIME. With the text in a
+	' table, changing what the title says or where it sits is an edit to
+	' assets/gentitle.py and a rebuild. It costs bank bytes, of which there
+	' are thousands, instead of fixed-area bytes, of which there are tens.
+	'
+	' The table is `row, col, length, bytes...` with 255 to end. ROW AND
+	' COLUMN rather than a 16-bit screen offset, because reassembling one
+	' from two bytes needs a multiply, and on the TMS9900 MPY clobbers r0 --
+	' the next line that reads the product's variable gets the HIGH word
+	' (CLAUDE.md 3A). Five doublings have no such hazard and are smaller.
 title_draw:
 	GOSUB hide_all
 	CLS
-	PRINT AT 68,"KEYSTONE KAPERS"
-	PRINT AT 133,"SOUTHWICKS EMPORIUM"
-	PRINT AT 197,"HARRY HOOLIGAN IS LOOSE"
-
-	PRINT AT 294,"STICK    RUN"
-	PRINT AT 326,"FIRE     JUMP"
-	PRINT AT 358,"DOWN     DUCK"
-	PRINT AT 390,"UP       ENTER ELEVATOR"
-
-	PRINT AT 486,"JUMP CARTS AND LOW BALLS"
-	PRINT AT 518,"DUCK PLANES AND HIGH ONES"
-
-	PRINT AT 678,"2026 UNHUMAN AND CLAUDE"
-	' The NOTICE is redrawn on every title visit even though the MEASUREMENT
-	' happens once -- it is information about the machine, and the CLS above
-	' just wiped it.
+	#tta = VARPTR title_tbl(0)
+	GOSUB run_list
 	RETURN
+
+	' THE WALKER, CALLED WITH #tta ALREADY SET. The title screen and the
+	' end-of-round message boxes are the same shape -- runs of characters at
+	' fixed positions -- so they are the same data format and the same dozen
+	' statements. A caller sets the address and calls; nothing here knows
+	' which screen it is drawing.
+run_list:
+tt_run:
+	ttr = PEEK(#tta)
+	IF ttr = 255 THEN RETURN
+	#tta = #tta + 1
+	ttc = PEEK(#tta)
+	#tta = #tta + 1
+	ttn = PEEK(#tta)
+	#tta = #tta + 1
+	' row * 32 + col, by doubling. Then the name table's own base -- added as
+	' its OWN step, never folded into a constant expression, because a folded
+	' constant over 255 truncates (CLAUDE.md 3A).
+	#ttd = ttr
+	#ttd = #ttd + #ttd
+	#ttd = #ttd + #ttd
+	#ttd = #ttd + #ttd
+	#ttd = #ttd + #ttd
+	#ttd = #ttd + #ttd
+	#ttd = #ttd + ttc
+	#ttd = #ttd + 6144
+tt_ch:
+	ttv = PEEK(#tta)
+	VPOKE #ttd,ttv
+	#tta = #tta + 1
+	#ttd = #ttd + 1
+	ttn = ttn - 1
+	IF ttn > 0 THEN GOTO tt_ch
+	GOTO tt_run
 
 	' NO ALPHA LOCK CALIBRATION, AND THERE USED TO BE ONE.
 	'
@@ -975,7 +1061,7 @@ title_input:
 	' titles when they are already listening. Keystone cannot -- the whole
 	' point of the early draw is that it is early -- so the PROMPT waits
 	' instead, and its arrival is the cue that the screen is awake.
-	PRINT AT 614,"FIRE TO START"
+	PRINT AT 649,"FIRE TO START"
 	tkl = 15
 title_wait:
 	WAIT
@@ -2781,54 +2867,64 @@ pace_step:
 	' Get to this floor's up-point, take it, repeat; on the roof, run east
 	' for the edge. He never goes down and he never reconsiders.
 move_harry:
-	IF hst = 1 THEN
-		' HE RIDES IT TOO, and on the steps rather than beside them. He used
-		' to hold still for the whole flight and then appear at the top,
-		' which read as him teleporting up a floor -- the same fault Kelly
-		' had. Same fixed 2-across-per-1-up PER PASS as the player, clocked
-		' by the animation for the same reason (see move_kelly).
+	' ONE RIDE, READ FROM EITHER END.
+	'
+	' HE RIDES ON THE STEPS rather than beside them -- he used to hold still
+	' for the whole flight and then appear at the top, which read as him
+	' teleporting up a floor. Same fixed 2-across-per-1-up PER PASS as the
+	' player, clocked by the animation for the same reason (see move_kelly):
+	' a rider and the cyclic animation he stands on must share one clock, and
+	' that clock cannot be the frame delta.
+	'
+	' GOING DOWN IS SOMETHING KELLY CANNOT DO. An escalator only ever carries
+	' you up, so the flight whose TOP lands on this floor is a one-way exit
+	' belonging to the crook alone: he steps on at the head and rides it the
+	' wrong way.
+	'
+	' AND THE TWO WERE THE SAME CODE TWICE. Identical statements over
+	' identical variables, differing only in the sign of the horizontal step
+	' and the direction of the level change -- which is what "the same
+	' staircase from the other end" means arithmetically. `romclones.py` could
+	' not see it, because it compares text and these two read differently;
+	' that is why it now normalises identifiers.
+	IF hst > 0 THEN
 		IF hsy < hson THEN hsy = hsy + 1
 		hsy = hsy + 1
-		IF hesd = 0 THEN hx = hx - 2 ELSE hx = hx + 2
+		' WHICH WAY ALONG THE FLIGHT. Riding UP he travels towards the
+		' head, riding DOWN towards the foot, so the same `hesd` means
+		' opposite directions in the two cases -- one negation is the
+		' entire difference between the two rides.
+		hew = hesd
+		IF hst = 2 THEN hew = 1 - hew
+		IF hew = 0 THEN hx = hx - 2 ELSE hx = hx + 2
 		IF hsy >= ESCRISE THEN
-			hlv = hlv + 1
+			IF hst = 1 THEN
+				hlv = hlv + 1
+				IF hesd = 0 THEN hx = ESCHX ELSE hx = ESCHXE
+			ELSE
+				hlv = hlv - 1
+				hsy = 0
+				IF hesd = 0 THEN hx = ESCFX ELSE hx = ESCFXE
+				' AND HE KEEPS GOING. A flight's foot IS its
+				' boarding point, so landing there put him back
+				' on the step he had just ridden down -- next
+				' pass he stepped on and climbed straight into
+				' the Kop who had chased him off it. The escape
+				' was a loop with a free catch at the end.
+				'
+				' So he runs for the far end and will not board
+				' anything while he does. Away from the flight
+				' is also away from the Kop, who is still up on
+				' the floor above and has to come down after
+				' him. It is a FLAG, not a count -- see the two
+				' things that clear it, both of which the player
+				' can see happen.
+				hrun = 1
+				hrund = 1
+				IF hesd = 1 THEN hrund = 0
+			END IF
 			hst = 0
 			GOSUB esc_run
-			IF hesd = 0 THEN hx = ESCHX ELSE hx = ESCHXE
-		END IF
-		RETURN
-	END IF
-
-	' GOING DOWN, WHICH KELLY CANNOT DO. An escalator only ever carries you
-	' up, so the flight whose TOP lands on this floor is a one-way exit that
-	' belongs to the crook alone -- he steps on at the head and rides it the
-	' wrong way. Same fixed step per pass as the climb, and the same reason:
-	' the steps are the clock (0f).
-	IF hst = 2 THEN
-		IF hsy < hson THEN hsy = hsy + 1
-		hsy = hsy + 1
-		IF hesd = 0 THEN hx = hx + 2 ELSE hx = hx - 2
-		IF hsy >= ESCRISE THEN
-			hlv = hlv - 1
-			hst = 0
-			GOSUB esc_run
-			hsy = 0
-			IF hesd = 0 THEN hx = ESCFX ELSE hx = ESCFXE
-			' AND HE KEEPS GOING. A flight's foot IS its boarding
-			' point, so landing there put him back on the step he had
-			' just ridden down -- next pass he stepped on and climbed
-			' straight into the Kop who had chased him off it. The
-			' escape was a loop with a free catch at the end.
-			'
-			' So he runs for the far end and will not board anything
-			' while he does. Away from the flight is also away from
-			' the Kop, who is still up on the floor above and has to
-			' come down after him. It is a FLAG, not a count -- see
-			' the two things that clear it, both of which the player
-			' can see happen.
-			hrun = 1
-			hrund = 1
-			IF hesd = 1 THEN hrund = 0
 		END IF
 		RETURN
 	END IF
@@ -4346,9 +4442,8 @@ do_catch:
 	' Thirteen wide at column 10, blank dark blue above and below: every font
 	' character is black on HUD_BG, so a row of spaces is a solid bar and the
 	' frame costs two strings and no new characters (see lose_kop).
-	PRINT AT 330,"             "
-	PRINT AT 362,"  GOT HIM!   "
-	PRINT AT 394,"             "
+	#tta = VARPTR msg_gothim(0)
+	GOSUB run_list
 	GOSUB snd_off			' nothing rings on through the count
 	' THE CAST STAYS ON SCREEN FOR THE COUNT. Hiding everything first threw
 	' away the picture the player had just earned -- Kelly stood over Harry
@@ -4487,11 +4582,10 @@ lose_kop:
 	' rather than replacing it. Printing the reason at a different row for each
 	' case would need `PRINT AT` with a variable, and every other PRINT in this
 	' program uses a constant.
-	PRINT AT 330,"             "
-	IF rsn = 0 THEN PRINT AT 362," HE GOT AWAY "
-	IF rsn = 1 THEN PRINT AT 362," THE BIPLANE "
-	IF rsn = 2 THEN PRINT AT 362,"  TIME UP!   "
-	PRINT AT 394,"             "
+	#tta = VARPTR msg_timeup(0)
+	IF rsn = 0 THEN #tta = VARPTR msg_away(0)
+	IF rsn = 1 THEN #tta = VARPTR msg_plane(0)
+	GOSUB run_list
 	' The reason is read during THIS beat, before anything else happens. It
 	' used to be printed ahead of the pause and the pause is what makes it
 	' readable, so the box has to be drawn first and the Kop taken away after.
@@ -4499,8 +4593,8 @@ lose_kop:
 	IF kops > 0 THEN kops = kops - 1
 	GOSUB hud_kops
 	IF kops = 0 THEN
-		PRINT AT 266,"             "
-		PRINT AT 298,"  GAME OVER  "
+		#tta = VARPTR msg_over(0)
+		GOSUB run_list
 		GOSUB pause_beat
 		GOSUB pause_beat
 		' 8-3-8 IS FORGOTTEN WHEN THE GAME ENDS. krk0 and kops0 are
@@ -4757,23 +4851,34 @@ sfx_tick:
 	' as "text survives, art does not" rather than a uniformly blank screen,
 	' which is a genuinely useful thing to have when a bank goes wrong.
 	'
-	' It was given up for 472 bytes, because the fixed area had 342 left and
-	' that diagnostic is worth less than the ability to keep building. Two
-	' things make it a fair trade rather than a straight loss:
+	' THE FONT HAS A BANK OF ITS OWN, and the reason is not its size.
 	'
-	'   * `BANK SELECT 1` already runs BEFORE `DEFINE CHAR 32,59,font_bits`
-	'     (see setup), so nothing about the read order had to change. If that
-	'     ever stops being true the font goes blank at boot, immediately and
-	'     unmistakably -- a loud failure, not a subtle one.
-	'   * The alternative on the table was banking the 29 PRINT AT literals,
-	'     which recovers LESS (about 360 bytes net after the reader routine)
-	'     and would blind assets/checklayout.py, whose whole method is parsing
-	'     `PRINT AT n,"literal"` to catch a string running past column 31 or
-	'     a HUD poke landing inside a label. Trading a diagnostic for bytes is
-	'     one thing; trading a build gate for fewer bytes is another.
+	' Bank 1 was FULL -- six spare bytes of 8,192 -- which shut the door on
+	' moving anything else out of the fixed area, and the fixed area is the
+	' only budget that cannot be grown (linkticart writes exactly three
+	' loader pages and discards the rest; they are the 32K expansion's RAM at
+	' >A000, not cart ROM). A second bank costs a bigger cart -- five pages
+	' round up to eight, so 32 KB becomes 64 KB -- and buys back the ability
+	' to keep evacuating data out of code.
+	'
+	' THE FONT IS THE RIGHT TENANT because it is read ONCE. Two DEFINEs copy
+	' it into VRAM at setup and nothing looks at it again, so it is the only
+	' block here that can sit on a page which is not permanently mapped. See
+	' setup_font: bank 2 is selected for those two statements and bank 1 for
+	' the whole of the rest of the program.
+	'
+	' EVERYTHING ELSE STAYS IN BANK 1, because everything else is read during
+	' play -- art on a screen crossing, templates on a band blit, the lookup
+	' tables every pass. One permanently-mapped bank for all of it means
+	' there is no switch to miss.
+	#if TI994A
+	BANK 2
+	#endif
+	INCLUDE "font.bas"
+	INCLUDE "titlefont.bas"
 	#if TI994A
 	BANK 1
 	#endif
-	INCLUDE "font.bas"
+	INCLUDE "title.bas"
 	INCLUDE "art.bas"
 	INCLUDE "store.bas"

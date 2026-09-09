@@ -75,7 +75,12 @@ OVERWRITE_OK = {
 
 SCREEN = {
     "title_draw": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
-    "title_input": "TITLE",   # prints the prompt, once input is live
+    "title_input": "TITLE",
+    # the display-list walker: tt_run reads the table, tt_ch pokes the
+    # characters. Its VPOKE address is built in steps, so the poke itself is
+    # reported as not statically checked -- the TEXT is checked above, from
+    # gentitle's table, which is where it now lives.
+    "tt_run": "TITLE", "tt_ch": "TITLE",   # prints the prompt, once input is live
 
     "setup838": "SETUP",
     "su_tens": "SETUP", "su_ones": "SETUP",
@@ -143,6 +148,16 @@ def screen_of(label):
     return SCREEN.get(label, "?" + label)
 
 
+def _title_bounds(bad, where, text, row, col):
+    """Same two rules the PRINT AT path applies, for table-driven text."""
+    if col + len(text) > 32:
+        bad.append("gentitle %s %r is row %d col %d, %d chars -- runs %d past "
+                   "column 31 and would WRAP onto the next row"
+                   % (where, text, row, col, len(text), col + len(text) - 32))
+    if row > 23:
+        bad.append("gentitle %s %r is row %d, off screen" % (where, text, row))
+
+
 def main():
     lines = open(SRC, encoding="utf-8").read().split("\n")
 
@@ -198,6 +213,42 @@ def main():
             if row > 23:
                 bad.append("line %d (%s): PRINT AT %d is row %d, off screen"
                            % (n, label, off, row))
+
+    # THE TITLE'S TEXT IS A TABLE NOW, AND IT IS STILL CHECKED.
+    #
+    # title_draw used to be twelve `PRINT AT n,"literal"` statements, which is
+    # exactly what this gate reads. Moving them into a ROM bank (gentitle.py)
+    # would have made the whole title screen INVISIBLE here -- and this gate's
+    # entire method is parsing those literals, so that is trading a build gate
+    # for bytes.
+    #
+    # Importing the table instead keeps the coverage AND keeps one copy of the
+    # text. It also buys a check that did not exist before: the runs are folded
+    # in as writes by `title_draw`, so they are compared against what
+    # `title_input` prints on the same screen -- the FIRE TO START prompt --
+    # which two separate routines writing one screen is precisely the case
+    # section 13 exists for.
+    try:
+        import gentitle
+    except ImportError:
+        bad.append("gentitle.py will not import -- the title screen's text "
+                   "cannot be checked, and it is no longer in the source")
+    else:
+        # THE FRAME COUNTS TOO. gentitle.TITLE is only the text; the marquee
+        # bulbs are frame_runs(), and a title line growing into the frame's
+        # right-hand column is exactly the collision this gate is for.
+        for row, col, text in gentitle.frame_runs() + gentitle.TITLE:
+            prints.append((0, "title_draw", row, col, text))
+            _title_bounds(bad, "TITLE", text, row, col)
+        # AND THE MESSAGE BOXES, attributed to the routines that draw them.
+        # They land on the GAME screen, over the store, so they are compared
+        # against the HUD and against each other -- msg_over deliberately
+        # stacks two rows ABOVE a reason box and must not land on it.
+        for name in sorted(gentitle.MESSAGES):
+            label = "do_catch" if name == "msg_gothim" else "lose_kop"
+            for row, col, text in gentitle.runs_of(name):
+                prints.append((0, label, row, col, text))
+                _title_bounds(bad, name, text, row, col)
 
     touched = {l for _, l, _, _, _ in prints + pokes}
     touched |= {l for _, l, _ in unchecked}

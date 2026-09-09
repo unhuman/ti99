@@ -2220,6 +2220,27 @@ CHARS_BASE = [
 ........
 """, LYELL, [DYELL, DYELL, DYELL, DYELL, DYELL, GRAY, GRAY, GRAY]),
 
+    # A MARQUEE BULB, for the title screen's frame -- one lamp per cell, with a
+    # pixel of dark blue all round it so a run of them reads as separate bulbs
+    # rather than a stripe. Six across and six down inside an eight-pixel cell,
+    # corners clipped so it reads round at this size.
+    #
+    # WHITE ON THE HUD'S OWN DARK BLUE, which is what the title screen is
+    # cleared to, so the frame sits on the field with no panel behind it and no
+    # second background colour anywhere on the screen. The TMS9918 gives one
+    # foreground and one background per character ROW, and this uses one pair
+    # for the whole cell, so there is nothing to clash with.
+    ("BULB", 0, """
+........
+..####..
+.######.
+.######.
+.######.
+.######.
+..####..
+........
+""", WHITE, HUD_BG),
+
 ]
 
 # The scanner canvas: 48 characters (16 cols x 3 rows) that start blank and are

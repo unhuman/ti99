@@ -3,7 +3,7 @@
 A checker that has never been shown a known-bad input is an untested claim.
 This repo has already shipped one that passed the very bug it was written for.
 """
-import io, os, shutil, subprocess, sys
+import io, os, re, shutil, subprocess, sys
 
 BASE = r'C:\Users\Howie\github.git\unhuman\ti99\AI-Games\games\KeystoneKapers'
 SRC = os.path.join(BASE, 'src', 'KEYSTONE.bas')
@@ -29,8 +29,23 @@ cases.append(("PRINT AT overflow", SRC, orig,
               "runs"))
 
 # 2. a HUD VPOKE landing inside a printed label
+#
+# THE ANCHOR IS DERIVED, NOT TYPED. It used to be the literal `#psa = 6150`,
+# and 6150 stopped existing when the score field moved -- so the mutation
+# silently applied to nothing, the run came back CLEAN, and the case reported
+# SETUP ERROR instead of testing anything. A self-test that rots into a no-op
+# is worse than none, because the suite still prints four lines and three of
+# them pass.
+#
+# 6146 is row 0 column 2, which is inside the word SCORE that hud_all prints
+# there. Whatever address hud_score currently uses, moving it to 6146 is the
+# defect this case is about.
+_psa = re.search(r'#psa = (\d+)', orig)
+if not _psa:
+    raise SystemExit("checklayout_test: no `#psa = N` in the source at all -- "
+                     "the HUD digit routine was renamed or restructured")
 cases.append(("VPOKE inside a label", SRC, orig,
-              orig.replace('#psa = 6150', '#psa = 6146'),
+              orig.replace(_psa.group(0), '#psa = 6146', 1),
               "INSIDE the string"))
 
 # 3. a drawing routine missing from the SCREEN map

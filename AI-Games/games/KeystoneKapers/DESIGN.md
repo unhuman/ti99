@@ -813,6 +813,223 @@ than once per bounce. The floor clear is a per-FLOOR mercy after the penalty has
 already been paid; the two solve different problems and neither replaces the
 other.
 
+### 0e-terdecies. The title gets a marquee, and it costs no code at all
+
+After the Activision title card: a ring of lamps round the screen. The reference
+is a white panel in a black surround; ours keeps the dark blue field it already
+had, so the bulbs sit straight on it and the screen still has exactly one
+background colour -- nothing to clash with under the TMS9918's one-pair-per-row
+rule.
+
+**It needed no new mechanism, which is the point of having done 0e-duodecies
+first.** A bulb is one character and the frame is runs of characters at fixed
+positions -- which is exactly what the display list already was. The whole
+marquee is bank data drawn by the same `run_list` walker as the text, so the
+fixed area is **unchanged at 682 free**. Bank 1 paid the 130 bytes.
+
+That is what "the title is data" was for: this would previously have been a
+negotiation with a 30-byte budget.
+
+#### THE CLUSTERS ARE PLACED, NOT REPEATED
+
+Three lamps, a gap, three lamps. Every-other-cell was tried first and reads as a
+dotted rule rather than a marquee -- it is the grouping that says *sign*.
+
+Getting the grouping symmetric took three attempts, and the failures are the
+interesting part:
+
+* **Repeating `###.` across the width** leaves whatever the width happens to
+  give at the right-hand end -- a two-bulb stub, which reads as a mistake
+  because it is asymmetric.
+* **Mirroring a repeated half** fixes the ends and puts two clusters back to
+  back at the seam: a **seven-bulb run through the middle of the top row**.
+  Symmetric, and plainly wrong.
+* **Handing the leftover cells out one gap at a time**, nearest the centre
+  first, is not the same as handing them out in symmetric PAIRS. It produced
+  gaps of `[2,3,3,2,2]` -- a sign that leans right.
+
+So a fixed number of clusters is spread across the width and the remainder goes
+into the gaps in symmetric pairs from the middle outwards. `bulb_row` asserts
+the result is a palindrome rather than drawing a lopsided sign, and refuses a
+width that cannot hold the clusters at all. Six clusters, not seven: seven in
+thirty cells cannot be symmetric -- the middle one would have to start at 13.5.
+
+**Dense top and bottom, sparse down the sides**, as the reference has it. That
+is also much cheaper: a horizontal run is one entry of 30 bytes, where a
+vertical one costs a three-byte entry per bulb.
+
+#### AND A PREVIEWER, BECAUSE THE EMULATOR CANNOT SHOW THIS
+
+Classic99 scales its window to fit and **clips the right-hand columns at every
+size tried**, so the one thing a full-width frame needs checking -- that it
+closes on the right, and that the pattern is symmetric -- is precisely what a
+screenshot cannot show. `assets/prevtitle.py` walks `title.bas` exactly as
+`run_list` does and paints it from the shipped `font.bas` and `art.bas` bytes,
+so the layout can be checked at any zoom in a second.
+
+The text moved to centre inside the frame, and `DUCK PLANES AND HIGH ONES` had
+to move two columns left: at its old column its last character landed in the
+frame's right-hand column. **The generator's own double-write check caught
+that**, which is why the text moved rather than the frame. `checklayout.py`
+imports `frame_runs()` as well as `TITLE`, so the frame is compared against the
+text and against the `FIRE TO START` prompt that `title_input` still prints.
+
+### 0e-duodecies. The screen text is data, and the code got 652 bytes back
+
+With a second bank open (0e-undecies), the data-shaped things still living in
+code could leave. The fixed area went from **30 free bytes to 682**.
+
+**The title screen and the message boxes are display lists now.** Twelve
+`PRINT AT n,"..."` in `title_draw` and seven more across `do_catch` and
+`lose_kop` -- 281 characters -- became tables in a ROM bank, walked by one
+routine, `run_list`. A caller sets `#tta` to a table's address and calls; nothing
+in the walker knows which screen it is drawing.
+
+The format is `row, col, length, bytes...` with 255 to end. **Row and column
+rather than a 16-bit screen offset**, because reassembling one from two bytes
+needs a multiply, and on the TMS9900 `MPY` clobbers r0 -- the next line that
+reads the product returns the HIGH word. Five doublings have no such hazard and
+are smaller.
+
+**The real gain is not the bytes, it is what the NEXT change costs.** A better
+title screen used to mean finding room in the scarcest budget in the program.
+Now it is an edit to `assets/gentitle.py` and a rebuild, paid for in bank bytes.
+
+**Each message box is a whole SCENE** -- blank bar, text, blank bar -- so a call
+site is one address and one `GOSUB` instead of three `PRINT AT`s. The blank rows
+repeat in every scene, which is deliberate: they cost bank bytes to save
+fixed-area bytes, which is the trade the right way round.
+
+#### THE GATE HAD TO COME WITH IT
+
+`checklayout.py`'s entire method is parsing `PRINT AT n,"literal"` to catch a
+string running past column 31 or a write landing inside another label. Moving
+the text into a table would have made the title and both message boxes
+**invisible** to it -- trading a build gate for bytes, which is a worse deal than
+trading a diagnostic for bytes.
+
+So it imports `gentitle.TITLE` and `gentitle.MESSAGES` instead, folds them in as
+writes by `title_draw`, `do_catch` and `lose_kop`, and checks them exactly as
+before. Coverage went UP: 25 strings to 32, and the title's runs are now
+compared against the `FIRE TO START` prompt that `title_input` still prints on
+the same screen -- two routines writing one screen, which is the case section 13
+exists for. `gentitle.py` also refuses to generate a run that overflows a row,
+writes a cell twice, or uses a character outside the loaded font.
+
+**And a rotted self-test was found doing it.** `checklayout_test.py` mutates
+`#psa = 6150` to prove the VPOKE-inside-a-label case fails. That address stopped
+existing when the score field moved, so the mutation applied to nothing, the run
+came back clean, and the case reported SETUP ERROR while the other three passed.
+A self-test that rots into a no-op is worse than none. The anchor is derived from
+the source now.
+
+#### THE ROWS WERE CHECKED, NOT ASSUMED
+
+The message boxes are at rows 10-12 and `GAME OVER` two rows above at 8-9 --
+read back out of the original `PRINT AT` offsets (330, 362, 394; 266, 298) and
+verified by printing the reconstructed offsets before building. The first draft
+had them a row low and two rows apart, and nothing in the build would have said
+so: a message box in the wrong place is not an error, it is a layout choice.
+
+#### HARRY'S TWO RIDES WERE THE SAME CODE TWICE
+
+Riding up and riding down were identical statements over identical variables,
+differing only in the sign of the horizontal step and the direction of the level
+change -- which is what "the same staircase from the other end" means
+arithmetically. One negation is now the whole difference. **62 bytes**, and
+`checkride.py` and `checkchase.py` still pass.
+
+Kelly's third copy is deliberately NOT folded in. It uses a different variable
+set, so a three-way fold needs seven values staged at three call sites, which is
+the case where folding LOSES.
+
+#### AND THE DETECTOR THAT COULD NOT SEE ANY OF IT
+
+`romclones.py` compared text, so the three escalator rides -- same shape, zero
+matching characters -- were invisible to it for months. `-a` alpha-normalises:
+lowercase identifiers (variables here; CONSTs and keywords are uppercase, so
+case separates them for free) become positional placeholders. `GOSUB`/`GOTO`
+targets and string literals are left alone, or every call would match every
+other call and the tool would manufacture clones out of unrelated code.
+
+Two things make its output usable rather than merely bigger:
+
+* **Runs containing a label are dropped.** `END IF / END IF / NEXT x / RETURN /
+  some_label:` has the same shape wherever one routine ends and the next
+  begins, so the tool's top find was the seams between routines. Nothing can be
+  factored out of a run that another routine jumps into the middle of.
+* **The variable mapping is printed per copy, because the byte ranking is
+  actively misleading under `-a`.** "Five distinct variables set to zero" has
+  one shape, so a reset block in one routine matches an unrelated one in
+  another: the tool ranked `tout/dead/caught/escapd/knock`,
+  `inl/inr/inu/ind/inb`, `sot/sht/spt/swt/spz` and `swf/sfj/sfh/sfp/sfe`
+  together as a 300-byte find. They are four different jobs that happen to
+  rhyme. Identical name lists mean a parameterless `GOSUB` and a real saving;
+  differing lists mean staging, and past about two the fold loses.
+
+### 0e-undecies. Two data banks, and a 64 KB cart
+
+The fixed area reached **30 free bytes of 24,336** and bank 1 reached **six of
+8,192**. Both doors shut at once, which is worse than it sounds, because the two
+budgets are connected: the way you make room for code is to move data-shaped
+things OUT of code, and that needs somewhere to put them.
+
+**A BIGGER CART DOES NOT ADD CODE SPACE, and it is worth knowing exactly why.**
+`linkticart.py` writes precisely three loader pages of 8,112 bytes and then
+`# any excess is discarded`; bank files are appended AFTER them. Those three
+pages are not really cart ROM -- the startup code copies them into the 32K
+expansion's RAM at `>A000-­>FFFF` and jumps there. The 24,336-byte cap is the
+size of that RAM window, and a 64 KB or 512 KB cart leaves it exactly where it
+is. What a bigger cart adds is BANK pages, which hold data.
+
+So the cart went to **64 KB** (five pages round up to eight) for a second data
+bank -- not to hold code, but to reopen the route by which code gets smaller.
+
+**THE FONT IS THE TENANT, AND ITS SIZE IS NOT THE REASON.** The rule that makes
+banking safe here is that there is exactly ONE bank, selected once before the
+first frame and never switched: a missed `BANK SELECT` returns bytes from the
+wrong page with no error at build or run time, so the safest number of switches
+during play is none. Two banks threaten that rule -- unless the second one holds
+something read ONCE.
+
+The font is exactly that. Two `DEFINE`s copy it into VRAM at setup and nothing
+reads `font_bits` or `font_col` again, so it can live on a page that is mapped
+for the length of two statements. `setup_font` selects bank 2, loads it, and
+selects bank 1 before returning; nothing switches again for the life of the
+program, and every existing `VARPTR`/`PEEK` read still sees a permanently
+mapped page.
+
+It also gets back a diagnostic that was given up earlier. The font used to be
+kept OUT of the banks so a bank mistake would show as *text survives, art does
+not* rather than a blank screen. Now the polarity is reversed and just as loud:
+select the wrong bank at setup and the title comes up in garbage, immediately.
+
+**Result:** bank 1 has **948 bytes** free again (the font s), bank 2 has **7,204**, and the fixed area is unchanged at 26 -- the extra `BANK SELECT`
+costs four bytes.
+
+#### AND THE BANKS FINALLY HAVE A GUARD
+
+`build-ti.sh` checked the fixed area and nothing else, so the banks -- where an
+overflow is **completely silent** -- had no check at all. Nothing in
+`cvbasic` -> `xas99` -> `linkticart` says a word; the excess is dropped, and
+what goes missing is whatever sits nearest the end of the bank, normally a
+`DATA` block. Bank 1 got to six spare bytes and had lost nothing only by luck.
+
+`assets/bankfill.py` extracts the **last DATA block of the last INCLUDE** in
+each bank -- the block an overflow eats first -- and searches for it, byte for
+byte, in that bank's packed image. It also prints free space, which is the early
+warning. The bank-to-file mapping is derived from the source's own
+`BANK`/`INCLUDE` order rather than hardcoded, so adding a third bank cannot
+leave it silently unchecked.
+
+**`assets/bankfill_test.py` proves it rejects a truncated bank**, because a
+guard that has only ever passed is not a guard. It is a fixture test rather than
+an end-to-end one for a reason worth recording: the obvious test -- append a
+block big enough to overflow a real bank, then build -- **does not work here**,
+because `build-ti.sh`'s first step REGENERATES `art.bas`, `store.bas` and
+`font.bas`. The fixture is erased by the build before the assembler sees it.
+Tried; the build came back byte-identical with the probe silently gone.
+
 ### 0e-decies. Harry stands on the escalator, in a slot he gives back
 
 He rode flights running on the spot. None of his four drawings can stand in --

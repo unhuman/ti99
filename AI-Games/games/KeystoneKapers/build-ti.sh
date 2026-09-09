@@ -103,6 +103,7 @@ echo "[0/3] generate   art.bas + store.bas"
 rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/genart.py > /dev/null   || die "genart.py failed"
 "$TRUNCPY" ../assets/genstore.py > /dev/null || die "genstore.py failed"
+"$TRUNCPY" ../assets/gentitle.py > /dev/null || die "gentitle.py failed"
 
 "$TRUNCPY" ../../../tools/bigvar.py *.bas \
     || die "8-bit truncation -- see TRUNCATION.md 1a"
@@ -225,5 +226,17 @@ cygpy "$CVBASIC_DIR/linkticart.py" "$FIRST" "${NAME}_8.bin" "$CARTNAME" \
 # see assets/banksize.py, which handles both shapes.
 echo
 "$TRUNCPY" ../assets/banksize.py "$FIRST" "$CAP"     || die "the fixed area overflowed -- see the line above"
+
+# AND THE DATA BANKS, WHICH HAD NO GUARD AT ALL. banksize.py above covers the
+# FIXED area only. A bank overflow is completely silent -- xas99 and linkticart
+# say nothing, the excess is dropped, and what goes missing is whatever sits
+# nearest the end of the bank, normally a DATA block rather than code. Bank 1
+# reached SIX spare bytes of 8,192 before anyone noticed, and nothing had been
+# lost only by luck. This checks that each bank's LAST block -- the one an
+# overflow eats first -- is really in the packed image, and reports free space
+# as an early warning. assets/bankfill_test.py proves it rejects a truncated
+# bank rather than only describing a healthy one.
+"$TRUNCPY" ../assets/bankfill.py \
+    || die "a data bank overflowed and lost its last block -- run assets/bankfill.py"
 echo "Build OK ->  $(pwd)/${NAME}_8.bin"
 echo "Load it in Classic99 or js99er."

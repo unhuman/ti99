@@ -80,6 +80,30 @@ a grey cart on a grey backdrop could not.
 
 **Harry stands still on an escalator** instead of running on the spot. The sprite pattern table was full -- 63 of its 64 slots -- so the standing pose has no slot of its own: it is copied over four he is not using while he rides, and the running art is put back when he steps off (`DESIGN.md` 0e-decies).
 
+**The title screen is a marquee** -- a ring of lamps round the dark blue field,
+after the Activision title card, in clusters of three top and bottom. The whole
+frame is bank data drawn by the same walker as the text, so it cost the code
+budget nothing. `assets/prevtitle.py` renders it offline from the shipped bytes,
+because the emulator clips the right-hand columns at every window size
+(`DESIGN.md` 0e-terdecies).
+
+**The title screen and the message boxes are data, not code.** They live in a
+ROM bank as display lists and are drawn by one shared routine, so changing what
+the title says -- or adding to it -- costs bank bytes, of which there are
+thousands, instead of code bytes, of which there were thirty. Edit
+`assets/gentitle.py` and rebuild. That change plus the second bank took the
+fixed area from **30 free bytes to 682** (`DESIGN.md` 0e-duodecies).
+
+**The TI build is a 64 KB cartridge with two data banks.** Bank 1 holds
+everything read while the game runs -- art, store templates, lookup tables --
+and is selected once before the first frame and never switched, which is what
+makes banking safe here. Bank 2 holds only the font, which two `DEFINE`s copy
+into VRAM at setup and nothing reads again; it is selected for those two
+statements and left. Get that wrong and the title comes up in garbage, which is
+a deliberately loud failure. A bigger cart does **not** buy code space -- the
+24,336-byte cap is the 32K expansion's RAM window, not cart ROM -- it buys room
+to move data out of code (`DESIGN.md` 0e-undecies).
+
 **Support beams run floor to floor.** They are part of the building, not scenery on top of
 it -- see DESIGN.md 0k2 for why they have to be stamped in after the bands are drawn.
 
