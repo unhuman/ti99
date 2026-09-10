@@ -22,6 +22,13 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "..", "src")
 
+# How far apart two bounce apexes must be before a player can see that one ball
+# bounces higher than another. Kelly is 24 px tall, so 4 px is a sixth of her
+# height -- not derived, a judgement, and written here rather than buried so it
+# can be argued with. What is NOT a judgement is that 1 px (what shipped) is
+# below any plausible value.
+MINAPEX = 4
+
 
 def const(name):
     txt = open(os.path.join(SRC, "KEYSTONE.bas"), encoding="utf-8").read()
@@ -107,6 +114,33 @@ def main():
         d = sum(1 for bb in arc if not hits(0, duck, bb))
         print("  arc %d: apex %2d px -- jumpable on %2d/32 frames, "
               "duckable on %2d/32" % (i, peak, j, d))
+
+    # AND THE ARCS MUST BE TELLABLE APART, which is a property of the SET and
+    # so is invisible to everything above -- every check to this point asks
+    # about one arc at a time, and all of them passed while the "tall" ball of
+    # Krook 5 was exactly ONE PIXEL taller than the short ball of Krook 1.
+    # Reported from play as "I do not see balls bouncing higher", and correct.
+    #
+    # The apexes had been tuned entirely by the jump/duck frame split, which is
+    # a real thing to tune and the wrong thing to tune alone: the player reads
+    # HEIGHT. Rank on the closest pair anywhere in the set, not on consecutive
+    # steps -- the same rule checkanim.py enforces for animation beats.
+    peaks = [max(a) for a in arcs()]
+    for x in range(len(peaks)):
+        for y in range(x + 1, len(peaks)):
+            if abs(peaks[x] - peaks[y]) < MINAPEX:
+                bad.append("arcs %d and %d peak at %d and %d px -- %d apart, "
+                           "under the %d px a player can actually see. A ball "
+                           "that bounces 'higher' by a pixel does not, and no "
+                           "other check here can tell: they all ask about one "
+                           "arc at a time."
+                           % (x, y, peaks[x], peaks[y],
+                              abs(peaks[x] - peaks[y]), MINAPEX))
+    print("  apex spread %s -- closest pair %d px apart"
+          % ("/".join(str(p) for p in peaks),
+             min(abs(peaks[x] - peaks[y])
+                 for x in range(len(peaks))
+                 for y in range(x + 1, len(peaks)))))
 
     if bad:
         for b in sorted(set(bad)):

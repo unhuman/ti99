@@ -3971,18 +3971,36 @@ Which forces three numbers to be chosen together, not tuned independently:
   a box of 6 px or more collapses the seam to nothing and a box of 8 px opens a **dead band at
   `Bb` = 7** where neither answer works. The hitbox inset *is* the seam.
 
-**Difficulty raises the apex, never the answer.** The three arcs are **9 / 10 / 12** px, and
+**Difficulty raises the apex, never the answer.** The three arcs are **9 / 14 / 19** px, and
 which of them is in play is the whole of the ball's difficulty:
 
 | Krook | apex | jumpable | duckable |
 |---|---|---|---|
 | 1–4 | 9 px | 25 of 32 frames | 7 |
-| 5–9 | 10 px | 19 | 13 |
-| 10+ | 12 px | 15 | 17 |
+| 5–9 | 14 px | 11 | 21 |
+| 10+ | 19 px | 9 | 23 |
 
 The top of every arc is a duck, including the first, and **the taller the ball bounces the more
 of its cycle that is**. Ducking is in the vocabulary from the opening screen; what the later
 rounds add is how much of the bounce demands it.
+
+**AND THEY WERE 9 / 10 / 12, WHICH IS THREE PIXELS ACROSS THE WHOLE GAME.** The apexes had been
+chosen entirely by the frame split in that table — a real thing to tune, and the wrong thing to
+tune alone, because what a player reads is **height**. Kelly is 24 px tall; the "tall" ball of
+Krook 5 was **one pixel** taller than the short ball of Krook 1. Reported from play as *"I do not
+see balls bouncing higher"* on Krook 8, and the report was exactly right.
+
+`checkball.py` passed throughout, and could not have done otherwise: its question is whether every
+frame of an arc is jumpable or duckable and none is free — **a question about one arc at a time**.
+Whether the three are tellable apart is a property of the *set*, invisible to every check written
+about a member of it. That is `checkanim.py`'s lesson in another subsystem: **rank on the closest
+pair, not on each item alone.** `checkball.py` now measures the apex spread and fails under 4 px;
+run against 9 / 10 / 12 it names the defect.
+
+Arc 0 stays at 9 — it is pinned by the "a duck is in the vocabulary from the first ball" call,
+reverted twice at the reviewer's word. The ceiling is distant: a band is 32 px of air, the art is
+8 px, and a ball is *free* (clearable standing) at `Bb ≥ 22`, so 19 keeps three pixels of margin
+on the free rule and five under the ceiling.
 
 **A FULLY JUMPABLE LOW ARC WAS TRIED AND REJECTED.** At apex 8 the band is 10..14, and the hit
 test `kfh < oht` makes 14 < 14 false, so the jump clears it and the low arc becomes jumpable on

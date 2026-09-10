@@ -524,11 +524,29 @@ def collectibles():
 # so the apex alone decides HOW MUCH of a round's bounce demands a duck:
 #
 #   apex  9   25 frames jump,  7 duck -- Krooks 1-4
-#   apex 10   19 frames jump, 13 duck -- Krooks 5-9
-#   apex 12   15 frames jump, 17 duck -- Krooks 10+
+#   apex 14   13 frames jump, 19 duck -- Krooks 5-9
+#   apex 19    9 frames jump, 23 duck -- Krooks 10+
 #
 # The top of every arc is a duck, and the taller the ball bounces the more of
 # its cycle that is. Ducking is in the vocabulary from the first ball.
+#
+# AND THE APEXES HAVE TO DIFFER BY SOMETHING A PLAYER CAN SEE. They were
+# 9 / 10 / 12 -- tuned entirely by that frame split, which is the right thing to
+# tune and the wrong thing to tune ALONE. Three pixels of spread across the
+# whole game, on a character 24 px tall, is invisible: reported from play as
+# "I do not see balls bouncing higher" on Krook 8, and the report is correct.
+# The tall ball was ONE PIXEL taller than the short one.
+#
+# checkball.py passed throughout, because its question is "is every frame of
+# every arc jumpable or duckable" -- a question about one arc at a time. Whether
+# three arcs are distinguishable FROM EACH OTHER is a property of the set, and
+# it is invisible to every check written about a member of it. That is the same
+# lesson checkanim.py exists for, in a different subsystem: rank on the closest
+# pair, not on each item alone. checkball.py now measures the spread too.
+#
+# The ceiling is real but distant: a band is 32 px of air, the art is 8 px tall,
+# and a ball is FREE (clearable standing) at bb >= 22. 19 leaves three pixels of
+# margin on the free rule and five under the ceiling.
 #
 # There is no height at which the ball can be neither jumped nor ducked, which
 # is what assets/checkball.py actually asserts (that, and that no frame is
@@ -558,9 +576,16 @@ def bounce_arcs():
     Both ends of this are one pixel wide, which is why assets/checkball.py
     sweeps every crouch height against every apex rather than trusting the
     arithmetic here.
+
+    THE OTHER TWO ARE NOT PINNED, AND THEY WERE FAR TOO CLOSE TO IT. 9 / 10 / 12
+    made the "tall" ball of Krook 5 exactly one pixel taller than the short one
+    of Krook 1. 14 and 19 are visibly different heights while leaving arc 0
+    exactly where the reviewer twice put it -- what changes across the game is
+    the height, which is what the guides describe and what a player can actually
+    see, and the frame split follows from it.
     """
     out = []
-    for apex in (9, 10, 12):
+    for apex in (9, 14, 19):
         for t in range(32):
             u = (t - 16) / 16.0
             h = apex * (1.0 - u * u)
@@ -723,7 +748,7 @@ def main():
              "never loaded -- it keeps the 6-byte stride")
         emit(fh, "stor_co", co, "[lv*8+scr] -> (kind, column). 0 = nothing here")
         emit(fh, "stor_arc", ba,
-             "3 bounce arcs x 32 frames, apex 8 / 10 / 12 -- see DESIGN.md 5a")
+             "3 bounce arcs x 32 frames, apex 9 / 14 / 19 -- see DESIGN.md 5a")
 
     live = sum(1 for i in range(0, len(ob), 2) if ob[i])
     prizes = sum(1 for i in range(0, len(co), 2) if co[i])
