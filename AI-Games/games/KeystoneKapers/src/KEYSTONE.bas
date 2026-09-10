@@ -102,6 +102,19 @@
 	' gives at 23.8 passes a second.
 	CONST BOUNCE64 = 25
 	CONST XWALL = 232		' furthest left edge at the store's east wall
+	' AND THE ROOF HAS NO EAST WALL, so the crook runs two characters further.
+	' Floors 1-3 end in an ENDWALL character at column 31 and XWALL stops an
+	' actor just short of it. The roof does not have one -- its east end is the
+	' edge of the BUILDING, the skyline carries on to the screen edge, and the
+	' round ends with him going over it. 240 puts his 16 px sprite flush with
+	' that edge.
+	'
+	' This is only reachable because the EXIT DOOR that stood at columns 28-30
+	' was removed (genstore.py, the roof's east template). Six cells of white
+	' box on dark blue, reading on screen as purple dots -- it was asked about
+	' as a graphical fault, it says he leaves through a doorway rather than off
+	' a roof, and it was exactly where he used to stop.
+	CONST XROOF = 240
 	CONST XWALW = 8			' nearest left edge at the west wall
 	CONST STANDH = 24		' Kelly standing -- TWO SPRITES tall
 	' KELLY DUCKED. It was 8 px, which is not a crouch -- it is a squash, with
@@ -3162,8 +3175,14 @@ move_harry:
 	' frame he is losing.
 	IF hlv = 3 THEN
 		htsc = 7
-		htx = 224			' inside XWALL: a target he cannot reach
-		' is a crook who can never escape
+		' THE EDGE OF THE ROOF, and it must be a place he can actually
+		' STAND: the arrival test below is `within 6 px of htx`, so a
+		' target past the limit his own movement clamps him to is a crook
+		' who never escapes and a loss condition that silently stops
+		' existing. It was 224 -- two characters short, because the exit
+		' door was drawn there. Both moved together; XROOF is the clamp
+		' as well as the target, so they cannot drift apart.
+		htx = XROOF
 	ELSE
 		#hea = #stes + hlv
 		hesd = PEEK(#hea)
@@ -3344,11 +3363,23 @@ move_harry:
 		hdir = 1
 		IF hsc = 7 THEN
 			' the east wall stops him too -- he does not slide off the
-			' edge of the world any more than the player does
-			IF hx < XWALL THEN
-				hroom = XWALL - hx
-				IF hroom < hspd THEN hx = XWALL ELSE hx = hx + hspd
-			END IF
+			' edge of the world any more than the player does.
+			' EXCEPT ON THE ROOF, which has no east wall: there the
+			' limit is the edge of the building, two characters further
+			' east, and going over it is how the round ends. Same
+			' constant the escape target uses, so the place he stops
+			' and the place he escapes from cannot disagree.
+			' STEP THEN CLAMP, rather than measure-the-room-first. The
+			' room dance exists to avoid overshooting an 8-bit wrap,
+			' and here it cannot wrap: hx is at most the limit, 240,
+			' and hspd never exceeds a few pixels, so hx + hspd stays
+			' well under 255 and a plain ceiling is exact. Two
+			' statements instead of four, which is what paid for the
+			' roof exception above.
+			hlim = XWALL
+			IF hlv = 3 THEN hlim = XROOF
+			hx = hx + hspd
+			IF hx > hlim THEN hx = hlim
 		ELSE
 			hroom = 255 - hx
 			IF hroom < hspd THEN

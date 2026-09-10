@@ -295,10 +295,26 @@ def t_roof(kind, scr=0):
     # No arrival art for the west escalator: the flight is drawn in the band
     # BELOW and its top meets this deck, same as every other floor.
     if kind == "east":
-        # the door Harry is running for, and the parapet he goes over
-        for c in range(28, 31):
-            t[2][c] = EXITC
-            t[3][c] = EXITC
+        # NO DOOR. Six cells of EXITC stood at columns 28-30, rows 2-3 -- a
+        # white box character on dark blue, which on screen reads as six purple
+        # dots on white and was asked about as a graphical fault before it was
+        # asked to be removed. The roof's east end is the edge of the BUILDING
+        # and the crook goes over it; a doorway there says he leaves through
+        # something, which is a different and wrong statement about how the
+        # round ends.
+        #
+        # Removing it is also what lets him run the last two characters east:
+        # the door was where he stopped, so the escape point could not move
+        # right while it stood there. See XROOF in KEYSTONE.bas.
+        #
+        # THE CHARACTER ITSELF IS DELIBERATELY LEFT DEFINED in genart.py, and
+        # this is a trade rather than an oversight. Deleting it renumbers every
+        # code above 156 -- checkchars.py named 21 stale constants when it was
+        # tried, and renumber.py would have rewritten them from genart's tables
+        # -- to reclaim 16 bytes of PATTERN AND COLOUR TABLE, which live in a
+        # bank with 6,500 free. That spends blast radius on the budget that is
+        # not scarce; the fixed area, which is the one that binds, does not
+        # change either way.
         # THE LAST OF THE PARAPET. Its crenellated red read as flames beside
         # the lit skyline, the same as the band across row 1 did, so the
         # building carries on to the screen edge instead -- which is also a

@@ -180,7 +180,18 @@ esc = [int(v) for v in m.group(1).split(',')][:4]
 # landing at x=8, east is x=224 on screen 7 landing at x=232.
 BOARD = {0: 0 * 256 + 32, 1: 7 * 256 + 224}
 LAND  = {0: 0 * 256 + 8,  1: 7 * 256 + 232}
-ROOF_ESCAPE = 7 * 256 + 224     # move_harry: hlv=3 -> htsc 7, htx 224
+# THE ROOF ESCAPE EDGE, READ OUT OF THE SOURCE RATHER THAN TYPED HERE.
+#
+# It was `7 * 256 + 224` with a comment saying so, and when the exit door was
+# taken off the roof and the edge moved east to XROOF the number here did not
+# move with it. THE FILE STILL PASSED: 16 px is a tenth of a second on a
+# 4,104 px route, so it shifted no assertion at all -- a stale constant that
+# only lies by a little is the kind a green build protects.
+#
+# `move_harry` sets `htx = XROOF` for hlv = 3, so read XROOF. If the source ever
+# goes back to a literal there, const() fails loudly instead of this file
+# quietly measuring a route to the wrong place.
+ROOF_ESCAPE = 7 * 256 + const(bas, 'XROOF')
 
 def climb(lv, world_x, px_per_step, ride=None):
     """Reach the roof escape edge: running every leg end to end, riding each

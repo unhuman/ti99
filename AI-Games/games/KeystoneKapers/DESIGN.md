@@ -1946,6 +1946,49 @@ since the pixels were only ever multiples of eight because they were columns.
 `rad_col` existed solely for that call and is gone with it; the rewrite paid for
 most of the feature.
 
+### 0p-septies. The roof has no east wall, and removing art saved nothing
+
+The crook's escape point was `htx = 224` on screen 7, with a comment explaining
+that 224 is *inside* `XWALL` (232) because "a target he cannot reach is a crook
+who can never escape". Correct, and it stopped him two characters short of the
+edge — because the **exit door was drawn there**, six cells of `EXITC` at
+columns 28-30.
+
+Both moved together, and they had to: the arrival test is *within 6 px of
+`htx`*, so a target past the limit his own movement clamps him to deletes the
+escape loss condition silently. `XROOF = 240` is now the target **and** the
+clamp, so the place he stops and the place he escapes from cannot drift apart.
+Floors 1-3 keep `XWALL`, because they *do* end in an `ENDWALL` character; the
+roof does not.
+
+**And the art removal cost nothing and saved nothing — measured, both.**
+
+| build | fixed area | bank 1 |
+|---|---|---|
+| before | 24,306 | 7,898 |
+| door art removed only | **24,306** | **7,898** |
+| + escape moved east | 24,308 | 7,898 |
+
+Removing six cells from a band template does not shrink anything: a template is
+a fixed **5 × 32 = 160-byte** block, so blanking a cell changes *which* byte is
+stored, never *how many*. And the character's own 8 bytes of pattern plus 8 of
+colour live in a **bank**, which is the budget with thousands free — deleting
+`EXITC` outright would have renumbered every code above 156 (`checkchars.py`
+named 21 stale constants when it was tried) to reclaim 16 bytes of the budget
+that is not scarce. It stays defined and simply unplaced.
+
+The net +2 bytes is entirely the escape change: the roof exception cost ~28, and
+paying for it meant simplifying the clamp from measure-the-room-then-step to
+**step-then-clamp**, which gave back ~26. The room dance existed to avoid an
+8-bit wrap that cannot happen here — `hx` is at most 240 and `hspd` is a few
+pixels, so a plain ceiling is exact.
+
+`checkchase.py` reads `XROOF` out of the source now. It had `7 * 256 + 224`
+typed in with a comment saying where it came from, **and it still passed** after
+the edge moved: 16 px is a tenth of a second on a 4,104 px route, so it shifted
+no assertion. A stale constant that only lies by a little is the kind a green
+build protects.
+
 ### 0p-sexies. The time bonus was paying ten times over
 
 `#score` is counted in **units of ten** — the prize is `#addv = 5` for fifty
@@ -4494,8 +4537,13 @@ the roof band stays an ordinary `SCREEN` blit like every other band — so
 
 1. `t_roof()` in `assets/genstore.py` takes the screen it is for and samples
    `SKYLINE[(c + scr) & 31]`; `TEMPLATES` names eight roof entries,
-   `T_ROOF0`..`T_ROOF7`. Screens 0 and 7 keep their head-house and exit
-   furniture on top of their own offset.
+   `T_ROOF0`..`T_ROOF7`. Screen 0 keeps its head-house on top of its own
+   offset. **Screen 7 no longer carries exit furniture**: six cells of `EXITC`
+   stood at columns 28-30, rows 2-3, and read on screen as purple dots on white.
+   The roof's east end is the edge of the *building* and the crook goes over it
+   — a doorway there says he leaves through something, which is the wrong
+   statement about how a round ends, and it was also standing exactly where he
+   used to stop (see §0p-septies).
 2. `KEYSTONE.bas`: `DIM #tsrc(15)` and five more `#tsrc(n)` lines; `INDEX`s
    roof row became `[R0 R1 R2 R3 R4 R5 R6 R7]`.
 
