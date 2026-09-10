@@ -425,13 +425,12 @@ ESC_SIDE = [0, 1, 0, 255]
 # level-design bug that looks like one.
 NONE, CART, BALL, RADIO, PLANE = 0, 1, 2, 3, 4
 
-# Columns that must stay clear, per template. Only the escalator entries can
-# ever fire: screens 0, 3 and 7 carry no obstacles at all (see obstacles()), so
-# the elevator's and the roof's end screens are excluded before _clear_x is
-# ever consulted. The roof entries are kept for the day that changes -- and
-# they are named T_ROOF0/T_ROOF7 because the roof gained a template per screen
-# when the skyline was given parallax (DESIGN.md 13a). They said T_ROOF_W and
-# T_ROOF_E for exactly as long as it took to notice, matching nothing.
+# Columns that must stay clear, per template. These finally MATTER: screens 0, 3
+# and 7 used to carry no obstacles at all, so _clear_x was consulted for nothing
+# and never once fired. They are named T_ROOF0/T_ROOF7 because the roof gained a
+# template per screen when the skyline was given parallax (DESIGN.md 13a); they
+# said T_ROOF_W and T_ROOF_E for exactly as long as it took to notice, matching
+# nothing.
 _BUSY = {
     "T_ESC_W": (0, 8), "T_ESC_E": (23, 31), "T_ELEV": (12, 19),
     "T_ROOF0": (0, 5), "T_ROOF7": (26, 31),
@@ -446,59 +445,181 @@ def _clear_x(tplname, x):
     return (x + 16) < c0 * 8 or x > (c1 + 1) * 8
 
 
-def obstacles():
-    """Deterministic, hand-shaped placement -- a level, not a slot machine."""
-    # (A per-level `palette` dict lived here, rotating the hazard KIND by
-    # screen. It was abandoned -- see the note below on why cross-screen swaps
-    # read as objects hopping between storeys -- but the dict was left behind
-    # and sat unread for months, which is worse than either decision.)
-    # WHICH HAZARD EACH FLOOR OWNS. One apiece, so a floor has an identity
-    # the player can learn, and so nothing appears to change storeys when they
-    # cross a screen seam. The roof gets carts -- one was tracked crossing it
-    # in the reference (0m) -- and never biplanes, because that is where the
-    # round is decided and a biplane costs a whole Kop.
-    FLOORKIND = {0: BALL, 1: RADIO, 2: PLANE, 3: CART}
-    xs = [40, 150, 96]          # slot 0, 1, 2 starting x -- spread across
+# WHERE A RADIO CAN STAND. A radio is the only hazard that does not move, so it
+# is the only one that can PARK on a boarding zone -- a rolling cart crosses the
+# escalator foot and is gone, which is a hazard; a radio sitting on it is a toll.
+# The rack is chosen at run time (load_band picks 0/1/2 by slot and Krook), so
+# the generator cannot steer an individual radio away from the zone; it can only
+# decline to put radios on a screen that has one.
+RADIO_RACK_X = (56, 120, 184)
+
+
+def _radio_ok(tplname):
+    """True if EVERY rack position on this screen clears the boarding zone."""
+    return all(_clear_x(tplname, x) for x in RADIO_RACK_X)
+
+
+# ==========================================================================
+# THE LEVEL TABLE. One byte per band per Krook -- the whole difficulty ramp.
+#
+# THIS USED TO BE CODE. The layout was a fixed 192-byte table with ONE KIND PER
+# FLOOR (floor 1 all balls, floor 2 all radios ...), and every per-Krook
+# decision was a ladder of `IF krk < n` gates inside load_band. Those gates can
+# only say things about (Krook, floor, kind), so two things the original does
+# were simply not expressible:
+#
+#   * "this screen is empty"     -- a populated screen could NEVER be empty. The
+#     arrival gate downgraded an unarrived kind to a BEACH BALL rather than
+#     removing it, and floors 0 and 2 had no occupancy gate at all, so both
+#     carried a ball on every screen from Krook 1 forever. Reported from play as
+#     "you put balls on every screen on the 1st and 3rd floors", and it was
+#     provable from the gates rather than a tuning accident.
+#   * "this floor has a cart here and a plane there" -- the kind was a property
+#     of the floor, for the whole game.
+#
+# Measured against the original (assets/ref2600/hazards.md): level 1 shows a
+# MEDIAN OF ZERO hazards on screen where the port showed two, and every floor
+# carries two to four different kinds from level 3 on.
+#
+# So the ramp is data now, and `density()` below computes what it will actually
+# look like so the numbers can be checked rather than hoped at.
+# ==========================================================================
+
+# How many Krook rows the table holds. Krook 12 and up reuse the last row --
+# the measurement shows the original stops changing at 11.
+KROOKS = 11
+
+# WHICH KROOK EACH KIND ARRIVES ON, and which it starts coming in twos on.
+# Straight from hazards.md; checklevels.py asserts both against this dict.
+ARRIVE = {BALL: 1, RADIO: 2, CART: 3, PLANE: 4}
+DOUBLE = {RADIO: 6, BALL: 9, CART: 11}          # PLANE never doubles
+
+# HOW MANY BANDS CARRY A HAZARD, and how many of those carry a second, per
+# Krook. Tuned so density() lands on the measured column in hazards.md; the
+# checker holds it there.
+BANDS   = {1: 5, 2: 8, 3: 17, 4: 25, 5: 25, 6: 26,
+           7: 27, 8: 27, 9: 28, 10: 28, 11: 30}
+DOUBLED = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 3,
+           7: 4, 8: 3, 9: 4, 10: 5, 11: 6}
+
+# THE ORDER BANDS FILL IN. Fixed, so each Krook is a superset of the one before
+# and the ramp reads as the store filling up rather than as a reshuffle.
+#
+# Hazard screens fill first and the escalator/elevator screens last, because
+# that is the order the original fills them: at level 1 its end screens average
+# 0.33 hazards against the aisles' 0.71, and by level 4 the two are level.
+_SCR_ORDER = (2, 5, 1, 6, 4, 3, 0, 7)
+_LV_ORDER = (0, 2, 3, 1)
+
+
+def fill_order():
+    """The 32 bands, in the order the Krooks populate them.
+
+    A bijection: for each screen the four floors appear exactly once, and
+    consecutive entries step across screens so an early Krook is spread thin
+    rather than piled onto one stretch of shop.
+    """
     out = []
-    for lv in range(4):
-        for scr in range(8):
-            tpl = INDEX[lv][scr]
-            # NOTHING HAZARDOUS ON THE END OR ELEVATOR SCREENS. Those three are
-            # where the player has to STOP and do something precise -- board a
-            # flight, wait for a car -- and a rolling cart there does not add
-            # difficulty, it adds a toll on a manoeuvre the game has already
-            # committed them to. The arcade keeps them clear for the same
-            # reason.
-            if scr in (0, 3, 7):
-                out += [NONE, 0] * 3
-                continue
-            # ONE KIND PER FLOOR, AND IT DOES NOT CHANGE AS YOU WALK. A
-            # floor carrying a cart AND a ball asks two different questions at
-            # once -- jump this, read that one's phase -- and the answer to one
-            # is the wrong answer to the other. Two of the same thing is a
-            # floor with a rule; one of each is a floor with a trick.
-            #
-            # IT USED TO ROTATE BY SCREEN as well, `palette[lv][(scr+lv) % 3]`,
-            # for variety across the store. On screen that reads as the hazards
-            # CHANGING FLOORS: cross a seam and the balls you were tracking on
-            # the floor below are suddenly carts, and balls are a storey up
-            # instead. All four bands are visible at once here, so the swap
-            # happens in full view and looks like objects teleporting between
-            # levels rather than like a new stretch of shop.
-            #
-            # The variety comes from the Krook ramp instead (0p): every floor
-            # is beach balls on Krook 1, and radios, carts and biplanes arrive
-            # one per round, each on the floor that owns it.
-            bandkind = FLOORKIND[lv]
-            for s in range(3):
-                k = bandkind
-                x = (xs[s] + scr * 23) % 232
-                if not _clear_x(tpl, x):
-                    x = 120 if _clear_x(tpl, 120) else 0
-                    if not _clear_x(tpl, x):
-                        k = NONE
-                out += [k, x]
+    for k in range(32):
+        scr = _SCR_ORDER[k % 8]
+        lv = _LV_ORDER[((k // 8) + (k % 8)) % 4]
+        out.append((lv, scr))
     return out
+
+
+def _kind_for(lv, scr, krook, seq):
+    """Pick this band's hazard, mixing kinds across floors AND screens."""
+    live = [k for k in (BALL, RADIO, CART, PLANE) if ARRIVE[k] <= krook]
+    tpl = INDEX[lv][scr]
+    # THE ROOF NEVER GETS A BIPLANE. It is where the round is decided and a
+    # biplane costs a whole Kop rather than nine seconds -- and the measurement
+    # agrees: the original's roof shows only radios and carts, at every level.
+    if lv == 3:
+        live = [k for k in live if k in (RADIO, CART)]
+    # ...and no RADIO where a rack position would sit on a boarding zone.
+    if not _radio_ok(tpl):
+        live = [k for k in live if k != RADIO]
+    return live[seq % len(live)] if live else NONE
+
+
+def levels():
+    """KROOKS rows x 32 bands x 1 byte.
+
+    bits 0-2  kind (0 none, 1 cart, 2 ball, 3 radio, 4 biplane)
+    bit  3    a second hazard on this band
+    bits 4-7  unused
+
+    THE STAGGER IS NOT IN HERE. It was, as a nibble, and unpacking it costs a
+    DIVIDE -- CVBasic's `/` compiles to a real TMS9900 DIV (CLAUDE.md 3A) and
+    this is the one budget with nothing to spare. load_band derives it from the
+    band index instead, which is a fact it already has in hand and which spreads
+    just as well. Storing a value that can be computed is only free when the
+    unpacking is.
+    """
+    order = fill_order()
+    out = []
+    for krook in range(1, KROOKS + 1):
+        row = [NONE] * 32
+        n, d = BANDS[krook], DOUBLED[krook]
+        doubled_left = d
+        for seq, (lv, scr) in enumerate(order[:n]):
+            kind = _kind_for(lv, scr, krook, seq)
+            if kind == NONE:
+                continue
+            byte = kind
+            # A SECOND ONE ONLY WHERE THAT KIND HAS EARNED IT. The doubling
+            # Krooks are per kind (radios 6, balls 9, carts 11, biplanes never),
+            # so a band can only be doubled if its own kind has arrived at twos.
+            if doubled_left > 0 and krook >= DOUBLE.get(kind, 99):
+                byte |= 8
+                doubled_left -= 1
+            row[lv * 8 + scr] = byte
+        out += row
+    return out
+
+
+def preview_levels():
+    """The whole difficulty ramp as a grid, so it can be corrected on paper.
+
+    Reading 352 bytes of DATA BYTE tells you nothing about whether level 1 is
+    sparse or whether a floor carries a mix. This does, in one screenful.
+    """
+    mark = {NONE: ".", CART: "c", BALL: "b", RADIO: "r", PLANE: "p"}
+    flat = levels()
+    print("      screens 0-7 per floor; UPPER CASE = two of them")
+    print("      . empty   b ball   r radio   c cart   p biplane")
+    for krook in range(1, KROOKS + 1):
+        row = flat[(krook - 1) * 32:krook * 32]
+        print("\n  Krook %-2d   %.2f on screen" % (krook, density(krook)))
+        for lv in (3, 2, 1, 0):
+            cells = ""
+            for scr in range(8):
+                b = row[lv * 8 + scr]
+                ch = mark[b & 7]
+                cells += ch.upper() if (b & 8) else ch
+            name = ("floor 1", "floor 2", "floor 3", "roof")[lv]
+            print("    %-8s %s" % (name, " ".join(cells)))
+
+
+def density(krook):
+    """Hazards visible on one screen, averaged over the eight screens.
+
+    Computed the way the GAME will count them -- a doubled band shows two, and
+    a doubled radio band shows three from Krook 8 -- so this is comparable with
+    the measured column in hazards.md rather than merely with the byte count.
+    """
+    row = levels()[(min(krook, KROOKS) - 1) * 32:][:32]
+    total = 0
+    for b in row:
+        kind = b & 7
+        if not kind:
+            continue
+        total += 1
+        if b & 8:
+            total += 1
+            if kind == RADIO and krook > 7:
+                total += 1          # the third radio, synthesised in load_band
+    return total / 8.0
 
 
 # --------------------------------------------------------------------------
@@ -767,26 +888,32 @@ def main():
         emit(fh, "stor_esc", ESC_SIDE + [0] * 4,
              "per level: 0 = climbs west, 1 = east, 255 = no escalator (padded even)")
 
-        ob = obstacles()
+        ob = levels()
         co = collectibles()
         ba = bounce_arcs()
-        emit(fh, "stor_ob", ob,
-             "[lv*8+scr] -> 3 x (kind, x). Slot 1 from Krook 6; slot 2 is "
-             "never loaded -- it keeps the 6-byte stride")
+        emit(fh, "stor_lvl", ob,
+             "[krook-1][lv*8+scr] -> kind | doubled<<3. "
+             "%d Krook rows; 12+ reuse the last" % KROOKS)
         emit(fh, "stor_co", co, "[lv*8+scr] -> (kind, column). 0 = nothing here")
         emit(fh, "stor_arc", ba,
              "3 bounce arcs x 32 frames, apex 9 / 14 / 19 -- see DESIGN.md 5a")
 
-    live = sum(1 for i in range(0, len(ob), 2) if ob[i])
+    live = sum(1 for b in ob if b & 7)
     prizes = sum(1 for i in range(0, len(co), 2) if co[i])
     print("wrote %s -- %d templates, %d bytes of map + %d index"
           % (os.path.normpath(out), len(TEMPLATES), len(tpl), len(idx)))
     print("       %d obstacle slots filled of %d, %d collectibles, arcs peak %d"
-          % (live, len(ob) // 2, prizes, max(ba)))
+          % (live, len(ob), prizes, max(ba)))
+    print("       hazards visible per screen, by Krook:")
+    print("         " + "  ".join("%d:%.2f" % (k, density(k))
+                                  for k in range(1, KROOKS + 1)))
 
     if "--preview" in sys.argv:
         print()
         preview()
+    if "--levels" in sys.argv:
+        print()
+        preview_levels()
 
 
 if __name__ == "__main__":

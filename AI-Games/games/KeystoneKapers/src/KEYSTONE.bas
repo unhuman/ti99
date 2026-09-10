@@ -927,7 +927,7 @@ init_tables:
 	NEXT ji
 
 	#stix = VARPTR stor_ix(0)
-	#stob = VARPTR stor_ob(0)
+	#stlv = VARPTR stor_lvl(0)
 	#stco = VARPTR stor_co(0)
 	#stes = VARPTR stor_esc(0)
 	#stpl = VARPTR stor_pil(0)
@@ -1743,108 +1743,72 @@ load_band:
 	' `lrad` below leaves the third-radio block with a single test.
 	l3rd = 0
 	IF krk > 7 THEN l3rd = 1
+	' THIS KROOK'S ROW OF THE LEVEL TABLE.
+	'
+	' The whole difficulty ramp is data now (assets/genstore.py, `stor_lvl`):
+	' one byte per band per Krook, kind in bits 0-2 and "a second one here" in
+	' bit 3. It used to be a ladder of `IF krk < n` gates right here, and those
+	' gates could only say things about (Krook, floor, kind) -- so "this screen
+	' is empty" and "this floor has a cart here and a plane there" were not
+	' expressible at all, and the original does both. See DESIGN.md 0p-octies.
+	'
+	' Krook 12 and up reuse row 11: the measured original stops changing there.
+	lrow = krk
+	IF lrow > 11 THEN lrow = 11
+	lrow = lrow - 1
+	' row * 32, by doubling. `*` on a plain variable is a real TMS9900 MPY and
+	' reading the variable back afterwards returns the product's HIGH word
+	' (CLAUDE.md 3A); five adds cannot be got wrong that way.
+	#lrb = lrow
+	#lrb = #lrb + #lrb
+	#lrb = #lrb + #lrb
+	#lrb = #lrb + #lrb
+	#lrb = #lrb + #lrb
+	#lrb = #lrb + #lrb
+	#lrb = #lrb + #stlv
 	FOR llv = 0 TO 3
 		lb = llv + llv			' lb = llv*2, two slots per band
 		lix = lv8(llv)
 		lix = lix + klsc
-		#loa = #stob
-		' A COMPUTED `FOR 1 TO 0` STILL RUNS ITS BODY ONCE in CVBasic, and lix
-		' is 0 for the whole of screen 0 -- which would read every obstacle on
-		' it from the NEXT band's entry, silently, on one screen out of eight.
-		IF lix > 0 THEN
-			FOR lq = 1 TO lix
-				#loa = #loa + 6	' 6 bytes per band
-			NEXT lq
-		END IF
-		' TWO TABLE SLOTS. The third obstacle on a band is not in the
-		' table at all (see below), so the loop no longer reads a third
-		' pair of bytes to throw them away -- it steps the offset past
-		' them once instead.
+		' ONE BYTE PER BAND, so the band index IS the offset -- the six-byte
+		' stride and the repeated-addition walk that stepped over it are both
+		' gone, and with them the `FOR 1 TO 0` guard they needed.
+		#loa = #lrb + lix
+		lby = PEEK(#loa)
 		FOR ls = 0 TO 1
-			lk = PEEK(#loa)
-			#loa = #loa + 1
-			lx = PEEK(#loa)
-			#loa = #loa + 1
-			li = lb + ls
-			' THE HAZARDS ARRIVE ONE PER KROOK, which is the original's
-			' progression and not a ramp of one dial (DESIGN.md 0p):
-			'
-			'   1  short beach balls, and nothing else
-			'   2  + radios          5  balls go tall
-			'   3  + shopping carts  6  a second hazard per floor
-			'   4  + biplanes        7  carts faster   8+ planes faster
-			'
-			' A hazard that has not arrived yet becomes a BALL rather
-			' than nothing, so a floor is never empty and Krook 1 is
-			' the "short balls" screen the guides describe. This is
-			' also why there are no biplanes on Krook 1: the one thing
-			' that costs a whole Kop should not be the first thing a
-			' new player meets.
-			IF lk = OB_RADIO THEN
-				IF krk < 2 THEN lk = OB_BALL
-			END IF
-			IF lk = OB_CART THEN
-				IF krk < 3 THEN lk = OB_BALL
-			END IF
-			IF lk = OB_PLANE THEN
-				IF krk < 4 THEN lk = OB_BALL
-			END IF
-			' WHICH KINDS COME IN TWOS, AND FROM WHEN. Measured from a
-			' full 2600 playthrough, one frame at a time -- the table
-			' and the method are in assets/ref2600/hazards.md:
-			'
-			'   radios  from Krook  6      balls  from Krook  9
-			'   carts   from Krook 11      biplanes  NEVER
-			'
-			' This was one gate for every kind at Krook 6, which is why
-			' two balls turned up together five rounds early and why
-			' biplanes -- the one hazard that must be DUCKED rather than
-			' jumped, and the only one the original never doubles --
-			' came in pairs at all.
-			'
-			' The arrival gates above have already turned a kind that
-			' has not appeared yet into a beach ball, so a "plane" on
-			' Krook 3 is a ball here and correctly uses the ball's 9.
-			' Read this AFTER them, never before.
-			'
-			' A threshold variable rather than a nest of comparisons:
-			' four ifs and one test, instead of a ladder that has to
-			' repeat the `lk = 0` in every arm.
+			' Slot 0 is the band's kind; slot 1 is the same kind again,
+			' and only if bit 3 says this band carries two. Which kinds
+			' may double, and from which Krook, is decided in the
+			' generator -- radios 6, balls 9, carts 11, biplanes never.
+			lk = lby AND 7
 			IF ls = 1 THEN
-				ldbl = 99		' biplanes never double
-				IF lk = OB_RADIO THEN ldbl = 6
-				IF lk = OB_BALL THEN ldbl = 9
-				IF lk = OB_CART THEN ldbl = 11
-				IF krk < ldbl THEN lk = 0
+				IF lby < 8 THEN lk = 0
 			END IF
-			' AND HOW MANY FLOORS CARRY ONE AT ALL. The gates above
-			' decide what KIND a hazard is; this decides whether the
-			' floor has one.
+			li = lb + ls
+			' (THE ARRIVAL GATES STOOD HERE and are now in the table.
+			' They read `IF lk = OB_RADIO THEN / IF krk < 2 THEN
+			' lk = OB_BALL`, one per kind -- a hazard that had not
+			' arrived was DOWNGRADED TO A BEACH BALL rather than
+			' removed, so that a floor was never empty.
 			'
-			' The kind-arrival rule downgrades anything that has not
-			' arrived yet to a beach ball rather than leaving the floor
-			' empty, so that a floor is never bare -- and the effect on
-			' Krook 1 was a ball on all FOUR floors of every populated
-			' screen. All four bands are on screen at once, so that is
-			' four identical balls in view at all times, which is not
-			' what "merely a few beach balls" describes.
+			' That single decision is what the reviewer reported as
+			' "you put balls on every screen on the 1st and 3rd
+			' floors". On Krook 1 the radio, cart and plane all became
+			' balls, and floors 0 and 2 had no occupancy gate at all,
+			' so both carried one on every populated screen forever.
+			' It was provable from the gates, not a tuning accident.
+			' The original shows a MEDIAN OF ZERO hazards on level 1.
 			'
-			' Per-band count was never the problem: only one slot is
-			' live until Krook 6. It is the number of OCCUPIED FLOORS,
-			' and it had no ramp at all.
-			'
-			' Floors 1 and 3 stay clear on Krook 1, floor 1 joins on
-			' Krook 2, and the roof on Krook 3. ALTERNATING rather than
-			' clearing the top or bottom half, so the empty floors do
-			' not stack into a visibly dead region that reads as a bug
-			' -- and the ROOF is last, because that is where the round
-			' is decided.
-			IF krk < 2 THEN
-				IF llv = 1 THEN lk = 0
-			END IF
-			IF krk < 3 THEN
-				IF llv = 3 THEN lk = 0
-			END IF
+			' The generator decides arrivals now, per band, and can
+			' write 0 -- which is the thing the gates could not say.)
+			' (THE DOUBLING LADDER AND THE OCCUPANCY GATES STOOD HERE
+			' TOO. The first was an `ldbl` threshold per kind -- radios
+			' 6, balls 9, carts 11, biplanes 99 -- and the second was
+			' `IF krk < 2 THEN IF llv = 1 THEN lk = 0`, plus the same
+			' for the roof at 3. Both are decisions about a LEVEL, and
+			' both are in the generator now, where they can be made per
+			' screen as well as per floor. Bit 3 of the table byte,
+			' tested above, is all that is left of the first.)
 			' NO SPRITE HAZARD ON THE FLOOR THE CROOK IS STANDING ON,
 			' AND THE DECISION IS MADE HERE -- once, as the screen is
 			' drawn, and never revisited while it is on screen.
@@ -1935,14 +1899,22 @@ load_band:
 			' slot 0's stagger and adding to that makes the gap exactly
 			' HAZGAP on every screen, while slot 0 still lands wherever
 			' the table puts it, so the placement variety is untouched.
-			stag = lx AND 63
+			' DERIVED FROM THE BAND, not stored. The table used to carry
+			' an x byte per slot; slot 1's was ignored outright (it is
+			' `stg0 + HAZGAP`) and slot 0's only reached the game as its
+			' low six bits. `lix` is the band index, already in hand,
+			' and three of it spreads the thirty-two bands across the
+			' range without lining neighbouring screens up.
+			stag = lix + lix
+			stag = stag + lix
+			stag = stag AND 63
 			' NARROW THE JITTER ONLY ONCE A FLOOR CAN BE PAIRED. The
 			' pair spans HAZGAP and still has to leave the player his
 			' reaction distance at the entry wall, which leaves 16 px
 			' to slide in; before Krook 6 nothing is paired, so slot 0
 			' keeps the full range. Krook 6 is the FIRST doubling of any
-			' kind (radios) -- see the per-kind table in the loader.
-			IF krk > 5 THEN stag = lx AND HAZMASK
+			' kind (radios) -- see the generator's DOUBLE table.
+			IF krk > 5 THEN stag = stag AND HAZMASK
 			IF ls = 0 THEN stg0 = stag
 			IF ls = 1 THEN stag = stg0 + HAZGAP
 			IF entdir = 0 THEN
@@ -1980,7 +1952,11 @@ load_band:
 			' run, which is the case the player is entitled to read off
 			' the screen. Duck, stop or take a hit and everything after
 			' is out of step again -- which is the game.
-			obp(li) = lx AND 31
+			' obp is a BALL-only field: upd_obst reads it under an
+			' IF uk = OB_BALL and nothing else touches it, and every
+			' ball has it computed below. It was seeded here from a
+			' table byte that no longer exists, and for anything but
+			' a ball that seed was never read.
 			IF lk = OB_BALL THEN
 				obg = 232 - stag
 				GOSUB ball_phase
@@ -2074,7 +2050,6 @@ load_band:
 		' for a BALL, which this slot can never hold. obht IS read: it
 		' is the hit refractory, and a stale one carried across a screen
 		' change would eat the first hit.
-		#loa = #loa + 2
 		li = 8 + llv
 		obk(li) = 0
 		obht(li) = 0

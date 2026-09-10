@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """Hold the Krook progression to the one the original actually uses.
 
-The table below is not a design choice, it is RESEARCH -- two independent
-readings of the published level guides agree on it:
+THIS USED TO READ THE GATES OUT OF THE SOURCE, and there are no gates any more.
+Arrivals, doubling and floor occupancy were a ladder of `IF krk < n` tests inside
+`load_band`; they are a per-Krook DATA TABLE now (`genstore.levels()`, emitted as
+`stor_lvl`), because those gates could only express things about
+(Krook, floor, kind) and the original needs "this screen is empty" and "this
+floor has a cart here and a plane there".
 
-    1  short beach balls, nothing else      5  balls go tall
-    2  + radios                             6  a second hazard per floor
-    3  + shopping carts                     7  carts get faster
-    4  + biplanes                           8+ biplanes get faster
+So the assertions moved with the thing they assert. What is checked here:
 
-Nothing in the source says where those numbers came from, and every one of them
-is a bare integer in an `IF krk < n` or `IF krk > n` that a later tuning pass
-would happily nudge. So this reads the real comparisons back out of
-src/KEYSTONE.bas and fails the build if any of them moves.
+    from the TABLE      arrivals, doubling, the roof's no-biplane rule, no
+                        parked hazard on a boarding zone, the DENSITY CURVE,
+                        and that level 1 really has an empty screen
+    from the SOURCE     the dials that are still code -- tall balls, cart and
+                        biplane speeds -- and the time bonus
 
-The threshold convention is the trap this exists to catch: a hazard that ARRIVES
-at Krook n is written `IF krk < n THEN ...` (suppressed below n), while a dial
-that CHANGES at Krook n is written `IF krk > n-1 THEN ...`. Those are the same
-level expressed two different ways, and mixing them up shifts a hazard by one
-round with nothing to show for it.
+**The density curve is the assertion this file exists for now.** Everything else
+was already pinned somewhere; "how much is on screen" never was, and it is what
+was reported from play: *"the obstacle density, especially on the early levels is
+wrong"*. The targets are measured, not chosen -- see assets/ref2600/hazards.md.
 
 Run:  python3 checklevels.py       exits non-zero if the progression drifts
 """
@@ -30,65 +31,157 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 BAS = os.path.join(HERE, "..", "src", "KEYSTONE.bas")
 
-# what arrives, and on which Krook -- written as `IF krk < n`
-ARRIVES = {
-    "OB_RADIO": 2,
-    "OB_CART": 3,
-    "OB_PLANE": 4,
-}
-# dials that change, and on which Krook -- written as `IF krk > n-1`
+sys.path.insert(0, HERE)
+import genstore as g                                    # noqa: E402
+
+# Dials that are still CODE, and the Krook they change on. The convention is the
+# trap this half exists to catch: a hazard that ARRIVES at Krook n is written
+# `IF krk < n` (suppressed below n), while a dial that CHANGES at n is written
+# `IF krk > n-1`. Those are the same level expressed two ways, and mixing them up
+# shifts a dial by one round with nothing to show for it.
 CHANGES = {
     "tall balls (arcs = 1)": (r"arcs = 0\s*\n\s*IF krk > (\d+) THEN arcs = 1", 5),
-    # WHICH KINDS DOUBLE, AND FROM WHEN -- one threshold per kind, measured
-    # frame by frame from a full 2600 playthrough (assets/ref2600/hazards.md).
-    # This was a SINGLE gate at Krook 6 for every kind, which put two balls on a
-    # floor five rounds early and paired biplanes, which the original never does
-    # in 21 levels. Biplanes are the hazard that must be DUCKED rather than
-    # jumped, so a pair of them is a different question from a pair of anything
-    # else -- and the answer the original gives is "no".
-    #
-    # Each pattern runs on to the `IF krk < ldbl` that CONSUMES the threshold.
-    # That is not padding: this loop infers the threshold convention from the
-    # text it matched, so a pattern stopping at the assignment reads as the
-    # `krk >` form and reports every kind one Krook late. Carrying the gate into
-    # the match settles the convention and pins that the threshold really is
-    # spent on a suppress-below test.
-    "second radio": (r"IF lk = OB_RADIO THEN ldbl = (\d+)[\s\S]{0,200}?"
-                     r"IF krk < ldbl", 6),
-    "second ball": (r"IF lk = OB_BALL THEN ldbl = (\d+)[\s\S]{0,200}?"
-                    r"IF krk < ldbl", 9),
-    "second cart": (r"IF lk = OB_CART THEN ldbl = (\d+)[\s\S]{0,200}?"
-                    r"IF krk < ldbl", 11),
     "carts faster": (r"IF krk > (\d+) THEN ocsp", 7),
     "biplanes faster": (r"IF krk > (\d+) THEN opsp", 8),
-    # HOW MANY FLOORS CARRY A HAZARD AT ALL. The kind-arrival gates above turn
-    # a hazard that has not arrived into a beach ball rather than nothing, so
-    # without these two every floor was occupied from Krook 1 -- four identical
-    # balls in view at once, where the original is "merely a few". Floor 1 joins
-    # on Krook 2 and the roof on Krook 3.
-    "floor 1 occupied": (r"IF krk < (\d+) THEN\s*\n\s*IF llv = 1 THEN lk = 0", 2),
-    "roof occupied": (r"IF krk < (\d+) THEN\s*\n\s*IF llv = 3 THEN lk = 0", 3),
 }
+
+# WHAT THE ORIGINAL DOES, WRITTEN HERE AND NOT IMPORTED FROM THE GENERATOR.
+#
+# The first version of this file read `genstore.ARRIVE` and `genstore.DOUBLE` for
+# its expectations, which makes the assertion vacuous: it only proves the
+# generator obeys its own constant. Running it against a mutated generator proved
+# exactly that -- moving `DOUBLE[BALL]` from 9 to 6 moved the table AND the
+# expectation together, and the check reported success on a table that pairs
+# balls three rounds early.
+#
+# These are the measured numbers from assets/ref2600/hazards.md. Two independent
+# statements of the same fact is the whole point; if they disagree, one of them
+# is wrong and the build stops.
+ARRIVE_WANT = {g.BALL: 1, g.RADIO: 2, g.CART: 3, g.PLANE: 4}
+DOUBLE_WANT = {g.RADIO: 6, g.BALL: 9, g.CART: 11}       # biplanes: never
+
+# HAZARDS VISIBLE ON ONE SCREEN, MEASURED OFF THE ORIGINAL, weighted across its
+# five aisle screens and three end screens exactly as ours are laid out. From
+# the table in assets/ref2600/hazards.md; the sample dips at levels 5 and 10
+# (n is about thirty frames each), so the target is the running maximum -- the
+# trend the design follows rather than the noise.
+DENSITY = {1: 0.57, 2: 1.03, 3: 2.17, 4: 3.15, 5: 3.15, 6: 3.62,
+           7: 3.90, 8: 3.97, 9: 4.27, 10: 4.27, 11: 4.77}
+# Half a hazard a screen. Tighter than the measurement deserves at n=30, and
+# loose enough that the table is not fitted to sampling noise.
+DENSITY_TOL = 0.5
+
+NAME = {g.CART: "cart", g.BALL: "ball", g.RADIO: "radio", g.PLANE: "biplane"}
+
+
+def rows():
+    """[krook] -> the 32 band bytes for that Krook."""
+    flat = g.levels()
+    return {k: flat[(k - 1) * 32:k * 32] for k in range(1, g.KROOKS + 1)}
 
 
 def main():
     src = open(BAS, encoding="utf-8").read()
     bad = []
+    table = rows()
 
-    for kind, want in sorted(ARRIVES.items()):
-        m = re.search(r"IF lk = %s THEN\s*\n\s*IF krk < (\d+) THEN lk = OB_BALL"
-                      % kind, src)
-        if not m:
-            bad.append("%s: no `IF lk = %s THEN / IF krk < n THEN lk = OB_BALL` "
-                       "gate found -- the hazard is not being held back at all"
-                       % (kind, kind))
-            continue
-        got = int(m.group(1))
-        if got != want:
-            bad.append("%s arrives at Krook %d, should be %d" % (kind, got, want))
+    # ---------------------------------------------------------------- arrivals
+    # The first Krook each kind appears on anywhere in the store.
+    first = {}
+    for k in range(1, g.KROOKS + 1):
+        for b in table[k]:
+            kind = b & 7
+            if kind and kind not in first:
+                first[kind] = k
+    for kind, want in sorted(ARRIVE_WANT.items()):
+        got = first.get(kind)
+        if got is None:
+            bad.append("%s never appears at any Krook" % NAME[kind])
+        elif got != want:
+            bad.append("%s first appears on Krook %d, should be %d"
+                       % (NAME[kind], got, want))
         else:
-            print("  %-10s arrives at Krook %d" % (kind, got))
+            print("  %-10s arrives at Krook %d" % (NAME[kind], got))
 
+    # ---------------------------------------------------------------- doubling
+    # The first Krook each kind is given a second slot. Biplanes must never be:
+    # one, in every one of the 21 levels of the measured playthrough, and they
+    # are the only hazard that must be DUCKED rather than jumped, so a pair is a
+    # different problem from a pair of anything else.
+    dbl = {}
+    for k in range(1, g.KROOKS + 1):
+        for b in table[k]:
+            kind = b & 7
+            if kind and (b & 8) and kind not in dbl:
+                dbl[kind] = k
+    for kind, want in sorted(DOUBLE_WANT.items()):
+        got = dbl.get(kind)
+        if got is None:
+            bad.append("%s is never doubled; the original pairs it from Krook %d"
+                       % (NAME[kind], want))
+        elif got != want:
+            bad.append("%s is first doubled on Krook %d, should be %d"
+                       % (NAME[kind], got, want))
+        else:
+            print("  %-10s doubles at Krook %d" % (NAME[kind], got))
+    if g.PLANE in dbl:
+        bad.append("biplanes are doubled at Krook %d; the original never puts "
+                   "two on one floor (assets/ref2600/hazards.md)" % dbl[g.PLANE])
+    else:
+        print("  %-10s never doubles" % "biplane")
+
+    # ------------------------------------------------- placement side-conditions
+    for k in range(1, g.KROOKS + 1):
+        for band, b in enumerate(table[k]):
+            kind = b & 7
+            if not kind:
+                continue
+            lv, scr = band // 8, band % 8
+            # The roof is where the round is decided and a biplane costs a whole
+            # Kop rather than nine seconds. The measurement agrees: the
+            # original's roof shows only radios and carts, at every level.
+            if lv == 3 and kind == g.PLANE:
+                bad.append("Krook %d puts a biplane on the ROOF (screen %d)"
+                           % (k, scr))
+            # A radio does not move, so it is the only hazard that can PARK on a
+            # boarding zone. A rolling cart crossing the escalator foot is a
+            # hazard; a radio sitting on it is a toll.
+            if kind == g.RADIO and not g._radio_ok(g.INDEX[lv][scr]):
+                bad.append("Krook %d puts a radio on floor %d screen %d, whose "
+                           "boarding zone a rack position would sit on"
+                           % (k, lv, scr))
+
+    # ----------------------------------------------------------------- density
+    # THE ONE THAT WAS NEVER PINNED. Reported from play as too dense on the
+    # early levels; the port showed two hazards on level 1 where the original
+    # shows a median of nought.
+    print()
+    for k in range(1, g.KROOKS + 1):
+        got, want = g.density(k), DENSITY[k]
+        if abs(got - want) > DENSITY_TOL:
+            bad.append("Krook %d shows %.2f hazards a screen; the original "
+                       "shows %.2f (tolerance %.2f)"
+                       % (k, got, want, DENSITY_TOL))
+        else:
+            print("  Krook %-2d  %.2f hazards a screen (original %.2f)"
+                  % (k, got, want))
+
+    # AND AT LEAST ONE SCREEN OF LEVEL 1 MUST BE COMPLETELY BARE -- all four
+    # floors. Under the old gates a populated screen could never be empty on any
+    # Krook, which is precisely the defect this replaced; a density figure alone
+    # would not catch its return, because an average can be met by spreading
+    # thinly everywhere.
+    empty = [s for s in range(8)
+             if not any(table[1][lv * 8 + s] & 7 for lv in range(4))]
+    if not empty:
+        bad.append("every screen of Krook 1 carries a hazard on some floor; the "
+                   "original's level 1 has a median of ZERO on screen")
+    else:
+        print("\n  Krook 1 has %d completely empty screens: %s"
+              % (len(empty), empty))
+
+    # ----------------------------------------------- the dials that are still code
+    print()
     for name, (pat, want) in sorted(CHANGES.items()):
         m = re.search(pat, src)
         if not m:
@@ -96,44 +189,18 @@ def main():
                        "so this check no longer covers it" % name)
             continue
         got = int(m.group(1))
-        # `IF krk > n` fires from n+1; `IF krk < n` suppresses below n
         at = got if "krk < " in m.group(0) else got + 1
         if at != want:
             bad.append("%s changes at Krook %d, should be %d" % (name, at, want))
         else:
             print("  %-24s changes at Krook %d" % (name, at))
 
-    # Krook 1 must be beach balls and nothing else -- the whole point of the
-    # progression is that the thing which costs a life is not the first thing
-    # a new player meets.
-    if "IF lk = OB_PLANE THEN" not in src:
-        bad.append("nothing suppresses biplanes on the early Krooks")
-
-    # BIPLANES NEVER COME IN TWOS. One, in every one of the 21 levels reached in
-    # the measured playthrough, across 800+ frame-sightings -- every other hazard
-    # doubles and this one does not. It is also the only hazard that must be
-    # DUCKED, so a pair is a different problem from a pair of anything else.
-    #
-    # The rule is expressed as an ABSENCE -- the default `ldbl` is never lowered
-    # for OB_PLANE -- and an absence is exactly what a later edit reinstates
-    # without noticing, so it is checked rather than trusted.
-    m = re.search(r"ldbl = (\d+)\s*'", src)
-    if not m:
-        bad.append("no default `ldbl` -- the per-kind doubling table has been "
-                   "rewritten and biplanes may now pair")
-    elif int(m.group(1)) <= 21:
-        bad.append("the default doubling Krook is %s, which is inside the range "
-                   "the original was measured over -- biplanes would pair"
-                   % m.group(1))
-    if re.search(r"IF lk = OB_PLANE THEN ldbl", src):
-        bad.append("biplanes have been given a doubling Krook; the original "
-                   "never puts two on one floor (assets/ref2600/hazards.md)")
     # THE TIME BONUS, IN THE UNIT THE SCORE IS ACTUALLY KEPT IN.
     #
     # `#score` counts in UNITS OF TEN -- the prize is `#addv = 5` for fifty
     # points and the bonus Kop threshold is `#nextk = 1000` for ten thousand --
     # so a band written as 100 pays a THOUSAND a time unit. It was, and it did,
-    # for as long as the tally has existed: reported from play as "it seems like
+    # for as long as the tally had existed: reported from play as "it seems like
     # you awarded 1000 per time unit left". Nothing failed, the digits all lined
     # up, and the only symptom was a score that ran away.
     #
@@ -147,27 +214,31 @@ def main():
         bad.append("the time-bonus bands are not three `#bval` assignments any "
                    "more -- this check no longer covers the scoring unit")
     else:
-        base, k2, b2, k3, b3 = (int(g) for g in m.groups())
+        base, k2, b2, k3, b3 = (int(g_) for g_ in m.groups())
         got = [(0, base * 10), (k2 + 1, b2 * 10), (k3 + 1, b3 * 10)]
         if got != want_points:
             bad.append("time bonus pays %s per time unit from Krooks %s; the "
                        "original pays 100/200/300 from 1/10/16. `#addv` is in "
                        "UNITS OF TEN, so a band written in points pays ten "
                        "times over"
-                       % ([p for _k, p in got], [k for k, _p in got]))
+                       % ([p for _k, p in got], [kk for kk, _p in got]))
         else:
             print("  %-24s 100/200/300 points from Krook 1/10/16"
                   % "time bonus")
 
-    if not bad:
-        print("  %-24s never double" % "biplanes")
+    # AND THE SOURCE MUST ACTUALLY BE READING THE TABLE. Everything above tests
+    # the generator; if `load_band` stopped consulting `stor_lvl` the generated
+    # bytes would be perfect and the game would ignore them.
+    if "stor_lvl" not in src:
+        bad.append("KEYSTONE.bas never mentions stor_lvl -- the level table is "
+                   "generated and not read, so none of the above reaches play")
 
     if bad:
         print()
         for b in bad:
             print("FAIL  " + b)
         return 1
-    print("\nOK: the Krook progression matches the published one.")
+    print("\nOK: the level table matches the measured original.")
     return 0
 
 

@@ -110,7 +110,7 @@ def stag0_max(src):
     mask -- read it, rather than restating a constant that has moved once
     already and would fail silently by being generous.
     """
-    m = re.search(r"IF krk > \d+ THEN stag = lx AND (\w+)", src)
+    m = re.search(r"IF krk > \d+ THEN stag = stag AND (\w+)", src)
     if not m:
         sys.exit("checkspace: no paired-case stagger mask (`IF krk > n THEN "
                  "stag = lx AND ...`) -- the placement rule changed and the "

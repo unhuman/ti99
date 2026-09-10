@@ -23,10 +23,17 @@ Five things are not visible in a single still and each one produced a wrong
 answer before it was caught. They are recorded because any future measurement
 off this video inherits all five.
 
-* **A band is not a floor.** The view scrolls vertically and *wraps*, so the same
-  band holds the roof at one moment and floor 2 four seconds later. Counting
-  "hazards on floor 2" by fixing a y range gives nonsense; counts here are per
-  band-instant.
+* ~~**A band is not a floor.** The view scrolls vertically and *wraps*.~~
+  **THIS WAS WRONG AND IT COST THE WHOLE PER-FLOOR ANALYSIS.** Band 0 is grey
+  (the roof) in all 1,425 frames and bands 1-3 are green in all of them; nothing
+  scrolls vertically. **Band index IS the floor** — 0 roof, 1 floor 3, 2 floor 2,
+  3 floor 1 — and per-floor attribution is exact.
+
+  What produced the illusion was the store **flipping screens horizontally**, as
+  the port does: a hazard on the roof at one moment and on floor 2 four seconds
+  later is two different screens, not one screen scrolled. The first pass read
+  that as vertical motion, declared per-storey attribution unreliable, and left
+  the most useful question in the file unanswered.
 * **A round is not a level.** There is no level number on screen, and the store
   stays drawn during the bonus tally, so nothing in the HUD or the playfield
   marks a boundary. Rounds were cut at the timer's reset to 50 — but *a death
@@ -121,12 +128,69 @@ completely independent evidence. That is a strong check on the model — and it
 says the shipped `HAZGAP` of 20 px, which puts a pair inside one jump, is a
 window the original never uses for moving hazards.
 
+## Density, and which floor carries what
+
+Once band index is understood to be the floor, both questions the first pass gave
+up on fall straight out of the same census. **These two tables are the design
+target for `stor_lvl`, and `assets/checklevels.py` asserts against them** — they
+are the point of this document, not background.
+
+### How much is on screen at once
+
+The original flips screens exactly as the port does — **2 escalator, 1 elevator,
+5 hazard screens** — so this compares like with like. Screen type is inferred
+from the static furniture (aisle pillars and counters), which makes the split a
+good proxy rather than an exact one; the totals are exact.
+
+| level | hazard screens (mean / median) | escalator + elevator | the port, before this work |
+|------:|-------------------------------:|---------------------:|---------------------------:|
+| 1     | **0.71 / 0**                   | 0.33 / 0             | **2.00**                   |
+| 2     | 1.50 / 2                       | 0.25 / 0             | ~3                         |
+| 3     | 2.47 / 3                       | 1.67 / 2             | 4                          |
+| 4     | 3.28 / 4                       | 2.93 / 3             | 4                          |
+| 5     | 3.17 / 4                       | 2.54 / 3             | 4                          |
+| 6     | 3.97 / 4                       | 3.03 / 4             | 4                          |
+| 7     | 4.04 / 4                       | 3.68 / 4             | 4                          |
+| 8     | 4.50 / 5                       | 3.09 / 4             | 4                          |
+| 9     | 4.97 / 5                       | 3.09 / 4             | 4                          |
+| 10    | 3.59 / 4                       | 3.78 / 4             | 4                          |
+| 11    | 5.15 / 5                       | 4.14 / 4             | 4                          |
+| 12    | 6.09 / 7                       | 4.74 / 4             | 4                          |
+
+Two things follow, and the second was a genuine surprise:
+
+* **Level 1 is nearly empty — a median of ZERO hazards on screen**, and level 2
+  barely more. From level 4 the port's density is about right; the fault is
+  entirely in levels 1-3.
+* **The escalator and elevator screens are not empty.** From level 3 they carry
+  almost as much as the aisle screens. The port excluded screens 0, 3 and 7
+  outright.
+
+### Which kind on which floor
+
+Percentage of a level's frames in which that kind was visible on that floor. A
+column showing several kinds means that floor carries **a mix**, not one hazard
+type.
+
+| level | roof | floor 3 | floor 2 | floor 1 |
+|------:|------|---------|---------|---------|
+| 1  | radio 7%             | ball 10%, radio 3%                | radio 19%                       | ball 7%, radio 1%                        |
+| 2  | radio 31%            | ball 8%, radio 4%, cart 2%        | radio 16%                       | ball 12%, cart 2%                        |
+| 3  | radio 45%, cart 35%  | radio 22%, ball 16%, cart 16%     | cart 19%, radio 12%             | cart 25%, ball 19%, radio 3%             |
+| 4  | cart 48%, radio 34%  | cart 32%, radio 24%, ball/plane 6% | plane 43%, cart 17%, radio 15% | cart 51%, ball 18%, plane 6%, radio 3%   |
+| 7  | radio 57%, cart 57%  | cart 49%, radio 26%, plane 11%    | plane 53%, cart 17%, radio 15%  | cart 65%, ball 14%, radio 4%, plane 4%   |
+| 11 | radio 88%, cart 46%  | radio 71%, plane 22%, cart 21%    | radio 47%, plane 45%, cart 21%  | cart 47%, ball 33%, plane 11%, radio 4%  |
+
+**Every floor carries two to four kinds from level 3 onward.** The port assigned
+one kind per floor for the whole game (floor 1 all balls, floor 2 all radios, and
+so on), which is the other half of what was reported from play.
+
 ## What this does not settle
 
 * **Speeds.** The guide's "carts get faster at 7, planes at 8" was not measured;
   tracking a hazard's velocity across frames is a different job from counting.
 * **Tall balls.** The guide puts them at level 5. Bounce height was not measured.
-* **Which floors carry hazards.** Occupied bands averaged 2.8-3.4 of 4 from level
-  3 onward and 0.5-0.8 on levels 1-2, which is consistent with the ramp in
-  occupancy the port already has, but the vertical wrap makes per-storey
-  attribution unreliable and it was not pursued.
+* **Which SCREEN of a floor a hazard sits on.** The census records the screen the
+  player was standing on, not its index in the floor, so the per-screen pattern
+  within a level is not recoverable from this data. The port's table is free to
+  choose, subject to the density above.
