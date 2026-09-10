@@ -1903,9 +1903,65 @@ Two consequences for the port, both of which the single Krook 6 gate got wrong:
   `OB_PLANE`), and an absence is exactly what a later edit restores without
   noticing, so `checklevels.py` checks for it rather than trusting it.
 
-The port keeps a **third** radio out of scope: only two obstacle slots per band
-are live, and a third would cost a slot in the table and the sprite budget.
-Recorded here as a known, deliberate difference rather than an oversight.
+### 0p-quinquies. Three radios, and why "two slots" was never about radios
+
+The port shipped with a **third radio out of scope**, on the reasoning that only
+two obstacle slots per band are live and a third "would cost a slot in the table
+and the sprite budget". The first half is true and the second half is wrong.
+
+**The two-slot cap is a limit on SPRITES, and a radio is not one.** The VDP shows
+four sprites per scanline and *drops* the fifth by slot order rather than
+flickering it, so a band affords Kelly (2 boxes) + Harry (2 boxes), or Kelly +
+two obstacles — four either way. That argument is airtight for balls, carts and
+biplanes. A radio is **four characters stamped into the name table** by
+`draw_radios`; `draw_obst` explicitly skips it. It costs no sprite, and the
+scanline limit does not reach it.
+
+So there are now **twelve slots in two groups**:
+
+| slots | per band | kinds | sprites |
+|---|---|---|---|
+| 0–7 | two, at `band*2 + slot` | any | 8–15, propellers 16–23 |
+| 8–11 | one, at `8 + band` | **radio or empty** | none |
+
+Keeping the new slots in their own block rather than making the stride three is
+what leaves `draw_obst`'s `FOR di = 0 TO 7` and its `ds = di + 8` untouched. A
+stride of three would have scattered the sprite-bearing slots to 0,1,3,4,6,7,9,10
+and every sprite number in the game would have had to be recomputed — to place a
+thing that does not use one.
+
+The third slot's kind does **not** come from the table. It is synthesised from
+the band's own slot 0: a third radio appears only where that band already has
+radios, from **Krook 8** (measured — §0p-quater). Reading a kind out of the table
+would have let a third *ball* through, and a third ball is the fifth sprite the
+cap exists to prevent.
+
+**The placement is arithmetic, not cases.** The three positions are columns 7, 15
+and 23 — eight apart — and the pixel x is simply the column times eight: 56, 120,
+184, midpoint 128, dead centre. A lone radio takes the middle, a pair takes the
+ends, three fill the rack. This was three literal x values selected by a nest of
+`IF`s and then a **runtime divide by repeated subtraction** (`rad_col`, up to
+fifteen laps) to recover the column from the pixel — two spellings of one fact,
+since the pixels were only ever multiples of eight because they were columns.
+`rad_col` existed solely for that call and is gone with it; the rewrite paid for
+most of the feature.
+
+### 0p-sexies. The time bonus was paying ten times over
+
+`#score` is counted in **units of ten** — the prize is `#addv = 5` for fifty
+points, and the bonus-Kop threshold is `#nextk = 1000` for ten thousand. The time
+bonus was written as `#bval = 100 / 200 / 300`, in *points*, and therefore paid
+**1,000 per time unit** where the original pays 100.
+
+Nothing failed. The digits lined up, the tally counted out at the right speed,
+and the only symptom was a score that ran away — reported from play as *"it seems
+like you awarded 1000 per time unit left"*, which is exactly what it did.
+
+The tell is a constant written in a **different unit from the routine it is
+passed to**, the same class of fault as the px-per-pass speeds in CLAUDE.md §3A.
+`checklevels.py` now checks the bands in **points** (band × 10) rather than in
+the source's own unit — a check written in the source's unit would have agreed
+with the bug.
 
 ### 0e. A character number written by hand is a bug waiting for a rename
 
@@ -3971,14 +4027,14 @@ Which forces three numbers to be chosen together, not tuned independently:
   a box of 6 px or more collapses the seam to nothing and a box of 8 px opens a **dead band at
   `Bb` = 7** where neither answer works. The hitbox inset *is* the seam.
 
-**Difficulty raises the apex, never the answer.** The three arcs are **9 / 14 / 19** px, and
+**Difficulty raises the apex, never the answer.** The three arcs are **9 / 16 / 20** px, and
 which of them is in play is the whole of the ball's difficulty:
 
-| Krook | apex | jumpable | duckable |
-|---|---|---|---|
-| 1–4 | 9 px | 25 of 32 frames | 7 |
-| 5–9 | 14 px | 11 | 21 |
-| 10+ | 19 px | 9 | 23 |
+| Krook | apex | jumpable | duckable | met at |
+|---|---|---|---|---|
+| 1–4 | 9 px | 25 of 32 frames | 7 | the GROUND |
+| 5–9 | 16 px | 11 | 21 | the APEX |
+| 10+ | 20 px | 7 | 25 | the APEX |
 
 The top of every arc is a duck, including the first, and **the taller the ball bounces the more
 of its cycle that is**. Ducking is in the vocabulary from the opening screen; what the later
@@ -3998,9 +4054,21 @@ pair, not on each item alone.** `checkball.py` now measures the apex spread and 
 run against 9 / 10 / 12 it names the defect.
 
 Arc 0 stays at 9 — it is pinned by the "a duck is in the vocabulary from the first ball" call,
-reverted twice at the reviewer's word. The ceiling is distant: a band is 32 px of air, the art is
-8 px, and a ball is *free* (clearable standing) at `Bb ≥ 22`, so 19 keeps three pixels of margin
-on the free rule and five under the ceiling.
+reverted twice at the reviewer's word. The ceiling is `Bb ≥ 22`, where a ball becomes *free*
+(clearable by a standing Kelly); 20 keeps two pixels off it.
+
+**AND THE APEX WAS ONLY HALF OF IT — THE OTHER HALF WAS THE PHASE SEEDING.** Raising the arcs
+did not stop *"it's easy to just keep running and jump over it"*, because the height was never
+what made the tall ball jumpable. `ball_phase` seeds each ball's bounce so that it is at **phase
+0 — on the ground** — exactly when Kelly reaches it. For a short ball that is the whole point:
+it is the frame a jump clears, and it makes the encounter deterministic instead of the coin toss
+it used to be. Applied unchanged to the tall arcs, it hands out a **free jump every single
+time**, however high the ball bounces.
+
+Half a cycle later is the apex, so the tall arcs now seed to **phase 16** instead. The property
+that mattered is kept — the encounter is still deterministic and still readable on the approach —
+and only the answer is inverted: *tall ball, duck*. A taller arc with the old seeding would have
+changed nothing a player could feel.
 
 **A FULLY JUMPABLE LOW ARC WAS TRIED AND REJECTED.** At apex 8 the band is 10..14, and the hit
 test `kfh < oht` makes 14 < 14 false, so the jump clears it and the low arc becomes jumpable on

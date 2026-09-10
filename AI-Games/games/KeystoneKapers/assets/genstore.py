@@ -524,8 +524,19 @@ def collectibles():
 # so the apex alone decides HOW MUCH of a round's bounce demands a duck:
 #
 #   apex  9   25 frames jump,  7 duck -- Krooks 1-4
-#   apex 14   13 frames jump, 19 duck -- Krooks 5-9
-#   apex 19    9 frames jump, 23 duck -- Krooks 10+
+#   apex 16   11 frames jump, 21 duck -- Krooks 5-9
+#   apex 20    9 frames jump, 23 duck -- Krooks 10+
+#
+# 21 is the ceiling, and it is not the band's: a ball is FREE -- clearable by a
+# STANDING Kelly, the one thing no arc may ever be -- once its hitbox bottom
+# reaches STANDH, i.e. at bb >= 22. 20 keeps two pixels off that.
+#
+# AND THE APEX IS ONLY HALF OF WHY A TALL BALL GETS DUCKED. The bounce phase is
+# seeded so the ball meets the player at a known point of its cycle, and for the
+# tall arcs KEYSTONE.bas seeds that point to the APEX rather than the ground.
+# Without that, the seeding hands out a free jump on arrival however high the
+# ball bounces -- reported from play as easy to just keep running and jump over,
+# and the apex had nothing to do with it.
 #
 # The top of every arc is a duck, and the taller the ball bounces the more of
 # its cycle that is. Ducking is in the vocabulary from the first ball.
@@ -579,13 +590,13 @@ def bounce_arcs():
 
     THE OTHER TWO ARE NOT PINNED, AND THEY WERE FAR TOO CLOSE TO IT. 9 / 10 / 12
     made the "tall" ball of Krook 5 exactly one pixel taller than the short one
-    of Krook 1. 14 and 19 are visibly different heights while leaving arc 0
+    of Krook 1. 16 and 20 are visibly different heights while leaving arc 0
     exactly where the reviewer twice put it -- what changes across the game is
     the height, which is what the guides describe and what a player can actually
     see, and the frame split follows from it.
     """
     out = []
-    for apex in (9, 14, 19):
+    for apex in (9, 16, 20):
         for t in range(32):
             u = (t - 16) / 16.0
             h = apex * (1.0 - u * u)

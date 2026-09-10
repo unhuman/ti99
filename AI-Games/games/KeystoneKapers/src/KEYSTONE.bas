@@ -516,13 +516,35 @@
 	'
 	' Kelly (slot 0) + Harry (slot 1) + two obstacles = four. Provably never
 	' dropped, on any band, in any situation.
-	DIM obk(8)			' kind, 0 = empty
-	DIM obx(8)			' x within the screen
-	DIM obd(8)			' 0 = moving left, 1 = right
-	DIM obh(8)			' art-bottom height above the slab
-	DIM obc(8)			' cell column, radios only -- they are chars
-	DIM obp(8)			' bounce phase, balls only
-	DIM obht(8)			' hit refractory, per obstacle -- see coll_obst
+	'
+	' ...AND THAT CAP IS ABOUT SPRITES, WHICH A RADIO IS NOT. The scanline
+	' limit is the whole argument above, and it does not reach the radio: a
+	' radio is four CHARACTERS stamped into the name table by draw_radios, it
+	' costs no sprite, and the VDP will happily draw a hundred of them on one
+	' line. The original puts up to THREE on a floor (assets/ref2600/hazards.md
+	' measures them at three fixed positions), and the reason we had two was
+	' this comment being read as a limit on hazards when it is a limit on
+	' sprites.
+	'
+	' So there are TWELVE slots in two groups, and the split is deliberate:
+	'
+	'   0-7    two per band, band*2 + slot -- ANY kind, and these are the ones
+	'          that own sprites 8-15 (propellers 16-23). Untouched.
+	'   8-11   ONE per band, 8 + band -- RADIO OR EMPTY, never a sprite.
+	'
+	' Keeping the new slots in their own block rather than making the stride
+	' three is what leaves draw_obst's `FOR di = 0 TO 7` and its `ds = di + 8`
+	' exactly as they were. A stride of three would have scattered the
+	' sprite-bearing slots to 0,1,3,4,6,7,9,10 and every sprite number in the
+	' game would have had to be recomputed -- to place a thing that does not
+	' use one.
+	DIM obk(12)			' kind, 0 = empty
+	DIM obx(12)			' x within the screen
+	DIM obd(12)			' 0 = moving left, 1 = right
+	DIM obh(12)			' art-bottom height above the slab
+	DIM obc(12)			' cell column, radios only -- they are chars
+	DIM obp(12)			' bounce phase, balls only
+	DIM obht(12)			' hit refractory, per obstacle -- see coll_obst
 
 	DIM cok(4)			' this screen's collectible, per band
 	DIM coc(4)			' its column
@@ -1692,6 +1714,11 @@ esc_cap_draw:
 	' while their screen is shown. That falls straight out of the flip, and
 	' it is what keeps the moving-actor count at 14 instead of 96.
 load_band:
+	' DOES THIS KROOK GET A THIRD RADIO? Constant for the whole screen, so it
+	' is asked once here rather than once per band -- and folding it into
+	' `lrad` below leaves the third-radio block with a single test.
+	l3rd = 0
+	IF krk > 7 THEN l3rd = 1
 	FOR llv = 0 TO 3
 		lb = llv + llv			' lb = llv*2, two slots per band
 		lix = lv8(llv)
@@ -1705,14 +1732,15 @@ load_band:
 				#loa = #loa + 6	' 6 bytes per band
 			NEXT lq
 		END IF
-		' Only TWO of the table's three slots are used -- see the DIM
-		' comment. The third is still read so the file offset stays right.
-		FOR ls = 0 TO 2
+		' TWO TABLE SLOTS. The third obstacle on a band is not in the
+		' table at all (see below), so the loop no longer reads a third
+		' pair of bytes to throw them away -- it steps the offset past
+		' them once instead.
+		FOR ls = 0 TO 1
 			lk = PEEK(#loa)
 			#loa = #loa + 1
 			lx = PEEK(#loa)
 			#loa = #loa + 1
-			IF ls = 2 THEN GOTO ld_skip
 			li = lb + ls
 			' THE HAZARDS ARRIVE ONE PER KROOK, which is the original's
 			' progression and not a ramp of one dial (DESIGN.md 0p):
@@ -1818,6 +1846,15 @@ load_band:
 				END IF
 			END IF
 			obk(li) = lk
+			' DOES THIS BAND CARRY RADIOS? Slot 2 is decided two
+			' iterations later and `lk` is overwritten by then, so the
+			' answer is remembered here -- after every gate above, so
+			' it reflects what the band ACTUALLY got rather than what
+			' the table asked for.
+			IF ls = 0 THEN
+				lrad = 0
+				IF lk = OB_RADIO THEN lrad = l3rd
+			END IF
 			' A RADIO NEEDS A CELL, NOT A PIXEL, because it is drawn as
 			' characters. Divided by repeated subtraction: `/` compiles
 			' to a real TMS9900 DIV (CLAUDE.md 3A), and this runs once
@@ -1884,7 +1921,6 @@ load_band:
 			IF krk > 5 THEN stag = lx AND HAZMASK
 			IF ls = 0 THEN stg0 = stag
 			IF ls = 1 THEN stag = stg0 + HAZGAP
-			IF ls = 2 THEN stag = stag + 128
 			IF entdir = 0 THEN
 				obd(li) = 0			' from the EAST, heading west
 				obx(li) = 240 - stag
@@ -1924,6 +1960,29 @@ load_band:
 			IF lk = OB_BALL THEN
 				obg = 232 - stag
 				GOSUB ball_phase
+				' A TALL BALL MEETS HIM AT ITS APEX, NOT AT ITS
+				' FOOT -- which is the whole difference between a
+				' ball you jump and a ball you duck.
+				'
+				' The seeding above lands the ball on phase 0, the
+				' ground, exactly as he arrives. For a short ball
+				' that is the point: it is the frame a jump clears,
+				' and it is deterministic rather than a coin toss.
+				' Applied to the TALL arcs it hands out a free jump
+				' every single time -- reported from play as "it is
+				' easy to just keep running and jump over it", and
+				' the apex had nothing to do with it. Raising the
+				' arc alone would not have touched this.
+				'
+				' Half a cycle later is the apex, so the same
+				' deterministic seeding puts the ball at its
+				' highest point on arrival instead. It stays
+				' readable on the approach -- tall ball, duck --
+				' and the answer is simply the other one.
+				IF arcs > 0 THEN
+					obq = obq + 16
+					IF obq > 31 THEN obq = obq - 32
+				END IF
 				obp(li) = obq
 			END IF
 			obht(li) = 0
@@ -1937,40 +1996,81 @@ load_band:
 				' symmetrically about the centre; measured off the
 				' reference, two sit at 0.26 and 0.68 of the
 				' screen (midpoint 0.47) and one sits near the
-				' middle. 56 and 184 put their centres at 64 and
-				' 192, whose midpoint is 128 -- dead centre -- and
-				' all three are multiples of 8, so each lands on a
-				' cell boundary with no rounding.
-				obx(li) = 120
-				IF krk > 5 THEN
-					obx(li) = 56
-					IF ls = 1 THEN obx(li) = 184
+				' middle.
+				'
+				' A RACK OF THREE, AND THE REST IS ARITHMETIC.
+				' The positions are columns 7, 15 and 23 -- eight
+				' apart -- and the pixel x is just the column times
+				' eight: 56, 120, 184, midpoint 128, dead centre.
+				' So the only thing to decide is WHICH of the three
+				' this radio takes, and both numbers fall out of
+				' it. A lone radio takes the middle, a pair takes
+				' the ends, three fill the rack.
+				'
+				' This was three literal x values chosen by a
+				' nest of cases, and then a runtime DIVIDE -- by
+				' repeated subtraction, up to fifteen laps -- to
+				' recover the column from the pixel. Both are the
+				' same fact written twice: the pixels were always
+				' multiples of eight because they were always
+				' columns. rad_col existed solely for this call and
+				' is gone with it.
+				lrp = 2
+				IF ls = 0 THEN
+					lrp = 0
+					IF krk < 6 THEN lrp = 1
 				END IF
-				ocx = obx(li)
-				GOSUB rad_col
-				obc(li) = ocn
+				lrc = lrp * 8
+				lrc = lrc + 7
+				obc(li) = lrc
+				obx(li) = lrc * 8
 			END IF
-ld_skip:
 		NEXT ls
+		' ------------------------------------------- the THIRD radio
+		' Past the two table slots the band has one more, at 8+llv, and
+		' it is A RADIO OR NOTHING. Its kind does NOT come from the
+		' table: the two bytes for slot 2 are still there and still
+		' skipped, so the six-byte stride and every placement in
+		' store.bas are untouched.
+		'
+		' It is synthesised from the band's own slot 0 instead -- a
+		' third radio appears only where that band already has radios,
+		' which is what "a floor carries one, two or three of them"
+		' means. Reading a kind out of the table here would have let a
+		' third BALL through, and a third ball is a fifth sprite on the
+		' scanline, the one thing the two-slot cap exists to prevent.
+		'
+		' Krook 8, measured: assets/ref2600/hazards.md counts the
+		' original's radios at three fixed positions and finds the third
+		' arriving two rounds after the second.
+		'
+		' ONLY THE FIELDS THAT ARE EVER READ BACK are written. obd, obh,
+		' obp and obc are write-only at 8-11 -- draw_obst and the
+		' obstacle update both stop at 7, and coll_obst reads obh only
+		' for a BALL, which this slot can never hold. obht IS read: it
+		' is the hit refractory, and a stale one carried across a screen
+		' change would eat the first hit.
+		#loa = #loa + 2
+		li = 8 + llv
+		obk(li) = 0
+		obht(li) = 0
+		IF lrad = 1 THEN
+			obk(li) = OB_RADIO
+			' THE MIDDLE OF THE THREE. Slots 0 and 1 already sit at
+			' 56 and 184 once radios double, so the third takes the
+			' centre the LONE radio uses: 64 px between neighbours,
+			' against the 49 px a jump needs to land between two
+			' STATIC hazards. Evenly spaced and symmetric about the
+			' centre, which is how the original places its three.
+			obx(li) = 120
+			' Column 15 and pixel 120: rack position 1, the same
+			' middle slot a LONE radio takes. Constants, because
+			' unlike slots 0 and 1 this one has no other option.
+			obc(li) = 15
+		END IF
 	NEXT llv
 	RETURN
 
-	' obx / 8, by repeated subtraction. `/` compiles to a real TMS9900 DIV
-	' (CLAUDE.md 3A) and this is the only place the game needs one; at most
-	' thirty passes, run once per obstacle when a screen loads and never in a
-	' frame, so the loop is cheaper than the instruction.
-rad_col:
-	ocn = 0
-rc_loop:
-	IF ocx < 8 THEN RETURN
-	ocx = ocx - 8
-	ocn = ocn + 1
-	GOTO rc_loop
-
-	' gap / 6, and then 32 minus it: the phase that will have wrapped to zero
-	' by the time they meet. Repeated subtraction because `/` compiles to a
-	' real TMS9900 DIV (CLAUDE.md 3A), and this runs once per ball when a
-	' screen loads rather than in a frame.
 ball_phase:
 	obq = 0
 bp_loop:
@@ -2196,7 +2296,11 @@ move_kelly:
 
 	' --- jumping: the arc is a table, so the apex is exactly 14
 	IF klst = ST_JUMP THEN
-		kjp = kjh
+		' (`kjp = kjh` stood here, saving the previous jump height for a
+		' rising/falling test that no longer exists. CVBasic itself has
+		' been printing "variable 'KJP' assigned but never read" on every
+		' build since -- a dead store the compiler was pointing at, paid
+		' for once per frame of every jump.)
 		kjf = kjf + fdv
 		IF kjf > 29 THEN
 			kjf = 0
@@ -2712,12 +2816,18 @@ wall_clear:
 	END IF
 	RETURN
 
-	' ONE BAND'S RADIOS. rbn is the band and its two obstacle slots are
-	' rbn*2 and rbn*2+1, so the caller does not have to know the mapping.
+	' ONE BAND'S RADIOS. rbn is the band; its slots are rbn*2, rbn*2+1 and
+	' 8+rbn, so the caller does not have to know the mapping.
 radio_band:
 	rlo = rbn + rbn
-	rhi = rlo + 1
-	FOR ri = rlo TO rhi
+	' THREE SLOTS, AND THE THIRD IS NOT NEXT TO THE OTHER TWO -- it lives at
+	' 8 + band so the sprite-bearing slots can stay contiguous (see the DIM
+	' block). Remapping the index inside the loop keeps ONE copy of the body
+	' below; a separate call for the third would have duplicated twenty-odd
+	' VPOKEs into a fixed area with two hundred bytes left in it.
+	FOR rn = 0 TO 2
+		ri = rlo + rn
+		IF rn = 2 THEN ri = 8 + rbn
 		IF obk(ri) = OB_RADIO THEN
 			#rva = 6144
 			#rva = #rva + #bdst(rbn)
@@ -2769,7 +2879,7 @@ radio_band:
 				VPOKE #rvb,rch
 			END IF
 		END IF
-	NEXT ri
+	NEXT rn
 	RETURN
 
 	' THE SOUND PULSE. Driven off fphs, which already ticks once per pass and
@@ -2791,6 +2901,12 @@ haz_gone:
 	rgi = klv + klv
 	GOSUB haz_off
 	rgi = rgi + 1
+	GOSUB haz_off
+	' AND THE THIRD SLOT. "A hit clears the floor -- ALL of it" (DESIGN.md
+	' 0p-ter) is the promise; a third radio left standing after a hit would be
+	' the one hazard you still have to walk back out through, which is exactly
+	' what this routine exists to prevent.
+	rgi = 8 + klv
 	GOSUB haz_off
 	RETURN
 
@@ -3378,9 +3494,15 @@ coll_obst:
 	ktop = kfh + kh
 	kcx = klx + 8
 
-	cb = klv + klv				' two slots per band
-	FOR ci = 0 TO 1
+	cb = klv + klv
+	' THREE SLOTS PER BAND, the third at 8+band -- same remap as radio_band.
+	' A radio that is drawn and cannot hurt you is worse than one that is not
+	' drawn at all, so this loop and radio_band have to cover exactly the same
+	' set. It also ticks obht(), the per-obstacle hit refractory, which the
+	' third slot needs like any other.
+	FOR ci = 0 TO 2
 		cj = cb + ci
+		IF ci = 2 THEN cj = 8 + klv
 		ck = obk(cj)
 		chit = 0
 		IF ck > 0 THEN
@@ -4613,16 +4735,33 @@ do_catch:
 	' sources agree on those bands; the manual's own wording suggests
 	' 1-8 / 9-16 / 17+ and DESIGN.md 0 records the disagreement.
 	'
-	' #bval MUST BE 16-BIT: 300 does not fit in a byte, and a plain variable
-	' would silently truncate it to 44 (CLAUDE.md 3A).
+	' IN UNITS OF TEN, WHICH IS WHAT THE SCORE IS COUNTED IN, so the bands are
+	' 10 / 20 / 30 and not 100 / 200 / 300.
+	'
+	' They were 100 / 200 / 300 and paid TEN TIMES the right bonus -- 1,000 a
+	' time unit where the original pays 100. `add_score` takes `#addv` in units
+	' of ten (the prize beside it is `#addv = 5` for fifty points, and the bonus
+	' Kop threshold is `#nextk = 1000` for ten thousand), so writing the band in
+	' POINTS here shifted every tally one decimal place. Reported from play as
+	' "it seems like you awarded 1000 per time unit left" -- exactly right.
+	'
+	' Nothing failed: 1,000 a unit is a plausible-looking number, the digits
+	' all line up, and the only symptom is a score that runs away. The tell is
+	' a constant written in a different unit from the routine it is passed to,
+	' which is the same class of fault as the px-per-pass speeds in 3A.
+	'
+	' (This is also why the old comment here said "#bval MUST BE 16-BIT: 300
+	' does not fit in a byte". At 10 / 20 / 30 it would, but it stays 16-bit
+	' because `#addv` is, and a byte here would buy two bytes of ROM in
+	' exchange for a truncation trap the next time somebody edits a band.)
 bonus_count:
 	' THE CLOCK IS ABOUT TO BE COUNTED DOWN, so the field has to be up --
 	' the round can end on any phase of the low-time flash, and a tally
 	' running into a blanked field would draw nothing at all.
 	GOSUB time_show
-	#bval = 100
-	IF krk > 9 THEN #bval = 200
-	IF krk > 15 THEN #bval = 300
+	#bval = 10
+	IF krk > 9 THEN #bval = 20
+	IF krk > 15 THEN #bval = 30
 bn_loop:
 	IF tsec = 0 THEN RETURN
 	tsec = tsec - 1

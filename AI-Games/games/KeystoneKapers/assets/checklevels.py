@@ -128,6 +128,37 @@ def main():
     if re.search(r"IF lk = OB_PLANE THEN ldbl", src):
         bad.append("biplanes have been given a doubling Krook; the original "
                    "never puts two on one floor (assets/ref2600/hazards.md)")
+    # THE TIME BONUS, IN THE UNIT THE SCORE IS ACTUALLY KEPT IN.
+    #
+    # `#score` counts in UNITS OF TEN -- the prize is `#addv = 5` for fifty
+    # points and the bonus Kop threshold is `#nextk = 1000` for ten thousand --
+    # so a band written as 100 pays a THOUSAND a time unit. It was, and it did,
+    # for as long as the tally has existed: reported from play as "it seems like
+    # you awarded 1000 per time unit left". Nothing failed, the digits all lined
+    # up, and the only symptom was a score that ran away.
+    #
+    # So the bands are checked in POINTS -- band x 10 -- which is the number the
+    # manual quotes and the number a player counts. Writing the check in the
+    # source's own unit would have agreed with the bug.
+    want_points = [(0, 100), (10, 200), (16, 300)]
+    m = re.search(r"#bval = (\d+)\s*\n\s*IF krk > (\d+) THEN #bval = (\d+)"
+                  r"\s*\n\s*IF krk > (\d+) THEN #bval = (\d+)", src)
+    if not m:
+        bad.append("the time-bonus bands are not three `#bval` assignments any "
+                   "more -- this check no longer covers the scoring unit")
+    else:
+        base, k2, b2, k3, b3 = (int(g) for g in m.groups())
+        got = [(0, base * 10), (k2 + 1, b2 * 10), (k3 + 1, b3 * 10)]
+        if got != want_points:
+            bad.append("time bonus pays %s per time unit from Krooks %s; the "
+                       "original pays 100/200/300 from 1/10/16. `#addv` is in "
+                       "UNITS OF TEN, so a band written in points pays ten "
+                       "times over"
+                       % ([p for _k, p in got], [k for k, _p in got]))
+        else:
+            print("  %-24s 100/200/300 points from Krook 1/10/16"
+                  % "time bonus")
+
     if not bad:
         print("  %-24s never double" % "biplanes")
 
