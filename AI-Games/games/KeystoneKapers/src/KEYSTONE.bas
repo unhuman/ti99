@@ -106,15 +106,26 @@
 	' Floors 1-3 end in an ENDWALL character at column 31 and XWALL stops an
 	' actor just short of it. The roof does not have one -- its east end is the
 	' edge of the BUILDING, the skyline carries on to the screen edge, and the
-	' round ends with him going over it. 240 puts his 16 px sprite flush with
-	' that edge.
+	' round ends with him going over it.
+	'
+	' 252 IS FOUR PIXELS SHORT OF THE LAST COLUMN, and that is the point: his
+	' sprite is 16 px wide, so at 240 he stands flush against the edge FULLY
+	' VISIBLE and then simply stops existing -- `do_escape` runs `hide_all` on
+	' the same pass. At 252 twelve of those sixteen pixels are already clipped
+	' off the screen when he goes, so he reads as having walked off the roof
+	' rather than having been deleted from it. The arrival test allows 6 px of
+	' slack, so the last frame he is drawn on shows between one and four
+	' columns of him.
+	'
+	' 255 is the true ceiling and buys three more pixels; 252 keeps a little
+	' headroom for an off-by-one in whatever edits this next.
 	'
 	' This is only reachable because the EXIT DOOR that stood at columns 28-30
 	' was removed (genstore.py, the roof's east template). Six cells of white
 	' box on dark blue, reading on screen as purple dots -- it was asked about
 	' as a graphical fault, it says he leaves through a doorway rather than off
 	' a roof, and it was exactly where he used to stop.
-	CONST XROOF = 240
+	CONST XROOF = 252
 	CONST XWALW = 8			' nearest left edge at the west wall
 	CONST STANDH = 24		' Kelly standing -- TWO SPRITES tall
 	' KELLY DUCKED. It was 8 px, which is not a crouch -- it is a squash, with
@@ -3369,17 +3380,25 @@ move_harry:
 			' east, and going over it is how the round ends. Same
 			' constant the escape target uses, so the place he stops
 			' and the place he escapes from cannot disagree.
-			' STEP THEN CLAMP, rather than measure-the-room-first. The
-			' room dance exists to avoid overshooting an 8-bit wrap,
-			' and here it cannot wrap: hx is at most the limit, 240,
-			' and hspd never exceeds a few pixels, so hx + hspd stays
-			' well under 255 and a plain ceiling is exact. Two
-			' statements instead of four, which is what paid for the
-			' roof exception above.
+			' MEASURE THE ROOM, THEN STEP -- and never add past the
+			' limit, so this is exact for ANY limit up to 255.
+			'
+			' The obvious `hx = hx + hspd : IF hx > hlim THEN hx = hlim`
+			' is a byte or two cheaper and quietly caps XROOF at 245.
+			' `pace_step` can emit two pixels a frame over five frames,
+			' so hspd reaches 10; at hlim 252 the sum is 262, which in
+			' eight bits is 6, and `IF 6 > 252` is false -- the crook
+			' would TELEPORT TO THE WEST WALL on his last stride. Only
+			' at a speed nobody has set yet, which is the worst kind.
+			'
+			' The `IF hx < hlim` guard this used to carry is dropped:
+			' hx <= hlim is invariant (every path that sets hx puts him
+			' at a screen edge or an escalator foot), so the subtraction
+			' cannot underflow, and dropping it pays for the roof test.
 			hlim = XWALL
 			IF hlv = 3 THEN hlim = XROOF
-			hx = hx + hspd
-			IF hx > hlim THEN hx = hlim
+			hroom = hlim - hx
+			IF hroom < hspd THEN hx = hlim ELSE hx = hx + hspd
 		ELSE
 			hroom = 255 - hx
 			IF hroom < hspd THEN

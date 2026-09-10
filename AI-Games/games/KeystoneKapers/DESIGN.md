@@ -1956,7 +1956,7 @@ columns 28-30.
 
 Both moved together, and they had to: the arrival test is *within 6 px of
 `htx`*, so a target past the limit his own movement clamps him to deletes the
-escape loss condition silently. `XROOF = 240` is now the target **and** the
+escape loss condition silently. `XROOF = 252` is now the target **and** the
 clamp, so the place he stops and the place he escapes from cannot drift apart.
 Floors 1-3 keep `XWALL`, because they *do* end in an `ENDWALL` character; the
 roof does not.
@@ -1977,11 +1977,20 @@ colour live in a **bank**, which is the budget with thousands free — deleting
 named 21 stale constants when it was tried) to reclaim 16 bytes of the budget
 that is not scarce. It stays defined and simply unplaced.
 
-The net +2 bytes is entirely the escape change: the roof exception cost ~28, and
-paying for it meant simplifying the clamp from measure-the-room-then-step to
-**step-then-clamp**, which gave back ~26. The room dance existed to avoid an
-8-bit wrap that cannot happen here — `hx` is at most 240 and `hspd` is a few
-pixels, so a plain ceiling is exact.
+**And how far east he goes is limited by an 8-bit wrap, not by the screen.** His
+sprite is 16 px wide, so at 240 he stands flush against the edge *fully visible*
+and then stops existing — `do_escape` runs `hide_all` on the same pass, which
+reads as being deleted rather than leaving. At **252** twelve of those sixteen
+pixels are already clipped off screen when he goes.
+
+Getting there meant keeping the **measure-the-room-then-step** clamp rather than
+the cheaper `hx = hx + hspd : IF hx > hlim THEN hx = hlim`. That form silently
+caps XROOF at 245: `pace_step` can emit two pixels a frame over five frames, so
+`hspd` reaches 10, and 252 + 10 is 6 in eight bits — `IF 6 > 252` is false and
+the crook would **teleport to the west wall** on his last stride, at a speed
+nobody has set yet. Measuring first never adds past the limit and is exact at
+any limit up to 255. The `IF hx < hlim` guard it used to carry is dropped:
+`hx <= hlim` is invariant, so the subtraction cannot underflow.
 
 `checkchase.py` reads `XROOF` out of the source now. It had `7 * 256 + 224`
 typed in with a comment saying where it came from, **and it still passed** after
