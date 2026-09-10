@@ -60,9 +60,15 @@ above those, shopping carts on the roof -- and it does not change as you walk. *
 crook and he rides an escalator back DOWN**, which you cannot: they only go up.
 
 **The hazards arrive one per round.** Krook 1 is short beach balls and nothing else; radios
-join at 2, shopping carts at 3, **biplanes at 4**, the balls go tall at 5, a second hazard per
-floor at 6, and carts and planes speed up at 7 and 8. That is the original's progression, and
-`assets/checklevels.py` fails the build if any of it drifts.
+join at 2, shopping carts at 3, **biplanes at 4**, the balls go tall at 5, a second radio per
+floor at 6, and carts and planes speed up at 7 and 8. Then the doubling continues: a second
+ball at 9 and a second cart at 11, after which the levels stop changing. **Biplanes never
+double** -- they are the one hazard you must duck rather than jump.
+
+That progression is the original's, and the doubling half of it is **measured** rather than
+taken from a guide: `assets/ref2600/hazards.md` counts hazards frame by frame through a full
+2600 playthrough. The published guide stops at level 8 saying the game stops changing there;
+it does not. `assets/checklevels.py` fails the build if any of it drifts.
 
 The lift has a **step**: a two-pixel lip in the floor bar's own colours along the bottom of the doorway, with the doors opening above it, so boarding reads as stepping up into the car.
 
@@ -139,7 +145,7 @@ of a storey below (`DESIGN.md` 0e-quindecies).
 
 **Then that floor's hazards clear** until you re-enter the screen -- nine seconds is penalty enough without having to walk back out through them. The clear happens when the freeze ends, not when the hit lands, so the thing that hit you is still there while you are being told about it. Radios go too: they are characters on the shelf rather than sprites, so they are erased from the name table rather than just switched off.
 
-**Level 1 is deliberately sparse**: two of the four floors carry a hazard, three from Krook 2, all four from Krook 3. Krook 5 is where the balls bounce higher and more of each bounce has to be ducked, and Krook 6 the first round with two hazards on a floor — spaced `HAZGAP` = 48 px, which is inside the window where **one jump clears both** (`DESIGN.md` §0p, §0p-bis).
+**Level 1 is deliberately sparse**: two of the four floors carry a hazard, three from Krook 2, all four from Krook 3. Krook 5 is where the balls bounce higher and more of each bounce has to be ducked, and Krook 6 the first round with two hazards on a floor — spaced `HAZGAP` = 104 px, which is inside the window where you can **land between them** and take each with its own jump. 104 is measured off the original, whose moving hazards are never closer than 108 px in our scale (`DESIGN.md` §0p, §0p-bis, §0p-quater).
 
 The score line sits two columns in from the edge on **dark blue**, with the reserve-Kop hats one column in (five of them — six would wrap off the row). The lift takes **two seconds** between floors.
 

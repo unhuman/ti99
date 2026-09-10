@@ -777,7 +777,7 @@ not a fault in the game.
 
 Nine seconds is a heavy penalty on a fifty-unit clock, and taking it while still
 standing among the things that charged it is how one mistake becomes three --
-especially with a second hazard 48 px behind the first. So a hit **zeroes both of
+especially with a second hazard 104 px behind the first. So a hit **zeroes both of
 that band's hazard slots**, whatever is in them, and they stay gone until the
 screen is re-entered.
 
@@ -1768,8 +1768,8 @@ and always were** -- every closing distance it printed was about 2.4× too large
 
 | | old model | corrected |
 |---|---|---|
-| one jump clears both at | ≤ 54 px | **≤ 21 px** |
-| landing between needs | ≥ 168 px | **≥ 67 px** |
+| one jump clears both at | ≤ 54 px | **≤ 22 px** |
+| landing between needs | ≥ 168 px | **≥ 82 px** |
 
 `HAZGAP` was 48, chosen because 48 ≤ 54. Against the real numbers 48 is **the
 dangerous middle**: too far apart to clear together, too close to land between.
@@ -1781,24 +1781,37 @@ onto the second.
 ~70 px before and ~67 px after; only the model was wrong. The gap has been
 unclearable since it was set.
 
-**And the land-between option is impossible here**, which is why it never came up:
-`WARNPX = 120` of reaction distance caps the gap at 57, and landing between needs
-67. So `HAZGAP = 20` -- one jump clears both, with 157 px of warning. Two hazards
-20 px apart read as one wide obstacle, which is the honest description of a pair
-you must jump as one.
+**A SECOND UNIT ERROR HID INSIDE THE FIX.** The corrected file still computed
+*both* bounds from the **slowest** hazard. The two have opposite worst cases:
+clearing a pair together is hardest against the slowest (less ground drifts
+under the apex), but landing between them is hardest against the **fastest**,
+because the whole airborne stretch is spent closing. Landing between needs
+**82 px**, not the 67 that one speed for both reported. It never showed, because
+the shipped gap sat in the other window entirely.
 
-`checkspace_test.py` now rejects 70, 176 **and 48**, and pins the boundary at
-21/22.
+**And that 67 was the number which "proved" the land-between option impossible.**
+The reasoning ran: `WARNPX = 120` of reaction distance caps the gap at 57, 57 is
+under 67, so there is no room -- therefore `HAZGAP = 20`, a pair taken as one
+wide obstacle. Every step follows; the premise was a units bug. A wrong unit did
+not merely misplace a threshold, it argued a whole design option out of
+existence, and the game shipped the wrong pairing for it. **See §0p-bis for what
+the option actually costs, which is slot 0's jitter and not the gap.**
 
-### 0p-bis. Two hazards on a floor: there are two safe gaps and only one fits
+`checkspace_test.py` now rejects 70, 176, 48 **and 71** -- the last being a gap
+that only the fastest hazard can see through, and the case that fails the moment
+anyone puts the bound back on a single speed.
 
-From Krook 6 a floor carries two hazards. Kelly closes on an oncoming ball at
-`WALKSP + 2` = 6 px a pass, and the jump arc **holds its 14 px apex for 9
-passes** and is **airborne for 28**. So exactly two gaps are survivable:
+### 0p-bis. Two hazards on a floor: there are two safe gaps, and the game had picked the wrong one
+
+From Krook 6 a floor can carry two hazards -- which kinds, and from which Krook,
+is §0p-ter. Kelly closes on an oncoming hazard at `(KWALK64 + its speed)/64` px a
+**frame** -- 2.53 at the slow speed, 2.92 at the fast one -- and the jump arc
+**holds its 14 px apex for 9 frames** and is **airborne for 28**. So exactly two
+gaps are survivable:
 
 ```
-gap <=  54 px    ONE JUMP CLEARS BOTH        (9 apex passes x 6)
-gap >= 168 px    HE CAN LAND BETWEEN THEM    (28 airborne passes x 6)
+gap <=  22 px    ONE JUMP CLEARS BOTH        (9 apex frames, slowest hazard)
+gap >=  82 px    HE CAN LAND BETWEEN THEM    (28 airborne frames, FASTEST)
 ```
 
 Anything between is **the dangerous middle** — too far apart to take together,
@@ -1812,17 +1825,35 @@ window and fine; **70 px is squarely in the dangerous middle**. The asymmetry
 was the symptom; the fault was that the gap had never been derived from
 anything.
 
-**AND THE SECOND WINDOW IS NOT AVAILABLE ON THIS SCREEN.** The first fix sized
-the gap at 176 px so a jump would fit between the pair, and that made it worse.
-`stag` is distance from the **far** edge, so widening the gap moves the second
-hazard *toward* the player: at 176 px it starts about 64 px from the wall he
-walks in through. Reported immediately — *"the 2nd ball seems to be placed
-where the player is entering, and immediately the player cannot dodge"*.
+**THE SECOND WINDOW *IS* AVAILABLE, AND THIS DOCUMENT SAID OTHERWISE.** The
+first fix sized the gap at 176 px so a jump would fit between the pair, and that
+made it worse: `stag` is distance from the **far** edge, so widening the gap
+moves the second hazard *toward* the player, and at 176 px it starts about 64 px
+from the wall he walks in through. Reported immediately — *"the 2nd ball seems to
+be placed where the player is entering, and immediately the player cannot
+dodge"*. The conclusion drawn was that the window did not fit at all, and the gap
+went to 20 px — a pair taken as **one** obstacle.
 
-`HAZGAP` is **48 px**: inside the one-jump window with margin, identical on
-every screen because slot 1 is measured from slot 0's own stagger, and leaving
-the nearer hazard at least **129 px** — 21 passes — of clear ground at entry.
-The pair reads as one obstacle taken with one well-timed jump.
+That conclusion rested on a land-between threshold of 168 px, then 67 px, both
+wrong (§0p). It is **82 px**, and 82 + the 120 px reaction budget fits inside the
+240 px of placeable floor with room to spare.
+
+**`HAZGAP` is 104 px, and it is MEASURED rather than chosen.** A frame-by-frame
+census of a full 2600 playthrough — `assets/ref2600/hazards.md` — finds that two
+**moving** hazards on one floor are never closer than **108 px** in our scale,
+not once across 21 levels, and that its static radios come as close as **54**.
+Our own arc independently puts the thresholds at 82 px moving and 49 static, so
+the original sits just above both, from evidence that knows nothing about this
+jump. That is the *run / jump / run / jump* the reviewer asked for.
+
+**The price is slot 0's jitter, and it is arithmetic rather than a judgement.**
+The pair spans `HAZGAP`, and the nearer of the two still owes the player his
+reaction distance at the entry wall: 120 + 104 = 224 of the 240 px available, so
+the pair can only slide **16 px**. Hence `HAZMASK = 15`, applied from Krook 6 —
+before that nothing is paired and slot 0 keeps its full 64 px of range, which
+covers most of the early game. This is not less faithful than what it replaces:
+the original places its radios on exactly **three fixed positions** per floor and
+has no jitter at all.
 
 **NO EXISTING CHECK COULD SEE ANY OF IT.** `checkball.py` sweeps a *single* ball
 against the jump and the crouch and is right about every frame; `checklevels.py`
@@ -1835,6 +1866,46 @@ windows, **and** the nearer hazard must not start in the doorway — because the
 first fix satisfied the first half and failed the second.
 `checkspace_test.py` holds it to both known-bad inputs, 70 px and 176 px, which
 fail for opposite reasons.
+
+### 0p-quater. Which hazards come in twos, measured rather than assumed
+
+The doubling was **one gate at Krook 6 for every kind**, on the strength of a
+published guide's line about "double radios". The guide's table stops at level 8
+and says the levels stay the same after it. The reviewer remembered otherwise,
+and remembered radios in twos and threes.
+
+Rather than pick a side, the original was counted: one frame per second of a full
+2600 playthrough, hazards classified by colour and shape, rounds attributed to
+levels through the HUD. Method, pitfalls and the full table are in
+**`assets/ref2600/hazards.md`**; the result:
+
+| what | from |
+|---|---|
+| shopping carts appear | level 3 |
+| biplanes appear | level 4 |
+| **a second radio** | level 6 |
+| a third radio | level 8 |
+| **a second ball** | level 9 |
+| **a second cart** | level 11 |
+| **a second biplane** | never, in 21 levels |
+
+So the ramp **does not stop at 8** — balls double at 9 and carts at 11, and from
+11 the layout is stable through 21. The guide is not wrong so much as
+incomplete: its author reached level 8. The reviewer's recollection was right.
+
+Two consequences for the port, both of which the single Krook 6 gate got wrong:
+
+* **Two balls turned up five rounds early**, at 6 instead of 9.
+* **Biplanes came in pairs, and the original never pairs them.** It is the one
+  hazard that must be **ducked** rather than jumped, so a pair of them is a
+  different question from a pair of anything else — and the answer is no. The
+  rule is expressed as an absence (the default `ldbl` is simply never lowered for
+  `OB_PLANE`), and an absence is exactly what a later edit restores without
+  noticing, so `checklevels.py` checks for it rather than trusting it.
+
+The port keeps a **third** radio out of scope: only two obstacle slots per band
+are live, and a third would cost a slot in the table and the sprite budget.
+Recorded here as a known, deliberate difference rather than an oversight.
 
 ### 0e. A character number written by hand is a bug waiting for a rename
 
@@ -2503,8 +2574,10 @@ search is not run a third time.
 ### 0p. How the levels actually advance
 
 Researched, not invented: two independent readings of the published level guides
-agree on this table, and `assets/checklevels.py` now reads every threshold back
-out of the source and fails the build if one moves.
+agree on the arrivals and the speed dials, the **doublings are measured from the
+original frame by frame** (§0p-quater and `assets/ref2600/hazards.md`), and
+`assets/checklevels.py` reads every threshold back out of the source and fails
+the build if one moves.
 
 | Krook | what changes |
 |---|---|
@@ -2513,9 +2586,19 @@ out of the source and fails the build if one moves.
 | **3** | + shopping carts (slow) |
 | **4** | + biplanes (slow) |
 | **5** | the balls go **tall** -- they stop being jumpable and must be ducked |
-| **6** | a **second** hazard per floor ("double radios") |
+| **6** | a **second radio** per floor ("double radios") |
 | **7** | carts get faster |
-| **8+** | biplanes get faster; after this the levels stop changing |
+| **8** | biplanes get faster |
+| **9** | a **second ball** per floor |
+| **11+** | a **second cart** per floor; after this the levels stop changing |
+
+**Biplanes never double**, on any Krook. See §0p-quater: the measurement finds
+one per floor in all 21 levels reached, and it is the only hazard that must be
+ducked rather than jumped.
+
+The published guide's table ends at 8 with "from here on out the levels stay the
+same". That is where its author stopped playing, not where the game stops
+ramping — the measured original keeps going to 11.
 
 **There are no biplanes on Krook 1**, which is the point of the whole ramp: the
 one hazard that costs a *life* rather than nine seconds is the fourth thing the
@@ -2536,8 +2619,9 @@ once, so four identical balls were in view at all times. The guides say the
 first round "starts out with **merely a few** beach balls". Four at once, on
 every populated screen, is not a few.
 
-The per-band *count* was never the problem: only one slot is live until Krook 6.
-What had no ramp was the number of **occupied floors**, and it now has one:
+The per-band *count* was never the problem: only one slot is live until Krook 6,
+and then only for radios (§0p-quater). What had no ramp was the number of
+**occupied floors**, and it now has one:
 
 | Krook | floors carrying a hazard |
 |---|---|

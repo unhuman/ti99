@@ -191,6 +191,23 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/checkjump.py > /dev/null \
     || die "a jump can pass through an escalator -- run assets/checkjump.py"
 
+# AND NOW THE CHECKS ON THE CHECKS. Every *_test.py above types out a defect
+# that was really played, mutates the source to reintroduce it, and asserts its
+# checker still says no.
+#
+# They were named in the comments above and RUN BY NOTHING, which is how a
+# self-test rots: checklayout_test.py's HUD case died when the score field
+# moved, was repaired, and then its PRINT AT case died the same way when the
+# title screen moved down a row -- both times reporting SETUP ERROR into a
+# terminal nobody was watching, while the suite still printed its other lines
+# and passed them. A gate that guards a gate has to be on the same trigger as
+# the thing it guards.
+for t in ../assets/*_test.py; do
+    "$TRUNCPY" "$t" > /dev/null \
+        || die "$(basename "$t") fails -- its checker no longer rejects a defect
+       that was actually played, or its mutation no longer applies. Run it."
+done
+
 echo "[1/3] cvbasic    $SRC -> $NAME.a99"
 rm -f "$NAME.a99"
 "$CVBASIC_DIR/cvbasic.exe" --ti994a "$SRC" "$NAME.a99" "$CVBASIC_DIR/" \

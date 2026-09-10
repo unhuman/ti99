@@ -182,6 +182,15 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/checkjump.py > /dev/null \
     || die "a jump can pass through an escalator -- run assets/checkjump.py"
 
+# AND NOW THE CHECKS ON THE CHECKS -- see the same block in build-ti.sh. These
+# were named in comments and run by nothing, and two of checklayout_test.py's
+# cases rotted into no-ops that way, each reporting SETUP ERROR to nobody.
+for t in ../assets/*_test.py; do
+    "$TRUNCPY" "$t" > /dev/null \
+        || die "$(basename "$t") fails -- its checker no longer rejects a defect
+       that was actually played, or its mutation no longer applies. Run it."
+done
+
 echo "[1/2] cvbasic (Coleco)  $SRC -> $ASM"
 rm -f "$ASM"
 "$CVBASIC_DIR/cvbasic.exe" "$SRC" "$ASM" "$CVBASIC_DIR/" \

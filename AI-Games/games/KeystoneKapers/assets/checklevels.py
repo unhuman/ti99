@@ -39,7 +39,26 @@ ARRIVES = {
 # dials that change, and on which Krook -- written as `IF krk > n-1`
 CHANGES = {
     "tall balls (arcs = 1)": (r"arcs = 0\s*\n\s*IF krk > (\d+) THEN arcs = 1", 5),
-    "second hazard per floor": (r"IF ls = 1 THEN\s*\n\s*IF krk < (\d+) THEN lk = 0", 6),
+    # WHICH KINDS DOUBLE, AND FROM WHEN -- one threshold per kind, measured
+    # frame by frame from a full 2600 playthrough (assets/ref2600/hazards.md).
+    # This was a SINGLE gate at Krook 6 for every kind, which put two balls on a
+    # floor five rounds early and paired biplanes, which the original never does
+    # in 21 levels. Biplanes are the hazard that must be DUCKED rather than
+    # jumped, so a pair of them is a different question from a pair of anything
+    # else -- and the answer the original gives is "no".
+    #
+    # Each pattern runs on to the `IF krk < ldbl` that CONSUMES the threshold.
+    # That is not padding: this loop infers the threshold convention from the
+    # text it matched, so a pattern stopping at the assignment reads as the
+    # `krk >` form and reports every kind one Krook late. Carrying the gate into
+    # the match settles the convention and pins that the threshold really is
+    # spent on a suppress-below test.
+    "second radio": (r"IF lk = OB_RADIO THEN ldbl = (\d+)[\s\S]{0,200}?"
+                     r"IF krk < ldbl", 6),
+    "second ball": (r"IF lk = OB_BALL THEN ldbl = (\d+)[\s\S]{0,200}?"
+                    r"IF krk < ldbl", 9),
+    "second cart": (r"IF lk = OB_CART THEN ldbl = (\d+)[\s\S]{0,200}?"
+                    r"IF krk < ldbl", 11),
     "carts faster": (r"IF krk > (\d+) THEN ocsp", 7),
     "biplanes faster": (r"IF krk > (\d+) THEN opsp", 8),
     # HOW MANY FLOORS CARRY A HAZARD AT ALL. The kind-arrival gates above turn
@@ -89,6 +108,28 @@ def main():
     # a new player meets.
     if "IF lk = OB_PLANE THEN" not in src:
         bad.append("nothing suppresses biplanes on the early Krooks")
+
+    # BIPLANES NEVER COME IN TWOS. One, in every one of the 21 levels reached in
+    # the measured playthrough, across 800+ frame-sightings -- every other hazard
+    # doubles and this one does not. It is also the only hazard that must be
+    # DUCKED, so a pair is a different problem from a pair of anything else.
+    #
+    # The rule is expressed as an ABSENCE -- the default `ldbl` is never lowered
+    # for OB_PLANE -- and an absence is exactly what a later edit reinstates
+    # without noticing, so it is checked rather than trusted.
+    m = re.search(r"ldbl = (\d+)\s*'", src)
+    if not m:
+        bad.append("no default `ldbl` -- the per-kind doubling table has been "
+                   "rewritten and biplanes may now pair")
+    elif int(m.group(1)) <= 21:
+        bad.append("the default doubling Krook is %s, which is inside the range "
+                   "the original was measured over -- biplanes would pair"
+                   % m.group(1))
+    if re.search(r"IF lk = OB_PLANE THEN ldbl", src):
+        bad.append("biplanes have been given a doubling Krook; the original "
+                   "never puts two on one floor (assets/ref2600/hazards.md)")
+    if not bad:
+        print("  %-24s never double" % "biplanes")
 
     if bad:
         print()

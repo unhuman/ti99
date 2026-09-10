@@ -23,9 +23,26 @@ def run():
 cases = []
 
 # 1. a PRINT AT that runs past column 31
+#
+# THE ANCHOR IS DERIVED, NOT TYPED -- the same rot that case 2 below already
+# suffered, and this case then caught it in turn. It was the literal
+# `PRINT AT 614,"FIRE TO START"`; the title screen moved down a row, 614 became
+# 617, and the mutation silently applied to nothing. The suite still printed its
+# four lines and three of them still passed.
+#
+# So: take whatever the FIRST `PRINT AT n,"text"` in the source is, and lengthen
+# its string until it runs off the right-hand edge from wherever it starts. That
+# holds however the screens are laid out.
+_pa = re.search(r'PRINT AT (\d+),"([^"]*)"', orig)
+if not _pa:
+    raise SystemExit("checklayout_test: no `PRINT AT n,\"...\"` in the source "
+                     "at all -- this case can no longer be built and the "
+                     "overflow check is untested")
+_col = int(_pa.group(1)) % 32
+_over = "X" * (32 - _col + 4)
 cases.append(("PRINT AT overflow", SRC, orig,
-              orig.replace('PRINT AT 614,"FIRE TO START"',
-                           'PRINT AT 630,"FIRE TO START AND KEEP GOING"'),
+              orig.replace(_pa.group(0),
+                           'PRINT AT %s,"%s"' % (_pa.group(1), _over), 1),
               "runs"))
 
 # 2. a HUD VPOKE landing inside a printed label

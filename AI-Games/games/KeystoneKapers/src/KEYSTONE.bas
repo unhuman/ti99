@@ -376,31 +376,45 @@
 	CONST ELMOVE = 120		' frames in transit between floors
 	' HOW FAR THE SECOND HAZARD ON A FLOOR TRAILS THE FIRST, in pixels.
 	'
-	' THERE ARE ONLY TWO SAFE ANSWERS AND THE SCREEN ONLY FITS ONE OF THEM.
-	' Kelly closes on an oncoming ball at WALKSP + 2 = 6 px a pass, so:
+	' THERE ARE ONLY TWO SAFE ANSWERS. Kelly closes on an oncoming hazard at
+	' (KWALK64 + its speed)/64 px a FRAME -- 2.53 at the slow speed, 2.92 at
+	' the fast one -- and the jump arc holds its apex for 9 frames and is
+	' airborne for 28. So:
 	'
-	'   <= 54 px   ONE JUMP CLEARS BOTH -- the arc holds its 14 px apex for
-	'              nine passes, which is 54 px of closing distance
-	'   >= 168 px  he can LAND BETWEEN them -- the arc is airborne for 28
-	'              passes, which is 168 px
+	'   <= 22 px   ONE JUMP CLEARS BOTH -- the pair drifts under the apex
+	'   >= 82 px   he can LAND BETWEEN them -- a whole jump fits in the gap
 	'
 	' Anything in between is the dangerous middle: too far to clear together,
 	' too close to land between. The gap shipped at 46 px west of the lift and
 	' 70 px east of it -- 46 is inside the first window and 70 is squarely in
-	' that middle, which is the asymmetry that got reported.
+	' that middle, which is the asymmetry that got reported. It then shipped at
+	' 20, in the first window, which is a pair taken as ONE obstacle.
 	'
-	' The second window does not fit. `stag` is distance from the FAR edge, so
-	' a bigger gap moves the second hazard TOWARD the player: at 168 px it
-	' starts within 72 px of the wall he walks in through, and at 176 it lands
-	' essentially on top of him with no time to read it. That was tried and it
-	' is worse than the bug it replaced.
+	' 104 IS MEASURED FROM THE ORIGINAL, not chosen. A frame-by-frame census of
+	' a full 2600 playthrough (assets/ref2600/hazards.md) finds that two moving
+	' hazards on one floor are NEVER closer than 108 px in our scale -- not once
+	' in 21 levels -- and that its static radios come as close as 54. Our own
+	' arc independently puts the land-between threshold at 82 px for a mover and
+	' 49 for a static one, so the original sits just above both, from evidence
+	' that knows nothing about this jump. That is the run / jump / run / jump
+	' the reviewer described, and it is what the 20 px pair was not.
 	'
-	' So 48 -- inside the one-jump window with margin, uniform on every screen,
-	' and it leaves the nearer hazard at least 192 px away at entry. The pair
-	' is one obstacle taken with one well-timed jump, which is also what the
-	' original's paired hazards read like. assets/checkspace.py checks all of
-	' it and checkspace_test.py proves it rejects 70 and 176 alike.
-	CONST HAZGAP = 20
+	' THE PRICE IS SLOT 0's JITTER, and it is arithmetic, not a choice. `stag`
+	' is distance from the FAR edge, so the second hazard sits GAP px nearer the
+	' wall the player walks in through. He needs a reaction budget there
+	' (checkspace.py's WARNPX, 120 px), and 120 + 104 = 224 of the 240 px of
+	' placeable floor -- so the pair can only slide 16 px. Hence HAZMASK below.
+	' That is not less faithful than what it replaces: the original places its
+	' radios on exactly THREE fixed positions per floor, so it has no jitter at
+	' all. assets/checkspace.py checks the gap, the entry distance and the
+	' offset rule together, and checkspace_test.py proves it still rejects 70
+	' and 176 -- and now 71, which only the FASTEST hazard can see.
+	CONST HAZGAP = 104
+	' Slot 0's stagger mask ONCE A FLOOR CAN CARRY TWO. Before that a floor has
+	' one hazard, the pair arithmetic above does not apply, and slot 0 keeps its
+	' full 64 px of jitter -- which is most of the early game, where the player
+	' meets the fewest hazards and variety is worth the most.
+	CONST HAZMASK = 15
 	CONST ELDOOR = 15		' frames the doors spend part-open
 	CONST ELOPEN = 85		' = ELWAIT - ELDOOR, as a literal: a CONST
 					' built from other CONSTs is exactly the
@@ -1723,10 +1737,33 @@ load_band:
 			IF lk = OB_PLANE THEN
 				IF krk < 4 THEN lk = OB_BALL
 			END IF
-			' The second one per floor arrives at Krook 6 -- the
-			' original's "double radios" level.
+			' WHICH KINDS COME IN TWOS, AND FROM WHEN. Measured from a
+			' full 2600 playthrough, one frame at a time -- the table
+			' and the method are in assets/ref2600/hazards.md:
+			'
+			'   radios  from Krook  6      balls  from Krook  9
+			'   carts   from Krook 11      biplanes  NEVER
+			'
+			' This was one gate for every kind at Krook 6, which is why
+			' two balls turned up together five rounds early and why
+			' biplanes -- the one hazard that must be DUCKED rather than
+			' jumped, and the only one the original never doubles --
+			' came in pairs at all.
+			'
+			' The arrival gates above have already turned a kind that
+			' has not appeared yet into a beach ball, so a "plane" on
+			' Krook 3 is a ball here and correctly uses the ball's 9.
+			' Read this AFTER them, never before.
+			'
+			' A threshold variable rather than a nest of comparisons:
+			' four ifs and one test, instead of a ladder that has to
+			' repeat the `lk = 0` in every arm.
 			IF ls = 1 THEN
-				IF krk < 6 THEN lk = 0
+				ldbl = 99		' biplanes never double
+				IF lk = OB_RADIO THEN ldbl = 6
+				IF lk = OB_BALL THEN ldbl = 9
+				IF lk = OB_CART THEN ldbl = 11
+				IF krk < ldbl THEN lk = 0
 			END IF
 			' AND HOW MANY FLOORS CARRY ONE AT ALL. The gates above
 			' decide what KIND a hazard is; this decides whether the
@@ -1818,17 +1855,17 @@ load_band:
 			' reported from play.
 			'
 			' Both numbers are too small, which is the real fault. Kelly
-			' closes on an oncoming hazard at WALKSP + the hazard's own
-			' speed = 6 px a pass, and a jump lasts about 30 passes, so
-			' a jump eats ~120 px of closing distance. At 46 or 70 there
-			' is NO screen where he can land between the two: he clears
-			' the first and comes down on the second.
+			' closes on an oncoming hazard at (KWALK64 + its speed)/64
+			' px a FRAME, and the jump is airborne 28 frames, so a jump
+			' eats 82 px of closing distance at the fastest hazard. At
+			' 46 or 70 there is NO screen where he can land between the
+			' two: he clears the first and comes down on the second.
 			'
-			' HAZGAP is that distance with margin. The first hazard
-			' still lands where the table puts it, so the placement
-			' variety is unchanged; only the pairing is now a fact about
-			' the jump rather than an accident of two bytes.
-			' assets/checkspace.py measures it and fails the build.
+			' HAZGAP is that distance with margin, and it agrees with
+			' the original to within 4 px (see the CONST). The pairing
+			' is now a fact about the jump rather than an accident of
+			' two bytes. assets/checkspace.py measures it and fails the
+			' build.
 			' THE SECOND SLOT IS MEASURED FROM THE FIRST, not from its
 			' own table byte. Adding HAZGAP to its own `lx AND 63` would
 			' still leave the GAP varying by up to 63 px between screens
@@ -1838,6 +1875,13 @@ load_band:
 			' HAZGAP on every screen, while slot 0 still lands wherever
 			' the table puts it, so the placement variety is untouched.
 			stag = lx AND 63
+			' NARROW THE JITTER ONLY ONCE A FLOOR CAN BE PAIRED. The
+			' pair spans HAZGAP and still has to leave the player his
+			' reaction distance at the entry wall, which leaves 16 px
+			' to slide in; before Krook 6 nothing is paired, so slot 0
+			' keeps the full range. Krook 6 is the FIRST doubling of any
+			' kind (radios) -- see the per-kind table in the loader.
+			IF krk > 5 THEN stag = lx AND HAZMASK
 			IF ls = 0 THEN stg0 = stag
 			IF ls = 1 THEN stag = stg0 + HAZGAP
 			IF ls = 2 THEN stag = stag + 128
