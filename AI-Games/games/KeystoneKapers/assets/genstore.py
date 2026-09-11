@@ -497,10 +497,10 @@ DOUBLE = {RADIO: 6, BALL: 9, CART: 11}          # PLANE never doubles
 # HOW MANY BANDS CARRY A HAZARD, and how many of those carry a second, per
 # Krook. Tuned so density() lands on the measured column in hazards.md; the
 # checker holds it there.
-BANDS   = {1: 4, 2: 9, 3: 15, 4: 20, 5: 20, 6: 21,
-           7: 21, 8: 23, 9: 24, 10: 24, 11: 24}
-DOUBLED = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 3,
-           7: 3, 8: 3, 9: 5, 10: 5, 11: 6}
+BANDS   = {1: 5, 2: 11, 3: 16, 4: 20, 5: 20, 6: 20,
+           7: 20, 8: 20, 9: 20, 10: 20, 11: 20}
+DOUBLED = {1: 0, 2: 0, 3: 0, 4: 0, 5: 1, 6: 4,
+           7: 5, 8: 5, 9: 6, 10: 6, 11: 7}
 
 # THE ORDER BANDS FILL IN. Fixed, so each Krook is a superset of the one before
 # and the ramp reads as the store filling up rather than as a reshuffle.
@@ -572,21 +572,53 @@ def esc_band(lv, scr):
     return scr in ESC_SCREENS
 
 
-def fill_order():
-    """The placeable bands, in the order the Krooks populate them.
+# HOW UNEVENLY THE SCREENS FILL. 0 fills them all at the same rate; larger
+# numbers let some screens run ahead and leave others bare.
+#
+# THE FIRST VERSION FILLED PERFECTLY EVENLY and it was wrong in a way the mean
+# could not show. Matching the original's AVERAGE hazards-per-screen says nothing
+# about the SPREAD, and the original's spread is wide at every level: 12-19% of
+# its screens are empty even at levels 4 to 8, with a tail of screens carrying
+# five, six and seven. Ours put three on two thirds of the screens and four on
+# the rest -- no relief anywhere, and no variety. Reported as "sometimes the
+# distribution feels heavy on certain screens" and "there are no hazards on the
+# first band on the way to the elevator", which are the same observation from
+# both ends: uniform load reads as relentless AND as arbitrary.
+#
+# Fitted to the measured histogram rather than chosen -- see fit_spread() in the
+# module docstring's --fit mode.
+SPREAD = 3
 
-    A bijection over the 32 bands with the escalator ones removed, so 29. For
-    each screen the four floors appear exactly once, and consecutive entries step
-    across screens so an early Krook is spread thin rather than piled onto one
-    stretch of shop.
+# THE MOST ANY ONE SCREEN MAY CARRY. Seven is the largest number of hazards seen
+# on screen at once anywhere in the measured 2600 playthrough, so this is a
+# measurement rather than a preference.
+MAXLOAD = 7
+
+
+def fill_order(krook=1):
+    """The placeable bands, in the order THIS Krook populates them.
+
+    Screens fill at different rates, and which screen runs ahead rotates with the
+    Krook -- so a screen that is bare on one round is busy on the next, and no
+    stretch of shop is permanently the quiet one.
     """
-    out = []
-    for k in range(32):
-        scr = _SCR_ORDER[k % 8]
-        lv = _LV_ORDER[((k // 8) + (k % 8)) % 4]
-        if not esc_band(lv, scr):
-            out.append((lv, scr))
-    return out
+    screens = [s for s in range(SCREENS) if s not in ESC_SCREENS]
+    eager = {s: (i + krook) % len(screens) for i, s in enumerate(screens)}
+    bands = [(lv, scr) for scr in screens for lv in range(4)]
+
+    # SPREAD is the screen STRIDE, and the two ends of its range are the two
+    # wrong answers. At 1 the screens fill in lockstep -- every screen gets its
+    # first hazard before any gets a second -- which is the uniform load that was
+    # reported as "heavy" everywhere and left no screen quiet. At 4 (a screen's
+    # whole height) they fill strictly one at a time, which piles everything onto
+    # a few screens and leaves the rest bare. In between, screens overlap by a
+    # controllable amount, and the last screen in the order can fall far enough
+    # behind to stay EMPTY -- which the original does at every level.
+    def key(b):
+        lv, scr = b
+        return (_LV_ORDER.index(lv) + eager[scr] * SPREAD, scr, lv)
+
+    return sorted(bands, key=key)
 
 
 def _kind_for(lv, scr, krook, seq):
@@ -630,24 +662,69 @@ def levels():
     just as well. Storing a value that can be computed is only free when the
     unpacking is.
     """
-    order = fill_order()
     out = []
     for krook in range(1, KROOKS + 1):
+        order = fill_order(krook)
         row = [NONE] * 32
         n, d = BANDS[krook], DOUBLED[krook]
         doubled_left = d
+        filled = []
         for seq, (lv, scr) in enumerate(order[:n]):
             kind = _kind_for(lv, scr, krook, seq)
             if kind == NONE:
                 continue
-            byte = kind
-            # A SECOND ONE ONLY WHERE THAT KIND HAS EARNED IT. The doubling
-            # Krooks are per kind (radios 6, balls 9, carts 11, biplanes never),
-            # so a band can only be doubled if its own kind has arrived at twos.
-            if doubled_left > 0 and krook >= DOUBLE.get(kind, 99):
-                byte |= 8
-                doubled_left -= 1
-            row[lv * 8 + scr] = byte
+            row[lv * 8 + scr] = kind
+            filled.append((lv, scr, kind))
+
+        # DOUBLE ROUND-ROBIN ACROSS SCREENS, NOT IN FILL ORDER.
+        #
+        # Spending the doubling budget in fill order piles it onto whichever
+        # screens come first, and a screen with all four bands doubled carries
+        # TEN hazards once the third radios arrive -- against a maximum of seven
+        # ever observed in the original. Krook 9 read [4, 3, 1, 7, 6, 10] and
+        # Krook 11 [2, 9, 7, 7, 6, 2]: one stretch of shop impassable, another
+        # empty. That is the "sometimes the distribution feels heavy on certain
+        # screens" report, and it comes from the doubling rather than from which
+        # bands are occupied.
+        #
+        # One pass hands a second hazard to each screen in turn, so the budget
+        # spreads before it deepens.
+        # AND NO SCREEN MAY EXCEED MAXLOAD, which round-robin alone does not
+        # guarantee: once the other screens run out of bands whose KIND is
+        # allowed to pair, the loop keeps returning to the one that has them.
+        # Krook 9 still reached ten that way. The cap is the original's observed
+        # maximum, so it is a measurement rather than a preference.
+        by_screen = {}
+        for lv, scr, kind in filled:
+            by_screen.setdefault(scr, []).append((lv, kind))
+
+        def load(scr):
+            n = 0
+            for lv, kind in by_screen[scr]:
+                b = row[lv * 8 + scr]
+                n += 1
+                if b & 8:
+                    n += 1
+                    if kind == RADIO and krook > 7:
+                        n += 1
+            return n
+
+        while doubled_left > 0:
+            spent = 0
+            for scr in sorted(by_screen):
+                if doubled_left <= 0:
+                    break
+                if load(scr) >= MAXLOAD:
+                    continue
+                for lv, kind in by_screen[scr]:
+                    # a band can only be doubled once its OWN kind pairs
+                    if krook >= DOUBLE.get(kind, 99) and not row[lv * 8 + scr] & 8:
+                        row[lv * 8 + scr] |= 8
+                        doubled_left -= 1
+                        spent += 1
+                        break
+            if not spent:
+                break               # nothing left that is allowed to double
         out += row
     return out
 

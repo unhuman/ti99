@@ -2078,6 +2078,37 @@ figure measured on a game that does put hazards on its end screens. It made Kroo
 look 0.52 short of a target it could not have hit. `density()` now averages over the
 **placeable** screens and is checked against the original's **aisle** column.
 
+### 0p-nonies. Matching the average is not matching the distribution
+
+With the density curve on target the table still played wrong, reported as *"sometimes
+the distribution feels heavy on certain screens"* and *"there are no hazards on the
+first band on the way to the elevator"* — which are the same observation from both
+ends. **A mean says nothing about spread**, and two faults were hiding under a correct
+average.
+
+**The screens filled in lockstep.** Every screen got its first hazard before any got a
+second, so at Krook 4 two thirds of screens carried exactly three and the rest exactly
+four: no relief anywhere and no variety. The original's spread is wide at every level —
+12-19% of its screens are empty even at levels 4 to 8, with a tail carrying five, six
+and seven. `SPREAD` is now a screen *stride*: at 1 the screens fill in lockstep, at 4
+strictly one at a time, and 3 sits where the last screen in the order can fall far
+enough behind to stay bare. Which screen runs ahead rotates with the Krook, so no
+stretch of shop is permanently the quiet one.
+
+**And the doubling piled onto whichever screens came first.** Spent in fill order, it
+gave Krook 9 loads of `[4, 3, 1, 7, 6, 10]` — one screen carrying **ten** against a
+maximum of **seven** ever observed in the original, with another holding one. That is
+the "heavy" report, and it came from the doubling rather than from which bands are
+occupied. Doubles are now dealt **round-robin across screens**, and `MAXLOAD = 7` caps
+any one screen outright, because round-robin alone does not: once the other screens run
+out of bands whose *kind* may pair, the loop keeps returning to the one that has them.
+
+Both are checked. The load cap is held as a literal in `checklevels.py` rather than
+imported from the generator — the first version read `genstore.MAXLOAD` for its
+expectation, so raising the generator's cap raised the threshold with it and a table
+piling ten onto one screen reported success. That is the second time this file has made
+exactly that mistake; the mutation test is what caught it both times.
+
 *Never a radio on the roof.* A hardware limit rather than a taste: a radio is drawn as
 **characters**, so it shares its cells' two colours with whatever it stands on — flat
 green on a shop floor, the parallax skyline on the roof. Reported from play as *"the

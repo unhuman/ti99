@@ -59,6 +59,13 @@ CHANGES = {
 # is wrong and the build stops.
 ARRIVE_WANT = {g.BALL: 1, g.RADIO: 2, g.CART: 3, g.PLANE: 4}
 DOUBLE_WANT = {g.RADIO: 6, g.BALL: 9, g.CART: 11}       # biplanes: never
+# The most hazards ever seen on screen at once in the measured playthrough.
+# HELD HERE, NOT IMPORTED -- reading `genstore.MAXLOAD` for the expectation
+# makes the check vacuous in exactly the way the note above describes, and the
+# first version of this assertion did precisely that: raising the generator's cap
+# raised the checker's threshold with it and a table piling ten onto one screen
+# reported success.
+MAXLOAD_WANT = 7
 
 # HAZARDS VISIBLE ON ONE SCREEN, MEASURED OFF THE ORIGINAL -- its AISLE screens,
 # against our PLACEABLE screens. From assets/ref2600/hazards.md.
@@ -188,6 +195,29 @@ def main():
         else:
             print("  Krook %-2d  %.2f hazards a screen (original %.2f)"
                   % (k, got, want))
+
+    # NO SCREEN MAY BE A WALL OF HAZARDS. Seven is the most ever seen on screen
+    # at once in the measured playthrough. Matching the AVERAGE says nothing
+    # about this: spending the doubling budget in fill order gave one screen TEN
+    # while another had one, which reads as an impassable stretch next to an
+    # empty one. Reported as "sometimes the distribution feels heavy on certain
+    # screens".
+    for k in range(1, g.KROOKS + 1):
+        for s in range(8):
+            n = 0
+            for lv in range(4):
+                b = table[k][lv * 8 + s]
+                kind = b & 7
+                if kind:
+                    n += 1
+                    if b & 8:
+                        n += 1
+                        if kind == g.RADIO and k > 7:
+                            n += 1
+            if n > MAXLOAD_WANT:
+                bad.append("Krook %d screen %d carries %d hazards; the original "
+                           "never shows more than %d at once"
+                           % (k, s, n, MAXLOAD_WANT))
 
     # AND AT LEAST ONE SCREEN OF LEVEL 1 MUST BE COMPLETELY BARE -- all four
     # floors. Under the old gates a populated screen could never be empty on any
