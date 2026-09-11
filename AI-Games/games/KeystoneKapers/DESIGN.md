@@ -2050,11 +2050,21 @@ hazards. **Two rules override the measurement, both on the reviewer's word:**
 
 *Never a hazard on an escalator screen*, of any kind, on any Krook. That is where the
 player has to stop and board, and anything there is a toll on a manoeuvre the game has
-already committed them to. It is a property of the **template** rather than a screen
-number — floors 1 and 3 climb from screen 0 and floor 2 from screen 7 — so three of the
-32 bands are not placeable at all and `fill_order()` omits them. The **elevator** screen
-is deliberately not covered: waiting for a car is not the same as stepping onto a
-moving stair.
+already committed them to.
+
+**BOTH ENDS OF THE FLIGHT COUNT, and the first version only caught one.** A flight is
+drawn in the band you are *leaving*, so testing the template finds the **foot** and
+misses the **head** entirely — the escalator off floor 3 climbs from screen 0 and
+arrives on the **roof** at screen 0, where a cart was sitting, and floor 1's arrives at
+floor 2's screen 0, which had a radio. Reported as *"I said no hazards on the escalator
+screen and on level 3, you placed a cart"*. The head is the worse of the two to leave
+open: at the foot you choose when to step on, while at the head you are put down
+wherever the ride ends, facing whatever is there.
+
+So a band is an escalator band if its template is a flight **or** if `ESC_SIDE[lv-1]`
+says the floor below climbs to it. Six of the 32 bands; `fill_order()` omits them, so
+the budget cannot spend one by accident. The **elevator** screen is deliberately not
+covered: waiting for a car is not the same as stepping onto a moving stair.
 
 *Never a radio on the roof.* A hardware limit rather than a taste: a radio is drawn as
 **characters**, so it shares its cells' two colours with whatever it stands on — flat

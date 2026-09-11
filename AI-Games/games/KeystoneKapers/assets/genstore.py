@@ -497,10 +497,10 @@ DOUBLE = {RADIO: 6, BALL: 9, CART: 11}          # PLANE never doubles
 # HOW MANY BANDS CARRY A HAZARD, and how many of those carry a second, per
 # Krook. Tuned so density() lands on the measured column in hazards.md; the
 # checker holds it there.
-BANDS   = {1: 5, 2: 9, 3: 17, 4: 25, 5: 25, 6: 26,
-           7: 27, 8: 27, 9: 28, 10: 28, 11: 30}
+BANDS   = {1: 5, 2: 10, 3: 17, 4: 24, 5: 24, 6: 26,
+           7: 26, 8: 26, 9: 26, 10: 26, 11: 26}
 DOUBLED = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 3,
-           7: 4, 8: 3, 9: 4, 10: 5, 11: 8}
+           7: 5, 8: 5, 9: 7, 10: 7, 11: 11}
 
 # THE ORDER BANDS FILL IN. Fixed, so each Krook is a superset of the one before
 # and the ramp reads as the store filling up rather than as a reshuffle.
@@ -524,10 +524,35 @@ _LV_ORDER = (0, 2, 3, 1)
 # The ELEVATOR screen is deliberately NOT in here -- the reviewer wants hazards
 # there, and waiting for a car is not the same as stepping onto a moving stair.
 ESC_TPL = ("T_ESC_W", "T_ESC_E")
+SCR_LAST = 7            # the east end screen of every floor
 
 
 def esc_band(lv, scr):
-    return INDEX[lv][scr] in ESC_TPL
+    """True if this band is an escalator screen -- EITHER END OF THE FLIGHT.
+
+    The first version tested only the template, which is where the flight is
+    DRAWN -- and a flight is drawn in the band you are LEAVING, so that caught
+    the foot and missed the head entirely. The escalator off floor 3 climbs from
+    screen 0 and arrives on the ROOF at screen 0, and a cart was sitting there;
+    floor 1's climbs to floor 2's screen 0, which had a radio on it.
+
+    The arrival is the worse of the two to block: at the foot you choose when to
+    step on, while at the head you are put down wherever the ride ends, facing
+    whatever is there. Reported as "I said no hazards on the escalator screen and
+    on level 3, you placed a cart".
+
+    ESC_SIDE[lv] is which side floor lv climbs from -- 0 west (screen 0), 1 east
+    (screen 7), 255 none -- so the floor BELOW decides whether a band is a head.
+    """
+    if INDEX[lv][scr] in ESC_TPL:
+        return True                                 # the foot: flight drawn here
+    if lv > 0:
+        side = ESC_SIDE[lv - 1]
+        if side == 0 and scr == 0:
+            return True                             # the head, arriving west
+        if side == 1 and scr == SCR_LAST:
+            return True                             # the head, arriving east
+    return False
 
 
 def fill_order():
