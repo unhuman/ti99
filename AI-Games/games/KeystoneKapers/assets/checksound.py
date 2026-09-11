@@ -60,8 +60,29 @@ SRC = os.path.join(HERE, os.pardir, 'src', 'KEYSTONE.bas')
 NOT_LATCHED = set()
 
 
-def routine(lines, name):
-    """The body of `name:` up to its closing RETURN at statement indent."""
+def routine(lines, name, seen=None):
+    """The body of `name:` up to its closing RETURN at statement indent.
+
+    THIS FOLLOWS FALL-THROUGH, and it has to. A routine that runs into the next
+    label WITHOUT having returned continues into it at run time -- ordinary
+    control flow in CVBasic, not a trick -- and `snd_off` is built on it: it
+    silences the channels, zeroes the counters, and falls into `snd_pend`,
+    which clears the pending latches. `snd_pend` has its own label so that
+    pause_beat can GOSUB just that half.
+
+    Stopping at the label instead reported `snd_off` as never clearing six
+    flags it does clear on every call: a FAILURE THAT IS NOT THERE. That is the
+    mirror of a check whose scope is narrower than the bug, and it costs the
+    same trust -- the dead-label sweep that called `tick_flash` unreachable made
+    exactly this mistake, for exactly this reason (CLAUDE.md 3A).
+
+    An unconditional `GOTO` at statement indent does NOT fall through, so that
+    ends the body instead.
+    """
+    seen = set() if seen is None else seen
+    if name in seen:
+        sys.exit('checksound: fall-through loops back to %s' % name)
+    seen.add(name)
     try:
         start = next(i for i, l in enumerate(lines)
                      if l.strip() == name + ':')
@@ -71,7 +92,13 @@ def routine(lines, name):
     for l in lines[start + 1:]:
         stripped = l.strip()
         if stripped.endswith(':') and not stripped.startswith("'"):
-            break                       # ran into the next label
+            # Reached the next label with no RETURN -- so control carries on
+            # into it. Unless the last thing done was an unconditional jump.
+            last = next((s for s in reversed([b.strip() for b in body]) if s
+                         and not s.startswith("'")), '')
+            if last.startswith('GOTO '):
+                break
+            return body + routine(lines, stripped[:-1], seen)
         body.append(l)
         if stripped == 'RETURN':
             break

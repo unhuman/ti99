@@ -3723,15 +3723,20 @@ draw_actors:
 			GOTO draw_harry
 		END IF
 	END IF
-	' KELLY FLASHES WHILE HE IS KNOCKED ABOUT. Hitting an obstacle set a
-	' 20-frame `knock` and took nine seconds off the clock, and NOTHING on
-	' screen said so -- the time simply went. A flash is the arcade's own
-	' idiom for "that hit you", costs one variable, and is readable even
-	' when the collision happened off the edge of the player's attention.
-	kcol = C_KHAT
-	IF knock > 0 THEN
-		IF fphs AND 2 THEN kcol = 15
-	END IF
+	' KELLY'S HAT DOES NOT FLASH WHEN HE IS HIT. It used to alternate to white
+	' on the `fphs AND 2` phase for the twenty frames of `knock`, on the
+	' argument that nothing else on screen said nine seconds had just gone.
+	' That argument no longer holds: the knockback still throws him, the HUD's
+	' digits still drop by nine, and the hit now has a sound that is allowed to
+	' finish. Three signals for one event, and the flash was the least legible
+	' of them -- a two-frame colour swap on a 16 px hat, during the one moment
+	' the player is looking at where they are being pushed.
+	'
+	' Dropping it retires `kcol` with it: the hat is C_KHAT always, so the
+	' colour goes straight into the SPRITE calls below and the per-pass
+	' variable, its assignment and two nested IFs all go.
+	'
+	' `knock` STAYS. It is the knockback, which is the part that is felt.
 	' KELLY IS SPRITES 0, 1 AND 2 and nothing else ever is -- the VDP drops
 	' the highest-numbered sprites on an over-full scanline, so the lowest
 	' slots are the ones that can never disappear, and the player is the one
@@ -3785,7 +3790,7 @@ draw_actors:
 			kf = kf + P_KFACING
 			kb = kb + P_KFACING
 		END IF
-		SPRITE 0,kdy,klx,kp,kcol
+		SPRITE 0,kdy,klx,kp,C_KHAT
 		SPRITE 1,kdy,klx,kf,C_SKIN
 		SPRITE 2,kdy,klx,kb,C_KELLY
 		SPRITE 3,SPRHID,0,0,0
@@ -3837,7 +3842,7 @@ draw_actors:
 		' to two boxes on any scanline. genart.py's shift() and these have
 		' to agree; assets/checkbands.py reads both and checks they do.
 		khy = ky - 10
-		SPRITE 0,khy,klx,kp,kcol
+		SPRITE 0,khy,klx,kp,C_KHAT
 		kfy = ky - 5
 		SPRITE 1,kfy,klx,kf,C_SKIN
 		kby = ky + 11
@@ -4859,7 +4864,17 @@ lose_kop:
 	' flash was running, so without this the last thing the player sees is
 	' whichever half of the field the final pass happened to leave behind.
 	GOSUB time_show
-	GOSUB hide_all
+	' THE CAST IS NOT TAKEN AWAY YET -- hide_all now runs AFTER the beat.
+	'
+	' It used to run here, so the moment the clock emptied, Harry and the
+	' thing that had just hit him vanished and the sound played over an empty
+	' store. The hit that ENDS a round is the worst case: `do_hit` sets tout
+	' before the freeze starts and the main loop leaves on the very next pass,
+	' so the hit sound gets one tick and everything is already gone.
+	'
+	' The pause drains the sound; leaving the actors up means it drains over
+	' the picture that caused it. Nothing is moving -- the pause ticks sfx_tick
+	' and nothing else -- so it is a held tableau, not a frozen game.
 	' THE MESSAGE BOX, ON THE GAME SCREEN AND NOT INSTEAD OF IT.
 	'
 	' It used to CLS before GAME OVER, so the last thing the player saw was
@@ -4892,6 +4907,10 @@ lose_kop:
 	' used to be printed ahead of the pause and the pause is what makes it
 	' readable, so the box has to be drawn first and the Kop taken away after.
 	GOSUB pause_beat
+	' NOW the cast goes. The beat above has drained whatever was sounding, so
+	' the picture survives exactly as long as the sound it belongs to -- and
+	' the GAME OVER beats below run on a cleared field, as they always did.
+	GOSUB hide_all
 	IF kops > 0 THEN kops = kops - 1
 	GOSUB hud_kops
 	IF kops = 0 THEN
@@ -4953,6 +4972,9 @@ snd_off:
 	' The warble's phase, so a jump after a round break always starts on the
 	' same note rather than on whichever one the last jump left behind.
 	swf = 0
+	' Which channel-1 effect is playing. Stale, it would step the NEXT round's
+	' held tone down the hit's scale.
+	shf = 0
 	' AND THE EFFECTS THAT HAVE NOT HAPPENED YET. A set sf* flag is a sound
 	' waiting for the next pass of the main loop -- and between a capture and
 	' the next Krook the main loop does not run, so anything latched during
@@ -4961,6 +4983,17 @@ snd_off:
 	' round. Silencing the channels does not help: the flag plays a fresh
 	' note afterwards, with a fresh decay counter, which is why it came out
 	' as one long tone over the start of a level that had earned nothing.
+	'
+	' THIS HALF HAS ITS OWN ENTRY POINT, because clearing what is PENDING and
+	' silencing what is SOUNDING are two different jobs and pause_beat wants
+	' only the first: it clears the latches so nothing new starts, then drains
+	' the sounds already in flight, and silences the channels afterwards.
+	'
+	' snd_pend is reached BOTH by GOSUB and by falling out of snd_off above.
+	' That is ordinary control flow here, not a trick -- but a reachability
+	' sweep that models only explicit jumps will report the fall-through half
+	' as dead code, exactly as one did for tick_flash (CLAUDE.md 3A).
+snd_pend:
 	sfj = 0
 	sfh = 0
 	sfp = 0
@@ -4969,11 +5002,49 @@ snd_off:
 	sfw = 0
 	RETURN
 
+	' A SOUND STILL PLAYING WHEN THE ROUND ENDS IS ALLOWED TO FINISH.
+	'
+	' This used to open with a bare `GOSUB snd_off`, which cut it dead. That
+	' was not an accident: the decay counters are ticked by the MAIN LOOP, and
+	' this pause REPLACES the main loop, so a tone left latched with nothing
+	' ticking it hangs for the full ninety frames -- the sticky-audio failure
+	' this game has already shipped twice. The answer is to DRAIN the counters
+	' rather than to stop silencing.
+	'
+	' CLEAR THE PENDING LATCHES FIRST. sf* flags are sounds that have not
+	' happened yet; left set, the drain below would START one and the pause
+	' would end with a fresh note ringing into the next round.
+	'
+	' THEN TICK sfx_tick WHOLE, not some decay-only part of it. The five
+	' counters do not all live in one place: sot, sht and spt are a block at
+	' the tail, but spz (the prize arpeggio) and swt (the jump warble) tick up
+	' among the code that starts sounds. Draining only the tail would finish a
+	' footstep and still cut the arpeggio, which is the one effect with a
+	' phrase worth saving. Calling the whole routine also leaves the write
+	' order on CHANNEL 2 alone, which spz and spt share.
+	'
+	' EVERY THIRD FRAME, because the main loop runs about 2.5 frames per pass
+	' and this loop waits one frame per turn. Ticking every frame would play
+	' everything at two and a half times its tuned speed. Three frames a tick
+	' is ~17% slow and gives 30 ticks against the longest effect's 20 passes.
+	'
+	' THE LOOP COUNTS TICKS, NOT FRAMES, which is what makes the pacing free.
+	' Counting 91 frames and firing on every third needs a second counter, an
+	' increment and a test -- 48 bytes, on a fixed area with 66 left. Counting
+	' 31 TICKS of three WAITs each is the same 93 frames and the same three
+	' frames per tick, with none of that. The duration changes by two frames.
+	'
+	' snd_off still runs at the END, as the backstop for anything the drain
+	' did not finish.
 pause_beat:
-	GOSUB snd_off
-	FOR pbi = 0 TO 90
+	GOSUB snd_pend
+	FOR pbi = 0 TO 30
 		WAIT
+		WAIT
+		WAIT
+		GOSUB sfx_tick
 	NEXT pbi
+	GOSUB snd_off
 	RETURN
 
 	' ======================================================================
@@ -4990,10 +5061,23 @@ sfx_tick:
 		swf = 0
 		swt = 8
 	END IF
+	' A HIT FALLS -- testsounds variant 5B. Five steps down, 666 -> 411 -> 294
+	' -> 235 -> 188 Hz, fading 13 -> 10 as it goes.
+	'
+	' It was ONE held tone at divisor 900 (124 Hz), which said "something
+	' happened" and nothing else. A fall is the mirror of the prize arpeggio's
+	' rise, and that pairing is the point: the two events the player causes are
+	' now a descent and an ascent, distinguishable with eyes shut.
+	'
+	' shf marks WHICH channel-1 effect is playing. sht is the shared note-off
+	' timer for this channel and `sfe` uses it too, for a single held tone --
+	' stepping the pitch off sht alone would drag that one down the scale with
+	' this one.
 	IF sfh = 1 THEN
 		sfh = 0
-		SOUND 1,900,13
+		SOUND 1,168,13
 		sht = HITSND
+		shf = 1
 	END IF
 	' A PRIZE IS AN ARPEGGIO -- testsounds PICKUP C. C5, E5, G5, then a fade
 	' on the top note: it RISES, which is what makes it read as a reward
@@ -5035,6 +5119,8 @@ sfx_tick:
 		sfe = 0
 		SOUND 1,400,10
 		sht = 16
+		' a held tone, not the hit's fall -- see shf above
+		shf = 0
 	END IF
 	IF sfk = 1 THEN
 		sfk = 0
@@ -5157,6 +5243,21 @@ sfx_tick:
 	END IF
 	IF sht > 0 THEN
 		sht = sht - 1
+		' THE HIT'S FALL, STEPPED OFF THE SHARED COUNTER. The bench holds its
+		' five steps for 4, 4, 5, 6 and 8 frames -- 27 frames, about 450 ms.
+		' HITSND is 20 PASSES and cannot change, because the hit freeze is
+		' hfz = HITSND + 1 and the two end together; so the bench's
+		' proportions are scaled onto 20 rather than its frame counts copied,
+		' giving 3, 3, 4, 4, 6. The shape survives, the length is the game's.
+		IF shf = 1 THEN
+			#shp = 168
+			shv = 13
+			IF sht < 17 THEN #shp = 272
+			IF sht < 14 THEN #shp = 380 : shv = 12
+			IF sht < 10 THEN #shp = 476 : shv = 11
+			IF sht < 6 THEN #shp = 596 : shv = 10
+			SOUND 1,#shp,shv
+		END IF
 		IF sht = 0 THEN SOUND 1,0,0
 	END IF
 	IF spt > 0 THEN
