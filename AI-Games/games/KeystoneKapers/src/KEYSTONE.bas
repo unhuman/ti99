@@ -269,14 +269,25 @@
 	CONST C_RCROOK = 15		' the crook, white
 	CONST P_CART = 208
 	CONST P_BALL = 212
-	CONST P_PLANE = 228
-	CONST P_PLANEL = 232
-	' THE PROPELLER IS ITS OWN SPRITE so it can be its own colour. Two
-	' phases, each facing: A is the near-solid disc, B the broken blades.
-	CONST P_PROPA = 236
-	CONST P_PROPAL = 240
-	CONST P_PROPB = 244
-	CONST P_PROPBL = 248
+	' THE PLANE IS ONE SPRITE, AND THE PROPELLER IS DRAWN INTO IT. It used to
+	' be two overlapping sprites at the same x and y -- a light green body
+	' and a black propeller -- because a TMS9918 sprite carries exactly one
+	' colour, so a second tone costs a second sprite.
+	'
+	' AND A SECOND SCANLINE SLOT, which is what made the trade wrong. The
+	' hardware shows FOUR sprites per line and drops the fifth outright: a
+	' band already spends Kelly 1 + Harry 1 + two obstacles, so a plane's
+	' detail layer was the fifth thing on its own line. The art comment in
+	' genart.py had argued exactly this and concluded the plane should be one
+	' sprite -- and then the second one was added anyway, which is how the
+	' comment and the code came to disagree.
+	'
+	' Two phases per facing, the propeller merged into each: four patterns
+	' where there were six, and sprite slots 16-23 now go unused.
+	CONST P_PLANE = 228		' phase A, facing right
+	CONST P_PLANEL = 232		' phase A, facing left
+	CONST P_PLANEB = 236		' phase B, facing right
+	CONST P_PLANEBL = 240		' phase B, facing left
 
 	CONST C_KELLY = 4		' the Kop's blue trousers
 	' THE HAT IS BLACK AGAIN, as the reference has it. It went blue because
@@ -314,7 +325,7 @@
 	' The body is HOLED where the cockpit goes. A lower slot number wins, so
 	' the black layer can only show through where the yellow has nothing.
 	CONST C_PLANE = 11		' yellow body
-	CONST C_PROP = 1		' black cockpit and propeller
+	' C_PROP is gone with the second sprite -- the plane is one colour now.
 
 	' store chars
 	' THE FLIGHT'S COLOUR, as (fg << 4) | DGREEN. The colour table only knows
@@ -523,6 +534,18 @@
 	DIM flry(4)			' floor surface y, by level
 	DIM #bdst(4)			' band name-table offset, by level
 	DIM #tsrc(15)			' template source offset, by template id
+	' THE NES CANNOT READ ITS OWN VIDEO MEMORY BACK, so anything this
+	' program does as read-modify-write needs the "read" to come from RAM
+	' instead. WRTVRM on that target does not touch the PPU at all -- it
+	' queues into PPUBUF for the NMI to flush -- so a read would be both
+	' illegal during rendering and blind to everything still in the queue.
+	'
+	' The radar is the only read-modify-write on the PATTERN table: it ORs
+	' pixel rows into its canvas characters, 208-255, eight bytes each.
+	' 384 bytes of the NES's 1,227 free, and nothing on the other targets.
+	#if NES
+	DIM nsc(384)			' radar canvas pattern shadow
+	#endif
 	DIM lv8(4)			' lv*8, so no multiply lands on an index
 	DIM jarc(32)			' the jump arc: 30 frames, apex 14
 	DIM msk(8)
@@ -862,7 +885,8 @@ after_deck:
 	DEFINE SPRITE 54,1,spr_radio	' pattern 112
 	DEFINE SPRITE 55,1,spr_radcar
 	DEFINE SPRITE 56,1,spr_raddot	' the radar marker, both actors
-	DEFINE SPRITE 57,6,spr_plane	' body R/L, then prop A and B, R/L
+	DEFINE SPRITE 57,4,spr_plane	' phase A R/L, phase B R/L -- prop is in
+					' the body now, so four and not six
 	RETURN
 
 init_tables:
@@ -940,6 +964,13 @@ init_tables:
 	#stco = VARPTR stor_co(0)
 	#stes = VARPTR stor_esc(0)
 	#stpl = VARPTR stor_pil(0)
+	' THE TEMPLATES, ADDRESSABLE. Everywhere else stor_tpl is handed to
+	' SCREEN as a label and never read by hand, so its address was never
+	' taken. On the NES the fixture-erase routines have to ask the template
+	' what a cell holds instead of asking the PPU, which means PEEKing it.
+	#if NES
+	#sttp = VARPTR stor_tpl(0)
+	#endif
 	#stac = VARPTR stor_arc(0)
 	#stcp = VARPTR esc_cap(0)
 	RETURN
@@ -2115,6 +2146,16 @@ prize_one:
 		' same two the radios use. One character could not say
 		' "money bag" rather than "yellow blob", and everything
 		' else on the floor is sixteen pixels.
+		' WHICH BAND THE ERASE ROUTINES ARE WORKING IN. On the NES they
+		' answer from the template and the pillar table instead of
+		' reading the PPU, and neither lookup can be done without the
+		' band. It is set here rather than passed, because CVBasic has
+		' no parameters -- and it must be set at EVERY caller of
+		' wall_clear, beam_clear or wipe_shelf, which is this routine
+		' and radio_band.
+		#if NES
+		nbl = plv
+		#endif
 		#pva = 6144
 		#pva = #pva + #bdst(plv)
 		#pva = #pva + 64		' row 2 of the band
@@ -2773,11 +2814,41 @@ upd_elev:
 	' Bounded at eight steps. The runs are five, so eight is slack rather
 	' than a guess -- and an unbounded walk would run off the end of the row
 	' if the name table ever held something unexpected.
+	#if NES
+	' WHAT THE TEMPLATE PUT IN THIS CELL, for a target that cannot read its
+	' own video memory back. #nta is the offset INSIDE the band (0-159) and
+	' nbl is the band; the answer is the byte SCREEN blitted there.
+	'
+	' This is the same arithmetic the blit itself does in draw_band --
+	' template id out of stor_ix for (band, screen), times 160, plus the
+	' offset -- so the two cannot disagree about what is on screen. It is
+	' reading what the cell MEANS, not guessing from where the cell is: a
+	' coordinate is a fact about this layout, the character is a fact about
+	' the world, and only the second is safe to erase on.
+nes_tpl:
+	nti = lv8(nbl)
+	nti = nti + klsc
+	#ntb = #stix + nti
+	ntd = PEEK(#ntb)
+	#ntc = #tsrc(ntd)
+	#ntc = #ntc + #nta
+	#ntc = #ntc + #sttp
+	ntv = PEEK(#ntc)
+	RETURN
+	#endif
+
 wipe_shelf:
 	wsn = 8
 ws_loop:
 	IF wsn = 0 THEN RETURN
+	#if NES
+	#nta = #wsa - 6144
+	#nta = #nta - #bdst(nbl)
+	GOSUB nes_tpl
+	wsv = ntv
+	#else
 	wsv = VPEEK(#wsa)
+	#endif
 	IF wsv <> CH_SHELFT THEN RETURN
 	wsc = CH_WALL
 	VPOKE #wsa,wsc
@@ -2806,7 +2877,43 @@ ws_loop:
 	' fixture sits close enough for the two-cell clear at #bca and #bca+1 to
 	' reach column 0 or 31.
 beam_clear:
+	' A BEAM TOP IS NOT IN THE TEMPLATE. beam_one VPOKEs it into the row
+	' ABOVE each band, out of the pillar-column table -- so on the NES this
+	' asks that same table rather than the PPU, and #bca sits one row above
+	' the band, which is why it cannot go through nes_tpl.
+	'
+	' IT ALSO REPRODUCES beam_one'S EXCLUSION OF COLUMNS 0 AND 31. Those
+	' carry SLABE/ROOFSE, the building's OUTSIDE WALL, not a pillar cap --
+	' and clearing structure because an erase routine could not tell the
+	' two apart is the fault that once deleted the second floor's support.
+	#if NES
+	#nbc = #bca - 6144
+	#nbc = #nbc + 32
+	#nbc = #nbc - #bdst(nbl)
+	nbcol = #nbc
+	bcv = 0
+	nbi = lv8(nbl)
+	nbi = nbi + klsc
+	#nbb = #stix + nbi
+	#nbp = #stpl + PEEK(#nbb) * 4.
+	FOR nbj = 0 TO 3
+		nbt = PEEK(#nbp)
+		#nbp = #nbp + 1
+		IF nbt > 0 THEN
+			nbt = nbt - 1
+			IF nbt = nbcol THEN
+				IF nbt > 0 THEN
+					IF nbt < 31 THEN
+						bcv = CH_SLABP
+						IF nbl = 2 THEN bcv = CH_ROOFSP
+					END IF
+				END IF
+			END IF
+		END IF
+	NEXT nbj
+	#else
 	bcv = VPEEK(#bca)
+	#endif
 	IF bcv = CH_SLABP THEN
 		bcw = CH_SLAB
 		VPOKE #bca,bcw
@@ -2830,7 +2937,14 @@ beam_clear:
 	' So it tests for the thing it is allowed to remove rather than trusting
 	' the position. COUNTR is a pillar or a counter; anything else stays.
 wall_clear:
+	#if NES
+	#nta = #wca - 6144
+	#nta = #nta - #bdst(nbl)
+	GOSUB nes_tpl
+	wcv = ntv
+	#else
 	wcv = VPEEK(#wca)
+	#endif
 	IF wcv = CH_COUNTR THEN
 		wcw = CH_WALL
 		VPOKE #wca,wcw
@@ -2850,6 +2964,10 @@ radio_band:
 		ri = rlo + rn
 		IF rn = 2 THEN ri = 8 + rbn
 		IF obk(ri) = OB_RADIO THEN
+			' the other caller of the erase routines -- see prize_one
+			#if NES
+			nbl = rbn
+			#endif
 			#rva = 6144
 			#rva = #rva + #bdst(rbn)
 			#rva = #rva + 64		' band row 2
@@ -4066,7 +4184,9 @@ draw_harry:
 	FOR di = 0 TO 7
 		dk = obk(di)
 		ds = di + 8			' 0-3 Kelly; 4-7 Harry
-		ds8 = ds + 8			' 16-23: propellers, lowest priority
+		' 16-23 USED TO BE THE PROPELLERS and are now unused. hide_play
+		' still blanks 0-23, so they are left hidden and stay hidden --
+		' nothing writes them after the plane became one sprite.
 		dbn = 0
 		IF di > 1 THEN dbn = 1
 		IF di > 3 THEN dbn = 2
@@ -4095,7 +4215,6 @@ draw_harry:
 		IF dk = OB_RADIO THEN dk = 0
 		IF dk = 0 THEN
 			SPRITE ds,SPRHID,0,0,0
-			SPRITE ds8,SPRHID,0,0,0
 		ELSE
 			dy = flry(dbn)
 			dy = dy - 16
@@ -4103,33 +4222,31 @@ draw_harry:
 			dp = P_CART
 			dc = C_CART
 			IF dk = OB_BALL THEN dp = P_BALL : dc = C_BALL
-			dpr = 0
 			IF dk = OB_PLANE THEN
-				' THE PROP SPINS, in its own colour and its own
-				' sprite. A static arc reads as a decal painted
-				' on the nose; two phases alternating between a
+				' THE PROP SPINS INSIDE THE BODY PATTERN. A
+				' static arc reads as a decal painted on the
+				' nose; two phases alternating between a
 				' near-solid disc and broken blades is what makes
-				' it a toy that is flying at you. fphs is the
-				' existing flash phase -- it ticks once per pass
-				' and is already immune to the frame delta.
+				' it a toy that is flying at you. It used to be a
+				' second sprite so it could be black -- now it is
+				' merged into the plane, so the phase picks a
+				' whole aeroplane and costs no extra slot.
+				'
+				' fphs is the existing flash phase: it ticks once
+				' per PASS and is immune to the frame delta,
+				' which a cyclic animation has to be or it
+				' aliases and the blades appear to stand still.
 				IF obd(di) = 0 THEN
 					dp = P_PLANEL
-					dpr = P_PROPAL
-					IF fphs AND 4 THEN dpr = P_PROPBL
+					IF fphs AND 4 THEN dp = P_PLANEBL
 				ELSE
 					dp = P_PLANE
-					dpr = P_PROPA
-					IF fphs AND 4 THEN dpr = P_PROPB
+					IF fphs AND 4 THEN dp = P_PLANEB
 				END IF
 				dc = C_PLANE
 			END IF
 			dxx = obx(di)
 			SPRITE ds,dy,dxx,dp,dc
-			IF dpr > 0 THEN
-				SPRITE ds8,dy,dxx,dpr,C_PROP
-			ELSE
-				SPRITE ds8,SPRHID,0,0,0
-			END IF
 		END IF
 	NEXT di
 	RETURN
@@ -4417,8 +4534,20 @@ scan_base:
 	RETURN
 
 scan_or1:
+	' THE ONE READ-MODIFY-WRITE ON THE PATTERN TABLE. The radar ORs a
+	' pixel row into a canvas character, so it has to know what is already
+	' there. On the NES that read comes from nsc, which scan_wipe zeroed
+	' and which only this routine writes -- so it is exact, not an
+	' approximation of what the PPU holds.
+	#if NES
+	#nsi = #sda - #nsb
+	sva = nsc(#nsi)
+	sva = sva OR fm1
+	nsc(#nsi) = sva
+	#else
 	sva = VPEEK(#sda)
 	sva = sva OR fm1
+	#endif
 	VPOKE #sda,sva
 	RETURN
 
@@ -4469,9 +4598,23 @@ scan_wipe:
 	' renumber.py rewrites this line from genart.SCAN_FIRST, and
 	' checkstruct.py fails the build if the two disagree.
 	#swa = 5760			' 4096 + SCAN_FIRST*8, the canvas patterns
+	' THE SHADOW TAKES ITS BASE FROM THE LINE ABOVE, never from a second
+	' copy of the number. renumber.py rewrites that literal out of
+	' genart.SCAN_FIRST, and a hand-kept duplicate of it is precisely the
+	' fault recorded in the comment above -- one copy moved, the other did
+	' not, and the wipe spent months clearing the wrong forty-eight
+	' characters. 6 x 64 is 384, which is the size of nsc.
+	#if NES
+	#nsb = #swa
+	#nsi = 0
+	#endif
 	FOR swj = 0 TO 5
 		FOR swi = 0 TO 63
 			VPOKE #swa,0
+			#if NES
+			nsc(#nsi) = 0
+			#nsi = #nsi + 1
+			#endif
 			#swa = #swa + 1
 		NEXT swi
 		WAIT

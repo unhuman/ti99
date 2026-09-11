@@ -891,6 +891,32 @@ cost a debugging session:
   - `#if` **cannot nest** ("Nested #IF not supported"), but each INCLUDEd file gets a fresh
     conditional state, so a file boundary buys one more effective level. An `INCLUDE` inside a false
     `#if` is never opened, which is how one source can select between two data files.
+- **THE NES TARGET CANNOT RUN A TMS9918-SHAPED GAME, AND `#if` DOES NOT BRIDGE IT.** CVBasic
+  compiles `--nes`, but **`DEFINE` is not implemented for that machine at all** — not `DEFINE CHAR`,
+  `DEFINE COLOR` or `DEFINE SPRITE` (`cvbasic.c`: `if (machine == NES) emit_error("DEFINE isn't
+  implemented for NES")`). `VDP` is refused too. Every game here loads its art at boot through
+  `DEFINE`, so a `--nes` compile ends in dozens of errors — Keystone Kapers 58, Bust-A-Bobble 59.
+  - **The two senses of "define" are unrelated, and confusing them wastes a session.** `#if NES` is
+    a PREPROCESSOR constant and works perfectly (`--nes` auto-defines `NES`, confirmed). `DEFINE` is
+    a RUNTIME upload into the pattern table. There is nothing to put in the `#else` branch, because
+    the NES has no runtime pattern upload: patterns live in CHR on a separate PPU bus, placed in the
+    cartridge at build time, and CHR-ROM is physically read-only. CVBasic's NES art path is
+    `BITMAP` into a CHRROM table at compile time, which is a different architecture, not a flag.
+  - **`VPEEK` is unavailable there for a second, independent reason.** `WRTVRM` on NES does not
+    touch the PPU — it queues into `PPUBUF` for the NMI to flush — so a read-back is both illegal
+    during rendering and blind to everything still queued. Any read-modify-write on video memory
+    needs its "read" to come from a RAM shadow, or from the data the draw came from.
+  - **`SOUND` links against `sn76489_freq/_vol/_control`, which no NES prologue defines.** The 6502
+    prologue does define them, for a 6502 machine with a real SN76489, so a shim can be written
+    against that convention — and the pitch maths is near-exact, because the NES CPU is almost
+    exactly half the SN76489's clock, making the APU timer `divisor - 1`.
+    `games/KeystoneKapers/assets/nes_apu.asm` is that shim.
+  - **`gasm80` assembles 6502 despite the name**, so no separate assembler is needed — but **it
+    exits 0 with errors on stdout and still emits a full-size ROM** with undefined labels resolved
+    to zero. `gasm80 ... || die` therefore never fires and the build reports success on a dead
+    cart. Grep its output for `^Error:` instead. CVBasic likewise prints "Compilation finished"
+    AFTER errors; only its exit status is the truth.
+  - See `games/KeystoneKapers/DESIGN.md` §12a for the full state and what finishing it would take.
 - **A grid-cell occupancy check does NOT prove sprites do not overlap.** A 16-px actor on a 16-px
   grid straddles two cells for its entire traverse, so "no two actors share a cell" can read a
   clean 0 while they are visibly stacked. Worse, a cell cache derived from raw pixels every frame

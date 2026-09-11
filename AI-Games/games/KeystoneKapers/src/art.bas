@@ -254,31 +254,23 @@ spr_raddot:	' radar marker -- Kop and crook
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
-spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. YELLOW body over a BLACK detail layer (cockpit + spinning propeller); the detail sits in a HIGH slot so an overfull scanline drops it and not the plane.
+spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and one colour: the propeller is merged into the body in two phases rather than carried by a second sprite in its own colour. Four patterns where there were six, and slots 16-23 are free.
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$0C,$1E,$3F,$79,$3F,$1E,$0C
+	DATA BYTE $00,$0C,$1E,$3F,$7F,$3F,$1E,$0C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$FC,$80,$00,$00
+	DATA BYTE $00,$00,$02,$81,$FD,$81,$02,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$01,$3F,$01,$00,$00
+	DATA BYTE $00,$00,$40,$81,$BF,$81,$40,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$30,$78,$FC,$9E,$FC,$78,$30
+	DATA BYTE $00,$30,$78,$FC,$FE,$FC,$78,$30
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$06,$00,$00,$00
+	DATA BYTE $00,$0C,$1E,$3F,$7F,$3F,$1E,$0C
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$02,$01,$01,$01,$02,$00
+	DATA BYTE $00,$02,$01,$80,$FD,$80,$01,$02
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$40,$80,$80,$80,$40,$00
+	DATA BYTE $00,$40,$80,$01,$BF,$01,$80,$40
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$60,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$06,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$02,$01,$00,$01,$00,$01,$02
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$40,$80,$00,$80,$00,$80,$40
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$60,$00,$00,$00
+	DATA BYTE $00,$30,$78,$FC,$FE,$FC,$78,$30
 
 	' ---------------------------- borrowed at runtime, no slot of their own
 

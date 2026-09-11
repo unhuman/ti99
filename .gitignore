@@ -33,6 +33,13 @@ MSPAC.TXT
 *.a80
 mspac.txt
 *.bin
+# ...BUT assets/ HOLDS HAND-WRITTEN SOURCE, NOT COMPILER OUTPUT. The *.asm rule
+# above is for what CVBasic generates into src/. It also silently swallowed
+# games/KeystoneKapers/assets/nes_apu.asm, a 6502 shim supplying the three
+# routines CVBasic's NES target leaves undefined. An ignored source file is one
+# that disappears at the next clean checkout, and it never announces itself --
+# `git status` simply says nothing about it.
+!**/assets/*.asm
 
 # Generated walkthrough + report page. Derived entirely from the shipped level data
 # and the solver, and REGENERATED whenever a game rule changes -- a checked-in copy

@@ -4636,6 +4636,80 @@ a single bank: the store is ~1 KB of templates and there is no music engine.
 
 ---
 
+## 12a. The NES port — where it stands and what actually blocks it
+
+`build-nes.sh` exists and does not produce a working cart. The blocker is not
+the build script and not a link problem, which is how it was first misread.
+
+**CVBasic's NES target implements no `DEFINE` at all** — not `DEFINE CHAR`, not
+`DEFINE COLOR`, not `DEFINE SPRITE`. `cvbasic.c` has, literally:
+
+```c
+} else if (strcmp(name, "DEFINE") == 0) {
+    get_lex();
+    if (machine == NES) {
+        emit_error("DEFINE isn't implemented for NES");
+```
+
+This game calls it **29 times** — the font, the store tiles, the title font,
+every sprite, and the escalator animation that redefines six characters every
+pass. A `--nes` compile therefore ends with 58 errors and exit 1.
+
+**`#if` IS NOT THE ANSWER, AND THE TWO SENSES OF "DEFINE" ARE UNRELATED.** The
+preprocessor conditionals (`#if TI994A`, `#if NES`) work perfectly and are used
+in this source already. The `DEFINE` *statement* is a runtime upload into the
+video chip's pattern table, and there is no NES statement to put in the `#else`
+branch, because that machine has no runtime pattern upload:
+
+| | TI-99 / ColecoVision | NES |
+|---|---|---|
+| where patterns live | VRAM, alongside the name table | CHR, a separate PPU bus |
+| writable while running | yes — that is what `DEFINE` does | only with CHR-**RAM** |
+| how art normally arrives | uploaded at boot by the program | placed in the cart at build time |
+
+**There is no prior art in this repo to copy.** Bust-A-Bobble is sometimes
+remembered as having done this; it has only `build-ti.sh` and `build-coleco.sh`,
+and pointing `--nes` at it gives the same 29 `DEFINE` errors **plus** a
+`VDP not supported for NES/Famicom`. Its `#if TI994A` blocks are the BANK
+directives, which is the preprocessor sense. Keystone Kapers is the closest any
+game here has come, since it does not use `VDP`.
+
+### What is already done, and gated off
+
+Both of these are in the tree, cost nothing on TI or ColecoVision, and are
+verified to remove their own errors — they are simply not reachable until
+`DEFINE` is solved:
+
+- **`assets/nes_apu.asm`** — the SN76489-to-2A03 shim. CVBasic's 6502 codegen
+  emits `sn76489_freq/_vol/_control` for every `SOUND` and the NES prologue
+  defines none of them; `cvbasic_6502_prologue.asm` does, for a 6502 machine
+  with a real SN76489, so the calling convention is taken from there rather
+  than invented. Resolves 36 link errors. **The pitch maths is near-exact by
+  luck**: the NES CPU is almost exactly half the SN76489's clock, so the APU
+  timer is `divisor - 1`. What is lost is stated in the file — the triangle has
+  no volume, so channel 2 keeps its pitch and loses its fades.
+- **`#if NES` paths for all four `VPEEK`s** in `KEYSTONE.bas`. On NES `WRTVRM`
+  does not touch the PPU — it queues into `PPUBUF` for the NMI to flush — so a
+  read-back is both illegal during rendering and blind to the queue. The three
+  fixture routines instead read `stor_tpl`, which is what `SCREEN` blitted;
+  `beam_clear` reads the pillar table `beam_one` stamps from, reproducing its
+  exclusion of columns 0 and 31 so the outside wall is never cleared; and the
+  radar gets a 384-byte pattern shadow whose base comes from `scan_wipe`'s own
+  literal rather than a second copy of it.
+
+### What finishing it would take
+
+1. A **CHR emitter in `genart.py`**, feeding CVBasic's `BITMAP`/CHRROM
+   mechanism at compile time instead of `DEFINE` at runtime.
+2. **CHR-RAM**, for the two things that rewrite patterns while running: the
+   escalator's six characters per pass, and the radar ORing pixel rows.
+3. A decision about **attribute colour**. The NES colours in 16x16 blocks; this
+   game colours per character row, two colours a cell. That does not map, and
+   it is the part most likely to force a visual compromise — worth settling
+   before any of the above is written.
+
+---
+
 ## 13. Phase plan
 
 Each phase builds on **both** targets before the next one starts.

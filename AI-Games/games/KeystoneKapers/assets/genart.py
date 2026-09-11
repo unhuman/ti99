@@ -1179,6 +1179,28 @@ def mirror(art):
                         for r in rows) + nl
 
 
+def overlay(base, top):
+    """Draw `top` onto `base`, both 16 wide -- TWO SPRITES BECOME ONE PATTERN.
+
+    A TMS9918 sprite carries exactly ONE colour, so a two-tone object costs two
+    overlapping sprites AND A SCANLINE SLOT EACH. Merging the layers spends the
+    second colour to buy the slot back, which is the right trade for anything
+    that must never be the sprite the hardware drops.
+
+    Done here rather than by drawing the combined art out by hand, so the
+    merged pattern cannot drift from the layers it came from."""
+    nl = chr(10)
+    b = base.strip(nl).split(nl)
+    t = top.strip(nl).split(nl)
+    out = []
+    for i in range(16):
+        rb = ((b[i] if i < len(b) else "") + "." * 16)[:16]
+        rt = ((t[i] if i < len(t) else "") + "." * 16)[:16]
+        out.append("".join("#" if rb[c] != "." or rt[c] != "." else "."
+                           for c in range(16)))
+    return nl + nl.join(out) + nl
+
+
 def sprite_bytes(art):
     """16x16 art -> 32 bytes, QUADRANT-ORDERED for the VDP: sixteen rows of the
     LEFT half, then sixteen rows of the right. Read it as sequential rows and
@@ -1359,12 +1381,14 @@ SPRITES = [
 ................
 ................
 """)], "radar marker -- Kop and crook"),
-    ("spr_plane", [("PLANE", PLANE_R), ("PLANEL", mirror(PLANE_R)),
-                   ("PROPA", PROP_A), ("PROPAL", mirror(PROP_A)),
-                   ("PROPB", PROP_B), ("PROPBL", mirror(PROP_B))],
-     "toy aeroplane -- DUCK. The only thing that kills. YELLOW body over a "
-     "BLACK detail layer (cockpit + spinning propeller); the detail sits in "
-     "a HIGH slot so an overfull scanline drops it and not the plane."),
+    ("spr_plane", [("PLANE", overlay(PLANE_R, PROP_A)),
+                   ("PLANEL", mirror(overlay(PLANE_R, PROP_A))),
+                   ("PLANEB", overlay(PLANE_R, PROP_B)),
+                   ("PLANEBL", mirror(overlay(PLANE_R, PROP_B)))],
+     "toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and one "
+     "colour: the propeller is merged into the body in two phases rather "
+     "than carried by a second sprite in its own colour. Four patterns where "
+     "there were six, and slots 16-23 are free."),
 ]
 
 # name -> SPRITE PATTERN NUMBER, which is what KEYSTONE.bas's P_* constants
