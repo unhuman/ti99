@@ -5097,10 +5097,30 @@ sfx_tick:
 	' really 8.7. Subtracting the threshold instead keeps the fraction, so the
 	' rate is what it claims to be at any walking speed.
 	'
-	' 104 px/s over 15 px is 6.9 a second -- between the 8.0 that read as
-	' slightly hurried and the 6.1 that read as trudging. The dial is this one
-	' constant and the subtraction below, which must stay threshold + 1 or the
-	' carry is wrong.
+	' MEASURED OFF THE COLECOVISION: 14 px, about 7.4 a second.
+	'
+	' It was 15 px and 6.9 a second, picked between an 8.0 that read as
+	' slightly hurried and a 6.1 that read as trudging -- a judgement between
+	' two other judgements, with nothing underneath it. The ColecoVision
+	' recording settles it: footfalls land every 0.130 s across a twelve-second
+	' continuous run, which is 7.7 a second, and that is the one finding in the
+	' whole sound analysis the method resolves EXACTLY -- a rhythm rather than a
+	' pitch, counted off the RMS track rather than inferred from a spectrum.
+	' (colecosounds variant 1A; assets/sfx/sfxref-coleco.md has the working.)
+	'
+	' 104 px/s over 14 px is 7.43 a second. 13 px would give 8.00, and 7.7 sits
+	' almost exactly between them -- so this is the nearer of the two, and it is
+	' also the one that does not walk back into the 8.0 that was rejected by ear.
+	'
+	' WHY THE GAME KEEPS A DISTANCE AND THE BENCH KEEPS A CADENCE. The bench
+	' plays a fixed eight frames between steps because it has no walking to tie
+	' them to; the game accumulates PIXELS TRAVELLED, so the feet keep time with
+	' the legs when he is slowed or stopped. Matching "7.4 a second" therefore
+	' means matching it AT HIS WALKING SPEED, and assumes the ColecoVision's
+	' crook walks at ours -- which the recording cannot confirm.
+	'
+	' The dial is this one constant and the subtraction below, which must stay
+	' threshold + 1 or the carry is wrong.
 	'
 	' SOT = 2 IS THE SHORTEST TICK THERE IS, and 1 is SILENCE. The decay block
 	' below runs LATER IN THE SAME sfx_tick, so a count of 1 is decremented to
@@ -5118,8 +5138,8 @@ sfx_tick:
 	' out from. The tone version was 7 for the same reason -- noise does read
 	' quieter than a tone at the same number, which is why this is 9 and not
 	' back to 7.
-	IF sfw > 14 THEN
-		sfw = sfw - 15
+	IF sfw > 13 THEN
+		sfw = sfw - 14
 		' STILL SILENT DURING THE JUMP, but now that is a CHOICE rather than
 		' a channel conflict -- he is off the ground, so there is nothing to
 		' make a footstep with.

@@ -12,8 +12,8 @@ GASM80="${GASM80:-/cygdrive/c/Users/Howie/github.git/nanochess/gasm80/gasm80.exe
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
 [ -f "$GASM80" ]      || GASM80="${GASM80/#\/cygdrive\/c\//\/c\/}"
 
-SRC="COLSND.bas"
-NAME="colsnd"
+SRC="TESTSND.bas"
+NAME="testsnd"
 ASM="${NAME}_col.asm"
 ROM="${NAME}.rom"
 
@@ -21,6 +21,15 @@ die() { echo "ERROR: $1" >&2; exit 1; }
 
 [ -f "$CVBASIC_DIR/cvbasic.exe" ] || die "cvbasic.exe not found in $CVBASIC_DIR"
 [ -f "$GASM80" ]                 || die "gasm80.exe not found ($GASM80)"
+
+# REPO ROOT, DERIVED RATHER THAN COUNTED. This bench sits at
+# games/KeystoneKapers/sound/<name>/, so the shared tools are five levels up
+# from src/ -- a depth that has already changed once, when the bench moved under
+# the game whose sounds it measures. A wrong ../../.. count would make python
+# fail to open the file and the die message would name the GATE rather than the
+# path, so derive it from $0 and check it here, where the error can say so.
+REPO="$(cd "$(dirname "$0")/../../../.." && pwd)" || die "cannot locate the repo root"
+[ -f "$REPO/tools/bigvar.py" ] || die "tools/ not found at $REPO -- has this bench moved?"
 
 cd "$(dirname "$0")/src" || die "cannot find src/"
 [ -f "$SRC" ] || die "$SRC not found in $(pwd)"
@@ -79,15 +88,15 @@ cygpy() {
 # value rather than a failure, so they fail the build instead.
 # NO GENERATE STAGE -- this program has no art to generate.
 
-"$TRUNCPY" ../../../tools/bigvar.py *.bas \
+"$TRUNCPY" "$REPO"/tools/bigvar.py *.bas \
     || die "8-bit truncation -- see TRUNCATION.md 1a"
-"$TRUNCPY" ../../../tools/bigconst.py *.bas \
+"$TRUNCPY" "$REPO"/tools/bigconst.py *.bas \
     || die "CONST over 255 -- see TRUNCATION.md 1b"
 
 # THIS MATTERS MORE HERE THAN ON THE TI. A GOSUB left by GOTO never pops its
 # return address; the TI has ~7 KB of stack to absorb it, ColecoVision has 1 KB
 # total and the leak walks down into the variables.
-"$TRUNCPY" ../../../tools/gosubtrace.py "$SRC" | grep -q "every GOSUB target reaches a return" \
+"$TRUNCPY" "$REPO"/tools/gosubtrace.py "$SRC" | grep -q "every GOSUB target reaches a return" \
     || die "a GOSUB target cannot reach a RETURN -- see CLAUDE.md 3A"
 
 # A PRINT AT that runs past column 31 wraps onto the next row, and a HUD VPOKE

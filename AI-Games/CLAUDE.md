@@ -1043,8 +1043,9 @@ Every game's XB source must satisfy all of these so XB and compiled behavior mat
   (`divisor = 111860 / freq`). From an Atari 2600 recording nothing translates —
   the TIA is a different chip, so every number becomes a judgement. Keystone
   Kapers did the 2600 first and had to do it twice. Both reference sheets live
-  here beside the scripts (`sfxref-coleco.md`, `sfxref-2600.md`); the bench carts
-  `games/colecosounds` and `games/testsounds` play the candidates they produced.
+  here beside the scripts (`sfxref-coleco.md`, `sfxref-2600.md`), and the two
+  bench carts that play the candidates sit under `sound/` in that same game --
+  `colecosounds` for the ColecoVision pass, `testsounds` for the 2600 one.
 
 ---
 

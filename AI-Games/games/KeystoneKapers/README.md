@@ -137,7 +137,7 @@ of a storey below (`DESIGN.md` 0e-quindecies).
 
 **Harry starts at the lift** and runs at 2.25 px a pass -- the only quarter-pixel speed that lets him reach the roof inside the round (93.7 s of 100) while still losing the race to Kelly by 9.4 s. One notch slower and he can never escape; one faster and a single obstacle hit makes the round unwinnable (`DESIGN.md` §0f-bis).
 
-**The run and the jump are measured, not invented** -- taken off an Atari 2600 recording via `games/testsounds`, the sound bench built for the purpose. The footstep is a burst of white noise six times a second (it was two alternating tones, fifteen times a second); the jump is a 415/188 Hz warble (it was a rising sweep). `DESIGN.md` §0e-ter.
+**The run and the jump are measured, not invented** -- taken off an Atari 2600 recording via `sound/testsounds`, the sound bench built for the purpose. The footstep is a burst of white noise six times a second (it was two alternating tones, fifteen times a second); the jump is a 415/188 Hz warble (it was a rising sweep). `DESIGN.md` §0e-ter.
 
 **The bonus tally counts rather than ratchets** -- a 1,036 Hz blip per timer unit, two frames on and two off, and nothing after the last one. The measured 2600 tally is noise, and ten noise bursts in a row sound like a mechanism being wound; the pitch is also what keeps the count from sitting in the same register as the clock it is emptying. Two closing accents were tried and both rejected, an octave apart, which is what proved the objection was to the extra note rather than to its pitch (`DESIGN.md` §0e-ter).
 

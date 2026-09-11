@@ -2,7 +2,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      **** ****     > COLSND.a99
 0001               	; CVBasic compiler v0.9.2 Mar/12/2026
 0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a COLSND.bas COLSND.a99 /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/
-0003               	; Created: Fri Sep 11 12:14:17 2026
+0003               	; Created: Fri Sep 11 13:14:32 2026
 0004               
 0005      0000     COLECO:	equ 0
 0006      0000     SG1000:	equ 0
@@ -1811,7 +1811,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 1997               	; 	' taken from it had to be re-imagined rather than translated. Here the
 1998               	; 	' arithmetic is exact wherever the pitch is high enough to resolve.
 1999               	; 	'
-2000               	; 	' See assets/sfxref-coleco.md for what was measured and how.
+2000               	; 	' See games/KeystoneKapers/assets/sfx/sfxref-coleco.md for the measurements.
 2001               	; 	'
 2002               	; 	' A DIGIT PICKS THE CATEGORY, A LETTER PLAYS THE VARIANT. Press 3 for
 2003               	; 	' FALL, then A and C and A again -- one key each, and the category stays

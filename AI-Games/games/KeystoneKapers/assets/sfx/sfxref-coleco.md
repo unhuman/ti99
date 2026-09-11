@@ -6,7 +6,7 @@ The candidates in `src/COLSND.bas` come from a ColecoVision longplay:
 
 ## Why this recording and not the 2600 one
 
-The sibling bench (`games/testsounds`) took its numbers from an **Atari 2600**
+The sibling bench (`sound/testsounds`) took its numbers from an **Atari 2600**
 recording. The 2600's TIA is a different chip: a 5-bit divider with its own
 waveform table and no relation to anything we can write. Every number taken off
 it had to be *re-imagined* as an SN76489 setting.

@@ -3,7 +3,7 @@
 A **second** sound bench for Keystone Kapers. Press a digit, press a letter, hear
 a candidate.
 
-It is a separate app from `games/testsounds` on purpose, so the two can be run
+It is a separate app from `sound/testsounds` on purpose, so the two can be run
 against each other. That one's candidates were measured off an **Atari 2600**
 recording; these are measured off a **ColecoVision** one.
 

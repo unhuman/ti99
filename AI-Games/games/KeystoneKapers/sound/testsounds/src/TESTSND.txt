@@ -1,8 +1,8 @@
 XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      **** ****     > TESTSND.a99
 0001               	; CVBasic compiler v0.9.2 Mar/12/2026
-0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a TESTSND.bas TESTSND.a99 C:/Users/Howie/github.git/unhuman/CVBasic/
-0003               	; Created: Tue Sep  8 17:27:10 2026
+0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a TESTSND.bas TESTSND.a99 /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/
+0003               	; Created: Fri Sep 11 13:14:34 2026
 0004               
 0005      0000     COLECO:	equ 0
 0006      0000     SG1000:	equ 0
@@ -1827,7 +1827,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 2013               	; 	'
 2014               	; 	' WHY IT EXISTS. The game's effects were hand-picked divisors that had
 2015               	; 	' never been compared with anything. These are measured off an Atari 2600
-2016               	; 	' recording (assets/sfxref.md has the workings and the method), and tuning
+2016               	; 	' recording (KeystoneKapers/assets/sfx/sfxref-2600.md has the workings), and tuning
 2017               	; 	' them by editing the game, rebuilding and playing to the right screen is
 2018               	; 	' hopeless -- here it is a keypress.
 2019               	; 	'

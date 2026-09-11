@@ -120,13 +120,13 @@ seconds fits a hit or a prize equally well, and no amount of analysis will
 separate them.
 
 So don't guess. **File the effect by its shape, build both it and its mirror as
-candidates, and let someone decide by ear.** `games/colecosounds` does exactly
+candidates, and let someone decide by ear.** `sound/colecosounds` does exactly
 that with categories 3 (FALL) and 4 (RISE) — same notes, same holds, played
 backwards.
 
 ## 5. Build a bench cart, not a patch to the game
 
-Copy `games/colecosounds` (or `games/testsounds`). Tuning an effect by editing
+Copy `sound/colecosounds` (or `sound/testsounds`). Tuning an effect by editing
 the game, rebuilding, and playing to the screen where it fires is hopeless; on a
 bench it is a keypress.
 
@@ -179,7 +179,7 @@ twelve-second run, 7.7 a second, against the 6 that the 2600 pass had guessed.
 ## Worked example
 
 `sfxref-coleco.md` beside this file records the recording, the method, every
-measurement and the limits; `games/colecosounds/src/COLSND.bas` turns them into
+measurement and the limits; `sound/colecosounds/src/COLSND.bas` turns them into
 six categories of four candidates; and the footstep finding is now in
 `games/KeystoneKapers/src/KEYSTONE.bas`, where the comment cites the measurement
 rather than an opinion.

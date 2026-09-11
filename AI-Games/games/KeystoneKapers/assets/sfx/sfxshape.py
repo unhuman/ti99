@@ -12,7 +12,7 @@ WHY. A falling run recurring every fifteen seconds fits a hit or a prize being
 collected equally well, and nothing in the audio distinguishes them. The honest
 move is to file an effect by its shape, build BOTH it and its mirror as
 candidates, and let someone decide by ear which way round the game wanted it.
-That is what games/colecosounds does with its categories 3 and 4.
+That is what sound/colecosounds does with its categories 3 and 4.
 
 Run:  python3 sfxshape.py FILE.wav [GATE] [MIN_MS] [LIMIT] [START]
 
