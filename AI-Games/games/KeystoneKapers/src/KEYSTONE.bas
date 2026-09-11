@@ -677,8 +677,17 @@ main:
 		GOSUB radio_tick
 		GOSUB move_kelly
 		GOSUB upd_elev
-		GOSUB upd_obst
 	END IF
+	' OBSTACLES RUN THROUGH THE FREEZE, BUT DO NOT TRAVEL. They used to be
+	' inside the guard above, so a hit stopped a ball dead in mid-air and the
+	' store looked switched off for twenty frames. upd_obst now zeroes the
+	' three travel speeds while hfz is up: the horizontal block is skipped and
+	' the bounce phase still advances, so a ball bounces where it is and carts
+	' and planes hold position. The world is stopped, not dead.
+	'
+	' `coll_obst` stays inside the guard, so a ball bouncing in place cannot
+	' hit him a second time while he is still being told about the first.
+	GOSUB upd_obst
 	GOSUB move_harry
 	IF hfz = 0 THEN
 		GOSUB coll_obst
@@ -2725,9 +2734,22 @@ upd_elev:
 	' one size. Four cells is twice the area for no sprite at all.
 	'
 	' It stands ON the slab, so it fills the band's rows 2 and 3; row 4 is
-	' the floor bar itself and draw_prizes uses row 3 for a collectible,
-	' which is why the two never share a screen (genstore keeps prizes off
-	' the screens that carry hazards).
+	' the floor bar itself -- and a PRIZE uses those same two rows.
+	'
+	' THEY CAN SHARE A BAND, AND THE CLAIM THAT USED TO BE HERE WAS WRONG.
+	' It said the two never share a screen because "genstore keeps prizes off
+	' the screens that carry hazards". That stopped being true the moment
+	' hazard placement moved into the per-Krook stor_lvl table, and nothing
+	' noticed, because the prize table is not part of the level table and
+	' every check was written about one object at a time. Two money bags ended
+	' up standing on a radio -- not fighting it, since the two routines poke
+	' different cells and the later writer simply wins, so they read as one
+	' merged object.
+	'
+	' WHAT KEEPS THEM APART IS COLUMNS. A radio stands at column 7, 15 or 23
+	' (see lrc below); genstore's _off_the_rack nudges a prize clear of all
+	' three, and checklevels.py reads that arithmetic back out of THIS file
+	' and fails the build on any overlap.
 	'
 	' rdall = 1 paints all four cells, 0 repaints only the top-right one --
 	' the pulse. Same address arithmetic either way, so the two cannot drift.
@@ -3005,6 +3027,20 @@ upd_obst:
 	GOSUB pace_step
 	obac = pacc
 	obph = pspd
+	' FROZEN MEANS NO TRAVEL, NOT NO MOTION. With the three speeds at zero the
+	' `IF us > 0` block below is skipped, so nothing moves along its band --
+	' but obph has already been computed, so the ball's phase still advances
+	' and it goes on bouncing where it stands.
+	'
+	' ZEROED HERE, AFTER pace_step AND NOT BEFORE IT. pace_step drains the
+	' fractional accumulators; letting them drain means the distance not
+	' travelled is genuinely LOST rather than banked, so nothing lurches
+	' forward on the pass the freeze lifts.
+	IF hfz > 0 THEN
+		ospb = 0
+		ospc = 0
+		ospp = 0
+	END IF
 	FOR ui = 0 TO 7
 		uk = obk(ui)
 		IF uk > 0 THEN

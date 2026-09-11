@@ -810,6 +810,33 @@ def density(krook):
 # Characters, not sprites (see genart.py) -- they sit in the air row directly
 # above the slab.  Stored as (kind, COLUMN), not a pixel x, because that is
 # what a name-table poke needs.
+# THE RADIO RACK, IN COLUMNS.  KEYSTONE.bas stands a radio at `lrc = lrp * 8`
+# plus 7, for lrp in 0..2: a lone radio takes the middle, a pair the ends,
+# three fill the rack.  A radio and a prize are BOTH 2x2 and BOTH stand on the
+# slab in band rows 2 and 3, so two routines poke them into the same cells and
+# the later writer wins -- they read as one merged object rather than colliding
+# visibly.  Anything placed in that air row has to miss these.
+#
+# checklevels.py reads the real arithmetic back out of KEYSTONE.bas and fails
+# if this copy ever drifts from it.
+RADIO_COLS = (7, 15, 23)
+
+
+def _off_the_rack(col):
+    """The nearest column where a 2x2 prop clears every radio, or None.
+
+    Searched outward from the column actually wanted, so a placement moves as
+    little as it can: both of the two that collided shift by exactly one.
+    """
+    for d in (0, 1, -1, 2, -2, 3, -3):
+        c = col + d
+        if c < 1 or c > 29:
+            continue
+        if all(c > r + 1 or c + 1 < r for r in RADIO_COLS):
+            return c
+    return None
+
+
 def collectibles():
     out = []
     for lv in range(4):
@@ -820,8 +847,15 @@ def collectibles():
                 if (scr + lv) % 3 == 1:             # escalator/elevator screen
                     kind = 1 if (scr % 2) == 0 else 2
                     col = 6 + ((scr * 5) % 18)
-                    if not _clear_x(tpl, col * 8):
-                        kind = 0
+                    # OFF THE RACK FIRST, THEN THE BOARDING ZONES. The formula
+                    # above spaces the prizes across the store and knows
+                    # nothing about the radios; two of its columns landed on
+                    # them (floor 0 screen 4 at 8, floor 2 screen 2 at 16).
+                    # Nudging is better than reshaping the formula: the spread
+                    # was chosen for its own reasons and only needs to dodge.
+                    col = _off_the_rack(col)
+                    if col is None or not _clear_x(tpl, col * 8):
+                        kind, col = 0, 0
             out += [kind, col]
     return out
 

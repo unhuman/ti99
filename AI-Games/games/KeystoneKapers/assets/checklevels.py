@@ -288,6 +288,45 @@ def main():
             print("  %-24s 100/200/300 points from Krook 1/10/16"
                   % "time bonus")
 
+    # --------------------------------------------- a prize must miss the rack
+    # A RADIO AND A PRIZE ARE BOTH 2x2 AND BOTH STAND ON THE SLAB, in band rows
+    # 2 and 3. Two different routines poke them into the same cells, so columns
+    # that touch do not fight -- the later writer simply wins and the two read
+    # as one merged object. Reported from play as a radio and a money bag
+    # overlapping.
+    #
+    # THIS IS A PROPERTY OF A PAIR, which is why nothing else here could see
+    # it: every other check in this file asks about one hazard, and the prize
+    # table is not even part of the level table. The comment in KEYSTONE.bas
+    # claimed "genstore keeps prizes off the screens that carry hazards", and
+    # it stopped being true when hazard placement moved into stor_lvl.
+    #
+    # THE RACK IS READ OUT OF THE SOURCE rather than typed here. KEYSTONE.bas
+    # places a radio at `lrc = lrp * 8` then `lrc = lrc + 7`, lrp in 0..2. A
+    # second copy of those numbers in this file would go stale at exactly the
+    # moment the rack moved, which is the moment the check has to work.
+    m = re.search(r"lrc = lrp \* (\d+)\s*\n\s*lrc = lrc \+ (\d+)", src)
+    if not m:
+        bad.append("cannot find the radio rack arithmetic (`lrc = lrp * N` / "
+                   "`lrc = lrc + N`) in KEYSTONE.bas, so prize/radio overlap "
+                   "cannot be checked at all")
+    else:
+        step, base = int(m.group(1)), int(m.group(2))
+        rack = [base + step * i for i in range(3)]
+        co = g.collectibles()
+        for band in range(len(co) // 2):
+            kind, col = co[band * 2], co[band * 2 + 1]
+            if not kind:
+                continue
+            for r in rack:
+                if {col, col + 1} & {r, r + 1}:
+                    bad.append(
+                        "floor %d screen %d stands a prize at column %d "
+                        "(cells %d-%d) on the radio at column %d (cells "
+                        "%d-%d) -- both are 2x2 on the slab"
+                        % (band // 8, band % 8, col, col, col + 1,
+                           r, r, r + 1))
+
     # AND THE SOURCE MUST ACTUALLY BE READING THE TABLE. Everything above tests
     # the generator; if `load_band` stopped consulting `stor_lvl` the generated
     # bytes would be perfect and the game would ignore them.

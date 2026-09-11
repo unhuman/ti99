@@ -233,9 +233,9 @@ stor_lvl:	' [krook-1][lv*8+scr] -> kind | doubled<<3. 11 Krook rows; 12+ reuse t
 	DATA BYTE 0,0,11,4,3,3,3,0,0,0,1,9,1,1,1,0
 
 stor_co:	' [lv*8+scr] -> (kind, column). 0 = nothing here
-	DATA BYTE 0,0,2,11,0,0,0,0,1,8,0,0,0,0,0,0
+	DATA BYTE 0,0,2,11,0,0,0,0,1,9,0,0,0,0,0,0
 	DATA BYTE 0,0,0,0,0,0,0,0,0,0,0,0,1,18,0,0
-	DATA BYTE 0,0,0,0,1,16,0,0,0,0,2,13,0,0,0,0
+	DATA BYTE 0,0,0,0,1,17,0,0,0,0,2,13,0,0,0,0
 	DATA BYTE 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 stor_arc:	' 3 bounce arcs x 32 frames, apex 9 / 14 / 19 -- see DESIGN.md 5a
