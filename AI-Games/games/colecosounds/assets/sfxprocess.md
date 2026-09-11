@@ -7,6 +7,11 @@ well, from a ColecoVision one.
 
 Three scripts and a bench cart. None of it needs numpy.
 
+It lives in `games/colecosounds/assets/`, beside the measurements it produced
+and the cart that plays them. **Starting a new game's sound pass? Copy the three
+`sfx*.py` scripts and this file into that game's `assets/`** -- the process is the
+part worth reusing; the numbers here belong to Keystone Kapers.
+
 ---
 
 ## 0. Pick the recording — this decides everything after it

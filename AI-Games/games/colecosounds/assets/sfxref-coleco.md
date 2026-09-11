@@ -112,8 +112,8 @@ Short 2-frame blips at divisor ~496 (~226 Hz) punctuate the quiet stretches.
 
 ## Tooling
 
-The scripts live in **`tools/sfx/`**, shared across games, with the whole process
-written up in `tools/sfx/README.md`:
+The scripts live beside this file in `assets/`, with the whole process
+written up in `sfxprocess.md`:
 
 * `sfxscan.py` — RMS + zero-crossing sweep; finds the events worth looking at
 * `sfxpitch.py` — the Goertzel divisor identifier, with the resolution limit above
@@ -124,7 +124,7 @@ Reproducing this document needs only the recording, `ffmpeg -ac 1 -ar 44100` to 
 mono WAV, and those three. For example, the jump warble:
 
 ```
-python3 tools/sfx/sfxpitch.py kk_coleco.wav 8.15 0.04 0.04 5
+python3 assets/sfxpitch.py kk_coleco.wav 8.15 0.04 0.04 5
     8.15   218  54   513   217(1.00) 216(1.00) 215(1.00)
     8.19   208  52   538   ...
     8.23   190  47   589   ...
