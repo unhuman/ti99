@@ -29,7 +29,7 @@
 	'
 	' WHY IT EXISTS. The game's effects were hand-picked divisors that had
 	' never been compared with anything. These are measured off an Atari 2600
-	' recording (assets/sfxref.md has the workings and the method), and tuning
+	' recording (KeystoneKapers/assets/sfx/sfxref-2600.md has the workings), and tuning
 	' them by editing the game, rebuilding and playing to the right screen is
 	' hopeless -- here it is a keypress.
 	'

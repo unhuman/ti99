@@ -28,8 +28,9 @@ falls, which is the difference between a reward and a penalty.
 
 ## Where the numbers come from
 
-`assets/sfxref.md` — measured off an Atari 2600 recording rather than guessed,
-with the analysis method and the two mistakes the first pass made.
+`games/KeystoneKapers/assets/sfx/sfxref-2600.md` — measured off an Atari 2600
+recording rather than guessed, with the analysis method and the two mistakes the
+first pass made.
 
 ## Adding a candidate
 

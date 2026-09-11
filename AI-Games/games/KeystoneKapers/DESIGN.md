@@ -1522,7 +1522,7 @@ whenever the routine can span a vblank**, which on this machine is most of them.
 
 Both effects were hand-picked divisors that had never been compared with
 anything. They are now `testsounds` variant A -- measured off an Atari 2600
-recording (`games/testsounds/assets/sfxref.md` has the method and the workings).
+recording (`assets/sfx/sfxref-2600.md` has the method and the workings).
 
 **The footstep is NOISE, on the noise channel.** It was two alternating tones on
 channel 0. The recording says a footstep is a short burst of white noise, and

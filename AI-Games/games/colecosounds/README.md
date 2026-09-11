@@ -60,15 +60,15 @@ so this is the finding to act on first.
 
 ## Where the numbers come from
 
-`assets/sfxref-coleco.md` — the recording, the method, what was measured, and
-**the limit**: pitch recovery is exact only where the note is high. At divisor
-212 the neighbours are 2.5 Hz away and a 400 ms effect cannot resolve them, so a
-low reading is a neighbourhood rather than a register value.
+`games/KeystoneKapers/assets/sfx/sfxref-coleco.md` — the recording, the method,
+what was measured, and **the limit**: pitch recovery is exact only where the note
+is high. At divisor 212 the neighbours are 2.5 Hz away and a 400 ms effect cannot
+resolve them, so a low reading is a neighbourhood rather than a register value.
 
-The scripts are in **`assets/`** beside the measurements, and the process is
-written up in `assets/sfxprocess.md` — how to choose a reference recording, pull
-the audio, find the events, read the divisors, and move a finding into a game.
-This cart is its worked example.
+The scripts and the process live with the game whose sounds they measured, in
+that same **`assets/sfx/`** — `sfxprocess.md` covers how to choose a reference
+recording, pull the audio, find the events, read the divisors, and move a finding
+into a game. This cart is its worked example.
 
 ## Adding a candidate
 

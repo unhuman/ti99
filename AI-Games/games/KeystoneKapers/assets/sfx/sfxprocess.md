@@ -7,9 +7,9 @@ well, from a ColecoVision one.
 
 Three scripts and a bench cart. None of it needs numpy.
 
-It lives in `games/colecosounds/assets/`, beside the measurements it produced
-and the cart that plays them. **Starting a new game's sound pass? Copy the three
-`sfx*.py` scripts and this file into that game's `assets/`** -- the process is the
+It lives in `games/KeystoneKapers/assets/sfx/`, beside the two reference sheets
+it produced. **Starting a new game's sound pass? Copy the three `sfx*.py`
+scripts and this file into that game's own `assets/sfx/`** -- the process is the
 part worth reusing; the numbers here belong to Keystone Kapers.
 
 ---
@@ -178,8 +178,8 @@ twelve-second run, 7.7 a second, against the 6 that the 2600 pass had guessed.
 
 ## Worked example
 
-`games/colecosounds` is a complete one: `assets/sfxref-coleco.md` records the
-recording, the method, every measurement and the limits; `src/COLSND.bas` turns
-them into six categories of four candidates; and the footstep finding is now in
+`sfxref-coleco.md` beside this file records the recording, the method, every
+measurement and the limits; `games/colecosounds/src/COLSND.bas` turns them into
+six categories of four candidates; and the footstep finding is now in
 `games/KeystoneKapers/src/KEYSTONE.bas`, where the comment cites the measurement
 rather than an opinion.

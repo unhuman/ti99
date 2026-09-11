@@ -13,7 +13,7 @@
 	' taken from it had to be re-imagined rather than translated. Here the
 	' arithmetic is exact wherever the pitch is high enough to resolve.
 	'
-	' See assets/sfxref-coleco.md for what was measured and how.
+	' See games/KeystoneKapers/assets/sfx/sfxref-coleco.md for the measurements.
 	'
 	' A DIGIT PICKS THE CATEGORY, A LETTER PLAYS THE VARIANT. Press 3 for
 	' FALL, then A and C and A again -- one key each, and the category stays
