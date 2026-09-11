@@ -589,10 +589,21 @@ def esc_band(lv, scr):
 # module docstring's --fit mode.
 SPREAD = 3
 
-# THE MOST ANY ONE SCREEN MAY CARRY. Seven is the largest number of hazards seen
-# on screen at once anywhere in the measured 2600 playthrough, so this is a
-# measurement rather than a preference.
-MAXLOAD = 7
+# THE MOST ANY ONE SCREEN MAY CARRY, PER KROOK.
+#
+# This was a single 7 -- the most ever seen anywhere in the playthrough -- and a
+# game-wide maximum is no constraint at all on the early rounds. Krook 1 places
+# five hazards, and with nothing to stop them three landed on ONE screen: a wall
+# of balls across three bands with the rest of the store empty. Reported as "a
+# very heavy weight on the first screen I came to ... leaving a really heavy skew
+# and many empty other pages", and the original never does it -- at level 1 it
+# never shows more than TWO at once, in 57 sampled frames.
+#
+# So the cap is per level and measured, and it is applied when BANDS ARE PLACED
+# as well as when they are doubled. Applying it only to the doubling, which is
+# what the first version did, leaves the stack that the placement built.
+MAXLOAD = {1: 2, 2: 3, 3: 4, 4: 5, 5: 5, 6: 7,
+           7: 7, 8: 7, 9: 7, 10: 8, 11: 9}
 
 
 def fill_order(krook=1):
@@ -668,12 +679,24 @@ def levels():
         row = [NONE] * 32
         n, d = BANDS[krook], DOUBLED[krook]
         doubled_left = d
+        # PLACE UP TO n BANDS, BUT NEVER STACK A SCREEN PAST ITS CAP. Walking
+        # `order[:n]` and taking whatever came is what let Krook 1 put three of
+        # its five hazards on one screen; the cap has to steer the placement, not
+        # just trim it afterwards, so the walk continues past a full screen
+        # rather than stopping at n entries of the order.
+        cap = MAXLOAD[krook]
         filled = []
-        for seq, (lv, scr) in enumerate(order[:n]):
+        held = {}
+        for seq, (lv, scr) in enumerate(order):
+            if len(filled) >= n:
+                break
+            if held.get(scr, 0) >= cap:
+                continue
             kind = _kind_for(lv, scr, krook, seq)
             if kind == NONE:
                 continue
             row[lv * 8 + scr] = kind
+            held[scr] = held.get(scr, 0) + 1
             filled.append((lv, scr, kind))
 
         # DOUBLE ROUND-ROBIN ACROSS SCREENS, NOT IN FILL ORDER.
@@ -714,7 +737,7 @@ def levels():
             for scr in sorted(by_screen):
                 if doubled_left <= 0:
                     break
-                if load(scr) >= MAXLOAD:
+                if load(scr) >= cap:
                     continue
                 for lv, kind in by_screen[scr]:
                     # a band can only be doubled once its OWN kind pairs

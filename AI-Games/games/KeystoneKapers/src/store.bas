@@ -209,10 +209,10 @@ stor_esc:	' per level: 0 = climbs west, 1 = east, 255 = no escalator (padded eve
 	DATA BYTE 0,1,0,255,0,0,0,0
 
 stor_lvl:	' [krook-1][lv*8+scr] -> kind | doubled<<3. 11 Krook rows; 12+ reuse the last
-	DATA BYTE 0,2,0,0,0,0,2,0,0,0,0,0,0,0,2,0
-	DATA BYTE 0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0
-	DATA BYTE 0,3,0,0,0,2,2,0,0,0,0,0,0,3,2,0
-	DATA BYTE 0,3,0,0,0,3,3,0,0,0,0,0,0,0,0,0
+	DATA BYTE 0,2,2,0,0,0,2,0,0,0,0,0,0,0,0,0
+	DATA BYTE 0,2,0,0,0,0,2,0,0,0,0,0,0,0,0,0
+	DATA BYTE 0,3,2,0,0,2,2,0,0,3,0,0,0,3,2,0
+	DATA BYTE 0,3,3,0,0,3,3,0,0,0,0,0,0,0,0,0
 	DATA BYTE 0,1,0,0,2,3,1,0,0,2,0,0,2,3,2,0
 	DATA BYTE 0,3,0,0,3,1,2,0,0,1,0,0,1,1,1,0
 	DATA BYTE 0,4,0,2,2,2,2,0,0,4,0,2,4,4,2,0

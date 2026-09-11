@@ -2099,9 +2099,19 @@ stretch of shop is permanently the quiet one.
 gave Krook 9 loads of `[4, 3, 1, 7, 6, 10]` — one screen carrying **ten** against a
 maximum of **seven** ever observed in the original, with another holding one. That is
 the "heavy" report, and it came from the doubling rather than from which bands are
-occupied. Doubles are now dealt **round-robin across screens**, and `MAXLOAD = 7` caps
-any one screen outright, because round-robin alone does not: once the other screens run
-out of bands whose *kind* may pair, the loop keeps returning to the one that has them.
+occupied. Doubles are now dealt **round-robin across screens**, and a per-screen cap
+binds outright, because round-robin alone does not: once the other screens run out of
+bands whose *kind* may pair, the loop keeps returning to the one that has them.
+
+**AND THE CAP HAS TO BE PER LEVEL, APPLIED WHEN BANDS ARE PLACED.** It was a single 7 --
+the most seen anywhere in the playthrough -- which is no constraint at all on the early
+rounds, and it was only consulted while doubling. Krook 1 places five hazards and put
+three of them on ONE screen, a wall of balls across three bands with the rest of the
+store empty, while a game-wide cap of seven sat there being satisfied. Reported as *"a
+very heavy weight on the first screen I came to ... a really heavy skew and many empty
+other pages"*. The original never shows more than **two** at once on level 1, in 57
+sampled frames. `MAXLOAD` is now the measured per-level maximum and steers the
+placement rather than trimming it afterwards.
 
 Both are checked. The load cap is held as a literal in `checklevels.py` rather than
 imported from the generator — the first version read `genstore.MAXLOAD` for its

@@ -59,13 +59,22 @@ CHANGES = {
 # is wrong and the build stops.
 ARRIVE_WANT = {g.BALL: 1, g.RADIO: 2, g.CART: 3, g.PLANE: 4}
 DOUBLE_WANT = {g.RADIO: 6, g.BALL: 9, g.CART: 11}       # biplanes: never
-# The most hazards ever seen on screen at once in the measured playthrough.
-# HELD HERE, NOT IMPORTED -- reading `genstore.MAXLOAD` for the expectation
-# makes the check vacuous in exactly the way the note above describes, and the
-# first version of this assertion did precisely that: raising the generator's cap
+# The most hazards ever seen on ONE SCREEN at once, per level, measured.
+#
+# HELD HERE, NOT IMPORTED -- reading `genstore.MAXLOAD` for the expectation makes
+# the check vacuous in exactly the way the note above describes, and the first
+# version of this assertion did precisely that: raising the generator's cap
 # raised the checker's threshold with it and a table piling ten onto one screen
 # reported success.
-MAXLOAD_WANT = 7
+#
+# AND IT WAS A SINGLE NUMBER, 7, WHICH IS NO CONSTRAINT ON THE EARLY ROUNDS.
+# Krook 1 places five hazards and put three of them on one screen -- a wall of
+# balls with the rest of the store empty -- while a game-wide cap of seven sat
+# there being satisfied. The original never shows more than TWO at once on level
+# 1, in 57 sampled frames. A cap that only binds at the end of the game does not
+# describe the shape of the beginning.
+MAXLOAD_WANT = {1: 2, 2: 3, 3: 4, 4: 5, 5: 5, 6: 7,
+                7: 7, 8: 7, 9: 7, 10: 8, 11: 9}
 
 # HAZARDS VISIBLE ON ONE SCREEN, MEASURED OFF THE ORIGINAL -- its AISLE screens,
 # against our PLACEABLE screens. From assets/ref2600/hazards.md.
@@ -214,10 +223,10 @@ def main():
                         n += 1
                         if kind == g.RADIO and k > 7:
                             n += 1
-            if n > MAXLOAD_WANT:
+            if n > MAXLOAD_WANT[k]:
                 bad.append("Krook %d screen %d carries %d hazards; the original "
                            "never shows more than %d at once"
-                           % (k, s, n, MAXLOAD_WANT))
+                           % (k, s, n, MAXLOAD_WANT[k]))
 
     # AND AT LEAST ONE SCREEN OF LEVEL 1 MUST BE COMPLETELY BARE -- all four
     # floors. Under the old gates a populated screen could never be empty on any
