@@ -1032,6 +1032,17 @@ Every game's XB source must satisfy all of these so XB and compiled behavior mat
   (`CALL LINK("FLICK"/"FLICKX")`).
 - `JUWEL7/DOCS/` — authoritative PDFs (XB256, XB Compiler, Using XBGDP, TI XB manual).
 - Existing project material: `mspacman-old/`, `Adventure-Java/` (candidate first games).
+- **`tools/sfx/` — measuring sound effects off a reference recording, and tuning
+  them.** Three stdlib-only scripts (no numpy) plus the process in its README:
+  find the events, read the SN76489 divisors, classify by shape, build a bench
+  cart, move a finding into the game. **The first decision is the one that
+  matters: take the reference recording with YOUR CHIP in it.** The SN76489 is
+  also in the ColecoVision, SG-1000, Master System and BBC Micro, and from any of
+  those a frequency converts straight back to the register the game wrote
+  (`divisor = 111860 / freq`). From an Atari 2600 recording nothing translates —
+  the TIA is a different chip, so every number becomes a judgement. Keystone
+  Kapers did the 2600 first and had to do it twice. `games/colecosounds` is the
+  worked example; `games/testsounds` is the 2600 one, kept for comparison.
 
 ---
 

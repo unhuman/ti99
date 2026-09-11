@@ -112,13 +112,25 @@ Short 2-frame blips at divisor ~496 (~226 Hz) punctuate the quiet stretches.
 
 ## Tooling
 
-The analysis scripts are not in the repo — they were written against a scratch
-copy of the audio and are recorded here so the work can be repeated:
+The scripts live in **`tools/sfx/`**, shared across games, with the whole process
+written up in `tools/sfx/README.md`:
 
-* `colscan.py` — RMS + zero-crossing sweep, finds events and rough pitch
-* `colfreq.py` — the Goertzel divisor identifier, with the resolution note above
-* `colevents.py` — walks each event and reports its pitch **shape** (rising,
-  falling, warble, steady), which is what classifies an effect
+* `sfxscan.py` — RMS + zero-crossing sweep; finds the events worth looking at
+* `sfxpitch.py` — the Goertzel divisor identifier, with the resolution limit above
+* `sfxshape.py` — walks an event and reports its pitch **shape** (rising, falling,
+  warble, steady), which is what classifies an effect
 
-Re-deriving them needs the audio, `ffmpeg -ac 1 -ar 44100` to a WAV, and nothing
-else.
+Reproducing this document needs only the recording, `ffmpeg -ac 1 -ar 44100` to a
+mono WAV, and those three. For example, the jump warble:
+
+```
+python3 tools/sfx/sfxpitch.py kk_coleco.wav 8.15 0.04 0.04 5
+    8.15   218  54   513   217(1.00) 216(1.00) 215(1.00)
+    8.19   208  52   538   ...
+    8.23   190  47   589   ...
+    8.27   182  45   615   ...
+```
+
+— and note the runners-up all scoring 1.00, which is the tool telling you it
+cannot separate 218 from 217 at this pitch and window. That is the limit doing
+its job rather than a fault.
