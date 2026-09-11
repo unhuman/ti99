@@ -497,10 +497,10 @@ DOUBLE = {RADIO: 6, BALL: 9, CART: 11}          # PLANE never doubles
 # HOW MANY BANDS CARRY A HAZARD, and how many of those carry a second, per
 # Krook. Tuned so density() lands on the measured column in hazards.md; the
 # checker holds it there.
-BANDS   = {1: 5, 2: 10, 3: 17, 4: 24, 5: 24, 6: 26,
-           7: 26, 8: 26, 9: 26, 10: 26, 11: 26}
+BANDS   = {1: 4, 2: 9, 3: 15, 4: 20, 5: 20, 6: 21,
+           7: 21, 8: 23, 9: 24, 10: 24, 11: 24}
 DOUBLED = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 3,
-           7: 5, 8: 5, 9: 7, 10: 7, 11: 11}
+           7: 3, 8: 3, 9: 5, 10: 5, 11: 6}
 
 # THE ORDER BANDS FILL IN. Fixed, so each Krook is a superset of the one before
 # and the ramp reads as the store filling up rather than as a reshuffle.
@@ -524,35 +524,52 @@ _LV_ORDER = (0, 2, 3, 1)
 # The ELEVATOR screen is deliberately NOT in here -- the reviewer wants hazards
 # there, and waiting for a car is not the same as stepping onto a moving stair.
 ESC_TPL = ("T_ESC_W", "T_ESC_E")
-SCR_LAST = 7            # the east end screen of every floor
+SCREENS = 8             # screens per floor
+SCR_LAST = SCREENS - 1  # the east end screen of every floor
+
+
+def esc_screens():
+    """Screen indices that carry an escalator on ANY floor.
+
+    A SCREEN IS THE WHOLE VERTICAL SLICE -- all four floors at once -- and that
+    is the unit the rule is about. Two narrower readings were tried and both were
+    wrong:
+
+      1. the band whose TEMPLATE is a flight. A flight is drawn in the band you
+         are LEAVING, so this caught the foot and missed the head: a cart stood
+         at the top of floor 3's escalator, on the roof.
+      2. the foot AND the head. Better, and still not it -- floor 1's screen 7
+         kept a ball while floor 2's escalator stood on that same screen, one
+         band above it. All four bands are on screen together, so the player sees
+         a hazard and an escalator in the same picture, which is the thing the
+         rule exists to prevent.
+
+    Reported twice before it was got right: "There should never be hazards on the
+    escalator screen", then "you placed hazard on the starting escalator screen.
+    This rule -- no hazards on escalator screens -- needs to be reflected."
+
+    Derived rather than listed, because which screen an escalator lives on is a
+    fact about ESC_SIDE and INDEX, and a hand-written (0, 7) would go stale the
+    day a floor changed sides.
+    """
+    out = set()
+    for lv in range(4):
+        for scr in range(SCREENS):
+            if INDEX[lv][scr] in ESC_TPL:
+                out.add(scr)                        # the foot, drawn here
+            elif lv > 0 and ESC_SIDE[lv - 1] == 0 and scr == 0:
+                out.add(scr)                        # the head, arriving west
+            elif lv > 0 and ESC_SIDE[lv - 1] == 1 and scr == SCR_LAST:
+                out.add(scr)                        # the head, arriving east
+    return out
+
+
+ESC_SCREENS = esc_screens()
 
 
 def esc_band(lv, scr):
-    """True if this band is an escalator screen -- EITHER END OF THE FLIGHT.
-
-    The first version tested only the template, which is where the flight is
-    DRAWN -- and a flight is drawn in the band you are LEAVING, so that caught
-    the foot and missed the head entirely. The escalator off floor 3 climbs from
-    screen 0 and arrives on the ROOF at screen 0, and a cart was sitting there;
-    floor 1's climbs to floor 2's screen 0, which had a radio on it.
-
-    The arrival is the worse of the two to block: at the foot you choose when to
-    step on, while at the head you are put down wherever the ride ends, facing
-    whatever is there. Reported as "I said no hazards on the escalator screen and
-    on level 3, you placed a cart".
-
-    ESC_SIDE[lv] is which side floor lv climbs from -- 0 west (screen 0), 1 east
-    (screen 7), 255 none -- so the floor BELOW decides whether a band is a head.
-    """
-    if INDEX[lv][scr] in ESC_TPL:
-        return True                                 # the foot: flight drawn here
-    if lv > 0:
-        side = ESC_SIDE[lv - 1]
-        if side == 0 and scr == 0:
-            return True                             # the head, arriving west
-        if side == 1 and scr == SCR_LAST:
-            return True                             # the head, arriving east
-    return False
+    """True if this band sits on an escalator screen, on any floor."""
+    return scr in ESC_SCREENS
 
 
 def fill_order():
@@ -659,15 +676,24 @@ def preview_levels():
 
 
 def density(krook):
-    """Hazards visible on one screen, averaged over the eight screens.
+    """Hazards visible on one screen, averaged over the PLACEABLE screens.
 
-    Computed the way the GAME will count them -- a doubled band shows two, and
-    a doubled radio band shows three from Krook 8 -- so this is comparable with
-    the measured column in hazards.md rather than merely with the byte count.
+    Not over all eight. The escalator screens are structurally empty -- nothing
+    may ever stand on them -- so including them drags the average down by a
+    quarter and no table could ever reach a figure measured on a game that does
+    put hazards there. Dividing by eight was comparing our whole store against
+    the original's aisles.
+
+    So this is the density of the screens that can carry anything, and the target
+    it is checked against is the original's AISLE-screen column in
+    assets/ref2600/hazards.md. Like for like.
+
+    Counted the way the GAME will count it -- a doubled band shows two, and a
+    doubled radio band shows three from Krook 8 -- rather than as a byte count.
     """
     row = levels()[(min(krook, KROOKS) - 1) * 32:][:32]
     total = 0
-    for b in row:
+    for band, b in enumerate(row):
         kind = b & 7
         if not kind:
             continue
@@ -676,7 +702,7 @@ def density(krook):
             total += 1
             if kind == RADIO and krook > 7:
                 total += 1          # the third radio, synthesised in load_band
-    return total / 8.0
+    return total / float(SCREENS - len(ESC_SCREENS))
 
 
 # --------------------------------------------------------------------------

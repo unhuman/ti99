@@ -2052,19 +2052,31 @@ hazards. **Two rules override the measurement, both on the reviewer's word:**
 player has to stop and board, and anything there is a toll on a manoeuvre the game has
 already committed them to.
 
-**BOTH ENDS OF THE FLIGHT COUNT, and the first version only caught one.** A flight is
-drawn in the band you are *leaving*, so testing the template finds the **foot** and
-misses the **head** entirely — the escalator off floor 3 climbs from screen 0 and
-arrives on the **roof** at screen 0, where a cart was sitting, and floor 1's arrives at
-floor 2's screen 0, which had a radio. Reported as *"I said no hazards on the escalator
-screen and on level 3, you placed a cart"*. The head is the worse of the two to leave
-open: at the foot you choose when to step on, while at the head you are put down
-wherever the ride ends, facing whatever is there.
+**A SCREEN IS THE WHOLE VERTICAL SLICE — all four floors — and that is the unit the
+rule is about.** Two narrower readings were written first and both were reported back:
 
-So a band is an escalator band if its template is a flight **or** if `ESC_SIDE[lv-1]`
-says the floor below climbs to it. Six of the 32 bands; `fill_order()` omits them, so
-the budget cannot spend one by accident. The **elevator** screen is deliberately not
-covered: waiting for a car is not the same as stepping onto a moving stair.
+1. *the band whose template is a flight.* A flight is drawn in the band you are
+   **leaving**, so this catches the foot and misses the head: a cart stood at the top
+   of floor 3's escalator, on the roof.
+2. *the foot and the head.* Better, and still wrong — floor 1's screen 7 kept a ball
+   while floor 2's escalator stood on that same screen, one band above it. All four
+   bands are on screen together, so the player sees a hazard and an escalator in the
+   same picture, which is the thing the rule exists to prevent.
+
+So `esc_screens()` derives the screen **indices** that carry an escalator on any floor
+— 0 and 7 — and every band on them is unplaceable. Eight of the 32; `fill_order()`
+omits them, so the budget cannot spend one by accident. Derived rather than a literal
+`(0, 7)`, which would go stale the day a floor changed sides.
+
+The **elevator** screen is deliberately not covered: waiting for a car is not the same
+as stepping onto a moving stair, and the reviewer wants hazards there.
+
+**And the density metric had to change with it.** It averaged over all eight screens on
+both sides, which is not like for like once two of ours are structurally empty: a
+whole-store average is a quarter lower by construction, and no table could reach a
+figure measured on a game that does put hazards on its end screens. It made Krook 7
+look 0.52 short of a target it could not have hit. `density()` now averages over the
+**placeable** screens and is checked against the original's **aisle** column.
 
 *Never a radio on the roof.* A hardware limit rather than a taste: a radio is drawn as
 **characters**, so it shares its cells' two colours with whatever it stands on — flat

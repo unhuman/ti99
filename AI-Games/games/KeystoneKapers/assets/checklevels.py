@@ -60,13 +60,19 @@ CHANGES = {
 ARRIVE_WANT = {g.BALL: 1, g.RADIO: 2, g.CART: 3, g.PLANE: 4}
 DOUBLE_WANT = {g.RADIO: 6, g.BALL: 9, g.CART: 11}       # biplanes: never
 
-# HAZARDS VISIBLE ON ONE SCREEN, MEASURED OFF THE ORIGINAL, weighted across its
-# five aisle screens and three end screens exactly as ours are laid out. From
-# the table in assets/ref2600/hazards.md; the sample dips at levels 5 and 10
-# (n is about thirty frames each), so the target is the running maximum -- the
-# trend the design follows rather than the noise.
-DENSITY = {1: 0.57, 2: 1.03, 3: 2.17, 4: 3.15, 5: 3.15, 6: 3.62,
-           7: 3.90, 8: 3.97, 9: 4.27, 10: 4.27, 11: 4.77}
+# HAZARDS VISIBLE ON ONE SCREEN, MEASURED OFF THE ORIGINAL -- its AISLE screens,
+# against our PLACEABLE screens. From assets/ref2600/hazards.md.
+#
+# THE FIRST VERSION AVERAGED OVER ALL EIGHT SCREENS ON BOTH SIDES, and that is
+# not like for like: nothing may ever stand on our two escalator screens, so a
+# whole-store average is a quarter lower by construction and no table could reach
+# a figure measured on a game that does put hazards on its end screens. It made
+# Krook 7 look 0.52 short of a target it could not have hit.
+#
+# The sample dips at levels 5 and 10 (n is about thirty frames each), so the
+# target is the running maximum -- the trend the design follows, not the noise.
+DENSITY = {1: 0.71, 2: 1.50, 3: 2.47, 4: 3.28, 5: 3.28, 6: 3.97,
+           7: 4.04, 8: 4.50, 9: 4.97, 10: 4.97, 11: 5.15}
 # Half a hazard a screen. Tighter than the measurement deserves at n=30, and
 # loose enough that the table is not fitted to sampling noise.
 DENSITY_TOL = 0.5
