@@ -122,6 +122,13 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/checkball.py > /dev/null \
     || die "a beach-ball height is unavoidable -- run assets/checkball.py"
 
+# AND THE CART'S ART, HITBOX AND THE JUMP ARC ARE THREE NUMBERS IN THREE FILES.
+# checkball.py is about BALLS -- a ball's hitbox comes from its bounce arc, not
+# from its sprite -- so nothing was watching the obstacles whose height is a
+# constant. Raising the cart from 8 px to 12 is exactly the edit this guards.
+"$TRUNCPY" ../assets/checkcart.py > /dev/null \
+    || die "the cart's art, hitbox and jump arc disagree -- run assets/checkcart.py"
+
 # A chase resolves on PATH / SPEED, not on speed. Kelly used to be 1.5x faster
 # than Harry and STILL lose the race to the roof by 11 seconds, because Harry's
 # route is barely half as long -- and neither speed constant shows that. This

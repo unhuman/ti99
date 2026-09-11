@@ -771,23 +771,46 @@ KELLY_DBODY = KELLY_DUCK_BODY   # the WHOLE body, head to heel, under both
 # A WIRE BASKET, and you can see through it. The reference cart is a mesh of
 # uprights between two rails on a solid wheeled base; the first version was a
 # plain hollow rectangle, which reads as a box rather than as a trolley.
+# TWELVE PIXELS TALL, NOT EIGHT, and the extra four are all BASKET. The rail,
+# the solid base, the post and the wheels are untouched; the mesh goes from two
+# rows to six. That keeps the silhouette the reference established and just
+# makes the trolley deeper, which is what "bigger" means for a cart -- a new
+# shape at a new size would be a different object.
+#
+# IT GROWS UPWARD, because rule 2 at the top of this file fixes every obstacle's
+# bottom edge at `y + 16`. Row 15 stays the floor line, so no placement, no y
+# and no band arithmetic changes -- only rows 4-7 stop being blank.
+#
+# AND THE HITBOX GREW WITH IT. coll_obst gives a cart its own `oht = 12`; the
+# default of 8 stays for the radio, which is still an 8 px object. Art and
+# hitbox have to move together or the player clips through the top of a cart
+# they can plainly see -- checkcart.py fails the build if the two disagree.
+# FOURTEEN WIDE, WHICH IS THE BALL'S WIDTH AND NOT A COINCIDENCE. The hit test
+# is `cdx < CATCHR` on CENTRES, taken before any per-kind branch, and CATCHR is
+# ALSO what decides when Kelly catches Harry -- so a cart cannot be given a
+# wider hit radius without changing the arrest. Width is therefore bounded by
+# honesty rather than by the 16 px box: Kelly is 16, so a hazard of width w
+# overlaps him once the centres are within 8 + w/2, while the hit only fires
+# inside 12. At 12 px the cart had 2 px that look like a hit and are not; at 14
+# it has 3, exactly what the ball has shipped with all along. At the full 16 it
+# would have 4, worse than anything else in the game.
 CART = """
 ................
 ................
 ................
 ................
-................
-................
-................
-................
-..############..
-..#.#.#.#.#..#..
-..#.#.#.#.#..#..
-..############..
-..############..
-...#........#...
-..###......###..
-..###......###..
+.##############.
+.#.#.#.#.#.#..#.
+.#.#.#.#.#.#..#.
+.#.#.#.#.#.#..#.
+.#.#.#.#.#.#..#.
+.#.#.#.#.#.#..#.
+.#.#.#.#.#.#..#.
+.##############.
+.##############.
+..#..........#..
+.###........###.
+.###........###.
 """
 
 # SOLID, not a ring. The reference ball is a filled disc; drawn as an outline

@@ -225,10 +225,10 @@ spr_harry:	' Harry: RIGHT torso/stripes/face, the same LEFT (+P_HFACING), then t
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
 spr_cart:	' shopping cart -- jump it
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $3F,$2A,$2A,$3F,$3F,$10,$38,$38
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FC,$A4,$A4,$FC,$FC,$08,$1C,$1C
+	DATA BYTE $00,$00,$00,$00,$7F,$55,$55,$55
+	DATA BYTE $55,$55,$55,$7F,$7F,$20,$70,$70
+	DATA BYTE $00,$00,$00,$00,$FE,$52,$52,$52
+	DATA BYTE $52,$52,$52,$FE,$FE,$04,$0E,$0E
 
 spr_ball:	' beach ball -- jump it LOW, duck it HIGH
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00

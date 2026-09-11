@@ -3571,7 +3571,17 @@ coll_obst:
 			IF kcx > ocx THEN cdx = kcx - ocx ELSE cdx = ocx - kcx
 			IF cdx < CATCHR THEN
 				ohb = 0
+				' 8 IS THE RADIO'S HEIGHT, and it is the default
+				' because a radio is the only 8 px obstacle left.
+				' A CART IS 12 -- its basket was deepened and the
+				' hitbox has to follow the art, or the player
+				' clips through the top of a trolley they can
+				' plainly see. The jump apex is 14 and holds for
+				' nine frames, so 12 still clears on 16 of the
+				' arc's 30 frames. checkcart.py holds the three
+				' numbers together.
 				oht = 8
+				IF ck = OB_CART THEN oht = 12
 				IF ck = OB_BALL THEN
 					ohb = obh(cj) + 2
 					oht = ohb + 4
