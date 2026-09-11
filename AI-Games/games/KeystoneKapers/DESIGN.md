@@ -2044,12 +2044,28 @@ unpacking a stored nibble costs a **divide** and the fixed area had nothing to s
 **250 bytes returned** — the gates cost more than the table read. The extra 160 bytes
 land in a bank, which is the budget with room.
 
-Screens 0, 3 and 7 stop being excluded outright, because the table can now say
-"empty" per band and the measurement shows the original's escalator and elevator
-screens carry hazards from level 3. That finally makes `_clear_x` live code — it had
-never once fired. A **radio** is still kept off those screens entirely: it is the only
-hazard that does not move, so it is the only one that can *park* on a boarding zone,
-and its rack position is chosen at run time where the generator cannot steer it.
+Screens 0, 3 and 7 stop being excluded *as a block*, because the table can now say
+"empty" per band and the measurement shows the original's elevator screen carries
+hazards. **Two rules override the measurement, both on the reviewer's word:**
+
+*Never a hazard on an escalator screen*, of any kind, on any Krook. That is where the
+player has to stop and board, and anything there is a toll on a manoeuvre the game has
+already committed them to. It is a property of the **template** rather than a screen
+number — floors 1 and 3 climb from screen 0 and floor 2 from screen 7 — so three of the
+32 bands are not placeable at all and `fill_order()` omits them. The **elevator** screen
+is deliberately not covered: waiting for a car is not the same as stepping onto a
+moving stair.
+
+*Never a radio on the roof.* A hardware limit rather than a taste: a radio is drawn as
+**characters**, so it shares its cells' two colours with whatever it stands on — flat
+green on a shop floor, the parallax skyline on the roof. Reported from play as *"the
+colors get messed up"*. The 2600 does put radios up there; we cannot. The roof
+therefore carries **carts and nothing else** — no biplane either, per above.
+
+A radio is also kept off any screen whose boarding zone a rack position would sit on:
+it is the only hazard that does not move, so the only one that can *park* on one, and
+its rack is chosen at run time where the generator cannot steer it. That is what
+finally makes `_clear_x` live code — it had never once fired.
 
 **And the checker had to move with it.** `checklevels.py` parsed the gates out of the
 source; there are no gates. It now asserts against the generated table — arrivals,

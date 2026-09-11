@@ -497,10 +497,10 @@ DOUBLE = {RADIO: 6, BALL: 9, CART: 11}          # PLANE never doubles
 # HOW MANY BANDS CARRY A HAZARD, and how many of those carry a second, per
 # Krook. Tuned so density() lands on the measured column in hazards.md; the
 # checker holds it there.
-BANDS   = {1: 5, 2: 8, 3: 17, 4: 25, 5: 25, 6: 26,
+BANDS   = {1: 5, 2: 9, 3: 17, 4: 25, 5: 25, 6: 26,
            7: 27, 8: 27, 9: 28, 10: 28, 11: 30}
 DOUBLED = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 3,
-           7: 4, 8: 3, 9: 4, 10: 5, 11: 6}
+           7: 4, 8: 3, 9: 4, 10: 5, 11: 8}
 
 # THE ORDER BANDS FILL IN. Fixed, so each Krook is a superset of the one before
 # and the ramp reads as the store filling up rather than as a reshuffle.
@@ -512,18 +512,38 @@ _SCR_ORDER = (2, 5, 1, 6, 4, 3, 0, 7)
 _LV_ORDER = (0, 2, 3, 1)
 
 
-def fill_order():
-    """The 32 bands, in the order the Krooks populate them.
+# NOTHING EVER STANDS ON AN ESCALATOR SCREEN. Not a rolling one, not a parked
+# one, on any Krook. That screen is where the player has to STOP and board, and a
+# hazard there is a toll on a manoeuvre the game has already committed them to
+# rather than a difficulty they can read and answer.
+#
+# It is a property of the TEMPLATE, not of a screen number: floors 0 and 2 climb
+# from the west (screen 0) and floor 1 from the east (screen 7), so "screen 0" is
+# an escalator on two floors and an end wall on a third. Three bands in all.
+#
+# The ELEVATOR screen is deliberately NOT in here -- the reviewer wants hazards
+# there, and waiting for a car is not the same as stepping onto a moving stair.
+ESC_TPL = ("T_ESC_W", "T_ESC_E")
 
-    A bijection: for each screen the four floors appear exactly once, and
-    consecutive entries step across screens so an early Krook is spread thin
-    rather than piled onto one stretch of shop.
+
+def esc_band(lv, scr):
+    return INDEX[lv][scr] in ESC_TPL
+
+
+def fill_order():
+    """The placeable bands, in the order the Krooks populate them.
+
+    A bijection over the 32 bands with the escalator ones removed, so 29. For
+    each screen the four floors appear exactly once, and consecutive entries step
+    across screens so an early Krook is spread thin rather than piled onto one
+    stretch of shop.
     """
     out = []
     for k in range(32):
         scr = _SCR_ORDER[k % 8]
         lv = _LV_ORDER[((k // 8) + (k % 8)) % 4]
-        out.append((lv, scr))
+        if not esc_band(lv, scr):
+            out.append((lv, scr))
     return out
 
 
@@ -531,11 +551,23 @@ def _kind_for(lv, scr, krook, seq):
     """Pick this band's hazard, mixing kinds across floors AND screens."""
     live = [k for k in (BALL, RADIO, CART, PLANE) if ARRIVE[k] <= krook]
     tpl = INDEX[lv][scr]
-    # THE ROOF NEVER GETS A BIPLANE. It is where the round is decided and a
-    # biplane costs a whole Kop rather than nine seconds -- and the measurement
-    # agrees: the original's roof shows only radios and carts, at every level.
+    # THE ROOF GETS CARTS AND NOTHING ELSE, for two separate reasons.
+    #
+    # No biplane: the roof is where the round is decided, and a biplane costs a
+    # whole Kop rather than nine seconds. The measurement agrees -- the
+    # original's roof shows only radios and carts, at every level.
+    #
+    # AND NO RADIO, which is OURS rather than the original's. A radio is drawn as
+    # CHARACTERS, not a sprite, so it has to share its cells' two colours with
+    # whatever it stands on; on a shop floor that is flat green and fine, and on
+    # the roof it is the parallax skyline. Reported from play as "the colors get
+    # messed up". The TMS9918 allows two colours per 8x1 line and the roof has
+    # already spent both.
+    #
+    # That leaves carts, which the reference does put on the roof -- one was
+    # tracked crossing it.
     if lv == 3:
-        live = [k for k in live if k in (RADIO, CART)]
+        live = [k for k in live if k == CART]
     # ...and no RADIO where a rack position would sit on a boarding zone.
     if not _radio_ok(tpl):
         live = [k for k in live if k != RADIO]

@@ -137,12 +137,29 @@ def main():
             if not kind:
                 continue
             lv, scr = band // 8, band % 8
+            # NOTHING AT ALL ON AN ESCALATOR SCREEN, on any Krook. That is where
+            # the player has to stop and board; a hazard there is a toll on a
+            # manoeuvre the game has already committed them to. It is a property
+            # of the TEMPLATE, not of a screen number -- floors 0 and 2 climb
+            # from screen 0 and floor 1 from screen 7.
+            if g.esc_band(lv, scr):
+                bad.append("Krook %d puts a %s on the ESCALATOR screen "
+                           "(floor %d screen %d)" % (k, NAME[kind], lv, scr))
             # The roof is where the round is decided and a biplane costs a whole
             # Kop rather than nine seconds. The measurement agrees: the
             # original's roof shows only radios and carts, at every level.
             if lv == 3 and kind == g.PLANE:
                 bad.append("Krook %d puts a biplane on the ROOF (screen %d)"
                            % (k, scr))
+            # AND NO RADIO ON THE ROOF. A radio is drawn as CHARACTERS, so it
+            # shares its cells' two colours with whatever it stands on -- flat
+            # green on a shop floor, the parallax skyline on the roof. Reported
+            # from play as "the colors get messed up". This one is ours, not the
+            # original's: the 2600 does put radios up there.
+            if lv == 3 and kind == g.RADIO:
+                bad.append("Krook %d puts a radio on the ROOF (screen %d); it is "
+                           "drawn as characters and the skyline has already "
+                           "spent both colours of every cell" % (k, scr))
             # A radio does not move, so it is the only hazard that can PARK on a
             # boarding zone. A rolling cart crossing the escalator foot is a
             # hazard; a radio sitting on it is a toll.
