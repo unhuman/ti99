@@ -12,7 +12,7 @@
 	' the right. Every block is an EVEN number of bytes -- an odd DATA BYTE run
 	' silently misaligns every word table after it (CLAUDE.md 3A).
 
-spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then the same LEFT (+24), then the FOUR shared run frames. Patterns 0..60
+spr_kelly:	' Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body, then the same LEFT (+36). The run bodies carry tunic AND legs, so a frame is one sprite. Patterns 0..68
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$03,$07,$0F,$0F,$0F,$3F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -21,14 +21,22 @@ spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then t
 	DATA BYTE $00,$00,$00,$0F,$0F,$0F,$0F,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$F0,$C0,$C0,$C0,$C0
-	DATA BYTE $0F,$0F,$0F,$0F,$0F,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$F0,$FC,$FC,$FC,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$0F,$3F,$3F,$3F,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F0,$FC,$FC,$F0,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$0F,$3F,$3F,$3F,$0F,$3F,$3F
+	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
+	DATA BYTE $F0,$F0,$FC,$FC,$F0,$FC,$FC,$FC
+	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
+	DATA BYTE $0F,$0F,$0F,$0F,$0F,$0F,$3F,$3F
+	DATA BYTE $3F,$1E,$1E,$3E,$3E,$00,$00,$00
+	DATA BYTE $00,$F0,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $FC,$7C,$7C,$7C,$7C,$00,$00,$00
+	DATA BYTE $00,$0F,$3F,$3F,$3F,$3F,$3F,$3F
+	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
+	DATA BYTE $F0,$F0,$FC,$FC,$F0,$F0,$FC,$FC
+	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
+	DATA BYTE $0F,$0F,$0F,$0F,$0F,$3F,$3F,$3F
+	DATA BYTE $3F,$3E,$3E,$3E,$3E,$00,$00,$00
+	DATA BYTE $00,$F0,$FC,$FC,$FC,$F0,$FC,$FC
+	DATA BYTE $FC,$78,$78,$7C,$7C,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$01,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$78,$FC,$FC,$FE,$00,$00,$00
@@ -49,14 +57,22 @@ spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then t
 	DATA BYTE $00,$00,$00,$0F,$03,$03,$03,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$F0,$F0,$F0,$F0,$C0
-	DATA BYTE $00,$0F,$3F,$3F,$3F,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$F0,$F0,$F0,$F0,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$0F,$3F,$3F,$0F,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$F0,$FC,$FC,$FC,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $0F,$0F,$3F,$3F,$0F,$3F,$3F,$3F
+	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
+	DATA BYTE $00,$F0,$FC,$FC,$FC,$F0,$FC,$FC
+	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
+	DATA BYTE $00,$0F,$3F,$3F,$3F,$3F,$3F,$3F
+	DATA BYTE $3F,$3E,$3E,$3E,$3E,$00,$00,$00
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$FC,$FC
+	DATA BYTE $FC,$78,$78,$7C,$7C,$00,$00,$00
+	DATA BYTE $0F,$0F,$3F,$3F,$0F,$0F,$3F,$3F
+	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
+	DATA BYTE $00,$F0,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
+	DATA BYTE $00,$0F,$3F,$3F,$3F,$0F,$3F,$3F
+	DATA BYTE $3F,$1E,$1E,$3E,$3E,$00,$00,$00
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$FC,$FC,$FC
+	DATA BYTE $FC,$7C,$7C,$7C,$7C,$00,$00,$00
 	DATA BYTE $00,$1E,$3F,$3F,$7F,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$80,$00,$00,$00
@@ -69,22 +85,6 @@ spr_kelly:	' Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then t
 	DATA BYTE $01,$03,$07,$00,$00,$00,$00,$00
 	DATA BYTE $FC,$FE,$FE,$FE,$FE,$FE,$FE,$FE
 	DATA BYTE $FE,$8E,$07,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$3F,$3F,$3C,$3C,$7C,$7C,$7C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FC,$FC,$FC,$3C,$3C,$3E,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$3F,$3F,$3F,$1E,$1E,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $FC,$FC,$FC,$FC,$7C,$7C,$7C,$7C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $3F,$3F,$3F,$3C,$3C,$7C,$7C,$7C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$FC,$FC,$3C,$3C,$3E,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $3F,$3F,$3F,$3F,$3E,$3E,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$FC,$FC,$FC,$78,$78,$7C,$7C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
 spr_harry:	' Harry: RIGHT torso/stripes/face, the same LEFT (+P_HFACING), then the four run frames RIGHT and the same four LEFT (+P_HLEGFACING)
 	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00

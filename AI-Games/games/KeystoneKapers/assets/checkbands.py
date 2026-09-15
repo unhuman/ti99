@@ -89,10 +89,13 @@ DROPPABLE = {6, 27}
 # (name, [(genart sprite name, VDP slot, colour, the source variable holding
 #  its y offset -- None means it is drawn at the actor's own y)])
 ACTORS = [
+    # KELLY IS THREE BANDS, NOT FOUR. The tunic and the trousers were separate
+    # sprites at slots 2 and 3; they are one merged run body at slot 2 now,
+    # because they span 13 contiguous rows in the same colour and fit a single
+    # 16-row box. Slot 3 is free and the source no longer writes it.
     ("Kelly", [("KHAT", 0, 1, "khy"),        # hat, black
                ("KFACE", 1, 11, "kfy"),      # face, skin
-               ("KBODY", 2, 4, "kby"),       # tunic, blue
-               ("KLEG1", 3, 4, "ky2")]),     # trousers, blue
+               ("KRUN1", 2, 4, "kby")]),     # tunic AND legs, blue
     ("Harry", [("HBODY", 4, 15, None),       # cap + body, white
                ("HFACE", 5, 11, "hfy"),      # face, skin
                ("HSTRIPE", 6, 1, None),      # stripes, cap to hem

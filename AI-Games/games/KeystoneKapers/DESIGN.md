@@ -4710,6 +4710,131 @@ verified to remove their own errors — they are simply not reachable until
 
 ---
 
+## 12b. Fixed-area recovery — the backlog
+
+**The fixed area is the only budget that cannot grow.** It is three 8,112-byte
+loader pages at `>A000` — the 32K expansion's RAM, not cart ROM — and
+`linkticart` discards anything past 24,336 bytes *silently*, dropping whatever
+sits nearest the end. Banks are the opposite: 8 KB each, and more can be added.
+
+That asymmetry is the whole strategy. **Anything that turns code into table
+data is close to free; anything that adds behaviour is not.** Art is cheap now,
+features are not.
+
+### Done
+
+- **Kelly's tunic and legs merged into one sprite** — 112 bytes. The two bands
+  span 13 contiguous rows in the same colour; the split was an artefact of the
+  art being authored as row-bands. See §12c.
+- **The title display list moved to bank 2** — 340 bytes of *bank 1* for 8 of
+  fixed area. Only the display list: the message boxes in the same generated
+  file are read when a round ends and had to stay on the mapped page.
+- **The biplane merged to a single sprite** — 116 bytes of fixed area, 64 of
+  bank 1, and it stopped being the fifth sprite on its own scanline.
+
+### Open, ranked by bytes per unit of risk
+
+1. **The escalator ladder in `try_esc` — about 70 bytes.** Lines ~2629-2638 are
+   a *linear function* written as ten compare-and-branches: every 8 px of `esw`
+   steps `esy0` by 4. It reduces to
+
+   ```basic
+   esy0 = 76 - esw
+   IF esy0 > 0 THEN esy0 = esy0 - 1
+   esy0 = esy0 / 8          ' compiles to srl, verified in the .a99
+   esy0 = esy0 + esy0
+   esy0 = esy0 + esy0
+   esy0 = esy0 + 4
+   ```
+
+   Checked at every breakpoint (76, 68, 67, 60, 59, 4, 3, 0). **The `-1` step is
+   load-bearing**: the top band `esw ∈ [68,76]` is NINE values wide where every
+   other band is eight, so the naive `(76-esw)/8` is wrong at every boundary.
+
+   **Caveat, and it is the safe kind:** `checkjump.py` parses this region out of
+   the `.bas` and executes it over 108,000 arcs. An unrecognised statement is a
+   *hard error* there, not a skip, so it will fail loudly and its interpreter
+   needs the arithmetic forms taught to it. The sweep then proves the rewrite
+   preserves the escalator-boarding fix.
+
+2. **The `kldir` facing block in `draw_actors` — 60-80 bytes.** Duplicated in
+   the crouch arm and the run arm. Hoisting it needs a second `IF` to choose the
+   draw height, which is why the estimate is below the clone detector's 100.
+
+3. **`esc_stand` run (~100 B) and the `pacc` drain (~80 B).** Ranked by
+   `romclones.py`. Treat that ranking as **a reading list, not a work list** — a
+   short clone folded into a `GOSUB` costs the call, the return and the
+   parameter staging, so folding one can lose.
+
+4. **Four unused store characters — 64 bytes of bank 1, not fixed area.**
+   `ESCW4`, `ESCE8`, `PARAP`, `EXITC` appear in no template and are named
+   nowhere in the source. **Attempted and reverted once:** `ESCW4`/`ESCE8` are
+   emitted by `_used(ESC_W_GRID)`, so the generator believes the artwork uses
+   them, and deleting `PARAP`/`EXITC` produced a `KeyError` on `ESCW5` that was
+   never explained. Needs the escalator generator understood first. `renumber.py`
+   and `checkchars.py` exist to make it safe.
+
+5. **The structural clones — the biggest prize and the worst ratio.**
+
+   | pair | bytes | shared statement shape |
+   |---|---:|---:|
+   | `move_harry` + `move_kelly` | 2,708 | 68% |
+   | `draw_actors` + `draw_harry` | 1,908 | 64% |
+   | `prize_one` + `radio_band` | 1,174 | 62% |
+
+   24% of the fixed area in three pairs. But the metric is statement *shape*,
+   not semantics, and CVBasic has no parameters — folding means staging globals,
+   which eats the saving. Leave these until something forces the issue.
+
+### Verified dead ends — do not re-chase
+
+- **Division is already optimal.** `say / 8` compiles to `srl r0,3`, not a
+  divide. CVBasic *does* optimise power-of-two division on 8-bit vars, despite
+  `%` being documented as compiling to a real `DIV`. The four `DIV`s in the
+  image are all CVBasic's own runtime — the 16-bit helper and the score printer.
+- **Data evacuation is complete.** Zero `DATA` bytes remain in the fixed area.
+  The usual lever is spent.
+- **Unused `CONST`s cost nothing** — they emit no code. `WALKSP` is genuinely
+  dead and deleting it saves zero bytes.
+- **The doubling chains are already the cheap form.** `#x = #x + #x` repeated is
+  there to avoid a multiply, which would be larger *and* would hit the `MPY`
+  clobber hazard.
+- **`CH_BULB1/2/3` and `tick_flash` look dead and are not** — the first are
+  reached by `bcode = CH_BULB0 + bphs` (the only computed character access in
+  the file), the second by fall-through.
+
+---
+
+## 12c. Kelly is three sprites, not four
+
+The tunic and the trousers were separate sprites at slots 2 and 3 because the
+art is authored as one 16×16 block carved into HAT / FACE / TORSO bands **by
+row** — so the tunic arrived as a band and the legs were drawn apart.
+
+Neither geometry nor colour ever required it. The tunic occupies figure rows
+24-28 and the legs 29-36: **thirteen rows, contiguous, inside one 16-row
+sprite**, and both are `C_KELLY` blue. The crouch had already proved it —
+`P_KDBODY` is the whole crouched figure in a single sprite.
+
+- **112 bytes of fixed area.** `draw_actors` loses a `SPRITE` call, the
+  `ky + 16` offset, and one of its two pattern-selection ladders; the crouch arm
+  stops hiding a slot it never used.
+- **Bank 1 on what comes next:** a standing or jumping pose is now *one* drawing
+  per facing instead of a torso **and** a leg pose, halving the cost of the
+  planned poses.
+- **Not a scanline win**, which is worth saying because it looks like one. The
+  VDP counts sprite *boxes*: helmet+face already overlapped as a pair and
+  tunic+legs as another, so Kelly cost at most two boxes on any line before and
+  still does. What changes is that he uses three slots instead of four.
+- **The legs now face.** They used to be shared between directions; they travel
+  with the tunic they are drawn on. That is a fix, not a cost — Harry's legs
+  were shared once too, and the run preview is what showed they could not be.
+- **What it costs is independence.** Every torso/leg *combination* must now be
+  drawn. For the four run frames that is the same eight sprites it always was;
+  it would only lose if a torso had to vary against every leg frame separately.
+
+---
+
 ## 13. Phase plan
 
 Each phase builds on **both** targets before the next one starts.

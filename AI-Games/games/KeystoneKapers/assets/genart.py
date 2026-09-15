@@ -1390,39 +1390,77 @@ def emit(fh, label, data, comment=""):
                  % ",".join("$%02X" % b for b in data[i:i + 8]))
 
 
+# KELLY'S TUNIC AND LEGS ARE ONE SPRITE, NOT TWO.
+#
+# They were split because the art is authored as one 16x16 block carved into
+# HAT / FACE / TORSO bands by row, so the tunic arrived as a band and the legs
+# were drawn separately. NEITHER GEOMETRY NOR COLOUR EVER REQUIRED THE SPLIT:
+# the tunic occupies figure rows 24-28 and the legs 29-36, which is 13 rows,
+# contiguous, and fits one 16-row sprite with three to spare -- and both are
+# C_KELLY blue, so there is not even a second colour to justify a second box.
+#
+# THE CROUCH HAD ALREADY PROVED IT. KELLY_DBODY is the whole crouched figure,
+# head to heel, in a single sprite. The run simply never followed.
+#
+# What it buys, measured rather than assumed:
+#
+#   * FIXED-AREA CODE, which is the only budget that cannot grow. draw_actors
+#     loses a whole SPRITE call, the `ky + 16` offset, and one of its two
+#     pattern-selection ladders; the crouch arm stops having to hide slot 3.
+#   * BANK 1 ON WHAT COMES NEXT. A standing or jumping pose is now ONE drawing
+#     per facing instead of a torso AND a leg pose, so the planned poses cost
+#     half of what they would have.
+#   * A sprite slot: Kelly is 3 boxes, not 4.
+#
+# It is NOT a scanline win, which is worth saying because it looks like one:
+# the VDP counts sprite BOXES, and helmet+face already overlapped as a pair and
+# tunic+legs as another, so Kelly cost at most two boxes on any line before and
+# still does.
+#
+# WHAT IT COSTS is independence. Every torso/leg COMBINATION now has to be
+# drawn, so the four run frames are four merged pictures rather than two
+# torsos crossed with four leg poses. For the run that is the same eight
+# sprites it always was; it would only lose if a torso had to vary against
+# every leg frame separately.
+KELLY_RUN1 = overlay(KELLY_BODY_B, shift(KELLY_LEG1, 5))
+KELLY_RUN2 = overlay(KELLY_BODY, shift(KELLY_LEG2, 5))
+KELLY_RUN3 = overlay(KELLY_BODY_B, shift(mirror(KELLY_LEG1), 5))
+KELLY_RUN4 = overlay(KELLY_BODY, shift(mirror(KELLY_LEG2), 5))
+
 # THE LAYOUT IS A CONTRACT WITH THE SELECTION CODE, and it is arranged so that
 # code is three statements instead of two branches:
 #
-#   * Everything that FACES -- hat, face, tunic, crouch -- comes in a RIGHT
+#   * Everything FACES now -- hat, face, body, crouch -- and comes in a RIGHT
 #     block followed by a LEFT block of the same shape, so switching facing is
 #     one fixed offset added to each (P_KFACING for Kelly, P_HFACING for
 #     Harry) rather than a duplicated if/else arm.
-#   * The LEGS DO NOT FACE and are shared by both. In a side view "left foot
-#     forward" is the horizontal mirror of "right foot forward", so the four
-#     poses are A, B, mirror(A), mirror(B) and the same four serve either
-#     direction -- entered at a different point in the cycle, which is
-#     invisible because the phase runs continuously anyway. Four real poses for
-#     the price of the two the old symmetric pair cost.
-#   * The four are CONSECUTIVE, so picking one is `first + 4*phase` with the
-#     phase taken from two bits of the animation counter: two IFs adding 4 and
-#     8, and no divide (`/` compiles to a real TMS9900 DIV, CLAUDE.md 3A).
+#   * THE LEGS USED TO BE SHARED BETWEEN THE FACINGS and are not any more,
+#     because they travel with the tunic they are now drawn on. That is a fix
+#     rather than a cost: Harry's legs were shared once too, and the run
+#     preview is what showed they could not be -- an unmirrored left run puts
+#     the back foot in front. Kelly got away with it only because his stride
+#     is narrower.
+#   * The four run frames are still CONSECUTIVE, so picking one is
+#     `first + 4*phase` with the phase from two bits of the animation counter:
+#     two IFs adding 4 and 8, and no divide.
 SPRITES = [
     ("spr_kelly", [("KHAT", KELLY_HAT), ("KFACE", KELLY_FACE),
-                   ("KBODY", KELLY_BODY), ("KBODYB", KELLY_BODY_B),
+                   ("KRUN1", KELLY_RUN1), ("KRUN2", KELLY_RUN2),
+                   ("KRUN3", KELLY_RUN3), ("KRUN4", KELLY_RUN4),
                    ("KDHAT", KELLY_DHAT), ("KDFACE", KELLY_DFACE),
                    ("KDBODY", KELLY_DBODY),
                    ("KLHAT", mirror(KELLY_HAT)),
                    ("KLFACE", mirror(KELLY_FACE)),
-                   ("KLBODY", mirror(KELLY_BODY)),
-                   ("KLBODYB", mirror(KELLY_BODY_B)),
+                   ("KLRUN1", mirror(KELLY_RUN1)),
+                   ("KLRUN2", mirror(KELLY_RUN2)),
+                   ("KLRUN3", mirror(KELLY_RUN3)),
+                   ("KLRUN4", mirror(KELLY_RUN4)),
                    ("KLDHAT", mirror(KELLY_DHAT)),
                    ("KLDFACE", mirror(KELLY_DFACE)),
-                   ("KLDBODY", mirror(KELLY_DBODY)),
-                   ("KLEG1", KELLY_LEG1), ("KLEG2", KELLY_LEG2),
-                   ("KLEG3", mirror(KELLY_LEG1)),
-                   ("KLEG4", mirror(KELLY_LEG2))],
-     "Kelly: RIGHT hat/face/tunic/tunic-arm-up/duck-hat/duck-face, then the "
-     "same LEFT (+24), then the FOUR shared run frames. Patterns 0..60"),
+                   ("KLDBODY", mirror(KELLY_DBODY))],
+     "Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body, "
+     "then the same LEFT (+36). The run bodies carry tunic AND legs, so a "
+     "frame is one sprite. Patterns 0..68"),
     # NINE PATTERNS PER FACING, in this order because the source picks a beat
     # with `+4` and `+8` on the animation counter -- the four bodies must be
     # consecutive, and so must the four stripes.

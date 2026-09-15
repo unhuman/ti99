@@ -1,0 +1,112 @@
+; Keystone Kapers -- Kelly the Kop, RUN FRAME 2 of 2. Facing RIGHT.
+;
+;   #   black helmet      -   skin (face)      0   blue tunic / legs
+;   .   nothing -- the store shows through
+;
+; The grid is 16 wide by 32 tall. That is still TWO source blocks -- the
+; head-and-torso block on top, the leg block below -- but they now end up in
+; THREE sprites, not four, because the tunic and the legs are merged into one.
+; Edit the rows and hand the file back. Any
+; line that is exactly 16 of '.#-0' is read as art; everything else -- these
+; ';' lines, blanks, the ruler -- is ignored, so annotate freely.
+;
+; HE IS THREE SPRITES, ONE COLOUR EACH, and the row decides which:
+;
+;     rows  0-5   HELMET   black
+;     rows  6-10  FACE     skin
+;     rows 11-31  BODY     blue   -- tunic AND legs, ONE sprite
+;
+; THE TUNIC-TO-LEG SEAM IS NO LONGER A SPRITE BOUNDARY. It used to be: the
+; trousers were a fourth sprite at slot 3, drawn 16 px lower. They are one box
+; now, because tunic and legs span 13 contiguous rows in the same blue and fit
+; inside a single 16-row sprite -- so draw across row 15 as freely as any other
+; row. Nothing in the drawing changes at that line any more.
+;
+; So the INK CHARACTER MUST MATCH THE ROW. Skin on row 12 is not available --
+; it would need a fourth sprite, and the scanline budget has none. Change the
+; band boundaries only by saying so; they are HAT/FACE/TORSO in genart.py.
+;
+; WHAT USES THIS FRAME:
+;   * run frames 2 and 4 (4 is this one mirrored)
+;   * the arm-forward torso, which alternates with run1's arm-back one
+;     on the same counter bit that picks the legs
+;
+; THE FOUR RUN FRAMES ARE TWO DRAWINGS. Frames 3 and 4 are frames 1 and 2
+; MIRRORED -- the VDP has no flip bit, so both facings are generated, but there
+; is nothing extra to draw. A pose that is its own mirror therefore costs a
+; frame for nothing: a pair of vertical legs mirrors to itself, which is how an
+; earlier four-beat cycle turned out to be two pictures. checkanim.py fails the
+; build on any two beats closer than 10 px, so the drawings have to differ
+; properly, not subtly.
+;
+;      0123456789012345
+;      0000000000111111
+
+......####......
+.....######.....
+....########....
+....########....
+....########....
+..############..
+....--------....
+....------......
+....------......
+....------......
+......----......
+....0000........
+....00000000....
+....0000000000..
+....0000000000..
+....0000000000..
+....0000000000..
+..000000000000..
+..000000000000..
+..000000000000..
+...0000..00000..
+...0000..00000..
+..00000..00000..
+..00000..00000..
+................
+................
+................
+................
+................
+................
+................
+................
+
+; For reference, the same rows numbered and labelled -- IGNORED, being ';'.
+;
+;      0123456789012345
+;  0   ......####......   helmet
+;  1   .....######.....   helmet
+;  2   ....########....   helmet
+;  3   ....########....   helmet
+;  4   ....########....   helmet
+;  5   ..############..   helmet
+;  6   ....--------....   face
+;  7   ....------......   face
+;  8   ....------......   face
+;  9   ....------......   face
+; 10   ......----......   face
+; 11   ....0000........   body (tunic)
+; 12   ....00000000....   body (tunic)
+; 13   ....0000000000..   body (tunic)
+; 14   ....0000000000..   body (tunic)
+; 15   ....0000000000..   body (tunic)
+; 16   ....0000000000..   body (legs)
+; 17   ..000000000000..   body (legs)
+; 18   ..000000000000..   body (legs)
+; 19   ..000000000000..   body (legs)
+; 20   ...0000..00000..   body (legs)
+; 21   ...0000..00000..   body (legs)
+; 22   ..00000..00000..   body (legs)
+; 23   ..00000..00000..   body (legs)
+; 24   ................   body (legs)
+; 25   ................   body (legs)
+; 26   ................   body (legs)
+; 27   ................   body (legs)
+; 28   ................   body (legs)
+; 29   ................   body (legs)
+; 30   ................   body (legs)
+; 31   ................   body (legs)

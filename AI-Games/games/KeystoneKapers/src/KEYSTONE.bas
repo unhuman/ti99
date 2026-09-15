@@ -182,19 +182,26 @@
 	' facing is one fixed offset; the LEGS do not face and are shared.
 	CONST P_KHAT = 0		' Kelly RIGHT: hat, black
 	CONST P_KFACE = 4		'              face, skin
-	CONST P_KBODY = 8		'              tunic, arms down
-	CONST P_KBODYB = 12		'              tunic, leading arm up
-	CONST P_KDHAT = 16		'              ducked: the brim, black
-	CONST P_KDFACE = 20		'              ducked: face
-	CONST P_KDBODY = 24		'              ducked: the crouch, blue
-	CONST P_KFACING = 28		' add this for Kelly's LEFT set
-	' THE RUN IS FOUR FRAMES AND BOTH FACINGS SHARE THEM. In a side view "left
-	' foot forward" is the horizontal mirror of "right foot forward", so the
-	' cycle is A, B, mirror(A), mirror(B) and which way he is going lives in
-	' the hat, face and tunic. Consecutive, so a frame is P_KLEG1 + 4*phase.
-	CONST P_KLEG1 = 56
+	' THE RUN IS FOUR FRAMES AND EACH IS ONE SPRITE, tunic and legs together.
+	'
+	' KELLY IS THREE SPRITES, NOT FOUR. The tunic and the legs were separate
+	' boxes only because the art is authored as one block carved into bands by
+	' row -- the tunic came out as a band and the legs were drawn apart. They
+	' span figure rows 24-28 and 29-36: THIRTEEN ROWS, contiguous, inside one
+	' 16-row sprite, and both are C_KELLY, so there was never a colour reason
+	' either. The crouch had already proved it -- P_KDBODY is the whole
+	' crouched figure in one sprite.
+	'
+	' Consecutive, so a frame is P_KRUN1 + 4*phase, exactly as the legs were.
+	' Both facings no longer share them: the legs travel with the tunic they
+	' are drawn on, which is what Harry's legs already had to do.
+	CONST P_KRUN1 = 8		'              run frame 1: arm back + leg 1
+	CONST P_KDHAT = 24		'              ducked: the brim, black
+	CONST P_KDFACE = 28		'              ducked: face
+	CONST P_KDBODY = 32		'              ducked: the crouch, blue
+	CONST P_KFACING = 36		' add this for Kelly's LEFT set
 	' FOUR TORSOS AND FOUR STRIPE LAYERS, consecutive: a beat is
-	' P_HBODY + 4*phase, the same arithmetic as P_KLEG1 and P_HLEG1. They come
+	' P_HBODY + 4*phase, the same arithmetic as P_KRUN1 and P_HLEG1. They come
 	' from the run-cycle sheet (assets/sheet2harry.py -> harryrun1..4.txt), so
 	' the arms and shoulders are DRAWN for each beat rather than being one
 	' torso with its arms flipped.
@@ -878,7 +885,7 @@ esc_deck_col:
 	RETURN
 
 after_deck:
-	DEFINE SPRITE 0,18,spr_kelly	' 0..68  facing bands x2 + 4 run frames
+	DEFINE SPRITE 0,18,spr_kelly	' 0..68  two facing blocks of nine
 	DEFINE SPRITE 18,34,spr_harry	' 72..100, two torso frames each way
 	DEFINE SPRITE 52,1,spr_cart	' pattern 104
 	DEFINE SPRITE 53,1,spr_ball	' pattern 108
@@ -1103,8 +1110,23 @@ scan_colour:
 title_draw:
 	GOSUB hide_all
 	CLS
+	' THE DISPLAY LIST IS ON BANK 2, so select it for the walk and put bank 1
+	' back afterwards. The pattern is setup_font's, which has been loading the
+	' fonts this way since they moved -- one bank held for a few statements
+	' that read nothing else, then restored.
+	'
+	' NOTHING BETWEEN THESE TWO READS BANK 1: hide_all and CLS are above them
+	' and write rather than read, and run_list only PEEKs the pointer it is
+	' handed and VPOKEs the result. Checked, because a stray read here would
+	' come back from the wrong page and say nothing about it.
+	#if TI994A
+	BANK SELECT 2
+	#endif
 	#tta = VARPTR title_tbl(0)
 	GOSUB run_list
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	' NOTHING TO RESET BUT THE COUNTER. Every rotation of the four lamps is a
 	' valid three-and-one, so a title reached after a game over simply carries
 	' on from wherever the last chase stopped -- and `bphs` still names the
@@ -3910,10 +3932,13 @@ draw_actors:
 	' the mirror never holds a position to be caught with.
 	IF klst = ST_ELEV THEN
 		IF eldp = 0 THEN
+			' THREE BOXES, NOT FOUR -- slot 3 was the trousers and
+			' nothing writes it any more, so there is nothing there
+			' to hide. hide_play still blanks 0-23 at setup, which
+			' is what leaves it clear for good.
 			SPRITE 0,SPRHID,0,0,0
 			SPRITE 1,SPRHID,0,0,0
 			SPRITE 2,SPRHID,0,0,0
-			SPRITE 3,SPRHID,0,0,0
 			GOTO draw_harry
 		END IF
 	END IF
@@ -3987,7 +4012,8 @@ draw_actors:
 		SPRITE 0,kdy,klx,kp,C_KHAT
 		SPRITE 1,kdy,klx,kf,C_SKIN
 		SPRITE 2,kdy,klx,kb,C_KELLY
-		SPRITE 3,SPRHID,0,0,0
+		' The crouch never had a fourth box -- it hid one it did not use.
+		' Now the run does not use one either, so there is nothing to hide.
 	ELSE
 		' FOUR RUN FRAMES FROM TWO BITS of the animation counter, and no
 		' divide -- `/` compiles to a real TMS9900 DIV (CLAUDE.md 3A) and
@@ -3998,7 +4024,11 @@ draw_actors:
 		' skates. Kelly runs 4 px a frame, so four frames a pose is 16 px;
 		' Harry runs 1.75, so eight frames a pose is 14. Matching the two
 		' rates to the two speeds is what keeps both looking like running.
-		kq = P_KLEG1
+		' ONE PATTERN FOR THE WHOLE BODY. This picked a leg frame here and
+		' a tunic twenty lines below, and drew them as two sprites. The
+		' merged run bodies carry both, so the two ladders are one and the
+		' fourth SPRITE call is gone.
+		kb = P_KRUN1
 		' BITS 3 AND 4, NOT 2 AND 3 -- A POSE EVERY 8 PIXELS, which is
 		' Harry's beat (hanim AND 8 / AND 16) and now means the same thing,
 		' because both counters hold pixels travelled. On the old 4-count
@@ -4006,19 +4036,17 @@ draw_actors:
 		' 4 px a pass, which is a blur rather than a run. checkanim reads
 		' these bits out of the source, and fails if two bands of one figure
 		' run on different ones -- so the body below moves with them.
-		IF kanim AND 8 THEN kq = kq + 4
-		IF kanim AND 16 THEN kq = kq + 8
+		IF kanim AND 8 THEN kb = kb + 4
+		IF kanim AND 16 THEN kb = kb + 8
 		' IN THE AIR HE HOLDS A POSE. Cycling the legs through a jump reads
 		' as running on nothing; the reference holds one stride for the
 		' whole arc.
-		IF klst = ST_JUMP THEN kq = P_KLEG1
+		IF klst = ST_JUMP THEN kb = P_KRUN1
 		' The leading arm lifts on the two FULL-STRIDE frames, which are the
 		' ones with the low bit clear -- that is the pairing genart.py's
 		' preview (assets/previewrun.py) renders, so the two stay in step.
 		kp = P_KHAT
 		kf = P_KFACE
-		kb = P_KBODYB
-		IF kanim AND 8 THEN kb = P_KBODY
 		IF kldir = 0 THEN
 			kp = kp + P_KFACING
 			kf = kf + P_KFACING
@@ -4041,8 +4069,9 @@ draw_actors:
 		SPRITE 1,kfy,klx,kf,C_SKIN
 		kby = ky + 11
 		SPRITE 2,kby,klx,kb,C_KELLY
-		ky2 = ky + 16
-		SPRITE 3,ky2,klx,kq,C_KELLY
+		' NO FOURTH BOX. The trousers used to be SPRITE 3 at ky + 16; they
+		' are drawn into the run body above, which is why slot 3 is free
+		' and this is one statement rather than three.
 	END IF
 
 draw_harry:
@@ -5518,6 +5547,17 @@ sfx_tick:
 	#endif
 	INCLUDE "font.bas"
 	INCLUDE "titlefont.bas"
+	' AND THE TITLE'S DISPLAY LIST, for the same reason as the font: walked
+	' once by title_draw, at boot and on a return to the title, and never
+	' during play. title_draw selects bank 2 around its walk.
+	'
+	' ITS MESSAGE BOXES DID NOT COME WITH IT. They are the same format and
+	' were in the same generated file, which is what made this worth doing
+	' carefully: they are walked when a ROUND ENDS, mid-game, so on bank 2
+	' they would have returned bytes from the wrong page at the moment a life
+	' is lost -- and with no error at build or run time. gentitle.py now
+	' writes them to title.bas below, which stays in bank 1.
+	INCLUDE "titledl.bas"
 	#if TI994A
 	BANK 1
 	#endif
