@@ -871,9 +871,102 @@ RADIO = """
 # green: right hue family, the dashed arc still reads as a spinning prop, and
 # it stays visible against the medium green store.
 #
-# THE 8 PX ENVELOPE IS UNCHANGED -- prop on the first row, body on the rest,
-# bottom edge still row 15. The duck/jump windows in 5a depend on that box, so
-# growing the sprite upward to fit the prop would have quietly moved them.
+# AN ACTUAL BIPLANE, 16 WIDE AND 12 TALL. It was a 7 px lozenge that read as a
+# dart or a paper plane -- nothing said "aeroplane" and certainly nothing said
+# two wings. What makes a biplane legible at this size is not detail but the
+# STACK: two parallel wings with visible struts between them, which no other
+# silhouette in the game has. Everything else is subordinate to that.
+#
+# THE BOTTOM EDGE IS STILL ROW 15, so rule 2 at the top of this file holds and
+# the plane's y needs no change -- it grew UPWARD, into air that was already
+# there. Bands sit 40 px apart with an 8 px floor bar, so there are 32 px of
+# air above a slab; at obh = 16 the sprite's drawn rows span 17 to 28 px above
+# it, which fits with four to spare.
+#
+# THE HITBOX FOLLOWED IT, AND ONLY AT THE TOP. coll_obst keeps ohb = 16 -- the
+# duck window is `ohb < ktop` against a ducked height of 11, so 16 is what makes
+# ducking clear it, and moving that would silently change the one mechanic this
+# obstacle exists to teach. oht went 22 -> 28 to cover the taller art. Nothing
+# can jump it either way: the apex is 14.
+# THE FUSELAGE SITS BETWEEN THE WINGS, and that is what took two attempts.
+# The first version ran the body as a ONE-PIXEL LINE with both wings above it,
+# identical in length and offset -- which renders as two parallel shelves with
+# tabs hanging off them. Nothing about it said aircraft. Three things fix it
+# and all three are structural rather than detail:
+#
+#   o THE BODY IS TWO ROWS AND SOLID, at the vertical middle. A single row of
+#     pixels between two heavy wings disappears.
+#   o THE WINGS BRACKET IT, one above and one below, each joined by struts.
+#     Two wings ABOVE a line is a shelf; a wing above and a wing below a body
+#     is a biplane, and the struts are what stop them reading as separate
+#     objects.
+#   o THE FIN RISES AT THE TAIL. Without something vertical at the back the
+#     silhouette has no direction, and a plane that does not say which way it
+#     is flying is the wrong shape for an obstacle coming at you.
+# PROPORTION IS WHAT MAKES IT AN AEROPLANE, and it took three goes to see it.
+#
+#   Attempt 1: a one-pixel body with both wings above it. Two parallel shelves.
+#   Attempt 2: body between the wings, but all three bars nearly the same
+#              length and centred -- scaffolding. No front, no back.
+#
+# THE WING IS SEEN EDGE-ON AND IS THEREFORE SHORT. The fuselage is the long
+# element, six pixels longer than either wing, and that difference is the whole
+# read: a short bar over a long one is an aeroplane, two equal bars are a
+# shelf. The wings also sit FORWARD of centre, where they belong on a biplane.
+#
+# AND THE FIN GIVES IT DIRECTION. It steps 1-2-3 px up from the tail, a
+# diagonal no other object in the game has, so the silhouette says which way it
+# is flying. An obstacle coming at you that does not say which way it faces is
+# the wrong shape for the job.
+# FOUR ATTEMPTS, AND THE ONE THING THAT FIXED IT WAS OVERHANG.
+#
+#   1: one-pixel body, both wings above it      -> two parallel shelves
+#   2: body between the wings, all bars equal   -> scaffolding, no front
+#   3: short wings, long body, stepped fin      -> an anchor, or a bird
+#
+# What every failure had in common is that the FUSELAGE STOPPED WHERE THE WINGS
+# STOPPED. On a side view the body runs out past the wing at BOTH ends -- nose
+# in front, tail behind -- and that overhang is the whole difference between a
+# stack of bars and an aircraft. Here the wings are 7 px and the body is 15.
+#
+# The rest is ordinary biplane grammar and none of it works without the above:
+# two wings of EQUAL length stacked with a clear gap (unequal reads as one
+# swept wing), struts ONE pixel wide so they join the wings instead of
+# competing with them, and a fin at the tail so the silhouette says which way
+# it is flying.
+# DRAWN BY THE REVIEWER, not by me, and transcribed rather than interpreted.
+# Supplied as TI Extended BASIC CALL CHAR hex -- four 8x8 characters in the
+# TI's sprite quadrant order (top-left, bottom-left, top-right, bottom-right):
+#
+#   0000000000000FC3 C2FFFF7C1F000000 000000000000FC11 B1DDFF1DFD091C0C
+#
+# FOUR OF MY ATTEMPTS WENT IN THE BIN FIRST, and the failures are worth keeping
+# because they were all the same mistake in different clothes:
+#
+#   1: one-pixel body, both wings above it    -> two parallel shelves
+#   2: body between the wings, all bars equal -> scaffolding, no front or back
+#   3: short wings, long body, stepped fin    -> an anchor, or a bird
+#   4: struts boxing a gap between the wings  -> a window frame
+#
+# I was iterating by eye on a silhouette whose defining feature -- two stacked
+# horizontal bars -- is also the shape of every shelf and counter in this
+# store, and eyeballing is exactly what this repo's own rule says not to do
+# with reference art. The answer was to be handed the drawing.
+#
+# WHAT MAKES THIS ONE WORK, since the next person will want to know: the wings
+# are at DIFFERENT lengths and different offsets (upper 4-13, lower 3-13), the
+# fuselage is two solid rows through the middle rather than a line, the tail
+# fin is a 2x3 block that squares off the back, and there is an undercarriage
+# hanging below the lower wing. Nothing is centred, so the shape has a front.
+#
+# The envelope is 16 x 10, rows 6-15, so the bottom edge is still row 15 and
+# rule 2 at the top of this file holds -- the plane's y needs no change.
+# THE BODY, WITHOUT THE PROPELLER -- column 15 is left to PROP_A/PROP_B, which
+# is why row 10 stops at column 14 here.
+#
+# Revised by the reviewer in assets/plane1.txt after the first transcription:
+# the cowling at row 11 lost a pixel at column 11, tapering it, and my addition
+# of a propeller pixel on row 6 was removed.
 PLANE_R = """
 ................
 ................
@@ -881,16 +974,16 @@ PLANE_R = """
 ................
 ................
 ................
-................
-................
-................
-....##..........
-...####.........
-..#######.......
-.####..#######..
-..#######.......
-...####.........
-....##..........
+....##########..
+##....##...#....
+##....#.#.##....
+##########.###..
+###############.
+.#####......##..
+...###########..
+............#...
+...........###..
+............##..
 """
 
 # Propeller phase 2. THE PROP IS THE ONLY MOVING PART A TOY PLANE HAS, and a
@@ -898,6 +991,20 @@ PLANE_R = """
 # frames alternating between a broken arc and a solid disc is the whole trick
 # -- it is how every 8-bit game has ever drawn a propeller, and it costs one
 # extra pattern pair per facing.
+# THE BLADE SEEN EDGE-ON: a short bar off the nose at column 15, which is also
+# what takes the merged sprite to the full 16 px of its box.
+# THE BLADE SWEPT INTO A DISC -- the full bar as supplied, column 15 from row 7
+# to row 13. overlay(PLANE_R, PROP_A) reproduces the hex above byte for byte,
+# which is the point of keeping the two layers apart rather than drawing the
+# merged pattern out: phase A IS the reviewer's drawing, provably, and the
+# second phase is the only thing invented here.
+# SEVEN PIXELS, CENTRED ON THE NOSE ROW. The nose reaches column 14 on row 10
+# and nowhere else, so row 10 is the axis: three blade above it, three below.
+#
+# I balanced this against the two-row fuselage BAR instead (rows 9 and 10) and
+# got it wrong in both directions -- first 2 above / 3 below, then 4 / 3 after
+# "fixing" it. The bar is the visual mass but the nose is the axle, and the eye
+# goes with the axle. The reviewer drew it; this is transcribed, not derived.
 PROP_A = """
 ................
 ................
@@ -906,17 +1013,30 @@ PROP_A = """
 ................
 ................
 ................
-................
-................
-................
-..............#.
 ...............#
-.....##........#
 ...............#
-..............#.
+...............#
+...............#
+...............#
+...............#
+...............#
+................
 ................
 """
 
+# AND THE SAME BLADE SWEPT INTO A DISC, half a turn later. THE BAR IS SOLID,
+# and the first attempt was not: separated tips at rows 7 and 13 sit three rows
+# clear of the fuselage with nothing joining them, and at sixteen pixels that
+# does not read as a propeller, it reads as dirt on the screen. What carries
+# the spin is the LENGTH changing against a continuous blade, not the pattern
+# of the blades themselves -- there is no room for that here.
+# AND THE SAME BLADE EDGE-ON, three pixels about the hub. THE HUB STAYS PUT at
+# row 10, on the thrust line, and only the LENGTH changes -- that is what reads
+# as a spin at this size. Two earlier tries moved the blade tips around
+# instead, and separated pixels a few rows clear of the fuselage read as dirt
+# on the screen rather than as a propeller.
+# AND THREE PIXELS, on the same axis: one above the nose row, one below. The
+# length alternating about a fixed hub is what reads as rotation at this size.
 PROP_B = """
 ................
 ................
@@ -927,13 +1047,13 @@ PROP_B = """
 ................
 ................
 ................
-..............#.
+...............#
+...............#
 ...............#
 ................
-.....##........#
 ................
-...............#
-..............#.
+................
+................
 """
 
 '''Money bags and suitcases are CHARACTERS, not sprites -- see CHARS below.

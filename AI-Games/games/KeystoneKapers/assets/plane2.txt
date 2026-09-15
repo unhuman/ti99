@@ -1,0 +1,63 @@
+; Keystone Kapers -- the biplane, FRAME 2 of 2. Facing RIGHT.
+;
+;   #   the plane        .   the shop floor showing through
+;
+; The grid is 16 wide by 16 tall. Edit the 16 rows at the bottom and hand the
+; file back; every line that is exactly 16 of '#' and '.' is read as art, and
+; everything else (these ; lines, blank lines, the ruler, your notes) is
+; ignored -- so annotate as freely as you like.
+;
+; THIS IS THE OTHER HALF OF THE PROPELLER'S TURN. The body here should be
+; IDENTICAL to frame 1 (plane1.txt) -- only the propeller differs. If the two
+; bodies disagree by even a pixel, the plane appears to twitch as it flies
+; rather than the blade appearing to spin.
+;
+; The blade is currently the short one: four pixels against frame 1's eight,
+; the length alternating about the same hub. That length change is what reads
+; as rotation at this size -- moving the blade TIPS around instead just looks
+; like dirt on the screen, which is a draft that was already rejected.
+;
+; Everything in plane1.txt's rules list applies here too: one colour, draw the
+; right-facing frame only, bottom edge on row 15, and tell me if the number of
+; drawn rows changes so I can move the hitbox with it.
+;
+;      0123456789012345
+;      0000000000111111
+
+................
+................
+................
+................
+................
+................
+....##########..
+##....##...#....
+##....#.#.##....
+##########.###.#
+################
+.#####......##.#
+...###########..
+............#...
+...........###..
+............##..
+
+; For reference, the same rows with numbers and notes -- IGNORED by the reader
+; because of the leading ';'.
+;
+;      0123456789012345
+;  0   ................
+;  1   ................
+;  2   ................
+;  3   ................
+;  4   ................
+;  5   ................
+;  6   ....##########..   upper wing
+;  7   ##....##...#....   tail fin | struts
+;  8   ##....#.#.##....   tail fin | cockpit
+;  9   ##########.###.#   fuselage, prop top
+; 10   ################   fuselage, and the nose reaching col 14 -- the AXLE
+; 11   .#####......##.#   tapered cowling, prop bottom
+; 12   ...###########..   lower wing
+; 13   ............#...   undercarriage leg
+; 14   ...........###..   wheel
+; 15   ............##..   wheel

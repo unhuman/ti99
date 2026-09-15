@@ -255,22 +255,22 @@ spr_raddot:	' radar marker -- Kop and crook
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
 spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and one colour: the propeller is merged into the body in two phases rather than carried by a second sprite in its own colour. Four patterns where there were six, and slots 16-23 are free.
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$0C,$1E,$3F,$7F,$3F,$1E,$0C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$02,$81,$FD,$81,$02,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$40,$81,$BF,$81,$40,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$30,$78,$FC,$FE,$FC,$78,$30
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$0C,$1E,$3F,$7F,$3F,$1E,$0C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$02,$01,$80,$FD,$80,$01,$02
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$40,$80,$01,$BF,$01,$80,$40
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$30,$78,$FC,$FE,$FC,$78,$30
+	DATA BYTE $00,$00,$00,$00,$00,$00,$0F,$C3
+	DATA BYTE $C2,$FF,$FF,$7C,$1F,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FC,$11
+	DATA BYTE $B1,$DD,$FF,$0D,$FD,$09,$1C,$0C
+	DATA BYTE $00,$00,$00,$00,$00,$00,$3F,$88
+	DATA BYTE $8D,$BB,$FF,$B0,$BF,$90,$38,$30
+	DATA BYTE $00,$00,$00,$00,$00,$00,$F0,$C3
+	DATA BYTE $43,$FF,$FF,$3E,$F8,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$0F,$C3
+	DATA BYTE $C2,$FF,$FF,$7C,$1F,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FC,$10
+	DATA BYTE $B0,$DD,$FF,$0D,$FC,$08,$1C,$0C
+	DATA BYTE $00,$00,$00,$00,$00,$00,$3F,$08
+	DATA BYTE $0D,$BB,$FF,$B0,$3F,$10,$38,$30
+	DATA BYTE $00,$00,$00,$00,$00,$00,$F0,$C3
+	DATA BYTE $43,$FF,$FF,$3E,$F8,$00,$00,$00
 
 	' ---------------------------- borrowed at runtime, no slot of their own
 

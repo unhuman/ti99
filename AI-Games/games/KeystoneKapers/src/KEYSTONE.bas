@@ -2026,7 +2026,11 @@ load_band:
 				obp(li) = obq
 			END IF
 			obht(li) = 0
-			IF lk = OB_PLANE THEN obh(li) = 16
+			' FLIES FOUR PIXELS HIGHER THAN IT USED TO, 20 rather
+			' than 16 above the slab. coll_obst's ohb/oht moved with
+			' it -- art and hitbox that disagree mean being hit by
+			' the air under a plane that visibly passed over.
+			IF lk = OB_PLANE THEN obh(li) = 20
 			IF lk = OB_RADIO THEN
 				' PLACED, NOT STAGGERED. A radio does not move, so
 				' the oncoming-stream stagger the rolling hazards
@@ -3713,8 +3717,34 @@ coll_obst:
 					' as high as it can go and still catch a
 					' 24 px standing Kop, and 14 (the apex) is
 					' under it, so it stays unjumpable.
-					ohb = 16
-					oht = 22
+					' THESE TRACK obh(li) IN load_band AND THE
+					' ART'S OWN HEIGHT, and all three have to
+					' be moved together. The plane flies 20
+					' above the slab and its drawing is ten
+					' pixels tall (rows 6-15 of the box), so
+					' it occupies 20 to 30.
+					'
+					' TWO BOUNDS PIN THIS, one on each side:
+					'
+					'   ohb < STANDH (24) or a STANDING Kelly
+					'   stops being hit and the plane quietly
+					'   becomes harmless. At 20 there are four
+					'   pixels left -- another lift of four
+					'   would delete the hazard outright.
+					'
+					'   ohb > DUCKH (11) or ducking no longer
+					'   clears it, which is the one mechanic
+					'   this obstacle exists to teach.
+					'
+					' Nothing jumps it either way: the apex is
+					' 14, well under oht.
+					'
+					' No checker covers this -- checkball.py
+					' is about balls, whose hitbox comes from
+					' the bounce arc rather than the sprite.
+					' Re-measure the art whenever it moves.
+					ohb = 20
+					oht = 30
 				END IF
 				IF kfh < oht THEN
 					IF ohb < ktop THEN chit = 1
