@@ -248,6 +248,15 @@ rm -f "$_cvlog"
 [ "$_cvrc" = 0 ] || die "CVBasic compile failed (see messages above)"
 [ -s "$ASM" ] || die "CVBasic produced no/empty $ASM"
 
+# AND NOW THAT THERE IS AN ASSEMBLY, CHECK THE ARRAYS FIT IN RAM. This is the
+# one gate that cannot run before the compiler, because it needs the addresses
+# the ALLOCATOR chose. CVBasic counts RAM against a notional total and will
+# happily place an array past $07FF; the NES mirrors $0800 onto $0000, so the
+# overrun lands in the zero page and the machine dies before it draws anything.
+# Black screen, no error, correct-size ROM. See assets/checknesram.py.
+"$TRUNCPY" ../assets/checknesram.py > /dev/null \
+    || die "an array runs past the end of NES RAM -- run assets/checknesram.py"
+
 # THE APU SHIM. CVBasic's 6502 codegen calls sn76489_freq/_vol/_control for
 # every SOUND statement and the NES prologue defines none of them -- the NES
 # has a 2A03 APU, not an SN76489. assets/nes_apu.asm supplies them.

@@ -1007,6 +1007,26 @@ cost a debugging session:
     `games/KeystoneKapers/assets/nes_apu.asm` is that shim. **Enable `$4015` (and `$4017`) once at
     setup** rather than inside the volume write, or a channel given a pitch before a volume is
     written into a disabled channel.
+  - **AN ARRAY CAN BE ALLOCATED PAST THE END OF NES RAM, AND CVBASIC WILL TELL YOU THERE IS ROOM
+    LEFT.** The NES has 2 KB at `$0000-$07FF` and the address space **mirrors**: `$0800` is
+    `$0000`, the zero page. So an array that overruns the top does not fault and does not land in
+    unused memory — it overwrites the runtime's own pointers. Keystone Kapers added a 32-byte
+    array and CVBasic reported *"1567 RAM bytes used of 1838 available"* while placing the tail of
+    the NEXT array five bytes over the end.
+    - **The only symptom is a BLACK SCREEN AT BOOT.** No compiler error, no assembler error, exit
+      status 0, and a ROM of exactly the right size. Nothing anywhere names RAM.
+    - **The array that breaks is not the one you added**, it is whichever the allocator happens to
+      place last — so the failure does not point at the change that caused it.
+    - **`games/KeystoneKapers/assets/checknesram.py` gates it** and is wired into `build-nes.sh`
+      after the compile (it is the one check that cannot run before, because it needs the
+      addresses the allocator chose). It reads `array_*: equ $xxxx` out of the generated assembly
+      and the sizes out of the `DIM`s, and fails on any array whose last byte is above `$07FF`.
+      Mutation-tested against the real defect, not just against a passing build.
+    - **Do not "solve" it by staging in an array that already exists** without checking what reads
+      that array and WHEN. Reusing the escalator's CHR buffer looked free and was not: `nes_chrq`
+      hands the NMI a *pointer* into it and the copy happens at the next vblank, so overwriting it
+      meanwhile copied the new bytes into the **pattern table** and destroyed the skyline. That is
+      the same deferred-copy hazard as the marquee bug below, hit a second time in one session.
   - **`gasm80` assembles 6502 despite the name**, so no separate assembler is needed — but **it
     exits 0 with errors on stdout and still emits a full-size ROM** with undefined labels resolved
     to zero. `gasm80 ... || die` therefore never fires and the build reports success on a dead

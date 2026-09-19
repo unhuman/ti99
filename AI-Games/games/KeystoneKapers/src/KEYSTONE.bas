@@ -880,7 +880,7 @@ setup_font:
 	' colour a scan line, so that gradient cannot survive intact. What it CAN
 	' do is give the top two rows one palette and the next two another, which
 	' the attribute blocks fall on exactly: blue above, warm below.
-	PALETTE 9,18			' P2 sky top    -- base   blue
+	PALETTE 9,1			' P2 sky -- base dark blue, one flat band
 	PALETTE 10,16			' P2            -- struct grey, the buildings
 	' THE LIT WINDOWS MUST NOT CHANGE COLOUR HALFWAY DOWN THE SKYLINE. A
 	' building's windows are LYELL ink, which is the light index, and the sky
@@ -5566,7 +5566,7 @@ nes_attr:
 		#nav = #nav + 1
 	NEXT nai
 	FOR nai = 0 TO 7
-		VPOKE #nav,250			' $FA -- rows 4-5 on P2, rows 6-7 on P3
+		VPOKE #nav,170			' $AA -- the whole sky band on P2, no second palette
 		#nav = #nav + 1
 	NEXT nai
 	FOR nai = 0 TO 47
