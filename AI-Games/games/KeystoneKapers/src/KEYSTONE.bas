@@ -289,11 +289,11 @@
 	' player simply had no marker while the crook's white one showed fine.
 	' TMS 4 lands on sprite palette 0, the blue Kelly's own trousers use, so
 	' the dot reads as the player and still contrasts with the crook's white.
-	#if NES
-	CONST C_RKOP = 4		' the Kop, blue -- black vanishes on this canvas
-	#else
+	' BLACK AGAIN, AND THE CANVAS IS WHY. This was briefly blue on the NES
+	' because the scanner's background was black there and a black marker had
+	' nothing to show against. The canvas is green now (scan_wipe), so black
+	' is both visible and the colour the TI uses -- one target, one answer.
 	CONST C_RKOP = 1		' the Kop, black on the scanner
-	#endif
 	CONST C_RCROOK = 15		' the crook, white
 	CONST P_CART = 208
 	CONST P_BALL = 212
@@ -5114,6 +5114,15 @@ scan_furn:
 			sccol = fc
 			GOSUB scan_pat
 			VPOKE #sda,255
+			#if NES
+			' THE FLOOR LINE IS GOLD, AND THAT IS THE SECOND BITPLANE.
+			' Plane 0 is already set here (the canvas is wiped to green,
+			' see scan_wipe), so adding plane 1 lifts these eight pixels
+			' from index 1 to index 3 -- the same entry the store's floor
+			' bars use. Plane 1 lives eight bytes on in the same tile.
+			#sdb = #sda + 8
+			VPOKE #sdb,255
+			#endif
 		NEXT fc
 		' THE ESCALATOR DIAGONALS USED TO BE DRAWN HERE TOO, and it was dead
 		' work: scan_escs runs immediately below and draws the same three rows
@@ -5221,10 +5230,21 @@ scan_or1:
 	' there. On the NES that read comes from nsc, which scan_wipe zeroed
 	' and which only this routine writes -- so it is exact, not an
 	' approximation of what the PPU holds.
+	' AND ON THE NES IT CLEARS RATHER THAN SETS, WHICH IS NOT A TYPO.
+	'
+	' This routine only ever draws the escalator flights (three call sites,
+	' all in scan_escs). On the TI they are drawn as INK and coloured black by
+	' scan_escc, so the bits go IN. Here the canvas is wiped to green -- plane
+	' 0 set everywhere, see scan_wipe -- and black is index 0, so the flight
+	' is made by taking plane 0 bits OUT. Same pixels, opposite sense.
+	'
+	' 255 - fm1 is NOT fm1: a byte subtracted from all-ones never borrows, so
+	' it is the bitwise complement without needing one.
 	#if NES
 	#nsi = #sda - #nsb
 	sva = nsc(#nsi)
-	sva = sva OR fm1
+	fmn = 255 - fm1
+	sva = sva AND fmn
 	nsc(#nsi) = sva
 	#else
 	sva = VPEEK(#sda)
@@ -5312,10 +5332,66 @@ scan_wipe:
 	' by the same offset the PPU address uses, so it grows with the stride --
 	' half of what it holds is the second bitplane, which this port never sets
 	' and scan_or1 therefore never reads as ink.
+	' AND THE CANVAS IS WIPED TO GREEN, NOT TO BLACK.
+	'
+	' On the TI a blank canvas is zeros and the COLOUR TABLE says what the
+	' background is. There is no colour table here: a pixel's colour is its
+	' two bitplane bits, so "green background" means plane 0 SET everywhere
+	' and plane 1 clear -- index 1, which is the store's green in P0.
+	'
+	' THAT INVERTS THE SENSE OF EVERY FEATURE DRAWN ON TOP. The floor lines
+	' add plane 1 to reach index 3 (gold), and the escalator diagonals CLEAR
+	' plane 0 to reach index 0 (the backdrop, black) -- see scan_or1, which
+	' is why it ANDs here and ORs on the TI. Writing zeros here instead would
+	' leave the instrument black-on-black and the flights invisible.
+	'
+	' A tile is sixteen bytes: 0-7 are plane 0 and 8-15 plane 1, so the byte's
+	' position within its tile decides which it is.
+	' AND THE MARGINS ARE GREY, WHICH IS THE OTHER BITPLANE PAIR.
+	'
+	' The canvas is three character rows -- 24 pixel rows -- of which the
+	' instrument uses the middle SIXTEEN (rows 4-19: four levels of four).
+	' The outer eight are deliberate air, four above and four below, so the
+	' radar does not butt against the shop floor above it or the screen edge
+	' below. On the TI those rows take the scanner's own background; here they
+	' are index 2, the store's grey, against the instrument's green.
+	'
+	' Two bitplanes give the four colours this canvas needs and nothing else
+	' has to change: index 1 green is plane 0, index 2 grey is plane 1, and
+	' the floor lines and flights work on top of those (scan_furn, scan_or1).
+	'
+	' The byte's place in the canvas says which it is. 256 bytes is one
+	' CHARACTER row (16 tiles of 16), the low three bits are the pixel row
+	' within the tile, and bit 3 of the position picks the bitplane.
 	FOR swj = 0 TO 11
 		FOR swi = 0 TO 63
-			VPOKE #swa,0
-			nsc(#nsi) = 0
+			swv = #nsi AND 15		' 0-7 plane 0, 8-15 plane 1
+			swr = #nsi AND 7		' pixel row inside the tile
+			swc = #nsi / 256		' which character row, 0-2
+			swm = 0
+			IF swc = 0 THEN
+				IF swr < 4 THEN swm = 1	' the top margin
+			END IF
+			IF swc = 2 THEN
+				IF swr > 3 THEN swm = 1	' and the bottom one
+			END IF
+			IF swm = 1 THEN
+				' grey: plane 1 set, plane 0 clear
+				IF swv > 7 THEN
+					swv = 255
+				ELSE
+					swv = 0
+				END IF
+			ELSE
+				' green: plane 0 set, plane 1 clear
+				IF swv > 7 THEN
+					swv = 0
+				ELSE
+					swv = 255
+				END IF
+			END IF
+			VPOKE #swa,swv
+			nsc(#nsi) = swv
 			#nsi = #nsi + 1
 			#swa = #swa + 1
 		NEXT swi
