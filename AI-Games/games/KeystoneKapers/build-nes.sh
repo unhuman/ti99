@@ -1,33 +1,39 @@
 #!/usr/bin/env bash
 #
-# Build Keystone Kapers for the TI-99/4A.
+# Build Keystone Kapers for the NES / Famicom.
 #
-#   cvbasic --ti994a  ->  xas99  ->  linkticart  ->  src/KEYSTONE_8.bin
+#   cvbasic --nes  ->  gasm80 (6502 mode)  ->  src/keystone.nes
 #
-# Same source as build-coleco.sh; only the toolchain differs. No pacing constant
-# is needed: the loop is one WAIT per frame doing O(1) work per actor on both
-# machines, so both run the same 60 Hz NTSC tick natively.
+# Same source as build-ti.sh and build-coleco.sh; only the toolchain differs.
 #
-# This used to say the toolchain was "flaky under the cygwin shell" and to fall
-# back to PowerShell. It was not flaky; see the PATH and cygpy notes below for
-# what was actually wrong and what fixes it.
+# GASM80 IS NOT MISNAMED HERE. Despite the name it assembles 6502 as well as
+# Z80 -- it prints "Expanding jumps as needed for 6502" on this input -- and
+# CVBasic's --nes target emits `CPU 6502`. No separate 6502 assembler is
+# needed, and reaching for one is a wrong turn.
+#
+# AND IT EXITS 0 WITH ERRORS ON STDOUT. `gasm80 ... || die` therefore never
+# fires: a run with forty undefined labels "succeeded", left a 16-byte file,
+# passed the `[ -s "$ROM" ]` test and printed Build OK. That is the worst
+# possible state -- a broken cart reported as a good one -- so the error
+# output is grepped and the ROM size is sanity-checked instead.
 
 CVBASIC_DIR="${CVBASIC_DIR:-/cygdrive/c/Users/Howie/github.git/unhuman/CVBasic}"
-XDT99_DIR="${XDT99_DIR:-/cygdrive/c/Users/Howie/github.git/endlos99/xdt99}"
+GASM80="${GASM80:-/cygdrive/c/Users/Howie/github.git/nanochess/gasm80/gasm80.exe}"
 [ -d "$CVBASIC_DIR" ] || CVBASIC_DIR="${CVBASIC_DIR/#\/cygdrive\/c\//\/c\/}"
-[ -d "$XDT99_DIR" ]   || XDT99_DIR="${XDT99_DIR/#\/cygdrive\/c\//\/c\/}"
+[ -f "$GASM80" ]      || GASM80="${GASM80/#\/cygdrive\/c\//\/c\/}"
 
 SRC="KEYSTONE.bas"
-NAME="KEYSTONE"
-CARTNAME="KEYSTONE KAPERS"   # the TI menu entry; not a filename, so it
-                            # is not bound by the 10-char disk limit
-CAP=24336                   # 3 loader pages x 8112 bytes
+NAME="keystone"
+ASM="${NAME}_nes.asm"
+ROM="${NAME}.nes"
 
 die() { echo "ERROR: $1" >&2; exit 1; }
 
-[ -f "$CVBASIC_DIR/cvbasic.exe"   ] || die "cvbasic.exe not in $CVBASIC_DIR"
-[ -f "$XDT99_DIR/xas99.py"        ] || die "xas99.py not in $XDT99_DIR"
-[ -f "$CVBASIC_DIR/linkticart.py" ] || die "linkticart.py not in $CVBASIC_DIR"
+[ -f "$CVBASIC_DIR/cvbasic.exe" ] || die "cvbasic.exe not found in $CVBASIC_DIR"
+[ -f "$GASM80" ]                 || die "gasm80.exe not found ($GASM80)"
+
+cd "$(dirname "$0")/src" || die "cannot find src/"
+[ -f "$SRC" ] || die "$SRC not found in $(pwd)"
 
 # PYTHON. Prefer one on PATH; fall back to the Cygwin interpreter this machine
 # actually has. Git Bash has NEITHER `python3` NOR `python`, and when the gates
@@ -78,15 +84,9 @@ cygpy() {
     fi
 }
 
-cd "$(dirname "$0")/src" || die "cannot find src/"
-[ -f "$SRC" ] || die "$SRC not found in $(pwd)"
-
 # ---------------------------------------------------------------- TRUNCATION GATE
-# A plain CVBasic variable is 8-BIT and a CONST over 255 truncates -- both silently,
-# and both produce a PLAUSIBLE WRONG VALUE rather than a failure, which is why this
-# class ships. See TRUNCATION.md. Deliberate exceptions are recorded in
-# tools/truncation-accepted.txt, so a gate nobody can silence never becomes a gate
-# everybody ignores.
+# See TRUNCATION.md. Both forms are silent and both produce a plausible wrong
+# value rather than a failure, so they fail the build instead.
 # REGENERATE THE ART FIRST, ALWAYS. art.bas and store.bas are generated, and
 # store.bas places characters by code out of genart.py's table -- so running
 # one generator without the other leaves the templates pointing at cell
@@ -110,8 +110,15 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../../../tools/bigconst.py *.bas \
     || die "CONST over 255 -- see TRUNCATION.md 1b"
 
-# A GOSUB left by GOTO never pops its return address. Invisible on the TI's 7 KB
-# of stack; on ColecoVision's 1 KB it walks down into the variables.
+# A raw name-table address that nobody gated points INSIDE THE PATTERN TABLE on
+# this machine, so it corrupts artwork rather than drawing in the wrong place.
+# The HUD's score and timer shipped exactly that way.
+"$TRUNCPY" ../assets/checknes.py \
+    || die "an ungated raw name-table address -- run assets/checknes.py"
+
+# THIS MATTERS MORE HERE THAN ON THE TI. A GOSUB left by GOTO never pops its
+# return address; the TI has ~7 KB of stack to absorb it, ColecoVision has 1 KB
+# total and the leak walks down into the variables.
 "$TRUNCPY" ../../../tools/gosubtrace.py "$SRC" | grep -q "every GOSUB target reaches a return" \
     || die "a GOSUB target cannot reach a RETURN -- see CLAUDE.md 3A"
 
@@ -130,13 +137,6 @@ rm -rf ../assets/__pycache__
 # as an occasional unfair hit, which is indistinguishable from bad luck.
 "$TRUNCPY" ../assets/checkball.py > /dev/null \
     || die "a beach-ball height is unavoidable -- run assets/checkball.py"
-
-# AND THE CART'S ART, HITBOX AND THE JUMP ARC ARE THREE NUMBERS IN THREE FILES.
-# checkball.py is about BALLS -- a ball's hitbox comes from its bounce arc, not
-# from its sprite -- so nothing was watching the obstacles whose height is a
-# constant. Raising the cart from 8 px to 12 is exactly the edit this guards.
-"$TRUNCPY" ../assets/checkcart.py > /dev/null \
-    || die "the cart's art, hitbox and jump arc disagree -- run assets/checkcart.py"
 
 # A chase resolves on PATH / SPEED, not on speed. Kelly used to be 1.5x faster
 # than Harry and STILL lose the race to the roof by 11 seconds, because Harry's
@@ -206,69 +206,98 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/checkjump.py > /dev/null \
     || die "a jump can pass through an escalator -- run assets/checkjump.py"
 
-# AND NOW THE CHECKS ON THE CHECKS. Every *_test.py above types out a defect
-# that was really played, mutates the source to reintroduce it, and asserts its
-# checker still says no.
-#
-# They were named in the comments above and RUN BY NOTHING, which is how a
-# self-test rots: checklayout_test.py's HUD case died when the score field
-# moved, was repaired, and then its PRINT AT case died the same way when the
-# title screen moved down a row -- both times reporting SETUP ERROR into a
-# terminal nobody was watching, while the suite still printed its other lines
-# and passed them. A gate that guards a gate has to be on the same trigger as
-# the thing it guards.
+# AND NOW THE CHECKS ON THE CHECKS -- see the same block in build-ti.sh. These
+# were named in comments and run by nothing, and two of checklayout_test.py's
+# cases rotted into no-ops that way, each reporting SETUP ERROR to nobody.
 for t in ../assets/*_test.py; do
     "$TRUNCPY" "$t" > /dev/null \
         || die "$(basename "$t") fails -- its checker no longer rejects a defect
        that was actually played, or its mutation no longer applies. Run it."
 done
 
-echo "[1/3] cvbasic    $SRC -> $NAME.a99"
-rm -f "$NAME.a99"
-"$CVBASIC_DIR/cvbasic.exe" --ti994a "$SRC" "$NAME.a99" "$CVBASIC_DIR/" \
-    || die "CVBasic compile failed (see messages above)"
-[ -s "$NAME.a99" ] || die "CVBasic produced no/empty $NAME.a99"
+echo "[1/2] cvbasic (NES)  $SRC -> $ASM"
+rm -f "$ASM"
+_cvlog="$(mktemp)"
+"$CVBASIC_DIR/cvbasic.exe" --nes "$SRC" "$ASM" "$CVBASIC_DIR/" 2>&1 | tee "$_cvlog"
+_cvrc=${PIPESTATUS[0]}
+# CVBasic PRINTS "Compilation finished for NES/Famicom" EVEN AFTER ERRORS, so
+# that line means nothing on its own -- reading it as success is how this was
+# first misdiagnosed as a link problem. The exit status is the truth, and the
+# errors are worth counting because there is only ever one cause.
+_ndef=$(grep -c "DEFINE isn't implemented for NES" "$_cvlog")
+if [ "$_ndef" -gt 0 ]; then
+    rm -f "$_cvlog"
+    die "CVBasic's NES target does not implement DEFINE, and a DEFINE has reached
+       the compiler $_ndef time(s) -- i.e. one is no longer behind its #if NES
+       guard. Every DEFINE in this source has an #if NES branch that uploads the
+       same art into CHR-RAM instead (see assets/nes_chr.asm); a new one needs
+       the same treatment.
 
-echo "[2/3] xas99      $NAME.a99 -> $NAME.bin"
-rm -f "$NAME.bin" "${NAME}"_b*.bin
-cygpy "$XDT99_DIR/xas99.py" -b -R "$NAME.a99" -L "$NAME.txt" \
-    || die "xas99 failed (see $NAME.txt for assembly errors)"
+       The old note here said this target could not work at all. It can:
+       $_ndef times -- DEFINE CHAR, DEFINE COLOR and DEFINE SPRITE, for the
+       font, the store tiles, the title font, every sprite, and the escalator
+       animation that rewrites patterns as it runs.
 
-FIRST="$NAME.bin"
-[ -s "${NAME}_b0.bin" ] && FIRST="${NAME}_b0.bin"
-[ -s "$FIRST" ] || die "xas99 produced no/empty $FIRST"
+       THIS IS NOT A BUILD-SCRIPT PROBLEM AND NOT A LINK PROBLEM. On the NES
+       character patterns live in CHR supplied with the cartridge, not uploaded
+       at run time, so there is nothing for DEFINE to compile to. Getting this
+       target working needs the art moved into CHR (and CHR-RAM for the parts
+       that animate), not another flag here."
+fi
+rm -f "$_cvlog"
+[ "$_cvrc" = 0 ] || die "CVBasic compile failed (see messages above)"
+[ -s "$ASM" ] || die "CVBasic produced no/empty $ASM"
 
-echo "[3/3] linkticart $FIRST -> ${NAME}_8.bin   ('$CARTNAME')"
-rm -f "${NAME}_8.bin"
-cygpy "$CVBASIC_DIR/linkticart.py" "$FIRST" "${NAME}_8.bin" "$CARTNAME" \
-    || die "linkticart failed"
-[ -s "${NAME}_8.bin" ] || die "linkticart produced no/empty ${NAME}_8.bin"
+# THE APU SHIM. CVBasic's 6502 codegen calls sn76489_freq/_vol/_control for
+# every SOUND statement and the NES prologue defines none of them -- the NES
+# has a 2A03 APU, not an SN76489. assets/nes_apu.asm supplies them.
+#
+# IT IS INSERTED BEFORE `rom_end:`, NOT APPENDED. The generated file ends with
+# `times $fffa-$ db $ff`, the three 6502 vectors and the CHR data, so the
+# address space is already full at the bottom; anything appended lands after
+# the vectors and is never assembled into the cart.
+[ -f ../assets/nes_apu.asm ] || die "assets/nes_apu.asm is missing"
+[ -f ../assets/nes_chr.asm ] || die "assets/nes_chr.asm is missing"
+grep -q "^rom_end:" "$ASM" || die "no rom_end: label in $ASM -- CVBasic's output
+       layout has changed and the APU shim has nowhere safe to go"
+# MSYS2_ARG_CONV_EXCL IS NOT OPTIONAL HERE. Git Bash rewrites an argument that
+# looks like an absolute POSIX path before handing it to a native program, and
+# an awk PATTERN starts with a slash -- so /^rom_end:/ was handed to gawk as
+# C:\Program Files\Git\^rom_end;\ and died with a syntax error. The same
+# rewriting turns `sed '/pattern/d'` into "unknown command: 'C'".
+MSYS2_ARG_CONV_EXCL='*' awk -v apu=../assets/nes_apu.asm -v chr=../assets/nes_chr.asm '
+    /^rom_end:/ && !done {
+        while ((getline l < apu) > 0) print l; close(apu)
+        while ((getline l < chr) > 0) print l; close(chr)
+        done = 1
+    }
+    { print }' "$ASM" > "$ASM.tmp" && mv "$ASM.tmp" "$ASM"
+grep -q "^sn76489_freq:" "$ASM" || die "the APU shim did not make it into $ASM"
+grep -q "^nes_chrup:" "$ASM" || die "the CHR-RAM uploader did not make it into $ASM"
 
-# ONE MENU ENTRY. linkticart writes the cartridge header at the top of EVERY
-# 8 KB loader page and then pads to a power of two, so the console lists this
-# program four times -- and only the first is a real entry point, because the
-# other three headers were copied wholesale and point into the middle of data.
-# Selecting one of those runs from a bogus address. See assets/onemenuentry.py.
-"$TRUNCPY" ../assets/onemenuentry.py "${NAME}_8.bin" \
-    || die "could not reduce the cart to one menu entry"
+echo "[2/2] gasm80 assemble   $ASM -> $ROM"
+rm -f "$ROM"
+_asmlog="$(mktemp)"
+"$GASM80" "$ASM" -o "$ROM" 2>&1 | tee "$_asmlog"
+# THE EXIT STATUS IS USELESS -- see the note at the top. Read the output.
+if grep -q "^Error:" "$_asmlog"; then
+    _n=$(grep -c "^Error:" "$_asmlog")
+    echo
+    echo "  distinct undefined labels:"
+    grep -o "undefined label '[A-Za-z0-9_]*'" "$_asmlog" | sort | uniq -c | sort -rn \
+        | sed 's/^/    /'
+    rm -f "$_asmlog"
+    die "gasm80 reported $_n error(s) -- the ROM is NOT usable"
+fi
+rm -f "$_asmlog"
+[ -s "$ROM" ] || die "gasm80 produced no/empty $ROM"
+# An iNES image is a 16-byte header plus at least one 16 KB PRG bank. Anything
+# smaller is the header alone, which is what a failed assemble leaves behind.
+_sz=$(wc -c < "$ROM")
+[ "$_sz" -gt 16400 ] || die "$ROM is only $_sz bytes -- that is the iNES header
+       with little or nothing behind it, i.e. the assemble did not really run"
 
-# SIZE. linkticart SILENTLY DISCARDS anything past the cap; the symptom is
-# missing data at the top of the image, not a build error. Measuring it is not
-# a `wc -c` because a BANKED image is padded to fill the whole >A000 window --
-# see assets/banksize.py, which handles both shapes.
 echo
-"$TRUNCPY" ../assets/banksize.py "$FIRST" "$CAP"     || die "the fixed area overflowed -- see the line above"
-
-# AND THE DATA BANKS, WHICH HAD NO GUARD AT ALL. banksize.py above covers the
-# FIXED area only. A bank overflow is completely silent -- xas99 and linkticart
-# say nothing, the excess is dropped, and what goes missing is whatever sits
-# nearest the end of the bank, normally a DATA block rather than code. Bank 1
-# reached SIX spare bytes of 8,192 before anyone noticed, and nothing had been
-# lost only by luck. This checks that each bank's LAST block -- the one an
-# overflow eats first -- is really in the packed image, and reports free space
-# as an early warning. assets/bankfill_test.py proves it rejects a truncated
-# bank rather than only describing a healthy one.
-"$TRUNCPY" ../assets/bankfill.py \
-    || die "a data bank overflowed and lost its last block -- run assets/bankfill.py"
-echo "Build OK ->  $(pwd)/${NAME}_8.bin"
-echo "Load it in Classic99 or js99er."
+echo "ROM: $_sz bytes"
+echo "Build OK ->  $(pwd)/$ROM"
+echo "Load it in Mesen, FCEUX or Nestopia (NES/Famicom)."

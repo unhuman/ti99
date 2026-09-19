@@ -4636,13 +4636,15 @@ a single bank: the store is ~1 KB of templates and there is no music engine.
 
 ---
 
-## 12a. The NES port — where it stands and what actually blocks it
+## 12a. The NES port — it runs, and here is what it cost
 
-`build-nes.sh` exists and does not produce a working cart. The blocker is not
-the build script and not a link problem, which is how it was first misread.
+**`build-nes.sh` produces a cartridge that boots, draws the store in colour and
+plays.** The section below used to say the target was blocked. It was wrong about
+the reason, and the correction is the useful part.
 
-**CVBasic's NES target implements no `DEFINE` at all** — not `DEFINE CHAR`, not
-`DEFINE COLOR`, not `DEFINE SPRITE`. `cvbasic.c` has, literally:
+### The blocker was real, and the way round it was in the header all along
+
+CVBasic's NES target implements no `DEFINE` at all — `cvbasic.c` has, literally:
 
 ```c
 } else if (strcmp(name, "DEFINE") == 0) {
@@ -4651,187 +4653,203 @@ the build script and not a link problem, which is how it was first misread.
         emit_error("DEFINE isn't implemented for NES");
 ```
 
-This game calls it **29 times** — the font, the store tiles, the title font,
-every sprite, and the escalator animation that redefines six characters every
-pass. A `--nes` compile therefore ends with 58 errors and exit 1.
+and this game calls it 29 times. The reading taken from that — *"patterns live in
+CHR, CHR is cartridge ROM, so there is nothing for `DEFINE` to compile to"* — is
+only half true, and the half that is false is the whole port:
 
-**`#if` IS NOT THE ANSWER, AND THE TWO SENSES OF "DEFINE" ARE UNRELATED.** The
-preprocessor conditionals (`#if TI994A`, `#if NES`) work perfectly and are used
-in this source already. The `DEFINE` *statement* is a runtime upload into the
-video chip's pattern table, and there is no NES statement to put in the `#else`
-branch, because that machine has no runtime pattern upload:
+> **An iNES header whose CHR-bank count is ZERO asks the console for 8 KB of
+> CHR-*RAM*, and that is the header CVBasic already emits.** `NES_CHR_BANKS` is
+> written from `chrrom_size`, which stays 0 unless the program uses `BITMAP` or
+> `CHRROM`. This game uses neither. Every `--nes` build it has ever produced
+> declared a writable pattern table (`4E 45 53 1A 02 00 …` — PRG 2, **CHR 0**);
+> nothing was writing to it.
 
-| | TI-99 / ColecoVision | NES |
+So the pattern table here is ordinary VRAM behind `PPUADDR`/`PPUDATA`, which is
+all `DEFINE CHAR` ever was. `assets/nes_chr.asm` is that write, reached from
+CVBasic through the `ASM` statement, and `#if NES` branches at all 29 sites call
+it instead. **Which also means CHR-RAM is reachable from CVBasic with no
+compiler patch** — the question that decided whether this port was feasible.
+
+### The seven things that had to change, and why each one
+
+| | what | why |
 |---|---|---|
-| where patterns live | VRAM, alongside the name table | CHR, a separate PPU bus |
-| writable while running | yes — that is what `DEFINE` does | only with CHR-**RAM** |
-| how art normally arrives | uploaded at boot by the program | placed in the cart at build time |
+| 1 | **`nes_chrup`** — patterns into CHR-RAM, rendering off, one vblank | stands in for `DEFINE CHAR` / `DEFINE SPRITE` |
+| 2 | **`nes_chrq`** — the same, queued for the NMI | `esc_tick` rewrites six characters *every pass*; a frame a call was ruinous |
+| 3 | **`nes_bgbank`** — background patterns to `$1000` | in 8x16 mode the sprite table is bit 0 of the OAM tile byte, and every pattern number here is a multiple of four, so the sprites are nailed to `$0000` |
+| 4 | **`nes_oam2`** — a second OAM entry per actor | an NES sprite is 8x16 where a TMS one is 16x16 |
+| 5 | **name table +2048, then +96** | `$2000` instead of `$1800`, then three rows down out of overscan |
+| 6 | **`flry` +24, `sdy` +24, `SPRHID` 240** | sprite y is a *screen* coordinate and had to follow the picture down; 209 is a visible row on this machine |
+| 7 | **`nespw`, a loop-rate floor** | three things here are paced per *pass* and the 6502 build runs far more of them a second than the 9900 one |
 
-**There is no prior art in this repo to copy.** Bust-A-Bobble is sometimes
-remembered as having done this; it has only `build-ti.sh` and `build-coleco.sh`,
-and pointing `--nes` at it gives the same 29 `DEFINE` errors **plus** a
-`VDP not supported for NES/Famicom`. Its `#if TI994A` blocks are the BANK
-directives, which is the preprocessor sense. Keystone Kapers is the closest any
-game here has come, since it does not use `VDP`.
+**The art needed no repacking, and that is the piece of luck the port turns on.**
+A 16x16 TMS pattern is four 8-byte tiles ordered left-top, left-bottom,
+right-top, right-bottom; an NES 8x16 sprite is a tile pair, top then bottom, at an
+even index. So `(p, p+1)` is already exactly the left half and `(p+2, p+3)` the
+right. `nes_oam2` mirrors slot *n* into *n+28* with the tile two on and x eight
+right, in one call at the end of `draw_actors` — not as a second `SPRITE`
+statement beside each of the twenty-eight, which would have been twenty-eight
+places for the halves to drift apart.
 
-### What is already done, and gated off
+### Colour: what is reproduced, and what is gone for good
 
-Both of these are in the tree, cost nothing on TI or ColecoVision, and are
-verified to remove their own errors — they are simply not reachable until
-`DEFINE` is solved:
+A TMS9918 cell in this mode carries a foreground and a background colour **per
+character per scan line** — that is why `DEFINE COLOR` wants eight bytes a
+character. The NES has no such thing. A tile is two bitplanes giving four colour
+indices, and *which* four colours those are is chosen by the attribute table in
+**16x16-pixel blocks**.
 
-- **`assets/nes_apu.asm`** — the SN76489-to-2A03 shim. CVBasic's 6502 codegen
-  emits `sn76489_freq/_vol/_control` for every `SOUND` and the NES prologue
-  defines none of them; `cvbasic_6502_prologue.asm` does, for a 6502 machine
-  with a real SN76489, so the calling convention is taken from there rather
-  than invented. Resolves 36 link errors. **The pitch maths is near-exact by
-  luck**: the NES CPU is almost exactly half the SN76489's clock, so the APU
-  timer is `divisor - 1`. What is lost is stated in the file — the triangle has
-  no volume, so channel 2 keeps its pitch and loses its fades.
-- **`#if NES` paths for all four `VPEEK`s** in `KEYSTONE.bas`. On NES `WRTVRM`
-  does not touch the PPU — it queues into `PPUBUF` for the NMI to flush — so a
-  read-back is both illegal during rendering and blind to the queue. The three
-  fixture routines instead read `stor_tpl`, which is what `SCREEN` blitted;
-  `beam_clear` reads the pillar table `beam_one` stamps from, reproducing its
-  exclusion of columns 0 and 31 so the outside wall is never cleared; and the
-  radar gets a 384-byte pattern shadow whose base comes from `scan_wipe`'s own
-  literal rather than a second copy of it.
+**The attribute table cannot separate a wall from the pillar beside it** — those
+do sit inside one 16x16 block all over the map. The first version of this port
+drew the wrong conclusion from that and left the attribute table at **zero**,
+which gave the whole screen one palette and the whole game **three background
+colours**. Reported, correctly, as *"the coloring isn't correct... there is too
+few colors."*
 
-### What finishing it would take
+The conclusion was wrong because the three things that most needed separating
+are **not** in a block with each other. Blocks are four character rows; the
+picture sits three rows down for overscan, and the regions fall apart cleanly:
 
-1. A **CHR emitter in `genart.py`**, feeding CVBasic's `BITMAP`/CHRROM
-   mechanism at compile time instead of `DEFINE` at runtime.
-2. **CHR-RAM**, for the two things that rewrite patterns while running: the
-   escalator's six characters per pass, and the radar ORing pixel rows.
-3. A decision about **attribute colour**. The NES colours in 16x16 blocks; this
-   game colours per character row, two colours a cell. That does not map, and
-   it is the part most likely to force a visual compromise — worth settling
-   before any of the above is written.
+| attribute byte row | name rows | region | palette |
+|---|---|---|---|
+| 0 | 0–3 | the HUD is row 3 | bottom quadrants → **P1** |
+| 1 | 4–7 | the sky, split in half | top → **P2**, bottom → **P3** |
+| 2+ | 8–29 | the store | **P0** |
 
----
+So `nes_attr` writes sixty-four bytes at `$23C0` and the background goes from
+three colours to **nine**. Per-character ink and paper still come from the
+**second bitplane**, which is what the attribute table genuinely cannot do; the
+attribute now only chooses *which* palette those indices come out of.
 
-## 12b. Fixed-area recovery — the backlog
+**That only works because an index means a ROLE, not a colour.** A character's
+bitplanes fix its indices once, and the same character may appear under
+different palettes, so `nes_inkmap` maps every TMS colour onto one of:
 
-**The fixed area is the only budget that cannot grow.** It is three 8,112-byte
-loader pages at `>A000` — the 32K expansion's RAM, not cart ROM — and
-`linkticart` discards anything past 24,336 bytes *silently*, dropping whatever
-sits nearest the end. Banks are the opposite: 8 KB each, and more can be added.
+| index | role | store | HUD | sky top | sky bottom |
+|---|---|---|---|---|---|
+| 0 | backdrop | black | black | black | black |
+| 1 | the region's **base** | dark green | blue | blue | orange |
+| 2 | **structure** | grey | grey | grey | grey |
+| 3 | **highlight** | white | white | white | yellow |
 
-That asymmetry is the whole strategy. **Anything that turns code into table
-data is close to free; anything that adds behaviour is not.** Art is cheap now,
-features are not.
+TMS → index: black 0; greens, blues, magenta and the mid reds → 1; cyan and grey
+→ 2; dark red, dark/light yellow and white → 3.
 
-### Done
+**Three pairs in that table are load-bearing, and none is obvious:**
 
-- **Kelly's tunic and legs merged into one sprite** — 112 bytes. The two bands
-  span 13 contiguous rows in the same colour; the split was an artefact of the
-  art being authored as row-bands. See §12c.
-- **The title display list moved to bank 2** — 340 bytes of *bank 1* for 8 of
-  fixed area. Only the display list: the message boxes in the same generated
-  file are read when a round ends and had to stay on the mapped page.
-- **The biplane merged to a single sprite** — 116 bytes of fixed area, 64 of
-  bank 1, and it stopped being the fifth sprite on its own scanline.
+- **WHITE must differ from MAGENTA and LRED**, or the partial buildings standing
+  against the sunset collapse to a solid white block on the roof.
+- **WHITE must differ from GRAY**, or the store's floor bars stop reading against
+  its pillars — and it is worse than it sounds: merging them costs **five**
+  characters, not the two you would guess.
+- **CYAN must differ from LBLUE**, or the counter top goes solid.
 
-### Open, ranked by bytes per unit of risk
+A character whose ink and paper land on the *same* index renders as a featureless
+block with the artwork gone, and nothing else in the build notices.
+**`assets/checkink.py` gates it**, reading the live `nes_inkmap` out of
+`nes_chr.asm` and the real colour bytes out of `art.bas`; three characters
+collapse on purpose and are named individually rather than the threshold being
+loosened. `checkink_test.py` proves it rejects two maps that were really written
+here — both of them mine, while making the change above.
 
-1. **The escalator ladder in `try_esc` — about 70 bytes.** Lines ~2629-2638 are
-   a *linear function* written as ten compare-and-branches: every 8 px of `esw`
-   steps `esy0` by 4. It reduces to
+> **What that check also did was disprove the theory it was written for.** A
+> white block on the roof was assumed to be two characters collapsing under the
+> shipped ink map. They were not: **the shipped map leaves every character with
+> two colours**, and running the check against it is what established that. The
+> white block has another cause and is still open. The check is kept because the
+> defects it *did* catch were real.
 
-   ```basic
-   esy0 = 76 - esw
-   IF esy0 > 0 THEN esy0 = esy0 - 1
-   esy0 = esy0 / 8          ' compiles to srl, verified in the .a99
-   esy0 = esy0 + esy0
-   esy0 = esy0 + esy0
-   esy0 = esy0 + 4
-   ```
+Sprites keep one bitplane and take their colour from the OAM attribute byte,
+which *is* per sprite — so the layered-sprite idiom survives intact. `nes_spal`
+maps the TMS colour every `SPRITE` statement already passes onto four sprite
+palettes (blue, black, skin, white), and is **idempotent** so it can be applied
+in place to a slot the game did not rewrite this pass.
 
-   Checked at every breakpoint (76, 68, 67, 60, 59, 4, 3, 0). **The `-1` step is
-   load-bearing**: the top band `esw ∈ [68,76]` is NINE values wide where every
-   other band is eight, so the naive `(76-esw)/8` is wrong at every boundary.
+**What is lost, and is not a bug to be chased:**
 
-   **Caveat, and it is the safe kind:** `checkjump.py` parses this region out of
-   the `.bas` and executes it over 108,000 arcs. An unrecognised statement is a
-   *hard error* there, not a skip, so it will fail loudly and its interpreter
-   needs the arithmetic forms taught to it. The sweep then proves the rewrite
-   preserves the escalator-boarding fix.
+- **Four of the sunset's six bands — but NOT per-scan-line colour itself.**
+  This entry used to say per-scan-line colour was gone, and that was wrong in a
+  way that cost a session. An NES tile is eight rows of two bits per pixel, so
+  every ROW picks its own pair out of the four palette entries — the same shape
+  as the TMS's eight colour bytes. `nes_chrinkrow` rebuilds the masks once per
+  row for exactly that reason. What cannot survive is more than **four indices**
+  on one scan line, so `SKYGRAD`'s six colours over twenty-four lines come back
+  as blue over warm with grey buildings in front of both: a sunset rather than a
+  flat band, and still not the gradient.
+  - **The reason it matters far beyond the sky:** several characters carry their
+    whole SHAPE in the colour table and nothing in the art. `CH_SLAB` sets 8 of
+    its 64 pixels — one row — because the floor bar is five yellow rows over
+    three green ones, written entirely in `DEFINE COLOR`. Collapsing the eight
+    bytes into one turned every floor into a one-pixel line and left the end
+    walls not meeting the storey above, which was reported as **a gap in the
+    building's support**. Nothing about that symptom says "colour".
+- **Nine background colours**, against the TMS's fifteen *per cell pair*. Three
+  per 16x16 block is the real constraint, and it is why the store is still green
+  air, grey structure and white bars rather than the TI's full set.
+- **Four sprite colours.** Each sprite palette has only its index 1 set, because
+  sprites are drawn into one bitplane — the game's actors are layered
+  single-colour sprites, so this is faithful rather than lossy, but it does cap
+  the cast at four colours at once.
 
-2. **The `kldir` facing block in `draw_actors` — 60-80 bytes.** Duplicated in
-   the crouch arm and the run arm. Hoisting it needs a second `IF` to choose the
-   draw height, which is why the estimate is below the clone detector's 100.
+### Two faults that read as "corrupt artwork" and were neither
 
-3. **`esc_stand` run (~100 B) and the `pacc` drain (~80 B).** Ranked by
-   `romclones.py`. Treat that ranking as **a reading list, not a work list** — a
-   short clone folded into a `GOSUB` costs the call, the return and the
-   parameter staging, so folding one can lose.
+Both were reported as colour/corruption problems, and neither was in the drawing
+code. They are recorded because the next port will hit them in the same order.
 
-4. **Four unused store characters — 64 bytes of bank 1, not fixed area.**
-   `ESCW4`, `ESCE8`, `PARAP`, `EXITC` appear in no template and are named
-   nowhere in the source. **Attempted and reverted once:** `ESCW4`/`ESCE8` are
-   emitted by `_used(ESC_W_GRID)`, so the generator believes the artwork uses
-   them, and deleting `PARAP`/`EXITC` produced a `KeyError` on `ESCW5` that was
-   never explained. Needs the escalator generator understood first. `renumber.py`
-   and `checkchars.py` exist to make it safe.
+- **The NMI's copy loop does not stop when vblank ends, so ~100 bytes a frame is
+  the real budget.** `WRTVRM` and `LDIRVM` both `JMP wait` when `PPUBUF` fills, so
+  nothing is lost *in the queue* — it is lost at the PPU, where a `PPUDATA` write
+  outside vblank is discarded. The store blitted a band at a time, `32x5 = 160
+  bytes`: three rows arrived, the fourth stopped eight or nine cells in, and the
+  floor bar and the air row above it were never drawn, on three bands in four.
+  **38% of the picture was black.** The blit is now one 32-byte row per `WAIT`.
+- **Six raw name-table addresses were never gated for this machine.** A `VPOKE`
+  takes a raw VRAM address; 6144 on the TI is 8192+96 here. `hud_score` (6152),
+  `hud_time` (6165), `hud_kops` (6171) and three on the setup page pointed at
+  `$1808` and below — **inside the pattern table**. The score and timer digits
+  never appeared *and* every update wrote them over a store character's artwork,
+  which surfaced as colour corruption somewhere unrelated. `assets/checknes.py`
+  now fails the build on an ungated raw address, and checks each gated pair
+  differs by exactly **+2144**; it was mutation-tested against both shapes of the
+  defect before being trusted.
 
-5. **The structural clones — the biggest prize and the worst ratio.**
+### What is not done
 
-   | pair | bytes | shared statement shape |
-   |---|---:|---:|
-   | `move_harry` + `move_kelly` | 2,708 | 68% |
-   | `draw_actors` + `draw_harry` | 1,908 | 64% |
-   | `prize_one` + `radio_band` | 1,174 | 62% |
+- **The display counters are indistinguishable from the pillars.** This is what is
+  left of the colour problem now that `nes_attr` gives the background nine colours
+  rather than three. Within a single palette there are only three inks plus the
+  backdrop, and `nes_inkmap` sends light blue AND grey to index 2 — so char 100
+  (the counters, solid light blue on the TI) and char 107 `CH_COUNTR` (the pillars,
+  solid grey) come out as the same flat grey. Both are solid-fill glyphs, so there
+  is no pattern left to tell them apart either: the store loses its furniture, not
+  just a hue. The store band is one palette across its whole height and a counter
+  sits in the same 16x16 block as the wall behind it, so the attribute table cannot
+  separate these two the way it separated the sky from the store. Options are to
+  move the blues to index 3 (visible, but reads as floor-bar white), or to give the
+  counters their own character codes and a fourth ink.
+- **Sound is unverified.** `assets/nes_apu.asm` resolves the 36 `sn76489_*` link
+  errors and `nes_apuon` now enables `$4015`/`$4017` at setup rather than waiting
+  for the first volume write, but nobody has confirmed a note on this target.
+- **Eight sprites per scanline.** Harry is five layered sprites, which is ten OAM
+  entries on his scanlines once each is doubled. The NES drops the excess. The fix
+  is merged 2bpp sprite art — one 3-colour sprite per actor instead of a stack of
+  1-colour ones — which is a genart change, not a runtime one.
+- **`nespw` is set from the TI's measured ~24 passes a second** (CLAUDE.md 3A:
+  2,335 passes over ~98 s), not from a measurement of the NES loop. It is a floor,
+  so it can only slow the loop to that rate and never speed it up; a heavy screen
+  still runs at whatever rate it can.
 
-   24% of the fixed area in three pairs. But the metric is statement *shape*,
-   not semantics, and CVBasic has no parameters — folding means staging globals,
-   which eats the saving. Leave these until something forces the issue.
+### Building it
 
-### Verified dead ends — do not re-chase
+```
+./build-nes.sh          # cvbasic --nes -> gasm80 (6502) -> src/keystone.nes
+```
 
-- **Division is already optimal.** `say / 8` compiles to `srl r0,3`, not a
-  divide. CVBasic *does* optimise power-of-two division on 8-bit vars, despite
-  `%` being documented as compiling to a real `DIV`. The four `DIV`s in the
-  image are all CVBasic's own runtime — the 16-bit helper and the score printer.
-- **Data evacuation is complete.** Zero `DATA` bytes remain in the fixed area.
-  The usual lever is spent.
-- **Unused `CONST`s cost nothing** — they emit no code. `WALKSP` is genuinely
-  dead and deleting it saves zero bytes.
-- **The doubling chains are already the cheap form.** `#x = #x + #x` repeated is
-  there to avoid a multiply, which would be larger *and* would hit the `MPY`
-  clobber hazard.
-- **`CH_BULB1/2/3` and `tick_flash` look dead and are not** — the first are
-  reached by `bcode = CH_BULB0 + bphs` (the only computed character access in
-  the file), the second by fall-through.
-
----
-
-## 12c. Kelly is three sprites, not four
-
-The tunic and the trousers were separate sprites at slots 2 and 3 because the
-art is authored as one 16×16 block carved into HAT / FACE / TORSO bands **by
-row** — so the tunic arrived as a band and the legs were drawn apart.
-
-Neither geometry nor colour ever required it. The tunic occupies figure rows
-24-28 and the legs 29-36: **thirteen rows, contiguous, inside one 16-row
-sprite**, and both are `C_KELLY` blue. The crouch had already proved it —
-`P_KDBODY` is the whole crouched figure in a single sprite.
-
-- **112 bytes of fixed area.** `draw_actors` loses a `SPRITE` call, the
-  `ky + 16` offset, and one of its two pattern-selection ladders; the crouch arm
-  stops hiding a slot it never used.
-- **Bank 1 on what comes next:** a standing or jumping pose is now *one* drawing
-  per facing instead of a torso **and** a leg pose, halving the cost of the
-  planned poses.
-- **Not a scanline win**, which is worth saying because it looks like one. The
-  VDP counts sprite *boxes*: helmet+face already overlapped as a pair and
-  tunic+legs as another, so Kelly cost at most two boxes on any line before and
-  still does. What changes is that he uses three slots instead of four.
-- **The legs now face.** They used to be shared between directions; they travel
-  with the tunic they are drawn on. That is a fix, not a cost — Harry's legs
-  were shared once too, and the run preview is what showed they could not be.
-- **What it costs is independence.** Every torso/leg *combination* must now be
-  drawn. For the four run frames that is the same eight sprites it always was;
-  it would only lose if a torso had to vary against every leg frame separately.
+`gasm80` assembles 6502 despite the name, so no separate assembler is needed — but
+**it exits 0 with errors on stdout and still emits a full-size ROM** with undefined
+labels resolved to zero, so the script greps its output for `^Error:`. CVBasic
+likewise prints "Compilation finished" *after* errors; only its exit status is the
+truth. Both traps are in the script's own comments.
 
 ---
 

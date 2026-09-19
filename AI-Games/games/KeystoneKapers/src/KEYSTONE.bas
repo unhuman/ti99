@@ -62,7 +62,18 @@
 	#if TI994A
 	BANK ROM 128
 	#endif
+	#if NES
+	' 240 ON THE NES, AND THIS WAS THE FLICKER. There is no sprite-list
+	' terminator on that machine -- y is simply a row -- so 209 is a VISIBLE
+	' one, and every "hidden" sprite was being drawn in a heap near the bottom
+	' of the screen with pattern 0, which is Kelly's hat. Two dozen of them on
+	' the same scanlines swamped the eight-per-scanline budget and took the
+	' real actors down with them. $F0 is what the prologue's own
+	' clear_sprites uses.
+	CONST SPRHID = 240
+	#else
 	CONST SPRHID = 209		' NOT 208 -- 208 terminates the sprite list
+	#endif
 
 	' ------------------------------------------------------------- geometry
 	' A band is 5 rows: 4 rows of air (32 px) over one floor slab. Standing
@@ -272,7 +283,17 @@
 	CONST P_RADCAR = 220		' the radar's lift car
 	CONST C_RCAR = 14		' grey, like the furniture it replaced
 	CONST P_RADDOT = 224		' the radar marker, both actors
+	' BLACK ON THE SCANNER WORKS ON THE TI AND DISAPPEARS ON THE NES. The Kop's
+	' dot is a SPRITE and nes_spal sends TMS 1 to sprite palette 1, which is
+	' black -- against a scanner canvas that is nearly black here, so the
+	' player simply had no marker while the crook's white one showed fine.
+	' TMS 4 lands on sprite palette 0, the blue Kelly's own trousers use, so
+	' the dot reads as the player and still contrasts with the crook's white.
+	#if NES
+	CONST C_RKOP = 4		' the Kop, blue -- black vanishes on this canvas
+	#else
 	CONST C_RKOP = 1		' the Kop, black on the scanner
+	#endif
 	CONST C_RCROOK = 15		' the crook, white
 	CONST P_CART = 208
 	CONST P_BALL = 212
@@ -551,7 +572,8 @@
 	' pixel rows into its canvas characters, 208-255, eight bytes each.
 	' 384 bytes of the NES's 1,227 free, and nothing on the other targets.
 	#if NES
-	DIM nsc(384)			' radar canvas pattern shadow
+	DIM nsc(768)			' radar canvas pattern shadow, 48 tiles x 16
+	DIM nesb(96)			' the escalator's six characters, staged for the NMI
 	#endif
 	DIM lv8(4)			' lv*8, so no multiply lands on an index
 	DIM jarc(32)			' the jump arc: 30 frames, apex 14
@@ -670,6 +692,34 @@ btn_go:
 	' ======================================================================
 main:
 	WAIT
+	#if NES
+	' MATCH THE TI'S LOOP RATE, AND DO IT HERE RATHER THAN ANYWHERE ELSE.
+	'
+	' Three things in this game are paced per LOOP PASS and must stay locked to
+	' one another: the escalator's four-phase step animation, Kelly riding it
+	' and Harry riding it. CLAUDE.md 3A is explicit that a cyclic animation can
+	' only be stepped by ONE phase per pass -- step it by two and the direction
+	' becomes unreadable, by three and the staircase visibly runs backwards --
+	' so the riders have to be on the pass clock too, and changing any ONE of
+	' the three decouples a rider from the tread he is standing on.
+	'
+	' The 6502 build runs many more passes a second than the 9900 one, so the
+	' escalator ran at that rate: correct, coupled, and far too fast. The only
+	' change that keeps all three together is to the LOOP RATE itself. The TI
+	' measures ~24 passes a second (CLAUDE.md 3A: 2,335 passes over ~98 s), so
+	' a pass is 2.5 frames, and `nespw` alternates 2 and 3 to average it.
+	'
+	' IT IS A FLOOR, NOT A CEILING. A pass that already took longer than nespw
+	' frames waits for nothing, so a heavy screen still runs at whatever rate
+	' it can -- exactly as on the TI.
+nes_pace:
+	#fd = FRAME - #lf
+	IF #fd < nespw THEN
+		WAIT
+		GOTO nes_pace
+	END IF
+	nespw = 5 - nespw
+	#endif
 	#fd = FRAME - #lf
 	#lf = FRAME
 	IF #fd > 6 THEN #fd = 6		' a long stall must not teleport anyone
@@ -762,6 +812,104 @@ setup_font:
 	' one slot that can never disappear.
 	SPRITE FLICKER OFF
 
+	#if NES
+	' THE NES'S TWO STRUCTURAL DIFFERENCES, SETTLED ONCE, HERE.
+	'
+	' 1. WHERE THE PATTERNS LIVE. In 8x16 sprite mode the sprite pattern table
+	'    is chosen by bit 0 of each OAM tile byte and the PPUCTRL bit is
+	'    ignored -- and every pattern number in this game is a multiple of
+	'    four, so that bit is always 0 and the sprites are nailed to $0000.
+	'    nes_bgbank therefore moves the BACKGROUND to $1000 rather than trying
+	'    to move the sprites, which also lands the background patterns at
+	'    address 4096, exactly where the TMS bitmap mode's third screen third
+	'    had them -- so the radar's pattern writes need a stride and nothing
+	'    else.
+	'
+	' 2. COLOUR DOES NOT MAP AND IS NOT PRETENDED TO. The NES colours in 16x16
+	'    attribute blocks; this game colours per character, two colours a
+	'    cell. So the store is drawn in ONE ink and the actors get four
+	'    palettes, picked by the low two bits of the colour argument the
+	'    SPRITE statements already pass -- 1 (black) -> dark grey, 4/8 (blue)
+	'    -> blue, 14 (grey) -> grey, 11/15 (skin, white) -> white. Nothing in
+	'    the game source has to know.
+	ASM JSR nes_bgbank
+	ASM JSR nes_apuon
+
+	' FOUR BACKGROUND PALETTES, AND AN INDEX MEANS A ROLE RATHER THAN A
+	' COLOUR -- 1 the region's base, 2 structure, 3 highlight.
+	'
+	' The earlier version set only palette 0 and left the attribute table at
+	' zero, on the grounds that a 16x16 block cannot separate a wall from the
+	' pillar beside it. That is true WITHIN the store and it is the wrong
+	' conclusion, because the three things that most needed separating are not
+	' in the same block as each other: the HUD is row 3, the roof band is rows
+	' 4-8, and the store is rows 9-23. Blocks are four rows, so those fall
+	' apart cleanly -- and giving them a palette each took the background from
+	' THREE colours to nine.
+	'
+	' Nine of the sixteen entries used to be left at whatever the CVBasic
+	' prologue's placeholder put there (a pale red and green nothing in this
+	' game ever asked for). All twelve background inks are now stated.
+	PALETTE 1,26			' P0 store -- base   dark green, the floor
+	' GREY, AND IT STAYS GREY. This was briefly light blue, to give the display
+	' counters the TI's colour. It cannot be spent that way: CH_COUNTR is ONE
+	' character serving both the counter column and the structural pillars, so
+	' the pillars, the pillar caps, the briefcase and the scanner's side strips
+	' all went blue with it. The store's structure is not negotiable for the
+	' sake of one fixture -- if the counters are ever to be blue it has to come
+	' from somewhere that only the counters use.
+	PALETTE 2,16			' P0       -- struct grey, pillars and beams
+	' GOLD, NOT WHITE. The money bags and the floor bars are both YELLOW on the
+	' TI and both map to this index, so a white entry turned the prizes into
+	' pale blobs and the floor bars into thin grey lines. The bag's black knot
+	' tie is already in the art -- CH_BAGBL/BR are black ink on light-yellow
+	' paper -- so it appears for free the moment the paper is actually gold.
+	'
+	' IT WAS BRIEFLY CYAN, to give the counters' lip the TI's colour, and that
+	' took the FLOOR BARS and the MONEY BAGS with it -- everything yellow in
+	' the store rides this entry. Reverted: the floors and the prizes are what
+	' this index is for.
+	PALETTE 3,40			' P0       -- light  gold, floor bars and prizes
+
+	PALETTE 5,18			' P1 HUD   -- base   blue, the score line's ground
+	PALETTE 6,16			' P1       -- struct grey
+	PALETTE 7,48			' P1       -- light  white, the digits
+
+	' THE SUNSET, IN TWO BANDS RATHER THAN SIX. SKYGRAD is six colours over
+	' three character rows -- one per four scan lines -- and the NES cannot
+	' colour a scan line, so that gradient cannot survive intact. What it CAN
+	' do is give the top two rows one palette and the next two another, which
+	' the attribute blocks fall on exactly: blue above, warm below.
+	PALETTE 9,18			' P2 sky top    -- base   blue
+	PALETTE 10,16			' P2            -- struct grey, the buildings
+	' THE LIT WINDOWS MUST NOT CHANGE COLOUR HALFWAY DOWN THE SKYLINE. A
+	' building's windows are LYELL ink, which is the light index, and the sky
+	' is split into two palettes at the middle of the band -- so with P2's
+	' light entry white and P3's yellow, the same window was white in the top
+	' half of the city and yellow in the bottom. It read as the windows being
+	' part of the gradient, which they are not: the gradient is the PAPER
+	' behind them. Both halves carry the same yellow now, so a window is a
+	' window wherever it stands, and only the sky behind it changes.
+	PALETTE 11,40			' P2            -- light  yellow, the lit windows
+
+	PALETTE 13,39			' P3 sky bottom -- base   orange
+	PALETTE 14,16			' P3            -- struct grey, the buildings
+	PALETTE 15,40			' P3            -- light  yellow
+
+	' AND FOUR FOR THE ACTORS, which DO get one each because a sprite carries
+	' its own palette number. nes_spal maps the TMS colour every SPRITE
+	' statement already passes onto these four.
+	PALETTE 17,18			' 0 -- blue   Kelly's trousers
+	PALETTE 21,15			' 1 -- black  hats, Harry's stripes, the Kop's dot.
+					' FIFTEEN, NOT ZERO: on this palette $0F is
+					' black and $00 is a dark GREY, so every hat
+					' and every stripe was coming out grey.
+	PALETTE 25,39			' 2 -- skin   faces, the biplane, the beach ball
+	PALETTE 29,48			' 3 -- white  Harry, the carts, the lift car
+
+	nespw = 2			' the loop pacer above starts on a 2-frame pass
+	#endif
+
 	' THE ONE AND ONLY BANK SWITCH THE PROGRAM EVER MAKES, and it happens
 	' here, before the first frame.
 	'
@@ -787,7 +935,17 @@ setup_font:
 	BANK SELECT 2
 	#endif
 
+	#if NES
+	#nsrc = VARPTR font_bits(0)
+	nchr = 32
+	ncnt = 59
+	ntab = 1
+	#ncol = 0
+	nink = 3
+	GOSUB nes_def
+	#else
 	DEFINE CHAR 32,59,font_bits
+	#endif
 	' Without this the font keeps whatever CVBasic left in the colour table --
 	' white on transparent -- which over a green store made the HUD unreadable.
 	'
@@ -803,7 +961,11 @@ setup_font:
 	' It reads as waste and is not: it lives in the data bank, which had 860
 	' bytes spare, while the loop it replaced cost time in the one place the
 	' player is made to wait.
+	#if NES
+	' no colour table on this machine -- see nes_setup
+	#else
 	DEFINE COLOR 32,59,font_col
+	#endif
 
 	' AND THE TITLE'S DISPLAY FACE, WHICH IS HERE FOR THE SAME REASON THE
 	' FONT IS. Forty characters -- ten letters, four cells each -- drawn at
@@ -822,10 +984,38 @@ setup_font:
 	'
 	' The arguments come from titleface.FREE_RUNS; gentitle.py prints them
 	' into the top of titlefont.bas and checkchars.py verifies them.
+	#if NES
+	#nsrc = VARPTR tfont_pat0(0)
+	nchr = 0
+	ncnt = 32
+	ntab = 1
+	#ncol = 0
+	nink = 3
+	GOSUB nes_def
+	#else
 	DEFINE CHAR 0,32,tfont_pat0
+	#endif
+	#if NES
+	' no colour table on this machine -- see nes_setup
+	#else
 	DEFINE COLOR 0,32,tfont_col0
+	#endif
+	#if NES
+	#nsrc = VARPTR tfont_pat1(0)
+	nchr = 185
+	ncnt = 12
+	ntab = 1
+	#ncol = 0
+	nink = 3
+	GOSUB nes_def
+	#else
 	DEFINE CHAR 185,12,tfont_pat1
+	#endif
+	#if NES
+	' no colour table on this machine -- see nes_setup
+	#else
 	DEFINE COLOR 185,12,tfont_col1
+	#endif
 
 	' AND BACK TO BANK 1 FOR THE REST OF THE PROGRAM. Everything below this
 	' line -- setup_rest's DEFINEs, the template blits, every table read in
@@ -842,8 +1032,57 @@ setup_font:
 	' re-enters below it: a game over redraws the title without rebuilding a
 	' store that is already defined.
 setup_rest:
+	#if NES
+	#nsrc = VARPTR store_pat(0)
+	nchr = 96
+	ncnt = 89
+	ntab = 1
+	#ncol = VARPTR store_col(0)
+	nink = 3
+	GOSUB nes_def
+	' AND THE TWO COUNTER CHARACTERS AGAIN, WITH AN INK AND NO COLOUR TABLE.
+	'
+	' Both are SOLID -- eight rows of $FF -- so a single ink decides the whole
+	' cell and the colour table has nothing to add. Sending them this way takes
+	' them out of the global TMS-colour map altogether, which is the only way
+	' to have them AND the sky: the counter face is light blue on light blue,
+	' and light blue is also SKYGRAD's second band. Mapping it to structure
+	' grey made the counters visible and painted a grey stripe across the
+	' sunset, because the buildings in that band are grey too.
+	'
+	' The lip is the LIGHTER of the two, which is the relationship the TI has
+	' (cyan over light blue). The colours are not the TI's -- the store band
+	' holds three inks and blue is not among them -- but the reading is.
+	#nsrc = VARPTR store_pat(0)
+	#nsrc = #nsrc + 24		' char 99
+	nchr = CH_SHELFT
+	ncnt = 1
+	ntab = 1
+	#ncol = 0
+	nink = 3			' the lip
+	GOSUB nes_def
+	#nsrc = VARPTR store_pat(0)
+	#nsrc = #nsrc + 32		' char 100
+	nchr = 100
+	ncnt = 1
+	ntab = 1
+	#ncol = 0
+	nink = 2			' the body
+	GOSUB nes_def
+	' CH_KOPIC IS DELIBERATELY *NOT* SENT THIS WAY. It is black ink on dark
+	' blue paper, so it only collapses if dark blue moves to the backdrop --
+	' which is the sky experiment recorded in nes_chr.asm and abandoned. Sent
+	' with its own ink it came out as a white block rather than a Kop, so if
+	' that experiment is ever revived, redraw the icon rather than reach for
+	' this path.
+	#else
 	DEFINE CHAR 96,89,store_pat
+	#endif
+	#if NES
+	' no colour table on this machine -- see nes_setup
+	#else
 	DEFINE COLOR 96,89,store_col
+	#endif
 	' WHICH MARQUEE LAMP IS DARK, matching what the DEFINE above just loaded:
 	' genart ships BULB0..2 lit and BULB3 blank. This is the only place the
 	' two have to agree, and they must -- with `bphs` left at 0 the first step
@@ -869,6 +1108,11 @@ setup_rest:
 	' nine patterns a pass on the west screen instead of six, and define_char
 	' triples every byte (see esc_tick).
 esc_deck_col:
+	#if NES
+	' NO COLOUR TABLE ON THE NES -- attributes are per 16x16
+	' block and cannot say what this says. See nes_setup.
+	RETURN
+	#endif
 	#eda = VARPTR esc_deck(0)
 	FOR edi = 0 TO 5
 		edc = PEEK(#eda)
@@ -885,14 +1129,94 @@ esc_deck_col:
 	RETURN
 
 after_deck:
-	DEFINE SPRITE 0,18,spr_kelly	' 0..68  two facing blocks of nine
-	DEFINE SPRITE 18,34,spr_harry	' 72..100, two torso frames each way
-	DEFINE SPRITE 52,1,spr_cart	' pattern 104
-	DEFINE SPRITE 53,1,spr_ball	' pattern 108
-	DEFINE SPRITE 54,1,spr_radio	' pattern 112
+	#if NES
+	#nsrc = VARPTR spr_kelly(0)
+	nchr = 0
+	ncnt = 72
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 0,18,spr_kelly
+	#endif	' 0..68  two facing blocks of nine
+	#if NES
+	#nsrc = VARPTR spr_harry(0)
+	nchr = 72
+	ncnt = 136
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 18,34,spr_harry
+	#endif	' 72..100, two torso frames each way
+	#if NES
+	#nsrc = VARPTR spr_cart(0)
+	nchr = 208
+	ncnt = 4
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 52,1,spr_cart
+	#endif	' pattern 104
+	#if NES
+	#nsrc = VARPTR spr_ball(0)
+	nchr = 212
+	ncnt = 4
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 53,1,spr_ball
+	#endif	' pattern 108
+	#if NES
+	#nsrc = VARPTR spr_radio(0)
+	nchr = 216
+	ncnt = 4
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 54,1,spr_radio
+	#endif	' pattern 112
+	#if NES
+	#nsrc = VARPTR spr_radcar(0)
+	nchr = 220
+	ncnt = 4
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
 	DEFINE SPRITE 55,1,spr_radcar
-	DEFINE SPRITE 56,1,spr_raddot	' the radar marker, both actors
-	DEFINE SPRITE 57,4,spr_plane	' phase A R/L, phase B R/L -- prop is in
+	#endif
+	#if NES
+	#nsrc = VARPTR spr_raddot(0)
+	nchr = 224
+	ncnt = 4
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 56,1,spr_raddot
+	#endif	' the radar marker, both actors
+	#if NES
+	#nsrc = VARPTR spr_plane(0)
+	nchr = 228
+	ncnt = 16
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 57,4,spr_plane
+	#endif	' phase A R/L, phase B R/L -- prop is in
 					' the body now, so four and not six
 	RETURN
 
@@ -903,6 +1227,27 @@ init_tables:
 	flry(1) = 120			' floor 2, row 15
 	flry(2) = 80			' floor 3, row 10
 	flry(3) = 40			' roof,    row 5
+	#if NES
+	' AND THE SPRITES FOLLOW THE PICTURE DOWN. The NES name table is 32x30
+	' where the TMS one is 32x24, and its top and bottom eight scan lines are
+	' under the bezel on any real set, so this port draws the store THREE ROWS
+	' lower (see the overscan note on the SCREEN destination). A sprite's y is
+	' a SCREEN coordinate and knows nothing about that, so leaving these alone
+	' left every actor twenty-four pixels above the floor he was standing on.
+	'
+	' IT IS ONE PLACE BECAUSE flry IS ONE PLACE. Kelly, Harry and all eight
+	' obstacles derive their y from this table -- `ky = flry(klv)` and the like
+	' -- so the whole cast moves with the store from four lines. The radar's
+	' marker is the only sprite that does not, and it is adjusted beside its
+	' own literal in scan_mark.
+	'
+	' The TI values above are left byte-for-byte: checkball.py, checkjump.py
+	' and checkride.py all read them, and they model the TI screen.
+	flry(0) = flry(0) + 24
+	flry(1) = flry(1) + 24
+	flry(2) = flry(2) + 24
+	flry(3) = flry(3) + 24
+	#endif
 
 	' Band destination offsets, name-table relative. Three of the four are
 	' over 255, so they live in #vars -- as a CONST each would truncate to
@@ -977,6 +1322,7 @@ init_tables:
 	' what a cell holds instead of asking the PPU, which means PEEKing it.
 	#if NES
 	#sttp = VARPTR stor_tpl(0)
+	#nesb = VARPTR nesb(0)
 	#endif
 	#stac = VARPTR stor_arc(0)
 	#stcp = VARPTR esc_cap(0)
@@ -1043,6 +1389,11 @@ floor0_colour:
 	' only -- which is why this cannot be a DEFINE COLOR: that always writes
 	' all three thirds (define_color takes the LDIRVM3 path unconditionally).
 f0_rows:
+	#if NES
+	' NO COLOUR TABLE ON THE NES -- attributes are per 16x16
+	' block and cannot say what this says. See nes_setup.
+	RETURN
+	#endif
 	#f0a = 12288			' colour table, bottom screen third
 	#f0b = f0c
 	#f0b = #f0b + #f0b
@@ -1057,6 +1408,11 @@ f0_rows:
 	RETURN
 
 scan_colour:
+	#if NES
+	' NO COLOUR TABLE ON THE NES -- attributes are per 16x16
+	' block and cannot say what this says. See nes_setup.
+	RETURN
+	#endif
 	#scb = VARPTR scan_col3(0)
 	FOR sci = 0 TO 2
 		#sca = 8192
@@ -1108,6 +1464,21 @@ scan_colour:
 	' the next line that reads the product's variable gets the HIGH word
 	' (CLAUDE.md 3A). Five doublings have no such hazard and are smaller.
 title_draw:
+	#if NES
+	' THE TITLE SITS ON DARK BLUE, AND THE BACKDROP IS THE ONLY WAY TO SAY SO.
+	'
+	' Palette index 0 is the UNIVERSAL backdrop -- every background palette's
+	' entry 0 is the same colour, so it cannot be set per region the way the
+	' sky and the store are. It was never written at all, which is why every
+	' cell that maps to index 0 came out black, the title page included.
+	'
+	' Writing it here and putting it back in draw_screen costs two statements
+	' and no art: the title is almost entirely index 0, so the backdrop IS its
+	' background. The store wants black back -- its outlines, the HUD row and
+	' the space under the scanner all read as index 0 -- so draw_screen resets
+	' it rather than leaving the store tinted.
+	PALETTE 0,1			' dark blue
+	#endif
 	GOSUB hide_all
 	CLS
 	' THE DISPLAY LIST IS ON BANK 2, so select it for the walk and put bank 1
@@ -1159,7 +1530,11 @@ tt_run:
 	#ttd = #ttd + #ttd
 	#ttd = #ttd + #ttd
 	#ttd = #ttd + ttc
+	#if NES
+	#ttd = #ttd + 8288
+	#else
 	#ttd = #ttd + 6144
+	#endif
 tt_ch:
 	ttv = PEEK(#tta)
 	VPOKE #ttd,ttv
@@ -1216,7 +1591,11 @@ title_input:
 	' titles when they are already listening. Keystone cannot -- the whole
 	' point of the early draw is that it is early -- so the PROMPT waits
 	' instead, and its arrival is the cue that the screen is awake.
+	#if NES
+	PRINT AT 617 + 96,"FIRE TO START"
+	#else
 	PRINT AT 617,"FIRE TO START"
+	#endif
 	tkl = 15
 title_wait:
 	WAIT
@@ -1248,11 +1627,65 @@ title_wait:
 	IF bfr = 0 THEN
 		bfr = BULBFR
 		bcode = CH_BULB0 + bphs
+		#if NES
+		' QUEUED, NOT BLANKED -- AND THIS IS WHAT MADE THE TITLE FLASH.
+		'
+		' nes_def turns rendering OFF and waits for a vblank the NMI
+		' therefore never services, so the game's own WAIT then waits for
+		' the one after: about two frames with the picture switched off.
+		' Twice a marquee step, for ever, on the one screen the player
+		' looks at longest. It reads as the whole title flashing, not as
+		' the bulbs animating.
+		'
+		' nes_escd hands the NMI a copy descriptor instead. Nothing is
+		' turned off and no frame is lost -- and both bulbs land in the
+		' SAME vblank, which also settles the worry in the note above:
+		' there is no longer a frame in which all four lamps are lit.
+		#nsrc = VARPTR bulb_lit(0)
+		nchr = bcode
+		ncnt = 1
+		ntab = 1
+		#ncol = 0
+		nink = 3
+		GOSUB nes_escd
+		#else
 		DEFINE CHAR bcode,1,bulb_lit
+		#endif
 		bphs = bphs + 1
 		IF bphs > 3 THEN bphs = 0
 		bcode = CH_BULB0 + bphs
+		#if NES
+		' A SECOND STAGING AREA, AND THIS IS THE WHOLE MARQUEE BUG.
+		'
+		' nes_escd does NOT copy anything. It builds the tile into the RAM
+		' buffer `#nesb` and hands the NMI a five-byte descriptor holding a
+		' POINTER to it; the copy happens at the next vblank. Both marquee
+		' writes happen in the same pass, so with one buffer the darken call
+		' overwrote the staged LIT bytes before the NMI had read either --
+		' and then BOTH descriptors copied bulb_off.
+		'
+		' So every step darkened two lamps and lit none, and the sign walked
+		' itself out: "it animates a little bit and goes out". Nothing fails,
+		' because both writes are perfectly valid and land exactly where they
+		' were addressed -- they just carry the same sixteen bytes.
+		'
+		' The lit call staged at nesb(0); this one stages sixteen bytes up.
+		' nesb is 96 bytes for the escalator's six characters and the
+		' escalator never runs on the title screen, so the room is free. The
+		' pointer is put back immediately: esc_tick stages at offset 0 and
+		' would otherwise write its six characters one tile off.
+		#nesb = #nesb + 16
+		#nsrc = VARPTR bulb_off(0)
+		nchr = bcode
+		ncnt = 1
+		ntab = 1
+		#ncol = 0
+		nink = 3
+		GOSUB nes_escd			' queued -- see the note above
+		#nesb = #nesb - 16
+		#else
 		DEFINE CHAR bcode,1,bulb_off
+		#endif
 	END IF
 	' Edge-triggered: cont1.key returns the same value on every pass while a
 	' key is held, so without this one press would be read as many.
@@ -1312,7 +1745,11 @@ setup838:
 	' survives: every digit on screen is one the player just typed. Four
 	' strings became two, a two-field loop became a straight line, and the page
 	' got SMALLER while getting quieter.
+	#if NES
+	PRINT AT 164 + 96,"KOPS 1-9"
+	#else
 	PRINT AT 164,"KOPS 1-9"
+	#endif
 	' DEBOUNCE THE 8 THAT OPENED THIS PAGE. cont1.key still reports it on the
 	' first pass in here, so the Kops field read it as the answer and the page
 	' came up showing 8 before the player had touched anything -- typing 8-3-8
@@ -1325,17 +1762,29 @@ setup838:
 	' being ignored, which would look like a dropped keypress.
 	kops0 = sk
 	IF kops0 < 1 THEN kops0 = 1
+	#if NES
+	#sua = 8464
+	#else
 	#sua = 6320			' row 5, col 16 -- beside KOPS
+	#endif
 	sud = 48 + kops0
 	VPOKE #sua,sud
 	GOSUB su_rel
+	#if NES
+	PRINT AT 228 + 96,"LEVEL 01-20"
+	#else
 	PRINT AT 228,"LEVEL 01-20"
+	#endif
 	' The TENS digit is echoed as it is typed, so the field is never half a
 	' number with nothing on screen to say so. 6384 is row 7 column 16 -- the
 	' same column as the Kop count above it, so the two values line up.
 	GOSUB su_key
 	sud1 = sk
+	#if NES
+	#sua = 8528
+	#else
 	#sua = 6384
+	#endif
 	sud = 48 + sk
 	VPOKE #sua,sud
 	GOSUB su_rel
@@ -1356,7 +1805,11 @@ setup838:
 	' dismiss and nothing to retype -- so 80 typed for 08 has to be SEEN landing
 	' on 20, or it reads as the page ignoring the second digit. The wait below
 	' is what gives it time to be read.
+	#if NES
+	#sua = 8528
+	#else
 	#sua = 6384
+	#endif
 	sut = krk0
 	sud = 48
 su_tens:
@@ -1606,6 +2059,9 @@ start_krook:
 
 	CLS
 	GOSUB draw_screen
+	#if NES
+	GOSUB nes_attr
+	#endif
 	GOSUB scan_canvas
 	GOSUB hud_all
 	#lf = FRAME
@@ -1648,6 +2104,17 @@ start_krook:
 	' byte, so counting down past zero wraps to 255 and the loop never ends
 	' (CLAUDE.md 3A).
 draw_screen:
+	#if NES
+	' AND BLACK BACK FOR THE STORE -- see the note in title_draw. Index 0 is
+	' the universal backdrop, so the dark blue the title sets would otherwise
+	' tint every outline, the HUD row and the ground under the scanner.
+	'
+	' A DARK BLUE BACKDROP WAS TRIED HERE, to give the sunset a fourth band
+	' (see nes_inkmap in assets/nes_chr.asm). It works, and it costs the
+	' escalator, the radar ground and every black outline in the store, all of
+	' which ride on index 0. One sky band is not worth the store's line work.
+	PALETTE 0,15			' black
+	#endif
 	GOSUB hide_play
 	GOSUB load_band
 	FOR dq = 0 TO 3
@@ -1669,7 +2136,33 @@ draw_screen:
 		dt = PEEK(#dta)
 		#dsrc = #tsrc(dt)
 		#ddst = #bdst(dlv)
+		#if NES
+		#ddst = #ddst + 96		' three rows down -- see the overscan note
+		' ONE ROW A FRAME, AND THIS IS WHY THREE BANDS IN FOUR LOST THEIR
+		' LAST TWO ROWS. The NMI copies PPUBUF into the PPU during vblank
+		' and its copy loop DOES NOT STOP WHEN VBLANK ENDS -- it runs to
+		' the end of the descriptor whatever the raster is doing, and a
+		' PPUDATA write outside vblank is discarded by the hardware.
+		'
+		' NTSC gives about 2273 CPU cycles of vblank, OAM DMA takes 513 of
+		' them, and the copy costs roughly 14 a byte: about a hundred bytes
+		' get through. A 32x5 band is 160, so the last sixty-odd vanished
+		' -- three whole rows arrived, the fourth stopped eight or nine
+		' cells in, and the floor bar and the air row above it were simply
+		' never there. Measured on screen as `#########.......`, on every
+		' band whose blit did not happen to start early.
+		'
+		' A row is 32 bytes, which fits with room to spare. This costs four
+		' extra frames per band at round start and nothing during play.
+		FOR dsr = 0 TO 4
+			SCREEN stor_tpl,#dsrc,#ddst,32,1,32
+			#dsrc = #dsrc + 32
+			#ddst = #ddst + 32
+			WAIT
+		NEXT dsr
+		#else
 		SCREEN stor_tpl,#dsrc,#ddst,32,5,32
+		#endif
 		' finish this band before the frame ends -- see the note above
 		bt = dlv
 		GOSUB beam_one
@@ -1715,7 +2208,11 @@ beam_one:
 	#bta = #stix + bti
 	#btp = #stpl + PEEK(#bta) * 4.
 	#btr = #bdst(bt)
+	#if NES
+	#btr = #btr + 8256
+	#else
 	#btr = #btr + 6112		' 6144 - 32: the row ABOVE the band
+	#endif
 	FOR btj = 0 TO 3
 		btc = PEEK(#btp)
 		#btp = #btp + 1
@@ -1781,7 +2278,11 @@ esc_cap_draw:
 							' 4). Row 1's characters carry the floor
 							' colours themselves, so the bar shows
 							' through instead of being erased.
+							#if NES
+							#ecw = 8288
+							#else
 							#ecw = 6144
+							#endif
 							#ecw = #ecw + #bdst(ec + 1)
 							#ecw = #ecw + 96
 							IF ecr = 1 THEN #ecw = #ecw + 32
@@ -2182,7 +2683,11 @@ prize_one:
 		#if NES
 		nbl = plv
 		#endif
+		#if NES
+		#pva = 8288
+		#else
 		#pva = 6144
+		#endif
 		#pva = #pva + #bdst(plv)
 		#pva = #pva + 64		' row 2 of the band
 		#pva = #pva + pc
@@ -2238,7 +2743,11 @@ draw_car:
 		cst = 0
 		IF clv = elvl THEN cst = eldp
 		FOR crw = 0 TO 3
+			#if NES
+			#cva = 8288
+			#else
 			#cva = 6144
+			#endif
 			#cva = #cva + #bdst(clv)
 			IF crw > 0 THEN #cva = #cva + 32
 			IF crw = 2 THEN #cva = #cva + 32
@@ -2693,11 +3202,22 @@ esc_stand:
 	hsd = hsd + 1
 	IF hsw = hsd THEN RETURN
 	hsw = hsd
+	#if NES
+	#nsrc = VARPTR spr_hstand(0)
+	IF hsd <> 2 THEN #nsrc = VARPTR spr_hstandl(0)
+	nchr = 72
+	ncnt = 16
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
 	IF hsd = 2 THEN
 		DEFINE SPRITE 18,4,spr_hstand
 	ELSE
 		DEFINE SPRITE 18,4,spr_hstandl
 	END IF
+	#endif
 	RETURN
 
 	' AND THE RUN GOES BACK. Called when he steps off, and again from
@@ -2709,7 +3229,17 @@ esc_stand:
 esc_run:
 	IF hsw = 0 THEN RETURN
 	hsw = 0
+	#if NES
+	#nsrc = VARPTR spr_hbod4(0)
+	nchr = 72
+	ncnt = 16
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
 	DEFINE SPRITE 18,4,spr_hbod4
+	#endif
 	RETURN
 
 	' ------------------------------------------------------ getting on one
@@ -2851,6 +3381,37 @@ upd_elev:
 	' reading what the cell MEANS, not guessing from where the cell is: a
 	' coordinate is a fact about this layout, the character is a fact about
 	' the world, and only the second is safe to erase on.
+nes_def:
+	' WHAT DEFINE WOULD HAVE DONE. CVBasic implements no DEFINE at all for the
+	' NES, on the reading that patterns live in cartridge CHR ROM -- but an
+	' iNES header with a CHR-bank count of ZERO asks for 8 KB of CHR-RAM
+	' instead, and that is the header CVBasic emits whenever the program uses
+	' no BITMAP/CHRROM statement. So the pattern table here is ordinary VRAM
+	' and this is the write. assets/nes_chr.asm carries the routine and the
+	' reasoning; the caller sets #nsrc, nchr, ncnt and ntab.
+	ASM JSR nes_chrup
+	RETURN
+
+	' AND THE SAME THING WITHOUT LOSING A FRAME. nes_def turns rendering off
+	' and waits for a vblank the NMI therefore never services, so the game's
+	' own WAIT then waits for the one after -- about two frames a call. That
+	' is free at setup and ruinous anywhere that runs repeatedly. It builds
+	' the same bytes into `nesb` and hands the NMI a single copy descriptor
+	' instead. See assets/nes_chr.asm.
+	'
+	' THE NAME IS HISTORICAL: it was written for esc_tick, which redefines six
+	' characters EVERY PASS on the two escalator screens and ran visibly slow
+	' on nes_def. Nothing about it is escalator-specific -- it takes the same
+	' inputs as nes_def plus #nesb, and the title's marquee uses it too, where
+	' nes_def was switching the picture off twice a step and reading as a
+	' flashing title screen.
+	'
+	' #nesb must point at a buffer of at least ncnt*16 bytes and is set once
+	' in init_tables, which runs before boot: and therefore before the title.
+nes_escd:
+	ASM JSR nes_chrq
+	RETURN
+
 nes_tpl:
 	nti = lv8(nbl)
 	nti = nti + klsc
@@ -2868,7 +3429,7 @@ wipe_shelf:
 ws_loop:
 	IF wsn = 0 THEN RETURN
 	#if NES
-	#nta = #wsa - 6144
+	#nta = #wsa - 8288
 	#nta = #nta - #bdst(nbl)
 	GOSUB nes_tpl
 	wsv = ntv
@@ -2913,7 +3474,7 @@ beam_clear:
 	' and clearing structure because an erase routine could not tell the
 	' two apart is the fault that once deleted the second floor's support.
 	#if NES
-	#nbc = #bca - 6144
+	#nbc = #bca - 8288
 	#nbc = #nbc + 32
 	#nbc = #nbc - #bdst(nbl)
 	nbcol = #nbc
@@ -2964,7 +3525,7 @@ beam_clear:
 	' the position. COUNTR is a pillar or a counter; anything else stays.
 wall_clear:
 	#if NES
-	#nta = #wca - 6144
+	#nta = #wca - 8288
 	#nta = #nta - #bdst(nbl)
 	GOSUB nes_tpl
 	wcv = ntv
@@ -2994,7 +3555,11 @@ radio_band:
 			#if NES
 			nbl = rbn
 			#endif
+			#if NES
+			#rva = 8288
+			#else
 			#rva = 6144
+			#endif
 			#rva = #rva + #bdst(rbn)
 			#rva = #rva + 64		' band row 2
 			#rva = #rva + obc(ri)
@@ -3103,7 +3668,11 @@ haz_off:
 	' rather than a CONST (CLAUDE.md 3A: a CONST over 255 is truncated to its
 	' low byte, a literal is not).
 wipe_2x2:
+	#if NES
+	#w2a = 8352
+	#else
 	#w2a = 6208				' name table, band row 2
+	#endif
 	#w2a = #w2a + #bdst(klv)
 	#w2a = #w2a + w2c
 	w2w = CH_WALL
@@ -4308,6 +4877,14 @@ draw_harry:
 			SPRITE ds,dy,dxx,dp,dc
 		END IF
 	NEXT di
+	#if NES
+	' AND THE RIGHT-HAND HALF OF EVERY ACTOR. An NES sprite is 8x16 where a
+	' TMS one is 16x16, so each of the twenty-eight slots above needs a twin.
+	' Done here in one call rather than as a second SPRITE statement beside
+	' each of them, which is twenty-eight places for the halves to drift
+	' apart. assets/nes_chr.asm explains why the art needs no repacking.
+	ASM JSR nes_oam2
+	#endif
 	RETURN
 
 	' THE PLAYFIELD'S SPRITES ONLY -- 0-23. The radar's three (24-26) belong
@@ -4322,6 +4899,9 @@ hide_play:
 	' belong to the obstacles and their propellers. The loop cannot simply be
 	' widened -- 24-26 are the RADAR, which this routine must leave alone.
 	SPRITE 27,SPRHID,0,0,0
+	#if NES
+	ASM JSR nes_oam2
+	#endif
 	RETURN
 
 hide_all:
@@ -4329,6 +4909,9 @@ hide_all:
 	FOR hi = 24 TO 26
 		SPRITE hi,SPRHID,0,0,0
 	NEXT hi
+	#if NES
+	ASM JSR nes_oam2
+	#endif
 	RETURN
 
 	' ======================================================================
@@ -4401,15 +4984,46 @@ esc_tick:
 	' The handrail and the frame sit past the end of both ranges and never
 	' move at all.
 	IF klsc = 0 THEN
+		#if NES
+		nchr = 110
+		ncnt = 6
+		ntab = 1
+		#nsrc = VARPTR esc_phw0(0)
+		IF escp = 1 THEN #nsrc = VARPTR esc_phw1(0)
+		IF escp = 2 THEN #nsrc = VARPTR esc_phw2(0)
+		IF escp = 3 THEN #nsrc = VARPTR esc_phw3(0)
+		' THE SAME COLOURS THE SETUP LOAD GAVE THESE CHARACTERS. 110 is the
+		' fifteenth character of the store set, which starts at 96, so its
+		' colour bytes start 14 x 8 into store_col. Derived rather than
+		' written out, because a renumber moves the first number and would
+		' leave a hand-copied second one behind.
+		#ncol = VARPTR store_col(0)
+		#ncol = #ncol + 112
+		GOSUB nes_escd
+		#else
 		IF escp = 0 THEN DEFINE CHAR 110,6,esc_phw0
 		IF escp = 1 THEN DEFINE CHAR 110,6,esc_phw1
 		IF escp = 2 THEN DEFINE CHAR 110,6,esc_phw2
 		IF escp = 3 THEN DEFINE CHAR 110,6,esc_phw3
+		#endif
 	ELSE
+		#if NES
+		nchr = 116
+		ncnt = 6
+		ntab = 1
+		#nsrc = VARPTR esc_phe0(0)
+		IF escp = 1 THEN #nsrc = VARPTR esc_phe1(0)
+		IF escp = 2 THEN #nsrc = VARPTR esc_phe2(0)
+		IF escp = 3 THEN #nsrc = VARPTR esc_phe3(0)
+		#ncol = VARPTR store_col(0)
+		#ncol = #ncol + 160		' character 116, twenty on from 96
+		GOSUB nes_escd
+		#else
 		IF escp = 0 THEN DEFINE CHAR 116,6,esc_phe0
 		IF escp = 1 THEN DEFINE CHAR 116,6,esc_phe1
 		IF escp = 2 THEN DEFINE CHAR 116,6,esc_phe2
 		IF escp = 3 THEN DEFINE CHAR 116,6,esc_phe3
+		#endif
 	END IF
 	RETURN
 
@@ -4422,7 +5036,11 @@ scan_canvas:
 	' stops the radar touching the shop floor above and the screen edge
 	' below.
 	FOR sr = 0 TO 2
+		#if NES
+		#sva = 8288
+		#else
 		#sva = 6144
+		#endif
 		#sva = #sva + 672		' row 21
 		IF sr = 1 THEN #sva = #sva + 32
 		IF sr = 2 THEN #sva = #sva + 64
@@ -4575,6 +5193,11 @@ scan_escs:
 	' last colour written wins, so an actor in the lift shaft shows as an
 	' actor rather than shifting anywhere.
 scan_escc:
+	#if NES
+	' NO COLOUR TABLE ON THE NES -- attributes are per 16x16
+	' block and cannot say what this says. See nes_setup.
+	RETURN
+	#endif
 	#sdx = #sda + 8192
 	VPOKE #sdx,SC_KOP
 	RETURN
@@ -4620,6 +5243,14 @@ scan_pat:
 	sc3 = sc3 + sccol
 	#sda = 4096
 	#sda = #sda + sc3 * 8.
+	#if NES
+	' AND AGAIN FOR THE SECOND BITPLANE'S WORTH OF STRIDE. An NES tile is
+	' sixteen bytes where a TMS pattern is eight; the canvas characters sit at
+	' the same address 4096 they had in the TMS bitmap mode's third screen
+	' third (see nes_bgbank), so only the stride differs. Written as the same
+	' step twice rather than as *16, so there is one expression to keep right.
+	#sda = #sda + sc3 * 8.
+	#endif
 	#sda = #sda + scpr
 	RETURN
 
@@ -4657,6 +5288,15 @@ scan_wipe:
 	' renumber.py rewrites this line from genart.SCAN_FIRST, and
 	' checkstruct.py fails the build if the two disagree.
 	#swa = 5760			' 4096 + SCAN_FIRST*8, the canvas patterns
+	#if NES
+	' AN NES TILE IS SIXTEEN BYTES, NOT EIGHT -- two bitplanes. DERIVED FROM
+	' THE LINE ABOVE rather than written out again: renumber.py rewrites that
+	' literal out of genart.SCAN_FIRST and checkstruct.py checks it, and a
+	' second hand-kept copy of the same number is exactly the fault recorded
+	' in the comment above this routine.
+	#swa = #swa + #swa
+	#swa = #swa - 4096
+	#endif
 	' THE SHADOW TAKES ITS BASE FROM THE LINE ABOVE, never from a second
 	' copy of the number. renumber.py rewrites that literal out of
 	' genart.SCAN_FIRST, and a hand-kept duplicate of it is precisely the
@@ -4667,17 +5307,29 @@ scan_wipe:
 	#nsb = #swa
 	#nsi = 0
 	#endif
-	FOR swj = 0 TO 5
+	#if NES
+	' TWELVE BURSTS, NOT SIX: 48 tiles of SIXTEEN bytes. The shadow is indexed
+	' by the same offset the PPU address uses, so it grows with the stride --
+	' half of what it holds is the second bitplane, which this port never sets
+	' and scan_or1 therefore never reads as ink.
+	FOR swj = 0 TO 11
 		FOR swi = 0 TO 63
 			VPOKE #swa,0
-			#if NES
 			nsc(#nsi) = 0
 			#nsi = #nsi + 1
-			#endif
 			#swa = #swa + 1
 		NEXT swi
 		WAIT
 	NEXT swj
+	#else
+	FOR swj = 0 TO 5
+		FOR swi = 0 TO 63
+			VPOKE #swa,0
+			#swa = #swa + 1
+		NEXT swi
+		WAIT
+	NEXT swj
+	#endif
 	RETURN
 
 	' One actor per tick, at about 10 Hz: erase where it was, draw where it
@@ -4717,6 +5369,9 @@ scan_tick:
 	say = say + say				' (3-lv) * 4
 	say = say + 4				' the top margin, then band row 0
 	sdy = 167
+	#if NES
+	sdy = sdy + 24			' three rows down with the rest of the picture
+	#endif
 	sdy = sdy + say
 	' 118, NOT 120, AND THE TWO HAVE TO BE WORKED OUT THE SAME WAY. A marker
 	' is three pixels wide and the car is five, so putting both left edges at
@@ -4775,6 +5430,9 @@ scan_dot:
 	sdx = 64
 	sdx = sdx + sax
 	sdy = 167
+	#if NES
+	sdy = sdy + 24			' three rows down with the rest of the picture
+	#endif
 	sdy = sdy + say
 	RETURN
 
@@ -4784,8 +5442,16 @@ scan_dot:
 hud_all:
 	' TWO COLUMNS IN FROM THE LEFT. The score line ran hard against the
 	' screen edge, which the TI's overscan eats on a real set.
+	#if NES
+	PRINT AT 2 + 64,"SCORE"
+	#else
 	PRINT AT 2,"SCORE"
+	#endif
+	#if NES
+	PRINT AT 16 + 64,"TIME"
+	#else
 	PRINT AT 16,"TIME"
+	#endif
 	GOSUB hud_score
 	GOSUB hud_time
 	GOSUB hud_kops
@@ -4796,7 +5462,16 @@ hud_all:
 	' one capture, which is already past a byte and well on the way to a word.
 hud_score:
 	#psv = #score
+	' A RAW NAME-TABLE ADDRESS IS A PORTING HAZARD IN DISGUISE. On the NES the
+	' name table is at 8192, not 6144, and the picture sits 96 bytes lower
+	' again -- so this constant was pointing at $1808, which is inside the
+	' PATTERN table. The digits were not merely invisible: every score update
+	' was writing them over the artwork of a store character.
+	#if NES
+	#psa = 8264
+	#else
 	#psa = 6152
+	#endif
 	#psd = 10000
 	' BLANK THE LEADING ZEROS. 000050 reads as a six-digit number that happens
 	' to be small; 50 reads as a score. Every arcade cabinet this is imitating
@@ -4821,7 +5496,11 @@ hud_time:
 	' comes straight back here and draws whatever the value is by then.
 	IF tflon = 0 THEN RETURN
 	#psv = tsec
+	#if NES
+	#psa = 8277
+	#else
 	#psa = 6165
+	#endif
 	#psd = 10
 	' THE CLOCK STAYS PADDED. A countdown is a fixed-width field the player
 	' glances at -- "05" holds its place where "5" jumps a column, and a
@@ -4843,7 +5522,11 @@ hud_kops:
 	' 31: six hats from column 27 would run over onto row 1, which is the
 	' wrap checklayout.py exists to catch. Five is what fits, so a game set
 	' to more than six Kops shows five hats and the rest are implied.
+	#if NES
+	#pla = 8283
+	#else
 	#pla = 6171
+	#endif
 	FOR pli = 0 TO 4
 		plv2 = 32
 		IF pli < spare THEN plv2 = CH_KOPIC
@@ -4851,6 +5534,47 @@ hud_kops:
 		#pla = #pla + 1
 	NEXT pli
 	RETURN
+
+#if NES
+	' ----------------------------------------------------------------------
+	' THE ATTRIBUTE TABLE -- the NES's only way of giving two parts of the
+	' screen different colours.
+	'
+	' 64 bytes at $23C0. Each byte covers FOUR character rows and four
+	' columns, split into four 2x2 quadrants of two bits each: bits 0-1 top
+	' left, 2-3 top right, 4-5 bottom left, 6-7 bottom right.
+	'
+	' The picture sits three rows down for overscan, which lands the regions
+	' on block boundaries almost by luck:
+	'
+	'   byte row 0   name rows 0-3    the HUD is row 3  -> bottom quads P1
+	'   byte row 1   name rows 4-7    the sky, top half -> P2, bottom -> P3
+	'   byte rows 2+ name rows 8-29   the store         -> P0
+	'
+	' $50 is "bottom two quadrants on palette 1"; $FA is "top two on palette
+	' 2, bottom two on palette 3", which is what splits the sunset into a
+	' blue band over a warm one. Written as bare literals because this is the
+	' one place the bit layout is visible, and naming them would hide it.
+	'
+	' 64 VPOKEs is 192 bytes of PPU queue, and WRTVRM waits when the 64-byte
+	' buffer fills, so this paces itself across three frames and cannot
+	' overrun vblank the way a single big SCREEN blit can.
+nes_attr:
+	#nav = 9152			' $23C0
+	FOR nai = 0 TO 7
+		VPOKE #nav,80
+		#nav = #nav + 1
+	NEXT nai
+	FOR nai = 0 TO 7
+		VPOKE #nav,250			' $FA -- rows 4-5 on P2, rows 6-7 on P3
+		#nav = #nav + 1
+	NEXT nai
+	FOR nai = 0 TO 47
+		VPOKE #nav,0
+		#nav = #nav + 1
+	NEXT nai
+	RETURN
+#endif
 
 	' Repeated subtraction rather than a divide: four steps, cheaper than a
 	' DIV on this CPU, and only run when the value actually changes.
@@ -4943,8 +5667,16 @@ tick_flash:
 			GOSUB time_show
 		ELSE
 			tflon = 0
+			#if NES
+			PRINT AT 16 + 96,"    "
+			#else
 			PRINT AT 16,"    "
+			#endif
+			#if NES
+			PRINT AT 21 + 96,"  "
+			#else
 			PRINT AT 21,"  "
+			#endif
 		END IF
 	END IF
 	RETURN
@@ -4962,7 +5694,11 @@ tick_flash:
 time_show:
 	IF tflon = 1 THEN RETURN
 	tflon = 1
+	#if NES
+	PRINT AT 16 + 64,"TIME"
+	#else
 	PRINT AT 16,"TIME"
+	#endif
 	GOSUB hud_time
 	RETURN
 

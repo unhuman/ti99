@@ -17,6 +17,7 @@ thing lands on is coloured for the job it is doing.
 Run:  python3 checkscan.py        exits non-zero if a row has the wrong colour
 """
 
+import io
 import os
 import re
 import sys
@@ -26,6 +27,39 @@ import genart as g
 HERE = os.path.dirname(os.path.abspath(__file__))
 BAS = os.path.join(HERE, "..", "src", "KEYSTONE.bas")
 
+
+def bas_text():
+    """KEYSTONE.bas WITH THE NES BRANCHES TAKEN OUT.
+
+    This file models the TMS9918 screen -- 24 rows of it, and a scanner three of
+    them tall. The NES port draws the same picture three rows LOWER, because that
+    machine's name table is 32x30 and its top eight scan lines sit under the
+    bezel, and it moves every sprite y down with it (`sdy = sdy + 24`). Read
+    literally, those lines put the markers on canvas rows 36-38 and this checker
+    fails on a screen it is not describing.
+
+    SKIPPING THE BRANCH IS SCOPING, NOT BLINDING. Every TI and ColecoVision line
+    is still read. What makes it safe is a rule the source keeps: the TI form of
+    each of these pairs stays byte-for-byte and the NES form is ADDITIVE beside
+    it, never a replacement -- so nothing this file checks can move INTO a branch
+    it cannot see. If that rule is ever broken the number checked here simply
+    disappears from the file, which fails loudly rather than quietly.
+    """
+    out, skipping = [], False
+    for ln in io.open(BAS, encoding="utf-8").read().split(chr(10)):
+        t = ln.strip()
+        if t == "#if NES":
+            skipping = True
+            continue
+        if t in ("#else", "#endif"):
+            skipping = False
+            continue
+        if t.startswith("#if "):
+            continue
+        if not skipping:
+            out.append(ln)
+    return chr(10).join(out)
+
 BAND = 4                      # pixel rows per level
 ROLE = {"GRAY": g.GRAY, "BLACK": g.BLACK, "WHITE": g.WHITE, "LYELL": g.LYELL}
 NAMES = {v: k for k, v in ROLE.items()}
@@ -34,7 +68,7 @@ NAMES = {v: k for k, v in ROLE.items()}
 def routines():
     """label -> its lines, up to the next label."""
     out, cur = {}, None
-    for ln in open(BAS, encoding="utf-8").read().split("\n"):
+    for ln in bas_text().split(chr(10)):
         m = re.match(r"^([a-z_][a-z0-9_]*):", ln)
         if m:
             cur = m.group(1)
@@ -231,7 +265,7 @@ def main():
     # Kop that cannot be told from the crook. That has happened here twice
     # (a grey car drawn on a grey floor line), and neither time did any
     # per-row check see it, because per-row is not where the fault was.
-    src = open(BAS, encoding="utf-8").read()
+    src = bas_text()
     cols = {}
     for name in ("SC_KOP",):
         m = re.search(r"^\s*CONST %s = (\d+)" % name, src, re.M)

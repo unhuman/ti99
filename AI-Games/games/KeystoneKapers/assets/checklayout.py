@@ -108,6 +108,12 @@ SCREEN = {
     # These write the PATTERN table (base 4096), not the name table, so they
     # can never collide with a printed string. Mapped anyway, because an
     # unmapped drawing routine has to fail rather than be silently skipped.
+    # And nes_attr writes the NES ATTRIBUTE table (base $23C0), which is a
+    # third address space again: one byte there colours a 16x16 BLOCK of the
+    # picture and addresses no character at all, so a row/column collision
+    # test has nothing to say about it.
+    "nes_attr": "ATTR",
+
     "scan_set": "PATT",
     "scan_mark": "PATT",      # a marker's three rows, pattern AND colour
     "scan_wipe1": "PATT",     # and giving the character its base colour back

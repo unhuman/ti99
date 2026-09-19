@@ -33,6 +33,7 @@ MSPAC.TXT
 *.a80
 mspac.txt
 *.bin
+*.nes
 # ...BUT assets/ HOLDS HAND-WRITTEN SOURCE, NOT COMPILER OUTPUT. The *.asm rule
 # above is for what CVBasic generates into src/. It also silently swallowed
 # games/KeystoneKapers/assets/nes_apu.asm, a 6502 shim supplying the three
