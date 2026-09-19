@@ -5012,6 +5012,65 @@ the next person to want a "free gap" is told where one actually is.
 `checkpat_test.py` applies the overwrite that shipped plus three near misses to
 the real source and requires all four to be rejected.
 
+### The HUD on dark blue, and the "free" codes that were the radar
+
+The score line was a black strip across the top of a blue sky, because the font
+was uploaded with `#ncol = 0`: ink `nink` on index 0, the **universal backdrop**,
+which is black in the game. Index 0 is one colour for the whole screen, so the
+only way to give text a ground is to move its PAPER onto another index — and
+paper is written into the second bitplane when the character is uploaded.
+
+**The first attempt built a SECOND copy of the font** at codes 197.. so the HUD
+could differ from the message boxes. It was both impossible and unnecessary.
+
+*Impossible*, because 197..255 is not free. **208 up is the radar canvas**
+(`genart.SCAN_FIRST`), which `scan_wipe` rewrites as raw pattern memory every
+frame. The 59-character copy uploaded correctly and was scribbled over from its
+twelfth character on, so the HUD came out as bands of unrelated art. Measured
+rather than guessed: codes 197–207 held the right glyphs (197 *is* the blank,
+198 *is* `!`, checked against `font.bas` popcounts) and everything above did not.
+
+> **`checkpat.py` had called 197..255 free, and that is the same mistake it was
+> written to catch, one day later.** The canvas is written by raw VRAM address,
+> so no upload declares it and the gate could not see it. It now takes the range
+> from `genart.SCAN_FIRST`, reports the true free space (**91–95 and 197–207,
+> sixteen codes**), and `checkpat_test.py` carries this as a case.
+
+*Unnecessary*, because in game the HUD and the message boxes are the same text
+and want the same treatment — which is the reviewer's observation, and it is what
+made the fix small. The one font is now sent with a colour table of 472 identical
+`$F4` bytes (white ink, dark blue paper → indices 3 and 1). What index 1 *is* then
+comes from the attribute table, per region.
+
+Three consequences, all handled:
+
+| | |
+|---|---|
+| the HUD row | `PALETTE 5` → the sky's dark blue, so the score line has a ground |
+| rows 0–1 above it | attribute byte `$50` → **`$55`**: all four quadrants on P1. They are blank cells, and a blank cell is all paper, so on P0 they came out the store's GREEN |
+| the title | `title_draw` writes 64 bytes of `$AA` (P2: index 1 *is* the backdrop blue, index 3 the logo's yellow) — **after the `CLS`, which clears the attribute table too** |
+
+The last one cost a build: written before the `CLS` it was wiped, and the title
+came up with its text on green.
+
+### Harry is taken off the screen while his art is in flight
+
+`nes_swp16` moves 256 bytes as four queued chunks, so the game loop is stopped
+for four frames while the PPU keeps running — and whatever is half-written is on
+screen. Harry was part standing and part running for a frame or two at every
+mount and dismount. **All four of his sprites differ between the two poses**
+(measured), so no ordering of the chunks stays coherent.
+
+He is hidden for the duration instead. Four frames of absence at the moment he
+steps onto or off a staircase reads as nothing; a figure assembled out of two
+poses reads as a fault. `draw_actors` puts him back on its next pass, with no
+flag to clear, because it writes all four slots every time.
+
+**The OAM mirrors have to go with him.** `nes_oam2` makes each 16×16 actor two
+NES sprites and only runs at the end of `draw_actors`, which is not running
+during those WAITs — so without the explicit call his left half would vanish and
+his right half would stay, which is worse than the artefact being fixed.
+
 ### What is not done
 
 - **The display counters are indistinguishable from the pillars.** This is what is

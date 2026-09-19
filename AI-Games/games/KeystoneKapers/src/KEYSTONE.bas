@@ -896,7 +896,11 @@ setup_font:
 	' this index is for.
 	PALETTE 3,40			' P0       -- light  gold, floor bars and prizes
 
-	PALETTE 5,18			' P1 HUD   -- base   blue, the score line's ground
+	' THE SAME DARK BLUE AS THE SKY. The HUD row sits on P1 and the font's
+	' paper is index 1 (see the font upload), so this IS the score line's
+	' background -- it used to be the black backdrop and this entry only
+	' showed behind the lives icon.
+	PALETTE 5,1			' P1 HUD   -- base   dark blue, the score line's ground
 	PALETTE 6,16			' P1       -- struct grey
 	PALETTE 7,48			' P1       -- light  white, the digits
 
@@ -962,11 +966,34 @@ setup_font:
 	#endif
 
 	#if NES
+	' THE FONT IS SENT WITH A COLOUR TABLE SO ITS PAPER IS NOT THE BACKDROP.
+	'
+	' With `#ncol = 0` the uploader puts ink `nink` on index 0 -- the UNIVERSAL
+	' backdrop, black in the game -- so every character of text sat in its own
+	' black box. The score line was a black strip across the top of a blue sky.
+	'
+	' Index 0 cannot be set per region (it is one colour for the whole screen),
+	' so the only way to give text a ground is to put its PAPER on another
+	' index, and paper is written into the second bitplane when the character
+	' is uploaded. Hence a table: $F4 is white ink on dark blue paper, which
+	' nes_inkmap sends to index 3 and index 1.
+	'
+	' ONE FONT, NOT TWO. The first attempt at this made a SECOND copy of the
+	' font at codes 197.. so the HUD could differ from the message boxes, and
+	' that was both unnecessary and impossible: in game the HUD and the boxes
+	' are the same text and want the same treatment, and 197..207 is only
+	' ELEVEN free codes -- 208 up is the radar canvas (genart's SCAN_FIRST),
+	' which scan_wipe rewrites as raw pattern memory every frame. The 59-char
+	' copy appeared to upload and was scribbled over from its twelfth character
+	' on. See checkpat.py, which now knows the canvas owns those codes.
+	'
+	' What index 1 IS comes from the attribute table, per region: the HUD row
+	' is on P1 (dark blue, below) and the store is on P0.
 	#nsrc = VARPTR font_bits(0)
 	nchr = 32
 	ncnt = 59
 	ntab = 1
-	#ncol = 0
+	#ncol = VARPTR nes_fcol(0)
 	nink = 3
 	GOSUB nes_def
 	#else
@@ -1583,9 +1610,31 @@ title_draw:
 	' the space under the scanner all read as index 0 -- so draw_screen resets
 	' it rather than leaving the store tinted.
 	PALETTE 0,1			' dark blue
+	' AND EVERY BLOCK ON P2, because the font now has a PAPER.
+	'
+	' The title's text used to sit on index 0 and index 0 was this backdrop, so
+	' it needed no attribute table at all and simply inherited whatever the
+	' last game screen left. Now that paper is index 1, "FIRE TO START" would
+	' take index 1 of each block it happens to cross -- the store's green under
+	' one row, the sunset's orange under another.
+	'
+	' P2 is the palette that already fits: its index 1 is the same dark blue as
+	' the backdrop, so the paper is invisible, and its index 3 is the yellow the
+	' logo and the marquee lamps are drawn in. $AA is all four quadrants on P2.
+	' draw_screen calls nes_attr and puts the game's own table back.
 	#endif
 	GOSUB hide_all
 	CLS
+	#if NES
+	' AFTER THE CLS, WHICH CLEARS THE ATTRIBUTE TABLE TOO. Written before it,
+	' this was wiped and the title came up with its text on the store's GREEN --
+	' the paper index falling through to palette 0.
+	#nav = 9152			' $23C0
+	FOR nai = 0 TO 63
+		VPOKE #nav,170
+		#nav = #nav + 1
+	NEXT nai
+	#endif
 	' THE DISPLAY LIST IS ON BANK 2, so select it for the walk and put bank 1
 	' back afterwards. The pattern is setup_font's, which has been loading the
 	' fonts this way since they moved -- one bank held for a few statements
@@ -3538,6 +3587,31 @@ upd_elev:
 	' staircase at the time, which is exactly when a limb changing shape reads
 	' as him changing pose.
 nes_swp16:
+	' HARRY COMES OFF THE SCREEN FIRST, because this takes four frames.
+	'
+	' The swap is 256 bytes and a vblank carries about a hundred, so it goes as
+	' four queued chunks with a WAIT between them (see below). The game loop is
+	' stopped for those frames but the PPU is not, so whatever is half-written
+	' is on screen: for a frame or two Harry was part standing and part
+	' running -- reported as a glitch when he steps off a flight, and it is
+	' one. All four of his sprites differ between the two poses, so there is no
+	' ordering of the chunks that stays coherent.
+	'
+	' He is hidden instead. Four frames of absence at the exact moment he steps
+	' on or off a staircase reads as nothing at all, where a figure assembled
+	' out of two poses reads as a fault. draw_actors puts him back on its next
+	' pass -- no flag to clear, because it writes all four slots every time.
+	'
+	' AND THE OAM MIRRORS WITH HIM. nes_oam2 copies slots 0-27 into 28-55 to
+	' make each 16x16 actor two NES sprites, and it only runs at the end of
+	' draw_actors -- which is not running during these WAITs. Without the call
+	' below his left half would vanish and his RIGHT half would stay, which is
+	' a worse artefact than the one being fixed.
+	SPRITE 4,SPRHID,0,0,0
+	SPRITE 5,SPRHID,0,0,0
+	SPRITE 6,SPRHID,0,0,0
+	SPRITE 7,SPRHID,0,0,0
+	ASM JSR nes_oam2
 	nchr = P_HSTB
 	ntab = 0
 	#ncol = 0
@@ -5868,8 +5942,17 @@ hud_kops:
 	' overrun vblank the way a single big SCREEN blit can.
 nes_attr:
 	#nav = 9152			' $23C0
+	' $55, NOT $50 -- ALL FOUR QUADRANTS ON P1, not just the bottom two.
+	'
+	' $50 put the HUD's own row (name row 2) on P1 and left rows 0-1 on P0.
+	' That was invisible while text sat on the backdrop, and stopped being so
+	' the moment the font gained a PAPER: rows 0-1 are blank cells, and a blank
+	' cell is all paper, so they came out in P0's index 1 -- the store's GREEN
+	' -- as a green band above the score line. Nothing is drawn up there, so
+	' putting the whole byte on P1 costs nothing and the HUD reads as one band
+	' of dark blue running into the sky.
 	FOR nai = 0 TO 7
-		VPOKE #nav,80
+		VPOKE #nav,85
 		#nav = #nav + 1
 	NEXT nai
 	FOR nai = 0 TO 7
@@ -6619,4 +6702,76 @@ nes_sky2c:
 	DATA BYTE $F9,$F9,$F9,$F9,$F9,$F9,$F9,$F9
 nes_bldlc:
 	DATA BYTE $B9,$B9,$B9,$B9,$B9,$BE,$BE,$BE
+#endif
+
+	' THE IN-GAME FONT'S COLOUR, one byte a scan line and eight a character for
+	' all 59 of them. $F4 is white on dark blue -- ink index 3, paper index 1 --
+	' and which colours those are is then the attribute table's business, per
+	' region: dark blue behind the HUD, the store's green behind a message box.
+	'
+	' 472 bytes of one repeated value. That reads like waste and is the cheap
+	' option: ROM is three budgets here and this is not the scarce one, while
+	' the alternative is a second font (impossible -- only eleven free codes)
+	' or a new uploader parameter (no RAM -- two bytes left).
+#if NES
+nes_fcol:
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
 #endif

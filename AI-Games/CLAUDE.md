@@ -586,6 +586,17 @@ cost a debugging session:
   - Grep for every `SPRITE <n>` **and** every computed slot (`SPRITE ds`,
     `ds = di + 8`) before picking a number, and put the block map in the source
     next to the allocation rather than in a design doc.
+  - **A RANGE WRITTEN BY RAW VRAM ADDRESS IS OWNED BY NOBODY AS FAR AS ANY GATE CAN
+    SEE.** Keystone Kapers' radar canvas is 48 CHARACTERS that `scan_wipe` rewrites as
+    raw pattern memory every frame. No `DEFINE`, no upload, nothing in the source that
+    looks like a claim -- so the pattern-ownership gate reported those codes as FREE and
+    a second copy of the font was put there. It uploaded correctly and was scribbled
+    over from its twelfth character on; the HUD came out as bands of unrelated art.
+    **This was the same class of mistake the gate had just been written to catch, one
+    day later**, which is the point: a gate that derives ownership from uploads is blind
+    to everything drawn another way. Derive those ranges too (from the art generator's
+    own constant, never a second copy of the number) and make the gate PRINT the free
+    space so the next reader is told rather than guessing.
   - **AND THE SAME IS TRUE OF PATTERN CODES, WHERE "A FREE GAP" IS USUALLY SOMEBODY'S
     ART.** Keystone Kapers moved a sprite pose into "176..207, a 32-code gap nothing
     else uses" and it was the player-chased actor's own left-facing LEG bands. The
@@ -610,6 +621,21 @@ cost a debugging session:
     PPU and the box came out with characters missing -- intermittently, because the
     cut point moves. **Pace any unbounded write loop**, and prefer a bound that needs
     no counter (one `WAIT` per row) when RAM is tight.
+  - **TEXT HAS NO BACKGROUND UNLESS YOU GIVE IT ONE, AND INDEX 0 CANNOT BE IT.** A font
+    uploaded with no colour table gets ink on index 0 -- the UNIVERSAL backdrop, one
+    colour for the whole screen -- so every character sits in a box of it. To put a
+    colour behind text, its PAPER has to move to another index, and paper is written
+    into the second bitplane at upload time: it is a property of the character, not of
+    where the character is drawn. A colour table of identical bytes is the cheap way
+    (ROM is three budgets and this is not the scarce one); a second copy of the font is
+    usually neither possible nor needed, because in game all the text wants the same
+    treatment. Then remember that **a blank cell is ALL paper**, so every region that
+    holds blanks needs its attribute byte pointed at a palette whose index 1 is right --
+    Keystone Kapers got a green band above its score line from two rows nothing draws in.
+  - **`CLS` CLEARS THE ATTRIBUTE TABLE, SO ANYTHING WRITTEN TO IT BEFOREHAND IS LOST.**
+    Setting a screen's palettes and then clearing the screen loses the palettes, and the
+    symptom is a screen whose text is on the wrong colour -- not a blank screen, which
+    is what "the CLS wiped it" sounds like it would look like.
   - **AND WATCH FOR A CHARACTER SENT TWICE IN TWO DIFFERENT FORMS.** That game's
     marquee lamps were loaded once with the store's colour table (paper -> index 1)
     and re-sent at run time with `#ncol = 0` (paper -> index 0, the backdrop). Both

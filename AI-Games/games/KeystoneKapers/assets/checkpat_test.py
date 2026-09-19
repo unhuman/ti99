@@ -62,8 +62,23 @@ def font_over_store(s):
     return s.replace("\tnchr = 32\n", "\tnchr = 100\n", 1)
 
 
+def font_copy_over_radar(s):
+    """The second HUD font at 197..255, over the radar canvas.
+
+    This one shipped too. checkpat itself called 197..255 free, because the
+    canvas is written as raw VRAM by scan_wipe and no upload declares it -- so
+    the copy was scribbled over from its twelfth character on and the HUD came
+    out as bands of the wrong art.
+    """
+    a = "\t#nsrc = VARPTR spr_raddot(0)\n"
+    return s.replace(a, "\t#nsrc = VARPTR font_bits(0)\n"
+                        "\tnchr = 197\n\tncnt = 59\n\tntab = 1\n"
+                        "\t#ncol = 0\n\tnink = 3\n\tGOSUB nes_def\n" + a, 1)
+
+
 CASES = [
     ("the resident standing art at 176 (what shipped)", resident_at_176),
+    ("a 59-char font copy at 197, over the radar", font_copy_over_radar),
     ("a borrow one character outside its range", borrow_off_range),
     ("the chunked uploader handed a non-borrow", swapper_wrong_source),
     ("a font load moved on top of the store", font_over_store),
