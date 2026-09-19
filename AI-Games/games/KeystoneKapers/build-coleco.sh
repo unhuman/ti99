@@ -164,6 +164,19 @@ rm -rf ../assets/__pycache__
     || die "a radar row is the wrong colour -- run assets/checkscan.py"
 "$TRUNCPY" ../assets/checkchars.py > /dev/null \
     || die "a hand-written character number is stale -- run assets/checkchars.py"
+
+# NO UPLOAD MAY LAND IN CODES ANOTHER TABLE OWNS. Harry's standing pose was
+# briefly made resident at "176..207, a 32-code gap nothing else uses" -- a gap
+# that does not exist: it is HLLEG1..4 and HLLEGS1..4, his own left-facing legs.
+# The art loaded correctly, at the address it was given, and running LEFT drew
+# standing art in the leg slots as a detached striped block below his feet.
+# Nothing failed, and checkchars PASSED because the check added with it compared
+# the constant against the very upload that carried the mistake. checkpat.py
+# compares both against genart instead, covers DEFINE CHAR/SPRITE as well as the
+# NES uploads, and lists the deliberate borrows by name; checkpat_test.py proves
+# it rejects the overwrite that shipped plus three near misses.
+"$TRUNCPY" ../assets/checkpat.py > /dev/null \
+    || die "an upload overwrites another table's art -- run assets/checkpat.py"
 "$TRUNCPY" ../assets/checkride.py > /dev/null \
     || die "a rider's feet leave the escalator steps -- run assets/checkride.py"
 

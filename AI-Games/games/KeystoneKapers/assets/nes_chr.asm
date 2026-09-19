@@ -521,29 +521,52 @@ nes_m1:	DB $00,$00,$FF,$FF
 NES_OAM_PAIRS:	EQU 28
 NES_OAM_STEP:	EQU NES_OAM_PAIRS*4
 
+; THE X IS DONE FIRST, AND THAT IS THE WHOLE POINT OF THE ORDERING.
+;
+; An NES sprite's x is ONE BYTE. The right half is the left half plus eight, so
+; any actor at x >= 248 wraps: 250 + 8 is 2, and the half lands at the FAR LEFT
+; while the other half is still at the right edge. On screen the player is at
+; both edges of the store at once, which reads as a sprite bug and is really a
+; byte overflowing.
+;
+; The TMS9918 has the same one-byte x and does not do this, because there a
+; 16-wide sprite is ONE entry that the VDP clips at the edge. Splitting it into
+; two 8-wide entries is what exposes the arithmetic, so this is a hazard the
+; port introduced rather than one it inherited.
+;
+; Hiding the half costs nothing: those eight columns are off the right of the
+; screen anyway. At x=247 the add does not carry and the half still shows its
+; one visible column, so the cut is exactly at the point where there is nothing
+; left to draw.
 nes_oam2:
 	LDX #0
 nes_oam2_loop:
+	LDA $0203,X			; x -- eight pixels right
+	CLC
+	ADC #8
+	STA $0203+NES_OAM_STEP,X
+	BCC nes_oam2_y
+	LDA #$F0			; wrapped: park it off-screen, as the
+	STA $0200+NES_OAM_STEP,X	; prologue's own clear_sprites does
+	JMP nes_oam2_tile
+nes_oam2_y:
 	LDA $0200,X			; y -- same row
 	STA $0200+NES_OAM_STEP,X
-	INX
-	LDA $0200,X			; tile -- two on is the right-hand column
+nes_oam2_tile:
+	LDA $0201,X			; tile -- two on is the right-hand column
 	CLC
 	ADC #2
-	STA $0200+NES_OAM_STEP,X
-	INX
-	LDA $0200,X			; colour -- see nes_spal
+	STA $0201+NES_OAM_STEP,X
+	LDA $0202,X			; colour -- see nes_spal
 	AND #$0F
 	TAY
 	LDA nes_spal,Y
-	STA $0200,X			; and back into the left half as well
-	STA $0200+NES_OAM_STEP,X
-	INX
-	LDA $0200,X			; x -- eight pixels right
+	STA $0202,X			; and back into the left half as well
+	STA $0202+NES_OAM_STEP,X
+	TXA				; on to the next entry, four bytes along
 	CLC
-	ADC #8
-	STA $0200+NES_OAM_STEP,X
-	INX
+	ADC #4
+	TAX
 	CPX #NES_OAM_STEP
 	BNE nes_oam2_loop
 	RTS
@@ -565,8 +588,34 @@ nes_oam2_loop:
 	; mapped twice. That is safe only because the table is IDEMPOTENT --
 	; nes_spal(nes_spal(c)) = nes_spal(c) for every c -- which is why entry 2
 	; is 3 and entries 0, 1 and 3 are themselves.
+	; AND IT MUST BE IDEMPOTENT, WHICH IT WAS NOT -- ENTRY 2 SAID 3.
+	;
+	; nes_oam2 applies this map IN PLACE, every frame, to slots the game did
+	; not rewrite. So the map's own OUTPUTS are fed back into it, and each of
+	; 0..3 has to map to itself or the colour WALKS. Entry 2 mapped to 3, so
+	; anything that landed on palette 2 became palette 3 on the very next
+	; frame: skin turned white.
+	;
+	; It read as a FLASH rather than as a wrong colour, because the game keeps
+	; rewriting the slot. The lift car on the radar is redrawn every sixth
+	; frame by scan_tick, so it showed one frame of its real colour and five
+	; of white, over and over. Measured, not guessed: the marker was present in
+	; all twelve sampled frames and only its COLOUR alternated.
+	;
+	; Every actor whose colour maps to palette 2 had it -- C_SKIN (both faces),
+	; the biplane, the beach ball -- so the faces were white for five frames in
+	; six as well. Entry 2 is TMS medium green, which no sprite in this game
+	; uses, so pointing it at itself costs nothing.
+	; ENTRY 14 IS THE LIFT CAR, AND IT HAS TO AGREE WITH ITS OWN LOW BITS.
+	; The PPU reads only bits 0-1 of the attribute byte, so a slot that still
+	; holds the RAW TMS colour renders as `colour AND 3`. Grey is 14, whose low
+	; bits are 2 -- but this table used to send it to 3, so the car rendered
+	; ORANGE on the frame scan_tick wrote it and WHITE once nes_oam2 had been
+	; over it. Sending 14 to 2 makes the two readings the same value, so there
+	; is no frame where it disagrees with itself. Grey is the car's colour and
+	; nothing else's, so this costs no other sprite.
 nes_spal:
-	DB 0,1,3,3,0,0,2,0,2,2,2,2,3,2,3,3
+	DB 0,1,2,3,0,0,2,0,2,2,2,2,3,2,2,3
 
 ; ---------------------------------------------------------------------------
 ; nes_bgbank -- background patterns at $1000, sprite patterns at $0000.

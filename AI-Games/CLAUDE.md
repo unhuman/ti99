@@ -586,6 +586,37 @@ cost a debugging session:
   - Grep for every `SPRITE <n>` **and** every computed slot (`SPRITE ds`,
     `ds = di + 8`) before picking a number, and put the block map in the source
     next to the allocation rather than in a design doc.
+  - **AND THE SAME IS TRUE OF PATTERN CODES, WHERE "A FREE GAP" IS USUALLY SOMEBODY'S
+    ART.** Keystone Kapers moved a sprite pose into "176..207, a 32-code gap nothing
+    else uses" and it was the player-chased actor's own left-facing LEG bands. The
+    upload succeeded, the art loaded at the address it was given, every gate passed,
+    and the only symptom was **a detached block of the wrong art a dozen pixels below
+    the actor, on alternate frames** -- reported as "a ball shaped thing drops below
+    his feet". The real free space was twelve patterns against the sixteen needed.
+    **Derive the free list from the art generator's table and print it; never assert a
+    range is free.** `games/KeystoneKapers/assets/checkpat.py` resolves every upload
+    (both the `nchr`/`ncnt`/`ntab` form and `DEFINE CHAR`/`DEFINE SPRITE`) to a range
+    and a source and fails on any that lands in another table's codes, with the
+    deliberate borrows declared by name.
+  - **A CHECK ADDED ALONGSIDE THE CHANGE IT IS MEANT TO GUARD WILL AGREE WITH IT.**
+    The same commit taught `checkchars.py` to verify the pose's `CONST` against the
+    `nchr` of the upload that loaded it -- two halves of one mistake, both saying 176,
+    so it passed. **A constant is only checked when it is compared against something
+    INDEPENDENT of it.** Compare against the generator, never against the other end of
+    the same edit.
+  - **A TIGHT `VPOKE` LOOP IS A VBLANK OVERRUN WITH NO UPLOAD IN SIGHT.** The same
+    game drew its message boxes with a `VPOKE` loop and no `WAIT`: ~43 cycles a cell
+    and a hundred-odd cells, against ~1679 available, so the tail was discarded at the
+    PPU and the box came out with characters missing -- intermittently, because the
+    cut point moves. **Pace any unbounded write loop**, and prefer a bound that needs
+    no counter (one `WAIT` per row) when RAM is tight.
+  - **AND WATCH FOR A CHARACTER SENT TWICE IN TWO DIFFERENT FORMS.** That game's
+    marquee lamps were loaded once with the store's colour table (paper -> index 1)
+    and re-sent at run time with `#ncol = 0` (paper -> index 0, the backdrop). Both
+    were correct in their own context and the screen visibly changed colour a second
+    after it appeared, one character at a time, as the second form caught up. **Send
+    it at setup in the form the run-time path uses**, or the first frame of a screen
+    is not the screen.
   - Check the hide/reset paths too: a `FOR i = 0 TO 23` that blanks sprites
     will not cover a slot outside its range, and widening it may blank a block
     it was deliberately skipping.
@@ -1000,6 +1031,41 @@ cost a debugging session:
     - **Split any burst over ~100 bytes across frames.** One 32-byte row per `WAIT` is the
       obvious unit for a name-table blit and costs four extra frames a band at round start.
       Do not reach for a bigger `PPUBUF`: the buffer was never the constraint.
+    - **AND THE OVERRUN'S OTHER CONSEQUENCE IS THE WHOLE PICTURE JUMPING, WHICH IS FAR
+      LOUDER THAN THE DROPPED BYTES.** `nmi_handler` does not end with the copy: it then
+      writes `PPUADDR` twice and both `PPUSCROLL` bytes. Done mid-frame that **re-points the
+      PPU's own render address**, so the rest of that frame is drawn from somewhere else.
+      Keystone Kapers reported it for three sessions as *"the entire screen flashes when
+      Harry gets on and off the escalator"* — which sounds like a sprite or pattern bug and
+      is neither.
+    - **`PPUBUF` ACCUMULATES FOR A WHOLE LOOP PASS, SO EVERY WRITE IN THE PASS SHARES ONE
+      VBLANK.** Nothing is written when the program asks; the NMI empties the buffer in one
+      go. A pattern upload therefore flushes together with every `VPOKE` the radar made and
+      every HUD digit, however far apart they are in the source, and **only a `WAIT` divides
+      them**. Two corollaries that cost real time here:
+      - **Splitting a big upload in half fixes nothing** unless a `WAIT` goes between the
+        halves — both descriptors still land in the same vblank and cost what one did.
+      - **Reducing the FREQUENCY fixes nothing either.** The overrun is per FRAME, not per
+        second, so a slower animation only makes the bad frames rarer.
+      The fix is a `WAIT` immediately before the large upload, giving it a vblank of its
+      own. In Keystone Kapers that is one frame a pass on the two escalator screens: 96
+      bytes (six characters — **a tile is SIXTEEN bytes in two bitplanes, not eight**) is
+      ~1394 cycles of the ~1679 left after OAM DMA, which leaves six `VPOKE`s for the rest
+      of the pass. The radar beats that whenever a dot moves, which is exactly why it was
+      intermittent.
+    - **`games/KeystoneKapers/assets/checkvblank.py` gates it mechanically** — it walks the
+      routines reachable from `main` (over `GOSUB`, `GOTO` **and fall-through**), costs each
+      queued upload against a 2273-cycle vblank, and fails on a large one with no `WAIT` in
+      front of it, or on a rendering-off `DEFINE`-equivalent reachable during play.
+      `checkvblank_test.py` feeds it the two forms that actually shipped the fault and
+      requires rejection. **Its first run failed on the TI's `SCREEN …,32,5,32`** — a model
+      of one machine has to skip the other's `#if` branches, or it reports a defect that is
+      not on the target it describes.
+    - **EVERY EARLIER DIAGNOSIS WAS A REAL UPLOAD DOING A REAL THING.** Three separate
+      per-pass uploads were found and removed, each an improvement, and the flash survived
+      all three — because the cause is not *which* upload runs, it is that the pass's other
+      writes share a vblank with it. **A per-object question cannot reach a property of the
+      frame.**
   - **`SOUND` links against `sn76489_freq/_vol/_control`, which no NES prologue defines.** The 6502
     prologue does, for a 6502 machine with a real SN76489, so a shim can be written against that
     convention — and the pitch maths is near-exact, because the NES CPU is almost exactly half the
@@ -1027,6 +1093,33 @@ cost a debugging session:
       hands the NMI a *pointer* into it and the copy happens at the next vblank, so overwriting it
       meanwhile copied the new bytes into the **pattern table** and destroyed the skyline. That is
       the same deferred-copy hazard as the marquee bug below, hit a second time in one session.
+    - **THREE BYTES OF SCRATCH VARIABLES ARE ENOUGH TO DO IT, AND THE SECOND SHAPE OF THE
+      FAILURE IS NOT A BLACK SCREEN.** Scalars are allocated below the arrays, so adding two
+      temporaries to a routine pushes every array up. Keystone Kapers added `nso` and `#nso`
+      (3 bytes) for one piece of setup arithmetic and pushed `#tsrc` -- the table of template
+      source offsets its store blit reads -- **one byte** past the end. The game booted, played,
+      and drew seven of its eight screens perfectly; on the eighth, two of the three bands
+      blitted their NAME TABLE from the wrong address and came out as a field of unrelated
+      characters.
+      - **It was reported as "the NES display is all corrupted" and it looks like an art or a
+        blit bug.** Nothing about one screen's bands being garbled suggests storage, so the
+        search starts in the drawing code, which is correct.
+      - **The tell is that it follows the SCREEN, not the play session.** It was there on the
+        first frame of the round (`TIME 50`), it came back every time that screen was re-entered,
+        and every other screen was clean. A bad *pointer table entry* is per-index; corruption
+        that accumulates would not behave like that.
+      - **Spend no new variable when a constant will do.** The arithmetic was
+        `(CH_SKY2 - 96) * 8`, which is a fixed 456 -- it only became a runtime computation
+        because a folded constant over 255 truncates (see the `CONST` item above), and the
+        answer is to write the bare literal, not to build it in registers.
+    - **AND THE GATE MISSED IT BECAUSE `\w` DOES NOT MATCH `#`.** `checknesram.py` read both the
+      `DIM`s and the `array_*: equ` lines with `\w+`, so **every 16-bit array was invisible to
+      it** -- they are all named `#something` -- and it printed OK having read none of them. Same
+      slip as grepping the generated assembly for `NSRC` when the symbol is `cvb_#NSRC`. Two
+      further rules came out of the fix, and both generalise to any checker over CVBasic:
+      - **A 16-bit array is TWO BYTES AN ELEMENT.** `DIM #tsrc(15)` is 30 bytes, not 15.
+      - **An array the assembly has and the source does not `DIM` must FAIL, not be noted and
+        skipped.** An array the gate cannot measure is precisely the one that overruns.
   - **`gasm80` assembles 6502 despite the name**, so no separate assembler is needed — but **it
     exits 0 with errors on stdout and still emits a full-size ROM** with undefined labels resolved
     to zero. `gasm80 ... || die` therefore never fires and the build reports success on a dead

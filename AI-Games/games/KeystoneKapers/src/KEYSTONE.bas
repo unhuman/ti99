@@ -276,6 +276,25 @@
 	CONST CH_BULB3 = 184
 	CONST BULBFR = 6		' frames per chase step -- 10 a second
 
+	' THE STANDING POSE HAS CODES OF ITS OWN HERE, RATHER THAN BORROWING.
+	'
+	' These sit OVER the running body on BOTH machines: esc_stand writes the
+	' standing art into 72..87 as he steps onto a flight and esc_run puts the
+	' run back as he steps off.
+	'
+	' THEY WERE BRIEFLY MADE RESIDENT AT 176..207 AND THAT WAS A BUG. The
+	' reasoning was sound -- on the NES this swap went through nes_def, which
+	' turns rendering off for about two frames every time he mounts, and that
+	' is a visible flash -- but the premise was not: 176..207 is not a free
+	' gap. It is HLLEG1..4 and HLLEGS1..4, **Harry's own left-facing leg
+	' bands**. The setup upload wrote the standing pose straight over them, so
+	' running LEFT drew standing art in the leg slots: a detached striped block
+	' a dozen pixels below his feet, alternating with the run cycle.
+	'
+	' Only 244..255 is actually free -- twelve patterns, and the pose needs
+	' sixteen per facing -- so residency was never available. The flash is
+	' fixed by how the upload travels instead (see nes_swp16), not by where it
+	' lands. **Check genart's SPR table before calling any pattern range free.**
 	CONST P_HSTB = 72		' over HBODY
 	CONST P_HSTS = 76		' over HBODY2
 	CONST P_HSTL = 80		' over HBODY3
@@ -380,6 +399,12 @@
 	CONST CH_SLABE = 97		' the bar with BRICK carried up through it
 	CONST CH_ROOFSE = 98		' and the roof deck likewise
 	CONST CH_ROOFSP = 166		' the roof with a beam under it
+	' THE TWO CHARACTERS THAT CARRY THE SUNSET'S LAST BAND. Named here only
+	' because the NES re-sends them with a colour table of their own -- see
+	' setup_rest -- and a number written by hand is exactly what checkchars
+	' exists to catch.
+	CONST CH_SKY2 = 153		' the open sky of the skyline's bottom row
+	CONST CH_BLDGL = 169		' the short building that starts halfway down it
 	CONST CH_SLABP = 180		' the same bar with a beam under it
 	CONST CH_ECAR = 109
 	CONST CH_EDOOR = 108
@@ -905,6 +930,7 @@ setup_font:
 					' black and $00 is a dark GREY, so every hat
 					' and every stripe was coming out grey.
 	PALETTE 25,39			' 2 -- skin   faces, the biplane, the beach ball
+	PALETTE 26,16			' 2 colour 2 -- GREY, the lift car on the radar
 	PALETTE 29,48			' 3 -- white  Harry, the carts, the lift car
 
 	nespw = 2			' the loop pacer above starts on a 2-frame pass
@@ -1069,6 +1095,73 @@ setup_rest:
 	#ncol = 0
 	nink = 2			' the body
 	GOSUB nes_def
+	' AND THE SUNSET'S LAST BAND, WHICH LEFT A YELLOW STRIPE ON THE HORIZON.
+	'
+	' SKYGRAD's third band is [9,9,9,9,10,10,10,10] -- four scan lines of dark
+	' blue over four of dark YELLOW -- and on the TI that is the bottom step of
+	' a six-step sunset that has been fading towards it for two character rows
+	' above. The NES sky is one flat dark blue band (PALETTE 9,1), so those four
+	' rows have nothing to grade from: dark yellow maps to the light index,
+	' which in P2 is the lit-window yellow, and it reads as a yellow stripe lying
+	' across the horizon and over the tops of the shorter buildings.
+	'
+	' Exactly two characters carry it -- CH_SKY2, the open sky of that row, and
+	' CH_BLDGL, the short building whose wall starts halfway down it. Every
+	' other character of the row is either solid building (paper grey) or ends
+	' its blue before row 4. So both are simply re-sent with a colour table in
+	' which those rows are dark blue like the rest; the art is untouched and the
+	' TI keeps its gradient, this being inside #if NES.
+	'
+	' THE OFFSETS ARE LITERALS AND MUST STAY THAT WAY. (CH_SKY2 - 96) * 8 is
+	' 456 and the BLDGL one is 584; both are past 255, so a CONST or a folded
+	' constant expression would truncate silently (CLAUDE.md 3A). A bare
+	' literal added to a 16-bit variable is the form that compiles correctly --
+	' and it costs NO new variable, which matters more here than it looks:
+	' the first version of this block spent three bytes of scratch on the
+	' arithmetic and pushed `#tsrc` off the end of RAM. checkchars.py ties both
+	' numbers back to the character constants so a renumber cannot strand them.
+	#nsrc = VARPTR store_pat(0)
+	#nsrc = #nsrc + 456		' char 153, CH_SKY2
+	#ncol = VARPTR nes_sky2c(0)
+	nchr = CH_SKY2
+	ncnt = 1
+	ntab = 1
+	nink = 3
+	GOSUB nes_def
+	#nsrc = VARPTR store_pat(0)
+	#nsrc = #nsrc + 584		' char 169, CH_BLDGL
+	#ncol = VARPTR nes_bldlc(0)
+	nchr = CH_BLDGL
+	ncnt = 1
+	ntab = 1
+	nink = 3
+	GOSUB nes_def
+	' AND THE FOUR MARQUEE LAMPS, THE SAME WAY THE MARQUEE WILL SEND THEM.
+	'
+	' THIS IS THE TITLE'S COLOUR SHIFT ON A COLD BOOT. The store load above
+	' gives BULB0..3 their colour bytes out of store_col, where the lamps are
+	' white on DARK BLUE -- and dark blue maps to index 1, which on the title
+	' page is P0's entry 1: GREEN. So the marquee came up as gold lamps on a
+	' green ribbon.
+	'
+	' It then fixed itself, one lamp at a time, because title_wait re-sends the
+	' two lamps it changes with `#ncol = 0` and `nink = 3` -- ink 3 on index 0,
+	' the backdrop. After two full rotations all four had been rewritten and
+	' the green was gone. Measured on a cold boot: green pixels peak eight
+	' frames in and reach zero eleven frames later, which is exactly "something
+	' is initialised later".
+	'
+	' Sending them here in the form the marquee uses means the first frame of
+	' the title is the same as every frame after it. Nothing else in the store
+	' set is drawn on the title page, so nothing else needs this.
+	#nsrc = VARPTR store_pat(0)
+	#nsrc = #nsrc + 680		' char 181, CH_BULB0
+	nchr = CH_BULB0
+	ncnt = 4
+	ntab = 1
+	#ncol = 0
+	nink = 3
+	GOSUB nes_def
 	' CH_KOPIC IS DELIBERATELY *NOT* SENT THIS WAY. It is black ink on dark
 	' blue paper, so it only collapses if dark blue moves to the backdrop --
 	' which is the sky experiment recorded in nes_chr.asm and abandoned. Sent
@@ -1185,12 +1278,24 @@ after_deck:
 	DEFINE SPRITE 54,1,spr_radio
 	#endif	' pattern 112
 	#if NES
+	' INK 2, NOT 1, SO THE LIFT CAR CAN BE GREY.
+	'
+	' An NES sprite palette holds THREE colours and this game only ever used
+	' the first, because its sprites are one bitplane and every pattern is
+	' uploaded with nink = 1. That made four sprite colours look like the whole
+	' budget -- blue, black, skin, white -- and grey unobtainable.
+	'
+	' It is not. Uploading this one pattern with nink = 2 puts its pixels on
+	' colour TWO of whatever palette the slot selects, which nothing else uses.
+	' The car takes sprite palette 2 (see nes_spal entry 14) and reads its
+	' second entry, so PALETTE 26 below is the car's own colour and the faces
+	' on entry 1 are untouched.
 	#nsrc = VARPTR spr_radcar(0)
 	nchr = 220
 	ncnt = 4
 	ntab = 0
 	#ncol = 0
-	nink = 1
+	nink = 2
 	GOSUB nes_def
 	#else
 	DEFINE SPRITE 55,1,spr_radcar
@@ -1515,6 +1620,33 @@ run_list:
 tt_run:
 	ttr = PEEK(#tta)
 	IF ttr = 255 THEN RETURN
+	#if NES
+	' ONE RUN PER VBLANK, AND THIS IS THE CORRUPTED MESSAGE BOX.
+	'
+	' Every VPOKE below is a single-byte descriptor in PPUBUF -- about 43
+	' cycles for the NMI to spend -- and PPUBUF is not flushed when it is
+	' written, it ACCUMULATES until the NMI runs. A message box is well over a
+	' hundred cells, so the whole box was arriving in ONE vblank: five thousand
+	' cycles of work in the ~1679 available after OAM DMA.
+	'
+	' The copy loop does not stop when vblank ends. It runs to the end of the
+	' buffer, and **a PPUDATA write outside vblank is discarded by the PPU** --
+	' so the tail of the box simply never arrived. On screen that is a message
+	' with characters missing or left over from what was underneath, and the
+	' cut moves from run to run, which is why it was reported as intermittent
+	' corruption rather than as anything to do with timing.
+	'
+	' A WAIT PER RUN NEEDS NO COUNTER, which matters: there are two bytes of
+	' RAM left in this program and a loop counter would not fit. A run cannot
+	' be longer than a row, so 32 pokes is its worst case -- about 1376 cycles,
+	' inside the window with room to spare. The box takes one frame per run and
+	' then sits there for seconds, so nothing is lost.
+	'
+	' The title screen walks this same list and gets the same treatment. It was
+	' already surviving, because at boot nothing else is queueing, but it was
+	' surviving by luck rather than by budget.
+	WAIT
+	#endif
 	#tta = #tta + 1
 	ttc = PEEK(#tta)
 	#tta = #tta + 1
@@ -2154,12 +2286,12 @@ draw_screen:
 		'
 		' A row is 32 bytes, which fits with room to spare. This costs four
 		' extra frames per band at round start and nothing during play.
-		FOR dsr = 0 TO 4
-			SCREEN stor_tpl,#dsrc,#ddst,32,1,32
-			#dsrc = #dsrc + 32
-			#ddst = #ddst + 32
-			WAIT
-		NEXT dsr
+		SCREEN stor_tpl,#dsrc,#ddst,32,3,32
+		WAIT
+		#dsrc = #dsrc + 96
+		#ddst = #ddst + 96
+		SCREEN stor_tpl,#dsrc,#ddst,32,2,32
+		WAIT
 		#else
 		SCREEN stor_tpl,#dsrc,#ddst,32,5,32
 		#endif
@@ -3203,14 +3335,10 @@ esc_stand:
 	IF hsw = hsd THEN RETURN
 	hsw = hsd
 	#if NES
+	' THE SAME SWAP, THROUGH THE NMI QUEUE INSTEAD OF A BLANKED SCREEN.
 	#nsrc = VARPTR spr_hstand(0)
 	IF hsd <> 2 THEN #nsrc = VARPTR spr_hstandl(0)
-	nchr = 72
-	ncnt = 16
-	ntab = 0
-	#ncol = 0
-	nink = 1
-	GOSUB nes_def
+	GOSUB nes_swp16
 	#else
 	IF hsd = 2 THEN
 		DEFINE SPRITE 18,4,spr_hstand
@@ -3231,12 +3359,7 @@ esc_run:
 	hsw = 0
 	#if NES
 	#nsrc = VARPTR spr_hbod4(0)
-	nchr = 72
-	ncnt = 16
-	ntab = 0
-	#ncol = 0
-	nink = 1
-	GOSUB nes_def
+	GOSUB nes_swp16
 	#else
 	DEFINE SPRITE 18,4,spr_hbod4
 	#endif
@@ -3381,6 +3504,61 @@ upd_elev:
 	' reading what the cell MEANS, not guessing from where the cell is: a
 	' coordinate is a fact about this layout, the character is a fact about
 	' the world, and only the second is safe to erase on.
+	' SIXTEEN PATTERNS INTO THE BORROWED SLOTS, ONE VBLANK EACH.
+	'
+	' This is what esc_stand and esc_run cost on this machine. Four sprites is
+	' 16 patterns and **a tile here is SIXTEEN bytes** -- two bitplanes -- so
+	' the swap is 256 bytes. Three ways to spend that, and only one works:
+	'
+	'   nes_def         rendering off, ~2 frames of DARK SCREEN every mount.
+	'                   This is the flash that was reported for three sessions.
+	'   resident art    no upload at all -- but it needs 16 free patterns per
+	'                   facing and there are only twelve free in the whole
+	'                   table. Tried, and it overwrote Harry's left-facing legs.
+	'   queued, chunked <- this. 64 bytes a vblank, four vblanks, picture up
+	'                   the whole time.
+	'
+	' FOUR CHUNKS BECAUSE ONE WILL NOT FIT. The NMI's copy loop runs to the end
+	' of its descriptor whatever the raster is doing, and the PPUADDR/PPUSCROLL
+	' restore that follows it re-points the PPU mid-frame if it runs late --
+	' which is the whole picture jumping for a frame. About 1679 cycles are
+	' available after OAM DMA and a copy costs 50 + 14 a byte, so 64 bytes
+	' (946) is comfortable and 256 (3634) is not. The WAITs are load-bearing:
+	' PPUBUF accumulates for a whole pass, so without them all four descriptors
+	' would flush in one vblank and cost exactly what the single call did.
+	' checkvblank.py sums the descriptors BETWEEN WAITs for this reason.
+	'
+	' The cost is four frames at a mount or a dismount, once each, against two
+	' frames of black. The caller sets #nsrc; nes_chrinit copies nchr, ncnt,
+	' #ncol and nink into zero page rather than consuming the variables, so
+	' they only need setting once.
+	'
+	' THE INTERMEDIATE STATE IS VISIBLE and that is accepted: for a frame or
+	' two Harry is part standing and part running. He is stepping onto a
+	' staircase at the time, which is exactly when a limb changing shape reads
+	' as him changing pose.
+nes_swp16:
+	nchr = P_HSTB
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	ncnt = 4
+	WAIT
+	GOSUB nes_escd
+	#nsrc = #nsrc + 32		' four patterns of source art, 8 bytes each
+	nchr = nchr + 4
+	WAIT
+	GOSUB nes_escd
+	#nsrc = #nsrc + 32
+	nchr = nchr + 4
+	WAIT
+	GOSUB nes_escd
+	#nsrc = #nsrc + 32
+	nchr = nchr + 4
+	WAIT
+	GOSUB nes_escd
+	RETURN
+
 nes_def:
 	' WHAT DEFINE WOULD HAVE DONE. CVBasic implements no DEFINE at all for the
 	' NES, on the reading that patterns live in cartridge CHR ROM -- but an
@@ -4961,6 +5139,43 @@ esc_tick:
 	' the honest behaviour for a machine that is carrying you.
 	escp = escp + 1
 	IF escp > 3 THEN escp = 0
+	#if NES
+	' A VBLANK OF ITS OWN, AND THIS IS THE WHOLE-SCREEN FLASH.
+	'
+	' PPUBUF is not flushed when it is written -- it ACCUMULATES for the whole
+	' pass and the NMI empties it in one go, so every VPOKE the radar makes,
+	' every HUD digit and this upload all land in the SAME vblank. And the
+	' handler's copy loop does not stop when vblank ends: it runs to the end of
+	' the descriptor and then writes PPUADDR and both PPUSCROLLs, which
+	' mid-frame re-points the PPU's own render address. The rest of that frame
+	' is drawn from the wrong place. On screen that is not a dropped tile, it
+	' is the ENTIRE PICTURE jumping for a frame -- which is what has been
+	' reported, repeatedly, as the screen flashing on an escalator.
+	'
+	' The arithmetic says it cannot be anything else. NTSC vblank is about
+	' 2273 CPU cycles; NMI entry, the flicker test and OAM DMA spend ~560 of
+	' them before a single byte is copied. A copy descriptor costs ~50 cycles
+	' plus 14 a byte, so these six characters -- 96 bytes, because a tile is
+	' SIXTEEN bytes in two bitplanes, not eight -- are ~1400 on their own.
+	' That leaves about 270 cycles, or SIX single-byte pokes, for everything
+	' else the pass queued. The radar alone beats that whenever a dot moves.
+	'
+	' Nothing smaller fixes it, because the overrun is per FRAME, not per
+	' second: slowing the animation down just makes the bad frames rarer.
+	' Splitting the six characters across two frames tears the staircase, and
+	' only three of the six have a constant second bitplane, so dropping a
+	' plane does not buy a frame's worth either. What DOES work is giving the
+	' upload a vblank with nothing else in it: this WAIT flushes the pass's
+	' radar and HUD writes, and the descriptor queued below is then almost all
+	' the next vblank has to carry -- ~1960 cycles of 2273, inside the window
+	' with room to spare.
+	'
+	' IT COSTS ONE FRAME A PASS, on the two screens that carry a flight and
+	' nowhere else -- esc_tick has already returned on the other six. The
+	' rider is paced from the animation rather than from the frame delta (see
+	' below), so a slower pass slows the ride too and the two cannot drift.
+	WAIT
+	#endif
 	' ONLY THE CELLS THAT MOVE, AND ONLY THIS SCREEN'S. genart.py measures
 	' which cells move -- the step cells and the COMPOSITE copies of them
 	' that cross a floor -- and groups them WEST then EAST, because only one
@@ -5477,6 +5692,22 @@ scan_tick:
 	sdlv = hlv
 	GOSUB scan_dot
 	SPRITE 25,sdy,sdx,P_RADDOT,C_RCROOK
+	#if NES
+	' NORMALISE WHAT WE JUST WROTE, IN THE SAME FRAME.
+	'
+	' draw_actors ends with nes_oam2 and runs BEFORE this routine, so the three
+	' radar slots were left holding the raw TMS colour until the next frame's
+	' pass. The PPU reads only bits 0-1 of that byte, so for one frame a marker
+	' renders as `colour AND 3` and afterwards as nes_spal's answer -- and where
+	' those two disagree the marker changes colour every time it is rewritten.
+	' The lift car did exactly that, orange for one frame in six and white for
+	' the other five, which reads as a blinking sprite.
+	'
+	' nes_spal is now self-consistent for every colour this game uses, so this
+	' call is belt and braces -- but it is the thing that makes the invariant
+	' TRUE rather than merely arranged: no slot is ever left un-normalised.
+	ASM JSR nes_oam2
+	#endif
 	RETURN
 
 	' sdsc/sdxp/sdlv in, sdx/sdy out. The bias and the row meanings that used
@@ -6376,3 +6607,16 @@ sfx_tick:
 	INCLUDE "title.bas"
 	INCLUDE "art.bas"
 	INCLUDE "store.bas"
+
+	' THE SKYLINE'S LAST BAND WITHOUT ITS YELLOW, high nibble ink, low nibble
+	' paper, one byte a scan line -- the same shape genart emits into
+	' store_col. SKY2 is white-on-9 throughout instead of turning to paper 10
+	' at row 4; BLDGL holds its blue one row longer and then meets its own
+	' grey wall. Both are the generated bytes with 10 replaced by 9 and
+	' nothing else changed. See setup_rest.
+#if NES
+nes_sky2c:
+	DATA BYTE $F9,$F9,$F9,$F9,$F9,$F9,$F9,$F9
+nes_bldlc:
+	DATA BYTE $B9,$B9,$B9,$B9,$B9,$BE,$BE,$BE
+#endif

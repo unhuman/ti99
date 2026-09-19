@@ -209,7 +209,9 @@ reassembles, and the animated character range matches the cells that move) and
 `checkscan.py` (every radar row is coloured for what is drawn on it), `checkchars.py` (every
 hand-written character number still points at the character it names) and `checkride.py`
 (a rider's feet are on a drawn step every frame of every ride). The TI script also checks the
-24,336-byte fixed-area cap.
+24,336-byte fixed-area cap; the NES script adds `checknesram.py` (no array runs off the end of
+the 2 KB and into zero page) and `checkvblank.py` (no vblank is asked to copy more than it can
+finish before the scroll restore, which is what made the escalator screens flash).
 
 > `cvbasic.exe` is a **Cygwin** binary and Git Bash's own MSYS2 runtime shadows it, so it
 > used to die with `cannot open shared object file` — exit 127, no other clue — while the

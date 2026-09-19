@@ -4773,9 +4773,28 @@ in place to a slot the game did not rewrite this pass.
   every ROW picks its own pair out of the four palette entries — the same shape
   as the TMS's eight colour bytes. `nes_chrinkrow` rebuilds the masks once per
   row for exactly that reason. What cannot survive is more than **four indices**
-  on one scan line, so `SKYGRAD`'s six colours over twenty-four lines come back
-  as blue over warm with grey buildings in front of both: a sunset rather than a
-  flat band, and still not the gradient.
+  on one scan line, so `SKYGRAD`'s six colours over twenty-four lines cannot come
+  back as a gradient.
+  - **And the two-band version was worse than one flat band, so the sky is now
+    flat dark blue.** Splitting the sky's attribute row into a blue half and a
+    warm half put a hard seam across the middle of the city and changed the
+    colour of a lit window depending which storey it was on. `PALETTE 9,1` and an
+    attribute row of `$AA` give the whole band one palette instead.
+  - **A flat sky leaves the gradient's last band behind, on exactly two
+    characters.** `SKYGRAD[2]` is `[9,9,9,9,10,10,10,10]` — four scan lines of
+    dark blue over four of dark *yellow* — which on the TI is the bottom step of a
+    sunset that has been fading towards it for two character rows. With nothing
+    above it to grade from, dark yellow maps to the light index (the lit-window
+    yellow) and reads as **a yellow stripe lying across the horizon**, over the
+    tops of the shorter buildings. Only `CH_SKY2`, the open sky of that row, and
+    `CH_BLDGL`, the short building whose wall starts halfway down it, carry it:
+    every other character of the row is either solid building or ends its blue
+    before row 4. Both are re-sent at setup with a colour table of their own
+    (`nes_sky2c`, `nes_bldlc`) in which those rows are dark blue like the rest.
+    The art is untouched and the TI keeps its gradient.
+    **Measured, not eyeballed:** at scan line 44 the dominant colour across the
+    width went from 172 px of `#F7B518` to 84 — and 84 is the lit windows, which
+    are meant to be yellow.
   - **The reason it matters far beyond the sky:** several characters carry their
     whole SHAPE in the colour table and nothing in the art. `CH_SLAB` sets 8 of
     its 64 pixels — one row — because the floor bar is five yellow rows over
@@ -4812,6 +4831,186 @@ code. They are recorded because the next port will hit them in the same order.
   now fails the build on an ungated raw address, and checks each gated pair
   differs by exactly **+2144**; it was mutation-tested against both shapes of the
   defect before being trusted.
+
+### The escalator flash: a vblank asked to copy more than it can finish
+
+Reported over several sessions as *"when Harry gets on and off the escalator, the
+entire screen flashes"*, and fixed three times without being fixed. Each attempt
+went after a different pattern upload; the last of them — making Harry's standing
+pose resident so no upload happens on a mount at all — was right and necessary,
+and the flash still happened. It was never about the mount.
+
+**Two properties of CVBasic's NES runtime, and the second is the one nobody had
+read:**
+
+- **`PPUBUF` accumulates for a whole loop PASS.** `VPOKE`, `PRINT` and `SCREEN`
+  append a descriptor; nothing is written until the NMI empties the buffer at the
+  next vblank. So every radar poke, every HUD digit and any pattern upload land in
+  the *same* vblank however far apart they are in the source. **Only a `WAIT`
+  divides them** — which also means that splitting an upload in half changes
+  nothing unless a `WAIT` goes between the halves.
+- **The handler's copy loop does not stop when vblank ends** — already recorded
+  above as the ~100-byte budget, where the consequence is *dropped* `PPUDATA`
+  writes. That is not the worst of it. `nmi_handler` finishes by writing `PPUADDR`
+  twice and both `PPUSCROLL` bytes, and done mid-frame that **re-points the PPU's
+  own render address**: the rest of the frame is drawn from somewhere else. On
+  screen that is not a missing tile, it is the entire picture jumping for one
+  frame.
+
+The arithmetic, off `cvbasic_nes_prologue.asm` and NTSC timings:
+
+| | cycles | |
+|---|---|---|
+| vblank | 2273 | 20 scan lines × 113.667 |
+| NMI entry, flicker test, OAM DMA, scroll restore | 594 | spent before and after any copying |
+| **left for copying** | **1679** | |
+| a copy descriptor | 50 + 14/byte | `LDA (zp),Y` 5 + `STA abs` 4 + `INY` 2 + `BNE` 3 |
+| a single-byte descriptor | 43 | one `VPOKE` |
+
+`esc_tick` rewrites six characters every pass, and **a tile is sixteen bytes here,
+not eight** — two bitplanes. 96 bytes is `50 + 96*14 = 1394` cycles, leaving about
+285, or **six `VPOKE`s**, for everything else the pass queued. The radar beats that
+whenever a dot moves. Hence intermittent, hence worse when something is happening
+on the flight, and hence reported as a flash *on the escalator*.
+
+**The fix is one `WAIT` at the top of `esc_tick`,** which flushes the pass's radar
+and HUD traffic so the upload gets a vblank of its own (~1960 of 2273, inside the
+window with room). It costs one frame a pass on the two screens that carry a
+flight and nothing anywhere else. The rider is paced from the animation rather
+than from the frame delta, so a slower pass slows the ride too and the two cannot
+drift apart.
+
+**`assets/checkvblank.py` gates it.** It walks the routines reachable from `main`
+— over `GOSUB`, `GOTO` *and fall-through* — costs every queued upload against the
+2273-cycle vblank, and fails on any large one without a `WAIT` in front of it or
+on any `GOSUB nes_def` during play (that one turns rendering off outright).
+`checkvblank_test.py` feeds it both forms that actually shipped the fault and
+requires it to reject them; it also states, in the file, the one thing it cannot
+see — two small descriptors sharing a vblank.
+
+> **What made this hard to find is worth keeping.** Every earlier diagnosis was a
+> real upload doing a real thing, and removing each one was an improvement. None
+> of them was the cause, because the cause is not *which* upload runs — it is that
+> the pass's writes share a vblank with it. A per-object question could never
+> reach it.
+
+### Three bytes of scratch corrupted one screen, and the gate said OK
+
+Added with the skyline fix above and found the same day. The offset into
+`store_pat` is `(CH_SKY2 - 96) * 8` = 456, which cannot be written as a constant
+expression because a folded constant over 255 truncates — so it was computed at
+run time into two new variables, `nso` and `#nso`.
+
+**Scalars are allocated below the arrays.** Those three bytes pushed every array
+up three, and `#tsrc` — fifteen 16-bit entries, the template source offsets the
+store's band blit reads — went from ending at `$07FD` to ending at **`$0800`**.
+`$0800` mirrors `$0000`. Its last entry shared a byte with the zero page.
+
+The game booted and played. Seven screens of eight drew perfectly. On the eighth,
+bands 0 and 2 blitted their name table from the wrong address and came out as a
+field of unrelated characters while band 1 was exactly right.
+
+| | |
+|---|---|
+| reported as | *"now the NES display is all corrupted"* |
+| looked like | an art bug, or a bad blit |
+| actually | one pointer-table entry sharing a byte with the zero page |
+
+**What identified it was the shape of the symptom, not the code.** It was present
+on the first frame of the round (`TIME 50`), it returned every time that screen was
+re-entered, and no other screen was ever affected — corruption that accumulates
+does not behave like that, and a wrong *entry* in a pointer table is per-index by
+construction. A control build with the day's two changes backed out was clean;
+putting the skyline back alone reproduced it.
+
+**The fix spends no variable at all**: `#nsrc = #nsrc + 456` as a bare literal,
+which is the form that compiles correctly. `checkchars.py` now ties both 456 and
+584 back to `CH_SKY2` and `CH_BLDGL` through genart, so a renumber cannot strand
+them — mutation-tested by moving one offset eight bytes and confirming it fails.
+
+**`checknesram.py` was blind to it and that is the more useful finding.** Both its
+regexes used `\w+`, which does not match `#`, so every 16-bit array — all of them
+are named `#something` — was invisible: it printed OK having read none of them. It
+also counted one byte an element where a 16-bit array takes two. Fixed, and an
+array in the assembly with no `DIM` in the source is now a failure rather than a
+note. Re-run against the defective assembly it names `#TSRC` and the one byte.
+
+> **There are 2 bytes of headroom above `#tsrc` today.** The next variable added
+> anywhere in this program breaks it again, and now the build will say so.
+
+### "A free gap" that was another sprite's art, and two more from the same family
+
+Three faults found in one sitting, all of them the same shape: **something was
+written into space that was already spoken for, and nothing failed.**
+
+#### Harry's legs
+
+The mount flash above was first fixed by making the standing pose RESIDENT, "at
+176..207, a 32-code gap nothing else uses". There is no such gap. 176..207 is
+`HLLEG1..4` and `HLLEGS1..4` — **Harry's own left-facing leg bands** — so the
+setup upload wrote the standing pose over them and running LEFT drew standing art
+in the leg slots: a detached striped block a dozen pixels below his feet,
+alternating with the run cycle. Reported as *"a ball shaped thing drops below his
+feet every other frame"*.
+
+The only free sprite patterns in the whole table are **244–255**, twelve of them,
+against sixteen needed per facing. Residency was never available and the claim
+had never been compared with anything.
+
+So the borrow is back, and the flash is fixed by **how the upload travels**
+rather than where it lands: `nes_swp16` queues the sixteen patterns as four
+64-byte chunks, one vblank each, with the picture up throughout. Four frames at a
+mount against two frames of black.
+
+> **The cost is an intermediate state**: for a frame or two Harry is part
+> standing and part running. He is stepping onto a staircase at the time, which
+> is when a limb changing shape reads as him changing pose.
+
+#### The message box
+
+`run_list` wrote a whole box with a tight `VPOKE` loop and **no `WAIT`**. Each
+character is a single-byte descriptor, about 43 cycles for the NMI, and PPUBUF
+accumulates for a whole pass — so a 100+ cell box arrived as ~5,000 cycles of
+work in the ~1,679 available. The copy ran past the end of vblank and the tail
+was **discarded at the PPU**: a message with characters missing or left over from
+what was underneath, the cut moving from run to run. Reported as intermittent
+corruption, which is what it looks like.
+
+One `WAIT` per run fixes it and needs **no counter** — which matters, because
+there are two bytes of RAM left in the program. A run cannot exceed a row, so 32
+pokes is its worst case.
+
+#### The title's colour shift
+
+On a cold boot the marquee came up as gold lamps on a **green** ribbon and went
+blue a second later. The store load gives `BULB0..3` their bytes out of
+`store_col`, where the lamps are white on dark blue — and dark blue maps to index
+1, which on the title page is P0's entry 1, green. `title_wait` then re-sends the
+two lamps it changes with `#ncol = 0`, ink 3 on the backdrop, so it corrected
+itself one lamp at a time.
+
+Measured on a cold boot: green peaks eight frames in and reaches zero eleven
+frames later — *"something is initialised later"*, exactly. The lamps are now
+sent at setup in the form the marquee uses. Verified at **0 of 60 frames** with
+any green, from 9.
+
+#### The gate
+
+`assets/checkpat.py` resolves EVERY upload in the program — the NES
+`nchr`/`ncnt`/`ntab` form and the TI `DEFINE CHAR`/`DEFINE SPRITE` — to a
+destination range and a source table, and requires the range to be owned by that
+source. Thirteen deliberate borrows are declared by name with their reason; a
+borrow outside its declared range still fails. It prints the real free space, so
+the next person to want a "free gap" is told where one actually is.
+
+> **The check that was added WITH the defect made things worse.** It verified
+> `CONST P_HSTB` against the `nchr` of the upload beside `VARPTR spr_hstand(0)` —
+> two halves of one mistake agreeing with each other, both saying 176. **A
+> constant is only checked when it is compared against something independent of
+> it**; here that is genart's own table. That check has been removed.
+
+`checkpat_test.py` applies the overwrite that shipped plus three near misses to
+the real source and requires all four to be rejected.
 
 ### What is not done
 

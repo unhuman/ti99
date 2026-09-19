@@ -57,7 +57,37 @@ BORROWED = {
     "HSTL": "HBODY3",
     "HSTLS": "HBODY4",
 }
+
+# AND A BORROWED SLOT MUST BE A SLOT SOMETHING ELSE REALLY OWNS.
+#
+# These were briefly made RESIDENT on the NES, at "a 32-code gap that nothing
+# else uses" -- 176..207. That gap does not exist. 176..207 is HLLEG1..4 and
+# HLLEGS1..4, Harry's own left-facing leg bands, and the setup upload wrote the
+# standing pose over them: running left drew standing art in the leg slots, as a
+# detached striped block below his feet on alternate frames.
+#
+# The check that was added with it made this WORSE, not better. It verified that
+# `CONST P_HSTB` equalled the `nchr` of the upload beside `VARPTR spr_hstand(0)`
+# -- two halves of the same mistake agreeing with each other. A constant is only
+# checked when it is compared against something INDEPENDENT of it, which here is
+# genart's own table. So `check_free` below asks the question that was never
+# asked: is any pattern range written by a setup upload already owned by a
+# resident sprite?
 DEFSPR_RE = re.compile(r"^\s*DEFINE SPRITE (\d+),(\d+),(\w+)")
+
+# AND THE TWO RAW OFFSETS INTO store_pat, which are bytes rather than codes.
+#
+# The NES re-sends CH_SKY2 and CH_BLDGL at setup with a colour table of their
+# own, and reaches their art with `#nsrc = #nsrc + 456`. That 456 is
+# (153 - 96) * 8 -- character number minus the table's base, times eight bytes a
+# character -- and it CANNOT be written that way in the source: the product is
+# over 255 and a folded constant expression truncates silently (CLAUDE.md 3A).
+#
+# So it is a bare literal, which is exactly the kind of number this file exists
+# to distrust. A renumber that moves SKY2 leaves 456 pointing at some other
+# character's art, and the symptom would be a wrong-looking patch of sky rather
+# than anything that fails.
+OFFSET_RE = re.compile(r"^\s*#nsrc = #nsrc \+ (\d+)\s*' char (\d+), CH_(\w+)")
 
 # The two FACING constants are offsets, not patterns: adding one to a figure's
 # RIGHT band gives its LEFT one, which only works while genart keeps the two
@@ -66,6 +96,13 @@ FACING = {"KFACING": ("KHAT", "KLHAT"), "HFACING": ("HBODY", "HLBODY"),
           "HLEGFACING": ("HLEG1", "HLLEG1")}
 
 
+# THE "IS THIS RANGE FREE?" QUESTION LIVES IN checkpat.py NOW.
+#
+# A narrower version of it sat here and was removed rather than kept beside the
+# new one: checkpat models BOTH tables, every upload form and the declared
+# borrows, and two hand-kept lists of the same thing go stale independently --
+# which is how the check that was supposed to catch the 176 overwrite ended up
+# agreeing with it.
 def main():
     src = open(BAS, encoding="utf-8").read().split("\n")
     bad = []
@@ -74,7 +111,21 @@ def main():
     defspr = 0
     swapped = 0
 
+    branch = []                 # '#if NES' nesting, so the two forms are told apart
+
     for n, ln in enumerate(src, 1):
+        st = ln.strip()
+        if st.startswith("#if "):
+            branch.append("NES" if st[4:].strip() == "NES" else "OTHER")
+        elif st.startswith("#else"):
+            if branch:
+                branch[-1] = {"NES": "NOT_NES",
+                              "NOT_NES": "NES"}.get(branch[-1], "OTHER")
+        elif st.startswith("#endif"):
+            if branch:
+                branch.pop()
+        in_nes = bool(branch) and branch[-1] == "NES"
+
         m = CONST_RE.match(ln)
         if m:
             name, code = m.group(1), int(m.group(2))
@@ -124,6 +175,26 @@ def main():
                            "(%d is %s)"
                            % (n, name, pat, name, g.SPR[name], pat,
                               rev.get(pat, "nothing")))
+
+        m = OFFSET_RE.match(ln)
+        if m:
+            off, code, cname = int(m.group(1)), int(m.group(2)), m.group(3)
+            seen += 1
+            if cname not in g.CODES:
+                bad.append("line %d: the store_pat offset names CH_%s, which "
+                           "genart.py does not emit" % (n, cname))
+            else:
+                want_code = g.CODES[cname]
+                want_off = (want_code - 96) * 8
+                if code != want_code:
+                    bad.append("line %d: the comment says char %d but genart "
+                               "puts %s at %d" % (n, code, cname, want_code))
+                if off != want_off:
+                    bad.append("line %d: #nsrc + %d points at char %d, but %s "
+                               "is char %d and wants + %d -- the sky override "
+                               "would load some other character's art"
+                               % (n, off, 96 + off // 8, cname, want_code,
+                                  want_off))
 
         m = DEFSPR_RE.match(ln)
         if m:

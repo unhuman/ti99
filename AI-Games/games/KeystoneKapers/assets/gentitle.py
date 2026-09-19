@@ -149,8 +149,8 @@ def frame_runs():
 #
 # The interior is rows 2..20 by columns 3..27, so the centre column is 15.
 BIG = [
-    (4, 9, "KEYSTONE"),         # 12 cells wide
-    (8, 11, "KAPERS"),          # 9 cells -- a blank row between the two
+    (6, 9, "KEYSTONE"),         # 12 cells wide
+    (10, 11, "KAPERS"),         # 9 cells -- a blank row between the two
 ]
 
 
@@ -257,9 +257,14 @@ def big_runs():
 # line fills it exactly -- which put the text hard against the side lamps and
 # read as crowding rather than as a card. Every line is now 23 or fewer, so
 # there is a clear column inside the marquee on both sides.
+# THE AUTHOR'S LINE SITS ABOVE THE NAME NOW, not below it as a credit. Reading
+# it as a possessive makes one phrase of three lines -- the way the original's
+# own box front is laid out -- instead of a logo followed by a footnote. That
+# also retires the separate `BY GARRY KITCHEN` line, which is why BIG moved two
+# rows down: the name keeps its place on the screen while gaining a line above.
 TITLE = [
-    (13, 8, "BY GARRY KITCHEN"),
-    (15, 4, "2026 UNHUMAN AND CLAUDE"),
+    (4, 8, "GARRY KITCHEN'S"),
+    (16, 4, "2026 UNHUMAN AND CLAUDE"),
 ]
 
 # ---------------------------------------------------------------------------
