@@ -1669,33 +1669,6 @@ run_list:
 tt_run:
 	ttr = PEEK(#tta)
 	IF ttr = 255 THEN RETURN
-	#if NES
-	' ONE RUN PER VBLANK, AND THIS IS THE CORRUPTED MESSAGE BOX.
-	'
-	' Every VPOKE below is a single-byte descriptor in PPUBUF -- about 43
-	' cycles for the NMI to spend -- and PPUBUF is not flushed when it is
-	' written, it ACCUMULATES until the NMI runs. A message box is well over a
-	' hundred cells, so the whole box was arriving in ONE vblank: five thousand
-	' cycles of work in the ~1679 available after OAM DMA.
-	'
-	' The copy loop does not stop when vblank ends. It runs to the end of the
-	' buffer, and **a PPUDATA write outside vblank is discarded by the PPU** --
-	' so the tail of the box simply never arrived. On screen that is a message
-	' with characters missing or left over from what was underneath, and the
-	' cut moves from run to run, which is why it was reported as intermittent
-	' corruption rather than as anything to do with timing.
-	'
-	' A WAIT PER RUN NEEDS NO COUNTER, which matters: there are two bytes of
-	' RAM left in this program and a loop counter would not fit. A run cannot
-	' be longer than a row, so 32 pokes is its worst case -- about 1376 cycles,
-	' inside the window with room to spare. The box takes one frame per run and
-	' then sits there for seconds, so nothing is lost.
-	'
-	' The title screen walks this same list and gets the same treatment. It was
-	' already surviving, because at boot nothing else is queueing, but it was
-	' surviving by luck rather than by budget.
-	WAIT
-	#endif
 	#tta = #tta + 1
 	ttc = PEEK(#tta)
 	#tta = #tta + 1
@@ -6106,6 +6079,22 @@ do_catch:
 	' Thirteen wide at column 10, blank dark blue above and below: every font
 	' character is black on HUD_BG, so a row of spaces is a solid bar and the
 	' frame costs two strings and no new characters (see lose_kop).
+	#if NES
+	' FLUSH THE PASS BEFORE DRAWING A BOX. PPUBUF accumulates for a whole loop
+	' pass and is emptied by one NMI, so a message box -- sixty-four cells,
+	' sixty-four single-byte descriptors -- was landing in the same vblank as
+	' every radar poke and HUD digit the pass had made. The copy then ran past
+	' the end of vblank and the tail was DISCARDED at the PPU: a box with
+	' characters missing, and the cut moving from run to run, which is why it
+	' read as intermittent corruption.
+	'
+	' One WAIT here empties the buffer; the box's own writes then self-pace,
+	' because WRTVRM waits when PPUBUF fills. That is also why the TITLE never
+	' needed this and must not have it: it is drawn at boot with nothing else
+	' queued, and a WAIT per run made its twelve runs appear one frame at a
+	' time -- a logo that visibly assembled itself.
+	WAIT
+	#endif
 	#tta = VARPTR msg_gothim(0)
 	GOSUB run_list
 	GOSUB snd_off			' nothing rings on through the count
@@ -6273,10 +6262,50 @@ lose_kop:
 	' rather than replacing it. Printing the reason at a different row for each
 	' case would need `PRINT AT` with a variable, and every other PRINT in this
 	' program uses a constant.
+	#if NES
+	' FLUSH THE PASS BEFORE DRAWING A BOX. PPUBUF accumulates for a whole loop
+	' pass and is emptied by one NMI, so a message box -- sixty-four cells,
+	' sixty-four single-byte descriptors -- was landing in the same vblank as
+	' every radar poke and HUD digit the pass had made. The copy then ran past
+	' the end of vblank and the tail was DISCARDED at the PPU: a box with
+	' characters missing, and the cut moving from run to run, which is why it
+	' read as intermittent corruption.
+	'
+	' One WAIT here empties the buffer; the box's own writes then self-pace,
+	' because WRTVRM waits when PPUBUF fills. That is also why the TITLE never
+	' needed this and must not have it: it is drawn at boot with nothing else
+	' queued, and a WAIT per run made its twelve runs appear one frame at a
+	' time -- a logo that visibly assembled itself.
+	WAIT
+	#endif
 	#tta = VARPTR msg_timeup(0)
 	IF rsn = 0 THEN #tta = VARPTR msg_away(0)
 	IF rsn = 1 THEN #tta = VARPTR msg_plane(0)
 	GOSUB run_list
+	#if NES
+	' AND THE BOX GOES WHITE ON DARK BLUE.
+	'
+	' The text's paper is index 1 and its ink index 3 (see the font upload);
+	' over the store those are P0's green and gold, which is the same green the
+	' box is sitting on and hard to read. P1 is the HUD's palette -- dark blue
+	' and white -- so pointing the box's four attribute bytes at it gives the
+	' message the same treatment as the score line.
+	'
+	' FOUR BYTES AND NOT ONE MORE. An attribute byte covers four characters by
+	' four, and the box is sized and placed to cover exactly these (gentitle.py
+	' BOX_ROW/BOX_COL/BOX_W): byte row 3, byte columns 2..5, which is name rows
+	' 12..15 and columns 8..23. Anything else here would recolour shop floor
+	' around the box.
+	'
+	' Nothing puts them back, because nothing needs to: every path out of a
+	' message box redraws the screen, and draw_screen calls nes_attr, which
+	' rewrites all sixty-four.
+	#nav = 9178			' $23C0 + 3*8 + 2
+	FOR nai = 0 TO 3
+		VPOKE #nav,85
+		#nav = #nav + 1
+	NEXT nai
+	#endif
 	' The reason is read during THIS beat, before anything else happens. It
 	' used to be printed ahead of the pause and the pause is what makes it
 	' readable, so the box has to be drawn first and the Kop taken away after.
@@ -6288,8 +6317,20 @@ lose_kop:
 	IF kops > 0 THEN kops = kops - 1
 	GOSUB hud_kops
 	IF kops = 0 THEN
+		#if NES
+		WAIT				' as above -- flush before the box
+		#endif
 		#tta = VARPTR msg_over(0)
 		GOSUB run_list
+		#if NES
+		' the same four, one attribute row up -- GAME OVER stacks above
+		' the reason and covers byte row 2 (name rows 8..11).
+		#nav = 9170			' $23C0 + 2*8 + 2
+		FOR nai = 0 TO 3
+			VPOKE #nav,85
+			#nav = #nav + 1
+		NEXT nai
+		#endif
 		GOSUB pause_beat
 		GOSUB pause_beat
 		' 8-3-8 IS FORGOTTEN WHEN THE GAME ENDS. krk0 and kops0 are

@@ -276,23 +276,40 @@ TITLE = [
 # every scene deliberately: they cost bank bytes, which are plentiful, to save
 # fixed-area bytes, which are not.
 #
-# THE ROWS ARE THE ONES THE PRINT ATs USED, checked rather than assumed:
-# 330 = row 10 col 10, 362 = row 11, 394 = row 12, so the reason box's top row
-# is 10. GAME OVER was 266 = row 8 and 298 = row 9 -- two rows above, not three.
-BOX_ROW, BOX_COL, BOX_W = 10, 10, 13
+# THE BOX IS SIZED AND PLACED BY THE NES ATTRIBUTE GRID, 16 x 4 at row 9 col 8.
+#
+# It used to be 13 x 3 at row 10 col 10, which is what the PRINT ATs it replaced
+# had used. On the NES the box now has to be WHITE ON DARK BLUE while the store
+# behind it stays green, and colour there comes from the attribute table, whose
+# unit is FOUR characters by four. A 13 x 3 box sitting at column 10 covers part
+# of four attribute cells, so coluring it would have recoloured a band of shop
+# floor around it.
+#
+# 16 x 4 at row 9, column 8 covers exactly four attribute bytes -- byte row 3,
+# byte columns 2..5 -- so the game can set those four to palette 1 and touch
+# nothing else. GAME OVER stacks four rows above and covers byte row 2 the same
+# way. (Name rows on the NES are three lower than these: 9 -> 12, 5 -> 8.)
+#
+# The TI has no such constraint and simply gets the larger box.
+BOX_ROW, BOX_COL, BOX_W = 9, 8, 16
 
 MESSAGES = {
-    "msg_gothim": ["             ", "  GOT HIM!   ", "             "],
-    "msg_away":   ["             ", " HE GOT AWAY ", "             "],
-    "msg_plane":  ["             ", " THE BIPLANE ", "             "],
-    "msg_timeup": ["             ", "  TIME UP!   ", "             "],
-    "msg_over":   ["             ", "  GAME OVER  "],
+    "msg_gothim": ["                ", "   GOT HIM!     ",
+                   "                ", "                "],
+    "msg_away":   ["                ", "  HE GOT AWAY   ",
+                   "                ", "                "],
+    "msg_plane":  ["                ", "  THE BIPLANE   ",
+                   "                ", "                "],
+    "msg_timeup": ["                ", "   TIME UP!     ",
+                   "                ", "                "],
+    "msg_over":   ["                ", "   GAME OVER    ",
+                   "                ", "                "],
 }
 
 MSG_ROW = {
     "msg_gothim": BOX_ROW, "msg_away": BOX_ROW,
     "msg_plane": BOX_ROW, "msg_timeup": BOX_ROW,
-    "msg_over": BOX_ROW - 2,
+    "msg_over": BOX_ROW - 4,
 }
 
 
