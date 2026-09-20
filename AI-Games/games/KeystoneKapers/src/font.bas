@@ -69,7 +69,7 @@ font_bits:
 	DATA BYTE $88,$88,$50,$20,$20,$20,$20,$00	' Y
 	DATA BYTE $F8,$08,$10,$20,$40,$80,$F8,$00	' Z
 
-	' THE COLOUR TABLE, 472 bytes of the same value ($14 = black ink on dark blue).
+	' THE COLOUR TABLE, 472 bytes of the same value ($B4 = black ink on dark blue).
 	'
 	' Loaded with DEFINE COLOR 32,59,font_col, which is ONE synchronous call that
 	' writes all three screen thirds (define_color always does the LDIRVM3 triple
@@ -81,62 +81,62 @@ font_bits:
 	' whatever follows in ROM as colour data, with no error at build or run time.
 
 font_col:
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' space
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' !
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' "
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' #
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' $
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' %
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' &
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' '
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' (
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' )
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' *
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' +
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' ,
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' -
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' .
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' /
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 0
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 1
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 2
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 3
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 4
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 5
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 6
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 7
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 8
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' 9
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' :
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' ;
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' <
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' =
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' >
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' ?
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' @
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' A
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' B
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' C
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' D
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' E
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' F
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' G
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' H
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' I
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' J
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' K
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' L
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' M
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' N
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' O
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' P
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' Q
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' R
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' S
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' T
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' U
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' V
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' W
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' X
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' Y
-	DATA BYTE $14,$14,$14,$14,$14,$14,$14,$14	' Z
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' space
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' !
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' "
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' #
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' $
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' %
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' &
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' '
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' (
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' )
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' *
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' +
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' ,
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' -
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' .
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' /
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 0
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 1
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 2
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 3
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 5
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 6
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 7
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 8
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' 9
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' :
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' ;
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' <
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' =
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' >
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' ?
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' @
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' A
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' B
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' C
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' D
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' E
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' F
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' G
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' H
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' I
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' J
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' K
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' L
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' M
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' N
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' O
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' P
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' Q
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' R
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' S
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' T
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' U
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' V
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' W
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' X
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' Y
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' Z

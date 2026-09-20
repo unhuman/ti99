@@ -363,7 +363,9 @@ def table(runs=None):
 def main():
     titleword.check_heights()
     codes, blocks, pats = allocate()
-    cbyte = (genart.WHITE << 4) | genart.HUD_BG
+    # LIGHT YELLOW, matching the in-game font and the NES's gold -- see
+    # genfont.py. It was WHITE, which made the title the odd one out.
+    cbyte = (genart.LYELL << 4) | genart.HUD_BG
 
     with io.open(FACE_OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")

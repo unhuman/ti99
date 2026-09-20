@@ -5177,6 +5177,37 @@ actor dots, which stand on the floor rather than floating.
 `scan_base` uses an IF ladder rather than arithmetic: there are four levels, and
 multiplying by six needs a temporary this program has no RAM for.
 
+### One colour for everything the game says
+
+The score line, the message boxes and the title were three different colours on
+two different machines. They are one family of text — everything the game says to
+the player outside the picture — and they now read as one.
+
+| | was | now |
+|---|---|---|
+| TI / CV in-game font (HUD, boxes) | **black** on dark blue | light yellow on dark blue |
+| TI / CV title font | white on dark blue | light yellow on dark blue |
+| NES HUD and boxes | white | the title's gold |
+| NES title | gold | unchanged |
+
+> The request said the TMS font was white. It was not — `genfont.py` had
+> `INK = 1`, black, and the *title* font was the white one. Both are light yellow
+> now, which is what unifying them means either way.
+
+On the NES it is **one palette entry**, not a font change: text's ink is index 3
+of whatever palette it sits in, and everything outside the picture sits on P1, so
+`PALETTE 7` moving from white (48) to gold (40) takes the HUD and the boxes
+together. P2's light entry is the same 40 and always was — they are deliberately
+equal now, and a change to one wants the other.
+
+`nes_fcol`'s bytes went `$F4` → `$B4` at the same time. That is documentation
+rather than a pixel: TMS white and TMS light yellow both map to index 3, so
+nothing moves on screen, but the source no longer says "white ink" about text
+that is gold.
+
+Measured on the machine: the title, the score line and `HE GOT AWAY` are all
+`#F7B518` on `#0039A5`.
+
 ### What is not done
 
 - **The display counters are indistinguishable from the pillars.** This is what is

@@ -902,7 +902,13 @@ setup_font:
 	' showed behind the lives icon.
 	PALETTE 5,1			' P1 HUD   -- base   dark blue, the score line's ground
 	PALETTE 6,16			' P1       -- struct grey
-	PALETTE 7,48			' P1       -- light  white, the digits
+	' THE SAME GOLD THE TITLE USES, so the score line, the message boxes and
+	' the logo are one family of text rather than three colours. Text's ink is
+	' index 3 of whatever palette it sits in, and everything outside the
+	' picture sits on P1 -- so this one entry is the HUD and the boxes both.
+	' P2's light entry (PALETTE 11) is the same 40; they are deliberately
+	' equal and a change to one wants the other.
+	PALETTE 7,40			' P1       -- light  gold, the text
 
 	' THE SUNSET, IN TWO BANDS RATHER THAN SIX. SKYGRAD is six colours over
 	' three character rows -- one per four scan lines -- and the NES cannot
@@ -975,7 +981,7 @@ setup_font:
 	' Index 0 cannot be set per region (it is one colour for the whole screen),
 	' so the only way to give text a ground is to put its PAPER on another
 	' index, and paper is written into the second bitplane when the character
-	' is uploaded. Hence a table: $F4 is white ink on dark blue paper, which
+	' is uploaded. Hence a table: $B4 is light yellow on dark blue, which
 	' nes_inkmap sends to index 3 and index 1.
 	'
 	' ONE FONT, NOT TWO. The first attempt at this made a SECOND copy of the
@@ -6875,7 +6881,7 @@ nes_bldlc:
 #endif
 
 	' THE IN-GAME FONT'S COLOUR, one byte a scan line and eight a character for
-	' all 59 of them. $F4 is white on dark blue -- ink index 3, paper index 1 --
+	' all 59 of them. $B4 is light yellow on dark blue -- ink index 3, paper index 1 --
 	' and which colours those are is then the attribute table's business, per
 	' region: dark blue behind the HUD, the store's green behind a message box.
 	'
@@ -6885,63 +6891,63 @@ nes_bldlc:
 	' or a new uploader parameter (no RAM -- two bytes left).
 #if NES
 nes_fcol:
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 #endif
