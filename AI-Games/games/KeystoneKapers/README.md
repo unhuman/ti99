@@ -6,7 +6,7 @@ Garry Kitchen's **Keystone Kapers** (Activision, Atari 2600, 1983), for the **TI
 Officer Keystone Kelly has fifty seconds to run Harry Hooligan down inside Southwick's
 Emporium — a department store **eight screens wide and four levels tall** — before Harry
 reaches the roof and disappears. Shopping carts, beach balls and cathedral radios cost nine
-seconds each; toy biplanes cost a Kop. The roof carries **carts but no biplanes** -- the last
+seconds each; toy biplanes cost a Kop. A plane hit plays the jump's warble pitched down and held -- `TESTSOUNDS 5H` with its trailing beep cut, since the round ends on the spot and there is nothing for a tail to decay over. The roof carries **carts but no biplanes** -- the last
 few strides can cost you time, never a Kop.
 
 **Watch the beach balls.** They bounce, and their apex grows with the Krook — a low one has to

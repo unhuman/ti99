@@ -4746,6 +4746,40 @@ unrelated pitch.
 | Capture | short fanfare, then the bonus counts down audibly into the score |
 | Bonus Kop | rising chime |
 | Harry escapes | descending slide |
+| **Biplane** | **the jump's warble, pitched down and held — `TESTSOUNDS 5H` with its tail cut** |
+
+### The biplane's hit, and what it cost
+
+The biplane was the one collision with **no sound at all**: it sets `dead = 1`
+and the round ends, where every other obstacle routes through `do_hit` and its
+buzz. Picked from the bench by ear as **`5H`** — the warble held low and long,
+235 Hz against 188, twelve half cycles.
+
+**Its last step is cut.** 5H ends with 16 frames of 188 Hz sitting on its own
+after the warble stops warbling, and that tail is the one part doing no work:
+the plane costs a **Kop** rather than nine seconds, so the round ends on the
+spot and there is nothing for a decay to decay over.
+
+**It rides the jump's warbler rather than bringing its own**, because the two
+share their LOW note — 5H's divisor 596 and the jump's 595 are both 188 Hz, a
+quarter of a hertz apart. So the whole effect is one extra assignment
+(`IF swpl = 1 THEN #swp = 476`) plus a longer count, against sixty-odd bytes
+for a second warbler.
+
+**And the two triggers are ONE FLAG WITH TWO VALUES.** Written as separate
+`sfj` and `sfl` blocks it came to **14 bytes OVER the cap** — the build died on
+`banksize.py`, which is the gate doing exactly its job. `sfj = 1` is the jump
+and `sfj = 2` the plane; they share the warbler, so sharing its trigger saves
+three statements and the `sfl` variable with them. Fixed area 24,332 / 24,336.
+
+**It is audible because `sfx_tick` runs BEFORE the death branch.** The
+collision sets the flag, the tick consumes it and starts the warble, and only
+then does `IF dead = 1 THEN GOTO do_death` fire — after which `pause_beat`
+keeps calling `sfx_tick` for the whole pause, so the effect plays over the
+message box and `snd_off` silences it at the end. Had the branch come first,
+`pause_beat`'s opening `snd_pend` would have cleared the flag and the sound
+would never have happened: a latched effect is a sound that has not occurred
+yet, and clearing pending state is not the same as silencing a channel.
 
 ---
 

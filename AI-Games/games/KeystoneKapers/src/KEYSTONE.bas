@@ -4667,6 +4667,7 @@ coll_obst:
 			IF obht(cj) = 0 THEN
 				IF ck = OB_PLANE THEN
 					dead = 1
+					sfj = 2
 				ELSE
 					GOSUB do_hit
 				END IF
@@ -6846,10 +6847,40 @@ pause_beat:
 	' written as a falling number and anything over 1023 is silently masked
 	' to an unrelated pitch.
 sfx_tick:
-	IF sfj = 1 THEN
-		sfj = 0
+	' ONE FLAG WITH TWO VALUES, not two flags. 1 is the jump, 2 is the
+	' biplane; they share the warbler, so sharing its trigger costs three
+	' fewer statements -- and the fixed area was 14 bytes OVER when they were
+	' written separately. Nothing else sets sfj, and if a jump and a plane
+	' landed in one pass the last writer would win, which is academic: the
+	' plane ends the round.
+	IF sfj > 0 THEN
 		swf = 0
 		swt = 8
+	' THE BIPLANE, which is TESTSOUNDS 5H with its tail trimmed off.
+	'
+	' 5H is the warble held low and long -- 235 Hz against 188, twelve half
+	' cycles -- followed by 16 frames of 188 sitting there on its own. That
+	' last step is the "extended beep" after the warble stops being a warble,
+	' and it is the one part of the effect that is not doing any work: the
+	' plane costs a KOP rather than nine seconds, and the round ends on the
+	' spot, so there is nothing for a tail to decay over.
+	'
+	' IT RIDES THE JUMP'S WARBLE RATHER THAN BRINGING ITS OWN. The two share
+	' their LOW note -- 5H's 596 and the jump's 595 are both 188 Hz, a quarter
+	' of a hertz apart -- so the only thing that differs is the high note and
+	' the length. One flag and one extra assignment buy the whole effect,
+	' against sixty-odd bytes for a second warbler in a budget with eighty.
+		IF sfj = 2 THEN
+			swt = 12
+			' BIT 1 OF swf CARRIES THE PITCH, so the biplane needs no
+			' variable of its own. It had one, and ONE BYTE of new scalar
+			' pushed an array past the end of NES RAM -- scalars allocate
+			' below the arrays, so adding any moves them all up, and
+			' checknesram.py failed the build. swf was already a 0/1 phase
+			' toggle with six bits going spare.
+			swf = 2
+		END IF
+		sfj = 0
 	END IF
 	' A HIT FALLS -- testsounds variant 5B. Five steps down, 666 -> 411 -> 294
 	' -> 235 -> 188 Hz, fading 13 -> 10 as it goes.
@@ -6933,9 +6964,14 @@ sfx_tick:
 	' is written).
 	IF swt > 0 THEN
 		swt = swt - 1
-		swf = 1 - swf
+		' XOR RATHER THAN 1 - swf, which would wipe bit 1 -- the biplane
+		' would warble at the jump's pitch from its second tick onward.
+		swf = swf XOR 1
 		#swp = 270
-		IF swf = 1 THEN #swp = 595
+		' 476 is 235 Hz -- 5H's high note, a fifth below the jump's 415.
+		' The LOW note is shared, so it is set once below for both.
+		IF swf AND 2 THEN #swp = 476
+		IF swf AND 1 THEN #swp = 595
 		SOUND 0,#swp,12
 		IF swt = 0 THEN SOUND 0,0,0
 	END IF
