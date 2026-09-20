@@ -2211,7 +2211,24 @@ start_krook:
 	hacc = 0
 	hspd = 2
 
+	#if NES
+	' NO CLS HERE, AND THIS IS THE FULL-SCREEN FLASH.
+	'
+	' draw_screen repaints the sky, every band and the scanner, so clearing
+	' first was always redundant -- it just was not VISIBLE while text had no
+	' paper, because a cleared cell then showed the black backdrop and the
+	' screen went black for the frame or two before the bands landed. Now that
+	' the font has a paper (see its upload) a cleared cell shows its palette's
+	' index 1, so the same old CLS became a flat field of blue and green:
+	' caught in an 888-frame recording as two frames where the name table is
+	' all spaces and the attribute colours are still correct.
+	'
+	' Reported as flashes "at indeterminate intervals with nothing special
+	' going on" -- the interval is a round or a screen crossing, which is not
+	' special to look at.
+	#else
 	CLS
+	#endif
 	GOSUB draw_screen
 	#if NES
 	GOSUB nes_attr
@@ -5297,9 +5314,39 @@ scan_canvas:
 	' what is left over, and putting it there rather than at one end is what
 	' stops the radar touching the shop floor above and the screen edge
 	' below.
+	#if NES
+	' THE STRIP RUNS TO THE BOTTOM OF THE SCREEN, and the instrument sits in
+	' the middle of it.
+	'
+	' The NES name table is THIRTY rows where the TI's is twenty-four, so below
+	' the scanner there were three rows this game never drew in. They are blank
+	' cells, and a blank cell is all paper -- which used to be the black
+	' backdrop and became the store's GREEN when the font gained a paper. A
+	' green shelf under the instrument.
+	'
+	' Filling them with CH_SCANBK carries the grey to the edge, and the scanner
+	' is then a row too high in it, so it moves down one (8320, not 8288). The
+	' TI cannot follow: its name table ENDS at row 23 and the scanner already
+	' sits on the last three rows, which is why this is NES-only rather than a
+	' change to the shared offset.
+	'
+	' One row above and two below, a row per frame like the canvas itself -- a
+	' burst past a few dozen VDP writes in one frame is silently dropped.
+	FOR sr = 0 TO 2
+		#sva = 8960			' row 24, then rows 28 and 29
+		IF sr = 1 THEN #sva = 9088
+		IF sr = 2 THEN #sva = 9120
+		sv2 = CH_SCANBK
+		FOR sq = 0 TO 31
+			VPOKE #sva,sv2
+			#sva = #sva + 1
+		NEXT sq
+		WAIT
+	NEXT sr
+	#endif
 	FOR sr = 0 TO 2
 		#if NES
-		#sva = 8288
+		#sva = 8320			' one row lower than the TI -- see above
 		#else
 		#sva = 6144
 		#endif
@@ -5708,7 +5755,12 @@ scan_tick:
 	say = say + 4				' the top margin, then band row 0
 	sdy = 167
 	#if NES
-	sdy = sdy + 24			' three rows down with the rest of the picture
+	' THREE ROWS FOR THE PICTURE AND A FOURTH FOR THE SCANNER, which sits one
+	' row lower here so it is centred in a strip that reaches the bottom of a
+	' thirty-row name table. A sprite's y is a SCREEN coordinate and knows
+	' nothing about where the canvas was drawn, so it has to be told -- at BOTH
+	' sites, the crook's dot and the lift car's bar.
+	sdy = sdy + 32
 	#endif
 	sdy = sdy + say
 	' 118, NOT 120, AND THE TWO HAVE TO BE WORKED OUT THE SAME WAY. A marker
@@ -5785,7 +5837,12 @@ scan_dot:
 	sdx = sdx + sax
 	sdy = 167
 	#if NES
-	sdy = sdy + 24			' three rows down with the rest of the picture
+	' THREE ROWS FOR THE PICTURE AND A FOURTH FOR THE SCANNER, which sits one
+	' row lower here so it is centred in a strip that reaches the bottom of a
+	' thirty-row name table. A sprite's y is a SCREEN coordinate and knows
+	' nothing about where the canvas was drawn, so it has to be told -- at BOTH
+	' sites, the crook's dot and the lift car's bar.
+	sdy = sdy + 32
 	#endif
 	sdy = sdy + say
 	RETURN

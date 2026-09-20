@@ -632,6 +632,15 @@ cost a debugging session:
     treatment. Then remember that **a blank cell is ALL paper**, so every region that
     holds blanks needs its attribute byte pointed at a palette whose index 1 is right --
     Keystone Kapers got a green band above its score line from two rows nothing draws in.
+  - **GIVING TEXT A PAPER MAKES EVERY PRE-EXISTING `CLS` VISIBLE.** A cleared cell is
+    all paper. While that paper was index 0 -- the backdrop -- a clear went black and
+    read as part of whatever redraw followed it; once the paper is a real colour the
+    same clear becomes a flat field of the region colours. Keystone Kapers had a
+    redundant `CLS` before its full redraw for the whole life of the port and nobody
+    saw it until the HUD got a background; it was then reported as full-screen flashes
+    "at indeterminate intervals with nothing special going on" -- the interval being a
+    round, which is not special to look at. **Audit every clear when you add a paper**,
+    and delete the ones whose redraw covers the screen anyway.
   - **`CLS` CLEARS THE ATTRIBUTE TABLE, SO ANYTHING WRITTEN TO IT BEFOREHAND IS LOST.**
     Setting a screen's palettes and then clearing the screen loses the palettes, and the
     symptom is a screen whose text is on the wrong colour -- not a blank screen, which

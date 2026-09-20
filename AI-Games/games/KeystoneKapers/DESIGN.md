@@ -5071,6 +5071,52 @@ NES sprites and only runs at the end of `draw_actors`, which is not running
 during those WAITs — so without the explicit call his left half would vanish and
 his right half would stay, which is worse than the artefact being fixed.
 
+### The full-screen flash was a `CLS` that had always been there
+
+Reported over several sessions as flashes "at indeterminate intervals with
+nothing special going on". Caught in an 888-frame recording: two consecutive
+frames where the name table is **all spaces** and the attribute colours are still
+correct — sky band blue, store green, message panel blue.
+
+That is `start_krook`'s `CLS`, immediately before `GOSUB draw_screen`. It was
+always redundant, because draw_screen repaints the sky, every band and the
+scanner. It simply was not VISIBLE while text had no paper: a cleared cell then
+showed the black backdrop, so the screen went black for a frame or two and read
+as part of the redraw. Once the font gained a paper, a cleared cell shows its
+palette's index 1 and the same old clear became a flat field of blue and green.
+
+The interval is a round or a screen crossing — which is not special to look at,
+which is why it read as random.
+
+Removed on the NES only; the TI keeps its `CLS` and is byte-for-byte unchanged.
+Measured over 890 frames including a round transition: the row-profile deviation
+that flagged those frames at **30.5** now peaks at **3.3**, with none flagged.
+
+### The scanner's strip reaches the bottom, and the instrument is centred in it
+
+The NES name table is **thirty** rows where the TI's is twenty-four, so below the
+scanner sat three rows this game never drew in. Blank cells are all paper, so
+once the font gained one they came out as the store's green — a green shelf under
+the instrument.
+
+They are filled with `CH_SCANBK` to carry the grey to the bottom edge, and the
+instrument then moves down one row so it is centred in that strip rather than
+sitting at the top of it. **The TI cannot follow**: its name table ends at row 23
+and the scanner is already on the last three rows, which is why this is NES-only
+rather than a change to the shared offset. Both radar sprite y values move with
+it — a sprite's y is a screen coordinate and knows nothing about where the canvas
+was drawn.
+
+Measured: 12 px of grey above, the 16 px instrument, 12 px below, grey to the
+edge.
+
+> **`checknes.py` refused the new base and was right to.** It holds every raw
+> name-table address to exactly TI + 2144. The scanner is now TI + 2176, so it
+> joins the HUD as an exemption **by name with a reason** — still measured
+> against its own delta rather than skipped, and printed on every build:
+> `8 at +2144 (the picture), 3 at +2112 (the HUD, one row higher), 1 at +2176
+> (the scanner, one row lower)`.
+
 ### What is not done
 
 - **The display counters are indistinguishable from the pillars.** This is what is

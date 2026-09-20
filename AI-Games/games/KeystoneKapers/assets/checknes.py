@@ -52,9 +52,28 @@ NES_DELTA = 2144                        # 8192 + 96 - 6144
 HUD_DELTA = 2112                        # 8192 + 64 - 6144
 HUD_VARS = {"#psa", "#pla"}             # hud_score, hud_time, hud_kops
 
+# AND THE SCANNER SITS ONE ROW LOWER, FOR THE OPPOSITE REASON.
+#
+# The NES name table is THIRTY rows where the TI's is twenty-four. On the TI the
+# scanner is already on the last three rows and cannot move; here there are
+# three rows below it, which are blank cells -- and a blank cell is all paper,
+# so once the font gained a paper they came out as the store's green under the
+# instrument. They are filled with CH_SCANBK to carry the grey to the bottom
+# edge, and the instrument then moves down one row to sit in the middle of that
+# strip rather than at the top of it.
+#
+# Same rule as the HUD's exemption: by NAME, with a reason, still measured
+# against its own delta rather than skipped, and printed on every build.
+SCAN_DELTA = 2176                       # 8192 + 128 - 6144, one row below the picture
+SCAN_VARS = {"#sva"}                    # scan_canvas
+
 
 def expected(var):
-    return HUD_DELTA if var in HUD_VARS else NES_DELTA
+    if var in HUD_VARS:
+        return HUD_DELTA
+    if var in SCAN_VARS:
+        return SCAN_DELTA
+    return NES_DELTA
 
 ASSIGN = re.compile(r"^\s*(#?\w+)\s*=\s*(\d+)\s*(?:'.*)?$")
 
@@ -133,12 +152,18 @@ def main():
         return 1
     gated = [r for r in ti_hits if r[3] == "NOT_NES"]
     hud = [r for r in gated if r[1] in HUD_VARS]
-    # BOTH NUMBERS GET PRINTED, INCLUDING THE EXEMPT ONE. An exemption that
-    # goes quiet is how a gate stops being a gate: if the HUD ever drifts off
-    # its own row the count moves here, in plain sight, on every build.
+    # NOT `scan`: that is this module's own parsing function, and shadowing
+    # it breaks the call above with an UnboundLocalError.
+    scanner = [r for r in gated if r[1] in SCAN_VARS]
+    # EVERY NUMBER GETS PRINTED, INCLUDING THE EXEMPT ONES. An exemption that
+    # goes quiet is how a gate stops being a gate: if the HUD or the scanner
+    # ever drifts off its own row the count moves here, in plain sight, on
+    # every build.
     print("checknes: %d raw name-table addresses, all gated for NES -- "
-          "%d at +%d (the picture), %d at +%d (the HUD, one row higher)"
-          % (len(gated), len(gated) - len(hud), NES_DELTA, len(hud), HUD_DELTA))
+          "%d at +%d (the picture), %d at +%d (the HUD, one row higher), "
+          "%d at +%d (the scanner, one row lower)"
+          % (len(gated), len(gated) - len(hud) - len(scanner), NES_DELTA,
+             len(hud), HUD_DELTA, len(scanner), SCAN_DELTA))
     return 0
 
 
