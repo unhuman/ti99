@@ -47,24 +47,9 @@ import os
 # The two sprites never share a scanline with each other, so a band still costs
 # Kelly 1 + Harry 1 + two obstacles = four per line, which is the VDP's limit.
 
-KELLY_TOP = """
-......####......
-.....######.....
-....########....
-....########....
-....########....
-..############..
-....########....
-....######......
-....######......
-....######......
-......####......
-....####........
-....########....
-....##########..
-....##########..
-....##########..
-"""
+# KELLY_TOP is read from assets/kelly-run2.txt -- see _kelly_pose
+# below, which is also where the row/colour contract is
+# enforced.
 
 # THE ARMS SWING, AND THEY DO IT IN THE TUNIC'S OWN SPRITE. The reference
 # swings them plainly enough to see at this size -- a skin-coloured hand
@@ -73,24 +58,9 @@ KELLY_TOP = """
 # present. Moving the ARMS inside the blue tunic pattern costs one extra
 # pattern per facing and no boxes at all: they lift and spread on the frames
 # where the legs are at full stride, and hang on the passing frames.
-KELLY_TOP_B = """
-......####......
-.....######.....
-....########....
-....########....
-....########....
-..############..
-....########....
-....######......
-....######......
-....######......
-......####......
-........####....
-....########....
-..############..
-..############..
-..##########....
-"""
+# KELLY_TOP_B is read from assets/kelly-run1.txt -- see _kelly_pose
+# below, which is also where the row/colour contract is
+# enforced.
 # THREE COLOURS PER FIGURE, AND THE HARDWARE DECIDES WHERE THE SEAMS GO.
 # A TMS9918 sprite carries one colour, so a hat, a face and a body mean three
 # sprites -- and the VDP counts sprite BOXES per scanline, not pixels, so an
@@ -158,43 +128,13 @@ def shift(art, n):
 # and the same four patterns serve BOTH facings, just entered at a different
 # point. Four real poses for the price of the two the symmetric pair already
 # cost.
-KELLY_LEG1 = """
-....##########..
-..############..
-..############..
-..####....####..
-..####....####..
-.#####....#####.
-.#####....#####.
-.#####....#####.
-................
-................
-................
-................
-................
-................
-................
-................
-"""
+# KELLY_LEG1 is read from assets/kelly-run1.txt -- see _kelly_pose
+# below, which is also where the row/colour contract is
+# enforced.
 
-KELLY_LEG2 = """
-....##########..
-..############..
-..############..
-..############..
-...####..#####..
-...####..#####..
-..#####..#####..
-..#####..#####..
-................
-................
-................
-................
-................
-................
-................
-................
-"""
+# KELLY_LEG2 is read from assets/kelly-run2.txt -- see _kelly_pose
+# below, which is also where the row/colour contract is
+# enforced.
 
 # DUCKED: drawn in a single sprite placed at FLOORY - 8.
 #
@@ -287,6 +227,86 @@ HAT = set(range(0, 6))          # crown, the full-width brim, and its back
 FACE = set(range(6, 11))        # the one skin band
 TORSO = set(range(11, 16))      # shoulders and tunic; the legs sprite is 16-23
 
+
+# KELLY'S POSES ARE READ FROM assets/kelly-run{1,2}.txt, NOT TRANSCRIBED.
+#
+# They used to be triple-quoted blocks up above, with dumpkelly.py writing the
+# .txt files out of them and `--check` confirming the two still matched. That is
+# a one-way street: editing the .txt changed nothing, the next build was
+# identical, and the edit looked like it had simply not taken effect -- which is
+# exactly how it was reported. The file is the drawing now.
+#
+# THE GRID IS 16 WIDE BY 32 TALL and splits into two sprite boxes: rows 0-15 are
+# the head-and-torso block, rows 16-31 the legs. Blank rows at the end are
+# optional; a short file is padded.
+#
+# AND THE INK CHARACTER MUST MATCH THE ROW, because a band IS a sprite and a
+# TMS9918 sprite carries exactly one colour. '#' only in HAT rows, '-' only in
+# FACE rows, '0' everywhere below. Skin on a tunic row would need a fourth
+# sprite and the per-scanline budget has none, so it is refused here with the
+# row named rather than drawn in the wrong colour.
+# The slot the fourth run beat vacated. It is kept rather than removed so the
+# block stays nine sprites and nothing downstream renumbers; four patterns are
+# the price of that, and they are reclaimable the day something wants them.
+BLANK16 = "\n" + "\n".join(["." * 16] * 16) + "\n"
+
+
+def _kelly_pose(fname):
+    """(top 16 rows, leg 16 rows) from an editable 16x32 grid."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), fname)
+    rows = [l.rstrip() for l in open(path, encoding="utf-8")]
+    # A ROW THAT IS ALMOST 16 WIDE IS A TYPO, NOT A COMMENT.
+    #
+    # The reader takes any line of exactly 16 '.#-0' as art and ignores
+    # everything else, which is what lets the file carry this header. The
+    # failure mode is that a row which LOSES ONE CHARACTER stops being art and
+    # is silently DROPPED -- so every row below it shifts up one, and the
+    # figure below the typo is rebuilt out of its neighbours' rows.
+    #
+    # It does not look like a missing line. kelly-run2.txt lost the last dot of
+    # two rows and the report was "the buttons on the shirt are all messed up"
+    # and "one of the arms sort of disappears" -- two separate drawing
+    # complaints from one shifted block, with nothing anywhere naming a line.
+    # Nothing failed: the file still had 17+ art rows, every band check passed,
+    # and the generator, the assembler and the cart were all perfectly happy.
+    #
+    # So a line made only of art characters must be 16 wide or the build stops.
+    for n, r in enumerate(rows, 1):
+        if r and set(r) <= set(".#-0") and len(r) != 16:
+            raise SystemExit(
+                "%s line %d is %d characters wide, and art rows must be "
+                "exactly 16:\n    |%s|\n"
+                "A line of '.#-0' that is not 16 wide would be silently "
+                "skipped, shifting every row below it up one and scrambling "
+                "the figure. Add or remove a character; to make the line a "
+                "comment instead, start it with ';'."
+                % (fname, n, len(r), r))
+    art = [r for r in rows if len(r) == 16 and set(r) <= set(".#-0")]
+    if not 16 < len(art) <= 32:
+        raise SystemExit("%s has %d art rows, expected up to 32 (at least 17)"
+                         % (fname, len(art)))
+    art += ["." * 16] * (32 - len(art))
+    for i, r in enumerate(art):
+        want = "#" if i in HAT else "-" if i in FACE else "0"
+        stray = set(r) - {".", want}
+        if stray:
+            band = ("HAT (black)" if i in HAT else
+                    "FACE (skin)" if i in FACE else "BODY (blue)")
+            raise SystemExit(
+                "%s row %d draws %s, but row %d belongs to the %s sprite and "
+                "can only carry '%s'. One sprite is one colour on this "
+                "hardware; moving a band means changing HAT/FACE/TORSO in "
+                "genart.py too."
+                % (fname, i, "".join(sorted(stray)), i, band, want))
+    ink = ["".join("#" if c != "." else "." for c in r) for r in art]
+    return ("\n" + "\n".join(ink[:16]) + "\n",
+            "\n" + "\n".join(ink[16:]) + "\n")
+
+
+KELLY_TOP, KELLY_LEG2 = _kelly_pose("kelly-run2.txt")   # arm forward, legs passing
+KELLY_TOP_B, KELLY_LEG1 = _kelly_pose("kelly-run1.txt")  # arm back, full stride
+KELLY_TOP_S, KELLY_LEG_S = _kelly_pose("kelly-stand.txt")  # at rest
+
 # KELLY'S HAT IS ITS OWN SPRITE NOW, and that is what buys Harry a striped cap.
 # While hat and tunic shared a slot, that slot's box had to span rows 0-15 and
 # sat across every line of the upper body -- which left no room for a second
@@ -296,7 +316,21 @@ TORSO = set(range(11, 16))      # shoulders and tunic; the legs sprite is 16-23
 KELLY_HAT = shift(band(KELLY_TOP, HAT), 10)             # drawn at y-10
 KELLY_BODY = shift(band(KELLY_TOP, TORSO), -11)         # drawn at y+11
 KELLY_BODY_B = shift(band(KELLY_TOP_B, TORSO), -11)     # the arm-back frame
-KELLY_FACE = shift(band(KELLY_TOP, FACE), 5)            # drawn at y-5
+# THE FACE COMES FROM RUN 1, AND THE BATON FRAME HAS ITS OWN.
+#
+# There is one face sprite for every pose, so anything drawn in the FACE band
+# is on screen the whole time -- and kelly-run2.txt puts a raised baton there,
+# a skin column beside the head. Taken from run2 the way the hat is, the Kop
+# carried it while standing, while ducking and on every other beat of the run.
+#
+# So the DEFAULT face is run1's, which has no baton, and run2's is a second
+# sprite that draw_actors selects on the same counter bit that picks the run2
+# body. It sits at patterns 244.. -- outside Kelly's block, in the only free
+# run in the table -- precisely so nothing else renumbers: dropping it in
+# beside KFACE would have moved every pattern in the game up by eight and every
+# hand-written P_ constant with it.
+KELLY_FACE = shift(band(KELLY_TOP_B, FACE), 5)          # run 1 -- no baton
+KELLY_FACE2 = shift(band(KELLY_TOP, FACE), 5)           # run 2 -- baton up
 
 # HARRY WEARS STRIPES, AND HE CAN AFFORD THEM. Two colours alternating down a
 # figure needs a second sprite over the same rows, which is a THIRD box in his
@@ -1424,8 +1458,21 @@ def emit(fh, label, data, comment=""):
 # every leg frame separately.
 KELLY_RUN1 = overlay(KELLY_BODY_B, shift(KELLY_LEG1, 5))
 KELLY_RUN2 = overlay(KELLY_BODY, shift(KELLY_LEG2, 5))
-KELLY_RUN3 = overlay(KELLY_BODY_B, shift(mirror(KELLY_LEG1), 5))
-KELLY_RUN4 = overlay(KELLY_BODY, shift(mirror(KELLY_LEG2), 5))
+
+# AND THE RUN IS TWO FRAMES, NOT FOUR.
+#
+# It used to be four: run1, run2, and the two of them again with the LEGS
+# mirrored. That worked while the legs were near-symmetric -- mirroring them
+# barely showed. Both poses have since been redrawn with real strides, and a
+# mirrored stride reads as the figure turning round: the Kop appeared to face
+# the wrong way on half his beats, which is exactly what was reported.
+#
+# So the mirrored-leg beats are gone and their slots carry the STANDING pose
+# instead. Keeping the slots rather than deleting them is deliberate -- the
+# block stays nine sprites, P_KFACING stays 36, and not one pattern number in
+# the rest of the game moves.
+KELLY_STAND = overlay(shift(band(KELLY_TOP_S, TORSO), -11),
+                      shift(KELLY_LEG_S, 5))
 
 # THE LAYOUT IS A CONTRACT WITH THE SELECTION CODE, and it is arranged so that
 # code is three statements instead of two branches:
@@ -1446,15 +1493,15 @@ KELLY_RUN4 = overlay(KELLY_BODY, shift(mirror(KELLY_LEG2), 5))
 SPRITES = [
     ("spr_kelly", [("KHAT", KELLY_HAT), ("KFACE", KELLY_FACE),
                    ("KRUN1", KELLY_RUN1), ("KRUN2", KELLY_RUN2),
-                   ("KRUN3", KELLY_RUN3), ("KRUN4", KELLY_RUN4),
+                   ("KSTAND", KELLY_STAND), ("KSPARE", BLANK16),
                    ("KDHAT", KELLY_DHAT), ("KDFACE", KELLY_DFACE),
                    ("KDBODY", KELLY_DBODY),
                    ("KLHAT", mirror(KELLY_HAT)),
                    ("KLFACE", mirror(KELLY_FACE)),
                    ("KLRUN1", mirror(KELLY_RUN1)),
                    ("KLRUN2", mirror(KELLY_RUN2)),
-                   ("KLRUN3", mirror(KELLY_RUN3)),
-                   ("KLRUN4", mirror(KELLY_RUN4)),
+                   ("KLSTAND", mirror(KELLY_STAND)),
+                   ("KLSPARE", BLANK16),
                    ("KLDHAT", mirror(KELLY_DHAT)),
                    ("KLDFACE", mirror(KELLY_DFACE)),
                    ("KLDBODY", mirror(KELLY_DBODY))],
@@ -1547,6 +1594,16 @@ SPRITES = [
      "colour: the propeller is merged into the body in two phases rather "
      "than carried by a second sprite in its own colour. Four patterns where "
      "there were six, and slots 16-23 are free."),
+    # LAST, DELIBERATELY. This is the run-2 face, and putting it at the end of
+    # the table means it takes the free patterns at 244 and every other
+    # pattern number in the game stays where it is. Adding it beside KFACE
+    # would have pushed Harry, the obstacles and the plane up by eight and
+    # stranded every hand-written P_ constant in KEYSTONE.bas.
+    ("spr_kface2", [("KFACE2", KELLY_FACE2),
+                    ("KLFACE2", mirror(KELLY_FACE2))],
+     "Kelly's face on the run-2 beat -- the one with the baton raised. RIGHT "
+     "then LEFT, so the facing offset here is 4 and not Kelly's usual 36. "
+     "Patterns 244..251"),
 ]
 
 # name -> SPRITE PATTERN NUMBER, which is what KEYSTONE.bas's P_* constants

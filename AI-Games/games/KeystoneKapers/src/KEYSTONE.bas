@@ -193,6 +193,12 @@
 	' facing is one fixed offset; the LEGS do not face and are shared.
 	CONST P_KHAT = 0		' Kelly RIGHT: hat, black
 	CONST P_KFACE = 4		'              face, skin
+	' AND THE SAME HEAD WITH THE BATON RAISED, drawn only on the run-2 beat.
+	' It lives at the far end of the pattern table rather than beside P_KFACE
+	' because Kelly's block is followed by every other actor: inserting a
+	' sprite here would move all of them. Its LEFT twin is P_KFACE2 + 4, NOT
+	' P_KFACING -- it is its own two-sprite block (genart: spr_kface2).
+	CONST P_KFACE2 = 244
 	' THE RUN IS FOUR FRAMES AND EACH IS ONE SPRITE, tunic and legs together.
 	'
 	' KELLY IS THREE SPRITES, NOT FOUR. The tunic and the legs were separate
@@ -207,6 +213,17 @@
 	' Both facings no longer share them: the legs travel with the tunic they
 	' are drawn on, which is what Harry's legs already had to do.
 	CONST P_KRUN1 = 8		'              run frame 1: arm back + leg 1
+	' RUN FRAME 2 -- arm forward, legs passing (assets/kelly-run2.txt). Named
+	' because the JUMP borrows it; the run itself reaches frames 2, 3 and 4 by
+	' adding to P_KRUN1 off the animation counter.
+	CONST P_KRUN2 = 12
+	' AT REST (assets/kelly-stand.txt). The run is two frames, not four: the
+	' old frames 3 and 4 were 1 and 2 with the LEGS MIRRORED, which was
+	' invisible while the legs were near-symmetric and read as the figure
+	' turning round once both poses were redrawn with real strides. Their two
+	' slots carry the standing pose and a blank instead, so the sprite block
+	' stays nine patterns and P_KFACING is still 36.
+	CONST P_KSTAND = 16
 	CONST P_KDHAT = 24		'              ducked: the brim, black
 	CONST P_KDFACE = 28		'              ducked: face
 	CONST P_KDBODY = 32		'              ducked: the crouch, blue
@@ -838,6 +855,18 @@ setup_font:
 	SPRITE FLICKER OFF
 
 	#if NES
+	' No BORDER on this machine: the area outside the picture is the backdrop,
+	' palette entry 0, which title_draw and draw_screen already set.
+	#else
+	' DARK BLUE, NOT BLACK. The TMS border is the strip outside the 256x192
+	' picture, and on a real set it is a good part of what the player sees --
+	' left at the default black it made a hard frame around the shop. Dark blue
+	' is the sky's own colour and the paper every piece of text sits on, so the
+	' picture runs out to the edge of the tube instead of stopping at it.
+	BORDER 4
+	#endif
+
+	#if NES
 	' THE NES'S TWO STRUCTURAL DIFFERENCES, SETTLED ONCE, HERE.
 	'
 	' 1. WHERE THE PATTERNS LIVE. In 8x16 sprite mode the sprite pattern table
@@ -1369,6 +1398,18 @@ after_deck:
 	#else
 	DEFINE SPRITE 57,4,spr_plane
 	#endif	' phase A R/L, phase B R/L -- prop is in
+	' KELLY'S BATON HEAD, right then left. See P_KFACE2.
+	#if NES
+	#nsrc = VARPTR spr_kface2(0)
+	nchr = 244
+	ncnt = 8
+	ntab = 0
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
+	#else
+	DEFINE SPRITE 61,2,spr_kface2
+	#endif
 					' the body now, so four and not six
 	RETURN
 
@@ -4846,42 +4887,82 @@ draw_actors:
 		' The crouch never had a fourth box -- it hid one it did not use.
 		' Now the run does not use one either, so there is nothing to hide.
 	ELSE
-		' FOUR RUN FRAMES FROM TWO BITS of the animation counter, and no
+		' TWO RUN FRAMES FROM ONE BIT of the animation counter, and no
 		' divide -- `/` compiles to a real TMS9900 DIV (CLAUDE.md 3A) and
-		' this is per-frame code. Two adjacent bits give 0,4,8,12.
+		' this is per-frame code.
 		'
-		' KELLY USES BITS 2 AND 3 AND HARRY USES 3 AND 4, because a stride
-		' has to cover about a stride's worth of ground or the figure
-		' skates. Kelly runs 4 px a frame, so four frames a pose is 16 px;
-		' Harry runs 1.75, so eight frames a pose is 14. Matching the two
-		' rates to the two speeds is what keeps both looking like running.
+		' IT WAS FOUR FRAMES FROM TWO BITS, and the second pair were the
+		' first pair with the LEGS MIRRORED. That worked only while the legs
+		' were near-symmetric: both poses have since been redrawn with real
+		' strides, and a mirrored stride reads as the figure TURNING ROUND,
+		' which is exactly how it was reported. Two honest frames beat four
+		' where half are a lie.
+		'
 		' ONE PATTERN FOR THE WHOLE BODY. This picked a leg frame here and
 		' a tunic twenty lines below, and drew them as two sprites. The
 		' merged run bodies carry both, so the two ladders are one and the
 		' fourth SPRITE call is gone.
 		kb = P_KRUN1
-		' BITS 3 AND 4, NOT 2 AND 3 -- A POSE EVERY 8 PIXELS, which is
-		' Harry's beat (hanim AND 8 / AND 16) and now means the same thing,
-		' because both counters hold pixels travelled. On the old 4-count
-		' beat an odometer would have flipped his legs every single pass at
-		' 4 px a pass, which is a blur rather than a run. checkanim reads
-		' these bits out of the source, and fails if two bands of one figure
-		' run on different ones -- so the body below moves with them.
-		IF kanim AND 8 THEN kb = kb + 4
-		IF kanim AND 16 THEN kb = kb + 8
+		' BIT 3 -- A POSE EVERY 8 PIXELS, which is Harry's beat (hanim AND 8)
+		' and means the same thing, because both counters hold pixels
+		' travelled rather than passes. A stride has to cover about a
+		' stride's worth of ground or the figure skates; on a per-pass beat
+		' an odometer would have flipped his legs every single pass at 4 px
+		' a pass, which is a blur rather than a run. checkanim reads this bit
+		' out of the source and fails if two bands of one figure run on
+		' different ones.
+		IF kanim AND 8 THEN kb = P_KRUN2
+		' AND HE STANDS WHENEVER HE IS NOT RUNNING.
+		'
+		' There used to be no standing drawing at all: kanim advances by kspd,
+		' so the counter FREEZES when he stops and he held whatever beat he
+		' happened to be on -- a Kop stopped in mid-stride, with the baton up
+		' half the time. P_KSTAND is a real pose and this picks it.
+		'
+		' kmv is "a direction was held this pass", so releasing the key is
+		' standing and so is the first frame of a round. The two RIDING states
+		' are tested SEPARATELY rather than trusted to kmv: both RETURN out of
+		' move_kelly before kmv is cleared, so it still holds whatever he was
+		' doing when he stepped on, and he would ride the escalator and the
+		' lift in mid-stride.
+		'
+		' Separate IFs rather than an OR -- the 9900 backend miscompiles a
+		' compound comparison (CLAUDE.md 3A).
+		IF kmv = 0 THEN kb = P_KSTAND
+		IF klst = ST_ESC THEN kb = P_KSTAND
+		IF klst = ST_ELEV THEN kb = P_KSTAND
 		' IN THE AIR HE HOLDS A POSE. Cycling the legs through a jump reads
 		' as running on nothing; the reference holds one stride for the
 		' whole arc.
-		IF klst = ST_JUMP THEN kb = P_KRUN1
-		' The leading arm lifts on the two FULL-STRIDE frames, which are the
-		' ones with the low bit clear -- that is the pairing genart.py's
-		' preview (assets/previewrun.py) renders, so the two stay in step.
+		' THE JUMP HOLDS RUN FRAME 2, arm forward and legs passing. It used
+		' to hold frame 1, the arm-back pose with the legs at full stride --
+		' which is the stance of someone pushing off, not of someone in the
+		' air. Frame 2's gathered legs read as a leap.
+		IF klst = ST_JUMP THEN kb = P_KRUN2
 		kp = P_KHAT
 		kf = P_KFACE
+		' THE BATON RIDES THE RUN-2 BODY, and is DERIVED FROM THE POSE rather
+		' than tested against the animation counter a second time.
+		'
+		' There is ONE face sprite for every pose, so anything drawn in the
+		' FACE band is on screen the whole time -- and kelly-run2.txt puts a
+		' raised baton there. The default face is run1's, without it.
+		'
+		' Reading the counter again is what put the baton up while he stood
+		' still: kanim FREEZES when he stops, so he held whichever beat he had
+		' been on. Asking the BODY instead cannot disagree with it, and it
+		' covers the jump for free -- the jump holds P_KRUN2.
+		IF kb = P_KRUN2 THEN kf = P_KFACE2
 		IF kldir = 0 THEN
 			kp = kp + P_KFACING
-			kf = kf + P_KFACING
 			kb = kb + P_KFACING
+			' The baton head is its own two-sprite pair at P_KFACE2, OUTSIDE
+			' Kelly's block, so its LEFT twin is +4 rather than +P_KFACING.
+			IF kf = P_KFACE2 THEN
+				kf = kf + 4
+			ELSE
+				kf = kf + P_KFACING
+			END IF
 		END IF
 		' FOUR BANDS, EACH DRAWN AT ITS OWN y so its 16-row box covers
 		' only the rows it uses: hat -13..2, face -10..5, tunic 6..21,

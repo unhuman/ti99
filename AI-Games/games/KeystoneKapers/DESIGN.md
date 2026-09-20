@@ -2776,6 +2776,86 @@ It was run against the defective art before being trusted, and failed on it:
 `hq` closest pair 0 px, `hp` 5 px, `kq` 4 px. Harry is now at 28 and 25; the
 Kop stays at 4, on purpose.
 
+### 0j4. The Kop is redrawn, and four beats become two plus a stand
+
+§0j3 above is the state that has now been superseded, and it is left standing
+because every step of what follows only makes sense against it. The reviewer
+went back to `assets/kelly-run1.txt` and `kelly-run2.txt` and redrew both poses
+with real asymmetric strides -- which fixed the defect §0j3 exempts, and
+immediately exposed a second one that the symmetric art had been hiding.
+
+**A mirrored stride reads as the figure TURNING ROUND.** The cycle was A, B,
+mirror(A), mirror(B). While the legs were two near-vertical columns the mirror
+was invisible, which is exactly why the scheme survived so long; with a real
+stride, beats 3 and 4 put the *other* foot forward on a body still facing the
+same way, and it was reported as *"sometimes the body is facing the wrong
+direction."* The mirrored beats are gone. **The run is the two drawings it
+always really was**, picked by one bit (`kanim AND 8`) instead of two.
+
+**And their slots carry a standing pose instead of being deleted.** There was
+never a standing drawing: `kanim` advances by distance travelled, so the
+counter *freezes* when Kelly stops and he held whatever beat he happened to be
+on -- a Kop stopped in mid-stride, with the baton up half the time.
+`kelly-stand.txt` is a real pose, and the two vacated slots (`KSTAND`/`KSPARE`,
+and `KLSTAND`/`KLSPARE` on the left) keep the block at **nine sprites so
+`P_KFACING` stays 36 and not one pattern number in the game moves**. Four
+patterns sit blank, and they are reclaimable the day something wants them.
+
+It is selected on three tests rather than one:
+
+```basic
+IF kmv = 0 THEN kb = P_KSTAND
+IF klst = ST_ESC THEN kb = P_KSTAND
+IF klst = ST_ELEV THEN kb = P_KSTAND
+```
+
+`kmv` is "a direction was held this pass". The two **riding** states need their
+own tests because both `RETURN` out of `move_kelly` *before* `kmv` is cleared,
+so it still holds whatever he was doing when he stepped on -- he would ride the
+escalator and the lift in mid-stride. The `ST_JUMP` override that forces
+`P_KRUN2` sits below all three, so a standing jump is still a leap.
+
+**The baton is now DERIVED from the body, not re-read from the counter.**
+`IF kb = P_KRUN2 THEN kf = P_KFACE2`, placed before the facing offset. The old
+code tested `kanim AND 8` a second time, which is the same frozen counter --
+so a stopped Kop stood there holding his baton up on whichever beat he stopped
+on. Asking the pose cannot disagree with the pose, and it covers the jump for
+free.
+
+#### TWO SILENT TRAPS, BOTH FOUND FROM PLAY RATHER THAN FROM A GATE
+
+* **An art row that loses ONE character is silently dropped, and everything
+  below it shifts up.** `_kelly_pose` takes any line of exactly 16 `.#-0` as
+  art and ignores everything else -- which is what lets the file carry its own
+  header. `kelly-run2.txt` lost the trailing dot of two rows, and the report
+  was *"the buttons on the shirt are all messed up"* and *"one of the arms sort
+  of disappears"*: two separate drawing complaints from one shifted block, with
+  nothing anywhere naming a line. Nothing failed -- the file still had 17+ art
+  rows, every band check passed, and the generator, the assembler and the cart
+  were all perfectly happy. **`genart.py` now refuses any line made only of art
+  characters that is not 16 wide**, naming the file, the line and the width.
+* **A checker can stop measuring a band and still print OK.** Rewriting the run
+  from a two-bit ladder (`kb = kb + 4` / `+ 8`) to a one-bit assignment
+  (`kb = P_KRUN2`) made `checkanim.py`'s extractor stop recognising it, and the
+  file reported *"animation OK -- 1 clocked bands"* with Kelly gone. Teaching it
+  the assignment form, and making its search window count **code** lines rather
+  than source lines, turned up **two more bands that had been invisible all
+  along** -- Harry's legs (`hq`, 39 px) and the biplane (`dp`). It measures four
+  where it measured two. `checkanim_test.py` now asserts the bands **by name**
+  with the beat count each must have, because a parser that silently matches
+  less is the same failure as a check that is scoped too narrowly.
+
+`dp` is the one band that fails on its numbers and is kept: the biplane's two
+phases are one airframe with two **propellers** -- a near-solid disc and broken
+blades -- so 4 px is the whole animation and the aircraft is one drawing on
+purpose. That is a named exemption in the §0j3 sense, still measured and still
+printed. The Kop's exemption is retired, and `checkanim_test.py` asserts that
+none of his bands carries one.
+
+Measured after the change: `kb` two beats **82 px** apart, `hp` 29, `hq` 39,
+`dp` 4 (exempt). TI 24,218 / 24,336; Coleco 607 / 814 -- unchanged, as a pose
+swap should be.
+
 ### 0k. The crouch bends over, and 11 px is the ceiling
 
 The crouch was 8 px, which is not a crouch: there is no room at that height to

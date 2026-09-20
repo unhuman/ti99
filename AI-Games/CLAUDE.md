@@ -280,6 +280,43 @@ cost a debugging session:
     exemption lists the band by name with its reason, still MEASURES it, and
     still prints its 4 px on every build; only the failure is suppressed, so the
     number moves in plain sight if the art ever gets worse.
+  - **AND THE FIX FOR A SYMMETRIC MIRROR EXPOSES THE MIRROR ITSELF.** Redrawing
+    the Kop's two poses with real strides ended the repeated beats and
+    immediately produced a new complaint -- *"sometimes the body is facing the
+    wrong direction"*. A mirrored stride puts the OTHER foot forward on a body
+    still facing the same way, which reads as the figure **turning round**; it
+    was invisible only because the old legs were two near-vertical columns. So
+    the mirror trick and the asymmetry requirement are in direct tension: a
+    drawing asymmetric enough to be worth two beats is asymmetric enough that
+    its mirror is a different ACTOR, not a different beat. Drop the mirrored
+    beats and run the two drawings you have.
+- **AN ART ROW THAT LOSES ONE CHARACTER IS SILENTLY DROPPED, AND EVERY ROW BELOW
+  IT SHIFTS UP.** A hand-editable art file that picks out its rows by shape
+  ("any line of exactly 16 of `.#-0`") so the file can carry its own header will
+  QUIETLY SKIP a row that is 15 wide. Nothing fails: the file still has enough
+  art rows, every band/colour check passes, and the generator, assembler and
+  cart are all happy. `kelly-run2.txt` lost the trailing dot of two rows and it
+  was reported as **two unrelated drawing bugs** -- *"the buttons on the shirt
+  are all messed up"* and *"one of the arms sort of disappears"* -- with nothing
+  anywhere naming a line, because a shifted block rebuilds the figure out of its
+  neighbours' rows. **Make a near-miss a HARD ERROR**: any line made only of art
+  characters must be exactly the width, or the build stops naming file, line and
+  width. A line that is meant to be prose must start with the comment character.
+- **A PARSER THAT SILENTLY MATCHES LESS IS A CHECK THAT REPORTS SUCCESS.**
+  `checkanim.py` reads each animated band out of the `.bas` as a base assignment
+  plus the `IF <clock> AND <bit> THEN v = v + n` lines after it. Rewriting a
+  four-beat ladder as a two-beat ASSIGNMENT (`kb = P_KRUN2`) meant the band
+  stopped being recognised, and the gate printed `animation OK -- 1 clocked
+  bands` with the player's run entirely unmeasured. Teaching it the assignment
+  form, and making its search window count **code** lines rather than source
+  lines (a paragraph of comment had been pushing steps out of reach), turned up
+  **two MORE bands that had never been measured** -- and one of them failed.
+  - This is the mirror of "a check whose scope is narrower than the bug": the
+    scope was right and the *extractor* narrowed under it. The count in the
+    summary line is the only visible symptom, and nobody reads a passing line.
+  - **Assert the subjects BY NAME in the self-test**, with the beat count each
+    must have. A gate that says how many things it measured, but never what,
+    cannot tell you it has gone blind.
 - **A FRACTIONAL-SPEED ACCUMULATOR IS CAPPED BY ITS NUMBER OF DRAIN STEPS, AND
   THE CHECKER WILL NOT KNOW.** Keystone Kapers spends a quarter-pixel speed as
   whole pixels with `hacc = hacc + hsp4` then a run of

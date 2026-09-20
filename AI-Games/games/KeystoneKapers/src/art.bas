@@ -21,22 +21,22 @@ spr_kelly:	' Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body
 	DATA BYTE $00,$00,$00,$0F,$0F,$0F,$0F,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$F0,$C0,$C0,$C0,$C0
-	DATA BYTE $00,$0F,$3F,$3F,$3F,$0F,$3F,$3F
-	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
-	DATA BYTE $F0,$F0,$FC,$FC,$F0,$FC,$FC,$FC
-	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
-	DATA BYTE $0F,$0F,$0F,$0F,$0F,$0F,$3F,$3F
-	DATA BYTE $3F,$1E,$1E,$3E,$3E,$00,$00,$00
-	DATA BYTE $00,$F0,$FC,$FC,$FC,$FC,$FC,$FC
-	DATA BYTE $FC,$7C,$7C,$7C,$7C,$00,$00,$00
-	DATA BYTE $00,$0F,$3F,$3F,$3F,$3F,$3F,$3F
-	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
-	DATA BYTE $F0,$F0,$FC,$FC,$F0,$F0,$FC,$FC
-	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
-	DATA BYTE $0F,$0F,$0F,$0F,$0F,$3F,$3F,$3F
-	DATA BYTE $3F,$3E,$3E,$3E,$3E,$00,$00,$00
-	DATA BYTE $00,$F0,$FC,$FC,$FC,$F0,$FC,$FC
-	DATA BYTE $FC,$78,$78,$7C,$7C,$00,$00,$00
+	DATA BYTE $07,$0E,$3F,$3F,$3F,$3F,$3F,$3F
+	DATA BYTE $0F,$0F,$0F,$0F,$0F,$00,$00,$00
+	DATA BYTE $80,$70,$FC,$3C,$FC,$9C,$F8,$F8
+	DATA BYTE $F0,$E0,$E0,$80,$E0,$00,$00,$00
+	DATA BYTE $0F,$7E,$CF,$CE,$8F,$0E,$1F,$1F
+	DATA BYTE $1F,$98,$F0,$00,$00,$00,$00,$00
+	DATA BYTE $FE,$60,$E0,$60,$F0,$78,$F8,$F8
+	DATA BYTE $3C,$07,$0C,$00,$00,$00,$00,$00
+	DATA BYTE $07,$0E,$3F,$3F,$3F,$3F,$3F,$3F
+	DATA BYTE $0F,$0F,$0F,$0F,$0F,$00,$00,$00
+	DATA BYTE $80,$70,$FC,$3C,$FC,$9C,$F8,$F8
+	DATA BYTE $F0,$E0,$E0,$80,$E0,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$01,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$78,$FC,$FC,$FE,$00,$00,$00
@@ -57,22 +57,22 @@ spr_kelly:	' Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body
 	DATA BYTE $00,$00,$00,$0F,$03,$03,$03,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$F0,$F0,$F0,$F0,$C0
-	DATA BYTE $0F,$0F,$3F,$3F,$0F,$3F,$3F,$3F
-	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
-	DATA BYTE $00,$F0,$FC,$FC,$FC,$F0,$FC,$FC
-	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
-	DATA BYTE $00,$0F,$3F,$3F,$3F,$3F,$3F,$3F
-	DATA BYTE $3F,$3E,$3E,$3E,$3E,$00,$00,$00
-	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$FC,$FC
-	DATA BYTE $FC,$78,$78,$7C,$7C,$00,$00,$00
-	DATA BYTE $0F,$0F,$3F,$3F,$0F,$0F,$3F,$3F
-	DATA BYTE $3C,$3C,$7C,$7C,$7C,$00,$00,$00
-	DATA BYTE $00,$F0,$FC,$FC,$FC,$FC,$FC,$FC
-	DATA BYTE $3C,$3C,$3E,$3E,$3E,$00,$00,$00
-	DATA BYTE $00,$0F,$3F,$3F,$3F,$0F,$3F,$3F
-	DATA BYTE $3F,$1E,$1E,$3E,$3E,$00,$00,$00
-	DATA BYTE $F0,$F0,$F0,$F0,$F0,$FC,$FC,$FC
-	DATA BYTE $FC,$7C,$7C,$7C,$7C,$00,$00,$00
+	DATA BYTE $01,$0E,$3F,$3C,$3F,$39,$1F,$1F
+	DATA BYTE $0F,$07,$07,$01,$07,$00,$00,$00
+	DATA BYTE $E0,$70,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$00,$00,$00
+	DATA BYTE $7F,$06,$07,$06,$0F,$1E,$1F,$1F
+	DATA BYTE $3C,$E0,$30,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$7E,$F3,$73,$F1,$70,$F8,$F8
+	DATA BYTE $F8,$19,$0F,$00,$00,$00,$00,$00
+	DATA BYTE $01,$0E,$3F,$3C,$3F,$39,$1F,$1F
+	DATA BYTE $0F,$07,$07,$01,$07,$00,$00,$00
+	DATA BYTE $E0,$70,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$1E,$3F,$3F,$7F,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$80,$00,$00,$00
@@ -271,6 +271,16 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and on
 	DATA BYTE $0D,$BB,$FF,$B0,$3F,$10,$38,$30
 	DATA BYTE $00,$00,$00,$00,$00,$00,$F0,$C3
 	DATA BYTE $43,$FF,$FF,$3E,$F8,$00,$00,$00
+
+spr_kface2:	' Kelly's face on the run-2 beat -- the one with the baton raised. RIGHT then LEFT, so the facing offset here is 4 and not Kelly's usual 36. Patterns 244..251
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$0F,$0F,$0F,$0F,$03
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$F1,$C1,$C1,$C1,$C1
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$8F,$83,$83,$83,$83
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$F0,$F0,$F0,$F0,$C0
 
 	' ---------------------------- borrowed at runtime, no slot of their own
 

@@ -23,11 +23,21 @@ So this asks the one question none of the others do: **given the beats the
 SOURCE actually plays, are they different pictures?**
 
 HOW IT READS THE BEATS. Not from a table here -- from `KEYSTONE.bas`. It finds
-each band's base assignment and the `IF <clock> AND <bit> THEN <var> = <var> +
-<n>` lines that follow it, enumerates every combination of those bits, and
-resolves the resulting pattern numbers through genart's own sprite table. A
-checker that hard-coded "Kelly plays KLEG1..4" would agree with the source
-right up until somebody changed the source, which is the moment it matters.
+each band's base assignment and the `IF <clock> AND <bit> THEN <var> = ...`
+lines that follow it -- either `<var> + <n>` or an outright `P_*` assignment --
+enumerates every combination of those bits, and resolves the resulting pattern
+numbers through genart's own sprite table. A checker that hard-coded "Kelly
+plays KLEG1..4" would agree with the source right up until somebody changed the
+source, which is the moment it matters.
+
+READING THE SOURCE IS NOT ENOUGH ON ITS OWN, though, and that is worth stating
+because it went wrong here. When Kelly's four-beat ladder became a two-beat
+assignment, the extractor stopped recognising it, his band vanished, and this
+file printed "animation OK" -- correctly, about everything it could still see.
+Two more bands turned out to have been invisible for the same reason: the
+window that looks for steps counted COMMENT lines against its budget. A parser
+that silently matches less is the same failure as a check that is scoped too
+narrowly, so `checkanim_test.py` now asserts the bands by name.
 
 IT ALSO CHECKS THE OTHER HALF OF THE SAME BUG: that every band of one figure
 runs on the SAME clock bits. Four leg poses against two torso poses is two
@@ -66,13 +76,38 @@ MINDIFF = 10
 # what it found, so an exempted cycle cannot quietly get worse -- it just does
 # not fail the build. Lowering MINDIFF instead would have blinded the check for
 # every OTHER band at the same time, which is how a gate stops being one.
+# THE KOP'S EXEMPTION HAS BEEN RETIRED, because the defect it named is gone.
+#
+# It used to read: "The Kop's leg poses are the reviewer's explicit choice...
+# They are two near-symmetric drawings mirrored, so beats 1/3 measure 4 px and
+# 2/4 measure 8 -- he really does run a two-frame cycle, and that is the
+# animation that was asked for."
+#
+# That was true and is not any more. Both poses were redrawn in
+# assets/kelly-run{1,2}.txt with asymmetric strides, and the same measurement
+# now reads 18 px between beats 1 and 3 and 22 between 2 and 4 -- four distinct
+# beats where there were two pictures. The reviewer changed the art rather than
+# the threshold, which is the outcome this file was arguing for.
+#
+# AN EXEMPTION OUTLIVING ITS DEFECT IS WORSE THAN NO GATE: it would sit here
+# accepting a silent return to a two-frame cycle on the one band that is not
+# allowed to fail. So it is removed rather than left "harmless".
 EXEMPT = {
-    "kq": "The Kop's leg poses are the reviewer's explicit choice, restored "
-          "from e9564ee after a redraw was rejected on sight. They are two "
-          "near-symmetric drawings mirrored, so beats 1/3 measure 4 px and "
-          "2/4 measure 8 -- he really does run a two-frame cycle, and that "
-          "is the animation that was asked for. Harry is the figure being "
-          "worked on; do not 'fix' this one to make the number go up.",
+    # THE BIPLANE IS MEANT TO BE THE SAME PICTURE TWICE. Its two phases are one
+    # aeroplane with two PROPELLERS -- a near-solid disc and broken blades --
+    # and the airframe is identical by construction, because an aircraft that
+    # changed shape between frames would not read as an aircraft. The 4 px is
+    # the whole propeller, which is the only part that is supposed to move.
+    #
+    # It is listed by name and still MEASURED, so if the two phases ever
+    # collapse into one the number printed here moves in plain sight.
+    #
+    # This band was invisible to the check until the parser learned the
+    # assignment form and stopped counting comment lines against its window --
+    # so were Harry's legs (hq, 39 px) and their stripe layer. Three bands went
+    # unmeasured while the file printed OK.
+    "dp": "the propeller is the animation; the airframe is one drawing on "
+          "purpose (P_PLANE / P_PLANEB)",
 }
 
 
@@ -109,8 +144,15 @@ def parse(src):
     bands = {}
 
     base_re = re.compile(r"^\s*(\w+) = (P_\w+)\s*(?:'.*)?$")
-    step_re = re.compile(r"^\s*IF (\w+) AND (\d+) THEN (\w+) = \3 \+ (\d+)"
-                         r"\s*(?:'.*)?$")
+    # A BEAT IS PICKED EITHER BY ADDING OR BY ASSIGNING, and this has to read
+    # both. It read only the adding form, and when Kelly's four-beat ladder
+    # (`kb = kb + 4` / `+ 8`) became a two-beat one written as an assignment
+    # (`kb = P_KRUN2`) his band simply STOPPED BEING FOUND -- the run went
+    # unmeasured and the file still printed "animation OK", one band lighter.
+    # Nothing said a word, which is the same shape as the bug this whole check
+    # exists for. A checker that quietly narrows is worse than one that fails.
+    step_re = re.compile(r"^\s*IF (\w+) AND (\d+) THEN (\w+) = "
+                         r"(?:\3 \+ (\d+)|(P_\w+))\s*(?:'.*)?$")
     der_re = re.compile(r"^\s*(\w+) = (\w+) - (P_\w+)\s*(?:'.*)?$")
 
     for i, ln in enumerate(lines):
@@ -126,20 +168,44 @@ def parse(src):
         if base not in consts:
             continue
         steps, clock = [], None
-        for ln2 in lines[i + 1:i + 6]:
+        # Comments between the base and its steps are skipped rather than
+        # counted, so the window is a bound on CODE lines, not on source lines
+        # -- it used to be five source lines and a paragraph of comment pushed
+        # the step out of reach, which loses the band silently.
+        for ln2 in lines[i + 1:i + 60]:
+            t = ln2.strip()
+            if t.startswith("'") or t == "":
+                continue
             s = step_re.match(ln2)
-            if not s:
-                if ln2.strip().startswith("'") or ln2.strip() == "":
-                    continue
-                break
-            if s.group(3) != var:
+            if not s or s.group(3) != var:
                 break
             clock = s.group(1)
-            steps.append((int(s.group(2)), int(s.group(4))))
+            if s.group(4) is not None:
+                steps.append(("add", int(s.group(2)), int(s.group(4))))
+            else:
+                if s.group(5) not in consts:
+                    break
+                steps.append(("set", int(s.group(2)), consts[s.group(5)]))
         if steps:
             bands[var] = {"base": base, "basen": consts[base], "clock": clock,
                           "steps": steps, "line": i + 1, "derived": None}
     return bands, consts
+
+
+def beats_of(b):
+    """The pattern numbers one band plays, over every combination of its bits.
+
+    An "add" step accumulates and a "set" step overwrites, which is what lets
+    the two-beat assignment form and the four-beat ladder share one model.
+    """
+    found = set()
+    for mask in range(1 << len(b["steps"])):
+        n = b["basen"]
+        for k, (kind, _bit, val) in enumerate(b["steps"]):
+            if mask & (1 << k):
+                n = n + val if kind == "add" else val
+        found.add(n)
+    return sorted(found)
 
 
 def facings(src, consts):
@@ -175,10 +241,7 @@ def main():
 
     for var in sorted(direct):
         b = direct[var]
-        beats = [b["basen"]]
-        for bit, add in b["steps"]:
-            beats = beats + [n + add for n in beats]
-        beats = sorted(set(beats))
+        beats = beats_of(b)
         names = []
         for n in beats:
             if n not in art:
@@ -243,7 +306,7 @@ def main():
     for clock in sorted(x for x in byclock if x):
         seen = {}
         for var, b in byclock[clock]:
-            seen[tuple(sorted(bit for bit, _a in b["steps"]))] = var
+            seen[tuple(sorted(bit for _k, bit, _a in b["steps"]))] = var
         if len(seen) > 1:
             bad.append("clock %s drives bands on DIFFERENT bits (%s) -- that "
                        "is two clocks in one figure, and the band on the "
