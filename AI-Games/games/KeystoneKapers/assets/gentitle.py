@@ -77,7 +77,7 @@ END = 255
 # 2..28 gives 92, which is 23 clusters exactly -- and it keeps two columns clear
 # on the left, three on the right and two rows at the bottom, so nothing is lost
 # to a real set's overscan.
-FRAME_TOP, FRAME_BOT = 1, 21
+FRAME_TOP, FRAME_BOT = 3, 23
 FRAME_L, FRAME_R = 2, 28
 
 CLUSTER, GAP = 3, 1
@@ -149,8 +149,8 @@ def frame_runs():
 #
 # The interior is rows 2..20 by columns 3..27, so the centre column is 15.
 BIG = [
-    (6, 9, "KEYSTONE"),         # 12 cells wide
-    (10, 11, "KAPERS"),         # 9 cells -- a blank row between the two
+    (8, 9, "KEYSTONE"),         # 12 cells wide
+    (12, 11, "KAPERS"),         # 9 cells -- a blank row between the two
 ]
 
 
@@ -262,9 +262,21 @@ def big_runs():
 # own box front is laid out -- instead of a logo followed by a footnote. That
 # also retires the separate `BY GARRY KITCHEN` line, which is why BIG moved two
 # rows down: the name keeps its place on the screen while gaining a line above.
+#
+# THE WHOLE CARD SITS TWO ROWS LOWER THAN IT USED TO, marquee and all, to free
+# row 0 for the score line below. The frame is rows 3..23 where it was 1..21 --
+# same 21 x 27, so the lamp ring is the same 92 cells and still divides by the
+# chase period, which the check in frame_runs() would otherwise fail.
+#
+# THE SCORE LINE IS LABELS HERE AND DIGITS AT RUN TIME. `SCORE:` ends at column
+# 7 and `HI:` at column 19, so the two six-digit fields start at 8 and 20 --
+# the same column the in-game HUD puts its score in, which is not a coincidence
+# worth breaking. `title_score` in KEYSTONE.bas writes the numbers there.
 TITLE = [
-    (4, 8, "GARRY KITCHEN'S"),
-    (16, 4, "2026 UNHUMAN AND CLAUDE"),
+    (0, 2, "SCORE:"),
+    (0, 17, "HI:"),
+    (6, 8, "GARRY KITCHEN'S"),
+    (18, 4, "2026 UNHUMAN AND CLAUDE"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -285,25 +297,49 @@ TITLE = [
 # of four attribute cells, so coluring it would have recoloured a band of shop
 # floor around it.
 #
-# 16 x 4 at row 9, column 8 covers exactly four attribute bytes -- byte row 3,
+# 16 x 4 at row 13, column 8 covers exactly four attribute bytes -- byte row 4,
 # byte columns 2..5 -- so the game can set those four to palette 1 and touch
-# nothing else. GAME OVER stacks four rows above and covers byte row 2 the same
-# way. (Name rows on the NES are three lower than these: 9 -> 12, 5 -> 8.)
+# nothing else. GAME OVER stacks four rows above and covers byte row 3 the same
+# way. (Name rows on the NES are three lower than these: 13 -> 16, 9 -> 12.)
 #
 # The TI has no such constraint and simply gets the larger box.
-BOX_ROW, BOX_COL, BOX_W = 9, 8, 16
+#
+# AND THAT GRID IS WHY THE BOXES MOVED FOUR ROWS AND NOT TWO. Two was what was
+# asked for and it is not available: an attribute byte is FOUR characters tall,
+# so the only rows a 4-row box can start on are those where (row + 3) % 4 == 0
+# -- 1, 5, 9, 13, 17, 21. From 9 the next one down is 13. A box at 11 would
+# straddle two byte rows, and colouring both would repaint sixteen columns of
+# TI rows 9..16 -- two whole floors of shop -- in the message's dark blue.
+#
+# 13 also keeps the pair clear of everything: GAME OVER lands on rows 9..12,
+# the reason box on 13..16, the bottom floor bar is row 18 and the radar
+# canvas rows 21..23.
+BOX_ROW, BOX_COL, BOX_W = 13, 8, 16
+
+def _line(text):
+    """One message line, CENTRED in the box and padded to its full width.
+
+    It was centred by hand and two of the five were not: `GOT HIM!` and
+    `TIME UP!` each sat one column left of centre, with the surplus on the
+    right. That is invisible in a source listing -- the lines are all the right
+    LENGTH, which is the only thing the width check downstream could ask -- and
+    on screen it reads as the box having a wider margin on one side.
+    """
+    if len(text) > BOX_W:
+        raise SystemExit("%r is %d wide and the box is %d"
+                         % (text, len(text), BOX_W))
+    left = (BOX_W - len(text)) // 2
+    return " " * left + text + " " * (BOX_W - len(text) - left)
+
+
+BLANK = " " * BOX_W
 
 MESSAGES = {
-    "msg_gothim": ["                ", "   GOT HIM!     ",
-                   "                ", "                "],
-    "msg_away":   ["                ", "  HE GOT AWAY   ",
-                   "                ", "                "],
-    "msg_plane":  ["                ", "  THE BIPLANE   ",
-                   "                ", "                "],
-    "msg_timeup": ["                ", "   TIME UP!     ",
-                   "                ", "                "],
-    "msg_over":   ["                ", "   GAME OVER    ",
-                   "                ", "                "],
+    "msg_gothim": [BLANK, _line("GOT HIM!"), BLANK, BLANK],
+    "msg_away":   [BLANK, _line("HE GOT AWAY"), BLANK, BLANK],
+    "msg_plane":  [BLANK, _line("THE BIPLANE"), BLANK, BLANK],
+    "msg_timeup": [BLANK, _line("TIME'S UP!"), BLANK, BLANK],
+    "msg_over":   [BLANK, _line("GAME OVER"), BLANK, BLANK],
 }
 
 MSG_ROW = {

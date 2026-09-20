@@ -98,6 +98,11 @@ SCREEN = {
     "radio_draw": "GAME",     # the victrola, four cells stamped into the
                               # band's air rows after the blit
     "coll_prize": "GAME", "scan_canvas": "GAME",
+    # scr_at prints six digits at whatever #psa its caller set, so it serves
+    # BOTH screens: hud_score falls into it for the HUD and title_score calls
+    # it twice for the title card. Its own entry is only for completeness --
+    # every write it makes is attributed to the routine that set the address.
+    "scr_at": "GAME", "title_score": "TITLE",
     "hud_all": "GAME", "hud_score": "GAME", "hud_time": "GAME",
     "hud_kops": "GAME", "prt_digits": "GAME", "prt_dloop": "GAME",
     "prt_dsub": "GAME", "prt_dout": "GAME", "add_score": "GAME",
@@ -177,9 +182,23 @@ def main():
     pokes = []           # (lineno, label, row, col, varname)
     unchecked = []       # (lineno, label, varname)
     label = "(top)"
-    # var -> EVERY literal it currently might hold. prt_dout is reached from
-    # both hud_score and hud_time, and taking only the most recent assignment
-    # would check one of its two columns and quietly ignore the other.
+    # var -> EVERY (literal, assigning label) it currently might hold.
+    #
+    # prt_dout is reached from both hud_score and hud_time, so taking only the
+    # most recent assignment would check one of its two columns and quietly
+    # ignore the other.
+    #
+    # AND THE SCREEN BELONGS TO THE ASSIGNMENT, NOT TO THE POKE. A digit
+    # printer is handed its address by its caller, so the same VPOKE lands on
+    # the HUD when hud_score called it and on the title card when title_score
+    # did. Attributing it to the routine that pokes forces one label to name
+    # two screens, and then every row it writes is compared against the wrong
+    # screen's text -- the title's HI field read as colliding with the game's
+    # TIME digits, which are not on the same picture and never coexist.
+    #
+    # This is the same failure as the original scope bug (a row only means
+    # something within one screen), arriving from the other side: a routine
+    # that belongs to no ONE screen. The address knows where it came from.
     addrs = {}
 
     for n, ln in enumerate(lines, 1):
@@ -189,7 +208,7 @@ def main():
 
         m = SETLIT_RE.match(ln)
         if m:
-            addrs.setdefault(m.group(1), set()).add(int(m.group(2)))
+            addrs.setdefault(m.group(1), set()).add((int(m.group(2)), label))
         else:
             m = SETANY_RE.match(ln)
             if m:
@@ -203,10 +222,10 @@ def main():
             hits = sorted(addrs.get(var, ()))
             if not hits:
                 unchecked.append((n, label, var))
-            for a in hits:
+            for a, alabel in hits:
                 off = a - NAME_TABLE
                 if 0 <= off < 768:
-                    pokes.append((n, label, off // 32, off % 32, var))
+                    pokes.append((n, label, off // 32, off % 32, var, alabel))
                 else:
                     unchecked.append((n, label, var))
 
@@ -260,7 +279,12 @@ def main():
                 prints.append((0, label, row, col, text))
                 _title_bounds(bad, name, text, row, col)
 
-    touched = {l for _, l, _, _, _ in prints + pokes}
+    touched = {l for _, l, _, _, _ in prints}
+    touched |= {l for _, l, _, _, _, _ in pokes}
+    # The ASSIGNING routine has to be mapped too -- it is the one whose screen
+    # the write is now checked against, so an unmapped one means a poke silently
+    # compared against nothing.
+    touched |= {a for _, _, _, _, _, a in pokes}
     touched |= {l for _, l, _ in unchecked}
     unknown = sorted(touched - set(SCREEN))
     if unknown:
@@ -280,9 +304,9 @@ def main():
                            "OVERLAP" % (nm, col, col + wid - 1,
                                         nm2, col2, col2 + wid2 - 1))
 
-    for pn, plabel, prow, pcol, var in pokes:
+    for pn, plabel, prow, pcol, var, alabel in pokes:
         for tn, tlabel, trow, tcol, text in prints:
-            if screen_of(tlabel) != screen_of(plabel) or trow != prow:
+            if screen_of(tlabel) != screen_of(alabel) or trow != prow:
                 continue
             if tcol <= pcol < tcol + len(text):
                 ch = text[pcol - tcol]
@@ -305,9 +329,10 @@ def main():
         print("  %-5s row %2d col %2d  %-32r %s"
               % (screen_of(label), row, col, text, label))
     print()
-    for n, label, row, col, var in pokes:
-        print("  %-5s row %2d col %2d  <#%s> %s" % (screen_of(label), row, col,
-                                                    var, label))
+    for n, label, row, col, var, alabel in pokes:
+        via = label if alabel == label else "%s via %s" % (alabel, label)
+        print("  %-5s row %2d col %2d  <#%s> %s"
+              % (screen_of(alabel), row, col, var, via))
     print()
     for n, label, var in unchecked:
         print("  %-5s line %-5d #%-6s built in steps -- NOT statically checked (%s)"

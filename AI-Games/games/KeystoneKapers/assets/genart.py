@@ -305,7 +305,6 @@ def _kelly_pose(fname):
 
 KELLY_TOP, KELLY_LEG2 = _kelly_pose("kelly-run2.txt")   # arm forward, legs passing
 KELLY_TOP_B, KELLY_LEG1 = _kelly_pose("kelly-run1.txt")  # arm back, full stride
-KELLY_TOP_S, KELLY_LEG_S = _kelly_pose("kelly-stand.txt")  # at rest
 
 # KELLY'S HAT IS ITS OWN SPRITE NOW, and that is what buys Harry a striped cap.
 # While hat and tunic shared a slot, that slot's box had to span rows 0-15 and
@@ -1467,12 +1466,20 @@ KELLY_RUN2 = overlay(KELLY_BODY, shift(KELLY_LEG2, 5))
 # mirrored stride reads as the figure turning round: the Kop appeared to face
 # the wrong way on half his beats, which is exactly what was reported.
 #
-# So the mirrored-leg beats are gone and their slots carry the STANDING pose
-# instead. Keeping the slots rather than deleting them is deliberate -- the
-# block stays nine sprites, P_KFACING stays 36, and not one pattern number in
-# the rest of the game moves.
-KELLY_STAND = overlay(shift(band(KELLY_TOP_S, TORSO), -11),
-                      shift(KELLY_LEG_S, 5))
+# So the mirrored-leg beats are gone, and their two slots are BLANK.
+#
+# They briefly carried a standing pose out of `kelly-stand.txt`. That file was
+# drawn as a copy of run frame 1 and stayed byte-identical to it, so the
+# standing sprite and the run-1 sprite were the same sixteen rows loaded twice
+# -- which is the exact thing this whole section exists to stop. **Standing IS
+# run frame 1**, and the source says so by naming P_KRUN1 rather than keeping
+# an alias for it.
+#
+# The slots are kept rather than removed so the block stays nine sprites,
+# P_KFACING stays 36, and not one pattern number in the rest of the game moves.
+# That leaves EIGHT free patterns per facing sitting in the middle of Kelly's
+# block, which is worth knowing while the sprite table is as full as it is:
+# they are the cheapest sixteen patterns in the game to claim.
 
 # THE LAYOUT IS A CONTRACT WITH THE SELECTION CODE, and it is arranged so that
 # code is three statements instead of two branches:
@@ -1493,21 +1500,22 @@ KELLY_STAND = overlay(shift(band(KELLY_TOP_S, TORSO), -11),
 SPRITES = [
     ("spr_kelly", [("KHAT", KELLY_HAT), ("KFACE", KELLY_FACE),
                    ("KRUN1", KELLY_RUN1), ("KRUN2", KELLY_RUN2),
-                   ("KSTAND", KELLY_STAND), ("KSPARE", BLANK16),
+                   ("KSPARE1", BLANK16), ("KSPARE2", BLANK16),
                    ("KDHAT", KELLY_DHAT), ("KDFACE", KELLY_DFACE),
                    ("KDBODY", KELLY_DBODY),
                    ("KLHAT", mirror(KELLY_HAT)),
                    ("KLFACE", mirror(KELLY_FACE)),
                    ("KLRUN1", mirror(KELLY_RUN1)),
                    ("KLRUN2", mirror(KELLY_RUN2)),
-                   ("KLSTAND", mirror(KELLY_STAND)),
-                   ("KLSPARE", BLANK16),
+                   ("KLSPARE1", BLANK16),
+                   ("KLSPARE2", BLANK16),
                    ("KLDHAT", mirror(KELLY_DHAT)),
                    ("KLDFACE", mirror(KELLY_DFACE)),
                    ("KLDBODY", mirror(KELLY_DBODY))],
-     "Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body, "
-     "then the same LEFT (+36). The run bodies carry tunic AND legs, so a "
-     "frame is one sprite. Patterns 0..68"),
+     "Kelly: RIGHT hat/face/two merged run bodies/two FREE slots/duck "
+     "hat/face/body, then the same LEFT (+36). The run bodies carry tunic "
+     "AND legs, so a frame is one sprite, and standing is run frame 1. "
+     "Patterns 0..68"),
     # NINE PATTERNS PER FACING, in this order because the source picks a beat
     # with `+4` and `+8` on the animation counter -- the four bodies must be
     # consecutive, and so must the four stripes.

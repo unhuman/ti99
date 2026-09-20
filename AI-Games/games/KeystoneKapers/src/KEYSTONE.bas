@@ -214,16 +214,18 @@
 	' are drawn on, which is what Harry's legs already had to do.
 	CONST P_KRUN1 = 8		'              run frame 1: arm back + leg 1
 	' RUN FRAME 2 -- arm forward, legs passing (assets/kelly-run2.txt). Named
-	' because the JUMP borrows it; the run itself reaches frames 2, 3 and 4 by
-	' adding to P_KRUN1 off the animation counter.
+	' because the JUMP borrows it; the run alternates it with P_KRUN1 on one
+	' bit of the animation counter.
 	CONST P_KRUN2 = 12
-	' AT REST (assets/kelly-stand.txt). The run is two frames, not four: the
-	' old frames 3 and 4 were 1 and 2 with the LEGS MIRRORED, which was
-	' invisible while the legs were near-symmetric and read as the figure
-	' turning round once both poses were redrawn with real strides. Their two
-	' slots carry the standing pose and a blank instead, so the sprite block
-	' stays nine patterns and P_KFACING is still 36.
-	CONST P_KSTAND = 16
+	' AND STANDING IS RUN FRAME 1, so there is no third constant here.
+	'
+	' The run used to be four frames: 1, 2, and the two of them with the LEGS
+	' MIRRORED. That was invisible while the legs were near-symmetric and read
+	' as the figure turning round once both poses were redrawn with real
+	' strides, so the mirrored beats are gone. Their slots briefly carried a
+	' separate standing pose from assets/kelly-stand.txt -- which was a copy of
+	' run frame 1 and stayed byte-identical to it, so it was the same sixteen
+	' rows loaded twice. Patterns 16..23 and 52..59 are FREE.
 	CONST P_KDHAT = 24		'              ducked: the brim, black
 	CONST P_KDFACE = 28		'              ducked: face
 	CONST P_KDBODY = 32		'              ducked: the crouch, blue
@@ -1713,6 +1715,11 @@ title_draw:
 	#if TI994A
 	BANK SELECT 1
 	#endif
+	' AFTER THE WALK AND AFTER THE BANK IS BACK. title_score calls prt_digits,
+	' which is fixed-area code, but the VARPTR above reads bank 2 -- so the
+	' numbers go on once the list is done and bank 1 is selected again, not in
+	' the middle of it.
+	GOSUB title_score
 	' NOTHING TO RESET BUT THE COUNTER. Every rotation of the four lamps is a
 	' valid three-and-one, so a title reached after a game over simply carries
 	' on from wherever the last chase stopped -- and `bphs` still names the
@@ -1807,9 +1814,9 @@ title_input:
 	' point of the early draw is that it is early -- so the PROMPT waits
 	' instead, and its arrival is the cue that the screen is awake.
 	#if NES
-	PRINT AT 617 + 96,"FIRE TO START"
+	PRINT AT 681 + 96,"FIRE TO START"
 	#else
-	PRINT AT 617,"FIRE TO START"
+	PRINT AT 681,"FIRE TO START"
 	#endif
 	tkl = 15
 title_wait:
@@ -4914,10 +4921,14 @@ draw_actors:
 		IF kanim AND 8 THEN kb = P_KRUN2
 		' AND HE STANDS WHENEVER HE IS NOT RUNNING.
 		'
-		' There used to be no standing drawing at all: kanim advances by kspd,
-		' so the counter FREEZES when he stops and he held whatever beat he
+		' There used to be no standing pose at all: kanim advances by kspd, so
+		' the counter FREEZES when he stops and he held whatever beat he
 		' happened to be on -- a Kop stopped in mid-stride, with the baton up
-		' half the time. P_KSTAND is a real pose and this picks it.
+		' half the time. Whichever beat that was, it was not a decision.
+		'
+		' STANDING IS RUN FRAME 1, which is not a shortcut. It was drawn as a
+		' separate pose and the drawing came back byte-identical to run 1, so
+		' the alias says what is true and the second sprite is not loaded.
 		'
 		' kmv is "a direction was held this pass", so releasing the key is
 		' standing and so is the first frame of a round. The two RIDING states
@@ -4928,9 +4939,9 @@ draw_actors:
 		'
 		' Separate IFs rather than an OR -- the 9900 backend miscompiles a
 		' compound comparison (CLAUDE.md 3A).
-		IF kmv = 0 THEN kb = P_KSTAND
-		IF klst = ST_ESC THEN kb = P_KSTAND
-		IF klst = ST_ELEV THEN kb = P_KSTAND
+		IF kmv = 0 THEN kb = P_KRUN1
+		IF klst = ST_ESC THEN kb = P_KRUN1
+		IF klst = ST_ELEV THEN kb = P_KRUN1
 		' IN THE AIR HE HOLDS A POSE. Cycling the legs through a jump reads
 		' as running on nothing; the reference holds one stride for the
 		' whole arc.
@@ -4941,18 +4952,31 @@ draw_actors:
 		IF klst = ST_JUMP THEN kb = P_KRUN2
 		kp = P_KHAT
 		kf = P_KFACE
-		' THE BATON RIDES THE RUN-2 BODY, and is DERIVED FROM THE POSE rather
-		' than tested against the animation counter a second time.
+		' THE BATON COMES UP ON EVERY FOURTH BEAT, NOT EVERY OTHER ONE.
 		'
 		' There is ONE face sprite for every pose, so anything drawn in the
 		' FACE band is on screen the whole time -- and kelly-run2.txt puts a
 		' raised baton there. The default face is run1's, without it.
 		'
-		' Reading the counter again is what put the baton up while he stood
-		' still: kanim FREEZES when he stops, so he held whichever beat he had
-		' been on. Asking the BODY instead cannot disagree with it, and it
-		' covers the jump for free -- the jump holds P_KRUN2.
-		IF kb = P_KRUN2 THEN kf = P_KFACE2
+		' Riding it on the run-2 BODY put it up half the time, which is a man
+		' waving rather than a man running with a stick. The body still
+		' alternates on bit 3; the baton needs bit 4 as well, so it appears on
+		' one beat in four and the arm has three beats to come back down.
+		'
+		' Nested IFs, not a compound condition -- the 9900 backend miscompiles
+		' `<cmp> AND <cmp>` (CLAUDE.md 3A). And the test is on the POSE rather
+		' than on the counter a second time, because kanim FREEZES when he
+		' stops: reading it again is what left him standing still holding the
+		' baton up on whichever beat he happened to halt on.
+		IF kb = P_KRUN2 THEN
+			IF kanim AND 16 THEN kf = P_KFACE2
+		END IF
+		' AND THE JUMP ALWAYS GETS IT. The jump holds P_KRUN2, but kanim does
+		' not advance during a standing jump (no direction is held, so nothing
+		' adds to it) -- so the bit-4 test above would give whatever it held at
+		' take-off. This is an explicit override rather than a subtlety about
+		' which beat he jumped on.
+		IF klst = ST_JUMP THEN kf = P_KFACE2
 		IF kldir = 0 THEN
 			kp = kp + P_KFACING
 			kb = kb + P_KFACING
@@ -6047,6 +6071,13 @@ hud_score:
 	#else
 	#psa = 6152
 	#endif
+	' AND IT FALLS THROUGH -- no RETURN here. scr_at is the body this routine
+	' used to have inline; the title screen needs the same six digits at two
+	' other addresses, so it is a label rather than a copy. Fall-through is
+	' ordinary control flow in CVBasic, and checkdead.py models it.
+
+	' SIX DIGITS AT #psa, FROM #psv. The caller sets both.
+scr_at:
 	#psd = 10000
 	' BLANK THE LEADING ZEROS. 000050 reads as a six-digit number that happens
 	' to be small; 50 reads as a score. Every arcade cabinet this is imitating
@@ -6058,6 +6089,32 @@ hud_score:
 	pszs = 1
 	GOSUB prt_digits
 	VPOKE #psa,48				' the fixed trailing zero
+	RETURN
+
+	' THE TITLE SCREEN'S TWO NUMBERS -- last game and best so far.
+	'
+	' Row 0, which the card was moved two rows down to free. The labels are
+	' part of the title display list in bank 2 (gentitle.py's TITLE); only the
+	' digits are written here, because they are the only part that changes.
+	'
+	' The title list puts row 0 at the NES picture offset (+3 rows, the base
+	' the walker uses), NOT the HUD's +2 -- so these are 8192+96+col and not
+	' the 8264/8277 the in-game row uses.
+title_score:
+	#psv = #score
+	#if NES
+	#psa = 8296
+	#else
+	#psa = 6152
+	#endif
+	GOSUB scr_at
+	#psv = #hi
+	#if NES
+	#psa = 8308
+	#else
+	#psa = 6164
+	#endif
+	GOSUB scr_at
 	RETURN
 
 hud_time:
@@ -6349,7 +6406,7 @@ do_catch:
 	#tta = VARPTR msg_gothim(0)
 	GOSUB run_list
 	#if NES
-	#nav = 9178			' the capture box, same rows as the reason
+	#nav = 9186			' the capture box, same rows as the reason
 	GOSUB nes_boxatt
 	#endif
 	GOSUB snd_off			' nothing rings on through the count
@@ -6538,7 +6595,7 @@ lose_kop:
 	IF rsn = 1 THEN #tta = VARPTR msg_plane(0)
 	GOSUB run_list
 	#if NES
-	#nav = 9178			' the reason box -- see nes_boxatt
+	#nav = 9186			' the reason box -- see nes_boxatt
 	GOSUB nes_boxatt
 	#endif
 	' The reason is read during THIS beat, before anything else happens. It
@@ -6558,11 +6615,22 @@ lose_kop:
 		#tta = VARPTR msg_over(0)
 		GOSUB run_list
 		#if NES
-		#nav = 9170			' GAME OVER, one attribute row up
+		#nav = 9178			' GAME OVER, one attribute row up
 		GOSUB nes_boxatt
 		#endif
 		GOSUB pause_beat
 		GOSUB pause_beat
+		' THE HIGH SCORE IS SETTLED HERE AND NOWHERE ELSE.
+		'
+		' One comparison at the end of a game, not a test beside every
+		' award: the score only ever goes up, so the largest value it
+		' reaches IS its value when the last Kop is gone. Checking it on
+		' every capture would run the compare thousands of times to learn
+		' the same thing, in the fixed area, which has no room for it.
+		'
+		' #hi survives until the console is switched off. There is no
+		' storage on either cartridge to keep it longer.
+		IF #score > #hi THEN #hi = #score
 		' 8-3-8 IS FORGOTTEN WHEN THE GAME ENDS. krk0 and kops0 are
 		' globals, so a starting Krook or Kop count typed on the setup
 		' screen otherwise applied to every game after it -- including one

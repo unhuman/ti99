@@ -12,7 +12,7 @@
 	' the right. Every block is an EVEN number of bytes -- an odd DATA BYTE run
 	' silently misaligns every word table after it (CLAUDE.md 3A).
 
-spr_kelly:	' Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body, then the same LEFT (+36). The run bodies carry tunic AND legs, so a frame is one sprite. Patterns 0..68
+spr_kelly:	' Kelly: RIGHT hat/face/two merged run bodies/two FREE slots/duck hat/face/body, then the same LEFT (+36). The run bodies carry tunic AND legs, so a frame is one sprite, and standing is run frame 1. Patterns 0..68
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$03,$07,$0F,$0F,$0F,$3F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -25,14 +25,14 @@ spr_kelly:	' Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body
 	DATA BYTE $0F,$0F,$0F,$0F,$0F,$00,$00,$00
 	DATA BYTE $80,$70,$FC,$3C,$FC,$9C,$F8,$F8
 	DATA BYTE $F0,$E0,$E0,$80,$E0,$00,$00,$00
-	DATA BYTE $0F,$7E,$CF,$CE,$8F,$0E,$1F,$1F
+	DATA BYTE $0F,$7E,$CF,$CE,$8F,$0F,$1F,$1F
 	DATA BYTE $1F,$98,$F0,$00,$00,$00,$00,$00
-	DATA BYTE $FE,$60,$E0,$60,$F0,$78,$F8,$F8
-	DATA BYTE $3C,$07,$0C,$00,$00,$00,$00,$00
-	DATA BYTE $07,$0E,$3F,$3F,$3F,$3F,$3F,$3F
-	DATA BYTE $0F,$0F,$0F,$0F,$0F,$00,$00,$00
-	DATA BYTE $80,$70,$FC,$3C,$FC,$9C,$F8,$F8
-	DATA BYTE $F0,$E0,$E0,$80,$E0,$00,$00,$00
+	DATA BYTE $FE,$60,$E0,$60,$F0,$98,$F8,$F8
+	DATA BYTE $3D,$07,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -61,14 +61,14 @@ spr_kelly:	' Kelly: RIGHT hat/face/the four merged run bodies/duck hat/face/body
 	DATA BYTE $0F,$07,$07,$01,$07,$00,$00,$00
 	DATA BYTE $E0,$70,$FC,$FC,$FC,$FC,$FC,$FC
 	DATA BYTE $F0,$F0,$F0,$F0,$F0,$00,$00,$00
-	DATA BYTE $7F,$06,$07,$06,$0F,$1E,$1F,$1F
-	DATA BYTE $3C,$E0,$30,$00,$00,$00,$00,$00
-	DATA BYTE $F0,$7E,$F3,$73,$F1,$70,$F8,$F8
+	DATA BYTE $7F,$06,$07,$06,$0F,$19,$1F,$1F
+	DATA BYTE $BC,$E0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$7E,$F3,$73,$F1,$F0,$F8,$F8
 	DATA BYTE $F8,$19,$0F,$00,$00,$00,$00,$00
-	DATA BYTE $01,$0E,$3F,$3C,$3F,$39,$1F,$1F
-	DATA BYTE $0F,$07,$07,$01,$07,$00,$00,$00
-	DATA BYTE $E0,$70,$FC,$FC,$FC,$FC,$FC,$FC
-	DATA BYTE $F0,$F0,$F0,$F0,$F0,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00

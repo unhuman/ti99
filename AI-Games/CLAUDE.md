@@ -290,6 +290,25 @@ cost a debugging session:
     drawing asymmetric enough to be worth two beats is asymmetric enough that
     its mirror is a different ACTOR, not a different beat. Drop the mirrored
     beats and run the two drawings you have.
+  - **AND AN "EXTRA" POSE IS ONLY A POSE IF IT MEASURES DIFFERENT.** Kelly was
+    given a standing drawing, because an animation counter that advances by
+    DISTANCE freezes when the actor stops and leaves him holding whichever beat
+    he halted on. The file came back **byte-identical to run frame 1** -- the
+    same sixteen rows uploaded into a second slot. The fix is a one-line alias
+    (`IF kmv = 0 THEN kb = P_KRUN1`), not a second sprite, and the way to find
+    out is to `==` the assembled art rather than to read the two files. Keep
+    the vacated slots as declared BLANKS so nothing renumbers, and say in the
+    table that they are free.
+  - **A LOOPING DETAIL DRAWN INTO A BAND IS ON SCREEN FOR THE WHOLE POSE.**
+    Kelly's raised baton lives in his FACE sprite, and there is one face per
+    pose -- so selecting it off the same bit as the body put it up **half the
+    time**, which reads as waving rather than running. A detail that should
+    punctuate the cycle needs its own, SLOWER bit (`AND 16` on top of the
+    body's `AND 8`, so one beat in four) and an explicit override for any
+    state where the counter does not advance: a standing jump holds no
+    direction, so a distance counter is frozen and the bit is whatever it was
+    at take-off. Without the override the detail appears on some jumps and not
+    others, for a reason no player can see.
 - **AN ART ROW THAT LOSES ONE CHARACTER IS SILENTLY DROPPED, AND EVERY ROW BELOW
   IT SHIFTS UP.** A hand-editable art file that picks out its rows by shape
   ("any line of exactly 16 of `.#-0`") so the file can carry its own header will
@@ -646,6 +665,19 @@ cost a debugging session:
     (both the `nchr`/`ncnt`/`ntab` form and `DEFINE CHAR`/`DEFINE SPRITE`) to a range
     and a source and fails on any that lands in another table's codes, with the
     deliberate borrows declared by name.
+  - **A ROUTINE HANDED ITS ADDRESS BY ITS CALLER BELONGS TO NO ONE SCREEN, AND A
+    LAYOUT GATE HAS TO ATTRIBUTE THE WRITE TO THE ASSIGNMENT RATHER THAN TO THE
+    POKE.** Keystone Kapers shared one digit printer between the in-game HUD and
+    a new score line on the title card. `checklayout.py` refuses to pass a
+    drawing routine it cannot map to a screen -- correctly -- and there was no
+    honest answer: mapped to the game, the title's `HI` field collided with the
+    game's TIME digits, and no nine-character field on row 0 avoids the game's
+    TIME label, its digits and the lives icons at once. **The two screens want
+    the same columns for different things, which is fine, because they never
+    coexist.** The fix is that the checker records `(literal, assigning label)`
+    and tests each write against the screen of the routine that SET the address.
+    That is strictly more accurate, not looser: the shared printer's columns
+    stop all landing on one screen and split across the two that own them.
   - **A CHECK ADDED ALONGSIDE THE CHANGE IT IS MEANT TO GUARD WILL AGREE WITH IT.**
     The same commit taught `checkchars.py` to verify the pose's `CONST` against the
     `nchr` of the upload that loaded it -- two halves of one mistake, both saying 176,
@@ -658,6 +690,26 @@ cost a debugging session:
     PPU and the box came out with characters missing -- intermittently, because the
     cut point moves. **Pace any unbounded write loop**, and prefer a bound that needs
     no counter (one `WAIT` per row) when RAM is tight.
+  - **AND ONCE A BOX IS COLOURED BY THE ATTRIBUTE TABLE, ITS POSITION IS ON A
+    FOUR-ROW GRID FOR EVER.** An attribute byte covers FOUR characters by four,
+    so a message box sized and placed to cover whole bytes -- which is what
+    stops colouring it repainting the scenery around it -- can only ever start
+    on rows where `(row + picture offset) % 4 == 0`. Keystone Kapers was asked
+    to move its boxes down TWO rows and could not: the legal rows are 1, 5, 9,
+    13, 17, 21, so the nearest move downward is FOUR. Moving two would have
+    straddled two byte rows, and colouring both repaints sixteen columns of
+    eight rows -- two whole floors of shop -- in the box's colour. **Say this
+    when it comes up rather than quietly shipping the two-row version on the
+    TMS targets and a four-row one on NES**: a difference in kind between
+    targets is what every gate that parses the source is built to assume away.
+  - **CENTRE TEXT FROM THE TEXT, NEVER BY TYPING THE PADDING.** Keystone Kapers'
+    five message lines were padded by hand to a fixed box width and two of them
+    -- `GOT HIM!` and `TIME UP!` -- sat one column left of centre with the
+    surplus on the right. It is invisible in a source listing because every line
+    is the right LENGTH, which is the only thing a width check can ask about,
+    and on screen it reads as the BOX having a wider margin on one side. One
+    helper that takes the words and returns the padded line cannot be typed
+    wrong.
   - **TEXT HAS NO BACKGROUND UNLESS YOU GIVE IT ONE, AND INDEX 0 CANNOT BE IT.** A font
     uploaded with no colour table gets ink on index 0 -- the UNIVERSAL backdrop, one
     colour for the whole screen -- so every character sits in a box of it. To put a

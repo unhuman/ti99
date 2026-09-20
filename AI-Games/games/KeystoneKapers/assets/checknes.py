@@ -68,7 +68,27 @@ SCAN_DELTA = 2176                       # 8192 + 128 - 6144, one row below the p
 SCAN_VARS = {"#sva"}                    # scan_canvas
 
 
-def expected(var):
+# AND ONE VARIABLE IS USED AT TWO DIFFERENT OFFSETS, WHICH A PER-NAME RULE
+# CANNOT EXPRESS.
+#
+# #psa is the digit printer's address, and the digit printer is shared: the
+# in-game HUD hands it a row at +2112, and the TITLE card hands it a row at
+# +2144. The title's card is drawn by run_list, whose NES base is 8288 -- the
+# picture offset -- because that same walker draws the message boxes over the
+# store and they have to line up with it. So the title's score line sits three
+# rows down like the picture, and its digits have to sit with their labels.
+#
+# Gated on the ROUTINE as well as the name, because that is the thing that
+# actually decides: the offset belongs to the screen being drawn. A rule keyed
+# on the variable alone reported the title's two addresses as "off by 32",
+# which is a defect that is not there -- the mirror of a check whose scope is
+# too narrow, and it costs the same trust (CLAUDE.md 3A).
+PICTURE_PAIRS = {("title_score", "#psa")}   # the title card, via run_list's base
+
+
+def expected(var, label=None):
+    if (label, var) in PICTURE_PAIRS:
+        return NES_DELTA
     if var in HUD_VARS:
         return HUD_DELTA
     if var in SCAN_VARS:
@@ -76,15 +96,20 @@ def expected(var):
     return NES_DELTA
 
 ASSIGN = re.compile(r"^\s*(#?\w+)\s*=\s*(\d+)\s*(?:'.*)?$")
+LABEL = re.compile(r"^([a-z_][a-z0-9_]*):")
 
 
 def scan():
-    """Walk the file tracking #if NES / #else / #endif state."""
+    """Walk the file tracking #if NES / #else / #endif state and the routine."""
     out = []
     state = []                          # stack of 'NES' | 'NOT_NES' | 'OTHER'
+    label = "(top)"
     for n, raw in enumerate(open(BAS, encoding="utf-8", errors="replace"), 1):
         line = raw.rstrip("\n")
         s = line.strip()
+        m = LABEL.match(line)
+        if m:
+            label = m.group(1)
         if s.startswith("#if "):
             state.append("NES" if s[4:].strip() == "NES" else "OTHER")
             continue
@@ -102,7 +127,7 @@ def scan():
             continue
         val = int(m.group(2))
         here = state[-1] if state else "PLAIN"
-        out.append((n, m.group(1), val, here))
+        out.append((n, m.group(1), val, here, label))
     return out
 
 
@@ -111,25 +136,25 @@ def main():
     bad = []
 
     # 1. every TI-range raw address must sit in a NON-NES branch
-    ti_hits = [(n, v, val, st) for (n, v, val, st) in rows
-               if TI_BASE <= val < TI_END]
+    ti_hits = [r for r in rows if TI_BASE <= r[2] < TI_END]
     ungated = [r for r in ti_hits if r[3] in ("PLAIN", "NES")]
-    for n, var, val, st in ungated:
+    for n, var, val, st, lbl in ungated:
         where = ("no #if at all" if st == "PLAIN"
                  else "inside the #if NES branch, which is backwards")
         bad.append("KEYSTONE.bas:%d  %s = %d is a raw TI name-table address "
                    "with %s. On the NES that is $%04X, inside the PATTERN "
                    "table -- it will corrupt character art. Gate it and use "
-                   "%d." % (n, var, val, where, val, val + expected(var)))
+                   "%d." % (n, var, val, where, val, val + expected(var, lbl)))
 
-    # 2. each gated pair must differ by exactly NES_DELTA. Pair them by the
-    #    variable name, taking the NES assignment nearest above the TI one.
-    for i, (n, var, val, st) in enumerate(rows):
+    # 2. each gated pair must differ by exactly the offset that routine uses.
+    #    Pair them by the variable name, taking the NES assignment nearest
+    #    above the TI one.
+    for i, (n, var, val, st, lbl) in enumerate(rows):
         if st != "NOT_NES" or not (TI_BASE <= val < TI_END):
             continue
         mate = None
         for j in range(i - 1, max(-1, i - 8), -1):
-            n2, var2, val2, st2 = rows[j]
+            n2, var2, val2, st2, _l2 = rows[j]
             if var2 == var and st2 == "NES":
                 mate = (n2, val2)
                 break
@@ -139,19 +164,20 @@ def main():
                        % (n, var, val, var))
             continue
         n2, val2 = mate
-        if val2 != val + expected(var):
+        want = expected(var, lbl)
+        if val2 != val + want:
             bad.append("KEYSTONE.bas:%d  %s = %d (NES) should be %d -- the TI "
-                       "form at line %d is %d and the NES name table is "
-                       "%d bytes further on. Off by %d."
-                       % (n2, var, val2, val + expected(var), n, val,
-                          expected(var), val2 - (val + expected(var))))
+                       "form at line %d is %d and %s writes at +%d. Off by %d."
+                       % (n2, var, val2, val + want, n, val, lbl, want,
+                          val2 - (val + want)))
 
     if bad:
         for b in bad:
             print("FAIL " + b)
         return 1
     gated = [r for r in ti_hits if r[3] == "NOT_NES"]
-    hud = [r for r in gated if r[1] in HUD_VARS]
+    card = [r for r in gated if (r[4], r[1]) in PICTURE_PAIRS]
+    hud = [r for r in gated if r[1] in HUD_VARS and r not in card]
     # NOT `scan`: that is this module's own parsing function, and shadowing
     # it breaks the call above with an UnboundLocalError.
     scanner = [r for r in gated if r[1] in SCAN_VARS]
@@ -160,10 +186,11 @@ def main():
     # ever drifts off its own row the count moves here, in plain sight, on
     # every build.
     print("checknes: %d raw name-table addresses, all gated for NES -- "
-          "%d at +%d (the picture), %d at +%d (the HUD, one row higher), "
+          "%d at +%d (the picture, %d of them the title card's score line), "
+          "%d at +%d (the HUD, one row higher), "
           "%d at +%d (the scanner, one row lower)"
           % (len(gated), len(gated) - len(hud) - len(scanner), NES_DELTA,
-             len(hud), HUD_DELTA, len(scanner), SCAN_DELTA))
+             len(card), len(hud), HUD_DELTA, len(scanner), SCAN_DELTA))
     return 0
 
 

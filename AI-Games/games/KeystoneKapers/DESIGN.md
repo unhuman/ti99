@@ -2792,21 +2792,32 @@ same way, and it was reported as *"sometimes the body is facing the wrong
 direction."* The mirrored beats are gone. **The run is the two drawings it
 always really was**, picked by one bit (`kanim AND 8`) instead of two.
 
-**And their slots carry a standing pose instead of being deleted.** There was
-never a standing drawing: `kanim` advances by distance travelled, so the
-counter *freezes* when Kelly stops and he held whatever beat he happened to be
-on -- a Kop stopped in mid-stride, with the baton up half the time.
-`kelly-stand.txt` is a real pose, and the two vacated slots (`KSTAND`/`KSPARE`,
-and `KLSTAND`/`KLSPARE` on the left) keep the block at **nine sprites so
-`P_KFACING` stays 36 and not one pattern number in the game moves**. Four
-patterns sit blank, and they are reclaimable the day something wants them.
+**And he now stands still on purpose, which he never did before.** `kanim`
+advances by distance travelled, so the counter *freezes* when Kelly stops and
+he held whatever beat he happened to be on -- a Kop stopped in mid-stride, with
+the baton up half the time. Whichever beat that was, it was not a decision.
 
-It is selected on three tests rather than one:
+**Standing is run frame 1, and that is a measurement rather than a shortcut.**
+A separate pose was drawn as `assets/kelly-stand.txt` and the drawing came back
+**byte-identical to run frame 1** -- same hat, same face, same torso, same legs
+-- so the standing sprite and the run-1 sprite were the same sixteen rows
+loaded into two slots. That is precisely the duplication this whole section
+exists to remove, so the file is gone and the source names `P_KRUN1` directly.
+It is recoverable from `f30eb14` if a real at-rest drawing is ever wanted.
+
+The vacated slots stay in the table as blanks (`KSPARE1`/`KSPARE2`, and
+`KLSPARE1`/`KLSPARE2` on the left) so the block remains **nine sprites,
+`P_KFACING` stays 36, and not one pattern number in the game moves**. That
+leaves **patterns 16..23 and 52..59 free** -- sixteen of them, in the middle of
+Kelly's block, which is worth knowing while the sprite table is as full as it
+is. They are the cheapest patterns in the game to claim.
+
+Standing is selected on three tests rather than one:
 
 ```basic
-IF kmv = 0 THEN kb = P_KSTAND
-IF klst = ST_ESC THEN kb = P_KSTAND
-IF klst = ST_ELEV THEN kb = P_KSTAND
+IF kmv = 0 THEN kb = P_KRUN1
+IF klst = ST_ESC THEN kb = P_KRUN1
+IF klst = ST_ELEV THEN kb = P_KRUN1
 ```
 
 `kmv` is "a direction was held this pass". The two **riding** states need their
@@ -2815,12 +2826,33 @@ so it still holds whatever he was doing when he stepped on -- he would ride the
 escalator and the lift in mid-stride. The `ST_JUMP` override that forces
 `P_KRUN2` sits below all three, so a standing jump is still a leap.
 
-**The baton is now DERIVED from the body, not re-read from the counter.**
-`IF kb = P_KRUN2 THEN kf = P_KFACE2`, placed before the facing offset. The old
-code tested `kanim AND 8` a second time, which is the same frozen counter --
-so a stopped Kop stood there holding his baton up on whichever beat he stopped
-on. Asking the pose cannot disagree with the pose, and it covers the jump for
-free.
+**The baton comes up on ONE BEAT IN FOUR.** It is drawn in the FACE band of
+`kelly-run2.txt` -- a skin column beside the head -- and there is one face
+sprite per pose, so whatever is in that band is on screen for as long as the
+pose is. Riding it on the run-2 body therefore put it up **half the time**,
+which reads as a man waving rather than a man running with a stick. The body
+still alternates on `kanim AND 8`; the raised head takes `AND 16` as well:
+
+```basic
+IF kb = P_KRUN2 THEN
+	IF kanim AND 16 THEN kf = P_KFACE2
+END IF
+IF klst = ST_JUMP THEN kf = P_KFACE2
+```
+
+Nested rather than compound, because the 9900 backend miscompiles
+`<cmp> AND <cmp>` (CLAUDE.md §3A).
+
+**The jump is an explicit override, and it has to be.** The jump holds
+`P_KRUN2`, but a *standing* jump holds no direction, so nothing adds to `kanim`
+and the bit-4 test returns whatever it happened to hold at take-off. Without
+the override the baton would appear on some jumps and not others, for a reason
+no player could see.
+
+**And both tests are on the POSE, never on the counter a second time.** The
+old code re-read `kanim AND 8` to pick the head, which is the same frozen
+counter -- so a stopped Kop stood there holding his baton up on whichever beat
+he halted on. Asking the pose cannot disagree with the pose.
 
 #### TWO SILENT TRAPS, BOTH FOUND FROM PLAY RATHER THAN FROM A GATE
 
@@ -2852,9 +2884,9 @@ purpose. That is a named exemption in the §0j3 sense, still measured and still
 printed. The Kop's exemption is retired, and `checkanim_test.py` asserts that
 none of his bands carries one.
 
-Measured after the change: `kb` two beats **82 px** apart, `hp` 29, `hq` 39,
-`dp` 4 (exempt). TI 24,218 / 24,336; Coleco 607 / 814 -- unchanged, as a pose
-swap should be.
+Measured after the change: `kb` two beats **77 px** apart, `hp` 29, `hq` 39,
+`dp` 4 (exempt). TI 24,330 / 24,336 (6 free) after the high score landed too;
+the nested baton test and the jump override were 42 of it. Coleco 607 / 814.
 
 ### 0k. The crouch bends over, and 11 px is the ceiling
 
@@ -5308,6 +5340,98 @@ read as two signs rather than one. `BULB0..3` go from `WHITE` to `LYELL` in
 genart, so their colour byte is `$B4` — the same ink as every other piece of text
 on the TMS targets. The NES was already right: it re-sends the lamps at setup
 with `nink = 3`, which is now the title's gold.
+
+### The card moves down two rows, the boxes down four, and row 0 keeps the score
+
+Four changes that all land on the same question: where on a 24-row screen does
+text go.
+
+**The message boxes moved DOWN FOUR ROWS, not the two that were asked for, and
+the NES attribute grid is why.** An attribute byte colours **four characters by
+four**, and the box is sized and placed to cover exactly four of them so that
+making it white-on-blue touches no shop floor (§0e-duodecies). That fixes the
+legal starting rows to those where `(row + 3) % 4 == 0` — 1, 5, 9, 13, 17, 21 —
+because the NES picture sits three rows lower than the TI's. From 9 the next
+one down is **13**. A box at 11 would straddle two byte rows, and colouring
+both would repaint sixteen columns of TI rows 9..16 — two whole floors of shop
+— in the message's dark blue. Four rows is the nearest move in the direction
+asked for that the hardware allows.
+
+Nothing is crowded by it: `GAME OVER` lands on rows 9..12, the reason box on
+13..16, the bottom floor bar is row 18 and the radar canvas rows 21..23.
+
+**And the text inside the box is centred now, which two of the five were not.**
+`GOT HIM!` and `TIME UP!` each sat one column left of centre with the surplus
+on the right — invisible in a source listing, because every line is the right
+*length*, which is the only thing the width check downstream could ask about.
+On screen it reads as the box having a wider margin on one side, which is
+exactly how it was reported. `gentitle._line()` centres them from the text, so
+the padding cannot be typed wrong again. `TIME UP!` also became **`TIME'S UP!`**.
+
+**The title card moved down two rows to free row 0.** The marquee is rows 3..23
+where it was 1..21 — the same 21 × 27, so the lamp ring is still 92 cells and
+still divides by the chase period, which `frame_runs()` would otherwise fail on.
+Everything inside moved with it, `FIRE TO START` included.
+
+**Row 0 is now `SCORE:` and `HI:`.** The labels are part of the title display
+list in bank 2; only the digits are written by code, because they are the only
+part that changes. `SCORE:` ends at column 7 and `HI:` at column 19, so the two
+six-digit fields start at columns 8 and 20 — 8 being the same column the
+in-game HUD puts its score in.
+
+**The high score is settled at GAME OVER and nowhere else.** The score only
+goes up, so the largest value it reaches *is* its value when the last Kop is
+gone; one comparison on that path learns the same thing a test beside every
+award would learn thousands of times, in the fixed area, which has no room for
+it. `#hi` survives until the console is switched off — there is no storage on
+either cartridge to keep it longer.
+
+**The digit printer became a shared routine rather than a second copy.**
+`hud_score` now sets `#psv`/`#psa` and FALLS THROUGH into `scr_at`, which
+`title_score` calls twice. Writing the body out again for the title would have
+been three statements duplicated twice over, and the fixed area is not the
+budget to spend on a clone.
+
+**AND THE FIXED AREA IS NOW AT 24,330 OF 24,336 -- SIX BYTES.** The high score
+cost about fifty of them (two address pairs, two calls, the compare) and the
+rest went on the baton's nested test. Nothing further fits without reclaiming
+something first, and the two open sound/scoring items will both need room.
+What makes that survivable rather than dangerous is that `banksize.py` **exits
+non-zero** on an overflow and `build-ti.sh` dies on it -- the next change that
+does not fit fails the build loudly instead of being silently truncated off the
+end of the cart, which is what used to happen to whatever `DATA` block sat
+nearest `>FFFF`.
+
+Where it will have to come from, when it comes: the fixed area holds **no data
+at all** any more -- every table, the font and all the art are in the two banks
+(bank 1 has 318 free, bank 2 has 6,148) -- so the next saving has to be code.
+`romprofile.py` attributes it from the xas99 listing and `romclones.py` ranks
+repeated runs; note that the clones the latter finds at the top are `#if NES`
+blocks and `DATA`, neither of which costs the TI fixed area a byte.
+
+#### AND THAT EXPOSED THE MIRROR OF `checklayout.py`'S ORIGINAL BUG
+
+The gate refuses to pass on a routine it cannot attribute to a screen, which is
+what stops a row being compared against the wrong picture's text. `scr_at`
+belongs to **two** screens — the HUD when `hud_score` called it, the title card
+when `title_score` did — so the build failed with *"routines that draw but are
+not in the SCREEN map: scr_at"*, correctly.
+
+Mapping it to one screen would have been a lie with teeth: attributed to `GAME`,
+the title's `HI` field at columns 20..25 collides with the game's TIME digits at
+column 21, and there is no arrangement of a nine-character `HI:` field on row 0
+that avoids the game's TIME label, its digits and the Kop icons at once. The two
+screens genuinely want the same columns for different things, which is fine,
+because they never coexist.
+
+**The fix is that the screen belongs to the ASSIGNMENT, not to the poke.** A
+digit printer is handed its address by its caller, so `addrs` now records
+`(literal, assigning label)` and every write is checked against the screen of
+the routine that *set* the address. The listing says so out loud —
+`TITLE row 0 col 20 <#psa> title_score via prt_dout` — and the model got
+strictly more accurate rather than looser: `prt_dout`'s three columns are now
+split across the two screens that actually own them instead of all landing on
+`GAME`. `checklayout_test.py` still catches all four defects it types out.
 
 ### What is not done
 

@@ -7,7 +7,7 @@ window to fit and CLIPS the right-hand columns at every size tried, so the one
 thing a full-width marquee frame needs checking -- that it closes on the right --
 is exactly what the capture cannot show.
 
-This paints what the name table will hold, from `src/title.bas` (the bytes the
+This paints what the name table will hold, from `src/titledl.bas` (the bytes the
 cart carries) plus the font and store patterns out of the generators, so the
 layout can be checked in a second and at any zoom.
 
@@ -67,7 +67,12 @@ def main():
                                                              'title.png')
     scale = int(sys.argv[2]) if len(sys.argv) > 2 else 3
 
-    table = read_block(os.path.join(SRC, 'title.bas'), 'title_tbl')
+    # `title_tbl` moved to titledl.bas when the title went into bank 2 and the
+    # message boxes stayed behind in bank 1 (title.bas). This still named
+    # title.bas and died with "no title_tbl", which reads as the table having
+    # been deleted rather than moved -- and a previewer that will not run is a
+    # previewer nobody runs.
+    table = read_block(os.path.join(SRC, 'titledl.bas'), 'title_tbl')
 
     # WHAT EACH CODE LOOKS LIKE, TAKEN FROM THE SHIPPED DATA rather than from
     # the generators' Python. The point of this previewer is to show what the
@@ -115,9 +120,25 @@ def main():
             name[row][cl + k] = table[i + k]
         i += n
 
-    # FIRE TO START is printed by title_input, not from the table
+    # FIRE TO START is printed by title_input, not from the table -- so its
+    # position is READ OUT OF THE SOURCE rather than copied here.
+    #
+    # It was `name[19][9 + k]`, a hand-typed copy of the PRINT AT offset. When
+    # the card moved two rows down the prompt moved to row 21 and this did not,
+    # so the preview drew it ON TOP of the credit line. That is a picture of a
+    # bug that is not in the game, which is worse than no preview: the whole
+    # reason this file exists is that the emulator cannot be trusted to show
+    # the card, so it has to be the thing that is right.
+    prompt = re.search(r'PRINT AT (\d+),"FIRE TO START"',
+                       io.open(os.path.join(SRC, 'KEYSTONE.bas'),
+                               encoding='utf-8').read())
+    if not prompt:
+        raise SystemExit("prevtitle: no `PRINT AT n,\"FIRE TO START\"` in "
+                         "KEYSTONE.bas -- the prompt moved or was renamed, and "
+                         "this preview would be missing it")
+    off = int(prompt.group(1))
     for k, ch in enumerate("FIRE TO START"):
-        name[19][9 + k] = ord(ch)
+        name[off // 32][off % 32 + k] = ord(ch)
 
     W, H = 32 * 8, 24 * 8
     px = [[PAL[g.HUD_BG]] * W for _ in range(H)]
