@@ -158,6 +158,10 @@ rm -rf ../assets/__pycache__
 # Harry's legs a set of four in which two were byte-identical.
 "$TRUNCPY" ../assets/checkanim.py > /dev/null \
     || die "a run cycle has repeated beats -- run assets/checkanim.py"
+# The reader for Kelly's editable art files -- see build-ti.sh for what it
+# injects and why a skipped row is the quiet one.
+"$TRUNCPY" ../assets/ducktest.py > /dev/null \
+    || die "the Kelly art reader accepts a broken file -- run assets/ducktest.py"
 "$TRUNCPY" ../assets/checkesc.py > /dev/null \
     || die "an escalator animation phase is torn -- run assets/checkesc.py"
 "$TRUNCPY" ../assets/checkscan.py > /dev/null \

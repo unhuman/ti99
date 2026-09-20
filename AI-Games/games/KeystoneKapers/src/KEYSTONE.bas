@@ -152,7 +152,21 @@
 	' heights is neither. A sweep of every crouch height against every ball
 	' hitbox puts the limit at 11, and shrinking the ball does not move it --
 	' the apex is what binds. assets/checkball.py fails the build on it.
-	CONST DUCKH = 11		' Kelly ducked -- bent over, not squashed
+	CONST DUCKH = 11		' Kelly ducked -- what he COLLIDES as
+	' AND WHAT HE IS DRAWN AS, WHICH IS NOT THE SAME NUMBER YET.
+	'
+	' The crouch was redrawn with the head and hat at FULL SIZE on top of a
+	' squatting body, which is what the reference does -- and the standing head
+	' alone is 11 px, the whole of DUCKH. The figure is 16.
+	'
+	' These two must converge and today they do not, so a ball between 11 and
+	' 16 px passes through his hat without hitting him. That is a visible lie
+	' and it is deliberate for now: with one constant the crouch would instead
+	' be drawn with its feet five pixels THROUGH the floor, which cannot be
+	' reviewed at all. Closing it needs the jump apex and the ball hitbox to
+	' move (see DUCKH above and assets/checkball.py), which is a decision about
+	' how the game plays rather than how it looks.
+	CONST DUCKDRAW = 17
 	CONST CATCHR = 12
 	' HOW CLOSE VERTICALLY A CATCH NEEDS. A floor is a whole storey apart, so
 	' anything under a character row means they are genuinely level; a rider
@@ -4872,7 +4886,7 @@ draw_actors:
 		' rather than left where it was -- a forgotten slot keeps drawing
 		' its last contents, so Kelly would duck and leave his head behind.
 		kdy = flry(klv)
-		kdy = kdy - DUCKH
+		kdy = kdy - DUCKDRAW
 		' HE KEEPS HIS BRIM. Three bands, not two: the flat black brim is
 		' the one feature that reads as Kelly at this size, and drawing the
 		' crouch as one blue mass threw it away. See the note in genart.py
@@ -4885,9 +4899,32 @@ draw_actors:
 			kf = kf + P_KFACING
 			kb = kb + P_KFACING
 		END IF
-		SPRITE 0,kdy,klx,kp,C_KHAT
-		SPRITE 1,kdy,klx,kf,C_SKIN
-		SPRITE 2,kdy,klx,kb,C_KELLY
+		' THREE BOXES, STAGGERED -- the same offsets the run uses, and that is
+		' what takes the crouch from THREE sprites per scanline down to two.
+		'
+		' The VDP counts sprite BOXES, not the ink in them, so three boxes at
+		' one y cost three on every line the figure touches. Spread to -10, -5
+		' and +11 they span -10..5, -5..10 and 11..26: the face's box and the
+		' body's never share a scanline, so nothing carries more than two. With
+		' two obstacles on the line that is four, which is exactly the limit --
+		' the crouch had been the thing pushing it over.
+		'
+		' Reusing khy/kfy/kby -- the run branch's -- rather than three of its
+		' own: the two arms of this IF never both run, and THREE BYTES of new
+		' scratch pushed an array past the end of NES RAM, which checknesram
+		' caught. Scalars allocate below the arrays, so adding one moves them
+		' all up.
+		'
+		' It also gives the body a whole box of its own, which is what lets the
+		' squat be six rows under a FULL-SIZE head. Squeezed into one 16-row box
+		' with the head's eleven it had five, and the sixth -- his feet -- was
+		' silently dropped.
+		khy = kdy - 10
+		SPRITE 0,khy,klx,kp,C_KHAT
+		kfy = kdy - 5
+		SPRITE 1,kfy,klx,kf,C_SKIN
+		kby = kdy + 11
+		SPRITE 2,kby,klx,kb,C_KELLY
 		' The crouch never had a fourth box -- it hid one it did not use.
 		' Now the run does not use one either, so there is nothing to hide.
 	ELSE
@@ -6154,9 +6191,20 @@ hud_kops:
 	#else
 	#pla = 6171
 	#endif
+	' AND THEY ARE RIGHT-JUSTIFIED, so the last one sits in the last column.
+	'
+	' Filling from the left meant the row emptied from the right and the final
+	' Kop ended up alone at column 27, four blanks from the screen edge, with
+	' nothing to say why it had stopped where it did. Growing the row leftward
+	' from column 31 keeps one edge fixed: the icons always end at the same
+	' place and the count reads off their left-hand end.
+	'
+	' `pli + spare > 4` rather than `pli >= 5 - spare` -- the same test with no
+	' subtraction in it, because `spare` is an unsigned 8-bit variable and
+	' 5 - spare wraps to 253 the moment a cheat sets more Kops than fit.
 	FOR pli = 0 TO 4
 		plv2 = 32
-		IF pli < spare THEN plv2 = CH_KOPIC
+		IF pli + spare > 4 THEN plv2 = CH_KOPIC
 		VPOKE #pla,plv2
 		#pla = #pla + 1
 	NEXT pli
@@ -6411,6 +6459,13 @@ do_catch:
 	#tta = VARPTR msg_gothim(0)
 	GOSUB run_list
 	#if NES
+	' AND THE FOURTH ROW, ON THE NES ONLY. The box is THREE rows so its
+	' margin is even -- four cannot centre one line of text, and both
+	' uneven versions were built and both were reported. But an attribute
+	' byte colours FOUR characters by four, so the block is four rows tall
+	' whatever the text does, and the row the box does not draw would show
+	' shop floor tinted with the message's own palette.
+	PRINT AT 616,"                "
 	#nav = 9186			' the capture box, same rows as the reason
 	GOSUB nes_boxatt
 	#endif
@@ -6600,6 +6655,13 @@ lose_kop:
 	IF rsn = 1 THEN #tta = VARPTR msg_plane(0)
 	GOSUB run_list
 	#if NES
+	' AND THE FOURTH ROW, ON THE NES ONLY. The box is THREE rows so its
+	' margin is even -- four cannot centre one line of text, and both
+	' uneven versions were built and both were reported. But an attribute
+	' byte colours FOUR characters by four, so the block is four rows tall
+	' whatever the text does, and the row the box does not draw would show
+	' shop floor tinted with the message's own palette.
+	PRINT AT 616,"                "
 	#nav = 9186			' the reason box -- see nes_boxatt
 	GOSUB nes_boxatt
 	#endif
@@ -6620,7 +6682,8 @@ lose_kop:
 		#tta = VARPTR msg_over(0)
 		GOSUB run_list
 		#if NES
-		#nav = 9178			' GAME OVER, one attribute row up
+		PRINT AT 488,"                "
+		#nav = 9178			' GAME OVER, one attribute row UP
 		GOSUB nes_boxatt
 		#endif
 		GOSUB pause_beat
@@ -6756,7 +6819,16 @@ snd_pend:
 	' did not finish.
 pause_beat:
 	GOSUB snd_pend
-	FOR pbi = 0 TO 30
+	' TWICE AS LONG AS IT WAS, AND IN ONE PLACE. The reason box waits one beat
+	' and GAME OVER two, so doubling the beat doubles both and keeps them in
+	' proportion -- where adding a third and a fourth `GOSUB pause_beat` at the
+	' call sites would have cost code to say the same thing worse.
+	'
+	' THE LOOP COUNT AND NOT THE WAITS. sfx_tick runs once per pass, so it
+	' would tick half as often per frame if the three WAITs became six -- the
+	' decay counters are in frames and every effect would ring twice as long.
+	' Doubling the passes leaves that ratio alone.
+	FOR pbi = 0 TO 61
 		WAIT
 		WAIT
 		WAIT

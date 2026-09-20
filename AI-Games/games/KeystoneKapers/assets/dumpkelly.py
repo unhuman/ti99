@@ -20,6 +20,13 @@ the source blocks:
     rows 11-15   KELLY_TOP    TORSO  -- tunic
     rows 16-31   KELLY_LEGn          -- legs, blue
 
+THE CROUCH IS NOT HERE ANY MORE. It used to be three overlapping 16x16 grids
+drawn at one y and needed a writer and a reader of its own; staggering its boxes
+the way the run does made it an ordinary pose, so assets/kelly-duck.txt is now
+the same format as these two and genart reads it with the same loader. Its
+header is hand-written because it carries the duck-height arithmetic, which is
+about the game rather than about the file.
+
 Run:  python3 dumpkelly.py          write the .txt files
       python3 dumpkelly.py --check  verify they round-trip to the source
 """
@@ -172,98 +179,12 @@ FILES = [
 ]
 
 
-DUCK_HEAD = """\
-; Keystone Kapers -- Kelly the Kop, THE CROUCH. Facing RIGHT.
-;
-; THIS ONE IS THREE OVERLAPPING DRAWINGS, NOT ONE. The run frames are four
-; sprites stacked in a column, so a single grid can hold them all and the row
-; says which band a pixel is in. The crouch is different: all three of its
-; sprites sit at the SAME y, on top of each other, so a flat picture of what
-; you see cannot be taken apart again.
-;
-; Measured, not assumed: 13 helmet pixels and 6 face pixels fall OUTSIDE the
-; body silhouette, and 14 body pixels sit UNDERNEATH the helmet and face. A
-; one-character-per-cell composite would quietly discard those 14 -- invisible
-; today, because they are covered, and a hole the moment the helmet moves.
-;
-; So there are three grids below, one per sprite. EACH IS IDENTIFIED BY ITS
-; INK, not by its position, so they can be reordered or annotated freely:
-;
-;   0  BODY   blue   -- the whole crouched figure, head to heel, under both
-;   #  HELMET black  -- drawn in sprite slot 0, so it wins every shared pixel
-;   -  FACE   skin   -- slot 1; it never overlaps the helmet (checked)
-;
-; Each grid is 16 wide by 16 tall. Any line that is exactly 16 characters of
-; '.' plus ONE ink is read as art; everything else is ignored. Keep each grid
-; to a single ink -- a mixed one cannot be assigned to a sprite.
-;
-; DRAW THE RIGHT-FACING CROUCH ONLY; the left is mirrored, the VDP having no
-; flip bit.
-;
-; THE HEIGHT IS LOAD-BEARING. DUCKH is 11 and that is what lets a crouching
-; Kelly pass under a beach ball and the biplane -- the plane's hitbox starts
-; 20 px up and clears 11, with the margin written down in coll_obst. Make him
-; taller and he stops fitting under the one hazard that must be duckable. Say
-; so if you change his height and I will re-check the windows.
-;
-;      0123456789012345
-;      0000000000111111
-"""
 
 
 def duck_grid(art, ink):
     return ["".join(ink if c == "#" else "." for c in r) for r in rows(art)]
 
 
-def write_duck(path):
-    blocks = [("BODY  -- blue, the whole figure", g.KELLY_DBODY, "0"),
-              ("HELMET -- black, slot 0, wins any shared pixel",
-               g.KELLY_DHAT, "#"),
-              ("FACE  -- skin, slot 1", g.KELLY_DFACE, "-")]
-    body = []
-    for label, art, ink in blocks:
-        body.append("; " + label)
-        body.extend(duck_grid(art, ink))
-        body.append("")
-    # what the player actually sees, for judging -- helmet over face over body
-    seen = []
-    for n in range(16):
-        line = ""
-        for c in range(16):
-            h, f, b = (rows(a)[n][c] == "#"
-                       for a in (g.KELLY_DHAT, g.KELLY_DFACE, g.KELLY_DBODY))
-            line += "#" if h else "-" if f else "0" if b else "."
-        seen.append(";%3d   %s" % (n, line))
-    tail = ("\n; ASSEMBLED, for judging only -- helmet over face over body,\n"
-            "; which is the slot order draw_actors uses. IGNORED on read-back.\n"
-            ";\n;      0123456789012345\n" + "\n".join(seen) + "\n")
-    io.open(path, "w", encoding="utf-8", newline="\n").write(
-        DUCK_HEAD + "\n" + "\n".join(body) + tail)
-    return path
-
-
-def load_duck(path):
-    """The three single-ink grids, keyed by their ink."""
-    out, cur, ink = {}, [], None
-    for ln in io.open(path, encoding="utf-8").read().split("\n"):
-        s = ln.rstrip("\r")
-        if s.lstrip().startswith(";") or not s.strip():
-            continue
-        if len(s) != 16 or not set(s) <= set(".#-0"):
-            continue
-        marks = set(s) - {"."}
-        if len(marks) > 1:
-            return None, "a grid row mixes inks (%s): %r" % (sorted(marks), s)
-        row_ink = marks.pop() if marks else None
-        if row_ink and ink and row_ink != ink:
-            out[ink] = cur
-            cur, ink = [], row_ink
-        ink = ink or row_ink
-        cur.append(s)
-        if len(cur) == 16:
-            out[ink or "0"] = cur
-            cur, ink = [], None
-    return out, None
 
 
 def main():
@@ -294,36 +215,6 @@ def main():
         else:
             print("wrote %s" % os.path.normpath(write(path, what, uses, grid)))
 
-    dpath = os.path.join(HERE, "kelly-duck.txt")
-    if check:
-        got, err = load_duck(dpath)
-        if err:
-            bad.append("kelly-duck.txt: " + err)
-        else:
-            want = {"0": g.KELLY_DBODY, "#": g.KELLY_DHAT, "-": g.KELLY_DFACE}
-            nm = {"0": "body", "#": "helmet", "-": "face"}
-            for ink, art in want.items():
-                if ink not in got:
-                    bad.append("kelly-duck.txt: no %s grid (ink '%s')"
-                               % (nm[ink], ink))
-                    continue
-                flat = ["".join("#" if c != "." else "." for c in r)
-                        for r in got[ink]]
-                if flat != rows(art):
-                    bad.append("kelly-duck.txt: %s differs from genart"
-                               % nm[ink])
-            # the property that made three grids necessary in the first place
-            if len(got) == 3:
-                sets = {k: {(r, c) for r, l in enumerate(v)
-                            for c, ch in enumerate(l) if ch != "."}
-                        for k, v in got.items()}
-                if sets.get("#", set()) & sets.get("-", set()):
-                    bad.append("kelly-duck.txt: helmet and face now overlap; "
-                               "the helmet wins those pixels, so the face art "
-                               "under it is invisible and cannot be judged")
-    else:
-        print("wrote %s" % os.path.normpath(write_duck(dpath)))
-
     if check:
         for b in bad:
             print("FAIL  " + b)
@@ -335,9 +226,15 @@ def main():
     print("cover all four of them (3 and 4 are mirrors), the jump (leg frame 1)")
     print("and standing (the counter freezes when he stops).")
     print()
-    print("The crouch is 16 x 16 and needs THREE grids rather than one: its")
-    print("sprites sit at the same y and overlap, so a flat composite loses the")
-    print("14 body pixels hidden under the helmet and face.")
+    print("The crouch (kelly-duck.txt) is the same 16 x 32 format and genart")
+    print("reads it with the same loader, but it is NOT written from here --")
+    print("its header carries the duck-height arithmetic, which is about the")
+    print("game rather than about the file. Edit it directly.")
+    print()
+    print("It used to be three overlapping 16 x 16 grids drawn at one y, which")
+    print("cost THREE sprites on every scanline the figure touched. Staggering")
+    print("its boxes the way the run does -- helmet y-10, face y-5, body y+11 --")
+    print("dropped that to two and made it an ordinary pose.")
     return 0
 
 

@@ -302,6 +302,22 @@ ends at column 31: six hats from column 27 would wrap onto row 1, which is
 precisely the failure `checklayout.py` exists to catch. Five is what fits, so a
 game set to more than six Kops shows five hats and the rest are implied.
 
+**AND THEY ARE RIGHT-JUSTIFIED, so the last one sits in the last column.** They
+used to fill from the left, which meant the row emptied from the right and the
+final Kop ended up alone at column 27 with four blanks between it and the
+screen edge — a position that says nothing about why it stopped there. Growing
+the row leftward from column 31 keeps one end fixed, so the icons always finish
+in the same place and the count is read off their left-hand end.
+
+The test is `IF pli + spare > 4` rather than `IF pli >= 5 - spare`. They are the
+same rule, and only one of them is safe: `spare` is an unsigned 8-bit variable,
+so `5 - spare` wraps to 253 the moment `838` sets more Kops than the row can
+hold — which would light every cell at exactly the point the indicator is
+supposed to be saturating. This is the same underflow CLAUDE.md §7A warns about
+on `lives - 1`, arriving from the other end of the same routine. Swept over
+every reachable count: 0 draws nothing, 1 draws column 31 alone, 5 and above
+fill all five.
+
 **AND THE HATS WERE ON THE WRONG GROUND.** `KOPIC` was `BLACK` on `CYAN`, left
 from when the whole font was, so once the score line went dark blue each hat
 carried a cyan box around it. It is `HUD_BG` now — a *named* colour, because the
@@ -2854,6 +2870,83 @@ old code re-read `kanim AND 8` to pick the head, which is the same frozen
 counter -- so a stopped Kop stood there holding his baton up on whichever beat
 he halted on. Asking the pose cannot disagree with the pose.
 
+#### THE HEAD STANDS UP, AND 11 PX IS A WALL RATHER THAN A PREFERENCE
+
+The crouch was a figure *bending over* — rump high and behind, back sloping
+down and forward, the brim thrust out ahead and the face tucked under it. The
+reference does something else: the body squats and **the head and hat stay
+upright on top of it**. That is the pose now.
+
+**The height did not change, and it cannot.** §0k already said 11 px was a
+limit; what it did not say is how narrow. Sweeping `DUCKH` from 11 to 20 against
+`checkball.py`:
+
+| `DUCKH` | result |
+|---|---|
+| 11 | ok |
+| 12 and above | a ball at 9 px can be **neither jumped nor ducked** |
+
+Raising the crouch raises the duckable floor until it meets the jump apex
+coming down, and the dead band opens at the *very first pixel*. So "give the
+crouch more headroom" cannot be answered by making it taller — not by one
+pixel. A taller crouch needs the ball hitboxes or the jump arc moved first, and
+that is a separate decision with `checkball.py` as its gate.
+
+**It also needs no extra sprite.** Each of the three grids is a whole 16-row
+sprite box and the figure uses 11 of them, so there were always five spare rows
+— the box was never the constraint. A fourth sprite stacked on top would buy
+nothing the balls will allow and would cost a slot on Kelly's scanlines.
+
+**Nothing about flicker changes either**: still three sprites at one `y`, which
+is what Kelly has always cost on those rows.
+
+**AND AN UPRIGHT HEAD MAKES A SYMMETRIC CROUCH EASY TO DRAW BY ACCIDENT.** §0k
+rejected an earlier crouch for being a blob that mirrored to itself — ducking
+then reads as the figure being *squashed* rather than as him dropping and still
+looking where he is going. A head centred on a symmetric squat is exactly that
+shape. The first draft of this redraw measured **64 px** different from its own
+mirror against the old pose's 132, and the first draft before it measured
+almost nothing until the brim was pushed forward, the face set forward under
+it, and the shoulders given a lead over the trailing rump. `assets/showduck.py`
+renders the three sprites in slot priority and prints that number beside the
+old art's, because the three grids read separately tell you nothing about it.
+
+#### AND THE CROUCH IS A FILE NOW TOO
+
+`assets/kelly-duck.txt` was a *dump* — written by `dumpkelly.py` and checked
+against `genart.py`, where the real drawing lived as three triple-quoted Python
+strings. So "I want to update the crouch" had no answer: editing the file did
+nothing and then failed `--check` for disagreeing with the source. `genart.py`
+**reads** it now, like the run poses.
+
+**It needs three grids rather than one**, and that is measured rather than
+assumed: the crouch's three sprites sit at the same `y` and overlap, with 13
+helmet pixels and 6 face pixels outside the body silhouette and **14 body
+pixels underneath the helmet and face**. A flat one-character-per-cell picture
+of what you see would discard those 14 — invisible today because they are
+covered, and a hole the moment the helmet moves. Each grid is identified by its
+INK rather than by its position, so they can be reordered or annotated freely.
+
+The reader refuses four things, and `assets/ducktest.py` injects all four and
+requires each to be refused (wired into all three build scripts):
+
+* **a row one character short** — the quiet one. It stops being art, so the
+  grid it belongs to comes up a row short and the reader steals the FIRST row
+  of the next grid to make up the count. One typo moves the helmet into the
+  body.
+* **a row mixing two inks** — a grid is one sprite and a sprite is one colour,
+  so such a row cannot be assigned to either.
+* **a missing grid** — all three have to be there.
+* **the helmet drawn over the face** — the helmet is slot 0 and wins, so that
+  face art could never be seen.
+
+**The first version of that test passed a defect it thought it was injecting.**
+It copied a face row onto a helmet row five places higher, which produces no
+overlap at all, and then reported the reader as blind. A mutation test that
+does not actually inject the defect is worse than none: it accuses working code.
+The grids run BODY, HELMET, FACE at sixteen rows each, so the overlap has to be
+made at the same row index *within* the grids.
+
 #### TWO SILENT TRAPS, BOTH FOUND FROM PLAY RATHER THAN FROM A GATE
 
 * **An art row that loses ONE character is silently dropped, and everything
@@ -5360,14 +5453,38 @@ asked for that the hardware allows.
 Nothing is crowded by it: `GAME OVER` lands on rows 9..12, the reason box on
 13..16, the bottom floor bar is row 18 and the radar canvas rows 21..23.
 
-**AND THE TEXT SITS ON THE THIRD ROW OF THE FOUR, NOT THE SECOND.** A four-row
-box carrying a one-row message cannot be centred: the padding is either one
-above and two below, or two above and one below, and there is no third option
-while the box has to cover a whole attribute byte. It was the first, and was
-reported as *"an extra row below"* — which is exactly what it was. It is now
-the second. Three rows is not available: the fourth row of the coloured block
-would show shop floor through it on the NES, which is worse than an uneven
-margin.
+**AND THE BOX IS THREE ROWS, BECAUSE FOUR CANNOT BE CENTRED.** A four-row box
+carrying a one-row message pads either one above and two below or two above and
+one below. There is no third option, and **both were built and both were
+reported** — the first as *"an extra row below the message"*, the second as
+*"an extra border of spacing over the top"*. Fixing one end moved the fault to
+the other, which is what an impossible constraint feels like from outside.
+
+So the box is three rows and the margin is even. **The fourth row is cleared on
+the NES and only there**: an attribute byte colours four characters by four, so
+the block is four rows tall whatever the text does, and the row the box no
+longer draws would show shop floor tinted with the message's own palette. That
+is one `PRINT AT` of sixteen spaces beside each of the three call sites, under
+`#if NES` — additive, with the TI form untouched, which is the shape §12a
+requires so that every gate parsing the source still sees what it saw.
+
+**`GAME OVER` sits ABOVE the reason box**, on rows 9..11. It moves with the
+others because it is written as an offset from `BOX_ROW` rather than as a row
+of its own, so it came down four with them when the boxes moved.
+
+It was briefly put BELOW, at 17..19, when "move it down too" was read as a
+request to move it relative to the reason box. The attribute grid gives it
+exactly two choices — the legal rows are 1, 5, 9, 13, 17, 21, so with the
+reason box at 13 its neighbours are 9 and 17, and there is no nudge available,
+only a side. Above is the one that was wanted.
+
+**The wait doubled, and in one place.** `pause_beat` is shared: the reason box
+waits one and `GAME OVER` two, so doubling the beat doubles both and keeps them
+in proportion, where a third and a fourth `GOSUB pause_beat` at the call sites
+would have cost code to say the same thing worse. It is the LOOP COUNT that
+doubled and not the three `WAIT`s inside it — `sfx_tick` runs once per pass, so
+six waits would have halved its rate against the frame and every decay counter,
+which is in frames, would have rung twice as long.
 
 **And the text inside the box is centred now, which two of the five were not.**
 `GOT HIM!` and `TIME UP!` each sat one column left of centre with the surplus

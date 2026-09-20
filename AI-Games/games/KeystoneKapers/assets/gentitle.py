@@ -341,19 +341,25 @@ BLANK = " " * BOX_W
 
 
 def _box(text):
-    """A whole message scene: the text on the THIRD of four rows.
+    """A whole message scene: one blank row, the text, one blank row.
 
-    THE BOX IS FOUR ROWS AND THE MESSAGE IS ONE, so it cannot be centred --
-    the padding is either one above and two below, or two above and one below,
-    and there is no third option while the box has to cover a whole NES
-    attribute byte (see BOX_ROW). It was the first and read as *"an extra row
-    below"*, which is exactly what it was. This is the second.
+    THREE ROWS, BECAUSE FOUR CANNOT BE CENTRED. A four-row box carrying a
+    one-row message pads either one above and two below or two above and one
+    below, and there is no third option -- both were built and both were
+    reported, the first as "an extra row below the message" and the second as
+    "an extra border of spacing over the top". Fixing one end moved the fault
+    to the other, which is what an impossible constraint feels like from the
+    outside.
 
-    Four rows is not a choice that can be revisited here: three would leave the
-    fourth row of the coloured block showing shop floor through it on the NES,
-    which is worse than an uneven margin.
+    So the box is three rows and the margin is even. The FOURTH row still has
+    to be cleared ON THE NES and only there: an attribute byte colours four
+    characters by four, so the block this box sits in is four rows tall
+    whatever the text does, and a row left undrawn shows shop floor tinted with
+    the message's own palette. KEYSTONE.bas blanks it beside each call, under
+    `#if NES` -- additive, with the TI form untouched, so every gate that
+    parses the source still sees what it saw.
     """
-    return [BLANK, BLANK, _line(text), BLANK]
+    return [BLANK, _line(text), BLANK]
 
 
 MESSAGES = {
@@ -364,6 +370,20 @@ MESSAGES = {
     "msg_over":   _box("GAME OVER"),
 }
 
+# GAME OVER STACKS BELOW THE REASON NOW, NOT ABOVE IT.
+#
+# It moved down four rows with the others when BOX_ROW did -- it is written as
+# an offset from BOX_ROW precisely so it cannot be left behind -- but it stayed
+# the TOP of the pair, so on screen it was still the highest thing in the
+# middle of the store and still read as sitting too high.
+#
+# Below is also the only other place it can go. The attribute grid allows a box
+# to start on rows 1, 5, 9, 13, 17, 21 and nowhere else (BOX_ROW), so with the
+# reason box at 13 its neighbours are 9 and 17 -- there is no nudge available,
+# only a side.
+#
+# And it reads better this way round: what happened, then the consequence.
+# "TIME'S UP!" over "GAME OVER" is the order the player learns it in.
 MSG_ROW = {
     "msg_gothim": BOX_ROW, "msg_away": BOX_ROW,
     "msg_plane": BOX_ROW, "msg_timeup": BOX_ROW,

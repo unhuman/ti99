@@ -290,6 +290,24 @@ cost a debugging session:
     drawing asymmetric enough to be worth two beats is asymmetric enough that
     its mirror is a different ACTOR, not a different beat. Drop the mirrored
     beats and run the two drawings you have.
+  - **A DUCK-OR-JUMP GAME PINS THE CROUCH HEIGHT TO THE PIXEL, AND "GIVE IT
+    MORE HEADROOM" MAY HAVE NO ANSWER.** Duckable means the hazard clears the
+    crouch; jumpable means it clears under the apex. Raising the crouch raises
+    the duckable floor until it meets the apex coming down, and then a band of
+    hazard heights is NEITHER. Keystone Kapers swept its crouch from 11 to 20
+    and the dead band opened at **12** -- the very first pixel. So the answer to
+    a request for a taller crouch is a measurement, not a redraw: the ceiling is
+    usually much closer than the sprite box, which had five spare rows and was
+    never the constraint. **Sweep it before drawing to it**, and if the pose
+    needs the height, the hazard hitboxes or the arc move first.
+  - **AND AN UPRIGHT HEAD IS THE EASIEST WAY TO DRAW A POSE THAT MIRRORS TO
+    ITSELF.** A crouch with the head centred on a symmetric squat is its own
+    mirror, so ducking reads as the figure being SQUASHED rather than as it
+    dropping and still looking where it is going -- the same defect as the
+    mirrored run beats, from a pose nobody would suspect. Push the brim
+    forward, set the face forward under it, give the shoulders a lead over the
+    trailing rump, and **measure the composite against its own mirror** rather
+    than judging the layers separately. The layers tell you nothing about it.
   - **AND AN "EXTRA" POSE IS ONLY A POSE IF IT MEASURES DIFFERENT.** Kelly was
     given a standing drawing, because an animation counter that advances by
     DISTANCE freezes when the actor stops and leaves him holding whichever beat
@@ -1472,6 +1490,16 @@ look like a bug, it looks like the game is broken — so these are rules, not pr
     routine IS called with `lives = 0`, and these are unsigned 8-bit vars, so a bare `lives - 1`
     wraps to 255 and lights every icon exactly when the player has none. Guard it
     (`IF lives > 0 THEN spare = lives - 1`).
+  - **RIGHT-JUSTIFY THE ROW so the last icon sits in the last column.** Filling from the left
+    means the row empties from the RIGHT, and the final life ends up alone several blanks from
+    the screen edge — a position that says nothing about why it stopped there. Growing leftward
+    from a fixed right edge keeps one end anchored, so the count is read off the row's left-hand
+    end and the icons always finish in the same place.
+  - **And write the justification test WITHOUT the subtraction.** `IF slot + spare > last` is
+    the same rule as `IF slot >= width - spare` and only the first is safe: `spare` is unsigned
+    8-bit, so `width - spare` wraps to ~250 the moment a cheat or a setup screen grants more
+    lives than the row can hold — lighting every cell at exactly the point the indicator should
+    be saturating. Same underflow as the `lives - 1` above, at the other end of the same routine.
   - A setup/options screen that asks for "number of cars" still means TOTAL cars (3 cars = 3
     plays). Only the in-game HUD counts reserves.
 

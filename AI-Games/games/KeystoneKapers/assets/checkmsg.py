@@ -57,6 +57,23 @@ LOOKBACK = 10                           # lines above the GOSUB for the source
 LOOKAHEAD = 8                           # and below it for the colouring
 
 
+def _code(src, i, n):
+    """The next (or previous) `n` lines that are not comments or blanks.
+
+    Anchored at line `i`: a positive `n` walks forward from it, a negative one
+    walks backward. Comments and blank lines are skipped rather than counted,
+    so a window is a bound on STATEMENTS and cannot be closed by documentation.
+    """
+    step = 1 if n > 0 else -1
+    out, j = [], i
+    while len(out) < abs(n) and 0 <= j < len(src):
+        s = src[j].strip()
+        if s and not s.startswith("'"):
+            out.append(src[j])
+        j += step
+    return out
+
+
 def main(path=None, quiet=False):
     src = open(path or BAS, encoding="utf-8").read().split("\n")
     bad, seen = [], 0
@@ -80,12 +97,20 @@ def main(path=None, quiet=False):
             continue                    # the title, deliberately
         seen += 1
 
-        has_wait = any(WAIT.match(src[j])
-                       for j in range(max(0, i - LOOKBACK), i))
-        has_att = any(BOXATT.match(src[j])
-                      for j in range(i, min(len(src), i + LOOKAHEAD)))
-        has_nav = any(NAV.match(src[j])
-                      for j in range(i, min(len(src), i + LOOKAHEAD)))
+        # THE WINDOWS COUNT CODE LINES, NOT SOURCE LINES.
+        #
+        # They counted source lines, so a paragraph of comment between the draw
+        # and its colouring pushed the `GOSUB nes_boxatt` out of reach and the
+        # file reported two boxes as "drawn but never coloured" -- on code that
+        # was correct, with the reason sitting four lines further down.
+        #
+        # A check that fails on working code is as expensive as one that passes
+        # on broken code: the obvious response to it is to weaken the rule.
+        # checkanim.py had the identical bug from the other direction, where a
+        # comment block hid an animation band and the gate went quietly blind.
+        has_wait = any(WAIT.match(l) for l in _code(src, i, -LOOKBACK))
+        has_att = any(BOXATT.match(l) for l in _code(src, i, LOOKAHEAD))
+        has_nav = any(NAV.match(l) for l in _code(src, i, LOOKAHEAD))
 
         if not has_wait:
             bad.append("line %d: %s is drawn with no WAIT in front of it. "
