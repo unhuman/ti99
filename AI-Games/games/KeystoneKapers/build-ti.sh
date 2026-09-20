@@ -265,6 +265,23 @@ rm -f "$NAME.bin" "${NAME}"_b*.bin
 cygpy "$XDT99_DIR/xas99.py" -b -R "$NAME.a99" -L "$NAME.txt" \
     || die "xas99 failed (see $NAME.txt for assembly errors)"
 
+# Assemble once for real addresses, shorten only proven in-range game branches,
+# then verify the second assembly before linking. Keep originals for comparison.
+case "${TI_SHORT_BRANCHES:-1}" in
+    0) echo "TI short branches disabled" ;;
+    1)
+        cp "$NAME.a99" "$NAME.unopt.a99" || die "cannot save original assembly"
+        cp "$NAME.txt" "$NAME.unopt.txt" || die "cannot save original listing"
+        "$TRUNCPY" ../assets/shortbranches.py rewrite "$NAME.unopt.a99" "$NAME.unopt.txt" \
+            "$NAME.a99" "$NAME.txt" "$NAME.branches.json" || die "branch rewrite failed"
+        cygpy "$XDT99_DIR/xas99.py" -b -R "$NAME.a99" -L "$NAME.txt" \
+            || die "short-branch assembly failed"
+        "$TRUNCPY" ../assets/shortbranches.py verify "$NAME.unopt.a99" "$NAME.unopt.txt" \
+            "$NAME.a99" "$NAME.txt" "$NAME.branches.json" || die "branch verification failed"
+        ;;
+    *) die "TI_SHORT_BRANCHES must be 0 or 1" ;;
+esac
+
 FIRST="$NAME.bin"
 [ -s "${NAME}_b0.bin" ] && FIRST="${NAME}_b0.bin"
 [ -s "$FIRST" ] || die "xas99 produced no/empty $FIRST"

@@ -1138,6 +1138,13 @@ setup_font:
 	DEFINE COLOR 185,12,tfont_col1
 	#endif
 
+	' Radar colours are expanded in the setup bank, before later overrides.
+	#if NES
+	' NES attributes are initialized by nes_setup.
+	#else
+	DEFINE COLOR 208,48,scan_cols
+	#endif
+
 	' AND BACK TO BANK 1 FOR THE REST OF THE PROGRAM. Everything below this
 	' line -- setup_rest's DEFINEs, the template blits, every table read in
 	' the main loop -- comes out of bank 1, and nothing switches away from it
@@ -1278,7 +1285,6 @@ setup_rest:
 	' sign would lose a lamp on every pass round.
 	bphs = 3
 	GOSUB esc_deck_col
-	GOSUB scan_colour
 	GOSUB floor0_colour
 
 	GOTO after_deck
@@ -1465,22 +1471,12 @@ init_tables:
 
 	' Template source offsets. A LOOKUP, not `tpl * 160`: reading a 16-bit
 	' var straight after a multiply returns the product's high word.
-	#tsrc(0) = 0
-	#tsrc(1) = 160
-	#tsrc(2) = 320
-	#tsrc(3) = 480
-	#tsrc(4) = 640
-	#tsrc(5) = 800
-	#tsrc(6) = 960
-	#tsrc(7) = 1120
-	#tsrc(8) = 1280
-	#tsrc(9) = 1440
-	' Five more since the roof gained a template per screen (DESIGN.md 13a).
-	#tsrc(10) = 1600
-	#tsrc(11) = 1760
-	#tsrc(12) = 1920
-	#tsrc(13) = 2080
-	#tsrc(14) = 2240
+	' Build all fifteen word offsets once, using the arc-copy scratch.
+	#jaa = 0
+	FOR ji = 0 TO 14
+		#tsrc(ji) = #jaa
+		#jaa = #jaa + 160
+	NEXT ji
 
 	lv8(0) = 0
 	lv8(1) = 8
@@ -1613,36 +1609,6 @@ f0_rows:
 	NEXT f0i
 	RETURN
 
-scan_colour:
-	#if NES
-	' NO COLOUR TABLE ON THE NES -- attributes are per 16x16
-	' block and cannot say what this says. See nes_setup.
-	RETURN
-	#endif
-	#scb = VARPTR scan_col3(0)
-	FOR sci = 0 TO 2
-		#sca = 8192
-		IF sci = 1 THEN #sca = 10240
-		IF sci = 2 THEN #sca = 12288
-		#sca = #sca + 1664		' char 208, the canvas
-		FOR scr = 0 TO 2
-			FOR scc = 0 TO 15
-				#scs = #scb
-				scq = scr + scr
-				scq = scq + scq
-				scq = scq + scq		' scr * 8
-				#scs = #scs + scq
-				FOR scl = 0 TO 7
-					scv = PEEK(#scs)
-					VPOKE #sca,scv
-					#sca = #sca + 1
-					#scs = #scs + 1
-				NEXT scl
-			NEXT scc
-			WAIT
-		NEXT scr
-	NEXT sci
-	RETURN
 
 	' ======================================================================
 	' TITLE
@@ -2222,7 +2188,6 @@ start_krook:
 	dead = 0
 	caught = 0
 	escapd = 0
-	knock = 0
 	hfz = 0
 	tflon = 1		' the TIME field starts drawn
 	sct = 0
@@ -2944,26 +2909,7 @@ prize_one:
 		' AND THE FIXTURE BEHIND IT GOES AWAY, for the same reason
 		' a radio's does: a pillar fills all four air rows, so a
 		' prize on one would leave its top half hanging above.
-		#wca = #pva - 64
-		GOSUB wall_clear
-		#wca = #wca + 1
-		GOSUB wall_clear
-		#wca = #pva - 32
-		GOSUB wall_clear
-		#wca = #wca + 1
-		GOSUB wall_clear
-		' and the beam top hanging above it
-		#bca = #pva - 96
-		GOSUB beam_clear
-		#bca = #bca + 1
-		GOSUB beam_clear
-		' and the rest of the counter it stands in
-		#wsa = #pva - 1
-		wsd = 0
-		GOSUB wipe_shelf
-		#wsa = #pva + 2
-		wsd = 1
-		GOSUB wipe_shelf
+		GOSUB fixture_clear
 		pch = CH_BAGTL
 		IF pk = 2 THEN pch = CH_CASETL
 		VPOKE #pva,pch
@@ -3123,10 +3069,6 @@ move_kelly:
 		RETURN
 	END IF
 
-	' --- knockback from an obstacle: brief, and it does not stun
-	IF knock > 0 THEN
-		knock = knock - 1
-	END IF
 
 	' --- jumping: the arc is a table, so the apex is exactly 14
 	IF klst = ST_JUMP THEN
@@ -3859,6 +3801,31 @@ wall_clear:
 	END IF
 	RETURN
 
+fixture_clear:
+	' Input #pva: fixture top-left; nbl: NES band. Called at screen setup.
+	' Prize/radio callers share this scratch; callees leave #pva intact.
+	#wca = #pva - 64
+	GOSUB wall_clear
+	#wca = #wca + 1
+	GOSUB wall_clear
+	#wca = #pva - 32
+	GOSUB wall_clear
+	#wca = #wca + 1
+	GOSUB wall_clear
+	' and the beam top hanging above it
+	#bca = #pva - 96
+	GOSUB beam_clear
+	#bca = #bca + 1
+	GOSUB beam_clear
+	' and the rest of the counter it stands in
+	#wsa = #pva - 1
+	wsd = 0
+	GOSUB wipe_shelf
+	#wsa = #pva + 2
+	wsd = 1
+	GOSUB wipe_shelf
+	RETURN
+
 	' ONE BAND'S RADIOS. rbn is the band; its slots are rbn*2, rbn*2+1 and
 	' 8+rbn, so the caller does not have to know the mapping.
 radio_band:
@@ -3902,26 +3869,8 @@ radio_band:
 				' nothing under it. Shelves are covered outright
 				' by the radio's own two rows, so only the rows
 				' ABOVE need clearing.
-				#wca = #rva - 64
-				GOSUB wall_clear
-				#wca = #wca + 1
-				GOSUB wall_clear
-				#wca = #rva - 32
-				GOSUB wall_clear
-				#wca = #wca + 1
-				GOSUB wall_clear
-				' and the beam top hanging above it
-				#bca = #rva - 96
-				GOSUB beam_clear
-				#bca = #bca + 1
-				GOSUB beam_clear
-				' and the rest of the counter it stands in
-				#wsa = #rva - 1
-				wsd = 0
-				GOSUB wipe_shelf
-				#wsa = #rva + 2
-				wsd = 1
-				GOSUB wipe_shelf
+				#pva = #rva
+				GOSUB fixture_clear
 				#rvb = #rva + 32
 				rch = CH_RADBL
 				VPOKE #rvb,rch
@@ -4687,7 +4636,6 @@ coll_obst:
 do_hit:
 	IF tsec > HITPEN THEN tsec = tsec - HITPEN ELSE tsec = 0
 	IF tsec = 0 THEN tout = 1
-	knock = 20
 	' ONE PASS LONGER THAN THE SOUND, because the sound does not start here.
 	' sfh is a latch that sfx_tick consumes on the NEXT pass, so the note
 	' runs passes 2..HITSND+1 of the freeze and this ends with it.
@@ -4719,7 +4667,7 @@ do_hit:
 	' to be over -- and since the arc is ballistic and ignores the stick once
 	' he is airborne (0l), that read as the game taking the controls away
 	' rather than as a hit landing. The penalty is the nine units and the
-	' knock flash; where he comes down is still his own arc.
+	' hit sound; where he comes down is still his own arc.
 	'
 	' A ducking Kop is still stood up, because the crouch is a held pose and
 	' there is nothing to interrupt.
@@ -4833,32 +4781,13 @@ draw_actors:
 			GOTO draw_harry
 		END IF
 	END IF
-	' KELLY'S HAT DOES NOT FLASH WHEN HE IS HIT. It used to alternate to white
-	' on the `fphs AND 2` phase for the twenty frames of `knock`, on the
-	' argument that nothing else on screen said nine seconds had just gone.
-	' That argument no longer holds: the knockback still throws him, the HUD's
-	' digits still drop by nine, and the hit now has a sound that is allowed to
-	' finish. Three signals for one event, and the flash was the least legible
-	' of them -- a two-frame colour swap on a 16 px hat, during the one moment
-	' the player is looking at where they are being pushed.
-	'
-	' Dropping it retires `kcol` with it: the hat is C_KHAT always, so the
-	' colour goes straight into the SPRITE calls below and the per-pass
-	' variable, its assignment and two nested IFs all go.
-	'
-	' `knock` STAYS. It is the knockback, which is the part that is felt.
+	' Hit feedback is the HUD and sound; hfz controls the actual hit freeze.
 	' KELLY IS SPRITES 0, 1 AND 2 and nothing else ever is -- the VDP drops
 	' the highest-numbered sprites on an over-full scanline, so the lowest
 	' slots are the ones that can never disappear, and the player is the one
 	' thing that must never disappear.
 	'
-	' THE BAND SPRITES SHARE A y ON PURPOSE. Slots 0 and 1 both sit at ky and
-	' between them cover rows 0-15; slot 2 sits at ky+16. Boxes 0/1 and box 2
-	' never share a scanline, so an actor costs at most TWO boxes on any line
-	' -- and the VDP counts boxes, not pixels, so an empty overlap would have
-	' cost just as much as a full one. Two actors meeting is four, exactly
-	' the per-line limit, which is why obstacles are suppressed on Harry's
-	' floor rather than merely being a kindness.
+	' Each pose picks a base y and three patterns; facing and drawing follow.
 	ky = flry(klv)
 	ky = ky - STANDH
 	ky = ky - kjh
@@ -4883,51 +4812,12 @@ draw_actors:
 	IF klst = ST_ELEV THEN ky = ky - ELRIDE
 
 	IF klst = ST_DUCK THEN
-		' 8 px, one sprite, sitting on the floor. The top half is HIDDEN
-		' rather than left where it was -- a forgotten slot keeps drawing
-		' its last contents, so Kelly would duck and leave his head behind.
-		kdy = flry(klv)
-		kdy = kdy - DUCKDRAW
-		' HE KEEPS HIS BRIM. Three bands, not two: the flat black brim is
-		' the one feature that reads as Kelly at this size, and drawing the
-		' crouch as one blue mass threw it away. See the note in genart.py
-		' for why a third box is affordable here.
+		' Three crouch bands share the run pose's offsets and facing below.
+		ky = flry(klv)
+		ky = ky - DUCKDRAW
 		kp = P_KDHAT
 		kf = P_KDFACE
 		kb = P_KDBODY
-		IF kldir = 0 THEN
-			kp = kp + P_KFACING
-			kf = kf + P_KFACING
-			kb = kb + P_KFACING
-		END IF
-		' THREE BOXES, STAGGERED -- the same offsets the run uses, and that is
-		' what takes the crouch from THREE sprites per scanline down to two.
-		'
-		' The VDP counts sprite BOXES, not the ink in them, so three boxes at
-		' one y cost three on every line the figure touches. Spread to -10, -5
-		' and +11 they span -10..5, -5..10 and 11..26: the face's box and the
-		' body's never share a scanline, so nothing carries more than two. With
-		' two obstacles on the line that is four, which is exactly the limit --
-		' the crouch had been the thing pushing it over.
-		'
-		' Reusing khy/kfy/kby -- the run branch's -- rather than three of its
-		' own: the two arms of this IF never both run, and THREE BYTES of new
-		' scratch pushed an array past the end of NES RAM, which checknesram
-		' caught. Scalars allocate below the arrays, so adding one moves them
-		' all up.
-		'
-		' It also gives the body a whole box of its own, which is what lets the
-		' squat be six rows under a FULL-SIZE head. Squeezed into one 16-row box
-		' with the head's eleven it had five, and the sixth -- his feet -- was
-		' silently dropped.
-		khy = kdy - 10
-		SPRITE 0,khy,klx,kp,C_KHAT
-		kfy = kdy - 5
-		SPRITE 1,kfy,klx,kf,C_SKIN
-		kby = kdy + 11
-		SPRITE 2,kby,klx,kb,C_KELLY
-		' The crouch never had a fourth box -- it hid one it did not use.
-		' Now the run does not use one either, so there is nothing to hide.
 	ELSE
 		' TWO RUN FRAMES FROM ONE BIT of the animation counter, and no
 		' divide -- `/` compiles to a real TMS9900 DIV (CLAUDE.md 3A) and
@@ -5012,36 +4902,21 @@ draw_actors:
 		' take-off. This is an explicit override rather than a subtlety about
 		' which beat he jumped on.
 		IF klst = ST_JUMP THEN kf = P_KFACE2
-		' ONE OFFSET FOR ALL THREE. This had a branch in it: the baton head
-		' lived outside Kelly's block and its left twin was +4, not +36. It
-		' moved into the block (see P_KFACE2) precisely so this could be three
-		' plain adds again.
-		IF kldir = 0 THEN
-			kp = kp + P_KFACING
-			kb = kb + P_KFACING
-			kf = kf + P_KFACING
-		END IF
-		' FOUR BANDS, EACH DRAWN AT ITS OWN y so its 16-row box covers
-		' only the rows it uses: hat -13..2, face -10..5, tunic 6..21,
-		' trousers 16..31. Splitting the hat off the tunic is what frees
-		' the cap rows for Harry's second stripe colour.
-		' THE OFFSETS ARE THE BAND BOUNDARIES, and they moved when the
-		' figure was redrawn to the reference's proportions: the head is
-		' now 42% of his height, so the hat band is rows 0-5, the face 6-9
-		' and the tunic 10-15. Each box still covers only its own band --
-		' hat -10..5, face -6..9, tunic 10..25 -- which is what keeps Kelly
-		' to two boxes on any scanline. genart.py's shift() and these have
-		' to agree; assets/checkbands.py reads both and checks they do.
-		khy = ky - 10
-		SPRITE 0,khy,klx,kp,C_KHAT
-		kfy = ky - 5
-		SPRITE 1,kfy,klx,kf,C_SKIN
-		kby = ky + 11
-		SPRITE 2,kby,klx,kb,C_KELLY
-		' NO FOURTH BOX. The trousers used to be SPRITE 3 at ky + 16; they
-		' are drawn into the run body above, which is why slot 3 is free
-		' and this is one statement rather than three.
 	END IF
+	' One facing offset and one emission path for all three Kelly bands.
+	IF kldir = 0 THEN
+		kp = kp + P_KFACING
+		kb = kb + P_KFACING
+		kf = kf + P_KFACING
+	END IF
+	' Staggered boxes: hat -10..5, face -5..10, body 11..26.
+	' At most two boxes occupy any scanline, including while crouched.
+	khy = ky - 10
+	SPRITE 0,khy,klx,kp,C_KHAT
+	kfy = ky - 5
+	SPRITE 1,kfy,klx,kf,C_SKIN
+	kby = ky + 11
+	SPRITE 2,kby,klx,kb,C_KELLY
 
 draw_harry:
 	' Harry: sprites 3, 4 and 5, banded the same way
@@ -7135,6 +7010,7 @@ sfx_tick:
 	' they would have returned bytes from the wrong page at the moment a life
 	' is lost -- and with no error at build or run time. gentitle.py now
 	' writes them to title.bas below, which stays in bank 1.
+	INCLUDE "scancol.bas"
 	INCLUDE "titledl.bas"
 	#if TI994A
 	BANK 1

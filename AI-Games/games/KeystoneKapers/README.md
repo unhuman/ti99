@@ -201,9 +201,12 @@ nine-second obstacle and still make the catch. `DESIGN.md` §4a has the arithmet
 
 ## Status
 
-🛠 **Builds on both targets; needs a runtime pass.** TI 23,706 / 24,336 bytes (**630 free**), 420 RAM;
-ColecoVision 16 KB ROM, 420 / 814 RAM. The fixed area is now the binding
-constraint — see `DESIGN.md` §12 before adding anything sizeable.
+**Builds pass on TI-99/4A, ColecoVision and NES (2026-09-20).** TI fixed code
+uses **21,888 / 24,336 bytes (2,448 free)**, with 620 bytes of RAM and a 64 KB
+cartridge. Runtime data bank 1 has 506 bytes free; setup bank 2 has 5,764 free.
+ColecoVision uses a 24 KB ROM and 595 / 814 RAM; NES uses a 32 KB PRG image
+plus its 16-byte header and reports 1,506 RAM bytes. See `DESIGN.md` section 14
+for measurements, validation and the remaining runtime checks.
 
 Kelly and Harry are **colour-banded sprites** — Kelly three, Harry four — with one colour per
 pixel row, and each band drawn at its own `y` so its sprite box covers only the rows it uses.
@@ -218,13 +221,23 @@ sourced research and §13 the phase plan.
 ```sh
 ./build-ti.sh        # cvbasic --ti994a -> xas99 -> linkticart -> src/KEYSTONE_8.bin
 ./build-coleco.sh    # cvbasic          -> gasm80            -> src/keystone.rom
+./build-nes.sh       # cvbasic --nes    -> gasm80            -> src/keystone.nes
 ```
 
 The TI build **banks the art**: `art.bas` and `store.bas` assemble into ROM bank 1, which
 frees 4.5 KB of the 24,336-byte fixed area. `assets/banksize.py` measures what is left (a
 banked image is padded, so `wc -c` reads a phantom overflow).
 
-Both scripts regenerate `src/art.bas` and `src/store.bas` first, then run the repo's
+`build-ti.sh` also shortens eligible TMS9900 conditional branches after the first
+assembly. A second assembly verifies every rewritten opcode and destination before
+linking. Use `TI_SHORT_BRANCHES=0 ./build-ti.sh` for an unoptimized comparison;
+this leaves 660 fixed-area bytes free. The default is enabled. Ignored
+`src/KEYSTONE.unopt.a99`, `.unopt.txt` and `.branches.json` retain the originals
+and rewrite manifest. `assets/romprofile.py` reports measured routine sizes,
+including the final routine, excluding bank padding and switched-bank data.
+
+All three scripts regenerate art, store and title assets (including the setup-bank
+`src/scancol.bas`) first, then run the repo's
 truncation, `GOSUB`/`RETURN` and screen-layout gates, plus `checkball.py` (no beach ball is
 unavoidable), `checkchase.py` (the chase can be won on foot), `checkbands.py` (no actor's
 colour bands overflow the 4-sprites-per-line limit), `checkesc.py` (every escalator phase

@@ -129,6 +129,16 @@ and the per-game lifecycle (§8) — stayed in this file.
 
 ## 3A. CVBasic hazards (the current platform — always loaded)
 
+- **Measure the final routine before bank padding.** An xas99 profiler that
+  sizes routines only between named labels loses the last routine; stopping at
+  the next bank's first label can also include padding. Keystone's profiler now
+  uses the final emitted word before `BANK_0_FREE`, including continuation words.
+  Its local `assets/shortbranches.py` saves fixed code by replacing proven
+  in-range conditional/absolute branch pairs, then reassembles and verifies
+  addresses and opcodes. Keep that verification and the `TI_SHORT_BRANCHES=0`
+  comparison switch; the shared compiler is unchanged. Faster code can affect
+  per-pass animation even when frame-based movement remains unchanged.
+
 Most active games (`Structris`, `HardHatMack`, `RallyX`, `Astiroids`, `Adventire`,
 `mspacman-cv-xb-port`) are **CVBasic**, dual-target TI-99/4A + ColecoVision, *not* XB256.
 These are hard-won failure contracts — none of them is derivable from the code, and each one

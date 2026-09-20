@@ -5818,3 +5818,83 @@ cheap thing was unaffordable.
 - The Kop indicator shows **three** at the start of a fresh game and **none** on the last Kop.
 - Fits the **24,336-byte** fixed area on TI; Coleco RAM stays under 814 bytes.
 - With ALPHA LOCK latched, the title says so instead of starting a broken game.
+
+
+## 14. Fixed-code space recovery (2026-09-20)
+
+The freshly rebuilt baseline used 24,318 of the TI's 24,336 fixed bytes,
+leaving 18. The cartridge's 64 KB size does not increase this code window.
+The approved changes preserve gameplay constants and use the existing compiler.
+
+| Build | Fixed bytes used | Free |
+|---|---:|---:|
+| Original source, original compiler output | 24,318 | 18 |
+| Original source, local branch shortening | 22,506 | 1,830 |
+| Source cleanups, shortening disabled | 23,676 | 660 |
+| Source cleanups, shortening enabled (default) | 21,888 | 2,448 |
+
+The final saving is **2,430 bytes**: 642 from shared-source changes and 1,788
+from 447 verified TI branch rewrites. The source changes alone save:
+
+| Change | Fixed bytes saved before shortening |
+|---|---:|
+| Expanded radar colours in setup bank 2, uploaded with DEFINE COLOR | 286 |
+| Kelly poses share facing adjustment and three SPRITE calls | 158 |
+| Prize/radio share fixture_clear, reusing #pva scratch | 104 |
+| Initialize fifteen #tsrc offsets with an additive startup loop | 52 |
+| Remove unused knock counter (hfz remains the hit freeze) | 42 |
+
+`genart.py` now emits `scancol.bas`: three eight-byte colour rows, each repeated
+sixteen times, for 384 bytes. It replaces the 24-byte `scan_col3` runtime table
+and its expansion code. Upload occurs while setup bank 2 is selected, before
+switching back to bank 1 and before later colour overrides. NES keeps its
+attribute-based initialization. Data bank 1 now uses 7,686 / 8,192 bytes (506
+free); bank 2 uses 2,428 (5,764 free). Both last blocks survive cartridge packing.
+TI RAM drops from 636 to 620 bytes. Coleco uses 595 / 814 RAM with a 24 KB ROM;
+NES reports 1,506 RAM bytes and produces a 32,784-byte iNES file.
+
+The TI-only `assets/shortbranches.py` pass recognizes `Jcc skip / B @target /
+skip` only between `cvb_BOOT` and `BANK_0_FREE`. It supports JEQ/JNE and JHE/JL
+inversions, uses original assembled distances in the signed eight-bit word
+range, and keeps all labels and source line numbers. A second assembly checks
+all emitted instruction addresses against the expected four-byte deletions,
+and checks each replacement opcode and destination. Layout directives or
+ambiguous encodings fail the build. Runtime code and switched data banks are
+excluded. Unsupported conditions remain unchanged; this is one conservative
+pass, not iterative relaxation. `TI_SHORT_BRANCHES=0 bash build-ti.sh` provides
+the comparison build. The original assembly/listing and rewrite manifest are
+ignored build artifacts beside the optimized assembly.
+
+`romprofile.py` previously omitted the final routine: `sfx_tick` alone was
+1,130 bytes in the baseline. It now ends attribution after the final emitted
+word before the bank's padding, including continuation words. Profiler tests
+cover the final routine and bank/padding exclusion. Branch tests cover both
+outcomes of supported conditions, forward/backward range boundaries, preserved
+labels, unsupported conditions, malformed segments, and bad encodings.
+
+Validation performed:
+
+- Complete TI, ColecoVision and NES build gates and checker self-tests passed.
+  Both values of TI_SHORT_BRANCHES built successfully; the final build is enabled.
+- An independent before/after execution of Kelly's drawing expressions compared
+  all three emitted sprite attributes over 46,080 state combinations: both screen
+  coordinate systems, all floors/states/facings, animation bits, movement flags,
+  jump heights and escalator offsets. Every comparison matched.
+- All 384 radar bytes match the former expansion loop in each screen third;
+  all fifteen word offsets match the former assignments. Both fixture cleanup
+  instruction sequences match the shared helper, and its callees are unchanged
+  and leave #pva intact.
+- Classic99 smoke checks covered the title, 838 setup, starting a later level,
+  right-facing crouch, leftward jump/run, a screen seam, the radar and store
+  drawing in both branch-enabled and branch-disabled carts.
+- Six-second desktop samples of the starting screen's escalator showed four
+  phases in each build. Mean phase intervals were 50.0 ms without shortening
+  and 50.4 ms with it (median about 50 ms in both; sampling about every 34 ms).
+  No meaningful pacing change was observed in that scene. This is a limited
+  emulator comparison, not a hardware timing guarantee.
+
+Full gameplay acceptance still needs manual review: escalator boarding/riding,
+elevator use, catches, every hazard/penalty, sound decay and game-over re-entry,
+plus Coleco/NES runtime and real hardware. No pacing or difficulty constants were
+changed to compensate for faster code. Historical budget and timing figures in
+earlier sections describe their respective revisions, not this build.

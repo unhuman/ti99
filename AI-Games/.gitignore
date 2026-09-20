@@ -7,3 +7,8 @@ __pycache__/
 # xas99 bank images. linkticart appends every NAME_b*.bin it finds, so a stale
 # one from a previous build inflates the cart; the build scripts delete them.
 *_b[0-9].bin
+
+# TI branch optimizer comparison artifacts.
+games/KeystoneKapers/src/*.unopt.a99
+games/KeystoneKapers/src/*.unopt.txt
+games/KeystoneKapers/src/*.branches.json

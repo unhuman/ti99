@@ -594,11 +594,6 @@ esc_phe3:	' chars 116-121, phase 3 -- DEFINE CHAR 116,6,esc_phe3
 	' CVBasic left in the colour table, which on a green store made the HUD
 	' unreadable.
 
-scan_col3:	' one 8-byte block per canvas row: 4 px of GREY margin, then a 3 px band of furniture GREY and a yellow floor line, per 4 px level, on dark green. The Kop and the crook are coloured PER CHARACTER at run time -- see scan_set
-	DATA BYTE $EE,$EE,$EE,$EE,$EC,$EC,$EC,$BC
-	DATA BYTE $EC,$EC,$EC,$BC,$EC,$EC,$EC,$BC
-	DATA BYTE $EC,$EC,$EC,$BC,$EE,$EE,$EE,$EE
-
 esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at 8192 + char*8, once, at setup
 	DATA BYTE $8C,$1B,$1B,$1A,$1A,$1A,$1C,$1C
 	DATA BYTE $1C,$8D,$1B,$1B,$1A,$1A,$1A,$1C

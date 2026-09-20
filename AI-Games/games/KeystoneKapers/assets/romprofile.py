@@ -33,6 +33,7 @@ import sys
 LABEL = re.compile(r"^\s*\d+\s{2,}([A-Za-z_][A-Za-z0-9_]*)\s*$")
 # "2559 AA04 B084     \tdata cvb_TITLE_DRAW"  -- line number, address, word
 EMIT = re.compile(r"^\s*\d+\s+([0-9A-Fa-f]{4})\s+([0-9A-Fa-f]{4})\s")
+CONT = re.compile(r"^\s{5}([0-9A-Fa-f]{4})\s+([0-9A-Fa-f]{4})(?:\s|$)")
 
 WINDOW = 0xA000         # the cart's RAM-resident window; below this is setup
 
@@ -48,24 +49,34 @@ def collect(path):
     """
     out = []
     pending = None
+    end = None
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
+            # Stop BEFORE the fixed bank's fill bytes and bank-select word.
+            # The next bank need not start below the last named routine.
+            if re.search(r"\bBANK_0_FREE:\s+EQU\b", line, re.I):
+                break
             m = LABEL.match(line)
             if m:
                 if m.group(1).startswith("cvb_"):
                     pending = m.group(1)
                 continue
-            m = EMIT.match(line)
+            m = EMIT.match(line) or CONT.match(line)
             if not m:
                 continue
             addr = int(m.group(1), 16)
             if addr < WINDOW:
                 continue
+            if end is not None and addr < end:
+                break
+            end = addr + 2
             if pending is not None:
                 out.append((addr, pending))
                 pending = None
             elif not out:
                 out.append((addr, "<runtime>"))
+    if end is not None:
+        out.append((end, "<end>"))
     return out
 
 
