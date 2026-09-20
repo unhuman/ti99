@@ -2470,10 +2470,13 @@ CHARS_BASE = [
     # So three of these ship lit and BULB3 ships blank -- the static frame --
     # and title_wait redefines two of them per step. The COLOURS never change;
     # a blank pattern in white-on-dark-blue is simply a dark cell.
-    ("BULB0", 0, BULB_LIT, WHITE, HUD_BG),
-    ("BULB1", 0, BULB_LIT, WHITE, HUD_BG),
-    ("BULB2", 0, BULB_LIT, WHITE, HUD_BG),
-    ("BULB3", 0, BULB_OFF, WHITE, HUD_BG),
+    # LIGHT YELLOW, NOT WHITE -- the same ink as the title's letters beside
+    # them, and the same gold the NES gives them. A marquee of white lamps
+    # around yellow words read as two signs rather than one.
+    ("BULB0", 0, BULB_LIT, LYELL, HUD_BG),
+    ("BULB1", 0, BULB_LIT, LYELL, HUD_BG),
+    ("BULB2", 0, BULB_LIT, LYELL, HUD_BG),
+    ("BULB3", 0, BULB_OFF, LYELL, HUD_BG),
 
 ]
 

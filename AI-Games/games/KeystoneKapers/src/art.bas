@@ -509,10 +509,10 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $EC,$EC,$EC,$EC,$EC,$EC,$EC,$EC
 	DATA BYTE $EE,$EE,$EE,$EE,$EE,$EE,$EE,$EE
 	DATA BYTE $BA,$BA,$BA,$BA,$BA,$BE,$BE,$BE
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 
 bulb_lit:	' a lit marquee lamp
 	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00

@@ -939,8 +939,19 @@ setup_font:
 					' FIFTEEN, NOT ZERO: on this palette $0F is
 					' black and $00 is a dark GREY, so every hat
 					' and every stripe was coming out grey.
-	PALETTE 25,39			' 2 -- skin   faces, the biplane, the beach ball
+	PALETTE 25,39			' 2 -- skin   faces and the biplane
 	PALETTE 26,16			' 2 colour 2 -- GREY, the lift car on the radar
+	' AND THE BALL IS RED, which it already is on the TI: C_BALL is TMS 8,
+	' medium red. nes_spal sends that to sprite palette 2, and palette 2's
+	' colour ONE is the skin tone -- so on this machine the ball came out the
+	' same pale orange as a face.
+	'
+	' A sprite here is ONE bitplane, so its pixels are whichever index the
+	' upload writes and the OAM byte only chooses the palette. The lift car on
+	' the radar already solved this: it is uploaded with `nink = 2` and reads
+	' palette 2's second entry. The ball does the same with the THIRD, which
+	' nothing else uses.
+	PALETTE 27,22			' 2 colour 3 -- RED, the bouncing balls
 	PALETTE 29,48			' 3 -- white  Harry, the carts, the lift car
 
 	nespw = 2			' the loop pacer above starts on a 2-frame pass
@@ -1294,7 +1305,10 @@ after_deck:
 	ncnt = 4
 	ntab = 0
 	#ncol = 0
-	nink = 1
+	' THREE, NOT ONE -- see PALETTE 27. One bitplane means the upload picks the
+	' colour index and the OAM byte only picks the palette, so writing the ball
+	' into index 3 is what makes it red rather than skin-coloured.
+	nink = 3
 	GOSUB nes_def
 	#else
 	DEFINE SPRITE 53,1,spr_ball

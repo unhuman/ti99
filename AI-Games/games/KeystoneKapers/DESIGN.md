@@ -5208,6 +5208,27 @@ that is gold.
 Measured on the machine: the title, the score line and `HE GOT AWAY` are all
 `#F7B518` on `#0039A5`.
 
+### The bouncing balls are red, and the marquee is yellow
+
+Two colour corrections after the text was unified.
+
+**The balls were already red on the TI** — `C_BALL` is TMS 8, medium red. On the
+NES they came out the pale orange of a face, because `nes_spal` sends colour 8 to
+sprite palette 2 and that palette's colour ONE is the skin tone.
+
+A sprite here is one bitplane, so its pixels are whichever index the upload
+writes and the OAM byte only chooses the palette. The lift car on the radar had
+already solved this: it is uploaded with `nink = 2` and reads palette 2's second
+entry. The ball does the same with the **third**, which nothing else uses —
+`PALETTE 27` is red and `spr_ball` uploads with `nink = 3`. Measured on the
+machine: `#FF2100`, a clean solid ellipse.
+
+**The marquee lamps were white while the title's letters were yellow**, which
+read as two signs rather than one. `BULB0..3` go from `WHITE` to `LYELL` in
+genart, so their colour byte is `$B4` — the same ink as every other piece of text
+on the TMS targets. The NES was already right: it re-sends the lamps at setup
+with `nink = 3`, which is now the title's gold.
+
 ### What is not done
 
 - **The display counters are indistinguishable from the pillars.** This is what is
