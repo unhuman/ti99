@@ -5117,6 +5117,66 @@ edge.
 > `8 at +2144 (the picture), 3 at +2112 (the HUD, one row higher), 1 at +2176
 > (the scanner, one row lower)`.
 
+### GOT HIM! kept the store's colours, and nothing could see it
+
+The message boxes are coloured by pointing their four attribute bytes at P1 --
+the HUD's dark blue and white -- right after they are drawn. That was written out
+by hand at each site, and one was missed: **GOT HIM! stayed gold on green while
+every other box went white on blue.**
+
+Nothing failed. It is a perfectly readable message in the wrong palette, so no
+check of layout, overflow or collisions has anything to say about it — and the
+author of the change had no list to compare against, because the list was "the
+places I edited".
+
+The colouring is now one routine, `nes_boxatt`, called at all three sites, and
+`assets/checkmsg.py` derives the rule **from the producer**: anything that draws
+a `msg_*` list must have a `WAIT` in front of it and a `GOSUB nes_boxatt` after
+it. Mutation-tested against the real miss plus two neighbours (a box with no
+flush, and a call with no `#nav`).
+
+> Two false alarms from that gate are worth keeping, because both are the kind
+> that gets a checker deleted. Its first version anchored `WAIT` at end-of-line
+> and reported GAME OVER as unflushed — the `WAIT` there carries an explanatory
+> comment. And `checklayout.py` correctly refused `nes_boxatt` as an undeclared
+> drawing routine until it was mapped as `ATTR`, the same address space as
+> `nes_attr`.
+
+### The scanner is half again as tall
+
+Reported as "not quite so vertically thin". A level band is now **six pixel rows
+on the NES** where it is four on the TI, so the instrument is 24 px rather than
+16 — measured at 8 px of grey above, 24 px of instrument, 8 px below, in the
+40 px strip.
+
+**It was six everywhere once.** It shrank to four to buy eight empty pixel rows,
+four above and four below, so the scanner did not butt against the shop floor
+above it and the bottom of the screen. On the NES that margin now comes from
+somewhere else entirely — the strip runs past the canvas to the bottom edge, and
+the grey either side of the instrument is real cells rather than blank rows
+inside it. So the band gets its two rows back.
+
+The TI cannot follow, for the same reason it could not move down: its name table
+ends at row 23, the scanner is on the last three rows, and there is nowhere to
+put the margin. So the band height is per-target and every row offset derives
+from it:
+
+| | TI | NES |
+|---|---|---|
+| band height | 4 | 6 |
+| floor line | `fbase + 3` | `fbase + 5` |
+| escalator diagonal | `fbase + 0..2` | `fbase + 2..4` |
+| lift car and both dots | band top | band top + 2 |
+| margin inside the canvas | 4 px top and bottom | none — it is the strip |
+
+**The diagonal hangs from the floor line, not from the top of the band.** It is a
+staircase coming down to this floor, so on a six-row band it moves down two with
+the line rather than leaving a gap above it. Same for the lift car and the two
+actor dots, which stand on the floor rather than floating.
+
+`scan_base` uses an IF ladder rather than arithmetic: there are four levels, and
+multiplying by six needs a temporary this program has no RAM for.
+
 ### What is not done
 
 - **The display counters are indistinguishable from the pillars.** This is what is

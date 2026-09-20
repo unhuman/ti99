@@ -177,6 +177,16 @@ rm -rf ../assets/__pycache__
 # it rejects the overwrite that shipped plus three near misses.
 "$TRUNCPY" ../assets/checkpat.py > /dev/null \
     || die "an upload overwrites another table's art -- run assets/checkpat.py"
+
+# A MESSAGE BOX THAT IS NOT COLOURED IS A READABLE MESSAGE IN THE WRONG
+# PALETTE, which no layout, overflow or collision check can see. The
+# colouring was written out by hand at each site and GOT HIM! was missed, so
+# it kept the store's gold on green while every other box went white on blue.
+# checkmsg.py checks the rule against the PRODUCER instead -- anything that
+# draws a msg_* list must flush before it and call nes_boxatt after it -- and
+# is mutation-tested against that exact miss plus two neighbours.
+"$TRUNCPY" ../assets/checkmsg.py > /dev/null \
+    || die "a message box is drawn without its colours -- run assets/checkmsg.py"
 "$TRUNCPY" ../assets/checkride.py > /dev/null \
     || die "a rider's feet leave the escalator steps -- run assets/checkride.py"
 

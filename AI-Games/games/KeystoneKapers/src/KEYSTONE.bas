@@ -5418,7 +5418,11 @@ scan_furn:
 	FOR fl = 0 TO 3
 		GOSUB scan_base
 		' the floor itself: a full-width line at the bottom of the band
+		#if NES
+		say = fbase + 5			' the last row of a six-row band
+		#else
 		say = fbase + 3
+		#endif
 		FOR fc = 0 TO 15
 			sccol = fc
 			GOSUB scan_pat
@@ -5483,16 +5487,32 @@ scan_escs:
 			fm2 = 12		' x 124-125
 			fm3 = 48		' x 122-123, foot
 		END IF
+		' THE DIAGONAL HANGS FROM THE FLOOR LINE, not from the top of the
+		' band -- it is a staircase coming down to this floor, so on a
+		' six-row band it moves down two with the line rather than leaving
+		' a gap above it.
+		#if NES
+		say = fbase + 2
+		#else
 		say = fbase
+		#endif
 		GOSUB scan_pat
 		GOSUB scan_or1
 		GOSUB scan_escc
+		#if NES
+		say = fbase + 3
+		#else
 		say = fbase + 1
+		#endif
 		GOSUB scan_pat
 		fm1 = fm2
 		GOSUB scan_or1
 		GOSUB scan_escc
+		#if NES
+		say = fbase + 4
+		#else
 		say = fbase + 2
+		#endif
 		GOSUB scan_pat
 		fm1 = fm3
 		GOSUB scan_or1
@@ -5527,10 +5547,36 @@ scan_escc:
 	' instead of butting against the shop floor above and the screen edge
 	' below. The +4 is that top margin.
 scan_base:
+	' A LEVEL BAND IS SIX PIXEL ROWS ON THE NES AND FOUR ON THE TI.
+	'
+	' It was six everywhere once. It shrank to four to buy eight empty pixel
+	' rows -- four above the instrument and four below -- so the scanner did
+	' not butt against the shop floor above it and the bottom of the screen.
+	'
+	' On the NES that margin now comes from somewhere else: the name table is
+	' thirty rows to the TI's twenty-four, so the strip runs past the canvas to
+	' the bottom edge and the grey either side of the instrument is real cells
+	' rather than blank rows inside it. That gives the band its two rows back,
+	' and the instrument goes from 16 pixels tall to 24 -- half again, which is
+	' what "not quite so vertically thin" asks for.
+	'
+	' The TI cannot follow: its name table ENDS at row 23, the scanner is on
+	' the last three rows, and there is nowhere to put the margin. So the band
+	' height is per-target and every row offset below is derived from it.
+	'
+	' An IF ladder rather than arithmetic: four levels, and x6 needs a temp
+	' this program has no RAM for (two bytes free).
+	#if NES
+	fbase = 0
+	IF fl = 0 THEN fbase = 18
+	IF fl = 1 THEN fbase = 12
+	IF fl = 2 THEN fbase = 6
+	#else
 	fbase = 3 - fl
 	fbase = fbase + fbase
 	fbase = fbase + fbase		' (3-fl)*4
 	fbase = fbase + 4
+	#endif
 	RETURN
 
 scan_or1:
@@ -5677,13 +5723,12 @@ scan_wipe:
 			swv = #nsi AND 15		' 0-7 plane 0, 8-15 plane 1
 			swr = #nsi AND 7		' pixel row inside the tile
 			swc = #nsi / 256		' which character row, 0-2
+			' NO MARGIN INSIDE THE CANVAS. All twenty-four pixel
+			' rows are instrument now -- four bands of six -- and
+			' the space around it is the grey strip drawn either
+			' side in scan_canvas, which reaches the bottom of the
+			' screen. See scan_base.
 			swm = 0
-			IF swc = 0 THEN
-				IF swr < 4 THEN swm = 1	' the top margin
-			END IF
-			IF swc = 2 THEN
-				IF swr > 3 THEN swm = 1	' and the bottom one
-			END IF
 			IF swm = 1 THEN
 				' grey: plane 1 set, plane 0 clear
 				IF swv > 7 THEN
@@ -5749,10 +5794,19 @@ scan_tick:
 	' it is placed, and the VDP does the rest -- and slot 26 sits BELOW the
 	' two markers, so the Kop and the crook pass over it without either of
 	' them having to know the car exists.
+	' THE BAND TOP, then two rows in so the car sits just above the floor
+	' line like the escalator does. See scan_base for the band height.
+	#if NES
+	say = 2
+	IF elvl = 0 THEN say = 20
+	IF elvl = 1 THEN say = 14
+	IF elvl = 2 THEN say = 8
+	#else
 	say = 3 - elvl
 	say = say + say
 	say = say + say				' (3-lv) * 4
 	say = say + 4				' the top margin, then band row 0
+	#endif
 	sdy = 167
 	#if NES
 	' THREE ROWS FOR THE PICTURE AND A FOURTH FOR THE SCANNER, which sits one
@@ -5826,10 +5880,19 @@ scan_dot:
 	sax = sax + sax				' screen * 16
 	sxf = sdxp / 16
 	sax = sax + sxf
+	' As the lift car above: the band top, then two rows in so the marker
+	' stands on the floor line rather than floating at the top of the band.
+	#if NES
+	say = 2
+	IF sdlv = 0 THEN say = 20
+	IF sdlv = 1 THEN say = 14
+	IF sdlv = 2 THEN say = 8
+	#else
 	say = 3 - sdlv
 	say = say + say
 	say = say + say				' (3-lv) * 4
 	say = say + 4				' the top margin, then band row 0.
+	#endif
 						' Rows 0-2 are that floor's air; row 3
 						' is the yellow line and the marker
 						' must not touch it.
@@ -5970,6 +6033,36 @@ hud_kops:
 	' 64 VPOKEs is 192 bytes of PPU queue, and WRTVRM waits when the 64-byte
 	' buffer fills, so this paces itself across three frames and cannot
 	' overrun vblank the way a single big SCREEN blit can.
+	' A MESSAGE BOX GOES WHITE ON DARK BLUE, and the caller says which four
+	' bytes in #nav.
+	'
+	' The text's paper is index 1 and its ink index 3 (see the font upload);
+	' over the store those are P0's green and gold -- the same green the box is
+	' sitting on, which is what made the messages hard to read. P1 is the HUD's
+	' palette, dark blue and white, so pointing the box's attribute bytes at it
+	' gives a message the same treatment as the score line.
+	'
+	' FOUR BYTES AND NOT ONE MORE. An attribute byte covers four characters by
+	' four, and the box is sized and placed to cover exactly four of them
+	' (gentitle.py BOX_ROW/BOX_COL/BOX_W): byte columns 2..5, which is name
+	' columns 8..23. Anything wider would recolour shop floor beside the box.
+	'
+	' THIS IS A ROUTINE BECAUSE IT WAS WRITTEN OUT TWICE AND MISSED A THIRD
+	' TIME. GOT HIM! kept the store's colours while the other boxes changed,
+	' and nothing failed -- it is a readable message in the wrong palette.
+	' checkmsg.py now fails the build if a message box is drawn without one of
+	' these beside it.
+	'
+	' Nothing puts them back, because nothing needs to: every path out of a
+	' message box redraws the screen, and draw_screen calls nes_attr, which
+	' rewrites all sixty-four.
+nes_boxatt:
+	FOR nai = 0 TO 3
+		VPOKE #nav,85
+		#nav = #nav + 1
+	NEXT nai
+	RETURN
+
 nes_attr:
 	#nav = 9152			' $23C0
 	' $55, NOT $50 -- ALL FOUR QUADRANTS ON P1, not just the bottom two.
@@ -6154,6 +6247,10 @@ do_catch:
 	#endif
 	#tta = VARPTR msg_gothim(0)
 	GOSUB run_list
+	#if NES
+	#nav = 9178			' the capture box, same rows as the reason
+	GOSUB nes_boxatt
+	#endif
 	GOSUB snd_off			' nothing rings on through the count
 	' THE CAST STAYS ON SCREEN FOR THE COUNT. Hiding everything first threw
 	' away the picture the player had just earned -- Kelly stood over Harry
@@ -6340,28 +6437,8 @@ lose_kop:
 	IF rsn = 1 THEN #tta = VARPTR msg_plane(0)
 	GOSUB run_list
 	#if NES
-	' AND THE BOX GOES WHITE ON DARK BLUE.
-	'
-	' The text's paper is index 1 and its ink index 3 (see the font upload);
-	' over the store those are P0's green and gold, which is the same green the
-	' box is sitting on and hard to read. P1 is the HUD's palette -- dark blue
-	' and white -- so pointing the box's four attribute bytes at it gives the
-	' message the same treatment as the score line.
-	'
-	' FOUR BYTES AND NOT ONE MORE. An attribute byte covers four characters by
-	' four, and the box is sized and placed to cover exactly these (gentitle.py
-	' BOX_ROW/BOX_COL/BOX_W): byte row 3, byte columns 2..5, which is name rows
-	' 12..15 and columns 8..23. Anything else here would recolour shop floor
-	' around the box.
-	'
-	' Nothing puts them back, because nothing needs to: every path out of a
-	' message box redraws the screen, and draw_screen calls nes_attr, which
-	' rewrites all sixty-four.
-	#nav = 9178			' $23C0 + 3*8 + 2
-	FOR nai = 0 TO 3
-		VPOKE #nav,85
-		#nav = #nav + 1
-	NEXT nai
+	#nav = 9178			' the reason box -- see nes_boxatt
+	GOSUB nes_boxatt
 	#endif
 	' The reason is read during THIS beat, before anything else happens. It
 	' used to be printed ahead of the pause and the pause is what makes it
@@ -6380,13 +6457,8 @@ lose_kop:
 		#tta = VARPTR msg_over(0)
 		GOSUB run_list
 		#if NES
-		' the same four, one attribute row up -- GAME OVER stacks above
-		' the reason and covers byte row 2 (name rows 8..11).
-		#nav = 9170			' $23C0 + 2*8 + 2
-		FOR nai = 0 TO 3
-			VPOKE #nav,85
-			#nav = #nav + 1
-		NEXT nai
+		#nav = 9170			' GAME OVER, one attribute row up
+		GOSUB nes_boxatt
 		#endif
 		GOSUB pause_beat
 		GOSUB pause_beat

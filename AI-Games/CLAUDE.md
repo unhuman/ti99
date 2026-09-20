@@ -632,6 +632,16 @@ cost a debugging session:
     treatment. Then remember that **a blank cell is ALL paper**, so every region that
     holds blanks needs its attribute byte pointed at a palette whose index 1 is right --
     Keystone Kapers got a green band above its score line from two rows nothing draws in.
+  - **A COSMETIC RULE APPLIED BY HAND AT EACH SITE WILL MISS ONE, AND THE MISS IS
+    INVISIBLE TO EVERY CHECK YOU HAVE.** Keystone Kapers colours each message box by
+    pointing its attribute bytes at the HUD's palette, written out at each call site.
+    One was missed and `GOT HIM!` kept the store's gold-on-green while every other box
+    went white-on-blue. **Nothing failed** -- it is a readable message in the wrong
+    palette, which no layout, overflow or collision check can speak to, and the author
+    had no list to compare against because the list was "the places I edited". Make it
+    a ROUTINE and derive the rule from the PRODUCER: `assets/checkmsg.py` requires
+    every `msg_*` draw to be flushed before and coloured after, and is mutation-tested
+    against the real miss. Same shape as `snd_off` going stale.
   - **GIVING TEXT A PAPER MAKES EVERY PRE-EXISTING `CLS` VISIBLE.** A cleared cell is
     all paper. While that paper was index 0 -- the backdrop -- a clear went black and
     read as part of whatever redraw followed it; once the paper is a real colour the

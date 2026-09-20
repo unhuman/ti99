@@ -113,6 +113,10 @@ SCREEN = {
     # picture and addresses no character at all, so a row/column collision
     # test has nothing to say about it.
     "nes_attr": "ATTR",
+    # nes_boxatt is the same address space: the four attribute bytes a message
+    # box covers, pointed at the HUD's palette so the text is white on dark blue
+    # instead of the store's gold on green.
+    "nes_boxatt": "ATTR",
 
     "scan_set": "PATT",
     "scan_mark": "PATT",      # a marker's three rows, pattern AND colour
