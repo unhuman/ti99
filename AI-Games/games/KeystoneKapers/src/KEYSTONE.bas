@@ -194,11 +194,17 @@
 	CONST P_KHAT = 0		' Kelly RIGHT: hat, black
 	CONST P_KFACE = 4		'              face, skin
 	' AND THE SAME HEAD WITH THE BATON RAISED, drawn only on the run-2 beat.
-	' It lives at the far end of the pattern table rather than beside P_KFACE
-	' because Kelly's block is followed by every other actor: inserting a
-	' sprite here would move all of them. Its LEFT twin is P_KFACE2 + 4, NOT
-	' P_KFACING -- it is its own two-sprite block (genart: spr_kface2).
-	CONST P_KFACE2 = 244
+	'
+	' It used to sit at 244, in a two-sprite block of its own at the far end of
+	' the table, because Kelly's block is followed by every other actor and
+	' inserting a sprite here would have moved all of them. That cost a rule
+	' nobody could state simply: its left twin was +4 rather than P_KFACING, so
+	' the one place that applies a facing needed a branch for it alone.
+	'
+	' Dropping the mirrored run beats left two holes INSIDE Kelly's block,
+	' exactly P_KFACING apart, and this moved into them. The offset is uniform
+	' again -- hat, face and body all take +36 -- and the branch is gone.
+	CONST P_KFACE2 = 16
 	' THE RUN IS FOUR FRAMES AND EACH IS ONE SPRITE, tunic and legs together.
 	'
 	' KELLY IS THREE SPRITES, NOT FOUR. The tunic and the legs were separate
@@ -1400,18 +1406,9 @@ after_deck:
 	#else
 	DEFINE SPRITE 57,4,spr_plane
 	#endif	' phase A R/L, phase B R/L -- prop is in
-	' KELLY'S BATON HEAD, right then left. See P_KFACE2.
-	#if NES
-	#nsrc = VARPTR spr_kface2(0)
-	nchr = 244
-	ncnt = 8
-	ntab = 0
-	#ncol = 0
-	nink = 1
-	GOSUB nes_def
-	#else
-	DEFINE SPRITE 61,2,spr_kface2
-	#endif
+	' KELLY'S BATON HEAD NEEDS NO UPLOAD OF ITS OWN ANY MORE. It was a
+	' two-sprite block at 244 and is now patterns 16 and 52, inside spr_kelly,
+	' which the DEFINE above already loads whole. See P_KFACE2.
 					' the body now, so four and not six
 	RETURN
 
@@ -4977,16 +4974,14 @@ draw_actors:
 		' take-off. This is an explicit override rather than a subtlety about
 		' which beat he jumped on.
 		IF klst = ST_JUMP THEN kf = P_KFACE2
+		' ONE OFFSET FOR ALL THREE. This had a branch in it: the baton head
+		' lived outside Kelly's block and its left twin was +4, not +36. It
+		' moved into the block (see P_KFACE2) precisely so this could be three
+		' plain adds again.
 		IF kldir = 0 THEN
 			kp = kp + P_KFACING
 			kb = kb + P_KFACING
-			' The baton head is its own two-sprite pair at P_KFACE2, OUTSIDE
-			' Kelly's block, so its LEFT twin is +4 rather than +P_KFACING.
-			IF kf = P_KFACE2 THEN
-				kf = kf + 4
-			ELSE
-				kf = kf + P_KFACING
-			END IF
+			kf = kf + P_KFACING
 		END IF
 		' FOUR BANDS, EACH DRAWN AT ITS OWN y so its 16-row box covers
 		' only the rows it uses: hat -13..2, face -10..5, tunic 6..21,
@@ -6110,9 +6105,9 @@ title_score:
 	GOSUB scr_at
 	#psv = #hi
 	#if NES
-	#psa = 8308
+	#psa = 8311
 	#else
-	#psa = 6164
+	#psa = 6167
 	#endif
 	GOSUB scr_at
 	RETURN
@@ -6271,11 +6266,21 @@ prt_dout:
 	END IF
 	VPOKE #psa,psv2
 	#psa = #psa + 1
-	IF #psd = 10000 THEN #psd = 1000 : GOTO prt_dloop
-	IF #psd = 1000 THEN #psd = 100 : GOTO prt_dloop
-	IF #psd = 100 THEN #psd = 10 : GOTO prt_dloop
-	IF #psd = 10 THEN #psd = 1 : GOTO prt_dloop
-	RETURN
+	' ONE DIVIDE INSTEAD OF A FOUR-STEP LADDER.
+	'
+	' This was `IF #psd = 10000 THEN #psd = 1000 : GOTO prt_dloop` and three
+	' more like it -- four compares, four assignments and four jumps to walk a
+	' number down one decimal place. A DIV does it in one instruction.
+	'
+	' CLAUDE.md 3A says to hand-convert `/` and `%` away, and that rule is about
+	' SPEED in per-frame code. This is not per-frame code: the score is drawn
+	' when it changes and the clock once a second, so the cost is a handful of
+	' DIVs a second against roughly sixty bytes of the one budget that is full.
+	' The trade runs the other way here, and it is worth saying so rather than
+	' letting the next reader "fix" it back.
+	IF #psd = 1 THEN RETURN
+	#psd = #psd / 10
+	GOTO prt_dloop
 
 	' #addv (units of ten) into the score, with the bonus Kop check
 add_score:

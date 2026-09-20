@@ -30,9 +30,9 @@ spr_kelly:	' Kelly: RIGHT hat/face/two merged run bodies/two FREE slots/duck hat
 	DATA BYTE $FE,$60,$E0,$60,$F0,$98,$F8,$F8
 	DATA BYTE $3D,$07,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$0F,$0F,$0F,$0F,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$F1,$C1,$C1,$C1,$C1
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -66,9 +66,9 @@ spr_kelly:	' Kelly: RIGHT hat/face/two merged run bodies/two FREE slots/duck hat
 	DATA BYTE $F0,$7E,$F3,$73,$F1,$F0,$F8,$F8
 	DATA BYTE $F8,$19,$0F,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$8F,$83,$83,$83,$83
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$F0,$F0,$F0,$F0,$C0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -271,16 +271,6 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and on
 	DATA BYTE $0D,$BB,$FF,$B0,$3F,$10,$38,$30
 	DATA BYTE $00,$00,$00,$00,$00,$00,$F0,$C3
 	DATA BYTE $43,$FF,$FF,$3E,$F8,$00,$00,$00
-
-spr_kface2:	' Kelly's face on the run-2 beat -- the one with the baton raised. RIGHT then LEFT, so the facing offset here is 4 and not Kelly's usual 36. Patterns 244..251
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$0F,$0F,$0F,$0F,$03
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$F1,$C1,$C1,$C1,$C1
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$8F,$83,$83,$83,$83
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$F0,$F0,$F0,$F0,$C0
 
 	' ---------------------------- borrowed at runtime, no slot of their own
 

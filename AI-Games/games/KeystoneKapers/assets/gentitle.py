@@ -268,13 +268,18 @@ def big_runs():
 # same 21 x 27, so the lamp ring is the same 92 cells and still divides by the
 # chase period, which the check in frame_runs() would otherwise fail.
 #
-# THE SCORE LINE IS LABELS HERE AND DIGITS AT RUN TIME. `SCORE:` ends at column
-# 7 and `HI:` at column 19, so the two six-digit fields start at 8 and 20 --
-# the same column the in-game HUD puts its score in, which is not a coincidence
-# worth breaking. `title_score` in KEYSTONE.bas writes the numbers there.
+# THE SCORE LINE IS LABELS HERE AND DIGITS AT RUN TIME. `title_score` in
+# KEYSTONE.bas writes the numbers.
+#
+# IT IS JUSTIFIED TO THE MARQUEE, not spaced by eye. `SCORE:` starts at column
+# 2, which is FRAME_L, and the HI field ENDS at column 28, which is FRAME_R --
+# so the line the card sits under has the same left and right edges as the card
+# itself. `HI:` therefore sits at 20..22 and its six digits at 23..28, and the
+# score's own six start at 8 (the column the in-game HUD uses too, which is not
+# a coincidence worth breaking).
 TITLE = [
     (0, 2, "SCORE:"),
-    (0, 17, "HI:"),
+    (0, 20, "HI:"),
     (6, 8, "GARRY KITCHEN'S"),
     (18, 4, "2026 UNHUMAN AND CLAUDE"),
 ]
@@ -334,12 +339,29 @@ def _line(text):
 
 BLANK = " " * BOX_W
 
+
+def _box(text):
+    """A whole message scene: the text on the THIRD of four rows.
+
+    THE BOX IS FOUR ROWS AND THE MESSAGE IS ONE, so it cannot be centred --
+    the padding is either one above and two below, or two above and one below,
+    and there is no third option while the box has to cover a whole NES
+    attribute byte (see BOX_ROW). It was the first and read as *"an extra row
+    below"*, which is exactly what it was. This is the second.
+
+    Four rows is not a choice that can be revisited here: three would leave the
+    fourth row of the coloured block showing shop floor through it on the NES,
+    which is worse than an uneven margin.
+    """
+    return [BLANK, BLANK, _line(text), BLANK]
+
+
 MESSAGES = {
-    "msg_gothim": [BLANK, _line("GOT HIM!"), BLANK, BLANK],
-    "msg_away":   [BLANK, _line("HE GOT AWAY"), BLANK, BLANK],
-    "msg_plane":  [BLANK, _line("THE BIPLANE"), BLANK, BLANK],
-    "msg_timeup": [BLANK, _line("TIME'S UP!"), BLANK, BLANK],
-    "msg_over":   [BLANK, _line("GAME OVER"), BLANK, BLANK],
+    "msg_gothim": _box("GOT HIM!"),
+    "msg_away":   _box("HE GOT AWAY"),
+    "msg_plane":  _box("THE BIPLANE"),
+    "msg_timeup": _box("TIME'S UP!"),
+    "msg_over":   _box("GAME OVER"),
 }
 
 MSG_ROW = {

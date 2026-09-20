@@ -5360,6 +5360,15 @@ asked for that the hardware allows.
 Nothing is crowded by it: `GAME OVER` lands on rows 9..12, the reason box on
 13..16, the bottom floor bar is row 18 and the radar canvas rows 21..23.
 
+**AND THE TEXT SITS ON THE THIRD ROW OF THE FOUR, NOT THE SECOND.** A four-row
+box carrying a one-row message cannot be centred: the padding is either one
+above and two below, or two above and one below, and there is no third option
+while the box has to cover a whole attribute byte. It was the first, and was
+reported as *"an extra row below"* — which is exactly what it was. It is now
+the second. Three rows is not available: the fourth row of the coloured block
+would show shop floor through it on the NES, which is worse than an uneven
+margin.
+
 **And the text inside the box is centred now, which two of the five were not.**
 `GOT HIM!` and `TIME UP!` each sat one column left of centre with the surplus
 on the right — invisible in a source listing, because every line is the right
@@ -5375,9 +5384,13 @@ Everything inside moved with it, `FIRE TO START` included.
 
 **Row 0 is now `SCORE:` and `HI:`.** The labels are part of the title display
 list in bank 2; only the digits are written by code, because they are the only
-part that changes. `SCORE:` ends at column 7 and `HI:` at column 19, so the two
-six-digit fields start at columns 8 and 20 — 8 being the same column the
-in-game HUD puts its score in.
+part that changes.
+
+**The line is justified to the marquee rather than spaced by eye.** `SCORE:`
+starts at column 2, which is `FRAME_L`, and the HI field **ends** at column 28,
+which is `FRAME_R` — so the score line has the same left and right edges as the
+card beneath it. That puts `HI:` at 20..22 and its digits at 23..28, and the
+score's own six digits at 8..13, column 8 being what the in-game HUD uses too.
 
 **The high score is settled at GAME OVER and nowhere else.** The score only
 goes up, so the largest value it reaches *is* its value when the last Kop is
@@ -5392,22 +5405,69 @@ either cartridge to keep it longer.
 been three statements duplicated twice over, and the fixed area is not the
 budget to spend on a clone.
 
-**AND THE FIXED AREA IS NOW AT 24,330 OF 24,336 -- SIX BYTES.** The high score
-cost about fifty of them (two address pairs, two calls, the compare) and the
-rest went on the baton's nested test. Nothing further fits without reclaiming
-something first, and the two open sound/scoring items will both need room.
-What makes that survivable rather than dangerous is that `banksize.py` **exits
-non-zero** on an overflow and `build-ti.sh` dies on it -- the next change that
-does not fit fails the build loudly instead of being silently truncated off the
-end of the cart, which is what used to happen to whatever `DATA` block sat
-nearest `>FFFF`.
+**THE FIXED AREA HIT 24,330 OF 24,336 -- SIX BYTES -- AND WAS THEN CUT BACK TO
+24,214.** The high score cost about fifty (two address pairs, two calls, the
+compare) and the baton's nested test another forty-two. Two changes gave back
+**116**, and both came out of code written in this same pass, which is the
+useful part: the newest code is where the slack is, because it has not been
+squeezed yet.
 
-Where it will have to come from, when it comes: the fixed area holds **no data
-at all** any more -- every table, the font and all the art are in the two banks
-(bank 1 has 318 free, bank 2 has 6,148) -- so the next saving has to be code.
-`romprofile.py` attributes it from the xas99 listing and `romclones.py` ranks
-repeated runs; note that the clones the latter finds at the top are `#if NES`
-blocks and `DATA`, neither of which costs the TI fixed area a byte.
+#### 116 BYTES, FROM TWO PLACES
+
+**A four-step ladder became one divide (`prt_dout`, ~84 B).** Walking the digit
+printer's divisor down a decimal place was
+
+```basic
+IF #psd = 10000 THEN #psd = 1000 : GOTO prt_dloop
+```
+
+and three more like it -- four compares, four assignments, four jumps -- where
+`#psd = #psd / 10` is one instruction. CLAUDE.md §3A says to hand-convert `/`
+and `%` away, and that rule is about **speed in per-frame code**. This is not
+per-frame code: the score is drawn when it changes and the clock once a second,
+so the cost is a handful of DIVs a second against sixty-odd bytes of the only
+budget that is full. **The trade runs the other way here**, which is worth
+saying in the source so the next reader does not helpfully put the ladder back.
+
+**The baton face moved into Kelly's own block (~32 B).** It sat at pattern 244
+in a two-sprite block of its own, because Kelly's block is followed by every
+other actor and inserting a sprite there would have renumbered all of them.
+That bought one rule nobody could state simply: its left twin was `+4` rather
+than `P_KFACING`, so the single place that applies a facing needed a branch for
+one sprite --
+
+```basic
+IF kf = P_KFACE2 THEN kf = kf + 4 ELSE kf = kf + P_KFACING
+```
+
+Dropping the mirrored run beats (§0j4) left two holes **inside** Kelly's block
+at patterns 16 and 52 -- exactly `P_KFACING` apart -- so the face moved into
+them. Hat, face and body all take `+36` again, the branch is gone, and so is a
+whole `DEFINE SPRITE` and its NES upload. **Nothing renumbered**, because it
+moved into a hole rather than being inserted. Patterns 244..251 are free again.
+
+#### WHAT IS LEFT, AND WHERE IT IS NOT
+
+`romclones.py`'s entire top ten is now `DATA BYTE` runs and `#if NES` blocks --
+**neither costs the TI fixed area a byte**, the first because it is banked and
+the second because the TI build never compiles it. (The 472 identical `$B4`
+colour bytes at the top of that list are the deliberate cheap option: deleting
+the loop that used to fill them by hand *returned* 80 bytes of the scarce
+budget.) So the text matcher has nothing left to offer here, exactly as
+CLAUDE.md predicts: what remains is structural duplication -- the same
+algorithm over different variables -- which a `GOSUB` cannot cheaply fold.
+
+`romprofile.py` is the tool that still has something to say. The three largest
+routines are `move_harry` (1,562), `draw_harry` (1,140) and `load_band`
+(1,026), a fifth of the game between them.
+
+What makes the tight budget survivable rather than dangerous is that
+`banksize.py` **exits non-zero** on an overflow and `build-ti.sh` dies on it --
+a change that does not fit fails the build loudly instead of being silently
+truncated off the end of the cart, which is what used to happen to whatever
+`DATA` block sat nearest `>FFFF`. And the fixed area holds **no data at all**
+any more: every table, the font and all the art are in the two banks (bank 1
+has 382 free, bank 2 has 6,148), so any future saving has to be code.
 
 #### AND THAT EXPOSED THE MIRROR OF `checklayout.py`'S ORIGINAL BUG
 

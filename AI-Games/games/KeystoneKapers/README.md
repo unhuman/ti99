@@ -96,7 +96,9 @@ tall, sliced on the character grid so a cell can hold parts of two letters
 (`DESIGN.md` 0e-quaterdecies).
 
 **Row 0 of the title card carries `SCORE:` and `HI:`** -- the last game and the best
-so far. The whole card sits two rows lower than it used to (the marquee is rows 3-23)
+so far, justified to the marquee: `SCORE:` starts at the frame's left column and the
+HI digits end at its right one, so the line has the same edges as the card under it.
+The whole card sits two rows lower than it used to (the marquee is rows 3-23)
 to free that row; the ring is still 92 lamps, so the chase period still divides it. The
 high score is settled by **one comparison at GAME OVER** and nowhere else: the score
 only goes up, so the largest value it reaches is its value when the last Kop is gone,
@@ -137,7 +139,9 @@ one colour each, inset in a grey band the width of the screen -- as the 2600 has
 
 **The end of a round is one dark blue box** in the middle of the store: the reason you lost the Kop, with `GAME OVER` stacked above it when that was the last one. It no longer clears the screen, which used to make the end of the game look like the end of the program (`DESIGN.md` §0d-septies).
 
-The boxes sit on rows 13-16 (`GAME OVER` on 9-12), **four rows lower than they were and not the two that were wanted**: an NES attribute byte colours four characters by four, and the box has to start on a byte boundary or colouring it repaints two floors of shop around it. The legal rows are 1, 5, 9, 13, 17, 21, so 13 is the nearest move downward. The text inside is centred by the generator now -- `GOT HIM!` and `TIME'S UP!` were each a column left of centre, which is invisible in a source listing because the lines are all the right *length*.
+The boxes sit on rows 13-16 (`GAME OVER` on 9-12), **four rows lower than they were and not the two that were wanted**: an NES attribute byte colours four characters by four, and the box has to start on a byte boundary or colouring it repaints two floors of shop around it. The legal rows are 1, 5, 9, 13, 17, 21, so 13 is the nearest move downward. The text inside is centred horizontally by the generator now -- `GOT HIM!` and `TIME'S UP!` were each a column left of centre, which is invisible in a source listing because the lines are all the right *length*.
+
+Vertically it sits on the **third** of the four rows. A four-row box carrying a one-row message cannot be centred -- one above and two below, or two above and one below, and no third option while the box must cover a whole attribute byte. It was the first, which read as an extra row underneath the text.
 
 **A catch needs you level with him, not just on his floor.** A crook riding an
 escalator keeps the floor he left until he arrives at the next one, so running

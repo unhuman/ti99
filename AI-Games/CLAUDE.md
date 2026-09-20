@@ -702,6 +702,14 @@ cost a debugging session:
     when it comes up rather than quietly shipping the two-row version on the
     TMS targets and a four-row one on NES**: a difference in kind between
     targets is what every gate that parses the source is built to assume away.
+  - **A FOUR-ROW BOX CANNOT CENTRE A ONE-ROW MESSAGE, AND THE ONLY CHOICE IS
+    WHICH SIDE GETS THE ODD ROW.** One above and two below, or two above and
+    one below -- there is no third option while the box has to cover a whole
+    attribute byte, and shrinking it to three rows leaves the fourth row of the
+    COLOURED block showing scenery through it, which is worse than an uneven
+    margin. Keystone Kapers shipped the first and it was reported as *"an extra
+    row below the message"*. Put the odd row above: the eye reads a gap under
+    text as unfinished and a gap over it as headroom.
   - **CENTRE TEXT FROM THE TEXT, NEVER BY TYPING THE PADDING.** Keystone Kapers'
     five message lines were padded by hand to a fixed box width and two of them
     -- `GOT HIM!` and `TIME UP!` -- sat one column left of centre with the
@@ -1019,6 +1027,29 @@ cost a debugging session:
     tables would sweep them into a bank the vblank ISR cannot safely read.
   - **Selecting the bank once at startup beats switching per read** when only one bank exists. A
     missed `BANK SELECT` returns bytes from the wrong page with no error at build or run time.
+- **WHEN THE FIXED AREA IS FULL, LOOK AT THE CODE YOU WROTE LAST WEEK -- IT IS
+  WHERE THE SLACK IS.** Keystone Kapers went from **6 bytes free to 122** with
+  two changes, both to code written in the same session that had filled it.
+  New code has not been squeezed yet; the routines that have survived three
+  budget crises already have not got anything left in them.
+  - **A LADDER OF COMPARISONS IS USUALLY BIGGER THAN THE ARITHMETIC IT AVOIDS,
+    AND THE `/`-IS-SLOW RULE DOES NOT APPLY OUTSIDE PER-FRAME CODE.** Stepping
+    a digit printer's divisor down a decimal place was four
+    `IF #psd = 10000 THEN #psd = 1000 : GOTO ...` lines -- four compares, four
+    assignments and four jumps -- where `#psd = #psd / 10` is one instruction
+    and **84 bytes smaller**. §3A's "hand-convert every `/` and `%`" is about
+    SPEED in the main loop; a routine that runs when the score changes and once
+    a second for the clock is the other side of that trade. **Say so in the
+    source**, or the next reader dutifully converts it back.
+  - **AN ODD ONE OUT IN A TABLE COSTS A BRANCH AT EVERY SITE THAT USES THE
+    TABLE.** A sprite parked at the end of the pattern table "so nothing
+    renumbers" had a facing offset of `+4` where every other sprite of that
+    actor used `+36`, which meant the one place that applies a facing carried
+    `IF kf = P_ODD THEN kf = kf + 4 ELSE kf = kf + P_FACING`. Moving it into a
+    hole INSIDE the actor's own block -- exactly the facing offset apart --
+    deleted the branch, a whole `DEFINE SPRITE` and its upload, and renumbered
+    nothing, because a hole is not an insertion. **When a block frees slots,
+    check whether an exception can move home.**
 - **ROM IS THREE SEPARATE BUDGETS, and "shrink the ROM" usually optimises the wrong one.**
   (1) The **fixed area** — all code plus any data read during a frame — is the 24,336-byte cap
   above, and it is the only scarce one. (2) **Banks** are 8 KB each and typically half empty.

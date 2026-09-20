@@ -1500,14 +1500,14 @@ KELLY_RUN2 = overlay(KELLY_BODY, shift(KELLY_LEG2, 5))
 SPRITES = [
     ("spr_kelly", [("KHAT", KELLY_HAT), ("KFACE", KELLY_FACE),
                    ("KRUN1", KELLY_RUN1), ("KRUN2", KELLY_RUN2),
-                   ("KSPARE1", BLANK16), ("KSPARE2", BLANK16),
+                   ("KFACE2", KELLY_FACE2), ("KSPARE2", BLANK16),
                    ("KDHAT", KELLY_DHAT), ("KDFACE", KELLY_DFACE),
                    ("KDBODY", KELLY_DBODY),
                    ("KLHAT", mirror(KELLY_HAT)),
                    ("KLFACE", mirror(KELLY_FACE)),
                    ("KLRUN1", mirror(KELLY_RUN1)),
                    ("KLRUN2", mirror(KELLY_RUN2)),
-                   ("KLSPARE1", BLANK16),
+                   ("KLFACE2", mirror(KELLY_FACE2)),
                    ("KLSPARE2", BLANK16),
                    ("KLDHAT", mirror(KELLY_DHAT)),
                    ("KLDFACE", mirror(KELLY_DFACE)),
@@ -1602,16 +1602,20 @@ SPRITES = [
      "colour: the propeller is merged into the body in two phases rather "
      "than carried by a second sprite in its own colour. Four patterns where "
      "there were six, and slots 16-23 are free."),
-    # LAST, DELIBERATELY. This is the run-2 face, and putting it at the end of
-    # the table means it takes the free patterns at 244 and every other
-    # pattern number in the game stays where it is. Adding it beside KFACE
-    # would have pushed Harry, the obstacles and the plane up by eight and
-    # stranded every hand-written P_ constant in KEYSTONE.bas.
-    ("spr_kface2", [("KFACE2", KELLY_FACE2),
-                    ("KLFACE2", mirror(KELLY_FACE2))],
-     "Kelly's face on the run-2 beat -- the one with the baton raised. RIGHT "
-     "then LEFT, so the facing offset here is 4 and not Kelly's usual 36. "
-     "Patterns 244..251"),
+    # THE RUN-2 FACE USED TO LIVE HERE, at patterns 244..251, in a block of its
+    # own at the very end of the table. That was the right answer at the time:
+    # Kelly's block is followed by every other actor, so inserting a sprite
+    # beside KFACE would have pushed Harry, the obstacles and the plane up by
+    # eight and stranded every hand-written P_ constant in KEYSTONE.bas.
+    #
+    # It cost a rule that could not be said simply. Its left twin was +4 rather
+    # than Kelly's +36, so the one place that applies a facing offset needed a
+    # branch: `IF kf = P_KFACE2 THEN kf = kf + 4 ELSE kf = kf + P_KFACING`.
+    #
+    # Dropping the mirrored run beats freed two slots INSIDE Kelly's own block,
+    # exactly P_KFACING apart, and the face moved into them. The offset is now
+    # uniform -- hat, face and body all take +36 -- the branch is gone, and so
+    # is a whole DEFINE SPRITE. Nothing renumbered: it moved into a hole.
 ]
 
 # name -> SPRITE PATTERN NUMBER, which is what KEYSTONE.bas's P_* constants

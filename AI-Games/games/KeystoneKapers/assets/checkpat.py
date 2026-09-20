@@ -18,9 +18,10 @@ the run cycle, plus a malformed Harry. Reported as *"a ball shaped thing drops
 below his feet every other frame"*.
 
 **Nothing failed.** The art loaded correctly, at the address it was given, and
-every other gate passed. The only free patterns in the whole table are 244..255,
-twelve of them, and the pose needs sixteen per facing -- so residency was never
-on the table and the claim was never checked against anything.
+every other gate passed. The real free space at the time was twelve patterns
+against the sixteen per facing the pose needed -- so it was never available and
+the claim was never checked against anything. This file PRINTS the free list on
+every run for exactly that reason: the next reader is told rather than guessing.
 
 WHY THE OTHER CHECKS COULD NOT SEE IT
 -------------------------------------
