@@ -915,7 +915,7 @@ setup_font:
 	' gennescolor.py assigns P3 only to counter quadrants, retaining green
 	' wall and gold floor colours. Fixtures with black outlines use P0.
 	PALETTE 1,26			' P0: green, black, gold
-	PALETTE 2,15
+	PALETTE 2,15			' black escalators and fixture outlines
 	PALETTE 3,40
 	PALETTE 5,1			' P1 HUD/upper skyline: blue, pink, gold
 	PALETTE 6,36
@@ -924,7 +924,7 @@ setup_font:
 	PALETTE 10,15
 	PALETTE 11,40
 	PALETTE 13,26			' P3 counters: green, blue, gold
-	PALETTE 14,17
+	PALETTE 14,1			' same navy in counter quadrants
 	PALETTE 15,40
 
 	' AND FOUR FOR THE ACTORS, which DO get one each because a sprite carries
@@ -1110,6 +1110,14 @@ setup_rest:
 	#nsrc = VARPTR store_nes_chr(0)
 	nchr = 96
 	ncnt = 89
+	ntab = 1
+	GOSUB nes_def_raw
+	' A separate range holds the door seams, header, handrail and floor trim.
+	' It is outside the title font, reserve hat and radar patterns.
+	' Pattern ownership is checked from the generator's detail range.
+	#nsrc = VARPTR detail_nes_chr(0)
+	nchr = 200
+	ncnt = 7
 	ntab = 1
 	GOSUB nes_def_raw
 	' AND THE FOUR MARQUEE LAMPS, THE SAME WAY THE MARQUEE WILL SEND THEM.
@@ -2854,6 +2862,11 @@ draw_car:
 	' Nested IFs, never `ccl > 0 AND ccl < 3` -- the 9900 backend miscompiles
 	' a compare-AND-compare (CLAUDE.md 3A).
 car_cell:
+	#if NES
+	' Native tiles share the same three door states and collision geometry.
+	ccw = PEEK(VARPTR lift_nes_cells(0) + cst * 16. + crw * 4. + ccl)
+	RETURN
+	#else
 	ccw = CH_EDOOR
 	' THE SILL IS THERE WHETHER THE DOORS ARE OR NOT. Set before the door
 	' states so a shut door gets it, and so do the two OUTER columns of a
@@ -2884,6 +2897,7 @@ car_cell:
 		IF crw = 3 THEN ccw = CH_ECARS
 	END IF
 	RETURN
+	#endif
 
 	' ======================================================================
 	' INPUT
@@ -6000,10 +6014,20 @@ hud_kops:
 	' message box redraws the screen, and draw_screen calls nes_attr, which
 	' rewrites all sixty-four.
 nes_boxatt:
+	WAIT
+	' Top half: P1 text. Bottom half: P3, whose navy matches P1 paper.
+	' Only the third row is painted navy; leave the fourth row's tiles alone.
+	#nsrc = 8776
+	IF #nav = 9178 THEN #nsrc = 8648
 	FOR nai = 0 TO 3
-		VPOKE #nav,85
+		VPOKE #nav,245
 		#nav = #nav + 1
 	NEXT nai
+	FOR nai = 0 TO 15
+		VPOKE #nsrc,CH_ECAR
+		#nsrc = #nsrc + 1
+	NEXT nai
+	WAIT
 	RETURN
 
 nes_attr:
@@ -6018,6 +6042,9 @@ nes_attr:
 		VPOKE #nav,32
 		#nav = #nav + 1
 	NEXT nai
+	WAIT
+	' Only the ground-floor bar gets this variant; its quadrants use P3.
+	SCREEN floor_nes_row,0,736,32,1,32
 	WAIT
 	RETURN
 #endif
@@ -6191,13 +6218,7 @@ do_catch:
 	#tta = VARPTR msg_gothim(0)
 	GOSUB run_list
 	#if NES
-	' AND THE FOURTH ROW, ON THE NES ONLY. The box is THREE rows so its
-	' margin is even -- four cannot centre one line of text, and both
-	' uneven versions were built and both were reported. But an attribute
-	' byte colours FOUR characters by four, so the block is four rows tall
-	' whatever the text does, and the row the box does not draw would show
-	' shop floor tinted with the message's own palette.
-	PRINT AT 616,"                "
+	' nes_boxatt supplies a matching bottom margin without a fourth row.
 	#nav = 9186			' the capture box, same rows as the reason
 	GOSUB nes_boxatt
 	#endif
@@ -6387,13 +6408,7 @@ lose_kop:
 	IF rsn = 1 THEN #tta = VARPTR msg_plane(0)
 	GOSUB run_list
 	#if NES
-	' AND THE FOURTH ROW, ON THE NES ONLY. The box is THREE rows so its
-	' margin is even -- four cannot centre one line of text, and both
-	' uneven versions were built and both were reported. But an attribute
-	' byte colours FOUR characters by four, so the block is four rows tall
-	' whatever the text does, and the row the box does not draw would show
-	' shop floor tinted with the message's own palette.
-	PRINT AT 616,"                "
+	' nes_boxatt supplies a matching bottom margin without a fourth row.
 	#nav = 9186			' the reason box -- see nes_boxatt
 	GOSUB nes_boxatt
 	#endif
@@ -6414,7 +6429,6 @@ lose_kop:
 		#tta = VARPTR msg_over(0)
 		GOSUB run_list
 		#if NES
-		PRINT AT 488,"                "
 		#nav = 9178			' GAME OVER, one attribute row UP
 		GOSUB nes_boxatt
 		#endif

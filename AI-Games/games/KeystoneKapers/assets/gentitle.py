@@ -293,32 +293,12 @@ TITLE = [
 # every scene deliberately: they cost bank bytes, which are plentiful, to save
 # fixed-area bytes, which are not.
 #
-# THE BOX IS SIZED AND PLACED BY THE NES ATTRIBUTE GRID, 16 x 4 at row 9 col 8.
-#
-# It used to be 13 x 3 at row 10 col 10, which is what the PRINT ATs it replaced
-# had used. On the NES the box now has to be WHITE ON DARK BLUE while the store
-# behind it stays green, and colour there comes from the attribute table, whose
-# unit is FOUR characters by four. A 13 x 3 box sitting at column 10 covers part
-# of four attribute cells, so coluring it would have recoloured a band of shop
-# floor around it.
-#
-# 16 x 4 at row 13, column 8 covers exactly four attribute bytes -- byte row 4,
-# byte columns 2..5 -- so the game can set those four to palette 1 and touch
-# nothing else. GAME OVER stacks four rows above and covers byte row 3 the same
-# way. (Name rows on the NES are three lower than these: 13 -> 16, 9 -> 12.)
-#
-# The TI has no such constraint and simply gets the larger box.
-#
-# AND THAT GRID IS WHY THE BOXES MOVED FOUR ROWS AND NOT TWO. Two was what was
-# asked for and it is not available: an attribute byte is FOUR characters tall,
-# so the only rows a 4-row box can start on are those where (row + 3) % 4 == 0
-# -- 1, 5, 9, 13, 17, 21. From 9 the next one down is 13. A box at 11 would
-# straddle two byte rows, and colouring both would repaint sixteen columns of
-# TI rows 9..16 -- two whole floors of shop -- in the message's dark blue.
-#
-# 13 also keeps the pair clear of everything: GAME OVER lands on rows 9..12,
-# the reason box on 13..16, the bottom floor bar is row 18 and the radar
-# canvas rows 21..23.
+# The visible box is 16x3 at row 13 col 8; GAME OVER sits four rows above.
+# NES picture rows are three lower, so their attribute blocks begin at PPU
+# rows 16 and 12. Each attribute byte contains FOUR independently selectable
+# 16x16 quadrants, not one indivisible 32x32 palette region. nes_boxatt uses
+# P1 on the upper quadrants and P3 on the lower quadrants. Their shared navy
+# permits a three-row box while retaining scenery on the fourth tile row.
 BOX_ROW, BOX_COL, BOX_W = 13, 8, 16
 
 def _line(text):
@@ -351,13 +331,9 @@ def _box(text):
     to the other, which is what an impossible constraint feels like from the
     outside.
 
-    So the box is three rows and the margin is even. The FOURTH row still has
-    to be cleared ON THE NES and only there: an attribute byte colours four
-    characters by four, so the block this box sits in is four rows tall
-    whatever the text does, and a row left undrawn shows shop floor tinted with
-    the message's own palette. KEYSTONE.bas blanks it beside each call, under
-    `#if NES` -- additive, with the TI form untouched, so every gate that
-    parses the source still sees what it saw.
+    On NES, nes_boxatt selects P1 for the top two tile rows and P3 for
+    the lower pair. A solid index-2 tile paints only the third row navy,
+    matching P1's paper. The fourth row retains its scenery tiles.
     """
     return [BLANK, _line(text), BLANK]
 

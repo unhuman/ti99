@@ -17,7 +17,7 @@ the existing source and notes; it is not a claim of a fresh runtime test.
   generators run in the game build scripts; use that workflow.
 - `assets/nes_chr.asm` / `assets/nes_apu.asm`: NES graphics and sound shims.
 - `assets/gennescolor.py` / `assets/nes-shelf.txt`: NES-native store tiles,
-  editable shelf artwork and per-screen palettes; emits `src/nescolor.bas`.
+  editable shelf artwork, `assets/nes-elevator.txt` for doors, and per-screen palettes; emits `src/nescolor.bas`.
   Native static tiles and converted animated tiles must agree on shared colours.
 - `assets/check*.py` and `assets/*_test.py`: regression gates and their self-tests.
 - `assets/prevtitle.py`, `previewrun.py`, and `cmpref.py`: offline visual checks.

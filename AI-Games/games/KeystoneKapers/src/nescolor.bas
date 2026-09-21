@@ -161,14 +161,14 @@ store_nes_chr:	' 89 native NES 2bpp tiles, codes 96..184
 	DATA BYTE $AA,$55,$FF,$77,$00,$66,$66,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF
+	DATA BYTE $00,$00,$02,$04,$08,$10,$FF,$FF
+	DATA BYTE $00,$00,$02,$04,$08,$10,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$FF,$FF,$FF,$FF
-	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$0F,$0F,$0F,$0F,$0F,$0F,$0F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F2,$F2,$F2,$F2,$F2,$F2,$F2,$F2
+	DATA BYTE $0A,$0A,$0A,$0A,$0A,$0A,$0A,$0A
+	DATA BYTE $4F,$4F,$4F,$4F,$4F,$4F,$4F,$4F
+	DATA BYTE $50,$50,$50,$50,$50,$50,$50,$50
 	DATA BYTE $20,$20,$FF,$04,$04,$FF,$20,$20
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -184,13 +184,43 @@ store_nes_chr:	' 89 native NES 2bpp tiles, codes 96..184
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
+detail_nes_chr:	' native tiles 200..206: floor trim and lift details
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $00,$00,$02,$04,$08,$10,$00,$00
+	DATA BYTE $01,$01,$03,$05,$09,$11,$01,$01
+	DATA BYTE $00,$00,$02,$04,$08,$10,$00,$00
+	DATA BYTE $80,$80,$82,$84,$88,$90,$80,$80
+	DATA BYTE $00,$00,$02,$04,$08,$10,$FF,$FF
+	DATA BYTE $01,$01,$03,$05,$09,$11,$FF,$FF
+	DATA BYTE $00,$00,$02,$04,$08,$10,$FF,$FF
+	DATA BYTE $80,$80,$82,$84,$88,$90,$FF,$FF
+	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+
+lift_nes_cells:	' closed, partly open, open; 4x4 tiles each
+	DATA BYTE $CD,$CD,$CD,$CD,$6C,$C9,$CA,$6C
+	DATA BYTE $6C,$C9,$CA,$6C,$AE,$CB,$CC,$AE
+	DATA BYTE $CD,$AF,$AF,$CD,$C9,$6D,$6D,$CA
+	DATA BYTE $C9,$CE,$CE,$CA,$CB,$AD,$AD,$CC
+	DATA BYTE $AF,$AF,$AF,$AF,$6D,$6D,$6D,$6D
+	DATA BYTE $CE,$CE,$CE,$CE,$AD,$AD,$AD,$AD
+
+floor_nes_row:	' ground-floor bar only, PPU row 23
+	DATA BYTE $C8,$C8,$C8,$C8,$C8,$C8,$C8,$C8
+	DATA BYTE $C8,$C8,$C8,$C8,$C8,$C8,$C8,$C8
+	DATA BYTE $C8,$C8,$C8,$C8,$C8,$C8,$C8,$C8
+	DATA BYTE $C8,$C8,$C8,$C8,$C8,$C8,$C8,$C8
+
 nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
 	DATA BYTE $A5,$A5,$A5,$A5,$A5,$A5,$A5,$A5
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F0,$30,$C0,$F0,$F0,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
@@ -198,7 +228,7 @@ nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $00,$00,$00,$C0,$F0,$00,$00,$00
 	DATA BYTE $00,$00,$00,$0C,$0F,$00,$00,$00
 	DATA BYTE $0C,$03,$00,$00,$0C,$0F,$00,$00
-	DATA BYTE $00,$00,$00,$CC,$FF,$00,$00,$00
+	DATA BYTE $F0,$F0,$F0,$FC,$FF,$F0,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
@@ -206,7 +236,7 @@ nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $C0,$30,$00,$00,$C0,$F0,$00,$00
 	DATA BYTE $0C,$03,$00,$00,$0C,$0F,$00,$00
 	DATA BYTE $00,$00,$00,$0C,$0F,$00,$00,$00
-	DATA BYTE $CC,$33,$00,$00,$CC,$FF,$00,$00
+	DATA BYTE $FC,$F3,$F0,$F0,$FC,$FF,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
@@ -214,7 +244,7 @@ nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $00,$F0,$30,$00,$00,$00,$00,$00
 	DATA BYTE $00,$0F,$03,$00,$00,$00,$00,$00
 	DATA BYTE $00,$0F,$03,$00,$00,$00,$00,$00
-	DATA BYTE $00,$FF,$33,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$FF,$F3,$F0,$F0,$F0,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
@@ -222,7 +252,7 @@ nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $00,$00,$00,$C0,$F0,$00,$00,$00
 	DATA BYTE $00,$00,$00,$0C,$0F,$00,$00,$00
 	DATA BYTE $0C,$03,$00,$00,$0C,$0F,$00,$00
-	DATA BYTE $00,$00,$00,$CC,$FF,$00,$00,$00
+	DATA BYTE $F0,$F0,$F0,$FC,$FF,$F0,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
@@ -230,7 +260,7 @@ nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $C0,$30,$00,$00,$C0,$F0,$00,$00
 	DATA BYTE $0C,$03,$00,$00,$0C,$0F,$00,$00
 	DATA BYTE $00,$00,$00,$0C,$0F,$00,$00,$00
-	DATA BYTE $CC,$33,$00,$00,$CC,$FF,$00,$00
+	DATA BYTE $FC,$F3,$F0,$F0,$FC,$FF,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
@@ -238,7 +268,7 @@ nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $00,$00,$00,$C0,$F0,$00,$00,$00
 	DATA BYTE $00,$00,$00,$0C,$0F,$00,$00,$00
 	DATA BYTE $0C,$03,$00,$00,$0C,$0F,$00,$00
-	DATA BYTE $00,$00,$00,$CC,$FF,$00,$00,$00
+	DATA BYTE $F0,$F0,$F0,$FC,$FF,$F0,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $55,$55,$55,$55,$55,$55,$55,$55
@@ -246,6 +276,6 @@ nes_attrs:	' eight screens, 64 attribute bytes each; fixtures mask to P0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00

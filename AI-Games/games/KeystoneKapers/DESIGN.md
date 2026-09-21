@@ -5941,7 +5941,7 @@ full gameplay or real-hardware acceptance.
 ## 16. Distinct NES shelf artwork experiment (2026-09-20)
 
 The baseline colour/HUD fixes are committed as `132e900`. This follow-up tries
-NES-specific artwork and is deliberately left uncommitted for visual review.
+NES-specific artwork, committed as `1e12395` after visual review.
 TI and Coleco retain their existing artwork and palettes.
 
 The shelves keep their original two-tile footprint and character codes, so
@@ -5979,4 +5979,45 @@ ROMs compare byte-for-byte equal to the saved pre-experiment builds.
 iNES 6.1 cold-reset/title and gameplay checks show the new shelves and dithered
 skyline, black reserve hats, intact gold/black prizes, a working top score and
 clean screen transitions. This remains a targeted visual check, not a full
-playthrough or real-hardware test. No additional commit was made.
+playthrough or real-hardware test.
+
+
+## 17. NES elevator, ground-floor trim and message framing (2026-09-20)
+
+The elevator keeps its four-column footprint and existing timing. Native art
+adds a centre seam and highlights to shut doors, gold jambs and threshold,
+and a rear rail visible through partially and fully open doors. Editable
+`nes-elevator.txt` supplies the art; seven spare CHR slots 200..206 provide
+door variants and the floor-bar variant. A 48-byte lookup selects the three
+4x4 door states without allocating game RAM.
+
+P0 index 2 stays black: a trial changing it to navy recoloured escalators and
+radios, which the user rejected. P3 index 2 is navy ($01), for shelf frames
+and the bottom three pixels of the lowest floor bar. Ground-floor quadrants
+use P3 except where escalators or fixture masking require P0. Consequently
+the strip has black sections beneath those objects; preserving their black
+art takes precedence over a uniformly blue strip. No actor or hat palette
+changes. Upper floor bars retain their green lower edge.
+
+Message boxes no longer clear an extra fourth row. Their upper two rows use
+P1 and the lower pair P3 (attribute $F5). Only row three is painted with the
+solid index-2 cabin tile, matching P1's navy paper. The fourth row retains
+its scenery, although black scenery pixels in those local quadrants become
+navy while the message is visible. The next screen redraw restores attributes.
+This applies to capture, death reason and game-over messages. TI/Coleco keep
+their existing three-row boxes.
+
+Reserve hats now end at x=240 instead of x=256, giving the HUD a two-character
+right margin. Their five OAM slots and black palette are unchanged; regression
+checks cover all 256 reserve-count inputs and preserve unrelated sprites.
+
+Validation: the full NES, TI and Coleco builds passed for the elevator, trim
+and message changes. TI and Coleco ROMs compare byte-for-byte with the previous
+builds. NES retains 1,506 allocated RAM bytes and 679 bytes of PRG padding;
+TI retains 2,448 bytes of fixed-area headroom. The final NES rebuild also passed after the hat-position change; an iNES
+gameplay capture confirms the two-character right margin.
+
+Runtime review of the final ROM confirms the navy strip, black HUD hats and
+new hat spacing. Elevator states were checked in the generated pixel data;
+the final elevator animation and message timing still need a focused manual
+visual check. This is not a full gameplay acceptance run.

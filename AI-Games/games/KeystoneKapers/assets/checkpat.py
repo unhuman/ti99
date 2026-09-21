@@ -50,6 +50,7 @@ import re
 import sys
 
 import genart as g
+import gennescolor as nesart
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BAS = os.path.join(HERE, "..", "src", "KEYSTONE.bas")
@@ -121,6 +122,9 @@ def owners():
     for p in (198, 199):
         assert p not in chars, "HUD hats overlap another CHR owner"
         chars[p] = "hud_hat_pat"
+    for p in nesart.DETAIL_CODES.values():
+        assert p not in chars, "NES detail art overlaps another CHR owner"
+        chars[p] = "detail_nes_chr"
     return {SPRITE_TABLE: spr, CHAR_TABLE: chars}
 
 

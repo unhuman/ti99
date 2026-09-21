@@ -105,6 +105,9 @@ class ColourTest(unittest.TestCase):
     def test_generated_data_is_current(self):
         text = (HERE.parent / 'src/nescolor.bas').read_text()
         for label, expected in [('store_nes_chr', colour.store_chr()),
+                                ('detail_nes_chr', colour.detail_chr()),
+                                ('lift_nes_cells', colour.lift_cells()),
+                                ('floor_nes_row', [colour.DETAIL_CODES['FLOOR0']]*32),
                                 ('nes_attrs', sum([colour.attributes(s) for s in range(8)], []))]:
             block = text.split(label + ':', 1)[1].split('\n\n', 1)[0]
             actual = [int(v, 16) for v in re.findall(r'\$([0-9A-Fa-f]{2})', block)]
@@ -126,7 +129,7 @@ class ColourTest(unittest.TestCase):
                 if y != 240:
                     visible.append(x)
                     self.assertEqual((y, tile, palette), (15, 199, 1))
-            self.assertEqual(visible, list(range(256-min(spare, 5)*8, 256, 8)))
+            self.assertEqual(visible, list(range(240-min(spare, 5)*8, 240, 8)))
             self.assertEqual(result[0x200:0x2E0], [0xAB]*224)
             self.assertEqual(result[0x2F4:0x300], [0xAB]*12)
             hidden = execute(hide, {}, result)
@@ -152,7 +155,7 @@ class ColourTest(unittest.TestCase):
             original_colours = art.colour_block(name, fg, bg)
             for y in range(8):
                 for x in range(8):
-                    if name in ('SHELFT', 'SHELFB'):
+                    if name in ('SHELFT', 'SHELFB') or name in colour.ELEVATOR_NAMES:
                         continue
                     if name in colour.SKY_ROWS and original_colours[y] & 15 != art.GRAY and not original_bits[y] & (128 >> x):
                         continue
@@ -166,6 +169,60 @@ class ColourTest(unittest.TestCase):
         self.assertEqual(shelf[0], [3]*8)
         self.assertEqual(shelf[1], [0]*8)
         self.assertEqual(shelf[-1], [2]*8)
+
+    def test_elevator_openings_and_thresholds(self):
+        pixels = {code: tile for code, tile in enumerate(colour.store_pixels(), 96)}
+        pixels.update({code: tile for code, tile in
+                       zip(colour.DETAIL_CODES.values(), colour.detail_tiles())})
+        cells = colour.lift_cells()
+        self.assertEqual(len(cells), 48)
+        views = []
+        for state in range(3):
+            view = [[pixels[cells[state*16+(y//8)*4+x//8]][y%8][x%8]
+                     for x in range(32)] for y in range(32)]
+            views.append(view)
+            self.assertEqual(view[:4], [[0]*32]*4)  # fixed lintel height
+            self.assertEqual(view[4], [3]*32)
+            self.assertEqual(view[30:], [[3]*32]*2)  # fixed two-pixel sill
+        closed, partial, opened = views
+        self.assertEqual(closed[10][15:17], [2, 2])  # closed centre seam
+        self.assertEqual(partial[10][8:24], [2]*16)
+        self.assertNotEqual(partial[10][:8], [2]*8)
+        self.assertNotEqual(partial[10][24:], [2]*8)
+        self.assertEqual(opened[10], [2]*32)
+        self.assertEqual(opened[20], [3]*32)  # back-wall handrail
+        self.assertEqual(partial[20][8:24], [3]*16)
+        for name, columns in [('EJAMBL', range(4)), ('EJAMBR', range(4, 8))]:
+            tile = pixels[art.CODES[name]]
+            self.assertTrue(all(row[x] == 1 for row in tile for x in columns))
+
+    def test_elevator_reader_rejects_bad_sections(self):
+        valid = (HERE / 'nes-elevator.txt').read_text()
+        for bad in (valid.replace('[ECAR]', '[NO_SUCH_TILE]'),
+                    valid+'\n[EDOOR]\n', valid.replace('GGGGBSYS', 'BAD'),
+                    valid.split('[LIFTRAIL]')[0]):
+            with self.assertRaises(ValueError):
+                colour.read_elevator(bad)
+
+    def test_navy_trim_matches_across_store_and_shelf_palettes(self):
+        basic = (HERE.parent / 'src/KEYSTONE.bas').read_text()
+        values = {int(index): int(value) for index, value in
+                  re.findall(r'^\s*PALETTE\s+(\d+),(\d+)', basic, re.M)}
+        self.assertEqual((values[2], values[14]), (15, 1))
+        # Green, shared structure, gold, skyline and actors retain their colours.
+        for index, value in {1:26, 3:40, 5:1, 6:36, 7:40, 9:38, 10:15,
+                             11:40, 13:26, 15:40, 17:18, 21:15, 25:39,
+                             26:16, 27:22, 29:48}.items():
+            self.assertEqual(values[index], value, index)
+
+    def test_ground_trim_changes_only_the_bottom_three_pixels(self):
+        normal = colour.store_pixels()[art.CODES['SLAB']-96]
+        bottom = colour.detail_tiles()[0]
+        self.assertEqual(normal[:5], bottom[:5])
+        self.assertEqual(bottom[5:], [[2]*8]*3)
+        for screen in range(8):
+            tilemap = dict(store.TEMPLATES)[store.INDEX[0][screen]]
+            self.assertEqual(tilemap[4], [store.SLAB]*32)
 
     def test_animated_escalators_keep_shared_colours(self):
         ink = checkink.read_inkmap()
@@ -219,6 +276,24 @@ class ColourTest(unittest.TestCase):
                             y = start + row
                             value = attrs[(y//4)*8+col//4]
                             self.assertEqual((value >> ((y & 2)*2 + (col & 2))) & 3, 3)
+
+    def test_trim_preserves_black_escalators_and_radios(self):
+        # Inspect the actual generated attributes after the real fixture mask.
+        for screen in range(8):
+            initial = colour.attributes(screen)
+            tilemap = dict(store.TEMPLATES)[store.INDEX[0][screen]]
+            for row, tiles in enumerate(tilemap):
+                for col, tile in enumerate(tiles):
+                    if 110 <= tile < 122:
+                        y = 19 + row
+                        value = initial[y//4*8+col//4]
+                        self.assertEqual((value >> ((y & 2)*2+(col & 2))) & 3, 0)
+            for col in store.RADIO_COLS:
+                actual = fixture_mask(0x2000+21*32+col, initial)
+                for y in (21, 22):
+                    for x in (col, col+1):
+                        value = actual[y//4*8+x//4]
+                        self.assertEqual((value >> ((y & 2)*2+(x & 2))) & 3, 0)
 
     def test_fixture_masks_only_its_quadrants(self):
         # Includes odd alignment and page crossings; preserve unrelated

@@ -72,3 +72,14 @@ TI backend are unsafe; multiplication can leave stale register state; `DIM a(N)`
 has indices 0 through N-1; and a `GOSUB` must unwind through a return. Keep byte
 tables even-sized before word tables. Use the repository's checkers rather than
 relying only on these reminders.
+
+## Local command approvals (2026-09-20)
+
+The user requested reusable approvals for builds and emulator runs. Prefer
+`tools/keystone-dev.ps1` with `BuildAll`, `BuildNES`, `BuildTI`, `BuildColeco`,
+`LaunchNES` or `LaunchTI`. Keep the invocation short and stable; do not append
+changing logs, inline scripts or verification commands to its approval prefix.
+`tools/shoot-ines.ps1` provides NES capture/input, including DPI awareness.
+Machine-local allow rules are in `~/.codex/rules/keystone-dev.rules`; manually
+installed rules load when Codex restarts. These permissions do not authorize
+commits or other unrelated actions. All platform builds remain sequential.

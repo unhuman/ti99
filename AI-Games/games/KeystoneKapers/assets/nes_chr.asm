@@ -698,6 +698,7 @@ nes_attrs_put:
 
 ; Reserve hats have their own black sprite palette. OAM 56..60 is outside
 ; the actor pairs (0..55); five icons stay below the eight-sprite line limit.
+; Right edge is x=240: two character cells of margin.
 ; Tile 199 selects CHR $1000, pair 198/199 (hat, transparent bottom).
 nes_hats:
 	LDX #16
@@ -717,7 +718,7 @@ nes_hats_y:
 	TXA
 	ASL A
 	CLC
-	ADC #216
+	ADC #200
 	STA $02E3,X
 	DEX
 	DEX
