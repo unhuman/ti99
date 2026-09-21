@@ -184,6 +184,16 @@ store_nes_chr:	' 89 native NES 2bpp tiles, codes 96..184
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
+suitcase_nes_chr:	' brown outline overlay: CHR 92..95, paired vertically
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$03,$04,$04,$FF,$FF,$C0,$C3
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $C3,$C0,$C0,$FF,$FF,$FF,$60,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$C0,$20,$20,$FF,$FF,$03,$C3
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $C3,$03,$03,$FF,$FF,$FF,$06,$00
+
 detail_nes_chr:	' native tiles 200..206: floor trim and lift details
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF

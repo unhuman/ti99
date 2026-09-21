@@ -177,11 +177,26 @@ and orange into gold with ordered dithering; buildings stay grey with gold
 windows. Reserve hats remain black using the sprite palette, right-aligned with a
 two-character margin at the screen edge. Gameplay clears
 the title's SCORE/HI row and keeps the live score on the top HUD line.
+NES suitcases have brown sprite outlines over their existing black-filled
+background tiles, matching the TI colour scheme without recolouring fixtures.
+NES sound uses pulse 1 for jumping and pulse 2 for prizes and the bonus tally,
+with triangle extra-life notes and noise footsteps. NES bonus ticks use a
+lower 415 Hz pitch with the original two-frame on/off rhythm. Hits take priority over
+prizes on pulse 2; jumping and prizes can play together.
+Footsteps now trigger the noise length counter correctly and stop before screen
+redraws, avoiding a sustained hiss while sound updates are paused. Jump audio
+is muted during the redraw and resumes its remaining warble afterward. Triangle
+note-off preserves its reload control; countdown, pickup and extra-life notes
+set volume before pitch. No extra RAM is required.
+In iNES, enable
+Audio > Play Sound When Inactive if you want sound while another window has focus.
+Crowded NES scanlines can drop the brown overlay; the background case remains
+visible underneath. Money bags retain their gold background artwork.
 The elevator has shaded door panels, a centre seam, gold jamb highlights,
 a threshold and a rear cabin rail; edit `assets/nes-elevator.txt`.
 The strip above the radar is navy, with black sections beneath fixtures and
 escalators to preserve their black details. TI and Coleco artwork is unchanged.
-See `DESIGN.md` sections 15-17 for the palette allocation and NES artwork.
+See `DESIGN.md` sections 15-20 for the palette allocation and NES artwork.
 
 
 The lift's door jambs sit in the **wall column either side** of the doorway, four pixels wide, so all four doorway characters are car and the opening is the full **32 px** rather than 24. They used to sit inside the doorway's own end columns, which spent a quarter of the opening framing it and needed six characters to do it (a header twin and a sill twin for each side); a jamb in the wall is one picture on every row in every door state, so it needs two. It is also **static** now — the old frame only existed while the doors were open, so it appeared as they parted (`DESIGN.md` §0d-ter).
@@ -264,7 +279,7 @@ reassembles, and the animated character range matches the cells that move) and
 hand-written character number still points at the character it names) and `checkride.py`
 (a rider's feet are on a drawn step every frame of every ride). The TI script also checks the
 24,336-byte fixed-area cap; the NES script adds `checknesram.py` (no array runs off the end of
-the 2 KB and into zero page) and `checkvblank.py` (no vblank is asked to copy more than it can
+the 2 KB and into zero page), `checknesstart.py` (production starting conditions) and `checkvblank.py` (no vblank is asked to copy more than it can
 finish before the scroll restore, which is what made the escalator screens flash).
 
 > `cvbasic.exe` is a **Cygwin** binary and Git Bash's own MSYS2 runtime shadows it, so it

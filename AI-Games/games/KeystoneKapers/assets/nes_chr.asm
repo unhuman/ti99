@@ -576,9 +576,9 @@ nes_bgbank:
 ; ---------------------------------------------------------------------------
 ; nes_apuon -- enable the APU once, rather than hoping a note does it.
 ;
-; assets/nes_apu.asm writes $4015 inside sn76489_vol, so nothing sounds until
-; the first volume is set and anything that sets a pitch before its volume is
-; writing into a disabled channel. The frame counter at $4017 also matters: the
+; This routine owns channel enable and sweep setup. Individual sound writes
+; must not touch the global enable register or another channel's sweep.
+; The frame counter at $4017 also matters: the
 ; power-on value is the 4-step mode with its IRQ enabled, which is not what this
 ; wants. Both are cheap to nail down here and then never think about.
 ; ---------------------------------------------------------------------------
@@ -733,4 +733,52 @@ nes_hats_hide:
 	STA $02E8
 	STA $02EC
 	STA $02F0
+	RTS
+
+; Brown suitcase outlines overlay their existing black-filled background tiles.
+; OAM 44..51 are unused right halves of retired propeller slots 16..23.
+; Called AFTER nes_oam2 during draw_actors; hide_play clears them through that
+; existing mirror path. These entries follow the main actor halves; the
+; auxiliary Harry stripe remains at 55. Hats and radar entries are untouched.
+nes_suitcases:
+	LDX #0
+	LDY #0
+nes_suitcase_loop:
+	LDA #$F0
+	STA $02B0,X
+	STA $02B4,X
+	LDA array_COK,Y
+	CMP #2
+	BNE nes_suitcase_next
+	LDA array_FLRY,Y
+	SEC
+	SBC #17
+	STA $02B0,X
+	STA $02B4,X
+	LDA #93
+	STA $02B1,X
+	LDA #95
+	STA $02B5,X
+	LDA #1
+	STA $02B2,X
+	STA $02B6,X
+	LDA array_COC,Y
+	ASL A
+	ASL A
+	ASL A
+	STA $02B3,X
+	CLC
+	ADC #8
+	STA $02B7,X
+	BCC nes_suitcase_next
+	LDA #$F0
+	STA $02B4,X
+nes_suitcase_next:
+	TXA
+	CLC
+	ADC #8
+	TAX
+	INY
+	CPY #4
+	BNE nes_suitcase_loop
 	RTS

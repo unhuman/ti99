@@ -1664,3 +1664,16 @@ four palette indices on that row. Keystone's generator now preconverts static
 store art and uploads native tiles at setup; animated TMS-derived tiles keep
 the old converter. This trades ROM for richer art without extra game RAM or
 sprite usage. Keep the rendering-off native loader unreachable from gameplay.
+
+
+### iNES audio setting mismatch (2026-09-20)
+
+On this Windows iNES installation, saved `UseSound=0` can coexist with
+`SndRate=22050`: the menu shows 22 kHz selected while synthesis is silent.
+After launching, explicitly select No Sound then 22 kHz to initialize audio;
+checking the menu selection or Windows mixer volume alone does not verify it.
+`tools/keystone-dev.ps1 LaunchNES` does this and enables audio while inactive.
+Use a positive-control sound when measuring output: silent diagnostic ROMs
+alone do not establish an APU-code failure.
+A nonzero meter establishes signal, not audible balance or successful playback
+for the user. Do not report a listening complaint resolved solely from that test.

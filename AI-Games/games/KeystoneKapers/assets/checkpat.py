@@ -125,6 +125,9 @@ def owners():
     for p in nesart.DETAIL_CODES.values():
         assert p not in chars, "NES detail art overlaps another CHR owner"
         chars[p] = "detail_nes_chr"
+    for p in range(92, 96):
+        assert p not in chars, "Suitcase overlay overlaps another CHR owner"
+        chars[p] = "suitcase_nes_chr"
     return {SPRITE_TABLE: spr, CHAR_TABLE: chars}
 
 

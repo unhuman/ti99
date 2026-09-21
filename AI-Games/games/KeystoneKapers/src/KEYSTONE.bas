@@ -935,6 +935,7 @@ setup_font:
 					' FIFTEEN, NOT ZERO: on this palette $0F is
 					' black and $00 is a dark GREY, so every hat
 					' and every stripe was coming out grey.
+	PALETTE 22,23			' black sprite palette, index 2: brown suitcase outline
 	PALETTE 25,39			' 2 -- skin   faces and the biplane
 	PALETTE 26,16			' 2 colour 2 -- GREY, the lift car on the radar
 	' AND THE BALL IS RED, which it already is on the TI: C_BALL is TMS 8,
@@ -1120,6 +1121,15 @@ setup_rest:
 	ncnt = 7
 	ntab = 1
 	GOSUB nes_def_raw
+	' Independent suitcase outline, using spare background-table tile pairs.
+	' Its sprite palette supplies red without recolouring nearby scenery.
+	' Keep this static upload outside the gameplay/vblank path.
+	#nsrc = VARPTR suitcase_nes_chr(0)
+	nchr = 92
+	ncnt = 4
+	ntab = 1
+	GOSUB nes_def_raw
+
 	' AND THE FOUR MARQUEE LAMPS, THE SAME WAY THE MARQUEE WILL SEND THEM.
 	'
 	' THIS IS THE TITLE'S COLOUR SHIFT ON A COLD BOOT. The store load above
@@ -2203,6 +2213,12 @@ start_krook:
 	' (CLAUDE.md 3A).
 draw_screen:
 	#if NES
+	' Drawing pauses sfx_tick: mute the held jump note until updates resume.
+	' Keep swt/swf so the remaining warble continues after the screen is ready.
+	SOUND 0,,0
+	' End the current footstep instead of stretching its hiss across the redraw.
+	SOUND 3,0,0
+	sot = 0
 	' AND BLACK BACK FOR THE STORE -- see the note in title_draw. Index 0 is
 	' the universal backdrop, so the dark blue the title sets would otherwise
 	' tint every outline, the HUD row and the ground under the scanner.
@@ -3518,6 +3534,7 @@ nes_swp16:
 	SPRITE 6,SPRHID,0,0,0
 	SPRITE 7,SPRHID,0,0,0
 	ASM JSR nes_oam2
+	ASM JSR nes_suitcases
 	nchr = P_HSTB
 	ntab = 0
 	#ncol = 0
@@ -5062,6 +5079,7 @@ draw_harry:
 	' each of them, which is twenty-eight places for the halves to drift
 	' apart. assets/nes_chr.asm explains why the art needs no repacking.
 	ASM JSR nes_oam2
+	ASM JSR nes_suitcases
 	#endif
 	RETURN
 
@@ -5785,6 +5803,7 @@ scan_tick:
 	' call is belt and braces -- but it is the thing that makes the invariant
 	' TRUE rather than merely arranged: no slot is ever left un-normalised.
 	ASM JSR nes_oam2
+	ASM JSR nes_suitcases
 	#endif
 	RETURN
 
@@ -6292,16 +6311,28 @@ bn_loop:
 	' timer's own low tick, and the shorter gap makes ten of them a run
 	' rather than a queue.
 	'
-	' Channel 2 stays. The effect table uses it for the upper voice of a
+	' NES uses a lower 415 Hz pulse tick (divisor 270); the full catch path
+	' in iNES was silent at divisor 108. snd_off has freed channel 1.
+	' Other targets keep channel 2. The effect table uses it for the upper voice of a
 	' two-note effect, so a tick here cannot cancel a sustained tone on
 	' channel 1 (CLAUDE.md 3A: two SOUNDs on one channel back to back just
 	' cancel the first). The bench plays B on channel 0 because the bench
 	' has nothing else running.
+	#if NES
+	' iNES needs control/volume before the pitch write to start a note.
+	SOUND 1,,12
+	SOUND 1,270
+	#else
 	SOUND 2,108,12
+	#endif
 	FOR bwi = 1 TO 2
 		WAIT
 	NEXT bwi
+	#if NES
+	SOUND 1,0,0
+	#else
 	SOUND 2,0,0
+	#endif
 	FOR bwi = 1 TO 2
 		WAIT
 	NEXT bwi
@@ -6669,6 +6700,10 @@ sfx_tick:
 	' for six phases is smaller than the table would be.
 	'
 	' Divisors: C5 523 Hz = 214, E5 659 = 170, G5 784 = 143.
+	#if NES
+	' Prize uses pulse 1 beside jump on pulse 0; a hit/escape owns pulse 1.
+	IF sht > 0 THEN spz = 0
+	#endif
 	IF spz > 0 THEN
 		pzd = 143			' G5, the note it lands and fades on
 		pzv = 12
@@ -6677,9 +6712,19 @@ sfx_tick:
 		IF spz < 7 THEN pzv = 10
 		IF spz < 5 THEN pzv = 7
 		IF spz < 3 THEN pzv = 4
+		#if NES
+		' iNES needs control/volume before the pitch write to start a note.
+		SOUND 1,,pzv
+		SOUND 1,pzd
+		#else
 		SOUND 2,pzd,pzv
+		#endif
 		spz = spz - 1
+		#if NES
+		IF spz = 0 THEN SOUND 1,0,0
+		#else
 		IF spz = 0 THEN SOUND 2,0,0
+		#endif
 	END IF
 	IF sfe = 1 THEN
 		sfe = 0
@@ -6690,7 +6735,13 @@ sfx_tick:
 	END IF
 	IF sfk = 1 THEN
 		sfk = 0
+		#if NES
+		' iNES needs control/volume before the pitch write to start a note.
+		SOUND 2,,13
+		SOUND 2,300
+		#else
 		SOUND 2,300,13
+		#endif
 		spt = 25
 	END IF
 

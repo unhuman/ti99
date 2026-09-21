@@ -6021,3 +6021,192 @@ Runtime review of the final ROM confirms the navy strip, black HUD hats and
 new hat spacing. Elevator states were checked in the generated pixel data;
 the final elevator animation and message timing still need a focused manual
 visual check. This is not a full gameplay acceptance run.
+
+
+## 18. NES suitcase outline colour (2026-09-20)
+
+The preceding elevator/trim/HUD work is committed as `629f331`. Suitcases now
+use the user's requested brown outline through a sprite overlay, retaining their
+black-filled background tiles and existing collection/erasure logic. Money
+bags remain background tiles. This is not a conversion of all collectables
+to sprites.
+
+The overlay uses sprite palette 1 index 2 (NES $17); its existing black index
+1 remains unchanged for hats and stripes. CHR 92..95 holds the original TI
+outline masks in TL/BL/TR/BR order, selecting index 2 with transparency outside
+the outline. OAM 44..51 was reserved for right halves of retired propeller
+slots 16..23; these eight entries follow the main actor halves in OAM priority (Harry's
+auxiliary right-leg stripe remains at 55).
+No game RAM is allocated. The renderer reads existing cok/coc/flry arrays and
+hides each pair unless that floor has an uncollected suitcase. Screen/round
+hiding uses the existing mirror path. Normal actor, radar and Harry-pose
+mirror calls refresh the overlay afterward so a radar update cannot erase it.
+
+At most two overlay sprites intersect any one floor's scanline. The NES's
+eight-sprite limit still applies; on a crowded scanline the brown outline can
+fall back to the existing grey background outline. Keeping the background
+body means the collectable never disappears solely because the overlay is
+dropped. There is no background palette change, so radios, escalators, shelves,
+skyline and buildings retain their colours.
+
+Regression checks execute the actual assembly for every combination of four
+collectable kinds, including collected/empty floors and right-edge clipping;
+check surrounding OAM is preserved; and compare every brown mask pixel with
+TI suitcase art. The pattern ownership gate reserves the four new CHR tiles.
+
+
+## 19. NES footsteps and emulator audio (2026-09-20)
+
+The noise shim previously wrote its period ($400E) and volume ($400C), but
+never loaded the length counter through $400F. With a zero length counter,
+footsteps stayed silent regardless of their volume. Noise control now writes
+$08 to $400F after selecting its period/mode; the existing constant-volume,
+length-halt setting and volume-zero note-off retain the game's timing.
+
+`nesapu_test.py` executes the actual shim and models register writes and
+length-counter loads. It covers all eight noise controls, note-on/off, the
+jump/hit pulse pitches and pickup triangle notes; removing the $400F write
+reproduces the silent-noise failure. No new game RAM or effect scheduler is
+introduced. Triangle volume remains on/off, as documented for this adapter.
+
+The local iNES instance had 22 kHz wave synthesis enabled, but muted when
+inactive. Audio while inactive was enabled for review so focusing Codex does
+not silence the running game. This is an emulator preference, not ROM code.
+
+
+## 20. Production start-position guard (2026-09-20)
+
+A temporary review ROM started on screen 5 to show a suitcase. It was left
+running during builds, and the user encountered its altered start after a
+capture. Production source/ROM still use floor 0, screen 7, x120 through
+start_krook for new game, next level and lost-life restarts. The normal ROM
+was immediately restored; the defect was the review handoff, not a changed
+gameplay reset.
+
+`checknesstart.py` checks the actual compiled ROM initialization bytes and
+all three source reset paths. Its self-test rejects the screen-5 patch and
+wrong floor/x positions. The NES build and launch helper run this guard; the
+launcher prints the production path/hash. AGENTS.md now requires restoring
+the normal ROM immediately after each temporary capture, before other work.
+
+Validation: all three platform builds and suitcase/APU tests passed. TI and
+Coleco ROMs remain byte-identical to the prior builds. NES uses 1,506 RAM bytes
+with 475 bytes of PRG padding. The production-start guard and its mutation
+self-test passed separately after the builds. iNES review confirmed the
+suitcase overlay before the requested brown palette adjustment, and the
+normal escalator screen after restoring production. Brown is NES $17. Audio
+register tests and iNES sound settings were verified at this stage. The user
+subsequently confirmed footsteps/jumps/hits; countdown follow-up is in section 21.
+
+
+## 21. NES redraw noise and countdown notes (2026-09-20)
+
+The user confirmed footsteps, jumps and cart hits, but reported a silent bonus
+countdown and noise during screen redraws. Drawing pauses sfx_tick, stretching
+an active footstep. NES draw_screen now writes noise note-off and clears sot
+before its first WAIT. This deliberately cuts a footstep short at a seam;
+other effect state remains under the existing scheduler.
+
+NES triangle note starts need volume/control before pitch in iNES. An actual
+bonus_count review measured zero output for pitch then volume, and nonzero
+output for volume then pitch (triangle peak 0.08044307; a pulse control also
+produced audio). Countdown, pickup and extra-life triangle notes now issue
+separate NES SOUND statements in that order. Other platforms retain their
+original statements. There is no extra game RAM. Triangle mute writes $80,
+keeping control/reload latched, and tone triggers select length index 1;
+volume/note-off still controls duration. Hardware reference:
+https://www.nesdev.org/wiki/APU_Triangle
+
+A register-only test did not establish audible iNES output: retriggering the
+high timer byte after volume was insufficient in the runtime comparison.
+The source uses the verified complete volume-before-pitch sequence instead.
+The review only automated bonus_count on a temporary ROM's title; normal
+production was restored after each run. Meter readings verify generated audio,
+not listening quality at the speakers.
+
+The iNES registry had SndRate=22050 but UseSound=0, so the selected audio menu
+item alone did not establish enabled synthesis. Reinitializing wave synthesis
+in the normal game produced a footstep peak of 0.4400719. The launcher explicitly
+requests sound and initializes wave synthesis, then enables inactive audio.
+It also invokes the Cygwin Python start guard using a relative path.
+
+
+Final validation: the NES build and all its regression gates passed, with
+1,506 RAM bytes and 454 bytes of PRG padding. The final compiled countdown
+routine produced peak 0.07506189 in iNES; after restoring the normal ROM,
+walking produced peak 0.4435037. The production start guard passed. TI and
+Coleco builds also passed during this work and their ROMs remained byte-identical
+to the prior baseline; the final note-order edit is NES-only. Final production
+SHA256: 375372D48C556C31ECF2E54D4B5DC2E4E61A77AFD6BEB010A0060D67414F44A4.
+
+
+## 22. NES pulse countdown and concurrent jump/prize sounds (2026-09-20)
+
+The user still could not hear the triangle countdown after section 21. Its
+nonzero meter readings were insufficient to claim an audible result. The NES
+bonus tally now uses pulse 2 (BASIC SOUND 1), volume 12, divisor 108, with the
+existing two-frames-on/two-frames-off rhythm and an explicit pulse note-off.
+All effects are stopped before the tally, so pulse 2 is free at that point.
+
+Prizes also move to pulse 2 while jumps remain on pulse 1 (SOUND 0). The prize
+arpeggio now has controllable volume and its original fade, instead of the
+triangle's on/off approximation. Cart hits and escape cues already use pulse
+2; an active hit/escape takes priority, clearing the prize countdown before it
+can overwrite that voice. A later cue in the same tick wins by write order.
+Prize note-off targets pulse 2 and cannot stop the jump on pulse 1. Extra-life
+notes remain on triangle, independently of the prize.
+
+The adapter no longer rewrites the global APU enable register or both pulse
+sweep registers for every volume change. Initialization in nes_apuon owns those
+settings; individual notes touch only their own channel. This removes cross-
+channel writes without claiming they alone caused the user's reported symptom.
+No new RAM is allocated. These gameplay branches and the adapter are NES-only.
+
+Regression tests interleave jump/prize pitches, verify every write stays within
+its channel, and verify prize note-off preserves the jump registers. Source
+checks cover the new note ordering, hit priority and prize note-off. Audible
+balance and concurrent playback still require the user's listening check;
+register tests or a nonzero meter do not establish those results.
+
+Validation: NES build and all regression gates passed, including seven APU
+checks. Compiled tally uses pulse 2 for both note-on and note-off. RAM remains
+1,506 bytes; PRG padding is 455 bytes. The normal production ROM was loaded
+for listening review; these latest changes remain uncommitted.
+
+
+## 23. NES jump audio during screen crossings (2026-09-20)
+
+The user reported a distorted/held jump sound as the next screen was drawn.
+Like footsteps, the jump's per-pass updates stop during draw_screen, but its
+pulse channel previously held its last note throughout the drawing WAITs.
+NES draw_screen now sets channel 0 volume to zero before the first WAIT.
+It preserves swt/swf: the remaining jump warble resumes when sfx_tick runs
+after drawing. This deliberately creates a silent gap in jump audio during
+the scene redraw instead of stretching a single note. The existing footstep
+note-off remains in place. Gameplay jump state is unaffected.
+
+The existing redraw regression now checks both mutes precede the first WAIT
+and jump sound counters are preserved. No new RAM is used; other platforms
+are unchanged. Listening confirmation remains a separate manual check.
+
+
+The user confirmed the bonus tally after catching Harry was still silent.
+A new review exercised new_game -> do_catch, including the message and snd_off,
+instead of injecting bonus_count directly on the title. At divisor 108 both
+pulse channels measured zero, including a 30-frame held-note control. At divisor
+270, with the original two-frame on/off timing, pulse 1 measured 0.426945 and
+pulse 2 measured 0.4303232. Restoring redundant APU-enable writes did not fix the
+high-pitch case. This establishes a pitch-dependent failure in this iNES path,
+not a zero requested volume or simply too short a note. Its underlying emulator
+cause has not been established.
+
+The production NES tally now uses divisor 270 (about 415 Hz) on pulse 2 at
+volume 12; timing and bonus arithmetic are unchanged. Other platforms retain
+divisor 108. This is an empirical workaround tested through the complete catch
+path. It is still subject to the user's listening check, not an assertion that
+a meter proves audibility. All temporary review ROMs were replaced by the normal
+production ROM immediately after measurement.
+
+Validation: final NES build and regression gates passed. Compiled code confirms
+jump mute precedes the redraw WAIT and the bonus divisor is 270. RAM remains
+1,506 bytes with 448 bytes of PRG padding. These changes are uncommitted.

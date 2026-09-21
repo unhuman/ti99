@@ -1,6 +1,7 @@
 """Check palette sharing, generated colours and the real fixture-mask assembly."""
 from pathlib import Path
 import re
+import itertools
 import unittest
 import genart as art
 import genstore as store
@@ -53,6 +54,12 @@ def execute(source, names, memory):
             memory[address(arg)] = registers['A']
         elif op == 'CLC':
             carry = 0
+        elif op == 'SEC':
+            carry = 1
+        elif op == 'SBC':
+            result = registers['A'] - operand(arg) - (1-carry)
+            carry = int(result >= 0)
+            registers['A'] = result & 255
         elif op == 'ADC':
             result = registers['A'] + operand(arg) + carry
             carry = int(result > 255)
@@ -71,19 +78,19 @@ def execute(source, names, memory):
             stack.append(registers['A'])
         elif op == 'PLA':
             registers['A'] = stack.pop()
-        elif op in ('INX', 'DEX', 'DEY'):
+        elif op in ('INX', 'INY', 'DEX', 'DEY'):
             reg = op[-1]
-            registers[reg] = (registers[reg] + (1 if op == 'INX' else -1)) & 255
-        elif op in ('CPX', 'CPY'):
-            zero = registers[op[-1]] == operand(arg)
-        elif op in ('BNE', 'BEQ', 'BPL'):
-            if {'BNE': not zero, 'BEQ': zero, 'BPL': not negative}[op]:
+            registers[reg] = (registers[reg] + (1 if op in ('INX', 'INY') else -1)) & 255
+        elif op in ('CPX', 'CPY', 'CMP'):
+            zero = registers['A' if op == 'CMP' else op[-1]] == operand(arg)
+        elif op in ('BNE', 'BEQ', 'BPL', 'BCC'):
+            if {'BNE': not zero, 'BEQ': zero, 'BPL': not negative, 'BCC': not carry}[op]:
                 pc = labels[arg]
         else:
             raise AssertionError('unmodelled instruction ' + op)
-        if op in ('LDA', 'LDX', 'LDY', 'TXA', 'TAX', 'TAY', 'INX', 'DEX', 'DEY',
-                  'ADC', 'AND', 'ORA', 'ASL', 'LSR', 'PLA'):
-            reg = op[-1] if op in ('LDA', 'LDX', 'LDY', 'INX', 'DEX', 'DEY') else (op[2] if op in ('TXA', 'TAX', 'TAY') else 'A')
+        if op in ('LDA', 'LDX', 'LDY', 'TXA', 'TAX', 'TAY', 'INX', 'INY', 'DEX', 'DEY',
+                  'ADC', 'SBC', 'AND', 'ORA', 'ASL', 'LSR', 'PLA'):
+            reg = op[-1] if op in ('LDA', 'LDX', 'LDY', 'INX', 'INY', 'DEX', 'DEY') else (op[2] if op in ('TXA', 'TAX', 'TAY') else 'A')
             zero = registers[reg] == 0
             negative = bool(registers[reg] & 128)
     raise AssertionError('mask routine did not return')
@@ -106,12 +113,47 @@ class ColourTest(unittest.TestCase):
         text = (HERE.parent / 'src/nescolor.bas').read_text()
         for label, expected in [('store_nes_chr', colour.store_chr()),
                                 ('detail_nes_chr', colour.detail_chr()),
+                                ('suitcase_nes_chr', colour.suitcase_chr()),
                                 ('lift_nes_cells', colour.lift_cells()),
                                 ('floor_nes_row', [colour.DETAIL_CODES['FLOOR0']]*32),
                                 ('nes_attrs', sum([colour.attributes(s) for s in range(8)], []))]:
             block = text.split(label + ':', 1)[1].split('\n\n', 1)[0]
             actual = [int(v, 16) for v in re.findall(r'\$([0-9A-Fa-f]{2})', block)]
             self.assertEqual(actual, expected)
+
+    def test_suitcase_overlay_uses_only_its_oam_and_disappears_on_collection(self):
+        source = (HERE / 'nes_chr.asm').read_text().split('nes_suitcases:', 1)[1]
+        for kinds in itertools.product(range(4), repeat=4):
+            memory = [0xAB]*0x400
+            columns, floors = [0, 15, 30, 31], [184, 144, 104, 64]
+            memory[0x10:0x14] = kinds
+            memory[0x20:0x24] = columns
+            memory[0x30:0x34] = floors
+            result = execute(source, {'array_COK':0x10, 'array_COC':0x20,
+                                     'array_FLRY':0x30}, memory)
+            self.assertEqual(result[0x200:0x2B0], [0xAB]*176)
+            self.assertEqual(result[0x2D0:0x300], [0xAB]*48)
+            for band, kind in enumerate(kinds):
+                left = result[0x2B0+band*8:0x2B4+band*8]
+                right = result[0x2B4+band*8:0x2B8+band*8]
+                if kind == 2:
+                    self.assertEqual(left, [floors[band]-17, 93, 1, columns[band]*8])
+                    self.assertEqual(right, [240 if columns[band]==31 else floors[band]-17,
+                                             95, 1, (columns[band]*8+8)&255])
+                else:
+                    self.assertEqual((left[0],right[0]), (240,240))
+
+    def test_suitcase_brown_pixels_match_ti_outline_exactly(self):
+        tiles = colour.suitcase_chr()
+        source = {name: pattern for name, code, pattern, fg, bg in art.CHARS}
+        for i, name in enumerate(('CASETL','CASEBL','CASETR','CASEBR')):
+            tile = tiles[i*16:(i+1)*16]
+            self.assertEqual(tile[:8], [0]*8)
+            self.assertEqual(tile[8:], art.char_bytes(source[name]))
+        basic = (HERE.parent/'src/KEYSTONE.bas').read_text()
+        self.assertRegex(basic, r'PALETTE 22,23\b')
+        draw = basic.split('draw_actors:',1)[1].split('hide_play:',1)[0]
+        self.assertLess(draw.index('ASM JSR nes_oam2'), draw.index('ASM JSR nes_suitcases'))
 
     def test_hats_remain_black_and_right_justified(self):
         source = (HERE / 'nes_chr.asm').read_text()

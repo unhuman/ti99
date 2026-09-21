@@ -33,10 +33,9 @@
 	;
 	; o THE TRIANGLE HAS NO VOLUME. Channel 2 maps to it because the APU
 	;   has only two pulse channels, and the triangle is on or off -- so
-	;   channel 2 keeps its pitch and loses its fades. In this game that is
-	;   the prize arpeggio and the bonus tally, both of which are written as
-	;   discrete notes rather than as decays, so they survive; a channel-2
-	;   fade elsewhere would simply stop being a fade.
+	;   channel 2 keeps its pitch and loses its fades. NES prizes and the
+	;   bonus tally use pulse channel 1 instead; extra-life notes remain on
+	;   triangle. A channel-2 fade becomes an on/off note.
 	;
 	; o THE TRIANGLE IS AN OCTAVE OFF IF LEFT ALONE. It divides by 32 rather
 	;   than 16, so it takes half the period for the same note. Halved here.
@@ -45,8 +44,8 @@
 	;   from a 16-entry period table. The mapping below is by ear-less
 	;   judgement and is the one part of this worth re-tuning on hardware.
 	;
-	; NONE OF THIS IS TESTED ON A NES. It assembles and the arithmetic is
-	; checked, but nobody has heard it.
+	; Register writes and noise note-on/off are regression-tested in
+	; nesapu_test.py. Real-hardware listening remains outstanding.
 	;
 
 APU_P1CTL:	EQU $4000
@@ -62,6 +61,7 @@ APU_TRILO:	EQU $400a
 APU_TRIHI:	EQU $400b
 APU_NSVOL:	EQU $400c
 APU_NSPER:	EQU $400e
+APU_NSLEN:	EQU $400f
 APU_STATUS:	EQU $4015
 
 	;
@@ -89,6 +89,7 @@ sn76489_freq:
 	STA APU_P1LO
 	LDA temp+1
 	AND #$07
+	ORA #$08		; long length; scheduler/volume controls duration
 	STA APU_P1HI
 	RTS
 nesapu_fp2:
@@ -96,6 +97,7 @@ nesapu_fp2:
 	STA APU_P2LO
 	LDA temp+1
 	AND #$07
+	ORA #$08		; long length; scheduler/volume controls duration
 	STA APU_P2HI
 	RTS
 nesapu_ftri:
@@ -105,6 +107,7 @@ nesapu_ftri:
 	STA APU_TRILO
 	LDA temp+1
 	AND #$07
+	ORA #$08		; long length; scheduler/volume controls duration
 	STA APU_TRIHI
 	RTS
 
@@ -117,11 +120,7 @@ nesapu_ftri:
 	;
 sn76489_vol:
 	STA temp2
-	LDA #$0f		; enable all four channels; volume 0 is the mute
-	STA APU_STATUS
-	LDA #$08		; sweep units off, or a pulse silences itself
-	STA APU_P1SWP
-	STA APU_P2SWP
+	; nes_apuon owns channel enable and sweep setup. Touch only this voice.
 	TXA
 	AND #$60
 	CMP #$40
@@ -155,7 +154,8 @@ nesapu_vtri:
 	STA APU_TRICTL
 	RTS
 nesapu_vtoff:
-	LDA #$00
+	; Keep control/reload latched: zero reload mutes without losing restart.
+	LDA #$80
 	STA APU_TRICTL
 	RTS
 
@@ -173,11 +173,13 @@ sn76489_control:
 	BNE nesapu_cwhite
 	LDA temp
 	ORA #$80		; short (periodic) mode
-	STA APU_NSPER
-	RTS
+	JMP nesapu_ntrigger
 nesapu_cwhite:
 	LDA temp
+nesapu_ntrigger:
 	STA APU_NSPER
+	LDA #$08		; reload noise length counter; $400e alone cannot start it
+	STA APU_NSLEN
 	RTS
 
 	; SN rates 0,1,2 are N/512, N/1024, N/2048 -- each an octave down --

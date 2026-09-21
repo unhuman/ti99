@@ -83,3 +83,9 @@ changing logs, inline scripts or verification commands to its approval prefix.
 Machine-local allow rules are in `~/.codex/rules/keystone-dev.rules`; manually
 installed rules load when Codex restarts. These permissions do not authorize
 commits or other unrelated actions. All platform builds remain sequential.
+
+Restore the production ROM immediately after a temporary review capture,
+before continuing other checks. A user may play the open emulator while work
+continues; never leave altered starting conditions running as the handoff.
+The NES launcher reports the production ROM path/hash and enables iNES audio
+while inactive, as requested during sound troubleshooting.

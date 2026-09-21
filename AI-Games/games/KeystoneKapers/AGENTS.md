@@ -19,6 +19,7 @@ the existing source and notes; it is not a claim of a fresh runtime test.
 - `assets/gennescolor.py` / `assets/nes-shelf.txt`: NES-native store tiles,
   editable shelf artwork, `assets/nes-elevator.txt` for doors, and per-screen palettes; emits `src/nescolor.bas`.
   Native static tiles and converted animated tiles must agree on shared colours.
+  Suitcase brown overlays own CHR 92..95 and OAM 44..51 (retired propeller halves).
 - `assets/check*.py` and `assets/*_test.py`: regression gates and their self-tests.
 - `assets/prevtitle.py`, `previewrun.py`, and `cmpref.py`: offline visual checks.
 - `assets/sfx/sfxprocess.md` and reference sheets: measured sound workflow.

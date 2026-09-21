@@ -347,6 +347,8 @@ _sz=$(wc -c < "$ROM")
        with little or nothing behind it, i.e. the assemble did not really run"
 
 echo
+"$TRUNCPY" ../assets/checknesstart.py || die "NES round-start conditions are not production defaults"
+
 echo "ROM: $_sz bytes"
 echo "Build OK ->  $(pwd)/$ROM"
 echo "Load it in Mesen, FCEUX or Nestopia (NES/Famicom)."

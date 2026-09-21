@@ -171,6 +171,14 @@ def lift_cells():
     return [codes[name] for state in states for row in state for name in row]
 
 
+def suitcase_chr():
+    # Outline only: index 2 uses the independent brown sprite colour.
+    # Pair order for 8x16 sprites is TL/BL, TR/BR.
+    chars = {name: pattern for name, code, pattern, fg, bg in art.CHARS}
+    return [v for name in ('CASETL', 'CASEBL', 'CASETR', 'CASEBR')
+            for v in ([0]*8 + art.char_bytes(chars[name]))]
+
+
 def attributes(screen):
     # One palette number per 16x16 quadrant, then pack four into each byte.
     quads = [[0] * 16 for _ in range(16)]
@@ -203,6 +211,7 @@ def main():
         art.emit(f, 'hud_hat_pat', art.char_bytes(hat) + [0]*8,
                  'NES reserve icon: CHR 198/199, used by OAM 56..60')
         art.emit(f, 'store_nes_chr', store_chr(), '89 native NES 2bpp tiles, codes 96..184')
+        art.emit(f, 'suitcase_nes_chr', suitcase_chr(), 'brown outline overlay: CHR 92..95, paired vertically')
         art.emit(f, 'detail_nes_chr', detail_chr(), 'native tiles 200..206: floor trim and lift details')
         art.emit(f, 'lift_nes_cells', lift_cells(), 'closed, partly open, open; 4x4 tiles each')
         art.emit(f, 'floor_nes_row', [DETAIL_CODES['FLOOR0']]*32, 'ground-floor bar only, PPU row 23')
