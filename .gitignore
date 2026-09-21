@@ -103,3 +103,4 @@ Desktop.ini
 # one into a commit (_tempo.py, _bt.py), and a committed run-once script is worse
 # than none: both were already broken by the very edit they had just made.
 _*.py
+Microsoft/
