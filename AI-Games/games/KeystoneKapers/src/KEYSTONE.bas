@@ -756,7 +756,8 @@ btn_go:
 	' ======================================================================
 main:
 	WAIT
-	#if NES
+	#if TI994A
+	#else
 	' MATCH THE TI'S LOOP RATE, AND DO IT HERE RATHER THAN ANYWHERE ELSE.
 	'
 	' Three things in this game are paced per LOOP PASS and must stay locked to
@@ -767,7 +768,7 @@ main:
 	' so the riders have to be on the pass clock too, and changing any ONE of
 	' the three decouples a rider from the tread he is standing on.
 	'
-	' The 6502 build runs many more passes a second than the 9900 one, so the
+	' The NES and Coleco builds run more passes per second than the TI, so the
 	' escalator ran at that rate: correct, coupled, and far too fast. The only
 	' change that keeps all three together is to the LOOP RATE itself. The TI
 	' measures ~24 passes a second (CLAUDE.md 3A: 2,335 passes over ~98 s), so
@@ -951,7 +952,10 @@ setup_font:
 	PALETTE 27,22			' 2 colour 3 -- RED, the bouncing balls
 	PALETTE 29,48			' 3 -- white  Harry, the carts, the lift car
 
-	nespw = 2			' the loop pacer above starts on a 2-frame pass
+	#endif
+	#if TI994A
+	#else
+	nespw = 2			' NES/Coleco start on a 2-frame pass
 	#endif
 
 	' THE ONE AND ONLY BANK SWITCH THE PROGRAM EVER MAKES, and it happens
@@ -1944,7 +1948,7 @@ su_key:
 	' A NEW GAME / A NEW KROOK
 	' ======================================================================
 new_game:
-	IF kops0 = 0 THEN kops0 = 4	' one active Kop and three in reserve
+	IF kops0 = 0 THEN kops0 = 3	' one active Kop and two in reserve
 	IF krk0 = 0 THEN krk0 = 1
 	kops = kops0
 	krk = krk0
@@ -1970,6 +1974,9 @@ new_game:
 	RETURN
 
 start_krook:
+	#if NES
+	ASM JSR nes_fast_begin
+	#endif
 	' Kelly starts MID-SCREEN on the first floor's east end. He used to start
 	' at x 224, hard against the east wall at 232 -- the far end of the store
 	' from floor 1's escalator, which made the climb three full traverses.
@@ -2172,6 +2179,9 @@ start_krook:
 	GOSUB draw_screen
 	GOSUB scan_canvas
 	GOSUB hud_all
+	#if NES
+	ASM JSR nes_fast_end
+	#endif
 	#lf = FRAME
 	RETURN
 
@@ -2213,6 +2223,7 @@ start_krook:
 	' (CLAUDE.md 3A).
 draw_screen:
 	#if NES
+	ASM JSR nes_fast_begin
 	' Drawing pauses sfx_tick: mute the held jump note until updates resume.
 	' Keep swt/swf so the remaining warble continues after the screen is ready.
 	SOUND 0,,0
@@ -3156,6 +3167,9 @@ cross_east:
 	entdir = 0			' he entered at the WEST edge heading east,
 					' so the obstacles come from the east
 	GOSUB draw_screen
+	#if NES
+	ASM JSR nes_fast_end
+	#endif
 	RETURN
 
 cross_west:
@@ -3167,6 +3181,9 @@ cross_west:
 	klx = 247
 	entdir = 1			' entered at the EAST edge heading west
 	GOSUB draw_screen
+	#if NES
+	ASM JSR nes_fast_end
+	#endif
 	RETURN
 
 	' ------------------------------------------------------------ escalator
@@ -5645,54 +5662,9 @@ scan_wipe:
 	#nsi = 0
 	#endif
 	#if NES
-	' TWELVE BURSTS, NOT SIX: 48 tiles of SIXTEEN bytes. The shadow is indexed
-	' by the same offset the PPU address uses, so it grows with the stride --
-	' half of what it holds is plane 1; black flights use it too.
-	' AND THE CANVAS IS WIPED TO GREEN, NOT TO BLACK.
-	'
-	' On the TI a blank canvas is zeros and the COLOUR TABLE says what the
-	' background is. There is no colour table here: a pixel's colour is its
-	' two bitplane bits, so "green background" means plane 0 SET everywhere
-	' and plane 1 clear -- index 1, which is the store's green in P0.
-	'
-	' THAT INVERTS THE SENSE OF EVERY FEATURE DRAWN ON TOP. The floor lines
-	' add plane 1 to reach index 3 (gold), and the escalator diagonals CLEAR
-	' plane 0 and SET plane 1 to reach index 2 (black); see scan_or1.
-	' Writing zeros here instead would give the canvas the grey backdrop.
-	'
-	' A tile is sixteen bytes: 0-7 are plane 0 and 8-15 plane 1, so the byte's
-	' position within its tile decides which it is.
-	' The full 24-row canvas is green; grey margins are separate cells.
-	' Plane 0 carries green, plane 1 black, and both together gold.
-	FOR swj = 0 TO 11
-		FOR swi = 0 TO 63
-			swv = #nsi AND 15		' 0-7 plane 0, 8-15 plane 1
-			swr = #nsi AND 7		' pixel row inside the tile
-			swc = #nsi / 256		' which character row, 0-2
-			' NO MARGIN INSIDE THE CANVAS. All twenty-four pixel
-			' rows are instrument now -- four bands of six -- and
-			' the space around it is the grey strip drawn either
-			' side in scan_canvas, which reaches the bottom of the
-			' screen. See scan_base.
-			swm = 0
-			IF swm = 1 THEN
-				' grey: shared index 0, both planes clear
-				swv = 0
-			ELSE
-				' green: plane 0 set, plane 1 clear
-				IF swv > 7 THEN
-					swv = 0
-				ELSE
-					swv = 255
-				END IF
-			END IF
-			VPOKE #swa,swv
-			nsc(#nsi) = swv
-			#nsi = #nsi + 1
-			#swa = #swa + 1
-		NEXT swi
-		WAIT
-	NEXT swj
+	' Clear the shadow and CHR together in three direct 256-byte copies.
+	' scan_wipe is called only inside the full-redraw transaction on NES.
+	ASM JSR nes_scan_clear
 	#else
 	FOR swj = 0 TO 5
 		FOR swi = 0 TO 63
@@ -5968,14 +5940,11 @@ hud_time:
 hud_kops:
 	spare = 0
 	IF kops > 0 THEN spare = kops - 1
-	' ONE COLUMN, NOT TWO, AND FIVE CELLS, NOT SIX. The row ends at column
-	' 31: six hats from column 27 would run over onto row 1, which is the
-	' wrap checklayout.py exists to catch. Five is what fits, so a game set
-	' to more than six Kops shows five hats and the rest are implied.
+	' Eight cells show all eight reserves; TIME ends at column 22.
 	#if NES
-	#pla = 8283
+	#pla = 8280
 	#else
-	#pla = 6171
+	#pla = 6168
 	#endif
 	' AND THEY ARE RIGHT-JUSTIFIED, so the last one sits in the last column.
 	'
@@ -5985,15 +5954,15 @@ hud_kops:
 	' from column 31 keeps one edge fixed: the icons always end at the same
 	' place and the count reads off their left-hand end.
 	'
-	' `pli + spare > 4` rather than `pli >= 5 - spare` -- the same test with no
+	' `pli + spare > 7` rather than `pli >= 8 - spare` -- the same test with no
 	' subtraction in it, because `spare` is an unsigned 8-bit variable and
-	' 5 - spare wraps to 253 the moment a cheat sets more Kops than fit.
-	FOR pli = 0 TO 4
+	' 8 - spare would underflow for an out-of-range spare count.
+	FOR pli = 0 TO 7
 		plv2 = 32
 		#if NES
 		' Icons are sprites; keep their background cells blue.
 		#else
-		IF pli + spare > 4 THEN plv2 = CH_KOPIC
+		IF pli + spare > 7 THEN plv2 = CH_KOPIC
 		#endif
 		VPOKE #pla,plv2
 		#pla = #pla + 1
@@ -6109,7 +6078,7 @@ add_score:
 	GOSUB hud_score
 	IF #score >= #nextk THEN
 		#nextk = #nextk + 1000
-		IF kops < 4 THEN
+		IF kops < 9 THEN
 			kops = kops + 1
 			GOSUB hud_kops
 			sfk = 1

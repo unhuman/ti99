@@ -1689,3 +1689,15 @@ normally when launched from the project root. Preserve that working directory
 in `tools/keystone-dev.ps1 LaunchTI`; report the ROM and configuration folder.
 Do not work around a launch regression by broadening game controller semantics
 before comparing old and new builds under identical conditions.
+
+
+### NES forced-blank redraws (Keystone, 2026-09-21)
+
+A full redraw may copy directly while rendering is disabled, but the NMI must
+also leave PPUADDR/PPUDATA/scroll alone throughout the transaction. Keystone's
+local nesfast.py runtime hooks reserve mode bit 7, preserving the existing
+flicker bit, controller polling and FRAME updates. Outside that mode the normal
+vblank queue and its budgets remain mandatory. The hooks fail on changed runtime
+anchors; they do not modify the shared compiler. Park PPUADDR outside palette
+space after direct writes: a palette address can colour the forced-blank screen.
+Keep a blank backdrop until the completed screen is committed at vblank.

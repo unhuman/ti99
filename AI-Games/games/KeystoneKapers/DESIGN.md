@@ -8,7 +8,7 @@ store **eight screens wide and four levels tall** — and fifty seconds to run h
 he reaches the roof and vanishes. Kelly is fast. The store is long. Everything in it is in
 the way.
 
-**Single player.** One active Kop and three in reserve, faithful to the cartridge; `838` on
+**Single player.** Three total lives by default: one active Kop and two in reserve; `838` on
 the title opens a setup screen for Kops and starting Krook.
 
 ---
@@ -6361,3 +6361,115 @@ banking, sound shutdown and the new extra-life melody checks.
 The final NES production ROM was loaded, but automated fire input stayed on its
 title screen; the raised gradient has generator/build validation, not a completed
 final in-game visual review. The extra-life melody still needs listening review.
+
+
+## 27. Coleco pacing and three-life default (2026-09-21)
+
+The default is now three total Kops (two spare hats), as requested. The bonus
+cap remains four total Kops; crossing each 10,000-point threshold only sounds
+the fanfare when a life is actually added. The 838 life override is preserved.
+Historical reference notes above describe the original cartridge's four-life start.
+
+Coleco previously omitted the NES main-loop pacer. It now shares the alternating
+2/3-frame minimum interval, targeting the measured TI rate of about 24 passes/s.
+TI execution is unchanged. Escalator steps and both riders retain their shared
+single-phase clock. Hit freeze, sound envelopes, low-time flashing, radio pulses,
+and propeller animation share that pass clock and are paced with it. Walking,
+jumping, hazard travel/bounce, elevator timing and the countdown already consume
+elapsed frames. The radar update also uses elapsed frames. Title and fixed pauses
+already wait on video frames. This targets NTSC pacing; PAL normalization is not
+part of this change. Heavy loops are not accelerated to meet the target.
+
+looptiming_test.py checks target selection, initialization and 40 passes over
+100 frames, and rejects the former NES-only guard. All three platform builds
+passed after the timing change; Coleco's subjective pacing still needs play review.
+
+NES redraw follow-up: the current 640-cell store uses eight large queued uploads,
+plus per-band fixture corrections, doors and attributes. Existing measured draws
+were 16-18 frames. Preparing an inactive nametable across gameplay frames, then
+switching at a seam, could hide the incremental redraw. This requires handling
+mirroring, shared CHR/radar state, reversal at seams, dynamic doors and the tight
+PRG/RAM budgets; it is a proposed rendering change, not implemented here.
+
+
+NES bonus-path audio review: a separate assembled review cartridge crossed from
+9,900 points through bonus_count with kops=3 (two spare hats), then drained the
+actual life_finish sequencer. Countdown pulse 1 was muted only in the review
+shim to isolate the unchanged pulse-0 fanfare. iNES output peak was 0.4390642.
+The same review with kops=4 produced peak 0.0. Normal production ROM was restored
+immediately. This verifies emulator output below the cap versus silence at the
+cap; it does not claim real-hardware listening. The user also confirmed hearing
+the TI fanfare. No production sound changes were needed for these findings.
+
+Final three-life builds passed for NES, TI and Coleco. Compiled code on all three
+loads 3 for the default starting count; Coleco contains the pacer and TI excludes
+it. Production cartridges were reloaded in Classic99 and iNES after the review.
+
+
+## 28. Earned-life cap clarification (2026-09-21)
+
+Default remains three total lives, one active plus two spare hats. Earned lives
+now increase the total up to nine, every 10,000 points, with the fanfare for each
+life actually added. This supersedes the four-total cap described above.
+TI/Coleco show up to eight hats in columns 24..31. NES uses OAM 56..63; up to five
+hats retain the two-character right margin, while six through eight use a
+one-character margin to avoid the time digits. Hidden hats are cleared in all
+eight slots. This consumes the three formerly unused OAM slots, with eight HUD
+sprites maximum on their scanline and no additional game RAM.
+
+Validation: all three complete builds passed. Award tests execute successive
+thresholds through nine total, silence at nine, and renewed earning after a lost
+life. The NES assembly test checks all eight OAM slots and clears them on hide;
+its instruction interpreter now models compare carry/negative flags and JMP.
+An isolated nine-life NES review displayed eight hats clear of the timer in iNES;
+the production ROM was restored immediately afterward.
+
+
+## 29. NES full-redraw transaction (2026-09-21)
+
+Full redraws now use a short forced-black interval and direct PPU writes instead
+of waiting for a separate vblank for each tile batch. nesfast.py patches only the
+game's generated NES runtime: WRTVRM/LDIRVM use direct writes while mode bit 7 is
+set; WAIT returns immediately in that state. NMI skips all PPU/OAM operations
+but continues controllers, the frame clock and random state. Normal gameplay
+retains the existing queue and vblank checks. The runtime patch rejects missing
+or duplicate hook anchors rather than guessing after a compiler change.
+
+nes_fast_begin first flushes the existing queue, blanks rendering, selects black
+at palette 0, and parks PPUADDR outside palette space. Every direct write also
+parks the address: leaving a palette address active while rendering is off can
+colour the blank screen. Writes to palette 0 are held black until the transaction
+ends. nes_fast_end queues the gameplay grey backdrop and waits for the NMI to
+restore the completed picture. Round starts include radar/HUD initialization in
+the transaction; screen crossings end it after draw_screen. Nested begin calls
+are harmless. This reserves the previously unused high bit of the NES runtime's
+mode byte, with no new game RAM or change to TI/Coleco drawing.
+
+Tests execute the actual direct-copy/poke routines, including 256-byte transfers,
+source-page crossings, preserved Y/source pointers, backdrop suppression and PPU
+address parking. Runtime-hook tests ensure normal queued paths remain present
+and changed hook locations fail the build. This is a synchronous faster redraw,
+not the previously proposed asynchronous second-nametable preparation.
+
+
+Radar initialization was a separate bottleneck: scan_wipe performed 768 queued
+VPOKEs plus two unused per-byte calculations, one a 16-bit divide. NES now fills
+the same 768-byte shadow with repeating eight-set/eight-clear planes and uploads
+three pages while blank. The actual assembly is tested against the expected
+shadow and PPU bytes, page addresses, and untouched neighbouring RAM. This also
+removes six bytes of unused NES scalar state. TI/Coleco retain their own wipe.
+The intermediate per-byte direct-write version showed a first-frame escalator
+difference during initialization; the final bulk version was visually checked
+with both the escalator and radar present before any gameplay animation ran.
+
+Instrumented iNES review cartridges measured draw_screen plus commit using FRAME:
+old screen 7 = 16 frames, old screen 3 = 18; direct redraw = 3 on both reviewed
+screens. Complete new_game initialization (including radar/HUD) changed from 73
+frames to 6 after the bulk radar clear. At 60 Hz these are roughly 267/300 ms to
+50 ms per crossing, and 1.22 s to 100 ms for initialization. The instrumentation
+was isolated from production ROMs and each review restored the normal cartridge.
+
+Final NES build and all included regression tests passed. A normal-gameplay
+review (only title input bypassed) accepted left input and crossed into the next
+store screen; actors, hazards, timer and radar continued. Production starting
+conditions were verified and the final production cartridge was restored in iNES.

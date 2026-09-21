@@ -306,9 +306,9 @@ finish before the scroll restore, which is what made the escalator screens flash
   things wrong, including the floors — they are thick olive bars, not the hairlines an
   earlier note built its whole look rule on.
 
-NES screen redraws batch the old title-row clearing with the palette attributes,
-and draw elevator doors from the existing tile maps in blocks. The large scenery
-uploads still span multiple frames to stay within the video chip's write budget.
+NES full redraws copy tiles, attributes and doors directly during a short black
+interval. Radar initialization uses three bulk transfers. Ordinary gameplay
+uploads retain the vblank queue and its write-budget checks.
 
 TI/Coleco title, HUD and message text retain light yellow on dark blue. NES retains gold
 text; its sky blend starts halfway down the gap between the HUD and buildings.
@@ -319,3 +319,12 @@ selects standard TI video mode so the console selection menu remains visible.
 The TI launcher loads the completed cartridge through Classic99's normal Open
 dialog after startup, avoiding the command-line loading path that intermittently
 produced duplicate menu entries or a hang in this session.
+
+New games start with three total lives (one active and two spare hats). Extra lives
+are awarded every 10,000 points up to nine total; the fanfare plays when a life is
+added. The 838 setup can override the starting count. Coleco now uses the same
+2/3-frame loop pacing as NES to approximate TI escalator and effect timing.
+
+NES full-screen transitions use a brief black interval while copying the complete
+scene directly into video memory, then reveal it at a frame boundary. Normal
+in-game updates still use the vblank queue; TI/Coleco rendering is unchanged.

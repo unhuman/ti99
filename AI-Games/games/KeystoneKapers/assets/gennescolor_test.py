@@ -82,7 +82,12 @@ def execute(source, names, memory):
             reg = op[-1]
             registers[reg] = (registers[reg] + (1 if op in ('INX', 'INY') else -1)) & 255
         elif op in ('CPX', 'CPY', 'CMP'):
-            zero = registers['A' if op == 'CMP' else op[-1]] == operand(arg)
+            result = registers['A' if op == 'CMP' else op[-1]] - operand(arg)
+            zero = result == 0
+            carry = int(result >= 0)
+            negative = bool(result & 128)
+        elif op == 'JMP':
+            pc = labels[arg]
         elif op in ('BNE', 'BEQ', 'BPL', 'BCC'):
             if {'BNE': not zero, 'BEQ': zero, 'BPL': not negative, 'BCC': not carry}[op]:
                 pc = labels[arg]
@@ -207,16 +212,15 @@ class ColourTest(unittest.TestCase):
             memory[0x10] = spare
             result = execute(draw, {'cvb_SPARE': 0x10}, memory)
             visible = []
-            for slot in range(56, 61):
+            for slot in range(56, 64):
                 y, tile, palette, x = result[0x200+slot*4:0x204+slot*4]
                 if y != 240:
                     visible.append(x)
                     self.assertEqual((y, tile, palette), (15, 199, 1))
-            self.assertEqual(visible, list(range(240-min(spare, 5)*8, 240, 8)))
+            self.assertEqual(visible, list(range((248 if spare > 5 else 240)-min(spare, 8)*8, (248 if spare > 5 else 240), 8)))
             self.assertEqual(result[0x200:0x2E0], [0xAB]*224)
-            self.assertEqual(result[0x2F4:0x300], [0xAB]*12)
             hidden = execute(hide, {}, result)
-            self.assertEqual(hidden[0x2E0:0x2F4:4], [240]*5)
+            self.assertEqual(hidden[0x2E0:0x300:4], [240]*8)
         data = (HERE.parent / 'src/nescolor.bas').read_text().split('hud_hat_pat:', 1)[1].split('\n\n', 1)[0]
         actual = [int(v, 16) for v in re.findall(r'\$([0-9A-Fa-f]{2})', data)]
         hat = next(pattern for name, code, pattern, fg, bg in art.CHARS if name == 'KOPIC')

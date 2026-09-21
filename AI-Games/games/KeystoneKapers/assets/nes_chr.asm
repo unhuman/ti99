@@ -450,7 +450,7 @@ nes_m1:	DB $00,$00,$FF,$FF
 ; OAM tile byte -- which selects the pattern table in 8x16 mode -- is 0, i.e.
 ; $0000. That is why nes_bgbank moves the BACKGROUND to $1000 instead.
 ;
-; Slots 0-27 are the game's; 28-55 are their right halves; 56-60 hold the HUD hats; 61-63 stay parked at
+; Slots 0-27 are the game's; 28-55 are their right halves; 56-63 hold the HUD hats; hidden hats are parked at
 ; y=$F0 by the prologue's clear_sprites. Hidden sprites copy across as hidden,
 ; so nothing has to know which slots are live.
 ; ---------------------------------------------------------------------------
@@ -696,12 +696,13 @@ nes_attrs_put:
 	JSR LDIRVM
 	RTS
 
-; Reserve hats have their own black sprite palette. OAM 56..60 is outside
-; the actor pairs (0..55); five icons stay below the eight-sprite line limit.
-; Right edge is x=240: two character cells of margin.
+; Reserve hats use black palette 1 and OAM 56..63, outside actor pairs.
+; At most eight hats occupy this otherwise sprite-free HUD scanline.
+; Preserve the two-cell margin through five hats; use one cell above five
+; so eight reserves fit without covering the time digits.
 ; Tile 199 selects CHR $1000, pair 198/199 (hat, transparent bottom).
 nes_hats:
-	LDX #16
+	LDX #28
 	LDY cvb_SPARE
 nes_hats_loop:
 	LDA #$F0
@@ -715,10 +716,20 @@ nes_hats_y:
 	STA $02E1,X
 	LDA #1
 	STA $02E2,X
+	LDA cvb_SPARE
+	CMP #6
+	BCC nes_hats_margin
 	TXA
 	ASL A
 	CLC
-	ADC #200
+	ADC #184
+	JMP nes_hats_x
+nes_hats_margin:
+	TXA
+	ASL A
+	CLC
+	ADC #176
+nes_hats_x:
 	STA $02E3,X
 	DEX
 	DEX
@@ -733,6 +744,9 @@ nes_hats_hide:
 	STA $02E8
 	STA $02EC
 	STA $02F0
+	STA $02F4
+	STA $02F8
+	STA $02FC
 	RTS
 
 ; Brown suitcase outlines overlay their existing black-filled background tiles.

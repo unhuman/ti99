@@ -325,6 +325,8 @@ MSYS2_ARG_CONV_EXCL='*' awk -v apu=../assets/nes_apu.asm -v chr=../assets/nes_ch
 grep -q "^sn76489_freq:" "$ASM" || die "the APU shim did not make it into $ASM"
 grep -q "^nes_chrup:" "$ASM" || die "the CHR-RAM uploader did not make it into $ASM"
 
+"$TRUNCPY" ../assets/nesfast.py "$ASM" || die "NES fast redraw hooks failed"
+
 echo "[2/2] gasm80 assemble   $ASM -> $ROM"
 rm -f "$ROM"
 _asmlog="$(mktemp)"

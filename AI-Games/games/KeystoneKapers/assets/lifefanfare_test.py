@@ -70,9 +70,13 @@ class LifeTest(unittest.TestCase):
             vm.state.update({'#score': 990, '#nextk': 1000, '#addv': 10, 'kops': 3})
             vm.run('add_score')
             self.assertEqual((vm.state['kops'], vm.state['sfk'], vm.state['#nextk']), (4, 1, 2000))
+            for lives in range(5, 10):
+                vm.state.update({'sfk': 0, '#addv': 1000})
+                vm.run('add_score')
+                self.assertEqual((vm.state['kops'], vm.state['sfk']), (lives, 1))
             vm.state.update({'sfk': 0, '#addv': 1000})
             vm.run('add_score')
-            self.assertEqual((vm.state['kops'], vm.state['sfk'], vm.state['#nextk']), (4, 0, 3000))
+            self.assertEqual((vm.state['kops'], vm.state['sfk'], vm.state['#nextk']), (9, 0, 8000))
             vm.state['kops'] = 2
             vm.run('add_score')
             self.assertEqual((vm.state['kops'], vm.state['sfk']), (3, 1))
