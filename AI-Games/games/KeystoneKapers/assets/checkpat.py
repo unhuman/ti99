@@ -59,6 +59,8 @@ SPRITE_TABLE, CHAR_TABLE = 0, 1
 # THE RUNTIME SWAPS, each of which overwrites a resident table ON PURPOSE.
 #   label -> (table, first code, count, why)
 BORROWS = {
+    "store_nes_chr": (CHAR_TABLE, 96, len(g.CHARS),
+                      "NES-native alternative to the TMS store tiles"),
     "spr_hstand":  (SPRITE_TABLE, 72, 16, "Harry's standing pose, over his "
                                           "running body while he rides"),
     "spr_hstandl": (SPRITE_TABLE, 72, 16, "the same pose facing the other way"),

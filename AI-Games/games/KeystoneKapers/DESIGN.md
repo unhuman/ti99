@@ -5936,3 +5936,47 @@ blue counters against grey pillars, skyline bands, screen transitions, a live
 score of 100 after collecting prizes, and no leftover title SCORE/HI row.
 The time-up message remained legible. This was a targeted visual check, not
 full gameplay or real-hardware acceptance.
+
+
+## 16. Distinct NES shelf artwork experiment (2026-09-20)
+
+The baseline colour/HUD fixes are committed as `132e900`. This follow-up tries
+NES-specific artwork and is deliberately left uncommitted for visual review.
+TI and Coleco retain their existing artwork and palettes.
+
+The shelves keep their original two-tile footprint and character codes, so
+fixture removal and store geometry do not change. `assets/nes-shelf.txt` is an
+editable 8x16 module: gold trim, a grey highlight, blue frame, differently
+coloured book spines and small drawer handles. P3's blue changes from NES $21
+to $11. Its green, shared grey and gold remain unchanged, preserving walls,
+pillars and floor bars in the same attribute quadrants. No other palette entry
+changes. The skyline uses a 4x4 ordered pattern to blend blue/pink and
+orange/gold. Only sky paper changes; building silhouettes and windows do not.
+
+NES tiles allow all four palette indices on the same pixel row. The existing
+TMS converter limited each row to an ink/paper pair, so using it for new NES
+art would retain an unnecessary software limit. `gennescolor.py` now emits
+`store_nes_chr`, 89 native 2bpp tiles, instead of `nes_store_col`. Unchanged tiles
+are converted from the existing TMS art at build time. Setup uploads these
+through `nes_def_raw`/`nes_chrraw`, using the same CHR addresses 96..184.
+The loader handles source page crossings and keeps rendering/NMI off until
+the upload completes, then restores the existing PPU register shadows.
+Runtime escalator and marquee uploads retain their existing paths.
+
+This adds no game RAM, tile slots, OAM entries or per-frame work. It uses more
+NES ROM for native pixels: 1,424 bytes replace 712 colour bytes, plus the small
+loader. The pattern ownership checker declares the exact alternate store
+upload; the vblank checker rejects native rendering-off uploads during play.
+Asset tests decode the emitted bitplanes, compare every unaffected pixel,
+verify the shelf's four-colour rows, reject malformed editable art and retain
+the existing fixture-mask and reserve-hat checks.
+
+Validation: all three complete platform builds and checker self-tests passed.
+The NES retains 1,506 bytes of allocated game RAM and its 32 KB PRG format;
+782 additional ROM bytes leave 954 bytes of padding before the vectors. TI
+fixed code still uses 21,888 bytes with 2,448 free. The TI and Coleco output
+ROMs compare byte-for-byte equal to the saved pre-experiment builds.
+iNES 6.1 cold-reset/title and gameplay checks show the new shelves and dithered
+skyline, black reserve hats, intact gold/black prizes, a working top score and
+clean screen transitions. This remains a targeted visual check, not a full
+playthrough or real-hardware test. No additional commit was made.

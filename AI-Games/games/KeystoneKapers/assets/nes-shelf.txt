@@ -1,0 +1,18 @@
+# NES-only shelf module, 8 pixels wide by 16 high.
+# S=shared grey, G=green, B=blue, Y=gold. Two 8x8 tiles repeat across a unit.
+YYYYYYYY
+SSSSSSSS
+BBBBBBBB
+BSSBYYBB
+BSSBYYGB
+BYSBYYGB
+BSSBSYGB
+BSSBYYGB
+BSSBYYGB
+BSSBYYGB
+BBBBBBBB
+YYYYYYYY
+BBBBBBBB
+BSBBBBSB
+BBBBBBBB
+BBBBBBBB

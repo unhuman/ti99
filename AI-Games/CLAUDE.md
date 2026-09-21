@@ -1656,3 +1656,11 @@ Audit HUD icons as well as text: reusing the HUD's black index for pink sky made
 the reserve hats pink. They now use five otherwise unused OAM entries and the
 black sprite palette, with explicit CHR ownership, title cleanup and count tests.
 See the game's DESIGN section 15; older fixed-palette limitations are historical.
+
+
+NES-specific pixel art can need a native 2bpp upload: the TMS ink/paper converter
+can express only two colours on each 8-pixel row, while NES tiles can use all
+four palette indices on that row. Keystone's generator now preconverts static
+store art and uploads native tiles at setup; animated TMS-derived tiles keep
+the old converter. This trades ROM for richer art without extra game RAM or
+sprite usage. Keep the rendering-off native loader unreachable from gameplay.

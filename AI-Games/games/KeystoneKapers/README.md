@@ -166,11 +166,13 @@ The score line sits two columns in from the edge on **dark blue**, with the rese
 
 The roof is **grey buildings against a sunset** -- light blue at the top, then magenta, red, light red and yellow down to the skyline, with a black deck line and black beneath it. A vertical gradient is free on this VDP (it colours one 8x1 scan line at a time), but it costs **row variants**: a character cannot know which row it was placed in, so the sky and the partial buildings come in one per roof row (`DESIGN.md` §0d-quater).
 
-On NES, counters have blue bodies and gold lips, distinct from grey pillars.
-The skyline uses four bands (blue, pink, orange and gold), with grey buildings
-and gold windows. Reserve hats remain black using the sprite palette. Gameplay
-clears the title's SCORE/HI row and keeps the live score on the top HUD line.
-See `DESIGN.md` section 15 for palette allocation and its NES-specific limits.
+On NES, the current art experiment uses deeper-blue shelf frames, gold trim,
+coloured book spines and drawer handles, distinct from grey pillars. Edit the
+8x16 shelf module in `assets/nes-shelf.txt`. The skyline blends blue into pink
+and orange into gold with ordered dithering; buildings stay grey with gold
+windows. Reserve hats remain black using the sprite palette. Gameplay clears
+the title's SCORE/HI row and keeps the live score on the top HUD line.
+See `DESIGN.md` sections 15-16 for the palette allocation and NES artwork.
 
 
 The lift's door jambs sit in the **wall column either side** of the doorway, four pixels wide, so all four doorway characters are car and the opening is the full **32 px** rather than 24. They used to sit inside the doorway's own end columns, which spent a quarter of the opening framing it and needed six characters to do it (a header twin and a sill twin for each side); a jamb in the wall is one picture on every row in every door state, so it needs two. It is also **static** now — the old frame only existed while the doors were open, so it appeared as they parted (`DESIGN.md` §0d-ter).

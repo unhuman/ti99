@@ -268,7 +268,7 @@ def main(path=None, quiet=False):
         if name not in live:
             continue
 
-        if re.match(r"^GOSUB\s+nes_def\b", st):
+        if re.match(r"^GOSUB\s+nes_def(?:_raw)?\b", st):
             bad.append(
                 "line %d (%s): GOSUB nes_def is reachable from main. It turns "
                 "rendering OFF and waits for a vblank the NMI never services -- "

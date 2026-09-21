@@ -104,7 +104,7 @@ def fixture_mask(vram, initial):
 class ColourTest(unittest.TestCase):
     def test_generated_data_is_current(self):
         text = (HERE.parent / 'src/nescolor.bas').read_text()
-        for label, expected in [('nes_store_col', colour.colours()),
+        for label, expected in [('store_nes_chr', colour.store_chr()),
                                 ('nes_attrs', sum([colour.attributes(s) for s in range(8)], []))]:
             block = text.split(label + ':', 1)[1].split('\n\n', 1)[0]
             actual = [int(v, 16) for v in re.findall(r'\$([0-9A-Fa-f]{2})', block)]
@@ -135,6 +135,66 @@ class ColourTest(unittest.TestCase):
         actual = [int(v, 16) for v in re.findall(r'\$([0-9A-Fa-f]{2})', data)]
         hat = next(pattern for name, code, pattern, fg, bg in art.CHARS if name == 'KOPIC')
         self.assertEqual(actual, art.char_bytes(hat) + [0]*8)
+
+    def test_native_tiles_preserve_non_shelf_and_non_sky_pixels(self):
+        tiles = colour.store_pixels()
+        packed = colour.store_chr()
+        self.assertEqual(len(packed), 89*16)
+        ink = checkink.read_inkmap()
+        old_rows = colour.colours()
+        for index, (name, code, pattern, fg, bg) in enumerate(art.CHARS):
+            data = packed[index*16:(index+1)*16]
+            decoded = [[((data[y] >> (7-x)) & 1) |
+                        (((data[y+8] >> (7-x)) & 1) << 1)
+                        for x in range(8)] for y in range(8)]
+            self.assertEqual(decoded, tiles[index])
+            original_bits = art.char_bytes(pattern)
+            original_colours = art.colour_block(name, fg, bg)
+            for y in range(8):
+                for x in range(8):
+                    if name in ('SHELFT', 'SHELFB'):
+                        continue
+                    if name in colour.SKY_ROWS and original_colours[y] & 15 != art.GRAY and not original_bits[y] & (128 >> x):
+                        continue
+                    row = old_rows[index*8+y]
+                    old = ink[row >> 4 if original_bits[y] & (128 >> x) else row & 15]
+                    self.assertEqual(decoded[y][x], old, (name, x, y))
+        shelf = colour.read_shelf()
+        self.assertTrue(any(set(row) == {0, 1, 2, 3} for row in shelf),
+                        'The book spines must exercise all four NES inks on one row')
+        # All rows retain a dark blue structure beneath the two-pixel cap.
+        self.assertEqual(shelf[0], [3]*8)
+        self.assertEqual(shelf[1], [0]*8)
+        self.assertEqual(shelf[-1], [2]*8)
+
+    def test_animated_escalators_keep_shared_colours(self):
+        ink = checkink.read_inkmap()
+        actual = colour.store_pixels()
+        for name, code, pattern, fg, bg in art.CHARS:
+            if not 110 <= code < 122:
+                continue
+            bits = art.char_bytes(pattern)
+            rows = art.colour_block(name, fg, bg)
+            expected = [[ink[rows[y] >> 4 if bits[y] & (128 >> x) else rows[y] & 15]
+                         for x in range(8)] for y in range(8)]
+            self.assertEqual(actual[code-96], expected, name)
+
+    def test_shelf_reader_rejects_broken_art(self):
+        for bad in ('B'*8+'\n', ('B'*7+'\n')*16, ('X'*8+'\n')*16,
+                    ('B'*8+'\n')*17):
+            with self.assertRaises(ValueError):
+                colour.read_shelf(bad)
+
+    def test_sky_gradient_retains_end_colours(self):
+        tiles = colour.store_pixels()
+        top = tiles[art.CODES['SKY0']-96]
+        middle = tiles[art.CODES['SKY1']-96]
+        bottom = tiles[art.CODES['SKY2']-96]
+        self.assertEqual(top[0], [1]*8)
+        self.assertEqual(middle[-1], [2]*8)
+        self.assertEqual(bottom[-1], [3]*8)
+        self.assertTrue(any(len(set(row)) == 2 for row in top+middle))
+        self.assertTrue(any(len(set(row)) == 2 for row in bottom))
 
     def test_counter_and_structure_roles(self):
         ink = checkink.read_inkmap()

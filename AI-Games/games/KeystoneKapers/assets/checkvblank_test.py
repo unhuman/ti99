@@ -96,7 +96,9 @@ FAKE_SPLIT = SHELL % (
 
 def main():
     ok = True
+    native_blanking = BLANKING.replace('nes_def', 'nes_def_raw').replace('nes_chrup', 'nes_chrraw')
     cases = [
+        ("native tile upload during play blanks rendering", native_blanking, 1),
         ("the shipped shape -- upload behind its own WAIT", GOOD, 0),
         ("no WAIT: the pass's pokes flush with the upload", NO_WAIT, 1),
         ("nes_def during play: rendering off for two frames", BLANKING, 1),

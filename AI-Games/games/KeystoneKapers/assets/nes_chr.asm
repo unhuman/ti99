@@ -15,7 +15,8 @@
 ; So the pattern table here is ordinary VRAM behind PPUADDR/PPUDATA, which is
 ; all DEFINE CHAR ever was. This file is the port's whole video layer:
 ;
-;   nes_chrup   upload patterns, rendering off   (DEFINE CHAR / DEFINE SPRITE)
+;   nes_chrup   convert/upload TMS patterns, rendering off
+;   nes_chrraw  upload native NES 2bpp static tiles, rendering off
 ;   nes_chrq    upload patterns through the NMI queue, for the escalator
 ;   nes_oam2    the right-hand half of every 16x16 actor
 ;   nes_bgbank  put background patterns at $1000 so sprites can have $0000
@@ -33,7 +34,7 @@
 ;   2  regional alternate          <- black, cyan
 ;   3  gold highlights             <- yellows, white
 ;
-; gennescolor.py supplies NES-specific store colours and screen attributes.
+; gennescolor.py preconverts static store tiles and supplies screen attributes.
 ; Shared grey preserves the structure while counters get a blue alternate.
 ; Black fixture outlines need P0; HUD reserve hats use a sprite palette.
 ;
@@ -108,6 +109,51 @@ nes_chrup_p1:
 	JSR nes_chrnext
 	BNE nes_chrup_char
 
+	LDA ppu_ctrl
+	STA PPUCTRL
+	LDA ppu_mask
+	STA PPUMASK
+	RTS
+
+; Native 2bpp upload for NES-specific static art. Same destination inputs as
+; nes_chrup, but #nsrc contains 16 bytes per tile. Rendering/NMI stay off for
+; the entire copy, including source page crossings; no game RAM is added.
+nes_chrraw:
+	LDA #0
+	STA PPUCTRL
+	STA PPUMASK
+	BIT PPUSTATUS
+nes_chrraw_vb:
+	BIT PPUSTATUS
+	BPL nes_chrraw_vb
+	JSR nes_chraddr
+	LDA temp+1
+	STA PPUADDR
+	LDA temp
+	STA PPUADDR
+	LDA cvb_#NSRC
+	STA pointer
+	LDA cvb_#NSRC+1
+	STA pointer+1
+	LDA cvb_NCNT
+	STA temp2
+nes_chrraw_tile:
+	LDY #0
+nes_chrraw_byte:
+	LDA (pointer),Y
+	STA PPUDATA
+	INY
+	CPY #16
+	BNE nes_chrraw_byte
+	CLC
+	LDA pointer
+	ADC #16
+	STA pointer
+	BCC nes_chrraw_next
+	INC pointer+1
+nes_chrraw_next:
+	DEC temp2
+	BNE nes_chrraw_tile
 	LDA ppu_ctrl
 	STA PPUCTRL
 	LDA ppu_mask

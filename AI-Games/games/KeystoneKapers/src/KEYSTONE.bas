@@ -924,7 +924,7 @@ setup_font:
 	PALETTE 10,15
 	PALETTE 11,40
 	PALETTE 13,26			' P3 counters: green, blue, gold
-	PALETTE 14,33
+	PALETTE 14,17
 	PALETTE 15,40
 
 	' AND FOUR FOR THE ACTORS, which DO get one each because a sprite carries
@@ -1106,14 +1106,12 @@ setup_font:
 	' store that is already defined.
 setup_rest:
 	#if NES
-	#nsrc = VARPTR store_pat(0)
+	' Native 2bpp permits four colours on a row, including shelf book spines.
+	#nsrc = VARPTR store_nes_chr(0)
 	nchr = 96
 	ncnt = 89
 	ntab = 1
-	#ncol = VARPTR nes_store_col(0)
-	nink = 3
-	GOSUB nes_def
-	' NES colours and skyline bands are generated in nes_store_col.
+	GOSUB nes_def_raw
 	' AND THE FOUR MARQUEE LAMPS, THE SAME WAY THE MARQUEE WILL SEND THEM.
 	'
 	' THIS IS THE TITLE'S COLOUR SHIFT ON A COLD BOOT. The store load above
@@ -3527,6 +3525,11 @@ nes_swp16:
 	GOSUB nes_escd
 	RETURN
 
+nes_def_raw:
+	' Setup only, just like nes_def; never called from the play loop.
+	ASM JSR nes_chrraw
+	RETURN
+
 nes_def:
 	' WHAT DEFINE WOULD HAVE DONE. CVBasic implements no DEFINE at all for the
 	' NES, on the reading that patterns live in cartridge CHR ROM -- but an
@@ -5195,7 +5198,7 @@ esc_tick:
 		' colour bytes start 14 x 8 into store_col. Derived rather than
 		' written out, because a renumber moves the first number and would
 		' leave a hand-copied second one behind.
-		#ncol = VARPTR nes_store_col(0)
+		#ncol = VARPTR store_col(0)
 		#ncol = #ncol + 112
 		GOSUB nes_escd
 		#else
@@ -5213,7 +5216,7 @@ esc_tick:
 		IF escp = 1 THEN #nsrc = VARPTR esc_phe1(0)
 		IF escp = 2 THEN #nsrc = VARPTR esc_phe2(0)
 		IF escp = 3 THEN #nsrc = VARPTR esc_phe3(0)
-		#ncol = VARPTR nes_store_col(0)
+		#ncol = VARPTR store_col(0)
 		#ncol = #ncol + 160		' character 116, twenty on from 96
 		GOSUB nes_escd
 		#else
