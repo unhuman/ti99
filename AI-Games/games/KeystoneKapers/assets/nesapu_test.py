@@ -118,8 +118,8 @@ class SoundTest(unittest.TestCase):
 
     def test_nes_notes_set_volume_before_pitch(self):
         source = Path(__file__).parents[1].joinpath('src/KEYSTONE.bas').read_text()
-        for channel, pitch, volume in [('1', '270', '12'), ('1', 'pzd', 'pzv'), ('2', '300', '13')]:
-            pattern = r'SOUND ' + channel + ',,' + volume + r'\s+SOUND ' + channel + ',' + pitch + r'\s+#else'
+        for channel, pitch, volume in [('1', '270', '12'), ('1', 'pzd', 'pzv')]:
+            pattern = r'SOUND ' + channel + ',,' + volume + r'\s+SOUND ' + channel + ',' + pitch + r'\s+(?:END IF\s+)?#else'
             self.assertRegex(source, pattern)
 
     def test_jump_and_prize_channels_are_independent(self):

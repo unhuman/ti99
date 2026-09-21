@@ -109,12 +109,53 @@ def fixture_mask(vram, initial):
 
 
 class ColourTest(unittest.TestCase):
+    def test_door_block_matches_previous_cell_addresses(self):
+        from checkvblank import nes_lines
+        source = (HERE.parent / 'src/KEYSTONE.bas').read_text()
+        bases = {int(i): int(v) for i, v in
+                 re.findall(r'#bdst\((\d)\) = (\d+)', source)}
+        column = int(re.search(r'CONST ELCOL = (\d+)', source)[1])
+        body = source.split('draw_car:', 1)[1].split('car_cell:', 1)[0].splitlines()
+        live = nes_lines(body)
+        body = [line.split("'", 1)[0].strip() for i, line in enumerate(body) if i in live]
+        start = body.index('cst = 0')
+        end = next(i for i, line in enumerate(body) if line.startswith('SCREEN '))
+        args = body[end].split(' ', 1)[1].split(',')
+        self.assertEqual(args[0], 'lift_nes_cells')
+        width, height, stride = map(int, args[3:])
+        cells = colour.lift_cells()
+        for floor, moving_floor, door in itertools.product(range(3), repeat=3):
+            state = {'clv': floor, 'elvl': moving_floor, 'eldp': door, 'ELCOL': column}
+            def value(expr):
+                expr = expr.replace('#bdst(clv)', str(bases[floor]))
+                expr = re.sub(r'(\d+)\.', r'\1', expr)
+                expr = re.sub(r'#[a-z]+|[a-z]+|ELCOL', lambda m: str(state[m[0]]), expr)
+                self.assertRegex(expr, r'^[0-9 +*=-]+$')
+                return eval(expr.replace(' = ', ' == '), {'__builtins__': {}})
+            for line in body[start:end]:
+                if not line:
+                    continue
+                if line.startswith('IF '):
+                    condition, line = line[3:].split(' THEN ')
+                    if not value(condition):
+                        continue
+                name, expr = line.split(' = ')
+                state[name] = value(expr)
+            offset, destination = value(args[1]), 8192 + value(args[2])
+            actual = {destination + y*32 + x: cells[offset+y*stride+x]
+                      for y in range(height) for x in range(width)}
+            cst = door if floor == moving_floor else 0
+            expected = {8288+bases[floor]+y*32+column+x: cells[cst*16+y*4+x]
+                        for y in range(4) for x in range(4)}
+            self.assertEqual(actual, expected)
+
     def test_generated_data_is_current(self):
         text = (HERE.parent / 'src/nescolor.bas').read_text()
         for label, expected in [('store_nes_chr', colour.store_chr()),
                                 ('detail_nes_chr', colour.detail_chr()),
                                 ('suitcase_nes_chr', colour.suitcase_chr()),
                                 ('lift_nes_cells', colour.lift_cells()),
+                                ('blank_nes_row', [colour.DETAIL_CODES['SKYCAP']]*32),
                                 ('floor_nes_row', [colour.DETAIL_CODES['FLOOR0']]*32),
                                 ('nes_attrs', sum([colour.attributes(s) for s in range(8)], []))]:
             block = text.split(label + ':', 1)[1].split('\n\n', 1)[0]
@@ -289,7 +330,10 @@ class ColourTest(unittest.TestCase):
         top = tiles[art.CODES['SKY0']-96]
         middle = tiles[art.CODES['SKY1']-96]
         bottom = tiles[art.CODES['SKY2']-96]
-        self.assertEqual(top[0], [1]*8)
+        cap = colour.detail_tiles()[-1]
+        self.assertEqual(cap[:4], [[1]*8]*4)
+        self.assertTrue(any(2 in row for row in cap[4:]))
+        self.assertTrue(any(2 in row for row in top[:4]))
         self.assertEqual(middle[-1], [2]*8)
         self.assertEqual(bottom[-1], [3]*8)
         self.assertTrue(any(len(set(row)) == 2 for row in top+middle))

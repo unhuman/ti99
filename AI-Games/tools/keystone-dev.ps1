@@ -70,5 +70,12 @@ public class InesAudioMenu {
     $rom = Join-Path $gameRoot 'src/KEYSTONE_8.bin'
     if (!(Test-Path -LiteralPath $emulator) -or !(Test-Path -LiteralPath $rom)) { throw 'Classic99 or the TI ROM is missing.' }
     Get-Process Classic99 -ErrorAction SilentlyContinue | Stop-Process
-    Start-Process -FilePath $emulator -ArgumentList ('-rom "' + $rom + '"') -WorkingDirectory (Split-Path $emulator) -WindowStyle Normal
+    # Classic99 reads .\classic99.ini from its working directory. The project's
+    # established settings use keyboard joystick 1; the installed emulator's
+    # separate profile maps the keyboard to joystick 2. Preserve the project
+    # launch context so restarting for a build does not silently change controls.
+    $tiProcess = Start-Process -FilePath $emulator -WorkingDirectory $projectRoot -WindowStyle Normal -PassThru
+    [void]$tiProcess.WaitForInputIdle(3000)
+    & (Join-Path $PSScriptRoot 'classic99-load.ps1') -ProcessId $tiProcess.Id -Rom $rom
+    Write-Output ("Loaded production TI ROM: {0} (SHA256 {1}); configuration folder: {2}" -f $rom,(Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash,$projectRoot)
 }

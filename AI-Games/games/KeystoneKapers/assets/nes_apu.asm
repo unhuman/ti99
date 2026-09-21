@@ -34,8 +34,8 @@
 	; o THE TRIANGLE HAS NO VOLUME. Channel 2 maps to it because the APU
 	;   has only two pulse channels, and the triangle is on or off -- so
 	;   channel 2 keeps its pitch and loses its fades. NES prizes and the
-	;   bonus tally use pulse channel 1 instead; extra-life notes remain on
-	;   triangle. A channel-2 fade becomes an on/off note.
+	;   bonus tally use pulse channel 1 instead; the extra-life bugle uses
+	;   pulse channel 0. A channel-2 fade becomes an on/off note.
 	;
 	; o THE TRIANGLE IS AN OCTAVE OFF IF LEFT ALONE. It divides by 32 rather
 	;   than 16, so it takes half the period for the same note. Halved here.

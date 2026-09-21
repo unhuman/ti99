@@ -115,10 +115,10 @@ store_nes_chr:	' 89 native NES 2bpp tiles, codes 96..184
 	DATA BYTE $00,$00,$00,$00,$C0,$70,$1C,$07
 	DATA BYTE $33,$33,$FB,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $CC,$CC,$04,$00,$00,$00,$00,$00
-	DATA BYTE $FF,$FF,$FF,$FF,$77,$FF,$55,$AA
-	DATA BYTE $00,$00,$00,$00,$88,$00,$AA,$55
-	DATA BYTE $55,$AA,$00,$88,$00,$00,$00,$00
-	DATA BYTE $AA,$55,$FF,$77,$FF,$FF,$FF,$FF
+	DATA BYTE $55,$BB,$55,$AA,$11,$AA,$00,$AA
+	DATA BYTE $AA,$44,$AA,$55,$EE,$55,$FF,$55
+	DATA BYTE $00,$22,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$DD,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$AA,$11,$EE,$55,$FF,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
@@ -147,18 +147,18 @@ store_nes_chr:	' 89 native NES 2bpp tiles, codes 96..184
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00
-	DATA BYTE $FF,$FF,$66,$00,$66,$66,$00,$00
-	DATA BYTE $00,$66,$66,$00,$66,$66,$00,$00
+	DATA BYTE $55,$FF,$66,$00,$66,$66,$00,$00
+	DATA BYTE $AA,$66,$66,$00,$66,$66,$00,$00
 	DATA BYTE $00,$66,$66,$00,$66,$66,$00,$00
 	DATA BYTE $00,$66,$66,$00,$66,$66,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$66,$00
 	DATA BYTE $00,$00,$AA,$11,$EE,$00,$66,$00
 	DATA BYTE $FF,$FF,$00,$66,$66,$00,$66,$00
 	DATA BYTE $00,$00,$00,$66,$66,$00,$66,$00
-	DATA BYTE $FF,$FF,$FF,$FF,$00,$66,$66,$00
-	DATA BYTE $00,$00,$00,$00,$00,$66,$66,$00
-	DATA BYTE $55,$AA,$00,$88,$00,$66,$66,$00
-	DATA BYTE $AA,$55,$FF,$77,$00,$66,$66,$00
+	DATA BYTE $55,$BB,$55,$AA,$00,$66,$66,$00
+	DATA BYTE $AA,$44,$AA,$55,$00,$66,$66,$00
+	DATA BYTE $00,$22,$00,$00,$00,$66,$66,$00
+	DATA BYTE $FF,$DD,$FF,$FF,$00,$66,$66,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$02,$04,$08,$10,$FF,$FF
@@ -194,7 +194,7 @@ suitcase_nes_chr:	' brown outline overlay: CHR 92..95, paired vertically
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $C3,$03,$03,$FF,$FF,$FF,$06,$00
 
-detail_nes_chr:	' native tiles 200..206: floor trim and lift details
+detail_nes_chr:	' native tiles 200..207: floor trim, lift details and upper sky
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $00,$00,$02,$04,$08,$10,$00,$00
@@ -209,6 +209,8 @@ detail_nes_chr:	' native tiles 200..206: floor trim and lift details
 	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$77,$FF,$DD,$FF
+	DATA BYTE $00,$00,$00,$00,$88,$00,$22,$00
 
 lift_nes_cells:	' closed, partly open, open; 4x4 tiles each
 	DATA BYTE $CD,$CD,$CD,$CD,$6C,$C9,$CA,$6C
@@ -217,6 +219,12 @@ lift_nes_cells:	' closed, partly open, open; 4x4 tiles each
 	DATA BYTE $C9,$CE,$CE,$CA,$CB,$AD,$AD,$CC
 	DATA BYTE $AF,$AF,$AF,$AF,$6D,$6D,$6D,$6D
 	DATA BYTE $CE,$CE,$CE,$CE,$AD,$AD,$AD,$AD
+
+blank_nes_row:	' replace old title score row with upper sky
+	DATA BYTE $CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+	DATA BYTE $CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+	DATA BYTE $CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
+	DATA BYTE $CF,$CF,$CF,$CF,$CF,$CF,$CF,$CF
 
 floor_nes_row:	' ground-floor bar only, PPU row 23
 	DATA BYTE $C8,$C8,$C8,$C8,$C8,$C8,$C8,$C8

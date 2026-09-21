@@ -417,8 +417,8 @@ def table(runs=None):
 def main():
     titleword.check_heights()
     codes, blocks, pats = allocate()
-    # LIGHT YELLOW, matching the in-game font and the NES's gold -- see
-    # genfont.py. It was WHITE, which made the title the odd one out.
+    # Light yellow title text matches the latest TI/Coleco HUD and messages.
+    # NES maps this ink to its existing gold palette entry.
     cbyte = (genart.LYELL << 4) | genart.HUD_BG
 
     with io.open(FACE_OUT, 'w', encoding='utf-8', newline='') as fh:

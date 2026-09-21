@@ -1677,3 +1677,15 @@ Use a positive-control sound when measuring output: silent diagnostic ROMs
 alone do not establish an APU-code failure.
 A nonzero meter establishes signal, not audible balance or successful playback
 for the user. Do not report a listening complaint resolved solely from that test.
+
+
+### Classic99 launch directory selects the input profile (2026-09-21)
+
+Classic99 reads `classic99.ini` relative to its launch working directory on this
+installation. Keystone's stable launcher initially used the executable folder,
+which selected a different joystick profile from the project's established one.
+Both old and new ROMs ignored Tab there, while the current ROM started and moved
+normally when launched from the project root. Preserve that working directory
+in `tools/keystone-dev.ps1 LaunchTI`; report the ROM and configuration folder.
+Do not work around a launch regression by broadening game controller semantics
+before comparing old and new builds under identical conditions.

@@ -118,9 +118,23 @@ def strip_comment(line):
     return ''.join(out)
 
 
+def with_calls(lines, name, seen=None):
+    """Include sound helpers so extracting a sequencer cannot evade the gate."""
+    seen = set() if seen is None else seen
+    if name in seen:
+        return []
+    seen.add(name)
+    body = routine(lines, name)
+    result = list(body)
+    for line in body:
+        for target in re.findall(r'\bGOSUB\s+([a-z][a-z0-9_]*)', strip_comment(line)):
+            result.extend(with_calls(lines, target, seen))
+    return result
+
+
 def main():
     lines = io.open(SRC, encoding='utf-8').read().split('\n')
-    tick = [strip_comment(l) for l in routine(lines, 'sfx_tick')]
+    tick = [strip_comment(l) for l in with_calls(lines, 'sfx_tick')]
     off = [strip_comment(l) for l in routine(lines, 'snd_off')]
 
     # --- 1. channels -------------------------------------------------------

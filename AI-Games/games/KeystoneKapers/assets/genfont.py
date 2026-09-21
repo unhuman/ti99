@@ -23,29 +23,16 @@ Run:  python3 genfont.py      writes ../src/font.bas
 
 import os
 
-# LIGHT YELLOW INK ON DARK BLUE, one byte repeated for every scan line of every
-# character. The TMS9918 bitmap colour table is one byte per 8x1 line -- high
-# nibble ink, low nibble background -- so 11 (light yellow) over 4 (dark blue)
-# is 11 * 16 + 4.
-#
-# LIGHT YELLOW, AND THE SAME LIGHT YELLOW EVERYWHERE.
-#
-# The score line, the message boxes and the title were three different colours:
-# the title white, the in-game font BLACK on dark blue, and on the NES the HUD
-# white against the title's gold. They are one family of text -- everything the
-# game says to the player outside the picture -- and they now read as one.
-#
-# On the TMS targets that is LYELL (11) over the same dark blue. On the NES the
-# text's ink is index 3 of whatever palette it sits in, so the change is one
-# palette entry: P1's light index moves from white to the gold P2 already uses
-# for the title, and the HUD and the boxes follow it.
+# Light yellow text on dark blue for TI-99/4A and ColecoVision. NES has its
+# own font colour table and matching gold text palette.
+# TMS9918 colour bytes use the high nibble for ink and low nibble for paper.
 #
 # THIS USED TO BE A VPOKE LOOP and it was the slowest thing in the boot: 1,416
 # writes of this one value, paced by 24 WAITs, before the title could be drawn.
 # CVBasic's DEFINE COLOR does the same job in a single synchronous LDIRVM3 with
 # interrupts off, but it reads the value from a TABLE -- so the table is 472
 # identical bytes, and they cost nothing because they live in the data bank.
-INK = 11                        # LYELL -- see above
+INK = 11                        # LIGHT YELLOW
 PAPER = 4
 COLBYTE = INK * 16 + PAPER
 
@@ -182,7 +169,7 @@ font_bits:
                      + "\t' " + label + "\n")
 
         fh.write("""
-\t' THE COLOUR TABLE, %d bytes of the same value ($%02X = black ink on dark blue).
+\t' THE COLOUR TABLE, %d bytes of the same value ($%02X = light yellow ink on dark blue).
 \t'
 \t' Loaded with DEFINE COLOR %d,%d,font_col, which is ONE synchronous call that
 \t' writes all three screen thirds (define_color always does the LDIRVM3 triple

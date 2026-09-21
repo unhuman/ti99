@@ -6210,3 +6210,154 @@ production ROM immediately after measurement.
 Validation: final NES build and regression gates passed. Compiled code confirms
 jump mute precedes the redraw WAIT and the bonus divisor is 270. RAM remains
 1,506 bytes with 448 bytes of PRG padding. These changes are uncommitted.
+
+
+## 24. Extra-life bugle call on all platforms (2026-09-20)
+
+The requested reveille-style reward replaces the old held extra-life tone on
+TI-99/4A, ColecoVision and NES. The phrase is G3-C4-E4-G4-E4-C4-G4, lasting
+2/2/2/4/2/2/6 sound ticks, at volume 13, followed by an explicit note-off.
+Divisors 571/428/340/286 keep the melody in the lower range tested on NES.
+This is a short original bugle-style phrase, not a full transcription of Reveille.
+
+life_tick reuses sfk/spt and the hit effect's recomputed #shp/shv scratch,
+allocating no RAM. It runs after the other effects in sfx_tick. On NES it uses
+pulse 1 (SOUND 0), taking priority over the jump while prizes/hits keep pulse 2.
+On TI and Coleco it uses SOUND 2, taking priority over the prize. Gameplay keeps
+running during the fanfare. Normal sound shutdown still clears both the pending
+award and the active fanfare. Jump motion/counters continue during its audio priority.
+
+The old sfk cue could be discarded during the bonus tally: add_score set it,
+but bonus_count never ticked the sound scheduler, and the following snd_off
+cleared it. Bonus ticks now call life_tick immediately after add_score. Tally
+clicks are suppressed while the fanfare is active on every platform; bonus
+arithmetic and count timing continue. The post-tally reading pause is 21 groups
+of three frames (63 rather than 60) and ticks the fanfare, allowing an award on
+the very last bonus unit to finish. A life earned on the catch's gameplay pass
+is finished before the catch's sound reset, preventing that award being cut off.
+Thus a catch can wait briefly for an already-started fanfare before counting.
+
+Awards still occur only when add_score actually increments kops below its cap.
+At four total lives, passing a threshold does not start the fanfare. The sound
+shutdown checker now follows GOSUB helpers so extracting life_tick does not hide
+its channels or latches from that existing regression gate.
+
+lifefanfare_test.py executes the actual BASIC award and melody routines for
+NES and non-NES branches, verifying threshold/cap behavior, all seven notes and
+durations, final silence, and no retrigger. Additional checks cover bonus-tick
+and final-tick integration, NES jump priority, and a mutation proving that the
+shutdown checker sees a new channel written inside a sound helper.
+
+
+## 25. NES redraw batching (2026-09-20)
+
+The old title-score row still needs clearing when entering play. nes_attr now
+queues one 32-byte blank row together with the 64 attribute bytes, replacing
+32 individual VPOKEs and their extra buffer flush. This removes one explicit
+WAIT and one queue-full wait from that tail on every redraw. The ground-floor
+navy trim remains a separate 32-byte upload, with its existing tile and palette.
+
+On the elevator screen, draw_car queues the existing three 4x4 door-state maps
+through SCREEN rather than computing and poking 48 individual cells. The source
+stride is four, destination stride remains 32, and the same closed/partial/open
+art and floor selection are used. A WAIT before and after isolates the 12 row
+descriptors (60 queue bytes, 1272 copy cycles) from radar and animated CHR traffic.
+This also applies to door animation during play. No new RAM is allocated.
+
+checkvblank now counts a descriptor header for each SCREEN row and multiplies
+literal FOR loops that have no WAIT. Its mutation cases reject an extra door
+and a multirow batch whose header overhead exceeds the existing budget. This
+is a bounded static check, not a complete emulator of dynamic control flow.
+The large 96/64-byte band uploads retain their waits; removing those would risk
+writes and scroll restoration outside vblank.
+
+
+Instrumented iNES review ROMs measured FRAME on entry/exit of draw_screen,
+then displayed the count in the score field (times ten). A second redraw after
+normal game initialization measured screen 7 at 18 -> 16 frames and screen 3
+at 20 -> 18 frames: about 33 ms saved at 60 Hz, or 10-11% in those cases.
+These are two sampled screens at the initial difficulty, not a worst-case bound.
+The normal production ROM was restored immediately after all four captures.
+The elevator captures' unobscured scenery area matched pixel-for-pixel.
+A desktop overlay partly obscured the earlier escalator capture, limiting its
+visual comparison. The semantic colour test also checks every floor/door-state combination against the former
+cell renderer's tile addresses and values. Dynamic gameplay remains a manual check.
+
+Final budgets: NES RAM 1506 bytes, 329 bytes PRG padding (32 more than the
+fanfare-only build); TI fixed area 22112/24336 bytes, 2224 free. Fanfare builds
+passed on all three targets; the drawing changes are NES-only.
+
+
+Classic99 handoff caveat: the user saw three Keystone menu choices and a
+nonworking launch after this session's restart. Reopening the same ROM manually
+resolved it. Page 0 has the only Keystone-named header, but data banks 3 and 4
+still carry generic CVBASIC GAME headers (their data begins within the first
+80 bytes, so the existing exact-copy header scrub deliberately preserves them).
+The cause of the reported duplicate Keystone entries is unconfirmed; do not
+assume a reload proves an emulator-only issue. Leave the working instance running.
+
+
+## 26. Latest-version launch repair and higher NES sky (2026-09-21)
+
+The final TI/Coleco text colour remains light yellow on dark blue, as in the
+latest version. A temporary white-font edit made during diagnosis was withdrawn
+after the user clarified that their concern was preserving all current features.
+All builds now regenerate font.bas alongside the other assets; font patterns,
+text placement and NES gold text retain their current designs.
+
+The NES gradient begins in PPU row 3, previously used only to clear the title's
+old score row. New native tile 207 keeps the upper four pixels blue, then starts
+the pink dither at y=28, halfway between the HUD's lower edge and buildings at
+y=32. Existing sky tiles continue the blend. Silhouettes, windows, palettes and
+HUD hats retain their roles. The existing 32-byte row transfer is reused, adding
+no redraw waits or RAM. The new tile costs 16 ROM bytes.
+
+### Launch regression, not a rollback of input code
+
+LaunchTI had explicitly selected the installation directory, whose Classic99
+profile maps joystick 1 to a physical controller and the keyboard to joystick 2.
+The project's existing profile maps the keyboard to joystick 1. Yesterday's
+2026-09-20 review ROM and the current ROM both ignored Tab under the installation
+profile; the same current ROM started with Tab and moved left when launched from
+the project folder. LaunchTI now uses that project folder and reports the loaded
+ROM hash and configuration folder. Keystone's controller mapping is unchanged.
+
+A separate intermittent duplicate-menu/hang report was not independently
+reproduced, but the user recovered by manually reopening the ROM. The launcher
+now waits for Classic99's window and loads the full production path through
+Cartridge > User > Open, using tools/classic99-load.ps1, instead of the -rom
+startup parser. It fails explicitly if the file-open controls cannot be found
+or the dialog stays open. Treat this as a launch-path workaround; do not claim
+that the internal cause of the reported duplicate choices has been established.
+
+The project profile's experimental F18A mode rendered the initial TI menu blank,
+although option 2 still entered Keystone. Switching the same running ROM to
+standard video and cold-resetting displayed exactly TI BASIC and KEYSTONE KAPERS.
+The launcher now selects standard TMS9918 video before opening the cartridge
+and cold-resets after loading. Opening alone still produced a blank selection
+menu with F18A already off; cold reset displayed the menu with the same cartridge.
+Final launcher verification allowed 2.2 seconds after the console keypress and
+showed TI BASIC plus one KEYSTONE KAPERS entry, then reached the title, started
+with Tab, and moved Kelly left. A one-second menu capture was still blank, so
+that early capture alone is not evidence of a hung console or a video-mode fault.
+This changes the emulator video mode for this game, not its gameplay code.
+shoot99.ps1 is now DPI-aware so captures show the complete client area.
+
+### Full-feature provenance checks
+
+The current KEYSTONE.bas retains the prior movement, collision, escalator,
+level-start and scoring code. Against commit 7a3dd40, TI-effective gameplay changes
+are the extra-life sequencer and its catch/bonus integration. The NES drawing and
+sky changes remain conditional; no earlier gameplay source has been restored.
+The proposed dual-port input workaround was removed before building.
+
+All 2907 current BASIC statements were found in order in the TI compiler's echoed
+input; all three packed fixed-code payloads and both data banks matched the current
+assembler outputs byte-for-byte. Runtime checks reached the title, started via Tab
+and moved left. These establish build provenance and the tested input path, not
+an assertion of exhaustive runtime feature equivalence. All three platform builds
+run the existing regression suite, including chase, collision, escalator/boarding,
+banking, sound shutdown and the new extra-life melody checks.
+The final NES production ROM was loaded, but automated fire input stayed on its
+title screen; the raised gradient has generator/build validation, not a completed
+final in-game visual review. The extra-life melody still needs listening review.

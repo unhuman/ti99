@@ -180,14 +180,18 @@ the title's SCORE/HI row and keeps the live score on the top HUD line.
 NES suitcases have brown sprite outlines over their existing black-filled
 background tiles, matching the TI colour scheme without recolouring fixtures.
 NES sound uses pulse 1 for jumping and pulse 2 for prizes and the bonus tally,
-with triangle extra-life notes and noise footsteps. NES bonus ticks use a
+with noise footsteps. The extra-life bugle call briefly takes priority over
+jumping on pulse 1. NES bonus ticks use a
 lower 415 Hz pitch with the original two-frame on/off rhythm. Hits take priority over
 prizes on pulse 2; jumping and prizes can play together.
 Footsteps now trigger the noise length counter correctly and stop before screen
 redraws, avoiding a sustained hiss while sound updates are paused. Jump audio
 is muted during the redraw and resumes its remaining warble afterward. Triangle
-note-off preserves its reload control; countdown, pickup and extra-life notes
-set volume before pitch. No extra RAM is required.
+note-off preserves its reload control; NES countdown, pickup and extra-life
+notes set volume before pitch. No extra RAM is required.
+All platforms play the same seven-note extra-life fanfare only when a life is
+actually added, including during the bonus tally. Tally clicks give way to the
+fanfare, and an award on the last tally tick is allowed to finish.
 In iNES, enable
 Audio > Play Sound When Inactive if you want sound while another window has focus.
 Crowded NES scanlines can drop the brown overlay; the background case remains
@@ -301,3 +305,17 @@ finish before the scroll restore, which is what made the escalator screens flash
   pulls reference frames; `DESIGN.md` §0b records what they showed. Stills had got three
   things wrong, including the floors — they are thick olive bars, not the hairlines an
   earlier note built its whole look rule on.
+
+NES screen redraws batch the old title-row clearing with the palette attributes,
+and draw elevator doors from the existing tile maps in blocks. The large scenery
+uploads still span multiple frames to stay within the video chip's write budget.
+
+TI/Coleco title, HUD and message text retain light yellow on dark blue. NES retains gold
+text; its sky blend starts halfway down the gap between the HUD and buildings.
+For Classic99, `LaunchTI` uses the project root's existing configuration so
+keyboard arrows and Tab retain the established joystick-1 mapping. The launcher
+selects standard TI video mode so the console selection menu remains visible.
+
+The TI launcher loads the completed cartridge through Classic99's normal Open
+dialog after startup, avoiding the command-line loading path that intermittently
+produced duplicate menu entries or a hang in this session.

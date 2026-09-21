@@ -103,6 +103,16 @@ def main():
         ("no WAIT: the pass's pokes flush with the upload", NO_WAIT, 1),
         ("nes_def during play: rendering off for two frames", BLANKING, 1),
     ]
+    cases.extend([
+        ("looped elevator batch fits", SHELL %
+         "\tWAIT\n\tFOR clv = 0 TO 2\n\tSCREEN tiles,0,0,4,4,4\n\tNEXT clv\n\tWAIT\n", 0),
+        ("four looped doors exceed vblank", SHELL %
+         "\tWAIT\n\tFOR clv = 0 TO 3\n\tSCREEN tiles,0,0,4,4,4\n\tNEXT clv\n\tWAIT\n", 1),
+        ("row descriptor overhead must count", SHELL %
+         "\tWAIT\n\tSCREEN tiles,0,0,4,12,4\n\tSCREEN tiles,0,0,16,1,16\n", 0),
+        ("extra row descriptor pushes batch over budget", SHELL %
+         "\tWAIT\n\tSCREEN tiles,0,0,4,12,4\n\tSCREEN tiles,0,0,28,1,28\n", 1),
+    ])
     for label, text, want in cases:
         got = run(text)
         mark = "ok  " if got == want else "FAIL"
@@ -110,12 +120,15 @@ def main():
             ok = False
         print("%s: %-52s  want %d, got %d" % (mark, label, want, got))
 
-    # This one is a REPORT, not an assertion: the checker measures each
-    # descriptor on its own, so it cannot see two small ones sharing a vblank.
-    # Naming the limit here is what stops a later reader believing it can.
-    got = run(FAKE_SPLIT)
-    print("note: two 48-byte halves in one pass are NOT caught (got %d) -- the "
-          "model is per descriptor, and the halves still share a vblank" % got)
+    # Two 48-byte copies actually fit: 2*(50+48*14) = 1444 cycles.
+    # Three do not, and the region model must reject that aggregate.
+    for text, want in [(FAKE_SPLIT, 0),
+                       (FAKE_SPLIT.replace('\tRETURN',
+                        '\tncnt = 3\n\tGOSUB nes_escd\n\tRETURN'), 1)]:
+        got = run(text)
+        if got != want:
+            ok = False
+            print('FAIL: aggregate upload budget: want %d, got %d' % (want, got))
 
     if not ok:
         print("checkvblank did not reject a form that shipped the flash")

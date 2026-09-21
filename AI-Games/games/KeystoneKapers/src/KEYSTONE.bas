@@ -1118,7 +1118,7 @@ setup_rest:
 	' Pattern ownership is checked from the generator's detail range.
 	#nsrc = VARPTR detail_nes_chr(0)
 	nchr = 200
-	ncnt = 7
+	ncnt = 8
 	ntab = 1
 	GOSUB nes_def_raw
 	' Independent suitcase outline, using spare background-table tile pairs.
@@ -2255,22 +2255,8 @@ draw_screen:
 		#ddst = #bdst(dlv)
 		#if NES
 		#ddst = #ddst + 96		' three rows down -- see the overscan note
-		' ONE ROW A FRAME, AND THIS IS WHY THREE BANDS IN FOUR LOST THEIR
-		' LAST TWO ROWS. The NMI copies PPUBUF into the PPU during vblank
-		' and its copy loop DOES NOT STOP WHEN VBLANK ENDS -- it runs to
-		' the end of the descriptor whatever the raster is doing, and a
-		' PPUDATA write outside vblank is discarded by the hardware.
-		'
-		' NTSC gives about 2273 CPU cycles of vblank, OAM DMA takes 513 of
-		' them, and the copy costs roughly 14 a byte: about a hundred bytes
-		' get through. A 32x5 band is 160, so the last sixty-odd vanished
-		' -- three whole rows arrived, the fourth stopped eight or nine
-		' cells in, and the floor bar and the air row above it were simply
-		' never there. Measured on screen as `#########.......`, on every
-		' band whose blit did not happen to start early.
-		'
-		' A row is 32 bytes, which fits with room to spare. This costs four
-		' extra frames per band at round start and nothing during play.
+		' Two vblanks per band: 96 then 64 bytes. Each SCREEN row
+		' has its own descriptor; keep both transfers isolated.
 		SCREEN stor_tpl,#dsrc,#ddst,32,3,32
 		WAIT
 		#dsrc = #dsrc + 96
@@ -2838,17 +2824,26 @@ prize_one:
 	' it does not need to be, because it only ever occupies whole cells.
 draw_car:
 	IF klsc <> 3 THEN RETURN
+	#if NES
+	' Twelve row descriptors total 48 tiles / 1272 copy cycles.
+	' Isolate them from radar, fixtures and animated CHR traffic.
+	WAIT
+	#endif
 	FOR clv = 0 TO 2
 		' 0 shut, 1 part-open, 2 open -- and only ONE floor is ever anything
 		' but shut, because there is only one car.
 		cst = 0
 		IF clv = elvl THEN cst = eldp
+		#if NES
+		#cva = 8288
+		#cva = #cva + #bdst(clv)
+		#cva = #cva + ELCOL
+		#ddst = #cva - 8192		' SCREEN takes a name-table offset
+		#dsrc = cst * 16.
+		SCREEN lift_nes_cells,#dsrc,#ddst,4,4,4
+		#else
 		FOR crw = 0 TO 3
-			#if NES
-			#cva = 8288
-			#else
 			#cva = 6144
-			#endif
 			#cva = #cva + #bdst(clv)
 			IF crw > 0 THEN #cva = #cva + 32
 			IF crw = 2 THEN #cva = #cva + 32
@@ -2860,7 +2855,11 @@ draw_car:
 				#cva = #cva + 1
 			NEXT ccl
 		NEXT crw
+		#endif
 	NEXT clv
+	#if NES
+	WAIT
+	#endif
 	RETURN
 
 	' ONE CELL OF THE DOORWAY, from its column (ccl 0-3), its band row
@@ -6054,13 +6053,9 @@ nes_attr:
 	' escalator or marquee CHR uploads. One 64-byte copy fits one vblank.
 	WAIT
 	ASM JSR nes_attrs_put
-	WAIT
-	' Remove the title's SCORE/HI row. The live game HUD is one row above.
-	#nav = 8288
-	FOR nai = 0 TO 31
-		VPOKE #nav,32
-		#nav = #nav + 1
-	NEXT nai
+	' Replace the title's SCORE/HI row with upper sky: 64+32 bytes,
+	' two descriptors, 1444 cycles. Avoid 32 individual queued pokes.
+	SCREEN blank_nes_row,0,96,32,1,32
 	WAIT
 	' Only the ground-floor bar gets this variant; its quadrants use P3.
 	SCREEN floor_nes_row,0,736,32,1,32
@@ -6241,6 +6236,7 @@ do_catch:
 	#nav = 9186			' the capture box, same rows as the reason
 	GOSUB nes_boxatt
 	#endif
+	GOSUB life_finish		' finish a life just earned on the catch frame
 	GOSUB snd_off			' nothing rings on through the count
 	' THE CAST STAYS ON SCREEN FOR THE COUNT. Hiding everything first threw
 	' away the picture the player had just earned -- Kelly stood over Harry
@@ -6248,9 +6244,12 @@ do_catch:
 	' that could have belonged to any round. They stay, the clock empties into
 	' the score, and only then does the board clear.
 	GOSUB bonus_count
-	' A SECOND to read the finished tally, then clear.
-	FOR bwi = 1 TO 60
+	' Read the tally while finishing even an award on its very last tick.
+	FOR bwi = 1 TO 21
 		WAIT
+		WAIT
+		WAIT
+		GOSUB life_tick
 	NEXT bwi
 	GOSUB snd_off
 	GOSUB hide_all
@@ -6305,6 +6304,7 @@ bn_loop:
 	GOSUB hud_time
 	#addv = #bval
 	GOSUB add_score
+	GOSUB life_tick
 	' TESTSOUNDS TALLY B -- a blip that COUNTS rather than a buzz that
 	' ratchets. Two frames on and two off at 1,036 Hz (divisor 108), against
 	' the 373 Hz it was: the pitch is what separates a count from the
@@ -6320,18 +6320,20 @@ bn_loop:
 	' has nothing else running.
 	#if NES
 	' iNES needs control/volume before the pitch write to start a note.
-	SOUND 1,,12
-	SOUND 1,270
+	IF spt = 0 THEN
+		SOUND 1,,12
+		SOUND 1,270
+	END IF
 	#else
-	SOUND 2,108,12
+	IF spt = 0 THEN SOUND 2,108,12
 	#endif
 	FOR bwi = 1 TO 2
 		WAIT
 	NEXT bwi
 	#if NES
-	SOUND 1,0,0
+	IF spt = 0 THEN SOUND 1,0,0
 	#else
-	SOUND 2,0,0
+	IF spt = 0 THEN SOUND 2,0,0
 	#endif
 	FOR bwi = 1 TO 2
 		WAIT
@@ -6703,6 +6705,8 @@ sfx_tick:
 	#if NES
 	' Prize uses pulse 1 beside jump on pulse 0; a hit/escape owns pulse 1.
 	IF sht > 0 THEN spz = 0
+	#else
+	IF spt > 0 THEN spz = 0
 	#endif
 	IF spz > 0 THEN
 		pzd = 143			' G5, the note it lands and fades on
@@ -6733,17 +6737,6 @@ sfx_tick:
 		' a held tone, not the hit's fall -- see shf above
 		shf = 0
 	END IF
-	IF sfk = 1 THEN
-		sfk = 0
-		#if NES
-		' iNES needs control/volume before the pitch write to start a note.
-		SOUND 2,,13
-		SOUND 2,300
-		#else
-		SOUND 2,300,13
-		#endif
-		spt = 25
-	END IF
 
 	' the jump sweep: divisor falling = pitch rising
 	' THE JUMP IS A WARBLE, NOT A SWEEP -- testsounds variant A, measured off
@@ -6768,8 +6761,13 @@ sfx_tick:
 		' The LOW note is shared, so it is set once below for both.
 		IF swf AND 2 THEN #swp = 476
 		IF swf AND 1 THEN #swp = 595
+		#if NES
+		IF spt = 0 THEN SOUND 0,#swp,12
+		IF spt = 0 THEN IF swt = 0 THEN SOUND 0,0,0
+		#else
 		SOUND 0,#swp,12
 		IF swt = 0 THEN SOUND 0,0,0
+		#endif
 	END IF
 
 	' THE LOW-TIME WARNING IS SILENT. There was a beep a second under ten, and
@@ -6882,11 +6880,45 @@ sfx_tick:
 		END IF
 		IF sht = 0 THEN SOUND 1,0,0
 	END IF
-	IF spt > 0 THEN
-		spt = spt - 1
-		IF spt = 0 THEN SOUND 2,0,0
-	END IF
+	GOSUB life_tick
 	RETURN
+
+	' A short reveille-style bugle call: G3 C4 E4 G4 E4 C4 G4.
+	' Twenty sound ticks, reusing spt and the hit's recomputed pitch/volume scratch.
+	' Called after other voices, during bonus ticks, and while the tally settles.
+life_tick:
+	IF sfk = 1 THEN
+		sfk = 0
+		spt = 21
+	END IF
+	IF spt = 0 THEN RETURN
+	spt = spt - 1
+	#shp = 286
+	IF spt > 6 THEN #shp = 428
+	IF spt > 8 THEN #shp = 340
+	IF spt > 10 THEN #shp = 286
+	IF spt > 14 THEN #shp = 340
+	IF spt > 16 THEN #shp = 428
+	IF spt > 18 THEN #shp = 571
+	shv = 13
+	IF spt = 0 THEN shv = 0
+	#if NES
+	' Pulse 0 takes priority over the jump; prizes/hits/tally keep pulse 1.
+	SOUND 0,,shv
+	SOUND 0,#shp
+	#else
+	SOUND 2,#shp,shv
+	#endif
+	RETURN
+
+	' A catch must not erase a life awarded on the same gameplay pass.
+life_finish:
+	GOSUB life_tick
+	IF spt = 0 THEN RETURN
+	WAIT
+	WAIT
+	WAIT
+	GOTO life_finish
 
 	' EVERYTHING BELOW THIS LINE IS ASSEMBLED INTO BANK 1, so the INCLUDE order
 	' is load-bearing and nothing but data may follow it.

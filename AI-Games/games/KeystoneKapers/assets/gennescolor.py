@@ -17,7 +17,7 @@ SKY_ROWS = {'SKY0': 0, 'BLDGM0': 0, 'BLDGW0': 0,
 
 DETAIL_BASE = 200
 DETAIL_NAMES = ('FLOOR0', 'EDGEL', 'EDGER', 'EDGESL', 'EDGESR',
-                'LIFTLINTEL', 'LIFTRAIL')
+                'LIFTLINTEL', 'LIFTRAIL', 'SKYCAP')
 DETAIL_CODES = {name: DETAIL_BASE+i for i, name in enumerate(DETAIL_NAMES)}
 ELEVATOR_NAMES = ('EDOOR', 'ECAR', 'ECARS', 'EDOORS', 'ECART', 'EJAMBL',
                   'EJAMBR', 'LIFTLINTEL', 'LIFTRAIL')
@@ -92,9 +92,14 @@ def sky_pixel(tile_row, x, y):
     # The 4x4 ordered pattern adds intermediate blends without new palettes.
     bayer = ((0, 8, 2, 10), (12, 4, 14, 6),
              (3, 11, 1, 9), (15, 7, 13, 5))
+    if tile_row == -1:
+        # PPU row 3 lies between the HUD and buildings. Keep its upper
+        # half blue, then begin the pink blend halfway through the gap.
+        density = (0, 0, 0, 0, 1, 2, 3, 4)[y]
+        return 2 if bayer[y & 3][x & 3] < density else 1
     if tile_row < 2:
         row = tile_row*8+y
-        density = (0, 0, 0, 0, 2, 4, 6, 8, 8, 10, 12, 14, 16, 16, 16, 16)[row]
+        density = (4, 6, 8, 8, 10, 10, 12, 12, 12, 14, 14, 16, 16, 16, 16, 16)[row]
         return 2 if bayer[y & 3][x & 3] < density else 1
     density = (0, 2, 4, 6, 10, 12, 14, 16)[y]
     return 3 if bayer[y & 3][x & 3] < density else 1
@@ -148,6 +153,7 @@ def detail_tiles():
                 row[x] = 2
             result.append(rows)
     result.extend(elevator[name] for name in ('LIFTLINTEL', 'LIFTRAIL'))
+    result.append([[sky_pixel(-1, x, y) for x in range(8)] for y in range(8)])
     return result
 
 
@@ -212,8 +218,9 @@ def main():
                  'NES reserve icon: CHR 198/199, used by OAM 56..60')
         art.emit(f, 'store_nes_chr', store_chr(), '89 native NES 2bpp tiles, codes 96..184')
         art.emit(f, 'suitcase_nes_chr', suitcase_chr(), 'brown outline overlay: CHR 92..95, paired vertically')
-        art.emit(f, 'detail_nes_chr', detail_chr(), 'native tiles 200..206: floor trim and lift details')
+        art.emit(f, 'detail_nes_chr', detail_chr(), 'native tiles 200..207: floor trim, lift details and upper sky')
         art.emit(f, 'lift_nes_cells', lift_cells(), 'closed, partly open, open; 4x4 tiles each')
+        art.emit(f, 'blank_nes_row', [DETAIL_CODES['SKYCAP']]*32, 'replace old title score row with upper sky')
         art.emit(f, 'floor_nes_row', [DETAIL_CODES['FLOOR0']]*32, 'ground-floor bar only, PPU row 23')
         art.emit(f, 'nes_attrs', [v for s in range(8) for v in attributes(s)],
                  'eight screens, 64 attribute bytes each; fixtures mask to P0')

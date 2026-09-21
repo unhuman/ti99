@@ -223,16 +223,16 @@ def ncnt_before(src, rts, i):
     return None
 
 
-def cycles(nbytes):
-    return COPY_HEADER + COPY_PER_BYTE * nbytes
+def cycles(nbytes, headers=1):
+    return COPY_HEADER * headers + COPY_PER_BYTE * nbytes
 
 
 def region_cost(region, prefix=()):
     """Sequential costs add; the arms of one IF take the largest."""
-    direct = sum(cycles(nb) for _i, _k, nb, p in region if p == prefix)
+    direct = sum(cycles(nb, nh) for _i, _k, nb, nh, p in region if p == prefix)
     n = len(prefix)
     arms = {}
-    for _i, _k, nb, p in region:
+    for _i, _k, nb, nh, p in region:
         if len(p) > n and p[:n] == prefix:
             arms.setdefault(p[n][0], set()).add(p[n][1])
     for this_if, branches in arms.items():
@@ -246,13 +246,31 @@ def report_region(name, region, bad):
         return                          # one descriptor is rule 2's business
     total = region_cost(region)
     if total > BUDGET:
-        nb = sum(b for _i, _k, b, _p in region)
+        nb = sum(b for _i, _k, b, _nh, _p in region)
         bad.append(
             "line %d (%s): %d queued uploads share one vblank -- %d bytes, %d "
             "cycles against the %d available. PPUBUF is not flushed until the "
             "NMI runs, so splitting an upload buys nothing unless a WAIT goes "
             "between the pieces."
             % (region[0][0] + 1, name, len(region), nb, total, BUDGET))
+
+
+def repeats_without_wait(src, live_lines, index):
+    """Count enclosing literal FOR iterations that queue into the same frame."""
+    stack = []
+    factor = 1
+    for line, st in statements(src, live_lines):
+        if st.upper().startswith('FOR '):
+            stack.append((line, st))
+        elif st.upper().startswith('NEXT') and stack:
+            start, loop = stack.pop()
+            if start < index < line:
+                body = [src[j].strip().upper() for j in range(start, line)
+                        if j in live_lines]
+                m = re.match(r'FOR \w+ = (\d+) TO (\d+)$', loop, re.I)
+                if m and 'WAIT' not in body:
+                    factor *= int(m.group(2)) - int(m.group(1)) + 1
+    return factor
 
 
 def main(path=None, quiet=False):
@@ -285,7 +303,7 @@ def main(path=None, quiet=False):
                            % (i + 1, name))
                 continue
             nbytes = n * 16          # two bitplanes: a tile is 16 bytes, not 8
-            sites.append((i, name, "nes_escd", nbytes))
+            sites.append((i, name, "nes_escd", nbytes, 1))
             continue
 
         if st == 'ASM JSR nes_attrs_put':
@@ -296,13 +314,18 @@ def main(path=None, quiet=False):
             if count is None:
                 bad.append('cannot resolve nes_attrs_put copy length')
             else:
-                sites.append((i, name, 'attributes', int(count.group(1))))
+                sites.append((i, name, 'attributes', int(count.group(1)), 1))
             continue
 
         m = SCREEN_RE.match(st)
         if m:
             nbytes = int(m.group(1)) * int(m.group(2))
-            sites.append((i, name, "SCREEN", nbytes))
+            # CPYBLK queues one LDIRVM descriptor for EACH row.
+            sites.append((i, name, "SCREEN", nbytes, int(m.group(2))))
+
+    sites = [(i, name, kind, nb * repeats_without_wait(src, live_lines, i),
+              nh * repeats_without_wait(src, live_lines, i))
+             for i, name, kind, nb, nh in sites]
 
     # REGIONS: everything queued between two WAITs, per routine -- and
     # ALTERNATIVES DO NOT ADD.
@@ -313,7 +336,7 @@ def main(path=None, quiet=False):
     # working code. Each site therefore carries the branch path it sits on, and
     # a region's cost takes the MAX across the arms of an IF and the SUM of
     # everything sequential.
-    for name in sorted(set(n for _i, n, _k, _b in sites)):
+    for name in sorted(set(n for _i, n, _k, _b, _nh in sites)):
         a0, b0 = rts[name]
         path, ifid, paths = [], 0, {}
         waits = []
@@ -334,17 +357,17 @@ def main(path=None, quiet=False):
                 waits.append(j)
             paths[j] = tuple(path)
 
-        items = [(i, k, nb) for i, n, k, nb in sites if n == name]
+        items = [(i, k, nb, nh) for i, n, k, nb, nh in sites if n == name]
         region, start = [], a0
-        for i, kind, nbytes in items:
+        for i, kind, nbytes, headers in items:
             if any(start < w < i for w in waits):
                 report_region(name, region, bad)
                 region, start = [], i
-            region.append((i, kind, nbytes, paths.get(i, ())))
+            region.append((i, kind, nbytes, headers, paths.get(i, ())))
         report_region(name, region, bad)
 
-    for i, name, kind, nbytes in sites:
-        c = cycles(nbytes)
+    for i, name, kind, nbytes, headers in sites:
+        c = cycles(nbytes, headers)
         big = nbytes > LARGE_BYTES
         if big and not wait_before(src, rts, i):
             bad.append(
@@ -368,9 +391,9 @@ def main(path=None, quiet=False):
           "copied, %d left" % (VBLANK, NMI_FIXED, BUDGET))
     print("a queued upload is LARGE above %d bytes (%d cycles reserved for the "
           "pass's own pokes)" % (LARGE_BYTES, RESERVE))
-    for i, name, kind, nbytes in sorted(sites, key=lambda s: -s[3]):
+    for i, name, kind, nbytes, headers in sorted(sites, key=lambda s: -s[3]):
         print("  line %-5d %-12s %-8s %4d bytes  %5d cycles  %s%s"
-              % (i + 1, name, kind, nbytes, cycles(nbytes),
+              % (i + 1, name, kind, nbytes, cycles(nbytes, headers),
                  "LARGE " if nbytes > LARGE_BYTES else "      ",
                  "WAIT ok" if wait_before(src, rts, i) else "no WAIT"))
 

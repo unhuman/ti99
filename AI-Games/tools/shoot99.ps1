@@ -29,6 +29,9 @@ param(
     [int]$SettleMs = 400
 )
 
+# Match screenshot coordinates to physical pixels on scaled Windows desktops.
+Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class ClassicDpi { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); }'
+[void][ClassicDpi]::SetProcessDPIAware()
 Add-Type -AssemblyName System.Drawing
 
 Add-Type @"

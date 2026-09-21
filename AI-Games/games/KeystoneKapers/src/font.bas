@@ -69,7 +69,7 @@ font_bits:
 	DATA BYTE $88,$88,$50,$20,$20,$20,$20,$00	' Y
 	DATA BYTE $F8,$08,$10,$20,$40,$80,$F8,$00	' Z
 
-	' THE COLOUR TABLE, 472 bytes of the same value ($B4 = black ink on dark blue).
+	' THE COLOUR TABLE, 472 bytes of the same value ($B4 = light yellow ink on dark blue).
 	'
 	' Loaded with DEFINE COLOR 32,59,font_col, which is ONE synchronous call that
 	' writes all three screen thirds (define_color always does the LDIRVM3 triple
