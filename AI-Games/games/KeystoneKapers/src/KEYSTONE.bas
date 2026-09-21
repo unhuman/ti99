@@ -911,76 +911,21 @@ setup_font:
 	ASM JSR nes_bgbank
 	ASM JSR nes_apuon
 
-	' FOUR BACKGROUND PALETTES, AND AN INDEX MEANS A ROLE RATHER THAN A
-	' COLOUR -- 1 the region's base, 2 structure, 3 highlight.
-	'
-	' The earlier version set only palette 0 and left the attribute table at
-	' zero, on the grounds that a 16x16 block cannot separate a wall from the
-	' pillar beside it. That is true WITHIN the store and it is the wrong
-	' conclusion, because the three things that most needed separating are not
-	' in the same block as each other: the HUD is row 3, the roof band is rows
-	' 4-8, and the store is rows 9-23. Blocks are four rows, so those fall
-	' apart cleanly -- and giving them a palette each took the background from
-	' THREE colours to nine.
-	'
-	' Nine of the sixteen entries used to be left at whatever the CVBasic
-	' prologue's placeholder put there (a pale red and green nothing in this
-	' game ever asked for). All twelve background inks are now stated.
-	PALETTE 1,26			' P0 store -- base   dark green, the floor
-	' GREY, AND IT STAYS GREY. This was briefly light blue, to give the display
-	' counters the TI's colour. It cannot be spent that way: CH_COUNTR is ONE
-	' character serving both the counter column and the structural pillars, so
-	' the pillars, the pillar caps, the briefcase and the scanner's side strips
-	' all went blue with it. The store's structure is not negotiable for the
-	' sake of one fixture -- if the counters are ever to be blue it has to come
-	' from somewhere that only the counters use.
-	PALETTE 2,16			' P0       -- struct grey, pillars and beams
-	' GOLD, NOT WHITE. The money bags and the floor bars are both YELLOW on the
-	' TI and both map to this index, so a white entry turned the prizes into
-	' pale blobs and the floor bars into thin grey lines. The bag's black knot
-	' tie is already in the art -- CH_BAGBL/BR are black ink on light-yellow
-	' paper -- so it appears for free the moment the paper is actually gold.
-	'
-	' IT WAS BRIEFLY CYAN, to give the counters' lip the TI's colour, and that
-	' took the FLOOR BARS and the MONEY BAGS with it -- everything yellow in
-	' the store rides this entry. Reverted: the floors and the prizes are what
-	' this index is for.
-	PALETTE 3,40			' P0       -- light  gold, floor bars and prizes
-
-	' THE SAME DARK BLUE AS THE SKY. The HUD row sits on P1 and the font's
-	' paper is index 1 (see the font upload), so this IS the score line's
-	' background -- it used to be the black backdrop and this entry only
-	' showed behind the lives icon.
-	PALETTE 5,1			' P1 HUD   -- base   dark blue, the score line's ground
-	PALETTE 6,16			' P1       -- struct grey
-	' THE SAME GOLD THE TITLE USES, so the score line, the message boxes and
-	' the logo are one family of text rather than three colours. Text's ink is
-	' index 3 of whatever palette it sits in, and everything outside the
-	' picture sits on P1 -- so this one entry is the HUD and the boxes both.
-	' P2's light entry (PALETTE 11) is the same 40; they are deliberately
-	' equal and a change to one wants the other.
-	PALETTE 7,40			' P1       -- light  gold, the text
-
-	' THE SUNSET, IN TWO BANDS RATHER THAN SIX. SKYGRAD is six colours over
-	' three character rows -- one per four scan lines -- and the NES cannot
-	' colour a scan line, so that gradient cannot survive intact. What it CAN
-	' do is give the top two rows one palette and the next two another, which
-	' the attribute blocks fall on exactly: blue above, warm below.
-	PALETTE 9,1			' P2 sky -- base dark blue, one flat band
-	PALETTE 10,16			' P2            -- struct grey, the buildings
-	' THE LIT WINDOWS MUST NOT CHANGE COLOUR HALFWAY DOWN THE SKYLINE. A
-	' building's windows are LYELL ink, which is the light index, and the sky
-	' is split into two palettes at the middle of the band -- so with P2's
-	' light entry white and P3's yellow, the same window was white in the top
-	' half of the city and yellow in the bottom. It read as the windows being
-	' part of the gradient, which they are not: the gradient is the PAPER
-	' behind them. Both halves carry the same yellow now, so a window is a
-	' window wherever it stands, and only the sky behind it changes.
-	PALETTE 11,40			' P2            -- light  yellow, the lit windows
-
-	PALETTE 13,39			' P3 sky bottom -- base   orange
-	PALETTE 14,16			' P3            -- struct grey, the buildings
-	PALETTE 15,40			' P3            -- light  yellow
+	' Grey is shared index 0 during gameplay. Other indices are per region.
+	' gennescolor.py assigns P3 only to counter quadrants, retaining green
+	' wall and gold floor colours. Fixtures with black outlines use P0.
+	PALETTE 1,26			' P0: green, black, gold
+	PALETTE 2,15
+	PALETTE 3,40
+	PALETTE 5,1			' P1 HUD/upper skyline: blue, pink, gold
+	PALETTE 6,36
+	PALETTE 7,40
+	PALETTE 9,38			' P2 lower skyline: orange, black, gold
+	PALETTE 10,15
+	PALETTE 11,40
+	PALETTE 13,26			' P3 counters: green, blue, gold
+	PALETTE 14,33
+	PALETTE 15,40
 
 	' AND FOUR FOR THE ACTORS, which DO get one each because a sprite carries
 	' its own palette number. nes_spal maps the TMS colour every SPRITE
@@ -1165,79 +1110,10 @@ setup_rest:
 	nchr = 96
 	ncnt = 89
 	ntab = 1
-	#ncol = VARPTR store_col(0)
+	#ncol = VARPTR nes_store_col(0)
 	nink = 3
 	GOSUB nes_def
-	' AND THE TWO COUNTER CHARACTERS AGAIN, WITH AN INK AND NO COLOUR TABLE.
-	'
-	' Both are SOLID -- eight rows of $FF -- so a single ink decides the whole
-	' cell and the colour table has nothing to add. Sending them this way takes
-	' them out of the global TMS-colour map altogether, which is the only way
-	' to have them AND the sky: the counter face is light blue on light blue,
-	' and light blue is also SKYGRAD's second band. Mapping it to structure
-	' grey made the counters visible and painted a grey stripe across the
-	' sunset, because the buildings in that band are grey too.
-	'
-	' The lip is the LIGHTER of the two, which is the relationship the TI has
-	' (cyan over light blue). The colours are not the TI's -- the store band
-	' holds three inks and blue is not among them -- but the reading is.
-	#nsrc = VARPTR store_pat(0)
-	#nsrc = #nsrc + 24		' char 99
-	nchr = CH_SHELFT
-	ncnt = 1
-	ntab = 1
-	#ncol = 0
-	nink = 3			' the lip
-	GOSUB nes_def
-	#nsrc = VARPTR store_pat(0)
-	#nsrc = #nsrc + 32		' char 100
-	nchr = 100
-	ncnt = 1
-	ntab = 1
-	#ncol = 0
-	nink = 2			' the body
-	GOSUB nes_def
-	' AND THE SUNSET'S LAST BAND, WHICH LEFT A YELLOW STRIPE ON THE HORIZON.
-	'
-	' SKYGRAD's third band is [9,9,9,9,10,10,10,10] -- four scan lines of dark
-	' blue over four of dark YELLOW -- and on the TI that is the bottom step of
-	' a six-step sunset that has been fading towards it for two character rows
-	' above. The NES sky is one flat dark blue band (PALETTE 9,1), so those four
-	' rows have nothing to grade from: dark yellow maps to the light index,
-	' which in P2 is the lit-window yellow, and it reads as a yellow stripe lying
-	' across the horizon and over the tops of the shorter buildings.
-	'
-	' Exactly two characters carry it -- CH_SKY2, the open sky of that row, and
-	' CH_BLDGL, the short building whose wall starts halfway down it. Every
-	' other character of the row is either solid building (paper grey) or ends
-	' its blue before row 4. So both are simply re-sent with a colour table in
-	' which those rows are dark blue like the rest; the art is untouched and the
-	' TI keeps its gradient, this being inside #if NES.
-	'
-	' THE OFFSETS ARE LITERALS AND MUST STAY THAT WAY. (CH_SKY2 - 96) * 8 is
-	' 456 and the BLDGL one is 584; both are past 255, so a CONST or a folded
-	' constant expression would truncate silently (CLAUDE.md 3A). A bare
-	' literal added to a 16-bit variable is the form that compiles correctly --
-	' and it costs NO new variable, which matters more here than it looks:
-	' the first version of this block spent three bytes of scratch on the
-	' arithmetic and pushed `#tsrc` off the end of RAM. checkchars.py ties both
-	' numbers back to the character constants so a renumber cannot strand them.
-	#nsrc = VARPTR store_pat(0)
-	#nsrc = #nsrc + 456		' char 153, CH_SKY2
-	#ncol = VARPTR nes_sky2c(0)
-	nchr = CH_SKY2
-	ncnt = 1
-	ntab = 1
-	nink = 3
-	GOSUB nes_def
-	#nsrc = VARPTR store_pat(0)
-	#nsrc = #nsrc + 584		' char 169, CH_BLDGL
-	#ncol = VARPTR nes_bldlc(0)
-	nchr = CH_BLDGL
-	ncnt = 1
-	ntab = 1
-	nink = 3
-	GOSUB nes_def
+	' NES colours and skyline bands are generated in nes_store_col.
 	' AND THE FOUR MARQUEE LAMPS, THE SAME WAY THE MARQUEE WILL SEND THEM.
 	'
 	' THIS IS THE TITLE'S COLOUR SHIFT ON A COLD BOOT. The store load above
@@ -1264,12 +1140,15 @@ setup_rest:
 	#ncol = 0
 	nink = 3
 	GOSUB nes_def
-	' CH_KOPIC IS DELIBERATELY *NOT* SENT THIS WAY. It is black ink on dark
-	' blue paper, so it only collapses if dark blue moves to the backdrop --
-	' which is the sky experiment recorded in nes_chr.asm and abandoned. Sent
-	' with its own ink it came out as a white block rather than a Kop, so if
-	' that experiment is ever revived, redraw the icon rather than reach for
-	' this path.
+	' HUD hats use the black sprite palette, independent of the pink sky.
+	' CHR 198/199 are otherwise free; the second tile is transparent.
+	#nsrc = VARPTR hud_hat_pat(0)
+	nchr = 198
+	ncnt = 2
+	ntab = 1
+	#ncol = 0
+	nink = 1
+	GOSUB nes_def
 	#else
 	DEFINE CHAR 96,89,store_pat
 	#endif
@@ -1637,6 +1516,7 @@ f0_rows:
 	' (CLAUDE.md 3A). Five doublings have no such hazard and are smaller.
 title_draw:
 	#if NES
+	ASM JSR nes_hats_hide
 	' THE TITLE SITS ON DARK BLUE, AND THE BACKDROP IS THE ONLY WAY TO SAY SO.
 	'
 	' Palette index 0 is the UNIVERSAL backdrop -- every background palette's
@@ -1646,10 +1526,10 @@ title_draw:
 	'
 	' Writing it here and putting it back in draw_screen costs two statements
 	' and no art: the title is almost entirely index 0, so the backdrop IS its
-	' background. The store wants black back -- its outlines, the HUD row and
-	' the space under the scanner all read as index 0 -- so draw_screen resets
-	' it rather than leaving the store tinted.
-	PALETTE 0,1			' dark blue
+	' background. draw_screen restores grey for buildings, pillars and the
+	' scanner margins; black outlines now use palette index 2.
+	PALETTE 0,1			' title backdrop
+	PALETTE 9,1			' title paper in P2
 	' AND EVERY BLOCK ON P2, because the font now has a PAPER.
 	'
 	' The title's text used to sit on index 0 and index 0 was this backdrop, so
@@ -2274,9 +2154,6 @@ start_krook:
 	CLS
 	#endif
 	GOSUB draw_screen
-	#if NES
-	GOSUB nes_attr
-	#endif
 	GOSUB scan_canvas
 	GOSUB hud_all
 	#lf = FRAME
@@ -2328,7 +2205,10 @@ draw_screen:
 	' (see nes_inkmap in assets/nes_chr.asm). It works, and it costs the
 	' escalator, the radar ground and every black outline in the store, all of
 	' which ride on index 0. One sky band is not worth the store's line work.
-	PALETTE 0,15			' black
+	PALETTE 0,16			' shared GREY: buildings and pillars
+	PALETTE 9,38			' lower skyline orange
+	WAIT
+	ASM JSR nes_attrs_begin
 	#endif
 	GOSUB hide_play
 	GOSUB load_band
@@ -2389,6 +2269,9 @@ draw_screen:
 	NEXT dq
 	GOSUB esc_cap_draw
 	GOSUB draw_car
+	#if NES
+	GOSUB nes_attr
+	#endif
 	RETURN
 
 	' A SUPPORT BEAM HAS TO REACH THE FLOOR IT HOLDS UP, AND THAT FLOOR IS
@@ -3802,6 +3685,9 @@ wall_clear:
 	RETURN
 
 fixture_clear:
+	#if NES
+	ASM JSR nes_fixture_pal
+	#endif
 	' Input #pva: fixture top-left; nbl: NES band. Called at screen setup.
 	' Prize/radio callers share this scratch; callees leave #pva intact.
 	#wca = #pva - 64
@@ -5309,7 +5195,7 @@ esc_tick:
 		' colour bytes start 14 x 8 into store_col. Derived rather than
 		' written out, because a renumber moves the first number and would
 		' leave a hand-copied second one behind.
-		#ncol = VARPTR store_col(0)
+		#ncol = VARPTR nes_store_col(0)
 		#ncol = #ncol + 112
 		GOSUB nes_escd
 		#else
@@ -5327,7 +5213,7 @@ esc_tick:
 		IF escp = 1 THEN #nsrc = VARPTR esc_phe1(0)
 		IF escp = 2 THEN #nsrc = VARPTR esc_phe2(0)
 		IF escp = 3 THEN #nsrc = VARPTR esc_phe3(0)
-		#ncol = VARPTR store_col(0)
+		#ncol = VARPTR nes_store_col(0)
 		#ncol = #ncol + 160		' character 116, twenty on from 96
 		GOSUB nes_escd
 		#else
@@ -5623,8 +5509,8 @@ scan_or1:
 	' This routine only ever draws the escalator flights (three call sites,
 	' all in scan_escs). On the TI they are drawn as INK and coloured black by
 	' scan_escc, so the bits go IN. Here the canvas is wiped to green -- plane
-	' 0 set everywhere, see scan_wipe -- and black is index 0, so the flight
-	' is made by taking plane 0 bits OUT. Same pixels, opposite sense.
+	' 0 set everywhere, see scan_wipe. Black is index 2: clear plane 0 and
+	' set plane 1 for the same pixels. Preserve the caller's pattern address.
 	'
 	' 255 - fm1 is NOT fm1: a byte subtracted from all-ones never borrows, so
 	' it is the bitwise complement without needing one.
@@ -5634,11 +5520,20 @@ scan_or1:
 	fmn = 255 - fm1
 	sva = sva AND fmn
 	nsc(#nsi) = sva
+	VPOKE #sda,sva
+	#nsi = #nsi + 8
+	sva = nsc(#nsi)
+	sva = sva OR fm1
+	nsc(#nsi) = sva
+	#sda = #sda + 8
 	#else
 	sva = VPEEK(#sda)
 	sva = sva OR fm1
 	#endif
 	VPOKE #sda,sva
+	#if NES
+	#sda = #sda - 8
+	#endif
 	RETURN
 
 	' (sccol 0..15, say 0..23) -> pattern address #sda
@@ -5718,8 +5613,7 @@ scan_wipe:
 	#if NES
 	' TWELVE BURSTS, NOT SIX: 48 tiles of SIXTEEN bytes. The shadow is indexed
 	' by the same offset the PPU address uses, so it grows with the stride --
-	' half of what it holds is the second bitplane, which this port never sets
-	' and scan_or1 therefore never reads as ink.
+	' half of what it holds is plane 1; black flights use it too.
 	' AND THE CANVAS IS WIPED TO GREEN, NOT TO BLACK.
 	'
 	' On the TI a blank canvas is zeros and the COLOUR TABLE says what the
@@ -5729,28 +5623,13 @@ scan_wipe:
 	'
 	' THAT INVERTS THE SENSE OF EVERY FEATURE DRAWN ON TOP. The floor lines
 	' add plane 1 to reach index 3 (gold), and the escalator diagonals CLEAR
-	' plane 0 to reach index 0 (the backdrop, black) -- see scan_or1, which
-	' is why it ANDs here and ORs on the TI. Writing zeros here instead would
-	' leave the instrument black-on-black and the flights invisible.
+	' plane 0 and SET plane 1 to reach index 2 (black); see scan_or1.
+	' Writing zeros here instead would give the canvas the grey backdrop.
 	'
 	' A tile is sixteen bytes: 0-7 are plane 0 and 8-15 plane 1, so the byte's
 	' position within its tile decides which it is.
-	' AND THE MARGINS ARE GREY, WHICH IS THE OTHER BITPLANE PAIR.
-	'
-	' The canvas is three character rows -- 24 pixel rows -- of which the
-	' instrument uses the middle SIXTEEN (rows 4-19: four levels of four).
-	' The outer eight are deliberate air, four above and four below, so the
-	' radar does not butt against the shop floor above it or the screen edge
-	' below. On the TI those rows take the scanner's own background; here they
-	' are index 2, the store's grey, against the instrument's green.
-	'
-	' Two bitplanes give the four colours this canvas needs and nothing else
-	' has to change: index 1 green is plane 0, index 2 grey is plane 1, and
-	' the floor lines and flights work on top of those (scan_furn, scan_or1).
-	'
-	' The byte's place in the canvas says which it is. 256 bytes is one
-	' CHARACTER row (16 tiles of 16), the low three bits are the pixel row
-	' within the tile, and bit 3 of the position picks the bitplane.
+	' The full 24-row canvas is green; grey margins are separate cells.
+	' Plane 0 carries green, plane 1 black, and both together gold.
 	FOR swj = 0 TO 11
 		FOR swi = 0 TO 63
 			swv = #nsi AND 15		' 0-7 plane 0, 8-15 plane 1
@@ -5763,12 +5642,8 @@ scan_wipe:
 			' screen. See scan_base.
 			swm = 0
 			IF swm = 1 THEN
-				' grey: plane 1 set, plane 0 clear
-				IF swv > 7 THEN
-					swv = 255
-				ELSE
-					swv = 0
-				END IF
+				' grey: shared index 0, both planes clear
+				swv = 0
 			ELSE
 				' green: plane 0 set, plane 1 clear
 				IF swv > 7 THEN
@@ -6080,43 +5955,31 @@ hud_kops:
 	' 5 - spare wraps to 253 the moment a cheat sets more Kops than fit.
 	FOR pli = 0 TO 4
 		plv2 = 32
+		#if NES
+		' Icons are sprites; keep their background cells blue.
+		#else
 		IF pli + spare > 4 THEN plv2 = CH_KOPIC
+		#endif
 		VPOKE #pla,plv2
 		#pla = #pla + 1
 	NEXT pli
+	#if NES
+	ASM JSR nes_hats
+	#endif
 	RETURN
 
 #if NES
 	' ----------------------------------------------------------------------
-	' THE ATTRIBUTE TABLE -- the NES's only way of giving two parts of the
-	' screen different colours.
-	'
-	' 64 bytes at $23C0. Each byte covers FOUR character rows and four
-	' columns, split into four 2x2 quadrants of two bits each: bits 0-1 top
-	' left, 2-3 top right, 4-5 bottom left, 6-7 bottom right.
-	'
-	' The picture sits three rows down for overscan, which lands the regions
-	' on block boundaries almost by luck:
-	'
-	'   byte row 0   name rows 0-3    the HUD is row 3  -> bottom quads P1
-	'   byte row 1   name rows 4-7    the sky, top half -> P2, bottom -> P3
-	'   byte rows 2+ name rows 8-29   the store         -> P0
-	'
-	' $50 is "bottom two quadrants on palette 1"; $FA is "top two on palette
-	' 2, bottom two on palette 3", which is what splits the sunset into a
-	' blue band over a warm one. Written as bare literals because this is the
-	' one place the bit layout is visible, and naming them would hide it.
-	'
-	' 64 VPOKEs is 192 bytes of PPU queue, and WRTVRM waits when the 64-byte
-	' buffer fills, so this paces itself across three frames and cannot
-	' overrun vblank the way a single big SCREEN blit can.
-	' A MESSAGE BOX GOES WHITE ON DARK BLUE, and the caller says which four
+	' Attributes select a palette per 16x16 quadrant. gennescolor.py derives
+	' eight screen tables; draw_screen stages one in nesb, masks fixtures,
+	' then uploads all 64 bytes through nes_attrs_put within one vblank.
+	' A MESSAGE BOX GOES GOLD ON DARK BLUE, and the caller says which four
 	' bytes in #nav.
 	'
 	' The text's paper is index 1 and its ink index 3 (see the font upload);
 	' over the store those are P0's green and gold -- the same green the box is
 	' sitting on, which is what made the messages hard to read. P1 is the HUD's
-	' palette, dark blue and white, so pointing the box's attribute bytes at it
+	' palette, dark blue and gold, so pointing the box's attribute bytes at it
 	' gives a message the same treatment as the score line.
 	'
 	' FOUR BYTES AND NOT ONE MORE. An attribute byte covers four characters by
@@ -6141,28 +6004,18 @@ nes_boxatt:
 	RETURN
 
 nes_attr:
-	#nav = 9152			' $23C0
-	' $55, NOT $50 -- ALL FOUR QUADRANTS ON P1, not just the bottom two.
-	'
-	' $50 put the HUD's own row (name row 2) on P1 and left rows 0-1 on P0.
-	' That was invisible while text sat on the backdrop, and stopped being so
-	' the moment the font gained a PAPER: rows 0-1 are blank cells, and a blank
-	' cell is all paper, so they came out in P0's index 1 -- the store's GREEN
-	' -- as a green band above the score line. Nothing is drawn up there, so
-	' putting the whole byte on P1 costs nothing and the HUD reads as one band
-	' of dark blue running into the sky.
-	FOR nai = 0 TO 7
-		VPOKE #nav,85
+	' nesb holds attributes only during draw_screen; flush before reuse by
+	' escalator or marquee CHR uploads. One 64-byte copy fits one vblank.
+	WAIT
+	ASM JSR nes_attrs_put
+	WAIT
+	' Remove the title's SCORE/HI row. The live game HUD is one row above.
+	#nav = 8288
+	FOR nai = 0 TO 31
+		VPOKE #nav,32
 		#nav = #nav + 1
 	NEXT nai
-	FOR nai = 0 TO 7
-		VPOKE #nav,170			' $AA -- the whole sky band on P2, no second palette
-		#nav = #nav + 1
-	NEXT nai
-	FOR nai = 0 TO 47
-		VPOKE #nav,0
-		#nav = #nav + 1
-	NEXT nai
+	WAIT
 	RETURN
 #endif
 
@@ -7011,6 +6864,9 @@ sfx_tick:
 	' is lost -- and with no error at build or run time. gentitle.py now
 	' writes them to title.bas below, which stays in bank 1.
 	INCLUDE "scancol.bas"
+	#if NES
+	INCLUDE "nescolor.bas"
+	#endif
 	INCLUDE "titledl.bas"
 	#if TI994A
 	BANK 1

@@ -99,7 +99,7 @@ Known follow-up items to assess when the user selects the next change:
   requires considering jump geometry and ball avoidability together, not merely
   raising the hitbox or redrawing the crouch. Use `checkball.py` and art checks.
 - `DESIGN.md` section 12a, "What is not done", records NES counter/pillar colour
-  ambiguity, unverified NES sound, and sprite scanline pressure that may need
+  ambiguity (resolved by section 15), unverified NES sound, and sprite scanline pressure that may need
   merged 2bpp actor art. Treat these as recorded limitations to reproduce, not
   as newly verified findings.
 - That section also records that NES pacing was based on the TI's measured loop

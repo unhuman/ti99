@@ -42,6 +42,7 @@ STORE_FIRST = 96
 # blind the check for every other character at the same moment, which is how a
 # gate quietly stops being one (CLAUDE.md 3A).
 EXEMPT = {
+    100: "CH_SHELFB: a solid blue counter body in NES palette 3",
     107: "CH_COUNTR, the pillar/counter column: one flat grey by design",
     179: "CH_SCANBK, the black strip either side of the radar",
 }

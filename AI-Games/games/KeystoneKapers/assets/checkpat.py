@@ -115,6 +115,10 @@ def owners():
                                 (185, 12, "tfont_pat1")):
         for p in range(first, first + count):
             chars.setdefault(p, label)
+    # NES 8x16 reserve icons select background-table tiles 198/199.
+    for p in (198, 199):
+        assert p not in chars, "HUD hats overlap another CHR owner"
+        chars[p] = "hud_hat_pat"
     return {SPRITE_TABLE: spr, CHAR_TABLE: chars}
 
 

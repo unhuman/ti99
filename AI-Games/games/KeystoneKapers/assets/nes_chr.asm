@@ -24,28 +24,18 @@
 ; ---------------------------------------------------------------------------
 ; COLOUR, AND WHY IT COMES OUT OF THE GAME'S OWN COLOUR TABLE
 ;
-; A TMS9918 cell in this mode is one bit per pixel with a foreground and a
-; background colour PER CHARACTER PER SCAN LINE -- which is why DEFINE COLOR
-; wants eight bytes a character. The NES has no such thing: a tile is TWO
-; bitplanes giving four colour indices, and which four colours those are is
-; chosen by the attribute table in 16x16-pixel BLOCKS. Walls, pillars and floor
-; bars sit next to each other inside a single block all over this store, so the
-; attribute table cannot separate them and there is no point pretending.
+; A TMS9918 cell selects foreground/background colours for each 8-pixel
+; row. NES tiles encode two bitplanes; each 16x16 attribute quadrant selects
+; one of four palettes. The uploader converts each row's colours into indices:
 ;
-; The second BITPLANE can, though. Writing the art into both planes with a
-; per-character pair of indices gives every character its own ink and its own
-; paper out of one palette of three colours plus the backdrop -- which is
-; exactly the shape of the data DEFINE COLOR was already being handed. So the
-; uploader reads store_col and maps each TMS colour to one of four indices:
+;   0  shared grey during gameplay <- TMS transparent, dark red, grey
+;   1  regional paper              <- greens, blues, light reds, magenta
+;   2  regional alternate          <- black, cyan
+;   3  gold highlights             <- yellows, white
 ;
-;   0  the backdrop               <- TMS 0 transparent, 1 black, 7 cyan
-;   1  the region's base          <- TMS 2 3 12 greens, 4 5 blues, 8 9 reds, 13
-;   2  structure                  <- TMS 6 dark red, 14 grey
-;   3  the region's light         <- TMS 10 11 yellows, 15 white
-;
-; An index is a ROLE, not a colour: the attribute table gives the store, the HUD
-; and the two halves of the sky their own palette, so the same character comes
-; out green-on-gold in the shop and blue-on-grey in the sky. See nes_attr.
+; gennescolor.py supplies NES-specific store colours and screen attributes.
+; Shared grey preserves the structure while counters get a blue alternate.
+; Black fixture outlines need P0; HUD reserve hats use a sprite palette.
 ;
 ; PER-SCAN-LINE COLOUR IS **NOT** LOST, and the note that used to sit here
 ; saying it was is what flattened the floor bars for a session. An NES tile is
@@ -364,116 +354,16 @@ nes_chrnext_dec:
 	DEC temp2
 	RTS
 
-	; TMS COLOUR -> ONE OF THE FOUR INDICES, BY ROLE RATHER THAN BY HUE.
-	;
-	; There are four background palettes now (see nes_attr in KEYSTONE.bas),
-	; and a character's bitplanes fix its INDICES while the attribute table
-	; picks which palette those indices come out of. So an index has to mean
-	; the same THING everywhere, not the same colour:
-	;
-	;   0  the backdrop, black
-	;   1  THE REGION'S BASE   -- store green, HUD blue, sky blue
-	;   2  STRUCTURE           -- grey, in every region
-	;   3  HIGHLIGHT           -- store white, sky warm
-	;
-	; That is what lets one encoding of one character be recoloured per
-	; region for free. The store's own mapping is UNCHANGED by this table --
-	; DGREEN 1, GRAY 2, WHITE 3, BLACK 0 are exactly what they were -- so the
-	; shop looks as it did and only the HUD and the roof band move.
-	;
-	; The blues left index 2 and the warm colours gathered on 3, which is what
-	; turns the sunset from one flat shade into blue over orange behind grey
-	; buildings.
-	; CYAN GOES TO THE BACKDROP, NOT TO GREY, AND THAT IS WHAT MAKES THE LIFT
-	; DOORS AND THE SHELVES VISIBLE AGAIN. Three store characters have an
-	; EMPTY pattern (CH_EDOOR, CH_ECAR, CH_ECART are 0 of 64 pixels), so each
-	; renders as a flat block of its PAPER: grey for the door, cyan for the
-	; car. With cyan mapped to grey those were the same colour and the doors
-	; could not be seen at all. The same collision hid the shelves --
-	; CH_SHELFT is a SOLID 64/64 block of cyan and CH_COUNTR a solid block of
-	; grey, so the shelf and the counter it stands on were one grey mass.
-	; Sending cyan to index 0 costs nothing (the backdrop is already there)
-	; and separates both pairs at once.
-	;
-	; WHITE STAYS ON INDEX 3, WHICH IS NOW GOLD, AND THAT IS A REAL LOSS RATHER
-	; THAN AN OVERSIGHT. The store band has three inks and the picture wants
-	; four: green, structure, gold and white. Gold has to win it -- the money
-	; bags and the floor bars are both YELLOW on the TI and both land here, so
-	; a white index 3 turned the prizes into pale blobs and the bars into thin
-	; grey lines, which is what was reported.
-	;
-	; Moving white to index 2 to free index 3 does not work, and checkink.py
-	; says so: CH_EDOOR and CH_EDOORS are WHITE ink on GREY paper, so they
-	; collapse into a featureless block the moment the two share an index. The
-	; lift doors would go invisible to make the radio's dots white -- trading
-	; one of the reported faults for another. So the radio's dots come out gold
-	; on its black body instead of white: visible and legible, and the only
-	; way to have them truly white is a fourth ink, which needs the attribute
-	; table to split the store band the way it already splits the sky.
-	; DARK RED GOES TO STRUCTURE, NOT TO GOLD, SO THE BRIEFCASE IS NOT A SECOND
-	; MONEY BAG. The two prizes are drawn in different colours on the TI --
-	; the bag light yellow, the case dark red -- and both were landing on the
-	; light index, so making that index gold made the case gold too. Grey is
-	; the only one of the three inks left that is not the bag's and not the
-	; air's; a dark-red case cannot be had without a fourth.
-	; THE DISPLAY COUNTERS ARE TWO CHARACTERS AND THEY WERE FAILING IN OPPOSITE
-	; DIRECTIONS. The counter FACE (char 100) is light blue on light blue, and
-	; light blue sat on index 1 -- the air's green -- so the body dissolved
-	; into the floor behind it. Its TOP (CH_SHELFT) is a SOLID 64/64 block of
-	; cyan, and cyan sat on the backdrop, so the top was a black line with
-	; nothing under it: "just black floating lines".
-	;
-	; On the TI the unit is a light-blue body under a cyan lip, the blue
-	; deliberately lighter than the Kop's uniform. THAT CANNOT BE REPRODUCED
-	; HERE and it is worth saying why rather than quietly approximating: the
-	; store band has three inks plus the backdrop, and green (air), grey
-	; (structure) and gold (bars and prizes) are all load-bearing. Blue and
-	; cyan would be a fourth and a fifth. The attribute table is the only way
-	; to buy more, and it cannot help HERE -- a counter shares its 16x16 block
-	; with the wall behind it, and the bands are five rows apart while the
-	; blocks are two, so the counter rows land on a block boundary on only two
-	; floors out of four.
-	;
-	; LIGHT BLUE BELONGS TO THE SKY, NOT TO THE COUNTERS. Sending it to
-	; structure grey made the counter face visible and put a GREY STRIPE
-	; ACROSS THE SUNSET, because SKYGRAD's first row is four scan lines of
-	; dark blue over four of LIGHT blue and BLDG_BODY is GRAY -- so the sky's
-	; second band came out the same colour as the buildings standing in it.
-	; One TMS colour cannot be two things through one global map.
-	;
-	; The counters get their own upload instead (setup_rest re-sends chars 99
-	; and 100 with #ncol = 0 and an explicit nink), which is exactly what that
-	; path is for: both are SOLID patterns, so an ink alone decides them and
-	; no colour table is consulted. That leaves light blue free to be sky.
-	;
-	; The lip is still not cyan, and cyan has no index open to it:
-	;
-	;   grey  -- CH_EDOOR and CH_ECAR both have EMPTY patterns and render as
-	;            flat paper, grey and cyan; share an index and the lift doors
-	;            disappear into the car
-	;   light -- CH_ECAR and CH_ECARS are WHITE ink on CYAN paper, so they
-	;            collapse to a featureless block (checkink.py rejects it)
-	;   base  -- the lip is a horizontal line against the air; green puts it
-	;            back where it started, invisible
-	;
-	; which leaves the backdrop. Verified by the gate, not by eye.
-	; THE SUNSET IS TWO BANDS AND CANNOT BE MORE, AND THIS WAS TRIED. SKYGRAD
-	; is six colours; five of them land on index 1, so the gradient is really
-	; one base colour per sky palette -- blue above, orange below -- plus the
-	; lit windows. Index 2 belongs to the buildings and index 3 to the windows,
-	; so the only free entry a sky row could spend is the BACKDROP.
-	;
-	; Sending DARK BLUE there does buy a fourth band, and it is faithful: the
-	; TI's HUD_BG and SKYGRAD's first band are the same dark blue, which is how
-	; the score line avoids ending on a hard edge. IT IS STILL NOT WORTH IT.
-	; The backdrop is global and everything drawn in black rides on it, so the
-	; escalator, the radar ground and every outline in the store turned dark
-	; blue with it -- one more sky band bought with the store's whole line
-	; work. Measured on screen, not reasoned about; do not re-try it without
-	; looking at the escalator.
+	; TMS colour -> NES index. Gameplay shares GREY at index 0, freeing
+	; one palette entry in every region. Black maps to index 2: black in
+	; P0/P2, pink in P1, blue in P3. Green/blue paper maps to index 1;
+	; gold/white highlights map to 3. Per-row NES colour data distinguishes
+	; counters and skyline from the TMS art (assets/gennescolor.py).
+	; HUD hats use the separate black sprite palette, not P1's pink entry.
+	; Fixtures switch their quadrants to P0 to retain black outlines.
 nes_inkmap:
 	;              0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
-	DB 0,0,1,1,1,1,2,0,1,1,3,3,1,1,2,3
+	DB 0,2,1,1,1,1,0,2,1,1,3,3,1,1,0,3
 
 	; THE THREE PAIRS THAT MATTER, and they are not obvious:
 	;
@@ -514,7 +404,7 @@ nes_m1:	DB $00,$00,$FF,$FF
 ; OAM tile byte -- which selects the pattern table in 8x16 mode -- is 0, i.e.
 ; $0000. That is why nes_bgbank moves the BACKGROUND to $1000 instead.
 ;
-; Slots 0-27 are the game's; 28-55 are their right halves; 56-63 stay parked at
+; Slots 0-27 are the game's; 28-55 are their right halves; 56-60 hold the HUD hats; 61-63 stay parked at
 ; y=$F0 by the prologue's clear_sprites. Hidden sprites copy across as hidden,
 ; so nothing has to know which slots are live.
 ; ---------------------------------------------------------------------------
@@ -654,4 +544,146 @@ nes_apuon:
 	LDA #$08		; sweep units off -- a sweep with shift 0 can mute
 	STA $4001
 	STA $4005
+	RTS
+
+
+; Attribute staging borrows the 96-byte CHR buffer during draw_screen only.
+; begin follows WAIT (old CHR descriptor consumed); put is followed by WAIT
+; before the main loop may overwrite the buffer for escalator animation.
+nes_attrs_begin:
+	LDA cvb_KLSC
+	LSR A
+	LSR A
+	CLC
+	ADC #cvb_NES_ATTRS/256
+	STA pointer+1
+	LDA cvb_KLSC
+	ASL A
+	ASL A
+	ASL A
+	ASL A
+	ASL A
+	ASL A
+	CLC
+	ADC #cvb_NES_ATTRS%256
+	STA pointer
+	BCC nes_attrs_nocarry
+	INC pointer+1
+nes_attrs_nocarry:
+	LDY #63
+nes_attrs_copy:
+	LDA (pointer),Y
+	STA array_NESB,Y
+	DEY
+	BPL nes_attrs_copy
+	RTS
+
+; Reset each quadrant touched by a two-by-two prize/radio to P0. Unlike
+; clearing a whole attribute byte, this preserves neighbouring blue counters.
+nes_fixture_pal:
+	LDX #0
+nes_fixture_cell:
+	TXA
+	PHA
+	LDA nes_fixture_offsets,X
+	CLC
+	ADC cvb_#PVA
+	STA pointer
+	LDA cvb_#PVA+1
+	ADC #0
+	AND #3
+	ASL A
+	ASL A
+	ASL A
+	ASL A
+	STA temp
+	LDA pointer
+	LSR A
+	LSR A
+	LSR A
+	LSR A
+	AND #$38
+	ORA temp
+	STA temp
+	LDA pointer
+	LSR A
+	LSR A
+	AND #7
+	ORA temp
+	TAX
+	LDA pointer
+	AND #$40
+	LSR A
+	LSR A
+	LSR A
+	LSR A
+	LSR A
+	STA temp
+	LDA pointer
+	AND #2
+	LSR A
+	ORA temp
+	TAY
+	LDA array_NESB,X
+	AND nes_fixture_masks,Y
+	STA array_NESB,X
+	PLA
+	TAX
+	INX
+	CPX #4
+	BNE nes_fixture_cell
+	RTS
+nes_fixture_offsets: DB 0,1,32,33
+nes_fixture_masks: DB $FC,$F3,$CF,$3F
+
+nes_attrs_put:
+	LDA #$C0
+	STA pointer
+	LDA #$23
+	STA pointer+1
+	LDA #array_NESB%256
+	STA temp
+	LDA #array_NESB/256
+	STA temp+1
+	LDA #64
+	STA temp2
+	JSR LDIRVM
+	RTS
+
+; Reserve hats have their own black sprite palette. OAM 56..60 is outside
+; the actor pairs (0..55); five icons stay below the eight-sprite line limit.
+; Tile 199 selects CHR $1000, pair 198/199 (hat, transparent bottom).
+nes_hats:
+	LDX #16
+	LDY cvb_SPARE
+nes_hats_loop:
+	LDA #$F0
+	CPY #0
+	BEQ nes_hats_y
+	LDA #15
+	DEY
+nes_hats_y:
+	STA $02E0,X
+	LDA #199
+	STA $02E1,X
+	LDA #1
+	STA $02E2,X
+	TXA
+	ASL A
+	CLC
+	ADC #216
+	STA $02E3,X
+	DEX
+	DEX
+	DEX
+	DEX
+	BPL nes_hats_loop
+	RTS
+nes_hats_hide:
+	LDA #$F0
+	STA $02E0
+	STA $02E4
+	STA $02E8
+	STA $02EC
+	STA $02F0
 	RTS

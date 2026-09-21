@@ -166,6 +166,13 @@ The score line sits two columns in from the edge on **dark blue**, with the rese
 
 The roof is **grey buildings against a sunset** -- light blue at the top, then magenta, red, light red and yellow down to the skyline, with a black deck line and black beneath it. A vertical gradient is free on this VDP (it colours one 8x1 scan line at a time), but it costs **row variants**: a character cannot know which row it was placed in, so the sky and the partial buildings come in one per roof row (`DESIGN.md` §0d-quater).
 
+On NES, counters have blue bodies and gold lips, distinct from grey pillars.
+The skyline uses four bands (blue, pink, orange and gold), with grey buildings
+and gold windows. Reserve hats remain black using the sprite palette. Gameplay
+clears the title's SCORE/HI row and keeps the live score on the top HUD line.
+See `DESIGN.md` section 15 for palette allocation and its NES-specific limits.
+
+
 The lift's door jambs sit in the **wall column either side** of the doorway, four pixels wide, so all four doorway characters are car and the opening is the full **32 px** rather than 24. They used to sit inside the doorway's own end columns, which spent a quarter of the opening framing it and needed six characters to do it (a header twin and a sill twin for each side); a jamb in the wall is one picture on every row in every door state, so it needs two. It is also **static** now — the old frame only existed while the doors were open, so it appeared as they parted (`DESIGN.md` §0d-ter).
 
 The shop floor is TMS9918 **dark green (12)**, not medium green — the only darker green the hardware has. It lives in `genart.py` as one name, `STORE_BG`, because **56 of the 87 store characters carry it as their background** and a colour spelled out 56 times is a colour somebody will miss a cell of; the previewers and checkers derive their RGB from it rather than repeating the literal (`DESIGN.md` §0d-bis).
@@ -237,7 +244,7 @@ and rewrite manifest. `assets/romprofile.py` reports measured routine sizes,
 including the final routine, excluding bank padding and switched-bank data.
 
 All three scripts regenerate art, store and title assets (including the setup-bank
-`src/scancol.bas`) first, then run the repo's
+`src/scancol.bas` and NES-only `src/nescolor.bas`) first, then run the repo's
 truncation, `GOSUB`/`RETURN` and screen-layout gates, plus `checkball.py` (no beach ball is
 unavoidable), `checkchase.py` (the chase can be won on foot), `checkbands.py` (no actor's
 colour bands overflow the 4-sprites-per-line limit), `checkesc.py` (every escalator phase

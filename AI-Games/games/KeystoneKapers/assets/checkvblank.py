@@ -288,6 +288,17 @@ def main(path=None, quiet=False):
             sites.append((i, name, "nes_escd", nbytes))
             continue
 
+        if st == 'ASM JSR nes_attrs_put':
+            # Read the actual copy length from the shim, not a second constant.
+            with open(os.path.join(HERE, 'nes_chr.asm'), encoding='utf-8') as f:
+                body = f.read().split('nes_attrs_put:', 1)[1]
+            count = re.search(r'LDA #(\d+)\s+STA temp2\s+JSR LDIRVM', body)
+            if count is None:
+                bad.append('cannot resolve nes_attrs_put copy length')
+            else:
+                sites.append((i, name, 'attributes', int(count.group(1))))
+            continue
+
         m = SCREEN_RE.match(st)
         if m:
             nbytes = int(m.group(1)) * int(m.group(2))

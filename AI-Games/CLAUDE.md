@@ -1644,3 +1644,15 @@ for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.m
   fit and clips the right edge. A two-pixel detail does not survive eyeballing a 4× crop. Print the
   RGB at a computed coordinate, or simulate the draw from the data and print the resulting
   character codes.
+
+
+### NES palette lesson: shared grey and separate HUD icons (2026-09-20)
+
+The universal background colour need not be black. Keystone Kapers now shares
+grey across its four background palettes, allowing blue counters beside grey
+pillars and multiple skyline bands. Per-region palettes must preserve every
+colour needed within their 16x16 attribute quadrants, including fixture outlines.
+Audit HUD icons as well as text: reusing the HUD's black index for pink sky made
+the reserve hats pink. They now use five otherwise unused OAM entries and the
+black sprite palette, with explicit CHR ownership, title cleanup and count tests.
+See the game's DESIGN section 15; older fixed-palette limitations are historical.

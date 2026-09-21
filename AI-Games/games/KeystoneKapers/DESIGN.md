@@ -5646,18 +5646,7 @@ split across the two screens that actually own them instead of all landing on
 
 ### What is not done
 
-- **The display counters are indistinguishable from the pillars.** This is what is
-  left of the colour problem now that `nes_attr` gives the background nine colours
-  rather than three. Within a single palette there are only three inks plus the
-  backdrop, and `nes_inkmap` sends light blue AND grey to index 2 — so char 100
-  (the counters, solid light blue on the TI) and char 107 `CH_COUNTR` (the pillars,
-  solid grey) come out as the same flat grey. Both are solid-fill glyphs, so there
-  is no pattern left to tell them apart either: the store loses its furniture, not
-  just a hue. The store band is one palette across its whole height and a counter
-  sits in the same 16x16 block as the wall behind it, so the attribute table cannot
-  separate these two the way it separated the sky from the store. Options are to
-  move the blues to index 3 (visible, but reads as floor-bar white), or to give the
-  counters their own character codes and a fourth ink.
+- Counter/pillar colour separation and the flat skyline are resolved by section 15 below.
 - **Sound is unverified.** `assets/nes_apu.asm` resolves the 36 `sn76489_*` link
   errors and `nes_apuon` now enables `$4015`/`$4017` at setup rather than waiting
   for the first volume write, but nobody has confirmed a note on this target.
@@ -5898,3 +5887,52 @@ elevator use, catches, every hazard/penalty, sound decay and game-over re-entry,
 plus Coleco/NES runtime and real hardware. No pacing or difficulty constants were
 changed to compensate for faster code. Historical budget and timing figures in
 earlier sections describe their respective revisions, not this build.
+
+
+## 15. NES colours and title-to-game HUD cleanup (2026-09-20)
+
+This supersedes the palette limitations and allocation in section 12a. The
+universal background is grey during play, leaving three region-specific inks:
+
+| Palette | Index 0 (shared) | Index 1 | Index 2 | Index 3 |
+| --- | --- | --- | --- | --- |
+| P0 store/fixtures | grey | green | black | gold |
+| P1 HUD/upper skyline | grey | blue | pink | gold |
+| P2 lower skyline | grey | orange | black | gold |
+| P3 counters | grey | green | blue | gold |
+
+`assets/gennescolor.py` derives `src/nescolor.bas` from the live art and store
+layouts. Counter tops have a three-pixel gold lip over a blue body; pillars
+remain grey. Skyline paper uses blue, pink, orange and gold bands. This is a
+four-band NES approximation of the TI sunset, not its exact six-colour gradient.
+Buildings stay grey and windows gold across palette boundaries. Briefcases
+retain their grey outline and black fill. The title sets
+the shared backdrop and P2 paper blue; entering gameplay restores both.
+
+Attributes are generated for each of the eight screens. Counter quadrants get
+P3; fixtures with black outlines mask only their occupied quadrants back to P0.
+The existing 96-byte CHR buffer temporarily holds the 64-byte attribute table
+while drawing a screen. WAITs bracket its upload before CHR animation reuses it.
+There is no added game RAM. The vblank checker accounts for the assembly upload.
+Radar diagonals now encode black as index 2 rather than the former index 0.
+
+The first colour build made HUD reserve hats pink because their black source
+ink also selected P1 index 2. Reserve icons now use the existing black sprite
+palette, with OAM slots 56..60 and background CHR pair 198/199 (the second tile
+is transparent). These slots are outside actor pairs 0..55. At most five sprites
+occupy the HUD row, with no actors there. The original icon shape, right-aligned
+reserve count and blue HUD paper are retained; title_draw hides the icons.
+Tests execute the actual small assembly routines across all 256 reserve counts
+and all 899 fixture positions, checking unrelated OAM/attribute entries too.
+
+The title's SCORE/HI occupies PPU row 3; the live game HUD occupies row 2.
+Screen drawing now clears row 3 explicitly. Gameplay retains only the live top
+score, time and reserve icons; the title keeps its own score/high-score display.
+
+Validation: full TI, ColecoVision and NES build gates and checker self-tests
+passed. TI fixed-area usage remains 21,888 bytes (2,448 free); NES game RAM
+remains 1,506 bytes. iNES 6.1 gameplay review confirmed black reserve hats,
+blue counters against grey pillars, skyline bands, screen transitions, a live
+score of 100 after collecting prizes, and no leftover title SCORE/HI row.
+The time-up message remained legible. This was a targeted visual check, not
+full gameplay or real-hardware acceptance.

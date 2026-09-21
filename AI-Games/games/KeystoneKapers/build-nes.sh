@@ -104,6 +104,7 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/genart.py > /dev/null   || die "genart.py failed"
 "$TRUNCPY" ../assets/genstore.py > /dev/null || die "genstore.py failed"
 "$TRUNCPY" ../assets/gentitle.py > /dev/null || die "gentitle.py failed"
+"$TRUNCPY" ../assets/gennescolor.py > /dev/null || die "gennescolor.py failed"
 
 "$TRUNCPY" ../../../tools/bigvar.py *.bas \
     || die "8-bit truncation -- see TRUNCATION.md 1a"
