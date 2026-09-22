@@ -185,7 +185,12 @@ type.
 one kind per floor for the whole game (floor 1 all balls, floor 2 all radios, and
 so on), which is the other half of what was reported from play.
 
-## What this does not settle
+## Original limits of this census
+
+The [2026-09-21 follow-up](level-review.md) measures speeds, including cart
+slowdown at level 11 and additional plane tiers at 12 and 16. The limits below
+describe the original census, not the current state of the investigation.
+
 
 * **Speeds.** The guide's "carts get faster at 7, planes at 8" was not measured;
   tracking a hazard's velocity across frames is a different job from counting.

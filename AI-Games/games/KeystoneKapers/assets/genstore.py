@@ -491,7 +491,7 @@ KROOKS = 11
 
 # WHICH KROOK EACH KIND ARRIVES ON, and which it starts coming in twos on.
 # Straight from hazards.md; checklevels.py asserts both against this dict.
-ARRIVE = {BALL: 1, RADIO: 2, CART: 3, PLANE: 4}
+ARRIVE = {BALL: 1, RADIO: 1, CART: 3, PLANE: 4}
 DOUBLE = {RADIO: 6, BALL: 9, CART: 11}          # PLANE never doubles
 
 # HOW MANY BANDS CARRY A HAZARD, and how many of those carry a second, per
@@ -500,7 +500,7 @@ DOUBLE = {RADIO: 6, BALL: 9, CART: 11}          # PLANE never doubles
 BANDS   = {1: 5, 2: 11, 3: 16, 4: 20, 5: 20, 6: 20,
            7: 20, 8: 20, 9: 20, 10: 20, 11: 20}
 DOUBLED = {1: 0, 2: 0, 3: 0, 4: 0, 5: 1, 6: 4,
-           7: 5, 8: 5, 9: 6, 10: 6, 11: 7}
+           7: 5, 8: 5, 9: 6, 10: 6, 11: 9}
 
 # THE ORDER BANDS FILL IN. Fixed, so each Krook is a superset of the one before
 # and the ramp reads as the store filling up rather than as a reshuffle.
@@ -632,31 +632,36 @@ def fill_order(krook=1):
     return sorted(bands, key=key)
 
 
+# Aisle preferences are independent of fill-order rank. Rank modulo four
+# aliased with four floors and put almost every ball/cart/plane/radio on the
+# same floor from level 4 onward. These cycles preserve a floor's emphasis
+# while mixing jump, duck and stationary encounters along each traverse.
+FLOOR_KINDS = (
+    (CART, BALL, CART, RADIO, CART, PLANE),
+    (PLANE, CART, RADIO, PLANE, CART, BALL),
+    (RADIO, CART, RADIO, BALL, PLANE, RADIO),
+)
+
+
 def _kind_for(lv, scr, krook, seq):
-    """Pick this band's hazard, mixing kinds across floors AND screens."""
-    live = [k for k in (BALL, RADIO, CART, PLANE) if ARRIVE[k] <= krook]
-    tpl = INDEX[lv][scr]
-    # THE ROOF GETS CARTS AND NOTHING ELSE, for two separate reasons.
-    #
-    # No biplane: the roof is where the round is decided, and a biplane costs a
-    # whole Kop rather than nine seconds. The measurement agrees -- the
-    # original's roof shows only radios and carts, at every level.
-    #
-    # AND NO RADIO, which is OURS rather than the original's. A radio is drawn as
-    # CHARACTERS, not a sprite, so it has to share its cells' two colours with
-    # whatever it stands on; on a shop floor that is flat green and fine, and on
-    # the roof it is the parallax skyline. Reported from play as "the colors get
-    # messed up". The TMS9918 allows two colours per 8x1 line and the roof has
-    # already spent both.
-    #
-    # That leaves carts, which the reference does put on the roof -- one was
-    # tracked crossing it.
+    """Choose by aisle, independently of the order bands were filled."""
+    # Preserve the port's skyline palette constraint and safe escalator screens.
     if lv == 3:
-        live = [k for k in live if k == CART]
-    # ...and no RADIO where a rack position would sit on a boarding zone.
-    if not _radio_ok(tpl):
-        live = [k for k in live if k != RADIO]
-    return live[seq % len(live)] if live else NONE
+        return CART if krook >= ARRIVE[CART] else NONE
+    if krook == 1:
+        # The supplied longplay already has stationary radios in level 1.
+        # Keep the opening sparse: three ground-floor balls and two radios.
+        return BALL if lv == 0 else RADIO
+    cycle = FLOOR_KINDS[lv]
+    start = (scr - 1 + (krook - 1) // 3) % len(cycle)
+    for offset in range(len(cycle)):
+        kind = cycle[(start + offset) % len(cycle)]
+        if ARRIVE[kind] > krook:
+            continue
+        if kind == RADIO and not _radio_ok(INDEX[lv][scr]):
+            continue
+        return kind
+    return NONE
 
 
 def levels():
@@ -741,7 +746,10 @@ def levels():
                     continue
                 for lv, kind in by_screen[scr]:
                     # a band can only be doubled once its OWN kind pairs
-                    if krook >= DOUBLE.get(kind, 99) and not row[lv * 8 + scr] & 8:
+                    extra = 2 if kind == RADIO and krook > 7 else 1
+                    if (krook >= DOUBLE.get(kind, 99)
+                            and not row[lv * 8 + scr] & 8
+                            and load(scr) + extra <= cap):
                         row[lv * 8 + scr] |= 8
                         doubled_left -= 1
                         spent += 1

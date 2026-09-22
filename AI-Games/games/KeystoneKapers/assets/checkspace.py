@@ -91,12 +91,27 @@ def jump_arc(store):
 
 
 def hazard_speeds(src):
-    out = []
-    for var in ("obsp", "ocsp", "opsp"):
-        out += [int(v) for v in re.findall(r"\b%s = (\d+)" % var, src)]
+    """Speeds of MOVING PAIRS, at levels where those pairs actually occur.
+
+    Fast single carts slow down when cart pairs arrive at 11. Planes never
+    pair. Using the fastest single plane here would reject every usable gap,
+    although no pair ever travels at that speed. Read both decisions from the
+    production source/table so an accidentally fast pair still fails.
+    """
+    import genstore
+    from levelmodel import speeds
+    table = genstore.levels()
+    out = set()
+    for krook in range(1, 21):
+        row = min(krook, genstore.KROOKS) - 1
+        rates = speeds(src, krook)
+        for value in table[row * 32:(row + 1) * 32]:
+            kind = value & 7
+            if value & 8 and kind in (1, 2, 4):
+                out.add(rates[kind])
     if not out:
-        sys.exit("checkspace: found no hazard speeds in start_krook")
-    return sorted(set(out))
+        sys.exit('checkspace: no moving pairs found in the level table')
+    return sorted(out)
 
 
 def stag0_max(src):

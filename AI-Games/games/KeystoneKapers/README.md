@@ -55,9 +55,15 @@ never get away at all.
 
 **Under ten units the TIME field blinks** -- the word and the digits together, and there is no beep: the last ten seconds are the busiest part of a round, and a repeating tone arrives exactly when the player most needs to hear the hazards. The two halves are one field with one flag owning whether it is up, so they cannot get out of step (`DESIGN.md` 0e-quinquies).
 
-**Each floor has its own hazard** -- beach balls at the bottom, radios above them, biplanes
-above those, shopping carts on the roof -- and it does not change as you walk. **Corner the
-crook and he rides an escalator back DOWN**, which you cannot: they only go up.
+**Shopping floors mix balls, carts, radios and planes across the aisles.**
+Carts arrive at level 3 and planes at level 4. Carts speed up at 7, then slow
+back down when pairs arrive at 11. Planes accelerate at 8, 12 and 16; balls
+keep their horizontal speed. Escalator screens stay clear and the roof carries
+carts only. Money bags and suitcases replenish after each successful capture;
+collected prizes stay collected during a retry of the same level.
+
+**Corner the crook and he rides an escalator back DOWN**, which you cannot:
+they only go up.
 
 **The hazards arrive one per round.** Krook 1 is short beach balls and nothing else; radios
 join at 2, shopping carts at 3, **biplanes at 4**, the balls go tall at 5, a second radio per
@@ -328,3 +334,9 @@ added. The 838 setup can override the starting count. Coleco now uses the same
 NES full-screen transitions use a brief black interval while copying the complete
 scene directly into video memory, then reveal it at a frame boundary. Normal
 in-game updates still use the vblank queue; TI/Coleco rendering is unchanged.
+
+
+The level review and timestamped measurements are in
+[assets/ref2600/level-review.md](assets/ref2600/level-review.md). The shared
+regression suite executes the BASIC loader to check actual counts and radio
+positions, prize lifetime, fast movement, wrapping and collisions on all targets.

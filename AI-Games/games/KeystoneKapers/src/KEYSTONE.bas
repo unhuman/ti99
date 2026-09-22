@@ -1956,10 +1956,7 @@ new_game:
 					' zero -- the x300 bonus band alone can
 					' pay 15,000 for one capture
 	#nextk = 1000			' bonus Kop every 10,000 points
-	takn(0) = 0
-	takn(1) = 0
-	takn(2) = 0
-	takn(3) = 0
+	GOSUB reset_prizes
 	' THE LIFT STARTS WHERE HARRY DOES, ONCE A GAME. It used to be set in
 	' start_krook, which runs at the top of every round and every life, so
 	' the car snapped back to floor 1 whenever anything ended -- a fixture
@@ -1971,6 +1968,14 @@ new_game:
 	elt = ELWAIT
 	eldn = 0
 	GOSUB start_krook
+	RETURN
+
+' Refill once per new Krook, not on a death/retry or a screen crossing.
+reset_prizes:
+	takn(0) = 0
+	takn(1) = 0
+	takn(2) = 0
+	takn(3) = 0
 	RETURN
 
 start_krook:
@@ -2110,23 +2115,20 @@ start_krook:
 	IF arcs = 1 THEN #arcb = #arcb + 32
 	IF arcs = 2 THEN #arcb = #arcb + 64
 
-	' SPEED IS PER KIND, AND EACH RAMPS ON THE KROOK THE ORIGINAL RAMPS IT
-	' (DESIGN.md 0p): carts get faster at 7, biplanes at 8, and the ball's
-	' dial is its APEX, not its speed. The base of 2 is measured, not
-	' guessed -- carts were tracked in the reference at 0.80 px/frame
-	' (48 px/s) and 1.21 (73 px/s), which at this loop's ~25 passes a second
-	' is exactly 2 and 3 px per pass. So the two speeds the original uses are
-	' the two speeds that were on screen.
-	' SIXTY-FOURTHS OF A PIXEL PER FRAME, not whole pixels per loop pass.
-	' 2 px a pass at the measured 23.8 passes a second is 47.6 px/s, which is
-	' 0.79 px a frame -- 51/64. 3 px a pass is 1.19 px a frame -- 76/64. Same
-	' speeds on screen; they simply no longer slow down on a busy screen while
-	' the round clock keeps running (DESIGN.md 0f-ter).
-	obsp = 51			' beach balls    (was 2 px/pass)
-	ocsp = 51			' shopping carts (was 2 px/pass)
-	IF krk > 6 THEN ocsp = 76	'                (was 3 px/pass)
-	opsp = 51			' biplanes       (was 2 px/pass)
-	IF krk > 7 THEN opsp = 76
+	' Measured longplay progression: balls stay slow; carts double at 7,
+	' then return to their original speed when pairs arrive at 11. Planes
+	' step up at 8, 12 and 16. See assets/ref2600/level-review.md.
+	' These are 1/64 px/frame, except opsp which counts TWO-pixel steps.
+	' The plane's half-resolution accumulator keeps every byte addition
+	' below 256 even at the last tier (384/64 = 6 px/frame).
+	obsp = 48
+	ocsp = 96
+	IF krk > 6 THEN ocsp = 192
+	IF krk > 10 THEN ocsp = 96
+	opsp = 48
+	IF krk > 7 THEN opsp = 96
+	IF krk > 11 THEN opsp = 144
+	IF krk > 15 THEN opsp = 192
 
 	' HARRY'S SPEED IS IN QUARTER PIXELS, AND IT DOES NOT RAMP. It used to be
 	' 2 px/frame against Kelly's 3, which sounds like a comfortable 1.5x --
@@ -2521,7 +2523,9 @@ load_band:
 			' the table asked for.
 			IF ls = 0 THEN
 				lrad = 0
-				IF lk = OB_RADIO THEN lrad = l3rd
+				IF lk = OB_RADIO THEN
+					IF lby > 7 THEN lrad = l3rd
+				END IF
 			END IF
 			' A RADIO NEEDS A CELL, NOT A PIXEL, because it is drawn as
 			' characters. Divided by repeated subtraction: `/` compiles
@@ -2702,7 +2706,7 @@ load_band:
 				lrp = 2
 				IF ls = 0 THEN
 					lrp = 0
-					IF krk < 6 THEN lrp = 1
+					IF lby < 8 THEN lrp = 1
 				END IF
 				lrc = lrp * 8
 				lrc = lrc + 7
@@ -3927,7 +3931,7 @@ upd_obst:
 	psp64 = opsp
 	GOSUB pace_step
 	oacp = pacc
-	ospp = pspd
+	ospp = pspd + pspd		' plane accumulator units are two pixels
 	' THE BOUNCE PHASE, ON THE SAME CLOCK AS THE JUMP AND AT ITS OLD PERIOD.
 	'
 	' The jump has always advanced by the frame delta (`kjf = kjf + fdv`) while
@@ -3977,11 +3981,18 @@ upd_obst:
 				' player has to keep moving -- which is the whole
 				' shape of the original.
 				IF obd(ui) = 0 THEN
-					IF obx(ui) < us THEN obx(ui) = obx(ui) + 240
-					obx(ui) = obx(ui) - us
+					IF obx(ui) < us THEN
+						up = us - obx(ui)
+						obx(ui) = 240 - up
+					ELSE
+						obx(ui) = obx(ui) - us
+					END IF
 				ELSE
-					obx(ui) = obx(ui) + us
-					IF obx(ui) > 240 THEN obx(ui) = obx(ui) - 240
+					' Subtract the distance to the seam BEFORE adding: a
+					' late plane can move 30 px, so 240+us would wrap
+					' the byte before the old >240 test could see it.
+					up = 240 - obx(ui)
+					IF us > up THEN obx(ui) = us - up ELSE obx(ui) = obx(ui) + us
 				END IF
 			END IF
 			' The bounce. obh is the ART bottom above the slab; the
@@ -4014,10 +4025,10 @@ upd_obst:
 	' ELAPSED FRAMES, or the loop rate becomes a difficulty dial and where the
 	' player stands decides the outcome (DESIGN.md 0f-ter).
 	'
-	' TWO DRAINS CAP THE STEP AT 2 PER FRAME whatever psp64 says (CLAUDE.md
-	' 3A: N drains cap the speed at N, and the surplus leaks into a byte that
-	' wraps). Every caller is under that: Kelly 102/64 = 1.6, the fastest
-	' hazard 76/64 = 1.2, Harry 57/64 = 0.9, the bounce phase 25/64 = 0.4.
+	' Three drains support up to 192/64 units per frame. The remainder
+	' is below 64, so the byte addition cannot exceed 255. Planes use
+	' two-pixel units and double the result outside this shared routine.
+	' Other actors retain pixel units and their existing movement rates.
 	'
 	' FIVE FRAMES, AND THREE WAS TOO FEW. At 2 px a frame five frames is 10 px,
 	' and to skip a position window an actor must start outside it on one side
@@ -4031,6 +4042,10 @@ pace_step:
 	pspd = 0
 	FOR pfi = 1 TO pfd
 		pacc = pacc + psp64
+		IF pacc > 63 THEN
+			pspd = pspd + 1
+			pacc = pacc - 64
+		END IF
 		IF pacc > 63 THEN
 			pspd = pspd + 1
 			pacc = pacc - 64
@@ -4488,6 +4503,23 @@ coll_obst:
 		IF ck > 0 THEN
 			ocx = obx(cj) + 8
 			IF kcx > ocx THEN cdx = kcx - ocx ELSE cdx = ocx - kcx
+			' Fast traffic can cross Kelly between loop passes. Test its
+			' travelled centre segment as well as its final position.
+			' ohb is scratch here; the vertical hitbox resets it below.
+			' Kelly moves less than CATCHR per pass, so this cannot
+			' invent a crossing when both endpoints stayed clear.
+			IF cdx >= CATCHR THEN
+				ohb = 0
+				IF ck = OB_CART THEN ohb = ospc
+				IF ck = OB_PLANE THEN ohb = ospp
+				IF cdx < ohb THEN
+					IF obd(cj) = 0 THEN
+						IF ocx < kcx THEN cdx = 0
+					ELSE
+						IF ocx > kcx THEN cdx = 0
+					END IF
+				END IF
+			END IF
 			IF cdx < CATCHR THEN
 				ohb = 0
 				' 8 IS THE RADIO'S HEIGHT, and it is the default
@@ -6223,6 +6255,7 @@ do_catch:
 	GOSUB snd_off
 	GOSUB hide_all
 	krk = krk + 1
+	GOSUB reset_prizes
 	GOSUB start_krook
 	GOTO main
 

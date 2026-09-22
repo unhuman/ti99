@@ -6473,3 +6473,65 @@ Final NES build and all included regression tests passed. A normal-gameplay
 review (only title input bypassed) accepted left input and crossed into the next
 store screen; actors, hazards, timer and radar continued. Production starting
 conditions were verified and the final production cartridge was restored in iNES.
+
+
+## 30. Level progression and fast hazards (2026-09-21)
+
+The [longplay review](assets/ref2600/level-review.md) and its retained velocity
+tracks supersede the old per-kind speed table in section 0p. Balls move at
+45 px/s; carts at 90, then 180 on levels 7?10, then 90 when pairs arrive at 11.
+Planes move at 90/180/270/360 from levels 4/8/12/16. Rates are at 60 Hz and use
+elapsed frames. Kelly, Harry, jump/bounce timing and escalator pacing retain the
+latest implementation. This is a change on top of the current game, not a revert.
+
+Prizes refill after a catch as well as a new game. Retries and screen crossings
+retain their collected bits. This fixes late levels becoming permanently empty
+once the five prizes had been collected during the first few levels.
+
+Hazard kinds now come from independent aisle cycles instead of fill-order rank;
+all shopping floors mix at least three kinds from level 4. Existing occupancy
+caps, clear escalator screens, safe radio racks and the carts-only roof remain.
+Radios are present on level 1 as the video shows. Late cart pairs are more common,
+and the level-11 eligible-screen mean is 5.17 against the observed 5.15.
+
+The loader now obeys the table's radio pair bit: singles stay centred even after
+level 6, and only a paired band gets the third radio from level 8. The generator
+counts both extra radios against its screen cap.
+
+Three drains support byte accumulator rates through 192 without overflow.
+Planes use two-pixel accumulator units to reach the fourth tier without new RAM.
+Both hazard wrap directions avoid intermediate byte overflow. Fast cart/plane
+collisions include the travelled centre segment, preserving duck clearance while
+preventing a plane from passing through a standing player between updates.
+
+Spacing checks now evaluate actual moving pairs at their actual level speeds,
+including the cart slowdown at 11. An explicit mutation test rejects keeping
+cart pairs fast. The 104-pixel gap remains above the 91-pixel landing threshold
+and leaves 121 pixels clear at entry. `levelplay_test.py` executes production
+BASIC for loader counts/positions, prize resets, accumulator arithmetic, travel,
+wrapping and collisions; it also checks encounter variety.
+
+Validation: all three full builds passed, including existing gates and eight new
+level-play tests. TI uses 22,392 / 24,336 fixed bytes (1,944 free); data bank 1
+has 506 free. Coleco uses 596 game RAM bytes and produces a 24 KB ROM. NES game
+RAM stays at 1,500 bytes. Its 32 KB PRG now has only **39 padding bytes free**;
+further code additions will need space recovery or a banking change.
+
+An isolated iNES check filled all collected-prize bits on level 3, exercised the
+real capture/bonus/next-level path, and confirmed a prize reappeared on level 4.
+The negative-control cartridge showed that same aisle without the prize. Late
+layout captures showed paired carts and three radios at the rack positions.
+A level-16 running review let fast planes pass repeatedly over ducking Kelly;
+the standing control lost one life and restarted on the normal escalator screen.
+Each isolated review restored the normal NES cartridge immediately afterward.
+
+Normal production title/start and keyboard movement were checked in Classic99,
+iNES and CoolCV. CoolCV requires proper extended-key/scancode events for automated
+arrow input; the scratch capture harness was corrected without changing the
+emulator's mappings. Full playthroughs of every level on every target remain
+human playtesting work; the complete screen/level loader sweep is automated.
+
+Production review hashes (SHA-256):
+- TI: `F20FE5FBD7BD3BEAD6EA895CE91B6577DCAE184D0D5B9FE82E856EECC93F91FE`
+- Coleco: `A64BF289F06F4EB4909B2CC96A46CF08072ABC96B6A937E7A2723C3BE6359A77`
+- NES: `48E534173E64399588813CA1F04AC25AC29982FBD3E3FF7513E07D1EE9105421`

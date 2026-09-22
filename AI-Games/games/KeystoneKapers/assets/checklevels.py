@@ -57,7 +57,7 @@ CHANGES = {
 # These are the measured numbers from assets/ref2600/hazards.md. Two independent
 # statements of the same fact is the whole point; if they disagree, one of them
 # is wrong and the build stops.
-ARRIVE_WANT = {g.BALL: 1, g.RADIO: 2, g.CART: 3, g.PLANE: 4}
+ARRIVE_WANT = {g.BALL: 1, g.RADIO: 1, g.CART: 3, g.PLANE: 4}
 DOUBLE_WANT = {g.RADIO: 6, g.BALL: 9, g.CART: 11}       # biplanes: never
 # The most hazards ever seen on ONE SCREEN at once, per level, measured.
 #
