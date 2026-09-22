@@ -11,7 +11,7 @@ This paints what the name table will hold, from `src/titledl.bas` (the bytes the
 cart carries) plus the font and store patterns out of the generators, so the
 layout can be checked in a second and at any zoom.
 
-Run:  python3 prevtitle.py [out.png] [scale]
+Run:  python3 prevtitle.py [out.png] [scale] [--coleco]
 """
 
 import io
@@ -36,9 +36,11 @@ PAL = [
 ]
 
 
-def read_block(path, label):
+def read_block(path, label, coleco=False):
     """The DATA BYTE values under `label:`."""
     txt = io.open(path, encoding='utf-8').read()
+    txt = re.sub(r'#if COLECOVISION\n(.*?)#else\n(.*?)#endif',
+                 lambda m: m.group(1 if coleco else 2), txt, flags=re.S)
     m = re.search(r'^%s:[^\n]*\n((?:\s*DATA BYTE[^\n]*\n)+)' % label,
                   txt, re.M)
     if not m:
@@ -66,13 +68,14 @@ def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE,
                                                              'title.png')
     scale = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+    coleco = '--coleco' in sys.argv[3:]
 
     # `title_tbl` moved to titledl.bas when the title went into bank 2 and the
     # message boxes stayed behind in bank 1 (title.bas). This still named
     # title.bas and died with "no title_tbl", which reads as the table having
     # been deleted rather than moved -- and a previewer that will not run is a
     # previewer nobody runs.
-    table = read_block(os.path.join(SRC, 'titledl.bas'), 'title_tbl')
+    table = read_block(os.path.join(SRC, 'titledl.bas'), 'title_tbl', coleco)
 
     # WHAT EACH CODE LOOKS LIKE, TAKEN FROM THE SHIPPED DATA rather than from
     # the generators' Python. The point of this previewer is to show what the
@@ -109,6 +112,15 @@ def main():
             b = tcol[i * 8]
             col[start + i] = (b >> 4, b & 15)
         seen += count
+
+    if coleco:
+        for k, (start, count) in enumerate(gentitle.LOWER_BLOCKS):
+            tpat = read_block(os.path.join(SRC, 'titlefont.bas'), 'clower_pat%d' % k)
+            tcol = read_block(os.path.join(SRC, 'titlefont.bas'), 'clower_col%d' % k)
+            for i in range(count):
+                pat[start + i] = bits_of_bytes(tpat[i * 8:i * 8 + 8])
+                b = tcol[i * 8]
+                col[start + i] = (b >> 4, b & 15)
 
     # walk the display list exactly as run_list does
     name = [[32] * 32 for _ in range(24)]

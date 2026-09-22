@@ -277,6 +277,44 @@ class LevelPlayTest(unittest.TestCase):
             self.assertEqual(checkspace.main(), 1)
         self.assertIn('too far apart', output.getvalue())
 
+    def test_jump_hitbox_tracks_drawn_feet_without_lowering_hat(self):
+        # Use the editable art as the independent boundary, not JUMPTUCK.
+        def ink_rows(name):
+            rows = [r for r in Path(__file__).with_name(name).read_text().splitlines()
+                    if re.fullmatch(r'[.#0-]{16}', r)]
+            return [i for i, row in enumerate(rows) if set(row) != {'.'}]
+        stand = ink_rows('kelly-run1.txt')
+        jump = ink_rows('kelly-run2.txt')
+        tuck = max(stand) - max(jump)
+        self.assertEqual(tuck, 2)
+        self.assertEqual(min(stand), min(jump))
+        self.assertIn('IF klst = ST_JUMP THEN kb = P_KRUN2', SOURCE)
+        for platform in ('NES', 'TI994A', 'COLECOVISION'):
+            vm = Basic(platform=platform)
+            vm.stubs.add('do_hit')
+            for state in ('ST_RUN', 'ST_JUMP', 'ST_DUCK'):
+                for lift in range(15):
+                    # All hazard kinds; sweep ball height across both edges.
+                    for kind in (1, 2, 3, 4):
+                        for ball_bottom in range(32) if kind == 2 else (0,):
+                            vm.values.update(klv=0, klx=100, kjh=lift, dead=0,
+                                             klst=vm.constants[state], fdv=1)
+                            vm.calls.clear()
+                            vm.arrays['obht'][0] = 0
+                            vm.arrays['obk'][0] = kind
+                            vm.arrays['obx'][0] = 100
+                            vm.arrays['obh'][0] = ball_bottom
+                            vm.run('coll_obst')
+                            feet = lift + (tuck if state == 'ST_JUMP' else 0)
+                            hat = lift + (11 if state == 'ST_DUCK' else 24)
+                            low, high = {1: (0, 12), 2: (ball_bottom + 2, ball_bottom + 6),
+                                         3: (0, 8), 4: (20, 30)}[kind]
+                            expected = feet < high and low < hat
+                            self.assertEqual(vm.values['kfh'], feet)
+                            self.assertEqual(vm.values['ktop'], hat)
+                            self.assertEqual(bool(vm.values['dead'] or 'do_hit' in vm.calls),
+                                             expected, (platform, state, lift, kind, ball_bottom))
+
 
 if __name__ == '__main__':
     unittest.main()

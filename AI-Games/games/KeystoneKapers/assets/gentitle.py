@@ -153,6 +153,34 @@ BIG = [
     (12, 11, "KAPERS"),         # 9 cells -- a blank row between the two
 ]
 
+# Coleco's French card reuses exactly the same large word tiles.
+COLECO_BIG = [(6, 12, "KAPERS"), (10, 11, "KEYSTONE")]
+COLECO_TEXT = [(8, 8, "les"), (12, 8, "de"),
+               (15, 7, "par GARRY KITCHEN")]
+# Five-pixel lowercase text, one 8x8 cell per letter. These slots are free
+# on TMS targets; some have separate NES-only owners, so load only on Coleco.
+LOWER_ROWS = {
+    'a': [0, 0, 14, 1, 15, 17, 15, 0],
+    'c': [0, 0, 14, 17, 16, 17, 14, 0],
+    'd': [1, 1, 15, 17, 17, 17, 15, 0],
+    'e': [0, 0, 14, 17, 31, 16, 14, 0],
+    'g': [0, 0, 15, 17, 15, 1, 17, 14],
+    'h': [16, 16, 30, 17, 17, 17, 17, 0],
+    'i': [4, 0, 12, 4, 4, 4, 14, 0],
+    'k': [16, 16, 18, 20, 24, 20, 18, 0],
+    'l': [12, 4, 4, 4, 4, 4, 14, 0],
+    'n': [0, 0, 30, 17, 17, 17, 17, 0],
+    'p': [0, 0, 30, 17, 30, 16, 16, 16],
+    'r': [0, 0, 22, 25, 16, 16, 16, 0],
+    's': [0, 0, 15, 16, 14, 1, 30, 0],
+    't': [4, 4, 14, 4, 4, 5, 2, 0],
+    'y': [0, 0, 17, 17, 15, 1, 17, 14],
+}
+LOWER_BLOCKS = [(197, 11), (91, 4)]
+LOWER_CODES = dict(zip(sorted(LOWER_ROWS),
+                       [c for start, n in LOWER_BLOCKS
+                        for c in range(start, start + n)]))
+
 
 def word_cells():
     """{cell pattern: [(row, col)]} -- every cell the words need, deduped."""
@@ -224,11 +252,11 @@ def allocate():
     return codes, blocks, pats
 
 
-def big_runs():
+def big_runs(big=None):
     """The name, as display-list runs -- three per word."""
     codes = allocate()[0]
     out = []
-    for row, col, word in BIG:
+    for row, col, word in BIG if big is None else big:
         grid = titleword.cells(word)
         for cy, cells_row in enumerate(grid):
             text = ""
@@ -373,11 +401,20 @@ def runs_of(name):
     return [(top + i, BOX_COL, t) for i, t in enumerate(MESSAGES[name])]
 
 
-def table(runs=None):
+def coleco_runs():
+    text = [(row, col, ''.join(chr(LOWER_CODES[c]) if c in LOWER_CODES else c
+                              for c in line))
+            for row, col, line in COLECO_TEXT]
+    return (frame_runs() + big_runs(COLECO_BIG) + text
+            + [run for run in TITLE if run[2] != "GARRY KITCHEN'S"])
+
+
+def table(runs=None, extra_codes=()):
     """A display list as bytes, with the checks that make it safe."""
     if runs is None:
         runs = frame_runs() + big_runs() + TITLE
     art = set(allocate()[0].values()) | set(genart.CODES["BULB%d" % p] for p in range(4))
+    art.update(extra_codes)
     out, seen = [], {}
     for row, col, text in runs:
         if not 0 <= row < 24:
@@ -420,6 +457,10 @@ def main():
     # Light yellow title text matches the latest TI/Coleco HUD and messages.
     # NES maps this ink to its existing gold palette entry.
     cbyte = (genart.LYELL << 4) | genart.HUD_BG
+    unused = {c for start, n in free_codes() for c in range(start, start + n)}
+    unused -= set(codes.values())
+    assert set(LOWER_CODES.values()) <= unused, 'lowercase overlaps existing art'
+    assert len(LOWER_CODES) == sum(n for _, n in LOWER_BLOCKS)
 
     with io.open(FACE_OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")
@@ -454,6 +495,18 @@ def main():
             for i in range(0, n, 8):
                 fh.write("\tDATA BYTE %s\n"
                          % ",".join(["$%02X" % cbyte] * min(8, n - i)))
+        fh.write("\n#if COLECOVISION\n")
+        letters = sorted(LOWER_CODES, key=LOWER_CODES.get)
+        for k, (start, count) in enumerate(LOWER_BLOCKS):
+            fh.write("\nclower_pat%d:\n" % k)
+            for code in range(start, start + count):
+                letter = next(c for c in letters if LOWER_CODES[c] == code)
+                fh.write("\tDATA BYTE %s\n" % ','.join(
+                    '$%02X' % (v << 2) for v in LOWER_ROWS[letter]))
+            fh.write("\nclower_col%d:\n" % k)
+            for _ in range(count):
+                fh.write("\tDATA BYTE %s\n" % ','.join(['$%02X' % cbyte] * 8))
+        fh.write("#endif\n")
     print("wrote %s -- %d distinct cells in %d block(s) (%s), %d bytes"
           % (os.path.normpath(FACE_OUT), len(codes), len(blocks),
              ", ".join("%d..%d" % (a, a + n - 1) for a, n in blocks),
@@ -474,10 +527,15 @@ def main():
         fh.write("\t' The message boxes in title.bas are the same format and\n")
         fh.write("\t' CANNOT come with it: they are read when a round ends.\n")
         fh.write("\t' ==================================================\n")
-        fh.write("\ntitle_tbl:\n")
+        fh.write("\n#if COLECOVISION\ntitle_tbl:\n")
+        french = table(coleco_runs(), LOWER_CODES.values())
+        for i in range(0, len(french), 8):
+            fh.write("\tDATA BYTE %s\n" % ','.join(str(b) for b in french[i:i + 8]))
+        fh.write("#else\ntitle_tbl:\n")
         for i in range(0, len(data), 8):
             fh.write("\tDATA BYTE %s\n"
                      % ",".join(str(b) for b in data[i:i + 8]))
+        fh.write("#endif\n")
 
     with io.open(OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")

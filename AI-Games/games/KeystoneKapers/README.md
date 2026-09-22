@@ -101,6 +101,11 @@ ninety-two pokes. The name above it is drawn as whole KERNED words, three cells
 tall, sliced on the character grid so a cell can hold parts of two letters
 (`DESIGN.md` 0e-quaterdecies).
 
+ColecoVision uses the French card: small lowercase `les` beside large `KAPERS`,
+then small `de` beside large `KEYSTONE`, with small-text `par GARRY KITCHEN` below.
+The name starts two rows higher than the English card. TI-99 and NES retain
+their English title. Preview Coleco with `assets/prevtitle.py out.png 3 --coleco`.
+
 **Row 0 of the title card carries `SCORE:` and `HI:`** -- the last game and the best
 so far, justified to the marquee: `SCORE:` starts at the frame's left column and the
 HI digits end at its right one, so the line has the same edges as the card under it.

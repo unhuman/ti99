@@ -60,6 +60,10 @@ SPRITE_TABLE, CHAR_TABLE = 0, 1
 # THE RUNTIME SWAPS, each of which overwrites a resident table ON PURPOSE.
 #   label -> (table, first code, count, why)
 BORROWS = {
+    "clower_pat0": (CHAR_TABLE, 197, 11,
+                    "Coleco-only lowercase; these slots have NES-only owners"),
+    "clower_pat1": (CHAR_TABLE, 91, 4,
+                    "Coleco-only lowercase; NES suitcase tiles use 92..95"),
     "store_nes_chr": (CHAR_TABLE, 96, len(g.CHARS),
                       "NES-native alternative to the TMS store tiles"),
     "spr_hstand":  (SPRITE_TABLE, 72, 16, "Harry's standing pose, over his "

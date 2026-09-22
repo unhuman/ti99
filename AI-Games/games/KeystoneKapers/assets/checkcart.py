@@ -150,11 +150,14 @@ def main():
         arc = []
         for line in am.group(1).splitlines():
             arc += [int(x) for x in re.findall(r"\d+", line.split("BYTE")[-1])]
-        apex = max(arc)
-        window = sum(1 for h in arc if h >= oht)
+        tuck = int(re.search(r'CONST JUMPTUCK = (\d+)', src)[1])
+        apex = max(arc) + tuck
+        # Entry zero is grounded; the tuck applies only in ST_JUMP.
+        window = sum(1 for i, h in enumerate(arc) if h + (tuck if i else 0) >= oht)
         print("  cart art        %d px, rows %d-%d" % (art_h, top, bottom))
         print("  cart hitbox     oht = %d" % oht)
-        print("  jump arc        %d frames, apex %d" % (len(arc), apex))
+        print("  jump arc        %d frames, feet apex %d (includes %d tuck)"
+              % (len(arc), apex, tuck))
         print("  clears on       %d of %d frames" % (window, len(arc)))
         if oht > apex:
             bad.append("a %d px cart cannot be jumped at all: the arc's apex "

@@ -85,6 +85,7 @@ def arcs():
 def main():
     stand = const("STANDH")
     duck = const("DUCKH")
+    tuck = const("JUMPTUCK")
     apex, frames = jump_apex()
 
     # The ball's art is 8 px tall in rows 8-15 of its box; the hitbox is the
@@ -99,7 +100,7 @@ def main():
     for i, arc in enumerate(arcs()):
         peak = max(arc)
         for f, bb in enumerate(arc):
-            jump_ok = not hits(apex, stand, bb)
+            jump_ok = not hits(apex + tuck, stand - tuck, bb)
             duck_ok = not hits(0, duck, bb)
             free = not hits(0, stand, bb)
             if free:
@@ -110,7 +111,7 @@ def main():
             if not jump_ok and not duck_ok:
                 bad.append("arc %d frame %d: ball at %d px can be neither "
                            "jumped nor ducked -- DEAD BAND" % (i, f, bb))
-        j = sum(1 for bb in arc if not hits(apex, stand, bb))
+        j = sum(1 for bb in arc if not hits(apex + tuck, stand - tuck, bb))
         d = sum(1 for bb in arc if not hits(0, duck, bb))
         print("  arc %d: apex %2d px -- jumpable on %2d/32 frames, "
               "duckable on %2d/32" % (i, peak, j, d))

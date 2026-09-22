@@ -139,6 +139,7 @@
 	CONST XROOF = 252
 	CONST XWALW = 8			' nearest left edge at the west wall
 	CONST STANDH = 24		' Kelly standing -- TWO SPRITES tall
+	CONST JUMPTUCK = 2		' run-2 jump pose ends two rows above run-1 feet
 	' KELLY DUCKED. It was 8 px, which is not a crouch -- it is a squash, with
 	' no room to draw a figure bending in a DIRECTION. 11 px is, and the
 	' biplane is raised to match (obh below, and the hitbox in coll_obst):
@@ -1086,6 +1087,13 @@ setup_font:
 	' no colour table on this machine -- see nes_setup
 	#else
 	DEFINE COLOR 185,12,tfont_col1
+	#endif
+	#if COLECOVISION
+	' Lowercase text for the French Coleco title; no gameplay tiles overlap.
+	DEFINE CHAR 197,11,clower_pat0
+	DEFINE COLOR 197,11,clower_col0
+	DEFINE CHAR 91,4,clower_pat1
+	DEFINE COLOR 91,4,clower_col1
 	#endif
 
 	' Radar colours are expanded in the setup bank, before later overrides.
@@ -4487,6 +4495,8 @@ coll_obst:
 	kh = STANDH
 	IF klst = ST_DUCK THEN kh = DUCKH
 	ktop = kfh + kh
+	' Keep the hat boundary; only the tucked-up feet leave the hitbox.
+	IF klst = ST_JUMP THEN kfh = kfh + JUMPTUCK
 	kcx = klx + 8
 
 	cb = klv + klv

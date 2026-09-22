@@ -6535,3 +6535,55 @@ Production review hashes (SHA-256):
 - TI: `F20FE5FBD7BD3BEAD6EA895CE91B6577DCAE184D0D5B9FE82E856EECC93F91FE`
 - Coleco: `A64BF289F06F4EB4909B2CC96A46CF08072ABC96B6A937E7A2723C3BE6359A77`
 - NES: `48E534173E64399588813CA1F04AC25AC29982FBD3E3FF7513E07D1EE9105421`
+
+## 31. French ColecoVision title card
+
+ColecoVision alone displays `les KAPERS`, `de KEYSTONE`, then
+`par GARRY KITCHEN`. The two large words reuse the original kerned artwork;
+KAPERS starts at row 6 and KEYSTONE at row 10, two rows above the former
+English layout. Small lowercase prefixes align with the large words' bottom
+rows; the small-text author credit is centred at row 15, with lowercase `par`
+and uppercase `GARRY KITCHEN`. The possessive
+`GARRY KITCHEN'S` line is omitted. The frame, score, project credit and start
+prompt retain their positions.
+
+`gentitle.py` emits alternate display-list data under `#if COLECOVISION`.
+Fifteen 8x8 lowercase glyphs occupy codes 197..207 and 91..94, checked against
+the generator's free TMS slots. Their pattern/colour uploads and data are also
+Coleco-only: NES uses some of those codes for its own graphics. No new RAM is
+needed. `checkpat.py` records the platform-specific allocations; the ordinary
+title table bounds/overlap checks validate the French layout at generation.
+`prevtitle.py out.png 3 --coleco` previews the generated French card; omitting
+the flag continues to preview the English card.
+
+Validation: all three full builds and their regression gates passed. TI and
+NES ROM hashes are identical to section 30 above. Coleco uses the same 596 RAM
+bytes; the ROM now rounds up to 32 KB. CoolCV displays the mixed-size French
+card correctly and fire starts normal gameplay with two spare hats.
+
+## 32. Jump collision box follows the tucked feet
+
+Kelly's jump holds run frame 2, whose last inked row is 21; the standing
+frame reaches row 23. Both poses start at row 0 and share the same drawing
+origin. The old collision interval nevertheless covered all 24 rows while
+jumping, allowing a cart or ball to hit two invisible rows below his feet.
+
+`JUMPTUCK = 2` raises `kfh` only in `ST_JUMP`, after computing `ktop`.
+The head boundary is therefore unchanged. The jump arc, sprite placement,
+horizontal collision radius, standing and crouching bounds are unchanged.
+No new variables are allocated. The cart clearance window is now 20 of the
+30 arc entries rather than 16, matching the tucked-up artwork.
+
+The regression in `levelplay_test.py` measures the independent source art
+and executes the production collision routine on all three platform branches.
+It sweeps jump heights 0..14 against carts, radios, planes and all 32 ball
+heights, checking both collision boundaries and actual hit/no-hit results.
+The cart and ball gates now include the jump tuck in their clearance checks.
+
+Validation: all three full builds and regression suites passed, including
+4,725 collision cases in the new boundary sweep. Generated 6502, Z80 and
+TMS9900 code adjusts only `kfh` in the jump state, after storing `ktop`.
+RAM remains unchanged (NES 1500, Coleco 596, TI 620 bytes). NES has 26 bytes
+of trailing PRG padding; TI has 1920 bytes free in the fixed code area.
+The production ROMs were loaded in iNES, Classic99 and CoolCV. Automated NES
+fire input remained on the title, so it does not count as a gameplay check.
