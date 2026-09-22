@@ -6655,3 +6655,74 @@ remains the final check on how comfortable that allowance feels.
 - NES: `7317A3E7999C8CF82219DE1F6DDE25FC83D82DA69CEB580365116D43ABD244A2`
 - TI: `4F7B852BB7417D28E0DAB876B90E3B36497B61F602D3EE99FD3C0BB5DE63E558`
 - Coleco: `687D96E99515C7D4FF081D4FEB04FAFAAA71F04F9DBA85AC524037AF8445B0D2`
+
+## 35. Shared title credit
+
+The project credit now reads `2026 UNHUMAN AND C&C AI` on all three platforms.
+The replacement has the same length and keeps row 18, column 4. The existing
+font already includes the ampersand, so no glyphs or runtime code are added.
+The title's `SCORE` and `HI` labels also omit their colons to match the in-game
+HUD. Label origins and runtime score digit positions are unchanged.
+
+Validation: all three full builds and regression suites passed. The final NES
+and Coleco titles were checked in their emulators. NES PRG padding is 32 bytes;
+the text edits add no RAM.
+
+Spacing review: both title and gameplay SCORE labels occupy columns 2..6,
+with column 7 blank and all six score digits in columns 8..13. Title HI uses
+20..21, a blank at 22, and digits 23..28. Gameplay TIME occupies 16..19,
+with a blank at 20 and digits 21..22. Even 655350 fits without moving TIME.
+The reserve display now occupies columns 25..29: up to five hats, or one
+hat followed by lowercase x and the reserve count for six through eight.
+Columns 23..24 leave two spaces after TIME, matching the two spaces between
+the maximum-width score and TIME; columns 30..31 retain the right margin.
+
+NES controller setup feasibility: the current assembled keyboard setup block
+from CVB_SETUP838 ($9062) through the end of CVB_SU_KEY ($9197 exclusive)
+occupies 309 bytes. Replacing that block and the keyboard entry detector,
+reusing their scratch variables, is preferable to appending another menu to
+the nearly full ROM. Left/right/up/down entry and up/down/button selection
+are implemented below; these addresses describe the pre-change ROM.
+
+## 36. NES controller setup and compact reserve count
+
+The NES title accepts Left, Right, Up, Down in order. Repeated held directions
+count once; wrong directions or diagonals reset entry, while another Left
+restarts it. Up/right increases and down/left decreases total Kops (1..9,
+initially 3), then level (1..20, initially 1). Either fire button (A or B)
+confirms each choice; the menu waits for controls to
+release between changes and before returning to gameplay. Bounds clamp.
+The setup remains unadvertised on the title.
+
+`#if NES` replaces only that target's entry detector and setup body. A comparison
+of preprocessed title-input and setup code against the prior committed source
+found TI-99 and ColecoVision unchanged. The small 6502 routines live in the
+existing NES shim and reuse the BASIC setup scratch variables.
+
+All platforms retain one icon per reserve through five reserves. Larger
+counts read as hat-x6 through hat-x8, with a true lowercase x in formerly
+unused punctuation slot 42 of the existing font. This costs no additional
+glyph storage, upload or RAM. Every HUD update clears all five cells before
+redrawing, including transitions between numeric counts and individual hats.
+NES hats remain black sprites; their count text uses the existing HUD font.
+The TI/Coleco hat is still a background character. Score and time positions,
+life limits, award thresholds and starting defaults are unchanged.
+
+The Coleco French title's two large words, their lowercase prefixes, and
+`par GARRY KITCHEN` are each shifted up one character row. English titles
+keep their previous positions.
+
+Regression coverage executes the menu assembly against scripted controller
+frames (correct/incorrect entry, held inputs, bounds, defaults, decimal output,
+both fire buttons, and release gates), including a negative control with a release
+gate removed. The shared HUD is exercised for every total-life count 0..9
+in both directions; NES OAM checks verify hat positions and black palette.
+
+Validation: all three production builds and their regression suites passed;
+the NES build was repeated after adding left/right and both fire buttons.
+Final NES RAM is 1497 bytes (three fewer), with 76 bytes of PRG padding.
+TI fixed-area headroom is 1784 bytes after expanding to five hats;
+TI/Coleco RAM remains 620/596 bytes.
+The raised Coleco title was checked in CoolCV. The user confirmed the initial
+NES controller menu works in play; the expanded controls are covered by the
+assembly tests. Final production ROMs are loaded in iNES, Classic99 and CoolCV.

@@ -697,13 +697,14 @@ nes_attrs_put:
 	RTS
 
 ; Reserve hats use black palette 1 and OAM 56..63, outside actor pairs.
-; At most eight hats occupy this otherwise sprite-free HUD scanline.
-; Preserve the two-cell margin through five hats; use one cell above five
-; so eight reserves fit without covering the time digits.
+; Five hats at most; six or more reserves show one hat followed by xN.
 ; Tile 199 selects CHR $1000, pair 198/199 (hat, transparent bottom).
 nes_hats:
 	LDX #28
 	LDY cvb_SPARE
+	CPY #6
+	BCC nes_hats_loop
+	LDY #1
 nes_hats_loop:
 	LDA #$F0
 	CPY #0
@@ -722,7 +723,7 @@ nes_hats_y:
 	TXA
 	ASL A
 	CLC
-	ADC #184
+	ADC #160
 	JMP nes_hats_x
 nes_hats_margin:
 	TXA
@@ -748,6 +749,104 @@ nes_hats_hide:
 	STA $02F8
 	STA $02FC
 	RTS
+
+; NES-only replacement for the keypad setup. Reuse the BASIC menu scratch
+; variables; no new RAM. CVBasic joy bits: U=1 R=2 D=4 L=8 B=$40 A=$80.
+; Full releases re-arm input. Wrong directions/diagonals reset the code;
+; another LEFT starts a fresh attempt. A held direction advances only once.
+nes_title_code:
+	LDA joy1_data
+	AND #$CF
+	CMP cvb_TKL
+	BEQ nes_title_return
+	STA cvb_TKL
+	CMP #0
+	BEQ nes_title_return
+	LDY cvb_T838
+	CMP nes_title_sequence,Y
+	BEQ nes_title_next
+	LDY #0
+	CMP #8
+	BNE nes_title_reset
+	INY
+nes_title_reset:
+	STY cvb_T838
+	RTS
+nes_title_next:
+	INC cvb_T838
+nes_title_return:
+	RTS
+nes_title_sequence:
+	DB 8,2,1,4
+
+; SK=current value, SUT=maximum, #SUA=two-digit name-table destination.
+; Up/right increase, down/left decrease, clamped. Either fire button confirms;
+; release before returning prevents
+; the same press confirming the next field or jumping at the start of play.
+nes_choose:
+	JSR nes_choose_draw
+	JSR nes_menu_release
+nes_choose_wait:
+	JSR wait
+	LDA joy1_data
+	AND #$CF
+	CMP #$80
+	BEQ nes_choose_done
+	CMP #$40
+	BEQ nes_choose_done
+	CMP #1
+	BEQ nes_choose_up
+	CMP #2
+	BEQ nes_choose_up
+	CMP #4
+	BEQ nes_choose_down
+	CMP #8
+	BNE nes_choose_wait
+nes_choose_down:
+	LDA cvb_SK
+	CMP #1
+	BEQ nes_choose
+	DEC cvb_SK
+	JMP nes_choose
+nes_choose_up:
+	LDA cvb_SK
+	CMP cvb_SUT
+	BEQ nes_choose
+	INC cvb_SK
+	JMP nes_choose
+nes_choose_done:
+	JMP nes_menu_release
+nes_menu_release:
+	JSR wait
+	LDA joy1_data
+	AND #$CF
+	BNE nes_menu_release
+	RTS
+nes_choose_draw:
+	LDA cvb_SK
+	LDY #48
+nes_choose_tens:
+	CMP #10
+	BCC nes_choose_digits
+	SBC #10
+	INY
+	JMP nes_choose_tens
+nes_choose_digits:
+	STA cvb_SUD
+	TYA
+	TAX
+	LDA cvb_#SUA
+	LDY cvb_#SUA+1
+	JSR WRTVRM
+	LDA cvb_SUD
+	CLC
+	ADC #48
+	TAX
+	LDA cvb_#SUA
+	CLC
+	ADC #1
+	LDY cvb_#SUA+1
+	JMP WRTVRM
 
 ; Brown suitcase outlines overlay their existing black-filled background tiles.
 ; OAM 44..51 are unused right halves of retired propeller slots 16..23.

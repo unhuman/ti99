@@ -1703,7 +1703,12 @@ title_input:
 	#else
 	PRINT AT 681,"FIRE TO START"
 	#endif
+	#if NES
+	tkl = 0
+	t838 = 0
+	#else
 	tkl = 15
+	#endif
 title_wait:
 	WAIT
 	' THE MARQUEE CHASES WHILE THE TITLE WAITS.
@@ -1806,6 +1811,10 @@ title_wait:
 	' The reset below is RallyX's: anything that is not the next digit puts
 	' the sequence back to 0, so 8,5,3,8 does not open the page. That is
 	' proven code and it is not what was failing here.
+	#if NES
+	ASM JSR nes_title_code
+	IF t838 = 4 THEN t838 = 0 : GOSUB setup838 : RETURN
+	#else
 	tk = cont1.key
 	IF tk <> tkl THEN
 		tkl = tk
@@ -1818,6 +1827,7 @@ title_wait:
 		END IF
 	END IF
 	IF t838 = 3 THEN t838 = 0 : GOSUB setup838 : RETURN
+	#endif
 	IF cont1.button THEN RETURN
 	GOTO title_wait
 
@@ -1839,6 +1849,23 @@ title_wait:
 	' Bust-A-Bobble resets only on a stray 3 and still lets 8,5,3,8 through.
 	' ------------------------------------------------------- 838 setup page
 setup838:
+	#if NES
+	' The keypad version below is compiled unchanged on TI and Coleco.
+	CLS
+	PRINT AT 260,"KOPS 1-9"
+	sk = 3
+	sut = 9
+	#sua = 8464
+	ASM JSR nes_choose
+	kops0 = sk
+	PRINT AT 324,"LEVEL 01-20"
+	sk = 1
+	sut = 20
+	#sua = 8528
+	ASM JSR nes_choose
+	krk0 = sk
+	RETURN
+	#else
 	CLS
 	' ONE PROMPT AT A TIME, NOTHING ELSE ON THE SCREEN, AND NO NUMBERS UNTIL
 	' THEY ARE TYPED. There is no heading and no instructions: a page showing
@@ -1852,11 +1879,7 @@ setup838:
 	' survives: every digit on screen is one the player just typed. Four
 	' strings became two, a two-field loop became a straight line, and the page
 	' got SMALLER while getting quieter.
-	#if NES
-	PRINT AT 164 + 96,"KOPS 1-9"
-	#else
 	PRINT AT 164,"KOPS 1-9"
-	#endif
 	' DEBOUNCE THE 8 THAT OPENED THIS PAGE. cont1.key still reports it on the
 	' first pass in here, so the Kops field read it as the answer and the page
 	' came up showing 8 before the player had touched anything -- typing 8-3-8
@@ -1869,29 +1892,17 @@ setup838:
 	' being ignored, which would look like a dropped keypress.
 	kops0 = sk
 	IF kops0 < 1 THEN kops0 = 1
-	#if NES
-	#sua = 8464
-	#else
 	#sua = 6320			' row 5, col 16 -- beside KOPS
-	#endif
 	sud = 48 + kops0
 	VPOKE #sua,sud
 	GOSUB su_rel
-	#if NES
-	PRINT AT 228 + 96,"LEVEL 01-20"
-	#else
 	PRINT AT 228,"LEVEL 01-20"
-	#endif
 	' The TENS digit is echoed as it is typed, so the field is never half a
 	' number with nothing on screen to say so. 6384 is row 7 column 16 -- the
 	' same column as the Kop count above it, so the two values line up.
 	GOSUB su_key
 	sud1 = sk
-	#if NES
-	#sua = 8528
-	#else
 	#sua = 6384
-	#endif
 	sud = 48 + sk
 	VPOKE #sua,sud
 	GOSUB su_rel
@@ -1912,11 +1923,7 @@ setup838:
 	' dismiss and nothing to retype -- so 80 typed for 08 has to be SEEN landing
 	' on 20, or it reads as the page ignoring the second digit. The wait below
 	' is what gives it time to be read.
-	#if NES
-	#sua = 8528
-	#else
 	#sua = 6384
-	#endif
 	sut = krk0
 	sud = 48
 su_tens:
@@ -1951,6 +1958,7 @@ su_key:
 	sk = cont1.key
 	IF sk > 9 THEN GOTO su_key
 	RETURN
+	#endif
 
 	' ======================================================================
 	' A NEW GAME / A NEW KROOK
@@ -5987,33 +5995,36 @@ hud_time:
 hud_kops:
 	spare = 0
 	IF kops > 0 THEN spare = kops - 1
-	' Eight cells show all eight reserves; TIME ends at column 22.
+	' Five cells, columns 25..29: two blanks after TIME and at the right.
+	' Six or more reserves use one hat, lowercase x (font slot 42), count.
+	plv2 = spare
+	IF spare > 5 THEN plv2 = 1
 	#if NES
-	#pla = 8280
+	#pla = 8281
 	#else
-	#pla = 6168
+	#pla = 6169
 	#endif
-	' AND THEY ARE RIGHT-JUSTIFIED, so the last one sits in the last column.
-	'
-	' Filling from the left meant the row emptied from the right and the final
-	' Kop ended up alone at column 27, four blanks from the screen edge, with
-	' nothing to say why it had stopped where it did. Growing the row leftward
-	' from column 31 keeps one edge fixed: the icons always end at the same
-	' place and the count reads off their left-hand end.
-	'
-	' `pli + spare > 7` rather than `pli >= 8 - spare` -- the same test with no
-	' subtraction in it, because `spare` is an unsigned 8-bit variable and
-	' 8 - spare would underflow for an out-of-range spare count.
-	FOR pli = 0 TO 7
-		plv2 = 32
+	FOR pli = 0 TO 4
+		sud = 32
 		#if NES
 		' Icons are sprites; keep their background cells blue.
 		#else
-		IF pli + spare > 7 THEN plv2 = CH_KOPIC
+		IF spare < 6 THEN
+			IF pli + plv2 > 4 THEN sud = CH_KOPIC
+		ELSE
+			IF pli = 2 THEN sud = CH_KOPIC
+		END IF
 		#endif
-		VPOKE #pla,plv2
+		VPOKE #pla,sud
 		#pla = #pla + 1
 	NEXT pli
+	IF spare > 5 THEN
+		#pla = #pla - 2
+		VPOKE #pla,42
+		#pla = #pla + 1
+		sud = spare + 48
+		VPOKE #pla,sud
+	END IF
 	#if NES
 	ASM JSR nes_hats
 	#endif

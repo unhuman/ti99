@@ -135,6 +135,20 @@ def main():
     rows = scan()
     bad = []
 
+    # The controller menu is a separate implementation, not interleaved
+    # per-address branches. Check its complete address sequence explicitly:
+    # row 5/7, column 16, with the NES picture shifted down three rows.
+    menu = [(val, st) for _, var, val, st, lbl in rows
+            if lbl == 'setup838' and var == '#sua']
+    menu_expected = [(8192+(5+3)*32+16, 'NES'),
+                     (8192+(7+3)*32+16, 'NES'),
+                     (6144+5*32+16, 'NOT_NES'),
+                     (6144+7*32+16, 'NOT_NES'),
+                     (6144+7*32+16, 'NOT_NES')]
+    if menu != menu_expected:
+        bad.append('setup838 digit addresses/platform guards differ from '
+                   'rows 5/7, column 16 (+3 rows on NES): %r' % (menu,))
+
     # 1. every TI-range raw address must sit in a NON-NES branch
     ti_hits = [r for r in rows if TI_BASE <= r[2] < TI_END]
     ungated = [r for r in ti_hits if r[3] in ("PLAIN", "NES")]
@@ -152,6 +166,8 @@ def main():
     for i, (n, var, val, st, lbl) in enumerate(rows):
         if st != "NOT_NES" or not (TI_BASE <= val < TI_END):
             continue
+        if lbl == 'setup838' and var == '#sua':
+            continue  # fully checked above, including all NES assignments
         mate = None
         for j in range(i - 1, max(-1, i - 8), -1):
             n2, var2, val2, st2, _l2 = rows[j]

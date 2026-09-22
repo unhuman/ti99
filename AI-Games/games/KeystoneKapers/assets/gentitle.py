@@ -154,9 +154,9 @@ BIG = [
 ]
 
 # Coleco's French card reuses exactly the same large word tiles.
-COLECO_BIG = [(6, 12, "KAPERS"), (10, 11, "KEYSTONE")]
-COLECO_TEXT = [(8, 8, "les"), (12, 8, "de"),
-               (15, 7, "par GARRY KITCHEN")]
+COLECO_BIG = [(5, 12, "KAPERS"), (9, 11, "KEYSTONE")]
+COLECO_TEXT = [(7, 8, "les"), (11, 8, "de"),
+               (14, 7, "par GARRY KITCHEN")]
 # Five-pixel lowercase text, one 8x8 cell per letter. These slots are free
 # on TMS targets; some have separate NES-only owners, so load only on Coleco.
 LOWER_ROWS = {
@@ -299,17 +299,17 @@ def big_runs(big=None):
 # THE SCORE LINE IS LABELS HERE AND DIGITS AT RUN TIME. `title_score` in
 # KEYSTONE.bas writes the numbers.
 #
-# IT IS JUSTIFIED TO THE MARQUEE, not spaced by eye. `SCORE:` starts at column
+# IT IS JUSTIFIED TO THE MARQUEE, not spaced by eye. `SCORE` starts at column
 # 2, which is FRAME_L, and the HI field ENDS at column 28, which is FRAME_R --
 # so the line the card sits under has the same left and right edges as the card
-# itself. `HI:` therefore sits at 20..22 and its six digits at 23..28, and the
+# itself. `HI` therefore sits at 20..21 and its six digits at 23..28, and the
 # score's own six start at 8 (the column the in-game HUD uses too, which is not
 # a coincidence worth breaking).
 TITLE = [
-    (0, 2, "SCORE:"),
-    (0, 20, "HI:"),
+    (0, 2, "SCORE"),
+    (0, 20, "HI"),
     (6, 8, "GARRY KITCHEN'S"),
-    (18, 4, "2026 UNHUMAN AND CLAUDE"),
+    (18, 4, "2026 UNHUMAN AND C&C AI"),
 ]
 
 # ---------------------------------------------------------------------------

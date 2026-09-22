@@ -217,7 +217,7 @@ class ColourTest(unittest.TestCase):
                 if y != 240:
                     visible.append(x)
                     self.assertEqual((y, tile, palette), (15, 199, 1))
-            self.assertEqual(visible, list(range((248 if spare > 5 else 240)-min(spare, 8)*8, (248 if spare > 5 else 240), 8)))
+            self.assertEqual(visible, [216] if spare > 5 else list(range(240-spare*8, 240, 8)))
             self.assertEqual(result[0x200:0x2E0], [0xAB]*224)
             hidden = execute(hide, {}, result)
             self.assertEqual(hidden[0x2E0:0x300:4], [240]*8)

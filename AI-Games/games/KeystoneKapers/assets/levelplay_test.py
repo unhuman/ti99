@@ -121,6 +121,9 @@ class Basic:
                 if line[5:] in self.stubs:
                     return
                 pc = self.labels[line[5:]] + 1
+            elif line.startswith('VPOKE '):
+                address, value = line[6:].split(',', 1)
+                self.memory[self.value(address)] = self.value(value)
             elif line == 'RETURN':
                 if not returns:
                     return

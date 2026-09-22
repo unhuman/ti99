@@ -72,7 +72,7 @@ cases.append(("unmapped routine", CHK, chk_orig,
 
 # 4. two HUD fields declared on top of each other
 cases.append(("HUD fields overlap", CHK, chk_orig,
-              chk_orig.replace('("time digits",  0, 19, 2),',
+              chk_orig.replace('("time digits",  0, 21, 2),',
                                '("time digits",  0, 16, 2),'),
               "OVERLAP"))
 

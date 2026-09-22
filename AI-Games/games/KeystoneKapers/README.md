@@ -35,6 +35,17 @@ ducks or rides the lift without being asked. (`DESIGN.md` §0e-sexies.)
 
 `838` on the title opens a setup screen: **three typed digits** -- one for the number of Kops, two for the starting level -- and the last one starts the game. Out-of-range levels are clamped to 1-20 rather than refused, so there is nothing to get stuck in. It is deliberately **unadvertised** -- a hidden code in the Activision idiom, not a menu entry -- so nothing on the title screen mentions it (`DESIGN.md` §0d-octies).
 
+On **NES**, enter **Left, Right, Up, Down** on the title screen to open the
+equivalent setup. **Up/Right** increases and **Down/Left** decreases total lives
+(1-9), then the starting level (1-20); **either fire button (A or B)** confirms
+each choice. Release the control between choices.
+Defaults are three total lives and level 1. TI-99 and ColecoVision retain the
+existing `838` keypad menus.
+
+On all platforms, the HUD shows reserve lives: up to five individual hats,
+then one hat followed by lowercase `x` and the count for six through eight
+reserves. One active life plus eight reserves is the maximum of nine lives.
+
 ## The store
 
 **Three shopping floors and a roof.** Escalators stand at both ends but only **one per floor
@@ -107,8 +118,8 @@ then small `de` beside large `KEYSTONE`, with small-text `par GARRY KITCHEN` bel
 The name starts two rows higher than the English card. TI-99 and NES retain
 their English title. Preview Coleco with `assets/prevtitle.py out.png 3 --coleco`.
 
-**Row 0 of the title card carries `SCORE:` and `HI:`** -- the last game and the best
-so far, justified to the marquee: `SCORE:` starts at the frame's left column and the
+**Row 0 of the title card carries `SCORE` and `HI`** -- the last game and the best
+so far, justified to the marquee: `SCORE` starts at the frame's left column and the
 HI digits end at its right one, so the line has the same edges as the card under it.
 The whole card sits two rows lower than it used to (the marquee is rows 3-23)
 to free that row; the ring is still 92 lamps, so the chase period still divides it. The
@@ -178,7 +189,10 @@ of a storey below (`DESIGN.md` 0e-quindecies).
 
 **Level 1 is deliberately sparse -- a median of ZERO hazards on screen**, and four of its eight screens are completely bare on every floor. That is measured off the original, not chosen; the port used to show two at all times because a hazard that had not arrived yet was turned into a BEACH BALL rather than removed. Which screens carry what, on every round, is a generated data table now rather than a ladder of gates -- see DESIGN.md 0p-octies, and run assets/genstore.py --levels to read the whole ramp as a grid. Krook 5 is where the balls bounce higher -- the apex goes 9 px -> 16 px, and 20 px from Krook 10 -- and a TALL ball is seeded to meet you at the top of its bounce rather than the bottom, so it has to be ducked rather than jumped, and Krook 6 the first round with two hazards on a floor — spaced `HAZGAP` = 104 px, which is inside the window where you can **land between them** and take each with its own jump. 104 is measured off the original, whose moving hazards are never closer than 108 px in our scale (`DESIGN.md` §0p, §0p-bis, §0p-quater).
 
-The score line sits two columns in from the edge on **dark blue**, with the reserve-Kop hats one column in (five of them — six would wrap off the row) and **right-justified**, so the last one always sits in the last column and the row grows leftward. The lift takes **two seconds** between floors.
+The score line sits two columns in from the edge on **dark blue**. The reserve
+display keeps a two-column right margin: up to five right-justified hats,
+then one hat with lowercase `x` and the count. The lift takes **two seconds**
+between floors.
 
 The roof is **grey buildings against a sunset** -- light blue at the top, then magenta, red, light red and yellow down to the skyline, with a black deck line and black beneath it. A vertical gradient is free on this VDP (it colours one 8x1 scan line at a time), but it costs **row variants**: a character cannot know which row it was placed in, so the sky and the partial buildings come in one per roof row (`DESIGN.md` §0d-quater).
 

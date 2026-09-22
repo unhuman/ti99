@@ -151,11 +151,11 @@ SCREEN = {
 # which is the same "scope narrower than the bug" failure that let UFO's first
 # checker pass. Declaring the extents is the only way to check them.
 HUD_FIELDS = [
-    ("SCORE label",  0,  0, 5),
-    ("score digits", 0,  6, 6),   # 5 digits + the fixed trailing zero
-    ("TIME label",   0, 14, 4),
-    ("time digits",  0, 19, 2),
-    ("kop icons",    0, 26, 6),
+    ("SCORE label",  0,  2, 5),
+    ("score digits", 0,  8, 6),   # 5 digits + the fixed trailing zero
+    ("TIME label",   0, 16, 4),
+    ("time digits",  0, 21, 2),
+    ("kop icons",    0, 25, 5),   # five hats or one hat + lowercase x + count
 ]
 
 
