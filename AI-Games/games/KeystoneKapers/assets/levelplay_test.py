@@ -223,6 +223,48 @@ class LevelPlayTest(unittest.TestCase):
                 self.assertGreaterEqual(len(kinds), 2 if level == 3 else 3,
                                         (level, floor, kinds))
 
+    def test_screen_edges_do_not_alias_collision_coordinates(self):
+        for platform in ('NES', 'TI994A', 'COLECOVISION'):
+            vm = Basic(platform=platform)
+            vm.stubs.add('do_hit')
+            vm.values.update(klv=0, kjh=0, klst=0, fdv=1)
+            for kind in (1, 2, 3, 4):
+                vm.arrays['obk'][0] = kind
+                for player in (0, 1, 7, 8, 12, 232, 239, 240, 247, 248, 252, 255):
+                    # Also cover hypothetical obstacle bytes beyond the normal
+                    # x240 limit: neither operand may alias the opposite edge.
+                    for obstacle in (0, 1, 8, 12, 228, 232, 239, 240, 248, 252, 255):
+                        vm.values.update(klx=player, dead=0, ospc=0, ospp=0)
+                        vm.arrays['obx'][0] = obstacle
+                        vm.arrays['obht'][0] = 0
+                        vm.calls.clear()
+                        vm.run('coll_obst')
+                        self.assertEqual(bool(vm.values['dead'] or 'do_hit' in vm.calls),
+                                         abs(player - obstacle) < 12,
+                                         (platform, kind, player, obstacle))
+
+    def test_wrapping_planes_do_not_sweep_across_the_screen(self):
+        vm = Basic()
+        vm.arrays['obk'][0] = 4
+        vm.values.update(klv=0, kjh=0, klst=0, obsp=48, ocsp=96, opsp=192, fdv=5)
+        for direction in (0, 1):
+            for old_x in ((0, 1, 15, 29) if direction == 0 else (211, 225, 239, 240)):
+                for player in (0, 8, 60, 120, 180, 232, 240, 248, 252, 255):
+                    vm.values.update(klx=player, dead=0, oacp=0)
+                    vm.arrays['obx'][0] = old_x
+                    vm.arrays['obd'][0] = direction
+                    vm.arrays['obht'][0] = 0
+                    vm.run('upd_obst')
+                    new_x = vm.arrays['obx'][0]
+                    vm.run('coll_obst')
+                    # Endpoint overlap plus the incoming centre segment;
+                    # wrapping itself never traverses the middle of the floor.
+                    crossing = (new_x <= player <= min(240, new_x + 29)
+                                if direction == 0 else max(0, new_x - 29) <= player <= new_x)
+                    expected = abs(player - new_x) < 12 or crossing
+                    self.assertEqual(bool(vm.values['dead']), expected,
+                                     (direction, old_x, new_x, player))
+
     def test_real_updates_deliver_distinct_speeds(self):
         for level in (3, 7, 8, 11, 12, 16, 20):
             vm = Basic()

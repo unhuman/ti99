@@ -4497,7 +4497,9 @@ coll_obst:
 	ktop = kfh + kh
 	' Keep the hat boundary; only the tucked-up feet leave the hitbox.
 	IF klst = ST_JUMP THEN kfh = kfh + JUMPTUCK
-	kcx = klx + 8
+	' Both centres add 8, so compare origins: the offsets cancel.
+	' Adding first wraps Kelly's byte at x248..255 onto the opposite edge.
+	kcx = klx
 
 	cb = klv + klv
 	' THREE SLOTS PER BAND, the third at 8+band -- same remap as radio_band.
@@ -4511,7 +4513,7 @@ coll_obst:
 		ck = obk(cj)
 		chit = 0
 		IF ck > 0 THEN
-			ocx = obx(cj) + 8
+			ocx = obx(cj)
 			IF kcx > ocx THEN cdx = kcx - ocx ELSE cdx = ocx - kcx
 			' Fast traffic can cross Kelly between loop passes. Test its
 			' travelled centre segment as well as its final position.
@@ -4522,6 +4524,9 @@ coll_obst:
 				ohb = 0
 				IF ck = OB_CART THEN ohb = ospc
 				IF ck = OB_PLANE THEN ohb = ospp
+				' A wrapped path never extends beyond the hazard's x240 limit.
+				' Partial sprite overlap there is covered by the distance test.
+				IF kcx > 240 THEN ohb = 0
 				IF cdx < ohb THEN
 					IF obd(cj) = 0 THEN
 						IF ocx < kcx THEN cdx = 0

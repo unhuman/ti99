@@ -6587,3 +6587,32 @@ RAM remains unchanged (NES 1500, Coleco 596, TI 620 bytes). NES has 26 bytes
 of trailing PRG padding; TI has 1920 bytes free in the fixed code area.
 The production ROMs were loaded in iNES, Classic99 and CoolCV. Automated NES
 fire input remained on the title, so it does not count as a gameplay check.
+
+## 33. Screen-edge collision coordinates must not overflow
+
+Reproduced a standing Kelly at x248, 252 or 255 being killed by a stationary
+plane at x0. `kcx = klx + 8` overflowed the byte at x248, while the obstacle
+centre remained near zero. The sprite origins were far apart but their
+computed centres appeared adjacent. This affected every obstacle kind.
+
+The obstacle check now compares origins directly: the identical +8 centre
+offsets cancel, retaining the same distance and direction comparisons without
+overflow or wider variables. Other routines' uses of `kcx` remain local to
+those routines. Direct overlapping-edge contact still registers normally.
+
+The fast cart/plane centre-crossing check is also disabled when Kelly's origin
+is beyond x240, outside the hazard movement domain. Direct sprite overlap is
+still checked there; reconstructing a wrapped incoming path must not project
+it beyond the hazard's actual boundary. Plane speeds and lethality are unchanged.
+
+Regression coverage checks all four hazard kinds at both edges on all three
+platform branches, genuine adjacent contact, and both directions of a 30-pixel
+plane wrap. Existing fast-traffic and jump-boundary regressions remain active.
+The edge sweep also covers hypothetical obstacle coordinates 248..255, outside
+the normal movement domain: Kelly at x0 must not collide with a plane at x248.
+Both directions of the original overflow were reproduced before the fix and
+confirmed clear afterward.
+
+All three full builds and regression suites passed. The expanded hypothetical
+edge sweep also passed independently. No additional RAM is used; NES retains
+20 bytes of PRG padding and TI has 1910 fixed-area bytes free.
