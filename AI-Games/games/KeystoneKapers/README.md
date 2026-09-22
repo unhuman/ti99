@@ -376,6 +376,23 @@ NES full-screen transitions use a brief black interval while copying the complet
 scene directly into video memory, then reveal it at a frame boundary. Normal
 in-game updates still use the vblank queue; TI/Coleco rendering is unchanged.
 
+Both escalator end screens have one grey support pillar per shopping floor,
+opposite the staircase, with the middle floor offset six columns farther
+from the escalator side (right on the west screen, left on the east screen).
+The pillars use the existing ceiling caps and
+are background decoration; they do not block movement.
+
+A small asterisk after the score identifies a game started through the 838
+setup (or NES equivalent), even if the default values were selected. The title
+screen marks the last score and high score independently. A new high score
+inherits its game's marker. An unmarked score wins a tie against a marked
+record; other ties leave the record unchanged.
+The marker is a custom 5x5 asterisk at the top of the character cell.
+The shared large title lettering includes small serifs on E, T and S.
+
+On NES, START also starts a game from the title. SELECT during gameplay
+cancels the game and returns to the title without changing the high score.
+
 
 The level review and timestamped measurements are in
 [assets/ref2600/level-review.md](assets/ref2600/level-review.md). The shared

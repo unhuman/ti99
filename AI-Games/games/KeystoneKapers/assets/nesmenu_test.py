@@ -184,10 +184,31 @@ class MenuTest(unittest.TestCase):
             self.assertNotIn('ASM JSR nes_title_code', code)
             self.assertIn('IF t838 = 3 THEN', code)
             self.assertIn('sk = cont1.key', code)
+            self.assertNotIn('nes_cancel:', code)
+            self.assertNotIn('IF cont1.key = 11 THEN RETURN', code)
         code = platform_source(BASIC, 'NES')
         self.assertIn('ASM JSR nes_choose', code)
         self.assertNotIn('sk = cont1.key', code)
         self.assertNotIn('tk = cont1.key', code)
+        self.assertIn('IF cont1.key = 11 THEN RETURN', code)
+        self.assertIn('IF cont1.key = 11 THEN GOTO btn_rel', code)
+        main = code.split('main:', 1)[1]
+        self.assertLess(main.index('IF cont1.key = 10 THEN GOTO nes_cancel'),
+                        main.index('IF hfz = 0 THEN'))
+
+    def test_cancel_stops_sound_without_recording_a_score(self):
+        from levelplay_test import Basic
+        for flags in range(4):
+            for score in (99, 100, 101):
+                vm = Basic(platform='NES')
+                vm.stubs.update(('snd_off', 'boot'))
+                vm.values.update({'#score': score, '#hi': 100, 'scmark': flags,
+                                  'kops0': 9, 'krk0': 17})
+                vm.run('nes_cancel')
+                self.assertEqual(vm.calls, ['snd_off'])
+                self.assertEqual((vm.values['#hi'], vm.values['scmark']), (100, flags))
+                self.assertEqual(vm.values['#score'], score)
+                self.assertEqual((vm.values['kops0'], vm.values['krk0']), (0, 0))
 
     def test_hud_counts_clear_previous_display_and_preserve_spacing(self):
         from levelplay_test import Basic

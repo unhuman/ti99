@@ -75,7 +75,8 @@ class RandomLevelTest(unittest.TestCase):
             first = layout(vm)
             self.assertTrue(any(first))
             if platform == 'TI994A':
-                self.assertEqual([c for c in vm.calls if c.startswith('bank:')], ['bank:2', 'bank:1'])
+                generation = vm.calls[vm.calls.index('reset_prizes'):]
+                self.assertEqual([c for c in generation if c.startswith('bank:')], ['bank:2', 'bank:1'])
             # Execute the retry setup while stubbing only rendering/sound work.
             vm.stubs.discard('start_krook')
             start = SOURCE.split('start_krook:', 1)[1].split('draw_screen:', 1)[0]

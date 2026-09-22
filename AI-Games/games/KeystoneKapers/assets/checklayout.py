@@ -74,6 +74,7 @@ OVERWRITE_OK = {
 }
 
 SCREEN = {
+    "score_mark": "GAME",     # shared HUD/title helper; both callers checked by scoremarks_test
     "title_draw": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
     "title_input": "TITLE",
     # the display-list walker: tt_run reads the table, tt_ch pokes the

@@ -6836,3 +6836,53 @@ The loop records `kprev` before reading input/moving Kelly. The fallback is
 disabled whenever his current state differs from that saved state; ordinary
 current-position overlap still applies. Unchanged poses retain the missed-hit
 protection, and the existing screen-wrap safeguards remain intact.
+
+## 41. Escalator-screen supports
+
+The west and east end screens now have one grey pillar per shopping floor at
+columns 20 and 11 respectively (zero-based), opposite their escalator flights.
+The middle floor is staggered six columns away from the escalator side:
+right to column 26 on the west screen, left to column 5 on the east screen.
+Both escalator and end-wall templates include it. Existing `COUNTR` art and derived `stor_pil` ceiling
+caps supply the complete support on TI, Coleco and NES. No new tiles, palettes,
+RAM, template bytes or gameplay collision rules are needed.
+
+## 42. Setup-mode score provenance
+
+`scmark` uses one byte: bit 0 records whether the current/last game entered
+838 setup; bit 1 records whether the high score came from such a game.
+`new_game` samples `kops0` before setting defaults, so choosing default values
+in setup still marks the game. The normal game-over reset of setup values
+does not erase either score marker. A strictly higher score replaces both the
+record and its origin. An unmarked game tying a marked high score clears the
+record's marker; other ties preserve the previous record.
+
+Font slot 60, previously unused less-than punctuation, carries a small
+5x5 asterisk aligned to the top of its cell, with three blank rows beneath.
+Slot 42 remains the lowercase reserve-count x. The HUD draws the
+marker once per full HUD draw at column 14, leaving column 15 blank before
+TIME. Ordinary score updates only write digits. The title independently marks
+SCORE at column 14 and HI at column 29, after their six-digit fields. No new
+glyph upload or palette is required.
+
+The TI title score, marker initialization/drawing and record helpers live in bank 2 to keep the
+unoptimized fixed code below the assembler's address-wrap boundary. The title
+draw keeps bank 2 selected through its score call; new-game, HUD and game-over calls
+select bank 2 and restore bank 1 immediately afterward.
+
+## 43. Title-letter serifs
+
+The shared large E has short tips on each arm: downward at the top, upward at
+the bottom and on both sides of the middle arm. T has two-pixel downward tips
+under both ends of its crossbar. S has matching tips on its upper-right and
+lower-left terminals. `titleword.py` keeps the existing 12-pixel
+advance, cap height and 44 distinct tiles; all three platforms share the art.
+
+## 44. NES START and SELECT
+
+The NES runtime maps START to `cont1.key = 11` and SELECT to 10. START can
+leave the title alongside either fire button, and shares the bounded release
+wait before gameplay. The main loop checks SELECT before advancing gameplay,
+including during hit freeze. Cancellation silences all effects, clears the
+setup starting values and returns directly to the title. It does not call
+`score_record`, award a bonus or show GAME OVER. These controls are NES-only.

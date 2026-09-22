@@ -78,6 +78,10 @@ def slab_row(row):
 # the same shape as the blue one gave neither.
 PIL_A = (4, 11, 20, 27)
 PIL_B = (7, 15, 24)
+END_PILLAR_W = 20
+END_PILLAR_E = W - 1 - END_PILLAR_W
+END_MID_PILLAR_W = 26
+END_MID_PILLAR_E = W - 1 - END_MID_PILLAR_W
 
 
 def _pillars(t, cols):
@@ -117,12 +121,11 @@ def t_escalator(west):
     slab of the band above, which is that floor's ceiling, so no arrival art
     is needed on the floor you land on.
 
-    THE END SCREENS CARRY NOTHING BUT THE ESCALATOR. No shelving, no counters.
-    They are the turning points of a three-traverse climb, and the player
-    arrives at them under time pressure looking for one thing; decorating them
-    only makes the thing they came for harder to pick out.
+    One support pillar stands opposite the flight. The east flight is on the
+    middle floor, whose pillar is offset six columns to the left.
     """
     t = blank(WALL)
+    _pillars(t, (END_PILLAR_W if west else END_MID_PILLAR_E,))
     slab_row(t[4])
 
     # THE FLIGHT IS PLACED FROM THE RENDERED GRID, cell for cell. genart.py
@@ -166,7 +169,7 @@ def t_escalator(west):
 
 
 def t_endwall(west):
-    """An end screen with no escalator: bare, and walled.
+    """An end screen with no escalator: a wall and one support pillar.
 
     Without something solid in the extreme column the player runs into the edge
     of the screen and the building appears simply to stop -- which reads as
@@ -174,6 +177,8 @@ def t_endwall(west):
     stuck them. A wall answers the question before they ask it.
     """
     t = blank(WALL)
+    # The west end-wall template is the middle floor; east is top/bottom.
+    _pillars(t, (END_MID_PILLAR_W if west else END_PILLAR_E,))
     for r in range(4):
         t[r][0 if west else W - 1] = ENDWALL
     slab_row(t[4])
@@ -389,8 +394,8 @@ NW, NE = "T_END_W", "T_END_E"
 # The elevator serves floors 1-3 and NOT the roof.  If it reached the roof it
 # would replace the whole climb and the three traverses would mean nothing.
 #
-# THE END SCREENS CARRY NOTHING BUT THE ESCALATOR -- or, on a floor whose
-# escalator is at the other end, nothing but the wall.
+# Each shopping floor at either end has one support pillar; the middle floor's
+# pillar is offset six columns away from that screen's escalator side.
 INDEX = [
     [EW, A, B, EL, A, B, A, NE],    # lv0  floor 1  -- climbs WEST
     [NW, B, A, EL, B, A, B, EE],    # lv1  floor 2  -- climbs EAST

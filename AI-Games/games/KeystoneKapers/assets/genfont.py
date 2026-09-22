@@ -91,7 +91,8 @@ GLYPHS = {
 # Slot 42 is not printed as punctuation by this game. Use it for the HUD's
 # lowercase x, keeping the existing contiguous font upload and ROM size.
 "*": "..... ..... #...# .#.#. ..#.. .#.#. #...#",
-"<": "...#. ..#.. .#... #.... .#... ..#.. ...#.",
+# Slot 60 is the small 838 score asterisk; slot 42 remains the reserve-count x.
+"<": "..#.. #.#.# .###. #.#.# ..#.. ..... .....",
 ">": ".#... ..#.. ...#. ....# ...#. ..#.. .#...",
 "#": ".#.#. ##### .#.#. .#.#. ##### .#.#. .....",
 "$": "..#.. .#### #.#.. .###. ..#.# ####. ..#..",

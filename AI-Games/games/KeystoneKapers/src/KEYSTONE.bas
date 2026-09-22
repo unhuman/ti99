@@ -750,6 +750,9 @@ btn_rel:
 	brw = brw + 1
 	IF brw > 60 THEN GOTO btn_go
 	IF cont1.button THEN GOTO btn_rel
+	#if NES
+	IF cont1.key = 11 THEN GOTO btn_rel
+	#endif
 btn_go:
 	GOSUB new_game
 	GOTO main
@@ -757,6 +760,13 @@ btn_go:
 	' ======================================================================
 	' MAIN LOOP -- one WAIT per frame, O(1) per actor, no VDP reads.
 	' ======================================================================
+	#if NES
+nes_cancel:
+	GOSUB snd_off
+	kops0 = 0
+	krk0 = 0
+	GOTO boot
+	#endif
 main:
 	WAIT
 	#if TI994A
@@ -787,6 +797,10 @@ nes_pace:
 		GOTO nes_pace
 	END IF
 	nespw = 5 - nespw
+	#endif
+	#if NES
+	' CVBasic maps NES SELECT to keypad 10, START to keypad 11.
+	IF cont1.key = 10 THEN GOTO nes_cancel
 	#endif
 	#fd = FRAME - #lf
 	#lf = FRAME
@@ -1592,14 +1606,11 @@ title_draw:
 	#endif
 	#tta = VARPTR title_tbl(0)
 	GOSUB run_list
+	' The title score helper lives beside this list in TI bank 2.
+	GOSUB title_score
 	#if TI994A
 	BANK SELECT 1
 	#endif
-	' AFTER THE WALK AND AFTER THE BANK IS BACK. title_score calls prt_digits,
-	' which is fixed-area code, but the VARPTR above reads bank 2 -- so the
-	' numbers go on once the list is done and bank 1 is selected again, not in
-	' the middle of it.
-	GOSUB title_score
 	' NOTHING TO RESET BUT THE COUNTER. Every rotation of the four lamps is a
 	' valid three-and-one, so a title reached after a game over simply carries
 	' on from wherever the last chase stopped -- and `bphs` still names the
@@ -1823,6 +1834,7 @@ title_wait:
 	#if NES
 	ASM JSR nes_title_code
 	IF t838 = 4 THEN t838 = 0 : GOSUB setup838 : RETURN
+	IF cont1.key = 11 THEN RETURN
 	#else
 	tk = cont1.key
 	IF tk <> tkl THEN
@@ -1977,6 +1989,13 @@ su_key:
 	' A NEW GAME / A NEW KROOK
 	' ======================================================================
 new_game:
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB score_start
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	IF kops0 = 0 THEN kops0 = 3	' one active Kop and two in reserve
 	IF krk0 = 0 THEN krk0 = 1
 	kops = kops0
@@ -5933,6 +5952,14 @@ hud_all:
 	PRINT AT 16,"TIME"
 	#endif
 	GOSUB hud_score
+	sud = scmark AND 1
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB score_mark		' static until the HUD is drawn again
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	GOSUB hud_time
 	GOSUB hud_kops
 	RETURN
@@ -5970,32 +5997,6 @@ scr_at:
 	pszs = 1
 	GOSUB prt_digits
 	VPOKE #psa,48				' the fixed trailing zero
-	RETURN
-
-	' THE TITLE SCREEN'S TWO NUMBERS -- last game and best so far.
-	'
-	' Row 0, which the card was moved two rows down to free. The labels are
-	' part of the title display list in bank 2 (gentitle.py's TITLE); only the
-	' digits are written here, because they are the only part that changes.
-	'
-	' The title list puts row 0 at the NES picture offset (+3 rows, the base
-	' the walker uses), NOT the HUD's +2 -- so these are 8192+96+col and not
-	' the 8264/8277 the in-game row uses.
-title_score:
-	#psv = #score
-	#if NES
-	#psa = 8296
-	#else
-	#psa = 6152
-	#endif
-	GOSUB scr_at
-	#psv = #hi
-	#if NES
-	#psa = 8311
-	#else
-	#psa = 6167
-	#endif
-	GOSUB scr_at
 	RETURN
 
 hud_time:
@@ -6551,7 +6552,13 @@ lose_kop:
 		'
 		' #hi survives until the console is switched off. There is no
 		' storage on either cartridge to keep it longer.
-		IF #score > #hi THEN #hi = #score
+		#if TI994A
+		BANK SELECT 2
+		#endif
+		GOSUB score_record
+		#if TI994A
+		BANK SELECT 1
+		#endif
 		' 8-3-8 IS FORGOTTEN WHEN THE GAME ENDS. krk0 and kops0 are
 		' globals, so a starting Krook or Kop count typed on the setup
 		' screen otherwise applied to every game after it -- including one
@@ -7025,6 +7032,66 @@ life_finish:
 	#if TI994A
 	BANK 2
 	#endif
+score_start:
+	' Bit 0 marks this game's setup origin; bit 1 belongs to the high score.
+	' Test before installing defaults: entering 838 counts even with 3 / 1.
+	scmark = scmark AND 2
+	IF kops0 > 0 THEN scmark = scmark OR 1
+	RETURN
+
+score_mark:
+	' The digit writer leaves #psa on the trailing zero. The next cell is free.
+	#psa = #psa + 1
+	IF sud THEN
+		sud = 60			' small asterisk in the unused less-than font slot
+	ELSE
+		sud = 32
+	END IF
+	VPOKE #psa,sud
+	RETURN
+
+	' THE TITLE SCREEN'S TWO NUMBERS -- last game and best so far.
+	'
+	' Row 0, which the card was moved two rows down to free. The labels are
+	' part of the title display list in bank 2 (gentitle.py's TITLE); only the
+	' digits are written here, because they are the only part that changes.
+	'
+	' The title list puts row 0 at the NES picture offset (+3 rows, the base
+	' the walker uses), NOT the HUD's +2 -- so these are 8192+96+col and not
+	' the 8264/8277 the in-game row uses.
+title_score:
+	#psv = #score
+	#if NES
+	#psa = 8296
+	#else
+	#psa = 6152
+	#endif
+	GOSUB scr_at
+	sud = scmark AND 1
+	GOSUB score_mark
+	#psv = #hi
+	#if NES
+	#psa = 8311
+	#else
+	#psa = 6167
+	#endif
+	GOSUB scr_at
+	sud = scmark AND 2
+	GOSUB score_mark
+	RETURN
+
+score_record:
+	' An ordinary game wins a tie against a setup-mode record.
+	IF #score = #hi THEN
+		IF scmark = 2 THEN scmark = 0
+	END IF
+	IF #score > #hi THEN
+		#hi = #score
+		scmark = scmark AND 1
+		IF scmark THEN scmark = 3
+	END IF
+	RETURN
+
 random_level:
 	' Only new games / wins call reset_prizes. A death keeps this packed map.
 	' End screens stay clear. Each aisle gets independent choices, with at
