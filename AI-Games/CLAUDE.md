@@ -874,6 +874,15 @@ cost a debugging session:
     bytes. **That ranking is a reading list, not a work list** -- a short clone
     folded into a `GOSUB` costs the call, the return and the parameter staging, so
     folding one can lose.
+  - **TI short-branch optimization needs a successful unoptimized assembly.**
+    If fixed code starting at `>A000` grows past `>FFFF`, xas99 can reject even
+    adjacent conditional branches with apparent displacements near `-0x8000`.
+    The optimized fixed-area budget may still have room, but that first pass
+    cannot reach the optimizer. Move suitable initialization-only routines and
+    their data into a cartridge bank, or reduce the unoptimized code first.
+    A fixed-area caller must select that bank before calling and restore the
+    runtime data bank after returning. Keystone's random-level generator uses
+    bank 2 this way; its per-screen RAM map reader stays fixed.
   - **The largest clone the sweep found was one nothing on screen could show**: a
     routine computed the radar's escalator diagonals and then called the routine
     that computes the same rows again. Both were pure functions of the same loop

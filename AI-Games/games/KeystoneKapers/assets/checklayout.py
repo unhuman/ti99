@@ -138,6 +138,7 @@ SCREEN = {
     # Writes the COLOUR table at >2000, which is neither the name table
     # nor the pattern table, so it can collide with nothing here.
     "font_colour": "COLR", "scan_colour": "COLR", "store_colour": "COLR",
+    "title_background": "ATTR",
     # repaints screen third 0's colour table so a flight crossing the roof
     # shows the deck behind it and one crossing a shop floor shows the bar --
     # same characters, told apart by which third they are in
@@ -266,7 +267,7 @@ def main():
         # THE FRAME COUNTS TOO. gentitle.TITLE is only the text; the marquee
         # bulbs are frame_runs(), and a title line growing into the frame's
         # right-hand column is exactly the collision this gate is for.
-        for row, col, text in gentitle.frame_runs() + gentitle.TITLE:
+        for row, col, text in gentitle.french_runs():
             prints.append((0, "title_draw", row, col, text))
             _title_bounds(bad, "TITLE", text, row, col)
         # AND THE MESSAGE BOXES, attributed to the routines that draw them.

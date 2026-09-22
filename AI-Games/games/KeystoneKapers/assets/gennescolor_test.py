@@ -296,8 +296,9 @@ class ColourTest(unittest.TestCase):
         values = {int(index): int(value) for index, value in
                   re.findall(r'^\s*PALETTE\s+(\d+),(\d+)', basic, re.M)}
         self.assertEqual((values[2], values[14]), (15, 1))
-        # Green, shared structure, gold, skyline and actors retain their colours.
-        for index, value in {1:26, 3:40, 5:1, 6:36, 7:40, 9:38, 10:15,
+        # Skyline index 2 is unused by buildings/gradient (skymessage_test);
+        # navy there supplies the message's third row. Other colours persist.
+        for index, value in {1:26, 3:40, 5:1, 6:36, 7:40, 9:38, 10:1,
                              11:40, 13:26, 15:40, 17:18, 21:15, 25:39,
                              26:16, 27:22, 29:48}.items():
             self.assertEqual(values[index], value, index)

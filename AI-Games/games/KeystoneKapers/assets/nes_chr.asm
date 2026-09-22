@@ -683,6 +683,17 @@ nes_fixture_offsets: DB 0,1,32,33
 nes_fixture_masks: DB $FC,$F3,$CF,$3F
 
 nes_attrs_put:
+	LDX #3
+nes_message_attrs:
+	LDA array_NESB+26,X
+	AND #15
+	STA array_NMSG,X
+	LDA array_NESB+34,X
+	AND #240
+	ORA array_NMSG,X
+	STA array_NMSG,X
+	DEX
+	BPL nes_message_attrs
 	LDA #$C0
 	STA pointer
 	LDA #$23
@@ -781,15 +792,31 @@ nes_title_sequence:
 
 ; SK=current value, SUT=maximum, #SUA=two-digit name-table destination.
 ; Up/right increase, down/left decrease, clamped. Either fire button confirms;
-; release before returning prevents
+; directions repeat every 15 frames (one quarter of a second at 60 Hz). NINK/TKL/NAI
+; are existing NES/title scratch bytes. Release before returning prevents
 ; the same press confirming the next field or jumping at the start of play.
 nes_choose:
 	JSR nes_choose_draw
 	JSR nes_menu_release
+	LDA #0
+	STA cvb_TKL
+	STA cvb_NAI
 nes_choose_wait:
 	JSR wait
 	LDA joy1_data
 	AND #$CF
+	STA cvb_NINK
+	CMP cvb_TKL
+	BNE nes_choose_new
+	LDA cvb_NAI
+	BEQ nes_choose_wait
+	DEC cvb_NAI
+	BNE nes_choose_wait
+nes_choose_new:
+	LDA cvb_NINK
+	STA cvb_TKL
+	LDX #15
+	STX cvb_NAI
 	CMP #$80
 	BEQ nes_choose_done
 	CMP #$40
@@ -805,15 +832,17 @@ nes_choose_wait:
 nes_choose_down:
 	LDA cvb_SK
 	CMP #1
-	BEQ nes_choose
+	BEQ nes_choose_wait
 	DEC cvb_SK
-	JMP nes_choose
+	JMP nes_choose_redraw
 nes_choose_up:
 	LDA cvb_SK
 	CMP cvb_SUT
-	BEQ nes_choose
+	BEQ nes_choose_wait
 	INC cvb_SK
-	JMP nes_choose
+nes_choose_redraw:
+	JSR nes_choose_draw
+	JMP nes_choose_wait
 nes_choose_done:
 	JMP nes_menu_release
 nes_menu_release:

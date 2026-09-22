@@ -6726,3 +6726,113 @@ TI/Coleco RAM remains 620/596 bytes.
 The raised Coleco title was checked in CoolCV. The user confirmed the initial
 NES controller menu works in play; the expanded controls are covered by the
 assembly tests. Final production ROMs are loaded in iNES, Classic99 and CoolCV.
+
+## 37. Random late levels, setup spacing, and NES TIME blink
+
+Levels 1..16 keep their authored layouts. At level 17 and above, each of the
+24 eligible floor/screen bands independently chooses from the established
+late-game assortment: empty, a single cart/ball/radio/plane, paired carts or
+balls, or three radios. Counts and composition vary; this supersedes the
+initial proposal to preserve all 31 level-16 hazards. The roof chooses only
+empty/single/double carts. Elevator-screen radio choices become a single
+plane, keeping all three radio rack positions out of the doorway. Screens
+0 and 7 stay clear. A per-screen budget of nine individual hazards counts
+tripled radios as three and omits a choice if it would exceed the budget.
+
+The map stores two band nibbles per byte in `rhaz(16)`. `reset_prizes` creates
+it only on a new game or a successful capture, after the level has been set
+or advanced. Death retries and screen crossings only read it. Runtime speed,
+bounce and arrival-direction rules are unchanged. No new generation scratch
+variables are allocated; setup/HUD scratch variables are reused before play.
+NES omits the unused 472-byte `font_col` copy, retaining the identical
+`nes_fcol` table that its existing uploader actually reads.
+
+On TI, generation and its packed-map writer/table live in cartridge bank 2.
+The fixed-area caller selects bank 2, calls the generator, then restores bank
+1 before play. The tiny map reader remains fixed and reads RAM only. This
+also avoids exceeding address $FFFF in the unoptimized TI assembly, which
+must assemble successfully before the short-branch pass can shrink it.
+The redundant HUD scratch assignment was removed without changing its output.
+
+All setup menus now allow starting levels 1..17. Both displayed values move
+from column 16 to column 17, on the same rows as before. Keypad entry on TI
+and Coleco, and the guarded NES controller input, otherwise retain their
+controls. The address checker verifies the new positions on both branches.
+
+The NES TIME flash previously erased PPU row 3 (`+96`) even though the HUD
+draws at row 2 (`+64`). Once the gradient extended into row 3, the old erase
+positions damaged it. Both erase runs now target row 2. This changes no
+palette or gradient artwork and leaves TI/Coleco flashing untouched.
+
+Tests execute production BASIC across all three platform branches, checking
+32 seeded layouts per platform, varied total counts, valid roof/elevator/end
+screens, crowding, actual obstacle loading, and map persistence through a
+retry. New games and capture transitions generate maps; levels 1..16 do not.
+A memory-write test covers both TIME blink phases, with the old row offset
+as a negative control that demonstrably damages the gradient row.
+
+## 38. Shared French title and NES setup refinements
+
+All targets now use the raised Coleco layout: lowercase `les` next to large
+`KAPERS`, lowercase `de` next to large `KEYSTONE`, and `par GARRY KITCHEN`
+below. The credit reads `2026 UNHUMAN and C&C AI`. Eight unused punctuation
+slots (34..37, 40, 41, 43, 44) carry the required lowercase letters within
+the existing 59-character font. Their patterns retain the Coleco artwork.
+This replaces the Coleco-only lowercase uploads and avoids NES hat, suitcase,
+and scenery ownership above character 90. The HUD's lowercase x remains 42.
+The TI console entry is `LES KAPERS`: the full French name has 22 characters,
+exceeding the linker's 20-character cartridge-name field.
+
+NES `CLS` clears attributes to palette P0, whose text paper is store green.
+Both the title and setup now call `title_background` after clearing, filling
+the attribute table with $AA (P2), whose paper matches the title backdrop.
+The gameplay palettes and gradient remain unchanged. The BASIC execution
+test verifies all 64 attribute bytes and reproduces the green-screen failure
+when the restoration call is removed.
+Rendering is disabled, followed by the required NES WAIT, before clearing;
+it is enabled after the blue attributes and first prompt are ready. This
+prevents the transient green flash during the title-to-setup transition.
+The return-to-title path now also disables rendering through the clear,
+palette restoration and title drawing, then reveals the completed card.
+
+NES setup directions change a value immediately and repeat every 15 frames
+(0.25 seconds at 60 Hz). Releasing or changing direction responds immediately;
+both fire buttons still confirm and require release before the next field.
+The assembly reuses existing menu scratch bytes and allocates no extra RAM.
+Scripted tests cover the 15/16- and 30/31-frame boundaries in all four
+directions, clamping, fresh presses, and confirmation/release behavior.
+
+## 39. Result messages over the skyline
+
+The three-row result box starts two character rows below the HUD: row 2 on
+TI/Coleco, PPU row 4 on NES. NES message display-list rows are offset by one
+to account for its HUD being one row higher relative to the game picture.
+The result messages, including TIME'S UP, use that location. GAME OVER is
+separate, centred in the middle shopping floor: text row 12 on TI/Coleco,
+PPU row 15 on NES.
+
+NES retains the skyline's P1/P2 attribute split ($A5). P2 index 2 changes
+from black to navy; none of the lower skyline tiles uses that index. The
+existing solid index-2 tile draws only the third row of the message frame.
+This keeps the frame symmetric without changing the fourth row's buildings
+or the gradient outside the box. Tests check every lower-sky tile across all
+eight screens, the message coordinates, and the exact border/attribute writes.
+GAME OVER retains the former P1/P3 blue frame. The user approved its small
+navy tint on fixture details immediately below the box on the west-escalator
+and elevator screens; that tradeoff does not apply to the skyline messages.
+The subsequent two-row upward move spans two attribute rows. Four bytes
+pack the required halves from the actual fixture-masked screen upload,
+preserving the halves
+outside that frame; only its adjacent bottom-row quadrant retains the accepted
+navy-detail tradeoff. Unused NES title-font colour tables are omitted to make
+room in PRG; TI/Coleco still receive their original colour data.
+
+## 40. Pose changes and fast-hazard collision tolerance
+
+The travelled-path fallback previously tested the entire elapsed movement
+against Kelly's newly selected pose. Releasing duck could therefore kill him
+even though he had crouched while the plane crossed and it was now clear.
+The loop records `kprev` before reading input/moving Kelly. The fallback is
+disabled whenever his current state differs from that saved state; ordinary
+current-position overlap still applies. Unchanged poses retain the missed-hit
+protection, and the existing screen-wrap safeguards remain intact.

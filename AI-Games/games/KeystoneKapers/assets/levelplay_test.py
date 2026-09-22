@@ -6,6 +6,7 @@ it is not a second implementation of load_band that could agree with itself.
 from collections import defaultdict
 from pathlib import Path
 import re
+import random
 import unittest
 from unittest.mock import patch
 from contextlib import redirect_stdout
@@ -21,6 +22,9 @@ SOURCE = Path(__file__).parents[1].joinpath('src/KEYSTONE.bas').read_text()
 class Basic:
     def __init__(self, source=SOURCE, platform='NES'):
         self.source = source
+        self.platform = platform
+        self.rng = random.Random(0)
+        self.addresses = {}
         self.lines = [s.strip() for s in platform_source(source, platform).splitlines()]
         self.labels = {s[:-1]: i for i, s in enumerate(self.lines) if s.endswith(':')}
         self.values = defaultdict(int)
@@ -49,23 +53,27 @@ class Basic:
                 self.nexts[begin] = i
 
     def value(self, expression):
+        expression = re.sub(r'VARPTR (\w+)\(0\)',
+                            lambda m: str(self.addresses[m[1]]), expression)
         def token(m):
             word = m[0]
             if word in ('AND', 'OR'):
                 return '&' if word == 'AND' else '|'
             if word.endswith('('):
                 word = word[:-1]
-                return 'mem(' if word == 'PEEK' else 'arr(%r,' % word
+                return 'mem(' if word == 'PEEK' else 'rnd(' if word == 'RANDOM' else 'arr(%r,' % word
             if word in self.constants:
                 return str(self.constants[word])
             return 'var(%r)' % word
         text = re.sub(r'#[A-Za-z]\w*|[A-Za-z]\w*\(?', token, expression)
         text = text.replace('<>', '!=')
+        text = text.replace('/', '//')
         text = re.sub(r'(?<![<>=!])=(?!=)', '==', text)
         return eval(text, {'__builtins__': {}}, {
             'var': lambda n: self.values[n],
             'arr': lambda n, i: self.arrays[n][i],
             'mem': lambda i: self.memory[i],
+            'rnd': self.rng.randrange,
         })
 
     def assign(self, target, value):
@@ -124,6 +132,20 @@ class Basic:
             elif line.startswith('VPOKE '):
                 address, value = line[6:].split(',', 1)
                 self.memory[self.value(address)] = self.value(value)
+            elif line.startswith('PRINT AT '):
+                address, text = line[9:].split(',', 1)
+                base = 8192 if self.platform == 'NES' else 6144
+                for i, ch in enumerate(text.strip().strip('"')):
+                    self.memory[base+self.value(address)+i] = ord(ch)
+            elif line == 'CLS':
+                base = 8192 if self.platform == 'NES' else 6144
+                self.memory.update({base+i: 32 for i in range(768)})
+                if self.platform == 'NES':
+                    self.memory.update({9152+i: 0 for i in range(64)})
+            elif line in ('SCREEN DISABLE', 'SCREEN ENABLE', 'WAIT'):
+                self.calls.append(line)
+            elif line.startswith('BANK SELECT '):
+                self.calls.append('bank:'+line.split()[-1])
             elif line == 'RETURN':
                 if not returns:
                     return
@@ -144,7 +166,7 @@ class LevelPlayTest(unittest.TestCase):
             vm.values.update({'#stlv': 4096, 'hsc': 255})
             vm.memory.update(enumerate(table, 4096))
             vm.arrays['lv8'].update(enumerate([0, 8, 16, 24]))
-            for krook in range(1, 21):
+            for krook in range(1, 17):  # 17+ use the persistent random map
                 for screen in range(8):
                     vm.values.update(krk=krook, klsc=screen)
                     vm.run('load_band')
@@ -304,6 +326,7 @@ class LevelPlayTest(unittest.TestCase):
                             for duck in (False, True):
                                 vm.values.update(klv=0, klx=player, kjh=0, dead=0,
                                                  klst=vm.constants['ST_DUCK' if duck else 'ST_RUN'],
+                                                 kprev=vm.constants['ST_DUCK' if duck else 'ST_RUN'],
                                                  ospc=travel, ospp=travel, fdv=3)
                                 vm.arrays['obx'][0] = obstacle
                                 vm.arrays['obht'][0] = 0
@@ -313,6 +336,24 @@ class LevelPlayTest(unittest.TestCase):
                                 self.assertEqual(hit, expected and not (duck and kind == 4),
                                                  (kind, direction, travel, player_move,
                                                   old_relative, duck))
+
+    def test_pose_transition_disables_sweep_but_not_direct_overlap(self):
+        for platform in ('NES', 'TI994A', 'COLECOVISION'):
+            for previous, current, x, killed in ((0, 0, 80, 1),
+                                                (2, 0, 80, 0),
+                                                (1, 0, 80, 0),
+                                                (0, 2, 80, 0),
+                                                (2, 2, 80, 0),
+                                                (2, 0, 95, 1)):
+                vm = Basic(platform=platform)
+                vm.values.update(klv=0, klx=100, kjh=0, klst=current,
+                                 kprev=previous, ospp=30, fdv=3)
+                vm.arrays['obk'][0] = vm.constants['OB_PLANE']
+                vm.arrays['obd'][0] = 0
+                vm.arrays['obx'][0] = x
+                vm.run('coll_obst')
+                self.assertEqual(vm.values['dead'], killed,
+                                 (platform, previous, current, x))
 
     def test_spacing_gate_rejects_fast_cart_pairs(self):
         import checkspace

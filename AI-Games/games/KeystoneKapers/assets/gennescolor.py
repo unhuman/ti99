@@ -2,7 +2,7 @@
 """NES-native 2bpp store tiles and screen attributes, derived from live art.
 
 Grey is shared colour zero. P0: green/black/gold; P1: navy/pink/gold;
-P2: orange/black/gold; P3: green/navy/gold. Buildings and pillars therefore
+P2: orange/navy/gold; P3: green/navy/gold. Buildings and pillars therefore
 stay grey in every palette. Fixtures with black outlines switch back to P0.
 """
 from pathlib import Path

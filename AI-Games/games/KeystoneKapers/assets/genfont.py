@@ -109,8 +109,27 @@ GLYPHS = {
 
 FIRST, LAST = 32, 90
 
+# Eight unused punctuation slots carry the shared French title's lowercase.
+# Keep the Coleco artwork exactly (including its two-pixel left margin), while
+# avoiding NES scenery/hat/suitcase ownership above code 90. No extra uploads.
+LOWER_CODES = dict(zip('adelprs', (34, 35, 36, 37, 40, 41, 43)))
+LOWER_CODES['n'] = 44
+LOWER_ROWS = {
+    'a': [0, 0, 14, 1, 15, 17, 15, 0],
+    'd': [1, 1, 15, 17, 17, 17, 15, 0],
+    'e': [0, 0, 14, 17, 31, 16, 14, 0],
+    'l': [12, 4, 4, 4, 4, 4, 14, 0],
+    'n': [0, 0, 30, 17, 17, 17, 17, 0],
+    'p': [0, 0, 30, 17, 30, 16, 16, 16],
+    'r': [0, 0, 22, 25, 16, 16, 16, 0],
+    's': [0, 0, 15, 16, 14, 1, 30, 0],
+}
+
 
 def glyph_bytes(ch):
+    for letter, code in LOWER_CODES.items():
+        if ord(ch) == code:
+            return [v << 2 for v in LOWER_ROWS[letter]]
     art = GLYPHS.get(ch)
     if art is None:
         return [0] * 8
@@ -182,6 +201,9 @@ font_bits:
 \t' EIGHT BYTES PER CHARACTER, not one. Supply fewer and DEFINE COLOR reads
 \t' whatever follows in ROM as colour data, with no error at build or run time.
 
+#if NES
+\t' NES uses nes_fcol; omit this identical 472-byte TMS colour table.
+#else
 font_col:
 """ % (len(cols), COLBYTE, FIRST, n))
         for i in range(0, len(cols), 8):
@@ -189,6 +211,8 @@ font_col:
             label = "space" if ch == " " else ch
             fh.write("\tDATA BYTE " + ",".join("$%02X" % b for b in cols[i:i + 8])
                      + "\t' " + label + "\n")
+
+        fh.write("#endif\n")
 
     print("wrote %s -- %d chars, %d bytes of pattern + %d of colour%s"
           % (os.path.normpath(out), n, len(data), len(cols),

@@ -153,33 +153,11 @@ BIG = [
     (12, 11, "KAPERS"),         # 9 cells -- a blank row between the two
 ]
 
-# Coleco's French card reuses exactly the same large word tiles.
-COLECO_BIG = [(5, 12, "KAPERS"), (9, 11, "KEYSTONE")]
-COLECO_TEXT = [(7, 8, "les"), (11, 8, "de"),
+# The shared French card reuses the same large word tiles on every platform.
+FRENCH_BIG = [(5, 12, "KAPERS"), (9, 11, "KEYSTONE")]
+FRENCH_TEXT = [(7, 8, "les"), (11, 8, "de"),
                (14, 7, "par GARRY KITCHEN")]
-# Five-pixel lowercase text, one 8x8 cell per letter. These slots are free
-# on TMS targets; some have separate NES-only owners, so load only on Coleco.
-LOWER_ROWS = {
-    'a': [0, 0, 14, 1, 15, 17, 15, 0],
-    'c': [0, 0, 14, 17, 16, 17, 14, 0],
-    'd': [1, 1, 15, 17, 17, 17, 15, 0],
-    'e': [0, 0, 14, 17, 31, 16, 14, 0],
-    'g': [0, 0, 15, 17, 15, 1, 17, 14],
-    'h': [16, 16, 30, 17, 17, 17, 17, 0],
-    'i': [4, 0, 12, 4, 4, 4, 14, 0],
-    'k': [16, 16, 18, 20, 24, 20, 18, 0],
-    'l': [12, 4, 4, 4, 4, 4, 14, 0],
-    'n': [0, 0, 30, 17, 17, 17, 17, 0],
-    'p': [0, 0, 30, 17, 30, 16, 16, 16],
-    'r': [0, 0, 22, 25, 16, 16, 16, 0],
-    's': [0, 0, 15, 16, 14, 1, 30, 0],
-    't': [4, 4, 14, 4, 4, 5, 2, 0],
-    'y': [0, 0, 17, 17, 15, 1, 17, 14],
-}
-LOWER_BLOCKS = [(197, 11), (91, 4)]
-LOWER_CODES = dict(zip(sorted(LOWER_ROWS),
-                       [c for start, n in LOWER_BLOCKS
-                        for c in range(start, start + n)]))
+from genfont import LOWER_CODES
 
 
 def word_cells():
@@ -309,7 +287,7 @@ TITLE = [
     (0, 2, "SCORE"),
     (0, 20, "HI"),
     (6, 8, "GARRY KITCHEN'S"),
-    (18, 4, "2026 UNHUMAN AND C&C AI"),
+    (18, 4, "2026 UNHUMAN and C&C AI"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -321,13 +299,12 @@ TITLE = [
 # every scene deliberately: they cost bank bytes, which are plentiful, to save
 # fixed-area bytes, which are not.
 #
-# The visible box is 16x3 at row 13 col 8; GAME OVER sits four rows above.
-# NES picture rows are three lower, so their attribute blocks begin at PPU
-# rows 16 and 12. Each attribute byte contains FOUR independently selectable
-# 16x16 quadrants, not one indivisible 32x32 palette region. nes_boxatt uses
-# P1 on the upper quadrants and P3 on the lower quadrants. Their shared navy
-# permits a three-row box while retaining scenery on the fourth tile row.
-BOX_ROW, BOX_COL, BOX_W = 13, 8, 16
+# Three-row box starts two rows below the HUD: TMS row 2, NES PPU row 4.
+# NES logical coordinates are shifted one row up before run_list adds three.
+# P1 colours its top pair; P2's unused index 2 supplies the navy bottom row,
+# without recolouring the fourth row of buildings.
+BOX_ROW, BOX_COL, BOX_W = 2, 8, 16
+
 
 def _line(text):
     """One message line, CENTRED in the box and padded to its full width.
@@ -359,7 +336,7 @@ def _box(text):
     to the other, which is what an impossible constraint feels like from the
     outside.
 
-    On NES, nes_boxatt selects P1 for the top two tile rows and P3 for
+    On NES, nes_boxatt selects P1 for the top two tile rows and P2 for
     the lower pair. A solid index-2 tile paints only the third row navy,
     matching P1's paper. The fourth row retains its scenery tiles.
     """
@@ -374,45 +351,31 @@ MESSAGES = {
     "msg_over":   _box("GAME OVER"),
 }
 
-# GAME OVER STACKS BELOW THE REASON NOW, NOT ABOVE IT.
-#
-# It moved down four rows with the others when BOX_ROW did -- it is written as
-# an offset from BOX_ROW precisely so it cannot be left behind -- but it stayed
-# the TOP of the pair, so on screen it was still the highest thing in the
-# middle of the store and still read as sitting too high.
-#
-# Below is also the only other place it can go. The attribute grid allows a box
-# to start on rows 1, 5, 9, 13, 17, 21 and nowhere else (BOX_ROW), so with the
-# reason box at 13 its neighbours are 9 and 17 -- there is no nudge available,
-# only a side.
-#
-# And it reads better this way round: what happened, then the consequence.
-# "TIME'S UP!" over "GAME OVER" is the order the player learns it in.
-MSG_ROW = {
-    "msg_gothim": BOX_ROW, "msg_away": BOX_ROW,
-    "msg_plane": BOX_ROW, "msg_timeup": BOX_ROW,
-    "msg_over": BOX_ROW - 4,
-}
+# Results use the skyline; GAME OVER remains in the middle shopping floor.
+MSG_ROW = {name: BOX_ROW for name in MESSAGES}
+MSG_ROW['msg_over'] = 11  # text row 12, one row above its previous position
 
 
-def runs_of(name):
+def runs_of(name, nes=False):
     """One message scene as (row, col, text) runs."""
-    top = MSG_ROW[name]
+    top = 1 if nes else MSG_ROW[name]
+    if nes and name == 'msg_over':
+        top = 11  # PPU row 14: two rows above its previous position
     return [(top + i, BOX_COL, t) for i, t in enumerate(MESSAGES[name])]
 
 
-def coleco_runs():
+def french_runs():
     text = [(row, col, ''.join(chr(LOWER_CODES[c]) if c in LOWER_CODES else c
                               for c in line))
-            for row, col, line in COLECO_TEXT]
-    return (frame_runs() + big_runs(COLECO_BIG) + text
-            + [run for run in TITLE if run[2] != "GARRY KITCHEN'S"])
+            for row, col, line in FRENCH_TEXT
+            + [run for run in TITLE if run[2] != "GARRY KITCHEN'S"]]
+    return frame_runs() + big_runs(FRENCH_BIG) + text
 
 
 def table(runs=None, extra_codes=()):
     """A display list as bytes, with the checks that make it safe."""
     if runs is None:
-        runs = frame_runs() + big_runs() + TITLE
+        runs = french_runs()
     art = set(allocate()[0].values()) | set(genart.CODES["BULB%d" % p] for p in range(4))
     art.update(extra_codes)
     out, seen = [], {}
@@ -457,10 +420,6 @@ def main():
     # Light yellow title text matches the latest TI/Coleco HUD and messages.
     # NES maps this ink to its existing gold palette entry.
     cbyte = (genart.LYELL << 4) | genart.HUD_BG
-    unused = {c for start, n in free_codes() for c in range(start, start + n)}
-    unused -= set(codes.values())
-    assert set(LOWER_CODES.values()) <= unused, 'lowercase overlaps existing art'
-    assert len(LOWER_CODES) == sum(n for _, n in LOWER_BLOCKS)
 
     with io.open(FACE_OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")
@@ -490,23 +449,14 @@ def main():
                 fh.write("\tDATA BYTE %s\n"
                          % ",".join("$%02X" % b for b in chunk[i:i + 8]))
             # EIGHT COLOUR BYTES PER CHARACTER, one per scan line, not one
-            fh.write("\ntfont_col%d:\n" % k)
+            # NES uploads these monochrome title tiles with ncol=0.
+            # Keep the TMS colour tables out of its tight PRG budget.
+            fh.write("\n#if NES\n#else\ntfont_col%d:\n" % k)
             n = count * 8
             for i in range(0, n, 8):
                 fh.write("\tDATA BYTE %s\n"
                          % ",".join(["$%02X" % cbyte] * min(8, n - i)))
-        fh.write("\n#if COLECOVISION\n")
-        letters = sorted(LOWER_CODES, key=LOWER_CODES.get)
-        for k, (start, count) in enumerate(LOWER_BLOCKS):
-            fh.write("\nclower_pat%d:\n" % k)
-            for code in range(start, start + count):
-                letter = next(c for c in letters if LOWER_CODES[c] == code)
-                fh.write("\tDATA BYTE %s\n" % ','.join(
-                    '$%02X' % (v << 2) for v in LOWER_ROWS[letter]))
-            fh.write("\nclower_col%d:\n" % k)
-            for _ in range(count):
-                fh.write("\tDATA BYTE %s\n" % ','.join(['$%02X' % cbyte] * 8))
-        fh.write("#endif\n")
+            fh.write("#endif\n")
     print("wrote %s -- %d distinct cells in %d block(s) (%s), %d bytes"
           % (os.path.normpath(FACE_OUT), len(codes), len(blocks),
              ", ".join("%d..%d" % (a, a + n - 1) for a, n in blocks),
@@ -527,15 +477,10 @@ def main():
         fh.write("\t' The message boxes in title.bas are the same format and\n")
         fh.write("\t' CANNOT come with it: they are read when a round ends.\n")
         fh.write("\t' ==================================================\n")
-        fh.write("\n#if COLECOVISION\ntitle_tbl:\n")
-        french = table(coleco_runs(), LOWER_CODES.values())
-        for i in range(0, len(french), 8):
-            fh.write("\tDATA BYTE %s\n" % ','.join(str(b) for b in french[i:i + 8]))
-        fh.write("#else\ntitle_tbl:\n")
+        fh.write("\ntitle_tbl:\n")
         for i in range(0, len(data), 8):
             fh.write("\tDATA BYTE %s\n"
                      % ",".join(str(b) for b in data[i:i + 8]))
-        fh.write("#endif\n")
 
     with io.open(OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")
@@ -558,13 +503,16 @@ def main():
                     raise SystemExit(
                         "%s line %r is %d wide, not %d -- the box would have "
                         "a ragged edge" % (name, t, len(t), BOX_W))
-            block = table(runs_of(name))
-            fh.write("\n%s:\n" % name)
-            for i in range(0, len(block), 8):
-                fh.write("\tDATA BYTE %s\n"
-                         % ",".join(str(b) for b in block[i:i + 8]))
+            for nes in (True, False):
+                fh.write("\n#if NES\n" if nes else "#else\n")
+                block = table(runs_of(name, nes))
+                fh.write("%s:\n" % name)
+                for i in range(0, len(block), 8):
+                    fh.write("\tDATA BYTE %s\n"
+                             % ",".join(str(b) for b in block[i:i + 8]))
+            fh.write("#endif\n")
 
-    runs = frame_runs() + big_runs() + TITLE
+    runs = french_runs()
     print("wrote %s -- %d runs (%d marquee, %d name), %d bytes  [BANK 2]"
           % (os.path.normpath(DL_OUT), len(runs), len(frame_runs()),
              len(big_runs()), len(data)))

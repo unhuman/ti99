@@ -11,17 +11,17 @@
 font_bits:
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00	' space
 	DATA BYTE $20,$20,$20,$20,$20,$00,$20,$00	' !
-	DATA BYTE $50,$50,$00,$00,$00,$00,$00,$00	' "
-	DATA BYTE $50,$F8,$50,$50,$F8,$50,$00,$00	' #
-	DATA BYTE $20,$78,$A0,$70,$28,$F0,$20,$00	' $
-	DATA BYTE $C8,$C8,$10,$20,$40,$98,$98,$00	' %
+	DATA BYTE $00,$00,$38,$04,$3C,$44,$3C,$00	' "
+	DATA BYTE $04,$04,$3C,$44,$44,$44,$3C,$00	' #
+	DATA BYTE $00,$00,$38,$44,$7C,$40,$38,$00	' $
+	DATA BYTE $30,$10,$10,$10,$10,$10,$38,$00	' %
 	DATA BYTE $60,$90,$A0,$40,$A8,$90,$68,$00	' &
 	DATA BYTE $20,$20,$00,$00,$00,$00,$00,$00	' '
-	DATA BYTE $10,$20,$40,$40,$40,$20,$10,$00	' (
-	DATA BYTE $40,$20,$10,$10,$10,$20,$40,$00	' )
+	DATA BYTE $00,$00,$78,$44,$78,$40,$40,$40	' (
+	DATA BYTE $00,$00,$58,$64,$40,$40,$40,$00	' )
 	DATA BYTE $00,$00,$88,$50,$20,$50,$88,$00	' *
-	DATA BYTE $00,$20,$20,$F8,$20,$20,$00,$00	' +
-	DATA BYTE $00,$00,$00,$00,$60,$60,$40,$00	' ,
+	DATA BYTE $00,$00,$3C,$40,$38,$04,$78,$00	' +
+	DATA BYTE $00,$00,$78,$44,$44,$44,$44,$00	' ,
 	DATA BYTE $00,$00,$00,$F8,$00,$00,$00,$00	' -
 	DATA BYTE $00,$00,$00,$00,$00,$60,$60,$00	' .
 	DATA BYTE $08,$08,$10,$20,$40,$80,$80,$00	' /
@@ -80,6 +80,9 @@ font_bits:
 	' EIGHT BYTES PER CHARACTER, not one. Supply fewer and DEFINE COLOR reads
 	' whatever follows in ROM as colour data, with no error at build or run time.
 
+#if NES
+	' NES uses nes_fcol; omit this identical 472-byte TMS colour table.
+#else
 font_col:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' space
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' !
@@ -140,3 +143,4 @@ font_col:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' X
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' Y
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' Z
+#endif

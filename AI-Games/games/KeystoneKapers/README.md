@@ -33,12 +33,13 @@ games in this repo read the vertical axis with no such guard and have never show
 it caused two input bugs of its own. If a stuck axis ever does turn up it is unmistakable — Kelly
 ducks or rides the lift without being asked. (`DESIGN.md` §0e-sexies.)
 
-`838` on the title opens a setup screen: **three typed digits** -- one for the number of Kops, two for the starting level -- and the last one starts the game. Out-of-range levels are clamped to 1-20 rather than refused, so there is nothing to get stuck in. It is deliberately **unadvertised** -- a hidden code in the Activision idiom, not a menu entry -- so nothing on the title screen mentions it (`DESIGN.md` §0d-octies).
+`838` on the title opens a setup screen: **three typed digits** -- one for the number of Kops, two for the starting level -- and the last one starts the game. Out-of-range levels are clamped to 1-17 rather than refused, so there is nothing to get stuck in. It is deliberately **unadvertised** -- a hidden code in the Activision idiom, not a menu entry -- so nothing on the title screen mentions it (`DESIGN.md` §0d-octies).
 
 On **NES**, enter **Left, Right, Up, Down** on the title screen to open the
 equivalent setup. **Up/Right** increases and **Down/Left** decreases total lives
-(1-9), then the starting level (1-20); **either fire button (A or B)** confirms
-each choice. Release the control between choices.
+(1-9), then the starting level (1-17); **either fire button (A or B)** confirms
+each choice. Held directions repeat every quarter second (15 frames at 60 Hz).
+Release the control between choices.
 Defaults are three total lives and level 1. TI-99 and ColecoVision retain the
 existing `838` keypad menus.
 
@@ -73,6 +74,15 @@ back down when pairs arrive at 11. Planes accelerate at 8 and 12, then cap at
 speed. Escalator screens stay clear and the roof carries
 carts only. Money bags and suitcases replenish after each successful capture;
 collected prizes stay collected during a retry of the same level.
+
+**Level 17 onward generates a new random hazard layout each round.** Each
+shopping-floor band independently chooses an empty spot, a single hazard,
+paired carts/balls, or three radios. The mix and total count can change; it
+does not just shuffle the previous level's hazards. A death keeps the current
+layout, while catching Harry generates another one. Escalator screens stay
+clear, radio racks never block the elevator, and only carts appear on the roof.
+Each screen is capped at nine individual hazards. Late-game speeds and ball
+heights stay at their level-16 settings. Both setup methods stop at level 17.
 
 **Corner the crook and he rides an escalator back DOWN**, which you cannot:
 they only go up.
@@ -113,10 +123,18 @@ ninety-two pokes. The name above it is drawn as whole KERNED words, three cells
 tall, sliced on the character grid so a cell can hold parts of two letters
 (`DESIGN.md` 0e-quaterdecies).
 
-ColecoVision uses the French card: small lowercase `les` beside large `KAPERS`,
+All three platforms use the French card: small lowercase `les` beside large `KAPERS`,
 then small `de` beside large `KEYSTONE`, with small-text `par GARRY KITCHEN` below.
-The name starts two rows higher than the English card. TI-99 and NES retain
-their English title. Preview Coleco with `assets/prevtitle.py out.png 3 --coleco`.
+The layout matches the raised ColecoVision title. Preview it with
+`assets/prevtitle.py out.png 3`. The NES setup page keeps the title's blue background.
+The TI console's launch-menu entry is `LES KAPERS`; the full 22-character
+`LES KAPERS DE KEYSTONE` exceeds its 20-character cartridge label field.
+The credit uses lowercase `and`: `2026 UNHUMAN and C&C AI`.
+Result messages appear over the skyline, with their frame starting two rows
+below the HUD. GAME OVER appears separately in the middle shopping floor.
+Fast-hazard path checks require Kelly's pose to stay unchanged during the
+update. Standing up after a duck still checks direct overlap, but does not
+retroactively count a plane that crossed while his pose was changing.
 
 **Row 0 of the title card carries `SCORE` and `HI`** -- the last game and the best
 so far, justified to the marquee: `SCORE` starts at the frame's left column and the
@@ -160,15 +178,18 @@ what a thing *is*: yellow floor lines, grey-and-black escalator slashes, a grey 
 elevator **car** (not its shaft), **Kelly black and Harry white**. Four pixel rows per level,
 one colour each, inset in a grey band the width of the screen -- as the 2600 has it.
 
-**The end of a round is one dark blue box** in the middle of the store: the reason you lost the Kop, with `GAME OVER` stacked above it when that was the last one. It no longer clears the screen, which used to make the end of the game look like the end of the program (`DESIGN.md` §0d-septies).
+**The end of a round keeps the store visible.** Its dark-blue result box
+overlaps the skyline. On the last life, `GAME OVER` also appears in the
+middle shopping floor.
 
-The boxes sit on rows 13-15, with `GAME OVER` above on 9-11. Their 16-column
-width aligns with NES palette quadrants. Text is centred horizontally by
-the generator, including `GOT HIM!` and `TIME'S UP!`.
+The result frame begins two rows below the HUD. GAME OVER occupies rows
+11-13 on TI/Coleco and PPU rows 14-16 on NES, whose palette quadrants constrain
+its position. Text is centred within each 16-column box.
 
 Vertically the box is **three** rows, with equal blank margins. NES uses P1
-for the top two rows and a navy tile in P3 for the bottom margin; it leaves
-the fourth row's scenery intact instead of adding an extra blue row.
+for the top two rows and a navy tile for the bottom margin: P2 in the skyline,
+P3 for GAME OVER. No fourth blue row is added. The centred NES GAME OVER frame
+can tint small fixture details immediately below it navy, an accepted tradeoff.
 
 **A catch needs you level with him, not just on his floor.** A crook riding an
 escalator keeps the floor he left until he arrives at the next one, so running

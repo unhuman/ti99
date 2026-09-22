@@ -639,8 +639,10 @@
 	#if NES
 	DIM nsc(768)			' radar canvas pattern shadow, 48 tiles x 16
 	DIM nesb(96)			' the escalator's six characters, staged for the NMI
+	DIM nmsg(4)			' packed surrounding attribute halves for GAME OVER
 	#endif
 	DIM lv8(4)			' lv*8, so no multiply lands on an index
+	DIM rhaz(16)			' packed hazard map, retained across deaths
 	DIM jarc(32)			' the jump arc: 30 frames, apex 14
 	DIM msk(8)
 
@@ -819,6 +821,7 @@ nes_pace:
 	' Kelly cannot be hit on an escalator or in the lift -- obstacles live on
 	' floor bands -- so nothing that IS frozen has a rider on it.
 	IF hfz = 0 THEN
+		kprev = klst		' pose actually held during the preceding interval
 		GOSUB read_input
 		GOSUB radio_tick
 		GOSUB move_kelly
@@ -923,7 +926,7 @@ setup_font:
 	PALETTE 6,36
 	PALETTE 7,40
 	PALETTE 9,38			' P2 lower skyline: orange, black, gold
-	PALETTE 10,15
+	PALETTE 10,1			' unused skyline index 2: navy message bottom border
 	PALETTE 11,40
 	PALETTE 13,26			' P3 counters: green, blue, gold
 	PALETTE 14,1			' same navy in counter quadrants
@@ -1088,13 +1091,7 @@ setup_font:
 	#else
 	DEFINE COLOR 185,12,tfont_col1
 	#endif
-	#if COLECOVISION
-	' Lowercase text for the French Coleco title; no gameplay tiles overlap.
-	DEFINE CHAR 197,11,clower_pat0
-	DEFINE COLOR 197,11,clower_col0
-	DEFINE CHAR 91,4,clower_pat1
-	DEFINE COLOR 91,4,clower_col1
-	#endif
+	' French title lowercase is included in the shared font's unused punctuation.
 
 	' Radar colours are expanded in the setup bank, before later overrides.
 	#if NES
@@ -1544,6 +1541,7 @@ f0_rows:
 	' (CLAUDE.md 3A). Five doublings have no such hazard and are smaller.
 title_draw:
 	#if NES
+	SCREEN DISABLE
 	ASM JSR nes_hats_hide
 	' THE TITLE SITS ON DARK BLUE, AND THE BACKDROP IS THE ONLY WAY TO SAY SO.
 	'
@@ -1558,6 +1556,7 @@ title_draw:
 	' scanner margins; black outlines now use palette index 2.
 	PALETTE 0,1			' title backdrop
 	PALETTE 9,1			' title paper in P2
+	WAIT				' hide the clear and restore blue in the same vblank
 	' AND EVERY BLOCK ON P2, because the font now has a PAPER.
 	'
 	' The title's text used to sit on index 0 and index 0 was this backdrop, so
@@ -1577,11 +1576,7 @@ title_draw:
 	' AFTER THE CLS, WHICH CLEARS THE ATTRIBUTE TABLE TOO. Written before it,
 	' this was wiped and the title came up with its text on the store's GREEN --
 	' the paper index falling through to palette 0.
-	#nav = 9152			' $23C0
-	FOR nai = 0 TO 63
-		VPOKE #nav,170
-		#nav = #nav + 1
-	NEXT nai
+	GOSUB title_background
 	#endif
 	' THE DISPLAY LIST IS ON BANK 2, so select it for the walk and put bank 1
 	' back afterwards. The pattern is setup_font's, which has been loading the
@@ -1611,7 +1606,21 @@ title_draw:
 	' dark one, so the state is already consistent. Re-lighting all four here
 	' would cost four DEFINEs to change nothing.
 	bfr = BULBFR
+	#if NES
+	SCREEN ENABLE
+	#endif
 	RETURN
+
+	#if NES
+title_background:
+	' CLS resets attributes to green P0. Both title and setup need blue P2.
+	#nav = 9152			' $23C0
+	FOR nai = 0 TO 63
+		VPOKE #nav,170
+		#nav = #nav + 1
+	NEXT nai
+	RETURN
+	#endif
 
 	' THE WALKER, CALLED WITH #tta ALREADY SET. The title screen and the
 	' end-of-round message boxes are the same shape -- runs of characters at
@@ -1851,17 +1860,21 @@ title_wait:
 setup838:
 	#if NES
 	' The keypad version below is compiled unchanged on TI and Coleco.
+	SCREEN DISABLE
+	WAIT				' NES applies display disable on the next frame
 	CLS
+	GOSUB title_background
 	PRINT AT 260,"KOPS 1-9"
+	SCREEN ENABLE
 	sk = 3
 	sut = 9
-	#sua = 8464
+	#sua = 8465
 	ASM JSR nes_choose
 	kops0 = sk
-	PRINT AT 324,"LEVEL 01-20"
+	PRINT AT 324,"LEVEL 01-17"
 	sk = 1
-	sut = 20
-	#sua = 8528
+	sut = 17
+	#sua = 8529
 	ASM JSR nes_choose
 	krk0 = sk
 	RETURN
@@ -1892,17 +1905,17 @@ setup838:
 	' being ignored, which would look like a dropped keypress.
 	kops0 = sk
 	IF kops0 < 1 THEN kops0 = 1
-	#sua = 6320			' row 5, col 16 -- beside KOPS
+	#sua = 6321			' row 5, col 17 -- one extra blank beside KOPS
 	sud = 48 + kops0
 	VPOKE #sua,sud
 	GOSUB su_rel
-	PRINT AT 228,"LEVEL 01-20"
+	PRINT AT 228,"LEVEL 01-17"
 	' The TENS digit is echoed as it is typed, so the field is never half a
-	' number with nothing on screen to say so. 6384 is row 7 column 16 -- the
+	' number with nothing on screen to say so. 6385 is row 7 column 17 -- the
 	' same column as the Kop count above it, so the two values line up.
 	GOSUB su_key
 	sud1 = sk
-	#sua = 6384
+	#sua = 6385
 	sud = 48 + sk
 	VPOKE #sua,sud
 	GOSUB su_rel
@@ -1917,13 +1930,13 @@ setup838:
 	krk0 = krk0 + sud1
 	krk0 = krk0 + sk
 	IF krk0 < 1 THEN krk0 = 1
-	IF krk0 > 20 THEN krk0 = 20
+	IF krk0 > 17 THEN krk0 = 17
 	' BOTH LEVEL DIGITS ARE REDRAWN, because the clamp may have changed the one
 	' already on screen. The clamp is silent by design -- there is no error to
 	' dismiss and nothing to retype -- so 80 typed for 08 has to be SEEN landing
-	' on 20, or it reads as the page ignoring the second digit. The wait below
+	' on 17, or it reads as the page ignoring the second digit. The wait below
 	' is what gives it time to be read.
-	#sua = 6384
+	#sua = 6385
 	sut = krk0
 	sud = 48
 su_tens:
@@ -1992,6 +2005,25 @@ reset_prizes:
 	takn(1) = 0
 	takn(2) = 0
 	takn(3) = 0
+	IF krk > 16 THEN
+		#if TI994A
+		BANK SELECT 2
+		#endif
+		GOSUB random_level
+		#if TI994A
+		BANK SELECT 1
+		#endif
+	END IF
+	RETURN
+
+random_get:
+	lrp = lix / 2
+	lby = rhaz(lrp)
+	IF (lix AND 1) = 0 THEN
+		lby = lby AND 15
+	ELSE
+		lby = lby / 16
+	END IF
 	RETURN
 
 start_krook:
@@ -2473,6 +2505,7 @@ load_band:
 		' gone, and with them the `FOR 1 TO 0` guard they needed.
 		#loa = #lrb + lix
 		lby = PEEK(#loa)
+		IF krk > 16 THEN GOSUB random_get
 		FOR ls = 0 TO 1
 			' Slot 0 is the band's kind; slot 1 is the same kind again,
 			' and only if bit 3 says this band carries two. Which kinds
@@ -4532,6 +4565,9 @@ coll_obst:
 				ohb = 0
 				IF ck = OB_CART THEN ohb = ospc
 				IF ck = OB_PLANE THEN ohb = ospp
+				' A new pose cannot retroactively collide with a travelled path.
+				' Current-position overlap above still applies after a transition.
+				IF klst <> kprev THEN ohb = 0
 				' A wrapped path never extends beyond the hazard's x240 limit.
 				' Partial sprite overlap there is covered by the distance test.
 				IF kcx > 240 THEN ohb = 0
@@ -5997,8 +6033,6 @@ hud_kops:
 	IF kops > 0 THEN spare = kops - 1
 	' Five cells, columns 25..29: two blanks after TIME and at the right.
 	' Six or more reserves use one hat, lowercase x (font slot 42), count.
-	plv2 = spare
-	IF spare > 5 THEN plv2 = 1
 	#if NES
 	#pla = 8281
 	#else
@@ -6010,7 +6044,7 @@ hud_kops:
 		' Icons are sprites; keep their background cells blue.
 		#else
 		IF spare < 6 THEN
-			IF pli + plv2 > 4 THEN sud = CH_KOPIC
+			IF pli + spare > 4 THEN sud = CH_KOPIC
 		ELSE
 			IF pli = 2 THEN sud = CH_KOPIC
 		END IF
@@ -6060,14 +6094,26 @@ hud_kops:
 	' rewrites all sixty-four.
 nes_boxatt:
 	WAIT
-	' Top half: P1 text. Bottom half: P3, whose navy matches P1 paper.
-	' Only the third row is painted navy; leave the fourth row's tiles alone.
-	#nsrc = 8776
-	IF #nav = 9178 THEN #nsrc = 8648
-	FOR nai = 0 TO 3
-		VPOKE #nav,245
-		#nav = #nav + 1
-	NEXT nai
+	IF #nav = 9178 THEN
+		' GAME OVER begins in the lower half of one attribute row.
+		' Preserve the surrounding halves from the actual screen upload.
+		FOR nai = 0 TO 3
+			nink = (nmsg(nai) AND 15) OR 80
+			VPOKE #nav,nink
+			#nsrc = #nav + 8
+			nink = (nmsg(nai) AND 240) OR 15
+			VPOKE #nsrc,nink
+			#nav = #nav + 1
+		NEXT nai
+		#nsrc = 8712		' PPU row 16 col 8, bottom border
+	ELSE
+		' Skyline P1/P2 split: retain every colour outside the box.
+		FOR nai = 0 TO 3
+			VPOKE #nav,165
+			#nav = #nav + 1
+		NEXT nai
+		#nsrc = 8392		' PPU row 6 col 8, bottom border
+	END IF
 	FOR nai = 0 TO 15
 		VPOKE #nsrc,CH_ECAR
 		#nsrc = #nsrc + 1
@@ -6192,12 +6238,12 @@ tick_flash:
 		ELSE
 			tflon = 0
 			#if NES
-			PRINT AT 16 + 96,"    "
+			PRINT AT 16 + 64,"    "
 			#else
 			PRINT AT 16,"    "
 			#endif
 			#if NES
-			PRINT AT 21 + 96,"  "
+			PRINT AT 21 + 64,"  "
 			#else
 			PRINT AT 21,"  "
 			#endif
@@ -6260,7 +6306,7 @@ do_catch:
 	GOSUB run_list
 	#if NES
 	' nes_boxatt supplies a matching bottom margin without a fourth row.
-	#nav = 9186			' the capture box, same rows as the reason
+	#nav = 9162			' PPU rows 4..7, columns 8..23
 	GOSUB nes_boxatt
 	#endif
 	GOSUB life_finish		' finish a life just earned on the catch frame
@@ -6470,7 +6516,7 @@ lose_kop:
 	GOSUB run_list
 	#if NES
 	' nes_boxatt supplies a matching bottom margin without a fourth row.
-	#nav = 9186			' the reason box -- see nes_boxatt
+	#nav = 9162			' the skyline reason box -- see nes_boxatt
 	GOSUB nes_boxatt
 	#endif
 	' The reason is read during THIS beat, before anything else happens. It
@@ -6490,7 +6536,7 @@ lose_kop:
 		#tta = VARPTR msg_over(0)
 		GOSUB run_list
 		#if NES
-		#nav = 9178			' GAME OVER, one attribute row UP
+		#nav = 9178			' GAME OVER begins at PPU row 14
 		GOSUB nes_boxatt
 		#endif
 		GOSUB pause_beat
@@ -6979,6 +7025,62 @@ life_finish:
 	#if TI994A
 	BANK 2
 	#endif
+random_level:
+	' Only new games / wins call reset_prizes. A death keeps this packed map.
+	' End screens stay clear. Each aisle gets independent choices, with at
+	' most nine individual hazards across its four bands (radios can be three).
+	FOR lrp = 0 TO 15
+		rhaz(lrp) = 0
+	NEXT lrp
+	FOR sk = 1 TO 6
+		spare = 9
+		lix = sk
+		FOR sut = 0 TO 3
+			lrc = RANDOM(8)
+			IF sut = 3 THEN lrc = (lrc AND 3) + 8
+			#loa = VARPTR random_hazards(0)
+			#loa = #loa + lrc
+			lby = PEEK(#loa)
+			' A radio rack would obstruct the elevator; choose a plane there.
+			IF sk = 3 THEN
+				IF (lby AND 7) = 3 THEN lby = 4
+			END IF
+			plv2 = 0
+			IF lby > 0 THEN plv2 = 1
+			IF lby > 7 THEN plv2 = 2
+			IF lby = 11 THEN plv2 = 3
+			IF plv2 > spare THEN
+				lby = 0
+				plv2 = 0
+			END IF
+			spare = spare - plv2
+			GOSUB random_set
+			lix = lix + 8
+		NEXT sut
+	NEXT sk
+	RETURN
+
+random_set:
+	lrp = lix / 2
+	lrc = rhaz(lrp)
+	IF (lix AND 1) = 0 THEN
+		lrc = lrc AND 240
+	ELSE
+		lrc = lrc AND 15
+		' Four doubles avoid the TI backend's plain-variable MPY hazard.
+		lby = lby + lby
+		lby = lby + lby
+		lby = lby + lby
+		lby = lby + lby
+	END IF
+	rhaz(lrp) = lrc OR lby
+	RETURN
+
+	' Shopping bands: empty, single types, paired carts/balls, triple radios.
+	' Roof bands: empty, one cart, or two carts. Even length for TI word data.
+random_hazards:
+	DATA BYTE 0,1,2,3,4,9,10,11,0,1,9,9
+
 	INCLUDE "font.bas"
 	INCLUDE "titlefont.bas"
 	' AND THE TITLE'S DISPLAY LIST, for the same reason as the font: walked

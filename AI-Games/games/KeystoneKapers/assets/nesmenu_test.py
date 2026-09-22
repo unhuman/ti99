@@ -106,6 +106,18 @@ class Menu:
 
 
 class MenuTest(unittest.TestCase):
+    def test_setup_restores_title_attributes_after_cls(self):
+        from levelplay_test import Basic
+        vm = Basic(BASIC, 'NES')
+        vm.run('setup838')
+        self.assertEqual([vm.memory[9152+i] for i in range(64)], [170]*64)
+        self.assertEqual(vm.calls[:2], ['SCREEN DISABLE', 'WAIT'])
+        self.assertIn('SCREEN ENABLE', vm.calls)
+        broken = BASIC.replace('GOSUB title_background', '', 2)
+        vm = Basic(broken, 'NES')
+        vm.run('setup838')
+        self.assertEqual([vm.memory[9152+i] for i in range(64)], [0]*64)
+
     def test_entry_order_holds_and_wrong_inputs(self):
         vm = Menu()
         vm.inputs([8]*8 + [0, 2, 2, 0, 1, 1, 0, 4])
@@ -119,12 +131,12 @@ class MenuTest(unittest.TestCase):
         self.assertEqual(vm.mem['cvb_T838'], 4)
 
     def test_selection_limits_holds_release_and_decimal_display(self):
-        for maximum, initial, address in ((9, 3, 8464), (20, 1, 8528)):
+        for maximum, initial, address in ((9, 3, 8465), (17, 1, 8529)):
             for direction, expected in ((1, maximum), (2, maximum), (4, 1), (8, 1)):
                 vm = Menu()
                 vm.mem.update({'cvb_SK': initial, 'cvb_SUT': maximum,
                                'cvb_#SUA': address & 255, 'cvb_#SUA+1': address >> 8})
-                # Entry direction must be released. Long holds count once.
+                # Entry direction must be released. Short holds count once.
                 vm.frames.extend([4, 4, 0] + [direction, direction, direction, 0]*25 + [128, 128, 0])
                 vm.run('nes_choose')
                 self.assertEqual(vm.mem['cvb_SK'], expected)
@@ -139,6 +151,23 @@ class MenuTest(unittest.TestCase):
             vm.run('nes_choose')
             self.assertFalse(vm.frames)
             self.assertEqual(vm.mem['cvb_SK'], 3)
+
+    def test_held_directions_repeat_at_quarter_second_intervals(self):
+        for direction, sign in ((1, 1), (2, 1), (4, -1), (8, -1)):
+            for duration, changes in ((1, 1), (15, 1), (16, 2), (30, 2), (31, 3)):
+                vm = Menu()
+                vm.mem.update({'cvb_SK': 5, 'cvb_SUT': 9})
+                vm.frames.extend([0] + [direction]*duration + [64, 64, 0])
+                vm.run('nes_choose')
+                self.assertEqual(vm.mem['cvb_SK'], 5+sign*changes)
+                self.assertFalse(vm.frames)
+
+    def test_direction_change_and_new_press_do_not_wait_for_repeat(self):
+        vm = Menu()
+        vm.mem.update({'cvb_SK': 5, 'cvb_SUT': 9})
+        vm.frames.extend([0, 1, 2, 0, 2, 128, 0])
+        vm.run('nes_choose')
+        self.assertEqual(vm.mem['cvb_SK'], 8)
 
     def test_release_regression_is_detectable(self):
         broken = MENU.replace('JSR nes_menu_release', 'JSR wait', 1)
@@ -183,8 +212,8 @@ class MenuTest(unittest.TestCase):
         import tempfile
         from contextlib import redirect_stdout
         from unittest.mock import patch
-        for replacement in ('8465', '6320', '8528'):
-            broken = BASIC.replace('#sua = 8464', '#sua = '+replacement, 1)
+        for replacement in ('8464', '6321', '8529'):
+            broken = BASIC.replace('#sua = 8465', '#sua = '+replacement, 1)
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory)/'KEYSTONE.bas'
                 path.write_text(broken)

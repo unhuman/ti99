@@ -48,6 +48,8 @@ tfont_pat0:	' codes 0..31
 	DATA BYTE $00,$00,$60,$F0,$F0,$F0,$98,$98
 	DATA BYTE $00,$00,$7F,$7F,$30,$30,$30,$30
 
+#if NES
+#else
 tfont_col0:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
@@ -81,6 +83,7 @@ tfont_col0:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+#endif
 
 tfont_pat1:	' codes 185..196
 	DATA BYTE $00,$00,$C7,$E7,$63,$63,$63,$63
@@ -96,6 +99,8 @@ tfont_pat1:	' codes 185..196
 	DATA BYTE $03,$03,$03,$03,$07,$07,$00,$00
 	DATA BYTE $C0,$C6,$66,$67,$F3,$F1,$00,$00
 
+#if NES
+#else
 tfont_col1:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
@@ -105,46 +110,6 @@ tfont_col1:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-
-#if COLECOVISION
-
-clower_pat0:
-	DATA BYTE $00,$00,$38,$04,$3C,$44,$3C,$00
-	DATA BYTE $00,$00,$38,$44,$40,$44,$38,$00
-	DATA BYTE $04,$04,$3C,$44,$44,$44,$3C,$00
-	DATA BYTE $00,$00,$38,$44,$7C,$40,$38,$00
-	DATA BYTE $00,$00,$3C,$44,$3C,$04,$44,$38
-	DATA BYTE $40,$40,$78,$44,$44,$44,$44,$00
-	DATA BYTE $10,$00,$30,$10,$10,$10,$38,$00
-	DATA BYTE $40,$40,$48,$50,$60,$50,$48,$00
-	DATA BYTE $30,$10,$10,$10,$10,$10,$38,$00
-	DATA BYTE $00,$00,$78,$44,$44,$44,$44,$00
-	DATA BYTE $00,$00,$78,$44,$78,$40,$40,$40
-
-clower_col0:
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
-
-clower_pat1:
-	DATA BYTE $00,$00,$58,$64,$40,$40,$40,$00
-	DATA BYTE $00,$00,$3C,$40,$38,$04,$78,$00
-	DATA BYTE $10,$10,$38,$10,$10,$14,$08,$00
-	DATA BYTE $00,$00,$44,$44,$3C,$04,$44,$38
-
-clower_col1:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4

@@ -19,8 +19,7 @@ XDT99_DIR="${XDT99_DIR:-/cygdrive/c/Users/Howie/github.git/endlos99/xdt99}"
 
 SRC="KEYSTONE.bas"
 NAME="KEYSTONE"
-CARTNAME="KEYSTONE KAPERS"   # the TI menu entry; not a filename, so it
-                            # is not bound by the 10-char disk limit
+CARTNAME="LES KAPERS"       # TI cartridge label: at most 20 characters
 CAP=24336                   # 3 loader pages x 8112 bytes
 
 die() { echo "ERROR: $1" >&2; exit 1; }

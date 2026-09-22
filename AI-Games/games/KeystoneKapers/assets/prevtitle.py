@@ -113,15 +113,6 @@ def main():
             col[start + i] = (b >> 4, b & 15)
         seen += count
 
-    if coleco:
-        for k, (start, count) in enumerate(gentitle.LOWER_BLOCKS):
-            tpat = read_block(os.path.join(SRC, 'titlefont.bas'), 'clower_pat%d' % k)
-            tcol = read_block(os.path.join(SRC, 'titlefont.bas'), 'clower_col%d' % k)
-            for i in range(count):
-                pat[start + i] = bits_of_bytes(tpat[i * 8:i * 8 + 8])
-                b = tcol[i * 8]
-                col[start + i] = (b >> 4, b & 15)
-
     # walk the display list exactly as run_list does
     name = [[32] * 32 for _ in range(24)]
     i = 0
