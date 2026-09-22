@@ -57,8 +57,9 @@ never get away at all.
 
 **Shopping floors mix balls, carts, radios and planes across the aisles.**
 Carts arrive at level 3 and planes at level 4. Carts speed up at 7, then slow
-back down when pairs arrive at 11. Planes accelerate at 8, 12 and 16; balls
-keep their horizontal speed. Escalator screens stay clear and the roof carries
+back down when pairs arrive at 11. Planes accelerate at 8 and 12, then cap at
+247.5 px/s to allow three footsteps between ducks; balls keep their horizontal
+speed. Escalator screens stay clear and the roof carries
 carts only. Money bags and suitcases replenish after each successful capture;
 collected prizes stay collected during a retry of the same level.
 

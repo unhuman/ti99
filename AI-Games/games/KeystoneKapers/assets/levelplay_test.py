@@ -185,7 +185,7 @@ class LevelPlayTest(unittest.TestCase):
         vm = Basic()
         for level in range(1, 22):
             cart = 192 if 7 <= level <= 10 else 96
-            plane = 96 if level < 8 else 192 if level < 12 else 288 if level < 16 else 384
+            plane = 96 if level < 8 else 192 if level < 12 else 264
             self.assertEqual(speeds(SOURCE, level), {1: cart, 2: 48, 3: 0, 4: plane})
         for speed in (25, 48, 57, 96, 111, 144, 192):
             for remainder in range(64):
@@ -272,12 +272,14 @@ class LevelPlayTest(unittest.TestCase):
             vm.values.update(obsp=wanted[2], ocsp=wanted[1], opsp=wanted[4] // 2)
             vm.arrays['obk'].update({0: 1, 2: 2, 4: 4})
             totals = [0, 0, 0]
-            for frames in [2, 3] * 24:
+            # 160 frames covers whole accumulator periods, including the
+            # fractional late-plane cap (two-pixel steps at 132/64).
+            for frames in [2, 3] * 32:
                 vm.values['fdv'] = frames
                 vm.run('upd_obst')
                 for i, name in enumerate(('ospc', 'ospb', 'ospp')):
                     totals[i] += vm.values[name]
-            self.assertEqual(totals, [wanted[k] * 120 // 64 for k in (1, 2, 4)])
+            self.assertEqual(totals, [wanted[k] * 160 // 64 for k in (1, 2, 4)])
 
     def test_fast_traffic_cannot_pass_through_a_standing_player(self):
         vm = Basic()
@@ -318,6 +320,54 @@ class LevelPlayTest(unittest.TestCase):
                           else original_read(path)), redirect_stdout(io.StringIO()) as output:
             self.assertEqual(checkspace.main(), 1)
         self.assertIn('too far apart', output.getvalue())
+
+    def test_late_plane_allows_three_footsteps_between_ducks(self):
+        # 100 ms to release after a plane clears, the real duck-release pass,
+        # then three 14-pixel footfalls and one additional update of margin.
+        # Test both approach directions and fractional accumulator phases.
+        stride = int(re.search(r'IF sfw > (\d+) THEN', SOURCE)[1]) + 1
+        vm = Basic()
+        vm.stubs.add('try_esc')
+
+        def trial(speed, frames, walk_phase, plane_phase, direction):
+            vm.values.clear()
+            vm.arrays.clear()
+            vm.calls.clear()
+            vm.values.update(klsc=3, klv=0, klx=120, klst=2, ind=1,
+                             inr=1-direction, inl=direction, opsp=speed,
+                             fdv=frames, kacc=walk_phase, oacp=plane_phase)
+            vm.arrays['obk'][0] = 4
+            vm.arrays['obx'][0] = 108 if direction == 0 else 132
+            vm.arrays['obd'][0] = direction
+
+            def tick():
+                vm.run('move_kelly')
+                vm.run('upd_obst')
+                vm.run('coll_obst')
+
+            for _ in range(6 // frames):
+                tick()
+            vm.values['ind'] = 0
+            tick()  # current production duck-release delay
+            for _ in range(30):
+                if abs(vm.values['klx'] - 120) >= 3 * stride or vm.values['dead']:
+                    break
+                tick()
+            tick()  # leave one more update to press down again
+            cleared = not vm.values['dead']
+            vm.values['ind'] = 1
+            for _ in range(12):
+                tick()
+            return cleared and not vm.values['dead']
+
+        for frames in (2, 3):
+            for walk_phase in (0, 21, 42, 63):
+                for plane_phase in (0, 21, 42, 63):
+                    for direction in (0, 1):
+                        self.assertTrue(trial(speeds(SOURCE, 16)[4] // 2, frames,
+                                              walk_phase, plane_phase, direction),
+                                        (frames, walk_phase, plane_phase, direction))
+        self.assertFalse(trial(192, 3, 0, 0, 0), 'old level-16 speed must fail')
 
     def test_jump_hitbox_tracks_drawn_feet_without_lowering_hat(self):
         # Use the editable art as the independent boundary, not JUMPTUCK.

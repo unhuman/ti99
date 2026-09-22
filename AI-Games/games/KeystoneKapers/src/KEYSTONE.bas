@@ -2125,18 +2125,18 @@ start_krook:
 
 	' Measured longplay progression: balls stay slow; carts double at 7,
 	' then return to their original speed when pairs arrive at 11. Planes
-	' step up at 8, 12 and 16. See assets/ref2600/level-review.md.
+	' step up at 8 and 12. Late planes are capped for three footsteps
+	' between ducks; see DESIGN.md section 34 for the playability override.
 	' These are 1/64 px/frame, except opsp which counts TWO-pixel steps.
 	' The plane's half-resolution accumulator keeps every byte addition
-	' below 256 even at the last tier (384/64 = 6 px/frame).
+	' below 256 even during a slow update.
 	obsp = 48
 	ocsp = 96
 	IF krk > 6 THEN ocsp = 192
 	IF krk > 10 THEN ocsp = 96
 	opsp = 48
 	IF krk > 7 THEN opsp = 96
-	IF krk > 11 THEN opsp = 144
-	IF krk > 15 THEN opsp = 192
+	IF krk > 11 THEN opsp = 132
 
 	' HARRY'S SPEED IS IN QUARTER PIXELS, AND IT DOES NOT RAMP. It used to be
 	' 2 px/frame against Kelly's 3, which sounds like a comfortable 1.5x --

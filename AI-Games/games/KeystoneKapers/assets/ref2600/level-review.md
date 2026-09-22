@@ -71,6 +71,12 @@ The ball changes slightly from the former 47.8 px/s. Kelly, Harry, escalators,
 elevator timing, bounce periods, jump shape and the round timer are unchanged.
 The velocity program remains frame based on all three platforms.
 
+**Subsequent playability adjustment:** the table above records the measured
+reference and the initial port. The current port caps planes at 247.5 px/s
+from level 12 onward, leaving the 90 and 180 px/s tiers unchanged. Level 16's
+360 px/s allowed too little movement between ducks in play. See DESIGN.md
+section 34 for the three-footstep regression and its reaction-time assumptions.
+
 ### Attribution to levels
 
 Timer resets were checked against score and spare hats. Starts, in seconds:

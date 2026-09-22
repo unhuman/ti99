@@ -6616,3 +6616,42 @@ confirmed clear afterward.
 All three full builds and regression suites passed. The expanded hypothetical
 edge sweep also passed independently. No additional RAM is used; NES retains
 20 bytes of PRG padding and TI has 1910 fixed-area bytes free.
+
+## 34. Late planes leave a three-footstep running window
+
+The user identified level 16 as allowing only one or two steps between ducks.
+The goal is three footsteps, not a uniform slowdown of every plane. Levels
+4..7 retain 90 px/s and 8..11 retain 180 px/s. From level 12 planes now cap at
+247.5 px/s (`opsp = 132`, doubled by the movement accumulator). This reduces
+the former level-16 speed by 31.25% and level 12..15 by about 8.3%; keeping
+270 px/s at level 12 would otherwise make those planes faster than level 16.
+Cart/ball speeds, collision radius and input handling are unchanged.
+
+The new regression executes `move_kelly`, `upd_obst` and `coll_obst` together:
+start immediately after a plane clears, remain ducked six frames (100 ms at
+60 Hz), release duck through the actual one-pass delay, travel three 14-pixel
+footfalls, leave one extra update of reaction room, then duck through the next
+pass. It checks two- and three-frame update cadences, both directions and 16
+pairs of fractional accumulator phases (64 cases). The old level-16 speed is
+also exercised as a negative control and fails. A 25% reduction to 270 px/s
+still failed 16 cases; 255 px/s failed 12; 247.5 px/s passes all 64.
+
+This models a specific reaction allowance at normal update cadence; it cannot
+guarantee three steps after an arbitrarily late duck release, on a crowded
+floor with another obstacle, or during unusually long frame stalls. The prior
+30-pixel plane-wrap stress test remains deliberately above production speed.
+The integrated speed test now measures 160 rather than 120 frames so the
+132/64 accumulator finishes a whole period. At 120 frames its two-pixel steps
+correctly emit 494 pixels rather than the idealized 495; that is quantization,
+not a slower average speed. At 160 frames it emits exactly 660 pixels.
+
+Validation: all three full builds and regression suites passed. The output
+ROM timestamps and SHA-256 hashes changed; the production ROMs were loaded
+in iNES, Classic99 and CoolCV. RAM remains unchanged. NES has 30 bytes of
+PRG padding and TI has 1930 fixed-area bytes free. The three-step window is
+validated by the executable-code simulation above; human level-16 playtesting
+remains the final check on how comfortable that allowance feels.
+
+- NES: `7317A3E7999C8CF82219DE1F6DDE25FC83D82DA69CEB580365116D43ABD244A2`
+- TI: `4F7B852BB7417D28E0DAB876B90E3B36497B61F602D3EE99FD3C0BB5DE63E558`
+- Coleco: `687D96E99515C7D4FF081D4FEB04FAFAAA71F04F9DBA85AC524037AF8445B0D2`
