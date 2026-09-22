@@ -76,7 +76,7 @@ OVERWRITE_OK = {
 SCREEN = {
     "score_mark": "GAME",     # shared HUD/title helper; both callers checked by scoremarks_test
     "title_draw": "TITLE", "alock_cal": "TITLE", "title_wait": "TITLE",
-    "title_input": "TITLE",
+    "title_input": "TITLE", "title_setup": "TITLE",
     # the display-list walker: tt_run reads the table, tt_ch pokes the
     # characters. Its VPOKE address is built in steps, so the poke itself is
     # reported as not statically checked -- the TEXT is checked above, from

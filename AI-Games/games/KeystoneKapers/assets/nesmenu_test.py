@@ -169,6 +169,15 @@ class MenuTest(unittest.TestCase):
         vm.run('nes_choose')
         self.assertEqual(vm.mem['cvb_SK'], 8)
 
+    def test_select_cancels_either_field(self):
+        for value, limit in ((3, 9), (12, 17)):
+            vm = Menu()
+            vm.mem.update({'cvb_SK': value, 'cvb_SUT': limit, 'key1_data': 10})
+            vm.frames.extend([0, 0])
+            vm.run('nes_choose')
+            self.assertEqual(vm.mem['cvb_SK'], 255)
+            self.assertFalse(vm.frames)
+
     def test_release_regression_is_detectable(self):
         broken = MENU.replace('JSR nes_menu_release', 'JSR wait', 1)
         vm = Menu(broken)

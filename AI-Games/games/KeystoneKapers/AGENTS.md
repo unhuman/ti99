@@ -72,7 +72,8 @@ newest-cart emulator handoff rule.
   Escalator animation and its riders deliberately share a fixed per-pass clock
   to avoid drift and cyclic aliasing. Keep the distinction in the checkers too.
 - TI code has a **24,336-byte fixed-area cap**, independent of cartridge size.
-  Bank 2 supplies the setup font/title, score-marker helpers and level-17+ map generator; bank 1 holds
+  Bank 2 supplies the setup font/title, 838 input and cancel-key reader,
+  score-marker helpers and level-17+ map generator; bank 1 holds
   gameplay data. The fixed map-generation caller restores bank 1 before play.
   Inspect current bank selection and INCLUDE placement before
   moving anything. Measure fresh headroom with `banksize.py` / `bankfill.py`;

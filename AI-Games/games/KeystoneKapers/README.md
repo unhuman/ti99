@@ -25,6 +25,12 @@ the only obstacle whose answer changes while it is in the air.
 | Enter / leave the elevator | joystick **up** / **down** |
 | Ride an escalator (**up only**) | walk into its foot, or land a jump on a step |
 
+On TI-99/4A, **BACK (FCTN+9)** or **REDO (FCTN+8)** cancels the current
+game and returns to the title without updating the high score.
+On ColecoVision, either **`*` or `#`** on player 1's keypad does the same.
+These keys also cancel the 838 setup screen and discard partially entered
+values. On NES, **SELECT** cancels its setup screen as well as gameplay.
+
 **TI-99/4A: ALPHA LOCK.** It shares a line with the joystick's vertical axis, so latched down it
 can report a direction that never releases — which matters here, where down is the duck and up
 is the lift. There **used to be a 40-frame calibration** that sampled the axis at boot and

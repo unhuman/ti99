@@ -803,6 +803,9 @@ nes_choose:
 	STA cvb_NAI
 nes_choose_wait:
 	JSR wait
+	LDA key1_data
+	CMP #10
+	BEQ nes_choose_cancel
 	LDA joy1_data
 	AND #$CF
 	STA cvb_NINK
@@ -845,6 +848,10 @@ nes_choose_redraw:
 	JMP nes_choose_wait
 nes_choose_done:
 	JMP nes_menu_release
+nes_choose_cancel:
+	LDA #255
+	STA cvb_SK
+	RTS
 nes_menu_release:
 	JSR wait
 	LDA joy1_data

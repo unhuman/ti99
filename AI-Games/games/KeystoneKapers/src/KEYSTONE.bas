@@ -767,6 +767,13 @@ nes_cancel:
 	krk0 = 0
 	GOTO boot
 	#endif
+	#if COLECOVISION
+cv_cancel:
+	GOSUB snd_off
+	kops0 = 0
+	krk0 = 0
+	GOTO boot
+	#endif
 main:
 	WAIT
 	#if TI994A
@@ -798,9 +805,19 @@ nes_pace:
 	END IF
 	nespw = 5 - nespw
 	#endif
+	#if TI994A
+	BANK SELECT 2
+	GOSUB ti_cancel_key
+	BANK SELECT 1
+	IF tk THEN GOTO boot
+	#endif
 	#if NES
 	' CVBasic maps NES SELECT to keypad 10, START to keypad 11.
 	IF cont1.key = 10 THEN GOTO nes_cancel
+	#endif
+	#if COLECOVISION
+	IF cont1.key = 10 THEN GOTO cv_cancel
+	IF cont1.key = 11 THEN GOTO cv_cancel
 	#endif
 	#fd = FRAME - #lf
 	#lf = FRAME
@@ -1833,7 +1850,7 @@ title_wait:
 	' proven code and it is not what was failing here.
 	#if NES
 	ASM JSR nes_title_code
-	IF t838 = 4 THEN t838 = 0 : GOSUB setup838 : RETURN
+	IF t838 = 4 THEN GOTO title_setup
 	IF cont1.key = 11 THEN RETURN
 	#else
 	tk = cont1.key
@@ -1847,9 +1864,35 @@ title_wait:
 			t838 = tnx
 		END IF
 	END IF
-	IF t838 = 3 THEN t838 = 0 : GOSUB setup838 : RETURN
+	IF t838 = 3 THEN GOTO title_setup
 	#endif
 	IF cont1.button THEN RETURN
+	GOTO title_wait
+
+title_setup:
+	t838 = 0
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB setup838
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	IF sk <> 255 THEN RETURN
+	kops0 = 0
+	krk0 = 0
+	GOSUB title_draw
+	' setup838 was entered from title_wait, after title_input printed the
+	' prompt. Redraw that prompt when setup is cancelled; boot is not involved
+	' on this path, so relying on title_input would otherwise leave it absent.
+	#if NES
+	PRINT AT 681 + 96,"FIRE TO START"
+	tkl = 0
+	t838 = 0
+	#else
+	PRINT AT 681,"FIRE TO START"
+	tkl = 15
+	#endif
 	GOTO title_wait
 
 	' 8-3-8 IS EDGE-TRIGGERED AND ANY STRAY DIGIT RESETS IT (see title_wait).
@@ -1869,122 +1912,6 @@ title_wait:
 	' The reset is the DEFAULT rather than a test for a particular wrong digit:
 	' Bust-A-Bobble resets only on a stray 3 and still lets 8,5,3,8 through.
 	' ------------------------------------------------------- 838 setup page
-setup838:
-	#if NES
-	' The keypad version below is compiled unchanged on TI and Coleco.
-	SCREEN DISABLE
-	WAIT				' NES applies display disable on the next frame
-	CLS
-	GOSUB title_background
-	PRINT AT 260,"KOPS 1-9"
-	SCREEN ENABLE
-	sk = 3
-	sut = 9
-	#sua = 8465
-	ASM JSR nes_choose
-	kops0 = sk
-	PRINT AT 324,"LEVEL 01-17"
-	sk = 1
-	sut = 17
-	#sua = 8529
-	ASM JSR nes_choose
-	krk0 = sk
-	RETURN
-	#else
-	CLS
-	' ONE PROMPT AT A TIME, NOTHING ELSE ON THE SCREEN, AND NO NUMBERS UNTIL
-	' THEY ARE TYPED. There is no heading and no instructions: a page showing
-	' exactly one question does not need to explain that one digit answers it,
-	' and the second question does not exist until the first is answered.
-	'
-	' Showing the CURRENT values first was the obvious thing and it cost more
-	' than it gave -- two draw routines, a "fire keeps what is shown" escape to
-	' make the display mean something, and the defaults had to be applied here
-	' as well as in new_game so the page had numbers to show at all. None of it
-	' survives: every digit on screen is one the player just typed. Four
-	' strings became two, a two-field loop became a straight line, and the page
-	' got SMALLER while getting quieter.
-	PRINT AT 164,"KOPS 1-9"
-	' DEBOUNCE THE 8 THAT OPENED THIS PAGE. cont1.key still reports it on the
-	' first pass in here, so the Kops field read it as the answer and the page
-	' came up showing 8 before the player had touched anything -- typing 8-3-8
-	' set the Kop count to 8 as a side effect of the cheat code. Waiting for the
-	' key to be RELEASED is the whole fix, and the same wait sits before every
-	' later digit so one held key cannot answer two questions.
-	GOSUB su_rel
-	GOSUB su_key
-	' 0 is not a playable count, so it CLAMPS like the level does rather than
-	' being ignored, which would look like a dropped keypress.
-	kops0 = sk
-	IF kops0 < 1 THEN kops0 = 1
-	#sua = 6321			' row 5, col 17 -- one extra blank beside KOPS
-	sud = 48 + kops0
-	VPOKE #sua,sud
-	GOSUB su_rel
-	PRINT AT 228,"LEVEL 01-17"
-	' The TENS digit is echoed as it is typed, so the field is never half a
-	' number with nothing on screen to say so. 6385 is row 7 column 17 -- the
-	' same column as the Kop count above it, so the two values line up.
-	GOSUB su_key
-	sud1 = sk
-	#sua = 6385
-	sud = 48 + sk
-	VPOKE #sua,sud
-	GOSUB su_rel
-	GOSUB su_key
-	' sud1 * 10 BY ADDITION. `*` compiles to a real TMS9900 MPY, which clobbers
-	' r0 and makes the next read of the multiplied variable return the
-	' product's high word (CLAUDE.md 3A). Doubling and adding is ten times with
-	' none of that, and the largest value it can build is 99 -- inside a byte.
-	krk0 = sud1 + sud1
-	sud1 = krk0 + krk0
-	sud1 = sud1 + sud1
-	krk0 = krk0 + sud1
-	krk0 = krk0 + sk
-	IF krk0 < 1 THEN krk0 = 1
-	IF krk0 > 17 THEN krk0 = 17
-	' BOTH LEVEL DIGITS ARE REDRAWN, because the clamp may have changed the one
-	' already on screen. The clamp is silent by design -- there is no error to
-	' dismiss and nothing to retype -- so 80 typed for 08 has to be SEEN landing
-	' on 17, or it reads as the page ignoring the second digit. The wait below
-	' is what gives it time to be read.
-	#sua = 6385
-	sut = krk0
-	sud = 48
-su_tens:
-	IF sut < 10 THEN GOTO su_ones
-	sut = sut - 10
-	sud = sud + 1
-	GOTO su_tens
-su_ones:
-	VPOKE #sua,sud
-	#sua = #sua + 1
-	sud = 48 + sut
-	VPOKE #sua,sud
-	FOR sud = 0 TO 40
-		WAIT
-	NEXT sud
-	RETURN
-
-	' TYPING THE LAST DIGIT STARTS THE GAME -- there is no confirm step and no
-	' way to back out. Someone who has typed a Kop count and a level has already
-	' decided to play, and it means the page is left with KEYS ALONE: fire on
-	' the TI is TAB, which Windows may treat as a focus change, and "do not make
-	' FIRE the only way out" (CLAUDE.md 3A) applies here as much as on the
-	' title. The clamp is what makes that safe -- no typed pair can be refused,
-	' so there is no state to be stuck in.
-su_rel:
-	WAIT
-	IF cont1.key <> 15 THEN GOTO su_rel
-	RETURN
-
-su_key:
-	WAIT
-	sk = cont1.key
-	IF sk > 9 THEN GOTO su_key
-	RETURN
-	#endif
-
 	' ======================================================================
 	' A NEW GAME / A NEW KROOK
 	' ======================================================================
@@ -1996,14 +1923,6 @@ new_game:
 	#if TI994A
 	BANK SELECT 1
 	#endif
-	IF kops0 = 0 THEN kops0 = 3	' one active Kop and two in reserve
-	IF krk0 = 0 THEN krk0 = 1
-	kops = kops0
-	krk = krk0
-	#score = 0			' in UNITS OF TEN, with a fixed trailing
-					' zero -- the x300 bonus band alone can
-					' pay 15,000 for one capture
-	#nextk = 1000			' bonus Kop every 10,000 points
 	GOSUB reset_prizes
 	' THE LIFT STARTS WHERE HARRY DOES, ONCE A GAME. It used to be set in
 	' start_krook, which runs at the top of every round and every life, so
@@ -7032,11 +6951,208 @@ life_finish:
 	#if TI994A
 	BANK 2
 	#endif
+setup838:
+	#if NES
+	' The keypad version below is compiled unchanged on TI and Coleco.
+	SCREEN DISABLE
+	WAIT				' NES applies display disable on the next frame
+	CLS
+	GOSUB title_background
+	PRINT AT 260,"KOPS 1-9"
+	SCREEN ENABLE
+	sk = 3
+	sut = 9
+	#sua = 8465
+	ASM JSR nes_choose
+	IF sk = 255 THEN RETURN
+	kops0 = sk
+	PRINT AT 324,"LEVEL 01-17"
+	sk = 1
+	sut = 17
+	#sua = 8529
+	ASM JSR nes_choose
+	IF sk = 255 THEN RETURN
+	krk0 = sk
+	RETURN
+	#else
+	CLS
+	' ONE PROMPT AT A TIME, NOTHING ELSE ON THE SCREEN, AND NO NUMBERS UNTIL
+	' THEY ARE TYPED. There is no heading and no instructions: a page showing
+	' exactly one question does not need to explain that one digit answers it,
+	' and the second question does not exist until the first is answered.
+	'
+	' Showing the CURRENT values first was the obvious thing and it cost more
+	' than it gave -- two draw routines, a "fire keeps what is shown" escape to
+	' make the display mean something, and the defaults had to be applied here
+	' as well as in new_game so the page had numbers to show at all. None of it
+	' survives: every digit on screen is one the player just typed. Four
+	' strings became two, a two-field loop became a straight line, and the page
+	' got SMALLER while getting quieter.
+	PRINT AT 164,"KOPS 1-9"
+	' DEBOUNCE THE 8 THAT OPENED THIS PAGE. cont1.key still reports it on the
+	' first pass in here, so the Kops field read it as the answer and the page
+	' came up showing 8 before the player had touched anything -- typing 8-3-8
+	' set the Kop count to 8 as a side effect of the cheat code. Waiting for the
+	' key to be RELEASED is the whole fix, and the same wait sits before every
+	' later digit so one held key cannot answer two questions.
+	GOSUB su_rel
+	IF sk = 255 THEN RETURN
+	GOSUB su_key
+	IF sk = 255 THEN RETURN
+	' 0 is not a playable count, so it CLAMPS like the level does rather than
+	' being ignored, which would look like a dropped keypress.
+	kops0 = sk
+	IF kops0 < 1 THEN kops0 = 1
+	#sua = 6321			' row 5, col 17 -- one extra blank beside KOPS
+	sud = 48 + kops0
+	VPOKE #sua,sud
+	GOSUB su_rel
+	IF sk = 255 THEN RETURN
+	PRINT AT 228,"LEVEL 01-17"
+	' The TENS digit is echoed as it is typed, so the field is never half a
+	' number with nothing on screen to say so. 6385 is row 7 column 17 -- the
+	' same column as the Kop count above it, so the two values line up.
+	GOSUB su_key
+	IF sk = 255 THEN RETURN
+	sud1 = sk
+	#sua = 6385
+	sud = 48 + sk
+	VPOKE #sua,sud
+	GOSUB su_rel
+	IF sk = 255 THEN RETURN
+	GOSUB su_key
+	IF sk = 255 THEN RETURN
+	' sud1 * 10 BY ADDITION. `*` compiles to a real TMS9900 MPY, which clobbers
+	' r0 and makes the next read of the multiplied variable return the
+	' product's high word (CLAUDE.md 3A). Doubling and adding is ten times with
+	' none of that, and the largest value it can build is 99 -- inside a byte.
+	krk0 = sud1 + sud1
+	sud1 = krk0 + krk0
+	sud1 = sud1 + sud1
+	krk0 = krk0 + sud1
+	krk0 = krk0 + sk
+	IF krk0 < 1 THEN krk0 = 1
+	IF krk0 > 17 THEN krk0 = 17
+	' BOTH LEVEL DIGITS ARE REDRAWN, because the clamp may have changed the one
+	' already on screen. The clamp is silent by design -- there is no error to
+	' dismiss and nothing to retype -- so 80 typed for 08 has to be SEEN landing
+	' on 17, or it reads as the page ignoring the second digit. The wait below
+	' is what gives it time to be read.
+	#sua = 6385
+	sut = krk0
+	sud = 48
+su_tens:
+	IF sut < 10 THEN GOTO su_ones
+	sut = sut - 10
+	sud = sud + 1
+	GOTO su_tens
+su_ones:
+	VPOKE #sua,sud
+	#sua = #sua + 1
+	sud = 48 + sut
+	VPOKE #sua,sud
+	FOR sud = 0 TO 40
+		WAIT
+	NEXT sud
+	RETURN
+
+	' TYPING THE LAST DIGIT STARTS THE GAME -- there is no confirm step and no
+	' way to back out. Someone who has typed a Kop count and a level has already
+	' decided to play, and it means the page is left with KEYS ALONE: fire on
+	' the TI is TAB, which Windows may treat as a focus change, and "do not make
+	' FIRE the only way out" (CLAUDE.md 3A) applies here as much as on the
+	' title. The clamp is what makes that safe -- no typed pair can be refused,
+	' so there is no state to be stuck in.
+su_rel:
+	GOSUB su_poll
+	IF sk = 255 THEN RETURN
+	IF sk <> 15 THEN GOTO su_rel
+	RETURN
+
+su_key:
+	GOSUB su_poll
+	IF sk = 255 THEN RETURN
+	IF sk > 9 THEN GOTO su_key
+	RETURN
+	#endif
+
+	#if TI994A
+su_poll:
+	WAIT
+	GOSUB ti_cancel_key
+	sk = cont1.key
+	IF tk THEN sk = 255
+	RETURN
+	#endif
+	#if COLECOVISION
+su_poll:
+	WAIT
+	sk = cont1.key
+	IF sk = 10 THEN sk = 255
+	IF sk = 11 THEN sk = 255
+	RETURN
+	#endif
+	#if TI994A
+ti_cancel_key:
+	' Read the physical FCTN+8/9 combinations, not KSCAN ASCII codes.
+	' CVBasic's first-key scan stops at FCTN; 11 is Enter and 15 is idle.
+	tk = 0
+	' Keep the interrupt keyboard scanner out of this short CRU transaction.
+	ASM LIMI 0
+	ASM LI R12,>0024
+	ASM CLR R0
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>1000
+	ASM CZC R1,R2
+	ASM JNE ti_cancel_done
+	' Column 1 row 3 is 9 (BACK); column 2 row 3 is 8 (REDO).
+	ASM LI R12,>0024
+	ASM LI R0,>0100
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>0800
+	ASM CZC R1,R2
+	ASM JEQ ti_cancel_pressed
+	ASM LI R12,>0024
+	ASM LI R0,>0200
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM CZC R1,R2
+	ASM JNE ti_cancel_done
+	ASM ti_cancel_pressed:
+	ASM LI R0,>0100
+	ASM MOVB R0,@cvb_TK
+	ASM ti_cancel_done:
+	ASM LIMI 2
+	' The compiler caches tk in R0 across ASM. Refresh both value and flags.
+	ASM MOVB @cvb_TK,R0
+	IF tk THEN
+		GOSUB snd_off
+		kops0 = 0
+		krk0 = 0
+	END IF
+	RETURN
+	#endif
 score_start:
 	' Bit 0 marks this game's setup origin; bit 1 belongs to the high score.
 	' Test before installing defaults: entering 838 counts even with 3 / 1.
 	scmark = scmark AND 2
 	IF kops0 > 0 THEN scmark = scmark OR 1
+	IF kops0 = 0 THEN kops0 = 3	' one active Kop and two in reserve
+	IF krk0 = 0 THEN krk0 = 1
+	kops = kops0
+	krk = krk0
+	#score = 0			' in UNITS OF TEN, with a fixed trailing
+					' zero -- the x300 bonus band alone can
+					' pay 15,000 for one capture
+	#nextk = 1000			' bonus Kop every 10,000 points
 	RETURN
 
 score_mark:

@@ -1113,6 +1113,12 @@ cost a debugging session:
   (TI ~7.2 KB free, Coleco ~230 B). Budget for it up front: it is the price of scrolling.
 - **Build BOTH targets every time**, not just TI. `#if TI994A` needs the **unhuman/CVBasic**
   fork (stock nanochess has no preprocessor).
+  - **TI inline `ASM` does not invalidate the compiler's register cache.** After
+    a BASIC assignment and raw assembly, an `IF` on that same variable can
+    compile to a conditional jump with no reload/test. Explicitly restore the
+    cached value and condition flags before returning to BASIC (for a byte in
+    R0, `ASM MOVB @cvb_NAME,R0`). Check the generated assembly. Keystone's
+    cancel-key scanner needs this to avoid silencing effects on ordinary frames.
   - **An UNDEFINED name in `#if` is silently FALSE** — no error, no warning. So a mistyped
     `-DEXPRT=1` compiles the *other* branch and every tool in the chain reports success. When a `-D`
     selects which content a cart carries, that is a wrong cart with a right-looking name. **Make the

@@ -6886,3 +6886,36 @@ wait before gameplay. The main loop checks SELECT before advancing gameplay,
 including during hit freeze. Cancellation silences all effects, clears the
 setup starting values and returns directly to the title. It does not call
 `score_record`, award a bonus or show GAME OVER. These controls are NES-only.
+
+## 45. TI BACK and REDO cancellation
+
+During gameplay, FCTN+9 (BACK) and FCTN+8 (REDO) cancel to the title with
+the same score-preserving behavior as NES SELECT. Ordinary 8/9, Enter, and
+FCTN alone do not cancel. The CVBasic runtime scans raw keyboard positions,
+not console KSCAN codes: keypad 15 is idle and 11 is Enter, and FCTN takes
+precedence over the digit in its first-key scan.
+
+The TI-only `ti_cancel_key` helper in bank 2 reads column 0 row 4 (FCTN),
+then column 1/2 row 3 (9/8). Interrupts are masked only during these short
+CRU transactions to avoid interference from the interrupt keyboard scanner.
+It reuses `tk`, silences effects and clears setup defaults on cancellation,
+then returns normally. The caller restores bank 1 before returning to the
+title; no subroutine return is abandoned and no score record is evaluated.
+The check precedes gameplay updates and hit freeze, like NES SELECT; blocking
+round-end animations finish before the main-loop check resumes.
+
+New-game score/lives defaults now reside with `score_start` in TI bank 2,
+preserving their original order and behavior while making room for the fixed
+cancel caller before branch optimization. ColecoVision uses its native keypad
+codes 10 (`*`) and 11 (`#`) in the main loop, with the same sound shutdown,
+setup reset and score-preserving return to title.
+
+The same cancel keys work during setup (NES: SELECT). `sk = 255` signals
+cancellation from each field reader; every caller returns normally before
+`title_setup` clears both starting values and redraws the title. No partial
+life/level choice survives. The keypad release waits also poll cancellation.
+The TI setup reader now lives in bank 2 alongside its keyboard helper, with
+bank 1 restored by the fixed caller before drawing the title or starting play.
+After the raw TI scan, an explicit `MOVB @cvb_TK,R0` refreshes the value and
+condition flags: the compiler otherwise retains its pre-ASM register cache,
+which could incorrectly run the sound shutdown when no cancel key was held.
