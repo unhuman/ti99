@@ -67,6 +67,9 @@ Faithful to the cartridge — a strong game reads about 60. Every kill throws ou
 pieces of debris**, which can kill other enemies and cascade, so the big scores come from
 chains.
 
+A Starship's missiles never hit the Starship that fired them. They used to, which gave you
+a free 10 points every time one fired.
+
 Debris flies **straight** and only about 64 px. The white missiles a Light-speed Starship
 fires are the ones that **steer**, and they are the ones to respect — grey is wreckage,
 white is hunting you.
@@ -96,9 +99,9 @@ to stay evenly spaced, and placed by eye they wobble.
 
 | target | used | free |
 |---|---|---|
-| TI-99/4A program image | 15,932 / 24,336 | 8,404 |
+| TI-99/4A program image | 16,344 / 24,336 | 7,992 |
 | ColecoVision ROM | 16,384 | — |
-| ColecoVision RAM | 594 / 814 | 220 |
+| ColecoVision RAM | 626 / 814 | 188 |
 
 ## Notes
 

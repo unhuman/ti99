@@ -84,6 +84,21 @@ That is a *prediction*. Phase 1 ships a temporary two-digit loop-rate probe and 
 because dual-target parity is a requirement, any reduction would be proposed as a `#if TI994A`
 split rather than taken from both.
 
+**Measured (2026-09-24, Classic99, TI build): 30 passes/s** with 0-2 enemies on screen — one
+pass every **two** frames, not the predicted 1.2. The prediction was wrong because it counted
+BASIC statements, and CVBasic code runs from 8-bit expansion RAM where every array access is
+several instructions (`srl`/`sla`/`ai`/`mov` per index). Two consequences:
+
+- **Every "px/frame" in this document is px per PASS.** At 30 passes/s the ship's "1.5 px/frame"
+  is 45 px/s. The feel was tuned at this rate (the bolt and aim changes in §4 were made by eye
+  against a 30 Hz loop), so it is the reference, not a defect.
+- **The loaded rate is not yet measured.** Per-pass cost grows with actors, so a full chain
+  reaction may drop the loop to 20 or below — slowing the game exactly when it is most
+  exciting. The hottest loop, missile-vs-enemy (up to 64 pairs), now reads byte-cached
+  positions (`e8x`/`e8y`) instead of shifting 16-bit arrays, and the laser test is skipped
+  when no bolt is in flight. **Read the probe during a big chain before removing it**; if it
+  falls below ~24, the next step is FRAME-delta pacing (`CLAUDE.md` §3A).
+
 ### 1a. Fixed point, and why wraparound is free
 
 Positions are **8.8 fixed point** in `#vars` (whole pixels in the high byte). Velocities are
@@ -105,6 +120,10 @@ than retrofitted.
 ### 1b. Sprite slots and the four-per-scanline rule
 
 `SPRITE FLICKER OFF` — CVBasic's flicker is all-or-nothing and would strobe the player.
+
+`SPRITE` writes a RAM mirror that the vblank ISR copies to the VDP, so a hide followed by a
+`CLS` in the same frame shows the old sprites on the cleared screen. The title screen `WAIT`s
+between the two.
 
 | slot | actor |
 |---|---|
@@ -338,6 +357,13 @@ the reason the pool is 8 rather than 4.
 > Colour carries the distinction because the two demand opposite responses: **white hunts you,
 > grey is thrown wreckage.**
 
+**A missile never hits the enemy that fired it** (`mown`). A Starship's missile is born *on*
+the Starship, and the chain test runs against every enemy — so on its first pass the missile
+was 2 px from its own launcher and the Starship destroyed itself with every shot. The player
+got ten points and a debris burst for nothing, and a kill appeared with nobody near it. When
+a Starship dies its missiles are disowned, so whatever spawns into that slot next is not
+immune to them.
+
 At 1/3/10 points a chain is **legible** — you watch the score tick up one kill at a time and can
 see the cascade travel. This is exactly what a ×100 scale would have destroyed, and it is why
 faithful scoring was the right call rather than merely the authentic one.
@@ -540,5 +566,6 @@ to spend it on cannot be tested, and a gun with no cost attached is not the mech
 - [ ] A kill launches three missiles, and a cascade is possible and visible
 - [ ] Wraparound reads correctly against the static starfield on both axes
 - [ ] `838` sets ships 1-9 and starting difficulty
-- [ ] Loop rate measured, recorded in §1, and acceptable on **both** targets
+- [ ] Loop rate measured, recorded in §1, and acceptable on **both** targets — *TI unloaded:
+      30/s, recorded; loaded and ColecoVision still to read*
 - [ ] Temporary loop probe removed before the game is called done

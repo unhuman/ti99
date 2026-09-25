@@ -123,6 +123,15 @@
 	DIM mgd(NMIS)			' 1 = GUIDED (a Starship fired it and it
 					'     steers), 0 = DEBRIS (dead straight)
 	DIM marm(NMIS)			' debris: frames until it can hurt you
+	DIM mown(NMIS)			' enemy slot that FIRED it, or 255. A
+					' Starship's missile is born ON the Starship,
+					' so without this the chain test finds it 2 px
+					' from its own launcher on its first pass and
+					' the Starship destroys itself with every shot
+	DIM e8x(NENE),e8y(NENE)		' enemy position in whole pixels, cached by
+					' upd_enemies so the missile-vs-enemy test --
+					' up to 8 x 8 pairs in a chain -- reads bytes
+					' rather than shifting 16-bit arrays each time
 
 	' WHERE THE GUN IS, radius 6.8 px -- the same circle the force-field art is
 	' drawn on (assets/genart.py R_OUTER), so the gun dot sits ON the ring
@@ -288,7 +297,11 @@ setup:
 
 	' ---------------------------------------------------------- title screen
 title_screen:
+	' SPRITE only writes a RAM mirror; the vblank ISR copies it to the VDP.
+	' Without the WAIT the CLS lands first and the last game's enemies stand
+	' on an empty screen for a frame.
 	GOSUB hide_all
+	WAIT
 	CLS
 	GOSUB paint_stars
 
@@ -662,6 +675,11 @@ fire_check:
 
 	' ----------------------------------------------------------- update lasers
 upd_lasers:
+	' lany: is any bolt in flight? The enemy loop skips its laser test
+	' entirely when not -- which is most passes, since a shot costs a third
+	' of the field. Stale by at most a kill within this pass, and a stale 1
+	' only costs a test that finds nothing.
+	lany = lon(0) + lon(1)
 	FOR ui = 0 TO 1
 		IF lon(ui) = 1 THEN
 			llf(ui) = llf(ui) - 1
@@ -899,9 +917,11 @@ upd_enemies:
 			END IF
 			GOSUB esl_calc
 			SPRITE esl,ey8,ex8,epn,ecl
+			e8x(ei) = ex8
+			e8y(ei) = ey8
 
 			GOSUB coll_player
-			GOSUB coll_lasers
+			IF lany <> 0 THEN GOSUB coll_lasers
 		ELSE
 			' HIDE THE ROTATED SLOT even though this enemy is dead:
 			' with rotation, some other enemy occupied this slot
@@ -984,6 +1004,7 @@ ship_think:
 	mfx8 = ex8
 	mfy8 = ey8
 	mfg = 1				' GUIDED -- this one hunts you
+	mfo = ei			' ...and must not hit the ship that fired it
 	GOSUB fire_missile
 	RETURN
 
@@ -1151,6 +1172,14 @@ kill_enemy:
 	GOSUB esl_calc
 	SPRITE esl,SPRHID,0,0,0
 
+	' A dead Starship's missiles lose their owner, or whatever spawns into
+	' this slot next would be immune to them for the rest of their flight.
+	IF kt = ETSHIP THEN
+		FOR kmi = 0 TO NMIS - 1
+			IF mown(kmi) = ei THEN mown(kmi) = 255
+		NEXT kmi
+	END IF
+
 	kp = 1
 	IF kt = ETHUNT THEN kp = 3
 	IF kt = ETSHIP THEN kp = 10
@@ -1165,6 +1194,7 @@ kill_enemy:
 	mfy8 = ey8
 	mfg = 0				' DEBRIS -- straight, short, and it does
 					' not chase anybody
+	mfo = 255			' and has no living owner to spare
 	FOR kci = 0 TO 2
 		mfd = kd
 		GOSUB fire_missile
@@ -1174,7 +1204,8 @@ kill_enemy:
 	RETURN
 
 	' --------------------------------------------------------- fire missile
-	' mfd = heading, mfx8/mfy8 = where from, mfg = 1 GUIDED / 0 DEBRIS.
+	' mfd = heading, mfx8/mfy8 = where from, mfg = 1 GUIDED / 0 DEBRIS,
+	' mfo = the enemy slot that fired it (255 for debris).
 	' Silently does nothing when the pool is full, which is correct: eight
 	' missiles in the air is already a bigger cascade than the screen can show.
 	'
@@ -1191,6 +1222,7 @@ fire_missile:
 	IF fmi = 255 THEN RETURN
 	mon(fmi) = 1
 	mgd(fmi) = mfg
+	mown(fmi) = mfo
 	IF mfg = 1 THEN
 		mlf(fmi) = MLIFE
 		marm(fmi) = 0		' fired from a Starship, already far away
@@ -1320,17 +1352,29 @@ coll_mis_player:
 	' ----------------------------------------------------- missile vs enemy
 	' What makes a chain a chain. Tested x-first so the common case -- a
 	' missile nowhere near this enemy -- costs a subtract and a compare.
+	'
+	' THIS IS THE HOTTEST LOOP IN THE GAME: every live missile against every
+	' enemy slot, so a full chain is 64 pairs a pass, and a chain is exactly
+	' when the screen is busiest. Positions come from the byte caches
+	' e8x/e8y that upd_enemies fills, not from #ex/#ey -- a 16-bit array read
+	' plus a shift per pair was most of the cost. The caller has already
+	' checked mon(mi), and a hit ends the loop through mhit.
+	'
+	' A missile never hits the enemy that FIRED it (mown). A Starship's
+	' missile is born on the Starship, and without this the first pass found
+	' it 2 px away and the Starship blew itself up with every shot -- ten
+	' points and a debris burst the player did nothing to earn.
 coll_mis_enemy:
 	mhit = 0
 	FOR mj = 0 TO NENE - 1
 		IF mhit = 0 THEN
 		IF ety(mj) <> 0 THEN
-			IF mon(mi) = 1 THEN
-				mex = #ex(mj) / 256
+			IF mj <> mown(mi) THEN
+				mex = e8x(mj)
 				cdx = mex - mx8
 				IF cdx > 127 THEN cdx = 0 - cdx
 				IF cdx < 11 THEN
-					mey = #ey(mj) / 256
+					mey = e8y(mj)
 					IF mey >= my8 THEN
 						cdy = mey - my8
 					ELSE
