@@ -7142,3 +7142,48 @@ Not reclaimed, on purpose: RLE-packing `stor_tpl` (2,400 B) or `nes_attrs`
 Next: NES music (STREET and CHASE, falling back to 8-bar versions if the
 2,229 bytes are not enough), with NES-specific ducking. The NES routes its
 effects over different channels from the TI.
+
+## 50. NES music (2026-09-25)
+
+The NES now has music too: **STREET** on the title and **CHASE** in rounds, as
+on the TI and ColecoVision. **A** on the title toggles it (`A=MUSIC ON` /
+`OFF`); B (jump) and START still start a game. The title uses the shared layout
+with the credit on row 17 (`gentitle.py` now emits one `title_tbl` for all
+three), so all three titles are spaced the same.
+
+**The NES player drives the APU directly** (`music_hardware` in
+`cvbasic_nes_prologue.asm`). In `PLAY SIMPLE NO DRUMS` it writes only the two
+pulse channels. It leaves the triangle, the noise channel and `$4015`
+alone, so the game's own effects (through `assets/nes_apu.asm`) keep those.
+`PLAY FULL` on the title writes everything, but nothing else sounds there.
+
+**NES ducking has more owners.** On the NES, channel 0 also carries the
+extra-life bugle (`spt`) and channel 1 the prize (`spz`), where the TI and
+ColecoVision put both on channel 2. So the NES `music_duck` pauses for those
+too, and `music_stop` leaves a channel alone while either is sounding.
+
+**NES RAM was 5 bytes short**, and the music player's own state took ~33.
+All of the fix is NES-only:
+* The music state is held in `nai`, NES scratch that is idle at those
+  moments: 0 playing, 1 ducked, 2 not started. There is no `gms`/`gmp`/`gmb`
+  on the NES, and its `music_duck` branches to `md_busy` instead of
+  setting a flag. The title's A toggle uses the same `nai` for its edge
+  state and treats 2 like a held A.
+* `jarc` is declared with 30 entries on the NES, the most ever read
+  (`kjf` wraps past 29).
+* `checknesram.py`: all 20 arrays end inside RAM, with 1 byte to spare.
+
+**NES PRG was 56 bytes short with both 16-bar tunes.** The in-game tune is the
+one heard for minutes, so it stays whole. The title plays the first 8 bars of
+STREET (`NES_TITLE_BARS` in `genmusic.py`), whose first half ends on its C7 and
+turns cleanly back to the top. `titlemusic.bas` carries both versions under
+`#if NES` / `#else`. **Free PRG: 197 bytes.**
+
+**TI and ColecoVision unchanged:** both rebuilt **byte-for-byte identical**
+to the commit before this work. Every change for them is a removed
+`#if NES` / `#else` wrapper around identical code, or an `#if NES` addition.
+
+**Verified in iNES:** the title with the new spacing and `A=MUSIC ON`, and
+the round-start check. **Not verified by ear here:** the NES music itself.
+**Next, optional:** about 60 bytes of NES PRG would let the title play the
+full STREET.

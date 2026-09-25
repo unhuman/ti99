@@ -364,10 +364,9 @@ def runs_of(name, nes=False):
     return [(top + i, BOX_COL, t) for i, t in enumerate(MESSAGES[name])]
 
 
-# THE CREDIT SITS ONE ROW HIGHER (17, not 18) on the TI and ColecoVision, the
-# two with music, so the music line (M= / 0=MUSIC) can go on row 19 with a clear
-# row before FIRE TO START on 21. The NES has no music and keeps its table
-# unchanged (the #if NES copy).
+# THE CREDIT SITS ONE ROW HIGHER (17, not 18) so the music line (M= on the TI,
+# 0= on the ColecoVision, A= on the NES) can go on row 19 with a clear row
+# before FIRE TO START on 21. All three targets have music now.
 CREDIT = "2026 UNHUMAN and C&C AI"
 CREDIT_ROW = 17
 
@@ -488,15 +487,13 @@ def main():
         fh.write("\t' The message boxes in title.bas are the same format and\n")
         fh.write("\t' CANNOT come with it: they are read when a round ends.\n")
         fh.write("\t' ==================================================\n")
-        # Two copies: TI and ColecoVision have the credit one row higher
-        # (CREDIT_ROW). The #if NES copy is byte-for-byte the NES table.
+        # One table for every target: all three now have music, so all three
+        # put the credit on CREDIT_ROW and the music line two rows under it.
         music_data = table(french_runs(music=True))
-        for label, block in (("#if NES", data), ("#else", music_data)):
-            fh.write("\n%s\ntitle_tbl:\n" % label)
-            for i in range(0, len(block), 8):
-                fh.write("\tDATA BYTE %s\n"
-                         % ",".join(str(b) for b in block[i:i + 8]))
-        fh.write("#endif\n")
+        fh.write("\ntitle_tbl:\n")
+        for i in range(0, len(music_data), 8):
+            fh.write("\tDATA BYTE %s\n"
+                     % ",".join(str(b) for b in music_data[i:i + 8]))
 
     with io.open(OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")

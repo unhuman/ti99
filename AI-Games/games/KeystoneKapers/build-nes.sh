@@ -105,6 +105,10 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/genart.py > /dev/null   || die "genart.py failed"
 "$TRUNCPY" ../assets/genstore.py > /dev/null || die "genstore.py failed"
 "$TRUNCPY" ../assets/gentitle.py > /dev/null || die "gentitle.py failed"
+# The title and in-game tunes, rendered from the tunes bench's own generator,
+# whose cache is cleared too (it is imported from another directory).
+rm -rf ../sound/tunes/assets/__pycache__
+"$TRUNCPY" ../assets/genmusic.py > /dev/null || die "genmusic.py failed"
 "$TRUNCPY" ../assets/gennescolor.py > /dev/null || die "gennescolor.py failed"
 
 "$TRUNCPY" ../../../tools/bigvar.py *.bas \

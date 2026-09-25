@@ -643,7 +643,11 @@
 	#endif
 	DIM lv8(4)			' lv*8, so no multiply lands on an index
 	DIM rhaz(16)			' packed hazard map, retained across deaths
+	#if NES
+	DIM jarc(30)			' 30 frames exactly: kjf wraps past 29, and NES RAM is full
+	#else
 	DIM jarc(32)			' the jump arc: 30 frames, apex 14
+	#endif
 	DIM msk(8)
 
 	' EIGHT obstacle slots -- TWO per band, and that number is forced.
@@ -747,18 +751,12 @@ boot:
 	' over, the cancel key -- so the tune starts in one place. It stops in
 	' one place too: title_input returns only to start a game, including a
 	' start from the 838 setup page.
-	#if NES
-	#else
 	GOSUB title_music_on
-	#endif
 	GOSUB title_input
 	#if TI994A
 	BANK SELECT 1
 	#endif
-	#if NES
-	#else
 	GOSUB snd_off
-	#endif
 	' LET GO OF FIRE BEFORE PLAY BEGINS.
 	'
 	' title_input returns ON the press, so the button is still down when the
@@ -822,8 +820,6 @@ title_bulb:
 	' every sound effect in the game. PLAY NONE clears the mode, and the ISR
 	' then leaves the chip alone. snd_off after it, so nothing the tune left
 	' latched rings into the round.
-	#if NES
-	#else
 title_music_on:
 	IF musen = 0 THEN RETURN	' M on the title turned music off
 	' Called with BANK 2 selected (boot maps it for the title), which is
@@ -845,12 +841,22 @@ music_stop:
 	' TIME UP). Silence channels 0 and 1 here, except one a jump (swt) or a
 	' hit (sht) owns: the music was ducked for those, and the effect must
 	' ring out. snd_off silences everything after this anyway.
+	#if NES
+	' ON THE NES CHANNEL 0 ALSO CARRIES THE EXTRA-LIFE BUGLE (spt) AND CHANNEL 1
+	' THE PRIZE (spz); the TI and ColecoVision put both on channel 2.
+	IF swt = 0 THEN IF spt = 0 THEN SOUND 0,,0
+	IF sht = 0 THEN IF spz = 0 THEN SOUND 1,,0
+	#else
 	IF swt = 0 THEN SOUND 0,,0
 	IF sht = 0 THEN SOUND 1,,0
+	#endif
+	#if NES
+	nai = 2			' NES: the music state lives in nai -- see music_duck
+	#else
 	gms = 0
+	#endif
 	RETURN
 
-	#endif
 
 	' ======================================================================
 	' MAIN LOOP -- one WAIT per frame, O(1) per actor, no VDP reads.
@@ -979,6 +985,9 @@ nes_pace:
 	BANK SELECT 1
 	#endif
 	#if COLECOVISION
+	GOSUB music_duck
+	#endif
+	#if NES
 	GOSUB music_duck
 	#endif
 	GOSUB sfx_tick
@@ -5940,10 +5949,7 @@ lose_kop:
 	' after every unit, but a footstep or a hit that was still ringing when
 	' Harry was caught.
 snd_off:
-	#if NES
-	#else
 	GOSUB music_stop
-	#endif
 	' EVERY CHANNEL sfx_tick CAN WRITE, AND CHANNEL 3 IS ONE OF THEM. This
 	' routine was written when the footstep was a pair of tones on channel 0
 	' and it still named only 0, 1 and 2 after the footstep moved to the
@@ -6037,10 +6043,7 @@ snd_pend:
 	' snd_off still runs at the END, as the backstop for anything the drain
 	' did not finish.
 pause_beat:
-	#if NES
-	#else
 	GOSUB music_stop
-	#endif
 	GOSUB snd_pend
 	' TWICE AS LONG AS IT WAS, AND IN ONE PLACE. The reason box waits one beat
 	' and GAME OVER two, so doubling the beat doubles both and keeps them in
@@ -6708,8 +6711,6 @@ random_set:
 random_hazards:
 	DATA BYTE 0,1,2,3,4,9,10,11,0,1,9,9
 
-	#if NES
-	#else
 	' ---------------------------------------------------------------- GAME MUSIC
 	' CHASE (game_tune, genmusic.py) plays during a round on PLAY SIMPLE NO
 	' DRUMS: TWO voices on channels 0 and 1 only. The TI effects split by
@@ -6734,6 +6735,36 @@ random_hazards:
 	' BANK SELECT (it would unmap itself).
 music_duck:
 	IF musen = 0 THEN RETURN	' M on the title turned music off
+	#if NES
+	' NES RAM IS FULL TO THE BYTE, so the NES keeps no gms/gmp/gmb: its whole
+	' music state is nai -- 0 playing, 1 ducked, 2 not started. nai is NES
+	' scratch that is idle here: the title's A toggle uses it (and treats 2
+	' like a held A), and the round-end message boxes use it only after the
+	' round's music is over and before music_stop sets it back to 2.
+	IF nai = 2 THEN nai = 0 : PLAY SIMPLE NO DRUMS : PLAY game_tune
+	' Same test as below, branching instead of setting gmb, plus the channel
+	' owners the NES adds (the bugle on 0, the prize on 1 -- nes_apu.asm).
+	IF swt > 0 THEN GOTO md_busy
+	IF sht > 0 THEN GOTO md_busy
+	IF sfj > 0 THEN GOTO md_busy
+	IF sfh > 0 THEN GOTO md_busy
+	IF sfe > 0 THEN GOTO md_busy
+	IF spt > 0 THEN GOTO md_busy
+	IF spz > 0 THEN GOTO md_busy
+	IF sfk > 0 THEN GOTO md_busy
+	IF sfp > 0 THEN GOTO md_busy
+	IF nai = 0 THEN RETURN
+	nai = 0
+	PLAY SIMPLE NO DRUMS
+	RETURN
+md_busy:
+	IF nai = 1 THEN RETURN
+	nai = 1
+	PLAY NONE
+	SOUND 0,,0
+	SOUND 1,,0
+	RETURN
+	#else
 	IF gms = 0 THEN
 		gms = 1
 		gmp = 0
@@ -6769,14 +6800,17 @@ prt_musen:
 	IF musen THEN PRINT AT 618,"M=MUSIC ON " ELSE PRINT AT 618,"M=MUSIC OFF"
 	RETURN
 	#endif
+	#if NES
+prt_musen:
+	IF musen THEN PRINT AT 618 + 96,"A=MUSIC ON " ELSE PRINT AT 618 + 96,"A=MUSIC OFF"
+	RETURN
+	#endif
 	#if COLECOVISION
 prt_musen:
 	IF musen THEN PRINT AT 618,"0=MUSIC ON " ELSE PRINT AT 618,"0=MUSIC OFF"
 	RETURN
 	#endif
 
-	#if NES
-	#else
 mus_toggle:
 	musen = 1 - musen
 	GOSUB prt_musen
@@ -6784,7 +6818,6 @@ mus_toggle:
 	' records for title_tune. snd_off stops the tune and silences it.
 	IF musen THEN GOSUB title_music_on ELSE GOSUB snd_off
 	RETURN
-	#endif
 
 	' ---------------------------------------------------------------- TITLE, IN BANK 2
 	' title_draw, title_input, title_wait and title_setup run only while the
@@ -6912,13 +6945,11 @@ title_input:
 	#else
 	PRINT AT 681,"FIRE TO START"
 	#endif
-	#if NES
-	#else
 	GOSUB prt_musen
-	#endif
 	#if NES
 	tkl = 0
 	t838 = 0
+	nai = 1
 	#else
 	tkl = 15
 	#endif
@@ -7038,6 +7069,16 @@ title_wait:
 	ASM JSR nes_title_code
 	IF t838 = 4 THEN GOTO title_setup
 	IF cont1.key = 11 THEN RETURN
+	' A toggles music. cont1.button is B (jump, and it starts a game);
+	' cont1.button2 is A, which nothing else on the title reads.
+	' The edge state lives in nai -- NES scratch, idle while the title waits
+	' (see title_background, nes_choose and the round-end message boxes): NES
+	' RAM is full to the byte. 1 = A seen down; it must be let go to re-arm.
+	IF cont1.button2 THEN
+		IF nai = 0 THEN nai = 1 : GOSUB mus_toggle
+	ELSE
+		nai = 0
+	END IF
 	#endif
 	#if COLECOVISION
 	tk = cont1.key
@@ -7087,14 +7128,12 @@ title_setup:
 	PRINT AT 681 + 96,"FIRE TO START"
 	tkl = 0
 	t838 = 0
+	nai = 1
 	#else
 	PRINT AT 681,"FIRE TO START"
 	tkl = 15
 	#endif
-	#if NES
-	#else
 	GOSUB prt_musen
-	#endif
 	GOTO title_wait
 
 	' 8-3-8 IS EDGE-TRIGGERED AND ANY STRAY DIGIT RESETS IT (see title_wait).
@@ -7374,10 +7413,7 @@ init_tables:
 	' MUSIC ON by default. Set here, once at power-on, and never again --
 	' boot re-enters BELOW init_tables after a game over, so M's choice
 	' holds from game to game until the machine is switched off.
-	#if NES
-	#else
 	musen = 1
-	#endif
 	' Floor surface y, by level. An actor standing here has its FEET at this
 	' pixel, and every 16 px sprite sits at y = flry - 16 - height.
 	flry(0) = 160			' floor 1, slab on row 20
@@ -7547,10 +7583,7 @@ init_tables:
 	' INCLUDE inside a false #if is never opened. Read under the ISR while the
 	' title is up, which is safe from a bank the program switches away from;
 	' see title_music_on. Even length, asserted by genmusic.py.
-	#if NES
-	#else
 	INCLUDE "titlemusic.bas"
-	#endif
 	#if TI994A
 	BANK 1
 	#endif

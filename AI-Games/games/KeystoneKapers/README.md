@@ -31,12 +31,14 @@ On ColecoVision, either **`*` or `#`** on player 1's keypad does the same.
 These keys also cancel the 838 setup screen and discard partially entered
 values. On NES, **SELECT** cancels its setup screen as well as gameplay.
 
-**Music (TI-99/4A and ColecoVision).** The title plays STREET and each round
-plays CHASE (from the tunes bench, `sound/tunes`). **M** on the TI keyboard, or
-**0** on the ColecoVision keypad, turns all music on or off; the title shows
-`M=MUSIC ON` / `0=MUSIC ON` (or OFF). It starts on at power-on and keeps your
-choice from game to game. During play, jumps and hits pause the music for their
-own sound, and it resumes where it stopped. The NES has no music.
+**Music (all three machines).** The title plays STREET and each round plays
+CHASE (from the tunes bench, `sound/tunes`). **M** on the TI keyboard, **0** on
+the ColecoVision keypad, or **A** on the NES pad turns all music on or off; the
+title shows `M=`, `0=` or `A=MUSIC ON` (or OFF). It starts on at power-on and
+keeps your choice from game to game. During play, jumps and hits (and on the
+NES also prizes and the extra-life bugle) pause the music for their own sound,
+and it resumes where it stopped. The NES title plays the first 8 bars of
+STREET, because the full tune does not fit its ROM.
 
 **TI-99/4A: ALPHA LOCK.** It shares a line with the joystick's vertical axis, so latched down it
 can report a direction that never releases — which matters here, where down is the duck and up
@@ -301,13 +303,13 @@ nine-second obstacle and still make the catch. `DESIGN.md` §4a has the arithmet
 **Builds pass on TI-99/4A, ColecoVision and NES (2026-09-25).** On the TI and
 ColecoVision the title plays STREET and rounds play CHASE, both from the tunes
 bench; M (TI) or 0 (ColecoVision) on the title turns music on and off
-(`DESIGN.md` sections 46-48). TI fixed code
+(`DESIGN.md` sections 46-48; NES music, A on the title, section 50). TI fixed code
 uses **22,666 / 24,336 bytes (1,670 free; 72 in the unoptimised first pass)**, with a 64 KB
 cartridge. Runtime data bank 1 has 506 bytes free; setup bank 2 has 1,490 free.
 ColecoVision uses a 32 KB ROM and 618 / 781 RAM (the stack keeps at least 159
 bytes free, measured; `DESIGN.md` section 48); NES uses a 32 KB PRG image
-plus its 16-byte header, with 2,229 bytes of PRG free (`DESIGN.md` section 49), and
-reports 1,519 RAM bytes. See `DESIGN.md` section 14
+plus its 16-byte header, with 197 bytes of PRG free after the music (`DESIGN.md`
+sections 49-50), and reports 1,518 RAM bytes. See `DESIGN.md` section 14
 for measurements, validation and the remaining runtime checks.
 
 Kelly and Harry are **colour-banded sprites** — Kelly three, Harry four — with one colour per
