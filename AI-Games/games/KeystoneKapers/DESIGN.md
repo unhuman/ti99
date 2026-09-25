@@ -6977,6 +6977,6 @@ bytes free, bank 1 506. The cart is still 64 KB. ColecoVision and NES build
 unchanged in size.
 
 **Verified in Classic99:** the title draws, the marquee lamps animate
-(`title_bulb` round-trips the banks), and FIRE starts a normal round. **Not
-yet verified by ear:** that the tune plays on the title and stops at the
-start, and that in-game effects are unaffected.
+(`title_bulb` round-trips the banks), and FIRE starts a normal round. **Confirmed
+by ear in review (2026-09-24):** the tune plays on the title and stops at the
+start of a round.
