@@ -306,7 +306,8 @@ uses **22,666 / 24,336 bytes (1,670 free; 72 in the unoptimised first pass)**, w
 cartridge. Runtime data bank 1 has 506 bytes free; setup bank 2 has 1,490 free.
 ColecoVision uses a 32 KB ROM and 618 / 781 RAM (the stack keeps at least 159
 bytes free, measured; `DESIGN.md` section 48); NES uses a 32 KB PRG image
-plus its 16-byte header and reports 1,506 RAM bytes. See `DESIGN.md` section 14
+plus its 16-byte header, with 2,229 bytes of PRG free (`DESIGN.md` section 49), and
+reports 1,519 RAM bytes. See `DESIGN.md` section 14
 for measurements, validation and the remaining runtime checks.
 
 Kelly and Harry are **colour-banded sprites** — Kelly three, Harry four — with one colour per

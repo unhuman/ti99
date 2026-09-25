@@ -2775,8 +2775,26 @@ def main():
         for name, code, art, fg, bg in CHARS:
             pdata += char_bytes(art)
             cdata += colour_block(name, fg, bg)
+        # THE NES READS 128 OF THESE 1,424 BYTES, so it gets only those. Its
+        # store art is store_nes_chr (gennescolor.py); from these tables it
+        # needs just the four marquee lamps' patterns, as shipped (setup_rest),
+        # and the escalator characters' colours (esc_tick). NES PRG is full,
+        # so the rest is freed for music. The #else copy is exactly what every
+        # target had before, which keeps the TI and ColecoVision binaries
+        # unchanged. Both slices are derived from the codes, not typed.
+        lamp0 = (CODES["BULB0"] - 96) * 8
+        esc0 = (ESC_FIRST - 96) * 8
+        escn = (ESC_ANIM_W + ESC_ANIM_E) * 8
+        fh.write("\n#if NES\n")
+        emit(fh, "lamp_nes_pat", pdata[lamp0:lamp0 + 32],
+             "store_pat's four lamps, CH_BULB0.., for the NES")
+        emit(fh, "nes_esc_col", cdata[esc0:esc0 + escn],
+             "store_col's %d escalator characters from %d, for the NES"
+             % (ESC_ANIM_W + ESC_ANIM_E, ESC_FIRST))
+        fh.write("#else\n")
         emit(fh, "store_pat", pdata, "%d chars, 8 bytes each" % len(CHARS))
         emit(fh, "store_col", cdata, "EIGHT colour bytes per char, not one")
+        fh.write("#endif\n")
 
         # THE MARQUEE'S TWO STATES, for the title's chase. Named blocks rather
         # than offsets into store_pat, because DEFINE CHAR takes a label.

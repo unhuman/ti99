@@ -7103,3 +7103,42 @@ matter.
 **Verified in CoolCV:** the title spacing, 0 toggling `0=MUSIC ON` / `OFF`,
 and a round starting and playing. **Not verified by ear here:** the music on the
 ColecoVision.
+
+## 49. NES: 2,192 bytes of PRG reclaimed, no change in behaviour (2026-09-25)
+
+The NES build had **37 bytes** of PRG free, not enough for the music the TI and
+ColecoVision now play (about 2.3 KB with the player). A read-only sweep of
+`keystone_nes.asm` found data the NES carried but never read. Removing it takes
+free PRG to **2,229 bytes**, measured as the `$FF` fill before the vectors.
+
+| what | before | after | how |
+|---|---|---|---|
+| `nes_fcol` (font colour) | 512 B | 0 | The font upload read 472 bytes, **all `$B4`**, and the last 40 were never read. `nes_chrinkrow` (`assets/nes_chr.asm`) now takes a `#ncol` of 1..255 as the colour byte itself for every row (real tables are VARPTRs at `$8000+`; 0 still means "no table, use `nink`"), and `nes_chrnext` advances only when the high byte is non-zero. The font passes `#ncol = $B4`. No new RAM. |
+| `store_pat` + `store_col` | 1,424 B | 128 B | The NES draws its store from `store_nes_chr` and read only the four lamps (`store_pat` + 680) and the twelve escalator characters' colours (`store_col` + 112/160). `genart.py` emits `lamp_nes_pat` and `nes_esc_col` under `#if NES`, sliced from the codes (`CODES["BULB0"]`, `ESC_FIRST`), and the full tables under `#else`. |
+| `scan_cols` | 384 B | 0 | The TMS radar's colour table; its only reader is the non-NES `DEFINE COLOR`. `scancol.bas` is now included only off the NES. |
+| `nes_sky2c`, `nes_bldlc` | 16 B | 0 | Referenced nowhere. |
+
+`checkpat.py` declares `lamp_nes_pat` as a borrow of `CH_BULB0`..+3, with the
+base taken from genart. It skips `nes_`-prefixed VARPTRs as work buffers,
+which is why the pattern slice is named `lamp_nes_pat` and the colour slice
+can stay `nes_esc_col`.
+
+**Verified unchanged.**
+- **TI cart and ColecoVision ROM:** rebuilt and **byte-for-byte identical** to
+  the previous commit.
+- **NES, compared routine by routine with the compiler's labels normalised:**
+  only `setup_font`, `setup_rest` and `esc_tick` changed (their new sources),
+  plus the removed and added tables. The slices equal the old bytes exactly
+  (`lamp_nes_pat == store_pat[680:712]`, `nes_esc_col == store_col[112:208]`).
+- **On screen in iNES:** the title is **pixel-identical** to the previous NES
+  build, including the font and the marquee lamps. The first game screen is
+  identical everywhere outside the animating escalator, whose steps use the
+  same colours.
+- **Every NES gate passes.** RAM is unchanged at 1,519 bytes.
+
+Not reclaimed, on purpose: RLE-packing `stor_tpl` (2,400 B) or `nes_attrs`
+(512 B). Both are read during play under the ~100 B/frame PPU budget.
+
+Next: NES music (STREET and CHASE, falling back to 8-bar versions if the
+2,229 bytes are not enough), with NES-specific ducking. The NES routes its
+effects over different channels from the TI.

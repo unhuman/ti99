@@ -905,6 +905,13 @@ cost a debugging session:
     the routine *returned* 80 bytes of the scarce one. Reaching for the loop to
     "save space" spends the budget that matters to save the one that does not --
     the same inversion as moving banked data into code.
+  - **EXCEPT ON AN UNBANKED NES, where PRG *is* the scarce budget.** Keystone
+    Kapers carried a 472-byte `nes_fcol` of one repeated value on that
+    reasoning, with 37 bytes of PRG free. Its uploader now takes a small
+    `#ncol` (1..255, never a real VARPTR there) as the colour byte itself. That
+    and dropping TMS-only tables the NES never read freed 2,192 bytes
+    (Keystone DESIGN.md section 49). **Sweep a target's assembly for
+    unreferenced and mostly-unread tables before deciding it is full.**
   - **`define_color` ALWAYS does the triple copy** (`bl @LDIRVM3` in the generated
     assembly), so it cannot patch one screen third. A routine that colours a single
     third has to stay a `VPOKE` loop; check which you have before converting.

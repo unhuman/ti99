@@ -319,7 +319,17 @@ nes_chrinkrow:
 	LDY #0
 	JMP nes_chrinkrow_set
 nes_chrinkrow_tbl:
+	; A CONSTANT COLOUR: #ncol 1..255 is not an address (every table is a
+	; VARPTR at $8000 or above) but the colour byte itself, for every row of
+	; every character. The font uses it: 472 bytes of one repeated $B4 were
+	; the NES's own nes_fcol table, and NES PRG is the scarce budget.
+	LDA read_pointer+1
+	BNE nes_chrinkrow_rd
+	LDA read_pointer	; non-zero here, so the branch is always taken
+	BNE nes_chrinkrow_col
+nes_chrinkrow_rd:
 	LDA (read_pointer),Y	; THIS row's own colour byte
+nes_chrinkrow_col:
 	PHA
 	LSR A
 	LSR A
@@ -386,9 +396,9 @@ nes_chrnext_nc:
 	; ZERO MEANS "NO COLOUR TABLE" AND MUST STAY ZERO. nink is used instead in
 	; that case, and the test for it is `read_pointer == 0` -- so advancing it
 	; blindly would turn the second character of every text upload into a read
-	; from address 8.
-	LDA read_pointer
-	ORA read_pointer+1
+	; from address 8. A CONSTANT colour (#ncol 1..255, see nes_chrinkrow) must
+	; not move either, so the test is the HIGH byte: zero for both.
+	LDA read_pointer+1
 	BEQ nes_chrnext_dec
 	LDA read_pointer
 	CLC

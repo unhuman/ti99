@@ -74,6 +74,8 @@ BORROWS = {
     "esc_phe1": (CHAR_TABLE, 116, 6, "east flight, animation phase 1"),
     "esc_phe2": (CHAR_TABLE, 116, 6, "east flight, animation phase 2"),
     "esc_phe3": (CHAR_TABLE, 116, 6, "east flight, animation phase 3"),
+    "lamp_nes_pat": (CHAR_TABLE, g.CODES["BULB0"], 4, "the NES's copy of store_pat's four "
+                     "marquee lamps, the only part of store_pat the NES carries"),
     "bulb_lit": (CHAR_TABLE, None, 1, "one marquee lamp, code chosen at run time"),
     "bulb_off": (CHAR_TABLE, None, 1, "the lamp before it, likewise"),
 }

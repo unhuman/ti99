@@ -332,6 +332,29 @@ spr_hbod4:	' the four running bodies again, to give the slots back
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
 	' the order of the codes -- a gap would shift every char after it.
 
+#if NES
+
+lamp_nes_pat:	' store_pat's four lamps, CH_BULB0.., for the NES
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+
+nes_esc_col:	' store_col's 12 escalator characters from 110, for the NES
+	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
+	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
+	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
+	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $1C,$1C,$1C,$1C,$1C,$1C,$1C,$1C
+	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
+	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
+	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
+#else
+
 store_pat:	' 89 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FF,$00,$00,$00,$00,$DF,$DF,$00
@@ -513,6 +536,7 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
+#endif
 
 bulb_lit:	' a lit marquee lamp
 	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
