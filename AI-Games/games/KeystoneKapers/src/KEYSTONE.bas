@@ -733,8 +733,8 @@
 	GOSUB init_tables
 	#if TI994A
 	BANK SELECT 1
-	#endif
 	GOSUB init_jarc
+	#endif
 
 boot:
 	' Coming back from a game over the store is still on screen, so the title
@@ -753,7 +753,7 @@ boot:
 	GOSUB title_input
 	#if TI994A
 	BANK SELECT 1
-	GOSUB title_music_off
+	GOSUB snd_off
 	#endif
 	' LET GO OF FIRE BEFORE PLAY BEGINS.
 	'
@@ -788,20 +788,13 @@ btn_go:
 	' art (art.bas) is in BANK 1. Fixed code can map bank 1, DEFINE, and map
 	' bank 2 back before returning into its bank-2 caller. tbon = 1 lit.
 	'
-	' ONE COPY PER TARGET, NOT ONE WITH #ifs INSIDE: the NES has no DEFINE
-	' (its lamp goes through nes_escd inline, and it never calls this), and
-	' #if cannot nest, so the NES exclusion cannot wrap a body that also
-	' gates its BANK SELECTs on TI994A.
+	' TI ONLY: ColecoVision keeps its original inline DEFINE and the NES its
+	' nes_escd; the music work changes nothing on either.
 	#if TI994A
 title_bulb:
 	BANK SELECT 1
 	IF tbon THEN DEFINE CHAR bcode,1,bulb_lit ELSE DEFINE CHAR bcode,1,bulb_off
 	BANK SELECT 2
-	RETURN
-	#endif
-	#if COLECOVISION
-title_bulb:
-	IF tbon THEN DEFINE CHAR bcode,1,bulb_lit ELSE DEFINE CHAR bcode,1,bulb_off
 	RETURN
 	#endif
 
@@ -827,17 +820,31 @@ title_bulb:
 	' latched rings into the round.
 	#if TI994A
 title_music_on:
+	IF musen = 0 THEN RETURN	' M on the title turned music off
 	' Called with BANK 2 selected (boot maps it for the title), which is
 	' the page PLAY records for the tune.
 	PLAY FULL
 	PLAY title_tune
 	RETURN
 
-title_music_off:
+	' Every sound shutdown stops the music too: snd_off calls this, so the
+	' title's exit, every round end and the cancel key all go through it.
+	' gms = 0 lets music_duck start game_tune again on the next round's
+	' first pass.
+music_stop:
 	PLAY OFF
 	PLAY NONE
-	GOSUB snd_off
+	' PLAY OFF only QUEUES silence for the next interrupt, and PLAY NONE
+	' stops the interrupt touching the chip before it gets there -- so the
+	' note the tune was holding rang on through pause_beat (the long beep at
+	' TIME UP). Silence channels 0 and 1 here, except one a jump (swt) or a
+	' hit (sht) owns: the music was ducked for those, and the effect must
+	' ring out. snd_off silences everything after this anyway.
+	IF swt = 0 THEN SOUND 0,,0
+	IF sht = 0 THEN SOUND 1,,0
+	gms = 0
 	RETURN
+
 	#endif
 
 	' ======================================================================
@@ -961,6 +968,11 @@ nes_pace:
 	GOSUB tick_timer
 	GOSUB scan_tick
 	GOSUB esc_tick
+	#if TI994A
+	BANK SELECT 2
+	GOSUB music_duck
+	BANK SELECT 1
+	#endif
 	GOSUB sfx_tick
 
 	' AND THE FLOOR CLEARS WHEN THE FREEZE ENDS, not when the hit lands.
@@ -1209,6 +1221,7 @@ after_deck:
 					' the body now, so four and not six
 	RETURN
 
+	#if TI994A
 init_jarc:
 	' The jump arc, copied out of BANK 1 (store.bas). Split from
 	' init_tables, which now lives in bank 2 and cannot see this table.
@@ -1218,6 +1231,7 @@ init_jarc:
 		jarc(ji) = PEEK(#jaa)
 	NEXT ji
 	RETURN
+	#endif
 
 floor0_colour:
 	' TWO CHARACTERS, THE SAME THREE SCAN LINES, ONE ROUTINE. Both blocks
@@ -5919,6 +5933,9 @@ lose_kop:
 	' after every unit, but a footstep or a hit that was still ringing when
 	' Harry was caught.
 snd_off:
+	#if TI994A
+	GOSUB music_stop
+	#endif
 	' EVERY CHANNEL sfx_tick CAN WRITE, AND CHANNEL 3 IS ONE OF THEM. This
 	' routine was written when the footstep was a pair of tones on channel 0
 	' and it still named only 0, 1 and 2 after the footstep moved to the
@@ -6012,6 +6029,9 @@ snd_pend:
 	' snd_off still runs at the END, as the backstop for anything the drain
 	' did not finish.
 pause_beat:
+	#if TI994A
+	GOSUB music_stop
+	#endif
 	GOSUB snd_pend
 	' TWICE AS LONG AS IT WAS, AND IN ONE PLACE. The reason box waits one beat
 	' and GAME OVER two, so doubling the beat doubles both and keeps them in
@@ -6679,6 +6699,74 @@ random_set:
 random_hazards:
 	DATA BYTE 0,1,2,3,4,9,10,11,0,1,9,9
 
+	#if TI994A
+	' ---------------------------------------------------------------- GAME MUSIC
+	' CHASE (game_tune, genmusic.py) plays during a round on PLAY SIMPLE NO
+	' DRUMS: TWO voices on channels 0 and 1 only. The TI effects split by
+	' channel -- 0 the jump warble (swt), 1 hits and the escape (sht), 2
+	' prizes/lives/tally, noise the footsteps -- so only jumps and hits
+	' collide, and those DUCK the music: PLAY NONE freezes the player where
+	' it is (it only clears music_mode; the song position is untouched), and
+	' PLAY SIMPLE NO DRUMS resumes from the same note once they end.
+	'
+	' The test runs BEFORE sfx_tick writes anything, and counts the pending
+	' latches (sfj/sfh/sfe) as well as the running counters, so the player
+	' has let go of the channel before the effect's first write -- otherwise
+	' the next vblank would stomp that first frame.
+	'
+	' Called from the main loop only, never from pause_beat: the round-end
+	' pause is effects-only (pause_beat stops the music on entry).
+	'
+	' IT LIVES IN BANK 2 and the main loop maps bank 2 around the call: the
+	' fixed area's UNOPTIMISED first pass had 156 bytes left and this body
+	' did not fit. A bonus: PLAY game_tune runs with bank 2 already mapped,
+	' which is the page the player records for the tune. Nothing here may
+	' BANK SELECT (it would unmap itself).
+music_duck:
+	IF musen = 0 THEN RETURN	' M on the title turned music off
+	IF gms = 0 THEN
+		gms = 1
+		gmp = 0
+		PLAY SIMPLE NO DRUMS
+		PLAY game_tune
+	END IF
+	gmb = 0
+	IF swt > 0 THEN gmb = 1
+	IF sht > 0 THEN gmb = 1
+	IF sfj > 0 THEN gmb = 1
+	IF sfh > 0 THEN gmb = 1
+	IF sfe > 0 THEN gmb = 1
+	IF gmb = gmp THEN RETURN
+	gmp = gmb
+	IF gmb = 0 THEN PLAY SIMPLE NO DRUMS : RETURN
+	PLAY NONE
+	SOUND 0,,0
+	SOUND 1,,0
+	RETURN
+	#endif
+
+	' ---------------------------------------------------------------- MUSIC ON/OFF
+	' M on the title toggles all music, title and in-game, the way 1 does on
+	' Bust-A-Bobble's title. musen is the setting (see init_tables for why it
+	' persists). TI only, like every piece of the music: the ColecoVision and
+	' NES builds do not contain it. Row 19 col 10, under the TI credit (17, a row
+	' higher than the other targets' -- CREDIT_ROW_TI in gentitle.py) and a clear
+	' row above FIRE TO START (21); both strings 11 characters so each
+	' overwrites the other.
+	#if TI994A
+prt_musen:
+	IF musen THEN PRINT AT 618,"M=MUSIC ON " ELSE PRINT AT 618,"M=MUSIC OFF"
+	RETURN
+
+mus_toggle:
+	musen = 1 - musen
+	GOSUB prt_musen
+	' Bank 2 is mapped (the title runs from it), which is the page PLAY
+	' records for title_tune. snd_off stops the tune and silences it.
+	IF musen THEN GOSUB title_music_on ELSE GOSUB snd_off
+	RETURN
+	#endif
+
 	' ---------------------------------------------------------------- TITLE, IN BANK 2
 	' title_draw, title_input, title_wait and title_setup run only while the
 	' title is up, so on the TI they live in bank 2 and boot selects bank 2
@@ -6805,6 +6893,9 @@ title_input:
 	#else
 	PRINT AT 681,"FIRE TO START"
 	#endif
+	#if TI994A
+	GOSUB prt_musen
+	#endif
 	#if NES
 	tkl = 0
 	t838 = 0
@@ -6862,7 +6953,11 @@ title_wait:
 		#ncol = 0
 		nink = 3
 		GOSUB nes_escd
-		#else
+		#endif
+		#if COLECOVISION
+		DEFINE CHAR bcode,1,bulb_lit
+		#endif
+		#if TI994A
 		tbon = 1
 		GOSUB title_bulb
 		#endif
@@ -6898,7 +6993,11 @@ title_wait:
 		nink = 3
 		GOSUB nes_escd			' queued -- see the note above
 		#nesb = #nesb - 16
-		#else
+		#endif
+		#if COLECOVISION
+		DEFINE CHAR bcode,1,bulb_off
+		#endif
+		#if TI994A
 		tbon = 0
 		GOSUB title_bulb
 		#endif
@@ -6919,7 +7018,8 @@ title_wait:
 	ASM JSR nes_title_code
 	IF t838 = 4 THEN GOTO title_setup
 	IF cont1.key = 11 THEN RETURN
-	#else
+	#endif
+	#if COLECOVISION
 	tk = cont1.key
 	IF tk <> tkl THEN
 		tkl = tk
@@ -6930,6 +7030,22 @@ title_wait:
 			IF t838 = 2 THEN IF tk = 8 THEN tnx = 3
 			t838 = tnx
 		END IF
+	END IF
+	IF t838 = 3 THEN GOTO title_setup
+	#endif
+	#if TI994A
+	tk = cont1.key
+	IF tk <> tkl THEN
+		tkl = tk
+		IF tk < 10 THEN
+			tnx = 0
+			IF tk = 8 THEN tnx = 1
+			IF t838 = 1 THEN IF tk = 3 THEN tnx = 2
+			IF t838 = 2 THEN IF tk = 8 THEN tnx = 3
+			t838 = tnx
+		END IF
+		IF tk = 77 THEN GOSUB mus_toggle	' M
+		IF tk = 109 THEN GOSUB mus_toggle	' m, if ALPHA LOCK is up
 	END IF
 	IF t838 = 3 THEN GOTO title_setup
 	#endif
@@ -6953,6 +7069,9 @@ title_setup:
 	#else
 	PRINT AT 681,"FIRE TO START"
 	tkl = 15
+	#endif
+	#if TI994A
+	GOSUB prt_musen
 	#endif
 	GOTO title_wait
 
@@ -7224,6 +7343,12 @@ setup_font:
 	' store that is already defined.
 
 init_tables:
+	' MUSIC ON by default. Set here, once at power-on, and never again --
+	' boot re-enters BELOW init_tables after a game over, so M's choice
+	' holds from game to game until the machine is switched off.
+	#if TI994A
+	musen = 1
+	#endif
 	' Floor surface y, by level. An actor standing here has its FEET at this
 	' pixel, and every 16 px sprite sits at y = flry - 16 - height.
 	flry(0) = 160			' floor 1, slab on row 20
@@ -7282,6 +7407,14 @@ init_tables:
 	msk(5) = 32
 	msk(6) = 64
 	msk(7) = 128
+	#if TI994A
+	#else
+	#jat = VARPTR jarc_tbl(0)
+	FOR ji = 0 TO 29
+		#jaa = #jat + ji
+		jarc(ji) = PEEK(#jaa)
+	NEXT ji
+	#endif
 
 	' THE JUMP ARC IS A TABLE, not integration. That makes the 14 px apex a
 	' property of the data rather than of a fixed-point velocity that has to

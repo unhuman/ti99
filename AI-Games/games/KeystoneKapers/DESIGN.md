@@ -6980,3 +6980,73 @@ unchanged in size.
 (`title_bulb` round-trips the banks), and FIRE starts a normal round. **Confirmed
 by ear in review (2026-09-24):** the tune plays on the title and stops at the
 start of a round.
+
+## 47. TI in-game music, the M toggle, and the credit row (2026-09-25)
+
+**CHASE plays during a round** (TI only), from the tunes bench's page 1 key 2.
+`genmusic.py` emits it as `game_tune` in `titlemusic.bas` (bank 2), cut to
+**two voices, melody and bass**, for `PLAY SIMPLE NO DRUMS`. That mode owns
+channels 0 and 1 only. The TI effects split by channel:
+
+| channel | effect | with the music |
+|---|---|---|
+| 0 | jump warble (`swt`) | **ducks** the music |
+| 1 | hits and the escape (`sht`) | **ducks** the music |
+| 2 | prize, extra life, bonus tally | plays over it |
+| noise | footsteps | plays over it |
+
+**Ducking** is `music_duck` (bank 2; the main loop maps bank 2 around the call,
+just before `sfx_tick`). `PLAY NONE` and `PLAY SIMPLE NO DRUMS` only set the
+player's mode byte, so the first freezes the song where it is and the second
+resumes it on the same note. The test counts the pending latches
+(`sfj`/`sfh`/`sfe`) as well as the running counters, so the player lets go of
+the channel before the effect's first write. The song starts on a round's
+first pass (`gms = 0`) and stops in `music_stop`, which `snd_off` calls on the
+TI, so every existing sound shutdown stops it too. `pause_beat` stops it on
+entry, so the sound that ends a round rings out on its own.
+
+**The long beep at TIME UP and on an escape** was `music_stop` doing only
+`PLAY OFF` + `PLAY NONE`. `PLAY OFF` merely *queues* silence for the next
+interrupt, and `PLAY NONE` stops the interrupt touching the chip before it
+gets there, so CHASE's last note rang on through `pause_beat`. A plane hit did
+not show it, because the hit had already ducked the music and silenced its
+channels. `music_stop` now also writes `SOUND 0,,0` / `SOUND 1,,0`, except to a
+channel a jump (`swt`) or a hit (`sht`) still owns.
+
+**M on the title toggles all music**, title and in-game, like 1 on
+Bust-A-Bobble's title. `musen` is set to 1 once, in `init_tables` at power-on.
+`boot` re-enters below that after a game over, so the choice holds from game
+to game until the machine is switched off. `title_music_on` and `music_duck`
+return at once when it is 0. M (77) or m (109) is read on the same
+edge-triggered key read as 8-3-8. `mus_toggle` starts or stops the title tune
+immediately, and `prt_musen` writes `M=MUSIC ON ` / `M=MUSIC OFF` at row 19,
+col 10.
+
+**The TI credit sits one row higher (17, not 18)** to make room:
+`CREDIT_ROW_TI` in `gentitle.py`, which now emits `title_tbl` twice, in
+`#if TI994A` and `#else`. The `#else` copy is byte for byte the table every
+target had before.
+
+**TI only, and certified.** Every piece of this is gated to the TI. The
+ColecoVision title keeps its original inline lamp `DEFINE` and key block,
+split from the TI's (which calls `title_bulb` and reads M) as separate
+`#if COLECOVISION` / `#if TI994A` blocks, since `#if` cannot nest. The jump-arc
+copy is back inside `init_tables` for ColecoVision and NES. Compiled against
+the commit before any music work (`cb9cdcb`) and compared routine by routine,
+with the compiler's internal labels normalised:
+
+* **ColecoVision:** all 514 blocks (routines, RAM variables, runtime)
+  instruction-identical, same RAM (614 bytes).
+* **NES:** all 548 blocks instruction-identical, same RAM (1,519 bytes),
+  except that two 16-bit variables, `#jat` and `#sda`, swapped zero-page
+  addresses (`$6D`/`$6F`). Harmless.
+* **Both:** the routines sit in a different ORDER, because section 46 moved
+  the setup and title routines within the file for every target. Restoring
+  byte-identical images would mean keeping per-target copies of those
+  routines.
+
+**Space:** TI fixed area 22,666 / 24,336 (1,670 free after branch
+shortening). The **unoptimised first pass has 72 bytes** (`BANK_0_FREE =
+>0048`); the next addition to the fixed area must move something to bank 2
+first. Bank 2 has 1,490 free, bank 1 506, and the cart is still 64 KB.
+**Confirmed in review:** in-game music, and the title line toggling on M.

@@ -364,11 +364,21 @@ def runs_of(name, nes=False):
     return [(top + i, BOX_COL, t) for i, t in enumerate(MESSAGES[name])]
 
 
-def french_runs():
+# THE TI's CREDIT SITS ONE ROW HIGHER (17, not 18) so the M=MUSIC line can go
+# on row 19 with a clear row before FIRE TO START on 21. TI only: the music is
+# TI only, and the ColecoVision and NES tables are emitted unchanged (#else).
+CREDIT = "2026 UNHUMAN and C&C AI"
+CREDIT_ROW_TI = 17
+
+
+def french_runs(ti=False):
+    title = [run for run in TITLE if run[2] != "GARRY KITCHEN'S"]
+    if ti:
+        title = [(CREDIT_ROW_TI, c, t) if t == CREDIT else (r, c, t)
+                 for r, c, t in title]
     text = [(row, col, ''.join(chr(LOWER_CODES[c]) if c in LOWER_CODES else c
                               for c in line))
-            for row, col, line in FRENCH_TEXT
-            + [run for run in TITLE if run[2] != "GARRY KITCHEN'S"]]
+            for row, col, line in FRENCH_TEXT + title]
     return frame_runs() + big_runs(FRENCH_BIG) + text
 
 
@@ -477,10 +487,15 @@ def main():
         fh.write("\t' The message boxes in title.bas are the same format and\n")
         fh.write("\t' CANNOT come with it: they are read when a round ends.\n")
         fh.write("\t' ==================================================\n")
-        fh.write("\ntitle_tbl:\n")
-        for i in range(0, len(data), 8):
-            fh.write("\tDATA BYTE %s\n"
-                     % ",".join(str(b) for b in data[i:i + 8]))
+        # Two copies: the TI's credit is one row higher (CREDIT_ROW_TI).
+        # The #else copy is byte-for-byte the table every target had before.
+        ti_data = table(french_runs(ti=True))
+        for label, block in (("#if TI994A", ti_data), ("#else", data)):
+            fh.write("\n%s\ntitle_tbl:\n" % label)
+            for i in range(0, len(block), 8):
+                fh.write("\tDATA BYTE %s\n"
+                         % ",".join(str(b) for b in block[i:i + 8]))
+        fh.write("#endif\n")
 
     with io.open(OUT, 'w', encoding='utf-8', newline='') as fh:
         fh.write("\t' ==================================================\n")
