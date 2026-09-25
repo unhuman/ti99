@@ -97,3 +97,87 @@ Default to **Screen2** (the reason we use XB256). Routines we actually use:
   background while the game runs (two simultaneous players: music + effects).
 - **Compiler note:** the compiler bakes XB256 in (it strips `LINK` and treats it like a `CALL`),
   **except** `CAT`, `RUN`, `RUNL1`, `SAVEIV`, `ST2VDP` — don't rely on those in compiled code.
+
+---
+
+# Toolchain, memory budget and reference assets
+
+Moved here from `CLAUDE.md` §1/§5/§7 -- XB256/XB-compiler only, so it loads with this skill
+rather than in every session. The compiler landmines, performance budget, checklist and
+per-game lifecycle stayed in `CLAUDE.md`.
+
+## 1. Toolchain & Target
+
+- **Hardware model:** TI-99/4A console + **32K Memory Expansion (required)** + disk system.
+  Extended BASIC cartridge. Use **XB 2.9 G.E.M.** *only* when making cartridges or when using
+  `CALL PEEKV/POKEV/MOVE/STCR/LDCR`; otherwise plain TI Extended BASIC.
+- **Dev environment:** **Classic99**, with the `JUWEL7` folder mounted as **DSK1**
+  (Options → enable "Write DV80 as Windows Text"; leave "Write DF80…" off). Use **CPU overdrive**
+  while compiling/assembling.
+- **Default distribution target:** **XB loader (`-X`)** — the compiled program embedded in an XB
+  loader, runnable/chainable from an XB menu. (Alternatives: `-E` EA5 for a standalone program;
+  `.BIN` cartridge via `MAKECART8`/`MAKECARTG`, which needs XB 2.9 G.E.M. + Classic99
+  QI399.055+.)
+- **TI filename rule (important):** a TI disk filename **cannot contain a period** — `.` is the
+  device separator (`DSK2.NAME`). So name compiler/assembler outputs with **hyphen suffixes, no
+  dots** (`NAME-S`, `NAME-O`). A dotted name like `DSK2.MUNCH.TXT` is illegal and fails the OPEN
+  with `I/O ERROR` (code 130, type 7). The `.TXT`/`.OBJ` forms shown in some Wilhelm docs are
+  **only** valid on the Asm994a (Windows-text) path; on the bundled **TI assembler** path use
+  dot-free names.
+- **The 6-file pipeline** (mostly "press Enter"):
+
+  | File | Meaning |
+  |------|---------|
+  | `NAME`     | XB/XB256 source program |
+  | `NAME-M`   | same program saved in **MERGE** format (compiler input) |
+  | `NAME-S`   | assembly **source** produced by the compiler (`-TXT` also fine; never `.TXT`) |
+  | `NAME-O`   | assembled **object** code (`.OBJ` only on the Asm994a path) |
+  | `NAME-E`   | compiled program, **EA5** format |
+  | **`NAME-X`** | compiled program in an **XB loader** ← our default output |
+
+  Flow: develop & test in XB256 → `SAVE` → `SAVE …-M,MERGE` → **Compiler** (output `NAME-S`) →
+  **Assembler** (TI assembler → `NAME-O`, or Asm994a) → **Loader** (save `-X` / `-E`, or `RUN`).
+
+---
+
+## 5. Memory Budget
+
+- **Program space:** **24488 bytes** (drops to **17558** if XB256 is *packaged/merged* into the
+  XB program rather than autoloaded).
+- **Stack (VDP), reduced by XB256:** ≈ **9092** bytes at `CALL FILES(1)`, **8574** at `(2)`,
+  **8056** at `(3)` — and less if you reserve a sound buffer with `CALL LINK("XB256",n)`.
+- **Stack-saving conventions (adopt by default):**
+  - Prefer **string constants** over string variables (`DISPLAY AT(1,1):"TEXT"` beats `A$="TEXT"`).
+  - **Reuse one `A$`** when building/loading many strings; keep numeric var names short.
+  - Keep bulk data in `DATA` and `READ` on demand instead of into string arrays.
+  - Minimize **named subprograms** in hot paths; convert to `GOSUB`/`ON GOSUB` where possible.
+- VDP memory map (for `VREAD/VWRITE/CWRITE`): screen image 0–767; sprite attr 768–879; sound
+  buffer 2432–3071; Screen2 patterns 4096–6143; value stack 6176+. (Full map in XB256.pdf p.11.)
+
+---
+
+## 7. Reference Assets (in repo)
+
+- `JUWEL7/` demos to mine for patterns: `256DEMO`, `256DEMO2`, `APERTURE` (Adamantyr,
+  compiler-compatible), `8QUEENS`, `HELLO`.
+- `JUWEL7/SINE255` — trig workaround string. `JUWEL7/SOUNDLIB.txt`,
+  `JUWEL7/TMLSOUNDPLAYER/`. `JUWEL7/FLICKERROUTINE/` — handles >4 sprites on one scan line
+  (`CALL LINK("FLICK"/"FLICKX")`).
+- `JUWEL7/DOCS/` — authoritative PDFs (XB256, XB Compiler, Using XBGDP, TI XB manual).
+- Existing project material: `mspacman-old/`, `Adventure-Java/` (candidate first games).
+- **`games/KeystoneKapers/assets/sfx/` — measuring sound effects off a reference
+  recording, and tuning them.** Three stdlib-only scripts (no numpy) — `sfxscan`,
+  `sfxpitch`, `sfxshape` — plus the process in `sfxprocess.md`, the reusable part:
+  find the events, read the SN76489 divisors, classify by shape, build a bench
+  cart, move a finding into the game. **The first decision is the one that
+  matters: take the reference recording with YOUR CHIP in it.** The SN76489 is
+  also in the ColecoVision, SG-1000, Master System and BBC Micro, and from any of
+  those a frequency converts straight back to the register the game wrote
+  (`divisor = 111860 / freq`). From an Atari 2600 recording nothing translates —
+  the TIA is a different chip, so every number becomes a judgement. Keystone
+  Kapers did the 2600 first and had to do it twice. Both reference sheets live
+  here beside the scripts (`sfxref-coleco.md`, `sfxref-2600.md`), and the two
+  bench carts that play the candidates sit under `sound/` in that same game --
+  `colecosounds` for the ColecoVision pass, `testsounds` for the 2600 one.
+
+---
