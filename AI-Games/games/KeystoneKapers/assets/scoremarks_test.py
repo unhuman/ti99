@@ -12,9 +12,22 @@ class ScoreMarksTest(unittest.TestCase):
         bank = source.rindex('BANK 2')
         for helper in ('score_start', 'score_mark', 'title_score', 'score_record'):
             self.assertGreater(source.index(helper+':'), bank)
-        title = source.split('title_draw:', 1)[1].split('title_wait:', 1)[0]
-        self.assertLess(title.index('BANK SELECT 2'), title.index('GOSUB title_score'))
-        self.assertLess(title.index('GOSUB title_score'), title.index('BANK SELECT 1'))
+        # title_draw calls title_score, and on the TI the whole title (title_draw
+        # .. title_setup) now LIVES in bank 2, so bank 2 is mapped at that call by
+        # construction. What must hold instead: the title is inside the bank-2
+        # region, boot maps bank 2 immediately before entering it, and nothing in
+        # it switches banks (a BANK SELECT there would unmap the running code).
+        bank_end = source.index('BANK 1', bank)
+        for routine in ('title_draw:', 'title_input:', 'title_wait:', 'title_setup:'):
+            self.assertTrue(bank < source.index(routine) < bank_end, routine)
+        title = source[source.index('title_draw:'):source.index('title_setup:')]
+        title_setup = source[source.index('title_setup:'):bank_end].split('RETURN\n')
+        self.assertNotIn('BANK SELECT', title)
+        self.assertNotIn('BANK SELECT', ''.join(title_setup[:2]))
+        self.assertLess(title.index('GOSUB title_score'), len(title))
+        boot = source[source.index('\nboot:'):]
+        call = boot.index('GOSUB title_draw')
+        self.assertTrue(boot[:call].rstrip().endswith('BANK SELECT 2'))
         for caller, helper in (('new_game', 'score_start'), ('hud_all', 'score_mark'), ('lose_kop', 'score_record')):
             call = source.index('GOSUB '+helper, source.index(caller+':'))
             self.assertTrue(source[:call].rstrip().endswith('BANK SELECT 2'))

@@ -291,9 +291,10 @@ nine-second obstacle and still make the catch. `DESIGN.md` §4a has the arithmet
 
 ## Status
 
-**Builds pass on TI-99/4A, ColecoVision and NES (2026-09-20).** TI fixed code
-uses **21,888 / 24,336 bytes (2,448 free)**, with 620 bytes of RAM and a 64 KB
-cartridge. Runtime data bank 1 has 506 bytes free; setup bank 2 has 5,764 free.
+**Builds pass on TI-99/4A, ColecoVision and NES (2026-09-24).** The TI title plays
+STREET from the tunes bench (`DESIGN.md` section 46). TI fixed code
+uses **22,594 / 24,336 bytes (1,742 free; 156 in the unoptimised first pass)**, with 638 bytes of RAM and a 64 KB
+cartridge. Runtime data bank 1 has 506 bytes free; setup bank 2 has 2,483 free.
 ColecoVision uses a 24 KB ROM and 595 / 814 RAM; NES uses a 32 KB PRG image
 plus its 16-byte header and reports 1,506 RAM bytes. See `DESIGN.md` section 14
 for measurements, validation and the remaining runtime checks.

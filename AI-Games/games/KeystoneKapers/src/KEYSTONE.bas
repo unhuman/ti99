@@ -719,15 +719,42 @@
 	'
 	' And it stays once: `GOTO boot` after a game over re-enters BELOW this, so
 	' a second game reaches its title in a single redraw.
+	#if TI994A
+	BANK SELECT 2
+	#endif
 	GOSUB setup_font
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	GOSUB setup_rest
+	#if TI994A
+	BANK SELECT 2
+	#endif
 	GOSUB init_tables
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	GOSUB init_jarc
 
 boot:
 	' Coming back from a game over the store is still on screen, so the title
 	' has to be redrawn; the first time through, this is its first draw.
+	#if TI994A
+	BANK SELECT 2
+	#endif
 	GOSUB title_draw
+	' Every way back to the title comes through here -- first boot, game
+	' over, the cancel key -- so the tune starts in one place. It stops in
+	' one place too: title_input returns only to start a game, including a
+	' start from the 838 setup page.
+	#if TI994A
+	GOSUB title_music_on
+	#endif
 	GOSUB title_input
+	#if TI994A
+	BANK SELECT 1
+	GOSUB title_music_off
+	#endif
 	' LET GO OF FIRE BEFORE PLAY BEGINS.
 	'
 	' title_input returns ON the press, so the button is still down when the
@@ -756,6 +783,62 @@ btn_rel:
 btn_go:
 	GOSUB new_game
 	GOTO main
+
+	' The marquee lamp for title_wait, which runs from BANK 2 while the lamp
+	' art (art.bas) is in BANK 1. Fixed code can map bank 1, DEFINE, and map
+	' bank 2 back before returning into its bank-2 caller. tbon = 1 lit.
+	'
+	' ONE COPY PER TARGET, NOT ONE WITH #ifs INSIDE: the NES has no DEFINE
+	' (its lamp goes through nes_escd inline, and it never calls this), and
+	' #if cannot nest, so the NES exclusion cannot wrap a body that also
+	' gates its BANK SELECTs on TI994A.
+	#if TI994A
+title_bulb:
+	BANK SELECT 1
+	IF tbon THEN DEFINE CHAR bcode,1,bulb_lit ELSE DEFINE CHAR bcode,1,bulb_off
+	BANK SELECT 2
+	RETURN
+	#endif
+	#if COLECOVISION
+title_bulb:
+	IF tbon THEN DEFINE CHAR bcode,1,bulb_lit ELSE DEFINE CHAR bcode,1,bulb_off
+	RETURN
+	#endif
+
+	' ---------------------------------------------------------------- TITLE MUSIC
+	' STREET from the tunes bench (sound/tunes), TI only. assets/genmusic.py
+	' renders it into titlemusic.bas, which lives in BANK 2 beside the font.
+	'
+	' WHY BANK 2 IS SAFE FOR DATA READ UNDER THE ISR. The rule in CLAUDE.md 3A
+	' is about the program switching banks while the ISR reads, and the main
+	' loop DOES switch to bank 2 and back every pass (ti_cancel_key). The TI
+	' music player handles that itself: PLAY records the page mapped at the
+	' time (>7FFE), and every interrupt saves the current page, maps the
+	' music's page to read the next row, and restores the saved one before
+	' returning. So PLAY must run while bank 2 is SELECTED, and nothing else
+	' needs to know. Read cvbasic_9900_prologue.asm (int_handler, music_play,
+	' music_generate) before changing this.
+	'
+	' STOPPING IS TWO STATEMENTS AND BOTH MATTER. PLAY OFF silences the tune,
+	' but the ISR keeps rewriting the chip every frame while a play MODE is
+	' set (Structris' level_up note: its channels stuck) -- which would stomp
+	' every sound effect in the game. PLAY NONE clears the mode, and the ISR
+	' then leaves the chip alone. snd_off after it, so nothing the tune left
+	' latched rings into the round.
+	#if TI994A
+title_music_on:
+	' Called with BANK 2 selected (boot maps it for the title), which is
+	' the page PLAY records for the tune.
+	PLAY FULL
+	PLAY title_tune
+	RETURN
+
+title_music_off:
+	PLAY OFF
+	PLAY NONE
+	GOSUB snd_off
+	RETURN
+	#endif
 
 	' ======================================================================
 	' MAIN LOOP -- one WAIT per frame, O(1) per actor, no VDP reads.
@@ -904,247 +987,6 @@ nes_pace:
 	' ======================================================================
 	' ONE-TIME SETUP
 	' ======================================================================
-setup_font:
-	' Flicker stays OFF. CVBasic's is all-or-nothing -- it rotates all 32
-	' slots, so Kelly would strobe too, and he is the one thing the player
-	' must never lose. He is sprite 0 instead: the VDP drops the
-	' HIGHEST-numbered sprites on an over-full scanline, so slot 0 is the
-	' one slot that can never disappear.
-	SPRITE FLICKER OFF
-
-	#if NES
-	' No BORDER on this machine: the area outside the picture is the backdrop,
-	' palette entry 0, which title_draw and draw_screen already set.
-	#else
-	' DARK BLUE, NOT BLACK. The TMS border is the strip outside the 256x192
-	' picture, and on a real set it is a good part of what the player sees --
-	' left at the default black it made a hard frame around the shop. Dark blue
-	' is the sky's own colour and the paper every piece of text sits on, so the
-	' picture runs out to the edge of the tube instead of stopping at it.
-	BORDER 4
-	#endif
-
-	#if NES
-	' THE NES'S TWO STRUCTURAL DIFFERENCES, SETTLED ONCE, HERE.
-	'
-	' 1. WHERE THE PATTERNS LIVE. In 8x16 sprite mode the sprite pattern table
-	'    is chosen by bit 0 of each OAM tile byte and the PPUCTRL bit is
-	'    ignored -- and every pattern number in this game is a multiple of
-	'    four, so that bit is always 0 and the sprites are nailed to $0000.
-	'    nes_bgbank therefore moves the BACKGROUND to $1000 rather than trying
-	'    to move the sprites, which also lands the background patterns at
-	'    address 4096, exactly where the TMS bitmap mode's third screen third
-	'    had them -- so the radar's pattern writes need a stride and nothing
-	'    else.
-	'
-	' 2. COLOUR DOES NOT MAP AND IS NOT PRETENDED TO. The NES colours in 16x16
-	'    attribute blocks; this game colours per character, two colours a
-	'    cell. So the store is drawn in ONE ink and the actors get four
-	'    palettes, picked by the low two bits of the colour argument the
-	'    SPRITE statements already pass -- 1 (black) -> dark grey, 4/8 (blue)
-	'    -> blue, 14 (grey) -> grey, 11/15 (skin, white) -> white. Nothing in
-	'    the game source has to know.
-	ASM JSR nes_bgbank
-	ASM JSR nes_apuon
-
-	' Grey is shared index 0 during gameplay. Other indices are per region.
-	' gennescolor.py assigns P3 only to counter quadrants, retaining green
-	' wall and gold floor colours. Fixtures with black outlines use P0.
-	PALETTE 1,26			' P0: green, black, gold
-	PALETTE 2,15			' black escalators and fixture outlines
-	PALETTE 3,40
-	PALETTE 5,1			' P1 HUD/upper skyline: blue, pink, gold
-	PALETTE 6,36
-	PALETTE 7,40
-	PALETTE 9,38			' P2 lower skyline: orange, black, gold
-	PALETTE 10,1			' unused skyline index 2: navy message bottom border
-	PALETTE 11,40
-	PALETTE 13,26			' P3 counters: green, blue, gold
-	PALETTE 14,1			' same navy in counter quadrants
-	PALETTE 15,40
-
-	' AND FOUR FOR THE ACTORS, which DO get one each because a sprite carries
-	' its own palette number. nes_spal maps the TMS colour every SPRITE
-	' statement already passes onto these four.
-	PALETTE 17,18			' 0 -- blue   Kelly's trousers
-	PALETTE 21,15			' 1 -- black  hats, Harry's stripes, the Kop's dot.
-					' FIFTEEN, NOT ZERO: on this palette $0F is
-					' black and $00 is a dark GREY, so every hat
-					' and every stripe was coming out grey.
-	PALETTE 22,23			' black sprite palette, index 2: brown suitcase outline
-	PALETTE 25,39			' 2 -- skin   faces and the biplane
-	PALETTE 26,16			' 2 colour 2 -- GREY, the lift car on the radar
-	' AND THE BALL IS RED, which it already is on the TI: C_BALL is TMS 8,
-	' medium red. nes_spal sends that to sprite palette 2, and palette 2's
-	' colour ONE is the skin tone -- so on this machine the ball came out the
-	' same pale orange as a face.
-	'
-	' A sprite here is ONE bitplane, so its pixels are whichever index the
-	' upload writes and the OAM byte only chooses the palette. The lift car on
-	' the radar already solved this: it is uploaded with `nink = 2` and reads
-	' palette 2's second entry. The ball does the same with the THIRD, which
-	' nothing else uses.
-	PALETTE 27,22			' 2 colour 3 -- RED, the bouncing balls
-	PALETTE 29,48			' 3 -- white  Harry, the carts, the lift car
-
-	#endif
-	#if TI994A
-	#else
-	nespw = 2			' NES/Coleco start on a 2-frame pass
-	#endif
-
-	' THE ONE AND ONLY BANK SWITCH THE PROGRAM EVER MAKES, and it happens
-	' here, before the first frame.
-	'
-	' There are two data banks now. Bank 1 holds everything read while the
-	' game is running -- sprite and store art, the templates, the lookup
-	' tables -- and it is selected at the end of this routine and never
-	' changed again, so every VARPTR/PEEK read in the program is reading a
-	' page that is permanently mapped. That is the property that makes
-	' banking safe here: a missed BANK SELECT returns bytes from the wrong
-	' page with no error at build or run time, so the safest number of
-	' switches during play is none.
-	'
-	' Bank 2 exists to hold data that is read ONCE, at setup, and never
-	' again. The font is exactly that: two DEFINEs copy it into VRAM and
-	' nothing reads font_bits or font_col for the rest of the run. So it can
-	' live on a page that is mapped for the length of those two statements.
-	'
-	' IF THIS EVER FAILS IT FAILS LOUDLY. Select the wrong bank here and the
-	' font is garbage on the title screen, immediately and unmistakably --
-	' which is the same diagnostic the font used to provide by staying out of
-	' the banks altogether, recovered for free.
-	#if TI994A
-	BANK SELECT 2
-	#endif
-
-	#if NES
-	' THE FONT IS SENT WITH A COLOUR TABLE SO ITS PAPER IS NOT THE BACKDROP.
-	'
-	' With `#ncol = 0` the uploader puts ink `nink` on index 0 -- the UNIVERSAL
-	' backdrop, black in the game -- so every character of text sat in its own
-	' black box. The score line was a black strip across the top of a blue sky.
-	'
-	' Index 0 cannot be set per region (it is one colour for the whole screen),
-	' so the only way to give text a ground is to put its PAPER on another
-	' index, and paper is written into the second bitplane when the character
-	' is uploaded. Hence a table: $B4 is light yellow on dark blue, which
-	' nes_inkmap sends to index 3 and index 1.
-	'
-	' ONE FONT, NOT TWO. The first attempt at this made a SECOND copy of the
-	' font at codes 197.. so the HUD could differ from the message boxes, and
-	' that was both unnecessary and impossible: in game the HUD and the boxes
-	' are the same text and want the same treatment, and 197..207 is only
-	' ELEVEN free codes -- 208 up is the radar canvas (genart's SCAN_FIRST),
-	' which scan_wipe rewrites as raw pattern memory every frame. The 59-char
-	' copy appeared to upload and was scribbled over from its twelfth character
-	' on. See checkpat.py, which now knows the canvas owns those codes.
-	'
-	' What index 1 IS comes from the attribute table, per region: the HUD row
-	' is on P1 (dark blue, below) and the store is on P0.
-	#nsrc = VARPTR font_bits(0)
-	nchr = 32
-	ncnt = 59
-	ntab = 1
-	#ncol = VARPTR nes_fcol(0)
-	nink = 3
-	GOSUB nes_def
-	#else
-	DEFINE CHAR 32,59,font_bits
-	#endif
-	' Without this the font keeps whatever CVBasic left in the colour table --
-	' white on transparent -- which over a green store made the HUD unreadable.
-	'
-	' THIS WAS A VPOKE LOOP AND IT WAS THE SLOWEST THING IN THE BOOT: 1,416
-	' writes of one constant, paced by 24 WAITs, which is what made the title
-	' fill in visibly instead of appearing. DEFINE COLOR does the same job in a
-	' single call with interrupts off, and it writes all three screen thirds
-	' itself -- define_color always takes the LDIRVM3 triple-copy path, which is
-	' also why esc_deck_col and floor0_colour below CANNOT use it: they patch
-	' one third each.
-	'
-	' The table is 472 identical bytes (genfont.py emits it beside the glyphs).
-	' It reads as waste and is not: it lives in the data bank, which had 860
-	' bytes spare, while the loop it replaced cost time in the one place the
-	' player is made to wait.
-	#if NES
-	' no colour table on this machine -- see nes_setup
-	#else
-	DEFINE COLOR 32,59,font_col
-	#endif
-
-	' AND THE TITLE'S DISPLAY FACE, WHICH IS HERE FOR THE SAME REASON THE
-	' FONT IS. Forty characters -- ten letters, four cells each -- drawn at
-	' 16x16 so the game's name reads as a name rather than as a line of body
-	' text. It is 640 bytes of pattern and colour and bank 1 had 370 free, so
-	' it could not go there; it did not need to, because it is read ONCE, by
-	' these two statements, and never again.
-	'
-	' Loading it inside the bank-2 window the font already opens means the
-	' program still makes exactly ONE bank switch in its life.
-	' IN TWO PIECES, AND THE SPLIT IS NOT TIDINESS. The character table has
-	' 0..31, 91..95 and 182..207 free -- sixty-three codes, but the longest
-	' run is thirty-two and the face needs forty. Loading it as one block at
-	' 182 ran it into the RADAR CANVAS at 208, and S and T came out as the
-	' scanner's green diagonals on a screen with no radar on it.
-	'
-	' The arguments come from titleface.FREE_RUNS; gentitle.py prints them
-	' into the top of titlefont.bas and checkchars.py verifies them.
-	#if NES
-	#nsrc = VARPTR tfont_pat0(0)
-	nchr = 0
-	ncnt = 32
-	ntab = 1
-	#ncol = 0
-	nink = 3
-	GOSUB nes_def
-	#else
-	DEFINE CHAR 0,32,tfont_pat0
-	#endif
-	#if NES
-	' no colour table on this machine -- see nes_setup
-	#else
-	DEFINE COLOR 0,32,tfont_col0
-	#endif
-	#if NES
-	#nsrc = VARPTR tfont_pat1(0)
-	nchr = 185
-	ncnt = 12
-	ntab = 1
-	#ncol = 0
-	nink = 3
-	GOSUB nes_def
-	#else
-	DEFINE CHAR 185,12,tfont_pat1
-	#endif
-	#if NES
-	' no colour table on this machine -- see nes_setup
-	#else
-	DEFINE COLOR 185,12,tfont_col1
-	#endif
-	' French title lowercase is included in the shared font's unused punctuation.
-
-	' Radar colours are expanded in the setup bank, before later overrides.
-	#if NES
-	' NES attributes are initialized by nes_setup.
-	#else
-	DEFINE COLOR 208,48,scan_cols
-	#endif
-
-	' AND BACK TO BANK 1 FOR THE REST OF THE PROGRAM. Everything below this
-	' line -- setup_rest's DEFINEs, the template blits, every table read in
-	' the main loop -- comes out of bank 1, and nothing switches away from it
-	' again.
-	#if TI994A
-	BANK SELECT 1
-	#endif
-	RETURN
-
-	' EVERYTHING THE TITLE DOES NOT NEED -- and it still runs BEFORE the
-	' title, because a title that is up and not listening is worse than one
-	' that is a second late. Kept separate from setup_font because `boot`
-	' re-enters below it: a game over redraws the title without rebuilding a
-	' store that is already defined.
 setup_rest:
 	#if NES
 	' Native 2bpp permits four colours on a row, including shelf book spines.
@@ -1367,147 +1209,16 @@ after_deck:
 					' the body now, so four and not six
 	RETURN
 
-init_tables:
-	' Floor surface y, by level. An actor standing here has its FEET at this
-	' pixel, and every 16 px sprite sits at y = flry - 16 - height.
-	flry(0) = 160			' floor 1, slab on row 20
-	flry(1) = 120			' floor 2, row 15
-	flry(2) = 80			' floor 3, row 10
-	flry(3) = 40			' roof,    row 5
-	#if NES
-	' AND THE SPRITES FOLLOW THE PICTURE DOWN. The NES name table is 32x30
-	' where the TMS one is 32x24, and its top and bottom eight scan lines are
-	' under the bezel on any real set, so this port draws the store THREE ROWS
-	' lower (see the overscan note on the SCREEN destination). A sprite's y is
-	' a SCREEN coordinate and knows nothing about that, so leaving these alone
-	' left every actor twenty-four pixels above the floor he was standing on.
-	'
-	' IT IS ONE PLACE BECAUSE flry IS ONE PLACE. Kelly, Harry and all eight
-	' obstacles derive their y from this table -- `ky = flry(klv)` and the like
-	' -- so the whole cast moves with the store from four lines. The radar's
-	' marker is the only sprite that does not, and it is adjusted beside its
-	' own literal in scan_mark.
-	'
-	' The TI values above are left byte-for-byte: checkball.py, checkjump.py
-	' and checkride.py all read them, and they model the TI screen.
-	flry(0) = flry(0) + 24
-	flry(1) = flry(1) + 24
-	flry(2) = flry(2) + 24
-	flry(3) = flry(3) + 24
-	#endif
-
-	' Band destination offsets, name-table relative. Three of the four are
-	' over 255, so they live in #vars -- as a CONST each would truncate to
-	' its low byte and every band would blit over the top one.
-	#bdst(0) = 512			' row 16
-	#bdst(1) = 352			' row 11
-	#bdst(2) = 192			' row 6
-	#bdst(3) = 32			' row 1
-
-	' Template source offsets. A LOOKUP, not `tpl * 160`: reading a 16-bit
-	' var straight after a multiply returns the product's high word.
-	' Build all fifteen word offsets once, using the arc-copy scratch.
-	#jaa = 0
-	FOR ji = 0 TO 14
-		#tsrc(ji) = #jaa
-		#jaa = #jaa + 160
-	NEXT ji
-
-	lv8(0) = 0
-	lv8(1) = 8
-	lv8(2) = 16
-	lv8(3) = 24
-
-	msk(0) = 1
-	msk(1) = 2
-	msk(2) = 4
-	msk(3) = 8
-	msk(4) = 16
-	msk(5) = 32
-	msk(6) = 64
-	msk(7) = 128
-
-	' THE JUMP ARC IS A TABLE, not integration. That makes the 14 px apex a
-	' property of the data rather than of a fixed-point velocity that has to
-	' be tuned, and it keeps every comparison in the jump 8-bit and unsigned.
-	' DESIGN.md 5a depends on the apex being exactly 14.
-	'
-	' THIRTY FRAMES WITH NINE OF THEM AT THE APEX. The first version was 24
-	' frames that touched 14 for only four, which made every jump a timing
-	' test rather than a decision -- you had to leave the ground on exactly
-	' the right frame or clip the thing you were jumping. Widening the
-	' plateau rather than raising the apex keeps the ball arithmetic in
-	' DESIGN.md 5a intact (the apex is what that depends on) while making the
-	' window forgiving: the player still has to CHOOSE to jump, but no longer
-	' has to be frame-perfect about it.
-	' THE ARC IS A TABLE, not thirty assignments -- each of those compiled to
-	' several bytes of code, and the fixed area is the binding budget.
+init_jarc:
+	' The jump arc, copied out of BANK 1 (store.bas). Split from
+	' init_tables, which now lives in bank 2 and cannot see this table.
 	#jat = VARPTR jarc_tbl(0)
 	FOR ji = 0 TO 29
 		#jaa = #jat + ji
 		jarc(ji) = PEEK(#jaa)
 	NEXT ji
-
-	#stix = VARPTR stor_ix(0)
-	#stlv = VARPTR stor_lvl(0)
-	#stco = VARPTR stor_co(0)
-	#stes = VARPTR stor_esc(0)
-	#stpl = VARPTR stor_pil(0)
-	' THE TEMPLATES, ADDRESSABLE. Everywhere else stor_tpl is handed to
-	' SCREEN as a label and never read by hand, so its address was never
-	' taken. On the NES the fixture-erase routines have to ask the template
-	' what a cell holds instead of asking the PPU, which means PEEKing it.
-	#if NES
-	#sttp = VARPTR stor_tpl(0)
-	#nesb = VARPTR nesb(0)
-	#endif
-	#stac = VARPTR stor_arc(0)
-	#stcp = VARPTR esc_cap(0)
 	RETURN
 
-	' THE FONT'S COLOUR TABLE WAS 472 BYTES OF ONE REPEATED VALUE, which is a
-	' fifth of what the fixed area had left. DEFINE COLOR copies such a table
-	' out of ROM into all three screen thirds; writing the constant straight
-	' into the colour table does the same job for the price of a loop, and
-	' the loop runs once, at boot.
-	'
-	' The colour table is at >2000 and the VDP mirrors it once per screen
-	' third, >800 apart. Both numbers were read out of the GENERATED assembly
-	' -- define_color's `ai r0,>2000` and LDIRVM3's `ai r0,>0800` -- rather
-	' than assumed, because a wrong base here would paint over the pattern
-	' table and the failure would look like corrupt artwork.
-	'
-	' Paced: a few hundred VDP writes in one frame are silently dropped.
-	' THE SCANNER'S COLOURS ARE THREE BLOCKS REPEATED SIXTEEN TIMES EACH, so
-	' the table shipped 384 bytes to say 24 bytes' worth. Same trick as the
-	' font: write the colour table directly. >2000 is the colour table's base
-	' and >800 the stride between screen thirds -- the same layout DEFINE COLOR
-	' walks for us in setup_font, which this cannot use because it is cheaper to
-	' expand 24 bytes here than to ship 384 in the bank.
-	' NOTHING IS UNDER THE GROUND FLOOR, SO NOTHING SHOULD BE GREEN THERE.
-	' A floor bar is five pixels of yellow over three of the green air
-	' belonging to the floor BELOW it (see SLAB), which is right for three of
-	' the four bars and wrong for the last one: below floor 0 there is no
-	' floor, only the scanner, and the green read as a strip of shop with
-	' nothing in it.
-	'
-	' NO NEW CHARACTER IS NEEDED, BECAUSE THE COLOUR TABLE HAS THREE COPIES
-	' -- one per eight screen rows -- and the bands land such that each bar
-	' sits in a different third:
-	'
-	'     band 0 roof   rows  1-5    bar row  5   third 0
-	'     band 1        rows  6-10   bar row 10   third 1
-	'     band 2        rows 11-15   bar row 15   third 1
-	'     band 3 GROUND rows 16-20   bar row 20   third 2
-	'
-	' so recolouring SLAB in third 2 alone reaches the ground floor's bar and
-	' nothing else. The same third also holds the scanner, but the scanner
-	' does not use these characters. This is the same mechanism that once hid
-	' a bug for months (CLAUDE.md 3A, the blanked-in-one-third note) used
-	' deliberately for once.
-	'
-	' Only the three bottom lines change, and only their BACKGROUND: SLAB has
-	' no ink there and SLABE's brick keeps its grey.
 floor0_colour:
 	' TWO CHARACTERS, THE SAME THREE SCAN LINES, ONE ROUTINE. Both blocks
 	' were written out in full and differed only in which character and which
@@ -1570,75 +1281,6 @@ f0_rows:
 	' from two bytes needs a multiply, and on the TMS9900 MPY clobbers r0 --
 	' the next line that reads the product's variable gets the HIGH word
 	' (CLAUDE.md 3A). Five doublings have no such hazard and are smaller.
-title_draw:
-	#if NES
-	SCREEN DISABLE
-	ASM JSR nes_hats_hide
-	' THE TITLE SITS ON DARK BLUE, AND THE BACKDROP IS THE ONLY WAY TO SAY SO.
-	'
-	' Palette index 0 is the UNIVERSAL backdrop -- every background palette's
-	' entry 0 is the same colour, so it cannot be set per region the way the
-	' sky and the store are. It was never written at all, which is why every
-	' cell that maps to index 0 came out black, the title page included.
-	'
-	' Writing it here and putting it back in draw_screen costs two statements
-	' and no art: the title is almost entirely index 0, so the backdrop IS its
-	' background. draw_screen restores grey for buildings, pillars and the
-	' scanner margins; black outlines now use palette index 2.
-	PALETTE 0,1			' title backdrop
-	PALETTE 9,1			' title paper in P2
-	WAIT				' hide the clear and restore blue in the same vblank
-	' AND EVERY BLOCK ON P2, because the font now has a PAPER.
-	'
-	' The title's text used to sit on index 0 and index 0 was this backdrop, so
-	' it needed no attribute table at all and simply inherited whatever the
-	' last game screen left. Now that paper is index 1, "FIRE TO START" would
-	' take index 1 of each block it happens to cross -- the store's green under
-	' one row, the sunset's orange under another.
-	'
-	' P2 is the palette that already fits: its index 1 is the same dark blue as
-	' the backdrop, so the paper is invisible, and its index 3 is the yellow the
-	' logo and the marquee lamps are drawn in. $AA is all four quadrants on P2.
-	' draw_screen calls nes_attr and puts the game's own table back.
-	#endif
-	GOSUB hide_all
-	CLS
-	#if NES
-	' AFTER THE CLS, WHICH CLEARS THE ATTRIBUTE TABLE TOO. Written before it,
-	' this was wiped and the title came up with its text on the store's GREEN --
-	' the paper index falling through to palette 0.
-	GOSUB title_background
-	#endif
-	' THE DISPLAY LIST IS ON BANK 2, so select it for the walk and put bank 1
-	' back afterwards. The pattern is setup_font's, which has been loading the
-	' fonts this way since they moved -- one bank held for a few statements
-	' that read nothing else, then restored.
-	'
-	' NOTHING BETWEEN THESE TWO READS BANK 1: hide_all and CLS are above them
-	' and write rather than read, and run_list only PEEKs the pointer it is
-	' handed and VPOKEs the result. Checked, because a stray read here would
-	' come back from the wrong page and say nothing about it.
-	#if TI994A
-	BANK SELECT 2
-	#endif
-	#tta = VARPTR title_tbl(0)
-	GOSUB run_list
-	' The title score helper lives beside this list in TI bank 2.
-	GOSUB title_score
-	#if TI994A
-	BANK SELECT 1
-	#endif
-	' NOTHING TO RESET BUT THE COUNTER. Every rotation of the four lamps is a
-	' valid three-and-one, so a title reached after a game over simply carries
-	' on from wherever the last chase stopped -- and `bphs` still names the
-	' dark one, so the state is already consistent. Re-lighting all four here
-	' would cost four DEFINEs to change nothing.
-	bfr = BULBFR
-	#if NES
-	SCREEN ENABLE
-	#endif
-	RETURN
-
 	#if NES
 title_background:
 	' CLS resets attributes to green P0. Both title and setup need blue P2.
@@ -1688,233 +1330,6 @@ tt_ch:
 	IF ttn > 0 THEN GOTO tt_ch
 	GOTO tt_run
 
-	' NO ALPHA LOCK CALIBRATION, AND THERE USED TO BE ONE.
-	'
-	' The premise was that ALPHA LOCK shares a line with the joystick's
-	' VERTICAL axis, so a latched key reports a direction that is never
-	' released -- fatal here, where down is the duck and up is the lift. The
-	' guard sampled the axis for forty frames before listening and then
-	' ignored any direction that had been held for essentially all of them.
-	'
-	' IT WAS REMOVED BECAUSE THE PREMISE DOES NOT HOLD UP.
-	'
-	'   * CLAUDE.md claimed every other game here dodged the problem by not
-	'     reading up/down. EIGHT of them do read it -- Adventire, Astiroids,
-	'     HardHatMack, Ms. Pac-Man, RallyX, Structris, UFO, Bust-A-Bobble --
-	'     and not one has a calibration or has ever shown the fault.
-	'   * It never fired on the machine this is developed on: the notice it
-	'     prints when it detects a stuck axis has never appeared.
-	'   * The original evidence was that the game "came up and would not
-	'     start" -- and the first version BLOCKED until the axis cleared. That
-	'     symptom is indistinguishable from the several input bugs since found
-	'     and fixed for real: keys arriving at a screen that was not listening
-	'     yet. The diagnosis was probably one of those.
-	'
-	' It also cost two bugs of its own: forty frames of a drawn but deaf title
-	' screen, which swallowed the first digit of 8-3-8, and a wrong theory
-	' about keyboard noise that led to a filter which ate real presses.
-	'
-	' If a stuck axis ever does appear it will be obvious -- the player will
-	' duck or ride the lift without asking -- and the guard is in the history.
-
-title_input:
-	' THE PROMPT IS PRINTED HERE, NOT WITH THE REST OF THE TITLE, because
-	' this is the moment the game starts listening -- and it is a whole
-	' second after the title appears.
-	'
-	' title_draw runs early on purpose (DESIGN.md 0d-nonies) so the screen
-	' arrives instead of filling in, but setup_rest, init_tables and the
-	' ALPHA LOCK sample all run AFTER it. For about a second the title is up,
-	' finished, and completely deaf. A player types 8-3-8 into that window and
-	' the first digit lands in nothing -- then a following 3-8 completes the
-	' code, because the 8 they typed second is still standing as state. That
-	' is exactly how it was reported, twice, and it is not noise: it is the
-	' screen lying about being ready.
-	'
-	' RallyX and Bust-A-Bobble never showed this because they draw their
-	' titles when they are already listening. Keystone cannot -- the whole
-	' point of the early draw is that it is early -- so the PROMPT waits
-	' instead, and its arrival is the cue that the screen is awake.
-	#if NES
-	PRINT AT 681 + 96,"FIRE TO START"
-	#else
-	PRINT AT 681,"FIRE TO START"
-	#endif
-	#if NES
-	tkl = 0
-	t838 = 0
-	#else
-	tkl = 15
-	#endif
-title_wait:
-	WAIT
-	' THE MARQUEE CHASES WHILE THE TITLE WAITS.
-	'
-	' ONLY TWO CHARACTERS CHANGE PER STEP. At any moment exactly one of the
-	' four lamps is blank; a step lights the one that was blank and blanks the
-	' next one round. Redefining all four would be twice the work for the same
-	' picture.
-	'
-	' IT IS BELOW THE INPUT READS, deliberately. This loop's history is input
-	' bugs -- a screen that was drawn but not listening, a keypress eaten by a
-	' stability filter -- so nothing that is merely decoration goes in front of
-	' the polling. A dropped frame of animation is invisible; a dropped
-	' keypress is what took three sessions to find.
-	' `bphs` IS WHICH LAMP IS DARK, and a step is: light that one, move on,
-	' darken the next. The character number is arithmetic rather than a
-	' four-way branch -- DEFINE CHAR takes an expression, so the whole chase
-	' is two calls and no `IF` ladder. The ladder version was eight DEFINE
-	' CHARs across four branches and cost about three hundred bytes for the
-	' same picture.
-	'
-	' TWO CALLS, NOT FIVE. Lighting all four and then darkening one is the
-	' same result and reads more simply, but two separate DEFINEs can have a
-	' vblank between them, so the sign would show ALL lamps lit for a frame
-	' every step -- a flash rather than a chase. Only ever changing the two
-	' lamps that actually change cannot do that.
-	bfr = bfr - 1
-	IF bfr = 0 THEN
-		bfr = BULBFR
-		bcode = CH_BULB0 + bphs
-		#if NES
-		' QUEUED, NOT BLANKED -- AND THIS IS WHAT MADE THE TITLE FLASH.
-		'
-		' nes_def turns rendering OFF and waits for a vblank the NMI
-		' therefore never services, so the game's own WAIT then waits for
-		' the one after: about two frames with the picture switched off.
-		' Twice a marquee step, for ever, on the one screen the player
-		' looks at longest. It reads as the whole title flashing, not as
-		' the bulbs animating.
-		'
-		' nes_escd hands the NMI a copy descriptor instead. Nothing is
-		' turned off and no frame is lost -- and both bulbs land in the
-		' SAME vblank, which also settles the worry in the note above:
-		' there is no longer a frame in which all four lamps are lit.
-		#nsrc = VARPTR bulb_lit(0)
-		nchr = bcode
-		ncnt = 1
-		ntab = 1
-		#ncol = 0
-		nink = 3
-		GOSUB nes_escd
-		#else
-		DEFINE CHAR bcode,1,bulb_lit
-		#endif
-		bphs = bphs + 1
-		IF bphs > 3 THEN bphs = 0
-		bcode = CH_BULB0 + bphs
-		#if NES
-		' A SECOND STAGING AREA, AND THIS IS THE WHOLE MARQUEE BUG.
-		'
-		' nes_escd does NOT copy anything. It builds the tile into the RAM
-		' buffer `#nesb` and hands the NMI a five-byte descriptor holding a
-		' POINTER to it; the copy happens at the next vblank. Both marquee
-		' writes happen in the same pass, so with one buffer the darken call
-		' overwrote the staged LIT bytes before the NMI had read either --
-		' and then BOTH descriptors copied bulb_off.
-		'
-		' So every step darkened two lamps and lit none, and the sign walked
-		' itself out: "it animates a little bit and goes out". Nothing fails,
-		' because both writes are perfectly valid and land exactly where they
-		' were addressed -- they just carry the same sixteen bytes.
-		'
-		' The lit call staged at nesb(0); this one stages sixteen bytes up.
-		' nesb is 96 bytes for the escalator's six characters and the
-		' escalator never runs on the title screen, so the room is free. The
-		' pointer is put back immediately: esc_tick stages at offset 0 and
-		' would otherwise write its six characters one tile off.
-		#nesb = #nesb + 16
-		#nsrc = VARPTR bulb_off(0)
-		nchr = bcode
-		ncnt = 1
-		ntab = 1
-		#ncol = 0
-		nink = 3
-		GOSUB nes_escd			' queued -- see the note above
-		#nesb = #nesb - 16
-		#else
-		DEFINE CHAR bcode,1,bulb_off
-		#endif
-	END IF
-	' Edge-triggered: cont1.key returns the same value on every pass while a
-	' key is held, so without this one press would be read as many.
-	'
-	' NO FRAME FILTER. There was one -- a key had to hold for three passes to
-	' count -- added to defend against ALPHA LOCK noise that turned out not to
-	' be the problem. It cost real presses instead: 8-3-8 needed a retry and
-	' the FIRE button could be missed outright. The diagnosis was wrong and
-	' the cure was worse than the disease.
-	'
-	' The reset below is RallyX's: anything that is not the next digit puts
-	' the sequence back to 0, so 8,5,3,8 does not open the page. That is
-	' proven code and it is not what was failing here.
-	#if NES
-	ASM JSR nes_title_code
-	IF t838 = 4 THEN GOTO title_setup
-	IF cont1.key = 11 THEN RETURN
-	#else
-	tk = cont1.key
-	IF tk <> tkl THEN
-		tkl = tk
-		IF tk < 10 THEN
-			tnx = 0
-			IF tk = 8 THEN tnx = 1
-			IF t838 = 1 THEN IF tk = 3 THEN tnx = 2
-			IF t838 = 2 THEN IF tk = 8 THEN tnx = 3
-			t838 = tnx
-		END IF
-	END IF
-	IF t838 = 3 THEN GOTO title_setup
-	#endif
-	IF cont1.button THEN RETURN
-	GOTO title_wait
-
-title_setup:
-	t838 = 0
-	#if TI994A
-	BANK SELECT 2
-	#endif
-	GOSUB setup838
-	#if TI994A
-	BANK SELECT 1
-	#endif
-	IF sk <> 255 THEN RETURN
-	kops0 = 0
-	krk0 = 0
-	GOSUB title_draw
-	' setup838 was entered from title_wait, after title_input printed the
-	' prompt. Redraw that prompt when setup is cancelled; boot is not involved
-	' on this path, so relying on title_input would otherwise leave it absent.
-	#if NES
-	PRINT AT 681 + 96,"FIRE TO START"
-	tkl = 0
-	t838 = 0
-	#else
-	PRINT AT 681,"FIRE TO START"
-	tkl = 15
-	#endif
-	GOTO title_wait
-
-	' 8-3-8 IS EDGE-TRIGGERED AND ANY STRAY DIGIT RESETS IT (see title_wait).
-	'
-	' It used to read cont1.key raw every pass and test only for the digit it
-	' wanted next. That worked -- but only because 8-3-8 ALTERNATES, so holding
-	' 8 cannot advance past the first step. It is an accident of the sequence
-	' rather than a design, and it had two costs: 8,5,3,9,8 opened this page as
-	' readily as 8,3,8, and a key that READS as held for many frames got a free
-	' walk through the state machine.
-	'
-	' That second one is not hypothetical on this machine. ALPHA LOCK shorts a
-	' keyboard line -- and Classic99 defaults to invertcaps, so it reads DOWN
-	' with the host's Caps Lock UP -- and this page was reached twice from
-	' single keypresses while testing an unrelated change.
-	'
-	' The reset is the DEFAULT rather than a test for a particular wrong digit:
-	' Bust-A-Bobble resets only on a stray 3 and still lets 8,5,3,8 through.
-	' ------------------------------------------------------- 838 setup page
-	' ======================================================================
-	' A NEW GAME / A NEW KROOK
-	' ======================================================================
 new_game:
 	#if TI994A
 	BANK SELECT 2
@@ -7264,6 +6679,687 @@ random_set:
 random_hazards:
 	DATA BYTE 0,1,2,3,4,9,10,11,0,1,9,9
 
+	' ---------------------------------------------------------------- TITLE, IN BANK 2
+	' title_draw, title_input, title_wait and title_setup run only while the
+	' title is up, so on the TI they live in bank 2 and boot selects bank 2
+	' around them -- moved with setup_font and init_tables to make room for the
+	' music player (see MOVED TO BANK 2 below). Inside them there is NO
+	' BANK SELECT: code here that selected bank 1 would unmap itself. Their
+	' one bank-1 read, the marquee lamp art, goes through title_bulb in the
+	' fixed area, which maps bank 1 for the DEFINE and bank 2 back before
+	' returning here. run_list stays fixed: the round-end message boxes use it
+	' from bank 1 too. setup838 and title_score were already in this bank.
+title_draw:
+	#if NES
+	SCREEN DISABLE
+	ASM JSR nes_hats_hide
+	' THE TITLE SITS ON DARK BLUE, AND THE BACKDROP IS THE ONLY WAY TO SAY SO.
+	'
+	' Palette index 0 is the UNIVERSAL backdrop -- every background palette's
+	' entry 0 is the same colour, so it cannot be set per region the way the
+	' sky and the store are. It was never written at all, which is why every
+	' cell that maps to index 0 came out black, the title page included.
+	'
+	' Writing it here and putting it back in draw_screen costs two statements
+	' and no art: the title is almost entirely index 0, so the backdrop IS its
+	' background. draw_screen restores grey for buildings, pillars and the
+	' scanner margins; black outlines now use palette index 2.
+	PALETTE 0,1			' title backdrop
+	PALETTE 9,1			' title paper in P2
+	WAIT				' hide the clear and restore blue in the same vblank
+	' AND EVERY BLOCK ON P2, because the font now has a PAPER.
+	'
+	' The title's text used to sit on index 0 and index 0 was this backdrop, so
+	' it needed no attribute table at all and simply inherited whatever the
+	' last game screen left. Now that paper is index 1, "FIRE TO START" would
+	' take index 1 of each block it happens to cross -- the store's green under
+	' one row, the sunset's orange under another.
+	'
+	' P2 is the palette that already fits: its index 1 is the same dark blue as
+	' the backdrop, so the paper is invisible, and its index 3 is the yellow the
+	' logo and the marquee lamps are drawn in. $AA is all four quadrants on P2.
+	' draw_screen calls nes_attr and puts the game's own table back.
+	#endif
+	GOSUB hide_all
+	CLS
+	#if NES
+	' AFTER THE CLS, WHICH CLEARS THE ATTRIBUTE TABLE TOO. Written before it,
+	' this was wiped and the title came up with its text on the store's GREEN --
+	' the paper index falling through to palette 0.
+	GOSUB title_background
+	#endif
+	' THE DISPLAY LIST IS ON BANK 2, so select it for the walk and put bank 1
+	' back afterwards. The pattern is setup_font's, which has been loading the
+	' fonts this way since they moved -- one bank held for a few statements
+	' that read nothing else, then restored.
+	'
+	' NOTHING BETWEEN THESE TWO READS BANK 1: hide_all and CLS are above them
+	' and write rather than read, and run_list only PEEKs the pointer it is
+	' handed and VPOKEs the result. Checked, because a stray read here would
+	' come back from the wrong page and say nothing about it.
+	#tta = VARPTR title_tbl(0)
+	GOSUB run_list
+	' The title score helper lives beside this list in TI bank 2.
+	GOSUB title_score
+	' NOTHING TO RESET BUT THE COUNTER. Every rotation of the four lamps is a
+	' valid three-and-one, so a title reached after a game over simply carries
+	' on from wherever the last chase stopped -- and `bphs` still names the
+	' dark one, so the state is already consistent. Re-lighting all four here
+	' would cost four DEFINEs to change nothing.
+	bfr = BULBFR
+	#if NES
+	SCREEN ENABLE
+	#endif
+	RETURN
+
+
+	' NO ALPHA LOCK CALIBRATION, AND THERE USED TO BE ONE.
+	'
+	' The premise was that ALPHA LOCK shares a line with the joystick's
+	' VERTICAL axis, so a latched key reports a direction that is never
+	' released -- fatal here, where down is the duck and up is the lift. The
+	' guard sampled the axis for forty frames before listening and then
+	' ignored any direction that had been held for essentially all of them.
+	'
+	' IT WAS REMOVED BECAUSE THE PREMISE DOES NOT HOLD UP.
+	'
+	'   * CLAUDE.md claimed every other game here dodged the problem by not
+	'     reading up/down. EIGHT of them do read it -- Adventire, Astiroids,
+	'     HardHatMack, Ms. Pac-Man, RallyX, Structris, UFO, Bust-A-Bobble --
+	'     and not one has a calibration or has ever shown the fault.
+	'   * It never fired on the machine this is developed on: the notice it
+	'     prints when it detects a stuck axis has never appeared.
+	'   * The original evidence was that the game "came up and would not
+	'     start" -- and the first version BLOCKED until the axis cleared. That
+	'     symptom is indistinguishable from the several input bugs since found
+	'     and fixed for real: keys arriving at a screen that was not listening
+	'     yet. The diagnosis was probably one of those.
+	'
+	' It also cost two bugs of its own: forty frames of a drawn but deaf title
+	' screen, which swallowed the first digit of 8-3-8, and a wrong theory
+	' about keyboard noise that led to a filter which ate real presses.
+	'
+	' If a stuck axis ever does appear it will be obvious -- the player will
+	' duck or ride the lift without asking -- and the guard is in the history.
+
+title_input:
+	' THE PROMPT IS PRINTED HERE, NOT WITH THE REST OF THE TITLE, because
+	' this is the moment the game starts listening -- and it is a whole
+	' second after the title appears.
+	'
+	' title_draw runs early on purpose (DESIGN.md 0d-nonies) so the screen
+	' arrives instead of filling in, but setup_rest, init_tables and the
+	' ALPHA LOCK sample all run AFTER it. For about a second the title is up,
+	' finished, and completely deaf. A player types 8-3-8 into that window and
+	' the first digit lands in nothing -- then a following 3-8 completes the
+	' code, because the 8 they typed second is still standing as state. That
+	' is exactly how it was reported, twice, and it is not noise: it is the
+	' screen lying about being ready.
+	'
+	' RallyX and Bust-A-Bobble never showed this because they draw their
+	' titles when they are already listening. Keystone cannot -- the whole
+	' point of the early draw is that it is early -- so the PROMPT waits
+	' instead, and its arrival is the cue that the screen is awake.
+	#if NES
+	PRINT AT 681 + 96,"FIRE TO START"
+	#else
+	PRINT AT 681,"FIRE TO START"
+	#endif
+	#if NES
+	tkl = 0
+	t838 = 0
+	#else
+	tkl = 15
+	#endif
+title_wait:
+	WAIT
+	' THE MARQUEE CHASES WHILE THE TITLE WAITS.
+	'
+	' ONLY TWO CHARACTERS CHANGE PER STEP. At any moment exactly one of the
+	' four lamps is blank; a step lights the one that was blank and blanks the
+	' next one round. Redefining all four would be twice the work for the same
+	' picture.
+	'
+	' IT IS BELOW THE INPUT READS, deliberately. This loop's history is input
+	' bugs -- a screen that was drawn but not listening, a keypress eaten by a
+	' stability filter -- so nothing that is merely decoration goes in front of
+	' the polling. A dropped frame of animation is invisible; a dropped
+	' keypress is what took three sessions to find.
+	' `bphs` IS WHICH LAMP IS DARK, and a step is: light that one, move on,
+	' darken the next. The character number is arithmetic rather than a
+	' four-way branch -- DEFINE CHAR takes an expression, so the whole chase
+	' is two calls and no `IF` ladder. The ladder version was eight DEFINE
+	' CHARs across four branches and cost about three hundred bytes for the
+	' same picture.
+	'
+	' TWO CALLS, NOT FIVE. Lighting all four and then darkening one is the
+	' same result and reads more simply, but two separate DEFINEs can have a
+	' vblank between them, so the sign would show ALL lamps lit for a frame
+	' every step -- a flash rather than a chase. Only ever changing the two
+	' lamps that actually change cannot do that.
+	bfr = bfr - 1
+	IF bfr = 0 THEN
+		bfr = BULBFR
+		bcode = CH_BULB0 + bphs
+		#if NES
+		' QUEUED, NOT BLANKED -- AND THIS IS WHAT MADE THE TITLE FLASH.
+		'
+		' nes_def turns rendering OFF and waits for a vblank the NMI
+		' therefore never services, so the game's own WAIT then waits for
+		' the one after: about two frames with the picture switched off.
+		' Twice a marquee step, for ever, on the one screen the player
+		' looks at longest. It reads as the whole title flashing, not as
+		' the bulbs animating.
+		'
+		' nes_escd hands the NMI a copy descriptor instead. Nothing is
+		' turned off and no frame is lost -- and both bulbs land in the
+		' SAME vblank, which also settles the worry in the note above:
+		' there is no longer a frame in which all four lamps are lit.
+		#nsrc = VARPTR bulb_lit(0)
+		nchr = bcode
+		ncnt = 1
+		ntab = 1
+		#ncol = 0
+		nink = 3
+		GOSUB nes_escd
+		#else
+		tbon = 1
+		GOSUB title_bulb
+		#endif
+		bphs = bphs + 1
+		IF bphs > 3 THEN bphs = 0
+		bcode = CH_BULB0 + bphs
+		#if NES
+		' A SECOND STAGING AREA, AND THIS IS THE WHOLE MARQUEE BUG.
+		'
+		' nes_escd does NOT copy anything. It builds the tile into the RAM
+		' buffer `#nesb` and hands the NMI a five-byte descriptor holding a
+		' POINTER to it; the copy happens at the next vblank. Both marquee
+		' writes happen in the same pass, so with one buffer the darken call
+		' overwrote the staged LIT bytes before the NMI had read either --
+		' and then BOTH descriptors copied bulb_off.
+		'
+		' So every step darkened two lamps and lit none, and the sign walked
+		' itself out: "it animates a little bit and goes out". Nothing fails,
+		' because both writes are perfectly valid and land exactly where they
+		' were addressed -- they just carry the same sixteen bytes.
+		'
+		' The lit call staged at nesb(0); this one stages sixteen bytes up.
+		' nesb is 96 bytes for the escalator's six characters and the
+		' escalator never runs on the title screen, so the room is free. The
+		' pointer is put back immediately: esc_tick stages at offset 0 and
+		' would otherwise write its six characters one tile off.
+		#nesb = #nesb + 16
+		#nsrc = VARPTR bulb_off(0)
+		nchr = bcode
+		ncnt = 1
+		ntab = 1
+		#ncol = 0
+		nink = 3
+		GOSUB nes_escd			' queued -- see the note above
+		#nesb = #nesb - 16
+		#else
+		tbon = 0
+		GOSUB title_bulb
+		#endif
+	END IF
+	' Edge-triggered: cont1.key returns the same value on every pass while a
+	' key is held, so without this one press would be read as many.
+	'
+	' NO FRAME FILTER. There was one -- a key had to hold for three passes to
+	' count -- added to defend against ALPHA LOCK noise that turned out not to
+	' be the problem. It cost real presses instead: 8-3-8 needed a retry and
+	' the FIRE button could be missed outright. The diagnosis was wrong and
+	' the cure was worse than the disease.
+	'
+	' The reset below is RallyX's: anything that is not the next digit puts
+	' the sequence back to 0, so 8,5,3,8 does not open the page. That is
+	' proven code and it is not what was failing here.
+	#if NES
+	ASM JSR nes_title_code
+	IF t838 = 4 THEN GOTO title_setup
+	IF cont1.key = 11 THEN RETURN
+	#else
+	tk = cont1.key
+	IF tk <> tkl THEN
+		tkl = tk
+		IF tk < 10 THEN
+			tnx = 0
+			IF tk = 8 THEN tnx = 1
+			IF t838 = 1 THEN IF tk = 3 THEN tnx = 2
+			IF t838 = 2 THEN IF tk = 8 THEN tnx = 3
+			t838 = tnx
+		END IF
+	END IF
+	IF t838 = 3 THEN GOTO title_setup
+	#endif
+	IF cont1.button THEN RETURN
+	GOTO title_wait
+
+title_setup:
+	t838 = 0
+	GOSUB setup838
+	IF sk <> 255 THEN RETURN
+	kops0 = 0
+	krk0 = 0
+	GOSUB title_draw
+	' setup838 was entered from title_wait, after title_input printed the
+	' prompt. Redraw that prompt when setup is cancelled; boot is not involved
+	' on this path, so relying on title_input would otherwise leave it absent.
+	#if NES
+	PRINT AT 681 + 96,"FIRE TO START"
+	tkl = 0
+	t838 = 0
+	#else
+	PRINT AT 681,"FIRE TO START"
+	tkl = 15
+	#endif
+	GOTO title_wait
+
+	' 8-3-8 IS EDGE-TRIGGERED AND ANY STRAY DIGIT RESETS IT (see title_wait).
+	'
+	' It used to read cont1.key raw every pass and test only for the digit it
+	' wanted next. That worked -- but only because 8-3-8 ALTERNATES, so holding
+	' 8 cannot advance past the first step. It is an accident of the sequence
+	' rather than a design, and it had two costs: 8,5,3,9,8 opened this page as
+	' readily as 8,3,8, and a key that READS as held for many frames got a free
+	' walk through the state machine.
+	'
+	' That second one is not hypothetical on this machine. ALPHA LOCK shorts a
+	' keyboard line -- and Classic99 defaults to invertcaps, so it reads DOWN
+	' with the host's Caps Lock UP -- and this page was reached twice from
+	' single keypresses while testing an unrelated change.
+	'
+	' The reset is the DEFAULT rather than a test for a particular wrong digit:
+	' Bust-A-Bobble resets only on a stray 3 and still lets 8,5,3,8 through.
+	' ------------------------------------------------------- 838 setup page
+	' ======================================================================
+	' A NEW GAME / A NEW KROOK
+	' ======================================================================
+
+	' ---------------------------------------------------------------- MOVED TO BANK 2
+	' setup_font and init_tables run ONCE, at power-on, and read nothing from
+	' bank 1 -- so on the TI they live here, in bank 2, and the caller selects
+	' bank 2 around the GOSUB. They moved to make room for the TI music player
+	' (title music, ~1.2 KB of runtime in the fixed area): with it, the
+	' UNOPTIMISED first assembly ran past >FFFF and xas99 rejected branches
+	' before shortbranches.py could run (CLAUDE.md 3A, TI short-branch note).
+	' A routine placed here must not BANK SELECT (it would unmap itself) and
+	' must not read bank 1: init_tables' one bank-1 read, jarc_tbl, stayed
+	' behind as init_jarc. On ColecoVision and NES this is ordinary code.
+setup_font:
+	' Flicker stays OFF. CVBasic's is all-or-nothing -- it rotates all 32
+	' slots, so Kelly would strobe too, and he is the one thing the player
+	' must never lose. He is sprite 0 instead: the VDP drops the
+	' HIGHEST-numbered sprites on an over-full scanline, so slot 0 is the
+	' one slot that can never disappear.
+	SPRITE FLICKER OFF
+
+	#if NES
+	' No BORDER on this machine: the area outside the picture is the backdrop,
+	' palette entry 0, which title_draw and draw_screen already set.
+	#else
+	' DARK BLUE, NOT BLACK. The TMS border is the strip outside the 256x192
+	' picture, and on a real set it is a good part of what the player sees --
+	' left at the default black it made a hard frame around the shop. Dark blue
+	' is the sky's own colour and the paper every piece of text sits on, so the
+	' picture runs out to the edge of the tube instead of stopping at it.
+	BORDER 4
+	#endif
+
+	#if NES
+	' THE NES'S TWO STRUCTURAL DIFFERENCES, SETTLED ONCE, HERE.
+	'
+	' 1. WHERE THE PATTERNS LIVE. In 8x16 sprite mode the sprite pattern table
+	'    is chosen by bit 0 of each OAM tile byte and the PPUCTRL bit is
+	'    ignored -- and every pattern number in this game is a multiple of
+	'    four, so that bit is always 0 and the sprites are nailed to $0000.
+	'    nes_bgbank therefore moves the BACKGROUND to $1000 rather than trying
+	'    to move the sprites, which also lands the background patterns at
+	'    address 4096, exactly where the TMS bitmap mode's third screen third
+	'    had them -- so the radar's pattern writes need a stride and nothing
+	'    else.
+	'
+	' 2. COLOUR DOES NOT MAP AND IS NOT PRETENDED TO. The NES colours in 16x16
+	'    attribute blocks; this game colours per character, two colours a
+	'    cell. So the store is drawn in ONE ink and the actors get four
+	'    palettes, picked by the low two bits of the colour argument the
+	'    SPRITE statements already pass -- 1 (black) -> dark grey, 4/8 (blue)
+	'    -> blue, 14 (grey) -> grey, 11/15 (skin, white) -> white. Nothing in
+	'    the game source has to know.
+	ASM JSR nes_bgbank
+	ASM JSR nes_apuon
+
+	' Grey is shared index 0 during gameplay. Other indices are per region.
+	' gennescolor.py assigns P3 only to counter quadrants, retaining green
+	' wall and gold floor colours. Fixtures with black outlines use P0.
+	PALETTE 1,26			' P0: green, black, gold
+	PALETTE 2,15			' black escalators and fixture outlines
+	PALETTE 3,40
+	PALETTE 5,1			' P1 HUD/upper skyline: blue, pink, gold
+	PALETTE 6,36
+	PALETTE 7,40
+	PALETTE 9,38			' P2 lower skyline: orange, black, gold
+	PALETTE 10,1			' unused skyline index 2: navy message bottom border
+	PALETTE 11,40
+	PALETTE 13,26			' P3 counters: green, blue, gold
+	PALETTE 14,1			' same navy in counter quadrants
+	PALETTE 15,40
+
+	' AND FOUR FOR THE ACTORS, which DO get one each because a sprite carries
+	' its own palette number. nes_spal maps the TMS colour every SPRITE
+	' statement already passes onto these four.
+	PALETTE 17,18			' 0 -- blue   Kelly's trousers
+	PALETTE 21,15			' 1 -- black  hats, Harry's stripes, the Kop's dot.
+					' FIFTEEN, NOT ZERO: on this palette $0F is
+					' black and $00 is a dark GREY, so every hat
+					' and every stripe was coming out grey.
+	PALETTE 22,23			' black sprite palette, index 2: brown suitcase outline
+	PALETTE 25,39			' 2 -- skin   faces and the biplane
+	PALETTE 26,16			' 2 colour 2 -- GREY, the lift car on the radar
+	' AND THE BALL IS RED, which it already is on the TI: C_BALL is TMS 8,
+	' medium red. nes_spal sends that to sprite palette 2, and palette 2's
+	' colour ONE is the skin tone -- so on this machine the ball came out the
+	' same pale orange as a face.
+	'
+	' A sprite here is ONE bitplane, so its pixels are whichever index the
+	' upload writes and the OAM byte only chooses the palette. The lift car on
+	' the radar already solved this: it is uploaded with `nink = 2` and reads
+	' palette 2's second entry. The ball does the same with the THIRD, which
+	' nothing else uses.
+	PALETTE 27,22			' 2 colour 3 -- RED, the bouncing balls
+	PALETTE 29,48			' 3 -- white  Harry, the carts, the lift car
+
+	#endif
+	#if TI994A
+	#else
+	nespw = 2			' NES/Coleco start on a 2-frame pass
+	#endif
+
+	' THE ONE AND ONLY BANK SWITCH THE PROGRAM EVER MAKES, and it happens
+	' here, before the first frame.
+	'
+	' There are two data banks now. Bank 1 holds everything read while the
+	' game is running -- sprite and store art, the templates, the lookup
+	' tables -- and it is selected at the end of this routine and never
+	' changed again, so every VARPTR/PEEK read in the program is reading a
+	' page that is permanently mapped. That is the property that makes
+	' banking safe here: a missed BANK SELECT returns bytes from the wrong
+	' page with no error at build or run time, so the safest number of
+	' switches during play is none.
+	'
+	' Bank 2 exists to hold data that is read ONCE, at setup, and never
+	' again. The font is exactly that: two DEFINEs copy it into VRAM and
+	' nothing reads font_bits or font_col for the rest of the run. So it can
+	' live on a page that is mapped for the length of those two statements.
+	'
+	' IF THIS EVER FAILS IT FAILS LOUDLY. Select the wrong bank here and the
+	' font is garbage on the title screen, immediately and unmistakably --
+	' which is the same diagnostic the font used to provide by staying out of
+	' the banks altogether, recovered for free.
+
+	#if NES
+	' THE FONT IS SENT WITH A COLOUR TABLE SO ITS PAPER IS NOT THE BACKDROP.
+	'
+	' With `#ncol = 0` the uploader puts ink `nink` on index 0 -- the UNIVERSAL
+	' backdrop, black in the game -- so every character of text sat in its own
+	' black box. The score line was a black strip across the top of a blue sky.
+	'
+	' Index 0 cannot be set per region (it is one colour for the whole screen),
+	' so the only way to give text a ground is to put its PAPER on another
+	' index, and paper is written into the second bitplane when the character
+	' is uploaded. Hence a table: $B4 is light yellow on dark blue, which
+	' nes_inkmap sends to index 3 and index 1.
+	'
+	' ONE FONT, NOT TWO. The first attempt at this made a SECOND copy of the
+	' font at codes 197.. so the HUD could differ from the message boxes, and
+	' that was both unnecessary and impossible: in game the HUD and the boxes
+	' are the same text and want the same treatment, and 197..207 is only
+	' ELEVEN free codes -- 208 up is the radar canvas (genart's SCAN_FIRST),
+	' which scan_wipe rewrites as raw pattern memory every frame. The 59-char
+	' copy appeared to upload and was scribbled over from its twelfth character
+	' on. See checkpat.py, which now knows the canvas owns those codes.
+	'
+	' What index 1 IS comes from the attribute table, per region: the HUD row
+	' is on P1 (dark blue, below) and the store is on P0.
+	#nsrc = VARPTR font_bits(0)
+	nchr = 32
+	ncnt = 59
+	ntab = 1
+	#ncol = VARPTR nes_fcol(0)
+	nink = 3
+	GOSUB nes_def
+	#else
+	DEFINE CHAR 32,59,font_bits
+	#endif
+	' Without this the font keeps whatever CVBasic left in the colour table --
+	' white on transparent -- which over a green store made the HUD unreadable.
+	'
+	' THIS WAS A VPOKE LOOP AND IT WAS THE SLOWEST THING IN THE BOOT: 1,416
+	' writes of one constant, paced by 24 WAITs, which is what made the title
+	' fill in visibly instead of appearing. DEFINE COLOR does the same job in a
+	' single call with interrupts off, and it writes all three screen thirds
+	' itself -- define_color always takes the LDIRVM3 triple-copy path, which is
+	' also why esc_deck_col and floor0_colour below CANNOT use it: they patch
+	' one third each.
+	'
+	' The table is 472 identical bytes (genfont.py emits it beside the glyphs).
+	' It reads as waste and is not: it lives in the data bank, which had 860
+	' bytes spare, while the loop it replaced cost time in the one place the
+	' player is made to wait.
+	#if NES
+	' no colour table on this machine -- see nes_setup
+	#else
+	DEFINE COLOR 32,59,font_col
+	#endif
+
+	' AND THE TITLE'S DISPLAY FACE, WHICH IS HERE FOR THE SAME REASON THE
+	' FONT IS. Forty characters -- ten letters, four cells each -- drawn at
+	' 16x16 so the game's name reads as a name rather than as a line of body
+	' text. It is 640 bytes of pattern and colour and bank 1 had 370 free, so
+	' it could not go there; it did not need to, because it is read ONCE, by
+	' these two statements, and never again.
+	'
+	' Loading it inside the bank-2 window the font already opens means the
+	' program still makes exactly ONE bank switch in its life.
+	' IN TWO PIECES, AND THE SPLIT IS NOT TIDINESS. The character table has
+	' 0..31, 91..95 and 182..207 free -- sixty-three codes, but the longest
+	' run is thirty-two and the face needs forty. Loading it as one block at
+	' 182 ran it into the RADAR CANVAS at 208, and S and T came out as the
+	' scanner's green diagonals on a screen with no radar on it.
+	'
+	' The arguments come from titleface.FREE_RUNS; gentitle.py prints them
+	' into the top of titlefont.bas and checkchars.py verifies them.
+	#if NES
+	#nsrc = VARPTR tfont_pat0(0)
+	nchr = 0
+	ncnt = 32
+	ntab = 1
+	#ncol = 0
+	nink = 3
+	GOSUB nes_def
+	#else
+	DEFINE CHAR 0,32,tfont_pat0
+	#endif
+	#if NES
+	' no colour table on this machine -- see nes_setup
+	#else
+	DEFINE COLOR 0,32,tfont_col0
+	#endif
+	#if NES
+	#nsrc = VARPTR tfont_pat1(0)
+	nchr = 185
+	ncnt = 12
+	ntab = 1
+	#ncol = 0
+	nink = 3
+	GOSUB nes_def
+	#else
+	DEFINE CHAR 185,12,tfont_pat1
+	#endif
+	#if NES
+	' no colour table on this machine -- see nes_setup
+	#else
+	DEFINE COLOR 185,12,tfont_col1
+	#endif
+	' French title lowercase is included in the shared font's unused punctuation.
+
+	' Radar colours are expanded in the setup bank, before later overrides.
+	#if NES
+	' NES attributes are initialized by nes_setup.
+	#else
+	DEFINE COLOR 208,48,scan_cols
+	#endif
+
+	' AND BACK TO BANK 1 FOR THE REST OF THE PROGRAM. Everything below this
+	' line -- setup_rest's DEFINEs, the template blits, every table read in
+	' the main loop -- comes out of bank 1, and nothing switches away from it
+	' again.
+	RETURN
+
+	' EVERYTHING THE TITLE DOES NOT NEED -- and it still runs BEFORE the
+	' title, because a title that is up and not listening is worse than one
+	' that is a second late. Kept separate from setup_font because `boot`
+	' re-enters below it: a game over redraws the title without rebuilding a
+	' store that is already defined.
+
+init_tables:
+	' Floor surface y, by level. An actor standing here has its FEET at this
+	' pixel, and every 16 px sprite sits at y = flry - 16 - height.
+	flry(0) = 160			' floor 1, slab on row 20
+	flry(1) = 120			' floor 2, row 15
+	flry(2) = 80			' floor 3, row 10
+	flry(3) = 40			' roof,    row 5
+	#if NES
+	' AND THE SPRITES FOLLOW THE PICTURE DOWN. The NES name table is 32x30
+	' where the TMS one is 32x24, and its top and bottom eight scan lines are
+	' under the bezel on any real set, so this port draws the store THREE ROWS
+	' lower (see the overscan note on the SCREEN destination). A sprite's y is
+	' a SCREEN coordinate and knows nothing about that, so leaving these alone
+	' left every actor twenty-four pixels above the floor he was standing on.
+	'
+	' IT IS ONE PLACE BECAUSE flry IS ONE PLACE. Kelly, Harry and all eight
+	' obstacles derive their y from this table -- `ky = flry(klv)` and the like
+	' -- so the whole cast moves with the store from four lines. The radar's
+	' marker is the only sprite that does not, and it is adjusted beside its
+	' own literal in scan_mark.
+	'
+	' The TI values above are left byte-for-byte: checkball.py, checkjump.py
+	' and checkride.py all read them, and they model the TI screen.
+	flry(0) = flry(0) + 24
+	flry(1) = flry(1) + 24
+	flry(2) = flry(2) + 24
+	flry(3) = flry(3) + 24
+	#endif
+
+	' Band destination offsets, name-table relative. Three of the four are
+	' over 255, so they live in #vars -- as a CONST each would truncate to
+	' its low byte and every band would blit over the top one.
+	#bdst(0) = 512			' row 16
+	#bdst(1) = 352			' row 11
+	#bdst(2) = 192			' row 6
+	#bdst(3) = 32			' row 1
+
+	' Template source offsets. A LOOKUP, not `tpl * 160`: reading a 16-bit
+	' var straight after a multiply returns the product's high word.
+	' Build all fifteen word offsets once, using the arc-copy scratch.
+	#jaa = 0
+	FOR ji = 0 TO 14
+		#tsrc(ji) = #jaa
+		#jaa = #jaa + 160
+	NEXT ji
+
+	lv8(0) = 0
+	lv8(1) = 8
+	lv8(2) = 16
+	lv8(3) = 24
+
+	msk(0) = 1
+	msk(1) = 2
+	msk(2) = 4
+	msk(3) = 8
+	msk(4) = 16
+	msk(5) = 32
+	msk(6) = 64
+	msk(7) = 128
+
+	' THE JUMP ARC IS A TABLE, not integration. That makes the 14 px apex a
+	' property of the data rather than of a fixed-point velocity that has to
+	' be tuned, and it keeps every comparison in the jump 8-bit and unsigned.
+	' DESIGN.md 5a depends on the apex being exactly 14.
+	'
+	' THIRTY FRAMES WITH NINE OF THEM AT THE APEX. The first version was 24
+	' frames that touched 14 for only four, which made every jump a timing
+	' test rather than a decision -- you had to leave the ground on exactly
+	' the right frame or clip the thing you were jumping. Widening the
+	' plateau rather than raising the apex keeps the ball arithmetic in
+	' DESIGN.md 5a intact (the apex is what that depends on) while making the
+	' window forgiving: the player still has to CHOOSE to jump, but no longer
+	' has to be frame-perfect about it.
+	' THE ARC IS A TABLE, not thirty assignments -- each of those compiled to
+	' several bytes of code, and the fixed area is the binding budget.
+
+	#stix = VARPTR stor_ix(0)
+	#stlv = VARPTR stor_lvl(0)
+	#stco = VARPTR stor_co(0)
+	#stes = VARPTR stor_esc(0)
+	#stpl = VARPTR stor_pil(0)
+	' THE TEMPLATES, ADDRESSABLE. Everywhere else stor_tpl is handed to
+	' SCREEN as a label and never read by hand, so its address was never
+	' taken. On the NES the fixture-erase routines have to ask the template
+	' what a cell holds instead of asking the PPU, which means PEEKing it.
+	#if NES
+	#sttp = VARPTR stor_tpl(0)
+	#nesb = VARPTR nesb(0)
+	#endif
+	#stac = VARPTR stor_arc(0)
+	#stcp = VARPTR esc_cap(0)
+	RETURN
+
+	' THE FONT'S COLOUR TABLE WAS 472 BYTES OF ONE REPEATED VALUE, which is a
+	' fifth of what the fixed area had left. DEFINE COLOR copies such a table
+	' out of ROM into all three screen thirds; writing the constant straight
+	' into the colour table does the same job for the price of a loop, and
+	' the loop runs once, at boot.
+	'
+	' The colour table is at >2000 and the VDP mirrors it once per screen
+	' third, >800 apart. Both numbers were read out of the GENERATED assembly
+	' -- define_color's `ai r0,>2000` and LDIRVM3's `ai r0,>0800` -- rather
+	' than assumed, because a wrong base here would paint over the pattern
+	' table and the failure would look like corrupt artwork.
+	'
+	' Paced: a few hundred VDP writes in one frame are silently dropped.
+	' THE SCANNER'S COLOURS ARE THREE BLOCKS REPEATED SIXTEEN TIMES EACH, so
+	' the table shipped 384 bytes to say 24 bytes' worth. Same trick as the
+	' font: write the colour table directly. >2000 is the colour table's base
+	' and >800 the stride between screen thirds -- the same layout DEFINE COLOR
+	' walks for us in setup_font, which this cannot use because it is cheaper to
+	' expand 24 bytes here than to ship 384 in the bank.
+	' NOTHING IS UNDER THE GROUND FLOOR, SO NOTHING SHOULD BE GREEN THERE.
+	' A floor bar is five pixels of yellow over three of the green air
+	' belonging to the floor BELOW it (see SLAB), which is right for three of
+	' the four bars and wrong for the last one: below floor 0 there is no
+	' floor, only the scanner, and the green read as a strip of shop with
+	' nothing in it.
+	'
+	' NO NEW CHARACTER IS NEEDED, BECAUSE THE COLOUR TABLE HAS THREE COPIES
+	' -- one per eight screen rows -- and the bands land such that each bar
+	' sits in a different third:
+	'
+	'     band 0 roof   rows  1-5    bar row  5   third 0
+	'     band 1        rows  6-10   bar row 10   third 1
+	'     band 2        rows 11-15   bar row 15   third 1
+	'     band 3 GROUND rows 16-20   bar row 20   third 2
+	'
+	' so recolouring SLAB in third 2 alone reaches the ground floor's bar and
+	' nothing else. The same third also holds the scanner, but the scanner
+	' does not use these characters. This is the same mechanism that once hid
+	' a bug for months (CLAUDE.md 3A, the blanked-in-one-third note) used
+	' deliberately for once.
+	'
+	' Only the three bottom lines change, and only their BACKGROUND: SLAB has
+	' no ink there and SLABE's brick keeps its grey.
+
 	INCLUDE "font.bas"
 	INCLUDE "titlefont.bas"
 	' AND THE TITLE'S DISPLAY LIST, for the same reason as the font: walked
@@ -7281,6 +7377,13 @@ random_hazards:
 	INCLUDE "nescolor.bas"
 	#endif
 	INCLUDE "titledl.bas"
+	' THE TITLE TUNE, TI only -- the other targets have no title music, and an
+	' INCLUDE inside a false #if is never opened. Read under the ISR while the
+	' title is up, which is safe from a bank the program switches away from;
+	' see title_music_on. Even length, asserted by genmusic.py.
+	#if TI994A
+	INCLUDE "titlemusic.bas"
+	#endif
 	#if TI994A
 	BANK 1
 	#endif

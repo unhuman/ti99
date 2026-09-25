@@ -6919,3 +6919,64 @@ bank 1 restored by the fixed caller before drawing the title or starting play.
 After the raw TI scan, an explicit `MOVB @cvb_TK,R0` refreshes the value and
 condition flags: the compiler otherwise retains its pre-ASM register cache,
 which could incorrectly run the sound shutdown when no cancel key was held.
+
+## 46. TI title music (2026-09-24)
+
+The TI title screen plays **STREET**, an original bustling F-major walk with
+drums, chosen from the tunes bench (`sound/tunes`, page 3 key 5). It is not
+copied into this game: `assets/genmusic.py` renders it with the bench's own
+`gentunes.py` into `src/titlemusic.bas`, so an edit to the tune reaches the
+game on its next build. Change `PICK` there to change the title tune. TI only;
+ColecoVision and NES have no title music.
+
+**Where the data lives.** `titlemusic.bas` (1 + 4 x 129 + 1 = 518 bytes) is in
+**bank 2**. The main loop switches to bank 2 and back every pass
+(`ti_cancel_key`), which would normally rule out data the vblank ISR reads,
+but the TI music player handles banks itself: `PLAY` records the page mapped
+at the time (`>7FFE`), and each interrupt saves the current page, maps the
+music's page to read a row, and restores the saved page before returning
+(`cvbasic_9900_prologue.asm`: `int_handler`, `music_play`, `music_generate`).
+So `PLAY` must run with bank 2 selected, and it does: `boot` maps bank 2 for
+the whole title.
+
+**Start and stop.** `boot` calls `title_music_on` (`PLAY FULL`, `PLAY
+title_tune`) after `title_draw`, and `title_music_off` after `title_input`
+returns, which it does only to start a game (including a start from the 838
+page). Every way back to the title comes through `boot`: first power-on, game
+over and the cancel key. Stopping takes both `PLAY OFF` and `PLAY NONE`,
+because the ISR rewrites the sound chip every frame while any play mode is
+set. That would stomp every effect in the game (Structris hit this as stuck
+channels). `snd_off` follows.
+
+**The fixed-area cost, and what moved to pay for it.** The music player is
+about 1,170 bytes of runtime in the fixed area. With it, the **unoptimised**
+first assembly ran past `>FFFF` and xas99 rejected branches before
+`shortbranches.py` could run (CLAUDE.md 3A). The routines that run only at
+power-on or while the title is up moved into bank 2, and the caller selects
+bank 2 around them:
+
+| moved to bank 2 | how it is entered | its bank-1 read stayed in the fixed area as |
+|---|---|---|
+| `setup_font` | boot, bank 2 selected around the GOSUB | (none; its own BANK SELECTs were removed) |
+| `init_tables` | boot, likewise | `init_jarc`: the copy of `jarc_tbl` (store.bas, bank 1) |
+| `title_draw`, `title_input`, `title_wait`, `title_setup` | `boot` maps bank 2 for the whole title | `title_bulb`: maps bank 1 for the marquee lamp `DEFINE` and maps bank 2 back before returning |
+
+Nothing in bank 2 may `BANK SELECT`, because that would unmap the running
+code. `run_list` stayed fixed because the round-end message boxes walk bank 1
+with it. `title_bulb` has one copy per target (TI with bank switches,
+ColecoVision without, none on NES, which has no `DEFINE`), because `#if`
+cannot nest. `scoremarks_test.py` now asserts the new form: the title
+routines lie inside the bank-2 region, `boot` selects bank 2 right before
+`GOSUB title_draw`, and the title code contains no `BANK SELECT`.
+
+**Measured after the change:** fixed area 22,594 / 24,336 (1,742 free after
+branch shortening). The unoptimised first pass has **156 bytes** of margin
+(`BANK_0_FREE = >009C`), and that is the number to watch: the next ~160
+bytes of fixed code will fail the assembly the same way. Bank 2 has 2,483
+bytes free, bank 1 506. The cart is still 64 KB. ColecoVision and NES build
+unchanged in size.
+
+**Verified in Classic99:** the title draws, the marquee lamps animate
+(`title_bulb` round-trips the banks), and FIRE starts a normal round. **Not
+yet verified by ear:** that the tune plays on the title and stops at the
+start, and that in-game effects are unaffected.

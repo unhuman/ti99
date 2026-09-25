@@ -928,6 +928,22 @@ cost a debugging session:
   player still holding a direction had it read as a stuck key and **disabled for the
   next game**. Hoist any calibration whose answer cannot change to the one-time boot
   path; redraw its notice per screen if the screen is cleared.
+- **THE TI MUSIC PLAYER CAN READ A BANK THE PROGRAM SWITCHES AWAY FROM, AND
+  `PLAY OFF` DOES NOT HAND THE CHIP BACK.** Two facts from
+  `cvbasic_9900_prologue.asm`, both used by Keystone Kapers' title music
+  (DESIGN.md section 46):
+  - `PLAY` records the page mapped at the time (`>7FFE`). Every interrupt saves
+    the current page, maps the music's page to read a row, and restores the
+    saved page. So song data may live in a bank the main loop leaves, provided
+    **`PLAY` runs while that bank is selected**. It does not break the "never
+    switch under the ISR" rule, because the ISR does its own switching.
+  - While any play MODE is set, the ISR rewrites the sound chip every frame,
+    even after `PLAY OFF`, which stomps every `SOUND` effect. **`PLAY NONE`**
+    clears the mode. Stop music with `PLAY OFF` then `PLAY NONE`.
+  - The player is **~1,170 bytes of fixed-area runtime**. On a nearly full cart
+    that overflows the *unoptimised* first xas99 pass before any branch
+    shortening. Budget it against `BANK_0_FREE` in `NAME.unopt.txt`, not
+    against the final free figure.
 - **`#var` comparisons are unsigned** — signed logic (`< 0`, wraps) needs a split at 32768.
 - **`%` compiles to a real DIV**, even by a power of two — hand-convert (`% 8` → `AND 7`).
 - **`DIM a(N)` is 0..N-1.** A one-past-end write is silent on TI and black-screens ColecoVision.

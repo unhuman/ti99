@@ -105,6 +105,10 @@ rm -rf ../assets/__pycache__
 "$TRUNCPY" ../assets/genstore.py > /dev/null || die "genstore.py failed"
 "$TRUNCPY" ../assets/gentitle.py > /dev/null || die "gentitle.py failed"
 "$TRUNCPY" ../assets/gennescolor.py > /dev/null || die "gennescolor.py failed"
+# The title tune (TI only), rendered from the tunes bench's own generator. That
+# generator's cache is cleared too: it is imported from another directory.
+rm -rf ../sound/tunes/assets/__pycache__
+"$TRUNCPY" ../assets/genmusic.py > /dev/null || die "genmusic.py failed"
 
 "$TRUNCPY" ../../../tools/bigvar.py *.bas \
     || die "8-bit truncation -- see TRUNCATION.md 1a"
