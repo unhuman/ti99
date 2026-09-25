@@ -7050,3 +7050,56 @@ shortening). The **unoptimised first pass has 72 bytes** (`BANK_0_FREE =
 >0048`); the next addition to the fixed area must move something to bank 2
 first. Bank 2 has 1,490 free, bank 1 506, and the cart is still 64 KB.
 **Confirmed in review:** in-game music, and the title line toggling on M.
+
+## 48. ColecoVision music, and the title spacing on both (2026-09-25)
+
+**The ColecoVision now plays the same music as the TI**: STREET on the title
+and CHASE in rounds, with the same two-voice ducking scheme. Its effects share
+the TI's code and channel layout (same SN76489), so nothing about the effects
+changed. **0 on the keypad** toggles music (the TI uses M; `*` and `#` already
+cancel, and 8 and 3 are the 8-3-8 code). The title shows `0=MUSIC ON` /
+`0=MUSIC OFF` at row 19 col 10, like the TI's line.
+
+**One source, gated "not NES".** The music gates from section 47 changed from
+`#if TI994A` to `#if NES` / `#else` (TI and ColecoVision). The bank switches
+stay TI-only: the ColecoVision build is not banked, so the main loop calls
+`music_duck` directly (`#if COLECOVISION`), and `PLAY` needs no bank selected.
+The TI and ColecoVision keep separate `prt_musen` routines (different key
+letter) and separate title key blocks (M against 0), because `#if` cannot
+nest. `build-coleco.sh` now runs `genmusic.py` too. **The NES is still
+unchanged** and is re-certified against `cb9cdcb` exactly as in section 47.
+
+**The title card is shared.** It always was: `title_tbl` was a single table
+for every target until section 47 split it. (Section 31's "French ColecoVision
+title card" is the history of that shared card, not a separate one.)
+`gentitle.py` now emits `title_tbl` as `#if NES` (the original bytes) and
+`#else` (the credit on row 17, `CREDIT_ROW`), so the TI and ColecoVision have
+the same spacing: credit 17, music line 19, a clear row, FIRE TO START 21.
+
+**ROM and RAM.** The ColecoVision ROM is still 32 KB. RAM is 618 of CVBasic's
+"781 available", up from 614 of 814: four new variables (`gms`, `gmp`, `gmb`,
+`musen`), and the player's own state now counts against the total.
+
+**The stack was MEASURED, not assumed**, because a ColecoVision stack overrun
+is exactly the failure CLAUDE.md 3A records from Bust-A-Bobble. A probe build
+(scratch only, never committed) filled RAM from `ram_end` ($7321) to 64 bytes
+below `STACK` ($7400) with `$A5` at power-on. It then printed, twice a second
+in play and on the title, the distance from `ram_end` to the first overwritten
+byte. The gap is **223 bytes**, larger than CVBasic's "163 left" implies,
+because that figure is not the stack gap. The watermark read **159**, the
+whole marked region, after the title with music and a timed round of
+running and jumping that ended in a lost life through `pause_beat` and
+continued. **The stack never went deeper than 64
+bytes. At least 159 bytes stayed free.**
+
+The probe did not exercise the 838 page, a capture with its bonus tally,
+game over, or the 0 toggle: its presses of 0 never arrived, because CoolCV
+(SDL2) ignores a synthetic keypress without a real scan code. Space got
+through and digits did not. The toggle was confirmed separately afterwards
+with scan codes sent. Those are shallow paths. With the peak under 64 bytes against a
+223-byte gap, they would have to more than triple the deepest stack seen to
+matter.
+
+**Verified in CoolCV:** the title spacing, 0 toggling `0=MUSIC ON` / `OFF`,
+and a round starting and playing. **Not verified by ear here:** the music on the
+ColecoVision.

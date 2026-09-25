@@ -364,17 +364,18 @@ def runs_of(name, nes=False):
     return [(top + i, BOX_COL, t) for i, t in enumerate(MESSAGES[name])]
 
 
-# THE TI's CREDIT SITS ONE ROW HIGHER (17, not 18) so the M=MUSIC line can go
-# on row 19 with a clear row before FIRE TO START on 21. TI only: the music is
-# TI only, and the ColecoVision and NES tables are emitted unchanged (#else).
+# THE CREDIT SITS ONE ROW HIGHER (17, not 18) on the TI and ColecoVision, the
+# two with music, so the music line (M= / 0=MUSIC) can go on row 19 with a clear
+# row before FIRE TO START on 21. The NES has no music and keeps its table
+# unchanged (the #if NES copy).
 CREDIT = "2026 UNHUMAN and C&C AI"
-CREDIT_ROW_TI = 17
+CREDIT_ROW = 17
 
 
-def french_runs(ti=False):
+def french_runs(music=False):
     title = [run for run in TITLE if run[2] != "GARRY KITCHEN'S"]
-    if ti:
-        title = [(CREDIT_ROW_TI, c, t) if t == CREDIT else (r, c, t)
+    if music:
+        title = [(CREDIT_ROW, c, t) if t == CREDIT else (r, c, t)
                  for r, c, t in title]
     text = [(row, col, ''.join(chr(LOWER_CODES[c]) if c in LOWER_CODES else c
                               for c in line))
@@ -487,10 +488,10 @@ def main():
         fh.write("\t' The message boxes in title.bas are the same format and\n")
         fh.write("\t' CANNOT come with it: they are read when a round ends.\n")
         fh.write("\t' ==================================================\n")
-        # Two copies: the TI's credit is one row higher (CREDIT_ROW_TI).
-        # The #else copy is byte-for-byte the table every target had before.
-        ti_data = table(french_runs(ti=True))
-        for label, block in (("#if TI994A", ti_data), ("#else", data)):
+        # Two copies: TI and ColecoVision have the credit one row higher
+        # (CREDIT_ROW). The #if NES copy is byte-for-byte the NES table.
+        music_data = table(french_runs(music=True))
+        for label, block in (("#if NES", data), ("#else", music_data)):
             fh.write("\n%s\ntitle_tbl:\n" % label)
             for i in range(0, len(block), 8):
                 fh.write("\tDATA BYTE %s\n"

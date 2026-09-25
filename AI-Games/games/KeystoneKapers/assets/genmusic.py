@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate src/titlemusic.bas -- the game's music (TI only).
+"""Generate src/titlemusic.bas -- the game's music (TI and ColecoVision; not NES).
 
 The tunes are not written here. They come from the tunes bench
 (sound/tunes), rendered by that bench's own generator, so the game plays

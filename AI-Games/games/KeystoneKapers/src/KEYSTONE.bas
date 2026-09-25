@@ -747,12 +747,16 @@ boot:
 	' over, the cancel key -- so the tune starts in one place. It stops in
 	' one place too: title_input returns only to start a game, including a
 	' start from the 838 setup page.
-	#if TI994A
+	#if NES
+	#else
 	GOSUB title_music_on
 	#endif
 	GOSUB title_input
 	#if TI994A
 	BANK SELECT 1
+	#endif
+	#if NES
+	#else
 	GOSUB snd_off
 	#endif
 	' LET GO OF FIRE BEFORE PLAY BEGINS.
@@ -818,7 +822,8 @@ title_bulb:
 	' every sound effect in the game. PLAY NONE clears the mode, and the ISR
 	' then leaves the chip alone. snd_off after it, so nothing the tune left
 	' latched rings into the round.
-	#if TI994A
+	#if NES
+	#else
 title_music_on:
 	IF musen = 0 THEN RETURN	' M on the title turned music off
 	' Called with BANK 2 selected (boot maps it for the title), which is
@@ -972,6 +977,9 @@ nes_pace:
 	BANK SELECT 2
 	GOSUB music_duck
 	BANK SELECT 1
+	#endif
+	#if COLECOVISION
+	GOSUB music_duck
 	#endif
 	GOSUB sfx_tick
 
@@ -5933,7 +5941,8 @@ lose_kop:
 	' after every unit, but a footstep or a hit that was still ringing when
 	' Harry was caught.
 snd_off:
-	#if TI994A
+	#if NES
+	#else
 	GOSUB music_stop
 	#endif
 	' EVERY CHANNEL sfx_tick CAN WRITE, AND CHANNEL 3 IS ONE OF THEM. This
@@ -6029,7 +6038,8 @@ snd_pend:
 	' snd_off still runs at the END, as the backstop for anything the drain
 	' did not finish.
 pause_beat:
-	#if TI994A
+	#if NES
+	#else
 	GOSUB music_stop
 	#endif
 	GOSUB snd_pend
@@ -6699,7 +6709,8 @@ random_set:
 random_hazards:
 	DATA BYTE 0,1,2,3,4,9,10,11,0,1,9,9
 
-	#if TI994A
+	#if NES
+	#else
 	' ---------------------------------------------------------------- GAME MUSIC
 	' CHASE (game_tune, genmusic.py) plays during a round on PLAY SIMPLE NO
 	' DRUMS: TWO voices on channels 0 and 1 only. The TI effects split by
@@ -6748,16 +6759,25 @@ music_duck:
 	' ---------------------------------------------------------------- MUSIC ON/OFF
 	' M on the title toggles all music, title and in-game, the way 1 does on
 	' Bust-A-Bobble's title. musen is the setting (see init_tables for why it
-	' persists). TI only, like every piece of the music: the ColecoVision and
-	' NES builds do not contain it. Row 19 col 10, under the TI credit (17, a row
-	' higher than the other targets' -- CREDIT_ROW_TI in gentitle.py) and a clear
+	' persists). TI and ColecoVision; the NES has no music. The key is M on the
+	' TI and 0 on the ColecoVision keypad (* and # cancel, 8 and 3 are 8-3-8).
+	' Row 19 col 10, under the credit (row 17 on these two, a row higher than
+	' the NES -- CREDIT_ROW in gentitle.py) and a clear
 	' row above FIRE TO START (21); both strings 11 characters so each
 	' overwrites the other.
 	#if TI994A
 prt_musen:
 	IF musen THEN PRINT AT 618,"M=MUSIC ON " ELSE PRINT AT 618,"M=MUSIC OFF"
 	RETURN
+	#endif
+	#if COLECOVISION
+prt_musen:
+	IF musen THEN PRINT AT 618,"0=MUSIC ON " ELSE PRINT AT 618,"0=MUSIC OFF"
+	RETURN
+	#endif
 
+	#if NES
+	#else
 mus_toggle:
 	musen = 1 - musen
 	GOSUB prt_musen
@@ -6893,7 +6913,8 @@ title_input:
 	#else
 	PRINT AT 681,"FIRE TO START"
 	#endif
-	#if TI994A
+	#if NES
+	#else
 	GOSUB prt_musen
 	#endif
 	#if NES
@@ -7030,6 +7051,7 @@ title_wait:
 			IF t838 = 2 THEN IF tk = 8 THEN tnx = 3
 			t838 = tnx
 		END IF
+		IF tk = 0 THEN GOSUB mus_toggle	' 0 on the keypad
 	END IF
 	IF t838 = 3 THEN GOTO title_setup
 	#endif
@@ -7070,7 +7092,8 @@ title_setup:
 	PRINT AT 681,"FIRE TO START"
 	tkl = 15
 	#endif
-	#if TI994A
+	#if NES
+	#else
 	GOSUB prt_musen
 	#endif
 	GOTO title_wait
@@ -7346,7 +7369,8 @@ init_tables:
 	' MUSIC ON by default. Set here, once at power-on, and never again --
 	' boot re-enters BELOW init_tables after a game over, so M's choice
 	' holds from game to game until the machine is switched off.
-	#if TI994A
+	#if NES
+	#else
 	musen = 1
 	#endif
 	' Floor surface y, by level. An actor standing here has its FEET at this
@@ -7514,7 +7538,8 @@ init_tables:
 	' INCLUDE inside a false #if is never opened. Read under the ISR while the
 	' title is up, which is safe from a bank the program switches away from;
 	' see title_music_on. Even length, asserted by genmusic.py.
-	#if TI994A
+	#if NES
+	#else
 	INCLUDE "titlemusic.bas"
 	#endif
 	#if TI994A
