@@ -1289,6 +1289,40 @@ the last array past `$07FF` into the mirrored zero page. Run
 **Keep a per-target byte budget table in DESIGN.md** (fixed/PRG free, RAM
 free) and update it with every feature, the way §5A's performance budget is kept.
 
+## 5C. Build time from line 1
+
+Keystone Kapers' builds grew to ~180 s each, ~9 minutes for all three targets,
+because every new gate and test was appended to a serial list. Timed
+(2026-09-26), compiling and assembling were seconds; four Python simulations were
+~160 s of each build. Set new games up like this from the first gate.
+
+* **Measure before cutting anything.** `PS4='+ $EPOCHREALTIME ' bash -x build.sh
+  2> trace` timestamps every top-level command; the gap to the next line is its
+  duration. The "NES is slower" impression turned out to be builds chained
+  back-to-back in the background: measured, all three targets took the same
+  ~180 s.
+* **Run independent checks in parallel.** Gates and `*_test.py` that only READ
+  the source and generated files can all start at once; the build then waits for
+  the slowest instead of the sum. Keystone's `assets/runtests.sh`
+  (`run_checks_parallel`) is the template: every job keeps its own failure
+  message, every job is waited for, and every failure is listed with its output
+  tail before the build stops. Set `PYTHONDONTWRITEBYTECODE=1`, so parallel
+  imports cannot race on `__pycache__` (and the stale-`.pyc` hazard in 3A goes
+  away too).
+* **Run target-independent tests once per multi-target build.** A test of the
+  shared BASIC logic proves nothing new on the second and third target. Keystone's
+  `tools/keystone-dev.ps1 BuildAll` runs the suite with the first target and sets
+  `KK_TESTS_DONE=1` for the rest. Gates that read a target's own output
+  (assembly, RAM map, layout) still run on every target.
+* **Keep every test.** Each guards a bug that shipped. Make them cheap to run, not
+  optional.
+* **A control-flow checker must model the preprocessor.** When a checker decides
+  fall-through from a routine's last line, it must skip `#if`/`#else`/`#endif`
+  and lines the target does not compile. Otherwise `#if A / GOTO x / #else /
+  GOTO y / #endif` reads as falling through (Keystone's checkvblank did exactly
+  this, DESIGN.md section 51). Test both directions: the false alarm, and a real
+  fall-through that must still fail.
+
 ## 6. Compiler-Safe Coding Checklist
 
 Every game's XB source must satisfy all of these so XB and compiled behavior match:

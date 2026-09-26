@@ -103,6 +103,19 @@ def main():
         ("no WAIT: the pass's pokes flush with the upload", NO_WAIT, 1),
         ("nes_def during play: rendering off for two frames", BLANKING, 1),
     ]
+    # A ROUTINE WHOSE LAST LINE IS A DIRECTIVE. Keystone's title_setup ends
+    # `#if NES / GOTO ... / #else / GOTO ... / #endif`; reading `#endif` as a
+    # statement that can complete walked it into setup_font and failed the build
+    # on a nes_def that no frame reaches. The second case keeps the fix honest:
+    # when the NES branch really does complete, the fall-through is real.
+    def tail(nes_branch):
+        return GOOD.replace("\tGOSUB esc_tick\n", "\tGOSUB esc_tick\n\tGOSUB tailr\n") + (
+            "\ntailr:\n#if NES\n%s\n#else\n\tGOTO main\n#endif\n"
+            "boot_only:\n\tGOSUB nes_def\n\tRETURN\n" % nes_branch)
+    cases.extend([
+        ("#endif after a GOTO does not fall through", tail("\tGOTO main"), 0),
+        ("#endif after a completing NES branch does", tail("\tx = 1"), 1),
+    ])
     cases.extend([
         ("looped elevator batch fits", SHELL %
          "\tWAIT\n\tFOR clv = 0 TO 2\n\tSCREEN tiles,0,0,4,4,4\n\tNEXT clv\n\tWAIT\n", 0),

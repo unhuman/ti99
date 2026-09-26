@@ -239,8 +239,7 @@ rm -rf ../sound/tunes/assets/__pycache__
 # flights, every animation phase, frame delta and jump direction; it EXECUTES
 # the boarding rule parsed out of try_esc rather than a copy of it, and
 # assets/checkjump_test.py proves it still rejects the rule that shipped the bug.
-"$TRUNCPY" ../assets/checkjump.py > /dev/null \
-    || die "a jump can pass through an escalator -- run assets/checkjump.py"
+# (checkjump.py runs in parallel with the test suite below -- run_checks_parallel)
 
 # AND NOW THE CHECKS ON THE CHECKS. Every *_test.py above types out a defect
 # that was really played, mutates the source to reintroduce it, and asserts its
@@ -253,11 +252,10 @@ rm -rf ../sound/tunes/assets/__pycache__
 # terminal nobody was watching, while the suite still printed its other lines
 # and passed them. A gate that guards a gate has to be on the same trigger as
 # the thing it guards.
-for t in ../assets/*_test.py; do
-    "$TRUNCPY" "$t" > /dev/null \
-        || die "$(basename "$t") fails -- its checker no longer rejects a defect
-       that was actually played, or its mutation no longer applies. Run it."
-done
+# ALL AT ONCE: the *_test.py suite and checkjump.py are independent readers,
+# and serially they were ~160 s of a ~180 s build. See assets/runtests.sh.
+. ../assets/runtests.sh
+run_checks_parallel
 
 echo "[1/3] cvbasic    $SRC -> $NAME.a99"
 rm -f "$NAME.a99"

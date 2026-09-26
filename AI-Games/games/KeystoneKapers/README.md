@@ -352,6 +352,14 @@ hand-written character number still points at the character it names) and `check
 the 2 KB and into zero page), `checknesstart.py` (production starting conditions) and `checkvblank.py` (no vblank is asked to copy more than it can
 finish before the scroll restore, which is what made the escalator screens flash).
 
+**The slow checks run in parallel.** The whole `*_test.py` suite and `checkjump.py` start
+at once through `assets/runtests.sh`, so a build waits for the slowest (`checkjump_test.py`,
+about a minute) rather than the sum (about 160 s). Every failure is still named, with its
+output. `tools/keystone-dev.ps1 BuildAll` runs that suite with the first target only and
+sets `KK_TESTS_DONE=1` for the other two, because it tests shared logic; every gate still
+runs on every target. To see where a build's time goes:
+`PS4='+ $EPOCHREALTIME ' bash -x build-nes.sh 2> trace` (`DESIGN.md` section 52).
+
 > `cvbasic.exe` is a **Cygwin** binary and Git Bash's own MSYS2 runtime shadows it, so it
 > used to die with `cannot open shared object file` — exit 127, no other clue — while the
 > same command worked from PowerShell. Both build scripts now put `C:\cygwin64\bin` at the

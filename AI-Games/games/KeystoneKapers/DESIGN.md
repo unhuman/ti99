@@ -7215,3 +7215,36 @@ forms.
 **TI and ColecoVision:** rebuilt **byte-for-byte identical** to the previous
 commit. **NES:** full build, every gate and test passes; running in iNES with
 the round-start check passing.
+
+## 52. Build time: parallel checks, the suite once per BuildAll (2026-09-26)
+
+**Measured first.** Each build was timed with `PS4='+ $EPOCHREALTIME ' bash -x`:
+
+| build | total | `*_test.py` | `check*.py` |
+|---|---|---|---|
+| TI | 181 s | 128 s | 45 s |
+| ColecoVision | 179 s | 131 s | 44 s |
+| NES | 181 s | 130 s | 46 s |
+
+The NES was never the slow one. The long waits were builds chained back-to-back.
+Four Python simulations were ~160 s of every build: `checkjump_test.py` ~58 s,
+`checkjump.py` ~43 s, `levelplay_test.py` ~41 s and `randomlevels_test.py`
+~20 s. Compiling and assembling took seconds.
+
+**Changes, with no test removed and nothing checked differently:**
+* `assets/runtests.sh` (`run_checks_parallel`), sourced by all three build
+  scripts, starts the 22 `*_test.py` and `checkjump.py` together and waits for
+  all of them. Every failure is named with its own message and the tail of its
+  output. `PYTHONDONTWRITEBYTECODE=1` keeps parallel imports off `__pycache__`.
+* `tools/keystone-dev.ps1 BuildAll` runs the suite with the first target and sets
+  `KK_TESTS_DONE=1` for the other two (cleared before and after). The suite
+  tests shared logic and generators. Every gate, `checkjump.py` included, still
+  runs on every target.
+* `checkvblank_test.py` gains the section-51 regression, in both directions (the
+  `#endif` false alarm, and a real fall-through that must still fail). It was
+  confirmed to fail against the old checker.
+
+**Result:** `BuildAll` (NES, TI, ColecoVision) runs in **209.5 s**, where the
+three serial builds took ~540 s. A single build now waits for its slowest job
+(~1 minute) rather than the sum. All three outputs are **byte-for-byte identical**
+to the build before the change.

@@ -7,12 +7,19 @@ $gameRoot = Join-Path $projectRoot 'games/KeystoneKapers'
 if ($Action.StartsWith('Build')) {
     $targets = switch ($Action) { 'BuildAll' { @('nes','ti','coleco') }; 'BuildNES' { @('nes') }; 'BuildTI' { @('ti') }; 'BuildColeco' { @('coleco') } }
     Push-Location $projectRoot
+    # The *_test.py suite tests shared BASIC logic and generators, not one
+    # target's output, so BuildAll runs it with the FIRST target only and tells
+    # the others it has passed (games/KeystoneKapers/assets/runtests.sh). Every
+    # gate still runs on every target. Cleared first so a stale value in the
+    # calling shell can never skip the suite.
+    $env:KK_TESTS_DONE = $null
     try {
         foreach ($target in $targets) {
             & C:\cygwin64\bin\bash.exe "games/KeystoneKapers/build-$target.sh"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $env:KK_TESTS_DONE = '1'
         }
-    } finally { Pop-Location }
+    } finally { $env:KK_TESTS_DONE = $null; Pop-Location }
     exit 0
 }
 if ($Action -eq 'LaunchNES') {
