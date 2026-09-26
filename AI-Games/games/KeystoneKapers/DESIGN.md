@@ -7248,3 +7248,60 @@ Four Python simulations were ~160 s of every build: `checkjump_test.py` ~58 s,
 three serial builds took ~540 s. A single build now waits for its slowest job
 (~1 minute) rather than the sum. All three outputs are **byte-for-byte identical**
 to the build before the change.
+
+## 53. TI single bank (branch `ti99-compression`): step 1, the decoder (2026-09-26)
+
+**Goal:** a 32 KB TI cart, 3 loader pages + ONE bank, down from 64 KB. The two
+banks hold 14,388 bytes against one bank's 8,192, and the fixed area's
+unoptimised first pass has only 72 bytes. Measured with the real compressor
+(`assets/lzss.py`, every stream round-tripped):
+
+| stream | raw | LZSS |
+|---|---|---|
+| bank-1 tables read DURING PLAY (stay in RAM) | 4,182 | 1,294 |
+| bank-1 tables read at SETUP only | 3,463 | 1,323 |
+| bank-2 setup data (fonts, title table, radar colours) | 1,572 | 1,023 |
+| the two tunes | 1,034 | 557 |
+| constant colour tables (`font_col`, `tfont_col0/1`) | 824 | 0: a VRAM fill |
+
+One bank would hold 3,190 of bank-2 code, 82 of small data, 4,197 of streams
+and about 272 of decoder, fill and stream table: **~7,741 of 8,192**. RAM for
+play data plus one tune buffer is 4,699 of ~7,179 free.
+
+**Which tables are read during play** (TI paths, checked by hand: the automatic
+pass counted the NES's setup pointers as runtime). During play:
+`stor_tpl stor_lvl stor_arc esc_cap stor_co stor_pil stor_ix stor_esc`, the
+escalator phases `esc_ph*`, Harry's swap poses `spr_hstand/hstandl/hbod4`, the
+message boxes and the marquee lamps. Setup only: `store_pat`/`store_col`,
+`spr_harry`/`spr_kelly`/`spr_plane` and the small sprites, `jarc_tbl`,
+`esc_deck`.
+
+**Format** (`assets/lzss.py`, decoder `lz_unpack` in `KEYSTONE.bas`): a flag
+byte governs eight items, least significant bit first; 1 = a literal byte;
+0 = a big-endian match `offset << 4 | length - 3`, with the offset 1..4095 back
+into the output. The decoder is 9900 assembly through `ASM` and uses R1-R9
+only (R10 is CVBasic's stack pointer, R11 its link). It runs from bank 2 at no
+fixed-area cost and stops at the output length, so a stream's even-padding
+byte is never read.
+
+**Step 1, proved on the (emulated) TI.** `genlzss.py --probe` compresses 7
+representative play tables (templates, level data, messages, escalator art, a
+sprite): 3,092 bytes to 802. At power-on `lz_probe` unpacks them into
+`lzbuf` and checks every table's two checksums (`lzss.checksums`, a
+Fletcher-style pair) against the values Python computed from the generated
+sources. The title reads **`LZ BAD 0 OF 7 TABLES`** in Classic99. With one
+byte of the stream deliberately flipped (`KK_LZ_CORRUPT=1`, mutation test
+only) it reads **`LZ BAD 2 OF 7 TABLES`**, so the check can fail.
+
+**Found on the way: `DEFINE` cannot take a RAM array.** `DEFINE CHAR 65,1,buf`
+compiles without complaint to `li r0,cvb_BUF`, but the array lives at
+`array_BUF`. Setup data will reach VRAM some other way (step 3).
+
+**TI only; the other targets are unchanged.** Everything is `#if TI994A`. The
+ColecoVision ROM and NES image rebuild **byte-for-byte identical** to the last
+`master` build. TI: fixed area 22,672 (first pass 66 bytes free), bank 2
+8,012 of 8,192 while it carries the probe, RAM 4,850 of 7,821.
+
+**Next:** step 2 moves the play tables out of bank 1 for good. The whole stream
+is unpacked into RAM at power-on, and the game's pointers (`#sttp`, `#stlv`,
+...) and uploads point at `lzbuf`.

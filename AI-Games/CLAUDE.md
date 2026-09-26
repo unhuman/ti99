@@ -960,6 +960,13 @@ cost a debugging session:
 - **Sprite y = 208 terminates the sprite list** — hide sprites at 209, and watch for `y-1`.
 - Misc: 8-bit `FOR` to 255 loops forever; `ON GOTO` is 0-based; `DEF FN` args substitute
   textually (parenthesize every use); a computed `FOR 1 TO 0` still runs the body once.
+- **`DEFINE CHAR/COLOR/SPRITE` CANNOT TAKE A RAM ARRAY, AND IT DOES NOT SAY SO.**
+  `DEFINE CHAR 65,1,buf` with `DIM buf(64)` compiles cleanly to `li r0,cvb_BUF`, but
+  the array lives at `array_BUF` (TI), so the upload reads from a label that is
+  either undefined or, worse, some other variable. `DEFINE`'s source must be a
+  `DATA` label. To upload RAM, write the VDP yourself (or through a routine that
+  takes an address). `VARPTR buf(0)` *does* give the array's real address. Found
+  while planning Keystone's TI compression (its DESIGN.md section 53).
 - **A `GOSUB` THAT LEAVES BY `GOTO` LEAKS THE STACK — and only ColecoVision dies of it.**
   A routine entered with `GOSUB` and exited with `GOTO` never pops its return address, so every
   pass through it grows the stack by the whole call chain. Bust-A-Bobble's `do_clear` and `do_dead`

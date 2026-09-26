@@ -109,6 +109,9 @@ rm -rf ../assets/__pycache__
 # generator's cache is cleared too: it is imported from another directory.
 rm -rf ../sound/tunes/assets/__pycache__
 "$TRUNCPY" ../assets/genmusic.py > /dev/null || die "genmusic.py failed"
+# The TI play tables, LZSS-compressed (DESIGN.md section 53). --probe: the
+# step-1 subset, until the tables leave bank 1 and the whole stream fits.
+"$TRUNCPY" ../assets/genlzss.py --probe > /dev/null || die "genlzss.py failed"
 
 "$TRUNCPY" ../../../tools/bigvar.py *.bas \
     || die "8-bit truncation -- see TRUNCATION.md 1a"
