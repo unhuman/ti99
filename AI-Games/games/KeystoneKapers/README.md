@@ -174,15 +174,19 @@ thousands, instead of code bytes, of which there were thirty. Edit
 `assets/gentitle.py` and rebuild. That change plus the second bank took the
 fixed area from **30 free bytes to 682** (`DESIGN.md` 0e-duodecies).
 
-**The TI build is a 64 KB cartridge with two data banks.** Bank 1 holds
-everything read while the game runs -- art, store templates, lookup tables --
-and is selected once before the first frame and never switched, which is what
-makes banking safe here. Bank 2 holds only the font, which two `DEFINE`s copy
-into VRAM at setup and nothing reads again; it is selected for those two
-statements and left. Get that wrong and the title comes up in garbage, which is
-a deliberately loud failure. A bigger cart does **not** buy code space -- the
-24,336-byte cap is the 32K expansion's RAM window, not cart ROM -- it buys room
-to move data out of code (`DESIGN.md` 0e-undecies).
+**The TI build is a 32 KB cartridge with ONE data bank.** Its tables --
+art, store templates, fonts, lookup tables, the display lists and both tunes --
+are carried LZSS-compressed in two streams and unpacked into a RAM buffer
+(`lzbuf`): the setup tables at power-on, then the play tables over them once
+setup has uploaded what it needs. Every read is a read of RAM, the bank is
+selected once at power-on, and nothing ever switches it. It was a 64 KB cart
+with two banks until then (`DESIGN.md` sections 53-57). A bigger cart does
+**not** buy code space -- the 24,336-byte cap is the 32K expansion's RAM
+window, not cart ROM.
+
+A build with `KK_LZ_SELFTEST=1` prints `LZ BAD 0s0 OF 30s18` on the title:
+each stream's checksums compared after unpacking (`s` is this font's `+`).
+`KK_LZ_CORRUPT=1` corrupts a byte on purpose and must show a non-zero count.
 
 **Support beams run floor to floor.** They are part of the building, not scenery on top of
 it -- see DESIGN.md 0k2 for why they have to be stamped in after the bands are drawn.
@@ -303,8 +307,8 @@ nine-second obstacle and still make the catch. `DESIGN.md` §4a has the arithmet
 ColecoVision the title plays STREET and rounds play CHASE, both from the tunes
 bench; M (TI) or 0 (ColecoVision) on the title turns music on and off
 (`DESIGN.md` sections 46-48; NES music, A on the title, sections 50-51). TI fixed code
-uses **22,666 / 24,336 bytes (1,670 free; 72 in the unoptimised first pass)**, with a 64 KB
-cartridge. Runtime data bank 1 has 506 bytes free; setup bank 2 has 1,490 free.
+uses **22,602 / 24,336 bytes (1,734 free; 136 in the unoptimised first pass)**, with a 32 KB
+cartridge. Its one data bank has 868 bytes free; RAM uses 6,258 of 7,821 bytes.
 ColecoVision uses a 32 KB ROM and 618 / 781 RAM (the stack keeps at least 159
 bytes free, measured; `DESIGN.md` section 48); NES uses a 32 KB PRG image
 plus its 16-byte header, with 31 bytes of PRG free after the music (`DESIGN.md`

@@ -1074,6 +1074,16 @@ cost a debugging session:
     bytes with `>FF` plus a two-byte trailer at `>FFFE`, so length-minus-16384 reads 24,576 for
     every banked build whatever it contains — a phantom 240-byte overflow on a build with four
     kilobytes free. `games/KeystoneKapers/assets/banksize.py` handles both shapes; copy it.
+  - **A BANK CAN OVERFLOW BY GROWING, NOT ONLY BY TRUNCATING.** A bank assembled 76 bytes
+    past 8,192 came out of xas99 as a **73,728-byte** `_b3.bin`, and linkticart packed it as
+    nine pages into a 96 KB cart, with everything past `>7FFF` outside the bank window. A
+    "last block is present" check passes that. Fail on the bank image's SIZE as well
+    (`games/KeystoneKapers/assets/bankfill.py` does both).
+  - **LZSS INTO RAM HALVES A CART.** Tables compressed at build time and unpacked into one
+    RAM buffer at power-on took Keystone Kapers from two banks (64 KB) to one (32 KB). Point
+    each table's symbol into the buffer with `ASM cvb_X: EQU array_BUF+off`, so no reader
+    changes. Keystone Kapers DESIGN.md sections 53-57 have the format, the decoder and the
+    assembler traps.
   - **`BANK ROM` accepts only 128, 256, 512 or 1024.** `BANK ROM 32` is rejected outright
     ("BANK ROM not 128, 256, 512 or 1024"), and a `BANK` statement without it fails with
     "Using BANK without BANK ROM" pointing at the `BANK`, not at the missing declaration. The number

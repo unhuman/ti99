@@ -8,31 +8,21 @@ from levelplay_test import SOURCE
 
 class ScoreMarksTest(unittest.TestCase):
     def test_ti_score_helpers_have_bank_selected_at_each_entry(self):
+        # ONE BANK (DESIGN.md section 57): the helpers and the title live in
+        # bank 1, which power-on maps before anything runs and nothing ever
+        # unmaps -- so no caller may switch banks around them.
         source = platform_source(SOURCE, 'TI994A')
-        bank = source.rindex('BANK 2')
+        bank = source.index('BANK 1\n')
+        self.assertNotIn('BANK 2', source)
+        self.assertEqual(source.count('BANK SELECT'), 1)
+        self.assertLess(source.index('BANK SELECT 1'), source.index('GOSUB lz_setup'))
+        self.assertLess(source.index('BANK SELECT 1'), source.index('\nboot:'))
         for helper in ('score_start', 'score_mark', 'title_score', 'score_record'):
             self.assertGreater(source.index(helper+':'), bank)
-        # title_draw calls title_score, and on the TI the whole title (title_draw
-        # .. title_setup) now LIVES in bank 2, so bank 2 is mapped at that call by
-        # construction. What must hold instead: the title is inside the bank-2
-        # region, boot maps bank 2 immediately before entering it, and nothing in
-        # it switches banks (a BANK SELECT there would unmap the running code).
-        bank_end = source.index('BANK 1', bank)
         for routine in ('title_draw:', 'title_input:', 'title_wait:', 'title_setup:'):
-            self.assertTrue(bank < source.index(routine) < bank_end, routine)
+            self.assertGreater(source.index(routine), bank, routine)
         title = source[source.index('title_draw:'):source.index('title_setup:')]
-        title_setup = source[source.index('title_setup:'):bank_end].split('RETURN\n')
-        self.assertNotIn('BANK SELECT', title)
-        self.assertNotIn('BANK SELECT', ''.join(title_setup[:2]))
         self.assertLess(title.index('GOSUB title_score'), len(title))
-        boot = source[source.index('\nboot:'):]
-        call = boot.index('GOSUB title_draw')
-        self.assertTrue(boot[:call].rstrip().endswith('BANK SELECT 2'))
-        for caller, helper in (('new_game', 'score_start'), ('hud_all', 'score_mark'), ('lose_kop', 'score_record')):
-            call = source.index('GOSUB '+helper, source.index(caller+':'))
-            self.assertTrue(source[:call].rstrip().endswith('BANK SELECT 2'))
-            following = source[call:].splitlines()[1:]
-            self.assertEqual(next(line.strip() for line in following if line.strip()), 'BANK SELECT 1')
 
     def test_setup_defaults_still_mark_and_normal_restart_preserves_record(self):
         for platform in ('NES', 'TI994A', 'COLECOVISION'):

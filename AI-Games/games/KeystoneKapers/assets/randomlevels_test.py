@@ -76,7 +76,8 @@ class RandomLevelTest(unittest.TestCase):
             self.assertTrue(any(first))
             if platform == 'TI994A':
                 generation = vm.calls[vm.calls.index('reset_prizes'):]
-                self.assertEqual([c for c in generation if c.startswith('bank:')], ['bank:2', 'bank:1'])
+                # ONE BANK, mapped at power-on: a new game switches nothing.
+                self.assertEqual([c for c in generation if c.startswith('bank:')], [])
             # Execute the retry setup while stubbing only rendering/sound work.
             vm.stubs.discard('start_krook')
             start = SOURCE.split('start_krook:', 1)[1].split('draw_screen:', 1)[0]
@@ -105,7 +106,7 @@ class RandomLevelTest(unittest.TestCase):
             vm.run('reset_prizes')
             self.assertEqual(list(vm.arrays['rhaz'].values()), [171]*16)
 
-    def test_ti_generator_and_its_data_share_bank_two(self):
+    def test_ti_generator_and_its_data_share_the_bank(self):
         from looptiming_test import platform_source
         bank, placement = 0, {}
         for line in platform_source(SOURCE, 'TI994A').splitlines():
@@ -114,7 +115,7 @@ class RandomLevelTest(unittest.TestCase):
             if line.endswith(':'):
                 placement[line[:-1]] = bank
         for label in ('random_level', 'random_set', 'random_hazards'):
-            self.assertEqual(placement[label], 2)
+            self.assertEqual(placement[label], 1)
         self.assertEqual(placement['random_get'], 0)
 
     def test_nes_time_blink_never_erases_gradient(self):

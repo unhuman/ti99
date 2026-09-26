@@ -7442,3 +7442,65 @@ identical to `master`.**
 which is 106 over** one bank. RAM is 6,280 of 7,821. Next: drop the
 self-test's checksum tables and verify loops (~530 bytes), then merge the
 banks.
+
+## 57. TI single bank: step 5, one bank and a 32 KB cart (2026-09-26)
+
+**The TI cart is 32 KB**: three loader pages plus one data bank. It was 64 KB.
+Bank 2 is gone:
+* its code (the title, `setup_font`, `init_tables`, `music_duck`,
+  `ti_cancel_key`, the random level generator, the score helpers) assembles
+  into bank 1;
+* its data had already moved into the LZSS streams (sections 54-56).
+
+The program makes **one** bank switch, `BANK SELECT 1` at power-on before
+`lz_setup`. The 20 others went, including the two per frame around
+`ti_cancel_key` and `music_duck`.
+
+**The self-test is opt-in and smaller.** The per-table version (48 checksum
+triples and a loop per stream) cost about 530 bytes. That is too much for one
+bank: the build came out 76 bytes over. `genlzss.py` now generates `lz_setup`,
+`lz_probe` and `lz_report`:
+* **normally:** unpack only, and `lz_report` is a bare `RETURN`;
+* **with `KK_LZ_SELFTEST=1`:** one (s1, s2) pair per stream, checked by a
+  shared `lz_check`. The title shows `LZ BAD a+b OF 30+18`, where a and b
+  count mismatched checksums (0..2).
+
+A wrong byte anywhere still shows; the count no longer names the table.
+`KK_LZ_CORRUPT=1` implies the self-test.
+
+**A gap in the bank gate, found by this step.** The first self-test build ran
+8,268 bytes into the bank:
+* xas99 emitted a **73,728-byte** `KEYSTONE_b3.bin`;
+* linkticart packed it into a **96 KB** cart;
+* `bankfill.py` passed it, because its last block was present, and the build
+  said OK.
+
+Everything past `>7FFF` lies outside the bank window. `bankfill.py` now also
+fails any bank image over 8,192 bytes, and `bankfill_test.py` covers it.
+
+**Tests that pinned the two-bank layout** now pin one bank instead:
+* `scoremarks_test.py`: exactly one `BANK SELECT`, before `lz_setup` and
+  `boot`, and no `BANK 2`;
+* `ticancel_test.py`: the cancel call has no switch around it;
+* `randomlevels_test.py`: generation switches nothing, and the generator
+  lives in bank 1.
+
+**Verified in Classic99:**
+* the TI menu lists one entry;
+* the self-test build reads `LZ BAD 0s0 OF 30s18`, and the corrupt build
+  reads `2s0`;
+* on the normal build, the title draws with no self-test line;
+* a round plays, screen crossings, the lift, Harry and the suitcase draw, a
+  prize scores;
+* `TIME'S UP!` takes a life and a new round starts, with the low-time flash;
+* the cancel key returns to the title, and a second game starts clean.
+
+**ColecoVision and NES: byte-for-byte identical to `master`.**
+
+**TI sizes now:**
+
+| | used | free |
+|---|---|---|
+| bank 1 (the only bank) | 7,324 | 868 |
+| RAM | 6,258 of 7,821 | |
+| fixed area | 22,602 | 1,734 (first pass 136) |

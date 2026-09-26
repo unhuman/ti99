@@ -53,6 +53,19 @@ WARN_BELOW = 64
 
 TRAILER = 2                 # the two bytes each bank image ends with
 
+# A BANK IMAGE BIGGER THAN ITS WINDOW IS THE OTHER WAY TO OVERFLOW. The
+# truncation above is what linkticart does with a bank that runs over; but the
+# TI single-bank build (DESIGN.md section 57) found xas99 doing something else
+# too: one bank at 8,268 bytes came out as a 73,728-byte `_b3.bin`, and
+# linkticart packed it as NINE pages into a 96 KB cart. Its last block was
+# present, so the check below passed and the build said OK. Everything past
+# >7FFF lies outside the cart window, so the size itself must fail.
+BANK_SIZE = 8192
+
+
+def oversized(img):
+    return len(img) > BANK_SIZE
+
 
 def banks_from_source(path):
     """{bank number: [include filenames]} in source order."""
@@ -143,6 +156,10 @@ def main():
             continue
 
         found = img.find(data) >= 0
+        if oversized(img):
+            bad.append('bank %d: %s is %d bytes, over the %d-byte bank window. '
+                       'The bank overflowed.'
+                       % (n, os.path.basename(img_path), len(img), BANK_SIZE))
         print('bank %d -> %s: %5d of %5d used, %4d free   last block `%s` '
               '(%d B in %s) %s'
               % (n, os.path.basename(img_path), len(img) - free, len(img),

@@ -66,6 +66,13 @@ def main():
                   % (label, list(data), WANT_LABEL, list(WANT_BYTES)))
             fails += 1
 
+        # an OVERSIZED bank: the block is present, the image is too big
+        if B.oversized(image(WANT_BYTES, 73728)) and not B.oversized(image(WANT_BYTES)):
+            print('  ok    an image past 8,192 bytes is rejected, a full one is not')
+        else:
+            print('  FAIL  the bank-size limit is not enforced')
+            fails += 1
+
         # a healthy bank: the block is present
         good = image(b'\x01\x02\x03\x04\x05\x06' + WANT_BYTES)
         if good.find(WANT_BYTES) >= 0:

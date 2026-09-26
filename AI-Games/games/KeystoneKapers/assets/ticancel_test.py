@@ -120,8 +120,9 @@ class CancelKeys(unittest.TestCase):
         for platform in ('NES', 'COLECOVISION'):
             self.assertNotIn('ti_cancel_key', platform_source(BASIC, platform))
         code = platform_source(BASIC, 'TI994A')
-        self.assertIn('BANK SELECT 2\nGOSUB ti_cancel_key\nBANK SELECT 1\nIF tk THEN GOTO boot', code)
-        self.assertGreater(code.index('ti_cancel_key:'), code.index('BANK 2'))
+        # One bank, mapped at power-on: the call switches nothing.
+        self.assertIn('GOSUB ti_cancel_key\nIF tk THEN GOTO boot', code)
+        self.assertGreater(code.index('ti_cancel_key:'), code.index('BANK 1\n'))
         helper = code.split('ti_cancel_key:', 1)[1].split('score_start:', 1)[0]
         self.assertNotIn('score_record', helper)
         self.assertIn('GOSUB snd_off', helper)

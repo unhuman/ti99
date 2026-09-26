@@ -724,21 +724,13 @@
 	' And it stays once: `GOTO boot` after a game over re-enters BELOW this, so
 	' a second game reaches its title in a single redraw.
 	#if TI994A
-	BANK SELECT 1
-	GOSUB lz_setup		' the setup tables into RAM first (bank 1)
-	BANK SELECT 2
+	BANK SELECT 1		' THE ONLY BANK SWITCH: one bank, mapped for good
+	GOSUB lz_setup		' the setup tables into RAM first
 	#endif
 	GOSUB setup_font
-	#if TI994A
-	BANK SELECT 1
-	#endif
 	GOSUB setup_rest
-	#if TI994A
-	BANK SELECT 2
-	#endif
 	GOSUB init_tables
 	#if TI994A
-	BANK SELECT 1
 	GOSUB lz_probe		' unpack the play tables into RAM (bank 1)
 	GOSUB init_jarc
 	#endif
@@ -746,9 +738,6 @@
 boot:
 	' Coming back from a game over the store is still on screen, so the title
 	' has to be redrawn; the first time through, this is its first draw.
-	#if TI994A
-	BANK SELECT 2
-	#endif
 	GOSUB title_draw
 	' Every way back to the title comes through here -- first boot, game
 	' over, the cancel key -- so the tune starts in one place. It stops in
@@ -756,9 +745,6 @@ boot:
 	' start from the 838 setup page.
 	GOSUB title_music_on
 	GOSUB title_input
-	#if TI994A
-	BANK SELECT 1
-	#endif
 	GOSUB snd_off
 	' LET GO OF FIRE BEFORE PLAY BEGINS.
 	'
@@ -789,33 +775,29 @@ btn_go:
 	GOSUB new_game
 	GOTO main
 
-	' The marquee lamp for title_wait, which runs from BANK 2 while the lamp
-	' art (art.bas) is in BANK 1. Fixed code can map bank 1, DEFINE, and map
-	' bank 2 back before returning into its bank-2 caller. tbon = 1 lit.
+	' The marquee lamp for title_wait. tbon = 1 lit. It was a fixed-area
+	' bank switch while the title lived in bank 2; with one bank it is only
+	' the DEFINE (DESIGN.md section 57).
 	'
 	' TI ONLY: ColecoVision keeps its original inline DEFINE and the NES its
 	' nes_escd; the music work changes nothing on either.
 	#if TI994A
 title_bulb:
-	BANK SELECT 1
 	IF tbon THEN DEFINE CHAR bcode,1,bulb_lit ELSE DEFINE CHAR bcode,1,bulb_off
-	BANK SELECT 2
 	RETURN
 	#endif
 
 	' ---------------------------------------------------------------- TITLE MUSIC
 	' STREET from the tunes bench (sound/tunes), TI only. assets/genmusic.py
-	' renders it into titlemusic.bas, which lives in BANK 2 beside the font.
+	' renders it into titlemusic.bas for the ColecoVision and NES; the TI
+	' carries the same bytes LZSS-compressed and plays them from lzbuf in RAM
+	' (assets/genlzss.py, DESIGN.md section 56).
 	'
-	' WHY BANK 2 IS SAFE FOR DATA READ UNDER THE ISR. The rule in CLAUDE.md 3A
-	' is about the program switching banks while the ISR reads, and the main
-	' loop DOES switch to bank 2 and back every pass (ti_cancel_key). The TI
-	' music player handles that itself: PLAY records the page mapped at the
-	' time (>7FFE), and every interrupt saves the current page, maps the
-	' music's page to read the next row, and restores the saved one before
-	' returning. So PLAY must run while bank 2 is SELECTED, and nothing else
-	' needs to know. Read cvbasic_9900_prologue.asm (int_handler, music_play,
-	' music_generate) before changing this.
+	' THE TI PLAYER RECORDS THE PAGE MAPPED AT `PLAY` (>7FFE) and maps it
+	' back for every row it reads under the ISR. With one bank, selected at
+	' power-on and never switched, that page is always the right one -- and a
+	' tune in RAM would not care anyway. Read cvbasic_9900_prologue.asm
+	' (int_handler, music_play, music_generate) before adding a second bank.
 	'
 	' STOPPING IS TWO STATEMENTS AND BOTH MATTER. PLAY OFF silences the tune,
 	' but the ISR keeps rewriting the chip every frame while a play MODE is
@@ -825,8 +807,6 @@ title_bulb:
 	' latched rings into the round.
 title_music_on:
 	IF musen = 0 THEN RETURN	' M on the title turned music off
-	' Called with BANK 2 selected (boot maps it for the title), which is
-	' the page PLAY records for the tune.
 	PLAY FULL
 	PLAY title_tune
 	RETURN
@@ -910,9 +890,7 @@ nes_pace:
 	nespw = 5 - nespw
 	#endif
 	#if TI994A
-	BANK SELECT 2
 	GOSUB ti_cancel_key
-	BANK SELECT 1
 	IF tk THEN GOTO boot
 	#endif
 	#if NES
@@ -983,9 +961,7 @@ nes_pace:
 	GOSUB scan_tick
 	GOSUB esc_tick
 	#if TI994A
-	BANK SELECT 2
 	GOSUB music_duck
-	BANK SELECT 1
 	#endif
 	#if COLECOVISION
 	GOSUB music_duck
@@ -1244,8 +1220,9 @@ after_deck:
 
 	#if TI994A
 init_jarc:
-	' The jump arc, copied out of BANK 1 (store.bas). Split from
-	' init_tables, which now lives in bank 2 and cannot see this table.
+	' The jump arc, copied out of lzbuf once lz_probe has unpacked it. Split
+	' from init_tables, which runs before lz_probe while lzbuf still holds
+	' the setup tables.
 	#jat = VARPTR jarc_tbl(0)
 	FOR ji = 0 TO 29
 		#jaa = #jat + ji
@@ -1366,13 +1343,7 @@ tt_ch:
 	GOTO tt_run
 
 new_game:
-	#if TI994A
-	BANK SELECT 2
-	#endif
 	GOSUB score_start
-	#if TI994A
-	BANK SELECT 1
-	#endif
 	GOSUB reset_prizes
 	' THE LIFT STARTS WHERE HARRY DOES, ONCE A GAME. It used to be set in
 	' start_krook, which runs at the top of every round and every life, so
@@ -1395,11 +1366,9 @@ reset_prizes:
 	takn(3) = 0
 	IF krk > 16 THEN
 		#if TI994A
-		BANK SELECT 2
 		#endif
 		GOSUB random_level
 		#if TI994A
-		BANK SELECT 1
 		#endif
 	END IF
 	RETURN
@@ -5320,13 +5289,7 @@ hud_all:
 	#endif
 	GOSUB hud_score
 	sud = scmark AND 1
-	#if TI994A
-	BANK SELECT 2
-	#endif
 	GOSUB score_mark		' static until the HUD is drawn again
-	#if TI994A
-	BANK SELECT 1
-	#endif
 	GOSUB hud_time
 	GOSUB hud_kops
 	RETURN
@@ -5920,11 +5883,9 @@ lose_kop:
 		' #hi survives until the console is switched off. There is no
 		' storage on either cartridge to keep it longer.
 		#if TI994A
-		BANK SELECT 2
 		#endif
 		GOSUB score_record
 		#if TI994A
-		BANK SELECT 1
 		#endif
 		' 8-3-8 IS FORGOTTEN WHEN THE GAME ENDS. krk0 and kops0 are
 		' globals, so a starting Krook or Kop count typed on the setup
@@ -6370,36 +6331,22 @@ life_finish:
 	WAIT
 	GOTO life_finish
 
-	' EVERYTHING BELOW THIS LINE IS ASSEMBLED INTO BANK 1, so the INCLUDE order
-	' is load-bearing and nothing but data may follow it.
+	' EVERYTHING BELOW THIS LINE IS ASSEMBLED INTO BANK 1 ON THE TI -- the
+	' cart's ONE data bank, so the cart is 32 KB (DESIGN.md section 57).
 	'
-	' THE FONT IS NOW IN THE BANK TOO, and it used to be deliberately outside:
-	' keeping one readable thing in bank 0 means a bank-selection mistake shows
-	' as "text survives, art does not" rather than a uniformly blank screen,
-	' which is a genuinely useful thing to have when a bank goes wrong.
+	' It holds the code that runs once or rarely (setup, the title, the 838
+	' page, the random level generator, the music hooks) and the two LZSS
+	' streams, which lz_setup and lz_probe unpack into lzbuf in RAM. Every
+	' table the game reads is read from RAM. Power-on selects the bank once
+	' and nothing ever switches it: a missed BANK SELECT returns bytes from
+	' the wrong page with no error at build or run time, so the safest
+	' number of switches is one.
 	'
-	' THE FONT HAS A BANK OF ITS OWN, and the reason is not its size.
-	'
-	' Bank 1 was FULL -- six spare bytes of 8,192 -- which shut the door on
-	' moving anything else out of the fixed area, and the fixed area is the
-	' only budget that cannot be grown (linkticart writes exactly three
-	' loader pages and discards the rest; they are the 32K expansion's RAM at
-	' >A000, not cart ROM). A second bank costs a bigger cart -- five pages
-	' round up to eight, so 32 KB becomes 64 KB -- and buys back the ability
-	' to keep evacuating data out of code.
-	'
-	' THE FONT IS THE RIGHT TENANT because it is read ONCE. Two DEFINEs copy
-	' it into VRAM at setup and nothing looks at it again, so it is the only
-	' block here that can sit on a page which is not permanently mapped. See
-	' setup_font: bank 2 is selected for those two statements and bank 1 for
-	' the whole of the rest of the program.
-	'
-	' EVERYTHING ELSE STAYS IN BANK 1, because everything else is read during
-	' play -- art on a screen crossing, templates on a band blit, the lookup
-	' tables every pass. One permanently-mapped bank for all of it means
-	' there is no switch to miss.
+	' It was two banks and a 64 KB cart until the tables were compressed.
+	' A second bank would double the cart again (five pages round up to
+	' eight): assets/bankfill.py fails a bank image over 8,192 bytes.
 	#if TI994A
-	BANK 2
+	BANK 1
 	#endif
 setup838:
 	#if NES
@@ -6619,7 +6566,7 @@ score_mark:
 	' THE TITLE SCREEN'S TWO NUMBERS -- last game and best so far.
 	'
 	' Row 0, which the card was moved two rows down to free. The labels are
-	' part of the title display list in bank 2 (gentitle.py's TITLE); only the
+	' part of the title display list (gentitle.py's TITLE); only the
 	' digits are written here, because they are the only part that changes.
 	'
 	' The title list puts row 0 at the NES picture offset (+3 rows, the base
@@ -6731,11 +6678,8 @@ random_hazards:
 	' Called from the main loop only, never from pause_beat: the round-end
 	' pause is effects-only (pause_beat stops the music on entry).
 	'
-	' IT LIVES IN BANK 2 and the main loop maps bank 2 around the call: the
-	' fixed area's UNOPTIMISED first pass had 156 bytes left and this body
-	' did not fit. A bonus: PLAY game_tune runs with bank 2 already mapped,
-	' which is the page the player records for the tune. Nothing here may
-	' BANK SELECT (it would unmap itself).
+	' ON THE TI IT LIVES IN THE BANK: the fixed area's UNOPTIMISED first
+	' pass had 156 bytes left and this body did not fit.
 music_duck:
 	IF musen = 0 THEN RETURN	' M on the title turned music off
 	#if NES
@@ -6815,21 +6759,15 @@ prt_musen:
 mus_toggle:
 	musen = 1 - musen
 	GOSUB prt_musen
-	' Bank 2 is mapped (the title runs from it), which is the page PLAY
-	' records for title_tune. snd_off stops the tune and silences it.
+	' snd_off stops the tune and silences it.
 	IF musen THEN GOSUB title_music_on ELSE GOSUB snd_off
 	RETURN
 
-	' ---------------------------------------------------------------- TITLE, IN BANK 2
+	' ---------------------------------------------------------------- TITLE
 	' title_draw, title_input, title_wait and title_setup run only while the
-	' title is up, so on the TI they live in bank 2 and boot selects bank 2
-	' around them -- moved with setup_font and init_tables to make room for the
-	' music player (see MOVED TO BANK 2 below). Inside them there is NO
-	' BANK SELECT: code here that selected bank 1 would unmap itself. Their
-	' one bank-1 read, the marquee lamp art, goes through title_bulb in the
-	' fixed area, which maps bank 1 for the DEFINE and bank 2 back before
-	' returning here. run_list stays fixed: the round-end message boxes use it
-	' from bank 1 too. setup838 and title_score were already in this bank.
+	' title is up, so on the TI they live in the bank, out of the fixed area,
+	' which they left to make room for the music player. run_list stays
+	' fixed: the round-end message boxes use it too.
 title_draw:
 	#if NES
 	SCREEN DISABLE
@@ -6869,18 +6807,9 @@ title_draw:
 	' the paper index falling through to palette 0.
 	GOSUB title_background
 	#endif
-	' THE DISPLAY LIST IS ON BANK 2, so select it for the walk and put bank 1
-	' back afterwards. The pattern is setup_font's, which has been loading the
-	' fonts this way since they moved -- one bank held for a few statements
-	' that read nothing else, then restored.
-	'
-	' NOTHING BETWEEN THESE TWO READS BANK 1: hide_all and CLS are above them
-	' and write rather than read, and run_list only PEEKs the pointer it is
-	' handed and VPOKEs the result. Checked, because a stray read here would
-	' come back from the wrong page and say nothing about it.
+	' The display list is in lzbuf on the TI (unpacked by lz_probe).
 	#tta = VARPTR title_tbl(0)
 	GOSUB run_list
-	' The title score helper lives beside this list in TI bank 2.
 	GOSUB title_score
 	' NOTHING TO RESET BUT THE COUNTER. Every rotation of the four lamps is a
 	' valid three-and-one, so a title reached after a game over simply carries
@@ -6947,7 +6876,7 @@ title_input:
 	PRINT AT 681,"FIRE TO START"
 	#endif
 	#if TI994A
-	PRINT AT 33,"LZ BAD ",lzbad,"+",lzsbad," OF ",lznt,"+",lznst," "	' LZ SELF-TEST
+	GOSUB lz_report		' KK_LZ_SELFTEST=1 builds print it; else a RETURN
 	#endif
 	GOSUB prt_musen
 	#if NES
@@ -7161,16 +7090,13 @@ title_setup:
 	' A NEW GAME / A NEW KROOK
 	' ======================================================================
 
-	' ---------------------------------------------------------------- MOVED TO BANK 2
-	' setup_font and init_tables run ONCE, at power-on, and read nothing from
-	' bank 1 -- so on the TI they live here, in bank 2, and the caller selects
-	' bank 2 around the GOSUB. They moved to make room for the TI music player
-	' (title music, ~1.2 KB of runtime in the fixed area): with it, the
+	' ---------------------------------------------------------------- RUN ONCE
+	' setup_font and init_tables run ONCE, at power-on, so on the TI they live
+	' in the bank. They moved out of the fixed area to make room for the TI
+	' music player (title music, ~1.2 KB of runtime): with it, the
 	' UNOPTIMISED first assembly ran past >FFFF and xas99 rejected branches
 	' before shortbranches.py could run (CLAUDE.md 3A, TI short-branch note).
-	' A routine placed here must not BANK SELECT (it would unmap itself) and
-	' must not read bank 1: init_tables' one bank-1 read, jarc_tbl, stayed
-	' behind as init_jarc. On ColecoVision and NES this is ordinary code.
+	' On ColecoVision and NES this is ordinary code.
 setup_font:
 	' Flicker stays OFF. CVBasic's is all-or-nothing -- it rotates all 32
 	' slots, so Kelly would strobe too, and he is the one thing the player
@@ -7260,27 +7186,10 @@ setup_font:
 	nespw = 2			' NES/Coleco start on a 2-frame pass
 	#endif
 
-	' THE ONE AND ONLY BANK SWITCH THE PROGRAM EVER MAKES, and it happens
-	' here, before the first frame.
-	'
-	' There are two data banks now. Bank 1 holds everything read while the
-	' game is running -- sprite and store art, the templates, the lookup
-	' tables -- and it is selected at the end of this routine and never
-	' changed again, so every VARPTR/PEEK read in the program is reading a
-	' page that is permanently mapped. That is the property that makes
-	' banking safe here: a missed BANK SELECT returns bytes from the wrong
-	' page with no error at build or run time, so the safest number of
-	' switches during play is none.
-	'
-	' Bank 2 exists to hold data that is read ONCE, at setup, and never
-	' again. The font is exactly that: two DEFINEs copy it into VRAM and
-	' nothing reads font_bits or font_col for the rest of the run. So it can
-	' live on a page that is mapped for the length of those two statements.
-	'
-	' IF THIS EVER FAILS IT FAILS LOUDLY. Select the wrong bank here and the
-	' font is garbage on the title screen, immediately and unmistakably --
-	' which is the same diagnostic the font used to provide by staying out of
-	' the banks altogether, recovered for free.
+	' THE FONTS COME FROM lzbuf ON THE TI: lz_setup unpacked the setup
+	' tables there at power-on, before this runs (DESIGN.md section 55).
+	' If that ever goes wrong it goes wrong loudly -- the title's text is
+	' garbage, immediately and unmistakably.
 
 	#if NES
 	' THE FONT IS SENT WITH A COLOUR TABLE SO ITS PAPER IS NOT THE BACKDROP.
@@ -7350,8 +7259,7 @@ setup_font:
 	' it could not go there; it did not need to, because it is read ONCE, by
 	' these two statements, and never again.
 	'
-	' Loading it inside the bank-2 window the font already opens means the
-	' program still makes exactly ONE bank switch in its life.
+	' On the TI it is in lzbuf with the other setup tables.
 	' IN TWO PIECES, AND THE SPLIT IS NOT TIDINESS. The character table has
 	' 0..31, 91..95 and 182..207 free -- sixty-three codes, but the longest
 	' run is thirty-two and the face needs forty. Loading it as one block at
@@ -7564,16 +7472,9 @@ init_tables:
 
 	INCLUDE "font.bas"
 	INCLUDE "titlefont.bas"
-	' AND THE TITLE'S DISPLAY LIST, for the same reason as the font: walked
-	' once by title_draw, at boot and on a return to the title, and never
-	' during play. title_draw selects bank 2 around its walk.
-	'
-	' ITS MESSAGE BOXES DID NOT COME WITH IT. They are the same format and
-	' were in the same generated file, which is what made this worth doing
-	' carefully: they are walked when a ROUND ENDS, mid-game, so on bank 2
-	' they would have returned bytes from the wrong page at the moment a life
-	' is lost -- and with no error at build or run time. gentitle.py now
-	' writes them to title.bas below, which stays in bank 1.
+	' AND THE TITLE'S DISPLAY LIST, walked by title_draw at boot and on a
+	' return to the title. (The TI's copy is in lzbuf.) Its message boxes
+	' are the same format and live in title.bas, below.
 	' scan_cols is the TMS radar's colour table; its one reader, the DEFINE
 	' COLOR in the non-NES setup path, does not exist on the NES, so neither
 	' does the table (384 bytes the NES PRG could not spare).
@@ -7588,9 +7489,6 @@ init_tables:
 	' title is up, which is safe from a bank the program switches away from;
 	' see title_music_on. Even length, asserted by genmusic.py.
 	INCLUDE "titlemusic.bas"
-	#if TI994A
-	BANK 1
-	#endif
 	INCLUDE "title.bas"
 	INCLUDE "art.bas"
 	INCLUDE "store.bas"
@@ -7652,60 +7550,7 @@ lz_unpack:
 	ASM lz_done:
 	RETURN
 
-	' AT POWER-ON: unpack the play tables into lzbuf, then check
-	' every table's two checksums against the ones genlzss.py computed from the
-	' generated sources. lzbad = the number of mismatches; the title shows it.
-lz_probe:
-	#lzs = VARPTR lz_play(0)
-	#lzd = VARPTR lzbuf(0)
-	#lzn = #lz_meta(1)
-	GOSUB lz_unpack
-	lzbad = 0
-	#lzo = 0
-	#lzk = 2
-	lznt = #lz_meta(0)
-	FOR lzt = 1 TO lznt
-		#lzl = #lz_meta(#lzk)
-		#lzs1 = 0
-		#lzs2 = 0
-		FOR #lzi = 1 TO #lzl
-			#lzs1 = #lzs1 + lzbuf(#lzo)
-			#lzs2 = #lzs2 + #lzs1
-			#lzo = #lzo + 1
-		NEXT #lzi
-		IF #lzs1 <> #lz_meta(#lzk + 1) THEN lzbad = lzbad + 1
-		IF #lzs2 <> #lz_meta(#lzk + 2) THEN lzbad = lzbad + 1
-		#lzk = #lzk + 3
-	NEXT lzt
-	RETURN
-
-	' AT THE START OF BOOT: the setup-only tables (store and sprite art, the
-	' fonts and their colours, the radar colours) into lzbuf, checked the
-	' same way. setup_font and setup_rest upload them from there; lz_probe
-	' then overwrites the buffer with the play tables (DESIGN.md section 55).
-lz_setup:
-	#lzs = VARPTR lz_sdat(0)
-	#lzd = VARPTR lzbuf(0)
-	#lzn = #lz_smeta(1)
-	GOSUB lz_unpack
-	lzsbad = 0
-	#lzo = 0
-	#lzk = 2
-	lznst = #lz_smeta(0)
-	FOR lzt = 1 TO lznst
-		#lzl = #lz_smeta(#lzk)
-		#lzs1 = 0
-		#lzs2 = 0
-		FOR #lzi = 1 TO #lzl
-			#lzs1 = #lzs1 + lzbuf(#lzo)
-			#lzs2 = #lzs2 + #lzs1
-			#lzo = #lzo + 1
-		NEXT #lzi
-		IF #lzs1 <> #lz_smeta(#lzk + 1) THEN lzsbad = lzsbad + 1
-		IF #lzs2 <> #lz_smeta(#lzk + 2) THEN lzsbad = lzsbad + 1
-		#lzk = #lzk + 3
-	NEXT lzt
-	RETURN
+	' lz_setup, lz_probe and lz_report are generated into lzss_play.bas.
 	#endif
 
 
