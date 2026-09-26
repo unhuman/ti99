@@ -8,6 +8,8 @@
 	' with no glyph emit blanks rather than being skipped -- a gap would shift every
 	' letter after it.
 
+#if TI994A
+#else
 font_bits:
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00	' space
 	DATA BYTE $20,$20,$20,$20,$20,$00,$20,$00	' !
@@ -68,6 +70,7 @@ font_bits:
 	DATA BYTE $88,$88,$50,$20,$50,$88,$88,$00	' X
 	DATA BYTE $88,$88,$50,$20,$20,$20,$20,$00	' Y
 	DATA BYTE $F8,$08,$10,$20,$40,$80,$F8,$00	' Z
+#endif
 
 	' THE COLOUR TABLE, 472 bytes of the same value ($B4 = light yellow ink on dark blue).
 	'
@@ -82,7 +85,8 @@ font_bits:
 
 #if NES
 	' NES uses nes_fcol; omit this identical 472-byte TMS colour table.
-#else
+#endif
+#if COLECOVISION
 font_col:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' space
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4	' !

@@ -7356,3 +7356,47 @@ step.
 bank-2 fonts, title table and radar colours get compressed, unpacked into a
 temporary RAM buffer and uploaded, and the constant colour tables become a
 VRAM fill.
+
+## 55. TI single bank: step 3, the setup data is compressed too (2026-09-26)
+
+A second stream, `lz_sdat` (2,070 bytes in bank 1), holds the 18 tables read
+only at setup:
+* `store_pat`/`store_col`, the sprite art (`spr_harry`, `spr_kelly`,
+  `spr_plane`, the small sprites) and `esc_deck`, from bank 1;
+* the fonts `font_bits`/`tfont_pat0`/`tfont_pat1`, their one-value colour
+  tables and `scan_cols`, from bank 2.
+
+The colour tables ride along instead of becoming a VRAM fill. They compress to
+almost nothing, and every `DEFINE COLOR` keeps working unchanged.
+
+**Order at power-on:** bank 1 is selected and `lz_setup` unpacks `lz_sdat`
+into `lzbuf`. `setup_font` and `setup_rest` then upload from it through the
+same `EQU`s as step 2, `init_tables` runs, and `lz_probe` unpacks `lz_play`
+over it. `title_tbl` and `jarc_tbl` moved into `lz_play`, because they are
+read after setup: `title_draw` walks the display list on every return to the
+title, and `init_jarc` copies the arc after `lz_probe`. `lzbuf` is declared
+by the generated include, sized to the larger stream (5,4xx bytes).
+
+**One exclusion rule for every file:** `exclude_from_ti` wraps a table that
+sits outside any `#if`. For a table in the `#else` of an `#if NES`
+(`font_col`, `tfont_col0/1`, `store_pat`/`store_col`, the message boxes), it
+splits that block's `#else` into `#endif` + `#if COLECOVISION`. It checks that
+every table in such a branch is one the TI no longer needs.
+
+**Verified in Classic99:** the self-test reads `LZ BAD 0s0 OF 28s18` (this
+font draws `+` as `s`). The title's fonts, title font, colours and lamps look
+as before. A round's store art, counters, suitcase, Kelly and Harry all draw
+correctly. **ColecoVision and NES: byte-for-byte identical to `master`.**
+
+**TI sizes now:**
+
+| | used | free |
+|---|---|---|
+| bank 1 (both streams) | 4,648 | 3,544 |
+| bank 2 | 4,478 | 3,714 |
+| RAM | 6,132 of 7,821 | |
+| fixed area | 22,682 | first pass 56 |
+
+The two banks total **9,126 against the 8,192** one bank holds. Still to go:
+compress the tunes (~480 bytes), drop the self-test's checksum tables and
+loops once proven (~550), and merge.

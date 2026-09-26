@@ -12,6 +12,8 @@
 	' the right. Every block is an EVEN number of bytes -- an odd DATA BYTE run
 	' silently misaligns every word table after it (CLAUDE.md 3A).
 
+#if TI994A
+#else
 spr_kelly:	' Kelly: RIGHT hat/face/two merged run bodies/two FREE slots/duck hat/face/body, then the same LEFT (+36). The run bodies carry tunic AND legs, so a frame is one sprite, and standing is run frame 1. Patterns 0..68
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$03,$07,$0F,$0F,$0F,$3F
@@ -85,7 +87,10 @@ spr_kelly:	' Kelly: RIGHT hat/face/two merged run bodies/two FREE slots/duck hat
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FC,$FE,$FE,$FE,$1E,$07,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 spr_harry:	' Harry: RIGHT torso/stripes/face, the same LEFT (+P_HFACING), then the four run frames RIGHT and the same four LEFT (+P_HLEGFACING)
 	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$67,$00,$6F,$00,$0F,$00,$1E
@@ -223,37 +228,55 @@ spr_harry:	' Harry: RIGHT torso/stripes/face, the same LEFT (+P_HFACING), then t
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $1F,$0C,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 spr_cart:	' shopping cart -- jump it
 	DATA BYTE $00,$00,$00,$00,$7F,$55,$55,$55
 	DATA BYTE $55,$55,$55,$7F,$7F,$20,$70,$70
 	DATA BYTE $00,$00,$00,$00,$FE,$52,$52,$52
 	DATA BYTE $52,$52,$52,$FE,$FE,$04,$0E,$0E
+#endif
 
+#if TI994A
+#else
 spr_ball:	' beach ball -- jump it LOW, duck it HIGH
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $07,$1F,$3F,$7F,$7F,$3F,$1F,$07
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $E0,$F8,$FC,$FE,$FE,$FC,$F8,$E0
+#endif
 
+#if TI994A
+#else
 spr_radio:	' cathedral radio, stationary
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0C,$07,$1F,$3F,$3F,$3F,$3F,$3F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $30,$E0,$F8,$FC,$FC,$FC,$FC,$FC
+#endif
 
+#if TI994A
+#else
 spr_radcar:	' radar lift car
 	DATA BYTE $F8,$F8,$F8,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 spr_raddot:	' radar marker -- Kop and crook
 	DATA BYTE $E0,$E0,$E0,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and one colour: the propeller is merged into the body in two phases rather than carried by a second sprite in its own colour. Four patterns where there were six, and slots 16-23 are free.
 	DATA BYTE $00,$00,$00,$00,$00,$00,$0F,$C3
 	DATA BYTE $C2,$FF,$FF,$7C,$1F,$00,$00,$00
@@ -271,6 +294,7 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and on
 	DATA BYTE $0D,$BB,$FF,$B0,$3F,$10,$38,$30
 	DATA BYTE $00,$00,$00,$00,$00,$00,$F0,$C3
 	DATA BYTE $43,$FF,$FF,$3E,$F8,$00,$00,$00
+#endif
 
 	' ---------------------------- borrowed at runtime, no slot of their own
 
@@ -362,7 +386,8 @@ nes_esc_col:	' store_col's 12 escalator characters from 110, for the NES
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
 	DATA BYTE $1B,$1A,$1A,$1A,$1A,$1C,$1C,$1C
-#else
+#endif
+#if COLECOVISION
 
 store_pat:	' 89 chars, 8 bytes each
 	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
@@ -657,6 +682,8 @@ esc_phe3:	' chars 116-121, phase 3 -- DEFINE CHAR 116,6,esc_phe3
 	' CVBasic left in the colour table, which on a green store made the HUD
 	' unreadable.
 
+#if TI994A
+#else
 esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at 8192 + char*8, once, at setup
 	DATA BYTE $8C,$1B,$1B,$1A,$1A,$1A,$1C,$1C
 	DATA BYTE $1C,$8D,$1B,$1B,$1A,$1A,$1A,$1C
@@ -665,6 +692,7 @@ esc_deck:	' 6 x (char, 8 colour bytes) -- write into the THIRD-0 colour table at
 	DATA BYTE $1A,$1C,$1C,$1C,$73,$1B,$1B,$1A
 	DATA BYTE $1A,$1A,$1C,$1C,$1C,$8E,$1B,$1B
 	DATA BYTE $1A,$1A,$1A,$1C,$1C,$1C
+#endif
 
 	' code map, for the source to reference:
 	'   96  SLAB

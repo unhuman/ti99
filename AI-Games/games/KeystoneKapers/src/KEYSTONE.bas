@@ -696,9 +696,6 @@
 	DIM cok(4)			' this screen's collectible, per band
 	DIM coc(4)			' its column
 	DIM takn(4)			' 32 bits: which bands have been cleaned out
-	#if TI994A
-	DIM lzbuf(4182)		' the TI's play tables, unpacked from lz_play (DESIGN.md 53)
-	#endif
 
 	' ---------------------------------------------------------------- state
 	' Kelly
@@ -727,6 +724,8 @@
 	' And it stays once: `GOTO boot` after a game over re-enters BELOW this, so
 	' a second game reaches its title in a single redraw.
 	#if TI994A
+	BANK SELECT 1
+	GOSUB lz_setup		' the setup tables into RAM first (bank 1)
 	BANK SELECT 2
 	#endif
 	GOSUB setup_font
@@ -6948,7 +6947,7 @@ title_input:
 	PRINT AT 681,"FIRE TO START"
 	#endif
 	#if TI994A
-	PRINT AT 33,"LZ BAD ",lzbad," OF ",lznt," TABLES "	' STEP-1 PROBE
+	PRINT AT 33,"LZ BAD ",lzbad,"+",lzsbad," OF ",lznt,"+",lznst," "	' LZ SELF-TEST
 	#endif
 	GOSUB prt_musen
 	#if NES
@@ -7676,6 +7675,34 @@ lz_probe:
 		NEXT #lzi
 		IF #lzs1 <> #lz_meta(#lzk + 1) THEN lzbad = lzbad + 1
 		IF #lzs2 <> #lz_meta(#lzk + 2) THEN lzbad = lzbad + 1
+		#lzk = #lzk + 3
+	NEXT lzt
+	RETURN
+
+	' AT THE START OF BOOT: the setup-only tables (store and sprite art, the
+	' fonts and their colours, the radar colours) into lzbuf, checked the
+	' same way. setup_font and setup_rest upload them from there; lz_probe
+	' then overwrites the buffer with the play tables (DESIGN.md section 55).
+lz_setup:
+	#lzs = VARPTR lz_sdat(0)
+	#lzd = VARPTR lzbuf(0)
+	#lzn = #lz_smeta(1)
+	GOSUB lz_unpack
+	lzsbad = 0
+	#lzo = 0
+	#lzk = 2
+	lznst = #lz_smeta(0)
+	FOR lzt = 1 TO lznst
+		#lzl = #lz_smeta(#lzk)
+		#lzs1 = 0
+		#lzs2 = 0
+		FOR #lzi = 1 TO #lzl
+			#lzs1 = #lzs1 + lzbuf(#lzo)
+			#lzs2 = #lzs2 + #lzs1
+			#lzo = #lzo + 1
+		NEXT #lzi
+		IF #lzs1 <> #lz_smeta(#lzk + 1) THEN lzsbad = lzsbad + 1
+		IF #lzs2 <> #lz_smeta(#lzk + 2) THEN lzsbad = lzsbad + 1
 		#lzk = #lzk + 3
 	NEXT lzt
 	RETURN

@@ -193,9 +193,12 @@ stor_ix:	' [lv*8 + scr] -> template id
 	DATA BYTE 2,0,1,4,0,1,0,14,5,6,7,8,9,10,11,12
 #endif
 
+#if TI994A
+#else
 jarc_tbl:	' jump height per frame, 30 frames
 	DATA BYTE 0,3,6,8,10,11,12,13,13,14,14,14,14,14,14,14
 	DATA BYTE 14,14,13,13,12,12,11,10,9,7,5,3,1,0
+#endif
 
 #if TI994A
 #else
