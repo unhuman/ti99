@@ -7604,7 +7604,7 @@ init_tables:
 	' ---------------------------------------------------------------- LZSS (TI)
 	' THE DECODER for assets/lzss.py's format: a flag byte governs eight items,
 	' least significant bit first; 1 = a literal byte, 0 = a two-byte match,
-	' big-endian (offset << 4 | length - 3), offset 1..4095 back into the
+	' big-endian (offset << 6 | length - 3), offset 1..1023 back into the
 	' output. #lzs = the compressed stream, #lzd = the RAM destination, #lzn =
 	' the output length (it stops there, so a stream's padding is never read).
 	' R1-R9 only: R10 is CVBasic's stack pointer and R11 its return link.
@@ -7636,9 +7636,9 @@ lz_unpack:
 	ASM ANDI R7,>FF00
 	ASM SOC R8,R7
 	ASM MOV R7,R8
-	ASM ANDI R8,>000F
+	ASM ANDI R8,>003F
 	ASM AI R8,3
-	ASM SRL R7,4
+	ASM SRL R7,6
 	ASM MOV R2,R9
 	ASM S R7,R9
 	ASM lz_copy:

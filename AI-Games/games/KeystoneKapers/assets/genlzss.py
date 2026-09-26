@@ -35,7 +35,7 @@ PLAY = ['stor_tpl', 'stor_lvl', 'stor_arc', 'esc_cap', 'stor_co', 'stor_pil',
         'stor_ix', 'stor_esc', 'spr_hstand', 'spr_hstandl', 'spr_hbod4',
         'msg_away', 'msg_gothim', 'msg_over', 'msg_plane', 'msg_timeup',
         'bulb_lit', 'bulb_off'] + ['esc_ph%s%d' % (s, p) for p in range(4) for s in 'we'] + [
-        'title_tbl', 'jarc_tbl']
+        'title_tbl', 'jarc_tbl', 'title_tune', 'game_tune']
 
 # Read only at SETUP (DESIGN.md section 55). The one-value colour tables ride
 # along: they compress to almost nothing, and DEFINE COLOR keeps working.
@@ -136,6 +136,11 @@ def main():
     # after exclude_from_ti has taken them out of the TI's view.
     for f in FILES:
         tables.update(lzss.read_tables(os.path.join(SRC, f), target='COLECOVISION'))
+    # THE TUNES: written as MUSIC statements, so no DATA for read_tables to
+    # find. genmusic.encode() produces the bytes MUSIC compiles to -- checked
+    # identical against CVBasic's own output -- and the TI plays them from RAM.
+    import genmusic
+    tables.update(genmusic.tune_bytes())
     missing = [t for t in PLAY + SETUP if not tables.get(t)]
     if missing:
         sys.exit('genlzss: tables not found in the generated sources: %s' % missing)

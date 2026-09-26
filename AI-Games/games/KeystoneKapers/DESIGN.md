@@ -7400,3 +7400,45 @@ correctly. **ColecoVision and NES: byte-for-byte identical to `master`.**
 The two banks total **9,126 against the 8,192** one bank holds. Still to go:
 compress the tunes (~480 bytes), drop the self-test's checksum tables and
 loops once proven (~550), and merge.
+
+## 56. TI single bank: step 4, a better format and the tunes in RAM (2026-09-26)
+
+**The format changed from 12/4 to 10/6, with lazy parsing.** A match is still
+two bytes, but the 16 bits are split differently: a 10-bit offset (1..1023)
+and a 6-bit length (3..66), instead of 12 and 4. Keystone's tables are long
+runs (store templates, one-value colour tables), so a longer match is worth
+more than a wider window. The compressor also parses one step lazily: before
+taking a match, it checks whether a clearly longer match starts one byte
+later. Measured on the real streams:
+
+| format | both streams |
+|---|---|
+| 12/4 greedy | 3,697 |
+| 10/6 lazy | 3,367 |
+
+The decoder changed in two constants (`SRL R7,6`, `ANDI R8,>003F`). Lazy
+parsing costs the decoder nothing.
+
+**The tunes are in the play stream.** `title_tune` and `game_tune` used to be
+`MUSIC` statements compiled into bank 2. `genmusic.encode()` now produces the
+exact bytes `MUSIC` compiles to, and was checked **identical** to CVBasic's
+output (517 bytes each). Those bytes join `lz_play`, and `PLAY title_tune`
+follows an `EQU` into `lzbuf` like every other table. Encoding rules worth
+knowing:
+* a row is 4 bytes, voice 0 first;
+* the instrument carries over, from note to note and across tunes, because
+  CVBasic keeps it in a `static` for the whole compile;
+* `MUSIC REPEAT` is **four** bytes (`FD 00 00 00`), so a tune is odd-length.
+  The old size assertion counted one byte and was wrong.
+
+`titlemusic.bas` is now wrapped in `#if TI994A` / `#else`. The TI compiles
+none of it, and the ColecoVision and NES compile it unchanged.
+
+**Verified in Classic99:** the self-test reads `LZ BAD 0s0 OF 30s18`, and a
+round starts and plays normally. **ColecoVision and NES: byte-for-byte
+identical to `master`.**
+
+**TI sizes now:** bank 1 is 4,854 and bank 2 is 3,444, a total of **8,298,
+which is 106 over** one bank. RAM is 6,280 of 7,821. Next: drop the
+self-test's checksum tables and verify loops (~530 bytes), then merge the
+banks.

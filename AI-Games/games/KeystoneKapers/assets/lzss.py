@@ -6,21 +6,45 @@ two must change together:
 
   a FLAG byte governs the next 8 items, least significant bit first;
   flag bit 1 -> one LITERAL byte;
-  flag bit 0 -> a MATCH in two bytes, big-endian: offset (12 bits, 1..4095
-               back into the OUTPUT) << 4 | (length - 3) (4 bits, so 3..18).
+  flag bit 0 -> a MATCH in two bytes, big-endian: offset (10 bits, 1..1023
+               back into the OUTPUT) << 6 | (length - 3) (6 bits, so 3..66).
 
 The decoder is told the output length and stops there, so the final flag
 byte's unused bits are never read. Matches may overlap their own output (an
 offset shorter than the length repeats a run), which is how long runs of one
 value cost two bytes.
 
-Greedy longest match over the whole 4 KB window. The compressor runs at build
-time and can be slow; only the decoder has to be small.
+WHY 10/6 AND NOT 12/4. Measured on Keystone's real streams (DESIGN.md
+section 56): its tables are long runs (store templates, one-value colour
+tables), so a longer match beats a wider window. 12/4 greedy made 3,697
+bytes of the two streams, and 10/6 with one-step lazy parsing makes 3,367.
+
+One-step LAZY parsing: before taking a match, look one byte ahead, and emit
+a literal instead if a clearly longer match starts there. The compressor runs
+at build time and can be slow; only the decoder has to be small, and lazy
+parsing costs it nothing.
 """
 import re
 import sys
 
-WINDOW, MINM, MAXM = 4095, 3, 18
+OBITS = 10
+LBITS = 16 - OBITS
+WINDOW, MINM = (1 << OBITS) - 1, 3
+MAXM = (1 << LBITS) - 1 + MINM
+
+
+def _longest(src, i):
+    n = len(src)
+    best_len, best_off = 0, 0
+    for j in range(max(0, i - WINDOW), i):
+        k = 0
+        while k < MAXM and i + k < n and src[j + k] == src[i + k]:
+            k += 1
+        if k > best_len:
+            best_len, best_off = k, i - j
+            if k == MAXM:
+                break
+    return best_len, best_off
 
 
 def compress(src):
@@ -34,17 +58,12 @@ def compress(src):
         for bit in range(8):
             if i >= n:
                 break
-            best_len, best_off = 0, 0
-            for j in range(max(0, i - WINDOW), i):
-                k = 0
-                while k < MAXM and i + k < n and src[j + k] == src[i + k]:
-                    k += 1
-                if k > best_len:
-                    best_len, best_off = k, i - j
-                    if k == MAXM:
-                        break
+            best_len, best_off = _longest(src, i)
+            if best_len >= MINM and i + 1 < n:
+                if _longest(src, i + 1)[0] > best_len + 1:
+                    best_len = 0        # lazy: a literal, then the longer match
             if best_len >= MINM:
-                v = (best_off << 4) | (best_len - MINM)
+                v = (best_off << LBITS) | (best_len - MINM)
                 out += bytes([v >> 8, v & 255])
                 i += best_len
             else:
@@ -71,7 +90,7 @@ def decompress(buf, n):
             else:
                 v = buf[p] << 8 | buf[p + 1]
                 p += 2
-                off, ln = v >> 4, (v & 15) + MINM
+                off, ln = v >> LBITS, (v & ((1 << LBITS) - 1)) + MINM
                 for _ in range(ln):
                     out.append(out[-off])
     return bytes(out)
