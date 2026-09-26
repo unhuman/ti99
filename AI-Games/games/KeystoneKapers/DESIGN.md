@@ -7187,3 +7187,31 @@ to the commit before this work. Every change for them is a removed
 the round-start check. **Not verified by ear here:** the NES music itself.
 **Next, optional:** about 60 bytes of NES PRG would let the title play the
 full STREET.
+
+## 51. NES: both tunes full length (2026-09-26)
+
+Section 50 cut the NES title tune to 8 bars because its PRG was 56 bytes short.
+Two NES-only savings brought STREET back to full length, with **31 bytes of PRG
+free**. RAM is still 1,518 bytes, with 1 byte to spare above the last array.
+
+| change | saving |
+|---|---|
+| NES `music_duck`: nine `IF x > 0 THEN GOTO md_busy` became one `IF swt OR sht OR ... OR sfp THEN GOTO md_busy` over the unsigned counters (a bitwise OR of values, about 3 bytes a term against about 12 per `IF`) | ~70 B |
+| NES `title_setup` ends `GOTO title_input` instead of repeating its prompt, key reset and music line (`prt_musen` touches none of `tkl`/`t838`/`nai`, so the order is immaterial). The TI/ColecoVision tail is unchanged under `#else`. | ~35 B |
+
+`genmusic.py`'s `NES_TITLE_BARS` is now `None`, so it writes one copy of both
+tunes for all three targets. The option stays in case the NES runs short
+again. It emits a cut under `#if NES` and the full tunes under `#else`.
+
+**A checker bug the change exposed.** `checkvblank.py`'s `reachable()` decided
+fall-through from a routine's last line, which was the `#endif` of the new
+`#if NES / GOTO title_input / #else / GOTO title_wait / #endif` tail. `#endif`
+is not terminal, so the checker concluded `title_setup` ran on into
+`setup_font` and failed the build on a `GOSUB nes_def` no frame can reach. It
+now decides fall-through only from lines the NES compiles (`nes_lines`), and
+never from a directive. `checkvblank_test.py` still rejects both defective
+forms.
+
+**TI and ColecoVision:** rebuilt **byte-for-byte identical** to the previous
+commit. **NES:** full build, every gate and test passes; running in iNES with
+the round-start check passing.

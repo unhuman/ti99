@@ -6744,15 +6744,13 @@ music_duck:
 	IF nai = 2 THEN nai = 0 : PLAY SIMPLE NO DRUMS : PLAY game_tune
 	' Same test as below, branching instead of setting gmb, plus the channel
 	' owners the NES adds (the bugle on 0, the prize on 1 -- nes_apu.asm).
-	IF swt > 0 THEN GOTO md_busy
-	IF sht > 0 THEN GOTO md_busy
-	IF sfj > 0 THEN GOTO md_busy
-	IF sfh > 0 THEN GOTO md_busy
-	IF sfe > 0 THEN GOTO md_busy
-	IF spt > 0 THEN GOTO md_busy
-	IF spz > 0 THEN GOTO md_busy
-	IF sfk > 0 THEN GOTO md_busy
-	IF sfp > 0 THEN GOTO md_busy
+	' ONE TEST, NOT NINE. Every one of these is an unsigned byte, so "any is
+	' non-zero" is their bitwise OR: one load and eight ORAs, about 35
+	' bytes, where nine `IF x > 0 THEN GOTO` cost about 105 on the 6502 --
+	' part of what let the NES title play the whole of STREET. (A bitwise OR
+	' of VALUES, not of comparisons, so the TI's AND/OR hazard does not
+	' apply; and this block is NES-only anyway.)
+	IF swt OR sht OR sfj OR sfh OR sfe OR spt OR spz OR sfk OR sfp THEN GOTO md_busy
 	IF nai = 0 THEN RETURN
 	nai = 0
 	PLAY SIMPLE NO DRUMS
@@ -7125,16 +7123,16 @@ title_setup:
 	' prompt. Redraw that prompt when setup is cancelled; boot is not involved
 	' on this path, so relying on title_input would otherwise leave it absent.
 	#if NES
-	PRINT AT 681 + 96,"FIRE TO START"
-	tkl = 0
-	t838 = 0
-	nai = 1
+	' The same prompt, key reset and music line title_input sets up before
+	' falling into title_wait (prt_musen touches none of tkl/t838/nai, so the
+	' order is immaterial) -- one copy, not two, on the byte-starved NES.
+	GOTO title_input
 	#else
 	PRINT AT 681,"FIRE TO START"
 	tkl = 15
-	#endif
 	GOSUB prt_musen
 	GOTO title_wait
+	#endif
 
 	' 8-3-8 IS EDGE-TRIGGERED AND ANY STRAY DIGIT RESETS IT (see title_wait).
 	'

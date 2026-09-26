@@ -160,8 +160,16 @@ def routines(src):
     return out, marks
 
 
-def reachable(src, rts, marks):
-    """Labels reachable from `main` over GOSUB, GOTO and fall-through."""
+def reachable(src, rts, marks, live_lines=None):
+    """Labels reachable from `main` over GOSUB, GOTO and fall-through.
+
+    ONLY LINES THE NES COMPILES, AND NEVER A DIRECTIVE, DECIDE FALL-THROUGH. A
+    routine ending `#if NES / GOTO a / #else / GOTO b / #endif` has `#endif` as
+    its last line, and `#endif` is not terminal -- so this once concluded that
+    title_setup ran on into setup_font and failed the build on a GOSUB nes_def
+    that no frame can reach. The lines scanned for GOSUB/GOTO stay every line
+    (an over-approximation that can only add routines, never hide one).
+    """
     order = [name for _i, name in marks]
     nxt = dict(zip(order, order[1:]))
     seen = set()
@@ -177,7 +185,8 @@ def reachable(src, rts, marks):
             st = src[i].strip()
             if not st or st.startswith("'"):
                 continue
-            last = st
+            if not st.startswith("#") and (live_lines is None or i in live_lines):
+                last = st
             for m in GOSUB_RE.finditer(st):
                 stack.append(m.group(1))
             for m in GOTO_RE.finditer(st):
@@ -277,7 +286,7 @@ def main(path=None, quiet=False):
     src = open(path or BAS, encoding="utf-8").read().split("\n")
     rts, marks = routines(src)
     live_lines = nes_lines(src)
-    live = reachable(src, rts, marks)
+    live = reachable(src, rts, marks, live_lines)
     bad = []
     sites = []
 

@@ -1234,6 +1234,61 @@ redesign or pick a different game.
 
 ---
 
+## 5B. Size budget from line 1 (CVBasic, every target)
+
+Keystone Kapers got music on all three machines only by clawing bytes back
+afterwards (its DESIGN.md sections 46-51). Each of those savings would have been
+free if the game had been written this way from the start. **Plan the budget
+first**, like the performance budget in §5A.
+
+**Budget music up front.** CVBasic's music player costs about **1.2 KB of
+fixed-area code on the TI** and **about 1 KB of PRG on the NES**, plus its RAM
+(about 33 bytes on the NES and ColecoVision). A tune is **4 bytes per row**
+(1 tick byte + 4/row + 1): a 16-bar tune at eight rows a bar is about 518 B. If a
+game might ever have music, reserve that space in DESIGN.md before the fixed area
+fills, not after.
+
+**Per-target data is easy to leave in the wrong build.** A table only one target
+reads still costs every target its bytes unless the INCLUDE or the emitter is
+gated. Keystone's NES carried 1.4 KB of TMS store art, a 384-byte TMS radar colour
+table and unreferenced tables while its PRG had 37 bytes free. From the first
+commit:
+* Gate each generated table by the target that reads it (`#if NES` / `#else` in
+  the generator's output, or around the INCLUDE).
+* When a target reads a few entries of a big shared table, emit a slice for it
+  (sliced from the generator's constants, never typed offsets).
+* **Sweep a target's assembly for unreferenced labels and partly-read tables**
+  before calling it full. Match `#label` too: 6502 immediate operands prefix it.
+
+**A table of one repeated value is the cheap option only where ROM is
+plentiful.** On an unbanked NES it is 8 bytes per character for nothing: pass
+the constant through the uploader instead (Keystone's `nes_chrinkrow` treats a
+`#ncol` of 1..255 as the colour byte itself).
+
+**6502 (NES) code is verbose, so write the small forms.**
+* `IF x > 0 THEN GOTO lbl` is about 12 bytes (load, compare, long branch, jump).
+  A run of them testing "is any of these non-zero" is **one `IF a OR b OR c ...
+  THEN`** over unsigned bytes: a bitwise OR of values, about 3 bytes per term.
+  This is not the TI's `<cmp> AND <cmp>` hazard: it ORs values, not comparisons.
+* When two routines end with the same statements on a target, the second can
+  `GOTO` the first's tail. Gate it if the other targets differ.
+* Keep a clone sweep handy: repeated instruction runs, with compiler labels
+  normalised, ranked by removable bytes. Most large clones are the compiler's
+  array-index code, which only a source change can fold.
+
+**NES RAM: scalars land in front of the arrays.** CVBasic allocates new scalar
+variables just before the array block, so *three bytes of new scalars* can push
+the last array past `$07FF` into the mirrored zero page. Run
+`checknesram.py`-style checks before adding a variable. Prefer:
+* reusing a documented, provably idle scratch byte,
+* folding flags into one state byte (Keystone's NES music state is `nai`: 0
+  playing, 1 ducked, 2 not started),
+* branching instead of holding a flag,
+* sizing arrays to the largest index actually read.
+
+**Keep a per-target byte budget table in DESIGN.md** (fixed/PRG free, RAM
+free) and update it with every feature, the way §5A's performance budget is kept.
+
 ## 6. Compiler-Safe Coding Checklist
 
 Every game's XB source must satisfy all of these so XB and compiled behavior match:
