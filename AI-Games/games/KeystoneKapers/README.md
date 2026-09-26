@@ -144,8 +144,8 @@ The layout matches the raised ColecoVision title. Preview it with
 The TI console's launch-menu entry is `LES KAPERS`; the full 22-character
 `LES KAPERS DE KEYSTONE` exceeds its 20-character cartridge label field.
 The credit uses lowercase `and`: `2026 UNHUMAN and C&C AI`.
-Result messages appear over the skyline, with their frame starting two rows
-below the HUD. GAME OVER appears separately in the middle shopping floor.
+Result messages stand on the third floor (rows 7-9). GAME OVER appears
+separately on the second floor below them (rows 11-13).
 Fast-hazard path checks require Kelly's pose to stay unchanged during the
 update. Standing up after a duck still checks direct overlap, but does not
 retroactively count a plane that crossed while his pose was changing.
@@ -197,16 +197,21 @@ elevator **car** (not its shaft), **Kelly black and Harry white**. Four pixel ro
 one colour each, inset in a grey band the width of the screen -- as the 2600 has it.
 
 **The end of a round keeps the store visible.** Its dark-blue result box
-overlaps the skyline. On the last life, `GAME OVER` also appears in the
-middle shopping floor.
+stands on the third floor, rows 7-9. On the last life, `GAME OVER` also appears
+on the second floor, rows 11-13. The rows are the same on every target (the NES
+draws the whole store three rows lower, PPU rows 10-12 and 14-16), and both
+start a 2x2 NES palette quadrant, which is what fixes where they can go. Text
+is centred within each 16-column box.
 
-The result frame begins two rows below the HUD. GAME OVER occupies rows
-11-13 on TI/Coleco and PPU rows 14-16 on NES, whose palette quadrants constrain
-its position. Text is centred within each 16-column box.
+**Nothing stands on a box.** Sprites always draw over text, so before a box is
+drawn any actor touching it is hidden -- Kelly or Harry whole, an obstacle on
+its own -- and the rest of the cast stays for the beat (`DESIGN.md` sections
+58-59; `box_hide`, and `nes_boxhide` in 6502 on the NES).
 
 Vertically the box is **three** rows, with equal blank margins. NES uses P1
-for the top two rows and a navy tile for the bottom margin: P2 in the skyline,
-P3 for GAME OVER. No fourth blue row is added. The centred NES GAME OVER frame
+for the top two rows and P3's navy for the bottom margin; the halves of the
+palette quadrants a box does not cover are P0 on every screen, which
+`skymessage_test.py` checks. No fourth blue row is added. The centred NES GAME OVER frame
 can tint small fixture details immediately below it navy, an accepted tradeoff.
 
 **A catch needs you level with him, not just on his floor.** A crook riding an

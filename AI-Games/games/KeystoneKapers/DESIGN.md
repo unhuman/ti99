@@ -7504,3 +7504,98 @@ fails any bank image over 8,192 bytes, and `bankfill_test.py` covers it.
 | bank 1 (the only bank) | 7,324 | 868 |
 | RAM | 6,258 of 7,821 | |
 | fixed area | 22,602 | 1,734 (first pass 136) |
+
+## 58. Nothing stands on a message box (2026-09-26)
+
+**The fault:** the result boxes (`GOT HIM!`, `HE GOT AWAY`, `THE BIPLANE`,
+`TIME'S UP!`) are characters, and the VDP draws every sprite over characters.
+Anyone standing where a box went was drawn straight across its words.
+
+**The rule (`box_hide`, called before each result box):**
+* Test each actor's 16x16 sprites against the box.
+* A figure goes **whole**. Kelly is 3 sprites and Harry 5; hiding them one by
+  one would leave a hat or a pair of legs standing beside the box.
+* Each obstacle is 1 sprite and is tested on its own.
+* The rest of the cast stays for the beat, so the `GOT HIM!` picture of Kelly
+  over Harry survives when it is clear of the box.
+* `GAME OVER` needs nothing: `hide_all` runs before it.
+
+**Each figure is tested on one sprite, over its whole height.** Kelly is tested
+on `kby` and Harry on `hy2`, with limits derived from the full figure. `khy`
+would not work: it wraps when Kelly jumps near the top of the screen.
+
+**Costs:**
+* **TI:** ~420 bytes in the data bank. Compiled CVBasic is verbose: each
+  `SPRITE n,SPRHID,...` is 20 bytes, so the hides are loops.
+* **No new variables on any target.** The routine borrows `draw_actors`'
+  scratch (`dxx dy ds di dbn dk`), which is idle while a box is up. Six new
+  bytes pushed an NES array past `$07FF`.
+* **NES:**
+  * Program space had 31 bytes free, and the compiled routine was ~226 bytes
+    of 6502. It is hand-written instead as `nes_boxhide` in
+    `assets/nes_chr.asm`.
+  * That routine writes `y = $F0` into both sprite halves directly. It does
+    **not** call `nes_oam2`, which re-maps every colour through `nes_spal`: a
+    second call before the next redraw would recolour the actors left standing.
+  * It still did not fit, so the NES message tables gained **fill runs**. In
+    `row, col, 128 + n, byte`, the byte is written n times. A box's two 16-space
+    rows cost 4 bytes each instead of 19. `run_list` reads the form only under
+    `#if NES`, with `ttr` (the row, spent by then) as the flag. The TMS tables
+    are unchanged.
+
+**Tests:**
+* `boxhide_test.py` **executes** the real `box_hide`. It sweeps every Kelly and
+  Harry y (including the wrapped ones), the edge x values and every obstacle,
+  against ground truth computed from `gentitle.py`'s box constants and
+  `draw_actors`' sprite offsets.
+* It checks `nes_boxhide`'s constants against the same geometry.
+* It runs `run_list` over each NES fill-run table and compares the drawn cells.
+* Mutation-tested: a Kelly limit off by 10, and a fill run that does not skip
+  its byte, both fail.
+
+## 59. The result boxes stand on the third floor (2026-09-26)
+
+The result boxes moved from the skyline (rows 2-4) to the third floor, **rows
+7-9**. The floor's band is rows 6-9 under the roof slab, so the box stands on
+the floor-3 slab. `GAME OVER` stays on the second floor, rows 11-13, below it.
+
+**The rows are the same number on every target.** The NES draws the store 3
+rows lower, so its box is PPU rows 10-12. Row 7 is the one row in that band
+where an NES box starts a 2x2 attribute quadrant. `runs_of` lost its NES
+special cases.
+
+**NES colours, with nothing saved at draw time.** Both boxes start on the lower
+half of an attribute row:
+* The first byte's lower quadrants go to **P1** (the text rows).
+* The next byte's upper quadrants go to **P3**, whose index 2 is the navy
+  border row.
+
+The halves a box does not cover are **P0 on every screen**, checked in
+`gennescolor.attributes` by `skymessage_test.py`:
+* the roof slab above the result box;
+* the second-floor rows below it;
+* the rows below `GAME OVER`.
+
+So they are written as constants. `GAME OVER` always follows a result box and
+keeps that box's P3 border half (95 = P3 over P1). The `nmsg` array and
+`nes_attrs_put`'s packing loop are gone: 4 bytes of NES RAM and ~80 bytes of
+program back. The old skyline P2 border colour (`PALETTE 10`) is no longer
+used by any box.
+
+**`box_hide` moved with the box.** Its range gains a floor: TMS lines 56..79,
+so a sprite touches it for y 40..78. On the NES everything is 24 lines lower
+(y 64..102). The tests derive both from `gentitle.py`.
+
+**Verified:**
+* **Classic99:** `HE GOT AWAY` on the third floor, with Harry on the roof still
+  shown.
+* **iNES:** Kelly on the roof hidden under the old box. Then, with the box
+  moved, `HE GOT AWAY` and `GAME OVER` stacked on floors 3 and 2 with correct
+  colours.
+
+**Sizes:**
+
+| | TI | ColecoVision | NES |
+|---|---|---|---|
+| code/PRG free | fixed 1,722 (first pass 124), bank 418 | 4.6 KB | 100 |
+| RAM | 6,258 of 7,821 | 618 of 781 | 1,514 of 1,805 |

@@ -693,17 +693,6 @@ nes_fixture_offsets: DB 0,1,32,33
 nes_fixture_masks: DB $FC,$F3,$CF,$3F
 
 nes_attrs_put:
-	LDX #3
-nes_message_attrs:
-	LDA array_NESB+26,X
-	AND #15
-	STA array_NMSG,X
-	LDA array_NESB+34,X
-	AND #240
-	ORA array_NMSG,X
-	STA array_NMSG,X
-	DEX
-	BPL nes_message_attrs
 	LDA #$C0
 	STA pointer
 	LDA #$23
@@ -940,4 +929,101 @@ nes_suitcase_next:
 	INY
 	CPY #4
 	BNE nes_suitcase_loop
+	RTS
+
+	; BOX_HIDE FOR THE NES (KEYSTONE.bas box_hide, DESIGN.md section 58).
+	;
+	; The same rule as the TMS BASIC -- a figure touching the end-of-round box
+	; is hidden whole, the rest of the cast stays -- written by hand because
+	; the compiled BASIC is ~226 bytes of 6502 and the PRG had 31 free.
+	;
+	; THE NES BOX IS PPU ROWS 10-12, lines 80..103, where the TMS box is lines
+	; 56..79: the store, the cast and the box are all drawn 24 lines lower. So
+	; a sprite at y touches it for y 64..102 (lines y+1..y+16), and the figure
+	; limits are the TMS ones plus 24: Kelly's kby 64..123, Harry's hy2
+	; 64..125. Columns 8-23 are x 49..191 on both.
+	;
+	; IT WRITES Y = $F0 INTO BOTH HALVES DIRECTLY and does not call nes_oam2:
+	; that re-maps every colour through nes_spal, so a second call before the
+	; next redraw would recolour the actors left standing.
+	; A, X, Y only.
+nes_boxhide:
+	LDA cvb_KLX
+	LDY cvb_KBY
+	JSR nes_bxy
+	CPY #124
+	BCS nes_bh_harry
+	LDX #0				; slots 0-2
+	LDY #3
+	JSR nes_bhide
+nes_bh_harry:
+	LDA cvb_HX
+	LDY cvb_HY2
+	JSR nes_bxy
+	CPY #126
+	BCS nes_bh_obst
+	LDX #16				; slots 4-7
+	LDY #4
+	JSR nes_bhide
+	LDX #108			; and 27, his leg stripes
+	LDY #1
+	JSR nes_bhide
+nes_bh_obst:
+	LDX #0				; obstacle i = 0..7 is slot 8 + i
+nes_bh_oloop:
+	TXA
+	PHA
+	LSR A				; two to a floor
+	TAY
+	LDA array_FLRY,Y
+	SEC
+	SBC #16				; flry is 64 or more: no borrow, carry
+	SBC array_OBH,X			; stays set for this one
+	TAY
+	LDA array_OBX,X
+	JSR nes_bxy
+	CPY #103
+	BCS nes_bh_onext
+	PLA
+	PHA
+	ASL A
+	ASL A
+	ADC #32				; (8 + i) * 4; carry is clear
+	TAX
+	LDY #1
+	JSR nes_bhide
+nes_bh_onext:
+	PLA
+	TAX
+	INX
+	CPX #8
+	BNE nes_bh_oloop
+	RTS
+
+	; A = x, Y = y. Leaves Y alone if x is 49..191 and y is 64 or more, and
+	; sets Y = 255 otherwise; the caller then tests Y against its upper limit.
+nes_bxy:
+	CMP #49
+	BCC nes_bxy_out
+	CMP #192
+	BCS nes_bxy_out
+	CPY #64
+	BCC nes_bxy_out
+	RTS
+nes_bxy_out:
+	LDY #255			; fails every caller's upper test
+	RTS
+
+	; Hide Y slots from OAM offset X, both halves.
+nes_bhide:
+	LDA #$F0
+nes_bhide_loop:
+	STA $0200,X
+	STA $0200+NES_OAM_STEP,X
+	INX
+	INX
+	INX
+	INX
+	DEY
+	BNE nes_bhide_loop
 	RTS

@@ -639,7 +639,6 @@
 	#if NES
 	DIM nsc(768)			' radar canvas pattern shadow, 48 tiles x 16
 	DIM nesb(96)			' the escalator's six characters, staged for the NMI
-	DIM nmsg(4)			' packed surrounding attribute halves for GAME OVER
 	#endif
 	DIM lv8(4)			' lv*8, so no multiply lands on an index
 	DIM rhaz(16)			' packed hazard map, retained across deaths
@@ -1333,13 +1332,30 @@ tt_run:
 	#else
 	#ttd = #ttd + 6144
 	#endif
+	' A FILL RUN, NES ONLY: a length of 128 or more writes its ONE byte
+	' (length - 128) times (gentitle.py). ttr, the row, is spent by now and
+	' holds the flag -- a new variable would cost NES RAM it does not have.
+	#if NES
+	ttr = 0
+	IF ttn > 127 THEN
+		ttn = ttn - 128
+		ttr = 1
+	END IF
+	#endif
 tt_ch:
 	ttv = PEEK(#tta)
 	VPOKE #ttd,ttv
+	#if NES
+	IF ttr = 0 THEN #tta = #tta + 1
+	#else
 	#tta = #tta + 1
+	#endif
 	#ttd = #ttd + 1
 	ttn = ttn - 1
 	IF ttn > 0 THEN GOTO tt_ch
+	#if NES
+	IF ttr THEN #tta = #tta + 1
+	#endif
 	GOTO tt_run
 
 new_game:
@@ -5424,27 +5440,28 @@ hud_kops:
 	' message box redraws the screen, and draw_screen calls nes_attr, which
 	' rewrites all sixty-four.
 nes_boxatt:
+	' BOTH BOXES START ON THE LOWER HALF OF AN ATTRIBUTE ROW: the result box
+	' at PPU row 10 (#nav 9170), GAME OVER at row 14 (9178). The first byte's
+	' lower quadrants go to P1 for the text rows; the next byte's upper ones
+	' to P3, whose index 2 is the navy of the third, bottom-border row.
+	'
+	' EVERY HALF LEFT ALONE IS P0 ON EVERY SCREEN -- the roof slab over the
+	' result box, the second-floor rows under it, the ground-floor rows under
+	' GAME OVER (gennescolor.attributes, checked by skymessage_test.py) -- so
+	' they are written as constants and nothing is saved at draw time. GAME
+	' OVER always follows a result box, whose border row is P3 in its upper
+	' half, and keeps it: 95 = P3 over P1.
 	WAIT
-	IF #nav = 9178 THEN
-		' GAME OVER begins in the lower half of one attribute row.
-		' Preserve the surrounding halves from the actual screen upload.
-		FOR nai = 0 TO 3
-			nink = (nmsg(nai) AND 15) OR 80
-			VPOKE #nav,nink
-			#nsrc = #nav + 8
-			nink = (nmsg(nai) AND 240) OR 15
-			VPOKE #nsrc,nink
-			#nav = #nav + 1
-		NEXT nai
-		#nsrc = 8712		' PPU row 16 col 8, bottom border
-	ELSE
-		' Skyline P1/P2 split: retain every colour outside the box.
-		FOR nai = 0 TO 3
-			VPOKE #nav,165
-			#nav = #nav + 1
-		NEXT nai
-		#nsrc = 8392		' PPU row 6 col 8, bottom border
-	END IF
+	nink = 80
+	IF #nav = 9178 THEN nink = 95
+	FOR nai = 0 TO 3
+		VPOKE #nav,nink
+		#nsrc = #nav + 8
+		VPOKE #nsrc,15
+		#nav = #nav + 1
+	NEXT nai
+	#nsrc = 8584			' PPU row 12 col 8, the result box's border row
+	IF #nav = 9182 THEN #nsrc = 8712	' GAME OVER's, row 16
 	FOR nai = 0 TO 15
 		VPOKE #nsrc,CH_ECAR
 		#nsrc = #nsrc + 1
@@ -5618,6 +5635,12 @@ do_catch:
 	' character is black on HUD_BG, so a row of spaces is a solid bar and the
 	' frame costs two strings and no new characters (see lose_kop).
 	#if NES
+	' no actor may stand on the box (assets/nes_chr.asm)
+	ASM JSR nes_boxhide
+	#else
+	GOSUB box_hide		' no actor may stand on top of the box
+	#endif
+	#if NES
 	' FLUSH THE PASS BEFORE DRAWING A BOX. PPUBUF accumulates for a whole loop
 	' pass and is emptied by one NMI, so a message box -- sixty-four cells,
 	' sixty-four single-byte descriptors -- was landing in the same vblank as
@@ -5637,7 +5660,7 @@ do_catch:
 	GOSUB run_list
 	#if NES
 	' nes_boxatt supplies a matching bottom margin without a fourth row.
-	#nav = 9162			' PPU rows 4..7, columns 8..23
+	#nav = 9170			' the third-floor box -- see nes_boxatt
 	GOSUB nes_boxatt
 	#endif
 	GOSUB life_finish		' finish a life just earned on the catch frame
@@ -5826,6 +5849,12 @@ lose_kop:
 	' case would need `PRINT AT` with a variable, and every other PRINT in this
 	' program uses a constant.
 	#if NES
+	' no actor may stand on the box (assets/nes_chr.asm)
+	ASM JSR nes_boxhide
+	#else
+	GOSUB box_hide		' no actor may stand on top of the box
+	#endif
+	#if NES
 	' FLUSH THE PASS BEFORE DRAWING A BOX. PPUBUF accumulates for a whole loop
 	' pass and is emptied by one NMI, so a message box -- sixty-four cells,
 	' sixty-four single-byte descriptors -- was landing in the same vblank as
@@ -5847,7 +5876,7 @@ lose_kop:
 	GOSUB run_list
 	#if NES
 	' nes_boxatt supplies a matching bottom margin without a fourth row.
-	#nav = 9162			' the skyline reason box -- see nes_boxatt
+	#nav = 9170			' the third-floor box -- see nes_boxatt
 	GOSUB nes_boxatt
 	#endif
 	' The reason is read during THIS beat, before anything else happens. It
@@ -6763,6 +6792,84 @@ mus_toggle:
 	IF musen THEN GOSUB title_music_on ELSE GOSUB snd_off
 	RETURN
 
+	' ---------------------------------------------------------------- BOX_HIDE
+	' A RESULT BOX IS TEXT, AND THE VDP ALWAYS DRAWS SPRITES OVER TEXT. The
+	' end-of-round boxes (GOT HIM!, HE GOT AWAY, THE BIPLANE, TIME'S UP!) stand
+	' on the third floor, rows 7-9 by columns 8-23 (DESIGN.md section 59) --
+	' where anyone on that floor stands, and where a jump from the floor
+	' below reaches -- so the cast was drawn straight across the words. The cast otherwise STAYS for the
+	' beat (see the GOT HIM! tally), so only what touches the box goes.
+	'
+	' A FIGURE GOES WHOLE. Kelly is three sprites and Harry five; testing them
+	' one by one would leave a hat, or a pair of legs, standing beside the box,
+	' so each figure is tested over its whole height. Each obstacle is one
+	' sprite and is tested on its own. Coordinates are the
+	' ones draw_actors last wrote; a figure already hidden (Kelly in a shut
+	' lift, Harry on another screen, an empty obstacle slot) is simply hidden
+	' again. GAME OVER needs none of this: hide_all runs before it.
+	'
+	' NO NEW VARIABLES: it borrows draw_actors' scratch (dxx, dy, ds, di, dbn,
+	' dk), which is idle while a box is up.
+	'
+	' THE NES RUNS nes_boxhide (assets/nes_chr.asm) instead: the same rule in
+	' hand-written 6502, because this compiles to ~226 bytes there and the PRG
+	' had 31 free (DESIGN.md section 58).
+	#if NES
+	#else
+box_hide:
+	' KELLY, 0-2: lines ky-9 .. ky+27 against the box's 56..79, so ky 29..88.
+	' Tested on kby (= ky + 11, 40..99) because it cannot wrap: khy does, when
+	' he jumps on the roof.
+	dxx = klx
+	dy = kby
+	dbn = 60
+	GOSUB box_ovl
+	IF dk THEN
+		FOR ds = 0 TO 2
+			SPRITE ds,SPRHID,0,0,0
+		NEXT ds
+	END IF
+	' HARRY, 4-7 and 27: lines hy-6 .. hy+32, so hy 24..85, and hy2 (= hy +
+	' 16) 40..101.
+	dxx = hx
+	dy = hy2
+	dbn = 62
+	GOSUB box_ovl
+	IF dk THEN
+		FOR ds = 4 TO 7
+			SPRITE ds,SPRHID,0,0,0
+		NEXT ds
+		SPRITE 27,SPRHID,0,0,0
+	END IF
+	' Obstacles 8-15, two to a floor, at draw_actors' own y: one sprite
+	' each, lines y+1..y+16, so y 40..78.
+	dbn = 39
+	FOR ds = 8 TO 15
+		di = ds - 8
+		dxx = obx(di)
+		dy = di / 2
+		dy = flry(dy)
+		dy = dy - 16
+		dy = dy - obh(di)
+		GOSUB box_ovl
+		IF dk THEN SPRITE ds,SPRHID,0,0,0
+	NEXT ds
+	RETURN
+
+	' dk = 1 if a figure at x dxx, whose tested y is 40 or more and under
+	' 40 + dbn, touches the box: columns 64-191 are x 49..191 for a 16-pixel
+	' sprite, and 40 is the first y whose lines (y+1..y+16) reach line 56.
+	' Single comparisons only (CLAUDE.md 3A).
+box_ovl:
+	dk = 0
+	IF dxx < 49 THEN RETURN
+	IF dxx > 191 THEN RETURN
+	IF dy < 40 THEN RETURN
+	dy = dy - 40
+	IF dy < dbn THEN dk = 1
+	RETURN
+	#endif
+
 	' ---------------------------------------------------------------- TITLE
 	' title_draw, title_input, title_wait and title_setup run only while the
 	' title is up, so on the TI they live in the bank, out of the fixed area,
@@ -7150,7 +7257,7 @@ setup_font:
 	PALETTE 6,36
 	PALETTE 7,40
 	PALETTE 9,38			' P2 lower skyline: orange, black, gold
-	PALETTE 10,1			' unused skyline index 2: navy message bottom border
+	PALETTE 10,1			' skyline index 2: navy; the skyline boxes are gone (DESIGN 59)
 	PALETTE 11,40
 	PALETTE 13,26			' P3 counters: green, blue, gold
 	PALETTE 14,1			' same navy in counter quadrants

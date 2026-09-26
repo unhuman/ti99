@@ -142,6 +142,9 @@ class Basic:
                 self.memory.update({base+i: 32 for i in range(768)})
                 if self.platform == 'NES':
                     self.memory.update({9152+i: 0 for i in range(64)})
+            elif line.startswith('SPRITE '):
+                slot, y = line[7:].split(',')[:2]
+                self.calls.append(('sprite', self.value(slot), self.value(y)))
             elif line in ('SCREEN DISABLE', 'SCREEN ENABLE', 'WAIT'):
                 self.calls.append(line)
             elif line.startswith('BANK SELECT '):

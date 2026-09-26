@@ -1317,6 +1317,18 @@ the last array past `$07FF` into the mirrored zero page. Run
 * branching instead of holding a flag,
 * sizing arrays to the largest index actually read.
 
+**When PRG is the limit, a small routine is cheaper in hand-written 6502.**
+Keystone's `box_hide` compiled to ~226 bytes on the NES; the same rule written
+by hand (`nes_boxhide`) is under half that. Keep the BASIC version for the TMS
+targets and test the asm's constants against the same geometry (its DESIGN.md
+section 58).
+
+**Before saving state at run time to restore it later, check whether the
+generator makes it constant.** Keystone's NES kept a 4-byte array of attribute
+halves to restore around `GAME OVER`. Every one of those halves was P0 on every
+screen, so a constant replaced the array, its fill loop and its RAM, and a test
+now pins that they stay P0 (section 59).
+
 **Keep a per-target byte budget table in DESIGN.md** (fixed/PRG free, RAM
 free) and update it with every feature, the way §5A's performance budget is kept.
 

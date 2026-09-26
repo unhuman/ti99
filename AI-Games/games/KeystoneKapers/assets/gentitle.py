@@ -24,6 +24,15 @@ THE FORMAT is a flat list of runs:
     row, col, length, byte * length      repeated
     255                                  ends it
 
+ON THE NES ONLY, the message boxes also use a FILL run:
+
+    row, col, 128 + length, byte         `byte` written `length` times
+
+A box's two blank rows are 16 spaces each, and as literal runs they were 150
+bytes of the five boxes. The NES PRG needed them for box_hide (DESIGN.md
+section 58). run_list reads the fill form only under #if NES; the TMS tables
+never contain it.
+
 Row and column rather than a 16-bit screen offset, because reassembling one from
 two bytes needs a multiply, and on the TMS9900 `MPY` clobbers r0 -- the next line
 that reads the product gets the HIGH word (CLAUDE.md 3A). Five doublings do not.
@@ -299,11 +308,13 @@ TITLE = [
 # every scene deliberately: they cost bank bytes, which are plentiful, to save
 # fixed-area bytes, which are not.
 #
-# Three-row box starts two rows below the HUD: TMS row 2, NES PPU row 4.
-# NES logical coordinates are shifted one row up before run_list adds three.
-# P1 colours its top pair; P2's unused index 2 supplies the navy bottom row,
-# without recolouring the fourth row of buildings.
-BOX_ROW, BOX_COL, BOX_W = 2, 8, 16
+# THE RESULT BOXES SIT ON THE THIRD FLOOR, rows 7-9: the floor's band is rows
+# 6-9 under the roof slab (row 5), so the box stands on the floor-3 slab (row
+# 10). They used to be in the skyline, rows 2-4 (Keystone DESIGN.md section 59).
+# Row 7 is also the one row in that band where the NES box starts a 2x2
+# attribute quadrant (PPU row 10, the store being three rows lower there), so
+# NES and TMS rows are the same number and nes_boxatt can colour it whole.
+BOX_ROW, BOX_COL, BOX_W = 7, 8, 16
 
 
 def _line(text):
@@ -351,16 +362,15 @@ MESSAGES = {
     "msg_over":   _box("GAME OVER"),
 }
 
-# Results use the skyline; GAME OVER remains in the middle shopping floor.
+# Results stand on the third floor; GAME OVER on the second, below them.
 MSG_ROW = {name: BOX_ROW for name in MESSAGES}
 MSG_ROW['msg_over'] = 11  # text row 12, one row above its previous position
 
 
 def runs_of(name, nes=False):
-    """One message scene as (row, col, text) runs."""
-    top = 1 if nes else MSG_ROW[name]
-    if nes and name == 'msg_over':
-        top = 11  # PPU row 14: two rows above its previous position
+    """One message scene as (row, col, text) runs. The same rows on every
+    target: run_list adds the NES picture offset itself."""
+    top = MSG_ROW[name]
     return [(top + i, BOX_COL, t) for i, t in enumerate(MESSAGES[name])]
 
 
@@ -382,7 +392,7 @@ def french_runs(music=False):
     return frame_runs() + big_runs(FRENCH_BIG) + text
 
 
-def table(runs=None, extra_codes=()):
+def table(runs=None, extra_codes=(), fill=False):
     """A display list as bytes, with the checks that make it safe."""
     if runs is None:
         runs = french_runs()
@@ -414,7 +424,12 @@ def table(runs=None, extra_codes=()):
                 raise SystemExit(
                     "%r contains %r, outside the loaded font (32..90)"
                     % (text, ch))
-        out += [row, col, len(text)] + [ord(c) for c in text]
+        if fill and len(text) >= 4 and len(set(text)) == 1:
+            if len(text) > 127:
+                raise SystemExit("a fill run is at most 127 long: %r" % text)
+            out += [row, col, 128 + len(text), ord(text[0])]
+        else:
+            out += [row, col, len(text)] + [ord(c) for c in text]
     out.append(END)
     # EVERY DATA BLOCK MUST BE AN EVEN NUMBER OF BYTES -- an odd run leaves the
     # assembler's location counter odd and silently misaligns every word table
@@ -518,7 +533,7 @@ def main():
                         "a ragged edge" % (name, t, len(t), BOX_W))
             for nes in (True, False):
                 fh.write("\n#if NES\n" if nes else "#else\n")
-                block = table(runs_of(name, nes))
+                block = table(runs_of(name, nes), fill=nes)
                 fh.write("%s:\n" % name)
                 for i in range(0, len(block), 8):
                     fh.write("\tDATA BYTE %s\n"
