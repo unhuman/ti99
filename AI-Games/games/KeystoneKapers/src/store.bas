@@ -31,6 +31,8 @@
 	'   13 T_END_W
 	'   14 T_END_E
 
+#if TI994A
+#else
 stor_tpl:	' 15 templates x 160 bytes
 	DATA BYTE 154,154,154,154,107,154,154,154,154,154,154,107,154,154,154,154
 	DATA BYTE 154,154,154,154,107,154,154,154,154,154,154,107,154,154,154,154
@@ -182,15 +184,21 @@ stor_tpl:	' 15 templates x 160 bytes
 	DATA BYTE 154,154,154,154,154,154,154,154,154,154,154,154,154,154,154,178
 	DATA BYTE 96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96
 	DATA BYTE 96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96
+#endif
 
+#if TI994A
+#else
 stor_ix:	' [lv*8 + scr] -> template id
 	DATA BYTE 2,0,1,4,0,1,0,14,13,1,0,4,1,0,1,3
 	DATA BYTE 2,0,1,4,0,1,0,14,5,6,7,8,9,10,11,12
+#endif
 
 jarc_tbl:	' jump height per frame, 30 frames
 	DATA BYTE 0,3,6,8,10,11,12,13,13,14,14,14,14,14,14,14
 	DATA BYTE 14,14,13,13,12,12,11,10,9,7,5,3,1,0
 
+#if TI994A
+#else
 esc_cap:	' head cap: (col,char) pairs, west then east, 0,0 ends each
 	DATA BYTE 2,122,3,123,4,124,5,125,0,0,0,0,0,0,0,0
 	DATA BYTE 2,141,3,113,4,114,5,115,6,142,7,140,0,0,0,0
@@ -198,16 +206,25 @@ esc_cap:	' head cap: (col,char) pairs, west then east, 0,0 ends each
 	DATA BYTE 24,143,25,144,26,119,27,120,28,121,29,145,0,0,0,0
 	DATA BYTE 2,146,3,147,4,148,5,149,0,0,0,0,0,0,0,0
 	DATA BYTE 2,141,3,113,4,114,5,115,6,142,7,140,0,0,0,0
+#endif
 
+#if TI994A
+#else
 stor_pil:	' per template: up to 4 support-beam columns PLUS ONE, 0 ends
 	DATA BYTE 5,12,21,28,8,16,25,0,1,21,0,0,6,32,0,0
 	DATA BYTE 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 	DATA BYTE 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 	DATA BYTE 0,0,0,0,1,27,0,0,12,32,0,0
+#endif
 
+#if TI994A
+#else
 stor_esc:	' per level: 0 = climbs west, 1 = east, 255 = no escalator (padded even)
 	DATA BYTE 0,1,0,255,0,0,0,0
+#endif
 
+#if TI994A
+#else
 stor_lvl:	' [krook-1][lv*8+scr] -> kind | doubled<<3. 11 Krook rows; 12+ reuse the last
 	DATA BYTE 0,2,2,0,0,0,2,0,0,0,0,0,0,0,0,0
 	DATA BYTE 0,3,0,0,0,0,3,0,0,0,0,0,0,0,0,0
@@ -231,13 +248,19 @@ stor_lvl:	' [krook-1][lv*8+scr] -> kind | doubled<<3. 11 Krook rows; 12+ reuse t
 	DATA BYTE 0,10,0,1,11,1,11,0,0,1,0,1,1,1,1,0
 	DATA BYTE 0,11,9,4,9,10,9,0,0,0,1,2,4,1,0,0
 	DATA BYTE 0,0,4,9,11,1,3,0,0,0,9,9,1,1,1,0
+#endif
 
+#if TI994A
+#else
 stor_co:	' [lv*8+scr] -> (kind, column). 0 = nothing here
 	DATA BYTE 0,0,2,11,0,0,0,0,1,9,0,0,0,0,0,0
 	DATA BYTE 0,0,0,0,0,0,0,0,0,0,0,0,1,18,0,0
 	DATA BYTE 0,0,0,0,1,17,0,0,0,0,2,13,0,0,0,0
 	DATA BYTE 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+#endif
 
+#if TI994A
+#else
 stor_arc:	' 3 bounce arcs x 32 frames, apex 9 / 14 / 19 -- see DESIGN.md 5a
 	DATA BYTE 0,1,2,3,4,5,5,6,7,7,8,8,8,9,9,9
 	DATA BYTE 9,9,9,9,8,8,8,7,7,6,5,5,4,3,2,1
@@ -245,3 +268,4 @@ stor_arc:	' 3 bounce arcs x 32 frames, apex 9 / 14 / 19 -- see DESIGN.md 5a
 	DATA BYTE 16,16,16,15,15,14,14,13,12,11,10,8,7,5,4,2
 	DATA BYTE 0,2,5,7,9,11,12,14,15,16,17,18,19,19,20,20
 	DATA BYTE 20,20,20,19,19,18,17,16,15,14,12,11,9,7,5,2
+#endif

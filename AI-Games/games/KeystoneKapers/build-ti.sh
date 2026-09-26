@@ -109,9 +109,9 @@ rm -rf ../assets/__pycache__
 # generator's cache is cleared too: it is imported from another directory.
 rm -rf ../sound/tunes/assets/__pycache__
 "$TRUNCPY" ../assets/genmusic.py > /dev/null || die "genmusic.py failed"
-# The TI play tables, LZSS-compressed (DESIGN.md section 53). --probe: the
-# step-1 subset, until the tables leave bank 1 and the whole stream fits.
-"$TRUNCPY" ../assets/genlzss.py --probe > /dev/null || die "genlzss.py failed"
+# The TI play tables, LZSS-compressed and taken out of the TI's view of
+# store/art/title.bas; their symbols point into the RAM buffer (DESIGN.md 53).
+"$TRUNCPY" ../assets/genlzss.py > /dev/null || die "genlzss.py failed"
 
 "$TRUNCPY" ../../../tools/bigvar.py *.bas \
     || die "8-bit truncation -- see TRUNCATION.md 1a"
@@ -265,6 +265,21 @@ rm -f "$NAME.a99"
 "$CVBASIC_DIR/cvbasic.exe" --ti994a "$SRC" "$NAME.a99" "$CVBASIC_DIR/" \
     || die "CVBasic compile failed (see messages above)"
 [ -s "$NAME.a99" ] || die "CVBasic produced no/empty $NAME.a99"
+
+# THE PLAY TABLES' EQUs GO LAST. genlzss.py points each compressed table's
+# symbol into the RAM buffer (`cvb_STOR_TPL: EQU array_LZBUF+0`), but CVBasic
+# emits its RAM declarations at the END of the file, and xas99 cannot resolve
+# an EQU that refers forward ("Unknown symbol: ARRAY_LZBUF"). They go just
+# BEFORE `ram_end:` -- after every declaration, but not after `ram_end:`
+# itself, because a label alone on its line attaches to the NEXT statement and
+# xas99 rejects another label there ("Invalid continuation for label"). An EQU
+# reserves nothing, so no address moves.
+awk '/^cvb_[A-Z0-9_]*: EQU array_/ {e = e $0 "\n"; next}
+     /^ram_end:/ {printf "%s", e; found = 1}
+     {print}
+     END {if (e != "" && !found) exit 1}' \
+    "$NAME.a99" > "$NAME.a99.tmp" && mv "$NAME.a99.tmp" "$NAME.a99" \
+    || die "could not move the play tables' EQUs before ram_end:"
 
 echo "[2/3] xas99      $NAME.a99 -> $NAME.bin"
 rm -f "$NAME.bin" "${NAME}"_b*.bin

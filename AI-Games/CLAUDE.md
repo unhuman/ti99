@@ -967,6 +967,20 @@ cost a debugging session:
   `DATA` label. To upload RAM, write the VDP yourself (or through a routine that
   takes an address). `VARPTR buf(0)` *does* give the array's real address. Found
   while planning Keystone's TI compression (its DESIGN.md section 53).
+- **POINTING A `DATA` LABEL INTO RAM TAKES THREE TI ASSEMBLER RULES AT ONCE.** An
+  `EQU` for the label's symbol (`cvb_NAME: EQU array_BUF+offset`) makes every
+  `SCREEN`, `DEFINE`, `VARPTR` and indexed read of that label follow it into RAM,
+  with no call site changed. Keystone's TI moves its play tables out of ROM this
+  way (DESIGN.md section 54). Each of these rules cost a rebuild:
+  1. **CVBasic writes an `ASM` line at column 1 only if its FIRST WORD ends in
+     `:`**; every other line is indented, and xas99 reads an indented `cvb_X EQU`
+     as the mnemonic `CVB_X`. Write `ASM cvb_X: EQU ...`.
+  2. **xas99 cannot resolve an `EQU` that refers forward**, and CVBasic emits its
+     RAM declarations (`array_...`) at the END of the file. Move the EQUs after
+     them in the build.
+  3. **But not after `ram_end:`**: a label alone on its line attaches to the NEXT
+     statement, and xas99 rejects another label there ("Invalid continuation
+     for label"). Insert them just before it; an EQU reserves nothing.
 - **A `GOSUB` THAT LEAVES BY `GOTO` LEAKS THE STACK — and only ColecoVision dies of it.**
   A routine entered with `GOSUB` and exited with `GOTO` never pops its return address, so every
   pass through it grows the stack by the whole call chain. Bust-A-Bobble's `do_clear` and `do_dead`

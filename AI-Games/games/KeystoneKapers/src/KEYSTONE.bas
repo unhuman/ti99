@@ -739,8 +739,8 @@
 	#endif
 	GOSUB init_tables
 	#if TI994A
-	GOSUB lz_probe		' STEP-1 PROBE (bank 2 is selected)
 	BANK SELECT 1
+	GOSUB lz_probe		' unpack the play tables into RAM (bank 1)
 	GOSUB init_jarc
 	#endif
 
@@ -6788,84 +6788,6 @@ md_busy:
 	RETURN
 	#endif
 
-	' ---------------------------------------------------------------- LZSS (TI)
-	' THE DECODER for assets/lzss.py's format: a flag byte governs eight items,
-	' least significant bit first; 1 = a literal byte, 0 = a two-byte match,
-	' big-endian (offset << 4 | length - 3), offset 1..4095 back into the
-	' output. #lzs = the compressed stream, #lzd = the RAM destination, #lzn =
-	' the output length (it stops there, so a stream's padding is never read).
-	' R1-R9 only: R10 is CVBasic's stack pointer and R11 its return link.
-	' It runs from bank 2, which must be selected, and needs no fixed-area room.
-	#if TI994A
-lz_unpack:
-	ASM MOV @cvb__LZS,R1
-	ASM MOV @cvb__LZD,R2
-	ASM MOV R2,R4
-	ASM A @cvb__LZN,R4
-	ASM lz_blk:
-	ASM C R2,R4
-	ASM JHE lz_done
-	ASM MOVB *R1+,R5
-	ASM SRL R5,8
-	ASM LI R6,8
-	ASM lz_item:
-	ASM C R2,R4
-	ASM JHE lz_done
-	ASM SRL R5,1
-	ASM JNC lz_match
-	ASM MOVB *R1+,*R2+
-	ASM JMP lz_next
-	ASM lz_match:
-	ASM MOVB *R1+,R7
-	ASM MOVB *R1+,R8
-	ASM SRL R8,8
-	ASM ANDI R7,>FF00
-	ASM SOC R8,R7
-	ASM MOV R7,R8
-	ASM ANDI R8,>000F
-	ASM AI R8,3
-	ASM SRL R7,4
-	ASM MOV R2,R9
-	ASM S R7,R9
-	ASM lz_copy:
-	ASM MOVB *R9+,*R2+
-	ASM DEC R8
-	ASM JNE lz_copy
-	ASM lz_next:
-	ASM DEC R6
-	ASM JNE lz_item
-	ASM JMP lz_blk
-	ASM lz_done:
-	RETURN
-
-	' STEP-1 PROBE (temporary): unpack the probe stream into lzbuf and check
-	' every table's two checksums against the ones genlzss.py computed from the
-	' generated sources. lzbad = the number of mismatches; the title shows it.
-lz_probe:
-	#lzs = VARPTR lz_play(0)
-	#lzd = VARPTR lzbuf(0)
-	#lzn = #lz_meta(1)
-	GOSUB lz_unpack
-	lzbad = 0
-	#lzo = 0
-	#lzk = 2
-	lznt = #lz_meta(0)
-	FOR lzt = 1 TO lznt
-		#lzl = #lz_meta(#lzk)
-		#lzs1 = 0
-		#lzs2 = 0
-		FOR #lzi = 1 TO #lzl
-			#lzs1 = #lzs1 + lzbuf(#lzo)
-			#lzs2 = #lzs2 + #lzs1
-			#lzo = #lzo + 1
-		NEXT #lzi
-		IF #lzs1 <> #lz_meta(#lzk + 1) THEN lzbad = lzbad + 1
-		IF #lzs2 <> #lz_meta(#lzk + 2) THEN lzbad = lzbad + 1
-		#lzk = #lzk + 3
-	NEXT lzt
-	RETURN
-	#endif
-
 	' ---------------------------------------------------------------- MUSIC ON/OFF
 	' M on the title toggles all music, title and in-game, the way 1 does on
 	' Bust-A-Bobble's title. musen is the setting (see init_tables for why it
@@ -7668,13 +7590,95 @@ init_tables:
 	' see title_music_on. Even length, asserted by genmusic.py.
 	INCLUDE "titlemusic.bas"
 	#if TI994A
-	INCLUDE "lzss_play.bas"
-	#endif
-	#if TI994A
 	BANK 1
 	#endif
 	INCLUDE "title.bas"
 	INCLUDE "art.bas"
 	INCLUDE "store.bas"
+	' THE TI'S PLAY TABLES, compressed, and the decoder that unpacks them into
+	' RAM at power-on (DESIGN.md section 53). Their ROM copies are gone from
+	' this build: genlzss.py takes them out of the TI's view and points each
+	' table's symbol into lzbuf, so every reader follows them to RAM.
+	#if TI994A
+	INCLUDE "lzss_play.bas"
+	#endif
+	' ---------------------------------------------------------------- LZSS (TI)
+	' THE DECODER for assets/lzss.py's format: a flag byte governs eight items,
+	' least significant bit first; 1 = a literal byte, 0 = a two-byte match,
+	' big-endian (offset << 4 | length - 3), offset 1..4095 back into the
+	' output. #lzs = the compressed stream, #lzd = the RAM destination, #lzn =
+	' the output length (it stops there, so a stream's padding is never read).
+	' R1-R9 only: R10 is CVBasic's stack pointer and R11 its return link.
+	' It lives in BANK 1 with its stream, which must be selected (power-on
+	' selects it before calling lz_probe), and needs no fixed-area room.
+	#if TI994A
+lz_unpack:
+	ASM MOV @cvb__LZS,R1
+	ASM MOV @cvb__LZD,R2
+	ASM MOV R2,R4
+	ASM A @cvb__LZN,R4
+	ASM lz_blk:
+	ASM C R2,R4
+	ASM JHE lz_done
+	ASM MOVB *R1+,R5
+	ASM SRL R5,8
+	ASM LI R6,8
+	ASM lz_item:
+	ASM C R2,R4
+	ASM JHE lz_done
+	ASM SRL R5,1
+	ASM JNC lz_match
+	ASM MOVB *R1+,*R2+
+	ASM JMP lz_next
+	ASM lz_match:
+	ASM MOVB *R1+,R7
+	ASM MOVB *R1+,R8
+	ASM SRL R8,8
+	ASM ANDI R7,>FF00
+	ASM SOC R8,R7
+	ASM MOV R7,R8
+	ASM ANDI R8,>000F
+	ASM AI R8,3
+	ASM SRL R7,4
+	ASM MOV R2,R9
+	ASM S R7,R9
+	ASM lz_copy:
+	ASM MOVB *R9+,*R2+
+	ASM DEC R8
+	ASM JNE lz_copy
+	ASM lz_next:
+	ASM DEC R6
+	ASM JNE lz_item
+	ASM JMP lz_blk
+	ASM lz_done:
+	RETURN
+
+	' AT POWER-ON: unpack the play tables into lzbuf, then check
+	' every table's two checksums against the ones genlzss.py computed from the
+	' generated sources. lzbad = the number of mismatches; the title shows it.
+lz_probe:
+	#lzs = VARPTR lz_play(0)
+	#lzd = VARPTR lzbuf(0)
+	#lzn = #lz_meta(1)
+	GOSUB lz_unpack
+	lzbad = 0
+	#lzo = 0
+	#lzk = 2
+	lznt = #lz_meta(0)
+	FOR lzt = 1 TO lznt
+		#lzl = #lz_meta(#lzk)
+		#lzs1 = 0
+		#lzs2 = 0
+		FOR #lzi = 1 TO #lzl
+			#lzs1 = #lzs1 + lzbuf(#lzo)
+			#lzs2 = #lzs2 + #lzs1
+			#lzo = #lzo + 1
+		NEXT #lzi
+		IF #lzs1 <> #lz_meta(#lzk + 1) THEN lzbad = lzbad + 1
+		IF #lzs2 <> #lz_meta(#lzk + 2) THEN lzbad = lzbad + 1
+		#lzk = #lzk + 3
+	NEXT lzt
+	RETURN
+	#endif
 
 

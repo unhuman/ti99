@@ -274,6 +274,8 @@ spr_plane:	' toy aeroplane -- DUCK. The only thing that kills. ONE SPRITE and on
 
 	' ---------------------------- borrowed at runtime, no slot of their own
 
+#if TI994A
+#else
 spr_hstand:	' standing RIGHT: body, stripes, legs, leg stripes -- over sprites 18-21
 	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$0F,$00,$1F,$00,$1F,$00,$0F
@@ -291,7 +293,10 @@ spr_hstand:	' standing RIGHT: body, stripes, legs, leg stripes -- over sprites 1
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $C0,$00,$80,$00,$80,$00,$80,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 spr_hstandl:	' the same four, LEFT
 	DATA BYTE $00,$03,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$07,$00,$0F,$00,$07,$00,$03
@@ -309,7 +314,10 @@ spr_hstandl:	' the same four, LEFT
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $F0,$00,$F0,$00,$F0,$00,$F0,$F0
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 spr_hbod4:	' the four running bodies again, to give the slots back
 	DATA BYTE $00,$07,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$67,$00,$6F,$00,$0F,$00,$1E
@@ -327,6 +335,7 @@ spr_hbod4:	' the four running bodies again, to give the slots back
 	DATA BYTE $00,$0F,$00,$0F,$00,$1F,$00,$FF
 	DATA BYTE $00,$C0,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$F8,$00,$80,$00,$E0,$00,$F0
+#endif
 
 	' ------------------------------------------------ store characters
 	' Codes 96-115. Loaded as ONE contiguous run, so the order here is
@@ -538,12 +547,20 @@ store_col:	' EIGHT colour bytes per char, not one
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 #endif
 
+#if TI994A
+#else
 bulb_lit:	' a lit marquee lamp
 	DATA BYTE $00,$3C,$7E,$7E,$7E,$7E,$3C,$00
+#endif
 
+#if TI994A
+#else
 bulb_off:	' and a dark one
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 esc_phw0:	' chars 110-115, phase 0 -- DEFINE CHAR 110,6,esc_phw0
 	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
@@ -551,7 +568,10 @@ esc_phw0:	' chars 110-115, phase 0 -- DEFINE CHAR 110,6,esc_phw0
 	DATA BYTE $FF,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$00,$FF,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$00
+#endif
 
+#if TI994A
+#else
 esc_phe0:	' chars 116-121, phase 0 -- DEFINE CHAR 116,6,esc_phe0
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$FF,$FE,$F8,$E3
@@ -559,7 +579,10 @@ esc_phe0:	' chars 116-121, phase 0 -- DEFINE CHAR 116,6,esc_phe0
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$FF,$FE,$F8,$E3
 	DATA BYTE $FF,$FE,$F8,$E3,$8F,$3F,$FF,$FC
+#endif
 
+#if TI994A
+#else
 esc_phw1:	' chars 110-115, phase 1 -- DEFINE CHAR 110,6,esc_phw1
 	DATA BYTE $FC,$7C,$1C,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$FC,$FC,$7C,$1C,$C7
@@ -567,7 +590,10 @@ esc_phw1:	' chars 110-115, phase 1 -- DEFINE CHAR 110,6,esc_phw1
 	DATA BYTE $FC,$7C,$1C,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$00,$FC,$FC,$7C,$1C,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$00,$FC
+#endif
 
+#if TI994A
+#else
 esc_phe1:	' chars 116-121, phase 1 -- DEFINE CHAR 116,6,esc_phe1
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$3F
 	DATA BYTE $00,$00,$00,$3F,$3F,$3E,$38,$E3
@@ -575,7 +601,10 @@ esc_phe1:	' chars 116-121, phase 1 -- DEFINE CHAR 116,6,esc_phe1
 	DATA BYTE $80,$00,$00,$00,$00,$00,$00,$3F
 	DATA BYTE $00,$00,$00,$3F,$3F,$3E,$38,$E3
 	DATA BYTE $3F,$3E,$38,$E3,$8F,$3F,$FF,$FC
+#endif
 
+#if TI994A
+#else
 esc_phw2:	' chars 110-115, phase 2 -- DEFINE CHAR 110,6,esc_phw2
 	DATA BYTE $F0,$70,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$F0,$F0,$F0,$70,$1F,$C7
@@ -583,7 +612,10 @@ esc_phw2:	' chars 110-115, phase 2 -- DEFINE CHAR 110,6,esc_phw2
 	DATA BYTE $F0,$70,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$00,$F0,$F0,$F0,$70,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$00,$F0,$F0
+#endif
 
+#if TI994A
+#else
 esc_phe2:	' chars 116-121, phase 2 -- DEFINE CHAR 116,6,esc_phe2
 	DATA BYTE $80,$00,$00,$00,$00,$00,$0F,$0F
 	DATA BYTE $00,$00,$0F,$0F,$0F,$0E,$F8,$E3
@@ -591,7 +623,10 @@ esc_phe2:	' chars 116-121, phase 2 -- DEFINE CHAR 116,6,esc_phe2
 	DATA BYTE $80,$00,$00,$00,$00,$00,$0F,$0F
 	DATA BYTE $00,$00,$0F,$0F,$0F,$0E,$F8,$E3
 	DATA BYTE $0F,$0E,$F8,$E3,$8F,$3F,$FF,$FC
+#endif
 
+#if TI994A
+#else
 esc_phw3:	' chars 110-115, phase 3 -- DEFINE CHAR 110,6,esc_phw3
 	DATA BYTE $C0,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$C0,$C0,$C0,$C0,$7F,$1F,$C7
@@ -599,7 +634,10 @@ esc_phw3:	' chars 110-115, phase 3 -- DEFINE CHAR 110,6,esc_phw3
 	DATA BYTE $C0,$7F,$1F,$C7,$F1,$FC,$FF,$3F
 	DATA BYTE $00,$C0,$C0,$C0,$C0,$7F,$1F,$C7
 	DATA BYTE $01,$00,$00,$00,$00,$C0,$C0,$C0
+#endif
 
+#if TI994A
+#else
 esc_phe3:	' chars 116-121, phase 3 -- DEFINE CHAR 116,6,esc_phe3
 	DATA BYTE $80,$00,$00,$00,$00,$03,$03,$03
 	DATA BYTE $00,$03,$03,$03,$03,$FE,$F8,$E3
@@ -607,6 +645,7 @@ esc_phe3:	' chars 116-121, phase 3 -- DEFINE CHAR 116,6,esc_phe3
 	DATA BYTE $80,$00,$00,$00,$00,$03,$03,$03
 	DATA BYTE $00,$03,$03,$03,$03,$FE,$F8,$E3
 	DATA BYTE $03,$FE,$F8,$E3,$8F,$3F,$FF,$FC
+#endif
 
 	' -------------------------------------------------- scanner canvas
 	' Chars 208-255: 16 cols x 3 rows over screen rows 21-23. Blank to start;

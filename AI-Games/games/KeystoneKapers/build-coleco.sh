@@ -99,6 +99,11 @@ rm -rf ../assets/__pycache__
 # rendered from the tunes bench's own generator, whose cache is cleared too.
 rm -rf ../sound/tunes/assets/__pycache__
 "$TRUNCPY" ../assets/genmusic.py > /dev/null || die "genmusic.py failed"
+# The TI's compressed play tables (DESIGN.md section 53). This build never
+# includes them, but every build runs it so the generated store/art/title.bas
+# are the same whichever target was built last; their TI-only #if wrappers
+# compile to exactly the old bytes here.
+"$TRUNCPY" ../assets/genlzss.py > /dev/null || die "genlzss.py failed"
 "$TRUNCPY" ../assets/gennescolor.py > /dev/null || die "gennescolor.py failed"
 
 "$TRUNCPY" ../../../tools/bigvar.py *.bas \

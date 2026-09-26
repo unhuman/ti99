@@ -7305,3 +7305,54 @@ ColecoVision ROM and NES image rebuild **byte-for-byte identical** to the last
 **Next:** step 2 moves the play tables out of bank 1 for good. The whole stream
 is unpacked into RAM at power-on, and the game's pointers (`#sttp`, `#stlv`,
 ...) and uploads point at `lzbuf`.
+
+## 54. TI single bank: step 2, the play tables live in RAM (2026-09-26)
+
+The 26 tables the TI reads during play (section 53's list: 4,182 bytes) now
+exist only as one LZSS stream, `lz_play`, 1,298 bytes in bank 1. At power-on,
+after bank 1 is selected, `lz_probe` unpacks it into `lzbuf` (4,182 bytes of
+RAM) and checks every table's two checksums.
+
+**No reader changed.** `genlzss.py` writes one `ASM cvb_NAME: EQU
+array_LZBUF+offset` per table into `lzss_play.bas`. The game's own statements
+(`SCREEN stor_tpl,...`, `DEFINE CHAR 110,6,esc_phw0`,
+`#sttp = VARPTR stor_tpl(0)`, `#tta = VARPTR msg_away(0)`) compile to
+references to `cvb_NAME`, so they all read RAM now. The ROM copies leave the
+TI's view: `genlzss.py` wraps each table in `store.bas`/`art.bas` as
+`#if TI994A / #else / table / #endif`, and splits `title.bas`'s
+`#if NES / #else` pairs into `#if NES` + `#if COLECOVISION` (`#if` cannot
+nest). All three builds run it, so the generated files are the same whichever
+target was built last.
+
+**Three TI assembler rules** (now in CLAUDE.md 3A):
+* `ASM cvb_X: EQU ...`: CVBasic writes an ASM line at column 1 only when its
+  first word ends in `:`.
+* xas99 cannot resolve a forward `EQU`, and the RAM declarations come last, so
+  `build-ti.sh` moves the EQUs after them with `awk`...
+* ...but just before `ram_end:`, because a lone label attaches to the next
+  statement.
+
+**Verified in Classic99 (driven, not assumed):**
+* The title's self-test reads **`LZ BAD 0 OF 26 TABLES`**.
+* A round starts, and the first screen, a screen change to the lift screen,
+  and the escalator animation all draw correctly from the RAM tables.
+* The end-of-round boxes **HE GOT AWAY** and **GAME OVER** (from `msg_away`
+  and `msg_over` in RAM) appear with the right text and colours.
+
+**Sizes (TI):**
+
+| | before | after |
+|---|---|---|
+| bank 1 | 7,686 | **5,314**, 2,878 free |
+| bank 2 | 8,012 (with the probe) | 6,812 |
+| RAM used | | 4,850 of 7,821 |
+| fixed area | | 22,672 (first pass 66 free) |
+
+**ColecoVision ROM and NES image:** rebuilt **byte-for-byte identical** to the
+last `master` build. The TI cart is still 64 KB; the bank merge is the last
+step.
+
+**Next:** step 3, the setup data. Bank-1 `store_pat`/`store_col`/sprites and
+bank-2 fonts, title table and radar colours get compressed, unpacked into a
+temporary RAM buffer and uploaded, and the constant colour tables become a
+VRAM fill.
