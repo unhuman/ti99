@@ -2,7 +2,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      **** ****     > KEYSTONE.a99
 0001               	; CVBasic compiler v0.9.2 Mar/12/2026
 0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a KEYSTONE.bas KEYSTONE.a99 /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/
-0003               	; Created: Sat Sep 26 16:10:55 2026
+0003               	; Created: Sat Sep 26 22:52:27 2026
 0004               
 0005      0000     COLECO:	equ 0
 0006      0000     SG1000:	equ 0
@@ -23714,7 +23714,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 17007               	; 	' ---------------------------------------------------------------- BOX_HIDE
 17008               	; 	' A RESULT BOX IS TEXT, AND THE VDP ALWAYS DRAWS SPRITES OVER TEXT. The
 17009               	; 	' end-of-round boxes (GOT HIM!, HE GOT AWAY, THE BIPLANE, TIME'S UP!) stand
-17010               	; 	' on the third floor, rows 7-9 by columns 8-23 (DESIGN.md section 59) --
+17010               	; 	' on the third floor, rows 6-8 by columns 8-23 (DESIGN.md section 59) --
 17011               	; 	' where anyone on that floor stands, and where a jump from the floor
 17012               	; 	' below reaches -- so the cast was drawn straight across the words. The cast otherwise STAYS for the
 17013               	; 	' beat (see the GOT HIM! tally), so only what touches the box goes.
@@ -23737,8 +23737,8 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 17030               	; 	#else
 17031               	; box_hide:
 17032               cvb_BOX_HIDE
-17033               	; 	' KELLY, 0-2: lines ky-9 .. ky+27 against the box's 56..79, so ky 29..88.
-17034               	; 	' Tested on kby (= ky + 11, 40..99) because it cannot wrap: khy does, when
+17033               	; 	' KELLY, 0-2: lines ky-9 .. ky+27 against the box's 48..71, so ky 21..80.
+17034               	; 	' Tested on kby (= ky + 11, 32..91) because it cannot wrap: khy does, when
 17035               	; 	' he jumps on the roof.
 17036               	; 	dxx = klx
 17037 68C6 D820  54 	movb @cvb_KLX,@cvb_DXX
@@ -23796,8 +23796,8 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 17071               cv1130
 17072               	; 	END IF
 17073               cv1127
-17074               	; 	' HARRY, 4-7 and 27: lines hy-6 .. hy+32, so hy 24..85, and hy2 (= hy +
-17075               	; 	' 16) 40..101.
+17074               	; 	' HARRY, 4-7 and 27: lines hy-6 .. hy+32, so hy 16..77, and hy2 (= hy +
+17075               	; 	' 16) 32..93.
 17076               	; 	dxx = hx
 17077 691C D820  54 	movb @cvb_HX,@cvb_DXX
      691E 21E2     
@@ -23867,7 +23867,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 17120               	; 	END IF
 17121               cv1131
 17122               	; 	' Obstacles 8-15, two to a floor, at draw_actors' own y: one sprite
-17123               	; 	' each, lines y+1..y+16, so y 40..78.
+17123               	; 	' each, lines y+1..y+16, so y 32..70.
 17124               	; 	dbn = 39
 17125 6988 0200  20 	li r0,9984   ; 39*256
      698A 2700     
@@ -23963,9 +23963,9 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 17185 6A20 C03A  30 	mov *r10+,r0
 17186 6A22 0450  20 	b *r0
 17187               	;
-17188               	; 	' dk = 1 if a figure at x dxx, whose tested y is 40 or more and under
-17189               	; 	' 40 + dbn, touches the box: columns 64-191 are x 49..191 for a 16-pixel
-17190               	; 	' sprite, and 40 is the first y whose lines (y+1..y+16) reach line 56.
+17188               	; 	' dk = 1 if a figure at x dxx, whose tested y is 32 or more and under
+17189               	; 	' 32 + dbn, touches the box: columns 64-191 are x 49..191 for a 16-pixel
+17190               	; 	' sprite, and 32 is the first y whose lines (y+1..y+16) reach line 48.
 17191               	; 	' Single comparisons only (CLAUDE.md 3A).
 17192               	; box_ovl:
 17193               cvb_BOX_OVL
@@ -23999,11 +23999,11 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 17214 6A4E C03A  30 	mov *r10+,r0
 17215 6A50 0450  20 	b *r0
 17216               cv1141
-17217               	; 	IF dy < 40 THEN RETURN
+17217               	; 	IF dy < 32 THEN RETURN
 17218 6A52 D020  34 	movb @cvb_DY,r0
      6A54 21CF     
-17219 6A56 0201  20 	li r1,10240   ; 40*256
-     6A58 2800     
+17219 6A56 0201  20 	li r1,8192   ; 32*256
+     6A58 2000     
 17220 6A5A 9040  18 	cb r0,r1
 17221 6A5C 1A02  14 	jl cv1144
 17222 6A5E 0460  28 	b @cv1143
@@ -24012,11 +24012,11 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 17224 6A62 C03A  30 	mov *r10+,r0
 17225 6A64 0450  20 	b *r0
 17226               cv1143
-17227               	; 	dy = dy - 40
+17227               	; 	dy = dy - 32
 17228 6A66 D020  34 	movb @cvb_DY,r0
      6A68 21CF     
-17229 6A6A 0220  22 	ai r0,55296	; -40
-     6A6C D800     
+17229 6A6A 0220  22 	ai r0,57344	; -32
+     6A6C E000     
 17230 6A6E D800  38 	movb r0,@cvb_DY
      6A70 21CF     
 17231               	; 	IF dy < dbn THEN dk = 1
@@ -26009,11 +26009,11 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 18992               	; #endif
 18993               	; #if COLECOVISION
 18994               	; msg_away:
-18995               	; 	DATA BYTE 7,8,16,32,32,32,32,32
+18995               	; 	DATA BYTE 6,8,16,32,32,32,32,32
 18996               	; 	DATA BYTE 32,32,32,32,32,32,32,32
-18997               	; 	DATA BYTE 32,32,32,8,8,16,32,32
+18997               	; 	DATA BYTE 32,32,32,7,8,16,32,32
 18998               	; 	DATA BYTE 72,69,32,71,79,84,32,65
-18999               	; 	DATA BYTE 87,65,89,32,32,32,9,8
+18999               	; 	DATA BYTE 87,65,89,32,32,32,8,8
 19000               	; 	DATA BYTE 16,32,32,32,32,32,32,32
 19001               	; 	DATA BYTE 32,32,32,32,32,32,32,32
 19002               	; 	DATA BYTE 32,255
@@ -26028,11 +26028,11 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 19011               	; #endif
 19012               	; #if COLECOVISION
 19013               	; msg_gothim:
-19014               	; 	DATA BYTE 7,8,16,32,32,32,32,32
+19014               	; 	DATA BYTE 6,8,16,32,32,32,32,32
 19015               	; 	DATA BYTE 32,32,32,32,32,32,32,32
-19016               	; 	DATA BYTE 32,32,32,8,8,16,32,32
+19016               	; 	DATA BYTE 32,32,32,7,8,16,32,32
 19017               	; 	DATA BYTE 32,32,71,79,84,32,72,73
-19018               	; 	DATA BYTE 77,33,32,32,32,32,9,8
+19018               	; 	DATA BYTE 77,33,32,32,32,32,8,8
 19019               	; 	DATA BYTE 16,32,32,32,32,32,32,32
 19020               	; 	DATA BYTE 32,32,32,32,32,32,32,32
 19021               	; 	DATA BYTE 32,255
@@ -26066,11 +26066,11 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 19049               	; #endif
 19050               	; #if COLECOVISION
 19051               	; msg_plane:
-19052               	; 	DATA BYTE 7,8,16,32,32,32,32,32
+19052               	; 	DATA BYTE 6,8,16,32,32,32,32,32
 19053               	; 	DATA BYTE 32,32,32,32,32,32,32,32
-19054               	; 	DATA BYTE 32,32,32,8,8,16,32,32
+19054               	; 	DATA BYTE 32,32,32,7,8,16,32,32
 19055               	; 	DATA BYTE 84,72,69,32,66,73,80,76
-19056               	; 	DATA BYTE 65,78,69,32,32,32,9,8
+19056               	; 	DATA BYTE 65,78,69,32,32,32,8,8
 19057               	; 	DATA BYTE 16,32,32,32,32,32,32,32
 19058               	; 	DATA BYTE 32,32,32,32,32,32,32,32
 19059               	; 	DATA BYTE 32,255
@@ -26085,11 +26085,11 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 19068               	; #endif
 19069               	; #if COLECOVISION
 19070               	; msg_timeup:
-19071               	; 	DATA BYTE 7,8,16,32,32,32,32,32
+19071               	; 	DATA BYTE 6,8,16,32,32,32,32,32
 19072               	; 	DATA BYTE 32,32,32,32,32,32,32,32
-19073               	; 	DATA BYTE 32,32,32,8,8,16,32,32
+19073               	; 	DATA BYTE 32,32,32,7,8,16,32,32
 19074               	; 	DATA BYTE 32,84,73,77,69,39,83,32
-19075               	; 	DATA BYTE 85,80,33,32,32,32,9,8
+19075               	; 	DATA BYTE 85,80,33,32,32,32,8,8
 19076               	; 	DATA BYTE 16,32,32,32,32,32,32,32
 19077               	; 	DATA BYTE 32,32,32,32,32,32,32,32
 19078               	; 	DATA BYTE 32,255
@@ -27662,29 +27662,29 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      71F8 031F     
      71FA 5006     
      71FC A5C0     
-20318               	; 	DATA BYTE 48,0,252,49,0,8,9,31,16,8,248,94,24,3,7,8
+20318               	; 	DATA BYTE 48,0,252,49,0,8,9,31,16,8,248,94,24,3,6,8
 20319 71FE 3000     	byte >30,>00,>fc,>31,>00,>08,>09,>1f
      7200 FC31     
      7202 0008     
      7204 091F     
-20320 7206 1008     	byte >10,>08,>f8,>5e,>18,>03,>07,>08
+20320 7206 1008     	byte >10,>08,>f8,>5e,>18,>03,>06,>08
      7208 F85E     
      720A 1803     
-     720C 0708     
-20321               	; 	DATA BYTE 16,32,0,76,8,4,193,255,72,69,32,71,79,84,32,65
-20322 720E 1020     	byte >10,>20,>00,>4c,>08,>04,>c1,>ff
+     720C 0608     
+20321               	; 	DATA BYTE 16,32,0,76,7,4,193,255,72,69,32,71,79,84,32,65
+20322 720E 1020     	byte >10,>20,>00,>4c,>07,>04,>c1,>ff
      7210 004C     
-     7212 0804     
+     7212 0704     
      7214 C1FF     
 20323 7216 4845     	byte >48,>45,>20,>47,>4f,>54,>20,>41
      7218 2047     
      721A 4F54     
      721C 2041     
-20324               	; 	DATA BYTE 87,87,65,89,8,0,9,9,143,255,14,149,125,32,14,66
-20325 721E 5757     	byte >57,>57,>41,>59,>08,>00,>09,>09
+20324               	; 	DATA BYTE 87,87,65,89,8,0,8,9,143,255,14,149,125,32,14,66
+20325 721E 5757     	byte >57,>57,>41,>59,>08,>00,>08,>09
      7220 4159     
      7222 0800     
-     7224 0909     
+     7224 0809     
 20326 7226 8FFF     	byte >8f,>ff,>0e,>95,>7d,>20,>0e,>42
      7228 0E95     
      722A 7D20     

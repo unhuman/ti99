@@ -12,8 +12,6 @@
 	' CANNOT come with it: they are read when a round ends.
 	' ==================================================
 
-#if TI994A
-#else
 title_tbl:
 	DATA BYTE 3,2,27,181,182,183,184,181
 	DATA BYTE 182,183,184,181,182,183,184,181
@@ -61,4 +59,3 @@ title_tbl:
 	DATA BYTE 32,85,78,72,85,77,65,78
 	DATA BYTE 32,34,44,35,32,67,38,67
 	DATA BYTE 32,65,73,255
-#endif

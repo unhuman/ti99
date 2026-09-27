@@ -14,8 +14,6 @@
 	' LIVES IN BANK 2 -- read once by those DEFINEs.
 	' ==================================================
 
-#if TI994A
-#else
 tfont_pat0:	' codes 0..31
 	DATA BYTE $00,$00,$78,$78,$30,$30,$31,$33
 	DATA BYTE $00,$00,$F7,$F7,$63,$C3,$83,$03
@@ -49,11 +47,9 @@ tfont_pat0:	' codes 0..31
 	DATA BYTE $00,$00,$F0,$F0,$60,$C0,$81,$01
 	DATA BYTE $00,$00,$60,$F0,$F0,$F0,$98,$98
 	DATA BYTE $00,$00,$7F,$7F,$30,$30,$30,$30
-#endif
 
 #if NES
-#endif
-#if COLECOVISION
+#else
 tfont_col0:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
@@ -89,8 +85,6 @@ tfont_col0:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 #endif
 
-#if TI994A
-#else
 tfont_pat1:	' codes 185..196
 	DATA BYTE $00,$00,$C7,$E7,$63,$63,$63,$63
 	DATA BYTE $00,$00,$C1,$E3,$67,$66,$66,$67
@@ -104,11 +98,9 @@ tfont_pat1:	' codes 185..196
 	DATA BYTE $06,$06,$06,$06,$0F,$0F,$00,$00
 	DATA BYTE $03,$03,$03,$03,$07,$07,$00,$00
 	DATA BYTE $C0,$C6,$66,$67,$F7,$F7,$00,$00
-#endif
 
 #if NES
-#endif
-#if COLECOVISION
+#else
 tfont_col1:
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4
 	DATA BYTE $B4,$B4,$B4,$B4,$B4,$B4,$B4,$B4

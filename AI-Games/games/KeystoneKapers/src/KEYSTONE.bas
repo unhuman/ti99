@@ -6795,7 +6795,7 @@ mus_toggle:
 	' ---------------------------------------------------------------- BOX_HIDE
 	' A RESULT BOX IS TEXT, AND THE VDP ALWAYS DRAWS SPRITES OVER TEXT. The
 	' end-of-round boxes (GOT HIM!, HE GOT AWAY, THE BIPLANE, TIME'S UP!) stand
-	' on the third floor, rows 7-9 by columns 8-23 (DESIGN.md section 59) --
+	' on the third floor, rows 6-8 by columns 8-23 (DESIGN.md section 59) --
 	' where anyone on that floor stands, and where a jump from the floor
 	' below reaches -- so the cast was drawn straight across the words. The cast otherwise STAYS for the
 	' beat (see the GOT HIM! tally), so only what touches the box goes.
@@ -6817,8 +6817,8 @@ mus_toggle:
 	#if NES
 	#else
 box_hide:
-	' KELLY, 0-2: lines ky-9 .. ky+27 against the box's 56..79, so ky 29..88.
-	' Tested on kby (= ky + 11, 40..99) because it cannot wrap: khy does, when
+	' KELLY, 0-2: lines ky-9 .. ky+27 against the box's 48..71, so ky 21..80.
+	' Tested on kby (= ky + 11, 32..91) because it cannot wrap: khy does, when
 	' he jumps on the roof.
 	dxx = klx
 	dy = kby
@@ -6829,8 +6829,8 @@ box_hide:
 			SPRITE ds,SPRHID,0,0,0
 		NEXT ds
 	END IF
-	' HARRY, 4-7 and 27: lines hy-6 .. hy+32, so hy 24..85, and hy2 (= hy +
-	' 16) 40..101.
+	' HARRY, 4-7 and 27: lines hy-6 .. hy+32, so hy 16..77, and hy2 (= hy +
+	' 16) 32..93.
 	dxx = hx
 	dy = hy2
 	dbn = 62
@@ -6842,7 +6842,7 @@ box_hide:
 		SPRITE 27,SPRHID,0,0,0
 	END IF
 	' Obstacles 8-15, two to a floor, at draw_actors' own y: one sprite
-	' each, lines y+1..y+16, so y 40..78.
+	' each, lines y+1..y+16, so y 32..70.
 	dbn = 39
 	FOR ds = 8 TO 15
 		di = ds - 8
@@ -6856,16 +6856,16 @@ box_hide:
 	NEXT ds
 	RETURN
 
-	' dk = 1 if a figure at x dxx, whose tested y is 40 or more and under
-	' 40 + dbn, touches the box: columns 64-191 are x 49..191 for a 16-pixel
-	' sprite, and 40 is the first y whose lines (y+1..y+16) reach line 56.
+	' dk = 1 if a figure at x dxx, whose tested y is 32 or more and under
+	' 32 + dbn, touches the box: columns 64-191 are x 49..191 for a 16-pixel
+	' sprite, and 32 is the first y whose lines (y+1..y+16) reach line 48.
 	' Single comparisons only (CLAUDE.md 3A).
 box_ovl:
 	dk = 0
 	IF dxx < 49 THEN RETURN
 	IF dxx > 191 THEN RETURN
-	IF dy < 40 THEN RETURN
-	dy = dy - 40
+	IF dy < 32 THEN RETURN
+	dy = dy - 32
 	IF dy < dbn THEN dk = 1
 	RETURN
 	#endif

@@ -48,9 +48,9 @@ class BoxHideTest(unittest.TestCase):
         return vm
 
     def test_the_box_geometry_is_the_one_the_routine_assumes(self):
-        # rows 7-9 (the third floor), columns 8-23 -- DESIGN.md section 59.
+        # rows 6-8 (the third floor), columns 8-23 -- DESIGN.md section 59.
         # box_hide's comments and limits are written for exactly this.
-        self.assertEqual((BOX_Y0, BOX_Y1, BOX_X0, BOX_X1), (56, 79, 64, 191))
+        self.assertEqual((BOX_Y0, BOX_Y1, BOX_X0, BOX_X1), (48, 71, 64, 191))
 
     def test_kelly_goes_whole_exactly_when_any_part_touches(self):
         for platform in ('TI994A', 'COLECOVISION'):

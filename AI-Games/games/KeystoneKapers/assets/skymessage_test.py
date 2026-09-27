@@ -1,7 +1,8 @@
 """The result and GAME OVER boxes: where they stand, and their NES colours.
 
-The result boxes stand on the third floor (rows 7-9) and GAME OVER on the
-second (rows 11-13), on every target (DESIGN.md section 59). On the NES each
+The result boxes stand on the third floor (rows 6-8; 7-9 on the NES, whose
+box must start an attribute quadrant) and GAME OVER on the second (rows
+11-13) (DESIGN.md sections 59-60). On the NES each
 box's colours are four attribute bytes over two attribute rows, and the halves
 it does not cover are written as CONSTANT P0 -- which is only right if they
 are P0 on every screen. That is checked here against the generated
@@ -21,7 +22,7 @@ class SkyMessageTest(unittest.TestCase):
         for nes in (False, True):
             for name in gentitle.MESSAGES:
                 runs = gentitle.runs_of(name, nes)
-                expected = 11 if name == 'msg_over' else 7
+                expected = 11 if name == 'msg_over' else (7 if nes else 6)
                 self.assertEqual(runs[0][0], expected, (name, nes))
                 self.assertEqual([len(text) for _, _, text in runs], [16]*3)
                 self.assertEqual(runs[0][2], ' '*16)

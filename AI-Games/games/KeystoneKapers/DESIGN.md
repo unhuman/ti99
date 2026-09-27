@@ -7599,3 +7599,20 @@ so a sprite touches it for y 40..78. On the NES everything is 24 lines lower
 |---|---|---|---|
 | code/PRG free | fixed 1,722 (first pass 124), bank 418 | 4.6 KB | 100 |
 | RAM | 6,258 of 7,821 | 618 of 781 | 1,514 of 1,805 |
+
+## 60. The TMS result box one row higher (2026-09-27)
+
+On the TI and ColecoVision the result box moved up one row, to **rows 6-8**:
+straight under the roof slab, with one row of shop showing between the box and
+the floor-3 slab. `box_hide` moved with it. The box covers lines 48..71, so a
+sprite touches it for y 32..70, and the floor in `box_ovl` is now 32. The
+figure ranges are unchanged in length. `boxhide_test.py` sweeps the new
+geometry from `gentitle.py`.
+
+**The NES stays at rows 7-9 (PPU 10-12). That is deliberate, not a lag.** An
+NES box must start a 2x2 attribute quadrant for `nes_boxatt` to colour it
+without touching its neighbours. Row 6 is PPU 9, which shares a quadrant with
+the roof slab (PPU 8), so colouring the box's top row would repaint sixteen
+columns of the slab in the box's palette. `gentitle.NES_BOX_ROW` carries the
+difference, and `skymessage_test.py` pins both rows. `nes_boxhide` and its
+constants are unchanged.
