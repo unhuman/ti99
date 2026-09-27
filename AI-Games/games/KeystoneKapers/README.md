@@ -144,7 +144,7 @@ The layout matches the raised ColecoVision title. Preview it with
 The TI console's launch-menu entry is `LES KAPERS`; the full 22-character
 `LES KAPERS DE KEYSTONE` exceeds its 20-character cartridge label field.
 The credit uses lowercase `and`: `2026 UNHUMAN and C&C AI`.
-Result messages stand on the third floor (rows 6-8; 7-9 on NES). GAME OVER appears
+Result messages stand on the third floor (rows 6-8). GAME OVER appears
 separately on the second floor below them (rows 11-13).
 Fast-hazard path checks require Kelly's pose to stay unchanged during the
 update. Standing up after a duck still checks direct overlap, but does not
@@ -198,21 +198,21 @@ one colour each, inset in a grey band the width of the screen -- as the 2600 has
 
 **The end of a round keeps the store visible.** Its dark-blue result box
 stands on the third floor, rows 6-8, just under the roof slab. On the last
-life, `GAME OVER` also appears on the second floor, rows 11-13. The NES result
-box is one row lower, rows 7-9 (PPU rows 10-12; the NES draws the whole store
-three rows lower): an NES box must start a 2x2 palette quadrant, and row 6
-would share one with the roof slab. Its `GAME OVER` is at the same rows as the
-TI's (PPU 14-16). Text is centred within each 16-column box.
+life, `GAME OVER` also appears on the second floor, rows 11-13. The rows are the
+same on every target (the NES draws the whole store three rows lower, PPU rows
+9-11 and 14-16). Text is centred within each 16-column box.
 
 **Nothing stands on a box.** Sprites always draw over text, so before a box is
 drawn any actor touching it is hidden -- Kelly or Harry whole, an obstacle on
 its own -- and the rest of the cast stays for the beat (`DESIGN.md` sections
 58-59; `box_hide`, and `nes_boxhide` in 6502 on the NES).
 
-Vertically the box is **three** rows, with equal blank margins. NES uses P1
-for the top two rows and P3's navy for the bottom margin; the halves of the
-palette quadrants a box does not cover are P0 on every screen, which
-`skymessage_test.py` checks. No fourth blue row is added. The centred NES GAME OVER frame
+Vertically the box is **three** rows, with equal blank margins. On the NES
+the result box's top row shares a 2x2 palette quadrant with the roof slab, so
+that quadrant uses P3 -- P0 with black swapped for the box's navy -- and the
+top row is drawn solid navy; the text and bottom rows use P1. `GAME OVER` uses
+P1 over P3 for its navy bottom row. `skymessage_test.py` checks the palettes and
+the one quadrant half left alone. No fourth blue row is added. The centred NES GAME OVER frame
 can tint small fixture details immediately below it navy, an accepted tradeoff.
 
 **A catch needs you level with him, not just on his floor.** A crook riding an

@@ -308,18 +308,16 @@ TITLE = [
 # every scene deliberately: they cost bank bytes, which are plentiful, to save
 # fixed-area bytes, which are not.
 #
-# THE RESULT BOXES SIT ON THE THIRD FLOOR. The floor's band is rows 6-9 under
-# the roof slab (row 5); the TMS box takes rows 6-8, straight under the slab,
-# leaving row 9 of shop above the floor-3 slab (Keystone DESIGN.md sections
-# 59-60). They used to be in the skyline, rows 2-4.
+# THE RESULT BOXES SIT ON THE THIRD FLOOR, rows 6-8 on every target. The
+# floor's band is rows 6-9 under the roof slab (row 5), so the box hangs
+# straight under the slab with row 9 of shop showing below it (Keystone
+# DESIGN.md sections 59-61). They used to be in the skyline, rows 2-4.
 #
-# THE NES BOX IS ONE ROW LOWER, rows 7-9 (PPU 10-12): row 7 is the only row in
-# that band where its box starts a 2x2 attribute quadrant. Row 6 would share a
-# quadrant with the roof slab, and colouring the box would repaint sixteen
-# columns of it. This is a deliberate per-target difference, which
-# skymessage_test.py pins.
+# On the NES that is PPU rows 9-11, and row 9 shares a 2x2 attribute quadrant
+# with the roof slab. nes_boxatt gives that quadrant P3 -- P0 with black
+# swapped for the box's navy -- and draws the box's top row as solid navy, so
+# the slab keeps its colours but for black, and the box needs no fourth row.
 BOX_ROW, BOX_COL, BOX_W = 6, 8, 16
-NES_BOX_ROW = 7
 
 
 def _line(text):
@@ -376,8 +374,6 @@ def runs_of(name, nes=False):
     """One message scene as (row, col, text) runs. The same rows on every
     target: run_list adds the NES picture offset itself."""
     top = MSG_ROW[name]
-    if nes and name != 'msg_over':
-        top = NES_BOX_ROW
     return [(top + i, BOX_COL, t) for i, t in enumerate(MESSAGES[name])]
 
 

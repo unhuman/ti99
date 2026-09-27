@@ -2,7 +2,7 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
      **** ****     > KEYSTONE.a99
 0001               	; CVBasic compiler v0.9.2 Mar/12/2026
 0002               	; Command: /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/cvbasic --ti994a KEYSTONE.bas KEYSTONE.a99 /cygdrive/c/Users/Howie/github.git/unhuman/CVBasic/
-0003               	; Created: Sun Sep 27 12:23:15 2026
+0003               	; Created: Sun Sep 27 14:13:51 2026
 0004               
 0005      0000     COLECO:	equ 0
 0006      0000     SG1000:	equ 0
@@ -17633,28 +17633,28 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 13824               	; 	' message box redraws the screen, and draw_screen calls nes_attr, which
 13825               	; 	' rewrites all sixty-four.
 13826               	; nes_boxatt:
-13827               	; 	' BOTH BOXES START ON THE LOWER HALF OF AN ATTRIBUTE ROW: the result box
-13828               	; 	' at PPU row 10 (#nav 9170), GAME OVER at row 14 (9178). The first byte's
-13829               	; 	' lower quadrants go to P1 for the text rows; the next byte's upper ones
-13830               	; 	' to P3, whose index 2 is the navy of the third, bottom-border row.
-13831               	; 	'
-13832               	; 	' EVERY HALF LEFT ALONE IS P0 ON EVERY SCREEN -- the roof slab over the
-13833               	; 	' result box, the second-floor rows under it, the ground-floor rows under
-13834               	; 	' GAME OVER (gennescolor.attributes, checked by skymessage_test.py) -- so
-13835               	; 	' they are written as constants and nothing is saved at draw time. GAME
-13836               	; 	' OVER always follows a result box, whose border row is P3 in its upper
-13837               	; 	' half, and keeps it: 95 = P3 over P1.
+13827               	; 	' THE RESULT BOX (#nav 9170) IS PPU ROWS 9-11, ONE ATTRIBUTE ROW: its upper
+13828               	; 	' quadrants hold the roof slab (row 8) and the box's top row, its lower
+13829               	; 	' ones the text and the bottom row. Upper = P3, which is P0 with black
+13830               	; 	' swapped for the box's navy, so the slab keeps its green and gold and the
+13831               	; 	' top row, drawn in CH_ECAR (solid index 2), is navy; lower = P1, whose
+13832               	; 	' paper IS that navy. 95 = P1 under P3, and nothing else is touched.
+13833               	; 	'
+13834               	; 	' GAME OVER (9178) is PPU rows 14-16: the same 95 on attribute row 3 (P3
+13835               	; 	' over rows 12-13, where the counters already use P3; black goes navy
+13836               	; 	' there while it is up), and P3 over P0 (15) on row 4 for its navy bottom
+13837               	; 	' row. The lower half of row 4 is P0 on every screen (skymessage_test.py).
 13838               	; 	WAIT
-13839               	; 	nink = 80
-13840               	; 	IF #nav = 9178 THEN nink = 95
-13841               	; 	FOR nai = 0 TO 3
-13842               	; 		VPOKE #nav,nink
-13843               	; 		#nsrc = #nav + 8
-13844               	; 		VPOKE #nsrc,15
+13839               	; 	FOR nai = 0 TO 3
+13840               	; 		VPOKE #nav,95
+13841               	; 		IF #nav > 9177 THEN
+13842               	; 			#nsrc = #nav + 8
+13843               	; 			VPOKE #nsrc,15
+13844               	; 		END IF
 13845               	; 		#nav = #nav + 1
 13846               	; 	NEXT nai
-13847               	; 	#nsrc = 8584			' PPU row 12 col 8, the result box's border row
-13848               	; 	IF #nav = 9182 THEN #nsrc = 8712	' GAME OVER's, row 16
+13847               	; 	#nsrc = 8488			' PPU row 9 col 8, the result box's TOP row
+13848               	; 	IF #nav = 9182 THEN #nsrc = 8712	' GAME OVER's bottom row, 16
 13849               	; 	FOR nai = 0 TO 15
 13850               	; 		VPOKE #nsrc,CH_ECAR
 13851               	; 		#nsrc = #nsrc + 1
@@ -26002,9 +26002,9 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 18985               	;
 18986               	; #if NES
 18987               	; msg_away:
-18988               	; 	DATA BYTE 7,8,144,32,8,8,16,32
+18988               	; 	DATA BYTE 6,8,144,32,7,8,16,32
 18989               	; 	DATA BYTE 32,72,69,32,71,79,84,32
-18990               	; 	DATA BYTE 65,87,65,89,32,32,32,9
+18990               	; 	DATA BYTE 65,87,65,89,32,32,32,8
 18991               	; 	DATA BYTE 8,144,32,255
 18992               	; #endif
 18993               	; #if COLECOVISION
@@ -26021,9 +26021,9 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 19004               	;
 19005               	; #if NES
 19006               	; msg_gothim:
-19007               	; 	DATA BYTE 7,8,144,32,8,8,16,32
+19007               	; 	DATA BYTE 6,8,144,32,7,8,16,32
 19008               	; 	DATA BYTE 32,32,32,71,79,84,32,72
-19009               	; 	DATA BYTE 73,77,33,32,32,32,32,9
+19009               	; 	DATA BYTE 73,77,33,32,32,32,32,8
 19010               	; 	DATA BYTE 8,144,32,255
 19011               	; #endif
 19012               	; #if COLECOVISION
@@ -26059,9 +26059,9 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 19042               	;
 19043               	; #if NES
 19044               	; msg_plane:
-19045               	; 	DATA BYTE 7,8,144,32,8,8,16,32
+19045               	; 	DATA BYTE 6,8,144,32,7,8,16,32
 19046               	; 	DATA BYTE 32,84,72,69,32,66,73,80
-19047               	; 	DATA BYTE 76,65,78,69,32,32,32,9
+19047               	; 	DATA BYTE 76,65,78,69,32,32,32,8
 19048               	; 	DATA BYTE 8,144,32,255
 19049               	; #endif
 19050               	; #if COLECOVISION
@@ -26078,9 +26078,9 @@ XAS99 CROSS-ASSEMBLER   VERSION 3.6.5
 19061               	;
 19062               	; #if NES
 19063               	; msg_timeup:
-19064               	; 	DATA BYTE 7,8,144,32,8,8,16,32
+19064               	; 	DATA BYTE 6,8,144,32,7,8,16,32
 19065               	; 	DATA BYTE 32,32,84,73,77,69,39,83
-19066               	; 	DATA BYTE 32,85,80,33,32,32,32,9
+19066               	; 	DATA BYTE 32,85,80,33,32,32,32,8
 19067               	; 	DATA BYTE 8,144,32,255
 19068               	; #endif
 19069               	; #if COLECOVISION

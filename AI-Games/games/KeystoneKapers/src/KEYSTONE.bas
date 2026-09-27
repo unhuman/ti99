@@ -5440,28 +5440,28 @@ hud_kops:
 	' message box redraws the screen, and draw_screen calls nes_attr, which
 	' rewrites all sixty-four.
 nes_boxatt:
-	' BOTH BOXES START ON THE LOWER HALF OF AN ATTRIBUTE ROW: the result box
-	' at PPU row 10 (#nav 9170), GAME OVER at row 14 (9178). The first byte's
-	' lower quadrants go to P1 for the text rows; the next byte's upper ones
-	' to P3, whose index 2 is the navy of the third, bottom-border row.
+	' THE RESULT BOX (#nav 9170) IS PPU ROWS 9-11, ONE ATTRIBUTE ROW: its upper
+	' quadrants hold the roof slab (row 8) and the box's top row, its lower
+	' ones the text and the bottom row. Upper = P3, which is P0 with black
+	' swapped for the box's navy, so the slab keeps its green and gold and the
+	' top row, drawn in CH_ECAR (solid index 2), is navy; lower = P1, whose
+	' paper IS that navy. 95 = P1 under P3, and nothing else is touched.
 	'
-	' EVERY HALF LEFT ALONE IS P0 ON EVERY SCREEN -- the roof slab over the
-	' result box, the second-floor rows under it, the ground-floor rows under
-	' GAME OVER (gennescolor.attributes, checked by skymessage_test.py) -- so
-	' they are written as constants and nothing is saved at draw time. GAME
-	' OVER always follows a result box, whose border row is P3 in its upper
-	' half, and keeps it: 95 = P3 over P1.
+	' GAME OVER (9178) is PPU rows 14-16: the same 95 on attribute row 3 (P3
+	' over rows 12-13, where the counters already use P3; black goes navy
+	' there while it is up), and P3 over P0 (15) on row 4 for its navy bottom
+	' row. The lower half of row 4 is P0 on every screen (skymessage_test.py).
 	WAIT
-	nink = 80
-	IF #nav = 9178 THEN nink = 95
 	FOR nai = 0 TO 3
-		VPOKE #nav,nink
-		#nsrc = #nav + 8
-		VPOKE #nsrc,15
+		VPOKE #nav,95
+		IF #nav > 9177 THEN
+			#nsrc = #nav + 8
+			VPOKE #nsrc,15
+		END IF
 		#nav = #nav + 1
 	NEXT nai
-	#nsrc = 8584			' PPU row 12 col 8, the result box's border row
-	IF #nav = 9182 THEN #nsrc = 8712	' GAME OVER's, row 16
+	#nsrc = 8488			' PPU row 9 col 8, the result box's TOP row
+	IF #nav = 9182 THEN #nsrc = 8712	' GAME OVER's bottom row, 16
 	FOR nai = 0 TO 15
 		VPOKE #nsrc,CH_ECAR
 		#nsrc = #nsrc + 1

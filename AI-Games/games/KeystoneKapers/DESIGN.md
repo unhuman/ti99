@@ -7616,3 +7616,30 @@ the roof slab (PPU 8), so colouring the box's top row would repaint sixteen
 columns of the slab in the box's palette. `gentitle.NES_BOX_ROW` carries the
 difference, and `skymessage_test.py` pins both rows. `nes_boxhide` and its
 constants are unchanged.
+
+## 61. The NES result box matches the TMS rows (2026-09-27)
+
+The NES result box was one row lower than the TI's and ColecoVision's (section
+60), so it sat visibly further down the screen. It now uses **rows 6-8 on every
+target** (PPU rows 9-11); `gentitle.NES_BOX_ROW` is gone.
+
+**Why the objection in section 60 no longer holds.** Row 6 (PPU 9) shares a 2x2
+attribute quadrant with the roof slab (PPU 8). That quadrant now gets **P3**,
+and P3 is P0 with only index 2 changed, black to navy. Both have the same green
+at index 1 and the same gold at index 3, and `skymessage_test.py` checks it. So:
+* the slab keeps its colours, except that black shows navy over the box's
+  sixteen columns while the box is up;
+* the box's top row is drawn in `CH_ECAR` (solid index 2), so it is navy;
+* the lower quadrant (text row and bottom row) is **P1**, whose paper is the
+  same navy, `PALETTE 5` = `PALETTE 14`.
+
+The whole box is one attribute row, one byte per 4 columns: `95` (P1 under P3).
+The navy tile row moved from the box's bottom row to its top.
+
+`GAME OVER` is unchanged in place (PPU 14-16). It still writes `95` on
+attribute row 3 and `15` on row 4. The lower half of row 4 is the only half any
+box leaves alone, and it is P0 on every screen (tested). `nes_boxhide` moved
+with the box: its y range is 56..94, the TMS range plus 24.
+
+**Verified in iNES:** `HE GOT AWAY` hangs directly under the roof slab, with
+one row of shop showing below it, as on the TI. NES PRG free: 118 bytes.
