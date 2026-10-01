@@ -5,7 +5,8 @@ description: >-
   TI-99/4A games built with XB256 + the XB compiler: statement separators,
   IF/THEN/ELSE semantics, subprogram argument passing, Screen2 character vs
   sprite pattern tables, the TMS9918A two-colours-per-cell model, MAGNIFY
-  sprite sizes, 1-based coordinates, scrolling and sound routines. Load this
+  sprite sizes, 1-based coordinates, scrolling and sound routines, plus the
+  integer-only XB compiler landmines and compiler-safe checklist. Load this
   when writing or debugging an XB256 game (games/dotmuncher, games/mspacman) --
   it is NOT needed for the CVBasic games, which are the bulk of this repo.
 ---
@@ -181,3 +182,127 @@ per-game lifecycle stayed in `CLAUDE.md`.
   `colecosounds` for the ColecoVision pass, `testsounds` for the 2600 one.
 
 ---
+
+# Compiler constraints and checklist (moved from CLAUDE.md)
+
+## 2. Hard Compiler Constraints (integer-only) — drive all game math
+
+- **Integers only, −32768…32767.** Overflow wraps: `200*200 = -25536`, `32767+1 = -32768`.
+  Use **fixed-point** (e.g. store position×256, shift when reading) where you need fractions.
+- **Division truncates.** Wrap **`INT()`** around any `/` or `SQR` in the XB source so the
+  interpreted and compiled results match (e.g. `INT(5/2)` = 2 in both).
+- **`RND` compiles to 0.** Always `INT(RND*N)` for a 0…N-1 result. Prefer
+  `CALL LINK("IRND",limit,var)` (XB256) — same result *and* much faster. `RANDOMIZE` is a
+  no-op (auto-seeded); for a repeatable sequence `CALL LOAD(-31808,n1,n2)`.
+- **Delay loops do NOT translate** (`FOR I=1 TO 500::NEXT` ≈ seconds in XB, a blink compiled):
+  - Timed delay: `CALL SOUND(ms,110,30)::CALL SOUND(1,110,30)` (the 2nd call blocks until the
+    1st finishes), **or** `CALL LINK("DELAY",ms)` (1–30000 ms; sprites/sound keep running).
+  - Fixed-period loop: `CALL LOAD(-1,N)` once, then `CALL LINK("SYNC")` just before the loop's
+    `NEXT`/`GOTO` → each pass takes exactly N/60 s.
+- **Not supported (will break / be dropped):** `SIN COS TAN ATN LOG EXP`, `DEF`, `IMAGE` &
+  `DISPLAY USING`, `CALL ERR`. Trig workaround = precomputed **SINE255** string + `SEG$`/`ASC`
+  (see `JUWEL7/SINE255` and XB Compiler.pdf p.7); `COS(a)=SIN(90-a)`.
+- **Syntax landmines:**
+  - **Never a trailing `::`** at the end of a line — it crashes the compiler.
+  - User `SUB` names are truncated to the **first 6 letters** and must stay unique
+    (`UPDATEWHITE`/`UPDATEBLACK` collide; `UPDATWHITE`/`UPDATBLACK` are fine).
+  - **`RESTORE` must point to a `DATA` line, never a `REM`/`!`**. You cannot `GOTO` a `DATA` line.
+  - `CALL LINK` name must be a **string constant** — `CALL LINK(A$,…)` will not compile right.
+  - Keep `PRINT` lists to **≤20 items**. No `ON GOTO`/`ON GOSUB` **inside** an `IF/THEN/ELSE`.
+  - `DISPLAY ERASE ALL` (with no print list) crashes the compiler — use `CALL CLEAR`.
+  - **`SEG$` needs all *three* args** `SEG$(s,start,len)`. A 2-arg `SEG$(s,start)` ("to end") is
+    invalid XB — interpreted it errors, but the **compiler silently miscompiles it to garbage**
+    (corrupt string write → freeze/crash, a stray inverse char on screen), with no error at compile
+    or run time. For "rest of string," pass an explicit length (e.g. `SEG$(s,start,LEN(s)-start+1)`
+    or a constant ≥ the max remaining). Confirmed in `games/mspacman` cache update (line 753).
+  - **Jump-codegen corruption near program end** (confirmed by decoding the generated assembly):
+    close to the label-table limit, the compiler can *silently* mistranslate conditional jumps in
+    the **last** code region. Two confirmed modes: (1) a **bare single small-constant comparison**
+    jumping to a line — `IF K<1 THEN 1234`, `IF K>0 THEN 1231` — came out comparing the *wrong
+    variable* / a garbage target; the **compound `OR`** form right beside it compiled fine
+    (`IF K<48 OR K>57 THEN …`), so prefer compound conditions. (2) a **short backward `GOTO`/`ELSE`
+    to a line that immediately follows *another* jump target** resolved to a garbage label
+    (→ `undefined symbol`, or a silent jump into unrelated code). Fixes: no standalone short backward
+    `GOTO` (fold the loop-back into an `ELSE`); **put a buffer line so a loop-back target never sits
+    right after a jump target**; and shed labels by merging contiguous plain `::` lines (each source
+    line ≈ one label) to pull back from the table limit.
+- **Reserved names:** the compiler reserves ~1000 internal labels — `NC/NV/NA/SC/SV/SA…`,
+  `L`+digit, and the full table on **XB Compiler.pdf p.12**. Game `SUB`/`CALL LINK` names must
+  avoid these (and their 6-char truncations).
+- **Supported and behaving like XB:** full `IF/THEN/ELSE` (incl. statement clauses),
+  `FOR/NEXT/STEP`, `GOSUB/RETURN`, `ON GOTO/GOSUB`, arrays incl. **nested** `A(B(i))`,
+  multi-assignment (`A,B,C=3`), string ops (`SEG$ POS LEN VAL STR$ CHR$ ASC RPT$ &`, 255-byte
+  cap), `ACCEPT`/`DISPLAY AT`/`PRINT`, and the graphics/sound CALLs in §4. Up to three
+  `DISPLAY,VARIABLE` files (`#1 #2 #3`) — `LINPUT`/`INPUT` for read, `ON ERROR line#` supported.
+
+## 6. Compiler-Safe Coding Checklist
+
+Every game's XB source must satisfy all of these so XB and compiled behavior match:
+
+- [ ] Integer / fixed-point math only; explicit `INT()` on every `/` and `SQR`.
+- [ ] Randomness via `INT(RND*N)` or `CALL LINK("IRND",…)`.
+- [ ] Timing via `CALL LINK("DELAY",ms)` / paired `CALL SOUND` / `SYNC` — never raw `FOR/NEXT`.
+- [ ] No trailing `::` on any line.
+- [ ] `SUB`/`CALL LINK` names: unique in first 6 chars, not in the reserved list, `LINK` name a
+      string constant.
+- [ ] `RESTORE` targets a `DATA` line; no `GOTO` into `DATA`.
+- [ ] No `SIN/COS/TAN/ATN/LOG/EXP/DEF/IMAGE/DISPLAY USING`; `CALL CLEAR` (not `DISPLAY ERASE ALL`).
+- [ ] `PRINT` ≤20 items; no `ON GOTO/GOSUB` inside `IF/THEN/ELSE`.
+- [ ] Default Screen2; output as `-X`.
+- [ ] **Performance budget honored (§5A):** `DESIGN.md` has a Performance Budget block; constant-velocity
+      actors use `CALL MOTION` (not per-frame `LOCATE`); per-frame `GCHAR`/`COINC` minimized; no
+      many-actor per-frame AI search.
+- [ ] **Tested on / reasoned about original-hardware speed**, not just emulator default speed.
+- [ ] Fully debugged in interpreted XB256 **before** compiling.
+
+## 5A. XB256 performance levers (moved from CLAUDE.md §5A)
+
+**Levers, fastest first:**
+
+- **Turn-based / input-paced loops are essentially free** — the CPU mostly waits on `CALL KEY`.
+  Puzzle/board games (Tetris, Snake, Minesweeper, 2048, Reversi) have effectively unlimited speed.
+
+- **Prefer hardware `CALL MOTION` over per-frame `CALL LOCATE`.** A sprite given a constant velocity
+  is moved (and **edge-wrapped**) by the VDP for *free*; you only re-issue `MOTION` on a discrete
+  event (thrust, bounce, fire). `LOCATE`-every-frame is pure CPU and is the #1 thing that made
+  Ms. Pac-Man slow. (Ms. Pac-Man needed deterministic grid movement, so it couldn't — but most
+  games *can*.)
+
+- **Minimize per-frame VDP round-trips.** `CALL GCHAR`/`COINC`/`POSITION` each cost a VDP access;
+  doing them per-actor per-frame is brutal. Cache, check every other frame, or design them out.
+  **Concrete win (applied in `games/mspacman`):** mirror a static/slow-changing screen in a
+  **string array, one char per cell, indexed so char position = screen column** (`M$(R)`), then
+  replace `CALL GCHAR(R,C,G)` with `G=ASC(SEG$(M$(R),C,1))` — a CPU/value-space read, no VDP
+  access. Build it while rendering; patch the one cell you change (e.g. an eaten dot) in the same
+  line. Costs ~1 byte/cell (a numeric array costs 8×), so a full 24×32 field is ~800 bytes vs ~6600.
+
+- **Avoid per-actor per-frame AI search for many actors.** N pursuers each pathfinding every frame
+  is the Ms. Pac-Man trap. Prefer scripted/constant-velocity motion or reactive (non-search) AI.
+
+- **Cap simultaneously-moving sprites** and redraw **only cells that changed** (don't repaint the
+  field). `FLICK` handles >4 on a scanline but doesn't make the per-frame work cheaper.
+
+## 8. XB256 per-game folder layout & lifecycle (moved from CLAUDE.md §8)
+
+**Folder layout** (`games/<name>/`):
+
+```
+games/<name>/
+  DESIGN.md          # the spec — write BEFORE code (from templates/GAME-DESIGN-template.md)
+  README.md          # one screen: concept, controls, status, build line
+  src/<NAME>.ti99    # canonical paste-ready XB256 source (numbered listing)
+  assets/            # COMPRESS DATA strings, char defs, sound lists (as created)
+  build/             # -M .TXT .OBJ -E -X artifacts (git-ignored)
+```
+
+**Naming:** on-disk program name UPPERCASE and **≤8 chars** (TI filenames max 10; leaves room
+for the `-M`/`-X` suffixes); folder name lowercase. Index every game in `GAMES.md`.
+
+**Lifecycle — do these in order:**
+1. Fill `DESIGN.md` from `templates/GAME-DESIGN-template.md`.
+2. Author `src/<NAME>.ti99`, compiler-safe from line 1 (§6). Start from `templates/skeleton.ti99`.
+3. Run **interpreted** in XB256 (Classic99, `JUWEL7` = DSK1); debug fully.
+4. `SAVE DSKn.<NAME>` then `SAVE DSKn.<NAME>-M,MERGE`.
+5. Compiler → Assembler → Loader; save **`<NAME>-X`**.
+6. Run `<NAME>-X`; confirm it matches the interpreted behavior + the DESIGN acceptance criteria.
+7. Commit `DESIGN.md`, `README.md`, and `src/`.

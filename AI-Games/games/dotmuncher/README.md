@@ -24,4 +24,4 @@ dot to win. No enemy yet — this game's real job is to **validate the whole XB2
 8. Confirm `MUNCH-X` behaves identically to the interpreted run, just far faster. ✅ toolchain validated.
 
 > If the compiler stops on a line (`L###`), that line has an unsupported statement — check it
-> against `CLAUDE.md` §6.
+> against the §6 checklist in `.claude/skills/xb256-reference/SKILL.md`.
