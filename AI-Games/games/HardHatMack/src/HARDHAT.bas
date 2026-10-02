@@ -114,12 +114,13 @@
 	BANK SELECT 1
 	#endif
 
-	CONST MAXITEM = 6	' girder pieces (L1) / lunchboxes (L2) / boxes (L3)
+	CONST MAXITEM = 8	' girder pieces (L1) / lunchboxes (L2) / boxes (L3)
 	CONST MAXGAP  = 4
 	CONST MAXBOLTC = 4
 
 	DIM gapr(MAXGAP)	' gap -> floor row
 	DIM gapc(MAXGAP)	' gap -> left col (4 wide)
+	DIM gapitem(MAXGAP)
 	DIM gapst(MAXGAP)	' gap -> 0 open / 1 filled / 2 riveted
 	DIM itr(MAXITEM)	' item -> cell row
 	DIM itc(MAXITEM)	' item -> cell col (items are 1 cell)
@@ -133,6 +134,10 @@
 	DIM jtab(16)		' jump arc: 128+dy per step (unsigned-safe)
 	' Conveyor belts as pixel SURFACES (bottom pixel x0,y0 -> top pixel x1,y1),
 	' so Mack rides a continuous line and never drops into the cell gaps.
+	DIM pnxcar(4)
+	DIM pnycar(4)
+	DIM drillx(18)
+	DIM drilly(18)
 	DIM cvdir(3)	' 0 = carries right/up, 1 = carries LEFT
 	DIM cvx0(3)
 	DIM cvy0(3)
@@ -183,6 +188,12 @@
 
 	' Playfield tiles, colored per char (DEFINEs are synchronous on the
 	' TI runtime -- verified in cvbasic_9900_prologue.asm).
+	DEFINE CHAR 224,1,bell_pat
+	DEFINE COLOR 224,1,bell_col
+	DEFINE CHAR 225,2,claw_pat
+	DEFINE COLOR 225,2,claw_col
+	DEFINE CHAR 227,4,cage_bitmap
+	DEFINE COLOR 227,4,cage_col
 	DEFINE CHAR T_SOLID0,11,tile_pat
 	DEFINE COLOR T_SOLID0,11,tile_col
 	DEFINE CHAR T_CHAIN,1,chain_pat
@@ -262,6 +273,9 @@
 	DEFINE SPRITE 15,5,mack_colour
 	DEFINE SPRITE 20,1,lift_bitmap
 	DEFINE SPRITE 21,1,cage_bitmap
+	DEFINE SPRITE 22,1,steel_bitmap
+	DEFINE SPRITE 23,1,magnet_bitmap
+	DEFINE SPRITE 24,1,press_bitmap
 	DEFINE SPRITE 14,1,cable_bitmap		' crane cable link (frame 56)
 
 	' Effects use tone channel 2 and drill noise channel 3. No music player.
@@ -272,6 +286,12 @@
 		READ BYTE jtab(i)
 	NEXT i
 
+	RESTORE drill_route
+	FOR i = 0 TO 17
+		READ BYTE drillx(i)
+		READ BYTE drilly(i)
+	NEXT i
+
 new_game:
 	lv = 1
 	lives = 2
@@ -279,6 +299,7 @@ new_game:
 	xlife = 0
 	#bonus = 5000
 	GOSUB title_screen
+	levelno = lv
 	GOSUB init_level
 
 main_loop:
@@ -356,6 +377,7 @@ main_loop:
 	END IF
 	GOSUB beam_draw
 	GOSUB lift_draw
+	GOSUB site_draw
 	IF lvdone = 1 THEN GOTO level_complete
 	' Mack: hidden (row 209) while dead-blinking handles its own draw.
 	' Airborne states use the spread-legs jump pose.
@@ -421,7 +443,11 @@ main_loop:
 			jx2 = mx - 8
 		END IF
 		IF carry = 1 THEN
-			SPRITE 1,my - 1,jx2,28,9
+			IF lv = 3 THEN
+				SPRITE 1,my - 1,jx2,88,15
+			ELSE
+				SPRITE 1,my - 1,jx2,28,9
+			END IF
 		ELSE
 			' Carried jackhammer keeps hammering (alternate frames 24/40),
 			' same as when it roams -- it must not freeze in Mack's hands.
@@ -517,6 +543,7 @@ level_complete:
 		#hi = #score
 		PRINT AT CPOS(0,18),<5>#hi
 	END IF
+	levelno = levelno + 1
 	lv = lv + 1
 	IF lv > 3 THEN lv = 1
 	carry = 0
@@ -593,9 +620,12 @@ world_step:
 	GOSUB mag_move
 	GOSUB mag_catch
 	GOSUB elev_move
+	GOSUB site_step
 	RETURN
 
 mack_step:
+	IF st = 8 THEN RETURN
+	IF st = 7 THEN GOTO spring_transfer
 	IF st = S_WALK THEN GOTO st_walk
 	IF st = S_CLIMB THEN GOTO st_climb
 	IF st = S_JUMP THEN GOTO st_jump
@@ -724,8 +754,6 @@ st_walk:
 			fcy = my
 			fct = 0
 			jhz = 1
-			IF jl THEN jhz = 0
-			IF jr THEN jhz = 2
 		END IF
 		RETURN
 	END IF
@@ -757,6 +785,7 @@ st_walk:
 	' pads sit two cells out from the beam they serve.
 	IF ch <> T_PAD THEN padok = 1	' stepped off: the pads are live again
 	IF ch = T_PAD THEN
+		IF lv = 3 THEN GOTO spring_begin
 		IF padok = 0 THEN RETURN	' already bounced off this one
 		padok = 0
 		st = S_JUMP
@@ -896,7 +925,12 @@ st_climb:
 	IF ju THEN
 		ta = TILE(mx + 8,my + 7)
 		tb = TILE(mx + 8,my + 15)
+		tc = TILE(mx + 8,my + 1)
 		mv = 0
+		' Head-only grabs must remain climbable on the following step.
+		IF tc >= T_LADD0 THEN
+			IF tc <= T_LADD1 THEN mv = 1
+		END IF
 		IF ta >= T_SOLID0 THEN
 			IF ta <= T_LADD1 THEN mv = 1
 		END IF
@@ -976,6 +1010,13 @@ st_climb:
 	RETURN
 
 st_jump:
+	' Factory pads first lift Mack clear of the ledge's underside, then
+	' carry him outward. Drifting immediately would hit the beam from below.
+	IF spr2 = 1 THEN
+		IF lv = 3 THEN
+			IF jix < 5 THEN GOTO jump_vertical
+		END IF
+	END IF
 	' Horizontal drift is committed FIRST -- before the vertical move that
 	' may land and RETURN -- so the landing step still contributes its pixel.
 	' Including the apex hold, a normal jump spans 32 px. It advances
@@ -988,6 +1029,7 @@ st_jump:
 	IF jhz = 2 THEN
 		IF mx < 240 THEN mx = mx + 1
 	END IF
+jump_vertical:
 	' dy comes from a table of 128+dy bytes (unsigned-safe).
 	' Low ceilings cap height at 11 px; allow time to clear an enemy.
 	' The spring arc keeps its original timing.
@@ -1015,8 +1057,9 @@ st_jump:
 				IF ch <= T_BUMP1 THEN
 					IF bmp1 = 0 THEN
 						bmp1 = 1
-						jhang = 0
-						IF jix < 8 THEN jix = 8
+						' Keep horizontal clearance time under a low ceiling.
+						' jump_adv advances 7 to the apex exactly once.
+						IF jix < 8 THEN jix = 7
 					END IF
 					GOTO jump_adv
 				END IF
@@ -1091,7 +1134,19 @@ jump_adv:
 	RETURN
 
 st_fall:
-	' Preserve committed jump/walk-off momentum through the whole fall.
+	IF lv = 3 THEN
+		IF my >= 160 THEN
+			cx = mx + 8
+			IF cx >= 84 THEN
+				IF cx <= 103 THEN GOTO spring_begin
+			END IF
+			IF cx >= 156 THEN
+				IF cx <= 175 THEN GOTO spring_begin
+			END IF
+		END IF
+	END IF
+	' Only a deliberate jump carries horizontal momentum into a fall.
+	' Walking off a ledge, chain or parked elevator starts a vertical drop.
 	IF jhz = 0 THEN
 		IF mx > 0 THEN mx = mx - 1
 	END IF
@@ -1233,8 +1288,6 @@ st_ride:
 			fcy = my
 			fct = 0
 			jhz = 1
-			IF jl THEN jhz = 0
-			IF jr THEN jhz = 2
 		END IF
 	END IF
 	RETURN
@@ -1243,38 +1296,26 @@ st_ride:
 	' ---- Probes ----
 	'
 mag_move:
-	' The electromagnet hangs dead until every prize is claimed (mgarm), then
-	' tracks back and forth along the top of the crane. Jumping into it from
-	' the top of the upper conveyor is how level 2 is won.
 	IF mgon = 0 THEN RETURN
 	IF mgarm = 0 THEN RETURN
-	mgtk = mgtk + 1
-	IF mgtk < 3 THEN RETURN
-	mgtk = 0
-	' Erase the two cells it occupies, RESTORING the crane cable in col 14 --
-	' the magnet's row crosses it and blanking would chew a hole in the cable.
-	#va = VADDR(mgr,mgc)
-	mc9 = 32
-	IF mgc = 14 THEN mc9 = T_CABLE
-	VPOKE #va,mc9
-	mgc2 = mgc + 1
-	#va = VADDR(mgr,mgc2)
-	mc9 = 32
-	IF mgc2 = 14 THEN mc9 = T_CABLE
-	VPOKE #va,mc9
-	IF mgd = 0 THEN
-		mgc = mgc - 1
-		IF mgc <= 10 THEN mgd = 1
-	ELSE
-		mgc = mgc + 1
-		IF mgc >= 24 THEN mgd = 0
+	IF st = 8 THEN
+		IF mgx > 112 THEN mgx = mgx - 1
+		IF mgx < 112 THEN mgx = mgx + 1
+		mx = mgx
+		my = 24
+		IF mgx = 112 THEN lvdone = 1
+		RETURN
 	END IF
-	#va = VADDR(mgr,mgc)
-	ch = T_MAGNET
-	VPOKE #va,ch
-	#va = #va + 1
-	ch = T_MAGNET + 1
-	VPOKE #va,ch
+	mgtk = mgtk + 1
+	IF mgtk < 2 THEN RETURN
+	mgtk = 0
+	IF mgd = 0 THEN
+		mgx = mgx - 1
+		IF mgx <= 96 THEN mgd = 1
+	ELSE
+		mgx = mgx + 1
+		IF mgx >= 208 THEN mgd = 0
+	END IF
 	RETURN
 
 mag_catch:
@@ -1286,6 +1327,7 @@ mag_catch:
 	' completed the level -- warping the player straight to level 3.
 	IF mgon = 0 THEN RETURN
 	IF mgarm = 0 THEN RETURN
+	IF st = 8 THEN RETURN
 	IF st = S_WALK THEN RETURN
 	IF st = S_DEAD THEN RETURN
 	hy = my + 4
@@ -1293,10 +1335,14 @@ mag_catch:
 	mgy = mgy + 12
 	IF hy <= mgy THEN
 		cx = mx + 8
-		mgl = mgc * 8
+		mgl = mgx
 		mgq = mgl + 15
 		IF cx >= mgl THEN
-			IF cx <= mgq THEN lvdone = 1
+			IF cx <= mgq THEN
+				st = 8
+				my = 24
+				mx = mgx
+			END IF
 		END IF
 	END IF
 	RETURN
@@ -1349,6 +1395,28 @@ elev_sup:
 	'
 	' ---- Elevator: a 16x4 sprite platform shuttling its shaft ----
 	'
+elev_back:
+	' The parked cabin also lives in the name table: sprite overflow cannot
+	' make it disappear. The moving cabin keeps its sprites only.
+	IF emov = 0 THEN
+		IF elpaint = 1 THEN RETURN
+		#elback = (ely / 8 - 2) * 32 + elx / 8
+		#elback = #elback + 6144
+		elpaint = 1
+	ELSE
+		IF elpaint = 0 THEN RETURN
+		elpaint = 0
+	END IF
+	#va = #elback
+	FOR elcell = 0 TO 3
+		ch = T_VOID
+		IF elpaint = 1 THEN ch = 227 + elcell / 2 + (elcell AND 1) * 2
+		VPOKE #va,ch
+		#va = #va + 1
+		IF elcell = 1 THEN #va = #va + 30
+	NEXT elcell
+	RETURN
+
 elev_move:
 	' Moves only after being boarded (emov), then parks at the far end.
 	' One pixel per world step, sharing Mack's catch-up clock.
@@ -1383,6 +1451,10 @@ beam_move:
 	IF lv = 3 THEN GOTO lift_move
 	IF st = S_DEAD THEN RETURN
 	IF bmon = 0 THEN RETURN
+	IF bmactive = 0 THEN
+		IF bonbeam = 0 THEN RETURN
+		bmactive = 1
+	END IF
 	' Advance 1 px/world step. At 2 px/pass the beam travelled 120 px/s -- faster than
 	' Mack falls -- so a beam on its way UP outran his descent and slipped
 	' through the +-4 px catch window: jumping across from the conveyor's top
@@ -1489,72 +1561,66 @@ belt_surface:
 	RETURN
 
 lift_move:
-	' Two paddles circulate around the shaft, rather than reverse in place.
-	pnoldx = pnlx
-	IF pnside = 1 THEN pnoldx = pnrx
+	pnoldx = pnxcar(pnside)
 	pnphase = pnphase + 1
-	IF pnphase >= 240 THEN pnphase = 0
-	pnpos = pnphase
-	GOSUB lift_position
-	pnlx = pnx
-	pnyl = pny
-	#pnother = pnphase + 120
-	IF #pnother >= 240 THEN #pnother = #pnother - 240
-	pnpos = #pnother
-	GOSUB lift_position
-	pnrx = pnx
-	pnyr = pny
+	IF pnphase >= 224 THEN pnphase = 0
+	GOSUB lift_positions
 	IF bonbeam = 1 THEN
-		bmy = pnyl
-		pnx = pnlx
-		IF pnside = 1 THEN
-			bmy = pnyr
-			pnx = pnrx
-		END IF
-		mx = mx + pnx - pnoldx
+		bmy = pnycar(pnside)
+		mx = mx + pnxcar(pnside) - pnoldx
 		my = bmy - 16
 	END IF
 	RETURN
 
+lift_positions:
+	#pnother = pnphase
+	FOR pni = 0 TO 3
+		IF #pnother >= 224 THEN #pnother = #pnother - 224
+		pnpos = #pnother
+		GOSUB lift_position
+		pnxcar(pni) = pnx
+		pnycar(pni) = pny
+		#pnother = #pnother + 56
+	NEXT pni
+	RETURN
+
 lift_position:
-	pnx = 96
-	pny = 144
+	pnx = 104
+	pny = 64
 	IF pnpos < 80 THEN
-		pny = 144 - pnpos
+		pny = 64 + pnpos
 		RETURN
 	END IF
-	IF pnpos < 120 THEN
-		pnx = 96 + pnpos - 80
-		pny = 64
+	IF pnpos < 112 THEN
+		pnx = 104 + pnpos - 80
+		pny = 144
 		RETURN
 	END IF
-	IF pnpos < 200 THEN
+	IF pnpos < 192 THEN
 		pnx = 136
-		pny = 64 + pnpos - 120
+		pny = 144 - (pnpos - 112)
 		RETURN
 	END IF
-	pnx = 136 - (pnpos - 200)
+	pnx = 136 - (pnpos - 192)
 	RETURN
 
 lift_sup:
 	bsup = 0
 	fx = mx + 8
-	bmy = pnyl
-	pnx = pnlx
-	GOSUB lift_height
-	IF bsup = 1 THEN
-		pnside = 0
-		RETURN
-	END IF
-	bmy = pnyr
-	pnx = pnrx
-	GOSUB lift_height
-	IF bsup = 1 THEN pnside = 1
+	FOR pns = 0 TO 3
+		bmy = pnycar(pns)
+		pnx = pnxcar(pns)
+		GOSUB lift_height
+		IF bsup = 1 THEN
+			pnside = pns
+			RETURN
+		END IF
+	NEXT pns
 	RETURN
 
 lift_height:
 	IF fx < pnx THEN RETURN
-	IF fx > pnx + 23 THEN RETURN
+	IF fx > pnx + 15 THEN RETURN
 	fy = my + 16
 	IF fy >= bmy - 3 THEN
 		IF fy <= bmy + 3 THEN bsup = 1
@@ -1563,10 +1629,9 @@ lift_height:
 
 lift_draw:
 	IF lv <> 3 THEN RETURN
-	SPRITE 10,pnyl - 1,pnlx,80,3
-	SPRITE 11,pnyl - 1,pnlx + 8,80,3
-	SPRITE 12,pnyr - 1,pnrx,80,3
-	SPRITE 13,pnyr - 1,pnrx + 8,80,3
+	FOR pndraw = 0 TO 3
+		SPRITE 10 + pndraw,pnycar(pndraw) - 1,pnxcar(pndraw),80,3
+	NEXT pndraw
 	RETURN
 
 beam_draw:
@@ -1628,23 +1693,35 @@ beam_draw:
 	' ---- Level 1 objective: pieces, gaps, riveting ----
 	'
 deliver_zone:
-	IF my < 160 THEN RETURN
+	IF carry <> 1 THEN RETURN
+	IF boxfall = 1 THEN RETURN
+	IF my <> 120 THEN RETURN
 	cx = mx + 8
-	IF cx >= 24 THEN
-		IF cx <= 63 THEN GOTO deliver_box
+	boxx = 0
+	IF cx >= 32 THEN
+		IF cx <= 39 THEN boxx = 40
+	END IF
+	IF cx >= 56 THEN
+		IF cx <= 63 THEN boxx = 40
 	END IF
 	IF cx >= 192 THEN
-		IF cx <= 231 THEN GOTO deliver_box
+		IF cx <= 199 THEN boxx = 200
 	END IF
+	IF cx >= 216 THEN
+		IF cx <= 223 THEN boxx = 200
+	END IF
+	IF boxx = 0 THEN RETURN
+	carry = 0
+	boxfall = 1
+	boxy = 128
+	#score = #score + 25
+	GOSUB hud_score
 	RETURN
 
 deliver_box:
-	' Level 3: walking onto an IN hopper with a steel box feeds the machine.
-	' Six delivered clears the level.
-	IF carry <> 1 THEN RETURN
-	carry = 0
+	boxfall = 0
 	nbox = nbox - 1
-	#score = #score + 500
+	#score = #score + 25
 	GOSUB hud_score
 	#sndpitch = 140
 	sndvol = 12
@@ -1665,6 +1742,9 @@ take_item:
 					IF itk(i) = 0 THEN
 						IF carry <> 0 THEN RETURN
 						carry = 1
+						IF lv = 1 THEN #score = #score + 10
+						IF lv = 3 THEN #score = #score + 25
+						GOSUB hud_score
 						cidx = i
 						#sndpitch = 400
 						sndvol = 10
@@ -1672,16 +1752,15 @@ take_item:
 						GOSUB tone_start
 					ELSEIF itk(i) = 3 THEN
 						' Lunchbox: the level-2 objective.
-						#score = #score + 300
+						#score = #score + 25
 						GOSUB hud_score
 						#sndpitch = 180
 						sndvol = 10
 						snd2 = 8
 						GOSUB tone_start
 						nlbr = nlbr - 1
-						' All prizes claimed: the magnet comes ALIVE and starts
-						' tracking across the top. The level is won by being
-						' caught by it, not by the last pickup.
+						' All six pails arm the already moving magnet.
+						' Catching it starts the final ride to the crane top.
 						IF mgon = 1 THEN
 							IF nlbr = 0 THEN mgarm = 1
 						END IF
@@ -1723,11 +1802,12 @@ try_fill:
 				IF c2 = gapc(i) + 1 THEN hit = 1
 				IF hit = 1 THEN
 					gapst(i) = 1
+					gapitem(i) = cidx
 					carry = 0
 					#va = VADDR(r2,gapc(i))
 					ch = T_FILLED
 					VPOKE #va,ch
-					#score = #score + 100
+					#score = #score + 25
 					GOSUB hud_score
 					#sndpitch = 200
 					sndvol = 12
@@ -1753,7 +1833,7 @@ rivet_gap:
 					#va = VADDR(r2,c2)
 					ch = T_RIVET
 					VPOKE #va,ch
-					#score = #score + 200
+					#score = #score + 35
 					GOSUB hud_score
 					SOUND 3,5,10
 					snd3 = 10
@@ -1804,24 +1884,18 @@ actors_move:
 			END IF
 		END IF
 	END IF
-	' Vandal: lethal on contact. On L1 it walks route_vand (in actors_step);
-	' the old dumb patrol here stays for L2 (deferred, vroute = 0).
+	' Vandal: lethal on contact; each site has its own walk/climb route.
 	IF von = 1 THEN
 		IF vroute = 0 THEN
-			IF vps > 0 THEN
-				vps = vps - 1
-			ELSE
-				IF RANDOM(128) = 0 THEN vps = 25
-				IF (atg AND 1) = 1 THEN
-					IF vd = 1 THEN
-						vx = vx + 1
-						IF vx >= vmx THEN vd = 0
-					ELSE
-						vx = vx - 1
-						IF vx <= vmn THEN vd = 1
-					END IF
-				END IF
-			END IF
+			rx = vx
+			ry = vy
+			rf = vd
+			rp = vp
+			GOSUB site_route
+			vx = rx
+			vy = ry
+			vd = rf
+			vp = rp
 		END IF
 		ex = vx
 		ey = vy
@@ -1830,37 +1904,17 @@ actors_move:
 		GOSUB mack_hit
 		IF hit = 1 THEN GOSUB mack_die
 	END IF
-	' OSHA man: patrols, but stalks Mack when he is on his floor band.
+	' OSHA man: patrols the left factory tiers via their edge chain.
 	IF oon = 1 THEN
-		hom = 0
-		IF my >= oy THEN
-			d2 = my - oy
-			IF d2 <= 8 THEN hom = 1
-		ELSE
-			d2 = oy - my
-			IF d2 <= 8 THEN hom = 1
-		END IF
-		IF (atg AND 1) = 1 THEN
-			IF hom = 1 THEN
-				' Step toward Mack, clamped to the patrol beat.
-				IF mx > ox THEN
-					ox = ox + 1
-					IF ox >= omx THEN ox = omx
-				END IF
-				IF mx < ox THEN
-					ox = ox - 1
-					IF ox <= omn THEN ox = omn
-				END IF
-			ELSE
-				IF od = 1 THEN
-					ox = ox + 1
-					IF ox >= omx THEN od = 0
-				ELSE
-					ox = ox - 1
-					IF ox <= omn THEN od = 1
-				END IF
-			END IF
-		END IF
+		rx = ox
+		ry = oy
+		rf = od
+		rp = opath
+		GOSUB site_route
+		ox = rx
+		oy = ry
+		od = rf
+		opath = rp
 		ex = ox
 		ey = oy
 		hbw = 8
@@ -1885,7 +1939,7 @@ actors_move:
 	RETURN
 
 bolt_move:
-	' Rivet: thrown from above at Mack's position, it drifts only LEFT
+	' Rivet: thrown from the fixed upper-right thrower, drifting LEFT
 	' (never right, never re-aims), bounces ONCE on each floor it meets,
 	' then passes THROUGH that floor to keep descending. Once per world step.
 	' Level 1 only -- see bolon in init_level.
@@ -1894,15 +1948,16 @@ bolt_move:
 		btm = btm - 1
 		IF btm = 0 THEN
 			bon = 1
-			bx = 224
-			IF mx < 176 THEN bx = mx + 48
+			bx = 240
+			bkind = RANDOM(4)
+			bvel = 1 + (bkind AND 1)
 			by = 16
 			bph = 0
 			bnx = 0
 		END IF
 	ELSE
 		IF bx > 4 THEN
-			bx = bx - 1
+			bx = bx - bvel
 		ELSE
 			bon = 0
 			btm = 200
@@ -1921,7 +1976,7 @@ bolt_move:
 					IF ch >= T_SOLID0 THEN
 						IF ch <= T_SOLID1 THEN
 							bph = 1
-							bct = 6
+							bct = 4 + bkind * 2
 							bnx = fy + 10
 						END IF
 					END IF
@@ -1945,8 +2000,8 @@ bolt_move:
 
 	'
 	' ---- Shared route interpreter (drill + monster) ----
-	' Both roam the whole building on a FIXED PREDEFINED serpentine (they
-	' do NOT home on Mack -- authentic, ASchultz FAQ). Generic actor state
+	' The vandal roams the building on a FIXED PREDEFINED serpentine (it
+	' does not home on Mack). The drill uses its own waypoint circuit. Actor state
 	' in r-vars; route_drill/route_vand copy their own state in and out.
 	'   rx = pixel x, ry = sprite-top y, rb = beam 1(bottom)..5(top),
 	'   rp = 0 walking / 1 climbing, rd = 1 going up / 0 going down,
@@ -2050,22 +2105,67 @@ route_step:
 	END IF
 	RETURN
 
+site_route:
+	' Walk each tier out and back, then use its actual edge chain.
+	' rp 1 descends, 2 ascends; rf is horizontal facing.
+	IF (atg AND 1) = 0 THEN RETURN
+	rlo = 168
+	rhi = 232
+	rtop = 88
+	rbot = 120
+	IF rx < 128 THEN
+		rlo = 16
+		rhi = 72
+	END IF
+	IF lv = 2 THEN
+		rlo = 112
+		IF ry = 120 THEN rlo = 144
+		rhi = 180
+		rtop = 120
+		rbot = 168
+	END IF
+	IF rp = 1 THEN
+		ry = ry + 1
+		IF ry = rbot THEN
+			rp = 0
+			rf = 0
+		END IF
+		RETURN
+	END IF
+	IF rp = 2 THEN
+		ry = ry - 1
+		IF ry = rtop THEN
+			rp = 0
+			rf = 0
+		END IF
+		RETURN
+	END IF
+	IF rf = 0 THEN
+		rx = rx - 1
+		IF rx <= rlo THEN rf = 1
+	ELSE
+		rx = rx + 1
+		IF rx >= rhi THEN
+			rx = rhi
+			rp = 1
+			IF ry = rbot THEN rp = 2
+		END IF
+	END IF
+	RETURN
+
 route_drill:
-	rx = jhx
-	ry = jhy
-	rb = jhb
-	rp = jhp
-	rd = jhd
-	rf = jhf
-	rsv = jhsv
-	GOSUB route_step
-	jhx = rx
-	jhy = ry
-	jhb = rb
-	jhp = rp
-	jhd = rd
-	jhf = rf
-	jhsv = rsv
+	tcx = drillx(jhway)
+	tgy = drilly(jhway)
+	IF jhx < tcx THEN jhx = jhx + 1
+	IF jhx > tcx THEN jhx = jhx - 1
+	IF jhy < tgy THEN jhy = jhy + 1
+	IF jhy > tgy THEN jhy = jhy - 1
+	IF jhx = tcx THEN
+		IF jhy = tgy THEN
+			jhway = jhway + 1
+			IF jhway >= 18 THEN jhway = 0
+		END IF
+	END IF
 	RETURN
 
 route_vand:
@@ -2099,6 +2199,7 @@ drop_hammer:
 	jhd = 1
 	jhf = 1
 	jhsv = 0
+	jhway = 0
 	#sndpitch = 200
 	sndvol = 8
 	snd2 = 6
@@ -2130,7 +2231,7 @@ hud_score:
 	PRINT AT CPOS(0,10),<5>#score
 	' One-time extra life at 10,000.
 	IF xlife = 0 THEN
-		IF #score >= 10000 THEN
+		IF #score >= 7000 THEN
 			xlife = 1
 			lives = lives + 1
 			GOSUB hud_lives
@@ -2183,12 +2284,19 @@ dead_tick:
 		vy = vy0
 		vb = vb0
 		vp = 0
-		vdr = 1
+		vdr = 2
+		vsv = 2
 		vf = 1
+		vd = 1
+		opath = 0
+		ox = ox0
+		oy = oy0
+		od = 1
 		jhb = jhb0
 		jhx = jhx0
 		jhy = jhy0
 		jhp = 0
+		jhway = 0
 		jhd = 1
 		jhf = 1
 		IF carry = 1 THEN
@@ -2203,6 +2311,21 @@ dead_tick:
 		' already restored with the rest of the level above.
 		IF carry = 2 THEN jhtk = 0
 		carry = 0
+		IF lv = 1 THEN
+			FOR resetgap = 0 TO ngap - 1
+				IF gapst(resetgap) = 1 THEN
+					gapst(resetgap) = 0
+					#va = VADDR(gapr(resetgap),gapc(resetgap))
+					ch = T_VOID
+					VPOKE #va,ch
+					resetitem = gapitem(resetgap)
+					itst(resetitem) = 0
+					#va = VADDR(itr(resetitem),itc(resetitem))
+					ch = T_BRICK
+					VPOKE #va,ch
+				END IF
+			NEXT resetgap
+		END IF
 		' Fresh life: the bonus clock refills to 5000 (authentic).
 		#bonus = 5000
 		PRINT AT CPOS(0,2),<5>#bonus
@@ -2227,8 +2350,196 @@ dead_tick:
 	'
 	' ---- HUD ----
 	'
+spring_begin:
+	st = 7
+	bonbeam = 0
+	springtick = 0
+	springdir = 1
+	IF mx >= 128 THEN springdir = 0
+	mx = 84
+	IF springdir = 0 THEN mx = 156
+	my = 168
+	#sndpitch = 300
+	snd2 = 8
+	sndvol = 10
+	GOSUB tone_start
+	RETURN
+
+spring_transfer:
+	springtick = springtick + 1
+	IF springdir = 1 THEN
+		mx = mx + 2
+	ELSE
+		mx = mx - 2
+	END IF
+	IF springtick <= 18 THEN
+		my = my - 3
+	ELSE
+		my = my + 3
+	END IF
+	IF springtick = 36 THEN
+		st = S_JUMP
+		jix = 0
+		spr2 = 1
+		bmp1 = 0
+		fcy = my
+		jhz = 0
+		IF springdir = 1 THEN jhz = 2
+	END IF
+	RETURN
+
+site_step:
+	hzphase = hzphase + 1
+	IF hzphase >= 128 THEN hzphase = 0
+	IF lv = 1 THEN GOTO bell_step
+	IF lv = 3 THEN GOTO factory_step
+	' The top-right furnace and the vat below the lower belt are lethal.
+	cx = mx + 8
+	IF cx >= 224 THEN
+		IF my < 48 THEN GOSUB mack_die
+	END IF
+	IF my >= 160 THEN
+		IF cx >= 80 THEN
+			IF cx <= 103 THEN GOSUB mack_die
+		END IF
+	END IF
+	' Lower-left pincers close for half their cycle. Jump through while open.
+	IF hzphase < 64 THEN
+		ex = 48
+		ey = 120
+		hbw = 10
+		hbh = 8
+		GOSUB mack_hit
+		IF hit = 1 THEN GOSUB mack_die
+	END IF
+	' Pounder descends from the middle-right tier onto the lower-right tier.
+	pressy = 96
+	IF hzphase < 32 THEN pressy = 96 + hzphase
+	IF hzphase >= 32 THEN
+		IF hzphase < 64 THEN pressy = 159 - hzphase
+	END IF
+	ex = 184
+	ey = pressy + 8
+	hbw = 9
+	hbh = 12
+	GOSUB mack_hit
+	IF hit = 1 THEN GOSUB mack_die
+	' Concrete falls from the spigot, then travels WITH the conveyor.
+	' Half the cycle is clear; no projectile launches upward into the entry.
+	IF hzphase >= 64 THEN RETURN
+	blobx = 48
+	bloby = 144 + hzphase * 2
+	IF hzphase >= 16 THEN
+		blobx = 48 + hzphase - 16
+		bloby = 174 - (hzphase - 16) / 2
+	END IF
+	IF hzphase >= 56 THEN
+		blobx = 88
+		bloby = 154 + (hzphase - 56) * 4
+	END IF
+	ex = blobx
+	ey = bloby
+	hbw = 5
+	hbh = 6
+	GOSUB mack_hit
+	IF hit = 1 THEN GOSUB mack_die
+	RETURN
+
+factory_step:
+	IF boxfall = 1 THEN
+		boxy = boxy + 3
+		IF boxy >= 168 THEN GOSUB deliver_box
+	END IF
+	' A descending pounder guards the conveyor. Its box stays stationary
+	' on the moving belt in the reference; only Mack is carried leftward.
+	pressy = 40
+	IF hzphase < 48 THEN pressy = 40 + hzphase / 3
+	ex = 56
+	ey = pressy + 8
+	hbw = 8
+	hbh = 7
+	GOSUB mack_hit
+	IF hit = 1 THEN GOSUB mack_die
+	IF st = 7 THEN RETURN
+	' Stay aboard too low over the central toilet and Mack falls into it.
+	cx = mx + 8
+	IF my >= 140 THEN
+		IF cx >= 112 THEN
+			IF cx <= 143 THEN GOSUB mack_die
+		END IF
+	END IF
+	IF st = S_JUMP THEN
+		IF spr2 = 1 THEN RETURN
+	END IF
+	IF my >= 160 THEN
+		IF cx >= 84 THEN
+			IF cx <= 103 THEN
+				GOSUB spring_begin
+				RETURN
+			END IF
+		END IF
+		IF cx >= 156 THEN
+			IF cx <= 175 THEN
+				GOSUB spring_begin
+				RETURN
+			END IF
+		END IF
+		GOSUB mack_die
+	END IF
+	RETURN
+
+bell_step:
+	IF st <> S_JUMP THEN
+		bellheld = 0
+		RETURN
+	END IF
+	IF bellheld = 1 THEN RETURN
+	IF my > 16 THEN RETURN
+	cx = mx + 8
+	IF cx < 40 THEN RETURN
+	IF cx > 64 THEN RETURN
+	bellheld = 1
+	eld = 0
+	IF ely <= elty THEN eld = 1
+	emov = 1
+	#score = #score + 10
+	GOSUB hud_score
+	#sndpitch = 120
+	snd2 = 10
+	sndvol = 10
+	GOSUB tone_start
+	RETURN
+
+site_draw:
+	IF lv = 1 THEN
+		GOSUB elev_back
+		SPRITE 17,23,240,16,13
+		RETURN
+	END IF
+	SPRITE 14,pressy - 1,56,96,13
+	IF lv = 2 THEN
+		SPRITE 14,pressy - 1,184,96,13
+		IF hzphase < 64 THEN
+			SPRITE 15,bloby - 1,blobx,20,9
+		ELSE
+			SPRITE 15,209,0,0,0
+		END IF
+		SPRITE 16,mgr * 8 - 1,mgx,92,15
+		#va = 6662
+		ch = 225
+		IF hzphase < 64 THEN ch = 226
+		VPOKE #va,ch
+	ELSE
+		IF boxfall = 1 THEN
+			SPRITE 15,boxy - 1,boxx,88,15
+		ELSE
+			SPRITE 15,209,0,0,0
+		END IF
+	END IF
+	RETURN
+
 quiet_screen:
-	FOR qslot = 0 TO 13
+	FOR qslot = 0 TO 17
 		SPRITE qslot,209,0,0,0
 	NEXT qslot
 	SOUND 2,,0
@@ -2241,7 +2552,7 @@ hud_all:
 	PRINT AT CPOS(0,2),<5>#bonus
 	PRINT AT CPOS(0,10),<5>#score
 	PRINT AT CPOS(0,18),<5>#hi
-	PRINT AT CPOS(0,25),lv
+	PRINT AT CPOS(0,25),levelno
 	GOSUB hud_lives
 	RETURN
 
@@ -2290,6 +2601,7 @@ init_level:
 	nlbr = 0
 	' No elevator/trampoline unless this level's data defines them.
 	ely = 209
+	elpaint = 0
 	emov = 0
 	elx = 0
 	elarm = 1		' elevator armed for its first boarding
@@ -2317,17 +2629,15 @@ init_level:
 	von = 0
 	oon = 0
 	pnphase = 0
-	pnyl = 144
-	pnyr = 64
-	pnlx = 96
-	pnrx = 136
 	pnside = 0
+	GOSUB lift_positions
 	bmon = 0		' crane beam off unless this level's data arms it
+	bmactive = 0	' first boarding starts the crane
 	bonbeam = 0
 	bprow = 99		' force beam_draw to place the beam on its first pass
 	bmyd = 255		' last-drawn beam y (!= any real bmy -> draw on 1st pass)
 	mgon = 0		' electromagnet present on this level?
-	mgarm = 0		' armed once every prize is claimed -> it starts moving
+	mgarm = 0		' catches Mack once all six pails are claimed
 	mgtk = 0
 	mgd = 1			' magnet travel direction
 	convtog = 0		' conveyor-belt 2:1 rise toggle
@@ -2337,6 +2647,10 @@ init_level:
 	nbox = 0		' level-3 steel boxes still to deliver
 	vroute = 0
 	jhtk = 1
+	jhway = 0
+	boxfall = 0
+	hzphase = 0
+	bellheld = 0
 	bon = 0
 	btm = 240
 	btk = 120
@@ -2557,12 +2871,7 @@ ob_magnet:
 	mgr = r
 	mgc = c
 	mgon = 1
-	#va = VADDR(r,c)
-	ch = T_MAGNET
-	VPOKE #va,ch
-	#va = #va + 1
-	ch = T_MAGNET + 1
-	VPOKE #va,ch
+	mgx = c * 8
 	GOTO lv_parse
 
 ob_pail:
@@ -2700,7 +3009,8 @@ ob_vand:
 	' L1 serpentine route vars: beam from row, start walking up.
 	vb = (25 - r) / 4
 	vp = 0
-	vdr = 1
+	vdr = 2
+	vsv = 2
 	vf = 1
 	vb0 = vb
 	IF lv = 1 THEN
@@ -2716,6 +3026,9 @@ ob_osha:
 	READ BYTE n
 	oy = r * 8 - 16
 	ox = c * 8
+	ox0 = ox
+	oy0 = oy
+	opath = 0
 	omn = c * 8
 	omx = n * 8
 	od = 1
@@ -2751,6 +3064,7 @@ lv_vrun:
 	GOTO lv_parse
 
 level1_data:
+	DATA BYTE 8, 1,6,1,224
 	' Whole layout shifted 1 col RIGHT vs. the transcription (elevator at
 	' cols 1-2, building cols 3-26). Chains (climbable) and braces first:
 	' floors paint over them, so beams cross in front and the crossing cell
@@ -2788,14 +3102,14 @@ level1_data:
 	DATA BYTE 5,1, 13,11		' hole: beam 3
 	DATA BYTE 5,1, 17,11		' hole: beam 2
 	DATA BYTE 5,2, 8,9		' brick: beam 4 (torso row 8)
-	DATA BYTE 5,2, 12,9		' brick: beam 3
-	DATA BYTE 5,2, 16,9		' brick: beam 2
-	DATA BYTE 5,2, 20,21		' brick: 1st floor (torso row 20)
+	DATA BYTE 5,2, 12,22		' brick: beam 3
+	DATA BYTE 5,2, 16,25		' brick: beam 2
+	DATA BYTE 5,2, 20,5		' brick: 1st floor (torso row 20)
 	DATA BYTE 5,4,1, 4,21		' bonus wrench: top beam (torso row 4)
 	DATA BYTE 5,4,2, 20,25		' bonus spray can: 1st floor (clear of braces)
 	DATA BYTE 5,3, 21,4,25		' drill starts bottom-left (beam 1)
 	DATA BYTE 5,6, 1,9,21		' elevator: cols 1-2, 4th beam..1st beam
-	DATA BYTE 5,11, 13,6,13		' vandal starts on beam 3 (col 6)
+	DATA BYTE 5,11, 21,3,26		' vandal starts on the bottom beam
 	DATA BYTE 0
 
 	'
@@ -2837,17 +3151,18 @@ level2_data:
 	' The repaired jump reaches the crane from the reference's original position.
 	DATA BYTE 6, 22,5,2		' left conveyor: drum (22,5) -> top drum (20,9)
 	' The machine cabinet at the top right, on its own one-cell ledge.
-	DATA BYTE 8, 4,29,1,180		' cabinet upper (readout panel)
-	DATA BYTE 8, 5,29,1,181		' cabinet lower (two lamps)
+	DATA BYTE 8, 4,28,2,166		' visible flame over the furnace
+	DATA BYTE 8, 5,28,2,180		' furnace body
 	DATA BYTE 1, 6,29,1,1		' the ledge it stands on
-	' Stacks of planks. These are DECOR (pass-through). The one under the
+	' The ground stack is scenery; the mid-left obstacle is hazardous.
+	' The stack under the
 	' lower-left tier used to be painted as a girder, which handed the player
 	' a whole extra platform the reference does not have.
 	DATA BYTE 8, 18,2,4,172		' plank stack under the lower-left tier
-	DATA BYTE 8, 12,7,1,172		' plank stack on the mid-left tier
-	' Electromagnet head above the shaft; moving crane beam starts at r13.
-	DATA BYTE 5,9, 4,12		' electromagnet at the reference's row 4
-	DATA BYTE 5,10, 13		' crane beam, starts on the middle tier (r13)
+	DATA BYTE 8, 12,7,1,164		' plank stack on the mid-left tier
+	' Moving electromagnet above the shaft; crane starts near the ground.
+	DATA BYTE 5,9, 2,16		' overhead electromagnet
+	DATA BYTE 5,10, 20		' crane beam, starts near the lower conveyor
 	' Bottom-row machinery from the reference: the cement mixer beside the
 	' lower conveyor's post, and a second one over on the right. Decor only.
 	' Two cells tall, as the reference draws them: the round drum sits on a
@@ -2862,16 +3177,19 @@ level2_data:
 	' one row ABOVE the beam (rows 8/12/16) so they rest ON the girder instead
 	' of punching a hole in it -- and so take_item's torso probe can reach them.
 	DATA BYTE 5,8, 8,6,0		' upper-left tier   (reference cols 6-7)
-	DATA BYTE 5,8, 8,19,5		' upper-right tier
+	DATA BYTE 5,8, 22,19,5		' ground pail
 	DATA BYTE 5,8, 12,4,1		' mid-left tier     (reference cols 4-5)
-	DATA BYTE 5,8, 12,19,2		' mid-right tier    (reference cols 19-20)
+	DATA BYTE 5,8, 12,24,2		' mid-right tier    (reference cols 19-20)
 	DATA BYTE 5,8, 16,2,3		' lower-left tier   (reference cols 2-3)
 	DATA BYTE 5,8, 16,19,4		' lower-right tier  (reference cols 19-20)
-	' Vandal patrols the right mid tier.
-	DATA BYTE 5,11, 13,18,25
+	' Vandal patrols ground and lower-right tier via the chain.
+	DATA BYTE 5,11, 23,22,28
 	' Mack spawns on the GROUND at the bottom left, where the reference puts
 	' him: walk right onto the lower conveyor, ride it up to its top drum, and
 	' jump across to the crane beam.
+	DATA BYTE 5,4,1, 4,12
+	DATA BYTE 5,4,2, 22,17
+	DATA BYTE 8, 22,23,1,166
 	DATA BYTE 5,13, 23,3
 	DATA BYTE 0
 
@@ -2880,7 +3198,7 @@ level2_data:
 	' Transcribed from assets/HHM-Level3.png at its cell grid. Beams are
 	' ORANGE here (type 3). Two moving paddles circulate around the green
 	' centre shaft; the shaft itself is pass-through scenery.
-	' Carry each steel box to either IN hopper at the bottom; six clears it.
+	' Drop six steel boxes from the lower-floor openings into the IN hoppers.
 	'
 level3_data:
 	' Transcribed from assets/HHM-Level3.png at the 32x24 cell grid (playfield
@@ -2918,8 +3236,8 @@ level3_data:
 	DATA BYTE 10, 9,14,3,155	' mid-left -> lower-left  (col 9)
 	DATA BYTE 10, 29,14,3,155	' mid-right -> lower-right (col 29)
 	' Ground machinery. The two IN hoppers eat the steel boxes; the processor
-	' door in the centre is decor; the two pads are trampolines that throw you
-	' a whole beam up (hold a direction to steer onto the ledge you want).
+	' toilet in the centre is lethal. Pads bounce Mack across to the opposite
+	' pad, then upward onto the opposite lower platform.
 	DATA BYTE 8, 21,3,1,210
 	DATA BYTE 8, 21,4,1,211
 	DATA BYTE 8, 21,5,1,212
@@ -2962,7 +3280,7 @@ level3_data:
 	DATA BYTE 1, 22,21,2,10
 	' Six steel boxes, one per beam, each resting ON the girder (one row above
 	' it) so the torso probe can reach them. The conveyor one rides at belt
-	' height and has to be grabbed before the grinder gets it.
+	' height and stays put; the conveyor carries Mack toward the grinder.
 	DATA BYTE 5,2, 4,12		' on the top beam
 	DATA BYTE 5,2, 8,7		' on the flat conveyor
 	DATA BYTE 5,2, 12,4		' mid-left beam
@@ -2970,9 +3288,10 @@ level3_data:
 	DATA BYTE 5,2, 16,8		' lower-left beam B
 	DATA BYTE 5,2, 16,22		' lower-right beam A
 	' Enemies guard the mid beams, as the reference draws them.
-	DATA BYTE 5,11, 17,2,10		' vandal on the lower-left beams
-	DATA BYTE 5,12, 17,21,29	' OSHA man on the lower-right beams
-	DATA BYTE 5,13, 23,12		' Mack starts on the ground by the left pad
+	DATA BYTE 5,11, 13,21,29		' vandal on the right middle/lower beams
+	DATA BYTE 5,12, 13,2,10	' OSHA on the left middle/lower beams
+	DATA BYTE 5,4,1, 4,11
+	DATA BYTE 5,13, 9,27		' Mack starts on the upper-right beam
 	DATA BYTE 0
 
 jump_data:
@@ -3745,6 +4064,79 @@ machine_col:
 	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
 	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
 	DATA BYTE $51,$51,$1A,$1A,$1A,$1A,$1A,$1A
+
+drill_route:
+	DATA BYTE 88,152,88,120,208,120,208,88,24,88,24,56,168,56,168,24,208,24
+	DATA BYTE 208,56,24,56,24,88,208,88,208,120,88,120,88,152,24,152,24,152
+steel_bitmap:
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "...XX....XXXX..."
+	BITMAP "...XX....XXXX..."
+	BITMAP "...XXXXXXXXXX..."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+magnet_bitmap:
+	BITMAP ".......XX......."
+	BITMAP ".......XX......."
+	BITMAP ".......XX......."
+	BITMAP ".......XX......."
+	BITMAP ".......XX......."
+	BITMAP ".......XX......."
+	BITMAP ".......XX......."
+	BITMAP ".......XX......."
+	BITMAP "......XXXX......"
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XX..XX....."
+	BITMAP ".....XX..XX....."
+	BITMAP "....XXX..XXX...."
+	BITMAP "....XXX..XXX...."
+	BITMAP "................"
+	BITMAP "................"
+press_bitmap:
+	BITMAP ".....XX........."
+	BITMAP ".....XX........."
+	BITMAP ".....XX........."
+	BITMAP ".....XX........."
+	BITMAP ".....XX........."
+	BITMAP ".....XX........."
+	BITMAP ".....XX........."
+	BITMAP ".....XX........."
+	BITMAP "..XXXXXXXX......"
+	BITMAP "..XXXXXXXX......"
+	BITMAP "..XX....XX......"
+	BITMAP "..XXXXXXXX......"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+
+bell_pat:
+	DATA BYTE $18,$3C,$3C,$3C,$7E,$FF,$18,$00
+bell_col:
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$D1,$F1,$11
+
+claw_pat:
+	DATA BYTE $81,$C3,$A5,$99,$81,$81,$81,$FF
+	DATA BYTE $18,$3C,$5A,$99,$81,$81,$81,$FF
+claw_col:
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
+
+cage_col:
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
 asset_end:
 	DATA BYTE 72,72,77,65,67,75,26,1

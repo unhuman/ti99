@@ -1,14 +1,15 @@
 # Hard Hat Mack — Design (CVBasic, dual-target TI-99/4A + ColecoVision)
 
 > **Current status (2026-10-01): both ColecoVision and TI-99/4A are required.**
-> Section 14 supersedes the historical retirement note and older movement/status
-> descriptions below. The maps/art are retained; the movement core is being repaired.
+> Section 16 supersedes earlier mechanics, budgets and verification notes.
+> Older sections remain as implementation history; README describes current play.
 > Title/838, music and loop difficulty described as design goals are not implemented.
 
 ## Current performance budget
 
-At most eight sprite slots are used (Mack, carry overlay, elevator, drill, vandal,
-OSHA, bolt and crane cable); CPU positions them with CVBasic `SPRITE`.
+The renderer uses slots 0-17 for Mack, clothing, carried objects, actors and site
+machinery. Not all are active on each site. The TMS9918 four-sprites-per-scanline
+limit still applies; parked elevator cabins also have name-table backing.
 Real-time FRAME delta, clamped to four, feeds a 9/8 accumulator: at most five
 one-pixel world steps per pass. All gameplay movement now uses those steps.
 Ordinary walking makes at most eleven tile reads per step (chain probes + feet +
@@ -804,3 +805,125 @@ without source edits or special starting-level cartridges. `LaunchColeco` uses
 the locally installed CoolCV. Its SDL input needs scan codes and extended arrow
 flags when driven through Windows key events; virtual-key-only events can
 deliver no game input despite a live, correctly captured emulator.
+
+## §16 All-level reference and playability corrections (2026-10-01)
+
+This section supersedes sections 14-15 where they disagree. Changes remain shared
+between ColecoVision and TI-99/4A. The previous repair is commit 0649a17; this pass
+follows the newly supplied longplay and direct playtesting feedback.
+
+### Evidence and its limits
+
+The [Apple II longplay](https://www.youtube.com/watch?v=zanShXo4btw) shows the first
+site at 0:07, lunch site at 0:50, and factory at 2:18. Sequences around 0:51-0:54
+show the first conveyor/crane entry; 2:36-2:38 show crates dropping from a floor
+lip into a processor; 2:18-2:46 show the factory start, paddles and chain descents.
+The [original C64 card](https://www.mocagh.org/ea/hhmack-refcard.pdf) confirms the
+single extra-life award at 7,000 points. It describes a different port, so its
+details do not automatically override the video or user requests.
+
+The video has no input overlay and cannot prove how a released joystick affects
+an airborne character. Our earlier code deliberately copied walking direction
+into locked fall momentum. That caused the reported sliding falls. Walk-offs now
+fall vertically on every site, including leaving a parked elevator or chain.
+Deliberate jumps retain their chosen direction through their remaining descent.
+This distinction is tested, rather than claimed as an exact reconstruction of
+the original keyboard controls.
+
+The magnet stays parked until all six lunch pails are collected, as requested.
+Bonus tools are optional. Earlier video observations suggested continuous magnet
+movement; they are not the behavior selected here. The crane waits for its first
+rider, then continues its cycle.
+
+### Site mechanics
+
+- **Site 1:** repositioned pieces, an independent 18-waypoint drill circuit,
+  fixed upper-right rivet thrower with speed/bounce variants, and a jump-operated
+  bell that summons/reverses the elevator. The vandal begins on the bottom beam
+  and surveys it before climbing. Death restores deposited but unriveted pieces
+  to their own pickup slots; riveted gaps remain. Piece pickup/filling/riveting
+  award 10/25/35 points; ringing the bell gives 10.
+- **Site 2:** pails occupy upper-left, both middle, both lower and ground
+  positions. Added optional bonuses, timed pincers, pounder, hazardous mid-left
+  obstruction, dynamite, furnace and vat. Concrete drops from the spigot,
+  travels with the belt and falls toward the vat; it is absent for half the
+  128-step cycle. The old backwards/upwards trajectory blocked entry. The enemy
+  walks and climbs between ground and lower-right tier. After the sixth pail,
+  the magnet moves, catches airborne Mack and carries him to the crane top.
+- **Site 3:** Mack begins upper-right. Four 16-pixel paddles follow a 224-step
+  loop: (104,64) down to (104,144), right to (136,144), up to (136,64), then left.
+  They are spaced 56 steps apart. The shaft is scenery. Boxes auto-drop from
+  the lips of the lower-floor gaps and visibly fall into the processors;
+  walking on the ground is not a delivery method. A box awards 25 for pickup,
+  25 for dropping and 25 for processing. Springs transfer Mack across the site
+  and launch him onto the opposite lower platform. The toilet, processors and
+  conveyor crusher are hazards. The conveyor crate stays stationary, as shown
+  in the video. Both enemies patrol and climb between their two side tiers.
+
+Stage numbers continue 4, 5, 6 when the sites repeat. Increased enemy counts and
+full later-loop escalation remain unimplemented. This pass does not claim exact
+original jump timing, rivet trajectories, music or PSG sound matching.
+
+### Movement and rendering corrections
+
+The reported upper-left factory soft-lock was reproduced at `(mx,my)=(28,58)`
+while carrying a box. `st_walk` grabbed the short chain using `my+1`, but the
+following `st_climb` only checked `my+7` and `my+15`; both missed the chain at
+`my=57`, leaving Mack stuck. Ascent now also checks `my+1`. A regression runs
+the head-only grab all the way to the roof, with a carried box, and rejects the
+old missing-head-probe variant.
+
+Normal jumps retain the previous repair's 32-step, 11-pixel arc/hold. A ceiling
+collision now caps height while preserving horizontal clearance time. Previously
+it removed the hold and shortened the jump so much that Mack could not cross
+from the lower conveyor to the crane. The spring ascent clears the opposite
+ledge before drifting outward, avoiding an underside collision. Spring capture
+also runs when a falling step crosses its height, before a ground hazard kills.
+
+A parked elevator draws its cabin as four background characters as well as
+sprites. `elev_back` remembers their VRAM address, erases them when movement
+starts, and repaints at the next stop. Tiles reuse the editable `cage_bitmap`
+through `DEFINE CHAR`; placement accounts for its left/right column byte order.
+There is no duplicate generated art table. The shaft cells are otherwise empty,
+so erasing them does not destroy chains or platforms. Character codes are outside
+the solid band; boarding still uses the elevator's geometric support.
+
+Patterns 22-24 hold the steel box, magnet and pounder. Character 224 is the bell,
+225-226 the pincers, and 227-230 the parked cabin. The magnet's stem is part of
+its own sprite and stays below the HUD; the separate cable overlapped the score.
+Teardown hides all slots through 17 and resets per-level machinery state.
+
+### Budgets and verification
+
+| Area | Used | Free / limit |
+|---|---:|---:|
+| TI fixed program | 24,246 B | 90 B / 24,336 B |
+| TI setup/assets, excluding trailer | 8,008 B | 182 B / 8,190 B |
+| TI variables | 408 B | 7,446 B / 7,854 B |
+| Coleco ROM | 24,576 B | 8,192 B / 32,768 B |
+| Coleco variables | 398 B | 416 B / 814 B |
+
+Both builds pass truncation, return-stack and physics checks. The TI packer
+verifies exact preservation of the permanent asset page. TI assembly inspection
+covered the cabin address, four-paddle phase and coordinate calculations. Cabin
+addressing uses shifts and a full-word 6144 addition, without stale MPY state.
+
+The BASIC interpreter executes source routines and actual maps, rejects unknown
+executed statements, and supports indexed READs and deterministic random choices.
+Expressions are compiled once per interpreter; values and array reads remain live.
+
+Coverage includes all objectives, death rollback, safe/lethal hazard windows,
+magnet arming and final ride, drill/enemy routes, 448 rider steps, twelve outward
+platform transfers, both spring transfers, jump clearance, vertical walk-offs
+on all three sites, sound note-offs, and cabin paint/erase at both stops. A live
+level-2 route walks from the production spawn, jumps onto the belt and then onto
+the crane with all hazards/enemies enabled: seven of eight sampled hazard phases
+succeed. The six factory side tiers are swept at fourteen lift phases each for
+transfers onto the paddles; each has at least two successful sampled phases.
+Eighteen deliberate bad mutations must fail, including restored walk-off drift,
+the short ceiling jump and failure to erase the cabin.
+
+All three screens were inspected in Classic99 and CoolCV during this repair.
+Controlled movement tests do not establish uninterrupted whole-level clears,
+CPU performance on original hardware or a listening comparison. The production
+title permits later-site review without altered starting cartridges.

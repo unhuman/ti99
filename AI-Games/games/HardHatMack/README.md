@@ -2,57 +2,56 @@
 
 An adaptation of Michael Abbot and Matthew Alexander's construction-site platformer.
 Both targets build from `src/HARDHAT.bas` using the **unhuman/CVBasic** fork.
-The July note retiring TI support is superseded: TI is a required target again.
 
 Three construction sites are implemented:
 
-1. **Beams and Bolts:** carry four girder pieces to the holes, then collect the
-   roaming jackhammer and rivet the filled gaps.
-2. **Lunch Break:** collect six red lunch pails, then jump into the moving electromagnet.
-3. **Rivet Works:** carry six steel boxes to the IN machines.
+1. **Beams and Bolts:** carry four girder pieces to the holes, then catch the roaming
+   jackhammer and rivet them. Filled but unriveted holes reopen after a death;
+   their pieces return. Jump to ring the bell and summon the elevator.
+2. **Lunch Break:** collect six lunch pails across the platforms and ground,
+   avoiding the pincers, pounder, concrete, furnace and vat. The magnet stays parked until all six pails are collected. Jump from the upper
+   conveyor into the armed magnet; it carries Mack back to the crane top.
+3. **Rivet Works:** start on the upper-right platform and collect six steel boxes.
+   Carry each to a lip of either lower-floor opening; the box drops into the
+   processor. Four paddles circulate counterclockwise (left down, right up).
+   The two springs bounce Mack across the site and onto the opposite lower tier.
+   The processors, central toilet and conveyor machinery are dangerous.
 
 Joystick 1: left/right walk, up/down climb, **Fire jumps** from a floor, chain,
-crane beam, conveyor, or parked elevator. Direction at takeoff sets momentum;
-a jump with no direction stays in place. A long Fire hold releases the jackhammer.
-The title defaults to level 1. **Up/down selects the starting level; Fire starts.**
-This lets you review later levels directly. Fire after game over returns to the title.
-Three plays per game, shown as two spare hard hats at the right of the HUD.
+crane beam, conveyor, or parked elevator. Direction at takeoff sets momentum.
+A long Fire hold releases the jackhammer. The title defaults to site 1;
+**up/down selects a starting site, Fire starts**. Three starting lives appear as
+two reserve hats. One extra life is awarded at 7,000 points.
+Classic99 uses arrows/Tab; CoolCV uses arrows/Space for controller 1.
 
-## Playability repair (2026-10-01)
+## Reference-driven repair (2026-10-01)
 
-- Normal jumps now travel 32 pixels at walking speed, retaining the 11-pixel
-  ceiling clearance. The longer apex makes enemies possible to jump over.
-  Spring launches retain their original arc. Horizontal momentum continues
-  after the jump arc ends, rather than stopping abruptly in mid-air.
-- Fire can release Mack from a chain or parked elevator into a jump.
-- Player, enemies, bolts, platforms and bonus countdown share one simulation
-  clock, including catch-up steps. Fatal landings stop movement immediately.
-- New games restart at level 1. Screen changes hide old sprites and stop
-  effects; steel boxes are restored as steel boxes after death. Bolt spawning
-  no longer wraps to the left when Mack stands near the right edge.
-- Level-3 boxes cannot be consumed by stale level-1 gaps; extra-life HUD
-  updates preserve the pickup loop index.
-- TI art and level data occupy one permanently selected cartridge bank,
-  restoring a valid **32 KB TI cartridge** without deleting content.
-- Level 2's conveyors follow the drawn 2:1 slope, including roller ends. The
-  lower conveyor returns to its reference position. All six pickups are two-cell
-  lunch pails. The crane and its rider render from the same simulation step.
-- Level 3's substitute ladder and fixed stubs are replaced by two circulating
-  lift paddles. Riders travel with them through the corners; Fire jumps off.
-  The shaft is scenery. IN machines and the processor door have larger artwork.
-- Mack has a white hard hat and purple clothing in all movement poses. The
-  elevator has a cage; columns, girders and loose pieces have clearer artwork.
-- Jump/spring sweeps, pickup tones, a descending death effect and a short clear
-  phrase replace flat beeps. Effects, death pauses and the hammer hold use elapsed
-  video frames. Every effect has a note-off. A long hold is 45 video frames.
+The [all-level Apple II longplay](https://www.youtube.com/watch?v=zanShXo4btw)
+supersedes assumptions made from the earlier level-1-only clip and still images.
+This pass corrects item placement, the independent drill route, fixed rivet
+thrower, bell, death recovery, active machinery, magnet finish, enemy climbing,
+factory start, four-paddle circulation and box delivery. The conveyor box remains
+stationary, as it does in the reference; the belt carries Mack toward the grinder.
+Stage numbers continue increasing when the three sites repeat.
 
-The supplied [Apple II video](https://www.youtube.com/watch?v=HwHZ-18Zgvg)
-shows level 1 only. Later levels also use the still references in `assets/`.
-This is an adaptation, not pixel-exact graphics or audio reproduction.
+The factory conveyor escape chain remains climbable after a head-only grab,
+including while carrying a box. Walking off a ledge, chain or parked elevator
+now drops straight down, even if
+the direction remains held. Deliberate jumps keep their takeoff direction. A low
+ceiling limits jump height without cutting its horizontal clearance time short.
+The first boarding starts the crane. Concrete drops from the spigot and travels
+with the lower belt, leaving a clear half-cycle for entry. Parked elevator cabins
+also use background characters; these erase as soon as the cabin moves.
+
+The preceding repair supplies shared frame pacing, 32-pixel jumps,
+white hat/purple clothing, elevator cage, and PSG sound envelopes with note-offs.
+This remains a hardware adaptation: the existing jump timing and sound effects are
+not a measured transcription of the Apple II original. Later-loop enemy escalation
+and original music remain unfinished.
 
 ## Build and review
 
-From the project root, on Windows:
+From the project root on Windows:
 
 ```powershell
 & tools/hardhat-dev.ps1 BuildAll
@@ -60,23 +59,19 @@ From the project root, on Windows:
 & tools/hardhat-dev.ps1 LaunchColeco
 ```
 
-Or run `bash games/HardHatMack/build-ti.sh` and then
-`bash games/HardHatMack/build-coleco.sh` using Cygwin bash on Windows.
+Or run `bash games/HardHatMack/build-ti.sh` followed by
+`bash games/HardHatMack/build-coleco.sh` using Cygwin bash.
 Outputs: `src/HARDHAT_8.bin` (Classic99/js99er) and `src/hardhat.rom` (ColecoVision).
-Build sequentially. Both scripts run physics, truncation and return-stack checks.
-The TI script also checks fixed-area size and exact data-bank preservation.
+Build sequentially. Both scripts run physics, truncation and return-stack checks;
+the TI build also verifies the fixed-area size and exact packed data bank.
 
-The physics checker executes the BASIC movement routines with deterministic
-geometry, checks enemy-clearance windows, gaps, chain/elevator jumps, fall
-momentum and fatal landings. It also parses all three real maps, checks every
-pickup/delivery, conveyor surfaces, 480 lift/rider steps, twelve platform transfers,
-both spring entries and sound envelopes. Nine deliberately broken variants must
-fail. It does not emulate CPU performance or prove complete play-throughs.
+The physics checker executes actual BASIC routines and all three level parsers.
+It checks objective handling, death rollback, timed hazard windows, magnet capture
+and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider steps,
+both spring transfers, jump clearance, walk-off versus jump falls and sound
+note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
+phases and factory lift entries from all six side tiers at fourteen phases each.
+Eighteen deliberately broken variants must fail. Controlled-position tests do not
+prove uninterrupted whole-level clears or original-hardware performance.
 
-**Verification:** both target builds pass; all three screens and title selection
-were checked in Classic99 and CoolCV. TI checks include conveyor traversal and a
-spring launch to the lower-left level-3 platform. Complete uninterrupted clears
-and listening comparisons remain outstanding. The level-3 conveyor box is still
-stationary; original music and escalating loop difficulty remain unimplemented.
-See DESIGN.md section 15 for budgets and test limits. Classic99 uses arrows/Tab;
-CoolCV uses arrows/Space for controller 1.
+See DESIGN.md section 16 for the reference evidence, budgets and verification limits.
