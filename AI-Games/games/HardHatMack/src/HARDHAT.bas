@@ -282,7 +282,7 @@ boot:
 	DEFINE SPRITE 25,2,slag_bitmap
 	DEFINE SPRITE 14,1,cable_bitmap		' crane cable link (frame 56)
 
-	' Effects use tone channel 2 and drill noise channel 3. No music player.
+	' Four-channel effects; completion fanfare plays between sites.
 
 	' Jump arc into RAM (dy = value - 128; 10 px apex, 16 steps).
 	RESTORE jump_data
@@ -448,11 +448,49 @@ main_loop:
 	GOTO main_loop
 
 tone_start:
-	sndkind = 0
-	IF #sndpitch = 600 THEN sndkind = 1
-	IF #sndpitch = 300 THEN sndkind = 2
-	IF #sndpitch = 360 THEN sndkind = 2
-	SOUND 2,#sndpitch,sndvol
+	' Separate reward notes from jump/death so pickups cannot cut a jump short.
+	sfxkind = 0
+	IF #sndpitch = 600 THEN sfxkind = 1
+	IF #sndpitch = 300 THEN sfxkind = 2
+	IF #sndpitch = 360 THEN sfxkind = 2
+	IF sndkind = 1 THEN
+		IF snd2 > 0 THEN RETURN
+	END IF
+	IF sfxkind = 0 THEN
+		#rewardpitch = #sndpitch
+		snd0 = sfxlen + 8
+		snd0v = sndvol
+		SOUND 0,#rewardpitch,snd0v
+		RETURN
+	END IF
+	sndkind = sfxkind
+	snd2 = sfxlen
+	snd2v = sndvol
+	#motionpitch = #sndpitch
+	IF sndkind = 1 THEN
+		SOUND 0,,0
+		SOUND 1,,0
+		SOUND 3,6,10
+		snd0 = 0
+		snd1 = 0
+		snd3 = 10
+	END IF
+	SOUND 2,#motionpitch,snd2v
+	RETURN
+
+footstep_sound:
+	' Two alternating boot taps; machinery takes priority over the tonal layer.
+	IF snd1 = 0 THEN
+		stepflip = 1 - stepflip
+		#steppitch = 740
+		IF stepflip = 1 THEN #steppitch = 900
+		SOUND 1,#steppitch,7
+		snd1 = 2
+	END IF
+	IF snd3 = 0 THEN
+		SOUND 3,4,7
+		snd3 = 2
+	END IF
 	RETURN
 
 reset_claws:
@@ -464,34 +502,32 @@ reset_claws:
 	RETURN
 
 machine_clack:
-	' Short mechanical impacts share noise, leaving pickup/jump tones intact.
+	' Metallic ring over a short noise impact; never interrupt death/riveting.
 	IF snd3 > 3 THEN RETURN
+	SOUND 1,180,10
+	snd1 = 6
 	SOUND 3,5,8
 	snd3 = 3
 	RETURN
 
 sound_tick:
-	' Tick against elapsed video frames, including busy machinery screens.
-	FOR sfstep = 1 TO #fd
-		IF snd2 > 0 THEN
-			snd2 = snd2 - 1
-			IF snd2 = 0 THEN
-				SOUND 2,,0
-			ELSE
-				IF sndkind = 1 THEN #sndpitch = #sndpitch + 24
-				IF sndkind = 2 THEN #sndpitch = #sndpitch - 12
-				IF sndkind = 0 THEN
-					IF snd2 = 4 THEN #sndpitch = #sndpitch / 2
-				END IF
-				IF sndvol > 3 THEN sndvol = sndvol - 1
-				SOUND 2,#sndpitch,sndvol
-			END IF
-		END IF
-		IF snd3 > 0 THEN
-			snd3 = snd3 - 1
-			IF snd3 = 0 THEN SOUND 3,,0
-		END IF
-	NEXT sfstep
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_sound_tick
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
+completion_music:
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_completion_music
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 level_complete:
@@ -501,18 +537,7 @@ level_complete:
 	lvdone = 0
 	#score = #score + #bonus
 	GOSUB hud_score
-	#sndpitch = 280
-	FOR winote = 1 TO 4
-		SOUND 2,#sndpitch,10
-		FOR winwait = 1 TO 8
-			WAIT
-		NEXT winwait
-		SOUND 2,,0
-		#sndpitch = #sndpitch - 45
-	NEXT winote
-	FOR winwait = 1 TO 45
-		WAIT
-	NEXT winwait
+	GOSUB completion_music
 	IF #score > #hi THEN
 		#hi = #score
 		PRINT AT CPOS(0,18),<5>#hi
@@ -625,7 +650,7 @@ start_jump:
 	jhang = 16
 	#sndpitch = 360
 	sndvol = 8
-	snd2 = 12
+	sfxlen = 12
 	GOSUB tone_start
 	st = S_JUMP
 	bmp1 = 0	' head-bump allowed once per jump
@@ -669,10 +694,7 @@ st_walk:
 	IF mx <> walkx THEN
 		steptick = (steptick + 1) AND 7
 		IF steptick = 0 THEN
-			IF snd3 = 0 THEN
-				SOUND 3,4,7
-				snd3 = 2
-			END IF
+			GOSUB footstep_sound
 		END IF
 	END IF
 	' Still supported? (bonbeam clears here; the beam branch below re-sets it)
@@ -777,7 +799,7 @@ st_walk:
 		IF jr THEN jhz = 2
 		#sndpitch = 300
 		sndvol = 10
-		snd2 = 5
+		sfxlen = 5
 		GOSUB tone_start
 		RETURN
 	END IF
@@ -875,7 +897,7 @@ st_tramp:
 			trph = 1
 			#sndpitch = 300
 			sndvol = 10
-			snd2 = 5
+			sfxlen = 5
 			GOSUB tone_start
 		END IF
 		RETURN
@@ -901,6 +923,7 @@ st_tramp:
 
 st_climb:
 	IF jbe THEN GOTO start_jump
+	climby = my
 	IF ju THEN
 		ta = TILE(mx + 8,my + 7)
 		tb = TILE(mx + 8,my + 15)
@@ -984,6 +1007,14 @@ st_climb:
 				END IF
 			END IF
 			IF stay = 0 THEN st = S_WALK
+		END IF
+	END IF
+	IF my <> climby THEN
+		IF (my AND 7) = 0 THEN
+			IF snd1 = 0 THEN
+				SOUND 1,240,7
+				snd1 = 4
+			END IF
 		END IF
 	END IF
 	RETURN
@@ -1762,7 +1793,7 @@ deliver_box:
 	GOSUB hud_score
 	#sndpitch = 140
 	sndvol = 12
-	snd2 = 8
+	sfxlen = 8
 	GOSUB tone_start
 	IF nbox = 0 THEN lvdone = 1
 	RETURN
@@ -1785,7 +1816,7 @@ take_item:
 						cidx = i
 						#sndpitch = 400
 						sndvol = 10
-						snd2 = 6
+						sfxlen = 6
 						GOSUB tone_start
 					ELSEIF itk(i) = 3 THEN
 						' Lunchbox: the level-2 objective.
@@ -1793,7 +1824,7 @@ take_item:
 						GOSUB hud_score
 						#sndpitch = 180
 						sndvol = 10
-						snd2 = 8
+						sfxlen = 8
 						GOSUB tone_start
 						nlbr = nlbr - 1
 						' All six pails arm the already moving magnet.
@@ -1807,7 +1838,7 @@ take_item:
 						GOSUB hud_score
 						#sndpitch = 180
 						sndvol = 10
-						snd2 = 8
+						sfxlen = 8
 						GOSUB tone_start
 					END IF
 					itst(i) = 1
@@ -1848,7 +1879,7 @@ try_fill:
 					GOSUB hud_score
 					#sndpitch = 200
 					sndvol = 12
-					snd2 = 8
+					sfxlen = 8
 					GOSUB tone_start
 					RETURN
 				END IF
@@ -2162,12 +2193,13 @@ drop_hammer:
 	' Mack's hands so he can carry bricks again.
 	carry = 0
 	jhtk = 0
+	jhlock = 1
 	jhx = jhx0
 	jhy = jhy0
 	jhway = 0
 	#sndpitch = 200
 	sndvol = 8
-	snd2 = 6
+	sfxlen = 6
 	GOSUB tone_start
 	RETURN
 
@@ -2208,7 +2240,7 @@ hud_score:
 			GOSUB hud_lives
 			#sndpitch = 140
 			sndvol = 12
-			snd2 = 12
+			sfxlen = 12
 			GOSUB tone_start
 		END IF
 	END IF
@@ -2224,7 +2256,7 @@ mack_die:
 	dtm = 40
 	#sndpitch = 600
 	sndvol = 12
-	snd2 = 14
+	sfxlen = 14
 	GOSUB tone_start
 	RETURN
 
@@ -2269,6 +2301,7 @@ dead_tick:
 		jhx = jhx0
 		jhy = jhy0
 		jhway = 0
+		jhlock = 0
 		IF carry = 1 THEN
 			' Brick: back on its original cell.
 			itst(cidx) = 0
@@ -2329,7 +2362,7 @@ spring_begin:
 	IF springdir = 0 THEN mx = 156
 	my = 168
 	#sndpitch = 300
-	snd2 = 8
+	sfxlen = 8
 	sndvol = 10
 	GOSUB tone_start
 	RETURN
@@ -2379,9 +2412,9 @@ site_step:
 	#slagclock = #slagclock + 1
 	IF #slagclock >= 317 THEN #slagclock = 0
 	clawclock = clawclock + 1
-	IF clawclock >= 128 THEN clawclock = 0
-	IF clawclock = 64 THEN GOSUB machine_clack
-	clawstep = clawclock / 4
+	IF clawclock >= 96 THEN clawclock = 0
+	IF clawclock = 48 THEN GOSUB machine_clack
+	clawstep = clawclock / 3
 	IF clawstep > 16 THEN clawstep = 32 - clawstep
 	ey = 123
 	' Body contact is lethal; a one-pixel shoe/edge graze during a jump is not.
@@ -2504,7 +2537,7 @@ bell_step:
 	#score = #score + 10
 	GOSUB hud_score
 	#sndpitch = 120
-	snd2 = 10
+	sfxlen = 10
 	sndvol = 10
 	GOSUB tone_start
 	RETURN
@@ -2575,8 +2608,12 @@ quiet_screen:
 	FOR qslot = 0 TO 17
 		SPRITE qslot,209,0,0,0
 	NEXT qslot
+	SOUND 0,,0
+	SOUND 1,,0
 	SOUND 2,,0
 	SOUND 3,,0
+	snd0 = 0
+	snd1 = 0
 	snd2 = 0
 	snd3 = 0
 	steptick = 0
@@ -2678,6 +2715,7 @@ init_level:
 	vroute = 0
 	jhtk = 1
 	jhway = 0
+	jhlock = 0
 	boxfall = 0
 	hzphase = 0
 	#slagclock = 0
@@ -3278,7 +3316,7 @@ level3_data:
 	DATA BYTE 1, 8,2,2,4		' grinder, cols 2-3, at torso height on the belt
 	' Chains, where the reference hangs them.
 	DATA BYTE 10, 4,6,2,155		' top beam -> conveyor, the ESCAPE chain (col 4)
-	DATA BYTE 10, 10,6,3,155	' top beam -> the conveyor's far end (col 10)
+	' No right-end shortcut: enter the conveyor from the lift and escape left.
 	DATA BYTE 10, 24,6,2,155	' top beam -> upper-right beam (col 24)
 	DATA BYTE 10, 9,14,3,155	' mid-left -> lower-left  (col 9)
 	DATA BYTE 10, 29,14,3,155	' mid-right -> lower-right (col 29)
@@ -4291,12 +4329,16 @@ banked_actors_move:
 			hbw = 10
 			hbh = 12
 			GOSUB mack_hit
+			' A released hammer must leave Mack's reach before it can be caught.
+			IF hit = 0 THEN jhlock = 0
+			IF jhlock = 1 THEN hit = 0
 			IF hit = 1 THEN
 				jhtk = 1
 				carry = 2
+				jbhc = 0
 				#sndpitch = 150
 				sndvol = 12
-				snd2 = 10
+				sfxlen = 10
 				GOSUB tone_start
 			END IF
 		END IF
@@ -4317,7 +4359,7 @@ banked_actors_move:
 		ex = vx
 		ey = vy
 		hbw = 8
-		hbh = 10
+		hbh = 12
 		GOSUB hazard_hit
 	END IF
 	' OSHA man: patrols the left factory tiers via their edge chain.
@@ -4344,7 +4386,7 @@ banked_actors_move:
 		ex = ox
 		ey = oy
 		hbw = 8
-		hbh = 10
+		hbh = 12
 		GOSUB hazard_hit
 	END IF
 	' Rivets share this world clock through bolt_move.
@@ -4415,6 +4457,124 @@ banked_enemy_draw:
 		SPRITE 5,209,0,0,0
 	END IF
 	RETURN
+
+banked_sound_tick:
+	' Age each envelope against video frames, even on a busy three-frame pass.
+	FOR sfstep = 1 TO #fd
+		IF snd0 > 0 THEN
+			snd0 = snd0 - 1
+			IF snd0 = 0 THEN
+				SOUND 0,,0
+			ELSE
+				IF snd0 = 8 THEN #rewardpitch = #rewardpitch - #rewardpitch / 4
+				IF snd0 = 4 THEN #rewardpitch = #rewardpitch / 2
+				IF snd0v > 4 THEN snd0v = snd0v - 1
+				SOUND 0,#rewardpitch,snd0v
+			END IF
+		END IF
+		IF snd1 > 0 THEN
+			snd1 = snd1 - 1
+			IF snd1 = 0 THEN SOUND 1,,0
+			IF snd1 = 3 THEN SOUND 1,330,6
+		END IF
+		IF snd2 > 0 THEN
+			snd2 = snd2 - 1
+			IF snd2 = 0 THEN
+				SOUND 2,,0
+			ELSE
+				IF sndkind = 1 THEN #motionpitch = #motionpitch + 24
+				IF sndkind = 2 THEN #motionpitch = #motionpitch - 12
+				IF snd2v > 3 THEN snd2v = snd2v - 1
+				SOUND 2,#motionpitch,snd2v
+			END IF
+		END IF
+		IF snd3 > 0 THEN
+			snd3 = snd3 - 1
+			IF snd3 = 0 THEN SOUND 3,,0
+			IF snd3 = 5 THEN SOUND 3,5,6
+		END IF
+	NEXT sfstep
+	RETURN
+
+banked_completion_music:
+	' Original port fanfare: twelve articulated notes, harmony and bass.
+	' Four bytes per event keep the following data word-aligned.
+	GOSUB quiet_screen
+	IF lv = 1 THEN RESTORE victory_music1
+	IF lv = 2 THEN RESTORE victory_music2
+	IF lv = 3 THEN RESTORE victory_music3
+	FOR songi = 0 TO 11
+		READ BYTE songlead
+		READ BYTE songlow
+		READ BYTE songchord
+		READ BYTE songlen
+		#songpitch = songlead
+		#songbass = songlow * 4
+		#songharm = songchord * 2
+		SOUND 0,#songpitch,11
+		SOUND 1,#songharm,6
+		SOUND 2,#songbass,8
+		IF (songi AND 3) = 0 THEN SOUND 3,4,6
+		FOR songwait = 1 TO songlen
+			WAIT
+			IF songwait = 2 THEN SOUND 3,,0
+			IF songwait = 4 THEN
+				SOUND 0,,8
+				SOUND 2,,5
+			END IF
+		NEXT songwait
+		SOUND 0,,0
+		SOUND 1,,0
+		SOUND 2,,0
+		WAIT
+	NEXT songi
+	GOSUB quiet_screen
+	RETURN
+
+victory_music1:
+	' Beams: bright C-major call/response. Lead, bass /4, harmony /2, frames.
+	DATA BYTE 214,214,170,6
+	DATA BYTE 170,214,143,6
+	DATA BYTE 143,214,170,10
+	DATA BYTE 107,214,143,14
+	DATA BYTE 127,160,127,6
+	DATA BYTE 143,160,160,6
+	DATA BYTE 160,160,127,10
+	DATA BYTE 143,143,113,14
+	DATA BYTE 170,143,143,6
+	DATA BYTE 143,143,113,6
+	DATA BYTE 113,143,143,10
+	DATA BYTE 107,214,170,24
+
+victory_music2:
+	' Lunch break: rising answer to the same C-major theme.
+	DATA BYTE 214,214,170,6
+	DATA BYTE 190,214,143,6
+	DATA BYTE 170,214,143,6
+	DATA BYTE 143,214,170,10
+	DATA BYTE 127,160,127,10
+	DATA BYTE 143,160,160,6
+	DATA BYTE 160,160,127,6
+	DATA BYTE 170,214,143,10
+	DATA BYTE 190,143,113,6
+	DATA BYTE 143,143,113,10
+	DATA BYTE 113,143,143,10
+	DATA BYTE 107,214,170,24
+
+victory_music3:
+	' Factory: higher register, broader rhythm, longer final tonic.
+	DATA BYTE 143,214,170,8
+	DATA BYTE 107,214,143,8
+	DATA BYTE 85,214,107,12
+	DATA BYTE 95,143,113,8
+	DATA BYTE 107,214,170,8
+	DATA BYTE 143,214,170,8
+	DATA BYTE 127,160,127,8
+	DATA BYTE 143,143,113,8
+	DATA BYTE 170,214,143,8
+	DATA BYTE 143,143,113,8
+	DATA BYTE 113,143,143,12
+	DATA BYTE 107,214,170,28
 
 animated_machines:
 	IF lv = 3 THEN

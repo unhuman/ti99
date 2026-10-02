@@ -23,6 +23,8 @@ class Basic:
         self.screen = None
         self.data = []
         self.sound = []
+        self.sound_times = []
+        self.wait_count = 0
         self.sprites = {}
         self.pattern_writes = []
         self.color_writes = []
@@ -134,6 +136,7 @@ class Basic:
                 sample = next(self.frame_inputs, None)
                 assert sample is not None, 'input trace exhausted: '+label
                 self.v.update(sample)
+                self.wait_count += 1
             elif line.startswith('restore '):
                 start = self.labels[line[8:]] + 1
                 self.data = [self.expr(v.strip()) for ln in self.lines[start:]
@@ -168,8 +171,9 @@ class Basic:
                     continue
                 loops.pop()
             elif line.startswith('sound '):
-                self.sound.append(tuple(self.expr(x) if x else None
-                                        for x in line[6:].split(',')))
+                event=tuple(self.expr(x) if x else None for x in line[6:].split(','))
+                self.sound.append(event)
+                self.sound_times.append((self.wait_count,event))
             elif line.startswith('sprite '):
                 args = tuple(self.expr(x) for x in line[7:].split(','))
                 self.sprites[args[0]] = args[1:]
@@ -231,8 +235,11 @@ def clear_windows(source):
                 collided |= bool(vm.v['hit'])
             if not collided and path[-1][0] > start - speed*len(path) + int(width):
                 safe += 1
-        assert safe >= 3, 'no usable jump window at enemy speed %s: %s' % (speed, safe)
+        assert safe == 0, 'ordinary jump clears enemy at speed %s: %s' % (speed, safe)
         counts.append(safe)
+    # An enemy on the next floor must not become an invisible vertical wall.
+    vm.v.update(mx=40,my=120,ex=40,ey=152,hbw=int(width),hbh=int(height))
+    vm.run('mack_hit');assert not vm.v['hit'], 'enemy reaches across floors'
     return counts
 
 
@@ -274,6 +281,44 @@ def inventory_contract(source):
     vm.v['#score'] = 10000
     vm.run('hud_score')
     assert vm.v['i'] == 5, 'extra-life HUD clobbered pickup index'
+
+
+def hammer_release(source):
+    # Execute the shipped input block, then the real pickup collision. Testing
+    # drop_hammer alone missed a release immediately undone by actors_move.
+    block=source[source.index("\t' Button rising edge"):source.index('\tIF st = S_DEAD THEN\n\t\tGOSUB dead_tick')]
+    script=source+'\nbutton_test:\n'+block+'\tRETURN\n'
+    for delta in (1,2,3,4):
+        for near_spawn in (False,True):
+            vm=Basic(script);vm.v['lv']=1;vm.run('init_level')
+            vm.v.update(mx=vm.v['jhx0'] if near_spawn else 100,my=vm.v['jhy0'],
+                        carry=2,jhtk=1,jb=1,von=0,oon=0,**{'#fd':delta})
+            elapsed=0
+            while elapsed<45:
+                vm.run('button_test');vm.run('actors_move');elapsed+=delta
+                assert vm.v['carry']==(2 if elapsed<45 else 0), ('hold-to-drop timing/recatch',delta,near_spawn,elapsed)
+            assert vm.v['jhtk']==0 and (vm.v['jhx'],vm.v['jhy'])==(vm.v['jhx0'],vm.v['jhy0'])
+            for _ in range(70):vm.run('button_test');vm.run('actors_move')
+            assert vm.v['carry']==0, 'continued hold recatches released hammer'
+            vm.v['jb']=0;vm.run('button_test');vm.run('actors_move')
+            assert vm.v['carry']==0 and vm.v['jbhc']==0, 'release alone recatches hammer'
+            # Separation re-arms normal pickup. A previously saturated button
+            # must start a new hold period when catching the roaming hammer.
+            vm.v['mx']=100;vm.run('actors_move')
+            vm.v.update(mx=vm.v['jhx'],my=vm.v['jhy'],jb=1,jbhc=45)
+            vm.run('actors_move')
+            assert vm.v['carry']==2 and vm.v['jbhc']==0, 'pickup inherits saturated hold'
+            elapsed=0
+            while elapsed<45:vm.run('button_test');elapsed+=delta
+            assert vm.v['carry']==0 and vm.bank==1, 'held-through-pickup hammer cannot be dropped'
+    for carry in (0,1,2):
+        vm=Basic(script);vm.v.update(carry=carry,jhtk=1,jb=1,**{'#fd':1})
+        for _ in range(44):vm.run('button_test')
+        assert vm.v['carry']==carry, 'short press drops inventory'
+        vm.v['jb']=0;vm.run('button_test')
+        assert vm.v['jbhc']==0
+        vm.v['jb']=1;vm.run('button_test')
+        assert vm.v['jbe']==1 and vm.v['carry']==carry, 'fresh jump press broken'
 
 
 def machinery(source):
@@ -552,6 +597,28 @@ def review_feedback(source):
     return wins
 
 
+def factory_challenge(source):
+    wins=0
+    for phase in range(0,128,8):
+        vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
+        assert all(vm.screen[row*32+10]!=155 for row in (6,7,8)), 'factory shortcut chain restored'
+        assert vm.screen[6*32+4]==155, 'original left escape chain missing'
+        vm.v['pnphase']=8;vm.run('lift_positions')
+        vm.v.update(mx=vm.arrays['pnxcar'][0]-4,my=vm.arrays['pnycar'][0]-16,
+                    pnside=0,bonbeam=1,jbe=1,jl=1,hzphase=phase)
+        vm.run('world_step')
+        for _ in range(50):
+            if vm.v['st'] in (vm.v['s_walk'],vm.v['s_dead']):break
+            vm.run('world_step')
+        vm.v.update(jl=1,ju=1,jbe=0)
+        for _ in range(100):
+            if vm.v['st']==vm.v['s_dead']:break
+            if vm.v['st']==vm.v['s_walk'] and vm.v['my']==24:break
+            vm.run('world_step')
+        if vm.v['st']==vm.v['s_walk'] and vm.v['my']==24 and vm.v['carry']==1:wins+=1
+    assert 6<=wins<16, ('factory box route must be reachable and require timing',wins)
+
+
 def sound_contract(source):
     # Execute the actual frame-start and render-tail sound ordering. A busy
     # pass must expire the old effect, then let a newly triggered one survive.
@@ -566,49 +633,83 @@ def sound_contract(source):
     assert vm.v['snd3']==2 and vm.sound[-1]==(3,4,7), 'fresh sound erased in busy frame'
     for pitch, duration in ((600,14),(300,5),(360,12),(140,12),(180,8),(400,6)):
         vm = Basic(source)
-        vm.v.update(snd2=duration,sndvol=12)
-        vm.v['#sndpitch']=pitch
-        vm.run('tone_start')
-        # Busy-frame deltas must consume the same envelope time.
-        for delta in (4,3,4,3):
-            vm.v['#fd']=delta
-            vm.run('sound_tick')
-        assert vm.v['snd2']==0 and vm.sound[-1]==(2,None,0), 'tone stuck on'
+        vm.v.update(sfxlen=duration,sndvol=12)
+        vm.v['#sndpitch']=pitch;vm.run('tone_start')
+        channel=2 if pitch in (600,300,360) else 0
+        for delta in (4,3,4,3,4,3,4):
+            vm.v['#fd']=delta;vm.run('sound_tick')
+        assert vm.v['snd'+str(channel)]==0 and (channel,None,0) in vm.sound, 'tone stuck on'
         assert all(0 < event[1] <= 1023 for event in vm.sound if event[1] is not None)
+        assert vm.bank==1
 
     vm=Basic(source);vm.v.update(jr=1);vm.v['#fd']=1
     for _ in range(24):
         vm.run('mack_step');vm.run('sound_tick')
     assert vm.sound.count((3,4,7))==3, 'walking has no regular footsteps'
+    assert (1,900,7) in vm.sound and (1,740,7) in vm.sound, 'boots lack alternating taps'
     vm.run('sound_tick')
-    assert vm.v['snd3']==0 and vm.sound[-1]==(3,None,0), 'footstep stuck on'
+    assert vm.v['snd3']==0 and (3,None,0) in vm.sound and (1,None,0) in vm.sound, 'footstep stuck on'
     for state,x,direction in (('s_walk',40,0),('s_walk',240,1),('s_jump',40,1)):
         quiet=Basic(source);quiet.v.update(st=quiet.v[state],mx=x,jr=direction,steptick=7)
         quiet.run('mack_step')
-        assert not any(e[0]==3 for e in quiet.sound), 'idle, blocked or airborne footsteps'
-    vm=Basic(source);vm.v.update(jr=1,steptick=7,snd3=10,snd2=12)
+        assert not any(e[0] in (1,3) for e in quiet.sound), 'idle, blocked or airborne footsteps'
+    vm=Basic(source);vm.v.update(jr=1,steptick=7,snd3=10,snd1=5,snd2=12)
     vm.run('mack_step')
     assert vm.v['snd3']==10 and vm.v['snd2']==12 and not vm.sound, 'step interrupts effect'
-    vm.run('quiet_screen')
-    assert (3,None,0) in vm.sound and vm.v['snd3']==0, 'noise survives screen transition'
-    for level,carry,hz,claw in ((1,2,7,0),(2,0,27,0),(3,0,43,0),(2,0,80,63)):
+    vm.v.update(snd0=10,snd1=6);vm.run('quiet_screen')
+    for ch in range(4):
+        assert (ch,None,0) in vm.sound and vm.v['snd'+str(ch)]==0, 'channel survives screen transition'
+    for level,carry,hz,claw in ((1,2,7,0),(2,0,27,0),(3,0,43,0),(2,0,80,47)):
         vm=Basic(source);vm.v.update(lv=level);vm.run('init_level')
         vm.v.update(mx=112,my=80,carry=carry,hzphase=hz,clawclock=claw,**{'#slagclock':180})
         vm.run('site_step')
-        assert (3,5,8) in vm.sound, ('silent machinery',level,carry,hz,claw)
-        vm.v['#fd']=4;vm.run('sound_tick')
-        assert vm.v['snd3']==0 and vm.sound[-1]==(3,None,0), 'machine impact stuck on'
+        assert (3,5,8) in vm.sound and (1,180,10) in vm.sound, ('silent machinery',level,carry,hz,claw)
+        vm.v['#fd']=7;vm.run('sound_tick')
+        assert vm.v['snd3']==vm.v['snd1']==0 and (1,None,0) in vm.sound, 'machine impact stuck on'
     vm=Basic(source);vm.v.update(snd3=10);vm.run('machine_clack')
     assert vm.v['snd3']==10 and not vm.sound, 'machinery interrupts riveting'
     vm.v['snd3']=2;vm.run('machine_clack')
-    assert vm.sound==[(3,5,8)], 'footsteps mask machinery'
+    assert (3,5,8) in vm.sound and (1,180,10) in vm.sound, 'footsteps mask machinery'
+    # A pickup during a jump must leave its pitch, volume and lifetime intact.
+    vm=Basic(source);vm.v.update(sfxlen=12,sndvol=8,**{'#sndpitch':360});vm.run('tone_start')
+    motion=tuple(vm.v[k] for k in ('snd2','snd2v','#motionpitch'))
+    vm.v.update(sfxlen=8,sndvol=10,**{'#sndpitch':180});vm.run('tone_start')
+    assert tuple(vm.v[k] for k in ('snd2','snd2v','#motionpitch'))==motion, 'pickup erases jump sound'
+    assert vm.v['snd0']>0 and vm.sound[-1][0]==0
+    vm.run('mack_die')
+    assert vm.v['snd0']==vm.v['snd1']==0 and (3,6,10) in vm.sound, 'death lacks priority/impact'
+    events=len(vm.sound);vm.v.update(sfxlen=8,**{'#sndpitch':180});vm.run('tone_start')
+    assert len(vm.sound)==events, 'pickup overrides death'
+    # Execute every site's actual score, including voice/bank selection.
+    themes=[]
+    for level in (1,2,3):
+        vm=Basic(source);vm.v['lv']=level;vm.frame_inputs=iter([{}]*300);vm.run('completion_music')
+        notes=[(frame,event) for frame,event in vm.sound_times if event[0]==0 and event[1] is not None and event[2]>0]
+        assert len(notes)==12 and len({e[1] for _,e in notes})>=6, 'completion is still a short beep pattern'
+        themes.append(tuple(e[1] for _,e in notes))
+        assert themes[-1][-1]==107, 'site theme does not resolve to shared tonic'
+        for channel in (1,2):
+            assert len([e for _,e in vm.sound_times if e[0]==channel and e[1] is not None and e[2]>0])==12, 'fanfare missing harmony or bass'
+        assert 120<=vm.wait_count<=160 and vm.bank==1, 'fanfare duration or bank return'
+        last={}
+        for frame,event in vm.sound_times:
+            ch,pitch,vol=event;last[ch]=vol
+            if pitch is not None:assert 0<pitch<=1023
+        assert last=={0:0,1:0,2:0,3:0}, 'fanfare leaves a channel latched'
+    assert len(set(themes))==3, 'sites share the same fanfare'
+    # Held Up makes one chain clink per eight pixels, never stationary buzzing.
+    vm=Basic(source);vm.v['lv']=3;vm.run('init_level');vm.sound=[]
+    vm.v.update(mx=28,my=57,st=vm.v['s_climb'],ju=1)
+    for _ in range(12):vm.run('mack_step');vm.v['#fd']=1;vm.run('sound_tick')
+    assert (1,240,7) in vm.sound, 'silent chain climbing'
+
 
 
 def pincer_passage(source):
     # A one-pixel shoe/edge graze was the specific failure in the lower crane
     # approach. Preserve that allowance even when a different launch can win.
     graze=Basic(source);graze.v.update(lv=2);graze.run('init_level')
-    graze.v.update(mx=30,my=120,clawclock=127,**{'#slagclock':180})
+    graze.v.update(mx=30,my=120,clawclock=95,**{'#slagclock':180})
     graze.run('site_step')
     assert graze.v['st']!=graze.v['s_dead'], 'pincer kills a shoe-edge graze'
     art=re.search(r'^claw_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
@@ -629,7 +730,7 @@ def pincer_passage(source):
     # other. Real ledge/ceiling geometry and live hazard timing, both directions.
     for direction,start,end in ((0,78,14),(1,14,78)):
         wins=0
-        for phase in range(0,128,16):
+        for phase in range(0,96,12):
             vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
             vm.v.update(mx=start,my=120,clawclock=phase,**{'#slagclock':180})
             for hop in range(2):
@@ -644,11 +745,11 @@ def pincer_passage(source):
         assert wins>=3, ('no generous two-jump pincer passage',direction,wins)
     # The reference route stages on the right of the jaws BEFORE two jumps.
     # Walk off the rising girder as it reaches the ledge, stop on that safe
-    # patch, and wait for visible opening. Keep the six-of-eight gate and all
+    # patch, and wait for full closure. Keep the six-of-eight gate and all
     # hazards live; the former direct two-hop shortcut skipped the safe patch.
     for height in (128,136,144):
         wins=0
-        for phase in range(0,128,16):
+        for phase in range(0,96,12):
             vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
             vm.v.update(mx=88,my=height-16,bmy=height,bmactive=1,bonbeam=1,
                         bmd=0,clawclock=phase,**{'#slagclock':180})
@@ -661,9 +762,9 @@ def pincer_passage(source):
             assert (vm.v['mx'],vm.v['my'],vm.v['st'])==(74,120,vm.v['s_walk']), 'cannot stage beside jaws'
             vm.v['jl']=0
             previous=vm.v['clawstep']
-            for _ in range(129):
+            for _ in range(97):
                 vm.run('world_step')
-                if vm.v['clawstep']==8 and previous==9:break
+                if vm.v['clawstep']==16 and previous==15:break
                 previous=vm.v['clawstep']
             assert vm.v['st']==vm.v['s_walk'], 'right waiting patch is unsafe'
             before=vm.v['nlbr']
@@ -680,11 +781,11 @@ def pincer_passage(source):
         assert wins>=6, ('unfair crane-to-pincer approach',height,wins)
 
     # Real re-press margin: stop after landing, release FIRE, wait 12 world
-    # steps (~178 ms), then jump again. A continuous half-second launch window
-    # as the jaws open must work both ways, with ALL world hazards advancing.
+    # steps (~178 ms), then jump again. A continuous launch window around full closure
+    # (including a 12-step release/re-press pause) must work both ways, with ALL world hazards advancing.
     seed=Basic(source);seed.v['lv']=2;seed.run('init_level')
     for direction,start,end in ((0,78,14),(1,14,78)):
-        for phase in range(96,129,4):
+        for phase in range(40,59,2):
             vm=copy.deepcopy(seed)
             vm.v.update(mx=start,my=120,clawclock=phase,**{'#slagclock':180})
             for hop in range(2):
@@ -734,15 +835,15 @@ def machinery_animation(source):
         return [int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',block)]
     vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
     poses=[]
-    vm.v.update(mx=112,my=80,clawclock=127)
-    for _ in range(129):
+    vm.v.update(mx=112,my=80,clawclock=95)
+    for _ in range(97):
         vm.run('site_step');vm.run('site_draw');poses.append(vm.v['clawstep'])
         assert vm.bank==1, 'animation bank not restored'
         assert vm.sprites[14][0]==209, 'level-2 smasher still uses a sprite'
-    assert set(poses)==set(range(17)) and poses[0]==poses[128]==0
+    assert set(poses)==set(range(17)) and poses[0]==poses[96]==0
     assert all(abs(a-b)<=1 for a,b in zip(poses,poses[1:])), 'pincers snap between poses'
-    assert all(len(set(poses[i:i+5]))>1 for i in range(125)), 'pincers pause at an endpoint'
-    assert len(vm.pattern_writes)<129*3, 'unchanged machinery reuploads every pass'
+    assert all(len(set(poses[i:i+5]))>1 for i in range(93)), 'pincers pause at an endpoint'
+    assert len(vm.pattern_writes)<97*3, 'unchanged machinery reuploads every pass'
     patterns=table('press_pat');colors=table('press_col')
     assert len(patterns)==len(colors)==32*48
     for row in range(3):
@@ -896,7 +997,7 @@ def visual_hazards(source):
                     test.v['hit']=0
                 else:real_run(label)
             test.run=capture
-            test.v.update(mx=112,my=80,hzphase=phase-1,clawclock=(phase-1)%128,**{'#slagclock':(phase-1)%317})
+            test.v.update(mx=112,my=80,hzphase=phase-1,clawclock=(phase-1)%96,**{'#slagclock':(phase-1)%317})
             test.run('site_step')
             if level==2:
                 profiles.append((calls[-1],(test.v['blobx'],test.v['bloby']),bounds('slag_bitmap'),'slag'))
@@ -924,10 +1025,10 @@ def visual_hazards(source):
         hit.v.update(mx=x+(left+right)//2-8,my=y+(top+bottom)//2-10)
         hit.run('mack_hit');assert hit.v['hit'], (name,'harmless at direct contact')
     # Both jaws move and both can kill; the open center and a clear jump are safe.
-    for clock,x,y,dead in ((0,40,120,False),(64,44,120,True),
-                           (0,27,120,True),(0,61,120,True),(64,44,109,False)):
+    for clock,x,y,dead in ((0,40,120,False),(48,44,120,True),
+                           (0,27,120,True),(0,61,120,True),(48,44,109,False)):
         test=Basic(source);test.v.update(lv=2);test.run('init_level')
-        test.v.update(clawclock=(clock-1)%128,mx=x,my=y,hzphase=90,**{'#slagclock':180})
+        test.v.update(clawclock=(clock-1)%96,mx=x,my=y,hzphase=90,**{'#slagclock':180})
         test.run('site_step')
         assert (test.v['st']==test.v['s_dead'])==dead, ('pincer contact',clock,x,y)
 
@@ -1078,6 +1179,7 @@ def main():
     momentum(source)
     clock_contract(source)
     inventory_contract(source)
+    hammer_release(source)
     machinery(source)
     transfers(source)
     sound_contract(source)
@@ -1087,6 +1189,7 @@ def main():
     chain_and_pickups(source)
     setup_inputs(source)
     repeat_enemies(source)
+    factory_challenge(source)
     slag_cadence(source)
     fidelity(source)
     visual_hazards(source)
@@ -1112,7 +1215,7 @@ def main():
             assert vm.v['st'] == vm.v['s_walk'], 'jump failed to clear single-cell gap'
     # Known defects MUST fail: short clearance, lost momentum, deferred death.
     mutants = [
-        (source.replace('jhang = 16', 'jhang = 0'), clear_windows),
+        (source.replace('hbw = 8\n\t\thbh = 12', 'hbw = 8\n\t\thbh = 10'), clear_windows),
         (source.replace('st_fall:\n', 'st_fall:\n\tjhz = 1\n'), momentum),
         (source.replace('IF fd2 > FATALFALL THEN GOSUB mack_die',
                         'IF fd2 > FATALFALL THEN ded = 1'), momentum),
@@ -1127,10 +1230,10 @@ def main():
         (source.replace('SOUND 3,,0', 'SOUND 3,,8'), sound_contract),
         (source.replace('IF mx <> walkx THEN', 'IF mx = walkx THEN'), sound_contract),
         (source.replace('SOUND 3,5,8', 'SOUND 3,5,0'), sound_contract),
-        (source.replace('clawstep = clawclock / 4', 'clawstep = 16'), pincer_passage),
+        (source.replace('clawstep = clawclock / 3', 'clawstep = 16'), pincer_passage),
         (source.replace('hbw = 4\n\thbh = 6','hbw = 5\n\thbh = 6'), pincer_passage),
         (source.replace('#slagclock >= 317','#slagclock >= 256'), slag_cadence),
-        (source.replace('clawstep = clawclock / 4','clawstep = clawclock / 8'), machinery_animation),
+        (source.replace('clawstep = clawclock / 3','clawstep = clawclock / 8'), machinery_animation),
         (source.replace('DATA BYTE $00,$00,$3C,$3C,$3C,$FF,$FF,$FF',
                         'DATA BYTE $00,$00,$3C,$3C,$3C,$E7,$E7,$E7'), pincer_passage),
         (source.replace('IF pressy > 62 THEN pressy = 62','IF pressy > 55 THEN pressy = 55'), machinery_animation),
@@ -1183,15 +1286,25 @@ def main():
         (source.replace('IF levelno < 4 THEN RETURN','RETURN'),repeat_enemies),
         (source.replace('okind = RANDOM(2)','okind = vkind'),repeat_enemies),
         (source.replace('ob = rb','ob = 2'),repeat_enemies),
+        (source.replace("' No right-end shortcut: enter the conveyor from the lift and escape left.", 'DATA BYTE 10,10,6,3,155'),factory_challenge),
+        (source.replace('SOUND 0,,0','SOUND 0,,8'),sound_contract),
+        (source.replace('SOUND 1,,0','SOUND 1,,8'),sound_contract),
+        (source.replace('SOUND 1,#songharm,6','SOUND 1,#songharm,0'),sound_contract),
+        (source.replace('RESTORE victory_music2','RESTORE victory_music1'),sound_contract),
+        (source.replace('\tjhlock = 1\n','\tjhlock = 0\n'),hammer_release),
+        (source.replace('carry = 2\n\t\t\t\tjbhc = 0','carry = 2'),hammer_release),
+        (source.replace('IF carry = 2 THEN GOSUB drop_hammer','carry = carry'),hammer_release),
+        (source.replace('jbhc = jbhc + #fd','jbhc = jbhc + 1'),hammer_release),
     ])
     for mutant, check in mutants:
+        assert mutant!=source, 'defect mutation did not change source: '+check.__name__
         try:
             check(mutant)
         except AssertionError:
             continue
         raise AssertionError('checker accepted historical defect: '+check.__name__)
     print('Physics: 32-step jumps, both gap directions, fall momentum, fatal landings OK')
-    print('Safe enemy launch positions (stationary / half speed / full speed):', windows)
+    print('Enemy over-jump wins (stationary / half speed / full speed; must be zero):', windows)
     print('All level parsers, pails, box delivery, belt surfaces and 448 lift steps OK')
     print('Twelve platform transfers, both spring transfers and sound envelopes OK')
     print('Walk-offs, parked/moving cabin and %d/8 live conveyor entries OK' % entry_wins)

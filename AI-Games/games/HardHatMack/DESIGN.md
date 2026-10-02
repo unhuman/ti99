@@ -484,7 +484,7 @@ the reference's two pairs of **oil drums** now stand on the ground at cols 9–1
    a fatal drop. The stubs are **4 cells** now (11–14 left, 17–20 right), which puts each one a
    single jump from its beam while still inside the chain-grab probe of the shaft. The left stubs
    overhang the beam below them, so coming back is just walking off the edge and dropping a row.
-2. **The box on the conveyor could not be collected.** The only way onto the belt was the chain at
+2. **Historical workaround, removed in section 23:** the box on the conveyor could not be collected. The only way onto the belt was the chain at
    col 4 — its *left* end — but the belt runs left, so you arrived already past the box at col 7
    with nothing ahead but the grinder. Worse, you cannot walk right against the belt (the drag
    exactly cancels a walk step). A **second chain at col 10** drops you on the far end, so it is
@@ -1416,3 +1416,112 @@ The final production cart also passed a one-life level-3 start, a complete
 colored smasher-cycle capture, and a factory GAME OVER showing the full blank
 margin. A fresh Fire returned to the normal title. This newest production cart
 was left running in one Classic99 window.
+
+
+## §23 Original challenge routes and richer audio (2026-10-02)
+
+This supersedes the second-chain workaround in the July traversal audit and
+sections 19-20's 128-step pincher timing. Reviewed the Apple II longplay at
+1:33-1:36 and 2:05-3:13, plus the C64 longplay at 1:35-2:47. Both show the
+factory belt's left escape chain and no chain at its right end. The Apple II
+player waits on the right for touching jaws, then makes two quick jumps through
+the opening. The [Apple II walkthrough](https://gamefaqs.gamespot.com/appleii/579172-hard-hat-mack/faqs/8818)
+also describes jumping twice when the pinchers fully close.
+
+- Removed the added column-10 chain on site 3. Keep the original column-4 escape
+  chain and its head-only catch fix. Enter the belt from the rotating lift,
+  collect the box while being carried toward the grinder, then climb out left.
+  The source-driven route succeeds at nine of sixteen sampled smasher phases;
+  mistimed launches remain lethal. This is a timing challenge, not a safe
+  shortcut from the roof.
+- Pincher positions and 32-pixel maximum opening are unchanged. Each of the
+  seventeen poses now lasts three world steps instead of four: a 96-step cycle
+  (~1.42 s), with immediate smooth reversal and closure impact at step 48.
+  Both directions permit two jumps starting near closure, including a twelve
+  world-step (~0.18 s) release/repress gap. The actual crane approach and right
+  waiting patch remain covered by the existing live-hazard tests.
+- Enemies use a 12-pixel body collision height rather than ten. An ordinary
+  eleven-pixel-high jump cannot clear them; the body remains local to its floor.
+  Jump clearance over gaps and movement momentum are unchanged.
+
+Audio now allocates channel 0 to reward chimes, channel 1 to alternating boot
+taps, chain clinks and metallic impacts, channel 2 to jump/death sweeps, and
+channel 3 to noise. Pickups preserve a jump's pitch, lifetime and volume. Death
+clears lower-priority tones and adds a noise tail. Stationary/blocked walking
+does not trigger steps. Every envelope ages using elapsed video frames and
+explicitly silences its channel; screen transitions clear all four counters.
+
+The former four ascending beeps become three related, newly composed twelve-note
+C-major fanfares with harmony, bass, light percussion, articulation and decay.
+Site 1 uses brisk call-and-response (130 frames, ~2.17 s); site 2 answers with
+a rising melody (122 frames, ~2.03 s); site 3 moves into a higher register with
+a broader rhythm and longer final tonic (136 frames, ~2.27 s). All three share
+the same key, accompaniment palette and final C, but have distinct melodies.
+These are PSG arrangements for the port, not claimed transcriptions of either reference soundtrack. Audio envelope updates and the
+completion score reside in TI bank 2; fixed wrappers restore bank 1. Pitch
+multiplication compiles to word shifts, avoiding byte truncation and stale MPY
+register state.
+
+The checker executes all three scores, rejects identical site melodies, checks
+all three pitched voices, duration and final note-offs, tests simultaneous pickups/jumps and death
+priority, and rejects restored shortcuts, jumpable enemies and missing sound
+channels. Validation results and runtime limits follow below.
+
+
+Classic99 ran the actual completion handler for all three sites using an isolated
+review cart with an Up-to-complete hook. Captures show sites 1 -> 2 -> 3 -> stage 4,
+correct bonus/score advancement, the factory without the added chain, and the
+second roamer on the repeated first site. The production cart was restored
+immediately afterward. This verifies execution and screen transitions, not an
+unassisted whole-level clear or a listening comparison with the originals.
+
+
+Final TI gate: all 63 defect mutations rejected; all 65 GOSUB targets unwind;
+504 shortened branches verified, saving 2,016 bytes. Fixed code uses
+21,816/24,336 bytes (2,520 free); unoptimized fixed code uses 23,832 bytes
+(504 free). Setup/assets have 129 bytes free and animation/audio code has
+516 bytes free. RAM use is 448 bytes; the packed cart remains 64 KB. Both
+bank images match their packed pages exactly. No Coleco build or runtime
+check was performed, as requested.
+
+The optimized production cart passed an 838 nine-life site-2 start. A 64-frame
+capture shows continuous opening/closing, touching jaws and the clear right
+waiting patch. Production SHA-256:
+`05B1B5E3844DF4D09FC03DE50C001FF145C0768263863C2B937C80DDA56905A8`.
+It is left on the normal title screen in one Classic99 window.
+
+
+## §24 Reliable hold-to-drop jackhammer (2026-10-02)
+
+Reproduced the reported failure in the actual input and actor routines: when
+Mack stood near the drill's spawn, the 45-frame hold released it, then the next
+pickup test immediately caught it again. The hold counter stayed saturated,
+so holding Fire longer had no further effect. Catching a roaming drill after
+an already-long button hold had the same saturated-counter problem.
+
+Dropping now locks re-capture until Mack and the released drill separate beyond
+the normal pickup bounds. A fresh pickup resets the hold counter. The drill
+still returns to its start and resumes its route; no arbitrary pickup delay is
+added. Initializing a level or respawning clears the separation lock. Hold Fire
+(Tab in Classic99) for 45 video frames, about 0.75 seconds at 60 Hz; a short press
+still jumps and does not release inventory.
+
+The regression executes the shipped button block followed by the real actor
+pickup routine, both near and away from the spawn, with 1-4-frame deltas. It
+checks short presses, sustained holds, release without separation, re-capture
+after separation, and picking up while Fire is already held. Four new defective
+variants must fail, bringing the total to 67.
+
+
+Classic99 level-1 review confirmed that a short Tab press retains the hammer
+and a sustained hold releases it; the nearby loose brick can then be collected
+while the drill resumes roaming. The first review accidentally selected site 3
+and was discarded; the valid review explicitly starts site 1. The production
+cart was restored immediately after each temporary review.
+
+TI validation: all 67 defect mutations rejected, all 65 GOSUB targets unwind,
+504 shortened branches verified. Fixed code is 21,830/24,336 bytes (2,506 free);
+unoptimized code is 23,846 bytes (490 free). Setup/assets have 123 bytes free,
+animation/audio has 472 bytes free, and RAM use is 450 bytes. The latest 64 KB
+production cart has SHA-256
+`BF189C2599D55A6C8A24AE3F62C12AB0FC10435B7C53CAA4C83FE0791AA2D392`.
