@@ -3,7 +3,7 @@
 > **Current status (2026-10-01): both ColecoVision and TI-99/4A are required.**
 > Section 16 supersedes earlier mechanics, budgets and verification notes.
 > Older sections remain as implementation history; README describes current play.
-> Title/838, music and loop difficulty described as design goals are not implemented.
+> The basic title and 838 setup are implemented; richer title art and music remain design goals; repeat tours now have two random enemies.
 
 ## Current performance budget
 
@@ -1320,3 +1320,99 @@ The complete pail journey is covered by source-executed regression tests; this
 runtime visual review does not claim a manual whole-level clear. The newest
 production cart was left running on level 2 in one Classic99 window. No Coleco
 build or runtime check was performed for this pass.
+
+## §21 Game-over input delay (2026-10-02)
+
+The game-over wait is now 75 video frames (1.25 seconds at 60 Hz), reduced from
+180 frames. The existing release-then-press requirement remains: holding Fire
+through the delay does not dismiss the screen until it is released and pressed
+again. The elevator-preservation regression stops at the updated delay boundary.
+
+## §22 Chain access, machinery art and 838 setup (2026-10-02)
+
+The Apple II longplay at 1:22-1:24 shows the bottom-right chain accessible from
+clear ground, with the ground hazard farther left. Our flame occupied row 22,
+column 23 directly under the chain. It now occupies column 21, leaving the chain
+approach and the two-cell ground pail clear. Up can grab chains while jumping or
+falling; Fire must be released first so jumping off does not immediately reattach.
+The same head/torso probes serve grounded and airborne grabs on all three sites.
+This is a port control choice; the recording does not expose the original inputs.
+
+The level-2 spray can is a 200-point bonus, previously overwriting the right
+machine's stand. It moves from row 22, column 17 to column 16. Both support cells
+remain intact before and after collection. The top wrench remains a 200-point
+bonus; its crane-top jump route is unchanged by this pass.
+
+Level 2 now parks its smasher at pressy=104 (visible head y=112-115), rather than
+hiding it above its character area. It still bottoms at y=132-135, moves one pixel
+per step, and strikes at phase 28. The top hold spans the wraparound phase interval
+56..127,0..8. Level 3 retains its visible y=48-51 top hold and full y=70-73 extension.
+Both heads use white/magenta/light-red/dark-red rows that travel with the head.
+The factory's extra two rows select matching colors by depth while preserving the
+belt's rails, treads and support. Level-2 girder rivets occupy the middle two body
+rows; all eight moving-girder offsets preserve those marks across tile boundaries.
+
+GAME OVER has an eleven-by-three-character cleared area around its nine-letter
+message, with one blank character on every side. Its input delay remains the new
+75 frames (1.25 seconds at 60 Hz).
+
+The title no longer offers Up/Down level selection. Fire starts three total lives
+at level 1. The hidden sequence 8,3,8 opens lives 1-9 followed by level 1-3; valid
+last input starts immediately. Invalid selections are ignored, held keys cannot
+answer the next field, and an incorrect code digit resets the sequence. Choices
+reset on the next game. Setup runs in the animation/title bank and unwinds through
+the existing wrapper, restoring bank 1. The reserve hats move to row 1, columns
+22-30, supporting eight starting reserves plus the earned extra life, without
+overwriting scores or the level number.
+
+Regression coverage includes the actual map's clear chain approach, grounded,
+jumping and falling grabs, held-Fire rejection, complete ascent, spray-can pickup,
+intact supports/pail, all 27 setup choices and matching reserve hats. Full-cycle
+machinery tests verify visible top holds, continuous travel, colored tile seams,
+lethal head bounds and retained conveyor pixels. New negative cases restore the
+blocked chain, missing airborne catch, overlapping can, hidden head, incorrect
+reserve count and repeated held digits; each must fail.
+
+## §23 Repeat-tour enemies (2026-10-02)
+
+Review of the Apple II longplay around 3:28-3:47 (stage 4), 7:00 (stage 7),
+and 10:40 (stage 10) shows two roamers and different pairs, including matching
+vandal/inspector types. The video establishes those combinations, not the random
+number algorithm. This port independently draws each type when stage 4 or later
+starts. The initial three sites retain their existing cast. Repeated sites have
+two enemies, with no additional speed multiplier or third enemy.
+
+The second enemy on site 1 starts on the second beam and runs its own copy of the
+full serpentine walk/climb route, including the terminal-floor patrols. On site 2
+it starts on the lower-right ledge, offset from the ground enemy, and shares the
+existing chain route. Site 3 retains its left/right routes. Type choices control
+the actual sprite shape and color independently of route ownership. Both actors
+remain lethal and their positions/route state reset on death without rerolling.
+
+Enemy updates and sprite drawing now reside in bank 2, with fixed wrappers that
+restore bank 1; this leaves room for the second route's state and avoids the
+unoptimized fixed-code address boundary. No extra sprite slots are required.
+Tests execute the stage-3-to-4 transition, all four type pairs on all sites,
+per-step movement, visits to every routed tier, both contact hazards, death reset,
+and bank restoration. Negative cases remove the second-tour activation, force
+identical types, and corrupt the second roamer's tier state; each must fail.
+
+Final combined TI gate: 58 deliberately defective variants rejected; 61 GOSUB
+targets unwind; 507 shortened branches verified (2,028 bytes saved). Fixed code
+uses 21,730/24,336 bytes (2,606 free); unoptimized fixed code is 23,758 bytes
+(578 free). Setup/assets have 124 bytes free; animation/title/enemy code has
+1,712 bytes free. RAM use is 418 bytes; the packed cartridge remains 64 KB.
+Assembly inspection confirms independent random draws, byte-safe input/reserve
+arithmetic, aligned head-color offsets and fixed bank-switch wrappers.
+
+Classic99 verified 838's sequential prompts and a nine-life level-2 start,
+centered static/moving rivets, the clear spray-can placement, and visible colored
+smasher top holds and full strokes. An isolated stage-4 review cartridge showed
+the second roamer; production was restored immediately afterward. Whole-level
+completion and precise original-machine pacing are not claimed from these
+controlled checks. No Coleco build or runtime check was performed.
+
+The final production cart also passed a one-life level-3 start, a complete
+colored smasher-cycle capture, and a factory GAME OVER showing the full blank
+margin. A fresh Fire returned to the normal title. This newest production cart
+was left running in one Classic99 window.

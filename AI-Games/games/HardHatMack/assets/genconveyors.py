@@ -55,8 +55,16 @@ def tables():
         for tile in range(5):
             result['claw_pat'] += rows(lambda x,y: (x+tile*8,y) in pixels)
     result['claw_col'] = [0x11,0x11,0xf1,0xf1,0xf1,0x31,0x31,0xf1]*5
-    # The upper beam conceals the retracted head. Below it, a fixed mounting
-    # bracket supports a lengthening piston; only the moving head is lethal.
+    # Pre-shift the centered rivets WITH the crane bar at every pixel offset.
+    beam = [0xff,0xff,0xff,0xe7,0xe7,0xff,0xff,0xff]
+    result['beamshift_pat'] = []
+    for lower in (False,True):
+        for offset in range(8):
+            shifted = [0]*offset + beam + [0]*(8-offset)
+            result['beamshift_pat'] += shifted[8:16] if lower else shifted[:8]
+    # A visible parked head, supported by a lengthening piston. Colors follow
+    # the four head rows across tile boundaries, rather than coloring a tile.
+    head_colors = [0xf1,0xd1,0x81,0x61]
     result['press_pat'] = []
     result['press_col'] = []
     for phase in range(32):
@@ -71,7 +79,7 @@ def tables():
                     if y==head+2 and 3<=x<=12:face=False
                     return bracket or stem or face
                 result['press_pat'] += rows(pixel)
-                result['press_col'] += [0xd1 if head<=row*8+y<head+4 else 0xe1 for y in range(8)]
+                result['press_col'] += [head_colors[row*8+y-head] if head<=row*8+y<head+4 else 0xe1 for y in range(8)]
     # Factory head extends into the two empty rows ABOVE the belt's top rail.
     # Keep all eight belt phases beneath it; never erase or stop the conveyor.
     result['pressfoot_pat'] = []
@@ -84,7 +92,11 @@ def tables():
                     if depth==2 and y==0:
                         foot[y] = sum(128>>x for x in range(8) if x+tile*8 in (1,2,13,14))
                 result['pressfoot_pat'] += foot
-    result['pressfoot_col'] = [0xd1,0xd1,0xf1,0x31,0x31,0x31,0xf1,0x11]*2
+    result['pressfoot_col'] = []
+    for depth in range(3):
+        col = [0x11,0x11,0xf1,0x31,0x31,0x31,0xf1,0x11]
+        col[:depth] = head_colors[4-depth:] if depth else []
+        result['pressfoot_col'] += col*2
     return result
 
 
@@ -102,6 +114,16 @@ def rewrite(source):
 def check(source):
     assert rewrite(source)==source, 'conveyor art stale; run genconveyors.py --write'
     t=tables()
+    # The shifted upper/lower cells must reconstruct the SAME centered rivets,
+    # including offsets where those marks straddle the character boundary.
+    for offset in range(8):
+        pair=t['beamshift_pat'][offset*8:offset*8+8]+t['beamshift_pat'][64+offset*8:72+offset*8]
+        assert pair[:offset]==[0]*offset and pair[offset+8:]==[0]*(8-offset)
+        assert pair[offset:offset+8]==[255,255,255,231,231,255,255,255], 'crane rivets not centered'
+    tile=re.search(r'^tile_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
+    tile='\n'.join(line.split("'")[0] for line in tile.splitlines())
+    data=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',tile)]
+    assert data[8:16]==[255,255,255,231,231,255,255,255], 'level-2 rivets not centered'
     assert len({tuple(t['belt_anim%d'%i]) for i in range(8)})==8
     for name,fn in [('inclined',diagonal),('flat',flat)]:
         assert len({tuple(fn(i)) for i in range(8)})==8, name+' phases repeat'
@@ -114,6 +136,8 @@ def check(source):
         assert flat(phase)[2]==flat(phase)[6]==255
     # Reject corruption, rather than merely checking the generator itself.
     broken=source.replace('belt_anim3:\n','belt_anim3:\n\tDATA BYTE 0\n',1)
+    assert rewrite(broken)!=broken
+    broken=source.replace('beamshift_pat:\n','beamshift_pat:\n\tDATA BYTE 0\n',1)
     assert rewrite(broken)!=broken
 
 

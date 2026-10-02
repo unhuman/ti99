@@ -83,8 +83,8 @@
 	CONST T_LBOXL  = 183	' lunchbox (2 cells, level 2)
 	CONST T_LBOXR  = 184
 	CONST T_BRICK  = 185	' loose girder piece: 1-cell diagonal girder
-	CONST T_WRENCH = 186	' bonus wrench (+500)
-	CONST T_CAN    = 187	' bonus spray can (+500)
+	CONST T_WRENCH = 186	' bonus wrench (+200)
+	CONST T_CAN    = 187	' bonus spray can (+200)
 	CONST T_HAT    = 188	' hard hat (HUD lives icon)
 
 	' ---- Level-stream opcodes (see level1_data) ----
@@ -437,18 +437,7 @@ main_loop:
 	ELSE
 		SPRITE 3,209,0,0,0
 	END IF
-	IF von = 1 THEN
-		vfr = 12
-		IF anm2 = 1 THEN vfr = 36
-		SPRITE 4,vy - 1,vx,vfr,3
-	ELSE
-		SPRITE 4,209,0,0,0
-	END IF
-	IF oon = 1 THEN
-		SPRITE 5,oy - 1,ox,16,11
-	ELSE
-		SPRITE 5,209,0,0,0
-	END IF
+	GOSUB enemy_draw
 	IF bon = 1 THEN
 		SPRITE 6,by - 1,bx,20,15
 	ELSE
@@ -540,9 +529,13 @@ game_over:
 	GOSUB quiet_screen
 	GOSUB elev_draw
 	gameov = 0
-	PRINT AT CPOS(11,11),"GAME OVER"
+	' One blank character around all four sides of the message.
+	PRINT AT CPOS(10,10),"           "
+	PRINT AT CPOS(11,10)," GAME OVER "
+	PRINT AT CPOS(12,10),"           "
 	IF #score > #hi THEN #hi = #score
-	FOR i = 1 TO 180
+	' 75 video frames = 1.25 seconds at 60 Hz before accepting a fresh Fire.
+	FOR i = 1 TO 75
 		WAIT
 	NEXT i
 gover_rel:
@@ -590,10 +583,36 @@ mack_step:
 	IF st = 7 THEN GOTO spring_transfer
 	IF st = S_WALK THEN GOTO st_walk
 	IF st = S_CLIMB THEN GOTO st_climb
-	IF st = S_JUMP THEN GOTO st_jump
-	IF st = S_FALL THEN GOTO st_fall
+	IF st = S_JUMP THEN GOTO st_air
+	IF st = S_FALL THEN GOTO st_air
 	IF st = S_RIDE THEN GOTO st_ride
 	IF st = S_TRAMP THEN GOTO st_tramp
+	RETURN
+
+st_air:
+	' Release Fire before grabbing: a jump off a chain must clear it first.
+	IF jb = 0 THEN GOSUB grab_chain
+	IF st = S_CLIMB THEN RETURN
+	IF st = S_JUMP THEN GOTO st_jump
+	GOTO st_fall
+
+grab_chain:
+	IF ju THEN
+		' Grab a chain near the torso or head (one-cell grace each
+		' side; the head pass reaches chains that hang short).
+		cpy = my + 8
+		GOSUB chain_at
+		IF cfnd = 0 THEN
+			cpy = my + 1
+			GOSUB chain_at
+		END IF
+		IF cfnd = 1 THEN
+			st = S_CLIMB
+			mx = cc * 8 - 4
+			my = my - 1
+			RETURN
+		END IF
+	END IF
 	RETURN
 
 start_jump:
@@ -621,22 +640,8 @@ start_jump:
 
 st_walk:
 	IF jbe THEN GOTO start_jump
-	IF ju THEN
-		' Grab a chain near the torso or head (one-cell grace each
-		' side; the head pass reaches chains that hang short).
-		cpy = my + 8
-		GOSUB chain_at
-		IF cfnd = 0 THEN
-			cpy = my + 1
-			GOSUB chain_at
-		END IF
-		IF cfnd = 1 THEN
-			st = S_CLIMB
-			mx = cc * 8 - 4
-			my = my - 1
-			RETURN
-		END IF
-	END IF
+	GOSUB grab_chain
+	IF st = S_CLIMB THEN RETURN
 	IF jd THEN
 		' Descend a chain that continues below this floor.
 		cpy = my + 24
@@ -1894,77 +1899,13 @@ actors_step:
 	RETURN
 
 actors_move:
-	atg = atg + 1
-	' Jackhammer/drill: NON-LETHAL -- touch it empty-handed to catch it for
-	' good, then rivet the filled gaps. (Movement is in actors_step.)
-	IF jhtk = 0 THEN
-		IF carry = 0 THEN
-			' Grabbing the jackhammer is deliberately generous.
-			ex = jhx
-			ey = jhy
-			hbw = 10
-			hbh = 12
-			GOSUB mack_hit
-			IF hit = 1 THEN
-				jhtk = 1
-				carry = 2
-				#sndpitch = 150
-				sndvol = 12
-				snd2 = 10
-				GOSUB tone_start
-			END IF
-		END IF
-	END IF
-	' Vandal: lethal on contact; each site has its own walk/climb route.
-	IF von = 1 THEN
-		IF vroute = 0 THEN
-			rx = vx
-			ry = vy
-			rf = vd
-			rp = vp
-			GOSUB site_route
-			vx = rx
-			vy = ry
-			vd = rf
-			vp = rp
-		END IF
-		ex = vx
-		ey = vy
-		hbw = 8
-		hbh = 10
-		GOSUB hazard_hit
-	END IF
-	' OSHA man: patrols the left factory tiers via their edge chain.
-	IF oon = 1 THEN
-		rx = ox
-		ry = oy
-		rf = od
-		rp = opath
-		GOSUB site_route
-		ox = rx
-		oy = ry
-		od = rf
-		opath = rp
-		ex = ox
-		ey = oy
-		hbw = 8
-		hbh = 10
-		GOSUB hazard_hit
-	END IF
-	' Rivets share this world clock through bolt_move.
-	' Bonus ticks down while the clock runs; reaching zero kills Mack
-	' (authentic). Respawn refills it to 5000 (per-life, see dead_tick).
-	btk = btk - 1
-	IF btk = 0 THEN
-		btk = 120
-		IF #bonus >= 100 THEN
-			#bonus = #bonus - 100
-		ELSE
-			#bonus = 0
-		END IF
-		PRINT AT CPOS(0,2),<5>#bonus
-		IF #bonus = 0 THEN GOSUB mack_die
-	END IF
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_actors_move
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 bolt_move:
@@ -2319,6 +2260,9 @@ dead_tick:
 		vf = 1
 		vd = 1
 		opath = 0
+		ob = 2
+		odr = 0
+		osv = 2
 		ox = ox0
 		oy = oy0
 		od = 1
@@ -2449,7 +2393,7 @@ site_step:
 	ex = 62 - clawshift
 	GOSUB hazard_hit
 	' One pixel per world step, full head rests ON the girder, then retracts.
-	pressy = 96
+	pressy = 104
 	IF hzphase < 32 THEN
 		pressy = 96 + hzphase
 		IF pressy > 124 THEN pressy = 124
@@ -2460,17 +2404,15 @@ site_step:
 			IF pressy > 124 THEN pressy = 124
 		END IF
 	END IF
+	' Park fully visible below the mounting beam; never retract into it.
+	IF pressy < 104 THEN pressy = 104
 	IF hzphase = 28 THEN GOSUB machine_clack
 	ex = 184
 	ey = pressy
 	hbw = 8
 	hbh = 8
-	' Only the exposed head below the upper beam is lethal, not its shaft.
-	IF pressy >= 101 THEN
-		IF my >= 97 THEN
-			IF my <= 131 THEN GOSUB hazard_hit
-		END IF
-	END IF
+	' The head stays exposed; its own hitbox excludes the harmless shaft.
+	GOSUB hazard_hit
 	' Slag emerges from the visible nozzle, drops onto the upper belt
 	' surface, rides to the roller, then makes a small arc into the vat.
 	slagphase = #slagclock / 2
@@ -2609,6 +2551,26 @@ machinery_draw:
 	#endif
 	RETURN
 
+enemy_draw:
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_enemy_draw
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
+enemy_setup:
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_enemy_setup
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
 quiet_screen:
 	FOR qslot = 0 TO 17
 		SPRITE qslot,209,0,0,0
@@ -2629,10 +2591,10 @@ hud_all:
 	RETURN
 
 hud_lives:
-	' Remaining lives as hard-hat icons, cols 28-30.
-	#va = VADDR(0,28)
-	FOR hl_slot = 0 TO 2
-		IF hl_slot + lives > 2 THEN
+	' Reserve hats, right-justified below the score; room for 838 plus a bonus.
+	#va = VADDR(1,22)
+	FOR hl_slot = 0 TO 8
+		IF hl_slot + lives > 8 THEN
 			ch = T_HAT
 		ELSE
 			ch = T_VOID
@@ -2748,6 +2710,7 @@ init_level:
 lv_parse:
 	READ BYTE op
 	IF op = 0 THEN
+		GOSUB enemy_setup
 		#hacc = 0
 		#lf = FRAME
 		jbold = cont1.button
@@ -3154,8 +3117,8 @@ level1_data:
 	DATA BYTE 1, 21,3,8,0		' 1st floor left  (cols 3-10, hole at 11)
 	DATA BYTE 1, 21,12,15,0		' 1st floor right (cols 12-26; 0-2 = pit)
 	' Objects. FOUR holes + FOUR bricks (any brick fills any hole); the
-	' drill and the vandal roam fixed serpentine routes (no OSHA on L1 --
-	' a second enemy is deferred difficulty progression).
+	' drill and first-tour vandal use fixed routes. Repeat tours add a second
+	' independently chosen roamer in enemy_setup.
 	DATA BYTE 5,13, 21,23		' Mack spawn: right side of the bottom beam
 	DATA BYTE 5,7, 23,29		' trampoline: bottom (row 23), cols 29-30
 	DATA BYTE 5,1, 21,11		' hole: 1st floor (beam 1)
@@ -3262,8 +3225,9 @@ level2_data:
 	' him: walk right onto the lower conveyor, ride it up to its top drum, and
 	' jump across to the crane beam.
 	DATA BYTE 5,4,1, 4,12
-	DATA BYTE 5,4,2, 22,17
-	DATA BYTE 8, 22,23,1,166
+	DATA BYTE 5,4,2, 22,16
+	' Ground hazard stays LEFT of the chain, leaving a clear climbing approach.
+	DATA BYTE 8, 22,21,1,166
 	DATA BYTE 5,13, 23,3
 	DATA BYTE 0
 
@@ -3396,9 +3360,9 @@ tile_pat:
 	' holes (the ColecoVision look)
 	DATA BYTE $FF,$FF,$E7,$FF,$FF,$FF,$FF,$00
 	' 129 girder (level 2): full-height red/blue/red bar with RIVET DASHES in
-	' the blue band, as the reference draws it. (These dashes are texture, not
+	' the CENTER of the blue band, as the reference draws it. (These dashes are texture, not
 	' gaps -- nothing falls through a girder.)
-	DATA BYTE $FF,$FF,$E7,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$E7,$E7,$FF,$FF,$FF
 	' 130 girder (level 3): same full-height bar as 129, coloured to the
 	' reference's orange-striped blue beam
 	DATA BYTE $FF,$FF,$E7,$FF,$FF,$FF,$FF,$FF
@@ -3692,26 +3656,23 @@ cable_col:
 	' light-blue cable
 	DATA BYTE $51,$51,$51,$51,$51,$51,$51,$51
 beamshift_pat:
-	' 8 UPPER-cell slices (192-199): a solid girder bar whose TOP is at sub-row
-	' boff (0..7); rows above the bar are empty.
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF	' 192 boff0 (full girder)
-	DATA BYTE $00,$FF,$FF,$FF,$FF,$FF,$FF,$FF	' 193 boff1
-	DATA BYTE $00,$00,$FF,$FF,$FF,$FF,$FF,$FF	' 194 boff2
-	DATA BYTE $00,$00,$00,$FF,$FF,$FF,$FF,$FF	' 195 boff3
-	DATA BYTE $00,$00,$00,$00,$FF,$FF,$FF,$FF	' 196 boff4
-	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF	' 197 boff5
-	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF	' 198 boff6
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$FF	' 199 boff7
-	' 8 LOWER-cell slices (200-207): the bottom boff rows of the bar spill into
-	' the cell below; rest empty. 200 (boff0) is blank.
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00	' 200 boff0 (blank)
-	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00	' 201 boff1
-	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00	' 202 boff2
-	DATA BYTE $FF,$FF,$FF,$00,$00,$00,$00,$00	' 203 boff3
-	DATA BYTE $FF,$FF,$FF,$FF,$00,$00,$00,$00	' 204 boff4
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$00,$00,$00	' 205 boff5
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$00,$00	' 206 boff6
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00	' 207 boff7
+	' Generated by assets/genconveyors.py; edit the generator.
+	DATA BYTE $FF,$FF,$FF,$E7,$E7,$FF,$FF,$FF
+	DATA BYTE $00,$FF,$FF,$FF,$E7,$E7,$FF,$FF
+	DATA BYTE $00,$00,$FF,$FF,$FF,$E7,$E7,$FF
+	DATA BYTE $00,$00,$00,$FF,$FF,$FF,$E7,$E7
+	DATA BYTE $00,$00,$00,$00,$FF,$FF,$FF,$E7
+	DATA BYTE $00,$00,$00,$00,$00,$FF,$FF,$FF
+	DATA BYTE $00,$00,$00,$00,$00,$00,$FF,$FF
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$FF
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$FF,$00,$00,$00,$00,$00
+	DATA BYTE $E7,$FF,$FF,$FF,$00,$00,$00,$00
+	DATA BYTE $E7,$E7,$FF,$FF,$FF,$00,$00,$00
+	DATA BYTE $FF,$E7,$E7,$FF,$FF,$FF,$00,$00
+	DATA BYTE $FF,$FF,$E7,$E7,$FF,$FF,$FF,$00
 beamshift_col:
 	' Girder banding red($61) top2 / blue($51) mid4 / red top2, sliced to match
 	' each pattern so the bands travel WITH the bar. $11 = black (empty rows).
@@ -4261,31 +4222,199 @@ banked_title:
 	PRINT AT 290,"1  BEAMS AND BOLTS"
 	PRINT AT 354,"2  LUNCH BREAK"
 	PRINT AT 418,"3  RIVET WORKS"
-	PRINT AT 514,"UP/DOWN: CHOOSE START SITE"
-	PRINT AT 578,"START SITE:"
 	PRINT AT 642,"FIRE: START    STICK: MOVE"
 	PRINT AT 706,"FIRE JUMPS / UP-DOWN CLIMBS"
 title_release:
 	WAIT
 	IF cont1.button THEN GOTO title_release
-	titleheld = 0
+	titleheld = cont1.key
+	titlecode = 0
 title_loop:
-	PRINT AT 590,lv
 	WAIT
 	IF cont1.button THEN RETURN
-	titledir = 0
-	IF cont1.up THEN titledir = 1
-	IF cont1.down THEN titledir = 2
-	IF titledir <> titleheld THEN
-		IF titledir = 1 THEN
-			IF lv > 1 THEN lv = lv - 1
+	GOSUB menu_key
+	IF setupkey < 10 THEN
+		titlenext = 0
+		IF setupkey = 8 THEN titlenext = 1
+		IF titlecode = 1 THEN
+			IF setupkey = 3 THEN titlenext = 2
 		END IF
-		IF titledir = 2 THEN
-			IF lv < 3 THEN lv = lv + 1
+		IF titlecode = 2 THEN
+			IF setupkey = 8 THEN GOTO setup838
+		END IF
+		titlecode = titlenext
+	END IF
+	GOTO title_loop
+
+setup838:
+	CLS
+	PRINT AT CPOS(8,10),"LIVES 1-9"
+setup_lives:
+	WAIT
+	GOSUB menu_key
+	IF setupkey < 1 THEN GOTO setup_lives
+	IF setupkey > 9 THEN GOTO setup_lives
+	lives = setupkey - 1
+	PRINT AT CPOS(8,20),setupkey
+	PRINT AT CPOS(11,10),"LEVEL 1-3"
+setup_level:
+	WAIT
+	GOSUB menu_key
+	IF setupkey < 1 THEN GOTO setup_level
+	IF setupkey > 3 THEN GOTO setup_level
+	lv = setupkey
+	RETURN
+
+menu_key:
+	' A held digit is consumed once, including the final 8 and equal answers.
+	setupkey = cont1.key
+	IF setupkey = 15 THEN
+		titleheld = 15
+		RETURN
+	END IF
+	IF titleheld <> 15 THEN
+		setupkey = 15
+		RETURN
+	END IF
+	titleheld = setupkey
+	RETURN
+
+banked_actors_move:
+	atg = atg + 1
+	' Jackhammer/drill: NON-LETHAL -- touch it empty-handed to catch it for
+	' good, then rivet the filled gaps. (Movement is in actors_step.)
+	IF jhtk = 0 THEN
+		IF carry = 0 THEN
+			' Grabbing the jackhammer is deliberately generous.
+			ex = jhx
+			ey = jhy
+			hbw = 10
+			hbh = 12
+			GOSUB mack_hit
+			IF hit = 1 THEN
+				jhtk = 1
+				carry = 2
+				#sndpitch = 150
+				sndvol = 12
+				snd2 = 10
+				GOSUB tone_start
+			END IF
 		END IF
 	END IF
-	titleheld = titledir
-	GOTO title_loop
+	' Vandal: lethal on contact; each site has its own walk/climb route.
+	IF von = 1 THEN
+		IF vroute = 0 THEN
+			rx = vx
+			ry = vy
+			rf = vd
+			rp = vp
+			GOSUB site_route
+			vx = rx
+			vy = ry
+			vd = rf
+			vp = rp
+		END IF
+		ex = vx
+		ey = vy
+		hbw = 8
+		hbh = 10
+		GOSUB hazard_hit
+	END IF
+	' OSHA man: patrols the left factory tiers via their edge chain.
+	IF oon = 1 THEN
+		rx = ox
+		ry = oy
+		rf = od
+		rp = opath
+		IF vroute = 1 THEN
+			rb = ob
+			rd = odr
+			rsv = osv
+			GOSUB route_step
+			ob = rb
+			odr = rd
+			osv = rsv
+		ELSE
+			GOSUB site_route
+		END IF
+		ox = rx
+		oy = ry
+		od = rf
+		opath = rp
+		ex = ox
+		ey = oy
+		hbw = 8
+		hbh = 10
+		GOSUB hazard_hit
+	END IF
+	' Rivets share this world clock through bolt_move.
+	' Bonus ticks down while the clock runs; reaching zero kills Mack
+	' (authentic). Respawn refills it to 5000 (per-life, see dead_tick).
+	btk = btk - 1
+	IF btk = 0 THEN
+		btk = 120
+		IF #bonus >= 100 THEN
+			#bonus = #bonus - 100
+		ELSE
+			#bonus = 0
+		END IF
+		PRINT AT CPOS(0,2),<5>#bonus
+		IF #bonus = 0 THEN GOSUB mack_die
+	END IF
+	RETURN
+
+banked_enemy_setup:
+	' First tour retains the original site cast; repeat tours choose each
+	' roamer independently. Two vandals or two inspectors are both valid.
+	vkind = 0
+	okind = 1
+	IF levelno < 4 THEN RETURN
+	vkind = RANDOM(2)
+	okind = RANDOM(2)
+	oon = 1
+	IF lv = 1 THEN
+		ox = 208
+		oy = 120
+		ob = 2
+		odr = 0
+		osv = 2
+	END IF
+	IF lv = 2 THEN
+		ox = 144
+		oy = 120
+	END IF
+	ox0 = ox
+	oy0 = oy
+	opath = 0
+	od = 1
+	RETURN
+
+banked_enemy_draw:
+	IF von = 1 THEN
+		vfr = 12
+		IF anm2 = 1 THEN vfr = 36
+		enemycolor = 3
+		IF vkind = 1 THEN
+			vfr = 16
+			enemycolor = 11
+		END IF
+		SPRITE 4,vy - 1,vx,vfr,enemycolor
+	ELSE
+		SPRITE 4,209,0,0,0
+	END IF
+	IF oon = 1 THEN
+		vfr = 16
+		enemycolor = 11
+		IF okind = 0 THEN
+			vfr = 12
+			IF anm2 = 1 THEN vfr = 36
+			enemycolor = 3
+		END IF
+		SPRITE 5,oy - 1,ox,vfr,enemycolor
+	ELSE
+		SPRITE 5,209,0,0,0
+	END IF
+	RETURN
 
 animated_machines:
 	IF lv = 3 THEN
@@ -4297,7 +4426,7 @@ animated_machines:
 		IF pressfoot <> pressfootlast THEN
 			pressfootlast = pressfoot
 			DEFINE CHAR 249,2,VARPTR pressfoot_pat(pressfoot * 16)
-			DEFINE COLOR 249,2,pressfoot_col
+			DEFINE COLOR 249,2,VARPTR pressfoot_col((pressfoot / 8) * 16)
 		END IF
 		' The conveyor box stays in front of the piston until picked up.
 		' Restore the machine cell that take_item erased with the box.
@@ -4372,8 +4501,12 @@ pressfoot_pat:
 	DATA BYTE $06,$FE,$FF,$81,$81,$81,$FF,$00
 pressfoot_col:
 	' Generated by assets/genconveyors.py; edit the generator.
-	DATA BYTE $D1,$D1,$F1,$31,$31,$31,$F1,$11
-	DATA BYTE $D1,$D1,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $11,$11,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $11,$11,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $61,$11,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $61,$11,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $81,$61,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $81,$61,$F1,$31,$31,$31,$F1,$11
 claw_pat:
 	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $00,$00,$30,$30,$30,$F0,$F0,$F0
@@ -4687,167 +4820,167 @@ press_col:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$D1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$D1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$D1,$D1,$D1,$D1,$E1,$E1,$E1
-	DATA BYTE $E1,$D1,$D1,$D1,$D1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$D1,$D1,$D1,$D1,$E1,$E1
-	DATA BYTE $E1,$E1,$D1,$D1,$D1,$D1,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$D1,$D1,$D1,$D1,$E1
-	DATA BYTE $E1,$E1,$E1,$D1,$D1,$D1,$D1,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$D1,$D1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$D1,$D1,$D1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$D1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$D1,$D1,$D1
-	DATA BYTE $D1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
+	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$D1,$D1
-	DATA BYTE $D1,$D1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
+	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$D1
-	DATA BYTE $D1,$D1,$D1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
+	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$D1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$D1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$D1,$D1,$D1,$D1,$E1,$E1,$E1
-	DATA BYTE $E1,$D1,$D1,$D1,$D1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$D1,$D1,$D1,$D1,$E1,$E1
-	DATA BYTE $E1,$E1,$D1,$D1,$D1,$D1,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$D1,$D1,$D1,$D1,$E1
-	DATA BYTE $E1,$E1,$E1,$D1,$D1,$D1,$D1,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$D1,$D1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$D1,$D1,$D1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$D1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$D1,$D1,$D1
-	DATA BYTE $D1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
+	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$D1,$D1
-	DATA BYTE $D1,$D1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
+	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$D1
-	DATA BYTE $D1,$D1,$D1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
+	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$D1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$D1,$D1,$D1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$D1,$D1,$D1,$D1,$E1,$E1,$E1
-	DATA BYTE $E1,$D1,$D1,$D1,$D1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$D1,$D1,$D1,$D1,$E1,$E1
-	DATA BYTE $E1,$E1,$D1,$D1,$D1,$D1,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$D1,$D1,$D1,$D1,$E1
-	DATA BYTE $E1,$E1,$E1,$D1,$D1,$D1,$D1,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$D1,$D1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$D1,$D1,$D1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$D1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$D1,$D1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$D1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$D1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$D1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
 animation_end:
 	DATA BYTE 72,72,77,65,78,73,77,2

@@ -27,6 +27,8 @@ class Basic:
         self.pattern_writes = []
         self.color_writes = []
         self.bank = 1
+        self.frame_inputs = iter(())
+        self.random_values = iter(())
         self.lines = [line.split("'")[0].strip().lower()
                       for line in source.splitlines()]
         self.labels = {line[:-1]: i for i, line in enumerate(self.lines)
@@ -76,11 +78,11 @@ class Basic:
         functions = dict(tile=self.tile, jtab=self.arc.__getitem__,
                          vaddr=lambda row, col: 6144 + row * 32 + col,
                          cpos=lambda row, col: row * 32 + col,
-                         random=lambda limit: 1 % limit)
+                         random=lambda limit: next(self.random_values, 1) % limit)
         functions.update({k: v.__getitem__ for k, v in self.arrays.items() if k != 'jtab'})
         key = text
         if key not in self.expr_cache:
-            text = text.replace('cont1.button', '0')
+            text = text.replace('cont1.button', 'input_button').replace('cont1.key', 'input_key')
             text = re.sub(r'\$([\da-f]+)', lambda m: str(int(m[1], 16)), text)
             text = text.replace('<>', '!=')
             text = re.sub(r'(?<![<>!=])=(?!=)', '==', text)
@@ -128,6 +130,10 @@ class Basic:
                 self.run(line[6:])
             elif line == 'cls':
                 self.screen = [32] * 768
+            elif line == 'wait':
+                sample = next(self.frame_inputs, None)
+                assert sample is not None, 'input trace exhausted: '+label
+                self.v.update(sample)
             elif line.startswith('restore '):
                 start = self.labels[line[8:]] + 1
                 self.data = [self.expr(v.strip()) for ln in self.lines[start:]
@@ -211,7 +217,7 @@ def clear_windows(source):
     vm, path = jump(source)
     assert vm.v['st'] == vm.v['s_walk'] and vm.v['my'] == 152
     # Actual enemy collision routine and dimensions from the vandal caller.
-    block = source.split('actors_move:')[1].split("' Vandal: lethal")[1].split("' OSHA man:")[0]
+    block = source.split('banked_actors_move:')[1].split("' Vandal: lethal")[1].split("' OSHA man:")[0]
     width, height = re.search(r'hbw = (\d+)\s+hbh = (\d+)\s+GOSUB hazard_hit', block).groups()
     counts = []
     for speed in (0, 0.5, 1):
@@ -743,7 +749,8 @@ def machinery_animation(source):
         assert vm.screen[(14+row)*32+23:(14+row)*32+25]==[243+row*2,244+row*2]
     feet=table('pressfoot_pat')
     assert len(feet)==3*8*16
-    for level,base,origin,low,high in ((2,112,184,96,124),(3,48,56,40,62)):
+    footcolors=table('pressfoot_col')
+    for level,base,origin,low,high in ((2,112,184,104,124),(3,48,56,40,62)):
         vm=Basic(source);vm.v.update(lv=level);vm.run('init_level')
         hit=Basic(source);hit.v.update(lv=level);hit.run('init_level')
         positions=[]
@@ -758,6 +765,8 @@ def machinery_animation(source):
                 assert painted(7,y) and painted(8,y), 'floating smasher head'
             for y in range(max(0,phase-8),min(24,phase-4)):
                 assert painted(1,y) and painted(14,y), 'smasher head too narrow'
+                for tile in range(2):
+                    assert colors[phase*48+(y//8*2+tile)*8+y%8]==[0xf1,0xd1,0x81,0x61][y-(phase-8)], 'head color slips across a cell'
             vm.v.update(presslast=255)
             vm.run('site_draw')
             assert vm.bank==1 and vm.sprites[14][0]==209, 'sprite smasher or wrong bank'
@@ -789,9 +798,13 @@ def machinery_animation(source):
                     assert bool(foot[tile*8+1])==(depth==2), 'head misses belt rail'
                 assert vm.screen[9*32+7:9*32+9]==[249,250], 'missing smasher foot cells'
                 assert (249,2,'pressfoot_pat',offset) in vm.pattern_writes, 'wrong belt/head frame'
+                assert (249,2,'pressfoot_col',depth*16) in vm.color_writes, 'wrong head foot colors'
+                for y in range(depth):
+                    assert footcolors[depth*16+y]==[0x81,0x61][2-depth+y]
         assert min(positions)==low and max(positions)==high, ('smasher travel',level,positions)
         assert all(abs(a-b)<=1 for a,b in zip(positions,positions[1:]+positions[:1])), 'smasher snaps back'
         assert positions.count(high)<=10, 'smasher pins player too long'
+        assert low+8>=base and positions.count(low)>=32, 'smasher must wait visibly at the top'
         assert positions[28 if level==2 else 44]==high, 'wrong downward smasher speed'
         assert high+11==(135 if level==2 else 73), 'head must finish exactly above surface'
         if level==3:
@@ -852,7 +865,7 @@ def visual_hazards(source):
             belt=[w for w in vm.pattern_writes if w[0]==156][-1]
             assert belt==(156,6,'belt_anim0',expected*48), 'belt animation direction/rate'
     # Full game-over entry, stopped before the intentional timed/key wait.
-    stop='\tFOR i = 1 TO 180\n'
+    stop='\tFOR i = 1 TO 75\n'
     assert source.count(stop)==1
     for y,moving in ((168,0),(72,0),(117,1)):
         end=Basic(source.replace(stop,'\tRETURN\n',1))
@@ -965,6 +978,100 @@ def speed_contract(source):
         assert (vm.v['bph']==1)==bounced, 'rivet bounces above the visible floor'
 
 
+def chain_and_pickups(source):
+    for mode in ('walk','jump','fall'):
+        vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+        # Reach the chain from its clear right-hand approach without Up held.
+        vm.v.update(mx=210,my=168,jl=1)
+        for _ in range(30):
+            vm.run('mack_step')
+            assert vm.v['st']!=vm.v['s_dead'], 'hazard blocks chain base'
+        vm.v.update(jl=0,ju=1)
+        if mode=='jump':
+            vm.v.update(jbe=1,jb=1);vm.run('mack_step');vm.run('mack_step')
+            assert vm.v['st']==vm.v['s_jump'], 'held Fire recatches chain'
+            vm.v['jb']=0
+        if mode=='fall':vm.v.update(st=vm.v['s_fall'],my=158,fcy=158,jhz=1)
+        vm.run('mack_step')
+        assert vm.v['st']==vm.v['s_climb'], 'Up failed to catch chain in '+mode
+        for _ in range(55):
+            vm.v['hzphase']=90;vm.run('mack_step');vm.run('site_step')
+            assert vm.v['st']!=vm.v['s_dead'], 'chain ascent blocked'
+            if vm.v['st']==vm.v['s_walk']:break
+        assert vm.v['my']==120 and vm.v['st']==vm.v['s_walk'], 'cannot reach chain landing'
+    vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+    assert vm.screen[22*32+17:22*32+19]==[vm.v['t_mixbas']]*2, 'pickup overwrites machine support'
+    assert vm.screen[22*32+19:22*32+21]==[vm.v['t_lboxl'],vm.v['t_lboxl']+1], 'hazard overwrites ground pail'
+    vm.v.update(mx=120,my=168)
+    before=vm.v['#score'];vm.run('mack_step')
+    assert vm.v['#score']==before+200 and vm.arrays['itst'][7]==1, 'spray can not collectible'
+    assert vm.screen[22*32+17:22*32+19]==[vm.v['t_mixbas']]*2, 'pickup erased machine support'
+
+
+def setup_inputs(source):
+    def input_trace(keys):
+        for key in keys:
+            yield dict(input_key=15,input_button=0)
+            for _ in range(3):yield dict(input_key=key,input_button=0)
+    for lives in range(1,10):
+        for level in range(1,4):
+            vm=Basic(source);vm.v.update(input_key=15,lv=1,lives=2)
+            vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,3,8,0,lives,9,0,level])))
+            vm.run('title_screen')
+            assert vm.v['lives']==lives-1 and vm.v['lv']==level and vm.bank==1, '838 selection / bank return'
+            vm.run('init_level')
+            assert vm.screen[54:63]==[32]*(10-lives)+[vm.v['t_hat']]*(lives-1), 'reserve hats wrong'
+    # Incorrect code, a held digit, and title navigation must not select a level.
+    vm=Basic(source);vm.v.update(input_key=15,lv=1,lives=2)
+    vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,5,3,8]))+[dict(input_button=1)])
+    vm.run('title_screen')
+    assert vm.v['lv']==1 and vm.v['lives']==2 and vm.bank==1
+    vm=Basic(source);vm.v.update(titleheld=15,input_key=3)
+    vm.run('menu_key');assert vm.v['setupkey']==3
+    vm.run('menu_key');assert vm.v['setupkey']==15, 'held digit accepted twice'
+
+
+def repeat_enemies(source):
+    # Execute the real completion transition, stopping before the frame loop.
+    advance=source[source.index('\tlevelno = levelno + 1'):source.index('\ngame_over:')]
+    advance=advance.replace('GOTO main_loop','RETURN')
+    vm=Basic(source+'\nadvance_fixture:\n'+advance)
+    vm.v.update(lv=3,levelno=3,lives=2)
+    vm.run('advance_fixture')
+    assert (vm.v['lv'],vm.v['levelno'],vm.v['von'],vm.v['oon'])==(1,4,1,1), 'no extra enemy on second tour'
+    for n in (1,2,3):
+        vm=Basic(source);vm.v.update(lv=n,levelno=n);vm.run('init_level')
+        assert vm.v['oon']==int(n==3) and (vm.v['vkind'],vm.v['okind'])==(0,1), 'first tour changed'
+        for kinds in ((0,0),(0,1),(1,0),(1,1)):
+            vm=Basic(source);vm.v.update(lv=n,levelno=n+3,lives=2)
+            vm.random_values=iter(kinds);vm.run('init_level')
+            assert vm.bank==1 and vm.v['von']==vm.v['oon']==1
+            assert (vm.v['vkind'],vm.v['okind'])==kinds, 'enemy pair is not independently chosen'
+            for frame in (0,1):
+                vm.v['anm2']=frame;vm.run('enemy_draw')
+                for slot,kind in zip((4,5),kinds):
+                    assert vm.sprites[slot][2:]==((16,11) if kind else (36 if frame else 12,3)), 'wrong enemy type art'
+                assert vm.bank==1, 'enemy drawing leaves bank selected'
+            vm.v.update(mx=240,my=0,jhtk=1)
+            seen=[set(),set()];previous=(vm.v['vx'],vm.v['vy'],vm.v['ox'],vm.v['oy'])
+            for tick in range(2100 if n==1 else 850):
+                vm.run('actors_step');vm.run('actors_move')
+                now=tuple(vm.v[k] for k in ('vx','vy','ox','oy'))
+                assert all(abs(a-b)<=1 for a,b in zip(previous,now)), 'enemy teleports'
+                seen[0].add(now[1]);seen[1].add(now[3]);previous=now
+                assert vm.bank==1, 'enemy movement leaves bank selected'
+            required={24,56,88,120,152} if n==1 else ({120,168} if n==2 else {88,120})
+            assert all(required<=ys for ys in seen), ('enemy stuck on one tier',n,seen)
+            # Both actors remain lethal, regardless of chosen costume.
+            for x,y in ((vm.v['vx'],vm.v['vy']),(vm.v['ox'],vm.v['oy'])):
+                vm.v.update(mx=x,my=y,st=vm.v['s_walk']);vm.run('actors_move')
+                assert vm.v['st']==vm.v['s_dead'], 'second enemy harmless'
+            vm.v.update(dtm=0,**{'#fd':4});vm.run('dead_tick')
+            assert (vm.v['ox'],vm.v['oy'],vm.v['opath'])==(vm.v['ox0'],vm.v['oy0'],0), 'second enemy does not reset on death'
+            assert (vm.v['vkind'],vm.v['okind'])==kinds, 'death rerolled the pair'
+            if n==1:assert (vm.v['ob'],vm.v['odr'])==(2,0)
+
+
 def main():
     source = SOURCE.read_text(encoding='utf-8')
     windows = clear_windows(source)
@@ -977,6 +1084,9 @@ def main():
     pincer_passage(source)
     crane_contact(source)
     machinery_animation(source)
+    chain_and_pickups(source)
+    setup_inputs(source)
+    repeat_enemies(source)
     slag_cadence(source)
     fidelity(source)
     visual_hazards(source)
@@ -1032,7 +1142,7 @@ def main():
                .replace('16,6,1,240','16,7,1,240').replace('16,7,1,241','16,8,1,241')
                .replace('16,8,1,242','16,9,1,242'), pincer_passage),
         (source.replace('GOSUB animated_machines','ded = 0'), machinery_animation),
-        (source.replace('IF pressy >= 101 THEN','IF pressy >= 255 THEN'), machinery_animation),
+        (source.replace("GOSUB hazard_hit\n\t' Slag emerges", "ded = 0\n\t' Slag emerges"), machinery_animation),
         (source.replace('BANK SELECT 2','BANK SELECT 1'), machinery_animation),
         (source.replace('hbw = 8\n\thbh = 8','hbw = 6\n\thbh = 8'), machinery_animation),
         (source.replace('IF itst(1) = 1 THEN','IF itst(1) = 0 THEN'), machinery_animation),
@@ -1060,6 +1170,19 @@ def main():
         (source.replace('boxy = boxy + 1','boxy = boxy + 3'),speed_contract),
         (source.replace('fy = by + 9','fy = by + 16'),speed_contract),
         (source.replace('CONST T_ELEV   = 236','CONST T_ELEV   = 135'),review_feedback),
+    ])
+    mutants.extend([
+        (source.replace('DATA BYTE 8, 22,21,1,166','DATA BYTE 8, 22,23,1,166'),chain_and_pickups),
+        (source.replace('IF jb = 0 THEN GOSUB grab_chain','jb = 0'),chain_and_pickups),
+        (source.replace('DATA BYTE 5,4,2, 22,16','DATA BYTE 5,4,2, 22,17'),chain_and_pickups),
+        (source.replace('IF pressy < 104 THEN pressy = 104','IF pressy < 104 THEN pressy = 96'),machinery_animation),
+        (source.replace('lives = setupkey - 1','lives = setupkey'),setup_inputs),
+        (source.replace('IF titleheld <> 15 THEN','IF titleheld = 255 THEN'),setup_inputs),
+    ])
+    mutants.extend([
+        (source.replace('IF levelno < 4 THEN RETURN','RETURN'),repeat_enemies),
+        (source.replace('okind = RANDOM(2)','okind = vkind'),repeat_enemies),
+        (source.replace('ob = rb','ob = 2'),repeat_enemies),
     ])
     for mutant, check in mutants:
         try:
