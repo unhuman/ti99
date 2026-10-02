@@ -11,8 +11,8 @@
 # auto-defines TI994A=1 under --ti994a for any `#if TI994A` splits.
 #
 # Fixed RAM-resident program is capped at 24,336 bytes; art/levels live in
-# one permanently selected 8 KB data bank. Check both BEFORE accepting the cart.
-# The final cartridge is 32 KB (three loader pages plus the data page).
+# an 8 KB setup/assets bank and a separate machinery-animation bank. Check all
+# BEFORE accepting the cart. The final cartridge is padded to 64 KB by linkticart.
 #
 # Run with Cygwin bash on Windows (the compiler is a Cygwin binary).
 
@@ -48,6 +48,7 @@ TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
     || { echo "ERROR: 8-bit truncation -- see TRUNCATION.md 1a" >&2; exit 1; }
 "$TRUNCPY" ../../../tools/bigconst.py *.bas \
     || { echo "ERROR: CONST over 255 -- see TRUNCATION.md 1b" >&2; exit 1; }
+"$TRUNCPY" ../assets/genconveyors.py || die "conveyor art regression"
 "$TRUNCPY" ../assets/checkphysics.py || die "physics regression"
 "$TRUNCPY" ../../../tools/gosubtrace.py HARDHAT.bas || die "return-stack regression"
 [ -f "$NAME.bas" ] || die "$NAME.bas not found in $(pwd)"
@@ -63,6 +64,22 @@ rm -f "$NAME.bin" "${NAME}"_b*.bin
 "$PY" "$XDT99_DIR/xas99.py" -b -R "$NAME.a99" -L "$NAME.txt" \
     || die "xas99 failed (see $NAME.txt for assembly errors)"
 [ -s "${NAME}_b0.bin" ] || die "xas99 produced no fixed image"
+
+# Verify every shortened branch after reassembly; shared checked optimizer.
+case "${TI_SHORT_BRANCHES:-1}" in
+    0) echo "TI short branches disabled" ;;
+    1)
+        cp "$NAME.a99" "$NAME.unopt.a99" || die "cannot save original assembly"
+        cp "$NAME.txt" "$NAME.unopt.txt" || die "cannot save original listing"
+        "$TRUNCPY" ../../KeystoneKapers/assets/shortbranches.py rewrite "$NAME.unopt.a99" "$NAME.unopt.txt" \
+            "$NAME.a99" "$NAME.txt" "$NAME.branches.json" || die "branch rewrite failed"
+        "$PY" "$XDT99_DIR/xas99.py" -b -R "$NAME.a99" -L "$NAME.txt" \
+            || die "short-branch assembly failed"
+        "$TRUNCPY" ../../KeystoneKapers/assets/shortbranches.py verify "$NAME.unopt.a99" "$NAME.unopt.txt" \
+            "$NAME.a99" "$NAME.txt" "$NAME.branches.json" || die "branch verification failed"
+        ;;
+    *) die "TI_SHORT_BRANCHES must be 0 or 1" ;;
+esac
 
 # Banked fixed image is padded; check actual content before packing.
 FIRST="${NAME}_b0.bin"

@@ -19,7 +19,8 @@ Three construction sites are implemented:
 
 Joystick 1: left/right walk, up/down climb, **Fire jumps** from a floor, chain,
 crane beam, conveyor, or parked elevator. Direction at takeoff sets momentum.
-A long Fire hold releases the jackhammer. The title defaults to site 1;
+**Hold Fire for 0.75 seconds to release the jackhammer** (Tab in Classic99,
+Space in CoolCV). It returns to its starting position. The title defaults to site 1;
 **up/down selects a starting site, Fire starts**. Three starting lives appear as
 two reserve hats. One extra life is awarded at 7,000 points.
 Classic99 uses arrows/Tab; CoolCV uses arrows/Space for controller 1.
@@ -40,8 +41,30 @@ now drops straight down, even if
 the direction remains held. Deliberate jumps keep their takeoff direction. A low
 ceiling limits jump height without cutting its horizontal clearance time short.
 The first boarding starts the crane. Concrete drops from the spigot and travels
-with the lower belt, leaving a clear half-cycle for entry. Parked elevator cabins
-also use background characters; these erase as soon as the cabin moves.
+with the lower belt and arcs from its last roller into the vat. It now stays above
+the belt. Releases are 317 world steps apart (about 4.7 seconds), leaving a
+longer quiet interval and shifting their timing relative to the crane. Paired
+pincers meet when closed and leave a 32-pixel opening when fully apart. Their
+continuous one-pixel motion reverses immediately at each end, with a complete
+cycle of about 1.90 seconds. Their full faces touch when closed. A 16-pixel clear
+patch to their right lets Mack wait safely after leaving the crane, then jump
+into the middle and jump again for the pail. A rising crane catches Mack during
+the apex of a jump as well as during descent. The smashers on levels
+2 and 3 use animated characters: each has a 14-pixel-wide head across two character
+columns, a piston attached to the upper beam, and collision limited to its exposed
+moving head. Each head reaches its supporting surface and retracts smoothly;
+level 2 moves at one pixel per world step, level 3 at one pixel per two steps.
+Both inclined conveyors and the factory belt have continuous rails,
+rotating rollers and treads that follow the transport direction and clock.
+
+Loose blocks have a broad brick face and bright top edge. Walking, the held
+jackhammer, bouncing rivets, closing pincers and pounder strikes now have short
+sound cues alongside the existing jump, pickup, scoring and death effects. Parked
+elevator cabins **and floors** use background characters that erase when movement
+starts; game over preserves the entire elevator, including a moving cabin frozen
+between stops. Rivet and pounder hitboxes align with their visible heads. Rivets
+bounce at the visible floor, and delivered factory boxes descend visibly for about
+0.6 seconds.
 
 The preceding repair supplies shared frame pacing, 32-pixel jumps,
 white hat/purple clothing, elevator cage, and PSG sound envelopes with note-offs.
@@ -62,8 +85,23 @@ From the project root on Windows:
 Or run `bash games/HardHatMack/build-ti.sh` followed by
 `bash games/HardHatMack/build-coleco.sh` using Cygwin bash.
 Outputs: `src/HARDHAT_8.bin` (Classic99/js99er) and `src/hardhat.rom` (ColecoVision).
-Build sequentially. Both scripts run physics, truncation and return-stack checks;
-the TI build also verifies the fixed-area size and exact packed data bank.
+Build sequentially. Both scripts run generated-art, physics, truncation and return-stack checks;
+the TI build also verifies the fixed-area size and both packed banks. Its 64 KB
+cartridge contains the loader, setup/assets bank and a separate bank for machinery
+animation and the title screen; both wrappers restore the setup/assets bank before
+returning. Coleco remains
+an unbanked cartridge within 32 KB. The TI build uses
+the repository's checked short-branch optimizer and verifies the resulting opcodes
+and destinations after reassembly. `TI_SHORT_BRANCHES=0` retains the comparison
+path with the same size gate. Moving the title into the animation bank also
+restored room for the unoptimized comparison assembly.
+
+Editable conveyor and pincer art lives in `assets/genconveyors.py`. Run it with
+`--write` after editing, then build both targets; builds reject stale art.
+
+Current development focus (2026-10-02): build and review TI-99 only, per the
+user's request. Coleco validation will resume after the TI gameplay work.
+See DESIGN.md sections 19-20 for TI validation, budgets and verification limits.
 
 The physics checker executes actual BASIC routines and all three level parsers.
 It checks objective handling, death rollback, timed hazard windows, magnet capture
@@ -71,7 +109,14 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-Eighteen deliberately broken variants must fail. Controlled-position tests do not
+Forty-nine deliberately broken variants must fail. New checks cover moving
+pincers, visible hazard bounds, belt/slag alignment, speed clocks, elevator boarding
+with background tiles, both parked and moving elevators at game over, two-jump
+pincer crossings in both directions, and activity sounds with explicit note-offs. Controlled-position tests do not
 prove uninterrupted whole-level clears or original-hardware performance.
 
-See DESIGN.md section 16 for the reference evidence, budgets and verification limits.
+The [C64 longplay](https://www.youtube.com/watch?v=WSbEDNtmQWY) is an additional
+reference, including its loose girders and machinery. Its pacing differs from the
+Apple II recording; these are documented adaptation choices, not a claim of exact
+original collision-box dimensions. See DESIGN.md sections 16-17 for evidence,
+speed measurements, budgets and verification limits.

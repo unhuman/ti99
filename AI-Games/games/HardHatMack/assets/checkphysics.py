@@ -23,6 +23,10 @@ class Basic:
         self.screen = None
         self.data = []
         self.sound = []
+        self.sprites = {}
+        self.pattern_writes = []
+        self.color_writes = []
+        self.bank = 1
         self.lines = [line.split("'")[0].strip().lower()
                       for line in source.splitlines()]
         self.labels = {line[:-1]: i for i, line in enumerate(self.lines)
@@ -160,7 +164,23 @@ class Basic:
             elif line.startswith('sound '):
                 self.sound.append(tuple(self.expr(x) if x else None
                                         for x in line[6:].split(',')))
-            elif re.match(r'(sprite|print) ', line):
+            elif line.startswith('sprite '):
+                args = tuple(self.expr(x) for x in line[7:].split(','))
+                self.sprites[args[0]] = args[1:]
+            elif line.startswith(('define char ', 'define color ')):
+                # Record hardware-only uploads, including the actual ROM offset.
+                color=line.startswith('define color ')
+                first, count, pointer = line[13 if color else 12:].split(',', 2)
+                m = re.fullmatch(r'varptr (\w+)\((.+)\)', pointer)
+                if pointer.startswith(('varptr claw_pat','varptr press_')):
+                    assert self.bank==2, 'animation data read from wrong bank'
+                (self.color_writes if color else self.pattern_writes).append((self.expr(first),self.expr(count),
+                    m[1] if m else pointer, self.expr(m[2]) if m else 0))
+            elif line.startswith('bank select '):
+                self.bank=self.expr(line[12:])
+            elif line.startswith(('#if ', '#endif')):
+                pass
+            elif line.startswith('print '):
                 pass  # Output-only hardware calls do not affect these tests.
             else:
                 m = re.fullmatch(r'(#?\w+)(?:\((.+)\))? = (.+)', line)
@@ -192,7 +212,7 @@ def clear_windows(source):
     assert vm.v['st'] == vm.v['s_walk'] and vm.v['my'] == 152
     # Actual enemy collision routine and dimensions from the vandal caller.
     block = source.split('actors_move:')[1].split("' Vandal: lethal")[1].split("' OSHA man:")[0]
-    width, height = re.search(r'hbw = (\d+)\s+hbh = (\d+)\s+GOSUB mack_hit\s+IF hit', block).groups()
+    width, height = re.search(r'hbw = (\d+)\s+hbh = (\d+)\s+GOSUB hazard_hit', block).groups()
     counts = []
     for speed in (0, 0.5, 1):
         safe = 0
@@ -325,7 +345,7 @@ def machinery(source):
                 vm.v.update(mx=24 if i%2==0 else 208,my=120,st=vm.v['s_walk'])
                 vm.run('deliver_zone')
                 assert vm.v['carry']==0 and vm.v['boxfall']==1 and vm.v['nbox']==6-i
-                for _ in range(14):
+                for _ in range(40):
                     vm.run('factory_step')
                 assert vm.v['nbox'] == 5-i
             assert vm.v['lvdone'] == 1
@@ -423,8 +443,8 @@ def fidelity(source):
     for _ in range(84): vm.run('mag_move')
     assert vm.v['lvdone']==1 and vm.v['mx']==112
     # Moving hazards must have both safe and lethal windows.
-    for n,x,y,safe,bad in ((2,48,120,90,10),(2,184,120,90,20),
-                          (3,56,58,90,30)):
+    for n,x,y,safe,bad in ((2,184,120,90,20),(2,184,120,90,44),
+                          (3,56,58,20,36)):
         for phase,dead in ((safe,False),(bad,True)):
             vm=level(n);vm.v.update(mx=x,my=y,hzphase=phase-1)
             vm.run('site_step')
@@ -475,20 +495,27 @@ def review_feedback(source):
     vm=Basic(source); vm.v.update(lv=1);vm.run('init_level')
     original=vm.screen[:];vm.run('elev_back');parked=vm.screen[:]
     origin=(vm.v['ely']//8-2)*32+vm.v['elx']//8
-    cells=[origin,origin+1,origin+32,origin+33]
-    assert [parked[x] for x in cells]==[227,229,228,230]
+    cells=[origin,origin+1,origin+32,origin+33,origin+64,origin+65]
+    assert [parked[x] for x in cells]==[227,229,228,230,236,237]
     vm.run('elev_back');assert vm.screen==parked
     vm.v.update(emov=1,ely=vm.v['ely']-1);vm.run('elev_back')
     assert vm.screen==original, 'moving elevator left cabin characters behind'
     vm.v.update(emov=0,ely=vm.v['elty']);vm.run('elev_back')
     assert vm.v['elpaint']==1 and vm.screen!=original
     assert 'DEFINE CHAR 227,4,cage_bitmap' in source, 'cabin art diverged from sprite'
+    vm.v.update(ely=168,emov=0,elpaint=0,mx=20,my=152,st=vm.v['s_walk'],jl=1,elarm=1)
+    vm.run('elev_back')
+    for _ in range(20):
+        vm.run('mack_step')
+        if vm.v['emov']:break
+    assert vm.v['emov']==1 and vm.v['st']==vm.v['s_ride'], 'background floor prevents boarding'
+
     # Start from the actual level-2 spawn, walk, jump onto the conveyor and
     # jump from its last roller onto the crane. All actors/hazards are live.
     wins=0
     for phase in range(0,128,16):
         vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
-        vm.v.update(hzphase=phase,jr=1)
+        vm.v.update(hzphase=phase,**{'#slagclock':phase*2},jr=1)
         initial_beam=vm.v['bmy'];vm.run('beam_move')
         assert vm.v['bmy']==initial_beam, 'crane leaves before first boarding'
         for _ in range(100):
@@ -520,6 +547,17 @@ def review_feedback(source):
 
 
 def sound_contract(source):
+    # Execute the actual frame-start and render-tail sound ordering. A busy
+    # pass must expire the old effect, then let a newly triggered one survive.
+    prefix=source[source.index('\t#fd = FRAME'):source.index("\t' Pace scaling")]
+    tail=source[source.index("\t' L2 crane beam is rendered"):source.index('tone_start:')]
+    tail=tail.replace('\tGOTO main_loop','\tRETURN')
+    vm=Basic(source+'\nframe_start_test:\n'+prefix+'\tRETURN\nrender_tail_test:\n'+tail)
+    vm.v.update(frame=4,snd3=1,jr=1,steptick=7)
+    vm.run('frame_start_test')
+    assert vm.v['snd3']==0, 'old sound not aged before new activity'
+    vm.run('mack_step');vm.run('render_tail_test')
+    assert vm.v['snd3']==2 and vm.sound[-1]==(3,4,7), 'fresh sound erased in busy frame'
     for pitch, duration in ((600,14),(300,5),(360,12),(140,12),(180,8),(400,6)):
         vm = Basic(source)
         vm.v.update(snd2=duration,sndvol=12)
@@ -532,6 +570,400 @@ def sound_contract(source):
         assert vm.v['snd2']==0 and vm.sound[-1]==(2,None,0), 'tone stuck on'
         assert all(0 < event[1] <= 1023 for event in vm.sound if event[1] is not None)
 
+    vm=Basic(source);vm.v.update(jr=1);vm.v['#fd']=1
+    for _ in range(24):
+        vm.run('mack_step');vm.run('sound_tick')
+    assert vm.sound.count((3,4,7))==3, 'walking has no regular footsteps'
+    vm.run('sound_tick')
+    assert vm.v['snd3']==0 and vm.sound[-1]==(3,None,0), 'footstep stuck on'
+    for state,x,direction in (('s_walk',40,0),('s_walk',240,1),('s_jump',40,1)):
+        quiet=Basic(source);quiet.v.update(st=quiet.v[state],mx=x,jr=direction,steptick=7)
+        quiet.run('mack_step')
+        assert not any(e[0]==3 for e in quiet.sound), 'idle, blocked or airborne footsteps'
+    vm=Basic(source);vm.v.update(jr=1,steptick=7,snd3=10,snd2=12)
+    vm.run('mack_step')
+    assert vm.v['snd3']==10 and vm.v['snd2']==12 and not vm.sound, 'step interrupts effect'
+    vm.run('quiet_screen')
+    assert (3,None,0) in vm.sound and vm.v['snd3']==0, 'noise survives screen transition'
+    for level,carry,hz,claw in ((1,2,7,0),(2,0,27,0),(3,0,43,0),(2,0,80,63)):
+        vm=Basic(source);vm.v.update(lv=level);vm.run('init_level')
+        vm.v.update(mx=112,my=80,carry=carry,hzphase=hz,clawclock=claw,**{'#slagclock':180})
+        vm.run('site_step')
+        assert (3,5,8) in vm.sound, ('silent machinery',level,carry,hz,claw)
+        vm.v['#fd']=4;vm.run('sound_tick')
+        assert vm.v['snd3']==0 and vm.sound[-1]==(3,None,0), 'machine impact stuck on'
+    vm=Basic(source);vm.v.update(snd3=10);vm.run('machine_clack')
+    assert vm.v['snd3']==10 and not vm.sound, 'machinery interrupts riveting'
+    vm.v['snd3']=2;vm.run('machine_clack')
+    assert vm.sound==[(3,5,8)], 'footsteps mask machinery'
+
+
+def pincer_passage(source):
+    # A one-pixel shoe/edge graze was the specific failure in the lower crane
+    # approach. Preserve that allowance even when a different launch can win.
+    graze=Basic(source);graze.v.update(lv=2);graze.run('init_level')
+    graze.v.update(mx=30,my=120,clawclock=127,**{'#slagclock':180})
+    graze.run('site_step')
+    assert graze.v['st']!=graze.v['s_dead'], 'pincer kills a shoe-edge graze'
+    art=re.search(r'^claw_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
+    data=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',art)]
+    assert len(data)==680, 'pincers need seventeen full-width poses'
+    cells=[i%32 for i,ch in enumerate(graze.screen) if 238<=ch<=242]
+    assert len(cells)==5 and cells==list(range(cells[0],cells[0]+5))
+    assert 88-(max(cells)+1)*8>=16, 'no full standing patch right of the open jaws'
+    for y in range(2,8):
+        gaps=[]
+        for pose in range(17):
+            frame=data[pose*40:][:40]
+            xs=[tile*8+x for tile in range(5) for x in range(8)
+                if frame[tile*8+y] & (128>>x)]
+            gaps.append(min(x for x in xs if x>=20)-max(x for x in xs if x<20)-1)
+        assert gaps[0]>=32 and gaps[-1]==0, ('whole jaw face must open and touch',y,gaps)
+    # Two real jumps: over the first jaw, land in the opening, then over the
+    # other. Real ledge/ceiling geometry and live hazard timing, both directions.
+    for direction,start,end in ((0,78,14),(1,14,78)):
+        wins=0
+        for phase in range(0,128,16):
+            vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+            vm.v.update(mx=start,my=120,clawclock=phase,**{'#slagclock':180})
+            for hop in range(2):
+                vm.v.update(jbe=1,jl=1-direction,jr=direction)
+                vm.run('mack_step');vm.run('site_step')
+                for _ in range(32):
+                    if vm.v['st']==vm.v['s_dead']:break
+                    vm.run('mack_step');vm.run('site_step')
+                if vm.v['st']==vm.v['s_dead']:break
+            if vm.v['st']==vm.v['s_walk'] and abs(vm.v['mx']-end)<=2:
+                wins+=1
+        assert wins>=3, ('no generous two-jump pincer passage',direction,wins)
+    # The reference route stages on the right of the jaws BEFORE two jumps.
+    # Walk off the rising girder as it reaches the ledge, stop on that safe
+    # patch, and wait for visible opening. Keep the six-of-eight gate and all
+    # hazards live; the former direct two-hop shortcut skipped the safe patch.
+    for height in (128,136,144):
+        wins=0
+        for phase in range(0,128,16):
+            vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+            vm.v.update(mx=88,my=height-16,bmy=height,bmactive=1,bonbeam=1,
+                        bmd=0,clawclock=phase,**{'#slagclock':180})
+            while vm.v['bmy']>136:vm.run('world_step')
+            for _ in range(64):
+                vm.v['jl']=int(vm.v['mx']>74)
+                vm.run('world_step')
+                if vm.v['mx']==74 and vm.v['my']==120:break
+                if vm.v['st']==vm.v['s_dead']:break
+            assert (vm.v['mx'],vm.v['my'],vm.v['st'])==(74,120,vm.v['s_walk']), 'cannot stage beside jaws'
+            vm.v['jl']=0
+            previous=vm.v['clawstep']
+            for _ in range(129):
+                vm.run('world_step')
+                if vm.v['clawstep']==8 and previous==9:break
+                previous=vm.v['clawstep']
+            assert vm.v['st']==vm.v['s_walk'], 'right waiting patch is unsafe'
+            before=vm.v['nlbr']
+            for hop in range(2):
+                vm.v.update(jbe=1,jl=1)
+                vm.run('world_step')
+                for _ in range(48):
+                    vm.run('world_step')
+                    if vm.v['st'] in (vm.v['s_dead'],vm.v['s_walk']):break
+                if vm.v['st']==vm.v['s_dead']:break
+                vm.v.update(jbe=0,jl=0)
+                for _ in range(12):vm.run('world_step')
+            wins+=vm.v['st']==vm.v['s_walk'] and vm.v['mx']==10 and vm.v['nlbr']==before-1
+        assert wins>=6, ('unfair crane-to-pincer approach',height,wins)
+
+    # Real re-press margin: stop after landing, release FIRE, wait 12 world
+    # steps (~178 ms), then jump again. A continuous half-second launch window
+    # as the jaws open must work both ways, with ALL world hazards advancing.
+    seed=Basic(source);seed.v['lv']=2;seed.run('init_level')
+    for direction,start,end in ((0,78,14),(1,14,78)):
+        for phase in range(96,129,4):
+            vm=copy.deepcopy(seed)
+            vm.v.update(mx=start,my=120,clawclock=phase,**{'#slagclock':180})
+            for hop in range(2):
+                vm.v.update(jbe=1,jl=1-direction,jr=direction)
+                vm.run('world_step')
+                for _ in range(48):
+                    vm.run('world_step')
+                    if vm.v['st'] in (vm.v['s_dead'],vm.v['s_walk']):break
+                assert vm.v['st']==vm.v['s_walk'], ('pincer landing',direction,phase,hop)
+                if hop==0:
+                    vm.v.update(jbe=0,jl=0,jr=0)
+                    for _ in range(12):vm.run('world_step')
+                    assert vm.v['st']==vm.v['s_walk'], ('no time to re-press jump',direction,phase)
+            assert abs(vm.v['mx']-end)<=2, ('pincer crossing incomplete',direction,phase)
+
+
+def crane_contact(source):
+    seed=Basic(source);seed.v['lv']=2;seed.run('init_level')
+    # The rising girder crosses the feet during the jump's stationary apex.
+    # The old descent-only catch misses this and subsequently falls through.
+    for height in (112,136,160):
+        for x in (83,96,120,133):
+            vm=copy.deepcopy(seed)
+            vm.v.update(mx=x,my=height-18,bmy=height,bmd=0,bmactive=1,
+                        st=vm.v['s_jump'],jix=8,jhang=16,jhz=1,fcy=height-18)
+            for _ in range(4):vm.run('world_step')
+            assert vm.v['bonbeam']==1 and vm.v['st']==vm.v['s_walk'], ('apex falls through rising girder',height,x)
+            assert vm.v['my']+16==vm.v['bmy'], 'rider not on surface'
+        for x,y in ((60,height-18),(104,height-14)):
+            vm=copy.deepcopy(seed)
+            vm.v.update(mx=x,my=y,bmy=height,bmd=0,bmactive=1,
+                        st=vm.v['s_jump'],jix=8,jhang=16,jhz=1,fcy=y)
+            for _ in range(4):vm.run('world_step')
+            assert not vm.v['bonbeam'], 'girder catches outside span or from underneath'
+    # This is a place to STOP, not merely a pixel a scripted jump passes over.
+    for x in (70,74,78,82):
+        vm=copy.deepcopy(seed);vm.v.update(mx=x,my=120)
+        for _ in range(129):vm.run('world_step')
+        assert (vm.v['mx'],vm.v['my'],vm.v['st'])==(x,120,vm.v['s_walk']), ('unsafe standing patch',x)
+    vm=copy.deepcopy(seed);vm.v.update(mx=83,my=120);vm.run('foot_probe')
+    assert vm.v['sup']==0, 'standing patch extends invisibly into gap'
+
+
+def machinery_animation(source):
+    def table(label):
+        block=re.search(r'^'+label+r':\n.*?(?=^\w+:)',source,re.M|re.S).group()
+        return [int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',block)]
+    vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+    poses=[]
+    vm.v.update(mx=112,my=80,clawclock=127)
+    for _ in range(129):
+        vm.run('site_step');vm.run('site_draw');poses.append(vm.v['clawstep'])
+        assert vm.bank==1, 'animation bank not restored'
+        assert vm.sprites[14][0]==209, 'level-2 smasher still uses a sprite'
+    assert set(poses)==set(range(17)) and poses[0]==poses[128]==0
+    assert all(abs(a-b)<=1 for a,b in zip(poses,poses[1:])), 'pincers snap between poses'
+    assert all(len(set(poses[i:i+5]))>1 for i in range(125)), 'pincers pause at an endpoint'
+    assert len(vm.pattern_writes)<129*3, 'unchanged machinery reuploads every pass'
+    patterns=table('press_pat');colors=table('press_col')
+    assert len(patterns)==len(colors)==32*48
+    for row in range(3):
+        assert vm.screen[(14+row)*32+23:(14+row)*32+25]==[243+row*2,244+row*2]
+    feet=table('pressfoot_pat')
+    assert len(feet)==3*8*16
+    for level,base,origin,low,high in ((2,112,184,96,124),(3,48,56,40,62)):
+        vm=Basic(source);vm.v.update(lv=level);vm.run('init_level')
+        hit=Basic(source);hit.v.update(lv=level);hit.run('init_level')
+        positions=[]
+        for clock in range(128):
+            vm.v.update(mx=112,my=80,hzphase=clock-1,st=vm.v['s_walk'])
+            vm.run('site_step');vm.run('site_draw')
+            position=vm.v['pressy'];positions.append(position)
+            phase=position-(96 if level==2 else 32)
+            frame=patterns[phase*48:][:48]
+            def painted(x,y):return bool(frame[(y//8*2+x//8)*8+y%8] & (128>>(x%8)))
+            for y in range(max(0,phase-8)):
+                assert painted(7,y) and painted(8,y), 'floating smasher head'
+            for y in range(max(0,phase-8),min(24,phase-4)):
+                assert painted(1,y) and painted(14,y), 'smasher head too narrow'
+            vm.v.update(presslast=255)
+            vm.run('site_draw')
+            assert vm.bank==1 and vm.sprites[14][0]==209, 'sprite smasher or wrong bank'
+            assert vm.pattern_writes[-1]==(243,6,'press_pat',phase*48)
+            assert vm.color_writes[-1]==(243,6,'press_col',phase*48)
+            top=max(base,position+8);bottom=min(base+(23 if level==2 else 25),position+11)
+            for y in range(base-32,base+34):
+                hit.v.update(mx=origin,my=y,hzphase=clock-1,st=hit.v['s_walk'],**{'#slagclock':180})
+                hit.run('site_step')
+                if hit.v['st']==hit.v['s_dead']:
+                    assert top<=bottom and y+15>=top and y+4<=bottom, 'invisible smasher hit'
+            if top<=bottom:
+                y=(top+bottom)//2-9
+                # The new outer head edges also have to be lethal: merely
+                # enlarging the artwork would leave these contacts harmless.
+                for dx in (-7,0,7):
+                    hit.v.update(mx=origin+dx,my=y,hzphase=clock-1,st=hit.v['s_walk'])
+                    hit.run('site_step')
+                    assert hit.v['st']==hit.v['s_dead'], 'wide smasher edge is harmless'
+            if level==3:
+                depth=max(0,phase-28)
+                offset=(depth*8+vm.v['cvaf'])*16
+                foot=feet[offset:offset+16]
+                for tile in range(2):
+                    # Surface/rails and moving treads remain unchanged below
+                    # the two extra head rows, in every conveyor phase.
+                    belt=table('belt_anim%d'%vm.v['cvaf'])[40:48]
+                    assert foot[tile*8+2:tile*8+8]==belt[2:8], 'smasher erases belt'
+                    assert bool(foot[tile*8+1])==(depth==2), 'head misses belt rail'
+                assert vm.screen[9*32+7:9*32+9]==[249,250], 'missing smasher foot cells'
+                assert (249,2,'pressfoot_pat',offset) in vm.pattern_writes, 'wrong belt/head frame'
+        assert min(positions)==low and max(positions)==high, ('smasher travel',level,positions)
+        assert all(abs(a-b)<=1 for a,b in zip(positions,positions[1:]+positions[:1])), 'smasher snaps back'
+        assert positions.count(high)<=10, 'smasher pins player too long'
+        assert positions[28 if level==2 else 44]==high, 'wrong downward smasher speed'
+        assert high+11==(135 if level==2 else 73), 'head must finish exactly above surface'
+        if level==3:
+            assert vm.screen[8*32+7]==vm.v['t_sbox'], 'piston erased conveyor box'
+            vm.v.update(mx=52,my=56,ch=vm.v['t_sbox']);vm.run('take_item')
+            assert vm.arrays['itst'][1]==1 and vm.v['carry']==1
+            vm.run('site_draw')
+            assert vm.screen[8*32+7]==247, 'box pickup punched a hole in the piston'
+            assert vm.screen[4*32+12]==vm.v['t_sbox'], 'piston changed other boxes'
+
+
+def slag_cadence(source):
+    vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+    vm.v.update(mx=112,my=80,bmy=167,bmd=0,bmactive=1)
+    returns=[];emissions=[]
+    for tick in range(1,1191):
+        vm.run('beam_move');vm.run('site_step')
+        if vm.v['#slagclock']==0:emissions.append(tick)
+        if vm.v['bmy']==167 and vm.v['bmd']==0:
+            returns.append(vm.v['slagphase']<68)
+    assert emissions==[317,634,951], ('unexpected glop release interval',emissions)
+    assert len(returns)==5 and any(returns) and not all(returns), 'glop locked to crane visits'
+
+
+def visual_hazards(source):
+    """Execute trajectories/render calls; compare lethal regions with visible art."""
+    vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+    vm.run('beam_draw')
+    for _ in range(250):
+        assert all(vm.screen[row*32+14]==178 for row in range(3,vm.v['bmy']//8)), 'broken crane cable'
+        vm.v['bmactive']=1;vm.run('beam_move');vm.run('beam_draw')
+    assert vm.screen[16*32+4:16*32+9]==[238,239,240,241,242], 'missing paired pincers'
+    path=[]
+    for clock in range(317):
+        vm.v.update(mx=112,my=80,st=vm.v['s_walk'],**{'#slagclock':(clock-1)%317})
+        vm.run('site_step');vm.run('site_draw')
+        visible=vm.sprites[15][0]!=209
+        assert visible==(clock<136), ('slag visibility/collision phase',clock)
+        if visible:
+            path.append((vm.v['blobx'],vm.v['bloby']))
+            assert vm.sprites[15][1]==vm.v['blobx']
+            if 32<=clock<88:
+                vm.v.update(fx=vm.v['blobx']+8,kx0=vm.arrays['cvx0'][1],
+                            ky0=vm.arrays['cvy0'][1],kdy=16)
+                vm.run('belt_surface')
+                assert abs(vm.v['bloby']+9-vm.v['srf'])<=1, ('slag buried below belt',clock)
+        assert vm.pattern_writes[-1][0] in (156,238,243)
+    assert all(path[i]==path[i+1] for i in range(0,136,2)), 'slag ignores half-speed clock'
+    assert len(set(x for x,y in path[:32]))==1
+    assert all(0<=b[0]-a[0]<=1 and abs(b[1]-a[1])<=2 for a,b in zip(path,path[1:]))
+    assert path[100][1]<path[88][1] and path[-1][1]>path[100][1], 'missing roller arc'
+    # The factory's treads must travel in the same direction as its carrier.
+    for level,direction in ((2,1),(3,-1)):
+        vm.v.update(lv=level)
+        for clock in range(16):
+            vm.v['hzphase']=clock;vm.run('site_draw')
+            expected=(direction*(clock//2))%8
+            belt=[w for w in vm.pattern_writes if w[0]==156][-1]
+            assert belt==(156,6,'belt_anim0',expected*48), 'belt animation direction/rate'
+    # Full game-over entry, stopped before the intentional timed/key wait.
+    stop='\tFOR i = 1 TO 180\n'
+    assert source.count(stop)==1
+    for y,moving in ((168,0),(72,0),(117,1)):
+        end=Basic(source.replace(stop,'\tRETURN\n',1))
+        end.v.update(lv=1);end.run('init_level')
+        end.v.update(ely=y,emov=moving);end.run('elev_back')
+        end.run('game_over')
+        assert end.sprites[2]==(y-1,end.v['elx'],8,15), 'game-over lost elevator floor'
+        assert end.sprites[9]==(y-17,end.v['elx'],84,15), 'game-over lost moving cage'
+        assert all(v[0]==209 for k,v in end.sprites.items() if k not in (2,9))
+
+    # A kill may not occur across empty space. Bounds are derived from the
+    # editable BITMAP rows, with Mack's six-pixel torso/12-pixel height.
+    def bounds(label, row_start=0, row_end=16):
+        body=source.split(label+':',1)[1].split('\n\n',1)[0]
+        rows=re.findall(r'BITMAP "([.X]+)"',body)
+        assert len(rows)>=16 and all(len(r)==16 for r in rows)
+        pixels=[(x,y) for y,row in enumerate(rows[:16]) for x,c in enumerate(row)
+                if c=='X' and row_start<=y<row_end]
+        return min(x for x,y in pixels),min(y for x,y in pixels),max(x for x,y in pixels),max(y for x,y in pixels)
+    profiles=[]
+    for level in (2,3):
+        for phase in (0,12,24,36,47,63,95,127):
+            test=Basic(source);test.v.update(lv=level);test.run('init_level')
+            real_run=test.run; calls=[]
+            def capture(label):
+                if label=='mack_hit':
+                    calls.append(tuple(test.v[k] for k in ('ex','ey','hbw','hbh')))
+                    test.v['hit']=0
+                else:real_run(label)
+            test.run=capture
+            test.v.update(mx=112,my=80,hzphase=phase-1,clawclock=(phase-1)%128,**{'#slagclock':(phase-1)%317})
+            test.run('site_step')
+            if level==2:
+                profiles.append((calls[-1],(test.v['blobx'],test.v['bloby']),bounds('slag_bitmap'),'slag'))
+                art=re.search(r'^claw_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
+                data=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',art)]
+                frame=data[test.v['clawstep']*40:][:40]
+                pixels=[(tile*8+x,y) for tile in range(5) for y in range(8)
+                        for x in range(8) if frame[tile*8+y] & (128>>x)]
+                for side in (0,1):
+                    jaw=[(x,y) for x,y in pixels if (x>=20)==bool(side)]
+                    rect=(min(x for x,y in jaw),min(y for x,y in jaw),
+                          max(x for x,y in jaw),max(y for x,y in jaw))
+                    profiles.append((calls[side],(32,128),rect,'pincer'))
+    bolt=Basic(source);bolt.v.update(bolon=1,bon=1,bx=120,by=80,bvel=1,bph=1,bct=4)
+    bolt.run('bolt_move')
+    profiles.append((tuple(bolt.v[k] for k in ('ex','ey','hbw','hbh')),
+                     (bolt.v['bx'],bolt.v['by']),bounds('bolt_bitmap'),'rivet'))
+    for profile,(x,y),(left,top,right,bottom),name in profiles:
+        hit=Basic(source);hit.v.update(ex=profile[0],ey=profile[1],hbw=profile[2],hbh=profile[3])
+        for dx in range(-16,17):
+            for dy in range(-20,21):
+                hit.v.update(mx=x+dx,my=y+dy);hit.run('mack_hit')
+                if hit.v['hit']:
+                    assert dx+10>=left and dx+5<=right and dy+15>=top and dy+4<=bottom, (name,'invisible lethal margin',dx,dy)
+        hit.v.update(mx=x+(left+right)//2-8,my=y+(top+bottom)//2-10)
+        hit.run('mack_hit');assert hit.v['hit'], (name,'harmless at direct contact')
+    # Both jaws move and both can kill; the open center and a clear jump are safe.
+    for clock,x,y,dead in ((0,40,120,False),(64,44,120,True),
+                           (0,27,120,True),(0,61,120,True),(64,44,109,False)):
+        test=Basic(source);test.v.update(lv=2);test.run('init_level')
+        test.v.update(clawclock=(clock-1)%128,mx=x,my=y,hzphase=90,**{'#slagclock':180})
+        test.run('site_step')
+        assert (test.v['st']==test.v['s_dead'])==dead, ('pincer contact',clock,x,y)
+
+
+def speed_contract(source):
+    # A two-second interval has the same budget with 1-, 2- or 4-frame passes.
+    clock=source[source.index('\t#hacc = #hacc +'):source.index("\t' Read the stick")]
+    for deltas in ([1]*120,[2]*60,[4]*30,[1,3]*30):
+        vm=Basic(source+'\nspeed_tick:\n'+clock+'\tRETURN\n');steps=0
+        for delta in deltas:
+            vm.v['#fd']=delta;vm.run('speed_tick');steps+=vm.v['#hd']
+        assert steps==135 and vm.v['#hacc']==0, 'world speed depends on render rate'
+    vm=Basic(source);vm.v.update(jr=1)
+    for _ in range(20):vm.run('st_walk')
+    assert vm.v['mx']==60, 'walking speed'
+    vm.v.update(ely=160,elty=72,emov=1,eld=0)
+    for _ in range(20):vm.run('elev_move')
+    assert vm.v['ely']==140, 'elevator speed'
+    vm.v.update(lv=2,bmy=150,bmon=1,bmactive=1,bmd=0)
+    for _ in range(20):vm.run('beam_move')
+    assert vm.v['bmy']==130, 'crane speed'
+    vm.v.update(mgon=1,mgarm=1,mgx=160,mgd=0,mgtk=0)
+    for _ in range(20):vm.run('mag_move')
+    assert vm.v['mgx']==150, 'searching magnet speed'
+    vm.v.update(st=8)
+    for _ in range(20):vm.run('mag_move')
+    assert vm.v['mgx']==130 and vm.v['mx']==130, 'loaded magnet speed'
+    for level in (2,3):
+        vm=Basic(source);vm.v.update(lv=level,rx=168 if level==2 else 200,ry=120 if level==2 else 88,rf=0,rp=0)
+        for tick in range(20):vm.v['atg']=tick;vm.run('site_route')
+        assert vm.v['rx']==(158 if level==2 else 190), 'enemy walk rate'
+        vm.v.update(rp=1,ry=120 if level==2 else 88)
+        for tick in range(20):vm.v['atg']=tick;vm.run('site_route')
+        assert vm.v['ry']==(130 if level==2 else 98), 'enemy climb rate'
+        vm=Basic(source);vm.v.update(lv=level);vm.run('init_level')
+        vm.v.update(mx=44 if level==2 else 60,my=157 if level==2 else 58)
+        start=vm.v['mx']
+        for tick in range(20):vm.v['hzphase']=tick;vm.run('conv_sup')
+        assert vm.v['mx']==start+(10 if level==2 else -10), 'belt speed'
+    vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
+    vm.v.update(boxfall=1,boxy=128,mx=112,my=80)
+    for _ in range(39):vm.run('factory_step')
+    assert vm.v['boxy']==167 and vm.v['boxfall']==1, 'factory box drops too fast'
+    vm.run('factory_step');assert vm.v['boxfall']==0
+    for start,bounced in ((150,False),(156,False),(157,True)):
+        vm=Basic(source);vm.v.update(bolon=1,bon=1,bx=120,by=start,bvel=1,bph=0,bnx=0)
+        vm.run('bolt_move')
+        assert (vm.v['bph']==1)==bounced, 'rivet bounces above the visible floor'
+
 
 def main():
     source = SOURCE.read_text(encoding='utf-8')
@@ -542,7 +974,13 @@ def main():
     machinery(source)
     transfers(source)
     sound_contract(source)
+    pincer_passage(source)
+    crane_contact(source)
+    machinery_animation(source)
+    slag_cadence(source)
     fidelity(source)
+    visual_hazards(source)
+    speed_contract(source)
     entry_wins=review_feedback(source)
     for state in ('s_climb', 's_ride'):
         vm = Basic(source)
@@ -575,6 +1013,30 @@ def main():
                         'IF #cvt > kdy THEN #cvt = 0'), machinery),
         (source.replace('my = bmy - 16', 'my = bmy - 15'), machinery),
         (source.replace('SOUND 2,,0', 'SOUND 2,,8'), sound_contract),
+        (source.replace('SOUND 3,4,7', 'SOUND 3,4,0'), sound_contract),
+        (source.replace('SOUND 3,,0', 'SOUND 3,,8'), sound_contract),
+        (source.replace('IF mx <> walkx THEN', 'IF mx = walkx THEN'), sound_contract),
+        (source.replace('SOUND 3,5,8', 'SOUND 3,5,0'), sound_contract),
+        (source.replace('clawstep = clawclock / 4', 'clawstep = 16'), pincer_passage),
+        (source.replace('hbw = 4\n\thbh = 6','hbw = 5\n\thbh = 6'), pincer_passage),
+        (source.replace('#slagclock >= 317','#slagclock >= 256'), slag_cadence),
+        (source.replace('clawstep = clawclock / 4','clawstep = clawclock / 8'), machinery_animation),
+        (source.replace('DATA BYTE $00,$00,$3C,$3C,$3C,$FF,$FF,$FF',
+                        'DATA BYTE $00,$00,$3C,$3C,$3C,$E7,$E7,$E7'), pincer_passage),
+        (source.replace('IF pressy > 62 THEN pressy = 62','IF pressy > 55 THEN pressy = 55'), machinery_animation),
+        (source.replace('IF hzphase < 96 THEN','IF hzphase < 48 THEN'), machinery_animation),
+        (source.replace('IF pressy > 124 THEN pressy = 124','IF pressy > 127 THEN pressy = 127'), machinery_animation),
+        (source.replace('IF fy > bmold THEN RETURN','RETURN'), crane_contact),
+        (source.replace('TILE(mx + 5,fy)','TILE(mx + 8,fy)'), crane_contact),
+        (source.replace('16,4,1,238','16,5,1,238').replace('16,5,1,239','16,6,1,239')
+               .replace('16,6,1,240','16,7,1,240').replace('16,7,1,241','16,8,1,241')
+               .replace('16,8,1,242','16,9,1,242'), pincer_passage),
+        (source.replace('GOSUB animated_machines','ded = 0'), machinery_animation),
+        (source.replace('IF pressy >= 101 THEN','IF pressy >= 255 THEN'), machinery_animation),
+        (source.replace('BANK SELECT 2','BANK SELECT 1'), machinery_animation),
+        (source.replace('hbw = 8\n\thbh = 8','hbw = 6\n\thbh = 8'), machinery_animation),
+        (source.replace('IF itst(1) = 1 THEN','IF itst(1) = 0 THEN'), machinery_animation),
+        (source.replace('\tGOSUB sound_tick\n','').replace('\tGOTO main_loop','\tGOSUB sound_tick\n\tGOTO main_loop'), sound_contract),
     ]
     mutants.extend([
         (source.replace('gapst(resetgap) = 0','gapst(resetgap) = 1'),fidelity),
@@ -588,19 +1050,30 @@ def main():
         (source.replace('IF jix < 8 THEN jix = 7', 'jhang = 0\n\t\t\t\t\t\tIF jix < 8 THEN jix = 8'),review_feedback),
         (source.replace('st_fall:\n','st_fall:\n\tjhz = 2\n'),review_feedback),
         (source.replace('IF elpaint = 0 THEN RETURN','IF elpaint = 1 THEN RETURN'),review_feedback),
+        (source.replace('bloby = 165 -','bloby = 175 -'),visual_hazards),
+        (source.replace('ey = pressy\n','ey = pressy + 8\n'),machinery_animation),
+        (source.replace('ey = by - 4','ey = by'),visual_hazards),
+        (source.replace('IF lv = 3 THEN cvaf = (8 - cvaf) AND 7',''),visual_hazards),
+        (source.replace('ex = 62 - clawshift','ex = 200'),visual_hazards),
+        (source.replace('game_over:\n\tGOSUB quiet_screen\n\tGOSUB elev_draw','game_over:\n\tGOSUB quiet_screen'),visual_hazards),
+        (source.replace('DATA BYTE 7, 14,3,17','DATA BYTE 7, 14,3,10'),visual_hazards),
+        (source.replace('boxy = boxy + 1','boxy = boxy + 3'),speed_contract),
+        (source.replace('fy = by + 9','fy = by + 16'),speed_contract),
+        (source.replace('CONST T_ELEV   = 236','CONST T_ELEV   = 135'),review_feedback),
     ])
     for mutant, check in mutants:
         try:
             check(mutant)
         except AssertionError:
             continue
-        raise AssertionError('checker accepted historical defect')
+        raise AssertionError('checker accepted historical defect: '+check.__name__)
     print('Physics: 32-step jumps, both gap directions, fall momentum, fatal landings OK')
     print('Safe enemy launch positions (stationary / half speed / full speed):', windows)
     print('All level parsers, pails, box delivery, belt surfaces and 448 lift steps OK')
     print('Twelve platform transfers, both spring transfers and sound envelopes OK')
     print('Walk-offs, parked/moving cabin and %d/8 live conveyor entries OK' % entry_wins)
     print('Hazard windows, magnet ride, drill/enemy routes and death rollback OK')
+    print('Slag on belt, paired jaws, animation clocks, visible hitboxes and game-over elevator OK')
     print('Shared world clock and inventory/HUD OK; all %d defect mutations rejected' % len(mutants))
 
 

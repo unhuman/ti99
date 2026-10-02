@@ -927,3 +927,396 @@ All three screens were inspected in Classic99 and CoolCV during this repair.
 Controlled movement tests do not establish uninterrupted whole-level clears,
 CPU performance on original hardware or a listening comparison. The production
 title permits later-site review without altered starting cartridges.
+
+
+## §17 Conveyor, pincer, collision and visual review (2026-10-01)
+
+This section supersedes conflicting details in §16. The additional reference is
+[the C64 longplay](https://www.youtube.com/watch?v=WSbEDNtmQWY), 3:21 long. Review
+covered the loose/carried girders and elevator (0:16-0:55), conveyor entry and
+machinery (1:02-1:51), magnet finish (2:06), and factory transfers and deliveries
+(2:17-3:00). The Apple II recording was rechecked at 0:07-0:13, 0:52-0:55,
+1:25-1:27, and 2:36-2:38. Local frame sheets and measurements are in ignored
+`scratchpad/hhm-review/`; downloaded videos are not repository assets.
+
+### What the footage supports
+
+Loose girders are narrow diagonal pieces with bright metal edges and a colored
+web, rather than irregular red lumps. The redesigned one-cell pickup preserves
+its established collection location and adds that readable silhouette. The C64
+conveyors have continuous white rails and circular rollers; the factory belt has
+a straight framed track. `assets/genconveyors.py` generates eight distinct tread
+and roller phases without changing the belt geometry. The generator also supplies
+the paired pincers and rejects stale or damaged generated data during each build.
+
+At Apple II 0:52-0:55 the nozzle releases a lump downward. It lands **on top** of
+the belt, travels toward the upper roller, then arcs toward the vat. The former
+trajectory put its visible lower edge below the belt, and used the tiny rivet
+sprite. Two dedicated six-pixel lump frames now tumble above the surface. The
+surface regression compares the rendered lower edge with the actual `belt_surface`
+routine throughout the roll, permitting at most one pixel of rounding difference.
+The nozzle is visible above its release point. Only one lump is active at a time:
+this is an intentional playability adaptation; the recordings sometimes show two.
+
+At Apple II 1:25-1:27 the pincers are a **pair of sliding jaws**, opening a gap and
+then meeting, not a single stationary block. They now occupy five characters
+at row 16, columns 5-9. Four positions move both jaws inward and outward; the two
+lethal regions follow the drawn jaws. The open center is safe, as is a jump that
+visibly clears them. White tips and green feet make the motion readable. Pattern
+uploads happen only when the pincer pose changes and require no sprites.
+
+### Speed review
+
+Video pixels are not directly interchangeable with our 256×192 coordinates.
+Measured on 512×384 decoded frames, the Apple II carried-Mack position moves about
+48 pixels left from 0:10.0 to 0:10.5 over a roughly 292-pixel beam span. Scaling
+that span to our 192-pixel girder gives about 63 pixels/second. C64 0:17.0-0:17.5
+moves about 36 pixels over a roughly 250-pixel span, or about 55 pixels/second on
+the same basis. The ports therefore do not supply one identical speed target.
+Keep the established 67.5-pixel/second walk/chain pace, close to the Apple II sample,
+instead of globally slowing the already improved controls to the C64 recording.
+These estimates use visible positions and layout normalization, not original code.
+
+The Apple II lump takes roughly 0.8-1.0 seconds to traverse its lower belt; ours
+previously took about 0.4 seconds. Belt transport and lump rolling now advance one
+pixel per **two** world steps. The belt pattern phase uses the same clock and is
+reversed on the factory belt. Normal walking input adds Mack's own motion, so he
+can walk against or with a conveyor. The eight-phase animation advances at most
+three phases across a clamped four-frame catch-up pass, below the half-cycle alias
+threshold; no separate render-pass timer controls its speed.
+
+Apple II 2:36.25-2:36.75 shows a delivered box falling visibly from the lower gap
+toward the processor. Ours crossed its 40-pixel path in fourteen steps, about 0.21
+seconds. It now descends one pixel per world step, taking 40 steps/about 0.59 s.
+
+Current nominal rates at 60 Hz NTSC (world clock = 9/8 video frames):
+
+| Actor or item | Rate / duration | Status |
+|---|---|---|
+| Mack walking, climbing, deliberate jump drift | 67.5 px/s | retained; Apple II comparison above |
+| Normal jump | 32 steps / 0.474 s, 11-pixel apex | retained gameplay adaptation |
+| Site-1 vandal and independent drill | 67.5 px/s along their routes | retained; common world clock |
+| Site-2/3 enemies, walking and climbing | 33.75 px/s | retained, tested half-rate |
+| Elevator and crane | 67.5 px/s when active | retained, tested |
+| Factory paddles | 67.5 px/s, 224-step / 3.32 s circuit | retained, corner/rider tests |
+| Unarmed magnet / static pickups | stationary | intentional user-requested magnet rule |
+| Armed magnet search / carrying Mack | 33.75 / 67.5 px/s | retained, tested |
+| Conveyors and rolling lumps | 33.75 px/s | corrected from full-rate transport |
+| Lump drop / final descent | 33.75 / 67.5 px/s | corrected; 136 active + 120 quiet steps |
+| Pincers | 96-step / 1.42 s cycle | four poses, symmetric opening/closing |
+| Site-2 pounder | 67.5 px/s moving; 128-step cycle | retained; corrected contact position |
+| Site-3 pounder | 22.5 px/s descent, 128-step cycle | retained; corrected contact position |
+| Thrown rivet | 67.5 or 135 px/s left; 135 px/s vertical | retained variants; corrected visible bounce/contact |
+| Delivered factory box | 67.5 px/s / about 0.59 s | corrected from 202.5 px/s |
+| Site-3 spring transfer | 36 steps / 0.53 s, then ascent | retained route adaptation |
+
+A source-executing gate verifies movement budgets under 1-, 2-, 4-frame and mixed
+frame passes, plus walking, enemy walking/climbing, elevator, crane, magnet, belt
+and box-drop rates. Existing tests cover jump duration, drill route, spring paths
+and paddle circuits. This validates this implementation's rates; it does not claim
+that every original autonomous actor has been timed precisely from the recordings.
+
+### Lethal collision regions and elevator lifecycle
+
+No supplied video exposes the original internal hitbox dimensions. Contact timing
+can reveal suspicious behavior, but cannot prove the original collision algorithm.
+The audit instead checks our source-defined lethal bounds against our actual art.
+`mack_hit` compares distances between reference points: `hbw`/`hbh` are thresholds,
+**not** the width/height of a sprite. Its hazard reference point must align with
+Mack's visible torso. Reusing raw sprite origins misplaced the small rivet, and
+adding eight to the pounder origin displaced its lethal region below its head.
+
+The revised rivet thresholds are 4×7 (distance limits), lump 5×7, pounder 6×8 and
+each jaw 4×6 (revised in §18). The pounder's narrow support stem is scenery; its striking head is
+lethal. A sweep checks every nearby integer Mack position against bounds extracted
+from the editable hazard bitmap, rejects kills across empty space, and also checks
+that direct contact remains lethal. The jaw bounds come from all five generated
+character tiles. This is forgiving body-box collision, not expensive per-pixel
+runtime collision. Enemy distance limits remain 8×10; their bottom-anchored art
+already matches Mack's vertical origin. Static scenery and fatal falls retain
+their existing rules; these have not been reconstructed from original machine code.
+Rivet floor detection now uses the visible bottom at `by+9`, rather than the empty
+bottom of its 16-pixel sprite cell.
+
+The parked elevator paints a 2×3 character area: four cage cells plus two floor
+cells. Both erase at the remembered old address when movement starts. Floor cells
+236-237 reuse the existing platform art, in the pass-through scenery range; using
+solid codes 135-136 would bypass geometric elevator boarding. Regression coverage
+walks onto the character-backed floor and verifies that the trip actually starts.
+Game over hides actors and redraws the elevator pair, preserving a full frozen
+cabin even between cell-aligned stops. Both parked endpoints and a moving position
+are covered. Cage/floor pixels are shared with their normal sprite art.
+
+### Build and runtime verification
+
+The new art uses character codes 231-232 (spigot), 238-242 (pincers), 236-237
+(parked floor), and sprite patterns 25-26 (lumps); parked cage codes remain 227-230.
+The permanent data bank remains selected throughout gameplay. Conveyor animation
+uses an indexed pointer into contiguous 48-byte frames, replacing eight repeated
+branches. TI assembly was checked: both animation offsets use the low product word
+and add the correct bank label, without stale-register multiplication state.
+
+The TI build reuses Keystone Kapers' conservative short-branch optimizer. It first
+assembles unoptimized code, shortens only proven in-range branches, reassembles,
+and verifies every changed opcode/destination and the full address shift map.
+The fixed-size cap and exact packed-bank verification remain mandatory; no budget
+threshold was relaxed. The shared compiler is unchanged. Proven unused historical
+route assignments were also removed.
+
+Runtime review also exposed an initial crane-cable gap: the cable stream ended at
+row 12 while the parked beam started at row 20. It now reaches row 19, and a
+source-executing check verifies continuity over a full up/down trip.
+
+| Area | Used | Free / limit |
+|---|---:|---:|
+| TI fixed program, optimized | 22,278 B | 2,058 B / 24,336 B |
+| TI fixed program, before branch shortening | 24,290 B | 46 B / 24,336 B |
+| TI permanent setup/assets, excluding trailer | 8,108 B | 82 B / 8,190 B |
+| TI variables | 402 B | 7,452 B / 7,854 B |
+| Coleco ROM | 24,576 B | 8,192 B / 32,768 B |
+| Coleco variables | 389 B | 425 B / 814 B |
+
+The short-branch pass verifies 503 replacements, saving 2,012 bytes. Its need for
+a valid first assembly still limits future unoptimized growth; the optimized free
+space should not be mistaken for unconstrained room to add BASIC code.
+
+Both builds pass all gates and 28 deliberate defect mutations. Six of eight
+sampled immediate spawn-to-conveyor-to-crane runs succeed with live hazards;
+the others require waiting for the nozzle's quiet interval. The threshold remains
+at least six successes. All six factory lift-entry tiers retain usable windows.
+Controlled tests also verify complete parked-floor erasure, actual boarding,
+correct moving/parked elevator display at game over, visible hazard bounds,
+conveyor animation direction, box-drop speed and continuous crane cable.
+
+Classic99 and CoolCV review covers the new girders, paired pincer poses and conveyor
+art. The parked elevator remains complete on the observed TI game-over screen.
+A full uninterrupted clear, exact original hitbox reconstruction, comparative
+listening test and physical-hardware performance measurements remain unverified.
+The latest production TI cartridge is the handoff, with normal title selection.
+
+## §18 Block shapes, pincer passage and activity audio (2026-10-02)
+
+User review rejected the thin diagonal loose-piece glyph. Character 185 now has
+a broad seven-row brick face, staggered joints and a white top edge. The carried
+block already used a broad brick silhouette. Shape takes priority over the
+earlier attempt at diagonal red/white striping.
+
+The previous pincer art did not actually close: its tips stopped four pixels
+apart, and the fully open gap was only sixteen pixels. Five character cells now
+give a 32-pixel open gap, with tips meeting at adjacent pixels 19 and 20 in the
+closed pose. Each jaw moves sixteen pixels. Character codes 238-242 avoid the
+parked elevator floor at 236-237. Collision references follow the jaw motion;
+the distance thresholds are now 4×6, allowing a slight shoe/edge graze while
+keeping body contact lethal. The earlier 5×8 bounds made the approach from a
+crane level with the ledge impossible even with the jaws fully open.
+
+The byte clock wraps after 256 world steps (about 3.79 seconds at 60 Hz): poses
+advance every sixteen steps, pause closed for 32 steps and remain fully open
+across the wrap for 160 steps (about 2.37 seconds). This gives time to jump over one jaw, land in
+the opening, and jump over the other. The regression uses the real level-2
+ledge and overhead platform, with live pincer timing, in both directions and at
+eight starting phases. At least three phases must permit the complete two-jump
+crossing; forcing the jaws shut must fail. Art checks require an actual touching
+closed pose and at least 32 clear pixels when open. A second test starts on
+the moving crane at heights 128, 136 and 144 and requires six of eight launch
+phases to permit both jumps across the ledge. This reproduces the actual crane
+approach, rather than only starting Mack on the ledge.
+
+The conveyor and concrete movement speeds are unchanged, following the user's
+correction. Release spacing changes from 256 to **317 world steps** (about 4.70
+seconds), with the same 136 visible steps and 181 quiet steps. The word-sized
+clock avoids byte wrap. The crane completes a trip in 238 steps, so the release
+phase now shifts 79 steps relative to its trip instead of only eighteen. A live
+five-trip simulation verifies both occupied and quiet belt intervals at repeated
+crane arrivals; restoring the old release period is rejected.
+
+Activity audio adds short noise-channel shoe scuffs every eight pixels of active
+walking, jackhammer chatter every eight world steps while held, rivet bounce
+clacks, pincer closure and pounder strike cues. Existing tone-channel jump,
+pickup, score and death effects continue independently. Footsteps last two video
+frames; mechanical clacks last three. The longer riveting noise takes priority.
+Standing, pushing against a boundary, jumping, or passive conveyor transport
+does not produce footsteps. Frame-delta decay and `quiet_screen` explicitly
+silence the noise channel, including transitions and game over. These are PSG
+adaptation cues, not a verified transcription of original audio.
+
+Sound decay now runs at frame start, before new events. Previously a busy pass
+could subtract four elapsed frames from a just-started two-frame effect and
+silence it before the next vertical blank. A test executes the real frame-start
+and render-tail paths and rejects that ordering. Machine impacts may replace a
+footstep; the longer riveting effect retains priority.
+
+Holding Fire for 45 video frames (0.75 seconds at 60 Hz) releases the jackhammer
+and returns it to its spawn; this existing control is now explicit in README.
+Eight identical collision/death call sequences share `hazard_hit`, preserving
+the collision logic while reclaiming fixed-program space for sound.
+
+Both current platform builds pass all gates and **36 deliberate defect mutations**.
+The source-driven crane approach passes six of eight sampled phases at each of
+the three heights, with live hazards. TI assembly review confirms the 317-step
+word comparison, division into a byte phase, jaw offset multiplication and
+40-byte animation stride use the correct values. No movement-speed constants
+changed. Classic99 and CoolCV show the new block shape; a CoolCV capture of a
+full pincer cycle confirms touching tips and the extended open pause. Full
+uninterrupted clears, physical-hardware timing and listening-based audio balance
+remain unverified.
+
+| Current area | Used | Remaining |
+|---|---:|---:|
+| TI fixed program, optimized | 22,428 B | 1,908 B |
+| TI fixed program, unoptimized | 24,452 B | 116 B over the normal cap |
+| TI permanent setup/assets | 8,182 B | 8 B |
+| TI variables | 406 B | 7,448 B |
+| Coleco ROM | 24,576 B | 8,192 B |
+| Coleco variables | 393 B | 421 B |
+
+The optimizer verifies 506 branches, saving 2,024 bytes. The first assembly still
+fits the address space, but the unoptimized comparison build intentionally fails
+the unchanged 24,336-byte production gate. Pincer-clock initialization moved to
+a small fixed-area routine to keep the expanded artwork inside its data bank.
+
+## §19 Continuous pincers and character smasher (2026-10-02)
+
+This supersedes §18's long open hold. The pincers now have **17 distinct poses**,
+one for every pixel of their sixteen-pixel travel. The 128-world-step triangular
+cycle moves one pixel every four steps, closes completely and reverses without
+an endpoint dwell. A full cycle takes about 1.90 seconds at 60 Hz. The maximum
+opening remains 32 pixels; the forgiving 4×6 body-contact limits are unchanged.
+The closure sound occurs at step 64. A source-driven regression verifies all
+seventeen poses, unit movement, wrap continuity and no five-step plateau.
+
+Both smashers use six background characters (243-248): level 2 places them in
+rows 14-16, columns 23-24; level 3 in rows 6-8, columns 7-8. Their heads now span
+fourteen pixels across the two character columns, with a centered piston.
+The mounting bracket stays below the upper beam and its piston lengthens
+downward. The striking head retains level 2's 32-position stroke and level 3's
+16-position stroke. On level 2, the upper beam conceals the retracted head and
+the lower floor clips its bottom; level 3's head stays visible throughout.
+Sprite 14 is hidden on both levels, freeing that scanline slot. Only visible head contact is lethal: a retracted
+head, shaft or contact outside the exposed vertical region cannot kill Mack.
+Tests cover every smasher pose and nearby player height, actual pattern/color
+uploads, shaft continuity, lethal head contact and bank restoration.
+
+The horizontal hit threshold widens from six to eight pixels and shifts to the
+centered head on both sites; vertical motion/timing remains unchanged. Tests
+require lethal contact at both outer edges as well as the center. On level 3,
+the conveyor box remains in front of the machine until collected. The renderer
+restores its background cell after pickup, without changing other boxes or the
+item's collision/pickup rules. The old narrow smasher sprite is no longer used.
+
+Traversal checks retain the previous numeric acceptance gates. The continuous
+cycle requires timing rather than exploiting the former long pause. For the
+crane approach, tests try immediate departure and waiting on the *moving* crane
+until it is eight pixels above the ledge; six of eight phases must succeed from
+each initial height. All clocks and hazards remain live during that wait.
+
+The additional animation frames and rendering routine occupy TI bank 2. A fixed
+wrapper selects it, calls the renderer, then restores bank 1 before returning.
+Bank 1 still holds level data, setup and other assets. Both pages are checked
+byte-for-byte against the packed image; missing or damaged animation pages fail.
+The TI cartridge is now padded to 64 KB using the existing banked-cart hardware
+and linker. The fixed-program cap remains 24,336 bytes and neither data page may
+exceed 8,190 bytes. Coleco retains its unbanked configuration; validation of that
+target is deferred at the user's request while TI gameplay is being refined.
+
+Latest TI validation: all 42 defect mutations were rejected, all source-driven
+physics checks passed, and 53 GOSUB targets passed return-stack checks. The
+optimized fixed program uses 22,336 of 24,336 bytes (2,000 free); setup/assets
+use 8,050 of 8,190 (140 free), and animation uses 4,054 of 8,190 (4,136 free).
+RAM use is 408 bytes. All 507 optimized short branches were verified. Generated
+assembly correctly writes level 3's restored machine cell at VRAM address 6407.
+Classic99 captures of the latest production cart show level 3's wide head in
+retracted and extended positions, with a connected piston and the conveyor box
+preserved in front. This is a visual smoke check, not a whole-level clear or a
+measurement on original hardware. Current-pass builds and runtime review are
+TI-only; no claim of current Coleco validation is made.
+
+## §20 Squeezer clearance and complete smasher strokes (2026-10-02)
+
+This supersedes §19's squeezer placement and smasher travel. The old closed pose
+joined only the upper three rows of the jaws; its lower half still had a gap.
+All six visible rows now meet. The open gap stays 32 pixels. One-pixel movement
+still takes four world steps, with no added endpoint hold: the cycle is 128 steps,
+about 1.90 seconds at the nominal 67.5 world steps per second. The contact box
+is unchanged. In addition to the existing passage and crane-entry gates, the
+checker requires both two-jump directions to succeed across a roughly half-second
+launch window while opening, including a 12-step (~178 ms) stationary pause
+between landing and pressing jump again. All world hazards advance during this
+test. Restoring the lower jaw gap must fail the art regression.
+
+The Apple II longplay at 1:33-1:36 shows the crane-to-right-ledge staging, jump
+into the opening, and second jump toward the pail. The pair now occupies row 16,
+columns 4-8 (pixels 32-71), leaving sixteen clear pixels at the ledge's right end
+(72-87). The previous columns 5-9 left only eight pixels. Collision references
+move left by the same eight pixels. Tests require that full waiting space and
+verify stationary survival there throughout a complete jaw cycle. The lower
+ledge also supports a shoe still touching its right edge, rather than requiring
+the sprite midpoint to remain above it; a position with both shoes beyond the
+edge must remain unsupported.
+
+The crane-entry test now follows the complete intended journey: leave the rising
+girder as it reaches the lower ledge, stop at the right waiting spot, wait until
+the jaws visibly open, and make two jumps with a short re-press pause. It verifies
+the pail is actually collected. All actors and hazards run, across three starting
+girder heights and eight jaw phases; the existing six-of-eight gate is retained.
+The old test's immediate two jumps from the crane skipped the waiting spot.
+
+The rising girder could pass through Mack during the jump's apex hold because
+landing checks ran only during descent. `beam_move` now catches a surface crossing
+at the feet during the apex/fall, then carries him normally. It rejects approaches
+from underneath and positions outside the drawn span, and leaves the upward part
+of takeoff alone. Tests cover both girder edges and several heights, plus negative
+underside/outside cases. Removing the moving-surface catch or shoe-edge support
+must fail; moving the jaws back to the old cramped position must also fail.
+
+The level-2 head previously sank into the girder at the end of its stroke;
+level 3 stopped seven pixels above its belt and teleported upward. The new
+stroke limits put each four-pixel head directly on its supporting surface:
+
+| Property | Level 2 | Level 3 |
+| --- | --- | --- |
+| Head top, retracted / extended | 104 / 132 | 48 / 70 |
+| Extended head bottom / surface top | 135 / 136 | 73 / 74 |
+| Moving speed, down and up | 1 px/world step | 1 px/2 world steps |
+| Nominal moving speed at 60 Hz | 67.5 px/s | 33.75 px/s |
+| Time to full extension | 28 steps (~0.415 s) | 44 steps (~0.652 s) |
+| Repeating cycle | 128 steps (~1.90 s) | 128 steps (~1.90 s) |
+
+Level 2 retains its prior moving speed. Level 3 completes the longer stroke in
+roughly its former descent time, then visibly retracts at the same speed.
+These are port tuning choices, not measurements of the original game's speed.
+Impact sound occurs when the head first reaches the surface (phase 28 or 44).
+Tests sample the complete cycle, reject return jumps, verify actual head contact
+and ensure the full-extension dwell is at most ten steps.
+
+Level 3 adds characters 249-250 at row 9, columns 7-8. Their top two rows carry
+the last two pixels of head travel; the lower six rows retain the conveyor's
+eight animation phases and its original support geometry. Generated pattern
+and color data live in the animation bank. The nearby collectible remains in
+front of the piston until picked up. No player speed, jump arc, belt speed or
+glop timing was changed. Validation remains TI-only.
+
+The extra collision code exposed the documented TI first-assembly limit:
+unoptimized fixed code crossed the 16-bit address boundary before branch
+shortening could run, despite space in the final optimized image. The unchanged
+title-screen body now lives alongside the animation code in bank 2. Its fixed
+wrapper selects that bank and restores bank 1 on return. This leaves the gameplay
+code fixed, preserves normal title/start-site selection and avoids changing the
+compiler or relaxing a size gate.
+
+Final TI validation: all 49 defect mutations were rejected; all platform,
+inventory, physics and sound checks passed; all 54 GOSUB targets unwind. The
+517 verified short-branch optimizations save 2,068 bytes. Fixed code is
+22,102/24,336 bytes (2,234 free); the unoptimized comparison is 24,170 bytes
+(166 free). Setup/assets use 8,060/8,190 bytes (130 free), and the animation/title
+bank uses 5,268/8,190 (2,922 free). RAM use is 414 bytes; the cart remains 64 KB.
+The generated TI assembly was inspected for the swept-contact comparisons,
+title bank selection/restoration, and conveyor/head frame offsets.
+
+Classic99 captures of the production cart show complete jaw closure, the wider
+right waiting area, both smasher strokes and retraction, and the level-3 head
+touching the belt rail without erasing it. The title can still select both sites.
+The complete pail journey is covered by source-executed regression tests; this
+runtime visual review does not claim a manual whole-level clear. The newest
+production cart was left running on level 2 in one Classic99 window. No Coleco
+build or runtime check was performed for this pass.
