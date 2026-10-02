@@ -1,5 +1,22 @@
 # Hard Hat Mack — Design (CVBasic, dual-target TI-99/4A + ColecoVision)
 
+> **Current status (2026-10-01): both ColecoVision and TI-99/4A are required.**
+> Section 14 supersedes the historical retirement note and older movement/status
+> descriptions below. The maps/art are retained; the movement core is being repaired.
+> Title/838, music and loop difficulty described as design goals are not implemented.
+
+## Current performance budget
+
+At most eight sprite slots are used (Mack, carry overlay, elevator, drill, vandal,
+OSHA, bolt and crane cable); CPU positions them with CVBasic `SPRITE`.
+Real-time FRAME delta, clamped to four, feeds a 9/8 accumulator: at most five
+one-pixel world steps per pass. All gameplay movement now uses those steps.
+Ordinary walking makes at most eleven tile reads per step (chain probes + feet +
+torso); a spring ascent can make ten head probes per step. The intended ceiling
+is **60 tile VPEEKs per pass**, including bolts, with no COINC calls. This is a
+budget, not a measured throughput claim; CPU timing on busy levels still needs
+profiling. No RAM tile-map mirror; level data and graphics remain in ROM/VRAM.
+
 > **Hard-won CVBasic lessons this game obeys** (inherited from Structris/Astiroids — see
 > `games/Astiroids/DESIGN.md` §12 and `games/Structris/DESIGN.md` header for the war stories):
 >
@@ -154,11 +171,11 @@ States: **WALK** (1 px/step — same speed as the characters; conveyor drift ±1
 max. Characters are drawn **12 px tall, bottom-anchored** (see §5), so Mack's head sits at `my+4`
 and the head-bump probe is `TILE(mx+8, my+3)` — ~11 px head room under the 32-px-spaced floor
 above (a full-height 16-px sprite had only ~7 px and its jump bonked the ceiling + truncated to
-~1 cell). 16 steps: 8 up then 8 down (steep at launch/landing, flat over the top). Horizontal
+~1 cell). 32 steps: 8 up, 16 at the apex, then 8 down. Horizontal
 momentum is set by the direction **held** at takeoff: **none = straight up-and-down** (lands in
-place), left/right = 1 px/step drift = a full **16-px span = 2 cells** (measured) at walk speed;
+place), left/right = 1 px/step drift = a full **32-px span = 4 cells** at walk speed;
 index-driven, no signed compares) · **FALL** (dy 1,2,3,3…; **fatal past
-20 px**) ·
+26 px**) ·
 **RIDE** (y follows platform: elevator, crane beam, magnet, pater-noster) · **TRAMP**
 (scripted trampoline-channel ride) · **DEAD**.
 
@@ -487,8 +504,8 @@ mid-run and the emulator cannot be driven from a locked session.
 ## §8 Scoring, lives, bonus
 
 Girder deposited 100 · gap riveted 200 · lunchbox 300 · steel box delivered 500 · level
-complete + remaining BONUS. BONUS starts 4600 (L1) / 5000 (L2/L3) and drops 100 per 60-frame
-tick (floor 0). 3 lives; extra life at 10,000 (one-time). **`lives` is the SPARE count, not the total** — it starts at **2** for three plays, and game over fires on dying with it at 0, so `hud_lives` drawing `IF i < lives` correctly shows two hats on a fresh game. That is the repo convention (`CLAUDE.md` §7A: the indicator shows reserves, excluding the life being played). Stated explicitly because the `IF i < lives` pattern looks like the anti-convention bug at a glance and has already been misread once. Death = tumble + jingle, respawn at
+complete + remaining BONUS. BONUS starts 5000 on every level/life and drops 100 per 120 world steps
+(floor 0, death on reaching zero). 3 lives; extra life at 10,000 (one-time). **`lives` is the SPARE count, not the total** — it starts at **2** for three plays, and game over fires on dying with it at 0, so `hud_lives` draws `IF i + lives > 2`, right-justifying two hats on a fresh game. That is the repo convention (`CLAUDE.md` §7A: the indicator shows reserves, excluding the life being played). Stated explicitly because the `IF i < lives` pattern looks like the anti-convention bug at a glance and has already been misread once. Death = tumble + jingle, respawn at
 the level spawn **with level state intact**; 0 lives → GAME OVER → hi-score (session RAM) →
 title.
 
@@ -516,7 +533,7 @@ death / complete; SFX ch 2 (pickup, deposit, jump blips), noise ch 3 (rivet dril
 | Bonus tick | 60 f | 45 f |
 | Enemy count | 2 per level | **unchanged** (user rule) |
 
-## §11 Build & Run
+## §11 Historical build notes (current commands: README and section 14)
 
 - **TI-99/4A:** `bash build-ti.sh` — forked `cvbasic --ti994a` → `xas99` → `linkticart` →
   `src/HARDHAT_8.bin` (Classic99/js99er). The script **fails the build** if the program
@@ -582,9 +599,9 @@ into the magnet** as it passes gets Mack caught (`mag_catch`: airborne only, hea
 underside with his centre beneath its 2-cell span) → `lvdone`. The magnet's row is clear of the crane
 cable, so moving it needs no cable restore (unlike the beam, which does).
 
-## §13 Target change — ColecoVision only (2026-07-26)
+## §13 Historical retirement (2026-07-26; reversed by section 14)
 
-Development is now **ColecoVision-only**. The TI-99/4A build was hitting its **24,336-byte
+Development was temporarily **ColecoVision-only**. This decision is withdrawn; see section 14. The TI-99/4A build was hitting its **24,336-byte
 single-bank cart ceiling** (2,185 bytes free with level 3, the title screen, and music still
 unwritten — roughly 3 KB of work that does not fit), so every change was being fought against the
 byte counter. The Coleco ROM has room to finish the game properly, and it is also the machine the
@@ -618,3 +635,172 @@ loops back to level 1.
 **Not yet done:** the grinder at the conveyor's end (riding it to the end should kill), the central
 processor door as decor, IN-hopper "chomp" animation, and a play-through to confirm every box is
 reachable.
+
+
+## §14 Playability repair and dual-target restoration (2026-10-01)
+
+**Decision: repair the existing core; retain the maps and art.** The concrete
+faults below do not require discarding the level transcription work. This is a
+playability repair, not a claim of complete original-game fidelity.
+
+The baseline TI program measured **25,222 bytes**, 886 over the 24,336-byte
+fixed-area cap. `BANK ROM 128` / `BANK SELECT 1` / `BANK 1`, gated to TI, now put
+all level/graphic data into physical page 3. It stays selected for the entire
+game. Three loader pages plus one data page produce a **32 KB cart**. Coleco
+remains an ordinary unbanked ROM. `checkbank.py` checks exact page equality in
+the packed cart, the terminal data marker, and the 8 KB bound, with negative
+cases for truncation, oversize and corruption. Fixed-area size is checked before
+packing using the repository's existing `banksize.py`.
+
+### Budgets at the first repair (superseded by section 15)
+
+| Target / area | Used | Available / free |
+|---|---:|---:|
+| TI fixed program | 23,330 B | 1,006 B free of 24,336 |
+| TI data page (excluding trailer) | 2,560 B | 5,630 B free of 8,190 |
+| TI compiler-reported variables | 308 B | 7,546 B free of 7,854 |
+| Coleco ROM output | 24,576 B | 8,192 B below standard 32 KB limit |
+| Coleco compiler-reported variables | 297 B | 517 B free of 814 |
+
+### Movement and lifecycle changes
+
+- The 16-step jump only reached the enemy's 10-pixel vertical clearance for
+  three steps, too briefly to cross its 15-pixel horizontal contact interval.
+  A normal jump now holds its 11-pixel apex for 16 extra steps. Total duration
+  is 32 world steps (about 0.47 seconds at the target 67.5 steps/s), travelling
+  32 pixels with a direction held at launch. The stationary jump remains
+  stationary. A ceiling bump cancels the hold; spring jumps retain their
+  original 16-step arc. This deliberately changes the earlier 16-pixel tuning.
+- The BASIC-executing test finds 5, 15 and 25 safe integer launch positions
+  against stationary, half-speed and full-speed approaching enemies in its
+  fixture. The old arc has no usable window and must fail the test.
+- Airborne momentum continues after the table finishes. Walking off an edge
+  captures the held direction; dropping down a chain has no sideways momentum.
+- Fire jumps off chains and parked elevators too. This provides a way to leave
+  the level-3 shaft at its intermediate ledges; a complete traversal still needs
+  runtime verification. Moving elevator rides remain locked until arrival.
+- `world_step` advances Mack, the drill/vandal routes, patrols/collisions, bolts,
+  crane beam, magnet and elevator together. The bonus loses 100 every 120 world
+  steps (about 1.78 seconds at target rate). Thus a light and heavy loop pass no
+  longer changes platform/hazard speeds relative to Mack. The four-frame catch-up
+  clamp remains; if a pass exceeds it the whole simulation slows together.
+  Conveyor animation and sound/death/hammer-hold counters still use loop passes;
+  these are not claimed as frame-calibrated timings.
+- Fatal landings now set S_DEAD through an ordinary returning GOSUB. Subsequent
+  substeps cannot overwrite a pending death with a safe landing. The earlier
+  comment that calling `mack_die` unbalanced the return stack was incorrect:
+  it returns normally. Elevator support is refreshed before deciding a fall's
+  landing state, and death detaches Mack from the crane beam.
+- New games restart at level 1, without inheriting the game-over level. Level
+  initialization resets frame accumulation and the Fire edge. Old sprites are
+  hidden before repaint; noise and tone effects are silenced between screens.
+- The long-hold counter saturates instead of wrapping; a right-edge bolt spawn
+  clamps before adding 48, avoiding byte overflow. Lost steel boxes return as
+  steel boxes. Spare hats are right-justified, and bonus zero kills immediately.
+
+- Level-1 gap filling is explicitly limited to level 1. Otherwise the gap
+  coordinates left in memory consume steel boxes on level 3, making its six-box
+  objective impossible. The checker verifies both rejection on level 3 and a
+  successful level-1 deposit with the same coordinates.
+- The lives HUD uses its own loop index. Awarding an extra life during a pickup
+  must not overwrite the pickup routine's global index; the checker executes
+  the score-to-HUD call chain and verifies that the index survives.
+
+### Verification and remaining work
+
+Both target builds run `checkphysics.py`, the truncation gates and `gosubtrace`.
+The new checker executes the shipped BASIC routines (including byte wrapping),
+with tile fixtures and absent conveyor/crane probes, and rejects unknown executed
+statements. It covers ordinary jumps, one-cell holes from both sides, jumping
+from chains/parked elevators, fall momentum, fatal landing persistence and the
+shared movement call schedule. Six bad mutations must fail, including stale gap consumption and HUD index clobbering. It does not model
+the compiler, CPU timing, full moving-platform geometry, or whole-level routes.
+
+TI boot and a Fire jump were smoke tested in Classic99 using the production
+cart. Full play-throughs, busy-level timing measurements and Coleco runtime
+verification remain open. No title/838 screen, music, escalating difficulty or
+moving pater-noster has been added by this repair. The old M1-M6 notes above
+are historical/design material; README lists the current user-visible behavior.
+
+Use `tools/hardhat-dev.ps1 BuildAll` for sequential builds and `LaunchTI` for
+Classic99 with the project's input profile and a reported production ROM hash.
+
+## §15 Three-site mechanics and presentation repair (2026-10-01)
+
+This section supersedes earlier descriptions of the title, site-2 prizes,
+site-3 shaft, sprite allocation, audio timing and current budgets. Both TI-99/4A
+and ColecoVision remain required targets of the shared CVBasic source.
+
+**Reference scope:** the supplied [Apple II video](https://www.youtube.com/watch?v=HwHZ-18Zgvg)
+is 89 seconds and shows only site 1. It supports the white hat/purple clothing,
+green/white columns and elevator cage. Existing `HHM-CV-Level2.png` and
+`HHM-Level3.png` supply the later visual references. Later-site movement is
+checked against the implemented geometry, not inferred from that video.
+
+### Changes
+
+- The title defaults to site 1 and offers up/down starting-site selection.
+  Fire must be released before starting. Game over returns here; high score
+  survives. Three starting lives and normal site progression remain.
+- Site 2 has six red/white, two-cell lunch pails; collection erases both halves.
+  Its lower conveyor and mixer return to reference columns 5/9 and 10/11.
+  `belt_surface` follows the actual 2:1 incline with flat roller ends, clamps
+  both ends, and avoids multiply/divide register hazards. Crane drawing follows
+  simulation so the bar and rider use the same current position.
+- Site 3 has two circulating 24-pixel paddles instead of a ladder and fixed
+  stubs. A 240-step rectangular circuit runs from (96,144) up to (96,64), across
+  to (136,64), down to (136,144), and back. The second paddle is 120 steps ahead.
+  `beam_sup` dispatches to paddle support on site 3; `beam_move` carries a rider
+  horizontally and vertically. Fire detaches the rider. The site-2 sticky
+  support shortcut is disabled for these narrower paddles. Shaft tiles 208/209
+  are scenery; ordinary chains remain climbable.
+- Sprite 8 adds purple clothing to Mack's white hat/skin/boots; sprite 9 draws
+  the cage. Slots 10-13 draw paddles. Teardown hides slots 0-13. Patterns 15-19
+  contain matching clothing poses, 20 the paddle, 21 the cage. Machine tiles
+  210-219 form each broad IN hopper; 220-223 form the door. Ground-level delivery
+  regions are independent of the artwork's character codes.
+- Frame-clocked sound envelopes provide jump/spring sweeps, two-pitch pickups,
+  a falling death tone and a four-note clear phrase, all with note-offs. These
+  are PSG adaptations, not a verified transcription of Apple II sound. Hammer
+  holds and death pauses also use frame deltas. Conveyor pattern animation
+  remains one phase per animation tick to avoid aliasing.
+- Setup/parser code moved into the permanently selected TI asset page; runtime
+  movement remains fixed. No bank switching occurs during play.
+
+### Current budgets
+
+| Area | Used | Free / limit |
+|---|---:|---:|
+| TI fixed program | 20,936 B | 3,400 B / 24,336 B |
+| TI setup/assets, excluding trailer | 7,817 B | 373 B / 8,190 B |
+| TI variables | 326 B | 7,528 B / 7,854 B |
+| Coleco ROM | 24,576 B | 8,192 B / 32,768 B |
+| Coleco variables | 318 B | 496 B / 814 B |
+
+The permanent page is now the tight budget. Additional setup/art must pass
+`checkbank.py`; a successful compiler exit is insufficient.
+
+### Verification and limits
+
+Both target builds pass their gates. TI assembly was inspected for the 16-bit
+second-paddle phase addition and belt surface routine. The checker now executes
+real moving-surface routines rather than stubs. It parses all three level streams
+into a name table, checks every pail/box objective, two lift circuits, twelve
+transfers to side platforms and both spring entries, plus the earlier movement,
+inventory and frame-delta sound tests. Nine negative mutations must fail,
+including bad belt-end geometry, rider drift and a missing sound note-off.
+Transfer tests place Mack at controlled takeoff positions; these are not full
+autonomous play-throughs.
+
+All three sites were rendered in Classic99 and CoolCV. Title selection works
+on both; TI checks include conveyor traversal and a spring launch onto the
+lower-left site-3 platform. Full uninterrupted clears, hardware timing profiles
+and listening comparisons remain outstanding. The conveyor box on site 3 is
+still stationary; escalating loop difficulty and original music remain open.
+
+`LaunchTI` leaves one production Classic99 instance at the normal title with
+site 1 selected. Later sites can be reviewed through the production title,
+without source edits or special starting-level cartridges. `LaunchColeco` uses
+the locally installed CoolCV. Its SDL input needs scan codes and extended arrow
+flags when driven through Windows key events; virtual-key-only events can
+deliver no game input despite a live, correctly captured emulator.

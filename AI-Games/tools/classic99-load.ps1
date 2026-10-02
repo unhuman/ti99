@@ -1,5 +1,5 @@
 # Load a cartridge through Classic99's normal file-open path after initialization.
-param([Parameter(Mandatory=$true)][int]$ProcessId,[Parameter(Mandatory=$true)][string]$Rom)
+param([Parameter(Mandatory=$true)][int]$ProcessId,[Parameter(Mandatory=$true)][string]$Rom,[int]$LoadTimeoutMs=600)
 $ErrorActionPreference='Stop'
 Add-Type @"
 using System;
@@ -66,7 +66,9 @@ if($fileBox -ne [IntPtr]::Zero) {
 if($script:cartEdit -eq [IntPtr]::Zero){throw 'Could not find the cartridge filename field.'}
 [void][ClassicCart]::SendMessage($script:cartEdit,12,[IntPtr]::Zero,$Rom)
 [void][ClassicCart]::PostMessage($script:cartDialog,273,[IntPtr]1,[IntPtr]::Zero)
-Start-Sleep -Milliseconds 600
+for($elapsed=0;$elapsed -lt $LoadTimeoutMs -and [ClassicCart]::IsWindowVisible($script:cartDialog);$elapsed+=100) {
+ Start-Sleep -Milliseconds 100
+}
 if([ClassicCart]::IsWindowVisible($script:cartDialog)){throw 'Classic99 left the file dialog open; cartridge load was not accepted.'}
 # Reinitialize console RAM/video after loading; opening alone can leave a blank
 # selection menu, while a cold reset with this same cartridge displays it.

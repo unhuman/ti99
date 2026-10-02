@@ -405,6 +405,12 @@ Every game is built the same way — that consistency is the point.
 > cart** — an emulator left open from an earlier build shows stale behavior and reads as "your fix
 > didn't work."
 
+- **SDL emulator input needs scan codes.** Windows `keybd_event(vk, 0, ...)`
+  reached Classic99 but delivered no input to CoolCV, despite valid foreground
+  focus and screenshots. Supply the scan code from `MapVirtualKey(vk, 0)`;
+  arrows also need `KEYEVENTF_EXTENDEDKEY` on both press and release. Verify an
+  actual menu selection or movement before diagnosing the ROM's input code.
+
 - **`core.autocrlf=true` MAKES EVERY SHELL SCRIPT UNRUNNABLE AFTER A CHECKOUT.** Git stores LF
   and hands the working tree CRLF, and bash does not fail on the carriage returns themselves —
   it reports `syntax error near unexpected token $'{\r'`, which reads as a broken script rather
