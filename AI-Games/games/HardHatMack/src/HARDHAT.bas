@@ -40,6 +40,7 @@
 	CONST T_ELEV   = 236	'   parked elevator platform chars
 	CONST T_PAD    = 139	'   level-3 trampoline pad: stand on it and be
 				'   launched a whole beam upward (spr2 arc)
+	CONST T_PAD_R  = 141	' right factory spring: two independent animated halves
 	CONST T_SPRTOP = 137	'   animated springboard left half
 	CONST T_SPRBSE = 138	'   animated springboard right half
 	CONST T_SOLID1 = 151
@@ -428,8 +429,8 @@ game_chars:
 	DEFINE COLOR T_STAND,1,stand_col
 	DEFINE CHAR T_SBOX,1,sbox_pat	' 182 level-3 steel box
 	DEFINE COLOR T_SBOX,1,sbox_col
-	DEFINE CHAR T_PAD,1,pad_pat	' 139 level-3 trampoline pad
-	DEFINE COLOR T_PAD,1,pad_col
+	DEFINE CHAR T_PAD,4,pad_pat	' 139 level-3 trampoline pad
+	DEFINE COLOR T_PAD,4,pad_col
 	DEFINE CHAR T_CONVH,1,convh_pat	' 161 flat conveyor belt
 	DEFINE COLOR T_CONVH,1,convh_col
 	DEFINE CHAR T_DOOR,1,door_pat	' 182 processor door
@@ -803,9 +804,8 @@ st_walk:
 	IF ch = T_FILLED THEN
 		IF carry = 2 THEN GOSUB rivet_gap
 	END IF
-	' Level-3 trampoline pad, under his FEET: launch immediately with the
-	' spr2 arc, which clears a whole beam. Hold a direction to steer -- the
-	' pads sit two cells out from the beam they serve.
+	' Factory pads use the same compression/rebound as the level-one spring.
+	' Normalize their separate graphics codes before testing foot contact.
 	IF ch <> T_PAD THEN padok = 1	' stepped off: the pads are live again
 	IF ch = T_PAD THEN
 		IF lv = 3 THEN GOTO spring_begin
@@ -1021,7 +1021,8 @@ st_jump:
 	' carry him outward. Drifting immediately would hit the beam from below.
 	IF spr2 = 1 THEN
 		IF lv = 3 THEN
-			IF jix < 5 THEN GOTO jump_vertical
+			' Raised pads clear the underside after three ascent steps.
+			IF jix < 3 THEN GOTO jump_vertical
 		END IF
 	END IF
 	' Horizontal drift is committed FIRST -- before the vertical move that
@@ -1142,12 +1143,12 @@ jump_adv:
 
 st_fall:
 	IF lv = 3 THEN
-		IF my >= 160 THEN
+		IF my >= 152 THEN
 			cx = mx + 8
-			IF cx >= 84 THEN
+			IF cx >= 76 THEN
 				IF cx <= 103 THEN GOTO spring_begin
 			END IF
-			IF cx >= 156 THEN
+			IF cx >= 148 THEN
 				IF cx <= 175 THEN GOTO spring_begin
 			END IF
 		END IF
@@ -1377,6 +1378,9 @@ foot_probe:
 	fy = my + 16
 	IF fy > 191 THEN RETURN
 	ch = TILE(mx + 8,fy)
+	IF ch >= T_PAD THEN
+		IF ch <= T_PAD_R + 1 THEN ch = T_PAD
+	END IF
 	IF ch >= T_SOLID0 THEN
 		IF ch <= T_SOLID1 THEN sup = 1
 	END IF
@@ -2407,38 +2411,26 @@ spring_begin:
 	st = 7
 	bonbeam = 0
 	springtick = 0
+	springphase = 0
+	trtick = 0
+	trpose = 0
 	springdir = 1
 	IF mx >= 128 THEN springdir = 0
-	mx = 84
-	IF springdir = 0 THEN mx = 156
-	my = 168
-	#sndpitch = 300
-	sfxlen = 8
-	sndvol = 10
-	GOSUB tone_start
+	springpad = 1 - springdir
+	trby = 176
+	mx = 80
+	IF springdir = 0 THEN mx = 152
+	IF my > 160 THEN my = 160
 	RETURN
 
 spring_transfer:
-	springtick = springtick + 1
-	IF springdir = 1 THEN
-		mx = mx + 2
-	ELSE
-		mx = mx - 2
-	END IF
-	IF springtick <= 18 THEN
-		my = my - 3
-	ELSE
-		my = my + 3
-	END IF
-	IF springtick = 36 THEN
-		st = S_JUMP
-		jix = 0
-		spr2 = 1
-		bmp1 = 0
-		fcy = my
-		jhz = 0
-		IF springdir = 1 THEN jhz = 2
-	END IF
+	#if TI994A
+	BANK SELECT 3
+	#endif
+	GOSUB banked_spring_transfer
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 site_step:
@@ -2554,20 +2546,20 @@ factory_step:
 	IF st = S_JUMP THEN
 		IF spr2 = 1 THEN RETURN
 	END IF
-	IF my >= 160 THEN
-		IF cx >= 84 THEN
+	IF my >= 152 THEN
+		IF cx >= 76 THEN
 			IF cx <= 103 THEN
 				GOSUB spring_begin
 				RETURN
 			END IF
 		END IF
-		IF cx >= 156 THEN
+		IF cx >= 148 THEN
 			IF cx <= 175 THEN
 				GOSUB spring_begin
 				RETURN
 			END IF
 		END IF
-		GOSUB mack_die
+		IF my >= 160 THEN GOSUB mack_die
 	END IF
 	RETURN
 
@@ -2793,6 +2785,7 @@ init_level:
 	trby = 184
 	trpose = 0
 	trlast = 255
+	trrightlast = 255
 	tron = 0		' no trampoline unless this level's data defines one
 	IF lv = 3 THEN
 		RESTORE level3_data
@@ -3216,7 +3209,7 @@ level1_data:
 	' Objects. FOUR holes + FOUR bricks (any brick fills any hole); the
 	' drill and first-tour vandal use fixed routes. Repeat tours add a second
 	' independently chosen roamer in enemy_setup.
-	DATA BYTE 5,13, 21,23		' Mack spawn: right side of the bottom beam
+	DATA BYTE 5,13, 21,24		' Mack spawn: one cell right of the support
 	DATA BYTE 5,7, 23,29		' trampoline: bottom (row 23), cols 29-30
 	DATA BYTE 5,1, 21,11		' hole: 1st floor (beam 1)
 	DATA BYTE 5,1, 9,18		' hole: beam 4
@@ -3412,15 +3405,13 @@ level3_data:
 	DATA BYTE 8, 22,14,1,220
 	DATA BYTE 8, 22,15,2,221
 	DATA BYTE 8, 22,17,1,222
-	' The pads go IN the ground row, not on top of it: Mack walks the ground
-	' with his feet on row 23, so a pad drawn at row 22 sits at his waist and
-	' he strolls straight through it. The foot probe is what triggers a pad.
-	DATA BYTE 8, 23,11,1,139	' left  trampoline pad (col 11)
-	DATA BYTE 8, 23,20,1,139	' right trampoline pad (col 20)
-	DATA BYTE 8, 22,11,1,179	' ...and the stands the reference draws under
-	DATA BYTE 8, 22,20,1,179	'    them
+	' Two-character springs sit one row ABOVE the ground, inside the site.
+	DATA BYTE 8, 22,10,1,139
+	DATA BYTE 8, 22,11,1,140
+	DATA BYTE 8, 22,19,1,141
+	DATA BYTE 8, 22,20,1,142
 	' The two pairs of oil drums the reference stands on the ground.
-	DATA BYTE 1, 22,9,2,10
+	DATA BYTE 1, 22,8,2,10
 	DATA BYTE 1, 22,21,2,10
 	' Six steel boxes, one per beam, each resting ON the girder (one row above
 	' it) so the torso probe can reach them. The conveyor one rides at belt
@@ -3574,12 +3565,17 @@ sbox_pat:
 sbox_col:
 	DATA BYTE $11,$31,$F1,$DF,$DF,$F1,$F1,$11
 pad_pat:
-	' 139 trampoline pad: a green bounce plate on a pinched magenta stand.
-	' SOLID, so Mack stands on it -- and st_walk launches him straight off
-	' again with the spr2 arc, one whole beam up.
-	DATA BYTE $FF,$FF,$00,$3C,$18,$18,$3C,$7E
+	' Generated by assets/genconveyors.py; edit the generator.
+	DATA BYTE $7F,$7F,$02,$04,$02,$04,$1F,$1F
+	DATA BYTE $FE,$FE,$40,$20,$40,$20,$F8,$F8
+	DATA BYTE $7F,$7F,$02,$04,$02,$04,$1F,$1F
+	DATA BYTE $FE,$FE,$40,$20,$40,$20,$F8,$F8
 pad_col:
-	DATA BYTE $31,$31,$11,$D1,$D1,$D1,$D1,$D1
+	' Generated by assets/genconveyors.py; edit the generator.
+	DATA BYTE $F1,$D1,$31,$D1,$31,$D1,$31,$31
+	DATA BYTE $F1,$D1,$31,$D1,$31,$D1,$31,$31
+	DATA BYTE $F1,$D1,$31,$D1,$31,$D1,$31,$31
+	DATA BYTE $F1,$D1,$31,$D1,$31,$D1,$31,$31
 convh_pat:
 	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $00,$00,$FF,$C0,$C0,$C0,$FF,$00
@@ -4681,6 +4677,7 @@ animated_machines:
 		RETURN
 	END IF
 	IF lv = 3 THEN
+		GOSUB factory_springs_draw
 		' The head reaches y=73, directly above the belt rail at y=74.
 		pressfoot = 0
 		IF pressy = 61 THEN pressfoot = 1
@@ -4709,6 +4706,28 @@ animated_machines:
 		IF lv = 3 THEN presspose = pressy - 32
 		DEFINE CHAR 243,6,VARPTR press_pat(presspose * 48)
 		DEFINE COLOR 243,6,VARPTR press_col(presspose * 48)
+	END IF
+	RETURN
+
+factory_springs_draw:
+	trleft = 0
+	trright = 0
+	IF st = 7 THEN
+		IF springpad = 0 THEN
+			trleft = trpose
+		ELSE
+			trright = trpose
+		END IF
+	END IF
+	IF trleft <> trlast THEN
+		trlast = trleft
+		DEFINE CHAR T_PAD,2,VARPTR tramp_pat(trleft * 16)
+		DEFINE COLOR T_PAD,2,VARPTR tramp_col(trleft * 16)
+	END IF
+	IF trright <> trrightlast THEN
+		trrightlast = trright
+		DEFINE CHAR T_PAD_R,2,VARPTR tramp_pat(trright * 16)
+		DEFINE COLOR T_PAD_R,2,VARPTR tramp_col(trright * 16)
 	END IF
 	RETURN
 
@@ -5289,6 +5308,62 @@ banked_score_print:
 	END IF
 	RETURN
 
+banked_spring_transfer:
+	IF springphase <> 1 THEN
+		' Finish falling onto the cap before it takes Mack's weight.
+		IF my < 160 THEN
+			my = my + 2
+			IF my > 160 THEN my = 160
+			RETURN
+		END IF
+		GOSUB banked_tramp_press
+		IF trtick = 8 THEN
+			IF springphase = 0 THEN
+				springphase = 1
+			ELSE
+				st = S_JUMP
+				jix = 0
+				spr2 = 1
+				bmp1 = 0
+				fcy = my
+				jhz = 0
+				IF springdir = 1 THEN jhz = 2
+			END IF
+		END IF
+		RETURN
+	END IF
+	springtick = springtick + 1
+	IF springdir = 1 THEN
+		mx = mx + 2
+	ELSE
+		mx = mx - 2
+	END IF
+	IF springtick <= 18 THEN
+		my = my - 3
+	ELSE
+		my = my + 3
+	END IF
+	IF springtick = 36 THEN
+		springphase = 2
+		springpad = 1 - springpad
+		trtick = 0
+	END IF
+	RETURN
+
+banked_tramp_press:
+	' Both sites share the cap displacement, rider position and release sound.
+	trtick = trtick + 1
+	trpose = trtick
+	IF trtick > 4 THEN trpose = 8 - trtick
+	my = trby + trpose - 16
+	IF trtick = 8 THEN
+		#sndpitch = 300
+		sndvol = 10
+		sfxlen = 5
+		GOSUB tone_start
+	END IF
+	RETURN
+
 banked_tramp_step:
 	IF trph = 0 THEN
 		' Drop down the channel to the trampoline at the bottom -- EVERY
@@ -5304,19 +5379,8 @@ banked_tramp_step:
 		RETURN
 	END IF
 	IF trph = 3 THEN
-		' Impact compresses the cap four pixels, then the spring releases.
-		' Mack's soles follow that same surface on every world step.
-		trtick = trtick + 1
-		trpose = trtick
-		IF trtick > 4 THEN trpose = 8 - trtick
-		my = trby + trpose - 16
-		IF trtick = 8 THEN
-			trph = 1
-			#sndpitch = 300
-			sndvol = 10
-			sfxlen = 5
-			GOSUB tone_start
-		END IF
+		GOSUB banked_tramp_press
+		IF trtick = 8 THEN trph = 1
 		RETURN
 	END IF
 	IF trph = 1 THEN

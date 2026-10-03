@@ -112,6 +112,9 @@ def tables():
             result['tramp_col'] += [0xf1 if y==depth else 0xd1 if y==depth+1
                                     else 0x31 if y>=6 else 0xd1 if y&1 else 0x31
                                     for y in range(8)]
+    # Both factory springs reuse the exact two-character level-one artwork.
+    result['pad_pat'] = result['tramp_pat'][:16]*2
+    result['pad_col'] = result['tramp_col'][:16]*2
     return result
 
 
@@ -160,6 +163,7 @@ def check(source):
         assert min(y for x,y in pixels)==depth, 'springboard cap does not compress'
         assert {(x,y) for x,y in pixels if y>=6}=={(x,y) for x in range(3,13) for y in (6,7)}, 'springboard base moves'
         assert {(x,depth) for x in range(1,15)}<=pixels, 'springboard cap breaks apart'
+    assert t['pad_pat']==t['tramp_pat'][:16]*2 and t['pad_col']==t['tramp_col'][:16]*2
     assert len({tuple(t['belt_anim%d'%i]) for i in range(8)})==8
     for name,fn in [('inclined',diagonal),('flat',flat)]:
         assert len({tuple(fn(i)) for i in range(8)})==8, name+' phases repeat'

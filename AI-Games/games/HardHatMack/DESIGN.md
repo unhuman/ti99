@@ -264,7 +264,8 @@ floor → rides down to the 1st floor). As Mack drifts left out of the channel o
 **flips to face left** (the way he's going) so he doesn't moon-walk off the trampoline. **Rivets** are thrown from above at Mack's position and
 hop down the building (left-only, one bounce per floor, passing through after each bounce);
 contact kills. Vandal patrols the 4th floor (2–12); OSHA patrols the 1st floor's left side
-(4–20, homing in Mack's band). Mack spawns on the **right side of the 1st floor** (21,25).
+(4–20, homing in Mack's band). Mack spawns on the **right side of the 1st floor** (21,24),
+one character to the right of the column-23 vertical support.
 
 ### Level 2 — "Lunch Break" (M4 — layout transcribed from the reference)
 
@@ -442,13 +443,13 @@ end. Because the belt path returns early from `st_walk`, the hazard *and* pickup
 repeated inside it; without that the grinder could not kill and the box riding the belt could not
 be grabbed.
 
-**The trampoline pads (T_PAD, char 139)** are how you get up from the ground. They are **solid and
-sit IN the ground row** — drawn one row higher they'd be at Mack's waist and he would walk straight
-through them, since it is the *foot* probe that triggers a pad. Standing on one launches him
-immediately with the `spr2` arc (now ×5, ~55 px — ×3 fell short of a beam), steerable by holding a
-direction at the moment of launch; the pads sit two cells out from the beam they serve. Landing on
-a pad is **never** fatal, or the ~55 px descent would read as a killing fall. Verified: step on the
-left pad holding left → lands on the lower-left beam (feet row 17).
+**The trampoline pads (chars 139-142)** are how you get up from the ground. Each
+is two characters wide at row 22, one row above the ground, with the catch and
+launch positions raised alongside the artwork. The current route
+compresses the starting pad, bounces Mack across to the other pad, compresses
+that pad, then launches him onto the opposite lower platform. Both compressions
+share level one's four-pixel cap displacement and eight-step rebound. Landing
+on either pad is never fatal. See §30 for the animation and validation.
 
 **The pater-noster** stays the flagged simplification — a climbable shaft rather than moving cars —
 with the reference's step-off stubs built as real ledges. **Deviation:** the reference runs it
@@ -1747,3 +1748,54 @@ TI build passed all 96 defect mutations and 74 returning GOSUB targets. The
 181/586/4,320 bytes respectively; RAM is 476 bytes and the cart is 64 KB.
 Production SHA-256:
 `EC409B96E6614D13249801B592B2AA77763B9392E846B08E27FF269689626DD4`.
+
+## §29 Clearer starting position (2026-10-02)
+
+Level one's spawn moves from column 23 to 24 (Mack x=180 to 188), one cell
+right of the support. His hat and torso now occupy x=193..199 against black,
+clear of the support at x=184..191. The same data drives respawn. The support's
+white/green palette is consistent with the Apple II reference and is retained.
+Source execution verified supported footing, clear head/torso pixels, matching
+respawn and no automatic spray-can pickup. Classic99 confirmed the placement.
+
+The complete TI build again passed all 96 defect mutations; memory and bank
+budgets are unchanged from §28. The newest production cart is left in one
+Classic99 window with normal starting conditions. SHA-256:
+`9EAC44776631D5A41F1E69BBAB9AC454B733F94F09E6360A6A99774DEADE48AB`.
+
+## §30 Level-three springs match level one (2026-10-02)
+
+Both factory springs now occupy two characters on row 22, above the ground:
+columns 10-11 on the left and 19-20 on the right (characters 139-142). Their
+patterns and colors reuse level one's exact five poses, including the cap,
+coil and fixed base. The left oil drums move to columns 8-9 to clear the pad;
+the misplaced supports above the old springs are removed. Each spring caches
+its pose independently, so only the occupied spring compresses and idle frames
+perform no character uploads. Death restores both resting poses.
+
+The shared compression routine moves Mack's soles with the cap for eight world
+steps and sounds the launch cue on release. Level three compresses the first
+spring, crosses in the existing 36-step arc, then compresses the opposite spring
+before launching onto the opposite lower platform. Mack centers at x=80/152,
+with resting soles at y=176. Falling catches and all four character halves use
+the raised surface. The second launch begins horizontal movement after three
+steps instead of five, clearing the girder underside and reaching the platform
+from the higher spring. The two compressions and crossing take 52 world steps,
+in addition to the initial fall and final platform jump.
+
+Source-driven checks cover both directions, all four pad halves, both launch
+sounds, rider/cap alignment, bank restoration, independent character/color
+uploads, death reset and 1/2/4-step render batches. Five added defect mutations
+reject lowered pads, missing drawing, failure to switch active pads, a skipped
+second compression and the old launch delay (101 total). Classic99 captures
+verified both complete routes, from falling onto the first spring through the
+second rebound and a stable landing on the opposite platform. Each temporary
+review cartridge was immediately replaced with normal production afterward.
+
+The TI build passed all 101 defect mutations and 77 returning GOSUB targets.
+Its 511 verified short branches save 2,044 bytes: fixed code is 21,984/24,336
+bytes (2,352 free), with 24,028 bytes before optimization. Banks 1/2/3 retain
+125/378/3,960 bytes respectively; RAM is 480 bytes and the cartridge is 64 KB.
+The latest production cart is running in one Classic99 window with normal
+starting conditions. SHA-256:
+`0577245DD847264BD019C89547408DDE75B43BD3BFD95EE73965C7CC57C83A34`.

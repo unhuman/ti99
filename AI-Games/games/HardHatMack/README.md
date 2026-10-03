@@ -11,7 +11,8 @@ Three construction sites are implemented:
    ride, Mack does two quick crouch-and-rise motions with a two-tone sound
    (about half a second), then you can walk or jump off. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
-   and his feet follow the moving cap.
+   and his feet follow the moving cap. Mack starts one character to the right
+   of the vertical support so his hat and torso remain clear against black.
 2. **Lunch Break:** collect six lunch pails across the platforms and ground,
    avoiding the pincers, pounder, concrete, furnace and vat. The magnet stays parked until all six pails are collected. Jump from the upper
    conveyor into the armed magnet; it carries Mack back to the crane top. The upper
@@ -21,6 +22,9 @@ Three construction sites are implemented:
    Carry each to a lip of either lower-floor opening; the box drops into the
    processor. Four paddles circulate counterclockwise (left down, right up).
    The two springs bounce Mack across the site and onto the opposite lower tier.
+   Both are two characters wide, one row above the ground, and use level one's
+   artwork, compression, rebound and launch sound. Only the pad
+   under Mack compresses, with his feet following it before each launch.
    The processors, central toilet and conveyor machinery are dangerous.
 
 Joystick 1: left/right walk, up/down climb, **Fire jumps** from a floor, chain,
@@ -154,7 +158,7 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-Ninety-six deliberately broken variants must fail. New checks cover moving
+101 deliberately broken variants must fail. New checks cover moving
 pincers, visible hazard bounds, belt/slag alignment, speed clocks, elevator boarding
 with background tiles, both parked and moving elevators at game over, two-jump
 pincer crossings launched at closure in both directions, the factory box route

@@ -196,7 +196,8 @@ class Basic:
                 color=line.startswith('define color ')
                 first, count, pointer = line[13 if color else 12:].split(',', 2)
                 m = re.fullmatch(r'varptr (\w+)\((.+)\)', pointer)
-                if pointer.startswith(('varptr claw_pat','varptr press_','varptr tramp_')):
+                if pointer.startswith(('varptr claw_pat','varptr press_','varptr tramp_',
+                                       'varptr pad_anim','varptr pad_colors')):
                     assert self.bank==2, 'animation data read from wrong bank'
                 if pointer in ('title_pat','title_col'):
                     assert self.bank==3, 'title art read from wrong bank'
@@ -462,13 +463,15 @@ def transfers(source):
         if level == 3:
             for side in (0, 1):
                 vm = copy.deepcopy(base)
-                vm.v.update(mx=84 if side==0 else 156, my=168,
+                vm.v.update(mx=80 if side==0 else 152, my=160,
                             jr=1-side, jl=side, padok=1)
                 vm.run('spring_begin')
-                for _ in range(36):
+                # Eight-step compression on each pad, with the existing
+                # 36-step cross-site flight between them.
+                for _ in range(52):
                     vm.run('mack_step')
-                assert vm.v['mx'] == (156 if side==0 else 84)
-                assert vm.v['my'] == 168 and vm.v['st']==vm.v['s_jump']
+                assert vm.v['mx'] == (152 if side==0 else 80)
+                assert vm.v['my'] == 160 and vm.v['st']==vm.v['s_jump']
                 for _ in range(50):
                     vm.run('mack_step'); vm.run('beam_move')
                     if vm.v['st'] in (vm.v['s_walk'], vm.v['s_dead']): break
@@ -1396,6 +1399,55 @@ def trampoline_animation(source):
     assert vm.v['trlast']==0, 'new level misses initial spring pose'
 
 
+def factory_spring_animation(source):
+    for side in (0,1):
+        for batch in (1,2,4):
+            vm=Basic(source);vm.v.update(lv=3,lives=2);vm.run('init_level')
+            assert vm.screen[22*32+10:22*32+12]==[139,140], 'left spring not two cells above ground'
+            assert vm.screen[22*32+19:22*32+21]==[141,142], 'right spring overlaps drums or ground'
+            assert vm.screen[23*32+10:23*32+12]==[133,133]
+            assert vm.screen[23*32+19:23*32+21]==[133,133]
+            vm.v.update(mx=80 if side==0 else 152,my=160)
+            vm.run('spring_begin');vm.run('site_draw')
+            for elapsed in range(batch,53,batch):
+                for _ in range(batch):vm.run('mack_step')
+                vm.run('site_draw')
+                assert vm.bank==1, 'factory spring leaks its code/graphics bank'
+                if elapsed<=8 or elapsed>=44:
+                    tick=elapsed if elapsed<=8 else elapsed-44
+                    depth=min(tick,8-tick)
+                    active=side if elapsed<=8 else 1-side
+                    assert vm.v['my']==160+depth, 'factory rider detaches from cap'
+                    assert vm.v['mx']==(80 if active==0 else 152), 'factory rider drifts during compression'
+                    for pad in (0,1):
+                        expect=depth if pad==active else 0
+                        writes=[w for w in vm.pattern_writes if w[0]==139+pad*2]
+                        colors=[w for w in vm.color_writes if w[0]==139+pad*2]
+                        assert writes and colors, 'factory spring graphics never uploaded'
+                        assert writes[-1]==(139+pad*2,2,'tramp_pat',expect*16), 'wrong factory pad or pose'
+                        assert colors[-1]==(139+pad*2,2,'tramp_col',expect*16), 'factory pad colors do not follow cap'
+                else:
+                    assert vm.v['springphase']==1 and vm.v['trpose']==0
+            assert vm.v['st']==vm.v['s_jump'] and vm.v['spr2']==1
+            assert len([e for e in vm.sound if e[0]==2 and e[2]>0])==2, 'both releases need a launch sound'
+            count=len([w for w in vm.pattern_writes if w[0] in (139,141)])
+            for _ in range(3):vm.run('site_draw')
+            assert len([w for w in vm.pattern_writes if w[0] in (139,141)])==count, 'idle factory pads keep uploading'
+            vm.v.update(st=7,trpose=4,springpad=side);vm.run('site_draw')
+            vm.v['st']=vm.v['s_dead'];vm.run('site_draw')
+            assert vm.v['trlast']==vm.v['trrightlast']==0, 'death leaves a factory pad compressed'
+    for x in (80,152):
+        vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
+        vm.v.update(mx=x,my=152,st=vm.v['s_fall']);vm.run('mack_step')
+        assert vm.v['st']==7 and vm.v['my']==152, 'factory spring snaps a falling rider to the ground'
+        for _ in range(4):vm.run('mack_step')
+        assert vm.v['my']==160 and vm.v['trpose']==0, 'factory spring compresses before contact'
+    for col in (10,11,19,20):
+        vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
+        vm.v.update(mx=col*8-8,my=160);vm.run('foot_probe')
+        assert vm.v['sup']==1 and vm.v['ch']==vm.v['t_pad'], 'one spring half is not recognized as a pad'
+
+
 def main():
     source = SOURCE.read_text(encoding='utf-8')
     windows = clear_windows(source)
@@ -1418,6 +1470,7 @@ def main():
     score_range(source)
     elevator_dance(source)
     trampoline_animation(source)
+    factory_spring_animation(source)
     slag_cadence(source)
     fidelity(source)
     visual_hazards(source)
@@ -1443,6 +1496,11 @@ def main():
             assert vm.v['st'] == vm.v['s_walk'], 'jump failed to clear single-cell gap'
     # Known defects MUST fail: short clearance, lost momentum, deferred death.
     mutants = [
+        (source.replace('IF jix < 3 THEN GOTO jump_vertical','IF jix < 5 THEN GOTO jump_vertical'),transfers),
+        (source.replace('DATA BYTE 8, 22,10,1,139','DATA BYTE 8, 23,10,1,139'),factory_spring_animation),
+        (source.replace('GOSUB factory_springs_draw','trleft = 0'),factory_spring_animation),
+        (source.replace('springpad = 1 - springpad','springpad = springpad'),factory_spring_animation),
+        (source.replace('IF springphase <> 1 THEN','IF springphase = 0 THEN'),factory_spring_animation),
         (source.replace('trph = 3\n\t\t\ttrtick = 0','trph = 1\n\t\t\ttrtick = 0'),trampoline_animation),
         (source.replace('my = trby + trpose - 16','my = trby - 16'),trampoline_animation),
         (source.replace('VARPTR tramp_pat(trpose * 16)','VARPTR tramp_pat(0)'),trampoline_animation),
