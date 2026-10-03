@@ -42,6 +42,7 @@ TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
 "$TRUNCPY" ../../../tools/bigconst.py *.bas \
     || { echo "ERROR: CONST over 255 -- see TRUNCATION.md 1b" >&2; exit 1; }
 "$TRUNCPY" ../assets/genconveyors.py || die "conveyor art regression"
+"$TRUNCPY" ../assets/gentitle.py || die "title art regression"
 "$TRUNCPY" ../assets/checkphysics.py || die "physics regression"
 "$TRUNCPY" ../../../tools/gosubtrace.py HARDHAT.bas || die "return-stack regression"
 [ -f "$SRC" ] || die "$SRC not found in $(pwd)"

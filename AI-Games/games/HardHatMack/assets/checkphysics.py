@@ -26,6 +26,9 @@ class Basic:
         self.sound_times = []
         self.wait_count = 0
         self.sprites = {}
+        self.sprite_writes = []
+        self.prints = []
+        self.cursor = 0
         self.pattern_writes = []
         self.color_writes = []
         self.bank = 1
@@ -132,6 +135,13 @@ class Basic:
                 self.run(line[6:])
             elif line == 'cls':
                 self.screen = [32] * 768
+                self.cursor = 0
+            elif line.startswith('screen '):
+                assert line=='screen title_map' and self.bank==3, 'unexpected screen source/bank'
+                start=self.labels['title_map']+1
+                data=[self.expr(v.strip()) for ln in self.lines[start:]
+                      if ln.startswith('data byte ') for v in ln[10:].split(',')]
+                self.screen=data[:768]
             elif line == 'wait':
                 sample = next(self.frame_inputs, None)
                 assert sample is not None, 'input trace exhausted: '+label
@@ -177,13 +187,19 @@ class Basic:
             elif line.startswith('sprite '):
                 args = tuple(self.expr(x) for x in line[7:].split(','))
                 self.sprites[args[0]] = args[1:]
+            elif line.startswith('define sprite '):
+                first,count,pointer=line[14:].split(',')
+                assert pointer=='dance_bitmap' and self.bank==2, 'unexpected sprite upload/bank'
+                self.sprite_writes.append((self.expr(first),self.expr(count),pointer))
             elif line.startswith(('define char ', 'define color ')):
                 # Record hardware-only uploads, including the actual ROM offset.
                 color=line.startswith('define color ')
                 first, count, pointer = line[13 if color else 12:].split(',', 2)
                 m = re.fullmatch(r'varptr (\w+)\((.+)\)', pointer)
-                if pointer.startswith(('varptr claw_pat','varptr press_')):
+                if pointer.startswith(('varptr claw_pat','varptr press_','varptr tramp_')):
                     assert self.bank==2, 'animation data read from wrong bank'
+                if pointer in ('title_pat','title_col'):
+                    assert self.bank==3, 'title art read from wrong bank'
                 (self.color_writes if color else self.pattern_writes).append((self.expr(first),self.expr(count),
                     m[1] if m else pointer, self.expr(m[2]) if m else 0))
             elif line.startswith('bank select '):
@@ -191,7 +207,21 @@ class Basic:
             elif line.startswith(('#if ', '#endif')):
                 pass
             elif line.startswith('print '):
-                pass  # Output-only hardware calls do not affect these tests.
+                m=re.fullmatch(r'print at (cpos\([^)]*\)|#?\w+|\d+),(.+)',line)
+                offset=self.expr(m[1]) if m else self.cursor
+                body=m[2] if m else line[6:]
+                values=[]
+                for token in re.findall(r'"[^"]*"|[^,]+',body):
+                    if token.startswith('"'):values.append(token[1:-1])
+                    else:
+                        number=re.fullmatch(r'(?:<(\.?)(\d+)>)?(.+)',token)
+                        value=str(self.expr(number[3]));width=int(number[2] or 0)
+                        values.append(value.rjust(width) if number[1]=='.' else value.zfill(width))
+                rendered=''.join(values)
+                self.cursor=offset+len(rendered)
+                self.prints.append((offset,rendered))
+                if self.screen is None:self.screen=[32]*768
+                for i,c in enumerate(rendered):self.screen[offset+i]=ord(c)
             else:
                 m = re.fullmatch(r'(#?\w+)(?:\((.+)\))? = (.+)', line)
                 assert m, 'unsupported executed statement: ' + line
@@ -464,7 +494,7 @@ def fidelity(source):
     assert vm.arrays['gapst'][:2]==[2,0] and vm.arrays['itst'][:2]==[1,0]
     vm.v.update(st=vm.v['s_jump'],mx=44,my=13,ely=152,elty=56)
     score=vm.v['#score']; vm.run('bell_step'); vm.run('bell_step')
-    assert vm.v['#score']==score+10 and vm.v['emov']==1 and vm.v['eld']==0
+    assert vm.v['#score']==score+2 and vm.v['emov']==1 and vm.v['eld']==0
     # Drive the actual drill route through every beam; never jump diagonally.
     route=source.split('drill_route:')[1].split('steel_bitmap:')[0]
     coords=[int(x) for line in route.splitlines() if 'DATA BYTE' in line
@@ -595,6 +625,155 @@ def review_feedback(source):
                         captures+=1;break
             assert captures>=2, ('no usable factory lift entry',side,floor,captures)
     return wins
+
+
+def upper_conveyor(source):
+    base=Basic(source);base.v['lv']=2;base.run('init_level')
+    assert (base.arrays['cvx0'][0],base.arrays['cvx1'][0])==(176,215), 'upper conveyor not one character right'
+    assert (base.arrays['cvx0'][1],base.arrays['cvx1'][1])==(40,79), 'lower conveyor moved'
+    assert base.screen[8*32+22]==159 and base.screen[6*32+26]==159, 'roller art and surface disagree'
+    assert base.screen[7*32+26]==base.screen[8*32+26]==160, 'support did not move with conveyor'
+    for phase in (0,1):
+        for walking in (0,1):
+            vm=copy.deepcopy(base);vm.v.update(mx=204,my=34,jr=walking,hzphase=phase)
+            for _ in range(16):
+                vm.run('world_step')
+                if vm.v['st']==vm.v['s_dead']:break
+            assert vm.v['st']==vm.v['s_dead'] and vm.v['my']==34, 'belt exit becomes a survivable short drop'
+    # A deliberate jump from the last roller can still catch the live magnet.
+    for x,direction in ((198,2),(206,1)):
+        vm=copy.deepcopy(base);vm.v.update(mx=x,my=34,jbe=1,jr=int(direction==2),mgarm=1,mgx=208,mgd=0)
+        for _ in range(32):
+            vm.run('world_step')
+            if vm.v['st'] in (8,vm.v['s_dead']):break
+        assert vm.v['st']==8, 'new edge blocks the magnet jump'
+    # The rule is confined to this high exit, not lower tiers or other sites.
+    for level,y in ((1,24),(2,56),(2,120),(3,24)):
+        vm=Basic(source);vm.v['lv']=level;vm.run('init_level')
+        vm.v.update(mx=208,my=y);vm.run('upper_belt_edge')
+        assert vm.v['st']!=vm.v['s_dead'], 'edge rule leaks onto another floor/site'
+
+
+def title_scores(source):
+    for units in (0,1,2,5,7,40,13108,65535):
+        title=Basic(source)
+        title.v.update(last838=1,**{'#lastscore':units,'#hi':units})
+        title.frame_inputs=iter([dict(input_button=0,input_key=15),dict(input_button=1)])
+        title.run('title_screen')
+        text=str(units*5)+'*'
+        assert ''.join(map(chr,title.screen[34:34+len(text)]))==text, 'last score must start at its label with adjoining marker'
+        assert ''.join(map(chr,title.screen[56:62]))==str(units*5).rjust(6), 'high score alignment changed'
+    over=source[source.index('game_over:\n'):source.index("\t' 75 video frames")]
+    start=source[source.index('new_game:\n'):source.index('main_loop:\n')]
+    vm=Basic(source+'\nscore_end_test:\n'+over+'\tRETURN\nscore_start_test:\n'+start+'\tRETURN\n')
+    vm.v.update(lv=1,**{'#score':1234,'#hi':900});vm.run('init_level')
+    vm.run('score_end_test')
+    vm.frame_inputs=iter([dict(input_button=0,input_key=15),dict(input_button=1)])
+    vm.run('score_start_test')
+    assert vm.v['#score']==0 and vm.v['#lastscore']==1234 and vm.v['#hi']==1234, 'last/high score lost on restart'
+    assert (34,'6170') in vm.prints and (56,'  6170') in vm.prints, 'title score values/positions wrong'
+    assert (0*32+2,'last score') in vm.prints and (20,'high score') in vm.prints
+    assert (18*32+5,'2026 unhuman and c&c ai') in vm.prints, 'title credit missing'
+    assert (23*32+7,'press fire to start') in vm.prints, 'start prompt misplaced'
+    title_index=next(i for i,p in enumerate(vm.pattern_writes) if p[2]=='title_pat')
+    assert any(p[2]=='tile_pat' for p in vm.pattern_writes[title_index+1:]), 'title art leaks into gameplay'
+    assert vm.bank==1 and vm.v['lv']==1 and vm.v['lives']==2, 'normal start changed'
+    vm.v.update(**{'#score':600,'#hi':1234});vm.run('score_end_test')
+    assert vm.v['#lastscore']==600 and vm.v['#hi']==1234, 'lower last score overwrites high score'
+    # Provenance belongs to each saved score, not to the current menu choice.
+    for assisted,score,last_star,high_star in ((1,2000,1,1),(0,700,0,1),(0,2000,0,1),(0,2500,0,0),(1,800,1,0)):
+        vm.v.update(game838=assisted,**{'#score':score})
+        vm.run('score_end_test')
+        assert vm.v['last838']==last_star and vm.v['hi838']==high_star, '838 score provenance lost'
+        vm.prints.clear()
+        vm.frame_inputs=iter([dict(input_button=0,input_key=15),dict(input_button=1)])
+        vm.run('score_start_test')
+        assert ((34+len(str(score*5)),'*') in vm.prints)==bool(last_star), 'last score asterisk wrong'
+        assert ((62,'*') in vm.prints)==bool(high_star), 'high score asterisk wrong'
+        assert vm.v['game838']==0, '838 status leaks into normal next game'
+    vm.v.update(game838=1,hi838=1);vm.prints.clear();vm.run('hud_all')
+    assert (1,'*') in vm.prints and (24,'*') not in vm.prints, 'current-score HUD marker wrong'
+    # Level completion can claim the record before game over.
+    award=source[source.index('level_complete:\n'):source.index('\tlevelno = levelno + 1')]
+    win=Basic(source+'\naward_test:\n'+award+'\tRETURN\n')
+    for assisted in (1,0):
+        win.v.update(lv=1,game838=assisted,**{'#score':1000,'#bonus':5000,'#hi':900})
+        win.frame_inputs=iter([{}]*300)
+        win.run('award_test')
+        assert win.v['#hi']==2000 and win.v['hi838']==assisted, 'completion score provenance wrong'
+
+
+def score_range(source):
+    vm=Basic(source)
+    # Both final digits (0/5), old overflow boundary, and full six-digit range.
+    for units in (0,1,2,5,7,40,1399,1400,13107,13108,65535):
+        vm.v.update(**{'#scvalue':units,'#scpos':100})
+        vm.run('score_print')
+        assert ''.join(map(chr,vm.screen[100:107]))==str(units*5).ljust(7), 'score formatting/range wrong'
+        assert vm.bank==1, 'score renderer did not restore level-data bank'
+        vm.bank=3;vm.run('banked_score_print')
+        assert ''.join(map(chr,vm.screen[100:106]))==str(units*5).rjust(6), 'high score formatting changed'
+        vm.bank=1
+    vm.v.update(**{'#score':65534,'#award':7});vm.run('add_score')
+    assert vm.v['#score']==65535, 'score overflow wraps'
+    vm.v.update(xlife=0,lives=2,**{'#score':1399});vm.run('hud_score')
+    assert vm.v['lives']==2, 'extra life awarded too early'
+    vm.v['#score']=1400;vm.run('hud_score');vm.run('hud_score')
+    assert vm.v['lives']==3, 'extra life threshold changed or repeats'
+    vm.v.update(lv=1,levelno=1);vm.run('init_level')
+    vm.v.update(game838=1,hi838=1,**{'#score':65535,'#hi':65535,'#bonus':5000});vm.run('hud_all')
+    assert ''.join(map(chr,vm.screen[:7]))=='327675*', 'HUD score overlaps marker'
+    assert vm.screen[7:11]==[32]*4, 'score prefix remains'
+    assert ''.join(map(chr,vm.screen[11:21]))=='bonus 5000', 'bonus not centered'
+    for level in (1,9,10,99,100,255,1):
+        vm.v['levelno']=level;vm.run('hud_all')
+        assert ''.join(map(chr,vm.screen[23:32]))==('level '+str(level)).rjust(9), 'level not right-aligned or stale digits remain'
+    vm.v.update(game838=0,hi838=0,**{'#score':1,'#hi':2,'#bonus':0});vm.run('hud_all')
+    assert ''.join(map(chr,vm.screen[:7]))=='5      ', 'old score digits/marker remain'
+    assert ''.join(map(chr,vm.screen[17:21]))=='   0', 'zero bonus missing or padded'
+
+
+def elevator_dance(source):
+    draw=source[source.index('\tIF mdir = 1 THEN\n\t\tmfr'):source.index("\tGOSUB elev_draw\n\t' Crane")]
+    art=source[source.index('dance_bitmap:\n'):source.index('banked_completion_music:\n')]
+    rows=re.findall(r'BITMAP "([.X]+)"',art)
+    assert len(rows)==64 and all(len(row)==16 for row in rows), 'dance sprite pairs malformed'
+    assert rows[15].count('X') and rows[47].count('X'), 'dance feet lift off cabin floor'
+    assert rows[:16]!=rows[32:48], 'dance crouches identical'
+    for down in (0,1):
+        for delta in (1,2,4):
+            vm=Basic(source+'\ndance_draw_test:\n'+draw+'\tRETURN\n')
+            vm.v['lv']=1;vm.run('init_level')
+            end=vm.v['elby'] if down else vm.v['elty']
+            vm.v.update(ely=end-1 if down else end+1,eld=down,emov=1,elarm=0,
+                        st=vm.v['s_ride'],mx=vm.v['elx'],jbe=1,jr=1)
+            vm.run('elev_move')
+            assert vm.v['edance']==32 and vm.v['emov']==0, 'arrival does not start dance'
+            start=(vm.v['mx'],vm.v['my']);vm.sound=[];poses=set()
+            for frame in range(0,32,delta):
+                vm.run('st_ride');vm.run('elev_move')
+                assert (vm.v['mx'],vm.v['my'])==start and vm.v['st']==vm.v['s_ride'], 'input moves Mack during dance'
+                vm.v['#fd']=delta;vm.run('sound_tick');vm.run('dance_draw_test')
+                poses.add(vm.sprites[0][2])
+                assert vm.v['edance']==32-frame-delta, 'dance timing depends on frame batching'
+                if vm.v['edance']:
+                    assert vm.sprites[8][2]==vm.v['dancecolour'], 'clothes do not follow dance pose'
+            assert {0,108,116}<=poses, 'dance poses not rendered'
+            assert vm.sprite_writes==[(27,4,'dance_bitmap')], 'dance sprite upload count/bank wrong'
+            pitches=[e[1] for e in vm.sound if e[0]==0 and e[1] is not None and e[2]>0]
+            assert pitches==[280,447,280,447,280,447,280], 'arrival two-tone rhythm changed'
+            assert vm.sound[-1]==(0,None,0), 'dance sound remains latched'
+            vm.v.update(jbe=0,jr=0);vm.run('elev_move')
+            assert vm.v['edance']==0, 'parked elevator repeats dance'
+            vm.v['jr']=1;vm.run('st_ride')
+            assert vm.v['mx']==start[0]+1, 'controls do not resume after dance'
+            for stop in ('mack_die','quiet_screen','init_level'):
+                vm.v.update(edance=20,st=vm.v['s_ride']);vm.run(stop)
+                assert vm.v['edance']==0, 'dance survives death/screen change'
+        empty=Basic(source);empty.v['lv']=1;empty.run('init_level')
+        empty.v.update(ely=end-1 if down else end+1,eld=down,emov=1,st=empty.v['s_walk'])
+        empty.run('elev_move')
+        assert empty.v['edance']==0, 'empty summoned elevator starts dance'
 
 
 def factory_challenge(source):
@@ -1105,7 +1284,7 @@ def chain_and_pickups(source):
     assert vm.screen[22*32+19:22*32+21]==[vm.v['t_lboxl'],vm.v['t_lboxl']+1], 'hazard overwrites ground pail'
     vm.v.update(mx=120,my=168)
     before=vm.v['#score'];vm.run('mack_step')
-    assert vm.v['#score']==before+200 and vm.arrays['itst'][7]==1, 'spray can not collectible'
+    assert vm.v['#score']==before+40 and vm.arrays['itst'][7]==1, 'spray can not collectible'
     assert vm.screen[22*32+17:22*32+19]==[vm.v['t_mixbas']]*2, 'pickup erased machine support'
 
 
@@ -1120,13 +1299,14 @@ def setup_inputs(source):
             vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,3,8,0,lives,9,0,level])))
             vm.run('title_screen')
             assert vm.v['lives']==lives-1 and vm.v['lv']==level and vm.bank==1, '838 selection / bank return'
+            assert vm.v['game838']==1, '838 game not marked'
             vm.run('init_level')
             assert vm.screen[54:63]==[32]*(10-lives)+[vm.v['t_hat']]*(lives-1), 'reserve hats wrong'
     # Incorrect code, a held digit, and title navigation must not select a level.
     vm=Basic(source);vm.v.update(input_key=15,lv=1,lives=2)
     vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,5,3,8]))+[dict(input_button=1)])
     vm.run('title_screen')
-    assert vm.v['lv']==1 and vm.v['lives']==2 and vm.bank==1
+    assert vm.v['lv']==1 and vm.v['lives']==2 and vm.bank==1 and vm.v['game838']==0
     vm=Basic(source);vm.v.update(titleheld=15,input_key=3)
     vm.run('menu_key');assert vm.v['setupkey']==3
     vm.run('menu_key');assert vm.v['setupkey']==15, 'held digit accepted twice'
@@ -1173,6 +1353,49 @@ def repeat_enemies(source):
             if n==1:assert (vm.v['ob'],vm.v['odr'])==(2,0)
 
 
+def trampoline_animation(source):
+    for entry in (5,9,13,17,21):
+        vm=Basic(source);vm.v.update(lv=1,lives=2);vm.run('init_level')
+        vm.v.update(my=entry*8-16,fcy=entry*8-16)
+        vm.run('tramp_in2')
+        target=168 if entry==5 else entry*8-32
+        assert vm.v['trgy']==target and vm.v['mx']==vm.v['trx']
+        for _ in range(100):
+            vm.run('mack_step')
+            if vm.v['trph']==3:break
+        else:raise AssertionError('trampoline never compresses at impact')
+        vm.run('site_draw')
+        for depth in (1,2,3,4,3,2,1,0):
+            vm.run('mack_step');vm.run('site_draw')
+            assert vm.v['trpose']==depth, 'missing smooth compression/rebound'
+            assert vm.v['my']+16==vm.v['trby']+depth, 'Mack detaches from spring cap'
+            assert (137,2,'tramp_pat',depth*16) in vm.pattern_writes[-1:], 'wrong springboard frame'
+            assert (137,2,'tramp_col',depth*16) in vm.color_writes[-1:], 'springboard colors stay behind'
+            assert vm.bank==1, 'springboard leaves wrong cartridge bank'
+        assert vm.v['trph']==1 and vm.sound[-1][0]==2, 'spring does not launch with sound'
+        uploads=len(vm.pattern_writes)
+        for _ in range(100):
+            vm.run('mack_step');vm.run('site_draw')
+            if vm.v['st']==vm.v['s_walk']:break
+        assert vm.v['st']==vm.v['s_walk'] and vm.v['my']+16==target, 'spring delivers wrong floor'
+        assert len(vm.pattern_writes)==uploads, 'idle trampoline uploads every frame'
+    # Rendering remains synchronized when several world steps share one pass.
+    for batch in (1,2,4):
+        vm=Basic(source);vm.v.update(lv=1);vm.run('init_level')
+        vm.v.update(st=vm.v['s_tramp'],trph=3,trtick=0,my=168,trpose=0)
+        for elapsed in range(batch,9,batch):
+            for _ in range(batch):vm.run('mack_step')
+            vm.run('site_draw')
+            expected=min(elapsed,8-elapsed)
+            assert vm.v['my']==168+expected
+            assert vm.pattern_writes[-1]==(137,2,'tramp_pat',expected*16)
+    vm.v.update(st=vm.v['s_dead'],trpose=4,trlast=4)
+    vm.run('site_draw')
+    assert vm.v['trpose']==0 and vm.pattern_writes[-1]==(137,2,'tramp_pat',0), 'death leaves compressed spring'
+    vm.run('init_level');vm.run('site_draw')
+    assert vm.v['trlast']==0, 'new level misses initial spring pose'
+
+
 def main():
     source = SOURCE.read_text(encoding='utf-8')
     windows = clear_windows(source)
@@ -1190,6 +1413,11 @@ def main():
     setup_inputs(source)
     repeat_enemies(source)
     factory_challenge(source)
+    upper_conveyor(source)
+    title_scores(source)
+    score_range(source)
+    elevator_dance(source)
+    trampoline_animation(source)
     slag_cadence(source)
     fidelity(source)
     visual_hazards(source)
@@ -1215,6 +1443,9 @@ def main():
             assert vm.v['st'] == vm.v['s_walk'], 'jump failed to clear single-cell gap'
     # Known defects MUST fail: short clearance, lost momentum, deferred death.
     mutants = [
+        (source.replace('trph = 3\n\t\t\ttrtick = 0','trph = 1\n\t\t\ttrtick = 0'),trampoline_animation),
+        (source.replace('my = trby + trpose - 16','my = trby - 16'),trampoline_animation),
+        (source.replace('VARPTR tramp_pat(trpose * 16)','VARPTR tramp_pat(0)'),trampoline_animation),
         (source.replace('hbw = 8\n\t\thbh = 12', 'hbw = 8\n\t\thbh = 10'), clear_windows),
         (source.replace('st_fall:\n', 'st_fall:\n\tjhz = 1\n'), momentum),
         (source.replace('IF fd2 > FATALFALL THEN GOSUB mack_die',
@@ -1295,6 +1526,32 @@ def main():
         (source.replace('carry = 2\n\t\t\t\tjbhc = 0','carry = 2'),hammer_release),
         (source.replace('IF carry = 2 THEN GOSUB drop_hammer','carry = carry'),hammer_release),
         (source.replace('jbhc = jbhc + #fd','jbhc = jbhc + 1'),hammer_release),
+        (source.replace('DATA BYTE 6, 8,22,2','DATA BYTE 6, 8,21,2'),upper_conveyor),
+        (source.replace('GOSUB upper_belt_edge','cx = mx'),upper_conveyor),
+        (source.replace('#lastscore = #score','#lastscore = 0'),title_scores),
+        (source.replace('#scvalue = #hi','#scvalue = #score'),title_scores),
+        (source.replace('GOSUB game_chars','carry = 0'),title_scores),
+        (source.replace('BANK SELECT 3','BANK SELECT 2'),title_scores),
+        (source.replace('2026 UNHUMAN and C&C AI','2026'),title_scores),
+        (source.replace('hi838 = game838','hi838 = 0'),title_scores),
+        (source.replace('last838 = game838','last838 = 0'),title_scores),
+        (source.replace('game838 = 0','game838 = 1'),title_scores),
+        (source.replace('game838 = 1','game838 = 0'),setup_inputs),
+        (source.replace('IF #score > #hi THEN','IF #score >= #hi THEN'),title_scores),
+        (source.replace('#award = #bonus / 5','#award = #bonus'),title_scores),
+        (source.replace('#score >= 1400','#score >= 7000'),score_range),
+        (source.replace('#score_room = 65535 - #score','#score_room = 65535'),score_range),
+        (source.replace('#sctens = #scvalue / 2','#sctens = #scvalue'),score_range),
+        (source.replace('<.5>#sctens','<5>#sctens'),score_range),
+        (source.replace('edance = 32','edance = 0'),elevator_dance),
+        (source.replace('IF edance THEN RETURN',''),elevator_dance),
+        (source.replace('edance = edance - 1','edance = edance - 2'),elevator_dance),
+        (source.replace('IF dancenote AND 1 THEN #dancepitch = 447','IF dancenote AND 1 THEN #dancepitch = 280'),elevator_dance),
+        (source.replace('IF st = S_RIDE THEN\n\t\tmy = ely - 16','IF st <> S_DEAD THEN\n\t\tmy = ely - 16'),elevator_dance),
+        (source.replace('IF edance THEN mfr = dancebody',''),elevator_dance),
+        (source.replace('edance = 0','edance = edance'),elevator_dance),
+        (source.replace('IF levelno >= 10 THEN hlevelcol = 24','IF levelno >= 100 THEN hlevelcol = 24'),score_range),
+        (source.replace('CPOS(0,17),<.4>#bonus','CPOS(0,2),<.4>#bonus'),score_range),
     ])
     for mutant, check in mutants:
         assert mutant!=source, 'defect mutation did not change source: '+check.__name__

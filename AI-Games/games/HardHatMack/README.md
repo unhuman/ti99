@@ -7,10 +7,16 @@ Three construction sites are implemented:
 
 1. **Beams and Bolts:** carry four girder pieces to the holes, then catch the roaming
    jackhammer and rivet them. Filled but unriveted holes reopen after a death;
-   their pieces return. Jump to ring the bell and summon the elevator.
+   their pieces return. Jump to ring the bell and summon the elevator. At either end of an occupied
+   ride, Mack does two quick crouch-and-rise motions with a two-tone sound
+   (about half a second), then you can walk or jump off. The right-hand trampoline
+   compresses under Mack, then rebounds and launches him; its base stays planted
+   and his feet follow the moving cap.
 2. **Lunch Break:** collect six lunch pails across the platforms and ground,
    avoiding the pincers, pounder, concrete, furnace and vat. The magnet stays parked until all six pails are collected. Jump from the upper
-   conveyor into the armed magnet; it carries Mack back to the crane top.
+   conveyor into the armed magnet; it carries Mack back to the crane top. The upper
+   conveyor is one character farther right; walking or riding past its right end
+   is fatal, so jump before the last roller.
 3. **Rivet Works:** start on the upper-right platform and collect six steel boxes.
    Carry each to a lip of either lower-floor opening; the box drops into the
    processor. Four paddles circulate counterclockwise (left down, right up).
@@ -27,6 +33,22 @@ the starting level**; the last digit starts the game. Release each key between
 digits. These choices apply to one game only. Reserve hats exclude the current
 life and are right-justified below the score line. One extra life is awarded at 7,000 points.
 Classic99 uses arrows/Tab; CoolCV uses arrows/Space for controller 1.
+The construction-themed title shows **LAST SCORE** and **HIGH SCORE** at the top,
+with matching full-height dithered white-to-yellow lettering (MACK restored to
+its original 115-pixel width), Mack on a riveted girder, and the credit
+**2026 UNHUMAN and C&C AI** above the controls, with **PRESS FIRE TO START**
+at the bottom. LAST SCORE starts directly under its label without space padding;
+its 838 asterisk follows the last digit. High score remains right-aligned. Scores persist between games until reset. An asterisk beside a
+score identifies an 838 game; the high-score marker stays with the game that
+set that record. Normal play clears the current-game marker, and a higher
+normal score replaces an 838 record without an asterisk. Equal scores retain
+the existing record and its marker. The gameplay HUD shows the current score flush left without a prefix (with
+its 838 marker), **BONUS** and the timer centered, and **LEVEL** plus the stage
+number right-aligned. Two- and three-digit levels expand leftward. High score
+appears only on the title. Scores omit leading zeroes and
+reach 327,675 points using five-point storage units; further awards saturate
+at that maximum. All point awards and the 7,000-point extra life are unchanged.
+It replaces the old title/instruction screen; Fire starts play directly.
 After GAME OVER, wait 1.25 seconds (75 frames at 60 Hz), then release and press
 Fire/Tab to return to the title. The message has a one-character blank border.
 
@@ -107,22 +129,24 @@ Or run `bash games/HardHatMack/build-ti.sh` followed by
 `bash games/HardHatMack/build-coleco.sh` using Cygwin bash.
 Outputs: `src/HARDHAT_8.bin` (Classic99/js99er) and `src/hardhat.rom` (ColecoVision).
 Build sequentially. Both scripts run generated-art, physics, truncation and return-stack checks;
-the TI build also verifies the fixed-area size and both packed banks. Its 64 KB
-cartridge contains the loader, setup/assets bank and a separate bank for machinery
-animation, enemy updates, audio envelopes/fanfare and the title/setup screens; their wrappers restore the
-setup/assets bank before returning. Coleco remains
+the TI build also verifies the fixed-area size and all three packed banks. Its 64 KB
+cartridge contains the loader, setup/assets bank and separate banks for
+machinery/animation/audio and the title/setup screen; their wrappers restore
+the setup/assets bank before returning. Coleco remains
 an unbanked cartridge within 32 KB. The TI build uses
 the repository's checked short-branch optimizer and verifies the resulting opcodes
 and destinations after reassembly. `TI_SHORT_BRANCHES=0` retains the comparison
-path with the same size gate. Moving the title into the animation bank also
-restored room for the unoptimized comparison assembly.
+path with the same size gate. Starting play restores the gameplay characters
+after the title artwork uses that character range.
 
-Editable conveyor, pincer, smasher and moving-girder art lives in `assets/genconveyors.py`. Run it with
+Editable title lettering and scenery live in `assets/gentitle.py`; `--write`
+regenerates the title patterns, colors and screen map. Builds reject stale art.
+Editable conveyor, pincer, smasher, moving-girder and trampoline art lives in `assets/genconveyors.py`. Run it with
 `--write` after editing, then build both targets; builds reject stale art.
 
 Current development focus (2026-10-02): build and review TI-99 only, per the
 user's request. Coleco validation will resume after the TI gameplay work.
-See DESIGN.md sections 19-23 for TI validation, budgets and verification limits.
+See DESIGN.md sections 19-25 for TI validation, budgets and verification limits.
 
 The physics checker executes actual BASIC routines and all three level parsers.
 It checks objective handling, death rollback, timed hazard windows, magnet capture
@@ -130,7 +154,7 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-Sixty-seven deliberately broken variants must fail. New checks cover moving
+Ninety-six deliberately broken variants must fail. New checks cover moving
 pincers, visible hazard bounds, belt/slag alignment, speed clocks, elevator boarding
 with background tiles, both parked and moving elevators at game over, two-jump
 pincer crossings launched at closure in both directions, the factory box route

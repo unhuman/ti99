@@ -1,9 +1,9 @@
 # Hard Hat Mack — Design (CVBasic, dual-target TI-99/4A + ColecoVision)
 
-> **Current status (2026-10-01): both ColecoVision and TI-99/4A are required.**
+> **Current status (2026-10-02): TI-99/4A validation only; ColecoVision is paused at the user's request.**
 > Section 16 supersedes earlier mechanics, budgets and verification notes.
 > Older sections remain as implementation history; README describes current play.
-> The basic title and 838 setup are implemented; richer title art and music remain design goals; repeat tours now have two random enemies.
+> The construction title and hidden 838 setup are implemented; title music remains a design goal; repeat tours have two random enemies.
 
 ## Current performance budget
 
@@ -1525,3 +1525,225 @@ unoptimized code is 23,846 bytes (490 free). Setup/assets have 123 bytes free,
 animation/audio has 472 bytes free, and RAM use is 450 bytes. The latest 64 KB
 production cart has SHA-256
 `BF189C2599D55A6C8A24AE3F62C12AB0FC10435B7C53CAA4C83FE0791AA2D392`.
+
+
+## §25 Upper conveyor edge and construction title (2026-10-02)
+
+The upper-right site-2 conveyor shifts one character (eight pixels) right:
+bottom roller row 8/column 22, top roller row 6/column 26, with its support post
+at column 26. The same level opcode draws the machine and records the riding
+surface, now x=176..215, y=66..50. The lower conveyor is unchanged.
+
+Walking or being carried beyond the high right-hand end is fatal immediately;
+the shoe overlap with the girder below no longer turns this into a safe 22-pixel
+drop. The rule runs after walking and conveyor transport, and only at this high
+exit. A deliberate jump still leaves before the edge rule and can catch the
+armed magnet. Tests execute passive and walking exits at both belt clock phases,
+and two live-magnet jumps, while checking other floors/sites remain unaffected.
+
+The new title uses matching gold HARD HAT and MACK lettering,
+with full-height ordered gradients: white through light yellow to yellow over
+all 28 rows of HARD HAT and all 35 rows of MACK. HARD HAT's letter
+strokes align with eight-pixel character boundaries. MACK uses its original
+115-pixel width: full ink scanlines keep two-color dithering, while partial
+edge scanlines reserve black and use their dominant yellow-gradient shade.
+The silhouette stays intact. It has
+steel scaffolding, a hanging hook, stacked girders and Mack with the jackhammer
+on a riveted beam. LAST SCORE and HIGH SCORE appear along the top. The credit
+above the controls is exactly "2026 UNHUMAN and C&C AI"; PRESS FIRE TO START
+is centered at the bottom. This replaces the old title/instruction
+screen completely; Fire starts play directly. Controls are visible, and the 838 lives/level
+setup remains hidden. The last completed game's score is saved before the
+new-game score reset; the high score survives a lower-scoring next game. The
+current game, last score and high score each retain their own 838 provenance.
+Entering 838 marks the game even when choosing normal lives/level. Asterisks
+appear beside the relevant title scores and the current score in the HUD. A higher normal score
+clears the high-score marker; a tie preserves the original record and marker.
+A new normal game clears only the current-game marker. Both scores
+are session values, cleared when the cartridge is reset.
+
+`assets/gentitle.py` is the editable pixel-art source. It generates 84 patterns,
+per-scanline colors and a 768-byte name table; its gate checks the two-color
+hardware limit, character ownership, clear score/control rows and stale outputs.
+Title art occupies characters 128..211. `game_chars` reloads the original game
+patterns/colors after leaving the title, and title sprites are hidden before
+play or setup. The lowercase credit has an explicit white font palette.
+
+The title and setup routines/art now occupy TI bank 3. The existing wrapper
+restores setup bank 1 before reloading game art. The cart remains 64 KB; the
+bank checker verifies all three data/code pages against the packed cart and
+rejects a missing or corrupted title page. The source-driven UI regression
+checks score persistence, printed labels/values/credit, normal starting state,
+838 input, bank return and gameplay art restoration. Seventeen new faulty variants
+bring the physics/UI gate to 84 rejected defects, including missing provenance,
+leaked setup state, incorrectly replacing a tied record, score overflow and
+incorrect score formatting/scaling. Coleco validation remains
+paused at the user's request; its script includes the same generated-title gate
+for its eventual rebuild.
+
+
+Classic99 verified full-height gradient artwork, blank-padded 65540/100000
+scores, 838 score markers, and an assisted 327675 record after game over. A
+subsequent normal game removes the current/last marker while keeping the tied
+assisted high-score marker. Gameplay shows bonus/current score/level only,
+and starting play restores the playfield graphics. A separate one-life site-2
+review confirmed passive travel off the shifted conveyor's end reaches GAME OVER.
+Temporary review carts were restored immediately after captures.
+
+TI validation: all 84 defect mutations rejected and all 70 GOSUB targets unwind.
+The checked optimizer verifies 511 shortened branches. Fixed code is
+22,122/24,336 bytes (2,214 free); unoptimized code is 24,166 bytes (170 free).
+Setup/assets have 151 bytes free, animation/audio has 1,308, and title/setup
+has 5,598; RAM use is 466 bytes. The cartridge remains 64 KB.
+
+
+Scores, last score and high score now store units of five. Display divides the
+stored value by two for the first five decimal digits and appends 0 or 5 for
+the last digit, avoiding a 16-bit multiply overflow. Six-character score fields
+use spaces before the first digit; zero is a single visible 0. Bonus uses four
+space-padded digits. The HUD shows only bonus, current score in columns 10-15
+(marker 16), and level after column 24. High score appears only on the title.
+LAST SCORE starts at column 2 without space padding, with its marker directly
+after the last digit. HIGH SCORE remains right-aligned in columns 24-29, with
+its marker in column 30. The gameplay score remains right-aligned.
+
+All awards preserve their displayed point values, including 25 and 35; the
+one-time extra-life comparison is 1,400 stored units (7,000 points). A shared
+addition routine saturates at 65,535 units (327,675 points), never wraps. The
+bonus still counts actual points and is divided by five only when awarded.
+Formatting lives in bank 3; its fixed wrapper restores bank 1, while the title
+calls the formatter directly without changing its own bank. Regressions cover
+0/5 endings, the old 65,535-point limit, maximum score, saturation, stale digits,
+marker clearing, bonus scaling and the unchanged extra-life threshold.
+
+Final production SHA-256:
+`0CE82B25F6685B10AF86076C30796F1F08766228053F0AB079638972F9361156`.
+The cart is left on the title in one Classic99 window with normal starts.
+
+
+## §26 Elevator arrival and title refinements (2026-10-02)
+
+LAST SCORE now begins directly at column 2 under its label without padding;
+its 838 asterisk follows the final digit. Zero remains a single 0. HIGH SCORE
+and the gameplay score retain right alignment. Both title lines now share the
+full-height white/light-yellow/yellow dithered palette.
+
+The [C64 reference at 38.92-39.45 seconds](https://www.youtube.com/watch?v=WSbEDNtmQWY&t=38)
+shows two squash/rise cycles after the upward elevator ride, and another after
+the downward trip around 44.8-45.3. Frame-by-frame review distinguishes half
+crouch, deep crouch and upright poses. The extracted audio spectrum alternates
+approximately 400 and 250 Hz during this cue. The Apple II clips' initial
+level-one routes use chains/springs and do not establish a conflicting arrival
+sequence; the clearly visible C64 arrivals guide this adaptation.
+
+The port adds a 32-video-frame (0.53-second at 60 Hz) arrival dance, eight
+four-frame poses, and seven alternating PSG notes (periods 280/447). This
+matches the two-tone gesture rather than reproducing the SID timbre. Sound and
+animation advance through each elapsed video frame, so multi-frame catch-up
+does not lengthen the pause. Mack stays on the parked cabin floor while other
+actors continue. Controls resume at the end; death and screen changes cancel
+both the animation and sound. An empty summoned cabin does not trigger it.
+
+Two editable crouch poses and their purple clothing overlays live in
+`dance_bitmap` in the BASIC source. Bank 2 uploads the four 16x16 patterns once
+per arrival (sprite patterns 27-30), reusing the original standing pose. The
+white body and clothes animate together; soles remain on the floor. The
+existing sprite slots and collision coordinates stay in use. Seven new
+negative cases bring the gate to 91: missing arrival, movement during the
+pause, incorrect timing, missing alternating pitch, empty-cabin activation,
+missing rendering and missing cancellation. Both directions and 1/2/4-frame
+updates are exercised.
+
+Classic99's 36-frame review capture shows the occupied cabin reaching the
+upper landing, two distinct crouch/rise cycles, then a stable standing pose
+without a repeated dance. The title capture shows unpadded LAST SCORE 6170
+and right-aligned HIGH SCORE 100000 with matching yellow gradients. The
+production cart was restored immediately after the temporary ride setup.
+Audio was checked from the reference spectrum and executed PSG events; live
+emulator audio was not available for direct listening in this session.
+
+Final TI checks: 91 defect mutations rejected, 71 GOSUB targets unwind, and
+515 shortened branches verified. Fixed code is 22,196/24,336 bytes (2,140 free);
+unoptimized code is 24,256 bytes (80 free). Setup/assets have 151 bytes free,
+animation/audio 860, and title/setup 5,516. RAM use is 472 bytes; cart size 64 KB.
+Production SHA-256: `86B690C42A11BD0B78DA7C15F185B906363B4C28935204D295B3F91D8C8804FC`.
+The production cart is left running on its normal title in one Classic99 window.
+
+The final production title was verified with Win32 PrintWindow. Desktop
+CopyFromScreen captures intermittently returned black or incomplete areas;
+PrintWindow confirmed the complete rendered title without changing the ROM.
+
+
+## §27 Gameplay HUD alignment (2026-10-02)
+
+The gameplay score starts at column 0 without a prefix or space padding; an
+838 asterisk follows its last digit. Its seven-character area is cleared before
+redrawing so shorter scores and unmarked games leave no stale digits/marker.
+BONUS starts at column 11 and its four-character timer occupies columns 17-20,
+centering the complete ten-character group on the 32-column display. All timer
+updates, including countdown and respawn, use the new position.
+
+LEVEL and the stage number end at column 31. The complete label starts at
+column 25 for 1-9, 24 for 10-99, and 23 for 100-255. Clearing columns 23-31
+handles a new one-digit game after a longer run. Reserve hats remain on row 1.
+The title's LAST SCORE remains flush left and HIGH SCORE remains right-aligned;
+the HUD's shared left-aligned formatter does not change that title alignment.
+Existing layout checks now cover 1/9/10/99/100/255, six-digit scores with a
+marker, zero values, stale text and the centered bonus. Two negative cases
+reject the old bonus position and a broken two-digit level shift (93 total).
+
+TI validation passed: all 93 defect mutations rejected, 73 GOSUB targets
+unwind, and 516 shortened branches verified. Fixed code uses 22,236/24,336
+bytes (2,100 free); the unoptimized image uses 24,300 (36 free). Setup/assets,
+animation/audio and title banks have 199, 860 and 5,424 bytes free respectively.
+RAM use is 474 bytes; the cartridge is 64 KB.
+
+Classic99 captures verified the six-digit score with its 838 marker and LEVEL
+100 in a temporary review cartridge, then the normal production level-one HUD.
+The production cartridge is running in one Classic99 window with normal
+starting conditions. SHA-256:
+`60219ADE6A7E7DD900EF1B2F25737BCF678186D4F2F490FC02A50E651FCBE986`.
+
+## §28 Original MACK width and trampoline compression (2026-10-02)
+
+The saved initial title preview establishes MACK's original bounds: x=70..184,
+y=76..110 (115x35 pixels). Those bounds and the five-pixel letter strokes are
+restored, retaining white/light-yellow/yellow dithering. The HARD HAT line,
+scenery and text layout stay as in §27. To respect two inks per character
+scanline, partial MACK edge cells retain black and their dominant gradient
+shade; full ink cells retain the ordered two-color dither. The generator gates
+the complete original silhouette, yellow palette and retained dithering.
+
+The Apple II all-levels reference (`zanShXo4btw`, approximately 8.44-8.68 s)
+shows the trampoline cap sinking beneath Mack, then rebounding before his
+ascent; it is still when unoccupied. Level one's spring now has five character
+poses, with a connected white/magenta cap, exposed coil and fixed green base.
+Characters 137/138 are its left/right halves. On impact, eight world steps
+move the cap down four pixels and back up; Mack's soles follow the same
+position, centered over the pad. This is about 0.12 seconds at the existing
+67.5-step/s world rate, a hardware adaptation of the reference gesture rather
+than an exact frame transcription. The existing launch sound starts on release.
+The entry window and destination floors remain unchanged, including the top
+floor's return to the bottom floor. Level three's spring transfers are unchanged.
+
+The movement routine lives in bank 3, through a fixed wrapper that restores
+bank 1. Animation uses the existing bank-2 machinery draw: upload two patterns
+and two color tables only when the pose changes, after world simulation.
+An ordinary idle frame performs no upload. Death restores the resting pose;
+level initialization invalidates the pose cache. The editable generator also
+regenerates the initial 137/138 art, avoiding different boot and resting poses.
+
+Source-driven checks cover all five entry floors, foot/cap alignment, every
+compression pose, colors, sound at launch, bank restoration, idle uploads,
+death reset and 1/2/4-step render batches. Three deliberately broken variants
+(missing compression, detached rider and frozen art) bring the gate to 96.
+Classic99's 60-image capture shows impact, compression, rebound, ascent and
+the stable resting cap. Its title capture confirms the restored MACK outline.
+The temporary review cart was immediately replaced with production afterward.
+
+TI build passed all 96 defect mutations and 74 returning GOSUB targets. The
+511 verified short branches save 2,044 bytes: fixed code is 22,062/24,336 bytes
+(2,274 free), with 24,106 bytes before optimization. Banks 1/2/3 retain
+181/586/4,320 bytes respectively; RAM is 476 bytes and the cart is 64 KB.
+Production SHA-256:
+`EC409B96E6614D13249801B592B2AA77763B9392E846B08E27FF269689626DD4`.

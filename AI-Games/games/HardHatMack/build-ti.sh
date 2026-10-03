@@ -11,7 +11,7 @@
 # auto-defines TI994A=1 under --ti994a for any `#if TI994A` splits.
 #
 # Fixed RAM-resident program is capped at 24,336 bytes; art/levels live in
-# an 8 KB setup/assets bank and a separate machinery-animation bank. Check all
+# an 8 KB setup/assets bank, machinery/audio bank and title bank. Check all
 # BEFORE accepting the cart. The final cartridge is padded to 64 KB by linkticart.
 #
 # Run with Cygwin bash on Windows (the compiler is a Cygwin binary).
@@ -49,6 +49,7 @@ TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
 "$TRUNCPY" ../../../tools/bigconst.py *.bas \
     || { echo "ERROR: CONST over 255 -- see TRUNCATION.md 1b" >&2; exit 1; }
 "$TRUNCPY" ../assets/genconveyors.py || die "conveyor art regression"
+"$TRUNCPY" ../assets/gentitle.py || die "title art regression"
 "$TRUNCPY" ../assets/checkphysics.py || die "physics regression"
 "$TRUNCPY" ../../../tools/gosubtrace.py HARDHAT.bas || die "return-stack regression"
 [ -f "$NAME.bas" ] || die "$NAME.bas not found in $(pwd)"
