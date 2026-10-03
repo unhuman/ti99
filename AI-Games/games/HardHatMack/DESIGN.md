@@ -1799,3 +1799,79 @@ bytes (2,352 free), with 24,028 bytes before optimization. Banks 1/2/3 retain
 The latest production cart is running in one Classic99 window with normal
 starting conditions. SHA-256:
 `0577245DD847264BD019C89547408DDE75B43BD3BFD95EE73965C7CC57C83A34`.
+
+## §31 Blocks, girders and factory scenery (2026-10-02)
+
+This pass follows the user's detailed art corrections and the saved Apple II
+and C64 longplays. The Apple II overview at 1:30-3:20 confirms the green/blue
+second-site girders, cabinet, buckets, axles and flashing IN arrows. The new
+processor output is an adaptation of the visible box-to-rivet gesture, not a
+claim of frame-exact timing across those different ports.
+
+Level-one blocks use identical eight-pixel red faces and white borders when
+loose and placed. The carried block uses complementary red-fill and white-edge
+sprites (slots 1 and 14, patterns 28 and 96). Slot 14 is otherwise unused on
+level one and is hidden when not carrying a block. Riveted plugs retain their
+logical state but use the ordinary girder's exact pattern and colors. Girder
+rivets occupy the central scanlines 3-4 on all sites. Level two uses bright
+green bodies with blue rivets and one-pixel blue upper/lower edges, including
+all sixteen pre-shifted slices of the moving crane beam.
+
+Lunch pails are 16x12 pixels in a two-by-two character footprint, anchored to
+the same floor. The added upper row holds the handle. Either lower half
+collects the pail and clears all four cells without touching the supporting
+girder. The bottom-right chain moves from column 23 to 26; the roamer's climb
+turn moves with it. A two-by-two pump at rows 18-19, columns 24-25, follows the
+crane's position and direction, remaining still when the crane is still. Bonus
+tools remain collectible. The pincers skip one clock count in each sixteen,
+reducing their smooth full cycle from 96 to 90 world steps (about 6.7% faster).
+The existing closure-launch, two-jump and twelve-step re-press margins still
+pass in both directions; the safe patch remains unchanged.
+
+Both smashers share a five-pixel head instead of four, predominantly white
+with a gray detail row. Its added pixel extends upward; the bottom still
+finishes immediately above the girder/belt. The parked position moves down
+one pixel so all five rows remain exposed. The piston, belt overlays and
+visible-contact collision checks remain synchronized.
+
+Level three has one 16-pixel bucket per side instead of two repeated cans.
+The 32x32 central cabinet has a blue body, white perimeter, gridded window and
+white-framed red door. Closed green oval processors have white rims, with no
+lettering or painted openings inside them. Separate IN/down-arrow graphics
+at rows 19-20 flash every 32 world steps. Rounded 16x16 axles cap the platform
+mechanism at rows 7-8 and 17-18, centered on its existing circulation path.
+
+Box delivery keeps its forty-step fall and original scoring. On reaching the
+processor it counts the box, waits ten world steps, then ejects a small white
+rivet toward that side's bucket for sixteen steps. Six rising steps and ten
+descending steps form the arc. The saved input side determines the output,
+even if Mack has moved elsewhere. A pending output prevents another delivery;
+the final box completes the level only after its rivet enters the bucket.
+Mechanical clacks mark ejection and arrival. This output is decorative and
+has no enemy hitbox.
+
+`assets/genfixtures.py` owns editable blocks, girder colors, pails and scenery;
+`genconveyors.py` owns their existing animated machinery. Both regenerate
+their BASIC tables and reject stale output. Extra fixtures and their upload
+routines occupy bank 3. Character codes 96-127 are borrowed from unused
+lowercase text during play; the title explicitly restores its original a/d/n
+glyphs and white colors for the existing credit. Original startup sprite and
+route data remain in bank 1. The checker now derives art-label bank ownership
+from BANK declarations and checks uploads against the active page, including
+the startup sprite tables. Seven new negative cases bring the total to 108.
+
+Validation: the TI build rejected all 108 defect mutations and verified all
+83 GOSUB targets return. Its 515 checked short branches save 2,060 bytes;
+fixed code is 22,294/24,336 bytes (2,042 free). The unoptimized comparison is
+24,354 bytes, 18 over the limit, so this version requires the default checked
+optimizer. Banks 1/2/3 have 129/378/2,220 bytes free; RAM is 488 bytes and the
+cartridge remains 64 KB. Packed banks match their assembled data exactly.
+
+Classic99 captures verified the loose/placed/riveted block appearances, both
+sites' white smashers, green girders, taller pails, pump, cabinet, axles and
+flashing IN arrows. Separate left/right delivery captures show clean falling
+boxes, the processing pause and rivets landing inside the correct buckets.
+The title capture confirms its original credit remains intact. Temporary
+review cartridges were replaced with production immediately after each run.
+The newest normal production cartridge is running in one Classic99 window.
+SHA-256: `FE0AB6567229D2A09C51DB9D074A494C9612097DF6F251BF3E4DFE6975D885E4`.

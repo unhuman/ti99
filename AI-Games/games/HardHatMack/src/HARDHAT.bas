@@ -350,6 +350,7 @@ main_loop:
 	END IF
 	' Both a carried brick and the jackhammer are held IN FRONT of Mack,
 	' on the side he is facing.
+	SPRITE 14,209,0,0,0
 	IF carry = 0 THEN
 		SPRITE 1,209,0,0,0
 	ELSE
@@ -362,7 +363,8 @@ main_loop:
 			IF lv = 3 THEN
 				SPRITE 1,my - 1,jx2,88,15
 			ELSE
-				SPRITE 1,my - 1,jx2,28,9
+				SPRITE 1,my - 1,jx2,28,6
+				SPRITE 14,my - 1,jx2,96,15
 			END IF
 		ELSE
 			' Carried jackhammer keeps hammering (alternate frames 24/40),
@@ -417,8 +419,7 @@ game_chars:
 	' Level 2 tiles: lunch pail, incinerator/flame, conveyor belt, magnet.
 	DEFINE CHAR T_LBOXL,2,pail_pat	' 183 lunch pail, 184 toolbox
 	DEFINE COLOR T_LBOXL,2,pail_col
-	DEFINE CHAR 210,14,machine_art
-	DEFINE COLOR 210,14,machine_col
+	GOSUB fixture_chars
 	DEFINE CHAR T_INM,1,inm_pat	' 191 level-3 IN hopper
 	DEFINE COLOR T_INM,1,inm_col
 	DEFINE CHAR T_MIXBAS,2,mixb_pat	' 162 mixer stand, 163 oil drum
@@ -457,6 +458,36 @@ game_chars:
 	DEFINE CHAR 192,16,beamshift_pat
 	DEFINE COLOR 192,16,beamshift_col
 
+	RETURN
+
+fixture_chars:
+	#if TI994A
+	BANK SELECT 3
+	#endif
+	GOSUB banked_fixture_chars
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
+fixture_draw:
+	#if TI994A
+	BANK SELECT 3
+	#endif
+	GOSUB banked_fixture_draw
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
+factory_output:
+	#if TI994A
+	BANK SELECT 3
+	#endif
+	GOSUB banked_factory_output
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 tone_start:
@@ -511,6 +542,7 @@ reset_claws:
 	clawlast = 255
 	presslast = 255
 	pressfootlast = 255
+	fixturelast = 255
 	RETURN
 
 machine_clack:
@@ -1782,7 +1814,7 @@ beam_draw:
 	'
 deliver_zone:
 	IF carry <> 1 THEN RETURN
-	IF boxfall = 1 THEN RETURN
+	IF boxfall THEN RETURN
 	IF my <> 120 THEN RETURN
 	cx = mx + 8
 	boxx = 0
@@ -1808,7 +1840,10 @@ deliver_zone:
 	RETURN
 
 deliver_box:
-	boxfall = 0
+	boxfall = 2
+	outputside = 0
+	IF boxx > 128 THEN outputside = 1
+	outputtick = 0
 	nbox = nbox - 1
 	#award = 5
 	GOSUB add_score
@@ -1817,7 +1852,6 @@ deliver_box:
 	sndvol = 12
 	sfxlen = 8
 	GOSUB tone_start
-	IF nbox = 0 THEN lvdone = 1
 	RETURN
 
 take_item:
@@ -1825,6 +1859,7 @@ take_item:
 	' spray can are instant bonus points.
 	r2 = (my + 8) / 8
 	c2 = (mx + 8) / 8
+	IF ch = T_LBOXR THEN c2 = c2 - 1
 	FOR i = 0 TO MAXITEM - 1
 		IF itst(i) = 0 THEN
 			IF itr(i) = r2 THEN
@@ -1877,6 +1912,10 @@ take_item:
 					VPOKE #va,ch
 					IF itk(i) = 3 THEN
 						#va = #va + 1
+						VPOKE #va,ch
+						#va = #va - 32
+						VPOKE #va,ch
+						#va = #va - 1
 						VPOKE #va,ch
 					END IF
 					RETURN
@@ -2153,7 +2192,7 @@ site_route:
 	IF lv = 2 THEN
 		rlo = 112
 		IF ry = 120 THEN rlo = 144
-		rhi = 180
+		rhi = 204
 		rtop = 120
 		rbot = 168
 	END IF
@@ -2455,6 +2494,7 @@ site_step:
 	#slagclock = #slagclock + 1
 	IF #slagclock >= 317 THEN #slagclock = 0
 	clawclock = clawclock + 1
+	IF (clawclock AND 15) = 15 THEN clawclock = clawclock + 1
 	IF clawclock >= 96 THEN clawclock = 0
 	IF clawclock = 48 THEN GOSUB machine_clack
 	clawstep = clawclock / 3
@@ -2469,7 +2509,7 @@ site_step:
 	ex = 62 - clawshift
 	GOSUB hazard_hit
 	' One pixel per world step, full head rests ON the girder, then retracts.
-	pressy = 104
+	pressy = 105
 	IF hzphase < 32 THEN
 		pressy = 96 + hzphase
 		IF pressy > 124 THEN pressy = 124
@@ -2481,7 +2521,7 @@ site_step:
 		END IF
 	END IF
 	' Park fully visible below the mounting beam; never retract into it.
-	IF pressy < 104 THEN pressy = 104
+	IF pressy < 105 THEN pressy = 105
 	IF hzphase = 28 THEN GOSUB machine_clack
 	ex = 184
 	ey = pressy
@@ -2514,6 +2554,8 @@ factory_step:
 	IF boxfall = 1 THEN
 		boxy = boxy + 1
 		IF boxy >= 168 THEN GOSUB deliver_box
+	ELSE
+		GOSUB factory_output
 	END IF
 	' A descending pounder guards the conveyor. Its box stays stationary
 	' on the moving belt in the reference; only Mack is carried leftward.
@@ -2529,6 +2571,7 @@ factory_step:
 			IF pressy > 62 THEN pressy = 62
 		END IF
 	END IF
+	IF pressy < 41 THEN pressy = 41
 	IF hzphase = 44 THEN GOSUB machine_clack
 	ex = 56
 	ey = pressy
@@ -2601,6 +2644,7 @@ site_draw:
 	END IF
 	SPRITE 14,209,0,0,0
 	GOSUB machinery_draw
+	GOSUB fixture_draw
 	IF lv = 2 THEN
 		IF slagphase < 68 THEN
 			blobpat = 100
@@ -2613,6 +2657,8 @@ site_draw:
 	ELSE
 		IF boxfall = 1 THEN
 			SPRITE 15,boxy - 1,boxx,88,15
+		ELSEIF boxfall = 3 THEN
+			SPRITE 15,boxy - 1,boxx,20,15
 		ELSE
 			SPRITE 15,209,0,0,0
 		END IF
@@ -2997,7 +3043,7 @@ ob_magnet:
 	GOTO lv_parse
 
 ob_pail:
-	' Level-2 PRIZE: a 1-cell pickup that sits ON TOP of a beam, never IN it.
+	' Level-2 PRIZE: a 16x12-pixel pickup that sits ON TOP of a beam, never IN it.
 	' Drawing it into the beam row punched a hole in the girder *and* put it
 	' one row below take_item's torso probe, so it could never be collected.
 	' Every beam carries a lunch pail; the legacy kind byte remains in the stream.
@@ -3015,6 +3061,12 @@ ob_pail:
 	VPOKE #va,ch
 	#va = #va + 1
 	ch = T_LBOXL + 1
+	VPOKE #va,ch
+	#va = #va - 33
+	ch = 118
+	VPOKE #va,ch
+	#va = #va + 1
+	ch = 119
 	VPOKE #va,ch
 	GOTO lv_parse
 
@@ -3254,7 +3306,7 @@ level2_data:
 	'   top platform     row 5, cols 11-13 and 15-17 (split by the cable)
 	'   crane cable      col 14, rows 3-19; the beam rides it, cols 12-16
 	'   conveyors        drums (8,22)->(6,26) and (22,5)->(20,9), both 2:1
-	'   chain            col 23, rows 18-21
+	'   chain            col 26, rows 18-21
 	'   ground           row 23, cols 2-29
 	DATA BYTE 7, 14,3,17		' crane cable, col 14 rows 3-19: down to the beam's
 				' opening row and NO FURTHER -- the beam hangs
@@ -3269,7 +3321,11 @@ level2_data:
 	DATA BYTE 1, 13,18,9,1		' mid-right tier   (cols 18-26)
 	DATA BYTE 1, 17,2,9,1		' lower-left tier  (cols 2-10)
 	DATA BYTE 1, 17,18,9,1		' lower-right tier (cols 18-26)
-	DATA BYTE 2, 23,18,4		' right-side chain, col 23 rows 18-21
+	DATA BYTE 8, 18,24,1,120
+	DATA BYTE 8, 18,25,1,121
+	DATA BYTE 8, 19,24,1,122
+	DATA BYTE 8, 19,25,1,123
+	DATA BYTE 2, 26,18,4		' chain at the platform's right edge
 	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29)
 	' Conveyor MACHINES (op 6: bottom-drum row,col, ROWS-to-rise h). True 2:1:
 	' drums 2h cols apart, belt drawn on the exact line between them.
@@ -3359,6 +3415,22 @@ level3_data:
 	' Shaft scenery. Springboards reach the circulating paddles; Fire exits.
 	DATA BYTE 10, 15,8,10,208	' left rail, rows 8-17
 	DATA BYTE 10, 16,8,10,209	' right rail, rows 8-17
+	DATA BYTE 8, 7,15,1,114
+	DATA BYTE 8, 7,16,1,115
+	DATA BYTE 8, 8,15,1,116
+	DATA BYTE 8, 8,16,1,117
+	DATA BYTE 8, 17,15,1,114
+	DATA BYTE 8, 17,16,1,115
+	DATA BYTE 8, 18,15,1,116
+	DATA BYTE 8, 18,16,1,117
+	DATA BYTE 8, 19,4,1,124
+	DATA BYTE 8, 19,5,1,125
+	DATA BYTE 8, 20,4,1,126
+	DATA BYTE 8, 20,5,1,127
+	DATA BYTE 8, 19,25,1,124
+	DATA BYTE 8, 19,26,1,125
+	DATA BYTE 8, 20,25,1,126
+	DATA BYTE 8, 20,26,1,127
 	' Top-left machine: a FLAT belt (op 9) carrying everything LEFT into the
 	' grinder. Ride it to the end and you die -- get off, or grab the box.
 	DATA BYTE 9, 9,2,10,1		' row 9, cols 2-11, direction 1 = left
@@ -3395,24 +3467,33 @@ level3_data:
 	DATA BYTE 8, 22,26,1,217
 	DATA BYTE 8, 22,27,1,218
 	DATA BYTE 8, 22,28,1,219
-	DATA BYTE 8, 19,14,4,223
-	DATA BYTE 8, 20,14,1,220
-	DATA BYTE 8, 20,15,2,221
-	DATA BYTE 8, 20,17,1,222
-	DATA BYTE 8, 21,14,1,220
-	DATA BYTE 8, 21,15,2,221
-	DATA BYTE 8, 21,17,1,222
-	DATA BYTE 8, 22,14,1,220
-	DATA BYTE 8, 22,15,2,221
-	DATA BYTE 8, 22,17,1,222
+	DATA BYTE 8, 19,14,1,96
+	DATA BYTE 8, 19,15,1,97
+	DATA BYTE 8, 19,16,1,98
+	DATA BYTE 8, 19,17,1,99
+	DATA BYTE 8, 20,14,1,100
+	DATA BYTE 8, 20,15,1,101
+	DATA BYTE 8, 20,16,1,102
+	DATA BYTE 8, 20,17,1,103
+	DATA BYTE 8, 21,14,1,104
+	DATA BYTE 8, 21,15,1,105
+	DATA BYTE 8, 21,16,1,106
+	DATA BYTE 8, 21,17,1,107
+	DATA BYTE 8, 22,14,1,108
+	DATA BYTE 8, 22,15,1,109
+	DATA BYTE 8, 22,16,1,110
+	DATA BYTE 8, 22,17,1,111
 	' Two-character springs sit one row ABOVE the ground, inside the site.
 	DATA BYTE 8, 22,10,1,139
 	DATA BYTE 8, 22,11,1,140
 	DATA BYTE 8, 22,19,1,141
 	DATA BYTE 8, 22,20,1,142
-	' The two pairs of oil drums the reference stands on the ground.
-	DATA BYTE 1, 22,8,2,10
-	DATA BYTE 1, 22,21,2,10
+	' One broad rivet-collection bucket per side.
+	DATA BYTE 8, 22,8,1,112
+	DATA BYTE 8, 22,9,1,113
+	DATA BYTE 8, 22,21,1,112
+	DATA BYTE 8, 22,22,1,113
+
 	' Six steel boxes, one per beam, each resting ON the girder (one row above
 	' it) so the torso probe can reach them. The conveyor one rides at belt
 	' height and stays put; the conveyor carries Mack toward the grinder.
@@ -3444,50 +3525,28 @@ jump_data:
 	' (black) everywhere so sprites pass in front cleanly.
 	'
 tile_pat:
-	' 128 girder: red stripe top AND bottom, blue body with black dash
-	' holes (the ColecoVision look)
-	DATA BYTE $FF,$FF,$E7,$FF,$FF,$FF,$FF,$00
-	' 129 girder (level 2): full-height red/blue/red bar with RIVET DASHES in
-	' the CENTER of the blue band, as the reference draws it. (These dashes are texture, not
-	' gaps -- nothing falls through a girder.)
+	' Generated by assets/genfixtures.py (spring halves also genconveyors.py).
+	DATA BYTE $FF,$FF,$FF,$E7,$E7,$FF,$FF,$00
 	DATA BYTE $FF,$FF,$FF,$E7,$E7,$FF,$FF,$FF
-	' 130 girder (level 3): same full-height bar as 129, coloured to the
-	' reference's orange-striped blue beam
-	DATA BYTE $FF,$FF,$E7,$FF,$FF,$FF,$FF,$FF
-	' 131 FILLED gap: plain body, no rivet holes yet
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$00
-	' 132 RIVETED gap: bright rivet dots
-	DATA BYTE $FF,$FF,$A5,$FF,$A5,$FF,$FF,$00
-	' 133 ground strip (levels 2/3): solid grass band (top 4 px), black below
+	DATA BYTE $FF,$FF,$FF,$E7,$E7,$FF,$FF,$FF
+	DATA BYTE $FF,$81,$81,$81,$81,$81,$81,$FF
+	DATA BYTE $FF,$FF,$FF,$E7,$E7,$FF,$FF,$00
 	DATA BYTE $FF,$FF,$FF,$FF,$00,$00,$00,$00
-	' 134 (spare solid)
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-	' 135/136 parked platform: identical pixels to elev_bitmap
 	DATA BYTE $FF,$FF,$92,$FF,$00,$00,$00,$00
 	DATA BYTE $FF,$FF,$49,$FF,$00,$00,$00,$00
 	' 137/138 springboard idle halves; generated by assets/genconveyors.py.
 	DATA BYTE $7F,$7F,$02,$04,$02,$04,$1F,$1F
 	DATA BYTE $FE,$FE,$40,$20,$40,$20,$F8,$F8
 tile_col:
-	' 128: red stripes, dark-blue body
+	' Generated by assets/genfixtures.py (spring halves also genconveyors.py).
 	DATA BYTE $61,$41,$41,$41,$41,$41,$61,$11
-	' 129 (L2): 2px red top edge, 4px blue body, 2px red bottom edge -- the
-	' measured reference girder (red a9433f / blue 706bdf)
-	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61
-	' 130 (L3): the reference draws level 3's beams as an ORANGE-striped blue
-	' bar (not the red-striped one of levels 1-2). Dark yellow is the closest
-	' the TMS9918 gets to that orange.
+	DATA BYTE $41,$31,$31,$34,$34,$31,$31,$41
 	DATA BYTE $A1,$A1,$51,$51,$51,$51,$A1,$A1
-	' 131 FILLED: all dark-blue
-	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$11
-	' 132 RIVETED: red stripes, white rivet dots punch the body
-	DATA BYTE $61,$F1,$F1,$F1,$F1,$F1,$61,$11
-	' 133 ground: green grass (top 2 px) over yellow-olive dirt (measured
-	' reference: 3aaf40 green / a0a94a olive)
+	DATA BYTE $F1,$F6,$F6,$F6,$F6,$F6,$F6,$F1
+	DATA BYTE $61,$41,$41,$41,$41,$41,$61,$11
 	DATA BYTE $31,$31,$A1,$A1,$11,$11,$11,$11
-	' 134 spare: gray
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	' 135/136 elevator chars: white
 	DATA BYTE $F1,$F1,$F1,$F1,$11,$11,$11,$11
 	DATA BYTE $F1,$F1,$F1,$F1,$11,$11,$11,$11
 	' 137/138 springboard idle halves; generated by assets/genconveyors.py.
@@ -3509,29 +3568,25 @@ pillar_col:
 	' pedestal: white with red foot
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$61,$61,$61
 item_pat:
-	' 185 loose block: broad filled face, bright top and staggered joints.
-	DATA BYTE $00,$7E,$FF,$DB,$FF,$B6,$FF,$7E
-	' 186 wrench
+	' Generated by assets/genfixtures.py (spring halves also genconveyors.py).
+	DATA BYTE $FF,$81,$81,$81,$81,$81,$81,$FF
 	DATA BYTE $00,$63,$63,$3E,$1C,$38,$70,$60
-	' 187 spray can
 	DATA BYTE $10,$3C,$18,$3C,$3C,$3C,$3C,$3C
-	' 188 hard hat (HUD lives icon)
 	DATA BYTE $00,$18,$3C,$7E,$7E,$FF,$00,$00
 item_col:
-	' Block: white top, light-red face and dark-red mortar courses.
-	DATA BYTE $11,$F1,$91,$61,$91,$61,$91,$61
-	' wrench: white
+	' Generated by assets/genfixtures.py (spring halves also genconveyors.py).
+	DATA BYTE $F1,$F6,$F6,$F6,$F6,$F6,$F6,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	' spray can: magenta
 	DATA BYTE $D1,$D1,$D1,$D1,$D1,$D1,$D1,$D1
-	' hat: yellow
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
 pail_pat:
-	DATA BYTE $00,$07,$04,$7F,$FF,$FF,$FF,$7F
-	DATA BYTE $00,$E0,$20,$FE,$FF,$FF,$FF,$FE
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $FF,$80,$80,$80,$80,$80,$80,$FF
+	DATA BYTE $FF,$01,$01,$01,$01,$01,$01,$FF
 pail_col:
-	DATA BYTE $11,$F1,$F1,$F1,$61,$61,$61,$F1
-	DATA BYTE $11,$F1,$F1,$F1,$61,$61,$61,$F1
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $F1,$F6,$F6,$F6,$F6,$F6,$F6,$F1
+	DATA BYTE $F1,$F6,$F6,$F6,$F6,$F6,$F6,$F1
 mixb_pat:
 	' 162 the stand under the cement mixer's drum. SYMMETRIC, so one char
 	' serves both columns -- which is how the drum gets to be two cells tall
@@ -3765,24 +3820,23 @@ beamshift_pat:
 	DATA BYTE $FF,$E7,$E7,$FF,$FF,$FF,$00,$00
 	DATA BYTE $FF,$FF,$E7,$E7,$FF,$FF,$FF,$00
 beamshift_col:
-	' Girder banding red($61) top2 / blue($51) mid4 / red top2, sliced to match
-	' each pattern so the bands travel WITH the bar. $11 = black (empty rows).
-	DATA BYTE $61,$61,$51,$51,$51,$51,$61,$61	' 192
-	DATA BYTE $11,$61,$61,$51,$51,$51,$51,$61	' 193
-	DATA BYTE $11,$11,$61,$61,$51,$51,$51,$51	' 194
-	DATA BYTE $11,$11,$11,$61,$61,$51,$51,$51	' 195
-	DATA BYTE $11,$11,$11,$11,$61,$61,$51,$51	' 196
-	DATA BYTE $11,$11,$11,$11,$11,$61,$61,$51	' 197
-	DATA BYTE $11,$11,$11,$11,$11,$11,$61,$61	' 198
-	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$61	' 199
-	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11	' 200 (blank)
-	DATA BYTE $61,$11,$11,$11,$11,$11,$11,$11	' 201
-	DATA BYTE $61,$61,$11,$11,$11,$11,$11,$11	' 202
-	DATA BYTE $51,$61,$61,$11,$11,$11,$11,$11	' 203
-	DATA BYTE $51,$51,$61,$61,$11,$11,$11,$11	' 204
-	DATA BYTE $51,$51,$51,$61,$61,$11,$11,$11	' 205
-	DATA BYTE $51,$51,$51,$51,$61,$61,$11,$11	' 206
-	DATA BYTE $61,$51,$51,$51,$51,$61,$61,$11	' 207
+	' Generated by assets/genfixtures.py (spring halves also genconveyors.py).
+	DATA BYTE $41,$31,$31,$34,$34,$31,$31,$41
+	DATA BYTE $11,$41,$31,$31,$34,$34,$31,$31
+	DATA BYTE $11,$11,$41,$31,$31,$34,$34,$31
+	DATA BYTE $11,$11,$11,$41,$31,$31,$34,$34
+	DATA BYTE $11,$11,$11,$11,$41,$31,$31,$34
+	DATA BYTE $11,$11,$11,$11,$11,$41,$31,$31
+	DATA BYTE $11,$11,$11,$11,$11,$11,$41,$31
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$41
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
+	DATA BYTE $41,$11,$11,$11,$11,$11,$11,$11
+	DATA BYTE $31,$41,$11,$11,$11,$11,$11,$11
+	DATA BYTE $31,$31,$41,$11,$11,$11,$11,$11
+	DATA BYTE $34,$31,$31,$41,$11,$11,$11,$11
+	DATA BYTE $34,$34,$31,$31,$41,$11,$11,$11
+	DATA BYTE $31,$34,$34,$31,$31,$41,$11,$11
+	DATA BYTE $31,$31,$34,$34,$31,$31,$41,$11
 txt_white:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
@@ -3999,24 +4053,23 @@ jack_bitmap:
 	BITMAP "................"
 
 brick_bitmap:
-	' Carried girder piece: the brick stack, held overhead.
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "....XXXXXXXX...."
-	BITMAP "....X.XX.XX....."
-	BITMAP "....XXXXXXXX...."
-	BITMAP "....XX.XX.X....."
-	BITMAP "....XXXXXXXX...."
+	' Generated by assets/genfixtures.py; edit the generator.
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXXX....."
 	BITMAP "................"
 	BITMAP "................"
-
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
 vandal2_bitmap:
 	' The vandal, walk frame B: legs togetherish. 12 px, bottom-anchored.
 	BITMAP "................"
@@ -4171,37 +4224,6 @@ cage_bitmap:
 	BITMAP "X..............X"
 	BITMAP "X..............X"
 
-machine_art:
-	DATA BYTE $00,$00,$01,$07,$1F,$3F,$7F,$FF
-	DATA BYTE $03,$3F,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $C0,$FC,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $00,$00,$80,$E0,$F8,$FC,$FE,$FF
-	DATA BYTE $FF,$3F,$3F,$3F,$3F,$3F,$0F,$00
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $FF,$16,$B2,$B4,$B6,$16,$FF,$FF
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $FF,$FC,$FC,$FC,$FC,$FC,$F0,$00
-	DATA BYTE $E0,$E0,$E0,$E0,$E0,$E0,$E0,$E0
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
-	DATA BYTE $07,$07,$07,$07,$07,$07,$07,$07
-	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
-machine_col:
-	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$31,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$31,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$31,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$31,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $F1,$31,$31,$31,$31,$31,$31,$F1
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $A1,$A1,$A1,$A1,$A1,$A1,$A1,$A1
-	DATA BYTE $5A,$5A,$5A,$5A,$5A,$5A,$5A,$5A
-	DATA BYTE $51,$51,$1A,$1A,$1A,$1A,$1A,$1A
-
 drill_route:
 	DATA BYTE 88,152,88,120,208,120,208,88,24,88,24,56,168,56,168,24,208,24
 	DATA BYTE 208,56,24,56,24,88,208,88,208,120,88,120,88,152,24,152,24,152
@@ -4297,6 +4319,7 @@ slag_bitmap:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
+
 
 asset_end:
 	DATA BYTE 72,72,77,65,67,75,26,1
@@ -4789,30 +4812,30 @@ pressfoot_pat:
 	DATA BYTE $FE,$00,$FF,$03,$03,$03,$FF,$00
 	DATA BYTE $7F,$00,$FF,$81,$81,$81,$FF,$00
 	DATA BYTE $FE,$00,$FF,$81,$81,$81,$FF,$00
-	DATA BYTE $60,$7F,$FF,$C0,$C0,$C0,$FF,$00
-	DATA BYTE $06,$FE,$FF,$C0,$C0,$C0,$FF,$00
-	DATA BYTE $60,$7F,$FF,$60,$60,$60,$FF,$00
-	DATA BYTE $06,$FE,$FF,$60,$60,$60,$FF,$00
-	DATA BYTE $60,$7F,$FF,$30,$30,$30,$FF,$00
-	DATA BYTE $06,$FE,$FF,$30,$30,$30,$FF,$00
-	DATA BYTE $60,$7F,$FF,$18,$18,$18,$FF,$00
-	DATA BYTE $06,$FE,$FF,$18,$18,$18,$FF,$00
-	DATA BYTE $60,$7F,$FF,$0C,$0C,$0C,$FF,$00
-	DATA BYTE $06,$FE,$FF,$0C,$0C,$0C,$FF,$00
-	DATA BYTE $60,$7F,$FF,$06,$06,$06,$FF,$00
-	DATA BYTE $06,$FE,$FF,$06,$06,$06,$FF,$00
-	DATA BYTE $60,$7F,$FF,$03,$03,$03,$FF,$00
-	DATA BYTE $06,$FE,$FF,$03,$03,$03,$FF,$00
-	DATA BYTE $60,$7F,$FF,$81,$81,$81,$FF,$00
-	DATA BYTE $06,$FE,$FF,$81,$81,$81,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$C0,$C0,$C0,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$C0,$C0,$C0,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$60,$60,$60,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$60,$60,$60,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$30,$30,$30,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$30,$30,$30,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$18,$18,$18,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$18,$18,$18,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$0C,$0C,$0C,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$0C,$0C,$0C,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$06,$06,$06,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$06,$06,$06,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$03,$03,$03,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$03,$03,$03,$FF,$00
+	DATA BYTE $7F,$7F,$FF,$81,$81,$81,$FF,$00
+	DATA BYTE $FE,$FE,$FF,$81,$81,$81,$FF,$00
 pressfoot_col:
 	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $11,$11,$F1,$31,$31,$31,$F1,$11
 	DATA BYTE $11,$11,$F1,$31,$31,$31,$F1,$11
-	DATA BYTE $61,$11,$F1,$31,$31,$31,$F1,$11
-	DATA BYTE $61,$11,$F1,$31,$31,$31,$F1,$11
-	DATA BYTE $81,$61,$F1,$31,$31,$31,$F1,$11
-	DATA BYTE $81,$61,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $F1,$11,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $F1,$11,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $F1,$F1,$F1,$31,$31,$31,$F1,$11
+	DATA BYTE $F1,$F1,$F1,$31,$31,$31,$F1,$11
 claw_pat:
 	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $00,$00,$30,$30,$30,$F0,$F0,$F0
@@ -4938,162 +4961,162 @@ press_pat:
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $6F,$7F,$00,$00,$00,$00,$00,$00
-	DATA BYTE $F6,$FE,$00,$00,$00,$00,$00,$00
+	DATA BYTE $7F,$7F,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FE,$FE,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $7F,$6F,$7F,$00,$00,$00,$00,$00
-	DATA BYTE $FE,$F6,$FE,$00,$00,$00,$00,$00
+	DATA BYTE $6F,$7F,$7F,$00,$00,$00,$00,$00
+	DATA BYTE $F6,$FE,$FE,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $7F,$7F,$60,$7F,$00,$00,$00,$00
-	DATA BYTE $FE,$FE,$06,$FE,$00,$00,$00,$00
+	DATA BYTE $7F,$6F,$7F,$7F,$00,$00,$00,$00
+	DATA BYTE $FE,$F6,$FE,$FE,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$7F,$7F,$60,$7F,$00,$00,$00
-	DATA BYTE $F0,$FE,$FE,$06,$FE,$00,$00,$00
+	DATA BYTE $7F,$7F,$6F,$7F,$7F,$00,$00,$00
+	DATA BYTE $FE,$FE,$F6,$FE,$FE,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$0F,$7F,$7F,$60,$7F,$00,$00
-	DATA BYTE $F0,$F0,$FE,$FE,$06,$FE,$00,$00
+	DATA BYTE $0F,$7F,$7F,$6F,$7F,$7F,$00,$00
+	DATA BYTE $F0,$FE,$FE,$F6,$FE,$FE,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$0F,$01,$7F,$7F,$60,$7F,$00
-	DATA BYTE $F0,$F0,$80,$FE,$FE,$06,$FE,$00
+	DATA BYTE $0F,$0F,$7F,$7F,$6F,$7F,$7F,$00
+	DATA BYTE $F0,$F0,$FE,$FE,$F6,$FE,$FE,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$0F,$01,$01,$7F,$7F,$60,$7F
-	DATA BYTE $F0,$F0,$80,$80,$FE,$FE,$06,$FE
+	DATA BYTE $0F,$0F,$01,$7F,$7F,$6F,$7F,$7F
+	DATA BYTE $F0,$F0,$80,$FE,$FE,$F6,$FE,$FE
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$0F,$01,$01,$01,$7F,$7F,$60
-	DATA BYTE $F0,$F0,$80,$80,$80,$FE,$FE,$06
+	DATA BYTE $0F,$0F,$01,$01,$7F,$7F,$6F,$7F
+	DATA BYTE $F0,$F0,$80,$80,$FE,$FE,$F6,$FE
 	DATA BYTE $7F,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FE,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $0F,$0F,$01,$01,$01,$7F,$7F,$6F
+	DATA BYTE $F0,$F0,$80,$80,$80,$FE,$FE,$F6
+	DATA BYTE $7F,$7F,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FE,$FE,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$7F,$7F
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$FE,$FE
-	DATA BYTE $60,$7F,$00,$00,$00,$00,$00,$00
-	DATA BYTE $06,$FE,$00,$00,$00,$00,$00,$00
+	DATA BYTE $6F,$7F,$7F,$00,$00,$00,$00,$00
+	DATA BYTE $F6,$FE,$FE,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$7F
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$FE
-	DATA BYTE $7F,$60,$7F,$00,$00,$00,$00,$00
-	DATA BYTE $FE,$06,$FE,$00,$00,$00,$00,$00
+	DATA BYTE $7F,$6F,$7F,$7F,$00,$00,$00,$00
+	DATA BYTE $FE,$F6,$FE,$FE,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
-	DATA BYTE $7F,$7F,$60,$7F,$00,$00,$00,$00
-	DATA BYTE $FE,$FE,$06,$FE,$00,$00,$00,$00
+	DATA BYTE $7F,$7F,$6F,$7F,$7F,$00,$00,$00
+	DATA BYTE $FE,$FE,$F6,$FE,$FE,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$7F,$7F,$60,$7F,$00,$00,$00
-	DATA BYTE $80,$FE,$FE,$06,$FE,$00,$00,$00
+	DATA BYTE $01,$7F,$7F,$6F,$7F,$7F,$00,$00
+	DATA BYTE $80,$FE,$FE,$F6,$FE,$FE,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$7F,$7F,$60,$7F,$00,$00
-	DATA BYTE $80,$80,$FE,$FE,$06,$FE,$00,$00
+	DATA BYTE $01,$01,$7F,$7F,$6F,$7F,$7F,$00
+	DATA BYTE $80,$80,$FE,$FE,$F6,$FE,$FE,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$7F,$7F,$60,$7F,$00
-	DATA BYTE $80,$80,$80,$FE,$FE,$06,$FE,$00
+	DATA BYTE $01,$01,$01,$7F,$7F,$6F,$7F,$7F
+	DATA BYTE $80,$80,$80,$FE,$FE,$F6,$FE,$FE
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$01,$7F,$7F,$60,$7F
-	DATA BYTE $80,$80,$80,$80,$FE,$FE,$06,$FE
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
-	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$01,$01,$7F,$7F,$60
-	DATA BYTE $80,$80,$80,$80,$80,$FE,$FE,$06
+	DATA BYTE $01,$01,$01,$01,$7F,$7F,$6F,$7F
+	DATA BYTE $80,$80,$80,$80,$FE,$FE,$F6,$FE
 	DATA BYTE $7F,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $FE,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
+	DATA BYTE $01,$01,$01,$01,$01,$7F,$7F,$6F
+	DATA BYTE $80,$80,$80,$80,$80,$FE,$FE,$F6
+	DATA BYTE $7F,$7F,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FE,$FE,$00,$00,$00,$00,$00,$00
+	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
+	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$7F,$7F
 	DATA BYTE $80,$80,$80,$80,$80,$80,$FE,$FE
-	DATA BYTE $60,$7F,$00,$00,$00,$00,$00,$00
-	DATA BYTE $06,$FE,$00,$00,$00,$00,$00,$00
+	DATA BYTE $6F,$7F,$7F,$00,$00,$00,$00,$00
+	DATA BYTE $F6,$FE,$FE,$00,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$7F
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$FE
-	DATA BYTE $7F,$60,$7F,$00,$00,$00,$00,$00
-	DATA BYTE $FE,$06,$FE,$00,$00,$00,$00,$00
+	DATA BYTE $7F,$6F,$7F,$7F,$00,$00,$00,$00
+	DATA BYTE $FE,$F6,$FE,$FE,$00,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
-	DATA BYTE $7F,$7F,$60,$7F,$00,$00,$00,$00
-	DATA BYTE $FE,$FE,$06,$FE,$00,$00,$00,$00
+	DATA BYTE $7F,$7F,$6F,$7F,$7F,$00,$00,$00
+	DATA BYTE $FE,$FE,$F6,$FE,$FE,$00,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$7F,$7F,$60,$7F,$00,$00,$00
-	DATA BYTE $80,$FE,$FE,$06,$FE,$00,$00,$00
+	DATA BYTE $01,$7F,$7F,$6F,$7F,$7F,$00,$00
+	DATA BYTE $80,$FE,$FE,$F6,$FE,$FE,$00,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$7F,$7F,$60,$7F,$00,$00
-	DATA BYTE $80,$80,$FE,$FE,$06,$FE,$00,$00
+	DATA BYTE $01,$01,$7F,$7F,$6F,$7F,$7F,$00
+	DATA BYTE $80,$80,$FE,$FE,$F6,$FE,$FE,$00
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$7F,$7F,$60,$7F,$00
-	DATA BYTE $80,$80,$80,$FE,$FE,$06,$FE,$00
+	DATA BYTE $01,$01,$01,$7F,$7F,$6F,$7F,$7F
+	DATA BYTE $80,$80,$80,$FE,$FE,$F6,$FE,$FE
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$01,$7F,$7F,$60,$7F
-	DATA BYTE $80,$80,$80,$80,$FE,$FE,$06,$FE
+	DATA BYTE $01,$01,$01,$01,$7F,$7F,$6F,$7F
+	DATA BYTE $80,$80,$80,$80,$FE,$FE,$F6,$FE
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$01,$01,$7F,$7F,$60
-	DATA BYTE $80,$80,$80,$80,$80,$FE,$FE,$06
+	DATA BYTE $01,$01,$01,$01,$01,$7F,$7F,$6F
+	DATA BYTE $80,$80,$80,$80,$80,$FE,$FE,$F6
 	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
 	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
 	DATA BYTE $01,$01,$01,$01,$01,$01,$7F,$7F
 	DATA BYTE $80,$80,$80,$80,$80,$80,$FE,$FE
-	DATA BYTE $0F,$0F,$01,$01,$01,$01,$01,$01
-	DATA BYTE $F0,$F0,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
-	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
-	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$7F
-	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$FE
 press_col:
 	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
@@ -5126,168 +5149,168 @@ press_col:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
-	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$F1,$F1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$F1,$F1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
-	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$F1,$F1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$F1,$F1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
-	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$F1,$F1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$F1,$F1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
-	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
+	DATA BYTE $E1,$E1,$F1,$F1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$F1,$F1,$E1,$F1,$F1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
-	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
+	DATA BYTE $E1,$E1,$E1,$F1,$F1,$E1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$F1,$F1,$E1,$F1,$F1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
-	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$E1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$E1,$F1
+	DATA BYTE $F1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
-	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+	DATA BYTE $F1,$F1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
-	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
-	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
-	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
-	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
-	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
-	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
-	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $61,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
-	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $81,$61,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$F1
+	DATA BYTE $E1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
-	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $D1,$81,$61,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$F1,$F1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$F1,$F1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
-	DATA BYTE $F1,$D1,$81,$61,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$F1,$F1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$F1,$F1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
-	DATA BYTE $E1,$F1,$D1,$81,$61,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$F1,$F1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$F1,$F1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
-	DATA BYTE $E1,$E1,$F1,$D1,$81,$61,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$F1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$F1,$F1,$E1,$F1,$F1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
-	DATA BYTE $E1,$E1,$E1,$F1,$D1,$81,$61,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$F1,$E1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$F1,$F1,$E1,$F1,$F1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
-	DATA BYTE $E1,$E1,$E1,$E1,$F1,$D1,$81,$61
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$E1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$E1,$F1
+	DATA BYTE $F1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+	DATA BYTE $F1,$F1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$D1,$81
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$D1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$F1
+	DATA BYTE $E1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$F1
+	DATA BYTE $F1,$E1,$F1,$F1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$E1,$F1,$F1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$F1,$F1,$E1,$E1,$E1
+	DATA BYTE $F1,$F1,$E1,$F1,$F1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$F1,$F1,$E1,$E1
+	DATA BYTE $E1,$F1,$F1,$E1,$F1,$F1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$F1,$F1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$F1,$F1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$F1,$F1,$E1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$F1,$F1,$E1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$E1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$F1,$F1,$E1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$F1,$F1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$F1
+	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$F1
 animation_end:
 	DATA BYTE 72,72,77,65,78,73,77,2
 
@@ -5295,6 +5318,231 @@ animation_end:
 	BANK 3
 	#endif
 
+banked_fixture_chars:
+	' 96-127 are unused lowercase glyphs during play; title restores its art.
+	DEFINE CHAR 96,32,fixture_pat
+	DEFINE COLOR 96,32,fixture_col
+	DEFINE CHAR 210,10,machine_art
+	DEFINE COLOR 210,10,machine_col
+	DEFINE SPRITE 24,1,brick_edge
+	RETURN
+
+banked_fixture_draw:
+	IF lv = 2 THEN
+		' The pump follows the crane's vertical travel, including its idle state.
+		fixturepose = (bmy / 4) AND 3
+		IF bmd THEN fixturepose = 3 - fixturepose
+		IF fixturepose <> fixturelast THEN
+			fixturelast = fixturepose
+			DEFINE CHAR 120,4,VARPTR beat_pat(fixturepose * 32)
+			DEFINE COLOR 120,4,VARPTR beat_col(fixturepose * 32)
+		END IF
+	ELSE
+		fixturepose = (hzphase / 32) AND 1
+		IF fixturepose <> fixturelast THEN
+			fixturelast = fixturepose
+			DEFINE CHAR 124,4,VARPTR inflash_pat(fixturepose * 32)
+		END IF
+	END IF
+	RETURN
+
+banked_factory_output:
+	IF boxfall < 2 THEN RETURN
+	outputtick = outputtick + 1
+	IF boxfall = 2 THEN
+		IF outputtick = 10 THEN
+			boxfall = 3
+			outputtick = 0
+			boxy = 163
+			boxx = 48
+			' Delivery side is saved from the input, not Mack's later position.
+			IF outputside = 0 THEN boxx = 48
+			IF outputside = 1 THEN boxx = 188
+			GOSUB machine_clack
+		END IF
+		RETURN
+	END IF
+	IF outputside = 0 THEN
+		boxx = boxx + 1
+	ELSE
+		boxx = boxx - 1
+	END IF
+	IF outputtick <= 6 THEN
+		boxy = boxy - 1
+	ELSE
+		boxy = boxy + 2
+	END IF
+	IF outputtick = 16 THEN
+		boxfall = 0
+		GOSUB machine_clack
+		IF nbox = 0 THEN lvdone = 1
+	END IF
+	RETURN
+
+machine_art:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $FF,$FF,$03,$0F,$3F,$7F,$C0,$C0
+	DATA BYTE $03,$7F,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $C0,$FE,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$C0,$F0,$FC,$FE,$03,$03
+	DATA BYTE $C0,$C0,$7F,$3F,$0F,$03,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$7F,$03
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FE,$C0
+	DATA BYTE $03,$03,$FE,$FC,$F0,$C0,$FF,$FF
+machine_col:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $11,$11,$F1,$F1,$F1,$F1,$F3,$F3
+	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$31
+	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$31
+	DATA BYTE $F1,$F1,$31,$31,$31,$31,$31,$31
+	DATA BYTE $11,$11,$F1,$F1,$F1,$F1,$F3,$F3
+	DATA BYTE $F3,$F3,$F1,$F1,$F1,$F1,$11,$11
+	DATA BYTE $31,$31,$31,$31,$31,$31,$F1,$F1
+	DATA BYTE $31,$31,$31,$31,$31,$31,$F1,$F1
+	DATA BYTE $31,$31,$31,$31,$31,$31,$F1,$F1
+	DATA BYTE $F3,$F3,$F1,$F1,$F1,$F1,$11,$11
+fixture_pat:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $FF,$80,$80,$80,$80,$80,$80,$80
+	DATA BYTE $FF,$FF,$FF,$FF,$88,$88,$88,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$89,$89,$89,$FF
+	DATA BYTE $FF,$01,$01,$01,$01,$01,$01,$01
+	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
+	DATA BYTE $88,$88,$FF,$FF,$FF,$FF,$80,$80
+	DATA BYTE $89,$89,$FF,$FF,$FF,$FF,$01,$01
+	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
+	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
+	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$80
+	DATA BYTE $01,$01,$01,$01,$0D,$0D,$01,$01
+	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
+	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$FF
+	DATA BYTE $80,$80,$80,$80,$80,$FF,$FF,$FF
+	DATA BYTE $01,$01,$01,$01,$01,$FF,$FF,$FF
+	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$FF
+	DATA BYTE $7F,$80,$C0,$C0,$C0,$C0,$7F,$3F
+	DATA BYTE $FE,$01,$03,$03,$03,$03,$FE,$FC
+	DATA BYTE $FF,$07,$1F,$3F,$7F,$67,$67,$67
+	DATA BYTE $FF,$E0,$F8,$FC,$FE,$E6,$E6,$E6
+	DATA BYTE $67,$67,$67,$7F,$3F,$1F,$07,$FF
+	DATA BYTE $E6,$E6,$E6,$FE,$FC,$F8,$E0,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$03,$04,$04,$7F
+	DATA BYTE $FF,$FF,$FF,$FF,$C0,$20,$20,$FE
+	DATA BYTE $1F,$1F,$01,$01,$01,$01,$01,$3F
+	DATA BYTE $F8,$F8,$80,$80,$80,$80,$80,$FC
+	DATA BYTE $3F,$FF,$FF,$FF,$1F,$1F,$7F,$7F
+	DATA BYTE $FC,$FF,$FF,$FF,$F8,$F8,$FE,$FE
+	DATA BYTE $1C,$08,$08,$08,$1C,$FF,$FF,$01
+	DATA BYTE $90,$D0,$B0,$90,$90,$FF,$FF,$80
+	DATA BYTE $01,$01,$0F,$07,$03,$01,$FF,$FF
+	DATA BYTE $80,$80,$F0,$E0,$C0,$80,$FF,$FF
+fixture_col:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $F1,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F1,$41,$41,$F1,$F4,$F4,$F4,$F1
+	DATA BYTE $F1,$41,$41,$F1,$F4,$F4,$F4,$F1
+	DATA BYTE $F1,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F1,$41,$41,$F1,$F6,$F6
+	DATA BYTE $F4,$F4,$F1,$41,$41,$F1,$F6,$F6
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F6,$F6,$F6
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F1
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F1,$41,$F1
+	DATA BYTE $F6,$F6,$F6,$F6,$F6,$F1,$41,$F1
+	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F4,$F4,$F1
+	DATA BYTE $F1,$F1,$FD,$FD,$FD,$FD,$F1,$D1
+	DATA BYTE $F1,$F1,$FD,$FD,$FD,$FD,$F1,$D1
+	DATA BYTE $11,$D1,$F1,$F1,$D1,$F1,$F1,$F1
+	DATA BYTE $11,$D1,$F1,$F1,$D1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$D1,$F1,$F1,$D1,$11
+	DATA BYTE $F1,$F1,$F1,$D1,$F1,$F1,$D1,$11
+	DATA BYTE $11,$11,$11,$11,$F1,$F1,$F1,$F1
+	DATA BYTE $11,$11,$11,$11,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$11,$11,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$11,$11,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$11,$11,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$11,$11,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$11,$11
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$11,$11
+beat_pat:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $1F,$1F,$01,$01,$01,$01,$01,$3F
+	DATA BYTE $F8,$F8,$80,$80,$80,$80,$80,$FC
+	DATA BYTE $3F,$FF,$FF,$FF,$1F,$1F,$7F,$7F
+	DATA BYTE $FC,$FF,$FF,$FF,$F8,$F8,$FE,$FE
+	DATA BYTE $1F,$1F,$01,$01,$01,$01,$01,$01
+	DATA BYTE $F8,$F8,$80,$80,$80,$80,$80,$80
+	DATA BYTE $3F,$3F,$FF,$FF,$1F,$1F,$7F,$7F
+	DATA BYTE $FC,$FC,$FF,$FF,$F8,$F8,$FE,$FE
+	DATA BYTE $1F,$1F,$01,$01,$01,$01,$01,$01
+	DATA BYTE $F8,$F8,$80,$80,$80,$80,$80,$80
+	DATA BYTE $01,$3F,$3F,$FF,$1F,$1F,$7F,$7F
+	DATA BYTE $80,$FC,$FC,$FF,$F8,$F8,$FE,$FE
+	DATA BYTE $1F,$1F,$01,$01,$01,$01,$01,$01
+	DATA BYTE $F8,$F8,$80,$80,$80,$80,$80,$80
+	DATA BYTE $01,$01,$3F,$3F,$1F,$1F,$7F,$7F
+	DATA BYTE $80,$80,$FC,$FC,$F8,$F8,$FE,$FE
+beat_col:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$11,$11,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$11,$11,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$11,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$F1,$11,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$11,$31,$31,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$31,$31,$F1,$F1
+	DATA BYTE $F1,$F1,$F1,$F1,$31,$31,$F1,$F1
+inflash_pat:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $1C,$08,$08,$08,$1C,$FF,$FF,$01
+	DATA BYTE $90,$D0,$B0,$90,$90,$FF,$FF,$80
+	DATA BYTE $01,$01,$0F,$07,$03,$01,$FF,$FF
+	DATA BYTE $80,$80,$F0,$E0,$C0,$80,$FF,$FF
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+brick_edge:
+	' Generated by assets/genfixtures.py; edit the generator.
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "....XXXXXXXX...."
+	BITMAP "....X......X...."
+	BITMAP "....X......X...."
+	BITMAP "....X......X...."
+	BITMAP "....X......X...."
+	BITMAP "....X......X...."
+	BITMAP "....X......X...."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+credit_pat:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $00,$00,$68,$98,$88,$98,$68,$00
+	DATA BYTE $08,$08,$68,$98,$88,$98,$68,$00
+	DATA BYTE $00,$00,$B0,$C8,$88,$88,$88,$00
+credit_col:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 banked_score_print:
 	' Split five-point units into a five-digit quotient and a final 0 or 5.
 	' Never multiply the full score into an overflowing 16-bit temporary.
@@ -5421,6 +5669,13 @@ banked_score_left:
 	RETURN
 
 banked_title:
+	' Gameplay fixtures borrow lowercase slots; preserve the existing credit.
+	DEFINE CHAR 97,1,credit_pat
+	DEFINE CHAR 100,1,VARPTR credit_pat(8)
+	DEFINE CHAR 110,1,VARPTR credit_pat(16)
+	DEFINE COLOR 97,1,credit_col
+	DEFINE COLOR 100,1,credit_col
+	DEFINE COLOR 110,1,credit_col
 	GOSUB quiet_screen
 	CLS
 	DEFINE CHAR 128,84,title_pat

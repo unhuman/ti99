@@ -38,6 +38,11 @@ class Basic:
                       for line in source.splitlines()]
         self.labels = {line[:-1]: i for i, line in enumerate(self.lines)
                        if re.fullmatch(r'\w+:', line)}
+        self.label_banks = {}
+        declared_bank = 0
+        for line in self.lines:
+            if re.fullmatch(r'bank [0-9]+',line):declared_bank=int(line.split()[1])
+            if re.fullmatch(r'\w+:',line):self.label_banks[line[:-1]]=declared_bank
         self.ends, self.elses = {}, {}
         stack = []
         for i, line in enumerate(self.lines):
@@ -189,17 +194,19 @@ class Basic:
                 self.sprites[args[0]] = args[1:]
             elif line.startswith('define sprite '):
                 first,count,pointer=line[14:].split(',')
-                assert pointer=='dance_bitmap' and self.bank==2, 'unexpected sprite upload/bank'
+                assert (pointer,self.bank) in (('dance_bitmap',2),('brick_edge',3)), 'unexpected sprite upload/bank'
                 self.sprite_writes.append((self.expr(first),self.expr(count),pointer))
             elif line.startswith(('define char ', 'define color ')):
                 # Record hardware-only uploads, including the actual ROM offset.
                 color=line.startswith('define color ')
                 first, count, pointer = line[13 if color else 12:].split(',', 2)
                 m = re.fullmatch(r'varptr (\w+)\((.+)\)', pointer)
+                data_label=m[1] if m else pointer
+                assert self.label_banks[data_label] in (0,self.bank), ('wrong art bank',data_label,self.bank,self.label_banks[data_label])
                 if pointer.startswith(('varptr claw_pat','varptr press_','varptr tramp_',
                                        'varptr pad_anim','varptr pad_colors')):
                     assert self.bank==2, 'animation data read from wrong bank'
-                if pointer in ('title_pat','title_col'):
+                if pointer in ('title_pat','title_col','fixture_pat','fixture_col','machine_art','machine_col') or pointer.startswith(('varptr beat_','varptr inflash_')):
                     assert self.bank==3, 'title art read from wrong bank'
                 (self.color_writes if color else self.pattern_writes).append((self.expr(first),self.expr(count),
                     m[1] if m else pointer, self.expr(m[2]) if m else 0))
@@ -427,7 +434,7 @@ def machinery(source):
                 vm.v.update(mx=24 if i%2==0 else 208,my=120,st=vm.v['s_walk'])
                 vm.run('deliver_zone')
                 assert vm.v['carry']==0 and vm.v['boxfall']==1 and vm.v['nbox']==6-i
-                for _ in range(40):
+                for _ in range(66):
                     vm.run('factory_step')
                 assert vm.v['nbox'] == 5-i
             assert vm.v['lvdone'] == 1
@@ -1018,13 +1025,13 @@ def machinery_animation(source):
     vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
     poses=[]
     vm.v.update(mx=112,my=80,clawclock=95)
-    for _ in range(97):
+    for _ in range(91):
         vm.run('site_step');vm.run('site_draw');poses.append(vm.v['clawstep'])
         assert vm.bank==1, 'animation bank not restored'
         assert vm.sprites[14][0]==209, 'level-2 smasher still uses a sprite'
-    assert set(poses)==set(range(17)) and poses[0]==poses[96]==0
+    assert set(poses)==set(range(17)) and poses[0]==poses[90]==0
     assert all(abs(a-b)<=1 for a,b in zip(poses,poses[1:])), 'pincers snap between poses'
-    assert all(len(set(poses[i:i+5]))>1 for i in range(93)), 'pincers pause at an endpoint'
+    assert all(len(set(poses[i:i+5]))>1 for i in range(87)), 'pincers pause at an endpoint'
     assert len(vm.pattern_writes)<97*3, 'unchanged machinery reuploads every pass'
     patterns=table('press_pat');colors=table('press_col')
     assert len(patterns)==len(colors)==32*48
@@ -1033,7 +1040,7 @@ def machinery_animation(source):
     feet=table('pressfoot_pat')
     assert len(feet)==3*8*16
     footcolors=table('pressfoot_col')
-    for level,base,origin,low,high in ((2,112,184,104,124),(3,48,56,40,62)):
+    for level,base,origin,low,high in ((2,112,184,105,124),(3,48,56,41,62)):
         vm=Basic(source);vm.v.update(lv=level);vm.run('init_level')
         hit=Basic(source);hit.v.update(lv=level);hit.run('init_level')
         positions=[]
@@ -1044,18 +1051,18 @@ def machinery_animation(source):
             phase=position-(96 if level==2 else 32)
             frame=patterns[phase*48:][:48]
             def painted(x,y):return bool(frame[(y//8*2+x//8)*8+y%8] & (128>>(x%8)))
-            for y in range(max(0,phase-8)):
+            for y in range(max(0,phase-9)):
                 assert painted(7,y) and painted(8,y), 'floating smasher head'
-            for y in range(max(0,phase-8),min(24,phase-4)):
+            for y in range(max(0,phase-9),min(24,phase-4)):
                 assert painted(1,y) and painted(14,y), 'smasher head too narrow'
                 for tile in range(2):
-                    assert colors[phase*48+(y//8*2+tile)*8+y%8]==[0xf1,0xd1,0x81,0x61][y-(phase-8)], 'head color slips across a cell'
+                    assert colors[phase*48+(y//8*2+tile)*8+y%8]==[0xf1,0xf1,0xe1,0xf1,0xf1][y-(phase-9)], 'head color slips across a cell'
             vm.v.update(presslast=255)
             vm.run('site_draw')
             assert vm.bank==1 and vm.sprites[14][0]==209, 'sprite smasher or wrong bank'
-            assert vm.pattern_writes[-1]==(243,6,'press_pat',phase*48)
-            assert vm.color_writes[-1]==(243,6,'press_col',phase*48)
-            top=max(base,position+8);bottom=min(base+(23 if level==2 else 25),position+11)
+            assert (243,6,'press_pat',phase*48) in vm.pattern_writes
+            assert (243,6,'press_col',phase*48) in vm.color_writes
+            top=max(base,position+7);bottom=min(base+(23 if level==2 else 25),position+11)
             for y in range(base-32,base+34):
                 hit.v.update(mx=origin,my=y,hzphase=clock-1,st=hit.v['s_walk'],**{'#slagclock':180})
                 hit.run('site_step')
@@ -1083,7 +1090,7 @@ def machinery_animation(source):
                 assert (249,2,'pressfoot_pat',offset) in vm.pattern_writes, 'wrong belt/head frame'
                 assert (249,2,'pressfoot_col',depth*16) in vm.color_writes, 'wrong head foot colors'
                 for y in range(depth):
-                    assert footcolors[depth*16+y]==[0x81,0x61][2-depth+y]
+                    assert footcolors[depth*16+y]==[0xf1,0xf1][2-depth+y]
         assert min(positions)==low and max(positions)==high, ('smasher travel',level,positions)
         assert all(abs(a-b)<=1 for a,b in zip(positions,positions[1:]+positions[:1])), 'smasher snaps back'
         assert positions.count(high)<=10, 'smasher pins player too long'
@@ -1134,7 +1141,7 @@ def visual_hazards(source):
                             ky0=vm.arrays['cvy0'][1],kdy=16)
                 vm.run('belt_surface')
                 assert abs(vm.v['bloby']+9-vm.v['srf'])<=1, ('slag buried below belt',clock)
-        assert vm.pattern_writes[-1][0] in (156,238,243)
+        assert vm.pattern_writes[-1][0] in (120,156,238,243)
     assert all(path[i]==path[i+1] for i in range(0,136,2)), 'slag ignores half-speed clock'
     assert len(set(x for x,y in path[:32]))==1
     assert all(0<=b[0]-a[0]<=1 and abs(b[1]-a[1])<=2 for a,b in zip(path,path[1:]))
@@ -1254,7 +1261,7 @@ def speed_contract(source):
     vm.v.update(boxfall=1,boxy=128,mx=112,my=80)
     for _ in range(39):vm.run('factory_step')
     assert vm.v['boxy']==167 and vm.v['boxfall']==1, 'factory box drops too fast'
-    vm.run('factory_step');assert vm.v['boxfall']==0
+    vm.run('factory_step');assert vm.v['boxfall']==2
     for start,bounced in ((150,False),(156,False),(157,True)):
         vm=Basic(source);vm.v.update(bolon=1,bon=1,bx=120,by=start,bvel=1,bph=0,bnx=0)
         vm.run('bolt_move')
@@ -1265,7 +1272,7 @@ def chain_and_pickups(source):
     for mode in ('walk','jump','fall'):
         vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
         # Reach the chain from its clear right-hand approach without Up held.
-        vm.v.update(mx=210,my=168,jl=1)
+        vm.v.update(mx=228,my=168,jl=1)
         for _ in range(30):
             vm.run('mack_step')
             assert vm.v['st']!=vm.v['s_dead'], 'hazard blocks chain base'
@@ -1448,6 +1455,77 @@ def factory_spring_animation(source):
         assert vm.v['sup']==1 and vm.v['ch']==vm.v['t_pad'], 'one spring half is not recognized as a pad'
 
 
+def fixture_contract(source):
+    def table(label):
+        body=re.search(r'^'+label+r':\n.*?(?=^\w+:)',source,re.M|re.S).group()
+        return [int(v[1:],16) for v in re.findall(r'\$[0-9A-F]{2}',body)]
+    ownership=Basic(source)
+    for count,pointer in re.findall(r'DEFINE SPRITE \d+,([0-9]+),(\w+)',source.split('new_game:')[0]):
+        assert ownership.label_banks[pointer]==1, ('startup sprite outside bank 1',pointer)
+    assert ownership.label_banks['drill_route']==1, 'startup route outside bank 1'
+    ownership.run('game_chars')
+    credit_source=source.replace('title_release:\n','title_release:\n\tRETURN\n',1)
+    credit=Basic(credit_source);credit.bank=3;credit.run('banked_title')
+    for ch,off in ((97,0),(100,8),(110,16)):
+        assert (ch,1,'credit_pat',off) in credit.pattern_writes, 'scenery corrupts title credit'
+        assert (ch,1,'credit_col',0) in credit.color_writes, 'title credit has scenery colors'
+    pats,cols=table('tile_pat'),table('tile_col')
+    assert pats[24:32]==table('item_pat')[:8] and cols[24:32]==table('item_col')[:8], 'placed block changes appearance'
+    assert pats[32:40]==pats[:8] and cols[32:40]==cols[:8], 'riveted block differs from girder'
+    for off in (0,8,16):
+        assert [i for i,v in enumerate(pats[off:off+8]) if v==231]==[3,4], 'rivets above girder center'
+    assert cols[8:16]==[0x41,0x31,0x31,0x34,0x34,0x31,0x31,0x41], 'green/blue girder palette'
+    for offset in range(8):
+        shifted=table('beamshift_col')[offset*8:offset*8+8]+table('beamshift_col')[64+offset*8:72+offset*8]
+        assert shifted[offset:offset+8]==cols[8:16], 'crane palette differs from fixed girders'
+    for half in (0,1):
+        vm=Basic(source);vm.v['lv']=2;vm.run('init_level')
+        for i in range(6):
+            row,col=vm.arrays['itr'][i],vm.arrays['itc'][i]
+            assert vm.screen[(row-1)*32+col:(row-1)*32+col+2]==[118,119], 'missing pail handle row'
+            vm.v.update(mx=(col+half)*8-8,my=row*8-8,ch=vm.v['t_lboxl']+half)
+            vm.run('take_item')
+            assert vm.arrays['itst'][i]==1, 'pail half cannot be collected'
+            for r in (row-1,row):assert vm.screen[r*32+col:r*32+col+2]==[32,32], 'pail fragment left after pickup'
+            assert vm.screen[(row+1)*32+col] in (129,133), 'pickup erases girder'
+    vm=Basic(source);vm.v['lv']=2;vm.run('init_level')
+    assert all(vm.screen[r*32+26]==152 for r in range(18,22)), 'chain not at platform edge'
+    assert vm.screen[18*32+24:18*32+26]==[120,121], 'missing crane pump'
+    vm.v.update(bmy=160,bmd=0);vm.run('fixture_draw');first=vm.v['fixturepose']
+    n=len(vm.pattern_writes);vm.run('fixture_draw');assert len(vm.pattern_writes)==n,'idle pump reuploads'
+    vm.v['bmy']=156;vm.run('fixture_draw');assert vm.v['fixturepose']!=first,'pump does not follow crane'
+    for side in (0,1):
+        vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
+        for row in (7,17):
+            assert vm.screen[row*32+15:row*32+17]==[114,115], 'missing rounded axle'
+            assert vm.screen[(row+1)*32+15:(row+1)*32+17]==[116,117], 'partial axle'
+        for c in (8,21):assert vm.screen[22*32+c:22*32+c+2]==[112,113], 'bucket is two repeated cans'
+        for c in (4,25):
+            assert vm.screen[19*32+c:19*32+c+2]==[124,125], 'IN not above processor'
+            assert vm.screen[20*32+c:20*32+c+2]==[126,127], 'missing down arrow'
+        vm.v['hzphase']=0;vm.run('fixture_draw');vm.v['hzphase']=32;vm.run('fixture_draw')
+        assert vm.pattern_writes[-2:]==[(124,4,'inflash_pat',0),(124,4,'inflash_pat',32)], 'IN does not flash'
+        assert not any(table('inflash_pat')[32:]), 'IN dark phase still visible'
+        vm.v.update(carry=1,cidx=0,mx=24 if side==0 else 208,my=120,nbox=1)
+        vm.run('deliver_zone')
+        before=vm.v['#score'];vm.v.update(mx=208 if side==0 else 24,my=80)
+        for _ in range(40):vm.run('factory_step')
+        assert vm.v['nbox']==0 and vm.v['boxfall']==2 and not vm.v['lvdone'], 'last box skips processing'
+        for _ in range(10):vm.run('factory_step')
+        assert vm.v['boxfall']==3,'processor never ejects rivet'
+        path=[]
+        for _ in range(15):
+            vm.run('factory_step');vm.run('site_draw')
+            path.append((vm.v['boxx'],vm.v['boxy']))
+            assert vm.sprites[15][2]==20, 'output is still a box'
+            assert vm.bank==1, 'output bank not restored'
+        assert all((b[0]-a[0])==(1 if side==0 else -1) for a,b in zip(path,path[1:])), 'rivet flies away from bucket'
+        x,y=path[-1];bucketleft=64 if side==0 else 168
+        assert bucketleft<=x+6<=x+8<bucketleft+16 and 176<=y+4<=y+8<184, 'rivet misses bucket'
+        vm.run('factory_step');assert vm.v['boxfall']==0 and vm.v['lvdone']==1
+        assert vm.v['#score']==before+5, 'processor awards delivery twice'
+
+
 def main():
     source = SOURCE.read_text(encoding='utf-8')
     windows = clear_windows(source)
@@ -1471,6 +1549,7 @@ def main():
     elevator_dance(source)
     trampoline_animation(source)
     factory_spring_animation(source)
+    fixture_contract(source)
     slag_cadence(source)
     fidelity(source)
     visual_hazards(source)
@@ -1496,6 +1575,14 @@ def main():
             assert vm.v['st'] == vm.v['s_walk'], 'jump failed to clear single-cell gap'
     # Known defects MUST fail: short clearance, lost momentum, deferred death.
     mutants = [
+        (source.replace("DEFINE CHAR 97,1,credit_pat","DEFINE CHAR 98,1,credit_pat"),fixture_contract),
+        (source.replace("\tDEFINE CHAR 210,10,machine_art","\tDEFINE CHAR 210,10,steel_bitmap"),fixture_contract),
+        (source.replace('IF (clawclock AND 15) = 15 THEN clawclock = clawclock + 1','clawclock = clawclock'),machinery_animation),
+        (source.replace('ch = 118','ch = T_VOID'),fixture_contract),
+        (source.replace('IF ch = T_LBOXR THEN c2 = c2 - 1','c2 = c2'),fixture_contract),
+        (source.replace('fixturepose = (hzphase / 32) AND 1','fixturepose = 0'),fixture_contract),
+        (source.replace('IF outputside = 1 THEN boxx = 188','IF outputside = 1 THEN boxx = 192'),fixture_contract),
+
         (source.replace('IF jix < 3 THEN GOTO jump_vertical','IF jix < 5 THEN GOTO jump_vertical'),transfers),
         (source.replace('DATA BYTE 8, 22,10,1,139','DATA BYTE 8, 23,10,1,139'),factory_spring_animation),
         (source.replace('GOSUB factory_springs_draw','trleft = 0'),factory_spring_animation),
@@ -1564,10 +1651,10 @@ def main():
         (source.replace('CONST T_ELEV   = 236','CONST T_ELEV   = 135'),review_feedback),
     ])
     mutants.extend([
-        (source.replace('DATA BYTE 8, 22,21,1,166','DATA BYTE 8, 22,23,1,166'),chain_and_pickups),
+        (source.replace('DATA BYTE 8, 22,21,1,166','DATA BYTE 8, 22,26,1,166'),chain_and_pickups),
         (source.replace('IF jb = 0 THEN GOSUB grab_chain','jb = 0'),chain_and_pickups),
         (source.replace('DATA BYTE 5,4,2, 22,16','DATA BYTE 5,4,2, 22,17'),chain_and_pickups),
-        (source.replace('IF pressy < 104 THEN pressy = 104','IF pressy < 104 THEN pressy = 96'),machinery_animation),
+        (source.replace('IF pressy < 105 THEN pressy = 105','IF pressy < 105 THEN pressy = 96'),machinery_animation),
         (source.replace('lives = setupkey - 1','lives = setupkey'),setup_inputs),
         (source.replace('IF titleheld <> 15 THEN','IF titleheld = 255 THEN'),setup_inputs),
     ])

@@ -64,22 +64,22 @@ def tables():
             result['beamshift_pat'] += shifted[8:16] if lower else shifted[:8]
     # A visible parked head, supported by a lengthening piston. Colors follow
     # the four head rows across tile boundaries, rather than coloring a tile.
-    head_colors = [0xf1,0xd1,0x81,0x61]
+    head_colors = [0xf1,0xf1,0xe1,0xf1,0xf1]
     result['press_pat'] = []
     result['press_col'] = []
     for phase in range(32):
-        head = phase - 8
+        head = phase - 9
         for row in range(3):
             for tile in range(2):
                 def pixel(x,y):
                     x += tile*8; y += row*8
                     bracket = y<2 and 4<=x<=11
                     stem = 7<=x<=8 and y<head
-                    face = head<=y<head+4 and 1<=x<=14
-                    if y==head+2 and 3<=x<=12:face=False
+                    face = head<=y<head+5 and 1<=x<=14
+                    if y==head+2 and x in (3,12):face=False
                     return bracket or stem or face
                 result['press_pat'] += rows(pixel)
-                result['press_col'] += [head_colors[row*8+y-head] if head<=row*8+y<head+4 else 0xe1 for y in range(8)]
+                result['press_col'] += [head_colors[row*8+y-head] if head<=row*8+y<head+5 else 0xe1 for y in range(8)]
     # Factory head extends into the two empty rows ABOVE the belt's top rail.
     # Keep all eight belt phases beneath it; never erase or stop the conveyor.
     result['pressfoot_pat'] = []
@@ -89,13 +89,11 @@ def tables():
                 foot = flat(phase)
                 for y in range(depth):
                     foot[y] = sum(128>>x for x in range(8) if 1<=x+tile*8<=14)
-                    if depth==2 and y==0:
-                        foot[y] = sum(128>>x for x in range(8) if x+tile*8 in (1,2,13,14))
                 result['pressfoot_pat'] += foot
     result['pressfoot_col'] = []
     for depth in range(3):
         col = [0x11,0x11,0xf1,0x31,0x31,0x31,0xf1,0x11]
-        col[:depth] = head_colors[4-depth:] if depth else []
+        col[:depth] = head_colors[5-depth:] if depth else []
         result['pressfoot_col'] += col*2
     # One 16-pixel springboard, five heights. Its base stays planted while
     # the white/magenta cap descends to it and the exposed coil gets shorter.

@@ -7,7 +7,9 @@ Three construction sites are implemented:
 
 1. **Beams and Bolts:** carry four girder pieces to the holes, then catch the roaming
    jackhammer and rivet them. Filled but unriveted holes reopen after a death;
-   their pieces return. Jump to ring the bell and summon the elevator. At either end of an occupied
+   their pieces return. Pieces are red with a white outline, both loose and
+   placed; riveting makes them match the surrounding girder. All girders have
+   centered rivet marks. Jump to ring the bell and summon the elevator. At either end of an occupied
    ride, Mack does two quick crouch-and-rise motions with a two-tone sound
    (about half a second), then you can walk or jump off. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
@@ -17,15 +19,27 @@ Three construction sites are implemented:
    avoiding the pincers, pounder, concrete, furnace and vat. The magnet stays parked until all six pails are collected. Jump from the upper
    conveyor into the armed magnet; it carries Mack back to the crane top. The upper
    conveyor is one character farther right; walking or riding past its right end
-   is fatal, so jump before the last roller.
+   is fatal, so jump before the last roller. Fixed and moving girders are bright
+   green with blue edges and rivets. Lunch pails are twelve pixels tall; either
+   side can be collected. The bottom-right chain hangs from the platform's far
+   right edge, beside a pump that beats with the crane's motion. Pincers complete
+   a smooth cycle in 90 world steps (previously 96), preserving the two-jump route.
 3. **Rivet Works:** start on the upper-right platform and collect six steel boxes.
    Carry each to a lip of either lower-floor opening; the box drops into the
-   processor. Four paddles circulate counterclockwise (left down, right up).
+   processor. After a short processing beat, it ejects a rivet into the nearby
+   two-character-wide bucket; the final delivery finishes before the level ends.
+   Flashing IN labels and downward arrows sit above the closed oval processors.
+   The central cabinet has a white border, blue body, gridded window and red door.
+   Four paddles circulate counterclockwise around rounded upper and lower axles
+   (left down, right up).
    The two springs bounce Mack across the site and onto the opposite lower tier.
    Both are two characters wide, one row above the ground, and use level one's
    artwork, compression, rebound and launch sound. Only the pad
    under Mack compresses, with his feet following it before each launch.
-   The processors, central toilet and conveyor machinery are dangerous.
+   The processors, central cabinet and conveyor machinery are dangerous.
+
+The smashers on levels 2 and 3 share a five-pixel-tall, predominantly white head,
+with gray detailing. They remain visible at the top and reach their girder or belt.
 
 Joystick 1: left/right walk, up/down climb, **Fire jumps** from a floor, chain,
 crane beam, conveyor, or parked elevator. Direction at takeoff sets momentum.
@@ -135,7 +149,7 @@ Outputs: `src/HARDHAT_8.bin` (Classic99/js99er) and `src/hardhat.rom` (ColecoVis
 Build sequentially. Both scripts run generated-art, physics, truncation and return-stack checks;
 the TI build also verifies the fixed-area size and all three packed banks. Its 64 KB
 cartridge contains the loader, setup/assets bank and separate banks for
-machinery/animation/audio and the title/setup screen; their wrappers restore
+machinery/animation/audio and the title/setup screen plus extra scenery; their wrappers restore
 the setup/assets bank before returning. Coleco remains
 an unbanked cartridge within 32 KB. The TI build uses
 the repository's checked short-branch optimizer and verifies the resulting opcodes
@@ -145,8 +159,10 @@ after the title artwork uses that character range.
 
 Editable title lettering and scenery live in `assets/gentitle.py`; `--write`
 regenerates the title patterns, colors and screen map. Builds reject stale art.
-Editable conveyor, pincer, smasher, moving-girder and trampoline art lives in `assets/genconveyors.py`. Run it with
-`--write` after editing, then build both targets; builds reject stale art.
+Editable conveyor, pincer, smasher and trampoline art lives in
+`assets/genconveyors.py`. Blocks, girders, pickups and factory scenery live in
+`assets/genfixtures.py`; it enforces the TMS9918's two inks per character row.
+Run the changed generator with `--write`, then build; builds reject stale art.
 
 Current development focus (2026-10-02): build and review TI-99 only, per the
 user's request. Coleco validation will resume after the TI gameplay work.
@@ -158,7 +174,8 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-101 deliberately broken variants must fail. New checks cover moving
+108 deliberately broken variants must fail. New checks cover fixture bank
+ownership, complete pickup removal, processor output, title font restoration, moving
 pincers, visible hazard bounds, belt/slag alignment, speed clocks, elevator boarding
 with background tiles, both parked and moving elevators at game over, two-jump
 pincer crossings launched at closure in both directions, the factory box route
