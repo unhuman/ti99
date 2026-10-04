@@ -67,6 +67,10 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
 - **CVBasic has NO local variables.** Every variable is global, so a scratch temp that reuses a
   state variable's name silently corrupts it — a camera temp named `#hi` clobbered the HIGH
   SCORE every frame. Prefix temps per routine and grep the name before adding one.
+- The TI short-branch pass may pull a source-line suffix into the fixed address window when
+  earlier long branches shrink. Its verifier permits only that newly emitted suffix and still
+  checks every retained instruction address and each rewritten branch; do not reject a build
+  solely because previously clipped tail instructions now fit.
 - **Constants > 255 truncate to 8 bits** in three shapes: `CONST X = 768` used in a 16-bit
   assignment compiles to `CLR`; a folded dotted constant (`$1800 + 728.`) truncates the addend;
   and **an 8-bit var times a constant > 255** compiles to `CLR`. The threshold is **256, not

@@ -135,6 +135,12 @@ def tables():
         for tile in range(2):
             result['spark_pat'] += rows(lambda x,y:(x+tile*8,y) in pixels)
     result['spark_col'] = [0xe1,0x91,0xb1,0xf1,0xf1,0xb1,0x91,0xe1]*2
+    # Low two-cell crate on level 2's mid-left tier. Six visible pixels tall
+    # so a normal jump clears it; the character codes remain in the lethal
+    # hazard band so walking into the crate is unsafe.
+    half = [0,0xff,0x81,0xbd,0xbd,0x81,0xff,0]
+    result['crate_pat'] = half*2
+    result['crate_col'] = [0xf1,0xf1,0x71,0x71,0x71,0x71,0xf1,0xf1]*2
     result['fire_pat'] = []
     for depth in range(17):
         def flame(x,y):
@@ -233,6 +239,9 @@ def check(source):
                 if sparks[frame*16+tile*8+y] & (128>>x)}
         assert {(0,y) for y in range(8)}<=pixels, 'spark wall detaches'
         assert any(x>=11 for x,y in pixels), 'spark stream disappears at belt end'
+    crate=t['crate_pat']
+    assert len(crate)==16 and all(crate[y]==crate[8+y] for y in range(8))
+    assert crate[0]==crate[7]==crate[8]==crate[15]==0 and all(crate[y] for y in range(1,7)) and all(crate[y] for y in range(9,15)), 'crate is not a low jumpable obstacle'
     for name,fn in [('inclined',diagonal),('flat',flat)]:
         assert len({tuple(fn(i)) for i in range(8)})==8, name+' phases repeat'
     # Independent continuity property: both rails survive every phase.

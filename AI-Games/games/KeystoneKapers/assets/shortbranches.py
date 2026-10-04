@@ -4,7 +4,9 @@
 Only `Jcc skip / B @target / skip` in cvb_BOOT..BANK_0_FREE is replaced.
 Labels and line numbers survive. Runtime, data banks and unknown conditions
 are untouched. Use original addresses for one conservative pass; shortening
-four bytes cannot increase a distance within this contiguous segment.
+four bytes cannot increase a distance within this contiguous segment. It can
+also bring an unoptimized fixed-window tail into range; verification permits
+only such a new source-line suffix and still checks every emitted address.
 """
 import argparse
 import bisect
@@ -89,11 +91,18 @@ def verify(original, before, optimized, after, changes):
     old, _ = addresses(before, segment(original.splitlines()))
     new, labels = addresses(after, segment(optimized.splitlines()))
     removed = sorted(c['removed'] for c in changes)
-    if set(new) != set(old) - set(removed):
+    retained = set(old) - set(removed)
+    extra = set(new) - set(old)
+    if not retained <= set(new) or (extra and min(extra) <= max(old)):
         raise ValueError('unexpected emitted/removed source lines')
-    for n, (addr, _) in new.items():
+    for n in retained:
+        addr, _ = new[n]
         if addr != old[n][0] - 4 * bisect.bisect_left(removed, n):
             raise ValueError('unexpected layout change at line %d' % n)
+    if extra:
+        emitted = [new[n][0] for n in sorted(extra)]
+        if emitted != sorted(emitted) or emitted[0] <= max(new[n][0] for n in retained):
+            raise ValueError('new fixed-window tail is not address ordered')
     for c in changes:
         addr, word = new[c['line']]
         delta = labels[c['target']] - addr - 2

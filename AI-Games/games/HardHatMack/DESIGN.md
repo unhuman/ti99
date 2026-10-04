@@ -287,7 +287,7 @@ classifying the dominant colour of each cell and then zooming individual props t
 | Chain (climbable) | col 23, rows 18–21 |
 | Ground | row 23, cols 2–29 |
 | Machine cabinet | col 29, rows 4–5, on a one-cell ledge at (6,29) |
-| Plank stacks (decor) | (18, 2–5) and (12, 7) |
+| Ground stack (decor) / mid-left obstacle | (18, 2–5) / (12, 7–8) |
 | Cement mixers (decor) | (22, **11–12**) and (22, 17–18) — the left one moved with its belt |
 | Electromagnet | row 4, above the shaft |
 | Mack spawn | ground, col 3 |
@@ -298,7 +298,7 @@ codes. It used to be four equality tests — 183/185/186/187 — which silently 
 level could never be cleared. A list drifts out of step with the prize table; a range cannot.
 
 **Prizes — one per tier end, each a DIFFERENT item** (`ob_pail` takes a `kind` byte 0–5 → lunch pail
-183, toolbox 184, wrench 186, spray can 187, hard hat 188, brick 185): (8,6) (8,19) (12,4) (12,19)
+183, toolbox 184, wrench 186, spray can 187, hard hat 188, brick 185): (8,6) (8,19) (12,3) (12,19)
 (16,2) (16,19). They sit one row **above** the beam so they rest **on** the girder — drawing them
 into the beam row punched a hole in the girder *and* sat a row below `take_item`'s torso probe,
 which made them uncollectable. All six count toward `nlbr`; collecting them all arms the magnet.
@@ -318,6 +318,9 @@ which made them uncollectable. All six count toward `nlbr`; collecting them all 
   the reference has a second round machine at (22, 17–18), which is now drawn there. (The Apple II
   original does have an incinerator — say the word and it comes back.)
 - Added the **machine cabinet** at the top right (col 29, rows 4–5) and its ledge, which was missing.
+- The former star-shaped hazard on the mid-left tier is now a low, two-cell crate (six visible
+  pixels high), still lethal on contact and clearable with a normal jump. Its pail moved one cell
+  left to leave room for the jump approach.
 
 **Conveyor art pass 2026-07-29:** the belt was a pair of thin rails broken at x=0 and x=4 of every
 cell, which read as a line of loose dashes rather than one machine. It is now a **solid 4-px band
@@ -448,11 +451,11 @@ be grabbed.
 
 **The trampoline pads (chars 139-142)** are how you get up from the ground. Each
 is two characters wide at row 22, one row above the ground, with the catch and
-launch positions raised alongside the artwork. The current route
-compresses the starting pad, bounces Mack across to the other pad, compresses
-that pad, then launches him onto the opposite lower platform. Both compressions
-share level one's four-pixel cap displacement and eight-step rebound. Landing
-on either pad is never fatal. See §30 for the animation and validation.
+launch positions raised alongside the artwork. The scripted transfer carries
+Mack toward the opposite pad, but the central rivet cabinet is lethal at the
+actual 16×16 player footprint; the arc ends there rather than reversing into a
+repeating pad-to-pad bounce. Both compressions share level one's four-pixel cap
+displacement and eight-step rebound. See §30 for the animation and validation.
 
 **The pater-noster** stays the flagged simplification — a climbable shaft rather than moving cars —
 with the reference's step-off stubs built as real ledges. **Deviation:** the reference runs it
@@ -2418,7 +2421,12 @@ support probe remains available for falling/landing boardings. Regression
 checks exercise both nudge directions, all six stage choices, both TI function
 keys, launcher placement and the projectile's origin. The keyboard check also
 accepts the TI scanner's FCTN matrix value for REDO/BACK. The physics gate now
-rejects 164 deliberately broken variants.
+rejects deliberately broken variants, including lost elevator jump requests.
+
+A Fire press during elevator travel or the 32-frame arrival dance is buffered;
+Mack jumps out as soon as the cabin parks and the dance finishes. This avoids
+losing the button edge while `st_ride` is locked, without changing the horizontal
+nudge that summons another trip. Regression cases cover presses in both locks.
 
 The completed TI build uses 554 bytes of RAM, verifies 526 shortened branches,
 and leaves 1,894 bytes in the fixed area. Data, animation, title and motion

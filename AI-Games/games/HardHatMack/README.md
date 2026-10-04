@@ -14,7 +14,8 @@ Three construction sites are implemented:
    supported by an armed elevator centers Mack and starts the ride. At either end of an occupied
    ride, Mack does two quick crouch-and-rise motions with a two-tone sound
    (about half a second); a horizontal nudge summons the next trip, while Jump
-   lets him leave the cabin. A fixed launcher at the upper-right end of the
+   lets him leave the cabin. A jump pressed during travel or the arrival dance
+   is buffered and dismounts him when the cabin parks. A fixed launcher at the upper-right end of the
    top beam fires leftward rivets. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
    and his feet follow the moving cap. Mack starts one character to the right
@@ -52,10 +53,10 @@ Three construction sites are implemented:
    left doubles his travel. Its tread animation matches that speed.
    At its left end, a single wall emitter throws animated white, yellow and
    orange spark trails across two characters; grab the escape chain before it.
-   The two springs bounce Mack across the site and onto the opposite lower tier.
-   Both are two characters wide, one row above the ground, and use level one's
-   artwork, compression, rebound and launch sound. Only the pad
-   under Mack compresses, with his feet following it before each launch.
+   The two springs use level one's two-cell artwork, compression and launch
+   sound. The scripted cross-site arc carries Mack into the central rivet
+   cabinet from either side, where its 16×16 collision kills him instead of
+   reversing into a repeated pad-to-pad bounce.
    The processors, central cabinet and conveyor machinery are dangerous.
 
 The smashers on levels 2 and 3 share a five-pixel-tall, predominantly white head,

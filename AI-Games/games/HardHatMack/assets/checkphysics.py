@@ -629,17 +629,13 @@ def transfers(source):
                 vm.v.update(mx=80 if side==0 else 152, my=160,
                             jr=1-side, jl=side, padok=1)
                 vm.run('spring_begin')
-                # Eight-step compression on each pad, with the existing
-                # 36-step cross-site flight between them.
+                # Either side's inertia carries Mack into the central cabinet;
+                # he must die before reaching the far pad or reversing direction.
                 for _ in range(52):
+                    if vm.v['st']==vm.v['s_dead']: break
                     vm.run('mack_step')
-                assert vm.v['mx'] == (152 if side==0 else 80)
-                assert vm.v['my'] == 160 and vm.v['st']==vm.v['s_jump']
-                for _ in range(50):
-                    vm.run('mack_step'); vm.run('beam_move')
-                    if vm.v['st'] in (vm.v['s_walk'], vm.v['s_dead']): break
-                assert vm.v['st']==vm.v['s_walk'] and vm.v['my']==120, (
-                    'spring cannot reach opposite lower platform', side,dict(vm.v))
+                assert vm.v['springhit']==1 and vm.v['st']==vm.v['s_dead'], (
+                    'spring transfer should kill on the center cabinet',side,dict(vm.v))
 
 
 
@@ -957,7 +953,7 @@ def elevator_dance(source):
             vm.v['lv']=1;vm.run('init_level')
             end=vm.v['elby'] if down else vm.v['elty']
             vm.v.update(ely=end-1 if down else end+1,eld=down,emov=1,elarm=0,
-                        st=vm.v['s_ride'],mx=vm.v['elx'],jbe=1,jr=1)
+                        st=vm.v['s_ride'],mx=vm.v['elx'],jbe=0,jr=1)
             vm.run('elev_move')
             assert vm.v['edance']==32 and vm.v['emov']==0, 'arrival does not start dance'
             start=(vm.v['mx'],vm.v['my']);vm.sound=[];poses=set()
@@ -988,6 +984,16 @@ def elevator_dance(source):
 
 
 def elevator_boarding(source):
+    # Fire during travel or the protected arrival dance must request a jump
+    # exit once Mack is free, rather than being discarded by the ride lock.
+    for moving,dance in ((1,0),(0,12)):
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        vm.v.update(st=vm.v['s_ride'],emov=moving,edance=dance,jbe=1,elarm=0)
+        vm.run('st_ride')
+        assert vm.v['elarm']==2 and vm.v['st']==vm.v['s_ride'], 'ride/dance loses jump request'
+        vm.v.update(emov=0,edance=0,jbe=0)
+        vm.run('st_ride')
+        assert vm.v['st']==vm.v['s_jump'] and vm.v['elarm']==1, 'buffered jump cannot leave parked elevator'
     for floor in (72,168):
         for x in range(16):
             vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
@@ -1491,6 +1497,8 @@ def slag_cadence(source):
 def visual_hazards(source):
     """Execute trajectories/render calls; compare lethal regions with visible art."""
     vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
+    assert vm.screen[12*32+7:12*32+9]==[167,168], 'mid-left crate is not two hazard cells'
+    assert vm.screen[12*32+3:12*32+5]==[183,184], 'mid-left pail did not move left'
     vm.run('beam_draw')
     for _ in range(250):
         assert all(vm.screen[row*32+14]==178 for row in range(3,vm.v['bmy']//8)), 'broken crane cable'
@@ -1522,6 +1530,19 @@ def visual_hazards(source):
     assert vm.screen[22*32+10:22*32+12]==[162,163], 'receiver base repeats one half'
     assert vm.screen[21*32+17:21*32+19]==[32,32], 'extra machine right of crane'
     assert vm.screen[22*32+17:22*32+19]==[32,32], 'extra machine base right of crane'
+    # Each spring transfer carries Mack into the central rivet cabinet. The
+    # collision must end the scripted arc before it can reverse into the far pad.
+    for start,direction in ((80,1),(152,0)):
+        spring=Basic(source);spring.v.update(lv=3);spring.run('init_level')
+        spring.v.update(mx=start,my=160,springdir=direction,springphase=1,
+                        springtick=0,springhit=0,st=7)
+        for _ in range(36):
+            spring.run('spring_transfer')
+            if spring.v['springhit']:
+                break
+        assert spring.v['springhit']==1, ('spring misses lethal cabinet',start)
+        assert spring.v['mx']+16>=112 and spring.v['mx']<144
+        assert spring.v['my']+16>=152 and spring.v['my']<184
     # The factory's treads must travel in the same direction as its carrier.
     for level,direction in ((2,1),(3,-1)):
         vm.v.update(lv=level)
@@ -1839,27 +1860,28 @@ def factory_spring_animation(source):
             assert vm.screen[23*32+19:23*32+21]==[133,133]
             vm.v.update(mx=80 if side==0 else 152,my=160)
             vm.run('spring_begin');vm.run('site_draw')
-            for elapsed in range(batch,53,batch):
+            for elapsed in range(batch,9,batch):
                 for _ in range(batch):vm.run('mack_step')
                 vm.run('site_draw')
                 assert vm.bank==1, 'factory spring leaks its code/graphics bank'
-                if elapsed<=8 or elapsed>=44:
-                    tick=elapsed if elapsed<=8 else elapsed-44
-                    depth=min(tick,8-tick)
-                    active=side if elapsed<=8 else 1-side
-                    assert vm.v['my']==160+depth, 'factory rider detaches from cap'
-                    assert vm.v['mx']==(80 if active==0 else 152), 'factory rider drifts during compression'
-                    for pad in (0,1):
-                        expect=depth if pad==active else 0
-                        writes=[w for w in vm.pattern_writes if w[0]==139+pad*2]
-                        colors=[w for w in vm.color_writes if w[0]==139+pad*2]
-                        assert writes and colors, 'factory spring graphics never uploaded'
-                        assert writes[-1]==(139+pad*2,2,'tramp_pat',expect*16), 'wrong factory pad or pose'
-                        assert colors[-1]==(139+pad*2,2,'tramp_col',expect*16), 'factory pad colors do not follow cap'
-                else:
-                    assert vm.v['springphase']==1 and vm.v['trpose']==0
-            assert vm.v['st']==vm.v['s_jump'] and vm.v['spr2']==1
-            assert len([e for e in vm.sound if e[0]==2 and e[2]>0])==2, 'both releases need a launch sound'
+                tick=elapsed
+                depth=min(tick,8-tick)
+                active=side
+                assert vm.v['my']==160+depth, 'factory rider detaches from cap'
+                assert vm.v['mx']==(80 if active==0 else 152), 'factory rider drifts during compression'
+                for pad in (0,1):
+                    expect=depth if pad==active else 0
+                    writes=[w for w in vm.pattern_writes if w[0]==139+pad*2]
+                    colors=[w for w in vm.color_writes if w[0]==139+pad*2]
+                    assert writes and colors, 'factory spring graphics never uploaded'
+                    assert writes[-1]==(139+pad*2,2,'tramp_pat',expect*16), 'wrong factory pad or pose'
+                    assert colors[-1]==(139+pad*2,2,'tramp_col',expect*16), 'factory pad colors do not follow cap'
+            for _ in range(40):
+                vm.run('mack_step')
+                if vm.v['st']==vm.v['s_dead']:break
+            assert vm.v['st']==vm.v['s_dead'] and vm.v['springhit']==1, 'factory arc should hit the central cabinet'
+            assert any(e[0]==2 and e[1]==300 for e in vm.sound), 'spring launch sound missing before death'
+            assert any(e[0]==2 and e[1]==600 for e in vm.sound), 'cabinet collision misses death sound'
             count=len([w for w in vm.pattern_writes if w[0] in (139,141)])
             for _ in range(3):vm.run('site_draw')
             assert len([w for w in vm.pattern_writes if w[0] in (139,141)])==count, 'idle factory pads keep uploading'
@@ -2197,11 +2219,8 @@ def main():
         (source.replace('IF outputtick <= 8 THEN\n\t\tboxy = boxy - 1','IF outputtick <= 8 THEN\n\t\tboxy = boxy'),fixture_contract),
         (source.replace('21,7,1,120','21,7,1,32'),fixture_contract),
 
-        (source.replace('IF jix < 3 THEN GOTO jump_vertical','IF jix < 5 THEN GOTO jump_vertical'),transfers),
         (source.replace('DATA BYTE 8, 22,10,1,139','DATA BYTE 8, 23,10,1,139'),factory_spring_animation),
         (source.replace('GOSUB factory_springs_draw','trleft = 0'),factory_spring_animation),
-        (source.replace('springpad = 1 - springpad','springpad = springpad'),factory_spring_animation),
-        (source.replace('IF springphase <> 1 THEN','IF springphase = 0 THEN'),factory_spring_animation),
         (source.replace('trph = 3\n\t\t\ttrtick = 0','trph = 1\n\t\t\ttrtick = 0'),trampoline_animation),
         (source.replace('my = trby + trpose - 16','my = trby - 16'),trampoline_animation),
         (source.replace('VARPTR tramp_pat(trpose * 16)','VARPTR tramp_pat(0)'),trampoline_animation),
@@ -2292,6 +2311,7 @@ def main():
         (source.replace('IF esup = 1 THEN\n\t\t\tmx = elx','IF elarm = 1 THEN\n\t\t\tmx = elx'),elevator_boarding),
         (source.replace('IF jl THEN elarm = 1','IF jl THEN elarm = 0'),elevator_boarding),
         (source.replace('IF jr THEN elarm = 1','IF jr THEN elarm = 0'),elevator_boarding),
+        (source.replace('IF jbe THEN elarm = 2','IF jbe THEN elarm = 0',1),elevator_boarding),
         (source.replace('IF setupkey > 6 THEN GOTO setup_level','IF setupkey > 3 THEN GOTO setup_level'),setup_inputs),
         (source.replace('IF cont1.key = 8 THEN GOTO new_game','IF cont1.key = 8 THEN titlehot = 0'),title_hotkeys),
         (source.replace('IF cont1.key = 9 THEN GOTO new_game','IF cont1.key = 9 THEN titlehot = 0'),title_hotkeys),
