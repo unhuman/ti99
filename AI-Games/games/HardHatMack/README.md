@@ -9,29 +9,42 @@ Three construction sites are implemented:
    jackhammer and rivet them. Filled but unriveted holes reopen after a death;
    their pieces return. Pieces are red with a white outline, both loose and
    placed; riveting makes them match the surrounding girder. All girders have
-   centered rivet marks. Jump to ring the bell and summon the elevator. At either end of an occupied
+   centered rivet pairs separated by plain beam sections. Repaired gaps continue
+   that spacing. Jump to ring the bell and summon the elevator. Landing anywhere
+   supported by an armed elevator centers Mack and starts the ride. At either end of an occupied
    ride, Mack does two quick crouch-and-rise motions with a two-tone sound
    (about half a second), then you can walk or jump off. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
    and his feet follow the moving cap. Mack starts one character to the right
    of the vertical support so his hat and torso remain clear against black.
+   The bottom pedestals have a single bearing plate, continuous narrow stem
+   and broad white footing, rather than repeated flared tiles.
 2. **Lunch Break:** collect six lunch pails across the platforms and ground,
    avoiding the pincers, pounder, concrete, furnace and vat. The magnet stays parked until all six pails are collected. Jump from the upper
    conveyor into the armed magnet; it carries Mack back to the crane top. The upper
    conveyor is one character farther right; walking or riding past its right end
    is fatal, so jump before the last roller. Fixed and moving girders are bright
    green with blue edges and rivets. Lunch pails are twelve pixels tall; either
-   side can be collected. The bottom-right chain hangs from the platform's far
-   right edge, beside a pump that beats with the crane's motion. Pincers complete
+   side can be collected. Their rounded white lids, small handles and divided
+   red panels resemble lunch pails. Concrete leaving the lower conveyor arcs
+   into the single open-mouthed receiver; the extra machine beside the crane
+   is removed. The bottom-right chain hangs from the platform's far
+   right edge. An enclosed blue pump stands on the floor to its left, with a
+   visible piston that beats with the crane's motion. Pincers complete
    a smooth cycle in 90 world steps (previously 96), preserving the two-jump route.
 3. **Rivet Works:** start on the upper-right platform and collect six steel boxes.
+   The conveyor box sits one character left of the smasher.
    Carry each to a lip of either lower-floor opening; the box drops into the
-   processor. After a short processing beat, it ejects a rivet into the nearby
-   two-character-wide bucket; the final delivery finishes before the level ends.
-   Flashing IN labels and downward arrows sit above the closed oval processors.
+   processor. After a short processing beat, a rivet emerges from its dark,
+   white-rimmed side outlet, travels clear of the casing, then drops into the
+   nearby two-character-wide bucket; the final delivery finishes before the level ends.
+   Flashing IN labels and downward arrows sit above white feed caps. The
+   processors follow the supplied Apple II screenshot: low white outlines,
+   dark blue fronts with red side panels, and angled oval shoulder outlets.
    The central cabinet has a white border, blue body, gridded window and red door.
    Four paddles circulate counterclockwise around rounded upper and lower axles
-   (left down, right up).
+   (left down, right up). Moving chain links and rotating wheel spokes follow
+   the same platform drive, so the whole mechanism works together.
    The two springs bounce Mack across the site and onto the opposite lower tier.
    Both are two characters wide, one row above the ground, and use level one's
    artwork, compression, rebound and launch sound. Only the pad
@@ -41,11 +54,18 @@ Three construction sites are implemented:
 The smashers on levels 2 and 3 share a five-pixel-tall, predominantly white head,
 with gray detailing. They remain visible at the top and reach their girder or belt.
 
+Mack's running cycle combines a passing step, extended stride and bent-knee
+recovery with arm swing. It follows distance walked, returns to a neutral pose
+when stopped, and keeps his original height, movement speed and collision bounds.
+
 Joystick 1: left/right walk, up/down climb, **Fire jumps** from a floor, chain,
 crane beam, conveyor, or parked elevator. Direction at takeoff sets momentum.
 **Hold Fire for 0.75 seconds to release the jackhammer** (Tab in Classic99,
 Space in CoolCV). It returns to its starting position and cannot be re-caught until it and Mack
-separate. A new pickup resets the hold timer, even if Fire was already held. Fire starts a normal game at site 1 with three lives.
+separate. Mack can carry only one block or jackhammer. A loose jackhammer passing
+behind Mack while he holds a block is hidden until clear, so the two cannot
+appear to be held together; its route continues normally. A new pickup resets
+the hold timer, even if Fire was already held. Fire starts a normal game at site 1 with three lives.
 Type **838** on the title, then a digit **1-9 for total lives**, then **1-3 for
 the starting level**; the last digit starts the game. Release each key between
 digits. These choices apply to one game only. Reserve hats exclude the current
@@ -68,7 +88,12 @@ reach 327,675 points using five-point storage units; further awards saturate
 at that maximum. All point awards and the 7,000-point extra life are unchanged.
 It replaces the old title/instruction screen; Fire starts play directly.
 After GAME OVER, wait 1.25 seconds (75 frames at 60 Hz), then release and press
-Fire/Tab to return to the title. The message has a one-character blank border.
+Fire/Tab to return to the title. With no fresh press, the title returns
+automatically after 10 seconds, even if Fire remains held. The message has a
+one-character blank border. Completing a level visibly counts the remaining
+bonus down in 100-point steps, adding it to the score with a short tick per step,
+before playing that level's fanfare. Each tick is a quiet, short noise pulse
+with a silent gap, rather than a sustained pitched beep.
 
 ## Reference-driven repair (2026-10-01)
 
@@ -115,7 +140,9 @@ Loose blocks have a broad brick face and bright top edge. Walking, the held
 jackhammer, bouncing rivets, closing pincers and pounder strikes now have short
 sound cues alongside jump, pickup, scoring and death effects. Alternating boot
 taps and chain clinks accompany movement; machinery has a metallic impact and
-ring. Reward chimes have their own channel so they cannot erase a jump sweep.
+ring. Placing a block adds a clunk; moving lifts add quiet ratchets; concrete
+entering its receiver gets a plop; processing a box adds a crunch, followed by
+a higher bucket ping when its rivet lands. Reward chimes have their own channel so they cannot erase a jump sweep.
 Death takes priority. Each level has its own related C-major fanfare (about
 2.0-2.3 seconds), with harmony, bass and percussion; all channels explicitly stop afterward. Parked
 elevator cabins **and floors** use background characters that erase when movement
@@ -138,18 +165,17 @@ music is newly composed for this port; original-music matching remains open.
 From the project root on Windows:
 
 ```powershell
-& tools/hardhat-dev.ps1 BuildAll
+& tools/hardhat-dev.ps1 BuildTI
 & tools/hardhat-dev.ps1 LaunchTI
-& tools/hardhat-dev.ps1 LaunchColeco
 ```
 
 Or run `bash games/HardHatMack/build-ti.sh` followed by
 `bash games/HardHatMack/build-coleco.sh` using Cygwin bash.
 Outputs: `src/HARDHAT_8.bin` (Classic99/js99er) and `src/hardhat.rom` (ColecoVision).
 Build sequentially. Both scripts run generated-art, physics, truncation and return-stack checks;
-the TI build also verifies the fixed-area size and all three packed banks. Its 64 KB
+the TI build also verifies the fixed-area size and all four packed banks. Its 64 KB
 cartridge contains the loader, setup/assets bank and separate banks for
-machinery/animation/audio and the title/setup screen plus extra scenery; their wrappers restore
+actors/audio, the title/setup screen plus extra scenery, and motion/animated machinery; their wrappers restore
 the setup/assets bank before returning. Coleco remains
 an unbanked cartridge within 32 KB. The TI build uses
 the repository's checked short-branch optimizer and verifies the resulting opcodes
@@ -159,12 +185,13 @@ after the title artwork uses that character range.
 
 Editable title lettering and scenery live in `assets/gentitle.py`; `--write`
 regenerates the title patterns, colors and screen map. Builds reject stale art.
-Editable conveyor, pincer, smasher and trampoline art lives in
-`assets/genconveyors.py`. Blocks, girders, pickups and factory scenery live in
+Editable conveyor, pincer, smasher, furnace and trampoline art lives in
+`assets/genconveyors.py`. Mack's running poses, blocks, girders, pickups and factory scenery live in
 `assets/genfixtures.py`; it enforces the TMS9918's two inks per character row.
+`assets/genmotion.py` owns the exact factory paddle-position tables.
 Run the changed generator with `--write`, then build; builds reject stale art.
 
-Current development focus (2026-10-02): build and review TI-99 only, per the
+Current development focus (2026-10-03): build and review TI-99 only, per the
 user's request. Coleco validation will resume after the TI gameplay work.
 See DESIGN.md sections 19-25 for TI validation, budgets and verification limits.
 
@@ -174,7 +201,11 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-108 deliberately broken variants must fail. New checks cover fixture bank
+146 deliberately broken variants must fail. New checks cover bonus counting,
+game-over timeout/release, full-width elevator boarding, spaced rivets,
+synchronized factory chains/wheels, distance-driven running poses and material sound priority,
+concrete entering the receiver, exclusive item
+pickups in both orders, carried-sprite cleanup, loose-hammer overlap, fixture bank
 ownership, complete pickup removal, processor output, title font restoration, moving
 pincers, visible hazard bounds, belt/slag alignment, speed clocks, elevator boarding
 with background tiles, both parked and moving elevators at game over, two-jump
@@ -187,3 +218,11 @@ reference, including its loose girders and machinery. Its pacing differs from th
 Apple II recording; these are documented adaptation choices, not a claim of exact
 original collision-box dimensions. See DESIGN.md sections 16-17 for evidence,
 speed measurements, budgets and verification limits.
+
+TI performance refinements reduce dynamic graphics transfers, skip absent
+machinery and avoid an extra frame wait after a busy update. Factory paddles
+use exact ROM lookups while collision checks still run at every pixel. See
+DESIGN.md section 39 for timing evidence and validation limits. Controlled
+Classic99 idle samples improved from about 23/12/9 to 49/16/14 updates per
+second on the three sites. The upper-right level-two furnace now rests on a full-width girder and repeatedly extends and
+retracts its jets; its danger area follows the visible flame height.

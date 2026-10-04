@@ -14,6 +14,11 @@ SOURCE = Path(__file__).resolve().parent.parent / 'src/HARDHAT.bas'
 
 
 class Basic:
+    # Immutable DATA is identical across VMs of the same source. Keep only the
+    # most recent source so mutation tests cannot accumulate hundreds of carts.
+    _byte_source = None
+    _byte_cache = None
+
     def __init__(self, source, floor=168, holes=()):
         self.v = defaultdict(int)
         self.arc = []
@@ -21,7 +26,7 @@ class Basic:
         self.expr_cache = {}
         self.floor, self.holes = floor, holes
         self.screen = None
-        self.data = []
+        self.data_pos = 0
         self.sound = []
         self.sound_times = []
         self.wait_count = 0
@@ -31,6 +36,9 @@ class Basic:
         self.cursor = 0
         self.pattern_writes = []
         self.color_writes = []
+        self.vram = {}
+        self.vram_writes = []
+        self.rom_tables = {}
         self.bank = 1
         self.frame_inputs = iter(())
         self.random_values = iter(())
@@ -72,6 +80,18 @@ class Basic:
         self.arc = list(map(int, data[10:].split(',')))
         size = int(re.search(r'dim jtab\((\d+)\)', '\n'.join(self.lines))[1])
         assert len(self.arc) == size == 16
+        if Basic._byte_source != source:
+            values=[];offsets={}
+            for line in self.lines:
+                if line.endswith(':'):offsets[line[:-1]]=len(values)
+                if line.startswith('data byte '):
+                    for value in line[10:].split(','):
+                        value=value.strip()
+                        assert re.fullmatch(r'\$[0-9a-f]+|[0-9]+',value), ('unsupported DATA literal',value)
+                        values.append(int(value[1:],16) if value.startswith('$') else int(value))
+            Basic._byte_source=source
+            Basic._byte_cache=(tuple(values),offsets)
+        self.byte_data,self.data_offsets=Basic._byte_cache
         self.v.update(mx=40, my=152, st=self.v['s_walk'], ely=209, jhz=1)
 
     def tile(self, x, y):
@@ -84,11 +104,34 @@ class Basic:
             return self.v['t_gird']
         return 32
 
+    def rom_byte(self, label, offset):
+        assert self.label_banks[label] == self.bank, ('wrong lookup bank', label, self.bank)
+        if label not in self.rom_tables:
+            values = []
+            for line in self.lines[self.labels[label]+1:]:
+                if line.endswith(':'): break
+                if line.startswith('data byte '):
+                    values.extend(self.expr(v) for v in line[10:].split(','))
+            self.rom_tables[label] = values
+        return self.rom_tables[label][offset]
+
+    def upload(self, address, count, label, offset):
+        assert self.label_banks[label] in (0, self.bank), ('wrong VRAM source bank', label)
+        assert 0 <= address < address + count <= 16384
+        self.vram_writes.append((address,count,label,offset))
+        for i in range(count): self.vram[address+i] = (label,offset+i)
+
+    def expect_upload(self, address, count, label, offset):
+        assert all(self.vram.get(address+i)==(label,offset+i) for i in range(count)), ('wrong VRAM coverage',address,count,label,offset)
+
     def expr(self, text):
         functions = dict(tile=self.tile, jtab=self.arc.__getitem__,
                          vaddr=lambda row, col: 6144 + row * 32 + col,
                          cpos=lambda row, col: row * 32 + col,
                          random=lambda limit: next(self.random_values, 1) % limit)
+        text = re.sub(r'peek\(varptr (lift_[xy])\(([^()]*)\)\)', r'rom_\1(\2)', text)
+        functions.update({"rom_"+label: (lambda offset, label=label: self.rom_byte(label, offset))
+                          for label in ('lift_x','lift_y')})
         functions.update({k: v.__getitem__ for k, v in self.arrays.items() if k != 'jtab'})
         key = text
         if key not in self.expr_cache:
@@ -103,6 +146,7 @@ class Basic:
         return eval(self.expr_cache[key], {'__builtins__': {}}, dict(v=self.v, **functions))
 
     def run(self, label):
+        assert self.label_banks[label] in (0,self.bank), ('routine in wrong bank',label,self.bank,self.label_banks[label])
         pc, loops, steps = self.labels[label] + 1, [], 0
         while True:
             steps += 1
@@ -153,16 +197,16 @@ class Basic:
                 self.v.update(sample)
                 self.wait_count += 1
             elif line.startswith('restore '):
-                start = self.labels[line[8:]] + 1
-                self.data = [self.expr(v.strip()) for ln in self.lines[start:]
-                             if ln.startswith('data byte ') for v in ln[10:].split(',')]
+                self.data_pos = self.data_offsets[line[8:]]
             elif line.startswith('read byte '):
+                value = self.byte_data[self.data_pos]
+                self.data_pos += 1
                 target = line[10:]
                 indexed = re.fullmatch(r'(\w+)\((.+)\)', target)
                 if indexed:
-                    self.arrays[indexed[1]][self.expr(indexed[2])] = self.data.pop(0)
+                    self.arrays[indexed[1]][self.expr(indexed[2])] = value
                 else:
-                    self.v[target] = self.data.pop(0)
+                    self.v[target] = value
             elif line.startswith('on '):
                 value, labels = line[3:].split(' goto ')
                 pc = self.labels[labels.split(',')[self.expr(value)]] + 1
@@ -196,6 +240,14 @@ class Basic:
                 first,count,pointer=line[14:].split(',')
                 assert (pointer,self.bank) in (('dance_bitmap',2),('brick_edge',3)), 'unexpected sprite upload/bank'
                 self.sprite_writes.append((self.expr(first),self.expr(count),pointer))
+            elif line.startswith('define vram '):
+                address,count,pointer=line[12:].split(',',2)
+                m=re.fullmatch(r'varptr (\w+)\((.+)\)',pointer)
+                label=m[1] if m else pointer; offset=self.expr(m[2]) if m else 0
+                target=self.expr(address);size=self.expr(count)
+                self.upload(target,size,label,offset)
+                assert target%8==0 and size%8==0, 'unaligned tile upload'
+                (self.color_writes if target>=8192 else self.pattern_writes).append((target%2048//8,size//8,label,offset))
             elif line.startswith(('define char ', 'define color ')):
                 # Record hardware-only uploads, including the actual ROM offset.
                 color=line.startswith('define color ')
@@ -205,11 +257,14 @@ class Basic:
                 assert self.label_banks[data_label] in (0,self.bank), ('wrong art bank',data_label,self.bank,self.label_banks[data_label])
                 if pointer.startswith(('varptr claw_pat','varptr press_','varptr tramp_',
                                        'varptr pad_anim','varptr pad_colors')):
-                    assert self.bank==2, 'animation data read from wrong bank'
+                    assert self.bank==4, 'animation data read from wrong bank'
                 if pointer in ('title_pat','title_col','fixture_pat','fixture_col','machine_art','machine_col') or pointer.startswith(('varptr beat_','varptr inflash_')):
                     assert self.bank==3, 'title art read from wrong bank'
                 (self.color_writes if color else self.pattern_writes).append((self.expr(first),self.expr(count),
                     m[1] if m else pointer, self.expr(m[2]) if m else 0))
+                for third in range(3):
+                    self.upload((8192 if color else 0)+third*2048+self.expr(first)*8,
+                                self.expr(count)*8,data_label,self.expr(m[2]) if m else 0)
             elif line.startswith('bank select '):
                 self.bank=self.expr(line[12:])
             elif line.startswith(('#if ', '#endif')):
@@ -298,7 +353,17 @@ def clock_contract(source):
     world = clean.split('world_step:')[1].split('mack_step:')[0]
     routines = ['mack_step', 'actors_step', 'actors_move', 'bolt_move',
                 'beam_move', 'mag_move', 'mag_catch', 'elev_move', 'site_step']
-    assert re.findall(r'gosub (\w+)', world) == routines
+    assert sorted(re.findall(r'gosub (\w+)', world)) == sorted(routines)
+    class Trace(Basic):
+        def run(self,label):
+            if label in routines:self.trace.append(label)
+            super().run(label)
+    for level,specific in ((1,['bolt_move','elev_move']),
+                           (2,['beam_move','mag_move','mag_catch']),
+                           (3,['beam_move'])):
+        vm=Trace(source);vm.trace=[];vm.v['lv']=level;vm.run('init_level');vm.trace=[]
+        vm.run('world_step')
+        assert vm.trace==routines[:3]+specific+['site_step'], ('wrong site simulation dispatch',level,vm.trace)
     main = clean.split('main_loop:')[1].split('level_complete:')[0]
     assert re.search(r'for s8 = 1 to #hd\s+gosub world_step\s+next s8', main)
     for routine in routines:
@@ -325,7 +390,7 @@ def hammer_release(source):
     # Execute the shipped input block, then the real pickup collision. Testing
     # drop_hammer alone missed a release immediately undone by actors_move.
     block=source[source.index("\t' Button rising edge"):source.index('\tIF st = S_DEAD THEN\n\t\tGOSUB dead_tick')]
-    script=source+'\nbutton_test:\n'+block+'\tRETURN\n'
+    script=source+'\nBANK 0\nbutton_test:\n'+block+'\tRETURN\n'
     for delta in (1,2,3,4):
         for near_spawn in (False,True):
             vm=Basic(script);vm.v['lv']=1;vm.run('init_level')
@@ -357,6 +422,49 @@ def hammer_release(source):
         assert vm.v['jbhc']==0
         vm.v['jb']=1;vm.run('button_test')
         assert vm.v['jbe']==1 and vm.v['carry']==carry, 'fresh jump press broken'
+
+
+def single_item(source):
+    # Both real pickup orders, including touching both objects in one world step.
+    for first in ('block', 'hammer'):
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        index=next(i for i in range(vm.v['nitem']) if vm.arrays['itk'][i]==0)
+        vm.v.update(mx=vm.arrays['itc'][index]*8-8,
+                    my=vm.arrays['itr'][index]*8-8,von=0,oon=0,ch=vm.v['t_brick'])
+        vm.v.update(jhx=vm.v['mx'],jhy=vm.v['my'])
+        if first=='block':
+            vm.run('take_item');vm.run('actors_move')
+            assert vm.v['carry']==1 and vm.v['jhtk']==0, 'hammer replaces held block'
+            assert vm.arrays['itst'][index]==1
+        else:
+            vm.run('actors_move');before=vm.v['#score'];vm.run('take_item')
+            assert vm.v['carry']==2 and vm.v['jhtk']==1, 'block replaces held hammer'
+            assert vm.arrays['itst'][index]==0 and vm.v['#score']==before, 'occupied hands consume block'
+            assert vm.screen[vm.arrays['itr'][index]*32+vm.arrays['itc'][index]]==vm.v['t_brick']
+
+    assert 'GOSUB inventory_draw' in source.split('main_loop:')[1].split('inventory_draw:')[0]
+    vm=Basic(source);vm.v.update(lv=1,mx=96,my=152,jhtk=0)
+    for facing in (0,1):
+        vm.v['mdir']=facing
+        # Reuse the same sprite table: transitions must clear the old layers.
+        for carry in (1,0,2,1,2,0):
+            vm.v.update(carry=carry,jhtk=int(carry==2),jhx=104,jhy=152)
+            vm.run('inventory_draw')
+            assert (vm.sprites[14][0]!=209)==(carry==1), 'stale block outline after changing inventory'
+            if carry==1:
+                assert vm.sprites[1][2:]==(28,6) and vm.sprites[3][0]==209, 'loose hammer looks carried with block'
+            elif carry==2:
+                assert vm.sprites[1][2] in (24,40) and vm.sprites[3][0]==209
+            else:
+                assert vm.sprites[1][0]==209 and vm.sprites[3][0]!=209
+        vm.v.update(carry=1,jhtk=0)
+        for dx,dy,hidden in ((-17,0,True),(17,0,True),(0,11,True),
+                             (-18,0,False),(18,0,False),(0,12,False),(0,-32,False)):
+            vm.v.update(jhx=96+dx,jhy=152+dy)
+            before=(vm.v['jhx'],vm.v['jhy'],vm.v['carry'],vm.v['jhtk'])
+            vm.run('inventory_draw')
+            assert (vm.sprites[3][0]==209)==hidden, 'loose hammer occlusion boundary'
+            assert before==(vm.v['jhx'],vm.v['jhy'],vm.v['carry'],vm.v['jhtk']), 'drawing changes item ownership or route'
 
 
 def machinery(source):
@@ -675,7 +783,7 @@ def title_scores(source):
         assert ''.join(map(chr,title.screen[56:62]))==str(units*5).rjust(6), 'high score alignment changed'
     over=source[source.index('game_over:\n'):source.index("\t' 75 video frames")]
     start=source[source.index('new_game:\n'):source.index('main_loop:\n')]
-    vm=Basic(source+'\nscore_end_test:\n'+over+'\tRETURN\nscore_start_test:\n'+start+'\tRETURN\n')
+    vm=Basic(source+'\nBANK 0\nscore_end_test:\n'+over+'\tRETURN\nscore_start_test:\n'+start+'\tRETURN\n')
     vm.v.update(lv=1,**{'#score':1234,'#hi':900});vm.run('init_level')
     vm.run('score_end_test')
     vm.frame_inputs=iter([dict(input_button=0,input_key=15),dict(input_button=1)])
@@ -705,10 +813,11 @@ def title_scores(source):
     assert (1,'*') in vm.prints and (24,'*') not in vm.prints, 'current-score HUD marker wrong'
     # Level completion can claim the record before game over.
     award=source[source.index('level_complete:\n'):source.index('\tlevelno = levelno + 1')]
-    win=Basic(source+'\naward_test:\n'+award+'\tRETURN\n')
+    win=Basic(source+'\nBANK 0\naward_test:\n'+award+'\tRETURN\n')
     for assisted in (1,0):
         win.v.update(lv=1,game838=assisted,**{'#score':1000,'#bonus':5000,'#hi':900})
-        win.frame_inputs=iter([{}]*300)
+        # Fifty four-frame ticks, followed by the level-one fanfare.
+        win.frame_inputs=iter([{}]*400)
         win.run('award_test')
         assert win.v['#hi']==2000 and win.v['hi838']==assisted, 'completion score provenance wrong'
 
@@ -743,6 +852,41 @@ def score_range(source):
     assert ''.join(map(chr,vm.screen[17:21]))=='   0', 'zero bonus missing or padded'
 
 
+def mack_animation(source):
+    draw=source[source.index('\tIF mdir = 1 THEN\n\t\tmfr'):source.index("\tGOSUB elev_draw\n\t' Crane")]
+    patterns={}
+    for start,count,label in re.findall(r'DEFINE SPRITE (\d+),(\d+),(\w+)',source):
+        body=source[source.index(label+':\n')+len(label)+2:]
+        body=re.split(r'^\w+:',body,maxsplit=1,flags=re.M)[0]
+        rows=re.findall(r'BITMAP "([.X]+)"',body)
+        assert len(rows)>=int(count)*16, ('short sprite upload',label)
+        for i in range(int(count)):
+            code=(int(start)+i)*4
+            assert code not in patterns, ('sprite patterns overlap',code,label)
+            patterns[code]=rows[i*16:(i+1)*16]
+    vm=Basic(source+'\nBANK 0\nrun_draw_test:\n'+draw+'\tRETURN\n')
+    for direction in (0,1):
+        expected=[48,48,52,52,48,48,132,132] if not direction else [0,0,44,44,0,0,124,124]
+        colors={0:60,44:64,48:68,52:72,124:128,132:136}
+        for phase,code in enumerate(expected):
+            for frame in (0,255):
+                vm.v.update(st=vm.v['s_walk'],mdir=direction,jr=direction,jl=1-direction,
+                            steptick=phase,frame=frame)
+                vm.run('run_draw_test')
+                white,purple=vm.sprites[0][2],vm.sprites[8][2]
+                assert white==code and purple==colors[code], 'run layers/cadence do not follow walked distance'
+                assert white in patterns and purple in patterns, 'run pose not uploaded'
+                assert all(not(a==b=='X') for ra,rb in zip(patterns[white],patterns[purple])
+                           for a,b in zip(ra,rb)), 'Mack color layers overlap'
+            vm.v.update(jr=0,jl=0)
+            vm.run('run_draw_test')
+            assert vm.sprites[0][2]==(0 if direction else 48), 'idle Mack holds a running stride'
+        for state in ('s_jump','s_fall','s_tramp'):
+            vm.v.update(st=vm.v[state],jr=1,jl=0,steptick=7)
+            vm.run('run_draw_test')
+            assert vm.sprites[0][2]==32 and vm.sprites[8][2]==76, 'run overrides airborne pose'
+
+
 def elevator_dance(source):
     draw=source[source.index('\tIF mdir = 1 THEN\n\t\tmfr'):source.index("\tGOSUB elev_draw\n\t' Crane")]
     art=source[source.index('dance_bitmap:\n'):source.index('banked_completion_music:\n')]
@@ -752,7 +896,7 @@ def elevator_dance(source):
     assert rows[:16]!=rows[32:48], 'dance crouches identical'
     for down in (0,1):
         for delta in (1,2,4):
-            vm=Basic(source+'\ndance_draw_test:\n'+draw+'\tRETURN\n')
+            vm=Basic(source+'\nBANK 0\ndance_draw_test:\n'+draw+'\tRETURN\n')
             vm.v['lv']=1;vm.run('init_level')
             end=vm.v['elby'] if down else vm.v['elty']
             vm.v.update(ely=end-1 if down else end+1,eld=down,emov=1,elarm=0,
@@ -786,6 +930,154 @@ def elevator_dance(source):
         assert empty.v['edance']==0, 'empty summoned elevator starts dance'
 
 
+def elevator_boarding(source):
+    for floor in (72,168):
+        for x in range(16):
+            vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+            vm.v.update(ely=floor,mx=x,my=floor-16,fcy=floor-16,
+                        st=vm.v['s_fall'],ch=32,elarm=1,jbe=0)
+            vm.run('fall_land')
+            assert vm.v['st']==vm.v['s_ride'], ('supported landing not boarded',floor,x)
+            vm.run('mack_step')
+            assert vm.v['emov']==1 and vm.v['mx']==vm.v['elx'], ('supported rider stranded',floor,x)
+            assert vm.v['eld']==int(floor==72) and vm.v['elarm']==0
+            # Arrival remains disarmed; standing still cannot reverse the trip.
+            vm.v.update(emov=0,jl=0,jr=0);vm.run('st_ride')
+            assert vm.v['emov']==0, 'parked arrival immediately reverses'
+    for x,y in ((16,152),(24,152),(8,148),(8,156)):
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        vm.v.update(mx=x,my=y,st=vm.v['s_ride'],elarm=1,jbe=0)
+        vm.run('st_ride')
+        assert vm.v['emov']==0, 'unsupported rider starts elevator'
+
+
+def end_screen_timing(source):
+    for origin in (0,65500):
+        for mode,expected in (('idle',600),('held',600),('fresh',90),('early',110),
+                              ('lockout',600),('earliest',76)):
+            vm=Basic(source);vm.v['frame']=origin
+            def frames():
+                for frame in range(1,602):
+                    button=(mode=='held' or (mode=='fresh' and frame>=90) or
+                            (mode=='early' and (frame<=100 or frame>=110)) or
+                            (mode=='lockout' and 20<=frame<=30) or
+                            (mode=='earliest' and frame>=76))
+                    yield dict(frame=(origin+frame)&65535,input_button=int(button))
+            vm.frame_inputs=frames();vm.run('gameover_wait')
+            assert vm.wait_count==expected, ('game-over delay/release/timeout',origin,mode,vm.wait_count)
+    for remaining in (0,5,95,105,5000):
+        for score in (1000,65530):
+            vm=Basic(source);vm.v.update(xlife=1,**{'#bonus':remaining,'#score':score})
+            vm.frame_inputs=iter([{}]*210);vm.run('bonus_countdown')
+            ticks=(remaining+99)//100
+            assert vm.v['#bonus']==0 and vm.v['#score']==min(65535,score+remaining//5), 'bonus lost, doubled or overflowed'
+            shown=[int(text.strip()) for pos,text in vm.prints if pos==17]
+            assert shown==[max(0,remaining-100*n) for n in range(1,ticks+1)], 'bonus does not visibly count down'
+            pulses=[(t,e) for t,e in vm.sound_times if e==(3,5,7)]
+            assert [t for t,e in pulses]==list(range(0,ticks*4,4)), 'bonus ticker cadence'
+            silences=[t for t,e in vm.sound_times if e==(3,None,0)]
+            assert silences==list(range(2,ticks*4,4)), 'bonus tick needs a short, audible pulse'
+            assert vm.wait_count==ticks*4
+            if ticks:assert vm.sound[-1]==(3,None,0), 'bonus ticker remains latched'
+
+
+def girder_spacing(source):
+    expected={1:{4,5,11,12,17,18,24,25},
+              2:{3,4,8,9,12,13,15,16,19,20,24,25},
+              3:{3,4,8,9,13,14,18,19,23,24,27,28}}
+    vm=Basic(source)
+    for level in (1,2,3,1):
+        vm.v['lv']=level;vm.run('init_level')
+        plain,dotted=0,0
+        for cell,ch in enumerate(vm.screen):
+            if ch in (128,129,130,134):
+                assert (ch==134)==(cell%32 in expected[level]), ('girder spacing',level,cell)
+                plain+=ch!=134;dotted+=ch==134
+                vm.v.update(mx=cell%32*8-8,my=cell//32*8-16)
+                if vm.v['mx']>=0:
+                    vm.run('foot_probe');assert vm.v['sup']==1, 'plain/riveted cell lost support'
+        assert plain>dotted>0, 'rivets crowd out plain beam sections'
+        assert (134,1,'girder_dot_col',(level-1)*8) in vm.color_writes, 'rivet palette not updated'
+        expected_art='beamplain_pat' if level==2 else 'fixture_pat'
+        assert [w[2] for w in vm.pattern_writes if w[0]==96][-1]==expected_art, 'crane slices corrupt next-site cabinet'
+        assert vm.bank==1, 'girder setup leaks bank'
+    # The repaired holes must continue the established pattern, not restart it.
+    for col in (10,11,16,18):
+        vm.v.update(lv=1,mx=col*8-8,my=56,carry=2)
+        vm.arrays['gapr'][0]=9;vm.arrays['gapc'][0]=col;vm.arrays['gapst'][0]=1
+        vm.run('rivet_gap')
+        assert vm.screen[9*32+col]==(134 if col in expected[1] else 132), 'rivet repair breaks beam spacing'
+    vm.v['lv']=2;vm.run('init_level')
+    for offset in range(8):
+        vm.v.update(bmy=136+offset,bmyd=255);vm.run('beam_draw')
+        top=vm.screen[17*32+12:17*32+17];bottom=vm.screen[18*32+12:18*32+17]
+        assert top==[192+offset,192+offset,96+offset,192+offset,192+offset]
+        assert bottom==[200+offset,200+offset,104+offset,200+offset,200+offset]
+    body=re.search(r'^beamplain_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
+    data=[int(v[1:],16) for v in re.findall(r'\$[0-9A-F]{2}',body)]
+    for offset in range(8):
+        pixels=data[offset*8:offset*8+8]+data[64+offset*8:72+offset*8]
+        assert pixels==[0]*offset+[255]*8+[0]*(8-offset), 'plain crane slice has a hole or stray pixels'
+
+
+def factory_drive(source):
+    def table(label):
+        body=re.search(r'^'+label+r':\n.*?(?=^\w+:)',source,re.M|re.S)[0]
+        return [int(v[1:],16) for v in re.findall(r'\$[0-9A-F]{2}',body)]
+    chains=table('drivechain_pat');colors=table('drivechain_col')
+    wheels=table('wheel_anim_pat')
+    assert len(chains)==len(colors)==128 and len(wheels)==256
+    assert len({tuple(wheels[i:i+32]) for i in range(0,256,32)})==8, 'wheel spokes do not turn'
+    for phase in range(8):
+        for row in range(8):
+            for half,direction in ((0,1),(8,-1)):
+                index=phase*16+half+row;previous=half+(row-direction*phase)%8
+                assert chains[index]==chains[previous], 'chain links slip against paddle direction'
+                assert colors[index]==colors[previous], 'chain highlight detached from moving link'
+    for batch in (1,2,4):
+        vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
+        for elapsed in range(0,448,batch):
+            for _ in range(batch):vm.run('lift_move')
+            vm.pattern_writes.clear();vm.color_writes.clear()
+            vm.v['hzphase']=(elapsed*3+17)%128
+            vm.run('fixture_draw')
+            phase=vm.v['pnphase']
+            assert vm.v['chainlast']==phase%8, 'chain drifted from actual paddle position'
+            assert vm.v['drivelast']==phase//4%8, 'wheel drifted from actual paddle position'
+            assert (208,2,'drivechain_pat',phase%8*16) in vm.pattern_writes
+            assert (208,2,'drivechain_col',phase%8*16) in vm.color_writes
+            offset=phase//4%8*32
+            vm.expect_upload(912,16,'wheel_anim_pat',offset)
+            vm.expect_upload(2976,16,'wheel_anim_pat',offset+16)
+            vm.expect_upload(5008,32,'wheel_anim_pat',offset)
+            assert vm.bank==1, 'drive renderer leaves the wrong bank selected'
+            vm.pattern_writes.clear();vm.color_writes.clear();vm.run('fixture_draw')
+            assert not vm.pattern_writes and not vm.color_writes, 'stopped drive keeps uploading art'
+
+
+def work_sounds(source):
+    for fx,pitch,vol,length in ((0,550,8,6),(1,860,5,2),(2,700,7,3),(3,240,9,5),(4,120,10,8)):
+        vm=Basic(source);vm.v.update(workfx=fx,snd0=10,snd2=12)
+        vm.run('work_sound')
+        assert (1,pitch,vol) in vm.sound and vm.v['snd1']==length, 'missing material sound'
+        assert vm.v['snd0']==10 and vm.v['snd2']==12, 'work sound interrupts reward/jump'
+        assert vm.bank==1, 'work sound leaks bank'
+        vm.v['#fd']=12;vm.run('sound_tick')
+        assert vm.v['snd1']==0 and (1,None,0) in vm.sound, 'work sound never stops'
+        if fx!=4:assert (3,None,0) in vm.sound
+    for guard,value in (('st',None),('snd3',10),('snd1',6)):
+        vm=Basic(source);vm.v[guard]=vm.v['s_dead'] if value is None else value;vm.run('work_sound')
+        assert not vm.sound, 'work sound replaces a higher-priority effect'
+    vm=Basic(source);vm.v.update(ely=144,elty=72,emov=0)
+    vm.run('elev_move');assert not vm.sound, 'parked elevator rattles'
+    vm.v['emov']=1;vm.run('elev_move')
+    assert (1,860,5) in vm.sound, 'moving elevator lacks ratchet'
+    vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
+    vm.v.update(boxfall=3,outputtick=15,nbox=1,boxx=64,boxy=176)
+    vm.run('factory_output')
+    assert (1,120,10) in vm.sound and vm.bank==1, 'bucket arrival lacks ping or leaks bank'
+
+
 def factory_challenge(source):
     wins=0
     for phase in range(0,128,8):
@@ -814,7 +1106,7 @@ def sound_contract(source):
     prefix=source[source.index('\t#fd = FRAME'):source.index("\t' Pace scaling")]
     tail=source[source.index("\t' L2 crane beam is rendered"):source.index('tone_start:')]
     tail=tail.replace('\tGOTO main_loop','\tRETURN')
-    vm=Basic(source+'\nframe_start_test:\n'+prefix+'\tRETURN\nrender_tail_test:\n'+tail)
+    vm=Basic(source+'\nBANK 0\nframe_start_test:\n'+prefix+'\tRETURN\nrender_tail_test:\n'+tail)
     vm.v.update(frame=4,snd3=1,jr=1,steptick=7)
     vm.run('frame_start_test')
     assert vm.v['snd3']==0, 'old sound not aged before new activity'
@@ -1060,8 +1352,10 @@ def machinery_animation(source):
             vm.v.update(presslast=255)
             vm.run('site_draw')
             assert vm.bank==1 and vm.sprites[14][0]==209, 'sprite smasher or wrong bank'
-            assert (243,6,'press_pat',phase*48) in vm.pattern_writes
-            assert (243,6,'press_col',phase*48) in vm.color_writes
+            for row in range(3):
+                third=((14 if level==2 else 6)+row)//8
+                for color,label in ((0,'press_pat'),(8192,'press_col')):
+                    vm.expect_upload(color+third*2048+(243+row*2)*8,16,label,phase*48+row*16)
             top=max(base,position+7);bottom=min(base+(23 if level==2 else 25),position+11)
             for y in range(base-32,base+34):
                 hit.v.update(mx=origin,my=y,hzphase=clock-1,st=hit.v['s_walk'],**{'#slagclock':180})
@@ -1087,8 +1381,8 @@ def machinery_animation(source):
                     assert foot[tile*8+2:tile*8+8]==belt[2:8], 'smasher erases belt'
                     assert bool(foot[tile*8+1])==(depth==2), 'head misses belt rail'
                 assert vm.screen[9*32+7:9*32+9]==[249,250], 'missing smasher foot cells'
-                assert (249,2,'pressfoot_pat',offset) in vm.pattern_writes, 'wrong belt/head frame'
-                assert (249,2,'pressfoot_col',depth*16) in vm.color_writes, 'wrong head foot colors'
+                vm.expect_upload(4040,16,'pressfoot_pat',offset)
+                vm.expect_upload(12232,16,'pressfoot_col',depth*16)
                 for y in range(depth):
                     assert footcolors[depth*16+y]==[0xf1,0xf1][2-depth+y]
         assert min(positions)==low and max(positions)==high, ('smasher travel',level,positions)
@@ -1098,11 +1392,13 @@ def machinery_animation(source):
         assert positions[28 if level==2 else 44]==high, 'wrong downward smasher speed'
         assert high+11==(135 if level==2 else 73), 'head must finish exactly above surface'
         if level==3:
-            assert vm.screen[8*32+7]==vm.v['t_sbox'], 'piston erased conveyor box'
-            vm.v.update(mx=52,my=56,ch=vm.v['t_sbox']);vm.run('take_item')
+            assert vm.screen[8*32+6]==vm.v['t_sbox'], 'conveyor box missing from left of piston'
+            assert vm.screen[8*32+7]==247, 'conveyor box overlaps piston'
+            vm.v.update(mx=44,my=56,ch=vm.v['t_sbox']);vm.run('take_item')
             assert vm.arrays['itst'][1]==1 and vm.v['carry']==1
             vm.run('site_draw')
             assert vm.screen[8*32+7]==247, 'box pickup punched a hole in the piston'
+            assert vm.screen[8*32+6]==32, 'collected conveyor box remains visible'
             assert vm.screen[4*32+12]==vm.v['t_sbox'], 'piston changed other boxes'
 
 
@@ -1114,7 +1410,7 @@ def slag_cadence(source):
         vm.run('beam_move');vm.run('site_step')
         if vm.v['#slagclock']==0:emissions.append(tick)
         if vm.v['bmy']==167 and vm.v['bmd']==0:
-            returns.append(vm.v['slagphase']<68)
+            returns.append(vm.v['slagphase']<60)
     assert emissions==[317,634,951], ('unexpected glop release interval',emissions)
     assert len(returns)==5 and any(returns) and not all(returns), 'glop locked to crane visits'
 
@@ -1132,7 +1428,7 @@ def visual_hazards(source):
         vm.v.update(mx=112,my=80,st=vm.v['s_walk'],**{'#slagclock':(clock-1)%317})
         vm.run('site_step');vm.run('site_draw')
         visible=vm.sprites[15][0]!=209
-        assert visible==(clock<136), ('slag visibility/collision phase',clock)
+        assert visible==(clock<120), ('slag visibility/collision phase',clock)
         if visible:
             path.append((vm.v['blobx'],vm.v['bloby']))
             assert vm.sprites[15][1]==vm.v['blobx']
@@ -1141,21 +1437,31 @@ def visual_hazards(source):
                             ky0=vm.arrays['cvy0'][1],kdy=16)
                 vm.run('belt_surface')
                 assert abs(vm.v['bloby']+9-vm.v['srf'])<=1, ('slag buried below belt',clock)
-        assert vm.pattern_writes[-1][0] in (120,156,238,243)
-    assert all(path[i]==path[i+1] for i in range(0,136,2)), 'slag ignores half-speed clock'
+        assert vm.pattern_writes[-1][0] in (120,124,156,238,243,247)
+    assert all(path[i]==path[i+1] for i in range(0,120,2)), 'slag ignores half-speed clock'
     assert len(set(x for x,y in path[:32]))==1
     assert all(0<=b[0]-a[0]<=1 and abs(b[1]-a[1])<=2 for a,b in zip(path,path[1:]))
     assert path[100][1]<path[88][1] and path[-1][1]>path[100][1], 'missing roller arc'
+    # Actual final sprite footprint enters the visible opening, not the grass.
+    x,y=path[-1]
+    assert 83<=x+5<=x+10<=90 and 169<=y+4<=y+9<=174, 'slag misses receiver mouth'
+    assert vm.screen[21*32+10:21*32+12]==[189,190], 'receiver top missing'
+    assert vm.screen[22*32+10:22*32+12]==[162,163], 'receiver base repeats one half'
+    assert vm.screen[21*32+17:21*32+19]==[32,32], 'extra machine right of crane'
+    assert vm.screen[22*32+17:22*32+19]==[32,32], 'extra machine base right of crane'
     # The factory's treads must travel in the same direction as its carrier.
     for level,direction in ((2,1),(3,-1)):
         vm.v.update(lv=level)
         for clock in range(16):
             vm.v['hzphase']=clock;vm.run('site_draw')
             expected=(direction*(clock//2))%8
-            belt=[w for w in vm.pattern_writes if w[0]==156][-1]
-            assert belt==(156,6,'belt_anim0',expected*48), 'belt animation direction/rate'
+            if level==3:
+                vm.expect_upload(3336,8,'belt_anim0',expected*48+40)
+                vm.expect_upload(3320,8,'belt_anim0',expected*48+24)
+            else:
+                for third in range(3):vm.expect_upload(third*2048+1248,32,'belt_anim0',expected*48)
     # Full game-over entry, stopped before the intentional timed/key wait.
-    stop='\tFOR i = 1 TO 75\n'
+    stop='\tGOSUB gameover_wait\n'
     assert source.count(stop)==1
     for y,moving in ((168,0),(72,0),(117,1)):
         end=Basic(source.replace(stop,'\tRETURN\n',1))
@@ -1189,7 +1495,9 @@ def visual_hazards(source):
             test.v.update(mx=112,my=80,hzphase=phase-1,clawclock=(phase-1)%96,**{'#slagclock':(phase-1)%317})
             test.run('site_step')
             if level==2:
-                profiles.append((calls[-1],(test.v['blobx'],test.v['bloby']),bounds('slag_bitmap'),'slag'))
+                assert len(calls)==(4 if phase<120 else 3), 'hidden slag still has a collision box'
+                if phase<120:
+                    profiles.append((calls[-1],(test.v['blobx'],test.v['bloby']),bounds('slag_bitmap'),'slag'))
                 art=re.search(r'^claw_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
                 data=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',art)]
                 frame=data[test.v['clawstep']*40:][:40]
@@ -1226,7 +1534,7 @@ def speed_contract(source):
     # A two-second interval has the same budget with 1-, 2- or 4-frame passes.
     clock=source[source.index('\t#hacc = #hacc +'):source.index("\t' Read the stick")]
     for deltas in ([1]*120,[2]*60,[4]*30,[1,3]*30):
-        vm=Basic(source+'\nspeed_tick:\n'+clock+'\tRETURN\n');steps=0
+        vm=Basic(source+'\nBANK 0\nspeed_tick:\n'+clock+'\tRETURN\n');steps=0
         for delta in deltas:
             vm.v['#fd']=delta;vm.run('speed_tick');steps+=vm.v['#hd']
         assert steps==135 and vm.v['#hacc']==0, 'world speed depends on render rate'
@@ -1290,12 +1598,13 @@ def chain_and_pickups(source):
             if vm.v['st']==vm.v['s_walk']:break
         assert vm.v['my']==120 and vm.v['st']==vm.v['s_walk'], 'cannot reach chain landing'
     vm=Basic(source);vm.v.update(lv=2);vm.run('init_level')
-    assert vm.screen[22*32+17:22*32+19]==[vm.v['t_mixbas']]*2, 'pickup overwrites machine support'
+    assert vm.screen[22*32+10:22*32+12]==[162,163], 'pickup overwrites receiver support'
     assert vm.screen[22*32+19:22*32+21]==[vm.v['t_lboxl'],vm.v['t_lboxl']+1], 'hazard overwrites ground pail'
     vm.v.update(mx=120,my=168)
     before=vm.v['#score'];vm.run('mack_step')
     assert vm.v['#score']==before+40 and vm.arrays['itst'][7]==1, 'spray can not collectible'
-    assert vm.screen[22*32+17:22*32+19]==[vm.v['t_mixbas']]*2, 'pickup erased machine support'
+    assert vm.screen[22*32+10:22*32+12]==[162,163], 'pickup erased receiver support'
+    assert vm.screen[22*32+17:22*32+19]==[32,32], 'removed machine reappears after pickup'
 
 
 def setup_inputs(source):
@@ -1318,15 +1627,15 @@ def setup_inputs(source):
     vm.run('title_screen')
     assert vm.v['lv']==1 and vm.v['lives']==2 and vm.bank==1 and vm.v['game838']==0
     vm=Basic(source);vm.v.update(titleheld=15,input_key=3)
-    vm.run('menu_key');assert vm.v['setupkey']==3
-    vm.run('menu_key');assert vm.v['setupkey']==15, 'held digit accepted twice'
+    vm.bank=3;vm.run('menu_key');assert vm.v['setupkey']==3
+    vm.bank=3;vm.run('menu_key');assert vm.v['setupkey']==15, 'held digit accepted twice'
 
 
 def repeat_enemies(source):
     # Execute the real completion transition, stopping before the frame loop.
     advance=source[source.index('\tlevelno = levelno + 1'):source.index('\ngame_over:')]
     advance=advance.replace('GOTO main_loop','RETURN')
-    vm=Basic(source+'\nadvance_fixture:\n'+advance)
+    vm=Basic(source+'\nBANK 0\nadvance_fixture:\n'+advance)
     vm.v.update(lv=3,levelno=3,lives=2)
     vm.run('advance_fixture')
     assert (vm.v['lv'],vm.v['levelno'],vm.v['von'],vm.v['oon'])==(1,4,1,1), 'no extra enemy on second tour'
@@ -1460,6 +1769,16 @@ def fixture_contract(source):
         body=re.search(r'^'+label+r':\n.*?(?=^\w+:)',source,re.M|re.S).group()
         return [int(v[1:],16) for v in re.findall(r'\$[0-9A-F]{2}',body)]
     ownership=Basic(source)
+    # Site-specific codes must survive successive sites and death redraws.
+    for level in (1,2,3,1):
+        ownership.v['lv']=level;ownership.run('init_level')
+        pattern={1:'support_pat',2:'beat_pat',3:'eject_pat'}[level]
+        count=4 if level==2 else 2
+        assert [w for w in ownership.pattern_writes if w[0]==120][-1]==(120,count,pattern,0), 'wrong site scenery after level change'
+        if level==1:
+            for column in (6,14,23):
+                assert ownership.screen[22*32+column]==120
+                assert ownership.screen[23*32+column]==121, 'pedestal repeats its top instead of a single footing'
     for count,pointer in re.findall(r'DEFINE SPRITE \d+,([0-9]+),(\w+)',source.split('new_game:')[0]):
         assert ownership.label_banks[pointer]==1, ('startup sprite outside bank 1',pointer)
     assert ownership.label_banks['drill_route']==1, 'startup route outside bank 1'
@@ -1473,7 +1792,8 @@ def fixture_contract(source):
     assert pats[24:32]==table('item_pat')[:8] and cols[24:32]==table('item_col')[:8], 'placed block changes appearance'
     assert pats[32:40]==pats[:8] and cols[32:40]==cols[:8], 'riveted block differs from girder'
     for off in (0,8,16):
-        assert [i for i,v in enumerate(pats[off:off+8]) if v==231]==[3,4], 'rivets above girder center'
+        assert [i for i,v in enumerate(table('girder_dot_pat')[off:off+8]) if v==231]==[3,4], 'rivets above girder center'
+        assert 231 not in pats[off:off+8], 'plain girder still has rivets'
     assert cols[8:16]==[0x41,0x31,0x31,0x34,0x34,0x31,0x31,0x41], 'green/blue girder palette'
     for offset in range(8):
         shifted=table('beamshift_col')[offset*8:offset*8+8]+table('beamshift_col')[64+offset*8:72+offset*8]
@@ -1487,10 +1807,12 @@ def fixture_contract(source):
             vm.run('take_item')
             assert vm.arrays['itst'][i]==1, 'pail half cannot be collected'
             for r in (row-1,row):assert vm.screen[r*32+col:r*32+col+2]==[32,32], 'pail fragment left after pickup'
-            assert vm.screen[(row+1)*32+col] in (129,133), 'pickup erases girder'
+            assert vm.screen[(row+1)*32+col] in (129,133,134), 'pickup erases girder'
     vm=Basic(source);vm.v['lv']=2;vm.run('init_level')
     assert all(vm.screen[r*32+26]==152 for r in range(18,22)), 'chain not at platform edge'
-    assert vm.screen[18*32+24:18*32+26]==[120,121], 'missing crane pump'
+    assert vm.screen[21*32+24:21*32+26]==[120,121], 'pump is not on the ground'
+    assert vm.screen[22*32+24:22*32+26]==[122,123], 'pump feet are missing'
+    assert all(vm.screen[r*32+c]==32 for r in (18,19,20) for c in (24,25)), 'pump still hangs from girder'
     vm.v.update(bmy=160,bmd=0);vm.run('fixture_draw');first=vm.v['fixturepose']
     n=len(vm.pattern_writes);vm.run('fixture_draw');assert len(vm.pattern_writes)==n,'idle pump reuploads'
     vm.v['bmy']=156;vm.run('fixture_draw');assert vm.v['fixturepose']!=first,'pump does not follow crane'
@@ -1513,6 +1835,42 @@ def fixture_contract(source):
         assert vm.v['nbox']==0 and vm.v['boxfall']==2 and not vm.v['lvdone'], 'last box skips processing'
         for _ in range(10):vm.run('factory_step')
         assert vm.v['boxfall']==3,'processor never ejects rivet'
+        portcol=7 if side==0 else 24
+        assert vm.screen[21*32+portcol]==120+side, 'processor has no bucket-facing outlet'
+        lower=219 if side==0 else 215
+        assert vm.screen[22*32+portcol]==lower, 'outlet is detached from lower housing'
+        pp,pc=table('eject_pat'),table('eject_col')
+        mp,mc=table('machine_art'),table('machine_col')
+        def machine_tile(ch):
+            if ch in (120,121):
+                i=(ch-120)*8
+                return pp[i:i+8],pc[i:i+8]
+            assert 210<=ch<=219, 'missing processor housing tile'
+            i=(ch-210)*8
+            return mp[i:i+8],mc[i:i+8]
+        for row in (21,22):
+            for col in range(5):
+                assert machine_tile(vm.screen[row*32+3+col])==machine_tile(vm.screen[row*32+24+col]), 'processors are not visually identical'
+        def port_ink(x,y):
+            x-=portcol*8;y-=168
+            assert 0<=x<8 and 0<=y<16, 'rivet starts outside its outlet'
+            if y>=8:
+                i=(lower-210)*8+y-8
+                return mc[i]//16 if mp[i] & (128>>x) else mc[i]%16
+            i=side*8+y
+            return pc[i]//16 if pp[i] & (128>>x) else pc[i]%16
+        art=re.search(r'^bolt_bitmap:\n(.*?)(?=^\w+:)',source,re.M|re.S)[1]
+        bolt=re.findall(r'BITMAP "([.X]+)"',art)
+        for y,row in enumerate(bolt):
+            for x,pixel in enumerate(row):
+                if pixel=='X':
+                    assert port_ink(vm.v['boxx']+x,vm.v['boxy']+y)==1, 'rivet appears on the casing instead of in the dark outlet'
+        # A solid lower lip and attachment edge distinguish an actual nozzle
+        # from empty black space coincidentally under the initial sprite.
+        lip=range(2,5) if side==0 else range(3,6)
+        assert all(port_ink(portcol*8+x,177)==15 for x in lip), 'outlet has no lower lip'
+        for x,y in ((1,4),(1,5),(0,6),(0,7),(1,8)):
+            assert port_ink(portcol*8+(x if side==0 else 7-x),168+y)==15, 'angled outlet rim is broken'
         path=[]
         for _ in range(15):
             vm.run('factory_step');vm.run('site_draw')
@@ -1520,19 +1878,98 @@ def fixture_contract(source):
             assert vm.sprites[15][2]==20, 'output is still a box'
             assert vm.bank==1, 'output bank not restored'
         assert all((b[0]-a[0])==(1 if side==0 else -1) for a,b in zip(path,path[1:])), 'rivet flies away from bucket'
+        assert [y for x,y in path[:8]]==list(range(167,159,-1)), 'rivet does not leave the angled mouth diagonally'
         x,y=path[-1];bucketleft=64 if side==0 else 168
         assert bucketleft<=x+6<=x+8<bucketleft+16 and 176<=y+4<=y+8<184, 'rivet misses bucket'
         vm.run('factory_step');assert vm.v['boxfall']==0 and vm.v['lvdone']==1
         assert vm.v['#score']==before+5, 'processor awards delivery twice'
 
 
+def data_cache_contract(source):
+    shifted=source.replace('DATA BYTE 5,13, 21,24','DATA BYTE 5,13, 21,25')
+    assert shifted!=source
+    # A mutation must not inherit the previous cart's level data, and restoring
+    # the original source must restore its spawn rather than retain the mutation.
+    for text,x in ((source,188),(shifted,196),(source,188)):
+        vm=Basic(text);vm.v['lv']=1;vm.run('init_level')
+        assert vm.v['mx']==x, 'cached DATA leaked between source variants'
+
+
+def optimized_rendering(source):
+    # Every paddle, every phase, including the three wraparound tails.
+    vm=Basic(source)
+    for phase in range(224):
+        vm.v['pnphase']=phase;vm.run('lift_positions')
+        for i in range(4):
+            p=(phase+i*56)%224
+            x=104 if p<80 else (p+24 if p<112 else (136 if p<192 else 328-p))
+            y=64+p if p<80 else (144 if p<112 else (256-p if p<192 else 64))
+            assert (vm.arrays['pnxcar'][i],vm.arrays['pnycar'][i])==(x,y), 'paddle lookup changed route'
+        assert vm.bank==1, 'motion bank not restored'
+    # Measure real transferred bytes; source-line counts miss triple copies.
+    for level,limit in ((2,328),(3,312)):
+        vm=Basic(source);vm.v['lv']=level;vm.run('init_level');vm.run('site_draw')
+        for phase in range(1,128):
+            vm.v.update(mx=112,my=80,hzphase=phase-1,pnphase=phase,st=0)
+            vm.run('site_step');vm.vram_writes.clear();vm.run('site_draw')
+            assert sum(w[1] for w in vm.vram_writes)<=limit, ('excess dynamic VRAM traffic',level,phase)
+            if level==3:
+                for third in (1,2):
+                    for color,label in ((0,'drivechain_pat'),(8192,'drivechain_col')):
+                        vm.expect_upload(color+third*2048+1664,16,label,phase%8*16)
+                vm.expect_upload(5088,32,'inflash_pat',(phase//32%2)*32)
+            else:
+                vm.expect_upload(6000,40,'claw_pat',vm.v['clawstep']*40)
+                vm.expect_upload(5056,32,'beat_pat',vm.v['fixturepose']*32)
+                vm.expect_upload(13248,32,'beat_col',vm.v['fixturepose']*32)
+    # Spring art appears only in the bottom third on both sites.
+    for level,codes in ((1,(137,)),(3,(139,141))):
+        vm=Basic(source);vm.v['lv']=level;vm.run('init_level');vm.run('site_draw')
+        for code in codes:
+            vm.expect_upload(4096+code*8,16,'tramp_pat',0)
+            vm.expect_upload(12288+code*8,16,'tramp_col',0)
+
+
+def furnace_contract(source):
+    vm=Basic(source);vm.v['lv']=2;vm.run('init_level')
+    assert all(128<=vm.screen[6*32+c]<=151 for c in (28,29)), 'furnace only half supported'
+    assert vm.screen[5*32+28:5*32+30]==[180,181], 'furnace halves duplicated'
+    assert vm.screen[3*32+28:3*32+30]==[124,125]
+    assert vm.screen[4*32+28:4*32+30]==[126,127]
+    table=re.search(r'^fire_pat:\n.*?(?=^\w+:)',source,re.M|re.S)[0]
+    art=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',table)]
+    assert len(art)==17*32
+    depths=[]
+    for phase in range(128):
+        vm.v.update(mx=112,my=80,hzphase=phase-1,st=0)
+        vm.run('site_step');vm.run('site_draw');depth=vm.v['firedepth'];depths.append(depth)
+        expected=min(phase%64//2,32-phase%64//2)
+        assert depth==expected, 'furnace no longer extends and retracts smoothly'
+        vm.expect_upload(992,32,'fire_pat',depth*32)
+        vm.expect_upload(1440,16,'furnace_pat',0)
+        frame=art[depth*32:depth*32+32]
+        visible=[y for y in range(16) if any(frame[(y//8*2+t)*8+y%8] for t in (0,1))]
+        assert visible==list(range(16-depth,16)), 'flame pixels disagree with depth'
+        # Shoes directly above the flame are safe; contact is lethal. Also
+        # test the cabinet when the jets are fully retracted.
+        for feet,dead in ((39-depth,False),(40-depth,True)):
+            vm.v.update(mx=224,my=feet-15,hzphase=phase,st=0)
+            vm.run('furnace_step')
+            assert (vm.v['st']==vm.v['s_dead'])==dead, 'invisible flame collision'
+    assert depths[:64]==depths[64:], 'furnace cycle drifts'
+
+
 def main():
     source = SOURCE.read_text(encoding='utf-8')
+    data_cache_contract(source)
+    optimized_rendering(source)
+    furnace_contract(source)
     windows = clear_windows(source)
     momentum(source)
     clock_contract(source)
     inventory_contract(source)
     hammer_release(source)
+    single_item(source)
     machinery(source)
     transfers(source)
     sound_contract(source)
@@ -1546,7 +1983,13 @@ def main():
     upper_conveyor(source)
     title_scores(source)
     score_range(source)
+    mack_animation(source)
     elevator_dance(source)
+    elevator_boarding(source)
+    end_screen_timing(source)
+    girder_spacing(source)
+    factory_drive(source)
+    work_sounds(source)
     trampoline_animation(source)
     factory_spring_animation(source)
     fixture_contract(source)
@@ -1575,13 +2018,23 @@ def main():
             assert vm.v['st'] == vm.v['s_walk'], 'jump failed to clear single-cell gap'
     # Known defects MUST fail: short clearance, lost momentum, deferred death.
     mutants = [
+        (source.replace('DATA BYTE 8, 23,6,1,121','DATA BYTE 8, 23,6,1,120'),fixture_contract),
+        (source.replace('DATA BYTE 8, 21,24,1,120','DATA BYTE 8, 18,24,1,120'),fixture_contract),
+        (source.replace('chainpose = pnphase AND 7','chainpose = hzphase AND 7'),factory_drive),
+        (source.replace('drivepose = (pnphase / 4) AND 7','drivepose = 0'),factory_drive),
+        (source.replace('VARPTR drivechain_col(chainpose * 16)','VARPTR drivechain_col(0)'),factory_drive),
+        (source.replace('SOUND 1,#workpitch,workvol','SOUND 1,#workpitch,0'),work_sounds),
+        (source.replace('IF workfx = 4 THEN GOSUB work_sound','workfx = 255'),work_sounds),
         (source.replace("DEFINE CHAR 97,1,credit_pat","DEFINE CHAR 98,1,credit_pat"),fixture_contract),
         (source.replace("\tDEFINE CHAR 210,10,machine_art","\tDEFINE CHAR 210,10,steel_bitmap"),fixture_contract),
         (source.replace('IF (clawclock AND 15) = 15 THEN clawclock = clawclock + 1','clawclock = clawclock'),machinery_animation),
         (source.replace('ch = 118','ch = T_VOID'),fixture_contract),
         (source.replace('IF ch = T_LBOXR THEN c2 = c2 - 1','c2 = c2'),fixture_contract),
         (source.replace('fixturepose = (hzphase / 32) AND 1','fixturepose = 0'),fixture_contract),
-        (source.replace('IF outputside = 1 THEN boxx = 188','IF outputside = 1 THEN boxx = 192'),fixture_contract),
+        (source.replace('IF outputside = 1 THEN boxx = 189','IF outputside = 1 THEN boxx = 192'),fixture_contract),
+        (source.replace('boxy = 168','boxy = 163'),fixture_contract),
+        (source.replace('IF outputtick <= 8 THEN\n\t\tboxy = boxy - 1','IF outputtick <= 8 THEN\n\t\tboxy = boxy'),fixture_contract),
+        (source.replace('21,7,1,120','21,7,1,32'),fixture_contract),
 
         (source.replace('IF jix < 3 THEN GOTO jump_vertical','IF jix < 5 THEN GOTO jump_vertical'),transfers),
         (source.replace('DATA BYTE 8, 22,10,1,139','DATA BYTE 8, 23,10,1,139'),factory_spring_animation),
@@ -1624,14 +2077,14 @@ def main():
         (source.replace("GOSUB hazard_hit\n\t' Slag emerges", "ded = 0\n\t' Slag emerges"), machinery_animation),
         (source.replace('BANK SELECT 2','BANK SELECT 1'), machinery_animation),
         (source.replace('hbw = 8\n\thbh = 8','hbw = 6\n\thbh = 8'), machinery_animation),
-        (source.replace('IF itst(1) = 1 THEN','IF itst(1) = 0 THEN'), machinery_animation),
+        (source.replace('DATA BYTE 5,2, 8,6','DATA BYTE 5,2, 8,7'), machinery_animation),
         (source.replace('\tGOSUB sound_tick\n','').replace('\tGOTO main_loop','\tGOSUB sound_tick\n\tGOTO main_loop'), sound_contract),
     ]
     mutants.extend([
         (source.replace('gapst(resetgap) = 0','gapst(resetgap) = 1'),fidelity),
         (source.replace('IF mgarm = 0 THEN RETURN','IF mgon = 0 THEN RETURN'),fidelity),
         (source.replace('IF hzphase < 64 THEN','IF hzphase < 0 THEN'),fidelity),
-        (source.replace('pny = 64 + pnpos','pny = 144 - pnpos'),fidelity),
+        (source.replace('lift_y(#pnlookup + 0)','lift_y(223 - #pnlookup)'),fidelity),
         (source.replace('ry = ry + 1','ry = ry'),fidelity),
     ])
     mutants.extend([
@@ -1670,6 +2123,18 @@ def main():
         (source.replace('\tjhlock = 1\n','\tjhlock = 0\n'),hammer_release),
         (source.replace('carry = 2\n\t\t\t\tjbhc = 0','carry = 2'),hammer_release),
         (source.replace('IF carry = 2 THEN GOSUB drop_hammer','carry = carry'),hammer_release),
+        (source.replace('IF carry <> 0 THEN RETURN',''),single_item),
+        (source.replace('IF carry = 0 THEN\n\t\t\t\' Grabbing','IF carry < 2 THEN\n\t\t\t\' Grabbing'),single_item),
+        (source.replace('hbw = 18','hbw = 0'),single_item),
+        (source.replace('SPRITE 14,209,0,0,0',''),single_item),
+        (source.replace('IF esup = 1 THEN\n\t\t\tmx = elx','IF mx = elx THEN\n\t\t\tmx = elx'),elevator_boarding),
+        (source.replace('IF esup = 1 THEN\n\t\t\tmx = elx','IF elarm = 1 THEN\n\t\t\tmx = elx'),elevator_boarding),
+        (source.replace('IF girder_mark(c) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),
+        (source.replace('IF girder_mark(gapc(i)) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),
+        (source.replace('IF i = 3 THEN bc9 = 96 + boff','bc9 = uc'),girder_spacing),
+        (source.replace('IF i = 3 THEN bc9 = 104 + boff','bc9 = lc'),girder_spacing),
+        (source.replace('IF blobx > 80 THEN blobx = 80','blobx = blobx'),visual_hazards),
+        (source.replace('IF slagphase >= 60 THEN RETURN','IF slagphase >= 68 THEN RETURN').replace('IF slagphase < 60 THEN','IF slagphase < 68 THEN'),visual_hazards),
         (source.replace('jbhc = jbhc + #fd','jbhc = jbhc + 1'),hammer_release),
         (source.replace('DATA BYTE 6, 8,22,2','DATA BYTE 6, 8,21,2'),upper_conveyor),
         (source.replace('GOSUB upper_belt_edge','cx = mx'),upper_conveyor),
@@ -1683,11 +2148,20 @@ def main():
         (source.replace('game838 = 0','game838 = 1'),title_scores),
         (source.replace('game838 = 1','game838 = 0'),setup_inputs),
         (source.replace('IF #score > #hi THEN','IF #score >= #hi THEN'),title_scores),
-        (source.replace('#award = #bonus / 5','#award = #bonus'),title_scores),
+        (source.replace('#award = #bonus_slice / 5','#award = #bonus_slice'),end_screen_timing),
+        (source.replace('#go_age >= 600','#go_age >= 675'),end_screen_timing),
+        (source.replace('#go_age < 75','#go_age < 1'),end_screen_timing),
+        (source.replace('IF cont1.button THEN GOTO gover_rel','IF cont1.button THEN RETURN'),end_screen_timing),
+        (source.replace('SOUND 3,5,7','SOUND 3,5,0'),end_screen_timing),
+        (source.replace('SOUND 3,5,7\n\tWAIT\n\tWAIT',
+                        'SOUND 3,5,7\n\tWAIT'),end_screen_timing),
         (source.replace('#score >= 1400','#score >= 7000'),score_range),
         (source.replace('#score_room = 65535 - #score','#score_room = 65535'),score_range),
         (source.replace('#sctens = #scvalue / 2','#sctens = #scvalue'),score_range),
         (source.replace('<.5>#sctens','<5>#sctens'),score_range),
+        (source.replace('IF steptick AND 2 THEN','IF FRAME AND 2 THEN'),mack_animation),
+        (source.replace('DEFINE SPRITE 31,4,mack_run_extra',''),mack_animation),
+        (source.replace('IF mfr >= 124 THEN mcf = mfr + 4',''),mack_animation),
         (source.replace('edance = 32','edance = 0'),elevator_dance),
         (source.replace('IF edance THEN RETURN',''),elevator_dance),
         (source.replace('edance = edance - 1','edance = edance - 2'),elevator_dance),
@@ -1698,7 +2172,19 @@ def main():
         (source.replace('IF levelno >= 10 THEN hlevelcol = 24','IF levelno >= 100 THEN hlevelcol = 24'),score_range),
         (source.replace('CPOS(0,17),<.4>#bonus','CPOS(0,2),<.4>#bonus'),score_range),
     ])
-    for mutant, check in mutants:
+    mutants.extend([
+        (source.replace('DEFINE VRAM 3320,24','DEFINE VRAM 1272,24'),visual_hazards),
+        (source.replace('DEFINE VRAM 3712,16','DEFINE VRAM 1664,16'),optimized_rendering),
+        (source.replace('DEFINE VRAM 4040,16','DEFINE VRAM 1992,16'),machinery_animation),
+        (source.replace('BANK SELECT 4','BANK SELECT 1'),optimized_rendering),
+        (source.replace('lift_x(#pnlookup + 56)','lift_x(#pnlookup + 55)'),optimized_rendering),
+        (source.replace('DATA BYTE 1, 6,28,2,1','DATA BYTE 1, 6,29,1,1'),furnace_contract),
+        (source.replace('IF firedepth > 16 THEN firedepth = 32 - firedepth','IF firedepth > 16 THEN firedepth = 16'),furnace_contract),
+        (source.replace('IF my + 15 < 40 - firedepth THEN RETURN','IF my + 15 < 24 THEN RETURN'),furnace_contract),
+    ])
+    print('Physics behavior sweeps passed; checking %d defect mutations' % len(mutants),flush=True)
+    for mutation_index,(mutant, check) in enumerate(mutants,1):
+        if mutation_index%20==0:print('Mutation checks: %d/%d' % (mutation_index,len(mutants)),flush=True)
         assert mutant!=source, 'defect mutation did not change source: '+check.__name__
         try:
             check(mutant)

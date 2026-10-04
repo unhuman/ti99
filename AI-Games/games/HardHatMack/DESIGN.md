@@ -15,8 +15,9 @@ one-pixel world steps per pass. All gameplay movement now uses those steps.
 Ordinary walking makes at most eleven tile reads per step (chain probes + feet +
 torso); a spring ascent can make ten head probes per step. The intended ceiling
 is **60 tile VPEEKs per pass**, including bolts, with no COINC calls. This is a
-budget, not a measured throughput claim; CPU timing on busy levels still needs
-profiling. No RAM tile-map mirror; level data and graphics remain in ROM/VRAM.
+budget, not a measured throughput claim. Section 39 records the current
+Classic99 timing samples. No RAM tile-map mirror; level data and graphics
+remain in ROM/VRAM.
 
 > **Hard-won CVBasic lessons this game obeys** (inherited from Structris/Astiroids — see
 > `games/Astiroids/DESIGN.md` §12 and `games/Structris/DESIGN.md` header for the war stories):
@@ -1875,3 +1876,385 @@ The title capture confirms its original credit remains intact. Temporary
 review cartridges were replaced with production immediately after each run.
 The newest normal production cartridge is running in one Classic99 window.
 SHA-256: `FE0AB6567229D2A09C51DB9D074A494C9612097DF6F251BF3E4DFE6975D885E4`.
+
+
+## 32. Boarding, girder spacing, receiver and end-screen feedback (2026-10-02)
+
+The previous scenery pass is committed as `2049d7e`. The reported simultaneous
+block/hammer was a brief overlap with the independently roaming drill. Both
+pickup orders still require empty hands. The loose drill is occluded within
+18 horizontal / 12 vertical pixels of a live block-carrying Mack; its route
+and ownership continue unchanged. Clearing and changing inventory explicitly
+clears the block outline. The complete renderer lives in bank 3 and restores
+bank 1, leaving room in the fixed area for the new end-screen routines.
+
+The Apple II video at 1:30 (site two), 2:40 (site three) and 3:35 (repeated
+site one) shows grouped pairs of centered rivets separated by plain beam
+lengths. Previously every character repeated a rivet. Codes 128-130 are now
+plain; code 134 is a riveted section with the current site's palette. Three
+32-column masks preserve pair spacing across split runs and repaired holes.
+This is a grid adaptation of the reference, rather than a pixel-for-pixel
+transcription of its wider screen. At this stage, level-one column 11 repaired
+into its pair and column 18 into a plain section; section 33 records the
+subsequent one-character shift requested during play review. The five-cell moving beam has paired
+ends and a plain center, with all eight vertical offsets kept continuous.
+Its plain slices borrow 96-111 only on site two; site initialization restores
+the factory cabinet before site three. Elevator floor/spring codes and all
+platform collision ranges remain intact.
+
+An armed elevator now uses the same support test for starting as for landing.
+Every supported horizontal position snaps to the cabin center and starts the
+trip, including the far-left landing that used to strand Mack. Arrival still
+requires leaving and reboarding; the dance and jump exit remain unchanged.
+
+The site-two receiver is a white rounded body with a dark open mouth, side
+outlet, magenta collar and green foot. Its lower halves are distinct characters
+162/163. The duplicate machine at columns 17-18 is removed. The concrete keeps
+its belt speed and 317-step release cadence, then stops horizontal drift at
+x=80 and descends into the opening. Its last visible footprint is x=85..90,
+y=169..174; phase 60 removes both the sprite and its collision. The receiver's
+ground hazard ends at x=95 instead of extending beyond the body to x=103.
+Lunch pails retain their 16x12 size and pickup footprint, with smaller handles,
+domed white lids, two red panels, a white center strap and inset white detail.
+
+Completion transfers 100 displayed bonus points per tick (20 stored score
+units), with an exact final partial award and saturation at the score limit.
+Both score and bonus update per tick. A one-frame tone and two quiet frames
+separate updates; the existing level-specific fanfare follows the zero display.
+GAME OVER uses elapsed video frames: a fresh Fire is accepted after 75 frames,
+and 600 frames returns to the title regardless of held/released input. Frame
+wrap and early/held Fire are covered. The title's own release gate prevents
+an automatic new game from the same held button.
+
+Validation: the TI build passed all 124 defect mutations, with 90 returning
+GOSUB targets and 514 verified short branches. Fixed code occupied
+22,190/24,336 bytes; RAM was 534 bytes. The checks cover both pickup orders,
+sprite transitions, all 32 elevator endpoint/position combinations, every
+girder placement, all eight moving-beam offsets, receiver entry, exact bonus
+awards/ticks, and timeout/input traces across FRAME wrap. The score formatter
+also has an assembly gate for the TI word-mask bug documented in CLAUDE.md.
+A controlled completion capture confirms 5,000 bonus points transfer to a
+displayed score of 5,000 with a zero remaining bonus.
+
+
+## 33. Rivet alignment and linked factory machinery (2026-10-03)
+
+Level one's left rivet pair stays at columns 4-5. The other pairs move one
+character right to 11-12, 17-18 and 24-25. Repairs use the same column mask,
+so both existing hole columns now become dotted girder cells. The regression
+fixture also repairs plain columns to ensure ordinary beam lengths remain
+plain. Other levels' masks and all elevator behavior are preserved.
+
+A fresh review of the saved Apple II and C64 longplays showed capped feeds,
+sloping white shoulders and front details on the two bottom processors.
+Their forty-by-sixteen footprint now uses those features, green front panels
+and magenta details. The IN lettering and arrow shift four pixels right inside
+the existing custom characters, centering both over the actual feed cap.
+The generator checks pixel centers including the label/map offset. Flash
+timing, delivery lips, processing delay and the box-to-rivet route retain
+their behavior. The central blue cabinet is unchanged.
+
+The middle platform drive now animates its two chain runs in opposite
+directions: left down, right up. White link highlights move with the green
+links. Both rounded end wheels use eight counterclockwise spoke poses.
+Chain position comes directly from the paddle phase (one pixel per world
+step); the wheels advance a pose every four world steps. Cached phases avoid
+redundant uploads when stopped, and catch-up frames select the actual current
+position instead of accumulating visual drift. Ordinary climbing chains are
+unchanged. The initial chain art matches the first animation phase.
+
+New short effects accompany block placement, elevator/platform-drive motion,
+concrete entering the receiver, box processing and a rivet arriving in its
+bucket. Movement ratchets are quieter than impacts. They use the existing
+short-effect channels, respect death and longer effects, and leave jump and
+reward voices alone. Existing frame-based envelopes explicitly silence them.
+The effect generator occupies bank 2; bucket arrival requests its sound only
+after the factory renderer returns to fixed code, then restores bank 1.
+This keeps the unoptimized TI assembly within its address window.
+
+Source-executing checks cover two full paddle circuits at render batches of
+one, two and four world steps; linked chain/color movement; wheel poses;
+stationary redraws; sound priorities, note-offs and bank restoration. Five
+new negative cases bring the regression suite to 129 deliberately broken
+variants. Classic99 captures show the new processor shapes and different
+chain/spoke positions while the paddles circulate. Audio was checked through
+sound-event and envelope assertions, not a listening comparison to the
+original. No uninterrupted whole-level clear is claimed.
+
+
+Final TI validation: all 129 defect mutations rejected; all 92 GOSUB targets
+return. The 521 checked short branches save 2,084 bytes. Fixed code occupies
+22,416/24,336 bytes (1,920 free); RAM is 540 bytes. Banks 1/2/3 have
+191/110/244 bytes free, and the packed 64 KB cartridge matches all three
+assembled banks. Final Classic99 review confirms the shifted level-one rivet
+pairs and centered flashing processor labels. Temporary review carts were
+restored immediately after capture. Production retains normal level-one,
+three-life starting conditions. Cartridge SHA-256:
+`845675455001CAFD430D1746307A31E741624FC25E57B150DC7B46CB71E3BEBE`.
+
+
+## 34. Bonus ticker and conveyor-box position (2026-10-03)
+
+The original completion tick used a single WAIT before silencing its tone.
+Because WAIT waits for the next frame boundary, that can be much less than a
+full frame. A louder, longer pitched replacement was rejected during live
+review as too aggressive. The final effect is a short white-noise tick on
+channel 3 (noise setting 5, volume 7), held across two frame boundaries and
+silenced for two more. This guarantees at least one complete frame of sound
+and a distinct quiet gap; no sustained tone accompanies the count. Each tick
+still transfers exactly 100 displayed points, with partial awards and score
+saturation unchanged. Fifty ticks now use 200 WAITs before the fanfare.
+The completion test's input trace includes this longer sequence, and the
+pulse-duration negative case brings the suite to 130 mutations.
+
+The level-three conveyor box moves from row 8, column 7 to column 6, one
+character left of the smasher. It occupies its own cell, so the former
+post-pickup piston-cell repair is removed. The source-executing checks cover
+the full smasher cycle, box collection/clearing, unchanged piston and belt,
+and the timed lift-to-box-to-escape-chain route. Restoring the old placement
+is a rejected mutation.
+
+The apparent second smasher below level two's bottom-right girder is the
+crane pump, beside the chain. Its four piston poses follow crane height and
+direction; a parked crane intentionally leaves the pump still. It is scenery,
+not another crushing hazard. Its placement and behavior are unchanged.
+
+
+Validation: the TI build passed its 130 mutation cases and 92 returning
+GOSUB targets. The final noise-only tuning also passed the bonus/completion
+checks and both silence/short-pulse mutations. Classic99's PSG log records
+50 separate two-frame noise pulses at amplitude 37/255 for a 5,000-point
+bonus; the rejected loud tone logged 189/255. This verifies emitted sound
+states, without claiming a transcription of the original game's sound.
+Fixed code is 22,418/24,336 bytes (1,918 free), with 521 verified short
+branches saving 2,084 bytes. RAM remains 540 bytes; banks 1/2/3 retain
+191/166/244 bytes. The normal production TI cartridge SHA-256 is
+`C42D7B900B8CD069167BF03852FED7E096D92C395781604C906B17BCC90EF436`.
+
+Classic99 captures verify the box clear of the smasher and the right-hand
+pump changing piston position as the crane moves. The temporary active-crane
+review cart was replaced with the newest normal production cart; its title
+screen is running for review.
+
+
+## 35. Continuous pedestals and floor-mounted crane pump (2026-10-03)
+
+Level one's three bottom supports previously repeated the same flared
+8-pixel foot in two rows. Each now uses a complete 8x16 drawing: white
+bearing plate, narrow stem with small magenta collars, and one broad white
+foot. Their columns (6, 14 and 23), girder positions and pass-through behavior
+are unchanged. Rows 22 and 23 use distinct characters 120 and 121.
+
+The apparent extra smasher hanging beside the bottom-right chain is replaced
+by an enclosed floor-mounted pump. It moves from rows 18-19 to rows 21-22,
+columns 24-25. The white casing, dark blue cylinder, visible reciprocating
+piston, ventilation marks and mounting feet distinguish it from the exposed
+crushing heads. The chain at column 26, fire at column 21, pickups and all
+collision rules stay in place. The pump remains decorative and follows crane
+height/direction; it remains still while the crane is parked.
+
+The art generator owns both assets. Initialization switches codes 120-123
+between level-one supports and the other sites' pump art, including deaths
+and repeated level cycles. The existing fixture check now exercises 1/2/3/1
+initialization, all three pedestal placements, pump floor placement, clear
+space below the hanging girder, and pump motion. Repeated support tops and
+restoring the hanging pump placement are rejected mutations (132 total).
+
+
+## 36. Mack's running cycle (2026-10-03)
+
+The former animation alternated a mostly rigid standing body with wider
+feet, using the video-frame clock. Mack now cycles through passing, extended
+stride, passing, and bent-knee recovery. The three distinct drawings have
+opposing arm swings and visibly different foot positions. The passing pose
+also serves as idle; stopping immediately returns to it. Every pose retains
+the same forward-facing head, 12-pixel height and ground contact. Left-facing
+art mirrors the complete right-facing figure; mirroring is not used to fake
+another beat within one direction.
+
+The existing eight-pixel footstep counter selects a pose every two pixels
+walked. Passive conveyor travel does not animate the legs. Running speed,
+jump/fall poses, collision bounds and elevator arrival dance are unchanged.
+The generator owns the editable composite drawings and splits them into
+complementary white and purple sprite layers. Patterns 31-34 hold the extra
+right/left recovery pairs; dance retains 27-30. Sprite slots remain 0 and 8,
+so the animation adds no sprites to a scanline.
+
+Checks execute the actual draw statements across both directions, all eight
+walking phases, idle and airborne states. They resolve sprite uploads from
+the source, reject overlapping pattern allocations or color layers, and
+confirm that video-frame changes cannot advance the run cycle. Art checks
+measure the complete two-color figures, require at least 20 changed pixels
+between the three drawings, and preserve head orientation and floor contact.
+Missing recovery uploads, mismatched clothes and restoring the video clock
+are rejected mutations (135 total including the pedestal/pump checks).
+
+
+Validation for sections 35-36: the complete TI build passed all 135 defect
+mutations and 92 returning GOSUB targets. Its 521 verified short branches
+save 2,084 bytes. Fixed code occupies 22,454/24,336 bytes (1,882 free);
+banks 1/2/3 retain 45/166/120 bytes, and RAM uses 538 bytes. The new sprite
+pairs add 128 asset bytes without adding scanline sprites. Generated TI
+assembly uses byte masks for the distance phases and keeps both layer
+selections together.
+
+Classic99 captures show all three continuous pedestals, the enclosed pump
+on the floor with clear space beneath the right-hand girder, and the new
+running poses facing both directions. A temporary active-crane cart verified
+pump motion, then was immediately replaced with the normal production cart.
+Normal level-one/three-life starting conditions are preserved. These checks
+do not claim an uninterrupted three-level clear or original-hardware timing.
+Final production SHA-256: `C398ED32A49D3FBF8C478818D0B1C649FBA1F90ECA9D456155AAA29D27A87841`.
+
+
+## 37. Processor discharge outlets (2026-10-03)
+
+Each level-three rivet processor now has a bucket-facing discharge nozzle:
+a dark throat, white attachment and lower lip. Only the inward upper corner
+is replaced (row 21, column 7 on the left processor, column 24 on the right).
+The two mirrored nozzle characters use site-specific codes 120/121, restored
+on level changes alongside the existing pedestal and crane-pump variants.
+The feed caps, green fronts, IN labels and bucket positions remain intact.
+
+The former rivet started above the machine shoulder. Its visible pixels now
+start inside the black outlet: sprite origin (52,165) on the left and
+(188,165) on the right. It travels horizontally for six world steps before
+falling one pixel per step into the bucket. Horizontal speed, ten-step
+processing pause, sixteen-step output duration, scoring and completion
+handoff are unchanged. The generator owns both outlet patterns and colors.
+
+The fixture check resolves the visible rivet bitmap against each outlet's
+actual pattern/color pixels, verifies the mounting edge and lower lip,
+and follows the full trajectory into both buckets. Restoring the old height,
+erasing the nozzle, and dropping the rivet too fast are rejected mutations
+(138 total). Source conditions remain normal level one with three lives;
+separate review cartridges loop each processor's output for visual capture.
+
+
+Validation: the TI build passed all 138 defect mutations and 92 returning
+GOSUB targets. Classic99 captures verify both outlet directions from emergence
+to bucket entry; each temporary looping review cart was immediately replaced
+with production. The final normal cartridge is running at the title screen.
+Fixed code remains 22,454/24,336 bytes, with 521 verified short branches;
+RAM remains 538 bytes. Banks 1/2/3 retain 45/166/48 bytes. Production SHA-256:
+`92E85C7BB386AB453C258088B620810DC740BE84039385A9F700035AC1727FF4`.
+
+
+## 38. Processor artwork from the supplied screenshot (2026-10-03)
+
+The user's Apple II screenshot supersedes the earlier green-fronted cabinet
+and projecting rectangular nozzles. Each processor now has a low white
+housing outline, blue central panel, red side shading, a broad white feed
+cap and angled oval outlet shoulders. The drawing follows the reference's
+silhouette and white/red/blue palette within the TMS9918 two-ink-per-row
+constraint. Both shoulder details are part of the full machine drawing;
+the inward discharge uses the existing site-specific upper characters and
+continues into the lower housing tile. Machine footprint, centered flashing
+IN labels, bucket positions and hazards remain unchanged.
+
+The smaller outlet mouths sit three pixels lower. The rivet sprite begins
+at y=168 (visible rows 172-176) inside the dark throat, rises diagonally
+for eight world steps, then falls two pixels per step into its bucket.
+Both complete 40-by-16 machine drawings are identical, with the same
+angled shoulders on both ends. The left machine ejects rightward from
+x=52; the right one ejects leftward from x=189. The sixteen-step output
+sequence, processing pause, horizontal speed, scoring and final-delivery
+handoff remain unchanged. Both full outlet heights are decoded in the fixture
+checks, including the lower lips and attachments; both trajectories still
+end inside their buckets. Missing-outlet, floating-origin and overshooting
+mutations continue to fail. No additional character codes or ROM space are
+needed for the new artwork.
+
+
+## 39. TI runtime optimization and furnace cycle (2026-10-03)
+
+The earlier rendering loop discarded game time on a busy factory screen:
+120 instrumented updates used 769 video frames, with 292 discarded by the
+four-frame catch-up cap. Increasing that cap alone to eight reduced the
+update rate further (60 updates in 588 frames, 119 discarded), so this
+pass first removes work rather than simply allowing longer catch-up loops.
+These are Classic99 normal-speed measurements, not original-hardware claims.
+
+Dynamic character uploads now target the actual Graphics II screen thirds.
+The factory belt uploads its flat tile and animated rollers in the middle
+third; the construction belts upload four changing tiles, leaving their
+static support posts alone. Smasher
+heads cross the appropriate two thirds, while their belt feet, pinchers,
+springs, pump, drive chains, wheels and flashing IN labels upload only where
+they appear. The standing-player animation sweep checks a maximum of
+312 transferred bytes per factory update and 328 per construction-site update. Character
+patterns and their colors retain matching phases, and stopped art stays cached.
+
+The main loop waits only if no video frame has elapsed. Simulation retains
+one-pixel movement/collision steps and its 9/8 fractional clock, with the
+existing four-frame pause cap. Site-specific dispatch skips absent machinery,
+and an idle processor returns before changing banks. Factory paddle positions
+come from generated ROM tables with repeated phase-offset tails, loaded into
+four direct slots; all 224 phases and four paddles are checked against the
+original rectangular route. No extra sprite layers or frame-skipping collision
+rules are introduced. Elevator behavior and the synchronized rider clocks
+are preserved.
+
+A fourth cartridge bank holds the paddle tables and animated machinery art.
+The cartridge still occupies 64 KB. The processor output routine moves to the
+audio/actors bank to make space for targeted scenery uploads; wrappers restore
+bank 1. Physics tests now reject calls to code in the wrong bank, as well as
+wrong-bank data reads, and model actual VRAM addresses and source byte offsets.
+The bank checker validates all four exact packed banks, including truncation
+and corruption cases. `assets/genmotion.py` owns the paddle tables and runs
+in the existing build scripts.
+
+Level two's upper-right furnace is one two-character blue cabinet with white
+nozzle collars, supported across columns 28 and 29 by a continuous girder.
+Two jets extend sixteen pixels and retract in one-pixel increments every two
+world steps, repeating every 64 steps. Their four character cells use a cached
+32-byte pattern transfer in the top third. The collision envelope follows the
+current flame height and cabinet, rather than killing anywhere above the
+right-hand edge. Tests cover full support, distinct cabinet halves, all flame
+heights, repeated cycles, visible/collision agreement and safe space above
+the retracted flames.
+
+Controlled idle comparisons use 60-update samples at normal Classic99 speed,
+with the same temporary input suppression and death suppression in both carts.
+The HUD prints elapsed video frames and discarded frames once per sample;
+no per-frame debug text is drawn. These are frame-counter-derived update rates,
+not a guarantee of constant FPS during every route or an input-latency trace.
+Production retains normal controls, deaths, three lives and level-one entry.
+
+| Site | Before: video frames / discarded | After: video frames / discarded | Updates/sec before / after |
+| --- | --- | --- | --- |
+| 1 | 154 / 0 | 73 / 0 | 23.4 / 49.3 |
+| 2 | 290 / 50 | 225 / 4 | 12.4 / 16.0 |
+| 3 | 381 / 144 | 253 / 15 | 9.4 / 14.2 |
+
+The final factory sample includes animated conveyor rollers. Its discarded
+fraction falls from 37.8% to 5.9%; this brings world motion much closer to
+its intended 67.5 steps/second without widening the catch-up cap. Busy gameplay
+can still exceed that cap, so this is an improvement rather than a claim that
+all slowdown is eliminated. Earlier exploratory captures included normal input
+and death states; the table above is the controlled comparison used for handoff.
+
+Runtime captures also show the full furnace support with both retracted and
+extended jets, matching processor housings, and rivets at the angled discharge
+ports. Every temporary capture cart is replaced with production immediately
+afterward. Coleco builds and original-hardware timing remain deferred.
+
+The physics harness now caches immutable literal DATA for the exact source
+variant and advances a READ cursor, avoiding repeated parsing of unrelated art
+after every RESTORE. An original/shifted-spawn/original test proves that the
+cache cannot hide a source mutation. All 146 defect cases remain active; the
+reversed-paddle case now reverses the ROM lookup rather than replacing the
+removed arithmetic routine. The full gate reports mutation progress.
+
+Production handoff verified on 2026-10-04: the faster review source and
+`src/HARDHAT.bas` have identical SHA-256 hashes. The apparent regression was
+the older production cartridge being restored after temporary review captures.
+The full TI build now passes all behavior checks and rejects all 146 defect
+mutations, then regenerates the canonical `src/HARDHAT_8.bin`. It verifies
+519 shortened branches, uses 536 RAM bytes and 22,324/24,336 fixed bytes,
+and leaves 25/4,742/64/1,120 bytes in banks 1 through 4 respectively.
+The 64 KB production cartridge SHA-256 is
+`09D53304CDE9D8362A33F6478A7FD1D5473E62E666609B6CA809FCA611F8074D`.
+That exact canonical path was loaded in the isolated Classic99 review window;
+title and normal level-one gameplay were captured with normal CPU throttling
+selected and overdrive disabled. The production cartridge remains running.

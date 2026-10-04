@@ -113,6 +113,23 @@ def tables():
     # Both factory springs reuse the exact two-character level-one artwork.
     result['pad_pat'] = result['tramp_pat'][:16]*2
     result['pad_col'] = result['tramp_col'][:16]*2
+    # Two white nozzle collars over one blue cabinet, seated on the full girder.
+    result['furnace_pat'] = [0x3c,0x24,0xff,0x81,0xad,0x81,0x81,0xff,
+                             0x3c,0x24,0xff,0x81,0xb5,0x81,0x81,0xff]
+    result['furnace_col'] = [0xf1,0xf1,0xf4,0xf4,0xf4,0xf4,0xf4,0xf4]*2
+    result['fire_pat'] = []
+    for depth in range(17):
+        def flame(x,y):
+            if y < 16-depth: return False
+            # Narrow tips broaden toward the two fixed nozzle throats.
+            distance = y-(16-depth)
+            half = min(2, distance//3)
+            center = 3 if x<8 else 12
+            return abs(x-center)<=half
+        for row in range(2):
+            for col in range(2):
+                result['fire_pat'] += rows(lambda x,y: flame(col*8+x,row*8+y))
+    result['fire_col'] = [0xb1]*16 + ([0xb1]*5+[0x91]*3)*2
     return result
 
 
@@ -150,7 +167,10 @@ def check(source):
     tile=re.search(r'^tile_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
     tile='\n'.join(line.split("'")[0] for line in tile.splitlines())
     data=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',tile)]
-    assert data[8:16]==[255,255,255,231,231,255,255,255], 'level-2 rivets not centered'
+    assert data[8:16]==[255]*8, 'plain level-2 beam contains rivets'
+    dots=re.search(r'^girder_dot_pat:\n.*?(?=^\w+:)',source,re.M|re.S).group()
+    dotted=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',dots)]
+    assert dotted[8:16]==[255,255,255,231,231,255,255,255], 'level-2 rivets not centered'
     assert data[72:88]==t['tramp_pat'][:16], 'springboard starts in a different pose'
     spring=t['tramp_pat']
     assert len({tuple(spring[n:n+16]) for n in range(0,80,16)})==5
