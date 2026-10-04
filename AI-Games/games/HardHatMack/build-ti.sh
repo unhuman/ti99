@@ -44,16 +44,11 @@ cd "$(dirname "$0")/src" || die "cannot find src/"
 # offending line's own comment, so a gate nobody can silence never becomes a gate
 # everybody ignores.
 TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
-"$TRUNCPY" ../../../tools/bigvar.py *.bas \
-    || { echo "ERROR: 8-bit truncation -- see TRUNCATION.md 1a" >&2; exit 1; }
-"$TRUNCPY" ../../../tools/bigconst.py *.bas \
-    || { echo "ERROR: CONST over 255 -- see TRUNCATION.md 1b" >&2; exit 1; }
-"$TRUNCPY" ../assets/genfixtures.py || die "fixture art regression"
-"$TRUNCPY" ../assets/genconveyors.py || die "conveyor art regression"
-"$TRUNCPY" ../assets/genmotion.py || die "motion table regression"
-"$TRUNCPY" ../assets/gentitle.py || die "title art regression"
-"$TRUNCPY" ../assets/checkphysics.py || die "physics regression"
-"$TRUNCPY" ../../../tools/gosubtrace.py HARDHAT.bas || die "return-stack regression"
+# Each gate only reads the source/generated art. Run them together so the build
+# waits for the expensive physics mutations once, instead of summing eight
+# interpreter startups and serial checks. Each job retains an isolated log and
+# all failures are reported before stopping.
+TRUNCPY="$TRUNCPY" bash ../assets/runtests.sh || die "source/art regression gate"
 [ -f "$NAME.bas" ] || die "$NAME.bas not found in $(pwd)"
 
 echo "[1/3] cvbasic    $NAME.bas -> $NAME.a99"

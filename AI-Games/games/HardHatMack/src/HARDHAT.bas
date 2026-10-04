@@ -245,6 +245,7 @@ boot:
 
 new_game:
 	lv = 1
+	levelno = 1
 	lives = 2
 	game838 = 0
 	#score = 0
@@ -252,7 +253,6 @@ new_game:
 	#bonus = 5000
 	GOSUB title_screen
 	GOSUB game_chars
-	levelno = lv
 	GOSUB init_level
 
 main_loop:
@@ -269,6 +269,14 @@ main_loop:
 	' Age sounds from the PREVIOUS pass before this pass starts new effects.
 	' Otherwise a busy frame can turn a fresh two-frame sound off immediately.
 	GOSUB sound_tick
+	#if TI994A
+	' F8/REDO and F9/BACK are FCTN+8/FCTN+9 on TI keyboards.
+	IF cont2.button2 THEN
+		IF cont1.key = 8 THEN GOTO new_game
+		IF cont1.key = 9 THEN GOTO new_game
+		IF cont1.key = 254 THEN GOTO new_game
+	END IF
+	#endif
 	' Pace scaling for readable flows: advance movement at 9/8 of the base
 	' (0.75x read too slow / player too fast). Accumulate frame_delta*9 and
 	' take /8 as the step count; the leftover carries in #hacc. Mack and the
@@ -560,6 +568,7 @@ reset_claws:
 	drivelast = 255
 	chainlast = 255
 	firelast = 255
+	firecolorlast = 255
 	sparklast = 255
 	firedepth = 0
 	RETURN
@@ -1366,6 +1375,12 @@ st_ride:
 		elarm = 1
 		GOTO start_jump
 	END IF
+	' After arriving, a horizontal nudge summons the next trip instead of
+	' letting Mack slide through the cabin edge. Keep him centered in the
+	' 16-pixel platform while it starts; the wider support probe is only for
+	' boarding from a fall/landing, not permission to walk off while parked.
+	IF jl THEN elarm = 1
+	IF jr THEN elarm = 1
 	IF elarm = 1 THEN
 		GOSUB elev_sup
 		IF esup = 1 THEN
@@ -1379,13 +1394,6 @@ st_ride:
 			elarm = 0
 			RETURN
 		END IF
-	END IF
-	' Parked: walk toward center (to board) or off onto the floor.
-	IF jl THEN
-		IF mx > 0 THEN mx = mx - 1
-	END IF
-	IF jr THEN
-		IF mx < 240 THEN mx = mx + 1
 	END IF
 	GOSUB elev_sup
 	IF esup = 0 THEN
@@ -2087,7 +2095,7 @@ actors_move:
 	RETURN
 
 bolt_move:
-	' Rivet: thrown from the fixed upper-right thrower, drifting LEFT
+	' Rivet: thrown left from the fixed upper-right launcher, drifting LEFT
 	' (never right, never re-aims), bounces ONCE on each floor it meets,
 	' then passes THROUGH that floor to keep descending. Once per world step.
 	' Level 1 only -- see bolon in init_level.
@@ -2096,10 +2104,10 @@ bolt_move:
 		btm = btm - 1
 		IF btm = 0 THEN
 			bon = 1
-			bx = 240
+			bx = 216
 			bkind = RANDOM(4)
 			bvel = 1 + (bkind AND 1)
-			by = 16
+			by = 27
 			bph = 0
 			bnx = 0
 		END IF
@@ -2592,11 +2600,17 @@ site_step:
 	GOSUB hazard_hit
 	ex = 62 - clawshift
 	GOSUB hazard_hit
-	' Faster downstroke (2 px/step), unchanged impact beat and 1 px/step return.
+	' Quicker downstroke; retain the impact beat and 1 px/step return.
 	' Delay release at the top rather than lengthening the bottom dwell.
 	pressy = 105
 	IF hzphase < 32 THEN
-		pressy = 68 + hzphase * 2
+		IF hzphase >= 21 THEN
+			pressstep = hzphase - 20
+			presspart = pressstep / 2
+			pressy = 105 + pressstep
+			pressy = pressy + pressstep
+			pressy = pressy + presspart
+		END IF
 		IF pressy > 124 THEN pressy = 124
 	END IF
 	IF hzphase >= 32 THEN
@@ -2653,7 +2667,13 @@ factory_step:
 	' Down 1 px/step, up 1 px per two steps; keep the impact beat at phase 44.
 	pressy = 40
 	IF hzphase < 48 THEN
-		pressy = 18 + hzphase
+		pressy = 41
+		IF hzphase >= 26 THEN
+			pressstep = hzphase - 26
+			presspart = pressstep / 6
+			pressy = 41 + pressstep
+			pressy = pressy + presspart
+		END IF
 		IF pressy > 62 THEN pressy = 62
 	END IF
 	IF hzphase >= 48 THEN
@@ -2808,6 +2828,11 @@ quiet_screen:
 	RETURN
 
 hud_all:
+	#if TI994A
+	BANK SELECT 2
+	GOSUB banked_hud_all
+	BANK SELECT 1
+	#else
 	PRINT AT CPOS(0,17),<.4>#bonus
 	#scvalue = #score
 	#scpos = 0
@@ -2818,6 +2843,7 @@ hud_all:
 	IF levelno >= 100 THEN hlevelcol = 23
 	PRINT AT hlevelcol,"LEVEL ",levelno
 	GOSUB hud_lives
+	#endif
 	RETURN
 
 hud_lives:
@@ -3390,6 +3416,11 @@ level1_data:
 	DATA BYTE 5,2, 20,5		' brick: 1st floor (torso row 20)
 	DATA BYTE 5,4,1, 4,21		' bonus wrench: top beam (torso row 4)
 	DATA BYTE 5,4,2, 20,16		' bonus spray can: two cells right of middle pedestal
+	' Fixed left-facing rivet launcher at the upper-right beam.
+	DATA BYTE 8, 3,28,1,232
+	DATA BYTE 8, 3,29,1,233
+	DATA BYTE 8, 4,28,1,234
+	DATA BYTE 8, 4,29,1,235
 	DATA BYTE 5,3, 21,4,25		' drill starts bottom-left (beam 1)
 	DATA BYTE 5,6, 1,9,21		' elevator: cols 1-2, 4th beam..1st beam
 	DATA BYTE 5,11, 21,3,26		' vandal starts on the bottom beam
@@ -4466,6 +4497,25 @@ asset_end:
 	BANK 2
 	#endif
 
+banked_hud_all:
+	PRINT AT CPOS(0,17),<.4>#bonus
+	#scvalue = #score
+	#scpos = 0
+	#if TI994A
+	BANK SELECT 3
+	GOSUB banked_hud_score
+	BANK SELECT 2
+	#else
+	GOSUB score_print
+	#endif
+	PRINT AT CPOS(0,23),"         "
+	hlevelcol = 25
+	IF levelno >= 10 THEN hlevelcol = 24
+	IF levelno >= 100 THEN hlevelcol = 23
+	PRINT AT hlevelcol,"LEVEL ",levelno
+	GOSUB banked_hud_lives
+	RETURN
+
 banked_actors_move:
 	atg = atg + 1
 	' Jackhammer/drill: NON-LETHAL -- touch it empty-handed to catch it for
@@ -4895,7 +4945,7 @@ banked_furnace_step:
 	' Extend left one pixel per two steps, curling up beyond the outlet.
 	firedepth = (hzphase / 2) AND 31
 	IF firedepth > 16 THEN firedepth = 32 - firedepth
-	' Cabinet contact, then the actual curved jet across Mack's narrow torso.
+	' Cabinet contact, then test the actual flame columns across Mack's torso.
 	IF mx + 10 >= 225 THEN
 		IF mx + 5 <= 238 THEN
 			IF my + 4 <= 47 THEN
@@ -4911,13 +4961,34 @@ banked_furnace_step:
 	IF firelo < fireleft THEN firelo = fireleft
 	firehi = mx + 10
 	IF firehi > 223 THEN firehi = 223
-	firetop = 37
-	IF firelo < 218 THEN firetop = firelo - 181
-	firebottom = 39
-	IF firehi < 218 THEN firebottom = firehi - 179
-	IF my + 4 > firebottom THEN RETURN
-	IF my + 15 < firetop THEN RETURN
-	GOSUB mack_die
+	IF firelo > firehi THEN RETURN
+	FOR firepx = firelo TO firehi
+		firecalc = 223 - firepx
+		firecenter = 14 - (firecalc * 7 / 15)
+		IF firecalc < 2 THEN firewidth = 1
+		IF firecalc >= 2 THEN
+			IF firecalc < 8 THEN firewidth = 1 + firecalc / 2
+		END IF
+		IF firecalc >= 8 THEN
+			IF firecalc < 11 THEN firewidth = 3
+		END IF
+		IF firecalc >= 11 THEN
+			firewidth = 3 - (firecalc - 10) / 2
+			IF firewidth < 0 THEN firewidth = 0
+		END IF
+		fireflick = (firepx - 208 + firedepth) AND 3
+		IF fireflick = 0 THEN firewidth = firewidth + 1
+		IF fireflick = 2 THEN firecenter = firecenter - 1
+		IF fireflick = 3 THEN firecenter = firecenter + 1
+		firetop = 24 + firecenter - firewidth
+		firebottom = 24 + firecenter + firewidth
+		IF my + 4 <= firebottom THEN
+			IF my + 15 >= firetop THEN
+				GOSUB mack_die
+				RETURN
+			END IF
+		END IF
+	NEXT firepx
 	RETURN
 
 banked_hud_lives:
@@ -5023,6 +5094,8 @@ banked_fixture_chars:
 	DEFINE COLOR 96,32,fixture_col
 	DEFINE CHAR 210,10,machine_art
 	DEFINE COLOR 210,10,machine_col
+	DEFINE CHAR 232,4,thrower_pat
+	DEFINE COLOR 232,4,thrower_col
 	DEFINE SPRITE 24,1,brick_edge
 	DEFINE CHAR 192,16,beamshift_pat
 	DEFINE COLOR 192,16,beamshift_col
@@ -5166,6 +5239,18 @@ machine_col:
 	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$F1
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$F1
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+thrower_pat:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $01,$01,$03,$07,$3F,$C0,$C0,$80
+	DATA BYTE $80,$80,$C0,$E0,$FC,$03,$7F,$C3
+	DATA BYTE $80,$F0,$C0,$C0,$C0,$3F,$FF,$FF
+	DATA BYTE $C3,$C3,$C3,$C3,$7F,$FC,$FF,$FF
+thrower_col:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$FD,$FD,$FD
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$FD,$FD,$DA
+	DATA BYTE $FD,$FD,$FD,$FD,$FD,$F1,$11,$11
+	DATA BYTE $DA,$DA,$DA,$DA,$FD,$F1,$11,$11
 fixture_pat:
 	' Generated by assets/genfixtures.py; edit the generator.
 	DATA BYTE $FF,$80,$80,$80,$80,$80,$80,$80
@@ -5542,13 +5627,19 @@ setup_lives:
 	IF setupkey > 9 THEN GOTO setup_lives
 	lives = setupkey - 1
 	PRINT AT CPOS(8,20),setupkey
-	PRINT AT CPOS(11,10),"LEVEL 1-3"
+	PRINT AT CPOS(11,10),"LEVEL 1-6"
 setup_level:
 	WAIT
 	GOSUB menu_key
 	IF setupkey < 1 THEN GOTO setup_level
-	IF setupkey > 3 THEN GOTO setup_level
+	IF setupkey > 6 THEN GOTO setup_level
+	levelno = setupkey
 	lv = setupkey
+	IF lv > 3 THEN lv = lv - 3
+	PRINT AT CPOS(11,20),setupkey
+	FOR setupwait = 1 TO 45
+		WAIT
+	NEXT setupwait
 	RETURN
 
 menu_key:
@@ -5816,10 +5907,16 @@ lift_y:
 	DATA BYTE 96,95,94,93,92,91,90,89
 animated_machines:
 	IF lv = 2 THEN
+		firecolor = (hzphase / 8) AND 3
 		IF firelast = 255 THEN
 			DEFINE VRAM 960,32,furnace_pat
 			DEFINE VRAM 9152,32,furnace_col
-			DEFINE VRAM 9184,32,fire_col
+			DEFINE VRAM 9184,32,VARPTR fire_col(firecolor * 32)
+			firecolorlast = firecolor
+		END IF
+		IF firecolor <> firecolorlast THEN
+			firecolorlast = firecolor
+			DEFINE VRAM 9184,32,VARPTR fire_col(firecolor * 32)
 		END IF
 		IF firedepth <> firelast THEN
 			firelast = firedepth
@@ -6495,72 +6592,84 @@ fire_pat:
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$01,$01,$01
+	DATA BYTE $00,$00,$00,$00,$01,$01,$01,$01
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$03,$03,$03
+	DATA BYTE $00,$00,$00,$00,$02,$03,$03,$03
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$07,$07,$07
+	DATA BYTE $00,$00,$00,$04,$05,$07,$07,$06
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$0F,$0F,$0F
+	DATA BYTE $00,$00,$08,$08,$0E,$0E,$0F,$0D
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$1F,$1F,$1F
+	DATA BYTE $00,$10,$10,$1C,$1D,$1D,$1F,$1F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$3F,$3F,$3F
+	DATA BYTE $20,$20,$38,$38,$3A,$3F,$3F,$37
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$40
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $40,$70,$70,$74,$7D,$7F,$7F,$7E
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$40,$7F,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$80,$80
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$01,$01,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$02,$03,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $04,$06,$07,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$08
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $0C,$0E,$07,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$00,$00,$00,$10,$18
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$00,$00,$20,$30,$38
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$00,$40,$60,$70,$38
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
-	DATA BYTE $00,$00,$00,$80,$C0,$E0,$70,$38
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $E0,$E0,$E8,$F8,$FE,$FE,$FF,$DD
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$01
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$C0
+	DATA BYTE $01,$01,$01,$01,$01,$01,$01,$01
+	DATA BYTE $C0,$D0,$F0,$FC,$FD,$FD,$FF,$FF
+	DATA BYTE $00,$00,$00,$00,$00,$00,$02,$02
+	DATA BYTE $00,$00,$00,$00,$00,$00,$80,$80
+	DATA BYTE $03,$03,$03,$03,$03,$03,$03,$00
+	DATA BYTE $A0,$E0,$F8,$F8,$FA,$FF,$FF,$77
+	DATA BYTE $00,$00,$00,$00,$00,$00,$04,$07
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$40
+	DATA BYTE $07,$07,$07,$07,$07,$07,$04,$00
+	DATA BYTE $C0,$F0,$F0,$F4,$FD,$FF,$FF,$FE
+	DATA BYTE $00,$00,$00,$00,$00,$08,$0A,$0E
+	DATA BYTE $00,$00,$00,$00,$00,$00,$80,$80
+	DATA BYTE $0E,$0F,$0F,$0F,$0F,$0D,$01,$01
+	DATA BYTE $E0,$E0,$E8,$F8,$FE,$FE,$FF,$DD
+	DATA BYTE $00,$00,$00,$00,$00,$00,$1C,$1D
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$C0
+	DATA BYTE $1F,$1F,$1F,$1F,$1F,$03,$03,$01
+	DATA BYTE $C0,$D0,$F0,$FC,$FD,$FD,$FF,$FF
+	DATA BYTE $00,$00,$00,$00,$00,$28,$2A,$3A
+	DATA BYTE $00,$00,$00,$00,$00,$00,$80,$80
+	DATA BYTE $3F,$3F,$3F,$3F,$07,$07,$07,$00
+	DATA BYTE $A0,$E0,$F8,$F8,$FA,$FF,$FF,$77
+	DATA BYTE $00,$00,$00,$00,$00,$00,$74,$7F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$40
+	DATA BYTE $7F,$7F,$7F,$0F,$0F,$0F,$04,$00
+	DATA BYTE $C0,$F0,$F0,$F4,$FD,$FF,$FF,$FE
+	DATA BYTE $00,$00,$00,$00,$00,$A8,$AA,$EE
+	DATA BYTE $00,$00,$00,$00,$00,$00,$80,$80
+	DATA BYTE $FE,$FF,$1F,$1F,$1F,$0D,$01,$01
+	DATA BYTE $E0,$E0,$E8,$F8,$FE,$FE,$FF,$DD
 fire_col:
 	' Generated by assets/genconveyors.py; edit the generator.
-	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
-	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
-	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
-	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
+	DATA BYTE $71,$71,$91,$91,$A1,$C1,$A1,$91
+	DATA BYTE $71,$91,$91,$A1,$C1,$F1,$A1,$91
+	DATA BYTE $71,$71,$91,$91,$A1,$C1,$A1,$91
+	DATA BYTE $71,$91,$91,$A1,$C1,$F1,$A1,$91
+	DATA BYTE $71,$91,$91,$A1,$B1,$C1,$A1,$91
+	DATA BYTE $91,$91,$A1,$B1,$C1,$F1,$B1,$A1
+	DATA BYTE $71,$91,$91,$A1,$B1,$C1,$A1,$91
+	DATA BYTE $91,$91,$A1,$B1,$C1,$F1,$B1,$A1
+	DATA BYTE $71,$91,$A1,$B1,$C1,$A1,$91,$71
+	DATA BYTE $91,$A1,$B1,$C1,$F1,$C1,$A1,$91
+	DATA BYTE $71,$91,$A1,$B1,$C1,$A1,$91,$71
+	DATA BYTE $91,$A1,$B1,$C1,$F1,$C1,$A1,$91
+	DATA BYTE $71,$71,$91,$A1,$C1,$F1,$A1,$91
+	DATA BYTE $71,$91,$A1,$C1,$F1,$C1,$A1,$91
+	DATA BYTE $71,$71,$91,$A1,$C1,$F1,$A1,$91
+	DATA BYTE $71,$91,$A1,$C1,$F1,$C1,$A1,$91
 motion_end:
 	DATA BYTE 72,72,77,77,79,84,78,4

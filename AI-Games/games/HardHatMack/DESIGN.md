@@ -2271,12 +2271,9 @@ diagonal belts retain their existing half-rate travel and slag synchronization.
 The walking regression runs the actual Mack state machine at both clock
 parities and verifies position, support and animation phase.
 
-Both smooshers descend twice as fast. Level two drops two pixels per step;
-level three drops one. They release later from their visible parked positions
-to preserve the impact/sound beats (phases 28 and 44), short bottom dwell,
-existing return speeds and 128-step period. This changes the timing window
-without pinning Mack at the bottom for longer. Contact still follows each
-head's rendered position. Tests check downstroke duration, complete travel,
+The earlier faster smasher drops preserve impact/sound beats (phases 28 and 44),
+short bottom dwell, existing return speeds and 128-step period. Contact follows
+each head's rendered position. Tests check downstroke duration, complete travel,
 directional step limits, impact phase and the top pause. The live factory-box
 route remains reachable and requires timing. Right input also balances at the
 last roller, using Mack's supported foot before the walking step.
@@ -2347,3 +2344,85 @@ and the factory wall sparks. Level review used the production 838 menu; the same
 production cartridge was then reset to its normal title screen for handoff.
 The emulator captures supplement the routine-level tests; they are not complete
 uninterrupted clears of all three sites. Coleco remains deferred as requested.
+
+## 41. 838 selection feedback and furnace flame shape (2026-10-04)
+
+After the final 838 digit selects a starting level, the number is printed beside
+the prompt and held on screen for 45 video frames before normal level
+initialization clears the setup. The setup regression checks the lives range
+across all six stage choices and requires the selected number to have been shown.
+
+The level-two furnace plume now grows from a narrow nozzle into a broad,
+irregular tongue, then tapers and curls upward at its leading edge. Warm red and
+yellow edging surrounds a brighter yellow/white core. Each extension depth has
+its own changing outline, so the returning cycle animates the turbulent tongues
+as well as the reach. The art generator and physics gate check full-width
+emission, non-uniform flame thickness and shape variation; hazard timing and
+collision bounds remain tied to the existing extension cycle.
+
+## 42. Quicker smasher drops and cycling fire colors (2026-10-04)
+
+Both smasher downstrokes are a little faster while their upward motion remains
+unchanged. Level two reaches its girder in eight world steps using mostly
+two-pixel moves; level three reaches its belt in eighteen, with occasional
+two-pixel moves. Both still strike on phases 28 and 44, respectively, so the
+bottom dwell, sound cue and return schedule stay intact. The machinery checker
+asserts the shorter descent and rejects the prior slow rates.
+
+The furnace flame cycles four red-heavy orange/yellow palettes, each with a
+white-hot core, every eight world steps. Red shades occupy at least half of
+every eight-character color band. Its color table changes independently of the
+shape animation and transfers only when the palette changes. The art and
+runtime checks require four distinct palettes, red-dominant bands and all four
+states to reach the flame color table.
+
+## 43. Faster TI build gates (2026-10-04)
+
+The TI build starts all eight source/art checks together; each writes to its own
+log, and the build reports every failed check with its output tail. The physics
+checker keeps its full behavioral sweeps and all known-bad variants, but
+checks independent variants in a pool capped at four workers. Immutable BASIC
+control-flow indexes are reused for VMs running the same source variant. No
+regression case is skipped or relaxed; the red-density check brought the gate
+to 156 defective variants before the latest input and launcher checks.
+
+The full build also exposed the first-pass assembler's fixed-address boundary
+in the shared HUD. TI now calls its HUD renderer in bank two, switching to the
+score bank only for formatting and restoring the caller bank before returning.
+This preserves the existing four bank selections per frame while the Coleco
+HUD remains on its original path. The TI image assembles before branch
+shortening again, then verifies 524 shortened branches and packs within budget.
+
+## 44. TI title hotkeys, six-stage 838 and Level 1 launcher (2026-10-04)
+
+During TI gameplay, F8/REDO and F9/BACK return to the title. The TI keyboard
+scanner reports FCTN separately from the underlying digit, so the shortcut
+requires the FCTN modifier together with 8 or 9; ordinary number entry remains
+unchanged. Both keys also dismiss the game-over hold. Coleco code is excluded
+from this behavior.
+
+The 838 level prompt now accepts 1-6. Choices 1-3 start the corresponding site;
+4-6 start the same sites on the second tour, including the two roaming enemies
+on stage 4/Level 1. The selected stage remains visible during the existing
+feedback pause and is retained in the HUD progression.
+
+Level 1 now has a fixed two-character-wide, two-row launcher at the upper-right
+end of the top girder. Editable two-ink artwork in `genfixtures.py` gives it a
+white cap, magenta housing and green inspection window. Rivets begin just
+outside its left-facing outlet, so the existing projectile visibly originates
+from machinery instead of empty space.
+
+At a parked elevator, either horizontal direction now re-arms and starts the
+next ride while holding Mack at the cabin's x-position. The wider elevator
+support probe remains available for falling/landing boardings. Regression
+checks exercise both nudge directions, all six stage choices, both TI function
+keys, launcher placement and the projectile's origin. The keyboard check also
+accepts the TI scanner's FCTN matrix value for REDO/BACK. The physics gate now
+rejects 164 deliberately broken variants.
+
+The completed TI build uses 554 bytes of RAM, verifies 526 shortened branches,
+and leaves 1,894 bytes in the fixed area. Data, animation, title and motion
+banks retain 10, 3,810, 328 and 544 bytes, respectively. Classic99 confirmed
+both F8 and F9 return from live play to the title, and a stage-4 setup displayed
+two roaming enemies on level 1. Production SHA-256:
+`ECEC6DA90DC327D435CF69A931E103D7364E6D899CD8CCD53EB13DDAF741A2E5`.

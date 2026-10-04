@@ -13,7 +13,9 @@ Three construction sites are implemented:
    that spacing. Jump to ring the bell and summon the elevator. Landing anywhere
    supported by an armed elevator centers Mack and starts the ride. At either end of an occupied
    ride, Mack does two quick crouch-and-rise motions with a two-tone sound
-   (about half a second), then you can walk or jump off. The right-hand trampoline
+   (about half a second); a horizontal nudge summons the next trip, while Jump
+   lets him leave the cabin. A fixed launcher at the upper-right end of the
+   top beam fires leftward rivets. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
    and his feet follow the moving cap. Mack starts one character to the right
    of the middle pedestal. The spray-can bonus is two characters to the right
@@ -58,12 +60,16 @@ Three construction sites are implemented:
 
 The smashers on levels 2 and 3 share a five-pixel-tall, predominantly white head,
 with gray detailing. They remain visible at the top and reach their girder or belt.
-Their downstrokes run twice as fast as before (two pixels per world step on
-level 2, one on level 3), with the same impact beat, bottom dwell and upward
-return. They wait longer at the top before dropping.
+Their downstrokes are slightly quicker again: level 2 descends in eight world
+steps and level 3 in eighteen. The impact beats, bottom dwell and upward return
+are unchanged. They wait visibly at the top before dropping.
 The upper-right furnace's two-character support girder has centered blue rivets
 in its bright green body. The furnace has a magenta-and-white cabinet with green
 caps; fire shoots from its left outlet, curls upward, and retracts before repeating.
+The plume broadens into a ragged flame with a bright core and cycling reds,
+orange and yellow; red occupies at least half of each palette band. Its shape
+flickers as it extends. In 838 mode, the selected starting level remains
+visible briefly before gameplay clears the setup screen.
 
 Mack's running cycle combines a passing step, extended stride and bent-knee
 recovery with arm swing. A projecting hat brim, face and rear hair make his
@@ -79,11 +85,14 @@ separate. Mack can carry only one block or jackhammer. A loose jackhammer passin
 behind Mack while he holds a block is hidden until clear, so the two cannot
 appear to be held together; its route continues normally. A new pickup resets
 the hold timer, even if Fire was already held. Fire starts a normal game at site 1 with three lives.
-Type **838** on the title, then a digit **1-9 for total lives**, then **1-3 for
-the starting level**; the last digit starts the game. Release each key between
-digits. These choices apply to one game only. Reserve hats exclude the current
+Type **838** on the title, then a digit **1-9 for total lives**, then **1-6 for
+the starting stage**. Stages 4-6 repeat screens 1-3 with the harder second-tour
+enemy setup; stage 4 starts level 1 with two roaming enemies. The chosen number
+appears beside the prompt before play begins. Release each key between digits.
+These choices apply to one game only. Reserve hats exclude the current
 life and are right-justified below the score line. One extra life is awarded at 7,000 points.
-Classic99 uses arrows/Tab; CoolCV uses arrows/Space for controller 1.
+Classic99 uses arrows/Tab; CoolCV uses arrows/Space for controller 1. On TI-99,
+F8 (REDO) or F9 (BACK) returns to the title during play.
 The construction-themed title shows **LAST SCORE** and **HIGH SCORE** at the top,
 with matching full-height dithered white-to-yellow lettering (MACK restored to
 its original 115-pixel width), Mack on a riveted girder, and the credit
@@ -186,6 +195,7 @@ Or run `bash games/HardHatMack/build-ti.sh` followed by
 `bash games/HardHatMack/build-coleco.sh` using Cygwin bash.
 Outputs: `src/HARDHAT_8.bin` (Classic99/js99er) and `src/hardhat.rom` (ColecoVision).
 Build sequentially. Both scripts run generated-art, physics, truncation and return-stack checks;
+the TI source/art checks run concurrently, and physics rejection tests use up to four workers;
 the TI build also verifies the fixed-area size and all four packed banks. Its 64 KB
 cartridge contains the loader, setup/assets bank and separate banks for
 actors/audio, the title/setup screen plus extra scenery, and motion/animated machinery; their wrappers restore
@@ -214,7 +224,7 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-154 deliberately broken variants must fail. New checks cover directional airborne
+164 deliberately broken variants must fail. New checks cover directional airborne
 art, conveyor walking balance, quicker downstrokes, curved furnace flames,
 cross-level spark restoration, bonus counting,
 game-over timeout/release, full-width elevator boarding, spaced rivets,

@@ -68,6 +68,26 @@ def mack_layers():
 
 def tables():
     out=mack_layers()
+    # Fixed upper-right rivet launcher. The white feed cap, magenta housing,
+    # and green inspection window match the small in-game reference; the
+    # 16x16 image is split into four TMS9918 characters for two-ink rows.
+    launcher=canvas(16,16)
+    rect(launcher,7,0,8,1,15);rect(launcher,6,2,9,2,15)
+    rect(launcher,5,3,10,3,15)
+    rect(launcher,2,4,13,4,15)
+    rect(launcher,1,5,14,12,15)
+    rect(launcher,2,5,13,12,13)
+    rect(launcher,0,5,0,12,15);rect(launcher,15,5,15,6,15)
+    rect(launcher,15,12,15,12,15)
+    rect(launcher,14,7,15,11,13)
+    rect(launcher,0,7,3,9,15)
+    rect(launcher,1,7,3,8,13)
+    # Inspection window is set into the right half, replacing its magenta
+    # face locally so every scanline keeps the VDP's two-ink limit.
+    rect(launcher,10,7,13,11,10)
+    rect(launcher,9,6,14,6,15);rect(launcher,9,12,14,12,15)
+    rect(launcher,2,13,13,13,15)
+    out['thrower_pat'],out['thrower_col']=encode(launcher)
     # One continuous pedestal: bearing plate, narrow stem, broad footing.
     # The former repeated eight-pixel foot produced two stacked cones.
     support=canvas(8,16)
@@ -262,6 +282,13 @@ def rewrite(source):
 def check(source):
     assert rewrite(source)==source,'fixture art stale; run genfixtures.py --write'
     assert len(tables()['fixture_pat'])==32*8
+    tp,tc=tables()['thrower_pat'],tables()['thrower_col']
+    assert len(tp)==len(tc)==32 and 0xFD in tc and 0xDA in tc and 0xF1 in tc
+    # Validate the three materials remain visible in their intended regions.
+    def thrower_ink(x,y):
+        i=((y//8)*2+x//8)*8+y%8
+        return tc[i]//16 if tp[i] & (128>>(x%8)) else tc[i]%16
+    assert thrower_ink(7,0)==15 and thrower_ink(3,6)==13 and thrower_ink(11,8)==10
     broken=source.replace('machine_art:\n','machine_art:\n\tDATA BYTE 0\n',1)
     assert rewrite(broken)!=broken,'corrupt fixture table accepted'
     poses=mack_poses()

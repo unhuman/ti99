@@ -139,14 +139,40 @@ def tables():
     for depth in range(17):
         def flame(x,y):
             if x < 16-depth: return False
-            # Left-facing nozzle is at local (15,14). The first six pixels
-            # project horizontally; the plume then bends upward to the left.
-            center = min(14,x+4)
-            return abs(y-center)<=1
+            # A broad turbulent plume leaves the nozzle at (15,14), swells,
+            # then tapers to a ragged up-curled tip at the left edge.
+            reach = 15-x
+            center = 14-(reach*7//15)
+            if reach < 2: width=1
+            elif reach < 8: width=1+reach//2
+            elif reach < 11: width=3
+            else: width=max(0,3-(reach-10)//2)
+            # Changing tongues break the outline into animated licks.
+            flicker = (x+depth)&3
+            if flicker == 0: width += 1
+            if flicker == 2: center -= 1
+            if flicker == 3: center += 1
+            return abs(y-center)<=width
         for row in range(2):
             for col in range(2):
                 result['fire_pat'] += rows(lambda x,y: flame(col*8+x,row*8+y))
-    result['fire_col'] = [0x91,0xf1,0x91,0xf1,0x91,0xf1,0x91,0xf1]*4
+    # Four palettes cycle from red-orange edges through yellow to white-hot
+    # cores. The furnace's two character rows each have independent gradients.
+    palettes = (
+        ([7,7,9,9,10,12,10,9], [7,9,9,10,12,15,10,9]),
+        ([7,9,9,10,11,12,10,9], [9,9,10,11,12,15,11,10]),
+        ([7,9,10,11,12,10,9,7], [9,10,11,12,15,12,10,9]),
+        ([7,7,9,10,12,15,10,9], [7,9,10,12,15,12,10,9]),
+    )
+    assert all(sum(color in (7,9,10) for color in row) >= 4
+               for palette in palettes for row in palette), 'fire palette needs more reds'
+    result['fire_col'] = []
+    for left,right in palettes:
+        result['fire_col'] += [((color<<4)|1) for color in left]
+        result['fire_col'] += [((color<<4)|1) for color in right]
+        result['fire_col'] += [((color<<4)|1) for color in left]
+        result['fire_col'] += [((color<<4)|1) for color in right]
+    assert len(result['fire_col']) == 128
     return result
 
 

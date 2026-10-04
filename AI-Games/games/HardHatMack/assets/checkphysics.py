@@ -6,11 +6,49 @@ arithmetic, jump data, landing rules and hitboxes come from HARDHAT.bas.
 It does not emulate CPU timing, input hardware, or prove whole-level reachability.
 """
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
+import os
 from pathlib import Path
 import re
 
 SOURCE = Path(__file__).resolve().parent.parent / 'src/HARDHAT.bas'
+
+
+def ti_source_lines(source):
+    """Select the TI994A preprocessor path before the BASIC interpreter runs."""
+    active = True
+    branches = []
+    selected = []
+    for raw in source.splitlines():
+        directive = raw.split("'")[0].strip().lower()
+        if directive.startswith('#if '):
+            condition = directive[4:].strip()
+            assert condition == 'ti994a', 'unsupported preprocessor condition: ' + condition
+            branches.append((active, True, False))
+            active = active
+        elif directive == '#else':
+            assert branches and not branches[-1][2], 'unmatched/duplicate #else'
+            parent, condition, _ = branches[-1]
+            branches[-1] = (parent, condition, True)
+            active = parent and not condition
+        elif directive == '#endif':
+            assert branches, 'unmatched #endif'
+            active = branches.pop()[0]
+        elif active:
+            selected.append(raw)
+    assert not branches, 'unterminated preprocessor block'
+    return selected
+
+
+def reject_mutation(item):
+    """Return only when this known-bad source is rejected by its owning check."""
+    mutation_index, mutant, check = item
+    try:
+        check(mutant)
+    except AssertionError:
+        return mutation_index, check.__name__
+    raise AssertionError('checker accepted historical defect: ' + check.__name__)
 
 
 class Basic:
@@ -18,6 +56,11 @@ class Basic:
     # most recent source so mutation tests cannot accumulate hundreds of carts.
     _byte_source = None
     _byte_cache = None
+    # Most defect checks construct many fresh VMs for the same mutated source.
+    # Their control-flow index is immutable too; parsing the full BASIC file for
+    # every simulated VM used to dominate the cost of mutation testing.
+    _parse_source = None
+    _parse_cache = None
 
     def __init__(self, source, floor=168, holes=()):
         self.v = defaultdict(int)
@@ -42,31 +85,35 @@ class Basic:
         self.bank = 1
         self.frame_inputs = iter(())
         self.random_values = iter(())
-        self.lines = [line.split("'")[0].strip().lower()
-                      for line in source.splitlines()]
-        self.labels = {line[:-1]: i for i, line in enumerate(self.lines)
-                       if re.fullmatch(r'\w+:', line)}
-        self.label_banks = {}
-        declared_bank = 0
-        for line in self.lines:
-            if re.fullmatch(r'bank [0-9]+',line):declared_bank=int(line.split()[1])
-            if re.fullmatch(r'\w+:',line):self.label_banks[line[:-1]]=declared_bank
-        self.ends, self.elses = {}, {}
-        stack = []
-        for i, line in enumerate(self.lines):
-            if line.startswith('if ') and line.endswith(' then'):
-                stack.append((i, []))
-            elif line == 'else' or line.startswith('elseif '):
-                stack[-1][1].append(i)
-            elif line == 'end if':
-                start, branches = stack.pop()
-                self.ends[start] = i
-                for b in branches:
-                    self.ends[b] = i
-                for j, b in enumerate(branches):
-                    self.elses[b] = branches[j + 1] if j + 1 < len(branches) else i
-                self.elses[start] = branches[0] if branches else i
-        assert not stack
+        if Basic._parse_source != source:
+            lines = [line.split("'")[0].strip().lower()
+                     for line in ti_source_lines(source)]
+            labels = {line[:-1]: i for i, line in enumerate(lines)
+                      if re.fullmatch(r'\w+:', line)}
+            label_banks = {}
+            declared_bank = 0
+            for line in lines:
+                if re.fullmatch(r'bank [0-9]+',line):declared_bank=int(line.split()[1])
+                if re.fullmatch(r'\w+:',line):label_banks[line[:-1]]=declared_bank
+            ends, elses = {}, {}
+            stack = []
+            for i, line in enumerate(lines):
+                if line.startswith('if ') and line.endswith(' then'):
+                    stack.append((i, []))
+                elif line == 'else' or line.startswith('elseif '):
+                    stack[-1][1].append(i)
+                elif line == 'end if':
+                    start, branches = stack.pop()
+                    ends[start] = i
+                    for b in branches:
+                        ends[b] = i
+                    for j, b in enumerate(branches):
+                        elses[b] = branches[j + 1] if j + 1 < len(branches) else i
+                    elses[start] = branches[0] if branches else i
+            assert not stack
+            Basic._parse_source = source
+            Basic._parse_cache = (lines, labels, label_banks, ends, elses)
+        self.lines, self.labels, self.label_banks, self.ends, self.elses = Basic._parse_cache
         for line in self.lines:
             m = re.fullmatch(r'const (\w+)\s*=\s*(.+)', line)
             if m:
@@ -136,6 +183,7 @@ class Basic:
         key = text
         if key not in self.expr_cache:
             text = text.replace('cont1.button', 'input_button').replace('cont1.key', 'input_key')
+            text = text.replace('cont2.button2', 'input_fctn')
             text = re.sub(r'\$([\da-f]+)', lambda m: str(int(m[1], 16)), text)
             text = text.replace('<>', '!=')
             text = re.sub(r'(?<![<>!=])=(?!=)', '==', text)
@@ -929,7 +977,7 @@ def elevator_dance(source):
             vm.v.update(jbe=0,jr=0);vm.run('elev_move')
             assert vm.v['edance']==0, 'parked elevator repeats dance'
             vm.v['jr']=1;vm.run('st_ride')
-            assert vm.v['mx']==start[0]+1, 'controls do not resume after dance'
+            assert vm.v['emov']==1 and vm.v['mx']==start[0], 'horizontal input does not re-summon the elevator after the dance'
             for stop in ('mack_die','quiet_screen','init_level'):
                 vm.v.update(edance=20,st=vm.v['s_ride']);vm.run(stop)
                 assert vm.v['edance']==0, 'dance survives death/screen change'
@@ -953,6 +1001,13 @@ def elevator_boarding(source):
             # Arrival remains disarmed; standing still cannot reverse the trip.
             vm.v.update(emov=0,jl=0,jr=0);vm.run('st_ride')
             assert vm.v['emov']==0, 'parked arrival immediately reverses'
+        # A horizontal tap at either end re-arms a fresh trip before Mack can
+        # walk beyond the single-cabin support window.
+        for direction in (0,1):
+            vm.v.update(mx=vm.v['elx']+6,my=floor-16,st=vm.v['s_ride'],
+                        emov=0,elarm=0,jl=direction==0,jr=direction==1)
+            vm.run('st_ride')
+            assert vm.v['emov']==1 and vm.v['mx']==vm.v['elx'], 'edge nudge leaves elevator instead of summoning it'
     for x,y in ((16,152),(24,152),(8,148),(8,156)):
         vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
         vm.v.update(mx=x,my=y,st=vm.v['s_ride'],elarm=1,jbe=0)
@@ -1398,13 +1453,13 @@ def machinery_animation(source):
                 for y in range(depth):
                     assert footcolors[depth*16+y]==[0xf1,0xf1][2-depth+y]
         assert min(positions)==low and max(positions)==high, ('smasher travel',level,positions)
-        assert all(-1<=b-a<=(2 if level==2 else 1) for a,b in zip(positions,positions[1:]+positions[:1])), 'smasher snaps back'
+        assert all(-1<=b-a<=(3 if level==2 else 2) for a,b in zip(positions,positions[1:]+positions[:1])), 'smasher snaps back'
         assert positions.count(high)<=10, 'smasher pins player too long'
         impact=28 if level==2 else 44
         assert positions.index(high)==impact, 'smasher impact beat moved'
-        assert sum(b>a for a,b in zip(positions,positions[1:]))==(10 if level==2 else 21), 'smasher downstroke not twice as fast'
+        assert sum(b>a for a,b in zip(positions,positions[1:]))==(8 if level==2 else 18), 'smasher downstroke not quicker'
         last_parked=max(i for i,p in enumerate(positions[:impact]) if p==low)
-        assert impact-last_parked==(10 if level==2 else 21), 'smasher delays between downstroke pixels'
+        assert impact-last_parked==(8 if level==2 else 18), 'smasher downstroke timing wrong'
         assert positions[96:]==[low]*32, 'smasher top pause lost'
         assert low+8>=base and positions.count(low)>=32, 'smasher must wait visibly at the top'
         assert positions[28 if level==2 else 44]==high, 'wrong downward smasher speed'
@@ -1653,14 +1708,18 @@ def setup_inputs(source):
             yield dict(input_key=15,input_button=0)
             for _ in range(3):yield dict(input_key=key,input_button=0)
     for lives in range(1,10):
-        for level in range(1,4):
+        for level in range(1,7):
             vm=Basic(source);vm.v.update(input_key=15,lv=1,lives=2)
-            vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,3,8,0,lives,9,0,level])))
+            vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,3,8,0,lives,9,0,level]))+[dict(input_key=15,input_button=0)]*50)
             vm.run('title_screen')
-            assert vm.v['lives']==lives-1 and vm.v['lv']==level and vm.bank==1, '838 selection / bank return'
+            actual=level if level<=3 else level-3
+            assert vm.v['lives']==lives-1 and vm.v['lv']==actual and vm.v['levelno']==level and vm.bank==1, '838 selection / bank return'
             assert vm.v['game838']==1, '838 game not marked'
+            assert (11*32+20,str(level)) in vm.prints, '838 level selection was not shown'
             vm.run('init_level')
             assert vm.screen[54:63]==[32]*(10-lives)+[vm.v['t_hat']]*(lives-1), 'reserve hats wrong'
+            if level==4:
+                assert vm.v['lv']==1 and vm.v['von']==1 and vm.v['oon']==1, '838 level 4 does not start the harder two-enemy level 1'
     # Incorrect code, a held digit, and title navigation must not select a level.
     vm=Basic(source);vm.v.update(input_key=15,lv=1,lives=2)
     vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,5,3,8]))+[dict(input_button=1)])
@@ -1669,6 +1728,21 @@ def setup_inputs(source):
     vm=Basic(source);vm.v.update(titleheld=15,input_key=3)
     vm.bank=3;vm.run('menu_key');assert vm.v['setupkey']==3
     vm.bank=3;vm.run('menu_key');assert vm.v['setupkey']==15, 'held digit accepted twice'
+
+
+def title_hotkeys(source):
+    loop=source[source.index('main_loop:'):source.index('#hacc = #hacc + #fd * 9',source.index('main_loop:'))]
+    start=loop.index('\tIF cont2.button2 THEN')
+    end=loop.index('\n\t#endif',start)
+    snippet=loop[start:end].replace('cont2.button2','input_fctn').replace('cont1.key','input_key').replace('GOTO new_game','titlehot = 1')
+    key_source=source+'\nBANK 0\nhotkey_test:\n'+snippet+'\n\tRETURN\n'
+    for key in (8,9,254):
+        vm=Basic(key_source);vm.v.update(input_fctn=1,input_key=key)
+        vm.run('hotkey_test')
+        assert vm.v['titlehot']==1, ('TI FCTN+%d failed to return to title' % key)
+    vm=Basic(key_source);vm.v.update(input_fctn=0,input_key=8)
+    vm.run('hotkey_test')
+    assert vm.v['titlehot']==0, 'ordinary 8 should not leave gameplay'
 
 
 def repeat_enemies(source):
@@ -1816,6 +1890,11 @@ def fixture_contract(source):
             pattern={1:'support_pat',3:'eject_pat'}[level]
             assert [w for w in ownership.pattern_writes if w[0]==120][-1]==(120,2,pattern,0), 'wrong site scenery after level change'
         if level==1:
+            launcher=[ownership.screen[r*32+28:r*32+30] for r in (3,4)]
+            assert launcher==[[232,233],[234,235]], 'upper-right rivet launcher artwork is missing or displaced'
+            ownership.v.update(bon=0,btm=1)
+            ownership.run('bolt_move')
+            assert (ownership.v['bx'],ownership.v['by'])==(216,27), 'rivet does not leave the fixed launcher mouth'
             for column in (6,14,23):
                 assert ownership.screen[22*32+column]==120
                 assert ownership.screen[23*32+column]==121, 'pedestal repeats its top instead of a single footing'
@@ -1925,11 +2004,11 @@ def fixture_contract(source):
 
 
 def data_cache_contract(source):
-    shifted=source.replace('DATA BYTE 5,13, 21,24','DATA BYTE 5,13, 21,25')
+    shifted=source.replace('DATA BYTE 5,13, 21,25','DATA BYTE 5,13, 21,24')
     assert shifted!=source
     # A mutation must not inherit the previous cart's level data, and restoring
     # the original source must restore its spawn rather than retain the mutation.
-    for text,x in ((source,188),(shifted,196),(source,188)):
+    for text,x in ((source,196),(shifted,188),(source,196)):
         vm=Basic(text);vm.v['lv']=1;vm.run('init_level')
         assert vm.v['mx']==x, 'cached DATA leaked between source variants'
 
@@ -2002,10 +2081,21 @@ def furnace_contract(source):
     table=re.search(r'^fire_pat:\n.*?(?=^\w+:)',source,re.M|re.S)[0]
     art=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',table)]
     assert len(art)==17*32
+    color_table=re.search(r'^fire_col:\n.*?(?=^\w+:)',source,re.M|re.S)[0]
+    color_art=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',color_table)]
+    assert len(color_art)==4*32, 'flame color cycle must contain four palettes'
+    assert len({tuple(color_art[i:i+32]) for i in range(0,len(color_art),32)})==4, 'flame colors do not cycle'
+    assert {7,9,10}<={color>>4 for color in color_art}, 'flame needs multiple red tones'
+    red_bands=[color_art[p*32+row*8:p*32+(row+1)*8] for p in range(4) for row in range(4)]
+    assert all(sum((color>>4) in (7,9,10) for color in band)>=4 for band in red_bands), \
+        'flame palette needs at least half red shades in every band'
     depths=[]
     for phase in range(128):
         vm.v.update(mx=112,my=80,hzphase=phase-1,st=0)
         vm.run('site_step');vm.run('site_draw');depth=vm.v['firedepth'];depths.append(depth)
+        color=(phase//8)&3
+        assert vm.v['firecolor']==color, 'flame palette cycle timing changed'
+        vm.expect_upload(9184,32,'fire_col',color*32)
         expected=min(phase%64//2,32-phase%64//2)
         assert depth==expected, 'furnace no longer extends and retracts smoothly'
         vm.expect_upload(992,32,'fire_pat',depth*32)
@@ -2014,9 +2104,10 @@ def furnace_contract(source):
         pixels={(x+208,y+24) for y in range(16) for x in range(16)
                 if frame[(y//8*2+x//8)*8+y%8] & (128>>(x%8))}
         assert {x for x,y in pixels}==set(range(224-depth,224)), 'fire does not emerge leftward'
-        for x in range(224-depth,224):
-            center=38 if x>=218 else x-180
-            assert {y for px,y in pixels if px==x}==set(range(center-1,center+2)), 'fire fails upward curl'
+        if depth >= 8:
+            column_heights=[len({y for px,y in pixels if px==x}) for x in range(224-depth,224)]
+            assert max(column_heights)>=7 and min(column_heights)<=3, 'flame is a thin uniform streak'
+            assert len(set(column_heights))>=4, 'flame outline is not turbulent'
         if phase%8==0:
             for x in (200,208,215,220,228):
                 for y in (14,20,24,32,40,48):
@@ -2047,6 +2138,7 @@ def main():
     machinery_animation(source)
     chain_and_pickups(source)
     setup_inputs(source)
+    title_hotkeys(source)
     repeat_enemies(source)
     factory_challenge(source)
     upper_conveyor(source)
@@ -2198,6 +2290,14 @@ def main():
         (source.replace('SPRITE 14,209,0,0,0',''),single_item),
         (source.replace('IF esup = 1 THEN\n\t\t\tmx = elx','IF mx = elx THEN\n\t\t\tmx = elx'),elevator_boarding),
         (source.replace('IF esup = 1 THEN\n\t\t\tmx = elx','IF elarm = 1 THEN\n\t\t\tmx = elx'),elevator_boarding),
+        (source.replace('IF jl THEN elarm = 1','IF jl THEN elarm = 0'),elevator_boarding),
+        (source.replace('IF jr THEN elarm = 1','IF jr THEN elarm = 0'),elevator_boarding),
+        (source.replace('IF setupkey > 6 THEN GOTO setup_level','IF setupkey > 3 THEN GOTO setup_level'),setup_inputs),
+        (source.replace('IF cont1.key = 8 THEN GOTO new_game','IF cont1.key = 8 THEN titlehot = 0'),title_hotkeys),
+        (source.replace('IF cont1.key = 9 THEN GOTO new_game','IF cont1.key = 9 THEN titlehot = 0'),title_hotkeys),
+        (source.replace('IF cont1.key = 254 THEN GOTO new_game','IF cont1.key = 254 THEN titlehot = 0'),title_hotkeys),
+        (source.replace('DATA BYTE 8, 3,28,1,232','DATA BYTE 8, 3,27,1,232'),fixture_contract),
+        (source.replace('bx = 216','bx = 240'),fixture_contract),
         (source.replace('IF girder_mark(c) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),
         (source.replace('IF girder_mark(gapc(i)) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),
         (source.replace('IF i = 3 THEN bc9 = 96 + boff','bc9 = uc'),girder_spacing),
@@ -2247,8 +2347,8 @@ def main():
         (source.replace('IF jr THEN fx = walkx + 8',''),factory_belt_balance),
         (source.replace('DEFINE VRAM 3360,16','DEFINE VRAM 1312,16'),wall_sparks),
         (source.replace('DEFINE VRAM 3360,16,haz_pat',''),wall_sparks),
-        (source.replace('pressy = 68 + hzphase * 2','pressy = 96 + hzphase'),machinery_animation),
-        (source.replace('pressy = 18 + hzphase','pressy = 40 + hzphase / 2'),machinery_animation),
+        (source.replace('pressy = pressy + presspart\n\t\tEND IF\n\t\tIF pressy > 124','pressy = pressy + pressstep\n\t\tEND IF\n\t\tIF pressy > 124',1),machinery_animation),
+        (source.replace('presspart = pressstep / 6','presspart = 0'),machinery_animation),
         (source.replace('DEFINE VRAM 3320,24','DEFINE VRAM 1272,24'),visual_hazards),
         (source.replace('DEFINE VRAM 3712,16','DEFINE VRAM 1664,16'),optimized_rendering),
         (source.replace('DEFINE VRAM 4040,16','DEFINE VRAM 1992,16'),machinery_animation),
@@ -2257,17 +2357,24 @@ def main():
         (source.replace('DATA BYTE 8, 6,28,2,134','DATA BYTE 8, 6,29,1,134'),furnace_contract),
         (source.replace('DATA BYTE 8, 6,28,2,134','DATA BYTE 8, 6,28,2,129'),furnace_contract),
         (source.replace('IF firedepth > 16 THEN firedepth = 32 - firedepth','IF firedepth > 16 THEN firedepth = 16'),furnace_contract),
-        (source.replace('IF my + 15 < firetop THEN RETURN','IF my + 15 < 24 THEN RETURN'),furnace_contract),
+        (source.replace('IF my + 15 >= firetop THEN','IF my + 15 >= 24 THEN'),furnace_contract),
+        (source.replace('VARPTR fire_col(firecolor * 32)','VARPTR fire_col(0)'),furnace_contract),
+        (source.replace('DATA BYTE $71,$71,$91,$91,$A1,$C1,$A1,$91',
+                        'DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1',1),furnace_contract),
     ])
     print('Physics behavior sweeps passed; checking %d defect mutations' % len(mutants),flush=True)
+    tasks = []
     for mutation_index,(mutant, check) in enumerate(mutants,1):
-        if mutation_index%20==0:print('Mutation checks: %d/%d' % (mutation_index,len(mutants)),flush=True)
-        assert mutant!=source, 'defect mutation did not change source: '+check.__name__
-        try:
-            check(mutant)
-        except AssertionError:
-            continue
-        raise AssertionError('checker accepted historical defect: '+check.__name__)
+        assert mutant != source, 'defect mutation did not change source: ' + check.__name__
+        tasks.append((mutation_index, mutant, check))
+    workers = min(4, os.cpu_count() or 1, len(tasks))
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        pending = [pool.submit(reject_mutation, task) for task in tasks]
+        for checked, future in enumerate(as_completed(pending), 1):
+            future.result()
+            if checked % 20 == 0:
+                print('Mutation checks: %d/%d (%d workers)' %
+                      (checked, len(tasks), workers), flush=True)
     print('Physics: 32-step jumps, both gap directions, fall momentum, fatal landings OK')
     print('Enemy over-jump wins (stationary / half speed / full speed; must be zero):', windows)
     print('All level parsers, pails, box delivery, belt surfaces and 448 lift steps OK')
