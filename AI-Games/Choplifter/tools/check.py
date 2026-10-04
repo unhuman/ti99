@@ -32,7 +32,7 @@ def structure(source):
 class Basic:
     """Strict subset used by accounting routines; CVBasic byte/word wrapping."""
     def __init__(self, source=SOURCE, target='TI994A'):
-        self.v={}; self.a={}; self.r={}; self.vram={}; self.sprites={};self.patterns={}
+        self.v={}; self.a={}; self.r={}; self.vram={}; self.sprites={};self.patterns={};self.sprite_patterns={}
         self.sounds={};self.sound_writes=[]
         self.calls={};self.transfers=[];self.events=[]
         self.v.update({name.lower():int(value) for name,value in
@@ -207,6 +207,13 @@ class Basic:
                 data=self.a[label]
                 for i in range(count):self.patterns[start+i]=data[i*8:i*8+8]
                 continue
+            if part.startswith('DEFINE SPRITE '):
+                start,count,label=part[14:].split(',')
+                start,count=self.expr(start),self.expr(count)
+                data=self.a[label]
+                if len(data)!=count*32:raise ValueError('Invalid sprite-pattern upload')
+                for i in range(count):self.sprite_patterns[start+i]=data[i*32:i*32+32]
+                continue
             if part.startswith('SCREEN '):
                 label,*args=part[7:].split(',')
                 values=[self.expr(x) for x in args]
@@ -250,6 +257,8 @@ class Tests(unittest.TestCase):
         sys.path.insert(0,str(ROOT/'assets'))
         import generate
         b.a['jet_arc']=generate.JET_ARC
+        b.a['crash_flames']=[v for a in generate.SPRITES[13:15] for v in generate.sprite_bytes(a)]
+        b.a['crash_embers']=[v for rows in generate.CRASH_EMBERS for v in generate.sprite_bytes(generate.fire_sprite(rows))]
         b.a['world_map']=[c for row in generate.MAP for c in row]
         b.a['fire_frame0']=generate.FIRE0;b.a['fire_frame1']=generate.FIRE1
         rows=generate.PERSON_ROWS
@@ -292,6 +301,89 @@ class Tests(unittest.TestCase):
         b.call('crash');b.call('crash')
         self.assertEqual((b.v['lost'],b.v['aboard'],b.v['lives']),(9,0,2))
         self.assertEqual(self.total(b),64)
+
+    def test_crash_falls_before_ground_burn_and_counts_once(self):
+        def verify(source):
+            for dt in (1,2,3,4,6):
+                for altitude in (25,80,152,153):
+                    for lives in (1,3):
+                        b=self.state();b.r=Basic(source).r
+                        b.v.update({'hy':altitude,'dt':dt,'lives':lives,'aboard':2,'invuln':0,
+                                    'hspeed':3,'hdir':1,'#hx':20,'runner_on':0})
+                        b.a['camp_left'][0]=14;b.a['person_state'][:2]=[5,5]
+                        b.call('crash');b.call('crash')
+                        self.assertEqual((b.v['lives'],b.v['lost'],b.v['aboard']),(lives-1,2,0))
+                        self.assertEqual(b.a['person_state'][:2],[4,4]);self.assertEqual(self.total(b),64)
+                        self.assertEqual(b.v['fire_gate'],2)
+                        self.assertEqual(b.sprite_patterns[13]+b.sprite_patterns[14],b.a['crash_flames'])
+                        fall_frames=0
+                        while b.v['hy']<b.v['landed']:
+                            old_y=b.v['hy'];b.call('sound_tick');b.call('crash_tick');fall_frames+=dt
+                            self.assertGreater(b.v['hy'],old_y)
+                            self.assertLessEqual(b.v['hy'],b.v['landed'])
+                            self.assertEqual(b.v['crash_timer'],90)
+                            self.assertGreaterEqual(b.v['#hx'],16)
+                            self.assertLess(fall_frames,80)
+                        self.assertLessEqual(abs(fall_frames-(153-altitude)/2),dt)
+                        burn_frames=0
+                        while b.v['crash_timer']:
+                            b.call('sound_tick');b.call('crash_tick');burn_frames+=dt
+                            self.assertEqual(b.v['hy'],153)
+                            self.assertLessEqual(burn_frames,96)
+                            if b.v['crash_timer']<=24:
+                                self.assertEqual(b.sprite_patterns[13]+b.sprite_patterns[14],b.a['crash_embers'])
+                        self.assertGreaterEqual(burn_frames,90)
+                        self.assertLess(burn_frames,90+dt)
+                        self.assertEqual((b.v['lives'],b.v['lost']),(lives-1,2))
+                        b.call('new_heli');self.assertEqual(b.v['hy'],153)
+                        b.v['invuln']=0;b.call('crash')
+                        self.assertEqual(b.sprite_patterns[13]+b.sprite_patterns[14],b.a['crash_flames'])
+        verify(SOURCE)
+        for before,after in (
+                ('hy=hy+dt+dt','hy=hy+dt+dt\n    crash_timer=crash_timer-dt'),
+                ('IF hy >= LANDED THEN\n        hy=LANDED','IF hy > 250 THEN\n        hy=LANDED'),
+                ('DEFINE SPRITE 13,2,crash_flames','DEFINE SPRITE 13,2,crash_embers')):
+            self.assertIn(before,SOURCE)
+            with self.assertRaises(AssertionError):verify(SOURCE.replace(before,after))
+
+    def test_crash_flames_cover_hull_with_only_four_sprites(self):
+        def verify(source):
+            b=self.state();b.r=Basic(source).r
+            b.v.update({'hy':80,'#hx':480,'#camera':368,'invuln':0})
+            b.sprites={i:[159,i*4,68,11] for i in range(32)}
+            b.call('crash')
+            for hy,timer in ((80,90),(153,90),(153,24),(153,6)):
+                b.v.update(hy=hy,crash_timer=timer)
+                for beat in (0,1):
+                    b.v['rotor_phase']=beat;b.call('draw_actors')
+                    live={i:s for i,s in b.sprites.items() if s[0]<191 and s[3]&15}
+                    self.assertEqual(set(live),set(range(4)) if timer>24 else {0,1})
+                    self.assertEqual({live[i][2] for i in (0,1)},{52,56})
+                    self.assertEqual([live[i][3] for i in (0,1)],[10,8])
+                    if timer>24:self.assertEqual([live[i][3] for i in (2,3)],[14,14])
+                    self.assertEqual(b.calls.get('world_sprite',0),0)
+            b.call('clock_reset');self.assertEqual(b.v['fire_gate'],2)
+            face=b.v.get('face',0);b.v['cont1.button']=1
+            for _ in range(60):b.call('fire_control')
+            self.assertEqual(b.v.get('face',0),face)
+        verify(SOURCE)
+        with self.assertRaises(AssertionError):
+            verify(SOURCE.replace('GOSUB hide_all\nDEFINE SPRITE 13','DEFINE SPRITE 13'))
+
+    def test_crash_fire_art_becomes_small_grounded_embers(self):
+        import generate as art
+        flame=[art.sprite_bytes(art.fire_sprite(rows)) for rows in art.CRASH_FLAMES]
+        embers=[art.sprite_bytes(art.fire_sprite(rows)) for rows in art.CRASH_EMBERS]
+        self.assertNotEqual(*flame);self.assertNotEqual(*embers)
+        for f,e in zip(art.CRASH_FLAMES,art.CRASH_EMBERS):
+            self.assertLess(sum(v.bit_count() for v in e),sum(v.bit_count() for v in f)//3)
+            self.assertEqual(max(y for y,v in enumerate(e) if v),14)
+        generated=(ROOT/'src/assets.bas').read_text(encoding='utf-8')
+        sprite_block=generated.split('sprite_art:\n')[1].split('crash_embers:\n')[0]
+        data=[int(v) for line in sprite_block.splitlines() if 'DATA BYTE' in line
+              for v in line.split('DATA BYTE')[1].split(',')]
+        self.assertEqual(data,[v for a in art.SPRITES for v in art.sprite_bytes(a)])
+        self.assertEqual(data[13*32:15*32],sum(flame,[]))
     def test_landing_casualty(self):
         b=self.state();b.v['old_y']=150;b.call('people_tick')
         self.assertEqual((b.v['lost'],b.v['aboard']),(1,0));self.assertEqual(self.total(b),64)

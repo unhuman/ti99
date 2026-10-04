@@ -191,10 +191,8 @@ IF hud_dirty THEN GOSUB hud
 GOTO main_loop
 
 crash_frame:
-IF crash_timer > dt THEN
-    crash_timer=crash_timer-dt
-ELSE
-    crash_timer=0
+GOSUB crash_tick
+IF crash_timer = 0 THEN
     IF lives = 0 THEN GOTO result_screen
     GOSUB new_heli
     GOSUB game_screen
@@ -240,6 +238,7 @@ RETURN
 
 clock_reset:
 fire_gate=1
+IF crash_timer THEN fire_gate=2
 fire_held=0:fire_hold=0:fire_turned=0
 fire_seen=fire_events
 #last=FRAME
@@ -1046,6 +1045,9 @@ RETURN
 crash:
 IF invuln THEN RETURN
 IF crash_timer THEN RETURN
+GOSUB silence
+GOSUB hide_all
+DEFINE SPRITE 13,2,crash_flames
 lost=lost+aboard
 aboard=0
 FOR cp=0 TO 63
@@ -1056,6 +1058,28 @@ crash_timer=90
 hud_dirty=1
 #blast_x=#hx+8:blast_y=hy
 GOSUB explode
+RETURN
+
+crash_tick:
+' Hold the burn timer during the fall; the final life also reaches the ground.
+IF hy < LANDED THEN
+    #move=hspeed*dt
+    GOSUB move_heli
+    hy=hy+dt+dt
+    IF hy >= LANDED THEN
+        hy=LANDED
+        hspeed=0
+        GOSUB explode
+    END IF
+ELSE
+    IF crash_timer > 24 THEN
+        IF crash_timer <= 24+dt THEN DEFINE SPRITE 13,2,crash_embers
+    END IF
+    IF crash_timer > dt THEN crash_timer=crash_timer-dt ELSE crash_timer=0
+END IF
+IF crash_timer > 24 THEN
+    IF noise_timer < 6 THEN noise_timer=6
+END IF
 RETURN
 
 explode:
@@ -1590,18 +1614,9 @@ RETURN
 
 draw_actors:
 GOSUB flag_wave
-IF crash_timer THEN
-    SPRITE 0,209,0,0,0
-    SPRITE 1,209,0,0,0
-ELSE
-    draw_x=#hx-#camera
-    draw_y=hy-1
-    GOSUB heli_pose
-    SPRITE 0,draw_y,draw_x,draw_pat,15
-    draw_x=draw_x+16
-    draw_pat=draw_pat+4
-    SPRITE 1,draw_y,draw_x,draw_pat,15
-END IF
+IF crash_timer THEN GOSUB crash_draw:RETURN
+draw_slot=0:draw_color=15
+GOSUB heli_draw
 draw_slot=4:draw_on=tank_on:#draw_world=#tank_x:draw_y=155:draw_pat=48:draw_color=3
 GOSUB tank_pose
 IF tank_face = 0 THEN draw_pat=240
@@ -1611,7 +1626,7 @@ draw_slot=5:#draw_world=#tank_x+16:draw_color=3:draw_pat=236
 IF tank_face = 0 THEN draw_pat=244
 IF tank_face = 2 THEN draw_pat=252
 GOSUB world_sprite
-draw_slot=6:draw_on=runner_on:#draw_world=#runner_x:draw_y=159:draw_pat=52:draw_color=11
+draw_slot=6:draw_on=runner_on:#draw_world=#runner_x:draw_y=159:draw_color=11
 crowd_kind=person_kind(runner_id)
 crowd_pose_index=anim/8+runner_id
 crowd_pose_index=crowd_pose_index AND 3
@@ -1641,6 +1656,32 @@ IF anim AND 8 THEN draw_pat=76:draw_color=8
 GOSUB world_sprite
 draw_slot=11:draw_on=missile_on:#draw_world=#missile_x:draw_y=missile_y-1:draw_pat=68:draw_color=8
 GOSUB world_sprite
+RETURN
+
+crash_draw:
+' Flames have priority over the hull. Exactly four sprites share any scanline.
+draw_slot=2:draw_color=14
+IF crash_timer <= 24 THEN draw_color=0
+GOSUB heli_draw
+draw_x=#hx-#camera+6
+draw_y=hy-1
+IF hy < LANDED THEN draw_y=hy-8
+draw_pat=52+rotor_phase*4
+SPRITE 0,draw_y,draw_x,draw_pat,10
+draw_x=draw_x+10
+draw_pat=108-draw_pat
+SPRITE 1,draw_y,draw_x,draw_pat,8
+RETURN
+
+heli_draw:
+draw_x=#hx-#camera
+draw_y=hy-1
+GOSUB heli_pose
+SPRITE draw_slot,draw_y,draw_x,draw_pat,draw_color
+draw_x=draw_x+16
+draw_pat=draw_pat+4
+draw_slot=draw_slot+1
+SPRITE draw_slot,draw_y,draw_x,draw_pat,draw_color
 RETURN
 
 heli_pose:
@@ -1874,6 +1915,14 @@ GOSUB clock_reset
 dt=2
 RETURN
 
+practice_star:
+DATA BYTE 80,32,248,32,80,0,0,0
+
+#if TI994A
+BANK 1
+#endif
+' Cold results code shares the permanently selected data bank on TI.
+
 result_screen:
 GOSUB silence
 GOSUB hide_all
@@ -1911,10 +1960,4 @@ ELSE
 END IF
 RETURN
 
-practice_star:
-DATA BYTE 80,32,248,32,80,0,0,0
-
-#if TI994A
-BANK 1
-#endif
 INCLUDE "assets.bas"
