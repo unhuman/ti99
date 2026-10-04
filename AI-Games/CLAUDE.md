@@ -57,6 +57,13 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
   startup mode with `DEFINE CHAR`/`DEFINE COLOR`.
 - **Never `<cmp> AND <cmp>` / `<cmp> OR <cmp>` on TI** — the 0.9.2 TMS9900 backend ANDs against
   a stale register. Nest single-comparison `IF`s.
+- **A bare `IF #word AND 1 THEN` can test the HIGH byte on TI.** Hard Hat Mack's
+  five-point score formatter compiled that expression as `movb @cvb__SCVALUE,r0`,
+  so a stored score of 1000 displayed as 5005 instead of 5000. Preserve the word
+  width explicitly: `#scodd = #scvalue AND 1`, then `IF #scodd THEN ...`.
+  Verify `mov @cvb__SCVALUE,r0 / andi r0,1` in the generated assembly. Its TI
+  `assets/checkbank.py` checks both score formatters and rejects byte-read mutations;
+  source-level arithmetic tests alone cannot detect this backend error.
 - **CVBasic has NO local variables.** Every variable is global, so a scratch temp that reuses a
   state variable's name silently corrupts it — a camera temp named `#hi` clobbered the HIGH
   SCORE every frame. Prefix temps per routine and grep the name before adding one.
