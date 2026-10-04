@@ -27,6 +27,9 @@ param(
     [string]$Keys = "",
     # Timed gameplay sequence: hex-key:ms, or wait:ms. '+' holds a chord.
     [string]$Steps = "",
+    # Clear held test controls after an emulator reload/focus transition.
+    [switch]$ReleaseControls,
+    [switch]$RefocusSteps,
     [int]$HoldMs = 120,
     [int]$GapMs = 60,
     [int]$SettleMs = 400
@@ -46,6 +49,8 @@ public class W99 {
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
+    [DllImport("user32.dll")] public static extern bool InvalidateRect(IntPtr h, IntPtr rect, bool erase);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -100,17 +105,32 @@ if ([W99]::GetForegroundWindow() -ne $h) {
     Start-Sleep -Milliseconds 350
 }
 if ([W99]::GetForegroundWindow() -ne $h) {
+    if ($Keys -ne "" -or $Steps -ne "" -or $ReleaseControls) {
+        throw 'Classic99 could not acquire focus; no game input was sent.'
+    }
     Write-Warning ("Classic99 is NOT the foreground window -- keys will go " +
                    "elsewhere and the capture will show whatever is on top. " +
                    "Click the emulator once, or re-run.")
 }
 
+if ($ReleaseControls) {
+    if ([W99]::GetForegroundWindow() -ne $h) { throw 'Review window lost focus' }
+    foreach ($vk in @(0x25,0x26,0x27,0x28,0x09,0x30,0x31,0x50)) {
+        [W99]::keybd_event([byte]$vk,0,2,[IntPtr]::Zero)
+    }
+}
 if ($Steps -ne "") {
     foreach ($step in ($Steps -split ',')) {
         $parts=$step.Split(':')
         $duration=[int]$parts[1]
         if ($duration -lt 0 -or $duration -gt 15000) { throw 'Invalid input duration' }
         if ($parts[0] -eq 'wait') { Start-Sleep -Milliseconds $duration; continue }
+        if ($RefocusSteps -and [W99]::GetForegroundWindow() -ne $h) {
+            [W99]::keybd_event(0x12,0,0,[IntPtr]::Zero)
+            [W99]::keybd_event(0x12,0,2,[IntPtr]::Zero)
+            [void][W99]::SetForegroundWindow($h)
+            Start-Sleep -Milliseconds 150
+        }
         if ([W99]::GetForegroundWindow() -ne $h) { throw 'Review window lost focus' }
         $pressed=@($parts[0].Split('+') | ForEach-Object { [byte][Convert]::ToInt32($_,16) })
         try {
@@ -145,7 +165,18 @@ if ($w -le 0 -or $ht -le 0) { Write-Error "client rect is empty"; exit 1 }
 
 $bmp = New-Object System.Drawing.Bitmap $w, $ht
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($o.X, $o.Y, 0, 0, (New-Object System.Drawing.Size $w, $ht))
+# Classic99's desktop surface can expose only recently repainted regions,
+# leaving a screenshot with missing HUD/scenery. Ask the window to paint a
+# complete client image; Video > Stretch Mode > DIB supports this paint path.
+$dc = $g.GetHdc()
+try {
+    [void][W99]::InvalidateRect($h, [IntPtr]::Zero, $false)
+    $painted = [W99]::PrintWindow($h, $dc, 3)
+}
+finally { $g.ReleaseHdc($dc) }
+if (-not $painted) {
+    $g.CopyFromScreen($o.X, $o.Y, 0, 0, (New-Object System.Drawing.Size $w, $ht))
+}
 $g.Dispose()
 $bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
 $bmp.Dispose()
