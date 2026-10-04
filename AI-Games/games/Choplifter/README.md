@@ -41,7 +41,7 @@ The sparse star field scrolls in three depth bands: upper stars at one-eighth of
 
 ## Build
 
-From this directory on the configured Windows development machine:
+From `AI-Games/games/Choplifter/` on the configured Windows development machine:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 All

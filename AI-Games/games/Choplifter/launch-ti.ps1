@@ -1,6 +1,6 @@
 param([int]$ReviewProcessId=0)
 $ErrorActionPreference='Stop'
-$projectRoot=Split-Path $PSScriptRoot -Parent
+$projectRoot=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $rom=Join-Path $PSScriptRoot 'build/ti/CHOPLIFT_8.bin'
 $emulator='C:\GameBase\TI99-4A\Emulators\classic99\classic99.exe'
 if (!(Test-Path -LiteralPath $rom)) { throw 'Build the TI cartridge first.' }

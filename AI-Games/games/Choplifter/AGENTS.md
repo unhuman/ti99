@@ -1,6 +1,6 @@
 # Choplifter
 
-This folder is the Choplifter CVBasic game. Read `../CLAUDE.md`, `README.md` and
+This folder is the Choplifter CVBasic game. Read `../../CLAUDE.md`, `README.md` and
 `DESIGN.md` before changes. Keep work scoped here; other games live in the parent
 repository. Edit `assets/generate.py` before regenerating `src/assets.bas`.
 

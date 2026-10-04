@@ -23,7 +23,7 @@ def main():
     run(sys.executable,'-B','assets/generate.py')
     run(sys.executable,'-B','tools/check.py')
     for gate in ('bigvar.py','bigconst.py','gosubtrace.py'):
-        run(sys.executable,ROOT.parent/'tools'/gate,ROOT/'src/CHOPLIFT.bas')
+        run(sys.executable,ROOT.parents[1]/'tools'/gate,ROOT/'src/CHOPLIFT.bas')
     # Copy build inputs, preserving the source INCLUDES and leaving sources clean.
     for f in (ROOT/'src').glob('*.bas'):
         (out/f.name).write_bytes(f.read_bytes())
