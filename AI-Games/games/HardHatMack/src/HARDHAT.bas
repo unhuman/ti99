@@ -221,6 +221,7 @@ boot:
 	' Patterns 31-34: right white/purple, left white/purple recovery stride.
 	' Dance owns 27-30; sprite slots remain 0 and 8 for both Mack layers.
 	DEFINE SPRITE 31,4,mack_run_extra
+	GOSUB mack_air_chars
 	DEFINE SPRITE 20,1,lift_bitmap
 	DEFINE SPRITE 21,1,cage_bitmap
 	DEFINE SPRITE 22,1,steel_bitmap
@@ -335,6 +336,9 @@ main_loop:
 	IF st = S_JUMP THEN mfr = 32
 	IF st = S_FALL THEN mfr = 32
 	IF st = S_TRAMP THEN mfr = 32
+	IF mfr = 32 THEN
+		IF mdir = 0 THEN mfr = 140
+	END IF
 	IF edance THEN mfr = dancebody
 	IF st <> S_DEAD THEN
 		SPRITE 0,my - 1,mx,mfr,15
@@ -462,7 +466,18 @@ fixture_chars:
 	#endif
 	RETURN
 
+mack_air_chars:
+	#if TI994A
+	BANK SELECT 4
+	#endif
+	GOSUB banked_mack_air_chars
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
 fixture_draw:
+	IF lv <> 3 THEN RETURN
 	#if TI994A
 	BANK SELECT 3
 	#endif
@@ -532,6 +547,10 @@ footstep_sound:
 	RETURN
 
 reset_claws:
+	' Factory sparks borrow the middle-third hazard cells. Restore them for
+	' every site/death before that site's animation paints its own version.
+	DEFINE VRAM 3360,16,haz_pat
+	DEFINE VRAM 11552,16,haz_col
 	clawstep = 0
 	clawclock = 0
 	clawlast = 255
@@ -541,6 +560,7 @@ reset_claws:
 	drivelast = 255
 	chainlast = 255
 	firelast = 255
+	sparklast = 255
 	firedepth = 0
 	RETURN
 
@@ -757,8 +777,14 @@ start_jump:
 	fcy = my		' fall origin: tracks the arc's apex while rising
 	bonbeam = 0		' leaving the crane beam -- stop being carried
 	jhz = 1
-	IF jl THEN jhz = 0
-	IF jr THEN jhz = 2
+	IF jl THEN
+		jhz = 0
+		mdir = 0
+	END IF
+	IF jr THEN
+		jhz = 2
+		mdir = 1
+	END IF
 	RETURN
 
 st_walk:
@@ -1671,6 +1697,13 @@ conv_sup:
 	csup = 0
 	IF cvn = 0 THEN RETURN
 	fx = mx + 8
+	' At the flat belt's right roller, use the supported pre-walk foot:
+	' right input and left transport cancel before any walk-off can occur.
+	IF lv = 3 THEN
+		IF st = S_WALK THEN
+			IF jr THEN fx = walkx + 8
+		END IF
+	END IF
 	fy = my + 16
 	FOR ci = 0 TO cvn - 1
 		kx0 = cvx0(ci)
@@ -1688,7 +1721,10 @@ conv_sup:
 						' be tipped over the roller into the bins below. An
 						' earlier version stopped him dead at the top, which
 						' made the whole ride passive and safe.
-						IF hzphase AND 1 THEN
+						' Factory belt matches walking: right input cancels drift.
+						cvdrag = hzphase AND 1
+						IF lv = 3 THEN cvdrag = 1
+						IF cvdrag THEN
 						IF cvdir(ci) = 0 THEN
 							IF mx < 240 THEN mx = mx + 1
 						ELSE
@@ -2556,10 +2592,11 @@ site_step:
 	GOSUB hazard_hit
 	ex = 62 - clawshift
 	GOSUB hazard_hit
-	' One pixel per world step, full head rests ON the girder, then retracts.
+	' Faster downstroke (2 px/step), unchanged impact beat and 1 px/step return.
+	' Delay release at the top rather than lengthening the bottom dwell.
 	pressy = 105
 	IF hzphase < 32 THEN
-		pressy = 96 + hzphase
+		pressy = 68 + hzphase * 2
 		IF pressy > 124 THEN pressy = 124
 	END IF
 	IF hzphase >= 32 THEN
@@ -2613,10 +2650,10 @@ factory_step:
 	END IF
 	' A descending pounder guards the conveyor. Its box stays stationary
 	' on the moving belt in the reference; only Mack is carried leftward.
-	' One pixel every two world steps; reaches the belt and retracts smoothly.
+	' Down 1 px/step, up 1 px per two steps; keep the impact beat at phase 44.
 	pressy = 40
 	IF hzphase < 48 THEN
-		pressy = 40 + hzphase / 2
+		pressy = 18 + hzphase
 		IF pressy > 62 THEN pressy = 62
 	END IF
 	IF hzphase >= 48 THEN
@@ -2686,7 +2723,7 @@ bell_step:
 site_draw:
 	IF cvn > 0 THEN
 		cvaf = (hzphase / 2) AND 7
-		IF lv = 3 THEN cvaf = (8 - cvaf) AND 7
+		IF lv = 3 THEN cvaf = (8 - (hzphase AND 7)) AND 7
 		' Consecutive 48-byte phases; no loop-rate-dependent animation clock.
 		IF lv = 3 THEN
 			' The flat belt and both rollers occupy only the middle screen third.
@@ -2784,17 +2821,13 @@ hud_all:
 	RETURN
 
 hud_lives:
-	' Reserve hats, right-justified below the score; room for 838 plus a bonus.
-	#va = VADDR(1,22)
-	FOR hl_slot = 0 TO 8
-		IF hl_slot + lives > 8 THEN
-			ch = T_HAT
-		ELSE
-			ch = T_VOID
-		END IF
-		VPOKE #va,ch
-		#va = #va + 1
-	NEXT hl_slot
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_hud_lives
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 	'
@@ -3345,7 +3378,7 @@ level1_data:
 	' Objects. FOUR holes + FOUR bricks (any brick fills any hole); the
 	' drill and first-tour vandal use fixed routes. Repeat tours add a second
 	' independently chosen roamer in enemy_setup.
-	DATA BYTE 5,13, 21,24		' Mack spawn: one cell right of the support
+	DATA BYTE 5,13, 21,25		' Mack spawn: two cells right of middle pedestal
 	DATA BYTE 5,7, 23,29		' trampoline: bottom (row 23), cols 29-30
 	DATA BYTE 5,1, 21,11		' hole: 1st floor (beam 1)
 	DATA BYTE 5,1, 9,18		' hole: beam 4
@@ -3356,7 +3389,7 @@ level1_data:
 	DATA BYTE 5,2, 16,25		' brick: beam 2
 	DATA BYTE 5,2, 20,5		' brick: 1st floor (torso row 20)
 	DATA BYTE 5,4,1, 4,21		' bonus wrench: top beam (torso row 4)
-	DATA BYTE 5,4,2, 20,25		' bonus spray can: 1st floor (clear of braces)
+	DATA BYTE 5,4,2, 20,16		' bonus spray can: two cells right of middle pedestal
 	DATA BYTE 5,3, 21,4,25		' drill starts bottom-left (beam 1)
 	DATA BYTE 5,6, 1,9,21		' elevator: cols 1-2, 4th beam..1st beam
 	DATA BYTE 5,11, 21,3,26		' vandal starts on the bottom beam
@@ -3405,11 +3438,7 @@ level2_data:
 	DATA BYTE 1, 13,18,9,1		' mid-right tier   (cols 18-26)
 	DATA BYTE 1, 17,2,9,1		' lower-left tier  (cols 2-10)
 	DATA BYTE 1, 17,18,9,1		' lower-right tier (cols 18-26)
-	' Enclosed pump sits on the ground beside the chain, not under the beam.
-	DATA BYTE 8, 21,24,1,120
-	DATA BYTE 8, 21,25,1,121
-	DATA BYTE 8, 22,24,1,122
-	DATA BYTE 8, 22,25,1,123
+	' Clear floor approach to the chain; the decorative pump is removed.
 	DATA BYTE 2, 26,18,4		' chain at the platform's right edge
 	DATA BYTE 1, 23,2,28,2		' ground (cols 2-29)
 	' Conveyor MACHINES (op 6: bottom-drum row,col, ROWS-to-rise h). True 2:1:
@@ -3417,14 +3446,16 @@ level2_data:
 	DATA BYTE 6, 8,22,2		' right conveyor: drum (8,22) -> top drum (6,26)
 	' The repaired jump reaches the crane from the reference's original position.
 	DATA BYTE 6, 22,5,2		' left conveyor: drum (22,5) -> top drum (20,9)
-	' Fully supported two-nozzle furnace; the jets retract into its cap.
-	DATA BYTE 8, 3,28,1,124
-	DATA BYTE 8, 3,29,1,125
-	DATA BYTE 8, 4,28,1,126
-	DATA BYTE 8, 4,29,1,127
-	DATA BYTE 8, 5,28,1,180
-	DATA BYTE 8, 5,29,1,181
-	DATA BYTE 1, 6,28,2,1
+	' Supported furnace: left-facing outlet, flame curls upward as it extends.
+	DATA BYTE 8, 3,26,1,124
+	DATA BYTE 8, 3,27,1,125
+	DATA BYTE 8, 4,26,1,126
+	DATA BYTE 8, 4,27,1,127
+	DATA BYTE 8, 4,28,1,120
+	DATA BYTE 8, 4,29,1,121
+	DATA BYTE 8, 5,28,1,122
+	DATA BYTE 8, 5,29,1,123
+	DATA BYTE 8, 6,28,2,134		' centered rivets across the furnace support
 	' The ground stack is scenery; the mid-left obstacle is hazardous.
 	' The stack under the
 	' lower-left tier used to be painted as a girder, which handed the player
@@ -3516,13 +3547,13 @@ level3_data:
 	DATA BYTE 8, 19,26,1,125
 	DATA BYTE 8, 20,25,1,126
 	DATA BYTE 8, 20,26,1,127
-	' Top-left machine: a FLAT belt (op 9) carrying everything LEFT into the
-	' grinder. Ride it to the end and you die -- get off, or grab the box.
+	' Flat belt carries Mack LEFT into the wall's continuous spark discharge.
 	DATA BYTE 9, 9,2,10,1		' row 9, cols 2-11, direction 1 = left
 	' Shared belt surface plus the last two pixels of the smasher stroke.
 	DATA BYTE 8, 9,7,1,249
 	DATA BYTE 8, 9,8,1,250
-	DATA BYTE 1, 8,2,2,4		' grinder, cols 2-3, at torso height on the belt
+	DATA BYTE 8, 8,2,1,164		' wall spark emitter, left half
+	DATA BYTE 8, 8,3,1,165		' outward spark trails, right half
 	' Chains, where the reference hangs them.
 	DATA BYTE 10, 4,6,2,155		' top beam -> conveyor, the ESCAPE chain (col 4)
 	' No right-end shortcut: enter the conveyor from the lift and escape left.
@@ -3912,16 +3943,16 @@ mack_bitmap:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "......XXXX......"
-	BITMAP ".....XXXXXX....."
-	BITMAP "......XXXX.X...."
+	BITMAP ".....XXXXXXX...."
+	BITMAP ".......XX.XX...."
 	BITMAP ".......XXX......"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP ".....X....X....."
+	BITMAP ".....X.....X...."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "......XX.XX....."
+	BITMAP "................"
 	BITMAP ".....XXX.XXX...."
 mackw_bitmap:
 	' Generated by assets/genfixtures.py; edit the generator.
@@ -3930,17 +3961,17 @@ mackw_bitmap:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "......XXXX......"
-	BITMAP ".....XXXXXX....."
-	BITMAP "......XXXX.X...."
+	BITMAP ".....XXXXXXX...."
+	BITMAP ".......XX.XX...."
 	BITMAP ".......XXX......"
 	BITMAP "................"
-	BITMAP "............X..."
-	BITMAP "...X............"
+	BITMAP "...........XX..."
+	BITMAP "....X..........."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "..XX............"
-	BITMAP "..........XXX..."
+	BITMAP "................"
+	BITMAP "..XXX.....XXX..."
 mackl_bitmap:
 	' Generated by assets/genfixtures.py; edit the generator.
 	BITMAP "................"
@@ -3948,16 +3979,16 @@ mackl_bitmap:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "......XXXX......"
-	BITMAP ".....XXXXXX....."
-	BITMAP "....X.XXXX......"
+	BITMAP "....XXXXXXX....."
+	BITMAP "....XX.XX......."
 	BITMAP "......XXX......."
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP ".....X....X....."
+	BITMAP "....X.....X....."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP ".....XX.XX......"
+	BITMAP "................"
 	BITMAP "....XXX.XXX....."
 mackl2_bitmap:
 	' Generated by assets/genfixtures.py; edit the generator.
@@ -3966,27 +3997,27 @@ mackl2_bitmap:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "......XXXX......"
-	BITMAP ".....XXXXXX....."
-	BITMAP "....X.XXXX......"
+	BITMAP "....XXXXXXX....."
+	BITMAP "....XX.XX......."
 	BITMAP "......XXX......."
 	BITMAP "................"
-	BITMAP "...X............"
-	BITMAP "............X..."
+	BITMAP "...XX..........."
+	BITMAP "...........X...."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "............XX.."
-	BITMAP "...XXX.........."
+	BITMAP "................"
+	BITMAP "...XXX.....XXX.."
 mackj_bitmap:
-	' Mack airborne: arms out, legs spread mid-leap. 12 px, bottom-anchored.
+	' Generated by assets/genfixtures.py; edit the generator.
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP ".....XXXXXX....."
-	BITMAP "....XXXXXXXX...."
-	BITMAP "....X.XXXX.X...."
-	BITMAP ".X...XXXX...X..."
+	BITMAP "......XXXX......"
+	BITMAP ".....XXXXXXX...."
+	BITMAP ".......XX.XX...."
+	BITMAP ".X.....XXX..X..."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
@@ -3995,7 +4026,6 @@ mackj_bitmap:
 	BITMAP "................"
 	BITMAP "..XX........XX.."
 	BITMAP "................"
-
 elev_bitmap:
 	' Elevator platform: a 16x4 slab (rest transparent).
 	BITMAP "XXXXXXXXXXXXXXXX"
@@ -4157,10 +4187,11 @@ mack_colour:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP ".....XXXXX......"
+	BITMAP ".....XX........."
+	BITMAP "......X........."
+	BITMAP "......XXXX......"
 	BITMAP ".....XXXXXX....."
+	BITMAP "......XXXXX....."
 	BITMAP "......XXXX......"
 	BITMAP "......XXXX......"
 	BITMAP "......XX.XX....."
@@ -4172,27 +4203,27 @@ mack_colour:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP ".....XXXXX......"
-	BITMAP "....XXXXXXXX...."
-	BITMAP ".....XXXX......."
-	BITMAP ".....XXXXX......"
-	BITMAP "....XXX.XXX....."
-	BITMAP "...XXX...XXX...."
-	BITMAP "..........XX...."
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "......XXXXX....."
+	BITMAP ".....XX........."
+	BITMAP "......X........."
+	BITMAP "......XXXX......"
 	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXX......"
+	BITMAP ".....XXXXX......"
+	BITMAP ".....XX.XXX....."
+	BITMAP "....XX...XX....."
+	BITMAP "...XX.....XX...."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".........XX....."
+	BITMAP ".........X......"
+	BITMAP "......XXXX......"
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXX......"
 	BITMAP "......XXXX......"
 	BITMAP "......XXXX......"
 	BITMAP ".....XX.XX......"
@@ -4204,16 +4235,15 @@ mack_colour:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
+	BITMAP ".........XX....."
+	BITMAP ".........X......"
+	BITMAP "......XXXX......"
+	BITMAP ".....XXXXXX....."
 	BITMAP "......XXXXX....."
-	BITMAP "....XXXXXXXX...."
-	BITMAP ".......XXXX....."
 	BITMAP "......XXXXX....."
-	BITMAP ".....XXX.XXX...."
-	BITMAP "....XXX...XXX..."
-	BITMAP "....XX.........."
+	BITMAP ".....XXX.XX....."
+	BITMAP ".....XX...XX...."
+	BITMAP "....XX.....XX..."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
@@ -4221,8 +4251,8 @@ mack_colour:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "................"
-	BITMAP "................"
+	BITMAP ".....XX........."
+	BITMAP "......X........."
 	BITMAP ".XX.XXXXXX.XX..."
 	BITMAP "..XXXXXXXXXX...."
 	BITMAP ".....XXXXXX....."
@@ -4238,64 +4268,64 @@ mack_run_extra:
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "......XXXX......"
-	BITMAP ".....XXXXXX....."
-	BITMAP "......XXXX.X...."
+	BITMAP ".....XXXXXXX...."
+	BITMAP ".......XX.XX...."
 	BITMAP ".......XXX......"
 	BITMAP "................"
 	BITMAP "...XX..........."
 	BITMAP "...........X...."
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "..........XX...."
 	BITMAP "................"
-	BITMAP "....XXX........."
-	BITMAP "................"
-	BITMAP "................"
+	BITMAP "..XX............"
+	BITMAP "........XXX....."
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP ".....XXXXX......"
-	BITMAP ".....XXXXXX....."
-	BITMAP ".....XXXX.X....."
-	BITMAP "......XXXX......"
-	BITMAP "......XX.XXX...."
-	BITMAP "......XX........"
 	BITMAP ".....XX........."
+	BITMAP "......X........."
+	BITMAP "......XXXX......"
+	BITMAP ".....XXXXXX....."
+	BITMAP ".....XXXXX......"
+	BITMAP "......XXXX......"
+	BITMAP "....XXX.XX......"
+	BITMAP "...XX...XX......"
+	BITMAP "........XX......"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "......XXXX......"
-	BITMAP ".....XXXXXX....."
-	BITMAP "....X.XXXX......"
+	BITMAP "....XXXXXXX....."
+	BITMAP "....XX.XX......."
 	BITMAP "......XXX......."
 	BITMAP "................"
 	BITMAP "...........XX..."
 	BITMAP "....X..........."
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "....XX.........."
 	BITMAP "................"
-	BITMAP ".........XXX...."
-	BITMAP "................"
-	BITMAP "................"
+	BITMAP "............XX.."
+	BITMAP ".....XXX........"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
 	BITMAP "................"
-	BITMAP "......XXXXX....."
-	BITMAP ".....XXXXXX....."
-	BITMAP ".....X.XXXX....."
-	BITMAP "......XXXX......"
-	BITMAP "....XXX.XX......"
-	BITMAP "........XX......"
 	BITMAP ".........XX....."
+	BITMAP ".........X......"
+	BITMAP "......XXXX......"
+	BITMAP ".....XXXXXX....."
+	BITMAP "......XXXXX....."
+	BITMAP "......XXXX......"
+	BITMAP "......XX.XXX...."
+	BITMAP "......XX...XX..."
+	BITMAP "......XX........"
 	BITMAP "................"
 lift_bitmap:
 	BITMAP "XXXXXXXXXXXXXXXX"
@@ -4862,15 +4892,46 @@ banked_factory_output:
 	RETURN
 
 banked_furnace_step:
-	' Two nozzles extend and retract together, one pixel per two world steps.
+	' Extend left one pixel per two steps, curling up beyond the outlet.
 	firedepth = (hzphase / 2) AND 31
 	IF firedepth > 16 THEN firedepth = 32 - firedepth
-	' The cabinet and current flame envelope, not the entire upper corner.
-	IF mx + 13 < 225 THEN RETURN
-	IF mx + 2 > 238 THEN RETURN
-	IF my + 4 > 47 THEN RETURN
-	IF my + 15 < 40 - firedepth THEN RETURN
+	' Cabinet contact, then the actual curved jet across Mack's narrow torso.
+	IF mx + 10 >= 225 THEN
+		IF mx + 5 <= 238 THEN
+			IF my + 4 <= 47 THEN
+				IF my + 15 >= 34 THEN GOSUB mack_die
+			END IF
+		END IF
+	END IF
+	IF firedepth = 0 THEN RETURN
+	fireleft = 224 - firedepth
+	IF mx + 10 < fireleft THEN RETURN
+	IF mx + 5 > 223 THEN RETURN
+	firelo = mx + 5
+	IF firelo < fireleft THEN firelo = fireleft
+	firehi = mx + 10
+	IF firehi > 223 THEN firehi = 223
+	firetop = 37
+	IF firelo < 218 THEN firetop = firelo - 181
+	firebottom = 39
+	IF firehi < 218 THEN firebottom = firehi - 179
+	IF my + 4 > firebottom THEN RETURN
+	IF my + 15 < firetop THEN RETURN
 	GOSUB mack_die
+	RETURN
+
+banked_hud_lives:
+	' Reserve hats, right-justified below the score; room for 838 plus a bonus.
+	#va = VADDR(1,22)
+	FOR hl_slot = 0 TO 8
+		IF hl_slot + lives > 8 THEN
+			ch = T_HAT
+		ELSE
+			ch = T_VOID
+		END IF
+		VPOKE #va,ch
+		#va = #va + 1
+	NEXT hl_slot
 	RETURN
 
 animation_end:
@@ -4935,10 +4996,7 @@ banked_girder_chars:
 	IF lv = 1 THEN
 		DEFINE CHAR 120,2,support_pat
 		DEFINE COLOR 120,2,support_col
-	ELSEIF lv = 2 THEN
-		DEFINE CHAR 120,4,beat_pat
-		DEFINE COLOR 120,4,beat_col
-	ELSE
+	ELSEIF lv = 3 THEN
 		DEFINE CHAR 120,2,eject_pat
 		DEFINE COLOR 120,2,eject_col
 	END IF
@@ -4971,16 +5029,7 @@ banked_fixture_chars:
 	RETURN
 
 banked_fixture_draw:
-	IF lv = 2 THEN
-		' The pump follows the crane's vertical travel, including its idle state.
-		fixturepose = (bmy / 4) AND 3
-		IF bmd THEN fixturepose = 3 - fixturepose
-		IF fixturepose <> fixturelast THEN
-			fixturelast = fixturepose
-			DEFINE VRAM 5056,32,VARPTR beat_pat(fixturepose * 32)
-			DEFINE VRAM 13248,32,VARPTR beat_col(fixturepose * 32)
-		END IF
-	ELSE
+	IF lv = 3 THEN
 		' The drive shares the paddle phase: left down, right up, both wheels CCW.
 		chainpose = pnphase AND 7
 		IF chainpose <> chainlast THEN
@@ -5143,10 +5192,10 @@ fixture_pat:
 	DATA BYTE $86,$06,$06,$0C,$18,$F0,$E0,$FF
 	DATA BYTE $FF,$FF,$FF,$FF,$03,$02,$02,$0F
 	DATA BYTE $FF,$FF,$FF,$FF,$C0,$40,$40,$F0
-	DATA BYTE $07,$07,$3F,$3F,$81,$81,$8F,$8F
-	DATA BYTE $E0,$E0,$FC,$FC,$81,$81,$F1,$F1
-	DATA BYTE $80,$80,$80,$80,$92,$FF,$3F,$FF
-	DATA BYTE $01,$01,$01,$01,$49,$FF,$FC,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 	DATA BYTE $01,$FF,$FF,$FF,$01,$FF,$FF,$FF
 	DATA BYTE $C9,$8D,$8B,$89,$C9,$FF,$FF,$18
 	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
@@ -5177,50 +5226,14 @@ fixture_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$D1,$11
 	DATA BYTE $11,$11,$11,$11,$F1,$F1,$F1,$F1
 	DATA BYTE $11,$11,$11,$11,$F1,$F1,$F1,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
+	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
 	DATA BYTE $F1,$11,$11,$11,$F1,$11,$11,$11
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$11,$11,$F1
 	DATA BYTE $11,$11,$11,$11,$11,$11,$11,$11
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$11,$11
-beat_pat:
-	' Generated by assets/genfixtures.py; edit the generator.
-	DATA BYTE $07,$07,$3F,$3F,$81,$81,$8F,$8F
-	DATA BYTE $E0,$E0,$FC,$FC,$81,$81,$F1,$F1
-	DATA BYTE $80,$80,$80,$80,$92,$FF,$3F,$FF
-	DATA BYTE $01,$01,$01,$01,$49,$FF,$FC,$FF
-	DATA BYTE $07,$07,$3F,$3F,$81,$81,$81,$8F
-	DATA BYTE $E0,$E0,$FC,$FC,$81,$81,$81,$F1
-	DATA BYTE $8F,$80,$80,$80,$92,$FF,$3F,$FF
-	DATA BYTE $F1,$01,$01,$01,$49,$FF,$FC,$FF
-	DATA BYTE $07,$07,$3F,$3F,$81,$81,$81,$81
-	DATA BYTE $E0,$E0,$FC,$FC,$81,$81,$81,$81
-	DATA BYTE $8F,$8F,$80,$80,$92,$FF,$3F,$FF
-	DATA BYTE $F1,$F1,$01,$01,$49,$FF,$FC,$FF
-	DATA BYTE $07,$07,$3F,$3F,$81,$81,$81,$81
-	DATA BYTE $E0,$E0,$FC,$FC,$81,$81,$81,$81
-	DATA BYTE $81,$8F,$8F,$80,$92,$FF,$3F,$FF
-	DATA BYTE $81,$F1,$F1,$01,$49,$FF,$FC,$FF
-beat_col:
-	' Generated by assets/genfixtures.py; edit the generator.
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F1,$F1,$F1,$F1,$F4,$F4,$F4,$F4
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
-	DATA BYTE $F4,$F4,$F4,$F4,$F4,$F1,$31,$F1
 inflash_pat:
 	' Generated by assets/genfixtures.py; edit the generator.
 	DATA BYTE $01,$FF,$FF,$FF,$01,$FF,$FF,$FF
@@ -5370,6 +5383,7 @@ banked_spring_transfer:
 				fcy = my
 				jhz = 0
 				IF springdir = 1 THEN jhz = 2
+				mdir = springdir
 			END IF
 		END IF
 		RETURN
@@ -5474,8 +5488,8 @@ banked_title:
 	DEFINE COLOR 110,1,credit_col
 	GOSUB quiet_screen
 	CLS
-	DEFINE CHAR 128,84,title_pat
-	DEFINE COLOR 128,84,title_col
+	DEFINE CHAR 128,83,title_pat
+	DEFINE COLOR 128,83,title_col
 	SCREEN title_map
 	PRINT AT CPOS(0,2),"LAST SCORE"
 	PRINT AT CPOS(0,20),"HIGH SCORE"
@@ -5593,8 +5607,8 @@ title_pat:
 	DATA BYTE $00,$00,$00,$88,$00,$00,$00,$00,$00,$00,$E0,$E0,$E0,$E0,$E0,$00
 	DATA BYTE $00,$AA,$00,$88,$00,$00,$00,$00,$C1,$C1,$C1,$C1,$C1,$C1,$C1,$00
 	DATA BYTE $80,$80,$80,$80,$80,$80,$80,$00,$00,$00,$00,$E7,$00,$00,$00,$00
-	DATA BYTE $C6,$C6,$C6,$C6,$C6,$C6,$C6,$C6,$00,$00,$00,$F3,$F3,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$3F,$3F,$00,$00,$00
+	DATA BYTE $C6,$C6,$C6,$C6,$C6,$C6,$C6,$C6,$00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$E7,$E7,$00,$00,$00
 title_col:
 	' Generated by assets/gentitle.py; edit the generator.
 	DATA BYTE $11,$EE,$11,$11,$11,$11,$11,$11,$41,$41,$41,$41,$41,$41,$41,$41
@@ -5637,8 +5651,8 @@ title_col:
 	DATA BYTE $11,$11,$AA,$BA,$AA,$AA,$AA,$11,$11,$11,$A1,$A1,$A1,$A1,$A1,$11
 	DATA BYTE $AA,$BA,$AA,$BA,$AA,$AA,$AA,$11,$A1,$A1,$A1,$A1,$A1,$A1,$A1,$11
 	DATA BYTE $A1,$B1,$A1,$B1,$A1,$A1,$A1,$11,$FF,$66,$66,$61,$66,$66,$11,$11
-	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$FF,$BB,$AA,$A1,$A1,$AA,$44,$44
-	DATA BYTE $FF,$BB,$AA,$AA,$AA,$AA,$44,$44,$FF,$BB,$AA,$A1,$A1,$AA,$44,$44
+	DATA BYTE $41,$41,$41,$41,$41,$41,$41,$41,$FF,$BB,$AA,$AA,$AA,$AA,$44,$44
+	DATA BYTE $FF,$BB,$AA,$A1,$A1,$AA,$44,$44
 title_map:
 	' Generated by assets/gentitle.py; edit the generator.
 	DATA BYTE $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
@@ -5673,8 +5687,8 @@ title_map:
 	DATA BYTE $20,$20,$20,$20,$20,$20,$20,$20,$CF,$CF,$20,$20,$20,$20,$86,$20
 	DATA BYTE $20,$D0,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
 	DATA BYTE $20,$20,$20,$20,$20,$20,$20,$CF,$CF,$CF,$20,$20,$20,$20,$D0,$20
-	DATA BYTE $20,$20,$D1,$D2,$D3,$D1,$D2,$D3,$D1,$D2,$D3,$D1,$D2,$D3,$D1,$D2
-	DATA BYTE $D3,$D1,$D2,$D3,$D1,$D2,$D3,$D1,$D2,$D3,$D1,$D2,$D3,$D2,$20,$20
+	DATA BYTE $20,$20,$D1,$D1,$D2,$D2,$D1,$D1,$D1,$D1,$D1,$D2,$D2,$D1,$D1,$D1
+	DATA BYTE $D1,$D2,$D2,$D1,$D1,$D1,$D1,$D1,$D2,$D2,$D1,$D1,$D1,$D1,$20,$20
 	DATA BYTE $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
 	DATA BYTE $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
 	DATA BYTE $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20
@@ -5696,6 +5710,43 @@ title_end:
 	BANK 4
 	#endif
 
+banked_mack_air_chars:
+	DEFINE SPRITE 35,2,mack_jump_left
+	RETURN
+mack_jump_left:
+	' Generated by assets/genfixtures.py; edit the generator.
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "......XXXX......"
+	BITMAP "....XXXXXXX....."
+	BITMAP "....XX.XX......."
+	BITMAP "...X..XXX.....X."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "..XX........XX.."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP ".........XX....."
+	BITMAP ".........X......"
+	BITMAP "...XX.XXXXXX.XX."
+	BITMAP "....XXXXXXXXXX.."
+	BITMAP ".....XXXXXX....."
+	BITMAP "....XXXXXXXX...."
+	BITMAP "...XXX....XXX..."
+	BITMAP "..XXX......XXX.."
+	BITMAP "................"
+	BITMAP "................"
 banked_lift_positions:
 	' Direct slots avoid an indexed loop and four route calculations per pixel.
 	#pnlookup = pnphase
@@ -5766,8 +5817,8 @@ lift_y:
 animated_machines:
 	IF lv = 2 THEN
 		IF firelast = 255 THEN
-			DEFINE VRAM 1440,16,furnace_pat
-			DEFINE VRAM 9632,16,furnace_col
+			DEFINE VRAM 960,32,furnace_pat
+			DEFINE VRAM 9152,32,furnace_col
 			DEFINE VRAM 9184,32,fire_col
 		END IF
 		IF firedepth <> firelast THEN
@@ -5786,6 +5837,13 @@ animated_machines:
 	END IF
 	IF lv = 3 THEN
 		GOSUB factory_springs_draw
+		' One two-cell spark stream, advancing outward from the wall.
+		sparkpose = (hzphase / 2) AND 7
+		IF sparklast = 255 THEN DEFINE VRAM 11552,16,spark_col
+		IF sparkpose <> sparklast THEN
+			sparklast = sparkpose
+			DEFINE VRAM 3360,16,VARPTR spark_pat(sparkpose * 16)
+		END IF
 		' The head reaches y=73, directly above the belt rail at y=74.
 		pressfoot = 0
 		IF pressy = 61 THEN pressfoot = 1
@@ -6396,12 +6454,38 @@ press_col:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$F1,$F1
 furnace_pat:
 	' Generated by assets/genconveyors.py; edit the generator.
-	DATA BYTE $3C,$24,$FF,$81,$AD,$81,$81,$FF
-	DATA BYTE $3C,$24,$FF,$81,$B5,$81,$81,$FF
+	DATA BYTE $1C,$1C,$7F,$40,$5F,$50,$DF,$C0
+	DATA BYTE $38,$38,$FE,$02,$FA,$0A,$FA,$02
+	DATA BYTE $40,$5F,$40,$5C,$5C,$40,$7F,$00
+	DATA BYTE $02,$FA,$02,$3A,$3A,$02,$FE,$00
 furnace_col:
 	' Generated by assets/genconveyors.py; edit the generator.
-	DATA BYTE $F1,$F1,$F4,$F4,$F4,$F4,$F4,$F4
-	DATA BYTE $F1,$F1,$F4,$F4,$F4,$F4,$F4,$F4
+	DATA BYTE $31,$31,$D1,$FD,$FD,$F1,$FD,$FD
+	DATA BYTE $31,$31,$D1,$FD,$FD,$F1,$FD,$FD
+	DATA BYTE $FD,$FD,$FD,$FD,$FD,$FD,$D1,$41
+	DATA BYTE $FD,$FD,$FD,$FD,$FD,$FD,$D1,$41
+spark_pat:
+	' Generated by assets/genconveyors.py; edit the generator.
+	DATA BYTE $C0,$C0,$80,$F1,$F0,$80,$C0,$C0
+	DATA BYTE $00,$00,$00,$80,$00,$0C,$00,$00
+	DATA BYTE $C0,$C0,$8C,$F0,$F0,$80,$C0,$C0
+	DATA BYTE $00,$00,$00,$60,$00,$00,$03,$00
+	DATA BYTE $C0,$C0,$83,$F0,$F0,$80,$C0,$C0
+	DATA BYTE $00,$00,$00,$18,$00,$00,$00,$00
+	DATA BYTE $C0,$C0,$80,$F0,$F0,$80,$C0,$C0
+	DATA BYTE $00,$00,$C0,$06,$00,$00,$00,$00
+	DATA BYTE $C0,$C0,$80,$F0,$FC,$80,$C0,$C0
+	DATA BYTE $00,$30,$00,$01,$00,$00,$00,$00
+	DATA BYTE $C0,$C0,$80,$F0,$F3,$80,$C0,$C0
+	DATA BYTE $00,$0C,$00,$00,$00,$00,$00,$00
+	DATA BYTE $C0,$C0,$80,$F8,$F0,$80,$C0,$C0
+	DATA BYTE $03,$00,$00,$00,$C0,$00,$00,$00
+	DATA BYTE $C0,$C0,$80,$F6,$F0,$80,$C0,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$30,$00,$00
+spark_col:
+	' Generated by assets/genconveyors.py; edit the generator.
+	DATA BYTE $E1,$91,$B1,$F1,$F1,$B1,$91,$E1
+	DATA BYTE $E1,$91,$B1,$F1,$F1,$B1,$91,$E1
 fire_pat:
 	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
@@ -6410,73 +6494,73 @@ fire_pat:
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$10
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$01,$01,$01
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$03,$03,$03
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$07,$07,$07
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$0F,$0F,$0F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$1F,$1F,$1F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$3F,$3F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$40,$7F,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$01,$01,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$02,$03,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $04,$06,$07,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$08
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $0C,$0E,$07,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$10,$18
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$10,$10
-	DATA BYTE $00,$00,$00,$00,$00,$00,$08,$08
+	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$20,$30,$38
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $00,$00,$00,$00,$40,$60,$70,$38
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$10,$10,$10
-	DATA BYTE $00,$00,$00,$00,$00,$08,$08,$08
+	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
+	DATA BYTE $00,$00,$00,$80,$C0,$E0,$70,$38
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$10,$10,$10,$38
-	DATA BYTE $00,$00,$00,$00,$08,$08,$08,$1C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$10,$10,$10,$38,$38
-	DATA BYTE $00,$00,$00,$08,$08,$08,$1C,$1C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$10,$10,$10,$38,$38,$38
-	DATA BYTE $00,$00,$08,$08,$08,$1C,$1C,$1C
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$10,$10,$10,$38,$38,$38,$7C
-	DATA BYTE $00,$08,$08,$08,$1C,$1C,$1C,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $10,$10,$10,$38,$38,$38,$7C,$7C
-	DATA BYTE $08,$08,$08,$1C,$1C,$1C,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$10
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$08
-	DATA BYTE $10,$10,$38,$38,$38,$7C,$7C,$7C
-	DATA BYTE $08,$08,$1C,$1C,$1C,$3E,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$00,$10,$10
-	DATA BYTE $00,$00,$00,$00,$00,$00,$08,$08
-	DATA BYTE $10,$38,$38,$38,$7C,$7C,$7C,$7C
-	DATA BYTE $08,$1C,$1C,$1C,$3E,$3E,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$00,$10,$10,$10
-	DATA BYTE $00,$00,$00,$00,$00,$08,$08,$08
-	DATA BYTE $38,$38,$38,$7C,$7C,$7C,$7C,$7C
-	DATA BYTE $1C,$1C,$1C,$3E,$3E,$3E,$3E,$3E
-	DATA BYTE $00,$00,$00,$00,$10,$10,$10,$38
-	DATA BYTE $00,$00,$00,$00,$08,$08,$08,$1C
-	DATA BYTE $38,$38,$7C,$7C,$7C,$7C,$7C,$7C
-	DATA BYTE $1C,$1C,$3E,$3E,$3E,$3E,$3E,$3E
-	DATA BYTE $00,$00,$00,$10,$10,$10,$38,$38
-	DATA BYTE $00,$00,$00,$08,$08,$08,$1C,$1C
-	DATA BYTE $38,$7C,$7C,$7C,$7C,$7C,$7C,$7C
-	DATA BYTE $1C,$3E,$3E,$3E,$3E,$3E,$3E,$3E
-	DATA BYTE $00,$00,$10,$10,$10,$38,$38,$38
-	DATA BYTE $00,$00,$08,$08,$08,$1C,$1C,$1C
-	DATA BYTE $7C,$7C,$7C,$7C,$7C,$7C,$7C,$7C
-	DATA BYTE $3E,$3E,$3E,$3E,$3E,$3E,$3E,$3E
-	DATA BYTE $00,$10,$10,$10,$38,$38,$38,$7C
-	DATA BYTE $00,$08,$08,$08,$1C,$1C,$1C,$3E
-	DATA BYTE $7C,$7C,$7C,$7C,$7C,$7C,$7C,$7C
-	DATA BYTE $3E,$3E,$3E,$3E,$3E,$3E,$3E,$3E
-	DATA BYTE $10,$10,$10,$38,$38,$38,$7C,$7C
-	DATA BYTE $08,$08,$08,$1C,$1C,$1C,$3E,$3E
-	DATA BYTE $7C,$7C,$7C,$7C,$7C,$7C,$7C,$7C
-	DATA BYTE $3E,$3E,$3E,$3E,$3E,$3E,$3E,$3E
+	DATA BYTE $1C,$0E,$07,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$00,$80,$C0,$FF,$7F,$3F
 fire_col:
 	' Generated by assets/genconveyors.py; edit the generator.
-	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
-	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
-	DATA BYTE $B1,$B1,$B1,$B1,$B1,$91,$91,$91
-	DATA BYTE $B1,$B1,$B1,$B1,$B1,$91,$91,$91
+	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
+	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
+	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
+	DATA BYTE $91,$F1,$91,$F1,$91,$F1,$91,$F1
 motion_end:
 	DATA BYTE 72,72,77,77,79,84,78,4

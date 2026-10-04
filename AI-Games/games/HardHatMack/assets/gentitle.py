@@ -69,7 +69,8 @@ def artwork():
             for step in range(6):dot(x+step,y+step,4)
     for y,color in ((128,15),(129,11),(130,10),(131,10),(132,10),(133,10),(134,4),(135,4)):
         box(16,y,224,1,color)
-    for x in range(20,236,12):box(x,131,2,2,1)
+    # Same paired rivet columns as level one, with plain stretches between.
+    for column in (4,5,11,12,17,18,24,25):box(column*8+3,131,2,2,1)
     # Hanging hook and a stack of steel blocks, clear of the title lettering.
     box(144,40,1,29,14)
     box(141,68,1,5,14);box(141,72,7,1,14);box(147,67,1,6,14)
@@ -122,6 +123,8 @@ def check(source):
     assert len(data['title_col'])==count*8 and len(data['title_map'])==768
     assert all(v==32 or 128<=v<128+count for v in data['title_map'])
     px=artwork()
+    marked={c for c in range(2,30) if 1 in px[131][c*8:c*8+8]}
+    assert marked=={4,5,11,12,17,18,24,25}, 'title girder lost spaced rivet pairs'
     # Preserve the earlier 5x5-scaled MACK outline, independently of coloring.
     expected={(x+col*5+dx,76+row*5+dy)
               for char,x in zip('MACK',(70,100,130,160))

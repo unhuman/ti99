@@ -113,23 +113,40 @@ def tables():
     # Both factory springs reuse the exact two-character level-one artwork.
     result['pad_pat'] = result['tramp_pat'][:16]*2
     result['pad_col'] = result['tramp_col'][:16]*2
-    # Two white nozzle collars over one blue cabinet, seated on the full girder.
-    result['furnace_pat'] = [0x3c,0x24,0xff,0x81,0xad,0x81,0x81,0xff,
-                             0x3c,0x24,0xff,0x81,0xb5,0x81,0x81,0xff]
-    result['furnace_col'] = [0xf1,0xf1,0xf4,0xf4,0xf4,0xf4,0xf4,0xf4]*2
+    # Reference furnace: twin green caps, white sight glass, magenta housing,
+    # white panel bars, and a left-facing outlet level with the lower window.
+    result['furnace_pat'] = [0x1c,0x1c,0x7f,0x40,0x5f,0x50,0xdf,0xc0,
+                             0x38,0x38,0xfe,0x02,0xfa,0x0a,0xfa,0x02,
+                             0x40,0x5f,0x40,0x5c,0x5c,0x40,0x7f,0x00,
+                             0x02,0xfa,0x02,0x3a,0x3a,0x02,0xfe,0x00]
+    result['furnace_col'] = ([0x31,0x31,0xd1,0xfd,0xfd,0xf1,0xfd,0xfd]*2
+                            +[0xfd,0xfd,0xfd,0xfd,0xfd,0xfd,0xd1,0x41]*2)
+    # A single wall emitter across two cells, with three outward trajectories.
+    # White hot center, yellow/orange scatter; no round bomb/flame silhouettes.
+    result['spark_pat'] = []
+    for phase in range(8):
+        pixels={(0,y) for y in range(8)} | {(1,y) for y in (0,1,6,7)}
+        pixels |= {(x,y) for x in (1,2,3) for y in (3,4)}
+        for offset,branch in ((0,-1),(5,0),(10,1)):
+            x=3+(phase*2+offset)%16
+            y=3+branch*(x//5)
+            pixels.add((x,y))
+            if x>3:pixels.add((x-1,y))
+        for tile in range(2):
+            result['spark_pat'] += rows(lambda x,y:(x+tile*8,y) in pixels)
+    result['spark_col'] = [0xe1,0x91,0xb1,0xf1,0xf1,0xb1,0x91,0xe1]*2
     result['fire_pat'] = []
     for depth in range(17):
         def flame(x,y):
-            if y < 16-depth: return False
-            # Narrow tips broaden toward the two fixed nozzle throats.
-            distance = y-(16-depth)
-            half = min(2, distance//3)
-            center = 3 if x<8 else 12
-            return abs(x-center)<=half
+            if x < 16-depth: return False
+            # Left-facing nozzle is at local (15,14). The first six pixels
+            # project horizontally; the plume then bends upward to the left.
+            center = min(14,x+4)
+            return abs(y-center)<=1
         for row in range(2):
             for col in range(2):
                 result['fire_pat'] += rows(lambda x,y: flame(col*8+x,row*8+y))
-    result['fire_col'] = [0xb1]*16 + ([0xb1]*5+[0x91]*3)*2
+    result['fire_col'] = [0x91,0xf1,0x91,0xf1,0x91,0xf1,0x91,0xf1]*4
     return result
 
 
@@ -183,6 +200,13 @@ def check(source):
         assert {(x,depth) for x in range(1,15)}<=pixels, 'springboard cap breaks apart'
     assert t['pad_pat']==t['tramp_pat'][:16]*2 and t['pad_col']==t['tramp_col'][:16]*2
     assert len({tuple(t['belt_anim%d'%i]) for i in range(8)})==8
+    sparks=t['spark_pat']
+    assert len(sparks)==128 and len({tuple(sparks[i:i+16]) for i in range(0,128,16)})==8
+    for frame in range(8):
+        pixels={(tile*8+x,y) for tile in range(2) for y in range(8) for x in range(8)
+                if sparks[frame*16+tile*8+y] & (128>>x)}
+        assert {(0,y) for y in range(8)}<=pixels, 'spark wall detaches'
+        assert any(x>=11 for x,y in pixels), 'spark stream disappears at belt end'
     for name,fn in [('inclined',diagonal),('flat',flat)]:
         assert len({tuple(fn(i)) for i in range(8)})==8, name+' phases repeat'
     # Independent continuity property: both rails survive every phase.
@@ -198,6 +222,8 @@ def check(source):
     broken=source.replace('beamshift_pat:\n','beamshift_pat:\n\tDATA BYTE 0\n',1)
     assert rewrite(broken)!=broken
     broken=source.replace('tramp_pat:\n','tramp_pat:\n\tDATA BYTE 0\n',1)
+    assert rewrite(broken)!=broken
+    broken=source.replace('spark_pat:\n','spark_pat:\n\tDATA BYTE 0\n',1)
     assert rewrite(broken)!=broken
 
 

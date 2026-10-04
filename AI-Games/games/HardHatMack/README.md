@@ -16,7 +16,8 @@ Three construction sites are implemented:
    (about half a second), then you can walk or jump off. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
    and his feet follow the moving cap. Mack starts one character to the right
-   of the vertical support so his hat and torso remain clear against black.
+   of the middle pedestal. The spray-can bonus is two characters to the right
+   of that pedestal, clear of Mack's starting position.
    The bottom pedestals have a single bearing plate, continuous narrow stem
    and broad white footing, rather than repeated flared tiles.
 2. **Lunch Break:** collect six lunch pails across the platforms and ground,
@@ -29,8 +30,7 @@ Three construction sites are implemented:
    red panels resemble lunch pails. Concrete leaving the lower conveyor arcs
    into the single open-mouthed receiver; the extra machine beside the crane
    is removed. The bottom-right chain hangs from the platform's far
-   right edge. An enclosed blue pump stands on the floor to its left, with a
-   visible piston that beats with the crane's motion. Pincers complete
+   right edge, with a clear floor approach to its left. Pincers complete
    a smooth cycle in 90 world steps (previously 96), preserving the two-jump route.
 3. **Rivet Works:** start on the upper-right platform and collect six steel boxes.
    The conveyor box sits one character left of the smasher.
@@ -45,6 +45,11 @@ Three construction sites are implemented:
    Four paddles circulate counterclockwise around rounded upper and lower axles
    (left down, right up). Moving chain links and rotating wheel spokes follow
    the same platform drive, so the whole mechanism works together.
+   The upper-left conveyor carries Mack left at his walking speed: holding
+   right keeps him in place, releasing the stick carries him left, and walking
+   left doubles his travel. Its tread animation matches that speed.
+   At its left end, a single wall emitter throws animated white, yellow and
+   orange spark trails across two characters; grab the escape chain before it.
    The two springs bounce Mack across the site and onto the opposite lower tier.
    Both are two characters wide, one row above the ground, and use level one's
    artwork, compression, rebound and launch sound. Only the pad
@@ -53,9 +58,17 @@ Three construction sites are implemented:
 
 The smashers on levels 2 and 3 share a five-pixel-tall, predominantly white head,
 with gray detailing. They remain visible at the top and reach their girder or belt.
+Their downstrokes run twice as fast as before (two pixels per world step on
+level 2, one on level 3), with the same impact beat, bottom dwell and upward
+return. They wait longer at the top before dropping.
+The upper-right furnace's two-character support girder has centered blue rivets
+in its bright green body. The furnace has a magenta-and-white cabinet with green
+caps; fire shoots from its left outlet, curls upward, and retracts before repeating.
 
 Mack's running cycle combines a passing step, extended stride and bent-knee
-recovery with arm swing. It follows distance walked, returns to a neutral pose
+recovery with arm swing. A projecting hat brim, face and rear hair make his
+direction clear; both layers of the jumping pose mirror when he faces left.
+It follows distance walked, returns to a neutral pose
 when stopped, and keeps his original height, movement speed and collision bounds.
 
 Joystick 1: left/right walk, up/down climb, **Fire jumps** from a floor, chain,
@@ -201,7 +214,9 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-146 deliberately broken variants must fail. New checks cover bonus counting,
+154 deliberately broken variants must fail. New checks cover directional airborne
+art, conveyor walking balance, quicker downstrokes, curved furnace flames,
+cross-level spark restoration, bonus counting,
 game-over timeout/release, full-width elevator boarding, spaced rivets,
 synchronized factory chains/wheels, distance-driven running poses and material sound priority,
 concrete entering the receiver, exclusive item
@@ -224,5 +239,6 @@ machinery and avoid an extra frame wait after a busy update. Factory paddles
 use exact ROM lookups while collision checks still run at every pixel. See
 DESIGN.md section 39 for timing evidence and validation limits. Controlled
 Classic99 idle samples improved from about 23/12/9 to 49/16/14 updates per
-second on the three sites. The upper-right level-two furnace now rests on a full-width girder and repeatedly extends and
-retracts its jets; its danger area follows the visible flame height.
+second on the three sites. The upper-right level-two furnace rests on a full-width
+riveted girder and repeatedly extends and retracts its left-facing flame; its
+danger area follows the visible upward curl.

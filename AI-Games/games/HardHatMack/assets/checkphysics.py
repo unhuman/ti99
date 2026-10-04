@@ -238,7 +238,7 @@ class Basic:
                 self.sprites[args[0]] = args[1:]
             elif line.startswith('define sprite '):
                 first,count,pointer=line[14:].split(',')
-                assert (pointer,self.bank) in (('dance_bitmap',2),('brick_edge',3)), 'unexpected sprite upload/bank'
+                assert (pointer,self.bank) in (('dance_bitmap',2),('brick_edge',3),('mack_jump_left',4)), 'unexpected sprite upload/bank'
                 self.sprite_writes.append((self.expr(first),self.expr(count),pointer))
             elif line.startswith('define vram '):
                 address,count,pointer=line[12:].split(',',2)
@@ -642,7 +642,7 @@ def fidelity(source):
     for _ in range(84): vm.run('mag_move')
     assert vm.v['lvdone']==1 and vm.v['mx']==112
     # Moving hazards must have both safe and lethal windows.
-    for n,x,y,safe,bad in ((2,184,120,90,20),(2,184,120,90,44),
+    for n,x,y,safe,bad in ((2,184,120,20,24),(2,184,120,90,44),
                           (3,56,58,20,36)):
         for phase,dead in ((safe,False),(bad,True)):
             vm=level(n);vm.v.update(mx=x,my=y,hzphase=phase-1)
@@ -884,7 +884,16 @@ def mack_animation(source):
         for state in ('s_jump','s_fall','s_tramp'):
             vm.v.update(st=vm.v[state],jr=1,jl=0,steptick=7)
             vm.run('run_draw_test')
-            assert vm.sprites[0][2]==32 and vm.sprites[8][2]==76, 'run overrides airborne pose'
+            assert vm.sprites[0][2]==(32 if direction else 140) and vm.sprites[8][2]==(76 if direction else 144), 'airborne pose ignores facing'
+    for right,left in ((0,48),(44,52),(124,132),(32,140),(76,144)):
+        assert patterns[left]==[row[::-1] for row in patterns[right]], 'directional sprite is not mirrored'
+    for right,left in ((60,68),(64,72),(128,136)):
+        assert patterns[left]==[row[::-1] for row in patterns[right]], 'hair/clothes face the wrong way'
+    for direction in (0,1):
+        vm.v.update(st=vm.v['s_walk'],mdir=1-direction,jl=1-direction,jr=direction)
+        vm.run('start_jump')
+        assert vm.v['mdir']==direction, 'jump retains old facing'
+    vm.run('mack_air_chars');assert vm.bank==1, 'airborne art loader leaves wrong bank'
 
 
 def elevator_dance(source):
@@ -991,7 +1000,10 @@ def girder_spacing(source):
         plain,dotted=0,0
         for cell,ch in enumerate(vm.screen):
             if ch in (128,129,130,134):
-                assert (ch==134)==(cell%32 in expected[level]), ('girder spacing',level,cell)
+                # The user requested rivets across the short furnace support,
+                # independently of the long girders' repeating column pattern.
+                furnace_support=level==2 and cell in (6*32+28,6*32+29)
+                assert (ch==134)==(cell%32 in expected[level] or furnace_support), ('girder spacing',level,cell)
                 plain+=ch!=134;dotted+=ch==134
                 vm.v.update(mx=cell%32*8-8,my=cell//32*8-16)
                 if vm.v['mx']>=0:
@@ -1386,8 +1398,14 @@ def machinery_animation(source):
                 for y in range(depth):
                     assert footcolors[depth*16+y]==[0xf1,0xf1][2-depth+y]
         assert min(positions)==low and max(positions)==high, ('smasher travel',level,positions)
-        assert all(abs(a-b)<=1 for a,b in zip(positions,positions[1:]+positions[:1])), 'smasher snaps back'
+        assert all(-1<=b-a<=(2 if level==2 else 1) for a,b in zip(positions,positions[1:]+positions[:1])), 'smasher snaps back'
         assert positions.count(high)<=10, 'smasher pins player too long'
+        impact=28 if level==2 else 44
+        assert positions.index(high)==impact, 'smasher impact beat moved'
+        assert sum(b>a for a,b in zip(positions,positions[1:]))==(10 if level==2 else 21), 'smasher downstroke not twice as fast'
+        last_parked=max(i for i,p in enumerate(positions[:impact]) if p==low)
+        assert impact-last_parked==(10 if level==2 else 21), 'smasher delays between downstroke pixels'
+        assert positions[96:]==[low]*32, 'smasher top pause lost'
         assert low+8>=base and positions.count(low)>=32, 'smasher must wait visibly at the top'
         assert positions[28 if level==2 else 44]==high, 'wrong downward smasher speed'
         assert high+11==(135 if level==2 else 73), 'head must finish exactly above surface'
@@ -1454,7 +1472,7 @@ def visual_hazards(source):
         vm.v.update(lv=level)
         for clock in range(16):
             vm.v['hzphase']=clock;vm.run('site_draw')
-            expected=(direction*(clock//2))%8
+            expected=((-clock) if level==3 else clock//2)%8
             if level==3:
                 vm.expect_upload(3336,8,'belt_anim0',expected*48+40)
                 vm.expect_upload(3320,8,'belt_anim0',expected*48+24)
@@ -1564,7 +1582,8 @@ def speed_contract(source):
         vm.v.update(mx=44 if level==2 else 60,my=157 if level==2 else 58)
         start=vm.v['mx']
         for tick in range(20):vm.v['hzphase']=tick;vm.run('conv_sup')
-        assert vm.v['mx']==start+(10 if level==2 else -10), 'belt speed'
+        assert vm.v['mx']==start+(10 if level==2 else -20), 'belt speed'
+    factory_belt_balance(source)
     vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
     vm.v.update(boxfall=1,boxy=128,mx=112,my=80)
     for _ in range(39):vm.run('factory_step')
@@ -1574,6 +1593,27 @@ def speed_contract(source):
         vm=Basic(source);vm.v.update(bolon=1,bon=1,bx=120,by=start,bvel=1,bph=0,bnx=0)
         vm.run('bolt_move')
         assert (vm.v['bph']==1)==bounced, 'rivet bounces above the visible floor'
+
+
+def factory_belt_balance(source):
+    # Execute real walking plus belt support, at both clock parities. Right
+    # input must cancel each individual tick, not merely average out later.
+    for phase in (0,1):
+        for direction,delta in ((1,0),(0,-1),(-1,-2)):
+            vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
+            vm.v.update(mx=78,my=58,jr=int(direction==1),jl=int(direction==-1))
+            for tick in range(12):
+                vm.v['hzphase']=(phase+tick)%128;vm.run('mack_step')
+                assert vm.v['mx']==78+delta*(tick+1), 'factory belt fails walking balance'
+                assert vm.v['st']==vm.v['s_walk'] and vm.v['my']==58, 'factory belt loses support'
+            vm.run('site_draw')
+            assert vm.v['cvaf']==(-vm.v['hzphase'])%8, 'factory tread rate differs from travel'
+    vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
+    edge=vm.arrays['cvx1'][0]-8
+    vm.v.update(mx=edge,my=58,jr=1)
+    for tick in range(128):
+        vm.v['hzphase']=tick;vm.run('mack_step')
+        assert vm.v['mx']==edge and vm.v['st']==vm.v['s_walk'], 'right input escapes the factory roller'
 
 
 def chain_and_pickups(source):
@@ -1772,9 +1812,9 @@ def fixture_contract(source):
     # Site-specific codes must survive successive sites and death redraws.
     for level in (1,2,3,1):
         ownership.v['lv']=level;ownership.run('init_level')
-        pattern={1:'support_pat',2:'beat_pat',3:'eject_pat'}[level]
-        count=4 if level==2 else 2
-        assert [w for w in ownership.pattern_writes if w[0]==120][-1]==(120,count,pattern,0), 'wrong site scenery after level change'
+        if level!=2:
+            pattern={1:'support_pat',3:'eject_pat'}[level]
+            assert [w for w in ownership.pattern_writes if w[0]==120][-1]==(120,2,pattern,0), 'wrong site scenery after level change'
         if level==1:
             for column in (6,14,23):
                 assert ownership.screen[22*32+column]==120
@@ -1810,12 +1850,11 @@ def fixture_contract(source):
             assert vm.screen[(row+1)*32+col] in (129,133,134), 'pickup erases girder'
     vm=Basic(source);vm.v['lv']=2;vm.run('init_level')
     assert all(vm.screen[r*32+26]==152 for r in range(18,22)), 'chain not at platform edge'
-    assert vm.screen[21*32+24:21*32+26]==[120,121], 'pump is not on the ground'
-    assert vm.screen[22*32+24:22*32+26]==[122,123], 'pump feet are missing'
-    assert all(vm.screen[r*32+c]==32 for r in (18,19,20) for c in (24,25)), 'pump still hangs from girder'
-    vm.v.update(bmy=160,bmd=0);vm.run('fixture_draw');first=vm.v['fixturepose']
-    n=len(vm.pattern_writes);vm.run('fixture_draw');assert len(vm.pattern_writes)==n,'idle pump reuploads'
-    vm.v['bmy']=156;vm.run('fixture_draw');assert vm.v['fixturepose']!=first,'pump does not follow crane'
+    assert all(vm.screen[r*32+c]==32 for r in range(18,23) for c in (24,25)), 'removed pump blocks chain approach'
+    for beam in (160,156,120):
+        vm.v.update(bmy=beam,bmd=0);vm.vram_writes.clear();vm.run('fixture_draw')
+        assert not vm.vram_writes, 'removed pump still animates'
+    assert 'beat_pat:' not in source and 'beat_col:' not in source, 'unused pump frames retained'
     for side in (0,1):
         vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
         for row in (7,17):
@@ -1912,7 +1951,11 @@ def optimized_rendering(source):
         for phase in range(1,128):
             vm.v.update(mx=112,my=80,hzphase=phase-1,pnphase=phase,st=0)
             vm.run('site_step');vm.vram_writes.clear();vm.run('site_draw')
-            assert sum(w[1] for w in vm.vram_writes)<=limit, ('excess dynamic VRAM traffic',level,phase)
+            # The new wall sparks have a separate, fixed 16-byte allowance;
+            # retain the existing budget for all previously optimized art.
+            sparkbytes=sum(w[1] for w in vm.vram_writes if w[0]==3360) if level==3 else 0
+            assert sparkbytes<=16, 'spark animation exceeds two cells'
+            assert sum(w[1] for w in vm.vram_writes)-sparkbytes<=limit, ('excess dynamic VRAM traffic',level,phase)
             if level==3:
                 for third in (1,2):
                     for color,label in ((0,'drivechain_pat'),(8192,'drivechain_col')):
@@ -1920,8 +1963,7 @@ def optimized_rendering(source):
                 vm.expect_upload(5088,32,'inflash_pat',(phase//32%2)*32)
             else:
                 vm.expect_upload(6000,40,'claw_pat',vm.v['clawstep']*40)
-                vm.expect_upload(5056,32,'beat_pat',vm.v['fixturepose']*32)
-                vm.expect_upload(13248,32,'beat_col',vm.v['fixturepose']*32)
+                assert not any(w[0] in (5056,13248) for w in vm.vram_writes), 'removed pump still uploads'
     # Spring art appears only in the bottom third on both sites.
     for level,codes in ((1,(137,)),(3,(139,141))):
         vm=Basic(source);vm.v['lv']=level;vm.run('init_level');vm.run('site_draw')
@@ -1930,12 +1972,33 @@ def optimized_rendering(source):
             vm.expect_upload(12288+code*8,16,'tramp_col',0)
 
 
+def wall_sparks(source):
+    vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
+    assert vm.screen[8*32+2:8*32+4]==[164,165], 'wall emitter halves repeat'
+    for clock in range(32):
+        vm.v['hzphase']=clock;vm.run('site_draw')
+        vm.expect_upload(3360,16,'spark_pat',(clock//2%8)*16)
+        vm.expect_upload(11552,16,'spark_col',0)
+        vm.vram_writes.clear();vm.run('site_draw')
+        assert not any(w[0]==3360 for w in vm.vram_writes), 'unchanged sparks reuploaded'
+    # Both halves remain the dangerous belt endpoint, with the escape chain clear.
+    for x in (20,28,33):
+        vm.v.update(mx=x-8,my=58,jr=0,jl=0,st=vm.v['s_walk'])
+        vm.run('mack_step')
+        assert (vm.v['st']==vm.v['s_dead'])==(x<32), 'spark endpoint collision moved'
+    vm.v['lv']=2;vm.run('init_level');vm.run('site_draw')
+    vm.expect_upload(3360,16,'haz_pat',0)
+    vm.expect_upload(11552,16,'haz_col',0)
+
+
 def furnace_contract(source):
     vm=Basic(source);vm.v['lv']=2;vm.run('init_level')
     assert all(128<=vm.screen[6*32+c]<=151 for c in (28,29)), 'furnace only half supported'
-    assert vm.screen[5*32+28:5*32+30]==[180,181], 'furnace halves duplicated'
-    assert vm.screen[3*32+28:3*32+30]==[124,125]
-    assert vm.screen[4*32+28:4*32+30]==[126,127]
+    assert vm.screen[6*32+28:6*32+30]==[vm.v['t_girdr']]*2, 'furnace support missing centered rivets'
+    assert vm.screen[4*32+28:4*32+30]==[120,121], 'furnace upper halves duplicated'
+    assert vm.screen[5*32+28:5*32+30]==[122,123], 'furnace lower halves duplicated'
+    assert vm.screen[3*32+26:3*32+28]==[124,125]
+    assert vm.screen[4*32+26:4*32+28]==[126,127]
     table=re.search(r'^fire_pat:\n.*?(?=^\w+:)',source,re.M|re.S)[0]
     art=[int(n[1:],16) for n in re.findall(r'\$[0-9A-F]{2}',table)]
     assert len(art)==17*32
@@ -1946,16 +2009,21 @@ def furnace_contract(source):
         expected=min(phase%64//2,32-phase%64//2)
         assert depth==expected, 'furnace no longer extends and retracts smoothly'
         vm.expect_upload(992,32,'fire_pat',depth*32)
-        vm.expect_upload(1440,16,'furnace_pat',0)
+        vm.expect_upload(960,32,'furnace_pat',0)
         frame=art[depth*32:depth*32+32]
-        visible=[y for y in range(16) if any(frame[(y//8*2+t)*8+y%8] for t in (0,1))]
-        assert visible==list(range(16-depth,16)), 'flame pixels disagree with depth'
-        # Shoes directly above the flame are safe; contact is lethal. Also
-        # test the cabinet when the jets are fully retracted.
-        for feet,dead in ((39-depth,False),(40-depth,True)):
-            vm.v.update(mx=224,my=feet-15,hzphase=phase,st=0)
-            vm.run('furnace_step')
-            assert (vm.v['st']==vm.v['s_dead'])==dead, 'invisible flame collision'
+        pixels={(x+208,y+24) for y in range(16) for x in range(16)
+                if frame[(y//8*2+x//8)*8+y%8] & (128>>(x%8))}
+        assert {x for x,y in pixels}==set(range(224-depth,224)), 'fire does not emerge leftward'
+        for x in range(224-depth,224):
+            center=38 if x>=218 else x-180
+            assert {y for px,y in pixels if px==x}==set(range(center-1,center+2)), 'fire fails upward curl'
+        if phase%8==0:
+            for x in (200,208,215,220,228):
+                for y in (14,20,24,32,40,48):
+                    dead=any(x+5<=px<=x+10 and y+4<=py<=y+15 for px,py in pixels)
+                    dead=dead or (x+10>=225 and x+5<=238 and y+4<=47 and y+15>=34)
+                    vm.v.update(mx=x,my=y,hzphase=phase,st=0);vm.run('furnace_step')
+                    assert (vm.v['st']==vm.v['s_dead'])==dead, 'invisible curved-flame collision'
     assert depths[:64]==depths[64:], 'furnace cycle drifts'
 
 
@@ -1964,6 +2032,7 @@ def main():
     data_cache_contract(source)
     optimized_rendering(source)
     furnace_contract(source)
+    wall_sparks(source)
     windows = clear_windows(source)
     momentum(source)
     clock_contract(source)
@@ -2019,7 +2088,7 @@ def main():
     # Known defects MUST fail: short clearance, lost momentum, deferred death.
     mutants = [
         (source.replace('DATA BYTE 8, 23,6,1,121','DATA BYTE 8, 23,6,1,120'),fixture_contract),
-        (source.replace('DATA BYTE 8, 21,24,1,120','DATA BYTE 8, 18,24,1,120'),fixture_contract),
+        (source.replace("' Clear floor approach to the chain; the decorative pump is removed.", 'DATA BYTE 8, 21,24,1,120'),fixture_contract),
         (source.replace('chainpose = pnphase AND 7','chainpose = hzphase AND 7'),factory_drive),
         (source.replace('drivepose = (pnphase / 4) AND 7','drivepose = 0'),factory_drive),
         (source.replace('VARPTR drivechain_col(chainpose * 16)','VARPTR drivechain_col(0)'),factory_drive),
@@ -2095,7 +2164,7 @@ def main():
         (source.replace('bloby = 165 -','bloby = 175 -'),visual_hazards),
         (source.replace('ey = pressy\n','ey = pressy + 8\n'),machinery_animation),
         (source.replace('ey = by - 4','ey = by'),visual_hazards),
-        (source.replace('IF lv = 3 THEN cvaf = (8 - cvaf) AND 7',''),visual_hazards),
+        (source.replace('IF lv = 3 THEN cvaf = (8 - (hzphase AND 7)) AND 7',''),visual_hazards),
         (source.replace('ex = 62 - clawshift','ex = 200'),visual_hazards),
         (source.replace('game_over:\n\tGOSUB quiet_screen\n\tGOSUB elev_draw','game_over:\n\tGOSUB quiet_screen'),visual_hazards),
         (source.replace('DATA BYTE 7, 14,3,17','DATA BYTE 7, 14,3,10'),visual_hazards),
@@ -2162,6 +2231,7 @@ def main():
         (source.replace('IF steptick AND 2 THEN','IF FRAME AND 2 THEN'),mack_animation),
         (source.replace('DEFINE SPRITE 31,4,mack_run_extra',''),mack_animation),
         (source.replace('IF mfr >= 124 THEN mcf = mfr + 4',''),mack_animation),
+        (source.replace('IF mdir = 0 THEN mfr = 140',''),mack_animation),
         (source.replace('edance = 32','edance = 0'),elevator_dance),
         (source.replace('IF edance THEN RETURN',''),elevator_dance),
         (source.replace('edance = edance - 1','edance = edance - 2'),elevator_dance),
@@ -2173,14 +2243,21 @@ def main():
         (source.replace('CPOS(0,17),<.4>#bonus','CPOS(0,2),<.4>#bonus'),score_range),
     ])
     mutants.extend([
+        (source.replace('IF lv = 3 THEN cvdrag = 1',''),factory_belt_balance),
+        (source.replace('IF jr THEN fx = walkx + 8',''),factory_belt_balance),
+        (source.replace('DEFINE VRAM 3360,16','DEFINE VRAM 1312,16'),wall_sparks),
+        (source.replace('DEFINE VRAM 3360,16,haz_pat',''),wall_sparks),
+        (source.replace('pressy = 68 + hzphase * 2','pressy = 96 + hzphase'),machinery_animation),
+        (source.replace('pressy = 18 + hzphase','pressy = 40 + hzphase / 2'),machinery_animation),
         (source.replace('DEFINE VRAM 3320,24','DEFINE VRAM 1272,24'),visual_hazards),
         (source.replace('DEFINE VRAM 3712,16','DEFINE VRAM 1664,16'),optimized_rendering),
         (source.replace('DEFINE VRAM 4040,16','DEFINE VRAM 1992,16'),machinery_animation),
         (source.replace('BANK SELECT 4','BANK SELECT 1'),optimized_rendering),
         (source.replace('lift_x(#pnlookup + 56)','lift_x(#pnlookup + 55)'),optimized_rendering),
-        (source.replace('DATA BYTE 1, 6,28,2,1','DATA BYTE 1, 6,29,1,1'),furnace_contract),
+        (source.replace('DATA BYTE 8, 6,28,2,134','DATA BYTE 8, 6,29,1,134'),furnace_contract),
+        (source.replace('DATA BYTE 8, 6,28,2,134','DATA BYTE 8, 6,28,2,129'),furnace_contract),
         (source.replace('IF firedepth > 16 THEN firedepth = 32 - firedepth','IF firedepth > 16 THEN firedepth = 16'),furnace_contract),
-        (source.replace('IF my + 15 < 40 - firedepth THEN RETURN','IF my + 15 < 24 THEN RETURN'),furnace_contract),
+        (source.replace('IF my + 15 < firetop THEN RETURN','IF my + 15 < 24 THEN RETURN'),furnace_contract),
     ])
     print('Physics behavior sweeps passed; checking %d defect mutations' % len(mutants),flush=True)
     for mutation_index,(mutant, check) in enumerate(mutants,1):

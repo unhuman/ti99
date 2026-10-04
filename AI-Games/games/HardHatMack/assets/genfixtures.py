@@ -33,18 +33,18 @@ def mack_poses():
     # Composite art: W = hat/skin/shoes, P = purple work clothes. Each pose
     # has the same forward-facing head and 12-pixel, bottom-anchored envelope.
     head=['................']*4+[
-        '......WWWW......','.....WWWWWW.....',
-        '......WWWW.W....','.......WWW......']
+        '......WWWW......','.....WWWWWWW....',
+        '.....PPWW.WW....','......PWWW......']
     return [head+body for body in (
-        ['.....PPPPP......','.....PPPPPP.....','.....WPPPPW.....',
-         '......PPPP......','......PP.PP.....','......PP.PP.....',
-         '......WW.WW.....','.....WWW.WWW....'],
-        ['.....PPPPP......','....PPPPPPPPW...','...W.PPPP.......',
-         '.....PPPPP......','....PPP.PPP.....','...PPP...PPP....',
-         '..WW......PP....','..........WWW...'],
-        ['.....PPPPP......','...WWPPPPPP.....','.....PPPP.PW....',
-         '......PPPP......','......PP.PPP....','......PP..WW....',
-         '.....PP.........','....WWW.........'])]
+        ['......PPPP......','.....PPPPPP.....','.....WPPPPPW....',
+         '......PPPP......','......PPPP......','......PP.PP.....',
+         '......PP.PP.....','.....WWW.WWW....'],
+        ['......PPPP......','.....PPPPPPWW...','....WPPPPP......',
+         '.....PPPPP......','.....PP.PPP.....','....PP...PP.....',
+         '...PP.....PP....','..WWW.....WWW...'],
+        ['......PPPP......','...WWPPPPPP.....','.....PPPPP.W....',
+         '......PPPP......','....PPP.PP......','...PP...PP......',
+         '..WW....PP......','........WWW.....'])]
 
 
 def mack_layers():
@@ -53,13 +53,16 @@ def mack_layers():
     def layer(p,ink):return [''.join('X' if c==ink else '.' for c in row) for row in p]
     right=[(layer(p,'W'),layer(p,'P')) for p in poses]
     left=[([r[::-1] for r in w],[r[::-1] for r in p]) for w,p in right]
-    jump=['................']*8+[
-        '.XX.XXXXXX.XX...','..XXXXXXXXXX....','.....XXXXXX.....',
-        '....XXXXXXXX....','...XXX....XXX...','..XXX......XXX..',
-        '................','................']
+    jump=poses[0][:7]+['.W....PWWW..W...']+[
+        '.PP.PPPPPP.PP...','..PPPPPPPPPP....','.....PPPPPP.....',
+        '....PPPPPPPP....','...PPP....PPP...','..PPP......PPP..',
+        '..WW........WW..','................']
+    jumpwhite,jumppurple=layer(jump,'W'),layer(jump,'P')
     return dict(mack_bitmap=right[0][0],mackw_bitmap=right[1][0],
                 mackl_bitmap=left[0][0],mackl2_bitmap=left[1][0],
-                mack_colour=right[0][1]+right[1][1]+left[0][1]+left[1][1]+jump,
+                mackj_bitmap=jumpwhite,
+                mack_jump_left=[r[::-1] for r in jumpwhite]+[r[::-1] for r in jumppurple],
+                mack_colour=right[0][1]+right[1][1]+left[0][1]+left[1][1]+jumppurple,
                 mack_run_extra=right[2][0]+right[2][1]+left[2][0]+left[2][1])
 
 
@@ -159,20 +162,6 @@ def tables():
     rect(pail,2,11,5,14,6);rect(pail,8,11,13,14,6)
     rect(pail,10,11,11,11,15)
     rect(pail,0,15,15,15,15)
-    beat=[]
-    for depth in range(4):
-        im=canvas(16,16)
-        # Floor-mounted pump: an enclosed blue cylinder with a visible
-        # reciprocating piston, fixed casing and broad mounting feet.
-        rect(im,5,0,10,1,15);rect(im,2,2,13,3,15)
-        rect(im,0,4,15,12,4)
-        rect(im,0,4,0,12,15);rect(im,15,4,15,12,15)
-        rect(im,7,4,8,5+depth,15)
-        rect(im,4,6+depth,11,7+depth,15)
-        for x in (3,6,9,12):rect(im,x,12,x,12,15)
-        rect(im,0,13,15,13,15)
-        rect(im,2,14,13,14,3);rect(im,0,15,15,15,15)
-        beat.append(im)
     label=canvas(16,16)
     letters=('111001001','010001101','010001011','010001001','111001001')
     for y,row in enumerate(letters):
@@ -183,17 +172,12 @@ def tables():
     rect(label,11,7,12,10,15)
     for y,lo,hi in ((10,8,15),(11,9,14),(12,10,13),(13,11,12)):rect(label,lo,y,hi,y,15)
     # 96-111 cabinet, 112-113 bucket, 114-117 axle, 118-119 pail top,
-    # 120-123 beating machine, 124-127 flashing IN and down-arrow.
-    parts=[cabinet,bucket,axle,pail[:8],beat[0],label]
+    # 120-123 reserved for site-specific art, 124-127 IN and down-arrow.
+    parts=[cabinet,bucket,axle,pail[:8],canvas(16,16),label]
     out['fixture_pat']=[];out['fixture_col']=[]
     for im in parts:
         p,c=encode(im);out['fixture_pat']+=p;out['fixture_col']+=c
     out['pail_pat'],out['pail_col']=encode(pail[8:])
-    out['beat_pat']=[]
-    for im in beat:out['beat_pat']+=encode(im)[0]
-    # Beat changes both art and color: head whites follow its displacement.
-    out['beat_col']=[]
-    for im in beat:out['beat_col']+=encode(im)[1]
     out['inflash_pat']=encode(label)[0]+[0]*32
     # Restore the title credit's three lowercase glyphs after scenery used
     # their codes. These are the compiler font's original a/d/n patterns.

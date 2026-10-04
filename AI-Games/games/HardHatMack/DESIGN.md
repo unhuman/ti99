@@ -219,7 +219,9 @@ bottom girder at cols 6/14/23.
 21/17/13) plus beam 4's hole at **col 18** (row 9) — matched by **4 brick stacks** at (8,9),
 (12,9), (16,9) and (20,21). Deposit from either lip; walking the plug with the jackhammer
 rivets it instantly on contact. Falling into an open hole is a fatal one-floor drop. Bonus
-**wrench** (4,21) and **spray can** (20,25) = +200 each.
+**wrench** (4,21) and **spray can** (20,16) = +200 each. Mack spawns at
+(21,25), one cell right of his prior position; the spray can sits two cells
+right of the middle pedestal (column 14), away from the spawn.
 (Floors are numbered bottom-up: 1st = row 21 … 5th/top = row 5.)
 Chains hang **2 cells** from the upper girder's underside and do **not** touch the girder
 below — climbing off the bottom end is a short safe drop; grabbing upward reaches them via a
@@ -1752,12 +1754,12 @@ Production SHA-256:
 
 ## §29 Clearer starting position (2026-10-02)
 
-Level one's spawn moves from column 23 to 24 (Mack x=180 to 188), one cell
-right of the support. His hat and torso now occupy x=193..199 against black,
-clear of the support at x=184..191. The same data drives respawn. The support's
-white/green palette is consistent with the Apple II reference and is retained.
-Source execution verified supported footing, clear head/torso pixels, matching
-respawn and no automatic spray-can pickup. Classic99 confirmed the placement.
+Level one's spawn moves from column 23 to 24 (Mack x=180 to 188), then to 25
+(x=196), one character farther right. His hat and torso remain clear against
+black, and the same data drives respawn. The spray can moves from column 25 to
+16, two characters right of the middle pedestal at column 14, avoiding overlap
+with Mack at the start. The support's white/green palette is consistent with
+the Apple II reference and is retained.
 
 The complete TI build again passed all 96 defect mutations; memory and bank
 budgets are unchanged from §28. The newest production cart is left in one
@@ -2258,3 +2260,90 @@ The 64 KB production cartridge SHA-256 is
 That exact canonical path was loaded in the isolated Classic99 review window;
 title and normal level-one gameplay were captured with normal CPU throttling
 selected and overdrive disabled. The production cartridge remains running.
+
+## 40. Factory conveyor balance and quicker downstrokes (2026-10-04)
+
+The level-three flat conveyor now carries Mack one pixel left per world step,
+matching his one-pixel walking speed. Right input cancels the drift on every
+step; neutral input travels left one pixel and left input travels two. The
+treads and rollers advance one animation pixel per step as well. Level-two
+diagonal belts retain their existing half-rate travel and slag synchronization.
+The walking regression runs the actual Mack state machine at both clock
+parities and verifies position, support and animation phase.
+
+Both smooshers descend twice as fast. Level two drops two pixels per step;
+level three drops one. They release later from their visible parked positions
+to preserve the impact/sound beats (phases 28 and 44), short bottom dwell,
+existing return speeds and 128-step period. This changes the timing window
+without pinning Mack at the bottom for longer. Contact still follows each
+head's rendered position. Tests check downstroke duration, complete travel,
+directional step limits, impact phase and the top pause. The live factory-box
+route remains reachable and requires timing. Right input also balances at the
+last roller, using Mack's supported foot before the walking step.
+
+The two repeated hazard pictures at the left end of the factory belt are now
+one two-character wall spark emitter. Eight generated frames send three white,
+yellow and orange trails outward from a fixed wall/nozzle, continuously keeping
+the dangerous endpoint visible. The two halves use separate character codes;
+the existing hazardous footprint and escape chain are retained. Only sixteen
+pattern bytes are transferred when the pose changes; colors upload once. The
+312-byte factory graphics budget remains enforced for existing art, with a
+separately checked 16-byte allowance for this added animation. Five new defect
+mutations reject the old half-speed factory belt, a walk-off at the right roller,
+either old slow downstroke, and sparks uploaded to the wrong third.
+
+Level two's furnace support explicitly uses two centered-rivet tiles, preserving
+its full two-character width and the green/blue girder colors. A new negative
+case rejects a plain support; the existing half-supported case still fails.
+The complete gate now contains 152 defect mutations.
+
+The subsequent reference image replaces the temporary twin upward jets with a
+two-by-two-character magenta/white furnace, green caps and a left-facing outlet.
+Its flame extends into columns 26/27, projects horizontally for six pixels,
+then curls upward. The existing 64-step extend/retract cycle is retained.
+Collision checks the curved flame band intersecting Mack's narrow torso and
+the cabinet separately, including clear space beneath the upward curl. Generated
+pixels and contact are compared throughout the cycle. The riveted support
+remains under both cabinet columns.
+
+The decorative pump beside the bottom-right chain is removed, including its
+four map cells, generator artwork, animation tables and runtime uploads. The
+level-two fixture animation bank call is skipped entirely. Tests require an
+empty chain approach and reject restoration of the removed machine.
+
+The title girder now uses paired rivet columns 4/5, 11/12, 17/18 and 24/25,
+matching level one's spacing, with plain cells between groups. Its dimensions,
+colors and lettering remain unchanged.
+
+Mack's three running drawings now use clearer planted-foot, extended-stride
+and lifted-heel poses. The head has an asymmetric hat brim, face/eye and purple
+hair at the back. Both white and purple layers mirror exactly for left-facing
+walking and jumping. Leftward airborne art occupies sprite patterns 140/144,
+loaded once from bank four; the original running slots and cadence are retained.
+Jump takeoff updates facing from its chosen direction, including spring launches.
+The animation check verifies both layers, every direction and airborne state,
+and the new loader's bank restoration. A missing-left-jump mutation raises the
+complete gate to 153 defect cases.
+The shared hazard cells are restored when a site initializes, so factory sparks
+cannot replace the level-two obstacle art on a later circuit. The added
+cross-level restoration mutation brings the final total to 154.
+The added fixed code exposed the first-pass assembler's 16-bit address limit
+before branch shortening. The reserve-lives painter now lives in bank two,
+behind a fixed wrapper that restores bank one. This infrequent HUD operation
+creates room without moving work from the gameplay loop. A separate compiler
+and assembler preflight confirms the unshortened image fits the address window.
+
+Final TI validation on 2026-10-04 passes all gameplay sweeps and rejects all 154
+defect mutations. Assembly verifies 524 shortened branches (2,096 bytes saved),
+with 22,460/24,336 fixed bytes, 546 RAM bytes and 30/4,372/522/734 spare bytes in
+banks one through four. The first unshortened image is still close to the 16-bit
+address boundary (24,556 bytes); future fixed-code growth needs an early assembly
+preflight, even though the optimized runtime has 1,876 fixed bytes free.
+The 64 KB production ROM SHA-256 is
+`9B39CA1F203A12E2D3A39C9AB2917E5BCE2389968736FD15B60A98AE909A2594`.
+Classic99 at normal CPU speed shows the spaced title rivets, the supported
+reference-style furnace through its extension cycle, the cleared chain approach,
+and the factory wall sparks. Level review used the production 838 menu; the same
+production cartridge was then reset to its normal title screen for handoff.
+The emulator captures supplement the routine-level tests; they are not complete
+uninterrupted clears of all three sites. Coleco remains deferred as requested.
