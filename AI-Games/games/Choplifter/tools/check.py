@@ -218,7 +218,9 @@ class Basic:
                 label,*args=part[7:].split(',')
                 values=[self.expr(x) for x in args]
                 offset,dest,width,height=values[:4]
-                stride=values[4] if len(values)==5 else width
+                # TMS backends reduce SCREEN width, height and source stride to bytes.
+                width,height=width&255,height&255
+                stride=(values[4]&255) if len(values)==5 else width
                 self.events.append(('screen',label,offset,dest,width,height,stride))
                 for row in range(height):
                     self.transfers.append((6144+dest+row*32,width))
@@ -291,7 +293,7 @@ class Tests(unittest.TestCase):
         b=self.state();b.v['aboard']=16;b.a['camp_left'][1]=0
         b.call('people_tick');self.assertEqual(b.v['aboard'],16);self.assertEqual(self.total(b),64)
     def test_unload_only_at_pad(self):
-        for x,want in ((1384,0),(1408,1),(1441,0)):
+        for x,want in ((1896,0),(1920,1),(1953,0)):
             b=self.state();b.v.update({'#hx':x,'aboard':16,'runner_on':0,'transfer_timer':0})
             b.a['camp_left']=[0,16,16,16]
             b.a['person_state'][:16]=[5]*16
@@ -394,7 +396,7 @@ class Tests(unittest.TestCase):
                 b.v.update({'#hx':160,'#runner_x':172,'runner_on':1,'runner_camp':camp,'runner_id':camp*16+person,'transfer_timer':0})
                 b.call('people_tick');self.assertEqual(self.total(b),64)
             self.assertEqual(b.v['aboard'],16)
-            b.v.update({'#hx':1408,'runner_on':0})
+            b.v.update({'#hx':1920,'runner_on':0})
             for person in range(16):
                 b.v['transfer_timer']=0;b.call('people_tick');self.assertEqual(self.total(b),64)
         self.assertEqual((b.v['saved'],b.v['lost'],b.v['aboard']),(64,0,0))
@@ -433,7 +435,7 @@ class Tests(unittest.TestCase):
         b.call('move_shot')
         self.assertEqual((b.v['tank_on'],b.a['shot_on'][0]),(0,0))
     def test_ground_and_world_limits(self):
-        for x,control,expected in ((17,'cont1.left',16),(1495,'cont1.right',1496)):
+        for x,control,expected in ((17,'cont1.left',16),(2007,'cont1.right',2008)):
             b=self.state();b.v.update({'#hx':x,'hy':100,'dt':6,'hspeed':3,'hdir':int('left' in control),control:1})
             b.call('fly');self.assertEqual(b.v['#hx'],expected)
         b=self.state();b.v.update({'hy':152,'cont1.down':1,'cont1.right':1,'hspeed':3})
@@ -445,22 +447,56 @@ class Tests(unittest.TestCase):
         self.assertEqual([len(art.sprite_bytes(a)) for a in art.SPRITES],[32]*64)
         self.assertEqual(len(art.TILES),112)
         self.assertTrue(all(len(bits)==8 for bits,_ in art.TILES))
-        self.assertEqual([len(row) for row in art.MAP],[192]*5)
+        self.assertEqual([len(row) for row in art.MAP],[256]*5)
         for col in (16,48,80,112):self.assertEqual(art.MAP[3][col],135)
-        self.assertEqual(art.MAP[4][178],138)
+        self.assertEqual(art.MAP[4][242],138)
         self.assertNotEqual(art.SPRITES[0],art.SPRITES[2])
         self.assertNotEqual(art.SPRITES[0],art.SPRITES[20])
         self.assertNotEqual(art.SPRITES[20],art.SPRITES[32])
         self.assertEqual(len(art.FLAG_COLORS),16)
         self.assertNotEqual(art.FLAG0,art.FLAG1)
 
+    def test_two_screen_camp_setback_and_full_width_map(self):
+        import generate as art
+        def verify(source):
+            terrain=source.split('\nterrain:\n')[1].split('\ncamp_fronts:\n')[0]
+            fences=[int(n) for n in re.findall(r'#fence_world=(\d+)',terrain)]
+            self.assertEqual(fences,[1568,1888])
+            camps=[int(n) for n in re.findall(r'#camp_x\(\d\)=(\d+)',source)]
+            self.assertEqual(camps,[128,384,640,896])
+            # Old nearest wall ended at 920, 136 pixels short of the fence.
+            # Add exactly two 256-pixel screens without shifting camp spacing.
+            east_wall=(max(i for i,ch in enumerate(art.MAP[2]) if ch==133)+1)*8
+            self.assertEqual(fences[0]-east_wall,136+2*256)
+            self.assertFalse(any(ch in (133,134,135) for row in art.MAP
+                                 for ch in row[east_wall//8:fences[0]//8]))
+            for target in ('TI994A','COLECO'):
+                b=self.state();b.r=Basic(source,target=target).r
+                b.a['camp_open']=[0]*4;b.a['person_state']=[0]*64
+                b.v.update(anim=0,home_walking=0,crowd_pose=255);b.v['#camera']=65535
+                for camera in list(range(0,1793,8))+list(range(1792,-1,-8)):
+                    b.v['#hx']=camera+112;b.v['terrain_dirty']=1
+                    b.call('camera_tick');self.assertEqual(b.v['#camera'],camera)
+                    b.call('crowd_draw')
+                    for row in (2,3):
+                        actual=[b.vram[6144+(17+row)*32+c] for c in range(32)]
+                        self.assertEqual(actual,art.MAP[row][camera//8:camera//8+32])
+        verify(SOURCE)
+        for before,after in (
+                ('#fence_world=1568','#fence_world=1056'),
+                ('IF #newcam > 1792 THEN #newcam=1792','IF #newcam > 1280 THEN #newcam=1280'),
+                ('SCREEN world_map,#mapoff,544,32,1\n    #mapoff=#mapoff+256\n    SCREEN world_map,#mapoff,576,32,1\n    #mapoff=#mapoff+256\n    SCREEN world_map,#mapoff,608,32,1','SCREEN world_map,#mapoff,544,32,3,256'),
+                ('#crowd_map=#crowd_map+768','#crowd_map=#crowd_map+576')):
+            self.assertIn(before,SOURCE)
+            with self.assertRaises(AssertionError):verify(SOURCE.replace(before,after))
+
     def test_jet_unlock_requires_finished_delivery(self):
         b=self.state();b.v.update({'#hx':500,'aboard':2,'runner_on':0,'#jet_wait':0,'#elapsed':2})
         b.a['person_state'][:2]=[5,5]
         b.call('jet_spawn');self.assertEqual(b.v.get('jet_on',0),0)
-        b.v['#hx']=1408;b.call('people_tick');b.v['#hx']=500;b.call('jet_spawn')
+        b.v['#hx']=1920;b.call('people_tick');b.v['#hx']=500;b.call('jet_spawn')
         self.assertEqual(b.v.get('jet_on',0),0)
-        b.v['transfer_timer']=0;b.v['#hx']=1408;b.call('people_tick');b.v['#hx']=500;b.call('jet_spawn')
+        b.v['transfer_timer']=0;b.v['#hx']=1920;b.call('people_tick');b.v['#hx']=500;b.call('jet_spawn')
         self.assertEqual(b.v.get('sorties',0),0) # the last passenger is still walking to the door
         for _ in range(50):b.call('people_tick')
         b.call('jet_spawn')
@@ -545,7 +581,7 @@ class Tests(unittest.TestCase):
 
     def test_waiting_fast_path_matches_portable_renderer(self):
         import generate as art
-        for camera in range(0,1281,64):
+        for camera in range(0,1793,64):
             for anim in (0,8,16,24):
                 results=[]
                 for target in ('TI994A','COLECO'):
@@ -616,11 +652,12 @@ class Tests(unittest.TestCase):
                     self.assertEqual(len(screens),1)
                     i=screens[0]
                     self.assertEqual(b.events[i-1],('wait',))
-                    self.assertEqual(b.events[i],('screen','world_map',camera//8,544,32,3,192))
+                    for row in range(3):
+                        self.assertEqual(b.events[i+row],('screen','world_map',camera//8+row*256,544+row*32,32,1,32))
                     # No person simulation, composition, terrain overlays, or wait
                     # can split the top three rows from the ground-level row.
-                    self.assertEqual(b.events[i+1][0],'screen')
-                    self.assertEqual(b.events[i+1][3:6],(640,32,1))
+                    self.assertEqual(b.events[i+3][0],'screen')
+                    self.assertEqual(b.events[i+3][3:6],(640,32,1))
         for target in ('TI994A','COLECO'):
             verify(SOURCE,target)
             for before,after in (
@@ -638,7 +675,7 @@ class Tests(unittest.TestCase):
                     b=self.state();b.r=Basic(source).r
                     b.v['landed']=Basic(source).v['landed']
                     b.call('new_heli')
-                    b.v.update({'#camera':1280,'face':face,'rotor_phase':beat})
+                    b.v.update({'#camera':1792,'face':face,'rotor_phase':beat})
                     b.call('draw_actors')
                     bottoms=[]
                     for slot in (0,1):
@@ -651,7 +688,7 @@ class Tests(unittest.TestCase):
         with self.assertRaises(AssertionError):verify(SOURCE.replace('CONST LANDED = 153','CONST LANDED = 152'))
 
     def test_idle_and_offscreen_crowds_skip_expensive_work(self):
-        b=self.escaped_crowd();b.v.update({'#camera':1280,'hy':80,'old_y':80,'crowd_dirty':1,'anim':0})
+        b=self.escaped_crowd();b.v.update({'#camera':1792,'hy':80,'old_y':80,'crowd_dirty':1,'anim':0})
         self.assertEqual(b.a['camp_active'],[0]*4)
         b.calls={};b.call('escape_tick');b.call('crowd_draw')
         for routine in ('person_stride','crowd_landing','crowd_plot','crowd_cell','waiting_draw'):
@@ -695,12 +732,18 @@ class Tests(unittest.TestCase):
         self.assertEqual(b.a['#shot_x'][0],516) # Reused slot forgets previous momentum.
 
     def test_drifting_bomb_bounds_and_swept_hit(self):
-        for direction,x in ((1,2),(0,1530)):
+        # Shooting throughout the expanded home-side region must still work.
+        for face in (0,1,2):
+            b=self.state();b.v.update({'#hx':1920,'hy':80,'face':face,'hspeed':3,'hdir':0})
+            b.call('fire_shot');b.v['wi']=0;b.call('move_shot')
+            self.assertEqual(b.a['shot_on'][0],1)
+            self.assertGreater(b.a['#shot_x'][0],1792)
+        for direction,x in ((1,2),(0,2042)):
             b=self.state();b.v.update(wi=0,dt=6)
             b.a['#shot_x'][0]=x;b.a['shot_y'][0]=100;b.a['shot_dir'][0]=2
             b.a['shot_on'][0]=1;b.a['shot_speed'][0]=3;b.a['shot_drift'][0]=direction
             b.call('move_shot');self.assertEqual(b.a['shot_on'][0],0)
-            self.assertLess(b.a['#shot_x'][0],1600)
+            self.assertLess(b.a['#shot_x'][0],2112)
         for direction,x in ((0,490),(1,544)):
             b=self.state();b.v.update({'wi':0,'dt':6,'tank_on':1,'#tank_x':500})
             b.a['#shot_x'][0]=x;b.a['shot_y'][0]=155;b.a['shot_dir'][0]=2
@@ -739,13 +782,13 @@ class Tests(unittest.TestCase):
 
     def test_jet_turns_passes_and_departure(self):
         for dt in (1,2,3,4,6):
-            b=self.state();b.v.update({'#hx':500,'hy':140,'sorties':1,'#elapsed':dt,'dt':dt,'invuln':255})
+            b=self.state();b.v.update({'#hx':1500,'hy':140,'sorties':1,'#elapsed':dt,'dt':dt,'invuln':255})
             b.call('jet_spawn');directions=set();heights=set();turns=0
-            for _ in range(1800//dt):
+            for _ in range(2400//dt):
                 if not b.v['jet_on']:break
                 b.call('jet_tick');directions.add(b.v['jet_dir']);heights.add(b.v['jet_y'])
                 turns+=bool(b.v['jet_turn'])
-                self.assertLessEqual(b.v['#jet_x']+16,1056)
+                self.assertLessEqual(b.v['#jet_x']+16,1568)
             self.assertEqual(directions,{0,1});self.assertGreater(len(heights),8)
             self.assertGreater(turns,0);self.assertEqual(b.v['jet_passes'],2)
             self.assertEqual(b.v['jet_on'],0)
@@ -755,14 +798,14 @@ class Tests(unittest.TestCase):
         b.call('jet_attack');self.assertEqual(b.v.get('missile_on',0),0)
         b.v['jet_passes']=1;b.call('jet_attack')
         self.assertEqual((b.v['missile_on'],b.v['jet_ammo']),(1,1))
-        b.v.update({'#missile_x':1054,'missile_dir':0});b.call('missile_tick')
+        b.v.update({'#missile_x':1566,'missile_dir':0});b.call('missile_tick')
         self.assertEqual(b.v['missile_on'],0)
         b.v['jet_fire']=0;b.call('jet_attack');self.assertEqual(b.v['jet_ammo'],0)
         b.v.update(missile_on=0,jet_fire=0);b.call('jet_attack');self.assertEqual(b.v['missile_on'],0)
 
     def escaped_crowd(self, source=SOURCE):
         b=self.state();b.r=Basic(source).r
-        b.v.update({'#hx':1400,'hy':80,'old_y':80,'runner_on':0})
+        b.v.update({'#hx':1912,'hy':80,'old_y':80,'runner_on':0})
         b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4
         for _ in range(240):b.call('escape_tick')
         return b
@@ -784,7 +827,7 @@ class Tests(unittest.TestCase):
         for dt in (1,2,3,4,6):
             b=self.state();b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4
             b.a['camp_open']=[1,0,0,0]
-            b.v.update({'dt':dt,'hy':80,'runner_on':0,'aboard':16,'#hx':1400})
+            b.v.update({'dt':dt,'hy':80,'runner_on':0,'aboard':16,'#hx':1912})
             for _ in range(60//dt):b.call('escape_tick')
             self.assertEqual(b.a['camp_released'],[3,0,0,0])
             self.assertEqual(b.a['#person_x'][0],68)
@@ -801,7 +844,7 @@ class Tests(unittest.TestCase):
                     if b.v['aboard']==want:break
                 self.assertEqual(b.v['aboard'],want)
             self.assertEqual(b.a['person_state'][camp*16:camp*16+16],[5]*16)
-            b.v['#hx']=1416
+            b.v['#hx']=1928
             for _ in range(100):b.call('people_tick')
             self.assertEqual((b.v['aboard'],b.v['saved']),(0,(camp+1)*16))
         self.assertEqual(self.total(b),64)
@@ -810,7 +853,7 @@ class Tests(unittest.TestCase):
         b=self.escaped_crowd();b.v.update({'#hx':200,'hy':153,'old_y':153})
         b.call('choose_runner');who=b.v['runner_id']
         self.assertEqual(b.a['person_state'][who],3)
-        b.v['#hx']=1400;b.call('people_tick')
+        b.v['#hx']=1912;b.call('people_tick')
         self.assertEqual((b.v['runner_on'],b.a['person_state'][who]),(0,1))
         b.call('new_heli')
         for _ in range(50):b.call('escape_tick')
@@ -831,10 +874,10 @@ class Tests(unittest.TestCase):
 
     def test_crowd_composites_and_screen_edge_clipping(self):
         import generate as art
-        for camera in (0,8,80,1280):
+        for camera in (0,8,80,1792):
             for phase in (0,4):
                 b=self.state();b.a['person_state']=[0]*64
-                b.a['world_map']=[32]*960;b.a['camp_open']=[1]*4;b.a['#camp_x']=[camera+128]*4;b.a['camp_active']=[1]*4
+                b.a['world_map']=[32]*1280;b.a['camp_open']=[1]*4;b.a['#camp_x']=[camera+128]*4;b.a['camp_active']=[1]*4
                 positions=[camera-4]+[camera+phase+x for x in range(0,260,8)]
                 positions=[x for x in positions if x>=0]
                 for i,x in enumerate(positions):
@@ -879,20 +922,20 @@ class Tests(unittest.TestCase):
             b.call=inspect;b.call('crowd_draw')
             self.assertNotEqual(b.vram,visible)
         verify(SOURCE)
-        bad=SOURCE.replace('FOR tc=0 TO 3\n    IF crowd_mask', 'SCREEN world_map,#crowd_map,640,32,1,192\nFOR tc=0 TO 3\n    IF crowd_mask')
+        bad=SOURCE.replace('FOR tc=0 TO 3\n    IF crowd_mask', 'SCREEN world_map,#crowd_map,640,32,1,256\nFOR tc=0 TO 3\n    IF crowd_mask')
         with self.assertRaises(AssertionError):verify(bad)
 
     def test_parallax_and_flag_clipping(self):
         import generate as art
         b=self.state();near=[]
-        for camera in (960,992):
-            b.v.update({'#camera':camera,'#fence_world':1056});b.call('fence_boundary')
+        for camera in (1472,1504):
+            b.v.update({'#camera':camera,'#fence_world':1568});b.call('fence_boundary')
             near.append(b.v['#fence_screen']+(b.v['fence_shape']-4)*8)
         self.assertEqual(near[0]-near[1],40) # horizon moves 32, foreground 40
         b.vram={}
-        for camera in range(1280,-1,-8):
+        for camera in range(1792,-1,-8):
             b.v['#camera']=camera;b.call('flag_position')
-            for world in (1056,1376):
+            for world in (1568,1888):
                 flag=dict(b.vram);b.vram={}
                 b.v['#fence_world']=world;b.call('fence_boundary')
                 self.assertTrue(all(6816<=a<6880 for a in b.vram))
@@ -905,11 +948,11 @@ class Tests(unittest.TestCase):
 
     def test_office_flag_is_on_roof_and_zone_is_wide(self):
         import generate as art
-        b=self.state();b.v['#camera']=1280;b.call('flag_position')
+        b=self.state();b.v['#camera']=1792;b.call('flag_position')
         col=b.v['flag_col']
         self.assertEqual(b.vram[6144+18*32+col],146)
         self.assertEqual(b.vram[6144+17*32+col],144)
-        roof=art.MAP[2][160+col]
+        roof=art.MAP[2][224+col]
         self.assertIn(roof,range(151,156))
         self.assertEqual(sum(c in range(151,156) for c in art.MAP[2]),10)
         # Read fence placements from production source, not a second layout model.
@@ -921,7 +964,7 @@ class Tests(unittest.TestCase):
         import generate as art
         def verify(source):
             b=self.state();b.r=Basic(source).r
-            for camera in list(range(1144,1281,8))+list(range(1280,1143,-8)):
+            for camera in list(range(1656,1793,8))+list(range(1792,1655,-8)):
                 b.v['#camera']=camera;b.call('terrain')
                 for col,under in enumerate(art.MAP[4]):
                     if under not in (137,138):continue
@@ -953,21 +996,21 @@ class Tests(unittest.TestCase):
         import generate as art
         def draw(source):
             b=self.state();b.r=Basic(source).r
-            b.v.update({'#camera':1280,'crowd_dirty':1,'crowd_pose':255})
+            b.v.update({'#camera':1792,'crowd_dirty':1,'crowd_pose':255})
             b.a['camp_open']=[0]*4;b.a['person_state']=[0]*64
             b.call('crowd_draw');return b
         b=draw(SOURCE)
-        self.assertEqual([b.vram[6784+x] for x in range(32)],art.MAP[3][160:192])
+        self.assertEqual([b.vram[6784+x] for x in range(32)],art.MAP[3][224:256])
         self.assertFalse(set(b.patterns)&set(range(128,240)))
         # Empty scenery must avoid all dynamic pattern uploads.
         self.assertFalse(set(b.patterns)-set(range(96,120))-{126,127})
-        bad=draw(SOURCE.replace('#crowd_map=#crowd_map+576','#crowd_map=#crowd_map+480'))
-        self.assertNotEqual([bad.vram[6784+x] for x in range(32)],art.MAP[3][160:192])
+        bad=draw(SOURCE.replace('#crowd_map=#crowd_map+768','#crowd_map=#crowd_map+576'))
+        self.assertNotEqual([bad.vram[6784+x] for x in range(32)],art.MAP[3][224:256])
 
     def test_camp_evacuates_offscreen_with_full_cabin(self):
         b=self.state();b.a['camp_open']=[1,0,0,0];b.a['camp_released']=[0]*4
         b.a['person_state']=[0]*64;b.a['camp_left'][3]=0
-        b.v.update({'#hx':1408,'aboard':16,'runner_on':0,'hy':100,'dt':6})
+        b.v.update({'#hx':1920,'aboard':16,'runner_on':0,'hy':100,'dt':6})
         for _ in range(80):b.call('escape_tick')
         self.assertEqual(b.a['camp_released'],[16,0,0,0])
         self.assertEqual(b.a['person_state'][:16],[2]*16)
@@ -1025,7 +1068,7 @@ class Tests(unittest.TestCase):
     def test_star_parallax_wrap_and_sky_ownership(self):
         import generate as art
         b=self.state()
-        for camera in list(range(0,1281,8))+list(range(1280,-1,-8)):
+        for camera in list(range(0,1793,8))+list(range(1792,-1,-8)):
             b.v['#camera']=camera;b.call('stars_draw')
             cells={a:c for a,c in b.vram.items() if c!=32}
             self.assertEqual(len(cells),14)
@@ -1055,7 +1098,7 @@ class Tests(unittest.TestCase):
         self.assertGreater(sum(c!=32 for c in bad.vram.values()),14)
 
     def test_ground_replaces_status_row(self):
-        b=self.state();b.v['#camera']=1280;b.call('terrain')
+        b=self.state();b.v['#camera']=1792;b.call('terrain')
         self.assertEqual([b.vram[6880+x] for x in range(32)],[129]*32)
         self.assertEqual([b.vram[6848+x] for x in range(32) if x>16],[129]*15)
         for routine in ('hud','game_screen','pause_game','pause_end'):
@@ -1146,7 +1189,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(travel,[60,48,40])
         def draw(source):
             b=self.state();b.r=Basic(source).r
-            b.a['world_map']=[32]*960;b.a['camp_open']=[1]*4;b.a['person_state']=[0]*64;b.a['camp_active'][0]=1
+            b.a['world_map']=[32]*1280;b.a['camp_open']=[1]*4;b.a['person_state']=[0]*64;b.a['camp_active'][0]=1
             for who,x in enumerate((40,44,48)):
                 b.a['person_state'][who]=2;b.a['#person_x'][who]=x
             b.v.update({'#camera':0,'crowd_pose':255,'crowd_dirty':1})
@@ -1163,23 +1206,23 @@ class Tests(unittest.TestCase):
     def test_unload_walks_to_office_before_unlocking_jets(self):
         b=self.state();b.a['person_state']=[0]*64;b.a['person_state'][:2]=[5,5]
         b.a['camp_left'][0]=14
-        b.v.update({'#hx':1408,'aboard':2,'runner_on':0})
+        b.v.update({'#hx':1920,'aboard':2,'runner_on':0})
         b.call('people_tick')
         self.assertEqual((b.v['aboard'],b.v['saved'],b.a['person_state'][0]),(1,1,6))
-        self.assertEqual(b.a['#person_x'][0],1420)
+        self.assertEqual(b.a['#person_x'][0],1932)
         self.assertEqual(b.v.get('sorties',0),0)
         for _ in range(60):
             b.call('people_tick');self.assertEqual(self.total(b),64)
         self.assertEqual(b.a['person_state'][:2],[7,7])
-        self.assertTrue(all(x>=1480 for x in b.a['#person_x'][:2]))
+        self.assertTrue(all(x>=1992 for x in b.a['#person_x'][:2]))
         self.assertEqual((b.v['aboard'],b.v['saved'],b.v['sorties']),(0,2,1))
 
     def test_walkers_preserve_office_background(self):
         import generate as art
         b=self.state();b.a['person_state']=[0]*64;b.a['person_state'][0]=6
-        b.a['#person_x'][0]=1464;b.a['camp_open']=[0]*4
-        b.v.update({'#camera':1280,'crowd_pose':255,'crowd_dirty':1,'home_walking':1})
-        b.call('crowd_draw');col=(1464-1280)//8
+        b.a['#person_x'][0]=1976;b.a['camp_open']=[0]*4
+        b.v.update({'#camera':1792,'crowd_pose':255,'crowd_dirty':1,'home_walking':1})
+        b.call('crowd_draw');col=(1976-1792)//8
         silhouette=[sum(ink<<(7-x) for x,ink in enumerate(row)) for row in art.person(0,True,0)]
         self.assertEqual(b.patterns[col],[a|p for a,p in zip(art.TILES[156-128][0],silhouette)])
         self.assertEqual([b.vram[12288+col*8+y] for y in range(8)],[0x6F]*8)

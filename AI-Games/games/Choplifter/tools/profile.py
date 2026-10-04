@@ -32,7 +32,7 @@ FOR bench_case=0 TO 2
             camp_open(ini)=1
         NEXT ini
     END IF
-    #hx=1500
+    #hx=2012
     IF bench_case = 2 THEN #hx=384
     hy=80:old_y=80:runner_on=0:hspeed=3:dt=2
     GOSUB camera_tick
@@ -76,6 +76,8 @@ def main():
     out=ROOT/'build/profile';out.mkdir(parents=True,exist_ok=True)
     (out/'CHOPLIFT.bas').write_text(source,encoding='utf-8',newline='\n')
     (out/'assets.bas').write_bytes(args.assets.read_bytes())
+    if 'INCLUDE "menu_font.bas"' in source:
+        (out/'menu_font.bas').write_bytes(args.assets.with_name('menu_font.bas').read_bytes())
     run(CV/'cvbasic.exe','--ti994a','CHOPLIFT.bas','CHOPLIFT.a99',str(CV)+'/',cwd=out)
     run(sys.executable,XD/'xas99.py','-b','-R','CHOPLIFT.a99','-L','CHOPLIFT.lst',cwd=out)
     fixed=(out/'CHOPLIFT_b0.bin').read_bytes()

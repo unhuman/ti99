@@ -204,7 +204,7 @@ new_heli:
 GOSUB silence
 rotor_clock=0:rotor_phase=0
 fall_speed=0:fall_hold=0
-#hx=1408
+#hx=1920
 hy=LANDED
 hspeed=0
 hdir=0
@@ -298,7 +298,7 @@ IF hdir THEN
     IF #hx > #move+16 THEN #hx=#hx-#move ELSE #hx=16
 ELSE
     #hx=#hx+#move
-    IF #hx > 1496 THEN #hx=1496
+    IF #hx > 2008 THEN #hx=2008
 END IF
 RETURN
 
@@ -412,7 +412,7 @@ IF shot_dir(wi) = 2 THEN
             #shot_x(wi)=#shot_x(wi)-#bullet_step
         ELSE
             #shot_x(wi)=#shot_x(wi)+#bullet_step
-            IF #shot_x(wi) > 1534 THEN shot_on(wi)=0:RETURN
+            IF #shot_x(wi) > 2046 THEN shot_on(wi)=0:RETURN
         END IF
     END IF
 ELSE
@@ -426,7 +426,7 @@ ELSE
         #shot_x(wi)=#shot_x(wi)-#bullet_step
     ELSE
         #shot_x(wi)=#shot_x(wi)+#bullet_step
-        IF #shot_x(wi) > 1534 THEN shot_on(wi)=0:RETURN
+        IF #shot_x(wi) > 2046 THEN shot_on(wi)=0:RETURN
     END IF
 END IF
 ' Keep ground-crossing bombs alive until collision tests have run.
@@ -528,8 +528,8 @@ IF delivery_pending THEN
 END IF
 IF transfer_timer > dt THEN transfer_timer=transfer_timer-dt ELSE transfer_timer=0
 IF hy = LANDED THEN
-    IF #hx > 1384 THEN
-        IF #hx < 1441 THEN
+    IF #hx > 1896 THEN
+        IF #hx < 1953 THEN
             IF aboard THEN
                 IF transfer_timer = 0 THEN
                     GOSUB unload_person
@@ -605,9 +605,9 @@ NEXT ep
 RETURN
 
 home_walk:
-IF #person_x(ep) < 1480 THEN
+IF #person_x(ep) < 1992 THEN
     #person_x(ep)=#person_x(ep)+crowd_step
-    IF #person_x(ep) >= 1480 THEN person_state(ep)=7:home_walking=home_walking-1
+    IF #person_x(ep) >= 1992 THEN person_state(ep)=7:home_walking=home_walking-1
 ELSE
     person_state(ep)=7:home_walking=home_walking-1
 END IF
@@ -766,7 +766,7 @@ crowd_dirty=1:hud_dirty=1
 RETURN
 
 enemy_tick:
-IF #hx < 1060 THEN
+IF #hx < 1572 THEN
     IF tank_on = 0 THEN
         IF #tank_wait > #elapsed THEN
             #tank_wait=#tank_wait-#elapsed
@@ -787,7 +787,7 @@ IF sorties >= 2 THEN
             #drone_wait=#drone_wait-#elapsed
         ELSE
             drone_on=1
-            #drone_x=1056
+            #drone_x=1568
             drone_y=32
         END IF
     END IF
@@ -821,7 +821,7 @@ jet_spawn:
 ' A sortie counts only when the last person in a nonempty cabin has unloaded.
 ' Keep the launch countdown untouched throughout the first collection.
 IF sorties = 0 THEN RETURN
-IF #hx >= 1056 THEN RETURN
+IF #hx >= 1568 THEN RETURN
 IF jet_on THEN RETURN
 IF #jet_wait > #elapsed THEN
     #jet_wait=#jet_wait-#elapsed
@@ -836,7 +836,7 @@ ELSE
     #jet_left=24
     IF #hx > 184 THEN #jet_left=#hx-160
     #jet_right=#hx+144
-    IF #jet_right > 1016 THEN #jet_right=1016
+    IF #jet_right > 1528 THEN #jet_right=1528
     #jet_x=#jet_right
     #jet_wait=360
 END IF
@@ -900,7 +900,7 @@ IF jet_passes = 0 THEN RETURN
 IF jet_turn THEN RETURN
 IF jet_ammo = 0 THEN RETURN
 IF missile_on THEN RETURN
-IF #hx >= 1056 THEN RETURN
+IF #hx >= 1568 THEN RETURN
 IF jet_dir THEN
     IF #hx > #jet_x THEN RETURN
 ELSE
@@ -935,7 +935,7 @@ IF missile_dir THEN
 ELSE
     #missile_x=#missile_x+#missile_step
 END IF
-IF #missile_x >= 1056 THEN missile_on=0:RETURN
+IF #missile_x >= 1568 THEN missile_on=0:RETURN
 IF missile_aim = 1 THEN
     IF missile_y <= dt+24 THEN missile_on=0:RETURN
     missile_y=missile_y-dt
@@ -968,8 +968,8 @@ tank_motion=tank_motion+dt
 tank_step=tank_motion/4
 tank_motion=tank_motion AND 3
 IF #tank_x < #hx THEN
-    IF #tank_x < 1024 THEN #tank_x=#tank_x+tank_step
-    IF #tank_x > 1024 THEN #tank_x=1024
+    IF #tank_x < 1536 THEN #tank_x=#tank_x+tank_step
+    IF #tank_x > 1536 THEN #tank_x=1536
 ELSE
     IF #tank_x > 8 THEN #tank_x=#tank_x-tank_step
 END IF
@@ -1017,7 +1017,7 @@ IF shell_dir THEN
 ELSE
     #shell_x=#shell_x+#shell_step
 END IF
-IF #shell_x > 1060 THEN shell_on=0:RETURN
+IF #shell_x > 1572 THEN shell_on=0:RETURN
 IF shell_rise THEN
     IF shell_y > dt+24 THEN shell_y=shell_y-dt ELSE shell_on=0:RETURN
 END IF
@@ -1099,7 +1099,7 @@ RETURN
 camera_tick:
 #newcam=0
 IF #hx > 112 THEN #newcam=#hx-112
-IF #newcam > 1280 THEN #newcam=1280
+IF #newcam > 1792 THEN #newcam=1792
 #newcam=#newcam AND 65528
 IF #newcam <> #camera THEN
     #camera=#newcam
@@ -1165,13 +1165,13 @@ RETURN
 
 terrain:
 #mapoff=#camera/8
-#mapoff=#mapoff+768
+#mapoff=#mapoff+1024
 SCREEN world_map,#mapoff,672,32,1
 SCREEN ground_row,0,704,32,1
 SCREEN ground_row,0,736,32,1
-#fence_world=1056
+#fence_world=1568
 GOSUB fence_boundary
-#fence_world=1376
+#fence_world=1888
 GOSUB fence_boundary
 GOSUB flag_position
 GOSUB camp_fronts
@@ -1227,7 +1227,7 @@ END IF
 IF crowd_dirty = 0 THEN RETURN
 ' Compose in RAM, then blit once: never expose a cleared crowd mid-frame.
 #crowd_map=#camera/8
-#crowd_map=#crowd_map+576
+#crowd_map=#crowd_map+768
 crowd_mask=0:crowd_shift=0
 FOR tc=0 TO 3
     IF camp_open(tc) THEN
@@ -1242,7 +1242,7 @@ FOR tc=0 TO 3
     END IF
 NEXT tc
 IF home_walking THEN
-    IF #camera > 1152 THEN
+    IF #camera > 1664 THEN
         crowd_mask=crowd_mask OR 16
         crowd_shift=1
     END IF
@@ -1360,10 +1360,15 @@ RETURN
 crowd_commit:
 ' Prepare people first. Keep roof/walls and their footings on the same camera
 ' position: only these four short row blits occur after WAIT, before scanout.
+' SCREEN stride is byte-sized; use word offsets for the 256-column map.
 IF terrain_dirty THEN
     #mapoff=#camera/8
     WAIT
-    SCREEN world_map,#mapoff,544,32,3,192
+    SCREEN world_map,#mapoff,544,32,1
+    #mapoff=#mapoff+256
+    SCREEN world_map,#mapoff,576,32,1
+    #mapoff=#mapoff+256
+    SCREEN world_map,#mapoff,608,32,1
 END IF
 IF crowd_mask THEN
     SCREEN crowd_cells,0,640,32,1
@@ -1520,7 +1525,7 @@ FOR fence_y=0 TO 1
                 #fence_addr=#fence_row+#fence_draw
                 ' fire_char is idle here; camp_fronts uses it after both fences.
                 fire_char=fence_codes(fence_char-160)
-                IF #fence_world = 1376 THEN fire_char=home_fence_codes(fence_char-160)
+                IF #fence_world = 1888 THEN fire_char=home_fence_codes(fence_char-160)
                 IF fire_char THEN VPOKE #fence_addr,fire_char
             END IF
         END IF
@@ -1546,7 +1551,7 @@ IF flag_visible THEN
     VPOKE #flag_addr,32
 END IF
 flag_visible=0
-#flag_screen=1504-#camera
+#flag_screen=2016-#camera
 IF #flag_screen < 256 THEN
     flag_visible=1
     flag_col=#flag_screen/8
@@ -1917,6 +1922,9 @@ RETURN
 
 practice_star:
 DATA BYTE 80,32,248,32,80,0,0,0
+
+' Keep the menu font in fixed ROM to leave room for the eight-screen map.
+INCLUDE "menu_font.bas"
 
 #if TI994A
 BANK 1

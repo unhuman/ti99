@@ -462,3 +462,15 @@ Do not work around a launch regression by broadening game controller semantics
 before comparing old and new builds under identical conditions.
 
 
+
+
+### SCREEN SOURCE STRIDE IS A BYTE ON THE TMS TARGETS (2026-10-04)
+
+CVBasic reduces SCREEN width, height and optional source stride to eight bits on
+TI and Coleco. A 256-column map therefore cannot use a single multirow SCREEN
+with stride 256: it becomes zero and repeats the same source row. Choplifter's
+eight-screen world uses consecutive one-row SCREEN calls, advancing a word
+source offset by the bare literal 256 between them, all after the same WAIT.
+Its source-executing checker models byte-sized SCREEN arguments and rejects a
+mutation restoring the zero-stride multirow copy. Inspect generated assembly;
+plain successful compilation does not validate a map stride.
