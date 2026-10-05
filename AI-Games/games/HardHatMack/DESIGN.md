@@ -2545,3 +2545,29 @@ The TI cart compiles with 564 RAM bytes and 22,592/24,336 fixed-area bytes;
 all four banks fit and all eight source/art gates pass after packaging.
 Production SHA-256:
 `C55FFDA4DB9EBA3AEF989323BD9856E4B764B73D2EE7BA18E07176B0C5DF37BD`.
+
+## 48. Deferred death reset and frozen level completion (2026-10-05)
+
+The first death tick used to restore a carried brick or factory box, return the
+jackhammer to its route origin and reset the Level 1 elevator while Mack was
+still blinking or falling on fire. The pending cleanup now runs at the end of
+the 40-frame ordinary death sequence or the furnace's ground pause, immediately
+before respawn or Game Over. Level 1 and Level 3 spring characters hold their
+last compression pose during death and return to rest at that same boundary.
+The machinery phases remain frozen because simulation does not step while dead.
+The tests inspect each site's inventory, hammer, machinery and lives both during
+the sequence and at resolution, including the elevator and spring art.
+
+Level completion now draws the final sprite frame before branching to the
+bonus tally. No simulation or sprite clearing occurs during the tally and
+fanfare, so the finished scene stays visible until `init_level` clears it for
+the next site. A separate audio stop silences the preceding gameplay effects
+without touching sprites, leaving the bonus ticks distinct. The TI in-game
+`BONUS 5000` group moved left from columns 11-20
+to 10-19; score, reserve hats and level label retain their positions. The
+ColecoVision HUD remains deferred for its separate review.
+
+The TI build uses 564 RAM bytes and 22,608/24,336 fixed-area bytes. Its
+four banks fit; all eight source/art gates pass, including 181 rejected defect
+mutations. The production cart is loaded in Classic99. SHA-256:
+`73BB829AB93BCE8B1257F99970F939A9896D28C6072F5535ED6E9B2B630D5410`.

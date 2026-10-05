@@ -89,7 +89,7 @@
 	CONST T_CAN    = 187	' bonus spray can (+200)
 	CONST T_HAT    = 188	' hard hat (HUD lives icon)
 	#if TI994A
-	CONST HUD_BONUS_COL = 17
+	CONST HUD_BONUS_COL = 16
 	#else
 	CONST HUD_BONUS_COL = 21
 	#endif
@@ -325,7 +325,6 @@ main_loop:
 	GOSUB beam_draw
 	GOSUB lift_draw
 	GOSUB site_draw
-	IF lvdone = 1 THEN GOTO level_complete
 	' Mack: hidden (row 209) while dead-blinking handles its own draw.
 	' Airborne states use the spread-legs jump pose.
 	' Directional profile: Mack faces the way he's going (mdir 1=right,
@@ -388,6 +387,9 @@ main_loop:
 	END IF
 	' L2 crane beam is rendered with CHARACTERS (pattern-scrolled), see
 	' beam_draw -- called from the movement path, not here.
+	' Finish drawing this frame before freezing the completed site for the
+	' bonus tally and fanfare. init_level clears it only after the award.
+	IF lvdone = 1 THEN GOTO level_complete
 	GOTO main_loop
 
 inventory_draw:
@@ -652,10 +654,10 @@ bonus_count_step:
 	RETURN
 
 level_complete:
-	GOSUB quiet_screen
 	' Award the remaining bonus and move on to the next level
 	' (after level 3, loop back to level 1).
 	lvdone = 0
+	GOSUB quiet_audio
 	GOSUB bonus_countdown
 	GOSUB completion_music
 	IF #score > #hi THEN
@@ -2507,12 +2509,8 @@ death_cleanup:
 	RETURN
 
 dead_tick:
-	' Blink Mack fast while the death pause runs, then respawn at the
-	' level spawn point with all level state intact.
-	IF dclean = 1 THEN
-		GOSUB death_cleanup
-		dclean = 0
-	END IF
+	' Keep the site and inventory intact throughout the death animation.
+	' Resolve them only once the blink or burning-ground pause has finished.
 	IF burnfall THEN
 		' Ground starts at row 23 (y=184); Mack's sixteen-pixel body stops
 		' with his feet on it. Keep BOTH burning sprite layers visible while
@@ -2546,6 +2544,12 @@ dead_tick:
 	END IF
 dead_resolve:
 	IF dtm = 0 THEN
+		IF dclean = 1 THEN
+			GOSUB death_cleanup
+			dclean = 0
+			' Spring art may have been compressed at the fatal contact.
+			GOSUB machinery_draw
+		END IF
 		IF lives = 0 THEN
 			gameov = 1
 			RETURN
@@ -2901,6 +2905,11 @@ quiet_screen:
 	' outline in slot 31, before end screens or banked title art.
 	WAIT
 	SPRITE 0,209,0,0,0
+	GOSUB quiet_audio
+	steptick = 0
+	RETURN
+
+quiet_audio:
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
@@ -2909,7 +2918,6 @@ quiet_screen:
 	snd1 = 0
 	snd2 = 0
 	snd3 = 0
-	steptick = 0
 	RETURN
 
 hud_all:
@@ -4618,7 +4626,7 @@ burn_bitmap:
 	BITMAP "................"
 	BITMAP "................"
 banked_hud_all:
-	PRINT AT CPOS(0,11),"BONUS "
+	PRINT AT CPOS(0,10),"BONUS "
 	' The mid-left Level-2 crate art is stored in this bank to preserve the
 	' fixed/fixture-bank budgets; upload it while its source page is selected.
 	DEFINE CHAR 167,2,crate_pat
@@ -4980,7 +4988,7 @@ dance_bitmap:
 banked_completion_music:
 	' Original port fanfare: twelve articulated notes, harmony and bass.
 	' Four bytes per event keep the following data word-aligned.
-	GOSUB quiet_screen
+	GOSUB quiet_audio
 	IF lv = 1 THEN RESTORE victory_music1
 	IF lv = 2 THEN RESTORE victory_music2
 	IF lv = 3 THEN RESTORE victory_music3
@@ -5009,7 +5017,7 @@ banked_completion_music:
 		SOUND 2,,0
 		WAIT
 	NEXT songi
-	GOSUB quiet_screen
+	GOSUB quiet_audio
 	RETURN
 
 victory_music1:
@@ -6188,7 +6196,9 @@ animated_machines:
 		END IF
 	END IF
 	IF lv = 1 THEN
-		IF st <> S_TRAMP THEN trpose = 0
+		IF st <> S_TRAMP THEN
+			IF dclean = 0 THEN trpose = 0
+		END IF
 		IF trpose <> trlast THEN
 			trlast = trpose
 			DEFINE VRAM 5192,16,VARPTR tramp_pat(trpose * 16)
@@ -6235,6 +6245,7 @@ animated_machines:
 	RETURN
 
 factory_springs_draw:
+	IF dclean = 1 THEN RETURN
 	trleft = 0
 	trright = 0
 	IF st = 7 THEN

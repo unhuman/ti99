@@ -20,7 +20,7 @@ Three construction sites are implemented:
    available as a separate way to dismount. A soft pitch rises with the
    elevator as it ascends and falls as it descends. The held jackhammer's
    looping sound is quieter than before.
-   Death resets the elevator to its bottom stop. Boarding checks whether
+   After the death animation, the elevator resets to its bottom stop. Boarding checks whether
    Mack's center is within the platform span, preventing the adjacent chain
    from triggering a ride through a few pixels of sprite overlap.
    A fixed launcher at the upper-right end of the
@@ -120,7 +120,7 @@ set that record. Normal play clears the current-game marker, and a higher
 normal score replaces an 838 record without an asterisk. Equal scores retain
 the existing record and its marker. On TI-99, the gameplay score has a one-cell
 left margin and is right-aligned in a six-digit field; its 838 marker follows
-the field. **BONUS** and its timer are centered, reserve hats follow it, and
+the field. **BONUS** and its timer occupy columns 10-19, reserve hats follow, and
 the stage ends the row as **L1**, **L10**, etc. Three-digit stages display just
 their number to keep all eight possible reserve hats visible. High score
 appears only on the title. Scores omit leading zeroes and
@@ -131,9 +131,13 @@ After GAME OVER, wait 1.25 seconds (75 frames at 60 Hz), then release and press
 Fire/Tab to return to the title. With no fresh press, the title returns
 automatically after 10 seconds, even if Fire remains held. The message has a
 one-character blank border; gameplay sprites are hidden without drawing new
-blocks or tools into the playfield. Completing a level visibly counts the remaining
+blocks or tools into the playfield. A death keeps the current machinery and
+carried item in place until the blink or burning fall finishes; the next life
+then restores its pickups and resets the elevator. Completing a level leaves
+the final scene and sprites frozen while it visibly counts the remaining
 bonus down in 100-point steps, adding it to the score with a short tick per step,
-before playing that level's fanfare. Each tick is a quiet, short noise pulse
+before playing that level's fanfare. The scene clears when the next level starts.
+Each tick is a quiet, short noise pulse
 with a silent gap, rather than a sustained pitched beep.
 
 ## Reference-driven repair (2026-10-01)
@@ -247,7 +251,7 @@ and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider step
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
-164 deliberately broken variants must fail. New checks cover directional airborne
+Deliberately broken variants must fail. New checks cover directional airborne
 art, conveyor walking balance, quicker downstrokes, curved furnace flames,
 cross-level spark restoration, bonus counting,
 game-over timeout/release, full-width elevator boarding, spaced rivets,
@@ -258,7 +262,8 @@ ownership, complete pickup removal, processor output, title font restoration, mo
 pincers, visible hazard bounds, belt/slag alignment, speed clocks, elevator boarding
 with background tiles, both parked and moving elevators at game over, two-jump
 pincer crossings launched at closure in both directions, the factory box route
-without its shortcut, enemy jump prevention, and overlapping sounds with explicit note-offs. Controlled-position tests do not
+without its shortcut, enemy jump prevention, deferred death cleanup on all three
+sites, frozen victory sprites, and overlapping sounds with explicit note-offs. Controlled-position tests do not
 prove uninterrupted whole-level clears or original-hardware performance.
 
 The [C64 longplay](https://www.youtube.com/watch?v=WSbEDNtmQWY) is an additional

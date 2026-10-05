@@ -657,7 +657,7 @@ def fidelity(source):
         vm=level(stage)
         assert vm.screen[1:7]==list(map(ord,'  5000')), ('score missing on first level frame',stage)
         assert vm.screen[27:29]==[vm.v['t_hat']]*2, ('top-row reserve hats missing after level paint',stage)
-        assert vm.screen[17:21]==list(map(ord,'5000')), ('bonus missing on first level frame',stage)
+        assert vm.screen[16:20]==list(map(ord,'5000')), ('bonus missing on first level frame',stage)
     # Carrying a loose block through an elevator ride and dying must restore
     # the item, clear inventory, and permit it to be picked up again.
     vm=level(1);item=0
@@ -668,18 +668,23 @@ def fidelity(source):
     vm.v.update(ely=vm.v['elby'],elpaint=0)
     vm.v.update(jhx=88,jhy=56,jhway=7)
     vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
-    assert vm.v['carry']==0 and vm.arrays['itst'][item]==0, 'death cleanup must restore held block after banked callers unwind'
-    assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(vm.v['jhx0'],vm.v['jhy0'],0), (
-        'death must restore the roaming hammer route origin')
+    assert vm.v['carry']==1 and vm.arrays['itst'][item]==1 and vm.v['dclean']==1, (
+        'death restored held block before the blink finished')
+    assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(88,56,7), (
+        'death reset the roaming hammer before the blink finished')
     vm.v['#fd']=40;vm.run('dead_tick')
     assert vm.v['carry']==0 and vm.arrays['itst'][item]==0, 'death left stale block inventory or failed to restore item'
+    assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(vm.v['jhx0'],vm.v['jhy0'],0), (
+        'death did not restore the roaming hammer at respawn')
     vm.v.update(mx=col*8-8,my=row*8-8,ch=vm.v['t_brick'])
     vm.run('take_item')
     assert vm.v['carry']==1 and vm.arrays['itst'][item]==1, 'restored block cannot be picked up again'
-    # Losing the last life also takes the game-over branch that bypasses
-    # respawn cleanup, so held tools must already be returned by mack_die.
+    # The last life still cleans up at the end of the blink, before Game Over.
     vm=level(1);vm.v.update(carry=2,jhtk=1,jhx=120,jhy=80,jhway=9,lives=0)
     vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
+    assert vm.v['carry']==2 and vm.v['jhtk']==1 and vm.v['gameov']==0, (
+        'last-life inventory or Game Over changed before the blink finished')
+    vm.v['#fd']=40;vm.run('dead_tick')
     assert vm.v['carry']==0 and vm.v['jhtk']==0, 'last-life death retained held hammer'
     assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(vm.v['jhx0'],vm.v['jhy0'],0), (
         'last-life death left hammer off its route origin')
@@ -687,6 +692,8 @@ def fidelity(source):
     row,col=vm.arrays['itr'][item],vm.arrays['itc'][item]
     vm.v.update(mx=col*8-8,my=row*8-8,ch=vm.v['t_brick'])
     vm.run('take_item');vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
+    assert vm.v['carry']==1 and vm.arrays['itst'][item]==1
+    vm.v['#fd']=40;vm.run('dead_tick')
     assert vm.v['carry']==0 and vm.arrays['itst'][item]==1, 'last-life death must clear carried state without restoring a pickup on Game Over'
     assert vm.screen[row*32+col]==vm.v['t_void'], 'last-life death restored a stray block into the Game Over scene'
     vm=level(1);vm.v.update(lives=2,**{'#fd':1})
@@ -966,9 +973,9 @@ def score_range(source):
     vm.v.update(lv=1,levelno=1);vm.run('init_level')
     vm.v.update(game838=1,hi838=1,**{'#score':65535,'#hi':65535,'#bonus':5000});vm.run('hud_all')
     assert ''.join(map(chr,vm.screen[1:8]))=='327675*', 'HUD score overlaps marker'
-    assert vm.screen[8:11]==[32]*3 and vm.screen[21:29]==[32]*5+[vm.v['t_hat']]*3, (
+    assert vm.screen[8:10]==[32]*2 and vm.screen[20]==32 and vm.screen[21:29]==[32]*5+[vm.v['t_hat']]*3, (
         'top-row hats overlap the score or bonus')
-    assert ''.join(map(chr,vm.screen[11:21]))=='bonus 5000', 'bonus not centered'
+    assert ''.join(map(chr,vm.screen[10:20]))=='bonus 5000', 'bonus did not move left as a unit'
     for level in (1,9,10,99,100,255,1):
         vm.v['levelno']=level;vm.run('hud_all')
         label=('l'+str(level) if level<100 else str(level)).rjust(3)
@@ -976,7 +983,7 @@ def score_range(source):
             'level not right-aligned or stale digits remain',level)
     vm.v.update(game838=0,hi838=0,**{'#score':1,'#hi':2,'#bonus':0});vm.run('hud_all')
     assert ''.join(map(chr,vm.screen[1:8]))=='     5 ', 'old score digits/marker remain'
-    assert ''.join(map(chr,vm.screen[17:21]))=='   0', 'zero bonus missing or padded'
+    assert ''.join(map(chr,vm.screen[16:20]))=='   0', 'zero bonus missing or padded'
 
 
 def mack_animation(source):
@@ -1126,16 +1133,21 @@ def elevator_boarding(source):
         assert vm.v['emov']==0 and vm.v['mx']<=vm.v['elx'], (
             'left input must not start another elevator ride')
 
-    # Any death resets a Level 1 elevator to its bottom stop and arms it again.
+    # The Level 1 elevator stays where it was during death, then returns to
+    # the bottom stop only when the next life begins.
     for oldy,moving in ((72,0),(117,1),(168,0)):
         vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
-        vm.v.update(ely=oldy,emov=moving,elarm=0,edance=12,elpaint=0)
+        vm.v.update(ely=oldy,emov=moving,elarm=0,edance=12,elpaint=0,lives=2)
         if not moving:
             vm.run('elev_back')
         oldbase=(oldy//8-2)*32+vm.v['elx']//8
         vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
-        assert vm.v['st']==vm.v['s_dead'] and vm.v['ely']==vm.v['elby'], (
-            'death must reset elevator to bottom stop',oldy,moving,dict(vm.v))
+        assert vm.v['st']==vm.v['s_dead'] and vm.v['ely']==oldy and vm.v['emov']==moving, (
+            'elevator reset before death animation finished',oldy,moving,dict(vm.v))
+        assert vm.v['elarm']==0 and vm.v['dclean']==1
+        vm.v['#fd']=40;vm.run('dead_tick')
+        assert vm.v['st']==vm.v['s_walk'] and vm.v['ely']==vm.v['elby'], (
+            'death did not reset elevator at respawn',oldy,moving,dict(vm.v))
         assert vm.v['emov']==0 and vm.v['eld']==0 and vm.v['elarm']==1 and vm.v['edance']==0
         base=(vm.v['elby']//8-2)*32+vm.v['elx']//8
         assert [vm.screen[p] for p in (base,base+1,base+32,base+33,base+64,base+65)]==[
@@ -1176,7 +1188,7 @@ def end_screen_timing(source):
             vm.frame_inputs=iter([{}]*210);vm.run('bonus_countdown')
             ticks=(remaining+99)//100
             assert vm.v['#bonus']==0 and vm.v['#score']==min(65535,score+remaining//5), 'bonus lost, doubled or overflowed'
-            shown=[int(text.strip()) for pos,text in vm.prints if pos==17]
+            shown=[int(text.strip()) for pos,text in vm.prints if pos==16]
             assert shown==[max(0,remaining-100*n) for n in range(1,ticks+1)], 'bonus does not visibly count down'
             pulses=[(t,e) for t,e in vm.sound_times if e==(3,5,7)]
             assert [t for t,e in pulses]==list(range(0,ticks*4,4)), 'bonus ticker cadence'
@@ -1184,6 +1196,94 @@ def end_screen_timing(source):
             assert silences==list(range(2,ticks*4,4)), 'bonus tick needs a short, audible pulse'
             assert vm.wait_count==ticks*4
             if ticks:assert vm.sound[-1]==(3,None,0), 'bonus ticker remains latched'
+
+
+def victory_scene(source):
+    loop=source[source.index('main_loop:\n'):source.index('bonus_countdown:\n')]
+    assert loop.find('IF lvdone = 1 THEN GOTO level_complete') > loop.find('GOSUB enemy_draw') >= 0, (
+        'victory freezes sprites before the final frame is drawn')
+    complete=source[source.index('level_complete:\n'):source.index('game_over:\n')]
+    assert 'GOSUB quiet_screen' not in complete and 0 <= complete.find('GOSUB quiet_audio') < complete.find('GOSUB bonus_countdown') < complete.find('GOSUB init_level'), (
+        'victory clears the completed site before awarding the bonus')
+    music=source[source.index('banked_completion_music:\n'):source.index('victory_music1:\n')]
+    assert 'GOSUB quiet_screen' not in music, 'fanfare erased frozen victory sprites'
+    for stage in (1,2,3):
+        vm=Basic(source);vm.v.update(lv=stage,levelno=stage,xlife=1)
+        vm.run('init_level')
+        vm.v['#bonus']=200
+        vm.sprites[0]=(48,96,0,15)
+        vm.sprites[3]=(64,104,24,7)
+        frozen=dict(vm.sprites)
+        vm.v.update(snd0=8,snd1=8,snd2=8,snd3=8)
+        vm.run('quiet_audio')
+        assert vm.sprites==frozen and all(vm.v[k]==0 for k in ('snd0','snd1','snd2','snd3')), (
+            'victory audio stop erased a sprite or left a gameplay sound active',stage)
+        vm.frame_inputs=iter([{}]*12)
+        vm.run('bonus_countdown')
+        assert vm.sprites==frozen and vm.v['#bonus']==0, (
+            'bonus award altered the frozen victory sprites',stage)
+        # Exercise the actual award/fanfare path, ending just before the next
+        # main loop. The scene may clear only when init_level begins.
+        end=source.index('level_complete:\n')
+        stop=source.index('game_over:\n',end)
+        full=source[:end]+source[end:stop].replace('\tGOTO main_loop\n','\tRETURN\n')+source[stop:]
+        run=Basic(full);run.v.update(lv=stage,levelno=stage,lives=2,xlife=1)
+        run.run('init_level');run.v.update(lvdone=1,**{'#bonus':200})
+        run.sprites[0]=(48,96,0,15);run.sprites[3]=(64,104,24,7)
+        held=dict(run.sprites)
+        waits=[]
+        def frames():
+            for tick in range(300):
+                if run.v['lv']==stage:
+                    waits.append(tick)
+                    assert run.sprites==held, ('victory sprites vanished during tally/fanfare',stage,tick)
+                yield {}
+        run.frame_inputs=frames();run.run('level_complete')
+        assert len(waits)>8 and run.v['lv']==(stage%3)+1, (
+            'victory did not complete tally and advance to next site',stage)
+
+
+def death_timing(source):
+    # The three sites have different machinery, but none may restore carried
+    # inventory, reset the hammer, or consume a reserve during the death pose.
+    for stage in (1,2,3):
+        vm=Basic(source);vm.v.update(lv=stage,levelno=stage,lives=2)
+        vm.run('init_level')
+        vm.v.update(jhx=88,jhy=64,jhway=7,**{'#bonus':4200})
+        vm.v['hzphase']=23
+        vm.v['clawstep']=5
+        vm.v['bmy']=104
+        vm.v['pnphase']=11
+        if stage!=2:
+            item=next(i for i in range(vm.v['nitem']) if vm.arrays['itk'][i]==0)
+            row,col=vm.arrays['itr'][item],vm.arrays['itc'][item]
+            cell=row*32+col
+            original=vm.screen[cell]
+            vm.v.update(mx=col*8-8,my=row*8-8,
+                        ch=vm.v['t_brick'] if stage==1 else vm.v['t_sbox'])
+            vm.run('take_item')
+            assert vm.v['carry']==1 and vm.arrays['itst'][item]==1 and vm.screen[cell]==32
+        else:
+            vm.v['carry']=0
+        before=tuple(vm.v[k] for k in
+                     ('carry','jhx','jhy','jhway','lives','#bonus','hzphase','clawstep','bmy','pnphase'))
+        vm.run('mack_die')
+        vm.v['#fd']=1;vm.run('dead_tick');vm.run('site_draw')
+        after=tuple(vm.v[k] for k in
+                    ('carry','jhx','jhy','jhway','lives','#bonus','hzphase','clawstep','bmy','pnphase'))
+        assert after==before and vm.v['dclean']==1 and vm.v['st']==vm.v['s_dead'], (
+            'site reset before the death sequence ended',stage,before,after)
+        if stage!=2:
+            assert vm.arrays['itst'][item]==1 and vm.screen[cell]==32, (
+                'carried box reappeared on the map during death',stage)
+        vm.v['#fd']=39;vm.run('dead_tick')
+        assert vm.v['dclean']==0 and vm.v['st']==vm.v['s_walk'] and vm.v['lives']==1, (
+            'site failed to respawn after the death sequence',stage)
+        assert vm.v['#bonus']==5000 and (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(
+            vm.v['jhx0'],vm.v['jhy0'],0)
+        if stage!=2:
+            assert vm.v['carry']==0 and vm.arrays['itst'][item]==0 and vm.screen[cell]==original, (
+                'carried box did not return at respawn',stage)
 
 
 def girder_spacing(source):
@@ -1715,7 +1815,7 @@ def visual_hazards(source):
         end.v.update(lv=1);end.run('init_level')
         end.v.update(ely=y,emov=moving,carry=2,jhtk=1)
         if not moving:end.run('elev_back')
-        end.run('mack_die');end.v['#fd']=1;end.run('dead_tick')
+        end.run('mack_die');end.v['#fd']=40;end.run('dead_tick')
         # Model the last gameplay frame with both hammer sprites on screen.
         end.sprites[1]=(80,80,24,7)
         end.sprites[3]=(80,80,24,7)
@@ -1735,7 +1835,7 @@ def visual_hazards(source):
             end.screen[row*32+col]=32
             end.arrays['itst'][0]=1
             end.v.update(carry=1,cidx=0)
-        end.run('mack_die');end.v['#fd']=1;end.run('dead_tick')
+        end.run('mack_die');end.v['#fd']=40;end.run('dead_tick')
         if stage!=2:
             assert end.screen[row*32+col]==32, (
                 'last-life cleanup restored a loose box on Game Over',stage)
@@ -2041,9 +2141,13 @@ def trampoline_animation(source):
             expected=min(elapsed,8-elapsed)
             assert vm.v['my']==168+expected
             assert vm.pattern_writes[-1]==(137,2,'tramp_pat',expected*16)
-    vm.v.update(st=vm.v['s_dead'],trpose=4,trlast=4)
+    vm.v.update(st=vm.v['s_tramp'],trpose=4,trlast=4)
+    vm.run('mack_die')
     vm.run('site_draw')
-    assert vm.v['trpose']==0 and vm.pattern_writes[-1]==(137,2,'tramp_pat',0), 'death leaves compressed spring'
+    assert vm.v['trpose']==4 and vm.v['trlast']==4, 'Level 1 spring resets during death'
+    vm.v['#fd']=40;vm.run('dead_tick')
+    assert vm.v['trpose']==0 and vm.pattern_writes[-1]==(137,2,'tramp_pat',0), (
+        'Level 1 spring did not release after death')
     vm.run('init_level');vm.run('site_draw')
     assert vm.v['trlast']==0, 'new level misses initial spring pose'
 
@@ -2101,8 +2205,13 @@ def factory_spring_animation(source):
             for _ in range(3):vm.run('site_draw')
             assert len([w for w in vm.pattern_writes if w[0] in (139,141)])==count, 'idle factory pads keep uploading'
             vm.v.update(st=7,trpose=4,springpad=side);vm.run('site_draw')
-            vm.v['st']=vm.v['s_dead'];vm.run('site_draw')
-            assert vm.v['trlast']==vm.v['trrightlast']==0, 'death leaves a factory pad compressed'
+            active=(vm.v['trlast'],vm.v['trrightlast'])
+            vm.run('mack_die');vm.run('site_draw')
+            assert (vm.v['trlast'],vm.v['trrightlast'])==active, (
+                'factory spring resets during death animation',side)
+            vm.v['#fd']=40;vm.run('dead_tick')
+            assert vm.v['trlast']==vm.v['trrightlast']==0, (
+                'factory spring did not release after death',side)
     for x in (80,152):
         vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
         vm.v.update(mx=x,my=152,st=vm.v['s_fall']);vm.run('mack_step')
@@ -2411,6 +2520,8 @@ def main():
     elevator_dance(source)
     elevator_boarding(source)
     end_screen_timing(source)
+    victory_scene(source)
+    death_timing(source)
     girder_spacing(source)
     factory_drive(source)
     work_sounds(source)
@@ -2509,6 +2620,14 @@ def main():
         (source.replace('lift_y(#pnlookup + 0)','lift_y(223 - #pnlookup)'),fidelity),
         (source.replace('ry = ry + 1','ry = ry'),fidelity),
         (source.replace('lives = lives - 1','lives = lives'),fidelity),
+        (source.replace('dead_tick:\n', 'dead_tick:\n\tGOSUB death_cleanup\n',1),death_timing),
+        (source.replace('level_complete:\n', 'level_complete:\n\tGOSUB quiet_screen\n',1),victory_scene),
+        (source.replace('\tGOSUB quiet_audio\n\tGOSUB bonus_countdown',
+                        '\tGOSUB bonus_countdown'),victory_scene),
+        (source.replace('GOSUB quiet_audio\n\tIF lv = 1 THEN RESTORE victory_music1',
+                        'GOSUB quiet_screen\n\tIF lv = 1 THEN RESTORE victory_music1'),victory_scene),
+        (source.replace('GOSUB quiet_audio\n\tRETURN\n\nvictory_music1',
+                        'GOSUB quiet_screen\n\tRETURN\n\nvictory_music1'),victory_scene),
         (source.replace('mack_die:\n\tIF st = S_DEAD THEN RETURN','mack_die:\n\tIF st = S_DEAD THEN RETURN\n\tBANK SELECT 1',1),fidelity),
     ])
     mutants.extend([
@@ -2613,7 +2732,8 @@ def main():
         (source.replace('edance = 0','edance = edance'),elevator_dance),
         (source.replace('IF levelno < 100 THEN PRINT AT CPOS(0,29),"L",levelno','IF levelno < 10 THEN PRINT AT CPOS(0,29),"L",levelno'),score_range),
         (source.replace('CPOS(0,HUD_BONUS_COL),<.4>#bonus','CPOS(0,2),<.4>#bonus'),score_range),
-        (source.replace('PRINT AT CPOS(0,11),"BONUS "','PRINT AT CPOS(0,15),"BONUS "'),score_range),
+        (source.replace('PRINT AT CPOS(0,10),"BONUS "','PRINT AT CPOS(0,15),"BONUS "'),score_range),
+        (source.replace('PRINT AT CPOS(0,10),"BONUS "','PRINT AT CPOS(0,11),"BONUS "'),score_range),
         (source.replace('#va = VADDR(0,21)','#va = VADDR(0,7)'),score_range),
         (source.replace('DEFINE CHAR 225,2,spigot_pat','DEFINE CHAR 231,2,spigot_pat'),fidelity),
         (source.replace('DATA BYTE 8, 18,6,1,226','DATA BYTE 8, 18,6,1,232'),fidelity),
