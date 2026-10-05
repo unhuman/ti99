@@ -244,6 +244,7 @@ boot:
 	NEXT i
 
 new_game:
+	dclean = 0
 	lv = 1
 	levelno = 1
 	lives = 2
@@ -664,7 +665,9 @@ level_complete:
 
 game_over:
 	GOSUB quiet_screen
-	GOSUB elev_draw
+	' The death reset paints the parked cabin as characters. Do not redraw its
+	' sprite pair here; the end screen keeps scenery while all gameplay sprites
+	' (including a loose/carried jackhammer) remain hidden.
 	gameov = 0
 	#lastscore = #score
 	last838 = game838
@@ -1574,13 +1577,14 @@ elev_back:
 	RETURN
 
 elev_reset:
-	#if TI994A
-	BANK SELECT 2
-	#endif
-	GOSUB banked_elev_reset
-	#if TI994A
-	BANK SELECT 1
-	#endif
+	' Fixed-bank reset preserves the caller's cartridge bank.
+	emov = 1
+	GOSUB elev_back
+	ely = elby
+	emov = 0
+	eld = 0
+	elarm = 1
+	GOSUB elev_back
 	RETURN
 
 elev_move:
@@ -2442,14 +2446,7 @@ hud_score:
 mack_die:
 	IF st = S_DEAD THEN RETURN
 	edance = 0
-	IF lv = 1 THEN GOSUB elev_reset
-	#if TI994A
-	BANK SELECT 2
-	#endif
-	GOSUB banked_death_cleanup
-	#if TI994A
-	BANK SELECT 1
-	#endif
+	dclean = 1
 	st = S_DEAD
 	bonbeam = 0
 	dtm = 40
@@ -2459,9 +2456,23 @@ mack_die:
 	GOSUB tone_start
 	RETURN
 
+death_cleanup:
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_death_cleanup
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
 dead_tick:
 	' Blink Mack fast while the death pause runs, then respawn at the
 	' level spawn point with all level state intact.
+	IF dclean = 1 THEN
+		GOSUB death_cleanup
+		dclean = 0
+	END IF
 	IF dtm > #fd THEN
 		dtm = dtm - #fd
 	ELSE
@@ -2898,10 +2909,6 @@ init_level:
 	emov = 0
 	elx = 0
 	elarm = 1		' elevator armed for its first boarding
-	' HUD row 0. Only the digits are repainted in play; lives show as
-	' hard hats at the right edge, like the original.
-	PRINT AT CPOS(0,11),"BONUS "
-	GOSUB hud_all
 	' Reset per-level tables.
 	FOR i = 0 TO MAXGAP - 1
 		gapst(i) = 0
@@ -2977,6 +2984,10 @@ lv_parse:
 		jbold = cont1.button
 		jbhc = 0
 		esup = 0
+		' Draw the HUD after level tiles: the reserved-life hats must remain
+		' visible even when a level's top rows contain scenery.
+		PRINT AT CPOS(0,11),"BONUS "
+		GOSUB hud_all
 		RETURN
 	END IF
 	IF op = 1 THEN
@@ -4718,27 +4729,17 @@ banked_work_sound:
 	SOUND 3,5,workvol
 	RETURN
 
-banked_elev_reset:
-	' A death restores the elevator to its bottom starting stop. Erase a
-	' parked cabin at its old location before painting it at the reset stop.
-	emov = 1
-	GOSUB elev_back
-	ely = elby
-	emov = 0
-	eld = 0
-	elarm = 1
-	GOSUB elev_back
-	RETURN
-
 banked_death_cleanup:
-	' Return carried items immediately, including on the last-life path that
-	' skips dead_tick's respawn block. Reset the roaming tool's route as well.
+	' Runs from the fixed-bank death tick, after collision callers unwind.
+	IF lv = 1 THEN GOSUB elev_reset
 	IF carry = 1 THEN
-		itst(cidx) = 0
-		#va = VADDR(itr(cidx),itc(cidx))
-		ch = T_BRICK
-		IF lv = 3 THEN ch = T_SBOX
-		VPOKE #va,ch
+		IF lives > 0 THEN
+			itst(cidx) = 0
+			#va = VADDR(itr(cidx),itc(cidx))
+			ch = T_BRICK
+			IF lv = 3 THEN ch = T_SBOX
+			VPOKE #va,ch
+		END IF
 	END IF
 	IF carry = 2 THEN jhtk = 0
 	carry = 0

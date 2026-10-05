@@ -640,9 +640,15 @@ def transfers(source):
 
 
 def fidelity(source):
+    death=source.split('mack_die:\n',1)[1].split('\ndeath_cleanup:',1)[0]
+    assert 'BANK SELECT' not in death and 'banked_' not in death, (
+        'mack_die must preserve the active cartridge bank while banked collisions unwind')
     def level(n):
         vm=Basic(source); vm.v.update(lv=n, lives=2); vm.run('init_level')
         return vm
+    for stage in (1,2,3):
+        vm=level(stage)
+        assert vm.screen[61:63]==[vm.v['t_hat']]*2, ('reserve-life hats missing after level paint',stage)
     # Carrying a loose block through an elevator ride and dying must restore
     # the item, clear inventory, and permit it to be picked up again.
     vm=level(1);item=0
@@ -652,8 +658,8 @@ def fidelity(source):
     assert vm.v['carry']==1 and vm.arrays['itst'][item]==1, 'test block pickup setup failed'
     vm.v.update(ely=vm.v['elby'],elpaint=0)
     vm.v.update(jhx=88,jhy=56,jhway=7)
-    vm.run('mack_die')
-    assert vm.v['carry']==0 and vm.arrays['itst'][item]==0, 'death must immediately release and restore held block'
+    vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
+    assert vm.v['carry']==0 and vm.arrays['itst'][item]==0, 'death cleanup must restore held block after banked callers unwind'
     assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(vm.v['jhx0'],vm.v['jhy0'],0), (
         'death must restore the roaming hammer route origin')
     vm.v['#fd']=40;vm.run('dead_tick')
@@ -664,10 +670,25 @@ def fidelity(source):
     # Losing the last life also takes the game-over branch that bypasses
     # respawn cleanup, so held tools must already be returned by mack_die.
     vm=level(1);vm.v.update(carry=2,jhtk=1,jhx=120,jhy=80,jhway=9,lives=0)
-    vm.run('mack_die')
+    vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
     assert vm.v['carry']==0 and vm.v['jhtk']==0, 'last-life death retained held hammer'
     assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(vm.v['jhx0'],vm.v['jhy0'],0), (
         'last-life death left hammer off its route origin')
+    vm=level(1);vm.v['lives']=0;item=0
+    row,col=vm.arrays['itr'][item],vm.arrays['itc'][item]
+    vm.v.update(mx=col*8-8,my=row*8-8,ch=vm.v['t_brick'])
+    vm.run('take_item');vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
+    assert vm.v['carry']==0 and vm.arrays['itst'][item]==1, 'last-life death must clear carried state without restoring a pickup on Game Over'
+    assert vm.screen[row*32+col]==vm.v['t_void'], 'last-life death restored a stray block into the Game Over scene'
+    vm=level(1);vm.v.update(lives=2,**{'#fd':1})
+    for remaining in (1,0):
+        vm.run('mack_die')
+        for _ in range(40):vm.run('dead_tick')
+        assert vm.v['lives']==remaining and vm.v['st']==vm.v['s_walk'], (
+            'a non-final death must consume one reserve and respawn',remaining)
+    vm.run('mack_die')
+    for _ in range(40):vm.run('dead_tick')
+    assert vm.v['lives']==0 and vm.v['gameov']==1, 'third death must enter Game Over with no reserves'
     # Deposited but unfastened girders return to their own pickup slots.
     vm=level(1)
     for i in (0,1):
@@ -1077,7 +1098,7 @@ def elevator_boarding(source):
         if not moving:
             vm.run('elev_back')
         oldbase=(oldy//8-2)*32+vm.v['elx']//8
-        vm.run('mack_die')
+        vm.run('mack_die');vm.v['#fd']=1;vm.run('dead_tick')
         assert vm.v['st']==vm.v['s_dead'] and vm.v['ely']==vm.v['elby'], (
             'death must reset elevator to bottom stop',oldy,moving,dict(vm.v))
         assert vm.v['emov']==0 and vm.v['eld']==0 and vm.v['elarm']==1 and vm.v['edance']==0
@@ -1639,11 +1660,17 @@ def visual_hazards(source):
     for y,moving in ((168,0),(72,0),(117,1)):
         end=Basic(source.replace(stop,'\tRETURN\n',1))
         end.v.update(lv=1);end.run('init_level')
-        end.v.update(ely=y,emov=moving);end.run('elev_back')
+        end.v.update(ely=y,emov=moving,carry=2,jhtk=1)
+        if not moving:end.run('elev_back')
+        end.run('mack_die');end.v['#fd']=1;end.run('dead_tick')
+        # Model the last gameplay frame with both hammer sprites on screen.
+        end.sprites[1]=(80,80,24,7)
+        end.sprites[3]=(80,80,24,7)
         end.run('game_over')
-        assert end.sprites[2]==(y-1,end.v['elx'],8,15), 'game-over lost elevator floor'
-        assert end.sprites[9]==(y-17,end.v['elx'],84,15), 'game-over lost moving cage'
-        assert all(v[0]==209 for k,v in end.sprites.items() if k not in (2,9))
+        assert all(v[0]==209 for v in end.sprites.values()), 'game-over left a gameplay sprite visible'
+        assert end.v['carry']==0 and end.v['jhtk']==0, 'game-over retained the held jackhammer'
+        assert 'GOSUB elev_draw' not in source[source.index('game_over:\n'):source.index('gameover_wait:\n')], (
+            'game-over must leave the character-backed cabin without reactivating elevator sprites')
 
     # A kill may not occur across empty space. Bounds are derived from the
     # editable BITMAP rows, with Mack's six-pixel torso/12-pixel height.
@@ -2356,6 +2383,8 @@ def main():
         (source.replace('IF hzphase < 64 THEN','IF hzphase < 0 THEN'),fidelity),
         (source.replace('lift_y(#pnlookup + 0)','lift_y(223 - #pnlookup)'),fidelity),
         (source.replace('ry = ry + 1','ry = ry'),fidelity),
+        (source.replace('lives = lives - 1','lives = lives'),fidelity),
+        (source.replace('mack_die:\n\tIF st = S_DEAD THEN RETURN','mack_die:\n\tIF st = S_DEAD THEN RETURN\n\tBANK SELECT 1',1),fidelity),
     ])
     mutants.extend([
         (source.replace('tc = TILE(mx + 8,my + 1)', 'tc = T_VOID'),review_feedback),
@@ -2367,7 +2396,7 @@ def main():
         (source.replace('ey = by - 4','ey = by'),visual_hazards),
         (source.replace('IF lv = 3 THEN cvaf = (8 - (hzphase AND 7)) AND 7',''),visual_hazards),
         (source.replace('ex = 62 - clawshift','ex = 200'),visual_hazards),
-        (source.replace('game_over:\n\tGOSUB quiet_screen\n\tGOSUB elev_draw','game_over:\n\tGOSUB quiet_screen'),visual_hazards),
+        (source.replace('game_over:\n\tGOSUB quiet_screen','game_over:',1),visual_hazards),
         (source.replace('DATA BYTE 7, 14,3,17','DATA BYTE 7, 14,3,10'),visual_hazards),
         (source.replace('boxy = boxy + 1','boxy = boxy + 3'),speed_contract),
         (source.replace('fy = by + 9','fy = by + 16'),speed_contract),

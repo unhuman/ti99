@@ -44,11 +44,6 @@ cd "$(dirname "$0")/src" || die "cannot find src/"
 # offending line's own comment, so a gate nobody can silence never becomes a gate
 # everybody ignores.
 TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
-# Each gate only reads the source/generated art. Run them together so the build
-# waits for the expensive physics mutations once, instead of summing eight
-# interpreter startups and serial checks. Each job retains an isolated log and
-# all failures are reported before stopping.
-TRUNCPY="$TRUNCPY" bash ../assets/runtests.sh || die "source/art regression gate"
 [ -f "$NAME.bas" ] || die "$NAME.bas not found in $(pwd)"
 
 echo "[1/3] cvbasic    $NAME.bas -> $NAME.a99"
@@ -87,3 +82,10 @@ echo "[3/3] linkticart $FIRST -> ${NAME}_8.bin"
 "$PY" "$CVBASIC_DIR/linkticart.py" "$FIRST" "${NAME}_8.bin" "$CARTNAME" || die "linkticart failed"
 "$PY" ../assets/checkbank.py || die "data bank validation failed"
 echo "Build OK -> $(pwd)/${NAME}_8.bin"
+
+# Build and package before the long source/art regressions. This leaves a usable
+# cartridge on disk promptly so it can be tried in Classic99 while checks run.
+# A failing gate still makes this build command fail; the earlier cart remains
+# available for debugging and must not be treated as a validated release.
+TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
+TRUNCPY="$TRUNCPY" bash ../assets/runtests.sh || die "source/art regression gate"

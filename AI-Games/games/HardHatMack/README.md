@@ -202,8 +202,12 @@ Or run `bash games/HardHatMack/build-ti.sh` followed by
 `bash games/HardHatMack/build-coleco.sh` using Cygwin bash.
 Outputs: `src/HARDHAT_8.bin` (Classic99/js99er) and `src/hardhat.rom` (ColecoVision).
 Build sequentially. Both scripts run generated-art, physics, truncation and return-stack checks;
-the TI source/art checks run concurrently, and physics rejection tests use up to four workers;
-the TI build also verifies the fixed-area size and all four packed banks. Its 64 KB
+the TI image is compiled, packaged and bank-checked before the long source/art
+regression suite starts, so `src/HARDHAT_8.bin` is available early for review.
+The build still reports failure if those later checks fail; an early image is not
+validated until the full command passes. Source/art checks run concurrently, and
+physics rejection tests use up to four workers. The TI build also verifies the
+fixed-area size and all four packed banks. Its 64 KB
 cartridge contains the loader, setup/assets bank and separate banks for
 actors/audio, the title/setup screen plus extra scenery, and motion/animated machinery; their wrappers restore
 the setup/assets bank before returning. Coleco remains
