@@ -2390,19 +2390,20 @@ regression case is skipped or relaxed; the red-density check brought the gate
 to 156 defective variants before the latest input and launcher checks.
 
 The full build also exposed the first-pass assembler's fixed-address boundary
-in the shared HUD. TI now calls its HUD renderer in bank two, switching to the
-score bank only for formatting and restoring the caller bank before returning.
+in the shared HUD. TI calls its HUD renderer in bank two, returns to fixed code,
+then switches to the score bank for formatting before restoring bank one.
 This preserves the existing four bank selections per frame while the Coleco
 HUD remains on its original path. The TI image assembles before branch
 shortening again, then verifies 524 shortened branches and packs within budget.
 
 ## 44. TI title hotkeys, six-stage 838 and Level 1 launcher (2026-10-04)
 
-During TI gameplay, F8/REDO and F9/BACK return to the title. The TI keyboard
-scanner reports FCTN separately from the underlying digit, so the shortcut
-requires the FCTN modifier together with 8 or 9; ordinary number entry remains
-unchanged. Both keys also dismiss the game-over hold. Coleco code is excluded
-from this behavior.
+During TI gameplay, F8/REDO and F9/BACK return to the title. CVBasic's first-key
+scan stops at FCTN and can return bare code 254 for other FCTN combinations,
+including joystick-arrow input. The shortcut uses the physical FCTN+8/9 CRU
+matrix positions (as in Keystone Kapers), so ordinary movement stays active.
+Number entry remains unchanged. Both keys also dismiss the game-over hold.
+Coleco code is excluded from this behavior.
 
 The 838 level prompt now accepts 1-6. Choices 1-3 start the corresponding site;
 4-6 start the same sites on the second tour, including the two roaming enemies
@@ -2424,8 +2425,8 @@ and arms it for the next life. Regression checks exercise walking dismounts,
 death resets, both elevator stops, the chain-side exclusion and the boarding
 range, along with
 all six stage choices, both TI function keys, launcher placement and the
-projectile's origin. The keyboard check also accepts the TI scanner's FCTN
-matrix value for REDO/BACK.
+projectile's origin. The keyboard check rejects the bare FCTN matrix value
+so movement cannot unexpectedly return to the title.
 
 The held jackhammer's looping work sound now uses a quieter PSG attenuation
 setting (13 rather than 10). Elevator movement adds a soft height-linked tone,
@@ -2454,3 +2455,67 @@ The current TI build uses 560 bytes of RAM, verifies 529 shortened branches,
 and leaves 1,890 bytes in the fixed area. Data, animation, title and motion
 banks retain 5, 3,432, 192 and 544 bytes, respectively. Cartridge SHA-256:
 `A2F3D78F4737BCD278B8D1C2E0ADEEEC4B793877E9919DDFB6C7310DB4AE3173`.
+
+## 45. Site transitions, HUD and end-screen cleanup (2026-10-05)
+
+The level-start HUD writes score, right-justified reserve hats, BONUS and level
+number on row zero after level painting. The fixed-bank wrapper runs the bank-two
+HUD painter, restores bank one, then calls the bank-three score formatter. A
+bank-two routine must not select bank three before making a CVBasic `GOSUB`:
+the inline destination word remains in the caller's bank and can be read from
+the wrong page. The Level 1/2/3 opening-frame checks now assert both score and
+hats rather than waiting for the first score change or death.
+
+The lower-conveyor nozzle has a narrow, open outlet and white/magenta collar;
+its pattern and color tables are generated together. Level 2 furnace contact
+sets a separate burning-death state, draws the falling flames until Mack reaches
+the bottom, then consumes the life. Once the magnet returns Mack to the crane
+top, it travels 45 pixels right while he remains parked, and only then finishes
+the site. On Level 3 the spring transfer from an ordinary floor walk-off reaches
+the opposite pad; a fall from a rotating paddle retains the fatal center route.
+
+Game Over keeps the already-current HUD and site characters, covers its message
+with a one-cell border, and hides all eighteen gameplay sprite slots before the
+wait. The last-life death cleanup must leave carried boxes removed. The end-screen
+regression seeds every sprite slot and carried-box state on all three sites and
+checks that only the message rectangle changes in the name table. The 838 menu
+and both Game Over wait phases poll REDO/BACK. Bare FCTN code 254 is not an exit
+key: accepting it also interprets ordinary Classic99 arrow input as BACK.
+
+The TI cart packs to 64 KB with 564 RAM bytes used. The shortened fixed image
+uses 22,508 of 24,336 bytes; banks 1-4 retain 19, 2,714, 76 and 544 bytes.
+All eight build gates pass, including 168 rejected defect mutations. Production
+SHA-256: `7EB4BC73C2481E0A1B515B9F4816678A598BD2712BA29EAB665796FB224F3FE9`.
+
+## 46. TI HUD spacing and Level 2 finish (2026-10-05)
+
+The TI gameplay row now reads as a six-character score right-aligned in columns
+1-6 (column 7 holds the optional 838 asterisk), centered `BONUS 5000` in
+columns 11-20, up to eight right-justified reserve hats in columns 21-28, and
+an `L1`/`L10` stage label ending at column 31. Levels 100-255 omit the `L` to
+preserve every reserve hat. Score updates clear the marker cell so an earlier
+838 game cannot leave a stray asterisk. The title-score layout is unchanged.
+All bonus writes, including countdown, ordinary clock ticks and respawn, use
+the new timer position. The ColecoVision HUD keeps its existing layout until
+that target is reviewed separately.
+
+The magnet places Mack at x=120, eight pixels right of the former x=112,
+after carrying him to the top crane platform. The empty magnet still retreats
+45 pixels before completing Level 2. The furnace death now stops his feet at
+the row-23 ground (Mack top y=168) rather than moving his body through it.
+Both flame layers remain visible for twelve video frames while he stands
+burning on the ground; only then does the life resolve. The ordinary death
+blink is bypassed for this fire-specific sequence.
+
+The lower conveyor valve was sharing character 232 with Level 1's four-tile
+rivet thrower. The later thrower upload replaced its outlet art. The valve now
+owns free characters 225-226; its generated drawing has a blue-and-white cap
+and a short red stem above the first falling goop blob. The regression gate
+checks both character ownership and the Level 2 map placement.
+
+The TI build and all eight source/art regression gates pass. The fixed image
+uses 22,570/24,336 bytes after 523 verified short branches; banks 1-4 retain
+19, 2,738, 34 and 544 bytes. RAM use is 564 bytes. Classic99 captures checked
+the normal Level 1 HUD, the 838 Level 2 valve and a review-only extended
+burning-ground pause. The production cartridge was restored afterward. SHA-256:
+`D239FDF147B4766A8800D1E3DF79702E73D6F55F08F0F62AB03E7DE6D3C7CE2E`.

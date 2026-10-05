@@ -31,12 +31,14 @@ Three construction sites are implemented:
    and broad white footing, rather than repeated flared tiles.
 2. **Lunch Break:** collect six lunch pails across the platforms and ground,
    avoiding the pincers, pounder, concrete, furnace and vat. The magnet stays parked until all six pails are collected. Jump from the upper
-   conveyor into the armed magnet; it carries Mack back to the crane top. The upper
+   conveyor into the armed magnet; it carries Mack back to the crane top, sets
+   him down, then retreats about 45 pixels before the victory sequence. The upper
    conveyor is one character farther right; walking or riding past its right end
    is fatal, so jump before the last roller. Fixed and moving girders are bright
    green with blue edges and rivets. Lunch pails are twelve pixels tall; either
    side can be collected. Their rounded white lids, small handles and divided
-   red panels resemble lunch pails. Concrete leaving the lower conveyor arcs
+   red panels resemble lunch pails. The lower-belt emitter has a tapered
+   mounting collar and a short, open white-rimmed outlet. Concrete leaving the lower conveyor arcs
    into the single open-mouthed receiver; the extra machine beside the crane
    is removed. The bottom-right chain hangs from the platform's far
    right edge, with a clear floor approach to its left. Pincers complete
@@ -60,9 +62,9 @@ Three construction sites are implemented:
    At its left end, a single wall emitter throws animated white, yellow and
    orange spark trails across two characters; grab the escape chain before it.
    The two springs use level one's two-cell artwork, compression and launch
-   sound. The scripted cross-site arc carries Mack into the central rivet
-   cabinet from either side, where its 16×16 collision kills him instead of
-   reversing into a repeated pad-to-pad bounce.
+   sound. An ordinary walk-off can bounce across both springs to the far side.
+   Dropping from a rotating paddle instead carries Mack into the hazardous
+   central rivet cabinet.
    The processors, central cabinet and conveyor machinery are dangerous.
 
 The smashers on levels 2 and 3 share a five-pixel-tall, predominantly white head,
@@ -75,7 +77,8 @@ in its bright green body. The furnace has a magenta-and-white cabinet with green
 caps; fire shoots from its left outlet, curls upward, and retracts before repeating.
 The plume broadens into a ragged flame with a bright core and cycling reds,
 orange and yellow; red occupies at least half of each palette band. Its shape
-flickers as it extends. In 838 mode, the selected starting level remains
+flickers as it extends. Touching the furnace ignites Mack; he falls burning
+to the bottom before losing the life. In 838 mode, the selected starting level remains
 visible briefly before gameplay clears the setup screen.
 
 Mack's running cycle combines a passing step, extended stride and bent-knee
@@ -97,9 +100,11 @@ the starting stage**. Stages 4-6 repeat screens 1-3 with the harder second-tour
 enemy setup; stage 4 starts level 1 with two roaming enemies. The chosen number
 appears beside the prompt before play begins. Release each key between digits.
 These choices apply to one game only. Reserve hats exclude the current
-life and are right-justified below the score line. One extra life is awarded at 7,000 points.
+life; on TI-99 they are right-justified on the top HUD row after the bonus.
+The score and hats appear as each level opens. One extra life is awarded at 7,000 points.
 Classic99 uses arrows/Tab; CoolCV uses arrows/Space for controller 1. On TI-99,
-F8 (REDO) or F9 (BACK) returns to the title during play.
+F8 (REDO) or F9 (BACK) returns to the title during play, the 838 prompts,
+and the Game Over delay.
 The construction-themed title shows **LAST SCORE** and **HIGH SCORE** at the top,
 with matching full-height dithered white-to-yellow lettering (MACK restored to
 its original 115-pixel width), Mack on a riveted girder, and the credit
@@ -109,9 +114,11 @@ its 838 asterisk follows the last digit. High score remains right-aligned. Score
 score identifies an 838 game; the high-score marker stays with the game that
 set that record. Normal play clears the current-game marker, and a higher
 normal score replaces an 838 record without an asterisk. Equal scores retain
-the existing record and its marker. The gameplay HUD shows the current score flush left without a prefix (with
-its 838 marker), **BONUS** and the timer centered, and **LEVEL** plus the stage
-number right-aligned. Two- and three-digit levels expand leftward. High score
+the existing record and its marker. On TI-99, the gameplay score has a one-cell
+left margin and is right-aligned in a six-digit field; its 838 marker follows
+the field. **BONUS** and its timer are centered, reserve hats follow it, and
+the stage ends the row as **L1**, **L10**, etc. Three-digit stages display just
+their number to keep all eight possible reserve hats visible. High score
 appears only on the title. Scores omit leading zeroes and
 reach 327,675 points using five-point storage units; further awards saturate
 at that maximum. All point awards and the 7,000-point extra life are unchanged.
@@ -119,7 +126,8 @@ It replaces the old title/instruction screen; Fire starts play directly.
 After GAME OVER, wait 1.25 seconds (75 frames at 60 Hz), then release and press
 Fire/Tab to return to the title. With no fresh press, the title returns
 automatically after 10 seconds, even if Fire remains held. The message has a
-one-character blank border. Completing a level visibly counts the remaining
+one-character blank border; gameplay sprites are hidden without drawing new
+blocks or tools into the playfield. Completing a level visibly counts the remaining
 bonus down in 100-point steps, adding it to the score with a short tick per step,
 before playing that level's fanfare. Each tick is a quiet, short noise pulse
 with a silent gap, rather than a sustained pitched beep.

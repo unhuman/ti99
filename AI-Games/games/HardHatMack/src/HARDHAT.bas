@@ -88,6 +88,11 @@
 	CONST T_WRENCH = 186	' bonus wrench (+200)
 	CONST T_CAN    = 187	' bonus spray can (+200)
 	CONST T_HAT    = 188	' hard hat (HUD lives icon)
+	#if TI994A
+	CONST HUD_BONUS_COL = 17
+	#else
+	CONST HUD_BONUS_COL = 21
+	#endif
 
 	' ---- Level-stream opcodes (see level1_data) ----
 	' 0                        end of stream
@@ -245,6 +250,7 @@ boot:
 
 new_game:
 	dclean = 0
+	title_abort = 0
 	lv = 1
 	levelno = 1
 	lives = 2
@@ -253,6 +259,7 @@ new_game:
 	xlife = 0
 	#bonus = 5000
 	GOSUB title_screen
+	IF title_abort THEN GOTO new_game
 	' Remove title artwork (and the 838 confirmation screen) before gameplay
 	' reuses their character slots. Clearing after DEFINE CHAR visibly corrupts
 	' the title while the new patterns are being uploaded.
@@ -274,14 +281,8 @@ main_loop:
 	' Age sounds from the PREVIOUS pass before this pass starts new effects.
 	' Otherwise a busy frame can turn a fresh two-frame sound off immediately.
 	GOSUB sound_tick
-	#if TI994A
-	' F8/REDO and F9/BACK are FCTN+8/FCTN+9 on TI keyboards.
-	IF cont2.button2 THEN
-		IF cont1.key = 8 THEN GOTO new_game
-		IF cont1.key = 9 THEN GOTO new_game
-		IF cont1.key = 254 THEN GOTO new_game
-	END IF
-	#endif
+	GOSUB back_key
+	IF backreq THEN GOTO new_game
 	' Pace scaling for readable flows: advance movement at 9/8 of the base
 	' (0.75x read too slow / player too fast). Accumulate frame_delta*9 and
 	' take /8 as the step count; the leftover carries in #hacc. Mack and the
@@ -364,7 +365,11 @@ main_loop:
 		IF edance THEN mcf = dancecolour
 		SPRITE 8,my - 1,mx,mcf,13
 	ELSE
-		SPRITE 8,209,0,0,0
+		IF burnfall THEN
+			SPRITE 8,my - 1,mx,148,11
+		ELSE
+			SPRITE 8,209,0,0,0
+		END IF
 	END IF
 	GOSUB elev_draw
 	' Crane cable link: bottom edge exactly on the beam, so the rope stays
@@ -415,8 +420,10 @@ game_chars:
 	DEFINE COLOR 227,4,cage_col
 	DEFINE CHAR T_ELEV,2,VARPTR tile_pat(56)
 	DEFINE COLOR T_ELEV,2,VARPTR tile_col(56)
-	DEFINE CHAR 231,2,spigot_pat
-	DEFINE COLOR 231,2,spigot_col
+	' 225-226 are exclusive to the lower conveyor valve. The thrower owns
+	' 232-235 and previously overwrote the valve's right-hand tile.
+	DEFINE CHAR 225,2,spigot_pat
+	DEFINE COLOR 225,2,spigot_col
 	DEFINE CHAR T_SOLID0,11,tile_pat
 	DEFINE COLOR T_SOLID0,11,tile_col
 	DEFINE CHAR T_CHAIN,1,chain_pat
@@ -632,7 +639,7 @@ bonus_count_step:
 	#award = #bonus_slice / 5
 	GOSUB add_score
 	GOSUB hud_score
-	PRINT AT CPOS(0,17),<.4>#bonus
+	PRINT AT CPOS(0,HUD_BONUS_COL),<.4>#bonus
 	' A single WAIT can end almost immediately at the next interrupt.
 	' A quiet noise pulse reads as a tick, with at least one full frame on.
 	SOUND 3,5,7
@@ -679,7 +686,6 @@ game_over:
 		#hi = #score
 		hi838 = game838
 	END IF
-	GOSUB hud_all
 	' 75 video frames = 1.25 seconds before a fresh Fire; 600 = auto-title.
 	GOSUB gameover_wait
 	GOTO new_game
@@ -688,15 +694,61 @@ gameover_wait:
 	#go_start = FRAME
 gover_rel:
 	WAIT
+	GOSUB back_key
+	IF backreq THEN RETURN
 	#go_age = FRAME - #go_start
 	IF #go_age >= 600 THEN RETURN
 	IF #go_age < 75 THEN GOTO gover_rel
 	IF cont1.button THEN GOTO gover_rel
 gover_wait:
 	WAIT
+	GOSUB back_key
+	IF backreq THEN RETURN
 	#go_age = FRAME - #go_start
 	IF #go_age >= 600 THEN RETURN
 	IF cont1.button = 0 THEN GOTO gover_wait
+	RETURN
+
+back_key:
+	backreq = 0
+	#if TI994A
+	' KSCAN reports FCTN first, so its 254 code cannot identify REDO/BACK.
+	' Read physical FCTN plus the 8/9 row (Keystone's proven TI scanner).
+	ASM LIMI 0
+	ASM LI R12,>0024
+	ASM CLR R0
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>1000
+	ASM CZC R1,R2
+	ASM JNE hhm_back_done
+	ASM LI R12,>0024
+	ASM LI R0,>0100
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>0800
+	ASM CZC R1,R2
+	ASM JEQ hhm_back_pressed
+	ASM LI R12,>0024
+	ASM LI R0,>0200
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM CZC R1,R2
+	ASM JNE hhm_back_done
+	ASM hhm_back_pressed:
+	ASM LI R0,>0100
+	ASM MOVB R0,@cvb_BACKREQ
+	ASM hhm_back_done:
+	ASM LIMI 2
+	' Inline ASM does not invalidate CVBasic's cached R0 value.
+	ASM MOVB @cvb_BACKREQ,R0
+	#endif
 	RETURN
 
 title_screen:
@@ -739,6 +791,7 @@ world_step:
 
 mack_step:
 	IF st = 8 THEN RETURN
+	IF st = 9 THEN RETURN
 	IF st = 7 THEN GOTO spring_transfer
 	IF st = S_WALK THEN GOTO st_walk
 	IF st = S_CLIMB THEN GOTO st_climb
@@ -804,6 +857,11 @@ start_jump:
 	RETURN
 
 st_walk:
+	' A normal floor approach may use both springs. Only a fall directly
+	' off a rotating panel keeps the fatal centreward spring route.
+	IF lv = 3 THEN
+		IF bonbeam = 0 THEN springfatal = 0
+	END IF
 	IF jbe THEN GOTO start_jump
 	GOSUB grab_chain
 	IF st = S_CLIMB THEN RETURN
@@ -860,7 +918,10 @@ st_walk:
 		' 2 px/frame, so a strict y-window drops -- and kills -- him for nothing).
 		' Same overlap rule as beam_sup, or he would slide off the edge he is
 		' allowed to land on.
-		IF lv = 3 THEN obonb = 0
+		IF lv = 3 THEN
+			IF obonb = 1 THEN springfatal = 1
+			obonb = 0
+		END IF
 		IF obonb = 1 THEN
 			cx = mx + 13
 			IF cx >= 96 THEN
@@ -1418,55 +1479,23 @@ ride_step_off:
 	' ---- Probes ----
 	'
 mag_move:
-	IF mgon = 0 THEN RETURN
-	IF mgarm = 0 THEN RETURN
-	IF st = 8 THEN
-		IF mgx > 112 THEN mgx = mgx - 1
-		IF mgx < 112 THEN mgx = mgx + 1
-		mx = mgx
-		my = 24
-		IF mgx = 112 THEN lvdone = 1
-		RETURN
-	END IF
-	mgtk = mgtk + 1
-	IF mgtk < 2 THEN RETURN
-	mgtk = 0
-	IF mgd = 0 THEN
-		mgx = mgx - 1
-		IF mgx <= 96 THEN mgd = 1
-	ELSE
-		mgx = mgx + 1
-		IF mgx >= 208 THEN mgd = 0
-	END IF
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_mag_move
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 mag_catch:
-	' Caught? Only on a level that HAS a magnet, only once armed, only while
-	' airborne: Mack's head must reach the magnet's underside with his centre
-	' beneath its 2-cell span.
-	' mgon is essential: without it, level 1 (no magnet, so mgr/mgc are never
-	' set) put this catch box over the far-LEFT columns, and jumping there
-	' completed the level -- warping the player straight to level 3.
-	IF mgon = 0 THEN RETURN
-	IF mgarm = 0 THEN RETURN
-	IF st = 8 THEN RETURN
-	IF st = S_WALK THEN RETURN
-	IF st = S_DEAD THEN RETURN
-	hy = my + 4
-	mgy = mgr * 8
-	mgy = mgy + 12
-	IF hy <= mgy THEN
-		cx = mx + 8
-		mgl = mgx
-		mgq = mgl + 15
-		IF cx >= mgl THEN
-			IF cx <= mgq THEN
-				st = 8
-				my = 24
-				mx = mgx
-			END IF
-		END IF
-	END IF
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_mag_catch
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 land_chk:
@@ -2446,6 +2475,7 @@ hud_score:
 mack_die:
 	IF st = S_DEAD THEN RETURN
 	edance = 0
+	burnfall = 0
 	dclean = 1
 	st = S_DEAD
 	bonbeam = 0
@@ -2454,6 +2484,13 @@ mack_die:
 	sndvol = 12
 	sfxlen = 14
 	GOSUB tone_start
+	RETURN
+
+mack_burn:
+	IF st = S_DEAD THEN RETURN
+	GOSUB mack_die
+	burnfall = 1
+	dtm = 12
 	RETURN
 
 death_cleanup:
@@ -2473,6 +2510,27 @@ dead_tick:
 		GOSUB death_cleanup
 		dclean = 0
 	END IF
+	IF burnfall THEN
+		' Ground starts at row 23 (y=184); Mack's sixteen-pixel body stops
+		' with his feet on it. Keep BOTH burning sprite layers visible while
+		' falling and during the short ground pause; skip the usual death blink.
+		IF my < 168 THEN
+			my = my + #fd * 3
+			IF my > 168 THEN my = 168
+		ELSE
+			IF dtm > #fd THEN
+				dtm = dtm - #fd
+			ELSE
+				dtm = 0
+			END IF
+		END IF
+		burnink = 8
+		IF FRAME AND 4 THEN burnink = 9
+		SPRITE 0,my - 1,mx,0,burnink
+		IF dtm > 0 THEN RETURN
+		burnfall = 0
+		GOTO dead_resolve
+	END IF
 	IF dtm > #fd THEN
 		dtm = dtm - #fd
 	ELSE
@@ -2483,6 +2541,7 @@ dead_tick:
 	ELSE
 		SPRITE 0,my - 1,mx,0,6
 	END IF
+dead_resolve:
 	IF dtm = 0 THEN
 		IF lives = 0 THEN
 			gameov = 1
@@ -2525,7 +2584,7 @@ dead_tick:
 		END IF
 		' Fresh life: the bonus clock refills to 5000 (authentic).
 		#bonus = 5000
-		PRINT AT CPOS(0,17),<.4>#bonus
+		PRINT AT CPOS(0,HUD_BONUS_COL),<.4>#bonus
 		mx = msc * 8 - 4
 		my = msr * 8 - 16
 		st = S_WALK
@@ -2537,6 +2596,7 @@ dead_tick:
 		csup = 0
 		fcy = my
 		fct = 0
+		burnfall = 0
 	END IF
 	RETURN
 
@@ -2834,6 +2894,9 @@ quiet_screen:
 	FOR qslot = 0 TO 17
 		SPRITE qslot,209,0,0,0
 	NEXT qslot
+	' Flush all eighteen hidden slots before end screens or banked title art.
+	WAIT
+	SPRITE 0,209,0,0,0
 	SOUND 0,,0
 	SOUND 1,,0
 	SOUND 2,,0
@@ -2850,16 +2913,21 @@ hud_all:
 	BANK SELECT 2
 	GOSUB banked_hud_all
 	BANK SELECT 1
-	#else
-	PRINT AT CPOS(0,17),<.4>#bonus
 	#scvalue = #score
 	#scpos = 0
 	GOSUB score_print
-	PRINT AT CPOS(0,23),"         "
-	hlevelcol = 25
-	IF levelno >= 10 THEN hlevelcol = 24
-	IF levelno >= 100 THEN hlevelcol = 23
-	PRINT AT hlevelcol,"LEVEL ",levelno
+	#else
+	PRINT AT CPOS(0,15),"BONUS "
+	PRINT AT CPOS(0,21),<.4>#bonus
+	#scvalue = #score
+	#scpos = 0
+	GOSUB score_print
+	PRINT AT CPOS(0,25),"       "
+	IF levelno < 10 THEN PRINT AT CPOS(0,25),"LEVEL ",levelno
+	IF levelno >= 10 THEN
+		IF levelno < 100 THEN PRINT AT CPOS(0,26),"LVL ",levelno
+	END IF
+	IF levelno >= 100 THEN PRINT AT CPOS(0,26),"LV ",levelno
 	GOSUB hud_lives
 	#endif
 	RETURN
@@ -2943,6 +3011,7 @@ init_level:
 	jhway = 0
 	jhlock = 0
 	boxfall = 0
+	burnfall = 0
 	hzphase = 0
 	#slagclock = 0
 	slagphase = 0
@@ -2956,6 +3025,7 @@ init_level:
 	bolon = 0
 	IF lv = 1 THEN bolon = 1
 	padok = 1		' level-3 trampoline pads start armed
+	springfatal = 0
 	emov = 0
 	trx = 240
 	trxl = 236	' trampoline pad left edge, less 4 px of grace
@@ -2984,9 +3054,8 @@ lv_parse:
 		jbold = cont1.button
 		jbhc = 0
 		esup = 0
-		' Draw the HUD after level tiles: the reserved-life hats must remain
-		' visible even when a level's top rows contain scenery.
-		PRINT AT CPOS(0,11),"BONUS "
+		' Give the map writes a frame to settle before painting score and hats.
+		WAIT
 		GOSUB hud_all
 		RETURN
 	END IF
@@ -3510,8 +3579,8 @@ level2_data:
 	' The stack under the
 	' lower-left tier used to be painted as a girder, which handed the player
 	' a whole extra platform the reference does not have.
-	DATA BYTE 8, 18,2,4,231
-	DATA BYTE 8, 18,6,1,232		' downward spigot over lower conveyor
+	DATA BYTE 8, 18,2,4,225
+	DATA BYTE 8, 18,6,1,226		' downward spigot over lower conveyor
 	DATA BYTE 8, 12,7,1,167		' two-cell low crate, mid-left tier
 	DATA BYTE 8, 12,8,1,168
 	' Moving electromagnet above the shaft; crane starts near the ground.
@@ -4469,11 +4538,13 @@ cage_col:
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
 
 spigot_pat:
+	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $FF,$FF,$FF,$FF,$00,$00,$00,$00
-	DATA BYTE $FE,$FF,$FF,$FF,$3C,$3C,$3C,$3C
+	DATA BYTE $FF,$FF,$FE,$7C,$1C,$0C,$0C,$0C
 spigot_col:
-	DATA BYTE $D1,$F1,$D1,$D1,$11,$11,$11,$11
-	DATA BYTE $D1,$F1,$D1,$D1,$31,$F1,$31,$31
+	' Generated by assets/genconveyors.py; edit the generator.
+	DATA BYTE $51,$F1,$51,$51,$11,$11,$11,$11
+	DATA BYTE $51,$F1,$51,$51,$91,$91,$91,$91
 slag_bitmap:
 	' Two tumbling six-pixel slag lumps; visible bottom is y+8.
 	BITMAP "................"
@@ -4525,26 +4596,39 @@ crate_col:
 	' Generated by assets/genconveyors.py; edit the generator.
 	DATA BYTE $F1,$F1,$71,$71,$71,$71,$F1,$F1
 	DATA BYTE $F1,$F1,$71,$71,$71,$71,$F1,$F1
+burn_bitmap:
+	BITMAP "....X...X......."
+	BITMAP "...XX..XXX......"
+	BITMAP "..XXX.XXXX......"
+	BITMAP "...X...XX......."
+	BITMAP "..XX...X...X...."
+	BITMAP ".XXX...X..XX...."
+	BITMAP "..X......XXX...."
+	BITMAP ".XX......XX....."
+	BITMAP "..X.......X....."
+	BITMAP ".....X....XX...."
+	BITMAP ".....XX...X....."
+	BITMAP "......X..XX....."
+	BITMAP "......X...X....."
+	BITMAP "................"
+	BITMAP "................"
+	BITMAP "................"
 banked_hud_all:
+	PRINT AT CPOS(0,11),"BONUS "
 	' The mid-left Level-2 crate art is stored in this bank to preserve the
 	' fixed/fixture-bank budgets; upload it while its source page is selected.
 	DEFINE CHAR 167,2,crate_pat
 	DEFINE COLOR 167,2,crate_col
-	PRINT AT CPOS(0,17),<.4>#bonus
-	#scvalue = #score
-	#scpos = 0
-	#if TI994A
-	BANK SELECT 3
-	GOSUB banked_hud_score
-	BANK SELECT 2
-	#else
-	GOSUB score_print
-	#endif
-	PRINT AT CPOS(0,23),"         "
-	hlevelcol = 25
-	IF levelno >= 10 THEN hlevelcol = 24
-	IF levelno >= 100 THEN hlevelcol = 23
-	PRINT AT hlevelcol,"LEVEL ",levelno
+	DEFINE SPRITE 37,1,burn_bitmap
+	WAIT
+	PRINT AT CPOS(0,HUD_BONUS_COL),<.4>#bonus
+	PRINT AT CPOS(0,29),"   "
+	IF levelno < 10 THEN PRINT AT CPOS(0,30),"L",levelno
+	IF levelno >= 10 THEN
+		IF levelno < 100 THEN PRINT AT CPOS(0,29),"L",levelno
+	END IF
+	' A three-digit level fills the last three cells; all eight reserve hats fit.
+	IF levelno >= 100 THEN PRINT AT CPOS(0,29),levelno
 	GOSUB banked_hud_lives
 	RETURN
 
@@ -4631,7 +4715,7 @@ banked_actors_move:
 		ELSE
 			#bonus = 0
 		END IF
-		PRINT AT CPOS(0,17),<.4>#bonus
+		PRINT AT CPOS(0,HUD_BONUS_COL),<.4>#bonus
 		IF #bonus = 0 THEN GOSUB mack_die
 	END IF
 	RETURN
@@ -5003,6 +5087,63 @@ banked_factory_output:
 	END IF
 	RETURN
 
+banked_mag_catch:
+	' Only an armed magnet can catch airborne Mack beneath its two-cell span.
+	IF mgon = 0 THEN RETURN
+	IF mgarm = 0 THEN RETURN
+	IF st = 8 THEN RETURN
+	IF st = 9 THEN RETURN
+	IF st = S_WALK THEN RETURN
+	IF st = S_DEAD THEN RETURN
+	hy = my + 4
+	mgy = mgr * 8
+	mgy = mgy + 12
+	IF hy <= mgy THEN
+		cx = mx + 8
+		mgl = mgx
+		mgq = mgl + 15
+		IF cx >= mgl THEN
+			IF cx <= mgq THEN
+				st = 8
+				my = 24
+				mx = mgx
+			END IF
+		END IF
+	END IF
+	RETURN
+
+banked_mag_move:
+	IF mgon = 0 THEN RETURN
+	IF mgarm = 0 THEN RETURN
+	IF st = 9 THEN
+		' Mack stands on the crane top while the empty magnet retreats.
+		IF mgx < 157 THEN mgx = mgx + 1
+		IF mgx = 157 THEN lvdone = 1
+		RETURN
+	END IF
+	IF st = 8 THEN
+		IF mgx > 112 THEN mgx = mgx - 1
+		IF mgx < 112 THEN mgx = mgx + 1
+		mx = mgx
+		my = 24
+		IF mgx = 112 THEN
+			mx = 120	' place Mack one character right, onto the crane top
+			st = 9
+		END IF
+		RETURN
+	END IF
+	mgtk = mgtk + 1
+	IF mgtk < 2 THEN RETURN
+	mgtk = 0
+	IF mgd = 0 THEN
+		mgx = mgx - 1
+		IF mgx <= 96 THEN mgd = 1
+	ELSE
+		mgx = mgx + 1
+		IF mgx >= 208 THEN mgd = 0
+	END IF
+	RETURN
+
 banked_furnace_step:
 	' Extend left one pixel per two steps, curling up beyond the outlet.
 	firedepth = (hzphase / 2) AND 31
@@ -5011,7 +5152,10 @@ banked_furnace_step:
 	IF mx + 10 >= 225 THEN
 		IF mx + 5 <= 238 THEN
 			IF my + 4 <= 47 THEN
-				IF my + 15 >= 34 THEN GOSUB mack_die
+				IF my + 15 >= 34 THEN
+					GOSUB mack_burn
+					RETURN
+				END IF
 			END IF
 		END IF
 	END IF
@@ -5046,7 +5190,7 @@ banked_furnace_step:
 		firebottom = 24 + firecenter + firewidth
 		IF my + 4 <= firebottom THEN
 			IF my + 15 >= firetop THEN
-				GOSUB mack_die
+				GOSUB mack_burn
 				RETURN
 			END IF
 		END IF
@@ -5054,10 +5198,14 @@ banked_furnace_step:
 	RETURN
 
 banked_hud_lives:
-	' Reserve hats, right-justified below the score; room for 838 plus a bonus.
-	#va = VADDR(1,22)
-	FOR hl_slot = 0 TO 8
-		IF hl_slot + lives > 8 THEN
+	' Eight reserve hats follow the centered bonus and precede the level.
+	#if TI994A
+	#va = VADDR(0,21)
+	#else
+	#va = VADDR(0,7)
+	#endif
+	FOR hl_slot = 0 TO 7
+		IF hl_slot + lives > 7 THEN
 			ch = T_HAT
 		ELSE
 			ch = T_VOID
@@ -5546,15 +5694,16 @@ banked_spring_transfer:
 	ELSE
 		my = my + 3
 	END IF
-	' Keep the launch's horizontal inertia. The central rivet collection
-	' cabinet is solid and fatal; catching it ends the transfer before Mack
-	' can land on the far spring and enter the endless bounce/bounce loop.
-	IF mx + 16 >= 112 THEN
-		IF mx < 144 THEN
-			IF my + 16 >= 152 THEN
-				IF my < 184 THEN
-					springhit = 1
-					RETURN
+	' A floor-to-floor spring transfer clears the centre. Falling off a
+	' rotating panel commits Mack to the hazardous cabinet instead.
+	IF springfatal THEN
+		IF mx + 16 >= 112 THEN
+			IF mx < 144 THEN
+				IF my + 16 >= 152 THEN
+					IF my < 184 THEN
+						springhit = 1
+						RETURN
+					END IF
 				END IF
 			END IF
 		END IF
@@ -5631,7 +5780,15 @@ banked_tramp_step:
 	RETURN
 
 banked_hud_score:
+	#if TI994A
+	' Leave a left margin, right-align six score digits, and reserve column 7
+	' for the assisted-game marker. The title uses banked_score_left below.
+	PRINT AT CPOS(0,1),"       "
+	#scpos = 1
+	GOSUB banked_score_print
+	#else
 	GOSUB banked_score_left
+	#endif
 	IF game838 THEN PRINT "*"
 	RETURN
 
@@ -5689,6 +5846,7 @@ title_loop:
 	WAIT
 	IF cont1.button THEN RETURN
 	GOSUB menu_key
+	IF title_abort THEN RETURN
 	IF setupkey < 10 THEN
 		titlenext = 0
 		IF setupkey = 8 THEN titlenext = 1
@@ -5710,6 +5868,7 @@ setup838:
 setup_lives:
 	WAIT
 	GOSUB menu_key
+	IF title_abort THEN RETURN
 	IF setupkey < 1 THEN GOTO setup_lives
 	IF setupkey > 9 THEN GOTO setup_lives
 	lives = setupkey - 1
@@ -5718,6 +5877,7 @@ setup_lives:
 setup_level:
 	WAIT
 	GOSUB menu_key
+	IF title_abort THEN RETURN
 	IF setupkey < 1 THEN GOTO setup_level
 	IF setupkey > 6 THEN GOTO setup_level
 	levelno = setupkey
@@ -5726,10 +5886,21 @@ setup_level:
 	PRINT AT CPOS(11,20),setupkey
 	FOR setupwait = 1 TO 45
 		WAIT
+		GOSUB back_key
+		IF backreq THEN
+			title_abort = 1
+			RETURN
+		END IF
 	NEXT setupwait
 	RETURN
 
 menu_key:
+	GOSUB back_key
+	IF backreq THEN
+		title_abort = 1
+		setupkey = 15
+		RETURN
+	END IF
 	' A held digit is consumed once, including the final 8 and equal answers.
 	setupkey = cont1.key
 	IF setupkey = 15 THEN

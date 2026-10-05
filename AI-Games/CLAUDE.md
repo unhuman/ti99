@@ -485,3 +485,20 @@ source offset by the bare literal 256 between them, all after the same WAIT.
 Its source-executing checker models byte-sized SCREEN arguments and rejects a
 mutation restoring the zero-stride multirow copy. Inspect generated assembly;
 plain successful compilation does not validate a map stride.
+
+### BANKED CVBasic CALLERS AND TI FCTN INPUT (2026-10-05)
+
+On TI, keep cartridge-bank switches around `GOSUB` in fixed ROM. A routine
+executing from bank 2 that selects bank 3 immediately before `GOSUB` leaves
+the call's inline target word in bank 2, so the runtime can read an unrelated
+word from bank 3. Hard Hat Mack's level-start HUD lost its score and reserve
+lives this way. Return to fixed ROM before selecting another page, and verify
+the generated assembly and opening screen rather than treating compilation as
+proof of a safe bank transition.
+
+The fork's TI keyboard scanner can report bare FCTN as key code 254 while
+`cont2.button2` is set. That combination also occurs with ordinary Classic99
+direction controls, so it must not be accepted as a generic REDO/BACK command.
+Read the FCTN modifier and physical 8/9 matrix positions instead; Keystone
+Kapers' `ti_cancel_key` shows the CRU sequence. Test directional movement and
+shortcut keys in the running emulator together.

@@ -8,6 +8,7 @@ It does not emulate CPU timing, input hardware, or prove whole-level reachabilit
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
+from itertools import repeat
 import os
 from pathlib import Path
 import re
@@ -83,7 +84,7 @@ class Basic:
         self.vram_writes = []
         self.rom_tables = {}
         self.bank = 1
-        self.frame_inputs = iter(())
+        self.frame_inputs = repeat({})
         self.random_values = iter(())
         if Basic._parse_source != source:
             lines = [line.split("'")[0].strip().lower()
@@ -230,6 +231,13 @@ class Basic:
                 continue
             if line.startswith('gosub '):
                 self.run(line[6:])
+            elif line == 'asm movb r0,@cvb_backreq':
+                # Model the TI-only raw CRU FCTN+8/9 scanner. The assembly
+                # opcode/column guards are also checked in title_hotkeys.
+                self.v['backreq'] = int(bool(self.v['input_fctn'] and
+                                             self.v['input_key'] in (8,9)))
+            elif line.startswith('asm '):
+                pass
             elif line == 'cls':
                 self.screen = [32] * 768
                 self.cursor = 0
@@ -286,7 +294,7 @@ class Basic:
                 self.sprites[args[0]] = args[1:]
             elif line.startswith('define sprite '):
                 first,count,pointer=line[14:].split(',')
-                assert (pointer,self.bank) in (('dance_bitmap',2),('brick_edge',3),('mack_jump_left',4)), 'unexpected sprite upload/bank'
+                assert (pointer,self.bank) in (('dance_bitmap',2),('burn_bitmap',2),('brick_edge',3),('mack_jump_left',4)), 'unexpected sprite upload/bank'
                 self.sprite_writes.append((self.expr(first),self.expr(count),pointer))
             elif line.startswith('define vram '):
                 address,count,pointer=line[12:].split(',',2)
@@ -629,13 +637,12 @@ def transfers(source):
                 vm.v.update(mx=80 if side==0 else 152, my=160,
                             jr=1-side, jl=side, padok=1)
                 vm.run('spring_begin')
-                # Either side's inertia carries Mack into the central cabinet;
-                # he must die before reaching the far pad or reversing direction.
+                # A normal floor approach crosses safely to the opposite pad.
                 for _ in range(52):
                     if vm.v['st']==vm.v['s_dead']: break
                     vm.run('mack_step')
-                assert vm.v['springhit']==1 and vm.v['st']==vm.v['s_dead'], (
-                    'spring transfer should kill on the center cabinet',side,dict(vm.v))
+                assert vm.v['springhit']==0 and vm.v['st']!=vm.v['s_dead'], (
+                    'ordinary two-pad transfer hits the cabinet',side,dict(vm.v))
 
 
 
@@ -644,11 +651,13 @@ def fidelity(source):
     assert 'BANK SELECT' not in death and 'banked_' not in death, (
         'mack_die must preserve the active cartridge bank while banked collisions unwind')
     def level(n):
-        vm=Basic(source); vm.v.update(lv=n, lives=2); vm.run('init_level')
+        vm=Basic(source); vm.v.update(lv=n, lives=2, levelno=n, **{'#score':1000}); vm.run('init_level')
         return vm
     for stage in (1,2,3):
         vm=level(stage)
-        assert vm.screen[61:63]==[vm.v['t_hat']]*2, ('reserve-life hats missing after level paint',stage)
+        assert vm.screen[1:7]==list(map(ord,'  5000')), ('score missing on first level frame',stage)
+        assert vm.screen[27:29]==[vm.v['t_hat']]*2, ('top-row reserve hats missing after level paint',stage)
+        assert vm.screen[17:21]==list(map(ord,'5000')), ('bonus missing on first level frame',stage)
     # Carrying a loose block through an elevator ride and dying must restore
     # the item, clear inventory, and permit it to be picked up again.
     vm=level(1);item=0
@@ -730,7 +739,19 @@ def fidelity(source):
     vm.v.update(mgarm=1,mgx=196,mx=196)
     vm.run('mag_catch'); assert vm.v['st']==8 and vm.v['lvdone']==0
     for _ in range(84): vm.run('mag_move')
-    assert vm.v['lvdone']==1 and vm.v['mx']==112
+    assert vm.v['st']==9 and vm.v['lvdone']==0 and vm.v['mx']==120 and vm.v['my']==24
+    for _ in range(44): vm.run('mag_move')
+    assert vm.v['mgx']==156 and vm.v['lvdone']==0 and vm.v['mx']==120
+    vm.run('mag_move')
+    assert vm.v['mgx']==157 and vm.v['lvdone']==1 and vm.v['mx']==120
+    # The two valve cells must remain distinct from the Level-1 thrower upload.
+    spigot=re.search(r'DEFINE CHAR (\d+),(\d+),spigot_pat',source)
+    thrower=re.search(r'DEFINE CHAR (\d+),(\d+),thrower_pat',source)
+    assert spigot and thrower
+    valve_codes=set(range(int(spigot[1]),int(spigot[1])+int(spigot[2])))
+    thrower_codes=set(range(int(thrower[1]),int(thrower[1])+int(thrower[2])))
+    assert not valve_codes & thrower_codes, 'rivet thrower replaces part of the lower valve'
+    assert vm.screen[18*32+2:18*32+7]==[225]*4+[226], 'lower-conveyor valve is missing or overwritten'
     # Moving hazards must have both safe and lethal windows.
     for n,x,y,safe,bad in ((2,184,120,20,24),(2,184,120,90,44),
                           (3,56,58,20,36)):
@@ -866,7 +887,7 @@ def title_scores(source):
     for units in (0,1,2,5,7,40,13108,65535):
         title=Basic(source)
         title.v.update(last838=1,**{'#lastscore':units,'#hi':units})
-        title.frame_inputs=iter([dict(input_button=0,input_key=15),dict(input_button=1)])
+        title.frame_inputs=iter([{},dict(input_button=0,input_key=15),dict(input_button=1)]+[{}]*60)
         title.run('title_screen')
         text=str(units*5)+'*'
         assert ''.join(map(chr,title.screen[34:34+len(text)]))==text, 'last score must start at its label with adjoining marker'
@@ -879,7 +900,7 @@ def title_scores(source):
     vm=Basic(source+'\nBANK 0\nscore_end_test:\n'+over+'\tRETURN\nscore_start_test:\n'+start+'\tRETURN\n')
     vm.v.update(lv=1,**{'#score':1234,'#hi':900});vm.run('init_level')
     vm.run('score_end_test')
-    vm.frame_inputs=iter([dict(input_button=0,input_key=15),dict(input_button=1)])
+    vm.frame_inputs=iter([{},dict(input_button=0,input_key=15),dict(input_button=1)]+[{}]*60)
     vm.run('score_start_test')
     assert vm.v['#score']==0 and vm.v['#lastscore']==1234 and vm.v['#hi']==1234, 'last/high score lost on restart'
     assert (34,'6170') in vm.prints and (56,'  6170') in vm.prints, 'title score values/positions wrong'
@@ -897,13 +918,13 @@ def title_scores(source):
         vm.run('score_end_test')
         assert vm.v['last838']==last_star and vm.v['hi838']==high_star, '838 score provenance lost'
         vm.prints.clear()
-        vm.frame_inputs=iter([dict(input_button=0,input_key=15),dict(input_button=1)])
+        vm.frame_inputs=iter([{},dict(input_button=0,input_key=15),dict(input_button=1)]+[{}]*60)
         vm.run('score_start_test')
         assert ((34+len(str(score*5)),'*') in vm.prints)==bool(last_star), 'last score asterisk wrong'
         assert ((62,'*') in vm.prints)==bool(high_star), 'high score asterisk wrong'
         assert vm.v['game838']==0, '838 status leaks into normal next game'
     vm.v.update(game838=1,hi838=1);vm.prints.clear();vm.run('hud_all')
-    assert (1,'*') in vm.prints and (24,'*') not in vm.prints, 'current-score HUD marker wrong'
+    assert (7,'*') in vm.prints and (24,'*') not in vm.prints, 'current-score HUD marker wrong'
     # Level completion can claim the record before game over.
     award=source[source.index('level_complete:\n'):source.index('\tlevelno = levelno + 1')]
     win=Basic(source+'\nBANK 0\naward_test:\n'+award+'\tRETURN\n')
@@ -919,11 +940,14 @@ def score_range(source):
     vm=Basic(source)
     # Both final digits (0/5), old overflow boundary, and full six-digit range.
     for units in (0,1,2,5,7,40,1399,1400,13107,13108,65535):
-        vm.v.update(**{'#scvalue':units,'#scpos':100})
+        vm.v.update(game838=0,**{'#scvalue':units,'#scpos':100})
         vm.run('score_print')
-        assert ''.join(map(chr,vm.screen[100:107]))==str(units*5).ljust(7), 'score formatting/range wrong'
+        assert ''.join(map(chr,vm.screen[1:8]))==str(units*5).rjust(6)+' ', 'HUD score formatting/range wrong'
+        assert vm.screen[0]==32, 'HUD score lost its left margin'
         assert vm.bank==1, 'score renderer did not restore level-data bank'
-        vm.bank=3;vm.run('banked_score_print')
+        vm.bank=3;vm.v['#scpos']=100;vm.run('banked_score_left')
+        assert ''.join(map(chr,vm.screen[100:107]))==str(units*5).ljust(7), 'title last-score alignment changed'
+        vm.v['#scpos']=100;vm.run('banked_score_print')
         assert ''.join(map(chr,vm.screen[100:106]))==str(units*5).rjust(6), 'high score formatting changed'
         vm.bank=1
     vm.v.update(**{'#score':65534,'#award':7});vm.run('add_score')
@@ -934,14 +958,17 @@ def score_range(source):
     assert vm.v['lives']==3, 'extra life threshold changed or repeats'
     vm.v.update(lv=1,levelno=1);vm.run('init_level')
     vm.v.update(game838=1,hi838=1,**{'#score':65535,'#hi':65535,'#bonus':5000});vm.run('hud_all')
-    assert ''.join(map(chr,vm.screen[:7]))=='327675*', 'HUD score overlaps marker'
-    assert vm.screen[7:11]==[32]*4, 'score prefix remains'
+    assert ''.join(map(chr,vm.screen[1:8]))=='327675*', 'HUD score overlaps marker'
+    assert vm.screen[8:11]==[32]*3 and vm.screen[21:29]==[32]*5+[vm.v['t_hat']]*3, (
+        'top-row hats overlap the score or bonus')
     assert ''.join(map(chr,vm.screen[11:21]))=='bonus 5000', 'bonus not centered'
     for level in (1,9,10,99,100,255,1):
         vm.v['levelno']=level;vm.run('hud_all')
-        assert ''.join(map(chr,vm.screen[23:32]))==('level '+str(level)).rjust(9), 'level not right-aligned or stale digits remain'
+        label=('l'+str(level) if level<100 else str(level)).rjust(3)
+        assert ''.join(map(chr,vm.screen[29:32]))==label, (
+            'level not right-aligned or stale digits remain',level)
     vm.v.update(game838=0,hi838=0,**{'#score':1,'#hi':2,'#bonus':0});vm.run('hud_all')
-    assert ''.join(map(chr,vm.screen[:7]))=='5      ', 'old score digits/marker remain'
+    assert ''.join(map(chr,vm.screen[1:8]))=='     5 ', 'old score digits/marker remain'
     assert ''.join(map(chr,vm.screen[17:21]))=='   0', 'zero bonus missing or padded'
 
 
@@ -1015,7 +1042,8 @@ def elevator_dance(source):
                 if vm.v['edance']:
                     assert vm.sprites[8][2]==vm.v['dancecolour'], 'clothes do not follow dance pose'
             assert {0,108,116}<=poses, 'dance poses not rendered'
-            assert vm.sprite_writes==[(27,4,'dance_bitmap')], 'dance sprite upload count/bank wrong'
+            assert [upload for upload in vm.sprite_writes if upload[2]=='dance_bitmap']==[(27,4,'dance_bitmap')], (
+                'dance sprite upload count/bank wrong')
             pitches=[e[1] for e in vm.sound if e[0]==0 and e[1] is not None and e[2]>0]
             assert pitches==[280,447,280,447,280,447,280], 'arrival two-tone rhythm changed'
             assert vm.sound[-1]==(0,None,0), 'dance sound remains latched'
@@ -1129,6 +1157,12 @@ def end_screen_timing(source):
                     yield dict(frame=(origin+frame)&65535,input_button=int(button))
             vm.frame_inputs=frames();vm.run('gameover_wait')
             assert vm.wait_count==expected, ('game-over delay/release/timeout',origin,mode,vm.wait_count)
+    for key in (8,9):
+        for age in (1,40,90):
+            vm=Basic(source);vm.frame_inputs=iter(
+                [{}]*(age-1)+[dict(input_fctn=1,input_key=key)])
+            vm.run('gameover_wait')
+            assert vm.wait_count==age, ('REDO/BACK cannot leave Game Over delay',key,age)
     for remaining in (0,5,95,105,5000):
         for score in (1000,65530):
             vm=Basic(source);vm.v.update(xlife=1,**{'#bonus':remaining,'#score':score})
@@ -1630,19 +1664,31 @@ def visual_hazards(source):
     assert vm.screen[22*32+10:22*32+12]==[162,163], 'receiver base repeats one half'
     assert vm.screen[21*32+17:21*32+19]==[32,32], 'extra machine right of crane'
     assert vm.screen[22*32+17:22*32+19]==[32,32], 'extra machine base right of crane'
-    # Each spring transfer carries Mack into the central rivet cabinet. The
-    # collision must end the scripted arc before it can reverse into the far pad.
+    departed=Basic(source);departed.v.update(lv=3);departed.run('init_level')
+    departed.arrays['pnxcar'][:]=[120]*4
+    departed.arrays['pnycar'][:]=[100]*4
+    departed.v.update(mx=80,my=84,bonbeam=1,st=departed.v['s_walk'])
+    departed.run('st_walk')
+    assert departed.v['st']==departed.v['s_fall'] and departed.v['springfatal']==1, (
+        'walking off a rotating panel loses the hazardous spring route')
+    # Floor approaches must cross both pads. A drop directly from a moving
+    # panel retains the dangerous route into the central rivet cabinet.
     for start,direction in ((80,1),(152,0)):
-        spring=Basic(source);spring.v.update(lv=3);spring.run('init_level')
-        spring.v.update(mx=start,my=160,springdir=direction,springphase=1,
-                        springtick=0,springhit=0,st=7)
-        for _ in range(36):
-            spring.run('spring_transfer')
-            if spring.v['springhit']:
-                break
-        assert spring.v['springhit']==1, ('spring misses lethal cabinet',start)
-        assert spring.v['mx']+16>=112 and spring.v['mx']<144
-        assert spring.v['my']+16>=152 and spring.v['my']<184
+        for fatal in (0,1):
+            spring=Basic(source);spring.v.update(lv=3);spring.run('init_level')
+            spring.v.update(mx=start,my=160,springdir=direction,springphase=1,
+                            springtick=0,springhit=0,springfatal=fatal,st=7)
+            for _ in range(36):
+                spring.run('spring_transfer')
+                if spring.v['springhit']:break
+            if fatal:
+                assert spring.v['springhit']==1 and spring.v['st']==spring.v['s_dead'], (
+                    'panel fall misses lethal cabinet',start)
+                assert spring.v['mx']+16>=112 and spring.v['mx']<144
+                assert spring.v['my']+16>=152 and spring.v['my']<184
+            else:
+                assert spring.v['springhit']==0 and spring.v['st']==7
+                assert spring.v['mx']==(152 if direction else 80), ('spring misses far pad',start)
     # The factory's treads must travel in the same direction as its carrier.
     for level,direction in ((2,1),(3,-1)):
         vm.v.update(lv=level)
@@ -1667,10 +1713,33 @@ def visual_hazards(source):
         end.sprites[1]=(80,80,24,7)
         end.sprites[3]=(80,80,24,7)
         end.run('game_over')
-        assert all(v[0]==209 for v in end.sprites.values()), 'game-over left a gameplay sprite visible'
+        assert end.sprites[0][0]==209, 'game-over left Mack visible'
+        assert all(v[0]==209 for k,v in end.sprites.items() if k!=0), (
+            'game-over left a gameplay sprite visible')
         assert end.v['carry']==0 and end.v['jhtk']==0, 'game-over retained the held jackhammer'
         assert 'GOSUB elev_draw' not in source[source.index('game_over:\n'):source.index('gameover_wait:\n')], (
             'game-over must leave the character-backed cabin without reactivating elevator sprites')
+    for stage in (1,2,3):
+        end=Basic(source.replace(stop,'\tRETURN\n',1))
+        end.v.update(lv=stage,levelno=stage,lives=0)
+        end.run('init_level')
+        if stage!=2:
+            row=end.arrays['itr'][0];col=end.arrays['itc'][0]
+            end.screen[row*32+col]=32
+            end.arrays['itst'][0]=1
+            end.v.update(carry=1,cidx=0)
+        end.run('mack_die');end.v['#fd']=1;end.run('dead_tick')
+        if stage!=2:
+            assert end.screen[row*32+col]==32, (
+                'last-life cleanup restored a loose box on Game Over',stage)
+        before=end.screen[:]
+        for slot in range(18):end.sprites[slot]=(80,80,24,7)
+        end.run('game_over')
+        message={row*32+col for row in (10,11,12) for col in range(10,21)}
+        assert all(a==b for index,(a,b) in enumerate(zip(before,end.screen))
+                   if index not in message), ('game-over wrote stray map characters',stage)
+        assert all(end.sprites[slot][0]==209 for slot in range(18)), (
+            'game-over retained an item or hazard sprite',stage)
 
     # A kill may not occur across empty space. Bounds are derived from the
     # editable BITMAP rows, with Mack's six-pixel torso/12-pixel height.
@@ -1844,12 +1913,12 @@ def setup_inputs(source):
             assert vm.v['game838']==1, '838 game not marked'
             assert (11*32+20,str(level)) in vm.prints, '838 level selection was not shown'
             vm.run('init_level')
-            assert vm.screen[54:63]==[32]*(10-lives)+[vm.v['t_hat']]*(lives-1), 'reserve hats wrong'
+            assert vm.screen[21:29]==[32]*(9-lives)+[vm.v['t_hat']]*(lives-1), 'top-row reserve hats wrong'
             if level==4:
                 assert vm.v['lv']==1 and vm.v['von']==1 and vm.v['oon']==1, '838 level 4 does not start the harder two-enemy level 1'
     # Incorrect code, a held digit, and title navigation must not select a level.
     vm=Basic(source);vm.v.update(input_key=15,lv=1,lives=2)
-    vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,5,3,8]))+[dict(input_button=1)])
+    vm.frame_inputs=iter([dict(input_key=15,input_button=0)]+list(input_trace([8,5,3,8]))+[dict(input_button=1),{}])
     vm.run('title_screen')
     assert vm.v['lv']==1 and vm.v['lives']==2 and vm.bank==1 and vm.v['game838']==0
     vm=Basic(source);vm.v.update(titleheld=15,input_key=3)
@@ -1858,18 +1927,34 @@ def setup_inputs(source):
 
 
 def title_hotkeys(source):
-    loop=source[source.index('main_loop:'):source.index('#hacc = #hacc + #fd * 9',source.index('main_loop:'))]
-    start=loop.index('\tIF cont2.button2 THEN')
-    end=loop.index('\n\t#endif',start)
-    snippet=loop[start:end].replace('cont2.button2','input_fctn').replace('cont1.key','input_key').replace('GOTO new_game','titlehot = 1')
-    key_source=source+'\nBANK 0\nhotkey_test:\n'+snippet+'\n\tRETURN\n'
-    for key in (8,9,254):
-        vm=Basic(key_source);vm.v.update(input_fctn=1,input_key=key)
-        vm.run('hotkey_test')
-        assert vm.v['titlehot']==1, ('TI FCTN+%d failed to return to title' % key)
-    vm=Basic(key_source);vm.v.update(input_fctn=0,input_key=8)
-    vm.run('hotkey_test')
-    assert vm.v['titlehot']==0, 'ordinary 8 should not leave gameplay'
+    scanner=source[source.index('back_key:\n'):source.index('title_screen:\n')]
+    for opcode in ('ASM LI R1,>1000','ASM LI R0,>0100',
+                   'ASM LI R0,>0200','ASM LI R1,>0800',
+                   'ASM MOVB R0,@cvb_BACKREQ','ASM LIMI 2'):
+        assert opcode in scanner, ('TI REDO/BACK scanner lost its matrix guard',opcode)
+    assert scanner.count('ASM LI R0,>0100')==2, 'TI BACK column or pressed flag changed'
+    assert 'cont1.key = 254' not in scanner, 'bare FCTN triggers BACK'
+    for key in (8,9):
+        vm=Basic(source);vm.v.update(input_fctn=1,input_key=key)
+        vm.run('back_key')
+        assert vm.v['backreq']==1, ('TI FCTN+%d failed to return to title' % key)
+        for prompt in ('setup_lives','setup_level'):
+            vm=Basic(source);vm.bank=3;vm.v['titleheld']=15
+            vm.frame_inputs=iter([dict(input_fctn=1,input_key=key)])
+            vm.run(prompt)
+            assert vm.v['title_abort']==1, ('838 prompt ignores REDO/BACK',prompt,key)
+    vm=Basic(source);vm.v.update(input_fctn=0,input_key=8)
+    vm.run('back_key')
+    assert vm.v['backreq']==0, 'ordinary 8 should not leave gameplay'
+    vm=Basic(source);vm.v.update(input_fctn=1,input_key=254)
+    vm.run('back_key')
+    assert vm.v['backreq']==0, 'bare FCTN/joystick direction must not leave gameplay'
+    vm=Basic(source);vm.bank=3;vm.v['titleheld']=15
+    vm.frame_inputs=iter([dict(input_key=2)]+[{}]*9+
+                         [dict(input_fctn=1,input_key=9)])
+    vm.run('setup_level')
+    assert vm.v['title_abort']==1 and vm.wait_count==11, (
+        '838 confirmation delay ignores BACK')
 
 
 def repeat_enemies(source):
@@ -1996,8 +2081,14 @@ def factory_spring_animation(source):
             for _ in range(40):
                 vm.run('mack_step')
                 if vm.v['st']==vm.v['s_dead']:break
-            assert vm.v['st']==vm.v['s_dead'] and vm.v['springhit']==1, 'factory arc should hit the central cabinet'
+            assert vm.v['st']!=vm.v['s_dead'] and vm.v['springhit']==0, 'floor-to-floor factory arc hits cabinet'
             assert any(e[0]==2 and e[1]==300 for e in vm.sound), 'spring launch sound missing before death'
+            vm.v.update(mx=80 if side==0 else 152,my=160,springfatal=1)
+            vm.run('spring_begin')
+            for _ in range(52):
+                vm.run('mack_step')
+                if vm.v['st']==vm.v['s_dead']:break
+            assert vm.v['st']==vm.v['s_dead'] and vm.v['springhit']==1, 'panel fall should hit the central cabinet'
             assert any(e[0]==2 and e[1]==600 for e in vm.sound), 'cabinet collision misses death sound'
             count=len([w for w in vm.pattern_writes if w[0] in (139,141)])
             for _ in range(3):vm.run('site_draw')
@@ -2152,6 +2243,18 @@ def data_cache_contract(source):
         assert vm.v['mx']==x, 'cached DATA leaked between source variants'
 
 
+def bank_call_safety(source):
+    bank=0
+    for raw in ti_source_lines(source):
+        line=raw.split("'")[0].strip().lower()
+        if re.fullmatch(r'bank [1-6]',line):bank=int(line[-1])
+        if bank and line.startswith('bank select '):
+            raise AssertionError('banked TI caller switches cartridge page before its return')
+    hud=source[source.index('hud_all:\n'):source.index('hud_lives:\n')]
+    assert hud.index('BANK SELECT 2')<hud.index('GOSUB banked_hud_all')<hud.index('BANK SELECT 1')<hud.index('GOSUB score_print'), (
+        'HUD score call no longer returns through fixed ROM')
+
+
 def optimized_rendering(source):
     # Every paddle, every phase, including the three wraparound tails.
     vm=Basic(source)
@@ -2255,11 +2358,25 @@ def furnace_contract(source):
                     vm.v.update(mx=x,my=y,hzphase=phase,st=0);vm.run('furnace_step')
                     assert (vm.v['st']==vm.v['s_dead'])==dead, 'invisible curved-flame collision'
     assert depths[:64]==depths[64:], 'furnace cycle drifts'
+    vm=Basic(source);vm.v.update(lv=2,lives=2);vm.run('init_level')
+    vm.v.update(mx=220,my=32,hzphase=20,st=vm.v['s_walk'])
+    vm.run('furnace_step')
+    assert vm.v['st']==vm.v['s_dead'] and vm.v['burnfall']==1, 'furnace skips ignition'
+    ground_ticks=0
+    for frame in range(1,65):
+        vm.v.update(frame=frame,**{'#fd':1});vm.run('dead_tick')
+        if vm.v['burnfall'] and vm.v['my']==168:
+            assert vm.sprites[0][0]==167, 'burning Mack was drawn through the floor'
+            ground_ticks+=1
+        if vm.v['burnfall']==0:break
+    assert ground_ticks>=12 and vm.v['burnfall']==0, 'burning Mack did not pause on the ground'
+    assert vm.v['lives']==1 and vm.v['st']==vm.v['s_walk'], 'burning death did not consume one life'
 
 
 def main():
     source = SOURCE.read_text(encoding='utf-8')
     data_cache_contract(source)
+    bank_call_safety(source)
     optimized_rendering(source)
     furnace_contract(source)
     wall_sparks(source)
@@ -2318,6 +2435,7 @@ def main():
             assert vm.v['st'] == vm.v['s_walk'], 'jump failed to clear single-cell gap'
     # Known defects MUST fail: short clearance, lost momentum, deferred death.
     mutants = [
+        (source.replace('banked_hud_all:\n','banked_hud_all:\n\tBANK SELECT 3\n',1),bank_call_safety),
         (source.replace('DATA BYTE 8, 23,6,1,121','DATA BYTE 8, 23,6,1,120'),fixture_contract),
         (source.replace("' Clear floor approach to the chain; the decorative pump is removed.", 'DATA BYTE 8, 21,24,1,120'),fixture_contract),
         (source.replace('chainpose = pnphase AND 7','chainpose = hzphase AND 7'),factory_drive),
@@ -2426,6 +2544,9 @@ def main():
         (source.replace('IF carry = 0 THEN\n\t\t\t\' Grabbing','IF carry < 2 THEN\n\t\t\t\' Grabbing'),single_item),
         (source.replace('hbw = 18','hbw = 0'),single_item),
         (source.replace('SPRITE 14,209,0,0,0',''),single_item),
+        (source.replace('FOR qslot = 0 TO 17','FOR qslot = 0 TO 13'),visual_hazards),
+        (source.replace('IF lives > 0 THEN\n\t\t\titst(cidx)',
+                        'IF lives >= 0 THEN\n\t\t\titst(cidx)'),visual_hazards),
         (source.replace("mx = elx\t\t' any supported boarding snaps fully into the cabin",
                         "mx = mx\t\t' any supported boarding snaps fully into the cabin"),elevator_boarding),
         (source.replace('IF elarm = 1 THEN\n\t\tGOSUB elev_sup',
@@ -2434,9 +2555,10 @@ def main():
         (source.replace('ely = elby\n\temov = 0','ely = elty\n\temov = 0',1),elevator_boarding),
         (source.replace('IF cx <= elx + 15 THEN','IF cx < elx + 15 THEN'),elevator_boarding),
         (source.replace('IF setupkey > 6 THEN GOTO setup_level','IF setupkey > 3 THEN GOTO setup_level'),setup_inputs),
-        (source.replace('IF cont1.key = 8 THEN GOTO new_game','IF cont1.key = 8 THEN titlehot = 0'),title_hotkeys),
-        (source.replace('IF cont1.key = 9 THEN GOTO new_game','IF cont1.key = 9 THEN titlehot = 0'),title_hotkeys),
-        (source.replace('IF cont1.key = 254 THEN GOTO new_game','IF cont1.key = 254 THEN titlehot = 0'),title_hotkeys),
+        (source.replace('ASM LI R1,>1000','ASM LI R1,>0800',1),title_hotkeys),
+        (source.replace('ASM LI R0,>0100','ASM LI R0,>0300',1),title_hotkeys),
+        (source.replace('ASM LI R0,>0200','ASM LI R0,>0300',1),title_hotkeys),
+        (source.replace('ASM LI R1,>0800','ASM LI R1,>0400',1),title_hotkeys),
         (source.replace('DATA BYTE 8, 3,28,1,232','DATA BYTE 8, 3,27,1,232'),fixture_contract),
         (source.replace('bx = 216','bx = 240'),fixture_contract),
         (source.replace('IF girder_mark(c) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),
@@ -2480,8 +2602,14 @@ def main():
         (source.replace('IF st = S_RIDE THEN\n\t\tmy = ely - 16','IF st <> S_DEAD THEN\n\t\tmy = ely - 16'),elevator_dance),
         (source.replace('IF edance THEN mfr = dancebody',''),elevator_dance),
         (source.replace('edance = 0','edance = edance'),elevator_dance),
-        (source.replace('IF levelno >= 10 THEN hlevelcol = 24','IF levelno >= 100 THEN hlevelcol = 24'),score_range),
-        (source.replace('CPOS(0,17),<.4>#bonus','CPOS(0,2),<.4>#bonus'),score_range),
+        (source.replace('IF levelno < 100 THEN PRINT AT CPOS(0,29),"L",levelno','IF levelno < 10 THEN PRINT AT CPOS(0,29),"L",levelno'),score_range),
+        (source.replace('CPOS(0,HUD_BONUS_COL),<.4>#bonus','CPOS(0,2),<.4>#bonus'),score_range),
+        (source.replace('PRINT AT CPOS(0,11),"BONUS "','PRINT AT CPOS(0,15),"BONUS "'),score_range),
+        (source.replace('#va = VADDR(0,21)','#va = VADDR(0,7)'),score_range),
+        (source.replace('DEFINE CHAR 225,2,spigot_pat','DEFINE CHAR 231,2,spigot_pat'),fidelity),
+        (source.replace('DATA BYTE 8, 18,6,1,226','DATA BYTE 8, 18,6,1,232'),fidelity),
+        (source.replace("mx = 120\t' place Mack one character right", "mx = 112\t' place Mack one character right"),fidelity),
+        (source.replace('IF my < 168 THEN\n\t\t\tmy = my + #fd * 3','IF my < 184 THEN\n\t\t\tmy = my + #fd * 3'),furnace_contract),
     ])
     mutants.extend([
         (source.replace('IF lv = 3 THEN cvdrag = 1',''),factory_belt_balance),
