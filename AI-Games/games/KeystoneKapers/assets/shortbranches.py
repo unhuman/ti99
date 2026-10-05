@@ -17,7 +17,7 @@ from pathlib import Path
 INVERSE = {'jeq': 'jne', 'jne': 'jeq', 'jhe': 'jl', 'jl': 'jhe'}
 OPCODE = {'jeq': 0x1300, 'jne': 0x1600, 'jhe': 0x1400, 'jl': 0x1A00}
 LABEL = re.compile(r'(?:cv\d+|cvb_[A-Z_0-9]+)')
-ROW = re.compile(r'^\s*(\d+)\s+([0-9A-Fa-f]{4})\s+([0-9A-Fa-f]{4})(?:\s|$)')
+ROW = re.compile(r'^\s*(\d+)\s+([0-9A-Fa-f]{4,5})\s+([0-9A-Fa-f]{4})(?:\s|$)')
 
 
 def segment(lines):
@@ -33,7 +33,7 @@ def segment(lines):
     return [(i + 1, s) for i, s in enumerate(clean) if lo <= i + 1 < hi and s]
 
 
-def addresses(listing, significant):
+def addresses(listing, significant, allow_pre_relaxation_overflow=False):
     lo, hi = significant[0][0], significant[-1][0]
     rows = {}
     for line in listing.splitlines():
@@ -51,7 +51,8 @@ def addresses(listing, significant):
             pending.append(s)
         if n in rows:
             addr = rows[n][0]
-            if not 0xA000 <= addr < 0xFFFE or addr % 2:
+            upper = 0x11000 if allow_pre_relaxation_overflow else 0xFFFE
+            if not 0xA000 <= addr < upper or addr % 2:
                 raise ValueError('game instruction outside aligned fixed window')
             for label in pending:
                 labels[label] = addr
@@ -62,7 +63,7 @@ def addresses(listing, significant):
 def relax(source, listing):
     lines = source.splitlines(keepends=True)
     sig = segment(lines)
-    rows, labels = addresses(listing, sig)
+    rows, labels = addresses(listing, sig, allow_pre_relaxation_overflow=True)
     changes = []
     for (n, s), (bn, branch), (_, skip) in zip(sig, sig[1:], sig[2:]):
         m = re.fullmatch(r'(jeq|jne|jhe|jl)\s+(cv\d+)', s)
@@ -88,7 +89,7 @@ def verify(original, before, optimized, after, changes):
     expected, expected_changes = relax(original, before)
     if optimized != expected or changes != expected_changes:
         raise ValueError('optimized source or manifest differs from planned edits')
-    old, _ = addresses(before, segment(original.splitlines()))
+    old, _ = addresses(before, segment(original.splitlines()), allow_pre_relaxation_overflow=True)
     new, labels = addresses(after, segment(optimized.splitlines()))
     removed = sorted(c['removed'] for c in changes)
     retained = set(old) - set(removed)

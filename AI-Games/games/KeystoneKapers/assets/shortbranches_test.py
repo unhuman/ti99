@@ -63,6 +63,30 @@ class BranchTest(unittest.TestCase):
         source, listing, _ = fixture(op='jlt')
         self.assertEqual(relax(source, listing), (source, []))
 
+    def test_pre_relaxation_listing_crosses_ffff(self):
+        source, _, rows = fixture(delta=3)
+        original = [(n, addr + 0x4FF8, word) for n, addr, word in rows]
+        before = ''.join('%5d %05X %04X     instruction\n' % row for row in original)
+        optimized, changes = relax(source, before)
+        self.assertEqual(len(changes), 1)
+        change = changes[0]
+        emitted = []
+        for n, addr, word in original:
+            if n == change['removed']:
+                continue
+            if n > change['removed']:
+                addr -= 4
+            if n == change['line']:
+                word = OPCODE[change['op']] | 1
+            emitted.append((n, addr, word))
+        after = ''.join('%5d %05X %04X     instruction\n' % row for row in emitted)
+        verify(source, before, optimized, after, changes)
+        # The wider input parser must never legalize overflow in the final ROM.
+        bad = emitted[:-1] + [(emitted[-1][0], 0x10000, emitted[-1][2])]
+        with self.assertRaisesRegex(ValueError, 'outside aligned fixed window'):
+            verify(source, before, optimized,
+                   ''.join('%5d %05X %04X     instruction\n' % row for row in bad), changes)
+
     def test_labels_segments_and_bad_listing(self):
         source, listing, _ = fixture()
         # An intervening label can be an entry point: never remove its B.
