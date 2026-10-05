@@ -635,7 +635,7 @@ def transfers(source):
             for side in (0, 1):
                 vm = copy.deepcopy(base)
                 vm.v.update(mx=80 if side==0 else 152, my=160,
-                            jr=1-side, jl=side, padok=1)
+                            jr=1-side, jl=side, mdir=1-side, padok=1)
                 vm.run('spring_begin')
                 # A normal floor approach crosses safely to the opposite pad.
                 for _ in range(52):
@@ -2181,7 +2181,8 @@ def factory_spring_animation(source):
             assert vm.screen[22*32+19:22*32+21]==[141,142], 'right spring overlaps drums or ground'
             assert vm.screen[23*32+10:23*32+12]==[133,133]
             assert vm.screen[23*32+19:23*32+21]==[133,133]
-            vm.v.update(mx=80 if side==0 else 152,my=160)
+            # Facing the cabinet: the inward, floor-to-floor transfer.
+            vm.v.update(mx=80 if side==0 else 152,my=160,mdir=1-side)
             vm.run('spring_begin');vm.run('site_draw')
             for elapsed in range(batch,9,batch):
                 for _ in range(batch):vm.run('mack_step')
@@ -2204,7 +2205,7 @@ def factory_spring_animation(source):
                 if vm.v['st']==vm.v['s_dead']:break
             assert vm.v['st']!=vm.v['s_dead'] and vm.v['springhit']==0, 'floor-to-floor factory arc hits cabinet'
             assert any(e[0]==2 and e[1]==300 for e in vm.sound), 'spring launch sound missing before death'
-            vm.v.update(mx=80 if side==0 else 152,my=160,springfatal=1)
+            vm.v.update(mx=80 if side==0 else 152,my=160,mdir=1-side,springfatal=1)
             vm.run('spring_begin')
             for _ in range(52):
                 vm.run('mack_step')
@@ -2232,6 +2233,83 @@ def factory_spring_animation(source):
         vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
         vm.v.update(mx=col*8-8,my=160);vm.run('foot_probe')
         assert vm.v['sup']==1 and vm.v['ch']==vm.v['t_pad'], 'one spring half is not recognized as a pad'
+
+
+PADDLE_EXITS=(('walk',0),('walk',1),('jump',0),('jump',1))
+
+
+def paddle_bucket_bounce(source,exits=PADDLE_EXITS):
+    # Leaving a rotating paddle sideways must never reverse Mack: the outer
+    # pad carries him ON into that side's rivet bucket, where he dies. Walk
+    # and jump off paddle 0 at every circuit phase in both directions; the
+    # other three paddles share the same circuit. main() runs each exit
+    # slice in its own worker, since the full sweep is ~900 simulated exits.
+    base=Basic(source);base.v.update(lv=3,lives=2);base.run('init_level')
+    screen=base.screen
+    buckets=sorted(c for c in range(31) if screen[22*32+c:22*32+c+2]==[112,113])
+    assert len(buckets)==2, ('expected one bucket per side', buckets)
+    pads=[c for c in range(32) if base.v['t_pad']<=screen[22*32+c]<=base.v['t_pad_r']+1]
+    assert len(pads)==4, ('expected two two-cell pads', pads)
+    for col in buckets:
+        assert base.v['t_solid0']<=screen[23*32+col]<=base.v['t_solid1'], 'bucket has no floor under it'
+    ground=23*8
+    beam_bottom={}
+    for side,col in enumerate(buckets):
+        rows=[r for r in range(22) if any(
+            base.v['t_solid0']<=screen[r*32+c]<=base.v['t_solid1'] for c in (col,col+1))]
+        beam_bottom[side]=max(rows)*8+7
+    def outward_bucket(vm,d,path,what):
+        # Mack's 12-px art (mx+2..mx+13) ends inside the bucket, feet on its floor.
+        # (springhit is the shared death signal; position says where it struck.)
+        left=buckets[d]*8
+        assert vm.v['st']==vm.v['s_dead'], (what,'misses the bucket death',vm.v['mx'],vm.v['my'])
+        assert left<=vm.v['mx']+2 and vm.v['mx']+13<=left+15, (what,'dies outside the bucket',vm.v['mx'])
+        assert vm.v['my']+16==ground, (what,'does not reach the bucket floor',vm.v['my'])
+        step=[b-a for a,b in zip(path,path[1:])]
+        assert all((s<=0) if d==0 else (s>=0) for s in step), (what,'inverse movement',path)
+    # An outward arrival already past the cap keeps its place: no snap back.
+    for d,x in ((0,68),(1,167)):
+        vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
+        vm.v.update(mx=x,my=152,st=vm.v['s_fall'],mdir=d)
+        vm.run('mack_step')
+        assert vm.v['st']==7 and vm.v['mx']==x, ('outward pad snaps Mack backwards',d,vm.v['mx'])
+        path=[x]
+        for _ in range(60):
+            vm.run('mack_step');path.append(vm.v['mx'])
+            if vm.v['st']==vm.v['s_dead']:break
+        outward_bucket(vm,d,path,('overshoot',d))
+    reached={}
+    for mode,d in exits:
+        reached[mode,d]=0
+        for phase in range(224):
+            vm=copy.deepcopy(base)
+            vm.v.update(pnphase=phase);vm.run('lift_positions')
+            vm.v.update(mx=vm.arrays['pnxcar'][0],my=vm.arrays['pnycar'][0]-16,pnside=0,
+                        bonbeam=1,st=vm.v['s_walk'],mdir=d,jl=1-d,jr=d,jbe=int(mode=='jump'))
+            path=None;high=255
+            for _ in range(300):
+                for routine in ('mack_step','beam_move','site_step'):
+                    before=vm.v['mx']
+                    vm.run(routine);vm.v['jbe']=0
+                    if path is None and vm.v['st']==7:
+                        path=[before]
+                    if path is not None:
+                        path.append(vm.v['mx']);high=min(high,vm.v['my'])
+                    if vm.v['st']==vm.v['s_dead']:break
+                if vm.v['st']==vm.v['s_dead']:break
+                # Landed on a girder or belt, not a pad: a different route.
+                if vm.v['st']==vm.v['s_walk'] and vm.v['bonbeam']==0:break
+            if path is None:continue
+            reached[mode,d]+=1
+            what=(mode,'right' if d else 'left',phase)
+            assert vm.v['springdir']==d and vm.v['springpad']==d and vm.v['springbin']==1, (
+                what,'paddle exit bounces back toward the cabinet')
+            outward_bucket(vm,d,path,what)
+            assert high+4>beam_bottom[d], (what,'bucket hop hits the beam above it',high)
+    # Every combination must actually exercise the pads, or this sweep is blind.
+    for key,count in reached.items():
+        assert count>=40, ('too few paddle exits reach a pad',key,count)
+    return reached
 
 
 def fixture_contract(source):
@@ -2514,6 +2592,11 @@ def furnace_contract(source):
 
 def main():
     source = SOURCE.read_text(encoding='utf-8')
+    # The paddle-exit sweep is the longest single check. Its four slices run
+    # in workers while the serial checks below proceed in this process.
+    sweep_pool = ProcessPoolExecutor(max_workers=len(PADDLE_EXITS))
+    bucket_jobs = [sweep_pool.submit(paddle_bucket_bounce, source, (key,))
+                   for key in PADDLE_EXITS]
     data_cache_contract(source)
     bank_call_safety(source)
     optimized_rendering(source)
@@ -2790,6 +2873,20 @@ def main():
         (source.replace('DATA BYTE $71,$71,$91,$91,$A1,$C1,$A1,$91',
                         'DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1',1),furnace_contract),
     ])
+    mutants.extend([
+        (source.replace('springdir = mdir','springdir = 1 - springpad'),paddle_bucket_bounce),
+        (source.replace('IF mx > 80 THEN mx = 80','mx = 80'),paddle_bucket_bounce),
+        (source.replace('IF springtick <= 8 THEN\n\t\t\tmy = my - 2',
+                        'IF springtick <= 8 THEN\n\t\t\tmy = my - 3'),paddle_bucket_bounce),
+        (source.replace('IF mx > 64 THEN mx = mx - 1','mx = mx - 1'),paddle_bucket_bounce),
+        (source.replace('IF springphase = 1 THEN GOTO bin_hop',
+                        'IF springphase = 9 THEN GOTO bin_hop'),paddle_bucket_bounce),
+    ])
+    bucket_exits = {}
+    for job in bucket_jobs:
+        bucket_exits.update(job.result())
+    sweep_pool.shutdown()
+    assert sorted(bucket_exits) == sorted(PADDLE_EXITS), 'paddle-exit sweep lost a slice'
     print('Physics behavior sweeps passed; checking %d defect mutations' % len(mutants),flush=True)
     tasks = []
     for mutation_index,(mutant, check) in enumerate(mutants,1):
@@ -2807,6 +2904,8 @@ def main():
     print('Enemy over-jump wins (stationary / half speed / full speed; must be zero):', windows)
     print('All level parsers, pails, box delivery, belt surfaces and 448 lift steps OK')
     print('Twelve platform transfers, both spring transfers and sound envelopes OK')
+    print('Paddle exits bouncing on into a bucket: walk left %d, walk right %d, jump left %d, jump right %d'
+          % (bucket_exits['walk',0],bucket_exits['walk',1],bucket_exits['jump',0],bucket_exits['jump',1]))
     print('Walk-offs, parked/moving cabin and %d/8 live conveyor entries OK' % entry_wins)
     print('Hazard windows, magnet ride, drill/enemy routes and death rollback OK')
     print('Slag on belt, paired jaws, animation clocks, visible hitboxes and game-over elevator OK')

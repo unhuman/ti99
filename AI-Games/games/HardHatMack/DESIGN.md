@@ -451,10 +451,12 @@ be grabbed.
 
 **The trampoline pads (chars 139-142)** are how you get up from the ground. Each
 is two characters wide at row 22, one row above the ground, with the catch and
-launch positions raised alongside the artwork. The scripted transfer carries
-Mack toward the opposite pad, but the central rivet cabinet is lethal at the
-actual 16×16 player footprint; the arc ends there rather than reversing into a
-repeating pad-to-pad bounce. Both compressions share level one's four-pixel cap
+launch positions raised alongside the artwork. A pad never reverses Mack: the
+bounce follows his facing (`mdir`). Heading toward the centre, the scripted
+transfer carries him to the opposite pad and up onto the far lower platform.
+Heading outward, which is how every sideways exit from a rotating paddle
+arrives, there is no far pad: a short hop takes him into that side's rivet
+bucket, where he dies (§52). Both compressions share level one's four-pixel cap
 displacement and eight-step rebound. See §30 for the animation and validation.
 
 **The pater-noster** stays the flagged simplification — a climbable shaft rather than moving cars —
@@ -2607,3 +2609,82 @@ ground pail remains at columns 19-20, column 21 is clear, and the chain remains
 at column 26. Level 3's top-beam bonus wrench moved from column 11 to column
 10; its pickup and score use the new inventory position. The fixture regression
 checks these positions, the fuse sequence and the shifted wrench pickup.
+
+## 52. Paddle exits continue into the rivet buckets (2026-10-05)
+
+Walking off a rotating paddle sideways drops Mack onto the outer spring: off
+the left column at x=104 he lands on the left pad, and off the right column at
+x=136 on the right pad. `spring_begin` chose the launch direction from the
+pad's position. That always pointed at the far pad, so Mack reversed and died
+against the central rivet cabinet. A pad now never turns him around:
+
+- `springpad` is the pad under him (x < 128 = left) and `springdir` is his
+  facing, `mdir`. An inward bounce (toward the cabinet) is the unchanged
+  two-pad transfer. An outward bounce sets `springbin`.
+- An outward bounce compresses the cap as usual, then `bin_hop` replaces the
+  far-pad arc. Mack moves 1 px per step (walking pace) toward that side's
+  bucket. The left bucket is at x=64 (cols 8-9), the right at x=168 (cols
+  21-22); both are 16 px beyond the cap. He rises 2 px per step for 8 steps,
+  falls 2 px per step for 8, then drops to y=168 (feet on y=184, the bucket
+  floor) and dies there. The 16 px apex keeps his hat 4 px below the lower side
+  beam over each bucket. A taller arc would pass through it.
+- The inward transfer still snaps him onto the cap. An outward arrival is only
+  pulled forward: paddle walk-offs move 15 px on the left and 8 px on the
+  right. An arrival already past the cap keeps its x, and the hop stops at the
+  bucket.
+- A jump outward off a paddle that lands on an outer pad also continues into
+  the bucket. Before this change it became a backward, survivable cross-site
+  transfer.
+- `springfatal` is still set by a paddle walk-off and still sends an inward
+  transfer into the cabinet. The sweep below found no paddle exit that reaches
+  a pad heading inward, so that route is now a dormant guard.
+
+**Fixed-area note.** The checked short-branch optimizer needs the
+*unoptimized* first xas99 pass to assemble. Fixed code starts at `>A000`; past
+`>FFFE` its addresses wrap, and any short jump that straddles the wrap is
+rejected as out of range. The previous build was already 154 bytes past
+`>FFFE` in that pass. It assembled only because no short jump straddled the
+wrap, and this change made three of them straddle it. `spring_begin`'s body,
+the new hop and `chain_at`'s pure VPEEK probe now run in bank 2 behind
+fixed-area wrappers. A bucket landing returns through the existing `springhit`
+→ `mack_die` path, and none of the banked routines makes a call.
+
+The unoptimized pass now has 226 bytes free. After 517 verified short branches
+the fixed area uses 22,280/24,336 bytes (2,056 free). Banks 1-4 retain 14,
+1,968, 34 and 360 bytes, and RAM use is 572 bytes.
+
+**Validation.** `paddle_bucket_bounce` in `assets/checkphysics.py` walks and
+jumps off a paddle at all 224 circuit phases in both directions. It runs the
+real `mack_step`, `beam_move` and `site_step`, with bucket, pad, floor and
+beam geometry taken from the parsed Level 3 map. The exits that reach a pad
+must:
+
+- keep Mack's direction;
+- use the outer pad and set the bucket flag;
+- never step `mx` backward, including the snap;
+- end dead with his art inside the bucket and his feet on its floor;
+- keep his hat below the beam above.
+
+The counts are reported by name: 114 left walks, 119 right walks, 106 left
+jumps and 91 right jumps. Each slice must reach at least 40. Overshooting
+arrivals (x=68 on the left, x=167 on the right) must keep their place. The four
+slices run in worker processes alongside the serial checks.
+
+Five new mutations must fail:
+
+- the old position-derived direction;
+- a backward snap;
+- a 3 px rise that hits the beam;
+- an unclamped hop that overshoots the bucket;
+- a disconnected bucket route.
+
+The existing floor-approach spring tests now state their inward facing
+explicitly.
+
+Two review-only slow-motion carts were built from a scratch copy of the source
+and never committed. Each boots into Level 3 with Mack walking off one paddle.
+In Classic99 QI399.087 they show the vertical fall, the forward placement onto
+the pad, the compression, the low hop and the death blink inside each bucket.
+`src/HARDHAT_L3_8.bin` (git-ignored) is a normal-speed cart that starts on
+Level 3. Production SHA-256:
+`EC46D9F022B167E3AE7DE9D0E4530280F360866AB32A127A0E5985844B7E92FD`.

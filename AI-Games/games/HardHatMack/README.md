@@ -69,9 +69,11 @@ Three construction sites are implemented:
    At its left end, a single wall emitter throws animated white, yellow and
    orange spark trails across two characters; grab the escape chain before it.
    The two springs use level one's two-cell artwork, compression and launch
-   sound. An ordinary walk-off can bounce across both springs to the far side.
-   Dropping from a rotating paddle instead carries Mack into the hazardous
-   central rivet cabinet.
+   sound. A spring keeps Mack moving the way he was going and never turns him
+   around. Walking off a lower side platform toward the centre bounces him
+   across both springs to the far side. Leaving a rotating paddle sideways,
+   by walking or jumping, lands him on the outer spring heading outward: it
+   hops him on into that side's rivet bucket, where he dies.
    The processors, central cabinet and conveyor machinery are dangerous.
 
 The smashers on levels 2 and 3 share a five-pixel-tall, predominantly white head,
@@ -253,7 +255,8 @@ The physics checker executes actual BASIC routines and all three level parsers.
 It checks objective handling, death rollback, timed hazard windows, magnet capture
 and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider steps,
 both spring transfers, jump clearance, walk-off versus jump falls and sound
-note-offs. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
+note-offs. Walking and jumping off a factory paddle at all 224 circuit phases
+must keep Mack's direction and end in the matching bucket. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
 Deliberately broken variants must fail. New checks cover directional airborne
 art, conveyor walking balance, quicker downstrokes, curved furnace flames,

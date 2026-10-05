@@ -1050,32 +1050,15 @@ walk_tramp:
 	RETURN
 
 chain_at:
-	' Find a climb-band cell at pixel row cpy under Mack's left, center,
-	' or right -- cfnd/cc report the hit.
-	cfnd = 0
-	ch = TILE(mx + 4,cpy)
-	IF ch >= T_LADD0 THEN
-		IF ch <= T_LADD1 THEN
-			cc = (mx + 4) / 8
-			cfnd = 1
-			RETURN
-		END IF
-	END IF
-	ch = TILE(mx + 8,cpy)
-	IF ch >= T_LADD0 THEN
-		IF ch <= T_LADD1 THEN
-			cc = (mx + 8) / 8
-			cfnd = 1
-			RETURN
-		END IF
-	END IF
-	ch = TILE(mx + 12,cpy)
-	IF ch >= T_LADD0 THEN
-		IF ch <= T_LADD1 THEN
-			cc = (mx + 12) / 8
-			cfnd = 1
-		END IF
-	END IF
+	' Banked to keep the unoptimized fixed area below >FFFE (xas99's first
+	' pass rejects short jumps that straddle it). Pure VPEEK logic, no calls.
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_chain_at
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 tramp_in2:
@@ -2623,27 +2606,36 @@ dead_resolve:
 	' ---- HUD ----
 	'
 spring_begin:
-	st = 7
-	springhit = 0
-	bonbeam = 0
-	springtick = 0
-	springphase = 0
-	trtick = 0
-	trpose = 0
-	springdir = 1
-	IF mx >= 128 THEN springdir = 0
-	springpad = 1 - springdir
-	trby = 176
-	mx = 80
-	IF springdir = 0 THEN mx = 152
-	IF my > 160 THEN my = 160
+	' Banked: the unoptimized fixed area must stay below >FFFE for xas99.
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_spring_begin
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	RETURN
 
 spring_transfer:
+	' The cap compresses as usual; only the outward launch differs.
+	IF springbin THEN
+		IF springphase = 1 THEN GOTO bin_hop
+	END IF
 	#if TI994A
 	BANK SELECT 3
 	#endif
 	GOSUB banked_spring_transfer
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	IF springhit THEN GOTO mack_die
+	RETURN
+
+bin_hop:
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_bin_hop
 	#if TI994A
 	BANK SELECT 1
 	#endif
@@ -5233,6 +5225,93 @@ banked_hud_lives:
 		VPOKE #va,ch
 		#va = #va + 1
 	NEXT hl_slot
+	RETURN
+
+banked_spring_begin:
+	st = 7
+	springhit = 0
+	bonbeam = 0
+	springtick = 0
+	springphase = 0
+	trtick = 0
+	trpose = 0
+	' The pad under him animates; the bounce keeps his direction of travel.
+	' Never reverse him: heading for the cabinet crosses to the far pad, but
+	' heading away from it (a walk-off from a rotating paddle) has no far pad
+	' and carries him on into that side's rivet bucket.
+	springpad = 0
+	IF mx >= 128 THEN springpad = 1
+	springdir = mdir
+	springbin = 0
+	IF springdir = springpad THEN springbin = 1
+	trby = 176
+	IF springbin = 0 THEN
+		mx = 80
+		IF springpad = 1 THEN mx = 152
+	ELSE
+		' Only pull a short arrival FORWARD onto the cap; one already past
+		' it keeps his place rather than being snapped back.
+		IF springpad = 0 THEN
+			IF mx > 80 THEN mx = 80
+		ELSE
+			IF mx < 152 THEN mx = 152
+		END IF
+	END IF
+	IF my > 160 THEN my = 160
+	RETURN
+
+banked_bin_hop:
+	' Outward bounce: on at walking pace to the bucket beside the pad
+	' (cols 8-9 -> x=64, cols 21-22 -> x=168; 16 px from the cap). A low
+	' 16-px arc keeps his hat under the side beam above the bucket, then he
+	' drops to its floor (feet on y=184) and dies there (springhit).
+	springtick = springtick + 1
+	IF springtick <= 16 THEN
+		IF springdir = 1 THEN
+			IF mx < 168 THEN mx = mx + 1
+		ELSE
+			IF mx > 64 THEN mx = mx - 1
+		END IF
+		IF springtick <= 8 THEN
+			my = my - 2
+		ELSE
+			my = my + 2
+		END IF
+		RETURN
+	END IF
+	my = my + 2
+	IF my < 168 THEN RETURN
+	my = 168
+	springhit = 1
+	RETURN
+
+banked_chain_at:
+	' Find a climb-band cell at pixel row cpy under Mack's left, center,
+	' or right -- cfnd/cc report the hit.
+	cfnd = 0
+	ch = TILE(mx + 4,cpy)
+	IF ch >= T_LADD0 THEN
+		IF ch <= T_LADD1 THEN
+			cc = (mx + 4) / 8
+			cfnd = 1
+			RETURN
+		END IF
+	END IF
+	ch = TILE(mx + 8,cpy)
+	IF ch >= T_LADD0 THEN
+		IF ch <= T_LADD1 THEN
+			cc = (mx + 8) / 8
+			cfnd = 1
+			RETURN
+		END IF
+	END IF
+	ch = TILE(mx + 12,cpy)
+	IF ch >= T_LADD0 THEN
+		IF ch <= T_LADD1 THEN
+			cc = (mx + 12) / 8
+			cfnd = 1
+		END IF
+	END IF
 	RETURN
 
 animation_end:

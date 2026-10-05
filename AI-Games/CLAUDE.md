@@ -71,6 +71,12 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
   earlier long branches shrink. Its planner accepts up to one page of pre-relaxation overflow
   (including five-digit listing addresses); the verifier still requires every final instruction
   inside the fixed window and checks retained addresses and each rewritten branch.
+  **That tolerance is luck, not headroom:** xas99's unoptimized first pass rejects any short
+  jump that straddles `>FFFF` ("Out of range ... -0x7ffe"), so code past the wrap breaks the
+  build the moment a growth shifts a jump across it. Hard Hat Mack was already 154 bytes over
+  when a ~300-byte change made three jumps straddle. Keep the unoptimized pass under `>FFFE` by
+  banking pure routines (skill `rom-budget`), and measure it by assembling a scratch copy
+  with `aorg >9000`.
 - **Constants > 255 truncate to 8 bits** in three shapes: `CONST X = 768` used in a 16-bit
   assignment compiles to `CLR`; a folded dotted constant (`$1800 + 728.`) truncates the addend;
   and **an 8-bit var times a constant > 255** compiles to `CLR`. The threshold is **256, not
