@@ -2519,3 +2519,29 @@ uses 22,570/24,336 bytes after 523 verified short branches; banks 1-4 retain
 the normal Level 1 HUD, the 838 Level 2 valve and a review-only extended
 burning-ground pause. The production cartridge was restored afterward. SHA-256:
 `D239FDF147B4766A8800D1E3DF79702E73D6F55F08F0F62AB03E7DE6D3C7CE2E`.
+
+## 47. Goop outlet and overlapping-sprite priority (2026-10-05)
+
+The Level 2 lower-conveyor outlet now ends in a six-pixel red mouth spanning
+screen x=49-54. The first visible goop sprite occupies the same columns;
+the previous two-pixel stem was too narrow to plausibly contain the emission.
+The editable generator checks that the actual first-frame sprite pixels fit
+inside the generated mouth, then regenerates pattern and color data together.
+
+On Level 1 the held red brick remains sprite 1, but its cosmetic white outline
+uses sprite 31. This gives the roaming jackhammer in sprite 3 earlier TMS9918
+scanline priority when both are present. Screen transitions now clear all 32
+hardware sprite slots, including the new outline position. The regression
+gate exercises changing inventory and seeds every slot before Game Over.
+
+At the Level 2 upper conveyor exit, the belt-edge death formerly ran before
+the furnace collision check. When Mack touched a visible flame at the roller,
+that ordering produced an ordinary death. The exit now evaluates the same
+furnace collision routine first and uses ordinary death only when no fire
+overlaps him. The gate checks several extended-flame phases at that edge and
+retains a separate no-flame exit case.
+
+The TI cart compiles with 564 RAM bytes and 22,592/24,336 fixed-area bytes;
+all four banks fit and all eight source/art gates pass after packaging.
+Production SHA-256:
+`C55FFDA4DB9EBA3AEF989323BD9856E4B764B73D2EE7BA18E07176B0C5DF37BD`.

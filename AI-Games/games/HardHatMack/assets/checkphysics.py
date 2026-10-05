@@ -506,7 +506,7 @@ def single_item(source):
         for carry in (1,0,2,1,2,0):
             vm.v.update(carry=carry,jhtk=int(carry==2),jhx=104,jhy=152)
             vm.run('inventory_draw')
-            assert (vm.sprites[14][0]!=209)==(carry==1), 'stale block outline after changing inventory'
+            assert (vm.sprites[31][0]!=209)==(carry==1), 'stale block outline after changing inventory'
             if carry==1:
                 assert vm.sprites[1][2:]==(28,6) and vm.sprites[3][0]==209, 'loose hammer looks carried with block'
             elif carry==2:
@@ -869,6 +869,13 @@ def upper_conveyor(source):
                 vm.run('world_step')
                 if vm.v['st']==vm.v['s_dead']:break
             assert vm.v['st']==vm.v['s_dead'] and vm.v['my']==34, 'belt exit becomes a survivable short drop'
+    # A lit flame overlapping Mack at the roller must start the burning fall,
+    # even though the conveyor edge is evaluated before the site's hazards.
+    for phase in (16,30,32):
+        vm=copy.deepcopy(base);vm.v.update(mx=208,my=34,hzphase=phase,st=vm.v['s_walk'])
+        vm.run('upper_belt_edge')
+        assert vm.v['st']==vm.v['s_dead'] and vm.v['burnfall']==1, (
+            'upper belt exit preempted a visible furnace hit',phase)
     # A deliberate jump from the last roller can still catch the live magnet.
     for x,direction in ((198,2),(206,1)):
         vm=copy.deepcopy(base);vm.v.update(mx=x,my=34,jbe=1,jr=int(direction==2),mgarm=1,mgx=208,mgd=0)
@@ -1733,12 +1740,12 @@ def visual_hazards(source):
             assert end.screen[row*32+col]==32, (
                 'last-life cleanup restored a loose box on Game Over',stage)
         before=end.screen[:]
-        for slot in range(18):end.sprites[slot]=(80,80,24,7)
+        for slot in range(32):end.sprites[slot]=(80,80,24,7)
         end.run('game_over')
         message={row*32+col for row in (10,11,12) for col in range(10,21)}
         assert all(a==b for index,(a,b) in enumerate(zip(before,end.screen))
                    if index not in message), ('game-over wrote stray map characters',stage)
-        assert all(end.sprites[slot][0]==209 for slot in range(18)), (
+        assert all(end.sprites[slot][0]==209 for slot in range(32)), (
             'game-over retained an item or hazard sprite',stage)
 
     # A kill may not occur across empty space. Bounds are derived from the
@@ -2543,8 +2550,10 @@ def main():
         (source.replace('IF carry <> 0 THEN RETURN',''),single_item),
         (source.replace('IF carry = 0 THEN\n\t\t\t\' Grabbing','IF carry < 2 THEN\n\t\t\t\' Grabbing'),single_item),
         (source.replace('hbw = 18','hbw = 0'),single_item),
-        (source.replace('SPRITE 14,209,0,0,0',''),single_item),
-        (source.replace('FOR qslot = 0 TO 17','FOR qslot = 0 TO 13'),visual_hazards),
+        (source.replace('SPRITE 31,209,0,0,0',''),single_item),
+        (source.replace('FOR qslot = 0 TO 31','FOR qslot = 0 TO 17'),visual_hazards),
+        (source.replace('GOSUB furnace_step\n\tIF st = S_DEAD THEN RETURN\n\tGOSUB mack_die',
+                        'GOSUB mack_die'),upper_conveyor),
         (source.replace('IF lives > 0 THEN\n\t\t\titst(cidx)',
                         'IF lives >= 0 THEN\n\t\t\titst(cidx)'),visual_hazards),
         (source.replace("mx = elx\t\t' any supported boarding snaps fully into the cabin",

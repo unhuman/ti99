@@ -37,11 +37,12 @@ def tables():
     post = [0x18]*7+[0x7e]
     result = {'convh_pat':flat(0), 'convh_col':[0x11,0x11,0xf1,0x31,0x31,0x31,0xf1,0x11],
               'conv_col':[0xf1]*32+[0xe1]*8}
-    # Four blue/white cap tiles feed a tapered end tile. The red two-pixel
-    # stem hangs under its right half, aligned with the first falling blob.
+    # Four blue/white cap tiles feed a tapered end tile. Its six-pixel red
+    # mouth spans the whole first visible blob; the old two-pixel stem was
+    # narrower than the goop it supposedly contained.
     # These are characters 225-226: 232 is the Level-1 thrower, not a valve.
     result['spigot_pat'] = ([0xff]*4+[0]*4+
-                            [0xff,0xff,0xfe,0x7c,0x1c,0x0c,0x0c,0x0c])
+                            [0xff,0xff,0xfe,0x7e,0x7e,0x7e,0x7e,0x7e])
     result['spigot_col'] = ([0x51,0xf1,0x51,0x51]+[0x11]*4+
                             [0x51,0xf1,0x51,0x51,0x91,0x91,0x91,0x91])
     for phase in range(8):
@@ -238,9 +239,14 @@ def check(source):
         assert {(x,y) for x,y in pixels if y>=6}=={(x,y) for x in range(3,13) for y in (6,7)}, 'springboard base moves'
         assert {(x,depth) for x in range(1,15)}<=pixels, 'springboard cap breaks apart'
     assert t['pad_pat']==t['tramp_pat'][:16]*2 and t['pad_col']==t['tramp_col'][:16]*2
-    assert t['spigot_pat'][8:12] == [0xff,0xff,0xfe,0x7c]
-    assert t['spigot_pat'][12:16] == [0x1c,0x0c,0x0c,0x0c], 'slag valve has no outlet stem'
+    assert t['spigot_pat'][8:12] == [0xff,0xff,0xfe,0x7e]
+    assert t['spigot_pat'][12:16] == [0x7e]*4, 'slag valve mouth is narrower than the blob'
     assert t['spigot_col'][12:16] == [0x91]*4, 'slag valve outlet is not red'
+    slag=re.search(r'^slag_bitmap:\n.*?(?=^\w+:)',source,re.M|re.S).group()
+    first_frame=re.findall(r'BITMAP "([.X]{16})"',slag)[:16]
+    blob_x={44+x for row in first_frame for x,pixel in enumerate(row) if pixel=='X'}
+    mouth_x={48+x for x in range(8) if t['spigot_pat'][15] & (128>>x)}
+    assert blob_x <= mouth_x, 'first goop ball extends outside the emitting mouth'
     assert len({tuple(t['belt_anim%d'%i]) for i in range(8)})==8
     sparks=t['spark_pat']
     assert len(sparks)==128 and len({tuple(sparks[i:i+16]) for i in range(0,128,16)})==8

@@ -6,7 +6,9 @@ Both targets build from `src/HARDHAT.bas` using the **unhuman/CVBasic** fork.
 Three construction sites are implemented:
 
 1. **Beams and Bolts:** carry four girder pieces to the holes, then catch the roaming
-   jackhammer and rivet them. Filled but unriveted holes reopen after a death;
+   jackhammer and rivet them. The carried brick's white outline uses the last
+   sprite slot so it cannot take a scanline slot from the roaming jackhammer.
+   Filled but unriveted holes reopen after a death;
    their pieces return. Pieces are red with a white outline, both loose and
    placed; riveting makes them match the surrounding girder. All girders have
    centered rivet pairs separated by plain beam sections. Repaired gaps continue
@@ -38,7 +40,8 @@ Three construction sites are implemented:
    green with blue edges and rivets. Lunch pails are twelve pixels tall; either
    side can be collected. Their rounded white lids, small handles and divided
    red panels resemble lunch pails. The lower-belt emitter has a tapered
-   mounting collar and a short, open white-rimmed outlet. Concrete leaving the lower conveyor arcs
+   mounting collar and a six-pixel-wide red outlet that contains the entire
+   first goop frame. Concrete leaving the lower conveyor arcs
    into the single open-mouthed receiver; the extra machine beside the crane
    is removed. The bottom-right chain hangs from the platform's far
    right edge, with a clear floor approach to its left. Pincers complete
@@ -77,7 +80,8 @@ in its bright green body. The furnace has a magenta-and-white cabinet with green
 caps; fire shoots from its left outlet, curls upward, and retracts before repeating.
 The plume broadens into a ragged flame with a bright core and cycling reds,
 orange and yellow; red occupies at least half of each palette band. Its shape
-flickers as it extends. Touching the furnace ignites Mack; he falls burning
+flickers as it extends. Touching the furnace, including where the top conveyor
+ends, ignites Mack; he falls burning
 to the bottom before losing the life. In 838 mode, the selected starting level remains
 visible briefly before gameplay clears the setup screen.
 
