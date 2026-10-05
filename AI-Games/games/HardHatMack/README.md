@@ -13,9 +13,15 @@ Three construction sites are implemented:
    that spacing. Jump to ring the bell and summon the elevator. Landing anywhere
    supported by an armed elevator centers Mack and starts the ride. At either end of an occupied
    ride, Mack does two quick crouch-and-rise motions with a two-tone sound
-   (about half a second); a horizontal nudge summons the next trip, while Jump
-   lets him leave the cabin. A jump pressed during travel or the arrival dance
-   is buffered and dismounts him when the cabin parks. A fixed launcher at the upper-right end of the
+   (about half a second); walking right steps from the parked cabin onto the
+   adjacent girder. Left/right no longer starts another ride. Jump remains
+   available as a separate way to dismount. A soft pitch rises with the
+   elevator as it ascends and falls as it descends. The held jackhammer's
+   looping sound is quieter than before.
+   Death resets the elevator to its bottom stop. Boarding checks whether
+   Mack's center is within the platform span, preventing the adjacent chain
+   from triggering a ride through a few pixels of sprite overlap.
+   A fixed launcher at the upper-right end of the
    top beam fires leftward rivets. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
    and his feet follow the moving cap. Mack starts one character to the right

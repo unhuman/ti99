@@ -252,6 +252,10 @@ new_game:
 	xlife = 0
 	#bonus = 5000
 	GOSUB title_screen
+	' Remove title artwork (and the 838 confirmation screen) before gameplay
+	' reuses their character slots. Clearing after DEFINE CHAR visibly corrupts
+	' the title while the new patterns are being uploaded.
+	CLS
 	GOSUB game_chars
 	GOSUB init_level
 
@@ -1363,26 +1367,12 @@ fall_land:
 	RETURN
 
 st_ride:
-	' elarm=2 buffers Fire during travel/dance; consume it once parked.
-	IF jbe THEN elarm = 2
 	IF edance THEN RETURN
-	' No button: any supported boarding of an armed elevator centers Mack
-	' and starts the ride. The support and start windows must agree. It then
-	' travels non-stop to the opposite end (1st <-> 4th beam), Mack
-	' locked aboard. The FAQ's "exit to re-activate" rule: armed on
-	' boarding, cleared when a trip starts, re-armed only when he steps
-	' off -- so it never immediately reverses.
+	' A newly boarded armed elevator centers Mack and starts its trip. On
+	' arrival, left/right now walk him off the parked platform; they must not
+	' send the cabin straight back the other way.
 	IF emov = 1 THEN RETURN
-	IF elarm = 2 THEN
-		elarm = 1
-		GOTO start_jump
-	END IF
-	' After arriving, a horizontal nudge summons the next trip instead of
-	' letting Mack slide through the cabin edge. Keep him centered in the
-	' 16-pixel platform while it starts; the wider support probe is only for
-	' boarding from a fall/landing, not permission to walk off while parked.
-	IF jl THEN elarm = 1
-	IF jr THEN elarm = 1
+	IF jbe THEN GOTO start_jump
 	IF elarm = 1 THEN
 		GOSUB elev_sup
 		IF esup = 1 THEN
@@ -1397,9 +1387,17 @@ st_ride:
 			RETURN
 		END IF
 	END IF
+	IF jr THEN mx = mx + 1
+	IF jl THEN
+		IF mx > 0 THEN mx = mx - 1
+	END IF
+	IF jr THEN GOTO ride_step_off
+	IF jl THEN GOTO ride_step_off
+	RETURN
+ride_step_off:
 	GOSUB elev_sup
 	IF esup = 0 THEN
-		' Stepped off the platform -- re-arm for the next boarding.
+		' Re-arm only after Mack actually leaves the parked cabin.
 		elarm = 1
 		GOSUB foot_probe
 		IF sup = 1 THEN
@@ -1513,7 +1511,9 @@ foot_probe:
 
 elev_sup:
 	' esup = 1 if Mack's feet rest on the elevator platform (and if so,
-	' snap him to its top). Platform top = ely, 16 px wide at elx.
+	' snap him to its top). Board by Mack's center being within the platform
+	' span. Sprite-edge overlap alone is not enough: the adjacent level-one
+	' chain must remain climbable without accidentally boarding the elevator.
 	esup = 0
 	cx = mx + 8
 	IF cx >= elx THEN
@@ -1573,6 +1573,16 @@ elev_back:
 	NEXT elcell
 	RETURN
 
+elev_reset:
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_elev_reset
+	#if TI994A
+	BANK SELECT 1
+	#endif
+	RETURN
+
 elev_move:
 	' Moves only after being boarded (emov), then parks at the far end.
 	' One pixel per world step, sharing Mack's catch-up clock.
@@ -1595,6 +1605,7 @@ elev_move:
 			emov = 0
 		END IF
 	END IF
+	IF emov = 0 THEN SOUND 0,,0
 	IF st = S_RIDE THEN
 		my = ely - 16
 		IF emov = 0 THEN
@@ -2431,7 +2442,14 @@ hud_score:
 mack_die:
 	IF st = S_DEAD THEN RETURN
 	edance = 0
-	elarm = 1
+	IF lv = 1 THEN GOSUB elev_reset
+	#if TI994A
+	BANK SELECT 2
+	#endif
+	GOSUB banked_death_cleanup
+	#if TI994A
+	BANK SELECT 1
+	#endif
 	st = S_DEAD
 	bonbeam = 0
 	dtm = 40
@@ -2479,22 +2497,6 @@ dead_tick:
 		ox = ox0
 		oy = oy0
 		od = 1
-		jhx = jhx0
-		jhy = jhy0
-		jhway = 0
-		jhlock = 0
-		IF carry = 1 THEN
-			' Brick: back on its original cell.
-			itst(cidx) = 0
-			#va = VADDR(itr(cidx),itc(cidx))
-			ch = T_BRICK
-			IF lv = 3 THEN ch = T_SBOX
-			VPOKE #va,ch
-		END IF
-		' Dropping the drill just makes it roamable again; its position was
-		' already restored with the rest of the level above.
-		IF carry = 2 THEN jhtk = 0
-		carry = 0
 		IF lv = 1 THEN
 			FOR resetgap = 0 TO ngap - 1
 				IF gapst(resetgap) = 1 THEN
@@ -4684,6 +4686,14 @@ banked_work_sound:
 		#workpitch = 860
 		workvol = 5
 		snd1 = 2
+		IF lv = 1 THEN
+			IF emov = 1 THEN
+				' Height-linked pitch climbs with the ascending cabin and falls
+				' with descent; the fixed caller ticks every sixteen pixels.
+				#elevpitch = 1100 - (ely - elty) * 5
+				SOUND 0,#elevpitch,10
+			END IF
+		END IF
 	END IF
 	IF workfx = 2 THEN
 		#workpitch = 700
@@ -4697,13 +4707,45 @@ banked_work_sound:
 	END IF
 	IF workfx = 4 THEN
 		#workpitch = 120
-		workvol = 10
+		' SOUND attenuation increases with the volume value; 13 is about
+		' half the former amplitude while preserving the jackhammer texture.
+		workvol = 13
 		snd1 = 8
 	END IF
 	SOUND 1,#workpitch,workvol
 	IF workfx = 4 THEN RETURN
 	snd3 = 2
 	SOUND 3,5,workvol
+	RETURN
+
+banked_elev_reset:
+	' A death restores the elevator to its bottom starting stop. Erase a
+	' parked cabin at its old location before painting it at the reset stop.
+	emov = 1
+	GOSUB elev_back
+	ely = elby
+	emov = 0
+	eld = 0
+	elarm = 1
+	GOSUB elev_back
+	RETURN
+
+banked_death_cleanup:
+	' Return carried items immediately, including on the last-life path that
+	' skips dead_tick's respawn block. Reset the roaming tool's route as well.
+	IF carry = 1 THEN
+		itst(cidx) = 0
+		#va = VADDR(itr(cidx),itc(cidx))
+		ch = T_BRICK
+		IF lv = 3 THEN ch = T_SBOX
+		VPOKE #va,ch
+	END IF
+	IF carry = 2 THEN jhtk = 0
+	carry = 0
+	jhx = jhx0
+	jhy = jhy0
+	jhway = 0
+	jhlock = 0
 	RETURN
 
 banked_sound_tick:
@@ -5568,11 +5610,23 @@ banked_tramp_step:
 		RETURN
 	END IF
 	' trph = 2: drift left out of the channel onto the floor. Mack faces the
-	' way he is going (left) so he doesn't moon-walk off the trampoline.
+	' way he is going (left) so he doesn't moon-walk off the trampoline. If
+	' that step leaves the floor, switch to falling instead of continuing to
+	' subtract from the 8-bit x coordinate until it wraps offscreen.
 	mdir = 0
 	mx = mx - 1
 	GOSUB foot_probe
 	IF sup = 1 THEN st = S_WALK
+	IF sup = 0 THEN
+		' The trampoline exit may cross an unsupported gap while reaching
+		' the floor, but must stop before byte-sized x can wrap offscreen.
+		IF mx = 0 THEN
+			st = S_FALL
+			fcy = my
+			fct = 0
+			jhz = 1
+		END IF
+	END IF
 	RETURN
 
 banked_hud_score:

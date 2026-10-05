@@ -643,6 +643,31 @@ def fidelity(source):
     def level(n):
         vm=Basic(source); vm.v.update(lv=n, lives=2); vm.run('init_level')
         return vm
+    # Carrying a loose block through an elevator ride and dying must restore
+    # the item, clear inventory, and permit it to be picked up again.
+    vm=level(1);item=0
+    row,col=vm.arrays['itr'][item],vm.arrays['itc'][item]
+    vm.v.update(mx=col*8-8,my=row*8-8,ch=vm.v['t_brick'])
+    vm.run('take_item')
+    assert vm.v['carry']==1 and vm.arrays['itst'][item]==1, 'test block pickup setup failed'
+    vm.v.update(ely=vm.v['elby'],elpaint=0)
+    vm.v.update(jhx=88,jhy=56,jhway=7)
+    vm.run('mack_die')
+    assert vm.v['carry']==0 and vm.arrays['itst'][item]==0, 'death must immediately release and restore held block'
+    assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(vm.v['jhx0'],vm.v['jhy0'],0), (
+        'death must restore the roaming hammer route origin')
+    vm.v['#fd']=40;vm.run('dead_tick')
+    assert vm.v['carry']==0 and vm.arrays['itst'][item]==0, 'death left stale block inventory or failed to restore item'
+    vm.v.update(mx=col*8-8,my=row*8-8,ch=vm.v['t_brick'])
+    vm.run('take_item')
+    assert vm.v['carry']==1 and vm.arrays['itst'][item]==1, 'restored block cannot be picked up again'
+    # Losing the last life also takes the game-over branch that bypasses
+    # respawn cleanup, so held tools must already be returned by mack_die.
+    vm=level(1);vm.v.update(carry=2,jhtk=1,jhx=120,jhy=80,jhway=9,lives=0)
+    vm.run('mack_die')
+    assert vm.v['carry']==0 and vm.v['jhtk']==0, 'last-life death retained held hammer'
+    assert (vm.v['jhx'],vm.v['jhy'],vm.v['jhway'])==(vm.v['jhx0'],vm.v['jhy0'],0), (
+        'last-life death left hammer off its route origin')
     # Deposited but unfastened girders return to their own pickup slots.
     vm=level(1)
     for i in (0,1):
@@ -827,6 +852,9 @@ def title_scores(source):
         assert ''.join(map(chr,title.screen[56:62]))==str(units*5).rjust(6), 'high score alignment changed'
     over=source[source.index('game_over:\n'):source.index("\t' 75 video frames")]
     start=source[source.index('new_game:\n'):source.index('main_loop:\n')]
+    clearpos=start.find('\tCLS\n');charpos=start.find('\tGOSUB game_chars')
+    assert clearpos >= 0 and charpos >= 0 and clearpos < charpos, (
+        'title/838 screen must clear before gameplay reassigns character patterns')
     vm=Basic(source+'\nBANK 0\nscore_end_test:\n'+over+'\tRETURN\nscore_start_test:\n'+start+'\tRETURN\n')
     vm.v.update(lv=1,**{'#score':1234,'#hi':900});vm.run('init_level')
     vm.run('score_end_test')
@@ -953,7 +981,7 @@ def elevator_dance(source):
             vm.v['lv']=1;vm.run('init_level')
             end=vm.v['elby'] if down else vm.v['elty']
             vm.v.update(ely=end-1 if down else end+1,eld=down,emov=1,elarm=0,
-                        st=vm.v['s_ride'],mx=vm.v['elx'],jbe=0,jr=1)
+                        st=vm.v['s_ride'],mx=vm.v['elx'],jbe=1,jr=1)
             vm.run('elev_move')
             assert vm.v['edance']==32 and vm.v['emov']==0, 'arrival does not start dance'
             start=(vm.v['mx'],vm.v['my']);vm.sound=[];poses=set()
@@ -972,8 +1000,12 @@ def elevator_dance(source):
             assert vm.sound[-1]==(0,None,0), 'dance sound remains latched'
             vm.v.update(jbe=0,jr=0);vm.run('elev_move')
             assert vm.v['edance']==0, 'parked elevator repeats dance'
-            vm.v['jr']=1;vm.run('st_ride')
-            assert vm.v['emov']==1 and vm.v['mx']==start[0], 'horizontal input does not re-summon the elevator after the dance'
+            vm.v['jr']=1
+            for _ in range(20):
+                vm.run('st_ride')
+                if vm.v['st']!=vm.v['s_ride']:break
+            assert vm.v['emov']==0 and vm.v['st']==vm.v['s_walk'] and vm.v['mx']>start[0], (
+                'right input after the dance must walk Mack out of the cabin')
             for stop in ('mack_die','quiet_screen','init_level'):
                 vm.v.update(edance=20,st=vm.v['s_ride']);vm.run(stop)
                 assert vm.v['edance']==0, 'dance survives death/screen change'
@@ -984,37 +1016,78 @@ def elevator_dance(source):
 
 
 def elevator_boarding(source):
-    # Fire during travel or the protected arrival dance must request a jump
-    # exit once Mack is free, rather than being discarded by the ride lock.
-    for moving,dance in ((1,0),(0,12)):
-        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
-        vm.v.update(st=vm.v['s_ride'],emov=moving,edance=dance,jbe=1,elarm=0)
-        vm.run('st_ride')
-        assert vm.v['elarm']==2 and vm.v['st']==vm.v['s_ride'], 'ride/dance loses jump request'
-        vm.v.update(emov=0,edance=0,jbe=0)
-        vm.run('st_ride')
-        assert vm.v['st']==vm.v['s_jump'] and vm.v['elarm']==1, 'buffered jump cannot leave parked elevator'
     for floor in (72,168):
-        for x in range(16):
+        for x in range(23):
             vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
             vm.v.update(ely=floor,mx=x,my=floor-16,fcy=floor-16,
                         st=vm.v['s_fall'],ch=32,elarm=1,jbe=0)
             vm.run('fall_land')
-            assert vm.v['st']==vm.v['s_ride'], ('supported landing not boarded',floor,x)
-            vm.run('mack_step')
-            assert vm.v['emov']==1 and vm.v['mx']==vm.v['elx'], ('supported rider stranded',floor,x)
-            assert vm.v['eld']==int(floor==72) and vm.v['elarm']==0
+            if x <= 15:
+                assert vm.v['st']==vm.v['s_ride'], ('overlapping landing not boarded',floor,x)
+                vm.run('mack_step')
+                assert vm.v['emov']==1 and vm.v['mx']==vm.v['elx'], ('supported rider stranded',floor,x)
+                assert vm.v['eld']==int(floor==72) and vm.v['elarm']==0
+            else:
+                assert vm.v['st']!=vm.v['s_ride'], ('non-overlapping landing boarded',floor,x)
             # Arrival remains disarmed; standing still cannot reverse the trip.
-            vm.v.update(emov=0,jl=0,jr=0);vm.run('st_ride')
-            assert vm.v['emov']==0, 'parked arrival immediately reverses'
-        # A horizontal tap at either end re-arms a fresh trip before Mack can
-        # walk beyond the single-cabin support window.
-        for direction in (0,1):
-            vm.v.update(mx=vm.v['elx']+6,my=floor-16,st=vm.v['s_ride'],
-                        emov=0,elarm=0,jl=direction==0,jr=direction==1)
+            if x <= 15:
+                vm.v.update(emov=0,jl=0,jr=0);vm.run('st_ride')
+                assert vm.v['emov']==0, 'parked arrival immediately reverses'
+        # The chain at column 3 puts only Mack's outer sprite pixels over the
+        # elevator; that must not count as a boarding overlap.
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        vm.v.update(ely=floor,mx=20,my=floor-16,fcy=floor-16,
+                    st=vm.v['s_fall'],ch=32,elarm=1,jbe=0)
+        vm.run('fall_land')
+        assert vm.v['st']!=vm.v['s_ride'] and vm.v['emov']==0, (
+            'chain-side sprite edge overlap must not board elevator')
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        vm.v.update(ely=floor,mx=20,my=floor-16,st=vm.v['s_walk'],
+                    elarm=1,jl=0,jr=0)
+        vm.run('st_walk')
+        assert vm.v['st']!=vm.v['s_ride'] and vm.v['emov']==0, (
+            'walking off the chain must not enter or start the elevator')
+        # Right walks onto the adjacent beam without moving the elevator.
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        vm.v.update(ely=floor,mx=vm.v['elx'],my=floor-16,st=vm.v['s_ride'],
+                    emov=0,elarm=0,jl=0,jr=1)
+        for _ in range(20):
             vm.run('st_ride')
-            assert vm.v['emov']==1 and vm.v['mx']==vm.v['elx'], 'edge nudge leaves elevator instead of summoning it'
-    for x,y in ((16,152),(24,152),(8,148),(8,156)):
+            if vm.v['st']!=vm.v['s_ride']:break
+        assert vm.v['emov']==0 and vm.v['st']==vm.v['s_walk'], (
+            'right input must leave the parked elevator, not summon another ride')
+        assert vm.v['mx']>=vm.v['elx']+8 and vm.v['elarm']==1
+
+        # Left must not send the parked elevator back on a trip. This shaft
+        # abuts the screen edge, so moving left can stop at x=0 while still
+        # inside the cabin; the tested escape is the supported right-hand beam.
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        vm.v.update(ely=floor,mx=vm.v['elx'],my=floor-16,st=vm.v['s_ride'],
+                    emov=0,elarm=0,jl=1,jr=0)
+        for _ in range(20):
+            vm.run('st_ride')
+            if vm.v['st']!=vm.v['s_ride']:break
+        assert vm.v['emov']==0 and vm.v['mx']<=vm.v['elx'], (
+            'left input must not start another elevator ride')
+
+    # Any death resets a Level 1 elevator to its bottom stop and arms it again.
+    for oldy,moving in ((72,0),(117,1),(168,0)):
+        vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
+        vm.v.update(ely=oldy,emov=moving,elarm=0,edance=12,elpaint=0)
+        if not moving:
+            vm.run('elev_back')
+        oldbase=(oldy//8-2)*32+vm.v['elx']//8
+        vm.run('mack_die')
+        assert vm.v['st']==vm.v['s_dead'] and vm.v['ely']==vm.v['elby'], (
+            'death must reset elevator to bottom stop',oldy,moving,dict(vm.v))
+        assert vm.v['emov']==0 and vm.v['eld']==0 and vm.v['elarm']==1 and vm.v['edance']==0
+        base=(vm.v['elby']//8-2)*32+vm.v['elx']//8
+        assert [vm.screen[p] for p in (base,base+1,base+32,base+33,base+64,base+65)]==[
+            227,229,228,230,236,237], 'reset elevator cabin/floor was not repainted'
+        if not moving and oldy!=vm.v['elby']:
+            assert [vm.screen[p] for p in (oldbase,oldbase+1,oldbase+32,oldbase+33,oldbase+64,oldbase+65)]==[32]*6, (
+                'death left a duplicate parked cabin at the old stop')
+    for x,y in ((24,152),(32,152),(8,148),(8,156)):
         vm=Basic(source);vm.v['lv']=1;vm.run('init_level')
         vm.v.update(mx=x,my=y,st=vm.v['s_ride'],elarm=1,jbe=0)
         vm.run('st_ride')
@@ -1129,7 +1202,7 @@ def factory_drive(source):
 
 
 def work_sounds(source):
-    for fx,pitch,vol,length in ((0,550,8,6),(1,860,5,2),(2,700,7,3),(3,240,9,5),(4,120,10,8)):
+    for fx,pitch,vol,length in ((0,550,8,6),(1,860,5,2),(2,700,7,3),(3,240,9,5),(4,120,13,8)):
         vm=Basic(source);vm.v.update(workfx=fx,snd0=10,snd2=12)
         vm.run('work_sound')
         assert (1,pitch,vol) in vm.sound and vm.v['snd1']==length, 'missing material sound'
@@ -1141,14 +1214,20 @@ def work_sounds(source):
     for guard,value in (('st',None),('snd3',10),('snd1',6)):
         vm=Basic(source);vm.v[guard]=vm.v['s_dead'] if value is None else value;vm.run('work_sound')
         assert not vm.sound, 'work sound replaces a higher-priority effect'
-    vm=Basic(source);vm.v.update(ely=144,elty=72,emov=0)
+    vm=Basic(source);vm.v.update(lv=1,ely=144,elty=72,emov=0)
     vm.run('elev_move');assert not vm.sound, 'parked elevator rattles'
     vm.v['emov']=1;vm.run('elev_move')
     assert (1,860,5) in vm.sound, 'moving elevator lacks ratchet'
+    assert any(ch==0 and pitch is not None and vol==10 for ch,pitch,vol in vm.sound), 'moving elevator lacks directional tone'
+    vm=Basic(source);vm.v.update(lv=1,ely=96,elty=72,elby=168,emov=1,eld=0)
+    vm.run('elev_move');rise=next(pitch for ch,pitch,vol in vm.sound if ch==0)
+    vm.v.update(ely=96,emov=1,eld=1);vm.sound.clear();vm.run('elev_move')
+    lower=next(pitch for ch,pitch,vol in vm.sound if ch==0)
+    assert rise==lower and rise==980, 'elevator pitch should follow cabin height in both directions'
     vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
     vm.v.update(boxfall=3,outputtick=15,nbox=1,boxx=64,boxy=176)
     vm.run('factory_output')
-    assert (1,120,10) in vm.sound and vm.bank==1, 'bucket arrival lacks ping or leaks bank'
+    assert (1,120,13) in vm.sound and vm.bank==1, 'bucket arrival lacks quiet ping or leaks bank'
 
 
 def factory_challenge(source):
@@ -1849,6 +1928,17 @@ def trampoline_animation(source):
     vm.run('init_level');vm.run('site_draw')
     assert vm.v['trlast']==0, 'new level misses initial spring pose'
 
+    # Leaving a trampoline without reaching floor support must become a
+    # fall; otherwise the leftward exit keeps decrementing byte-sized mx and
+    # eventually wraps Mack to the far right while he remains alive.
+    vm=Basic(source);vm.v.update(lv=1);vm.run('init_level')
+    vm.v.update(trph=2,mx=8,my=168,st=vm.v['s_tramp'])
+    for _ in range(9):
+        vm.run('st_tramp')
+        if vm.v['st']==vm.v['s_fall']:break
+    assert vm.v['mx']==0 and vm.v['st']==vm.v['s_fall'] and vm.v['jhz']==1, (
+        'unsupported trampoline exit must fall at the edge before x wraps')
+
 
 def factory_spring_animation(source):
     for side in (0,1):
@@ -2307,11 +2397,13 @@ def main():
         (source.replace('IF carry = 0 THEN\n\t\t\t\' Grabbing','IF carry < 2 THEN\n\t\t\t\' Grabbing'),single_item),
         (source.replace('hbw = 18','hbw = 0'),single_item),
         (source.replace('SPRITE 14,209,0,0,0',''),single_item),
-        (source.replace('IF esup = 1 THEN\n\t\t\tmx = elx','IF mx = elx THEN\n\t\t\tmx = elx'),elevator_boarding),
-        (source.replace('IF esup = 1 THEN\n\t\t\tmx = elx','IF elarm = 1 THEN\n\t\t\tmx = elx'),elevator_boarding),
-        (source.replace('IF jl THEN elarm = 1','IF jl THEN elarm = 0'),elevator_boarding),
-        (source.replace('IF jr THEN elarm = 1','IF jr THEN elarm = 0'),elevator_boarding),
-        (source.replace('IF jbe THEN elarm = 2','IF jbe THEN elarm = 0',1),elevator_boarding),
+        (source.replace("mx = elx\t\t' any supported boarding snaps fully into the cabin",
+                        "mx = mx\t\t' any supported boarding snaps fully into the cabin"),elevator_boarding),
+        (source.replace('IF elarm = 1 THEN\n\t\tGOSUB elev_sup',
+                        'IF elarm = 0 THEN\n\t\tGOSUB elev_sup'),elevator_boarding),
+        (source.replace('IF jr THEN mx = mx + 1','IF jr THEN mx = mx'),elevator_boarding),
+        (source.replace('ely = elby\n\temov = 0','ely = elty\n\temov = 0',1),elevator_boarding),
+        (source.replace('IF cx <= elx + 15 THEN','IF cx < elx + 15 THEN'),elevator_boarding),
         (source.replace('IF setupkey > 6 THEN GOTO setup_level','IF setupkey > 3 THEN GOTO setup_level'),setup_inputs),
         (source.replace('IF cont1.key = 8 THEN GOTO new_game','IF cont1.key = 8 THEN titlehot = 0'),title_hotkeys),
         (source.replace('IF cont1.key = 9 THEN GOTO new_game','IF cont1.key = 9 THEN titlehot = 0'),title_hotkeys),
@@ -2329,7 +2421,7 @@ def main():
         (source.replace('GOSUB upper_belt_edge','cx = mx'),upper_conveyor),
         (source.replace('#lastscore = #score','#lastscore = 0'),title_scores),
         (source.replace('#scvalue = #hi','#scvalue = #score'),title_scores),
-        (source.replace('GOSUB game_chars','carry = 0'),title_scores),
+        (source.replace('\tCLS\n\tGOSUB game_chars','\tGOSUB game_chars',1),title_scores),
         (source.replace('BANK SELECT 3','BANK SELECT 2'),title_scores),
         (source.replace('2026 UNHUMAN and C&C AI','2026'),title_scores),
         (source.replace('hi838 = game838','hi838 = 0'),title_scores),

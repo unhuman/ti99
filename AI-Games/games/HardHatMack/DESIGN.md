@@ -2415,22 +2415,34 @@ white cap, magenta housing and green inspection window. Rivets begin just
 outside its left-facing outlet, so the existing projectile visibly originates
 from machinery instead of empty space.
 
-At a parked elevator, either horizontal direction now re-arms and starts the
-next ride while holding Mack at the cabin's x-position. The wider elevator
-support probe remains available for falling/landing boardings. Regression
-checks exercise both nudge directions, all six stage choices, both TI function
-keys, launcher placement and the projectile's origin. The keyboard check also
-accepts the TI scanner's FCTN matrix value for REDO/BACK. The physics gate now
-rejects deliberately broken variants, including lost elevator jump requests.
+At a parked elevator, left/right no longer summons another ride. Moving right
+carries Mack onto the adjacent girder. A newly supported boarding still starts
+the ride. Boarding requires Mack's center to lie within the 16-pixel platform
+span; edge-only sprite overlap from the adjacent chain does not count. Death
+resets the elevator to its bottom stop, clears the old parked-cabin characters,
+and arms it for the next life. Regression checks exercise walking dismounts,
+death resets, both elevator stops, the chain-side exclusion and the boarding
+range, along with
+all six stage choices, both TI function keys, launcher placement and the
+projectile's origin. The keyboard check also accepts the TI scanner's FCTN
+matrix value for REDO/BACK.
 
-A Fire press during elevator travel or the 32-frame arrival dance is buffered;
-Mack jumps out as soon as the cabin parks and the dance finishes. This avoids
-losing the button edge while `st_ride` is locked, without changing the horizontal
-nudge that summons another trip. Regression cases cover presses in both locks.
+The held jackhammer's looping work sound now uses a quieter PSG attenuation
+setting (13 rather than 10). Elevator movement adds a soft height-linked tone,
+updated at sixteen-pixel intervals: pitch rises as the cabin ascends and falls
+as it descends. The elevator keeps its short mechanical ratchet underneath.
+Death now returns any held brick and resets the hammer route as soon as the
+death begins, including the last-life path into Game Over. The title and 838
+confirmation screens are cleared before gameplay overwrites their character
+patterns. The Level 3 trampoline exit can travel across a short unsupported
+gap to its platform, but if it reaches the left screen edge without finding
+support it transitions to a fall instead of allowing its 8-bit x coordinate to
+wrap and leave Mack alive offscreen.
 
-The completed TI build uses 554 bytes of RAM, verifies 526 shortened branches,
-and leaves 1,894 bytes in the fixed area. Data, animation, title and motion
-banks retain 10, 3,810, 328 and 544 bytes, respectively. Classic99 confirmed
+The completed TI build uses 558 bytes of RAM, verifies 529 shortened branches,
+and leaves 1,940 bytes in the fixed area. Data, animation, title and motion
+banks retain 5, 3,420, 192 and 544 bytes, respectively. Classic99 confirmed
 both F8 and F9 return from live play to the title, and a stage-4 setup displayed
-two roaming enemies on level 1. Production SHA-256:
-`ECEC6DA90DC327D435CF69A931E103D7364E6D899CD8CCD53EB13DDAF741A2E5`.
+two roaming enemies on level 1. The current production cart opens to the new
+title screen in Classic99. Production SHA-256:
+`36393F8F581ED6A127CEF4097D78E2948AD97A4EC17FF36EEC4EDD9080544AD0`.
