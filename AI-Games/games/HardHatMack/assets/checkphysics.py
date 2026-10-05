@@ -2286,10 +2286,23 @@ def fixture_contract(source):
     vm=Basic(source);vm.v['lv']=2;vm.run('init_level')
     assert all(vm.screen[r*32+26]==152 for r in range(18,22)), 'chain not at platform edge'
     assert all(vm.screen[r*32+c]==32 for r in range(18,23) for c in (24,25)), 'removed pump blocks chain approach'
+    assert vm.screen[22*32+19:22*32+23]==[183,184,32,166], 'dynamite crowds the ground pail or moved from column 22'
+    assert vm.screen[21*32+22]==165, 'sparking fuse is not above the dynamite stick'
+    for phase,character in ((0,165),(4,169),(8,170),(12,171)):
+        vm.v['hzphase']=phase;vm.run('site_draw')
+        assert vm.screen[21*32+22]==character and vm.screen[22*32+22]==166, (
+            'dynamite fuse does not spark over its stationary stick',phase)
+        vm.vram_writes.clear();vm.run('site_draw')
+        assert vm.screen[21*32+22]==character, 'unchanged fuse phase drifts'
     for beam in (160,156,120):
         vm.v.update(bmy=beam,bmd=0);vm.vram_writes.clear();vm.run('fixture_draw')
         assert not vm.vram_writes, 'removed pump still animates'
     assert 'beat_pat:' not in source and 'beat_col:' not in source, 'unused pump frames retained'
+    vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
+    assert vm.screen[4*32+10:4*32+12]==[186,32], 'top wrench did not move one cell left'
+    vm.v.update(mx=72,my=24,ch=vm.v['t_wrench'])
+    before=vm.v['#score'];vm.run('take_item')
+    assert vm.v['#score']==before+40 and vm.screen[4*32+10]==32, 'shifted wrench cannot be claimed'
     for side in (0,1):
         vm=Basic(source);vm.v['lv']=3;vm.run('init_level')
         for row in (7,17):
@@ -2565,6 +2578,10 @@ def main():
     mutants = [
         (source.replace('banked_hud_all:\n','banked_hud_all:\n\tBANK SELECT 3\n',1),bank_call_safety),
         (source.replace('DATA BYTE 8, 23,6,1,121','DATA BYTE 8, 23,6,1,120'),fixture_contract),
+        (source.replace('DATA BYTE 8, 21,22,1,165','DATA BYTE 8, 21,21,1,165'),fixture_contract),
+        (source.replace('DATA BYTE 8, 22,22,1,166','DATA BYTE 8, 22,21,1,166'),fixture_contract),
+        (source.replace('fusepose = (hzphase / 4) AND 3','fusepose = 0'),fixture_contract),
+        (source.replace('DATA BYTE 5,4,1, 4,10','DATA BYTE 5,4,1, 4,11'),fixture_contract),
         (source.replace("' Clear floor approach to the chain; the decorative pump is removed.", 'DATA BYTE 8, 21,24,1,120'),fixture_contract),
         (source.replace('chainpose = pnphase AND 7','chainpose = hzphase AND 7'),factory_drive),
         (source.replace('drivepose = (pnphase / 4) AND 7','drivepose = 0'),factory_drive),
@@ -2660,7 +2677,7 @@ def main():
         (source.replace('CONST T_ELEV   = 236','CONST T_ELEV   = 135'),review_feedback),
     ])
     mutants.extend([
-        (source.replace('DATA BYTE 8, 22,21,1,166','DATA BYTE 8, 22,26,1,166'),chain_and_pickups),
+        (source.replace('DATA BYTE 8, 22,22,1,166','DATA BYTE 8, 22,26,1,166'),chain_and_pickups),
         (source.replace('IF jb = 0 THEN GOSUB grab_chain','jb = 0'),chain_and_pickups),
         (source.replace('DATA BYTE 5,4,2, 22,16','DATA BYTE 5,4,2, 22,17'),chain_and_pickups),
         (source.replace('IF pressy < 105 THEN pressy = 105','IF pressy < 105 THEN pressy = 96'),machinery_animation),

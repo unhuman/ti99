@@ -38,7 +38,8 @@ Three construction sites are implemented:
    him down, then retreats about 45 pixels before the victory sequence. The upper
    conveyor is one character farther right; walking or riding past its right end
    always ignites Mack, even when the flame is retracted, so jump before the
-   last roller. Fixed and moving girders are bright
+   last roller. On the ground, a red dynamite stick sits one clear cell to the
+   right of the lunch pail; its fuse sparks above it. Fixed and moving girders are bright
    green with blue edges and rivets. Lunch pails are twelve pixels tall; either
    side can be collected. Their rounded white lids, small handles and divided
    red panels resemble lunch pails. The lower-belt emitter has a tapered
@@ -49,6 +50,7 @@ Three construction sites are implemented:
    right edge, with a clear floor approach to its left. Pincers complete
    a smooth cycle in 90 world steps (previously 96), preserving the two-jump route.
 3. **Rivet Works:** start on the upper-right platform and collect six steel boxes.
+   The bonus wrench on the top beam is at column 10.
    The conveyor box sits one character left of the smasher.
    Carry each to a lip of either lower-floor opening; the box drops into the
    processor. After a short processing beat, a rivet emerges from its dark,

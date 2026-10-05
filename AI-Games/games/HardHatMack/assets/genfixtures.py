@@ -115,6 +115,30 @@ def tables():
         for offset in range(8):
             shifted=[0]*offset+[255]*8+[0]*(8-offset)
             out['beamplain_pat'] += shifted[8:] if lower else shifted[:8]
+    # Site-two ground hazard: a red dynamite stick under a flickering fuse.
+    # Keep the original site-three grinder in character 164; character 165
+    # starts the fuse cycle, 166 is the stick, and 169-171 are fuse variants.
+    sparks=(((4,0),(3,1),(4,1),(5,1),(2,2),(4,2),(6,2)),
+            ((5,0),(4,1),(5,1),(6,1),(5,2),(6,2)),
+            ((3,1),(2,2),(3,2),(4,2),(3,0)),
+            ((4,0),(4,1),(3,2),(4,2),(5,2)))
+    fuse_frames=[]
+    for phase,points in enumerate(sparks):
+        fuse=canvas(8,8)
+        for y in range(3,8):fuse[y][4]=15
+        for x,y in points:fuse[y][x]=(15,11,9,11)[phase]
+        fuse_frames.append(encode(fuse))
+    stick=canvas(8,8)
+    rect(stick,2,0,5,0,15)
+    rect(stick,1,1,6,3,9)
+    rect(stick,1,4,6,4,15)
+    rect(stick,1,5,6,6,9)
+    rect(stick,2,7,5,7,15)
+    stick_pat,stick_col=encode(stick)
+    out['haz_pat']=[0x99,0x5A,0x3C,0xFF,0xFF,0x3C,0x5A,0x99]+fuse_frames[0][0]+stick_pat
+    out['haz_col']=[0x91,0x91,0xE1,0xE1,0xE1,0xE1,0x91,0x91]+fuse_frames[0][1]+stick_col
+    out['fuse_pat']=sum((frame[0] for frame in fuse_frames[1:]),[])
+    out['fuse_col']=sum((frame[1] for frame in fuse_frames[1:]),[])
     # Site-two receiver: open black mouth, white rounded body/side outlet,
     # magenta mounting collar and green foot, as in the Apple II longplay.
     receiver=canvas(16,16)

@@ -2054,7 +2054,7 @@ The apparent extra smasher hanging beside the bottom-right chain is replaced
 by an enclosed floor-mounted pump. It moves from rows 18-19 to rows 21-22,
 columns 24-25. The white casing, dark blue cylinder, visible reciprocating
 piston, ventilation marks and mounting feet distinguish it from the exposed
-crushing heads. The chain at column 26, fire at column 21, pickups and all
+crushing heads. The chain at column 26, ground hazard and pickups and all
 collision rules stay in place. The pump remains decorative and follows crane
 height/direction; it remains still while the crane is parked.
 
@@ -2594,3 +2594,16 @@ audible pitch as the cabin rises and descends as it lowers. The ratchet and
 tone advance every eight pixels of travel instead of sixteen. The regression
 checks both complete rides for correct endpoints, direction, range, step size,
 cadence and silence after parking.
+
+## 51. Ground dynamite and top wrench placement (2026-10-05)
+
+The Level 2 ground hazard beside the lunch pail is now a red stick of dynamite
+at row 22, column 22, moved one cell right. Its white cap and band distinguish
+the stick from the old single-cell flame. A separate hazardous cell immediately
+above it carries a four-frame white/yellow/red spark and fuse. The animation
+switches preloaded character codes, updating only one name-table cell each
+phase, and freezes with the normal site clock during death or completion. The
+ground pail remains at columns 19-20, column 21 is clear, and the chain remains
+at column 26. Level 3's top-beam bonus wrench moved from column 11 to column
+10; its pickup and score use the new inventory position. The fixture regression
+checks these positions, the fuse sequence and the shifted wrench pickup.
