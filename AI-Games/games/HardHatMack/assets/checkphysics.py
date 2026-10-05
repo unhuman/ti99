@@ -1385,7 +1385,17 @@ def work_sounds(source):
     vm.run('elev_move');rise=next(pitch for ch,pitch,vol in vm.sound if ch==0)
     vm.v.update(ely=96,emov=1,eld=1);vm.sound.clear();vm.run('elev_move')
     lower=next(pitch for ch,pitch,vol in vm.sound if ch==0)
-    assert rise==lower and rise==980, 'elevator pitch should follow cabin height in both directions'
+    assert rise==lower and rise==519, 'elevator pitch should follow cabin height in both directions'
+    for start,direction,first,last,step in ((168,0,1023,407,-56),(72,1,351,967,56)):
+        vm=Basic(source);vm.v.update(lv=1,ely=start,elty=72,elby=168,emov=1,eld=direction)
+        for _ in range(96):vm.run('elev_move')
+        notes=[pitch for ch,pitch,vol in vm.sound if ch==0 and pitch is not None and vol==10]
+        assert len(notes)==12 and notes[0]==first and notes[-1]==last, (
+            'elevator sweep endpoints or eight-pixel cadence are wrong',direction,notes)
+        assert all(1<=pitch<=1023 for pitch in notes), 'elevator divider exceeds the PSG field'
+        assert all(b-a==step for a,b in zip(notes,notes[1:])), (
+            'elevator pitch travels opposite the cabin',direction,notes)
+        assert vm.v['emov']==0 and (0,None,0) in vm.sound, 'elevator tone continues after parking'
     vm=Basic(source);vm.v.update(lv=3);vm.run('init_level')
     vm.v.update(boxfall=3,outputtick=15,nbox=1,boxx=64,boxy=176)
     vm.run('factory_output')
@@ -2560,6 +2570,9 @@ def main():
         (source.replace('drivepose = (pnphase / 4) AND 7','drivepose = 0'),factory_drive),
         (source.replace('VARPTR drivechain_col(chainpose * 16)','VARPTR drivechain_col(0)'),factory_drive),
         (source.replace('SOUND 1,#workpitch,workvol','SOUND 1,#workpitch,0'),work_sounds),
+        (source.replace('#elevpitch = 351 + (ely - elty) * 7',
+                        '#elevpitch = 1100 - (ely - elty) * 5'),work_sounds),
+        (source.replace('IF (ely AND 7) = 0 THEN','IF (ely AND 15) = 0 THEN'),work_sounds),
         (source.replace('IF workfx = 4 THEN GOSUB work_sound','workfx = 255'),work_sounds),
         (source.replace("DEFINE CHAR 97,1,credit_pat","DEFINE CHAR 98,1,credit_pat"),fixture_contract),
         (source.replace("\tDEFINE CHAR 210,10,machine_art","\tDEFINE CHAR 210,10,steel_bitmap"),fixture_contract),

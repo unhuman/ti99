@@ -1623,7 +1623,7 @@ elev_move:
 	' One pixel per world step, sharing Mack's catch-up clock.
 	IF st = S_DEAD THEN RETURN
 	IF emov = 0 THEN RETURN
-	IF (ely AND 15) = 0 THEN
+	IF (ely AND 7) = 0 THEN
 		workfx = 1
 		GOSUB work_sound
 	END IF
@@ -4793,9 +4793,9 @@ banked_work_sound:
 		snd1 = 2
 		IF lv = 1 THEN
 			IF emov = 1 THEN
-				' Height-linked pitch climbs with the ascending cabin and falls
-				' with descent; the fixed caller ticks every sixteen pixels.
-				#elevpitch = 1100 - (ely - elty) * 5
+				' A smaller PSG divisor sounds higher. Bottom is the lowest
+				' valid 10-bit note; the caller steps every eight pixels.
+				#elevpitch = 351 + (ely - elty) * 7
 				SOUND 0,#elevpitch,10
 			END IF
 		END IF

@@ -18,7 +18,8 @@ Three construction sites are implemented:
    (about half a second); walking right steps from the parked cabin onto the
    adjacent girder. Left/right no longer starts another ride. Jump remains
    available as a separate way to dismount. A soft pitch rises with the
-   elevator as it ascends and falls as it descends. The held jackhammer's
+   elevator as it ascends and falls as it descends, stepping every eight
+   pixels from the PSG's lowest valid note at the bottom. The held jackhammer's
    looping sound is quieter than before.
    After the death animation, the elevator resets to its bottom stop. Boarding checks whether
    Mack's center is within the platform span, preventing the adjacent chain

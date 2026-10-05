@@ -2583,3 +2583,14 @@ and the other two sites do not inherit this rule. The regression checks both
 walking and passive belt travel, all 64 plume phases at the edge, and the
 magnet jump. Direct furnace contact elsewhere still follows the visible flame
 and cabinet collision bounds.
+
+## 50. Elevator pitch direction and range (2026-10-05)
+
+The Level 1 ride tone treated the PSG divisor as a frequency: its old formula
+fell in pitch on ascent and rose on descent, and the top value of 1100 exceeded
+the hardware's 10-bit maximum of 1023. The height-linked tone now uses divisor
+`351 + (ely - elty) * 7`: 1023 at the bottom, 351 at the top. It climbs in
+audible pitch as the cabin rises and descends as it lowers. The ratchet and
+tone advance every eight pixels of travel instead of sixteen. The regression
+checks both complete rides for correct endpoints, direction, range, step size,
+cadence and silence after parking.
