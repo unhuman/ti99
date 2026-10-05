@@ -869,20 +869,20 @@ def upper_conveyor(source):
     assert (base.arrays['cvx0'][1],base.arrays['cvx1'][1])==(40,79), 'lower conveyor moved'
     assert base.screen[8*32+22]==159 and base.screen[6*32+26]==159, 'roller art and surface disagree'
     assert base.screen[7*32+26]==base.screen[8*32+26]==160, 'support did not move with conveyor'
-    for phase in (0,1):
+    for phase in (0,1,16,30,32,63):
         for walking in (0,1):
             vm=copy.deepcopy(base);vm.v.update(mx=204,my=34,jr=walking,hzphase=phase)
             for _ in range(16):
                 vm.run('world_step')
                 if vm.v['st']==vm.v['s_dead']:break
-            assert vm.v['st']==vm.v['s_dead'] and vm.v['my']==34, 'belt exit becomes a survivable short drop'
-    # A lit flame overlapping Mack at the roller must start the burning fall,
-    # even though the conveyor edge is evaluated before the site's hazards.
-    for phase in (16,30,32):
+            assert vm.v['st']==vm.v['s_dead'] and vm.v['my']==34 and vm.v['burnfall']==1, (
+                'belt exit did not ignite Mack',phase,walking)
+    # Every plume phase, including fully retracted, must use the burning fall.
+    for phase in range(64):
         vm=copy.deepcopy(base);vm.v.update(mx=208,my=34,hzphase=phase,st=vm.v['s_walk'])
         vm.run('upper_belt_edge')
-        assert vm.v['st']==vm.v['s_dead'] and vm.v['burnfall']==1, (
-            'upper belt exit preempted a visible furnace hit',phase)
+        assert vm.v['st']==vm.v['s_dead'] and vm.v['burnfall']==1 and vm.v['dtm']==12, (
+            'upper belt exit used ordinary death while plume was retracted',phase)
     # A deliberate jump from the last roller can still catch the live magnet.
     for x,direction in ((198,2),(206,1)):
         vm=copy.deepcopy(base);vm.v.update(mx=x,my=34,jbe=1,jr=int(direction==2),mgarm=1,mgx=208,mgd=0)
@@ -2671,8 +2671,8 @@ def main():
         (source.replace('hbw = 18','hbw = 0'),single_item),
         (source.replace('SPRITE 31,209,0,0,0',''),single_item),
         (source.replace('FOR qslot = 0 TO 31','FOR qslot = 0 TO 17'),visual_hazards),
-        (source.replace('GOSUB furnace_step\n\tIF st = S_DEAD THEN RETURN\n\tGOSUB mack_die',
-                        'GOSUB mack_die'),upper_conveyor),
+        (source.replace('IF cx <= cvx1(0) THEN RETURN\n\tGOSUB mack_burn',
+                        'IF cx <= cvx1(0) THEN RETURN\n\tGOSUB mack_die'),upper_conveyor),
         (source.replace('IF lives > 0 THEN\n\t\t\titst(cidx)',
                         'IF lives >= 0 THEN\n\t\t\titst(cidx)'),visual_hazards),
         (source.replace("mx = elx\t\t' any supported boarding snaps fully into the cabin",

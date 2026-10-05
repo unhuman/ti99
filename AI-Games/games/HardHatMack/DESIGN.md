@@ -2571,3 +2571,15 @@ The TI build uses 564 RAM bytes and 22,608/24,336 fixed-area bytes. Its
 four banks fit; all eight source/art gates pass, including 181 rejected defect
 mutations. The production cart is loaded in Classic99. SHA-256:
 `73BB829AB93BCE8B1257F99970F939A9896D28C6072F5535ED6E9B2B630D5410`.
+
+## 49. Upper conveyor exit always burns (2026-10-05)
+
+The earlier edge rule in section 47 gave Mack an ordinary death whenever the
+Level 2 furnace plume was retracted. The intended conveyor-end failure is the
+full burning fall at every flame phase. `upper_belt_edge` now calls `mack_burn`
+directly once Mack's center passes the final upper roller at belt height. A
+deliberate jump from that roller still reaches the armed magnet; lower tiers
+and the other two sites do not inherit this rule. The regression checks both
+walking and passive belt travel, all 64 plume phases at the edge, and the
+magnet jump. Direct furnace contact elsewhere still follows the visible flame
+and cabinet collision bounds.

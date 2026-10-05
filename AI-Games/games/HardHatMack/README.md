@@ -36,7 +36,8 @@ Three construction sites are implemented:
    conveyor into the armed magnet; it carries Mack back to the crane top, sets
    him down, then retreats about 45 pixels before the victory sequence. The upper
    conveyor is one character farther right; walking or riding past its right end
-   is fatal, so jump before the last roller. Fixed and moving girders are bright
+   always ignites Mack, even when the flame is retracted, so jump before the
+   last roller. Fixed and moving girders are bright
    green with blue edges and rivets. Lunch pails are twelve pixels tall; either
    side can be collected. Their rounded white lids, small handles and divided
    red panels resemble lunch pails. The lower-belt emitter has a tapered
@@ -80,8 +81,8 @@ in its bright green body. The furnace has a magenta-and-white cabinet with green
 caps; fire shoots from its left outlet, curls upward, and retracts before repeating.
 The plume broadens into a ragged flame with a bright core and cycling reds,
 orange and yellow; red occupies at least half of each palette band. Its shape
-flickers as it extends. Touching the furnace, including where the top conveyor
-ends, ignites Mack; he falls burning
+flickers as it extends. Touching the furnace or going past the upper conveyor's
+right end ignites Mack; he falls burning even when the plume is retracted
 to the bottom before losing the life. In 838 mode, the selected starting level remains
 visible briefly before gameplay clears the setup screen.
 

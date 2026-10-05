@@ -1802,16 +1802,14 @@ conv_sup:
 	RETURN
 
 upper_belt_edge:
-	' The upper site's right-hand belt exit is fatal, even with a shoe over
-	' the girder below. A visible furnace hit gets its burning fall first;
-	' leaving the belt outside the flame still causes an ordinary fall death.
+	' The upper site's right-hand belt exit always ignites Mack, even when
+	' the furnace plume is retracted. Jump before the last roller to catch
+	' the magnet; walking or riding over it starts the full burning fall.
 	IF lv <> 2 THEN RETURN
 	IF my > cvy1(0) - 16 THEN RETURN
 	cx = mx + 8
 	IF cx <= cvx1(0) THEN RETURN
-	GOSUB furnace_step
-	IF st = S_DEAD THEN RETURN
-	GOSUB mack_die
+	GOSUB mack_burn
 	RETURN
 
 belt_surface:
