@@ -976,6 +976,35 @@ def title_scores(source):
         assert win.v['#hi']==2000 and win.v['hi838']==assisted, 'completion score provenance wrong'
 
 
+def crane_wait_spot(source):
+    # Level 2/5: escaping from the bottom right means climbing to the
+    # lower-right girder and waiting at its LEFT end for the crane to rise.
+    # The patrol must leave a real waiting spot there (it once left 1 px),
+    # while the lunch pail on that girder stays inside the patrol.
+    base=Basic(source);base.v.update(lv=2,lives=2,levelno=5);base.run('init_level')
+    def supported(mx):
+        vm=copy.deepcopy(base);vm.v.update(mx=mx,my=120,st=base.v['s_walk']);vm.run('foot_probe')
+        return vm.v['sup']
+    edge=next(mx for mx in range(96,200) if supported(mx))
+    pail=next(c for c in range(18,27) if base.screen[16*32+c]==base.v['t_lboxl'])
+    def survives(mx,my,calls=850):
+        # Each roamer's 400-px circuit takes 800 actors_move calls (1 px per
+        # two), and their relative phase is fixed: 850 covers the joint cycle.
+        vm=copy.deepcopy(base);vm.v.update(mx=mx,my=my,st=base.v['s_walk'],jl=0,jr=0)
+        for _ in range(calls):
+            vm.run('actors_move')
+            if vm.v['st']==base.v['s_dead']:return False
+        return True
+    # Risk only grows to the right (the patrol never passes the turnaround),
+    # so the spot's two ends stand for all eight positions.
+    assert survives(edge,120) and survives(edge+7,120), ('no 8-px crane waiting spot at the girder left end',edge)
+    assert not survives(pail*8-8,120), 'lower-right lunch pail is collectable without risk'
+    assert survives(212,168) and survives(231,168), 'bottom-right ground corner no longer safe'
+    # The first tour has one roamer and time enough: its patrol is unchanged.
+    base=Basic(source);base.v.update(lv=2,lives=2,levelno=2);base.run('init_level')
+    assert base.v['oon']==0 and not survives(edge+1,120), 'first-tour girder patrol changed'
+
+
 def reserve_row(spares, v):
     # Expected TI row-0 cells 20..28 for this many spare Macks: up to five
     # yellow hats right-justified to column 27; then <hat><x><count> with no
@@ -2844,6 +2873,7 @@ def main():
     title_scores(source)
     score_range(source)
     reserve_hud(source)
+    crane_wait_spot(source)
     mack_animation(source)
     elevator_dance(source)
     elevator_boarding(source)
@@ -3026,6 +3056,9 @@ def main():
         (source.replace('DATA BYTE 8, 3,29,1,232','DATA BYTE 8, 3,28,1,232'),fixture_contract),
         (source.replace('bx = 224','bx = 216'),fixture_contract),
         (source.replace('by = 25','by = 27',1),fixture_contract),
+        (source.replace('IF ry = 120 THEN rlo = 151','IF ry = 120 THEN rlo = 144',1),crane_wait_spot),
+        (source.replace('IF levelno >= 4 THEN\n\t\t\tIF ry = 120 THEN rlo = 151',
+                        'IF levelno >= 1 THEN\n\t\t\tIF ry = 120 THEN rlo = 151',1),crane_wait_spot),
         (source.replace("no figure stands beside it.\n\t\tGOSUB elev_back\n",
                         "no figure stands beside it.\n\t\tGOSUB elev_back\n\t\tSPRITE 17,23,240,16,13\n",1),fixture_contract),
         (source.replace('IF girder_mark(c) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),

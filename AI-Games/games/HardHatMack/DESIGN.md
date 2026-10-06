@@ -2889,3 +2889,48 @@ Four mutations must fail:
 
 Production SHA-256:
 `7A2C92B5521D7372B182CFB93D8BAFF01488A32672BCF3F9BC0050B5A16A07C0`.
+
+## 56. Stage 5: a real crane waiting spot on the lower-right girder (2026-10-05)
+
+**The problem.** On the Level 2 screen both roamers share one circuit:
+- the ground from x=112 to x=204;
+- the column-26 chain;
+- the lower-right girder from x=144 to x=204.
+
+Escaping from the bottom right means climbing to that girder and waiting at
+its left end for the crane to rise. Mack's leftmost supported position there
+is mx=136, and the touch range is 7 px (`hbw = 8`). With the turnaround at
+144, a two-roamer simulation found **exactly one** safe pixel, mx=136.
+Stepping one more pixel left falls off the girder, which matches the
+playtest report ("often you just fall off"). The ground's right end
+(mx 212-231) was already a 20 px safe zone.
+
+**The change.**
+- On repeat tours (`levelno >= 4`, two roamers), `site_route` turns the
+  girder patrol at 151 instead of 144. That leaves mx 136-143 safe: an 8 px
+  spot.
+- The stage-5 OSHA starts at that turnaround instead of inside the spot.
+- It is deliberately not wider. The girder's lunch pail (columns 19-20) is
+  picked up from mx ≥ 144, and a wider spot would make it risk-free.
+- The first tour (one roamer) keeps the 144 turnaround, because the
+  playtester found its timing fair.
+- Both enemy kinds share one touch box; the "OSHA versus vandal" difference
+  in the report was not in the code.
+
+**Validation.** `crane_wait_spot` derives the girder's left edge and the
+pail's column from the map. Over a full joint patrol cycle (850 calls), it
+checks that:
+- both ends of the 8 px spot survive;
+- the pail pickup position does not;
+- the ground's right end stays safe;
+- stage 2's patrol is unchanged.
+
+Three mutations must fail:
+- the old turnaround (144);
+- an off-by-one turnaround (150);
+- applying the change to the first tour.
+
+**Budgets.** The fixed area is 22,360/24,336 bytes, and RAM use is 574 bytes.
+
+Production SHA-256:
+`14B84F3BC9AD474DC95D8E73F388B4D073FDE9347821AD2433804BF01FB9A95E`.

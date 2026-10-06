@@ -115,7 +115,10 @@ appear to be held together; its route continues normally. A new pickup resets
 the hold timer, even if Fire was already held. Fire starts a normal game at site 1 with three lives.
 Type **838** on the title, then a digit **1-9 for total lives**, then **1-6 for
 the starting stage**. Stages 4-6 repeat screens 1-3 with the harder second-tour
-enemy setup; stage 4 starts level 1 with two roaming enemies. The chosen number
+enemy setup; stage 4 starts level 1 with two roaming enemies. On stage 5 (the
+Level 2 screen with two roamers) the lower-right girder's patrol turns back
+early enough to leave an eight-pixel spot at its left end to wait for the
+rising crane; its lunch pail stays inside the patrol. The chosen number
 appears beside the prompt before play begins. Release each key between digits.
 These choices apply to one game only. Reserve hats exclude the current
 life; on TI-99 they are right-justified on the top HUD row after the bonus.

@@ -2325,6 +2325,14 @@ site_route:
 	IF lv = 2 THEN
 		rlo = 112
 		IF ry = 120 THEN rlo = 144
+		' With two roamers (repeat tours) the lower-right girder turnaround
+		' moves to 151, so its left end (mx 136-143, touch range 7) is a real
+		' spot to wait for the crane instead of a single pixel. The lunch pail
+		' there (cols 19-20, picked up from mx 144) stays inside the patrol.
+		' One roamer on the first tour leaves time enough without it.
+		IF levelno >= 4 THEN
+			IF ry = 120 THEN rlo = 151
+		END IF
 		rhi = 204
 		rtop = 120
 		rbot = 168
@@ -4791,7 +4799,8 @@ banked_enemy_setup:
 		osv = 2
 	END IF
 	IF lv = 2 THEN
-		ox = 144
+		' Start at the girder turnaround, outside the crane waiting spot.
+		ox = 151
 		oy = 120
 	END IF
 	ox0 = ox
