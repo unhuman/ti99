@@ -2530,11 +2530,22 @@ def fixture_contract(source):
             pattern={1:'support_pat',3:'eject_pat'}[level]
             assert [w for w in ownership.pattern_writes if w[0]==120][-1]==(120,2,pattern,0), 'wrong site scenery after level change'
         if level==1:
-            launcher=[ownership.screen[r*32+28:r*32+30] for r in (3,4)]
+            # Find the launcher on the map; the rivet must leave its outlet,
+            # one character left of it, wherever the machine is placed.
+            cells=[(i//32,i%32) for i,ch in enumerate(ownership.screen) if ch==232 and i>=32]
+            assert len(cells)==1, ('launcher top-left cell missing or repeated',cells)
+            r,c=cells[0]
+            launcher=[ownership.screen[y*32+c:y*32+c+2] for y in (r,r+1)]
             assert launcher==[[232,233],[234,235]], 'upper-right rivet launcher artwork is missing or displaced'
+            assert (r,c)==(3,29), 'launcher not in the upper-right corner (cols 29-30)'
             ownership.v.update(bon=0,btm=1)
             ownership.run('bolt_move')
-            assert (ownership.v['bx'],ownership.v['by'])==(216,27), 'rivet does not leave the fixed launcher mouth'
+            # Outlet = launcher art rows 5-7; the rivet's art is sprite rows
+            # 4-8 drawn at by-1, so its top lands on the outlet's top row.
+            assert (ownership.v['bx'],ownership.v['by'])==(c*8-8,r*8+5-4), 'rivet does not leave the fixed launcher mouth'
+            # The launcher is unattended: nothing draws a figure beside it.
+            ownership.sprites.pop(17,None);ownership.run('site_draw')
+            assert ownership.sprites.get(17,(209,))[0]==209, 'a figure still stands at the launcher'
             for column in (6,14,23):
                 assert ownership.screen[22*32+column]==120
                 assert ownership.screen[23*32+column]==121, 'pedestal repeats its top instead of a single footing'
@@ -3012,8 +3023,11 @@ def main():
         (source.replace('ASM LI R0,>0100','ASM LI R0,>0300',1),title_hotkeys),
         (source.replace('ASM LI R0,>0200','ASM LI R0,>0300',1),title_hotkeys),
         (source.replace('ASM LI R1,>0800','ASM LI R1,>0400',1),title_hotkeys),
-        (source.replace('DATA BYTE 8, 3,28,1,232','DATA BYTE 8, 3,27,1,232'),fixture_contract),
-        (source.replace('bx = 216','bx = 240'),fixture_contract),
+        (source.replace('DATA BYTE 8, 3,29,1,232','DATA BYTE 8, 3,28,1,232'),fixture_contract),
+        (source.replace('bx = 224','bx = 216'),fixture_contract),
+        (source.replace('by = 25','by = 27',1),fixture_contract),
+        (source.replace("no figure stands beside it.\n\t\tGOSUB elev_back\n",
+                        "no figure stands beside it.\n\t\tGOSUB elev_back\n\t\tSPRITE 17,23,240,16,13\n",1),fixture_contract),
         (source.replace('IF girder_mark(c) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),
         (source.replace('IF girder_mark(gapc(i)) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),
         (source.replace('IF i = 3 THEN bc9 = 96 + boff','bc9 = uc'),girder_spacing),

@@ -24,8 +24,8 @@ Three construction sites are implemented:
    After the death animation, the elevator resets to its bottom stop. Boarding checks whether
    Mack's center is within the platform span, preventing the adjacent chain
    from triggering a ride through a few pixels of sprite overlap.
-   A fixed launcher at the upper-right end of the
-   top beam fires leftward rivets. The right-hand trampoline
+   An unattended launcher in the upper-right corner (columns 29-30, right of
+   the top beam) fires leftward rivets. The right-hand trampoline
    compresses under Mack, then rebounds and launches him; its base stays planted
    and his feet follow the moving cap. Mack starts one character to the right
    of the middle pedestal. The spray-can bonus is two characters to the right

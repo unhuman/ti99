@@ -2852,3 +2852,40 @@ and three hats with `L9` on level 9.
 
 Production SHA-256:
 `7079FD493BC7B1CBF11E429B6EA1B68FF876E9E540B27AA5DA1E432D60A91FBC`.
+
+## 55. Level 1 launcher: unattended, one column right, redrawn (2026-10-05)
+
+**What changed.**
+- The figure beside the upper-right rivet launcher is gone. It was the OSHA
+  sprite parked as decoration (`SPRITE 17` at x=240 in `site_draw`), not an
+  enemy.
+- The launcher moved from columns 28-29 to 29-30 (rows 3-4).
+- Its drawing was transcribed from the user's reference image at a 16x16
+  grid by dominant colour per cell, with the anti-aliasing tints ignored:
+  - a white feed funnel and neck;
+  - a magenta housing whose upper-left section is the left-facing outlet
+    (rows 5-7), with a white inset;
+  - a white shoulder;
+  - a green sight glass (TMS colour 2) between white panels;
+  - a white base.
+- Two changes keep every character row to two colours: the shoulder's top
+  row runs to the right edge, and the panel left of the glass starts at
+  x=8. The TMS9918 has no violet, so magenta stands in for the reference's
+  purple.
+- `genfixtures.py` holds the art as editable rows and checks each material's
+  region.
+
+**Rivet origin.** The rivet starts one character left of the launcher
+(`bx = 224`), with its art (sprite rows 4-8) level with the outlet's top row
+(`by = 25`). `fixture_contract` finds the launcher on the map and derives
+both values from its position, so the machine and its rivet cannot drift
+apart. It also checks that nothing draws a figure beside the launcher.
+
+Four mutations must fail:
+- the old column;
+- the old `bx`;
+- the old `by`;
+- restoring the operator sprite.
+
+Production SHA-256:
+`7A2C92B5521D7372B182CFB93D8BAFF01488A32672BCF3F9BC0050B5A16A07C0`.
