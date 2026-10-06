@@ -143,6 +143,28 @@ def tables():
         for tile in range(2):
             result['spark_pat'] += rows(lambda x,y:(x+tile*8,y) in pixels)
     result['spark_col'] = [0xe1,0x91,0xb1,0xf1,0xf1,0xb1,0x91,0xe1]*2
+    # Level 3's bottom-gear spark jets (108 top, 109 middle, 110 emitter; the
+    # bottom screen third only): one 8x24 column standing on each corner of
+    # the cabinet roof. The wall emitter's three diverging trajectories,
+    # turned to fire straight up from a white-hot core. Pose 8 is the cold
+    # emitter shown while a spring crossing has cut the power.
+    result['gearspark_pat'] = []
+    for pose in range(9):
+        pixels = {(x,23) for x in range(8)} | {(x,22) for x in (0,1,6,7)}
+        if pose < 8:
+            pixels |= {(x,y) for x in (3,4) for y in (19,20,21)}
+            for offset,branch in ((0,-1),(6,0),(12,1)):
+                rise = (pose*2+offset) % 18
+                x, y = 3 + (branch > 0) + branch*(rise//6), 18-rise
+                pixels |= {(x,y),(x,y+1)}
+        for cell in range(3):
+            result['gearspark_pat'] += rows(lambda x,y:(x,cell*8+y) in pixels)
+    # Hot white at the core, yellow above it, red-orange at the tips; grey
+    # mounting. Cold: the whole emitter grey.
+    result['gearspark_col'] = ([0x91,0xa1,0x91,0xa1,0xb1,0x91,0xa1,0xb1]
+                               +[0xb1,0xf1,0xb1,0xf1,0xb1,0xf1,0xf1,0xf1]
+                               +[0xf1,0xf1,0xf1,0xf1,0xf1,0xf1,0xe1,0xe1]
+                               +[0xe1]*24)
     # Low two-cell crate on level 2's mid-left tier. Six visible pixels tall
     # so a normal jump clears it; the character codes remain in the lethal
     # hazard band so walking into the crate is unsafe.
@@ -255,6 +277,23 @@ def check(source):
                 if sparks[frame*16+tile*8+y] & (128>>x)}
         assert {(0,y) for y in range(8)}<=pixels, 'spark wall detaches'
         assert any(x>=11 for x,y in pixels), 'spark stream disappears at belt end'
+    # Gear jets: one 8x24 column per roof corner, y 0-7 = row 17 (top),
+    # 8-15 = row 18, 16-23 = row 19 (emitter standing on the cabinet).
+    gear=t['gearspark_pat']
+    assert len(gear)==216 and len({tuple(gear[i:i+24]) for i in range(0,216,24)})==9, 'gear spark poses repeat'
+    mount={(x,23) for x in range(8)}|{(x,22) for x in (0,1,6,7)}
+    for pose in range(9):
+        pixels={(x,cell*8+y) for cell in range(3) for y in range(8) for x in range(8)
+                if gear[pose*24+cell*8+y] & (128>>x)}
+        assert mount<=pixels, 'gear jet is not mounted on the cabinet roof'
+        if pose<8:
+            # Lethal cells must show sparks: every live pose reaches row 17.
+            assert any(y<8 for x,y in pixels), 'gear sparks fall short of the top cell'
+        else:
+            assert pixels==mount, 'cold gear emitter still shows sparks'
+    col=t['gearspark_col']
+    assert len(col)==48 and col[24:]==[0xe1]*24, 'cold gear emitter is not grey'
+    assert all(c&15==1 for c in col), 'gear jet paints a background'
     crate=t['crate_pat']
     assert len(crate)==16 and all(crate[y]==crate[8+y] for y in range(8))
     assert crate[0]==crate[7]==crate[8]==crate[15]==0 and all(crate[y] for y in range(1,7)) and all(crate[y] for y in range(9,15)), 'crate is not a low jumpable obstacle'
@@ -275,6 +314,8 @@ def check(source):
     broken=source.replace('tramp_pat:\n','tramp_pat:\n\tDATA BYTE 0\n',1)
     assert rewrite(broken)!=broken
     broken=source.replace('spark_pat:\n','spark_pat:\n\tDATA BYTE 0\n',1)
+    assert rewrite(broken)!=broken
+    broken=source.replace('gearspark_pat:\n','gearspark_pat:\n\tDATA BYTE 0\n',1)
     assert rewrite(broken)!=broken
 
 

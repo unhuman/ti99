@@ -846,6 +846,9 @@ def review_feedback(source):
     assert wins>=6, ('insufficient conveyor entry windows',wins,8)
     # The inverse direction matters too: all six factory side tiers must
     # have a real launch window onto the rotating paddles, with hazards live.
+    # Where a boarded rider then goes is pinned too: the right lane climbs
+    # to the top; the left lane carries a rider who stays aboard down into
+    # the bottom gear's sparks (he has to jump off -- no wrap under the lift).
     for side in (0,1):
         for floor in (72,104,136):
             captures=0
@@ -859,8 +862,28 @@ def review_feedback(source):
                     if vm.v['st']==vm.v['s_dead']:break
                     if vm.v['bonbeam']:
                         captures+=1;break
+                if not vm.v['bonbeam']:continue
+                vm.v.update(jbe=0,jl=0,jr=0)
+                for _ in range(200):
+                    if side==1 and vm.arrays['pnycar'][vm.v['pnside']]==64:break
+                    vm.run('mack_step');vm.run('beam_move');vm.run('site_step')
+                    if vm.v['st']==vm.v['s_dead']:break
+                if side:
+                    assert vm.v['st']!=vm.v['s_dead'], ('right-lane rider dies on the climb',floor,phase)
+                else:
+                    assert vm.v['st']==vm.v['s_dead'] and gear_spark_touch(vm), (
+                        'left-lane rider escapes the gear sparks',floor,phase)
             assert captures>=2, ('no usable factory lift entry',side,floor,captures)
     return wins
+
+
+def gear_spark_touch(vm):
+    # Mack's 12x12 art (mx+2..13, my+4..15) against the live spark cells
+    # (codes 108-111) on the playfield rows of this VM's name table.
+    cells={(c*8+x,r*8+y) for r in range(1,24) for c in range(32)
+           if 108<=vm.screen[r*32+c]<=111 for x in range(8) for y in range(8)}
+    mx,my=vm.v['mx'],vm.v['my']
+    return any((x,y) in cells for x in range(mx+2,mx+14) for y in range(my+4,my+16))
 
 
 def upper_conveyor(source):
@@ -1802,7 +1825,8 @@ def visual_hazards(source):
                 assert spring.v['springhit']==1 and spring.v['st']==spring.v['s_dead'], (
                     'panel fall misses lethal cabinet',start)
                 assert spring.v['mx']+16>=112 and spring.v['mx']<144
-                assert spring.v['my']+16>=152 and spring.v['my']<184
+                # The cabinet is three rows tall: its top is y=160.
+                assert spring.v['my']+16>=160 and spring.v['my']<184
             else:
                 assert spring.v['springhit']==0 and spring.v['st']==7
                 assert spring.v['mx']==(152 if direction else 80), ('spring misses far pad',start)
@@ -2312,6 +2336,131 @@ def paddle_bucket_bounce(source,exits=PADDLE_EXITS):
     return reached
 
 
+def gear_sparks(source):
+    # Spark jets standing on the cabinet roof, firing up beside the BOTTOM
+    # gear: nobody rides under the lift, the top pass stays safe, and a
+    # spring crossing cuts their power both ways.
+    base=Basic(source);base.v.update(lv=3,lives=2);base.run('init_level')
+    screen=base.screen
+    # Playfield rows only: this VM lower-cases PRINT text, so the row-0 HUD
+    # holds ASCII 108-111 that the real TI prints in capitals.
+    sparks=sorted((r,c) for r in range(1,24) for c in range(32) if 108<=screen[r*32+c]<=111)
+    assert sparks==[(r,c) for r in (17,18,19) for c in (14,17)], ('spark cells moved',sparks)
+    for c in (14,17):
+        assert [screen[r*32+c] for r in (17,18,19)]==[108,109,110], 'jet is not top/middle/emitter'
+    assert screen[19*32+15:19*32+17]==[32,32], 'something between the roof emitters'
+    assert all(screen[r*32+c]==32 for r in (7,8,9) for c in (14,17)), 'top gear grew sparks'
+    for r,first in ((20,96),(21,100),(22,104)):
+        assert screen[r*32+14:r*32+18]==list(range(first,first+4)), ('cabinet rows/codes moved',r)
+    # Lethal pixels come from the map; Mack's 12x12 art is mx+2..13, my+4..15.
+    cells={(c*8+x,r*8+y) for r,c in sparks for x in range(8) for y in range(8)}
+    def touching(x,y):
+        return any((px,py) in cells for px in range(x+2,x+14) for py in range(y+4,y+16))
+    s_dead,s_walk=base.v['s_dead'],base.v['s_walk']
+    # Riders going down the left side die in the left jet, wherever they
+    # stand: one on the paddle's outer edge only meets it once his paddle has
+    # turned along the bottom, but none gets his paddle as far as the jet.
+    # Every left-lane start converges on the same descent, so sweep stances
+    # densely and starts coarsely.
+    jet_x=min(px for px,py in cells)
+    rides=[(60,stance) for stance in range(16)]+[(p,s) for p in range(0,80,8) for s in (0,7,15)]
+    for phase,stance in rides:
+        vm=copy.deepcopy(base)
+        vm.v.update(pnphase=phase);vm.run('lift_positions')
+        x,y=vm.arrays['pnxcar'][0],vm.arrays['pnycar'][0]
+        vm.v.update(mx=x+stance-8,my=y-16,pnside=0,bonbeam=1,st=s_walk,jl=0,jr=0)
+        for _ in range(200):
+            vm.run('mack_step');vm.run('beam_move');vm.run('site_step')
+            if vm.v['st']==s_dead:break
+            assert not (vm.arrays['pnycar'][0]==144 and vm.arrays['pnxcar'][0]>=jet_x), (
+                'rider rides under the gear',phase,stance)
+        assert vm.v['st']==s_dead and touching(vm.v['mx'],vm.v['my']), (
+            'rider not killed by the gear sparks',phase,stance,vm.v['mx'],vm.v['my'])
+    # Riding over the top, from the right lane round into the left lane, is safe.
+    for stance in (0,7,15):
+        vm=copy.deepcopy(base)
+        vm.v.update(pnphase=150);vm.run('lift_positions')
+        x,y=vm.arrays['pnxcar'][0],vm.arrays['pnycar'][0]
+        vm.v.update(mx=x+stance-8,my=y-16,pnside=0,bonbeam=1,st=s_walk,jl=0,jr=0)
+        topped=False
+        for _ in range(100):
+            vm.run('mack_step');vm.run('beam_move');vm.run('site_step')
+            topped|=vm.arrays['pnycar'][0]==64
+            assert vm.v['st']!=s_dead and vm.v['bonbeam']==1, ('top pass is not safe',stance)
+        assert topped
+    # The left side is not a trap: from a descending paddle, a jump right
+    # still reaches a climbing right-lane paddle across a broad window.
+    crossings=0
+    for phase in range(0,72,8):
+        vm=copy.deepcopy(base)
+        vm.v.update(pnphase=phase);vm.run('lift_positions')
+        x,y=vm.arrays['pnxcar'][0],vm.arrays['pnycar'][0]
+        vm.v.update(mx=x,my=y-16,pnside=0,bonbeam=1,st=s_walk,jbe=1,jr=1,jl=0,mdir=1)
+        for _ in range(120):
+            vm.run('mack_step');vm.v['jbe']=0;vm.run('beam_move');vm.run('site_step')
+            if vm.v['st']==s_dead:break
+            if vm.v['bonbeam'] and vm.v['pnside']!=0 and vm.v['st']==s_walk:
+                crossings+=vm.arrays['pnxcar'][vm.v['pnside']]>=120;break
+    assert crossings>=5, ('left lane can no longer jump to the climbing lane',crossings)
+    # Spring crossings both ways: the first pad cuts the power, the far pad
+    # restores it, and the flight really does pass through the spark cells.
+    for side in (0,1):
+        vm=copy.deepcopy(base)
+        vm.v.update(mx=80 if side==0 else 152,my=160,mdir=1-side)
+        assert vm.v['gearoff']==0
+        vm.run('spring_begin')
+        assert vm.v['gearoff']==1, ('first trampoline leaves the sparks live',side)
+        path=[];restored=None
+        for step in range(120):
+            vm.run('mack_step');vm.run('site_step')
+            assert vm.v['st']!=s_dead, ('spring crossing dies',side,vm.v['mx'],vm.v['my'])
+            path.append((vm.v['mx'],vm.v['my']))
+            if restored is None and vm.v['gearoff']==0:
+                restored=(vm.v['mx'],vm.v['my'])
+                assert vm.v['springphase']==2, 'power back before the far pad'
+            if vm.v['st']==s_walk:break
+        assert restored and restored[0]==(152 if side==0 else 80), ('power not restored at the far pad',side,restored)
+        assert not touching(*restored), 'power restored with Mack inside the sparks'
+        assert vm.v['st']==s_walk, ('second bounce never lands',side,vm.v['st'])
+        assert any(touching(x,y) for x,y in path), 'crossing misses the sparks: power cut is not load-bearing'
+    # Anyone touching live sparks dies, not only riders: a plain fall.
+    vm=copy.deepcopy(base)
+    vm.arrays['pnxcar'][:]=[0]*4;vm.arrays['pnycar'][:]=[0]*4
+    vm.v.update(mx=100,my=96,st=base.v['s_fall'],jhz=1,fct=0,fcy=96)
+    for _ in range(60):
+        vm.run('mack_step');vm.run('site_step')
+        if vm.v['st']==s_dead:break
+    assert vm.v['st']==s_dead and touching(vm.v['mx'],vm.v['my']) and vm.v['my']<130, (
+        'falling into live sparks is harmless',vm.v['my'])
+    # The shorter cabinet still swallows a faller -- at its new top.
+    vm=copy.deepcopy(base)
+    vm.arrays['pnxcar'][:]=[0]*4;vm.arrays['pnycar'][:]=[0]*4
+    vm.v.update(mx=120,my=120,st=base.v['s_fall'],jhz=1,fct=0,fcy=120)
+    for _ in range(60):
+        vm.run('mack_step');vm.run('site_step')
+        if vm.v['st']==s_dead:break
+    assert vm.v['st']==s_dead and not touching(vm.v['mx'],vm.v['my']), 'cabinet faller hit by sparks'
+    assert vm.v['my']>=148, ('cabinet kills above its new top',vm.v['my'])
+    # Drawing: bottom third only, live poses follow the clock, cold when off.
+    vm=copy.deepcopy(base);vm.run('site_draw')
+    for phase in range(16):
+        vm.v['hzphase']=phase;vm.run('site_draw')
+        vm.expect_upload(4960,24,'gearspark_pat',(phase//2&7)*24)
+        vm.expect_upload(13152,24,'gearspark_col',0)
+        assert vm.bank==1, 'gear spark drawing leaks its bank'
+    vm.v['gearoff']=1;vm.run('site_draw')
+    vm.expect_upload(4960,24,'gearspark_pat',192);vm.expect_upload(13152,24,'gearspark_col',24)
+    vm.v['gearoff']=0;vm.run('site_draw')
+    vm.expect_upload(13152,24,'gearspark_col',0)
+    assert not any(vm.vram.get(a,('',0))[0].startswith('gearspark') for third in (0,2048)
+                   for a in range(third+864,third+888)), 'gear sparks drawn outside the bottom third'
+    # Every reset restores the power: death cleanup and a fresh level.
+    vm=copy.deepcopy(base);vm.v['gearoff']=1;vm.run('death_cleanup')
+    assert vm.v['gearoff']==0 and vm.bank==1, 'death leaves the gear sparks off'
+    vm=copy.deepcopy(base);vm.v.update(gearoff=1,gearlast=3);vm.run('init_level')
+    assert vm.v['gearoff']==0 and vm.v['gearlast']==255, 'new level keeps stale gear spark state'
+
+
 def fixture_contract(source):
     def table(label):
         body=re.search(r'^'+label+r':\n.*?(?=^\w+:)',source,re.M|re.S).group()
@@ -2493,7 +2642,11 @@ def optimized_rendering(source):
             # retain the existing budget for all previously optimized art.
             sparkbytes=sum(w[1] for w in vm.vram_writes if w[0]==3360) if level==3 else 0
             assert sparkbytes<=16, 'spark animation exceeds two cells'
-            assert sum(w[1] for w in vm.vram_writes)-sparkbytes<=limit, ('excess dynamic VRAM traffic',level,phase)
+            # The bottom gear's three spark-jet cells likewise: one 24-byte
+            # pose, never its colours as well while the power is unchanged.
+            gearbytes=sum(w[1] for w in vm.vram_writes if w[0] in (4960,13152)) if level==3 else 0
+            assert gearbytes<=24, 'gear spark animation exceeds its three cells'
+            assert sum(w[1] for w in vm.vram_writes)-sparkbytes-gearbytes<=limit, ('excess dynamic VRAM traffic',level,phase)
             if level==3:
                 for third in (1,2):
                     for color,label in ((0,'drivechain_pat'),(8192,'drivechain_col')):
@@ -2633,6 +2786,7 @@ def main():
     work_sounds(source)
     trampoline_animation(source)
     factory_spring_animation(source)
+    gear_sparks(source)
     fixture_contract(source)
     slag_cadence(source)
     fidelity(source)
@@ -2881,6 +3035,14 @@ def main():
         (source.replace('IF mx > 64 THEN mx = mx - 1','mx = mx - 1'),paddle_bucket_bounce),
         (source.replace('IF springphase = 1 THEN GOTO bin_hop',
                         'IF springphase = 9 THEN GOTO bin_hop'),paddle_bucket_bounce),
+    ])
+    mutants.extend([
+        (source.replace('\tgearoff = 1\n','\n',1),gear_sparks),
+        (source.replace("\t\tgearoff = 0\t' far pad reached","\t\tgearlast = 0\t' far pad reached",1),gear_sparks),
+        (source.replace('DEFINE VRAM 4960,24','DEFINE VRAM 2912,24',1),gear_sparks),
+        (source.replace('ex = 108\n\tGOSUB hazard_hit\n\tex = 132','ex = 112\n\tGOSUB hazard_hit\n\tex = 132',1),gear_sparks),
+        (source.replace('\tIF my >= 148 THEN\n','\tIF my >= 140 THEN\n',1),gear_sparks),
+        (source.replace('IF my + 16 >= 160 THEN','IF my + 16 >= 152 THEN',1),visual_hazards),
     ])
     bucket_exits = {}
     for job in bucket_jobs:

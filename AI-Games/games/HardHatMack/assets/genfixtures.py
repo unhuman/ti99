@@ -152,15 +152,17 @@ def tables():
     rect(receiver,1,14,12,15,3)
     out['mixer_pat'],out['mixer_col']=encode(receiver[:8])
     out['mixb_pat'],out['mixb_col']=encode(receiver[8:])
-    # Blue cabinet, white perimeter, a gridded window and framed red door.
-    cabinet=canvas(32,32,4)
-    rect(cabinet,0,0,31,0,15);rect(cabinet,0,31,31,31,15)
-    rect(cabinet,0,0,0,31,15);rect(cabinet,31,0,31,31,15)
-    rect(cabinet,8,3,23,10,15);rect(cabinet,9,4,22,9,4)
-    for x in (12,16,20):rect(cabinet,x,4,x,9,15)
-    rect(cabinet,9,7,22,7,15)
-    rect(cabinet,8,13,23,29,15);rect(cabinet,9,14,22,28,6)
-    rect(cabinet,20,20,21,21,15)
+    # Blue cabinet, white perimeter and framed red door; three characters
+    # tall with no window, leaving a clear row under the bottom gear's sparks.
+    cabinet=canvas(32,24,4)
+    rect(cabinet,0,0,31,0,15);rect(cabinet,0,23,31,23,15)
+    rect(cabinet,0,0,0,23,15);rect(cabinet,31,0,31,23,15)
+    rect(cabinet,8,5,23,21,15);rect(cabinet,9,6,22,20,6)
+    rect(cabinet,20,12,21,13,15)
+    # 108-110 belong to the gear spark jets, painted per frame into the bottom
+    # screen third only (111 is spare); this blank keeps every later code
+    # where it was.
+    gearslot=canvas(32,8)
     bucket=canvas(16,8)
     # Single broad bucket: white rim, magenta walls, open dark interior.
     rect(bucket,1,0,14,0,15);rect(bucket,0,1,0,5,15);rect(bucket,15,1,15,5,15)
@@ -215,9 +217,10 @@ def tables():
     # edge. Center the arrow at local x=11.5, over the feed at x=19.5.
     rect(label,11,7,12,10,15)
     for y,lo,hi in ((10,8,15),(11,9,14),(12,10,13),(13,11,12)):rect(label,lo,y,hi,y,15)
-    # 96-111 cabinet, 112-113 bucket, 114-117 axle, 118-119 pail top,
-    # 120-123 reserved for site-specific art, 124-127 IN and down-arrow.
-    parts=[cabinet,bucket,axle,pail[:8],canvas(16,16),label]
+    # 96-107 cabinet, 108-110 gear sparks (111 spare), 112-113 bucket, 114-117 axle,
+    # 118-119 pail top, 120-123 reserved for site-specific art, 124-127 IN
+    # and down-arrow.
+    parts=[cabinet,gearslot,bucket,axle,pail[:8],canvas(16,16),label]
     out['fixture_pat']=[];out['fixture_col']=[]
     for im in parts:
         p,c=encode(im);out['fixture_pat']+=p;out['fixture_col']+=c

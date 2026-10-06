@@ -456,7 +456,9 @@ bounce follows his facing (`mdir`). Heading toward the centre, the scripted
 transfer carries him to the opposite pad and up onto the far lower platform.
 Heading outward, which is how every sideways exit from a rotating paddle
 arrives, there is no far pad: a short hop takes him into that side's rivet
-bucket, where he dies (§52). Both compressions share level one's four-pixel cap
+bucket, where he dies (§52). Hitting a pad also cuts the power to the bottom
+gear's spark jets for the flight, which crosses both of them; landing on the
+far pad turns it back on (§53). Both compressions share level one's four-pixel cap
 displacement and eight-step rebound. See §30 for the animation and validation.
 
 **The pater-noster** stays the flagged simplification — a climbable shaft rather than moving cars —
@@ -1843,8 +1845,8 @@ one pixel so all five rows remain exposed. The piston, belt overlays and
 visible-contact collision checks remain synchronized.
 
 Level three has one 16-pixel bucket per side instead of two repeated cans.
-The 32x32 central cabinet has a blue body, white perimeter, gridded window and
-white-framed red door. Closed green oval processors have white rims, with no
+The central cabinet has a blue body, white perimeter, gridded window and
+white-framed red door (since §53: 32x24, no window, with spark jets on its roof). Closed green oval processors have white rims, with no
 lettering or painted openings inside them. Separate IN/down-arrow graphics
 at rows 19-20 flash every 32 world steps. Rounded 16x16 axles cap the platform
 mechanism at rows 7-8 and 17-18, centered on its existing circulation path.
@@ -2688,3 +2690,100 @@ the pad, the compression, the low hop and the death blink inside each bucket.
 `src/HARDHAT_L3_8.bin` (git-ignored) is a normal-speed cart that starts on
 Level 3. Production SHA-256:
 `EC46D9F022B167E3AE7DE9D0E4530280F360866AB32A127A0E5985844B7E92FD`.
+
+## 53. Bottom-gear spark jets: no riding under the lift (2026-10-05)
+
+A paddle rider could ride down the left side, along the bottom past the rivet
+cabinet and up the right side. The bottom wrap now kills him, for a reason the
+player can see. Riding over the top stays safe.
+
+**Layout.**
+- The cabinet is now three characters tall (rows 20-22, codes 96-107), with
+  no window. Row 19 above it is free.
+- Two spark jets stand on the corners of the cabinet roof, on either side of
+  the bottom gear (columns 14 and 17). Each is three characters tall: the
+  emitter on row 19 (code 110), sparks rising through row 18 (109) and row 17
+  (108).
+- The jets reuse the wall emitter's three diverging trajectories, turned to
+  fire straight up from a white-hot core. Colours run yellow to red-orange at
+  the tips, on a grey mount.
+- `assets/genconveyors.py` owns the art. `assets/genfixtures.py` reserves
+  108-111 as a blank block after the cabinet, so every later fixture code
+  keeps its number.
+- The top gear has no jets.
+
+**Rules.**
+- Live sparks shock anything touching them: rider, jumper or faller.
+- `banked_gear_shock` (bank 2) runs every world step from `factory_step`. It
+  uses `hazard_hit` centre distances that equal Mack's 12×12 art overlapping a
+  jet column: x 112-119 or 136-143, y 136-159.
+- A left-lane rider dies as he descends into the left jet. One standing on the
+  paddle's outer edge meets it at most three pixels after his paddle turns
+  along the bottom. No rider's paddle reaches the jet.
+- The normal spring crossing flies through both jets. Hitting a trampoline
+  (`banked_spring_begin`) sets `gearoff`. Landing on the far pad
+  (`springtick = 36`, when Mack is clear of both columns) clears it. Death
+  cleanup and level start also clear it.
+- An outward (bucket) bounce also cuts the power, which comes back when that
+  death resolves.
+- While the power is off, the jets show a cold grey emitter with no sparks.
+
+**Drawing.**
+- `banked_gear_sparks` (bank 2) uploads one 24-byte pose to the bottom screen
+  third only: pattern 4960, colour 13152. A pattern written to one third is
+  invisible from the others, so the address is checked.
+- The colours change only when the power state changes. `gearlast = 255` (set
+  in `reset_claws`) forces the first upload after a level paints.
+- The frame-budget check keeps its 312-byte Level 3 limit for the older art.
+  The jets get a separate 24-byte allowance, alongside the wall sparks' 16.
+- The cabinet's lethal height follows its new top (y=160). `factory_step`'s
+  fall-in test moves from `my >= 140` to `my >= 148`, and the spring-arc
+  cabinet box from 152 to 160.
+
+**Interactions found by the gates.**
+- An early version sprayed the sparks sideways across both lanes, and the
+  bucket-bounce sweep (§52) caught it: a walk-off from the left paddle fell
+  through the spray and was shocked before reaching the trampoline (0 of 224
+  left walk-offs reached a pad). The vertical jets cover only the lanes'
+  inner columns, and the walk-off fall clears them.
+- The side-tier boarding test now states the rule instead of only counting
+  landings:
+  - riders who board from the right tiers climb to the top;
+  - riders who board the left lane and stay aboard die in the left jet.
+  
+  The left side is not a trap: in a sampled sweep, a jump right from a
+  descending paddle reaches a climbing paddle at 75 of 108 phase and stance
+  combinations.
+
+**Budgets.**
+- The level data gains six jet cells against four cabinet cells removed, so
+  the data bank drops from 14 to 4 bytes free.
+- The unoptimized fixed pass keeps 148+ bytes below `>FFFE`.
+- The final fixed area is 22,354/24,336 bytes (1,982 free).
+- Banks 1-4 have 4, 1,414, 28 and 360 bytes free. RAM use is 574 bytes.
+
+**Validation.** `gear_sparks` in `assets/checkphysics.py` checks:
+- the map;
+- 46 left-lane rides, sweeping every standing position on the paddle;
+- the safe top pass;
+- the left-to-right lane jump;
+- both spring crossings, where the flight must overlap a jet so the power cut
+  provably matters;
+- a fall into a jet, and a fall into the shorter cabinet;
+- the uploads to the bottom third, and the resets.
+
+Six defect mutations must fail:
+- no power cut;
+- no power restore;
+- the wrong screen third;
+- a narrowed jet box;
+- the old cabinet height;
+- the old spring-arc cabinet box.
+
+Slow-motion review carts in Classic99 QI399.087 showed:
+- a ride over the top, then death in the left jet;
+- a spring crossing with the jets going cold in flight and live again on
+  landing.
+
+Production SHA-256:
+`A7B21D9F6A44CBF835FDA35878AA25D9CD2538B16B1A6E1CECD2DFFA2052DA03`.

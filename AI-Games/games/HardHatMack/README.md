@@ -59,10 +59,16 @@ Three construction sites are implemented:
    Flashing IN labels and downward arrows sit above white feed caps. The
    processors follow the supplied Apple II screenshot: low white outlines,
    dark blue fronts with red side panels, and angled oval shoulder outlets.
-   The central cabinet has a white border, blue body, gridded window and red door.
+   The central cabinet is three characters tall, with a white border, blue
+   body and red door.
    Four paddles circulate counterclockwise around rounded upper and lower axles
    (left down, right up). Moving chain links and rotating wheel spokes follow
    the same platform drive, so the whole mechanism works together.
+   Riding over the top is safe, but the bottom gear is live: two spark
+   emitters stand on the cabinet roof's corners, one each side of the gear,
+   and fire straight up past it into the paddle lanes. A rider who stays
+   aboard on the way down is electrocuted before he can ride under the lift.
+   Jump off on the way down (a jump right can reach a climbing paddle).
    The upper-left conveyor carries Mack left at his walking speed: holding
    right keeps him in place, releasing the stick carries him left, and walking
    left doubles his travel. Its tread animation matches that speed.
@@ -71,7 +77,9 @@ Three construction sites are implemented:
    The two springs use level one's two-cell artwork, compression and launch
    sound. A spring keeps Mack moving the way he was going and never turns him
    around. Walking off a lower side platform toward the centre bounces him
-   across both springs to the far side. Leaving a rotating paddle sideways,
+   across both springs to the far side; hitting the first spring cuts the
+   gear sparks' power for the flight, and the far spring turns it back on.
+   Leaving a rotating paddle sideways,
    by walking or jumping, lands him on the outer spring heading outward: it
    hops him on into that side's rivet bucket, where he dies.
    The processors, central cabinet and conveyor machinery are dangerous.
@@ -256,7 +264,9 @@ It checks objective handling, death rollback, timed hazard windows, magnet captu
 and delivery, drill/enemy routes, twelve platform transfers, 448 lift/rider steps,
 both spring transfers, jump clearance, walk-off versus jump falls and sound
 note-offs. Walking and jumping off a factory paddle at all 224 circuit phases
-must keep Mack's direction and end in the matching bucket. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
+must keep Mack's direction and end in the matching bucket. A rider going down
+the left lane must die in the bottom gear's spark jets before riding under the
+lift, while riding over the top and both spring crossings (power cut) survive. It also tests the live spawn-to-conveyor-to-crane route at eight hazard
 phases and factory lift entries from all six side tiers at fourteen phases each.
 Deliberately broken variants must fail. New checks cover directional airborne
 art, conveyor walking balance, quicker downstrokes, curved furnace flames,
