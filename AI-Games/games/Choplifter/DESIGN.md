@@ -1,118 +1,284 @@
 # Choplifter — TI-99/4A / CVBasic
 
+Current-state design. History is in git; numbers below are from the latest build and
+benchmark run (2026-10-06).
+
 ## Performance budget
 
-- Real-time, frame-delta movement; one bounded update per actor per pass. No pathfinding, no VDP reads, no GCHAR/COINC. Target 30–60 updates/sec on the original 3 MHz TI.
-- At most twelve moving hardware sprites: two helicopter halves, two tank halves, one walking hostage, one jet, one drone, two player shots, one enemy shell, one jet missile, one explosion. CVBasic SPRITE replaces XB MOTION/LOCATE. The helicopter owns slots 0–1, shots 2–3, tank 4–5, runner 6, jet 7, shell 8, drone 9, blast 10, missile 11; no automatic flicker. Giving shots priority prevents invisible projectiles occupying the pool when ground actors fill a scanline.
-- Terrain scrolls in eight-pixel steps. Four scenery rows plus two ground rows are copied from ROM (192 bytes per camera change). Row 20 is prepared by the crowd renderer and committed immediately after rows 17–19 at a video-frame boundary. Fourteen background stars require at most 28 name-table writes when the camera moves, with no writes when stationary. Each visible boundary fence uses a clipped 5×2-character perspective stamp; the flag clears its old two-cell footprint. Collisions use world coordinates.
-- One permanently selected TI data bank, less than 8 KB, also holds the results-screen code. Fixed code uses 24,240 / 24,336 bytes (96 free); the bank uses 8,042 / 8,190 bytes (148 free). New features must recover space before exceeding either budget. No music player in this release. Coleco builds from the same source, with an 814-byte variable budget.
+- **Loop.** Real time, frame-delta pacing: `dt` is the number of video frames since the last
+  update, clamped to 6. Updates run at most every 2 frames (30/s); an update that already
+  took 2 or more frames starts the next one immediately (`main_loop`), so the only idle wait
+  is the scroll synchronisation below. At 6 frames per update the game still runs at true
+  speed, just in coarser steps; beyond that it slows down.
+- **Measured rates** (Classic99 Normal speed, `tools/profile.py` full-loop cases, video
+  frames per 32 updates → updates per second):
+
+  | Situation | Original | Now |
+  |---|---:|---:|
+  | Cruising over open terrain | 160 (12/s) | 96 (**20/s**) |
+  | Over a settled crowd with tank, jet, drone and shots | 256 (7.5/s) | 152 (**12.6/s**) |
+  | Two camps evacuating at once (32 walkers in view) | 380 (5/s) | 191 (**10/s**) |
+
+- **Cost model.** One video frame buys only about 1,300–1,500 instructions of compiled
+  CVBasic (code runs from the 8-bit 32K expansion). Per-call costs from
+  `profile.py --micro`, in frames: stars 0.48, terrain rows and overlays near open camps
+  0.66, settled crowd row 1.0, moving-crowd compositor with 32 walkers 3.25, walker logic
+  for 32 walkers 1.56, sprites with every actor on 0.78 / all off 0.34, enemies and weapons
+  0.53, sound + rotor + pause input + flight 0.34. A scrolling update costs whole frames:
+  its synchronised WAIT rounds the work up.
+- **Hardware sprites.** At most 12 world sprites; slot map in *Sprites* below. No automatic
+  flicker: the helicopter is pinned to slots 0–1, anything that can destroy it comes next,
+  and the remaining ground and air actors rotate (software flicker).
+- **VDP work per scrolling update.** One WAIT, then rows 17–20 (128 bytes, back to back),
+  then flag/fire/door overlays, then rows 21–22 (64 bytes) and the fence stamps. Row 23 is
+  static. Stars write 14–28 cells, and none while the camera is still. No VDP reads, no
+  GCHAR, no COINC; collisions use world coordinates.
+- **TI native kernels** (each with a portable BASIC twin used by ColecoVision and tested
+  against it): star field, crowd walking, moving-crowd compositor, crowd colour upload,
+  settled-crowd scan and row copy. See *TI native kernels*.
+
+## Size budget
+
+| | Used | Limit | Notes |
+|---|---:|---:|---|
+| TI fixed area (after short branches) | 21,852 | 24,336 | 2,484 free |
+| TI fixed area, unoptimised | 23,492 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank | 8,044 | 8,190 | assets, menu font, results screen |
+| TI RAM | 810 | 7,854 | |
+| ColecoVision RAM | 809 | 814 | nearly full; see `#vaddr` |
+
+`tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (about 410 branches,
+1.6 KB saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
+then. Grow the unoptimised figure carefully; bank cold code (title, setup) if it gets tight.
+The menu font lives in the data bank; its colour table (all white on black) is filled at run
+time from the idle crowd pixel buffer instead of 256 identical ROM bytes. ColecoVision RAM
+is the tightest budget: `#vaddr` is one shared VPOKE address used by every routine that
+computes an address and writes it immediately, never across a GOSUB.
 
 ## Research and adaptation
 
-Based on Dan Gorlin's original rescue game, rather than Sega's later arcade campaign. The [Atari 5200 manual](https://atariage.com/manual_html_page.php?SoftwareID=2057) specifies 64 hostages, 16 passengers, three helicopters, separate lost/aboard/saved tallies, vulnerable people, and landing-pad unloading. The [Atari 7800 manual](https://atariage.com/manual_html_page.php?SoftwareID=2121) describes four barracks and escalating tanks, jets and airborne mines.
+Based on Dan Gorlin's original rescue game, rather than Sega's later arcade campaign. The
+[Atari 5200 manual](https://atariage.com/manual_html_page.php?SoftwareID=2057) specifies 64
+hostages, 16 passengers, three helicopters, separate lost/aboard/saved tallies, vulnerable
+people and landing-pad unloading. The
+[Atari 7800 manual](https://atariage.com/manual_html_page.php?SoftwareID=2121) describes four
+barracks and escalating tanks, jets and airborne mines. The
+[Atari version comparison](https://www.atariprotos.com/other/gamediff/choplifter/choplifter.htm)
+distinguishes Apple's two-button controls from Atari's hold-to-turn adaptation;
+[gameplay notes](https://strategywiki.org/wiki/Choplifter!/Gameplay) describe tap fire, hold
+rotate, jets after a delivery and later airborne mines. The user's
+[C64 longplay](https://www.youtube.com/watch?v=wCrKd0fM1CY) was inspected as frame sheets in
+the ignored `build/reference`: around 75–85 s the first group unloads beside the flag; around
+87–98 s jets approach head-on and turn into side-on firing passes; the footage shows
+front/side helicopter poses and pronounced pitch in travel. Reference material is not a
+build dependency.
 
-This is new code and new pixel art, not a conversion of an original ROM. TI adaptations: an eight-screen-wide world, eight-pixel scenery scrolling, character-composited evacuees with one boarding runner sprite, one tank/jet/drone at a time, and a single fire/turn button. No fuel restriction. A perfect rescue is 64 saved; the mission ends when all people are accounted for or the third helicopter is lost.
-
-The [Atari version comparison](https://www.atariprotos.com/other/gamediff/choplifter/choplifter.htm) distinguishes Apple's two-button controls from Atari's hold-to-turn adaptation. [Gameplay notes](https://strategywiki.org/wiki/Choplifter!/Gameplay) describe tap fire, hold rotate, jets after a delivery, and later airborne mines. The user's [C64 Longplay – Choplifter (HQ)](https://www.youtube.com/watch?v=wCrKd0fM1CY) was downloaded to ignored `build/reference` using the official standalone yt-dlp and inspected with FFmpeg frame sheets. Around 75–85 seconds the first group unloads beside the flag; around 87–98 seconds jets approach in a front silhouette and turn into side-on firing passes. The footage also shows front/side helicopter poses and pronounced pitch during travel. Our bounded three-pass jet route is an adaptation, not a claim of identical original AI. Reference video and tools are not game assets or build dependencies.
+This is new code and new pixel art, not a conversion. TI adaptations: an eight-screen world,
+eight-pixel scenery scrolling, character-composited crowds with one boarding-runner sprite,
+one tank, jet and drone at a time, a single fire/turn button and no fuel limit. The jets'
+bounded three-pass route is an adaptation, not a claim of identical original AI.
 
 ## Play and accounting
 
-Home is at the east (right) end of a 2,048-pixel world; spawn x=1920, landing bounds 1896 < x < 1953. Four camps at world x=128,384,640,896 contain 16 people apiece. Shoot a barrack to open it and set its roof burning. It releases one person every 24 video frames, independently of helicopter position and cabin capacity. People walk out into two groups of eight and wait outside, up to 88 pixels from the camp. Land beside a group and stop; the nearest waiting person approaches the cabin using the runner sprite. Capacity is 16. Fly home and land on the marked H pad to unload individually. People persist across trips and helicopter losses.
+The world is 2,048 pixels wide. Home is at the east end: the helicopter spawns at x=1920,
+lands on the pad at 1896 < x < 1953, and unloads beside an 80×16 post office (x=1960–2039)
+with a roof-mounted flag at x=2016. A 320-pixel demilitarised zone (DMZ) spans x=1568–1888
+between two boundary fences. Four camps at x=128, 384, 640 and 896 hold 16 people each; the
+nearest camp's outer wall is 648 pixels from the enemy-side fence.
 
-Saved + lost + aboard + all camp populations always equals 64. An active runner is included in its camp population until it boards or dies. Crashing loses everyone aboard, consumes one helicopter, and returns the next helicopter to home. The HUD shows reserves excluding the current helicopter, right justified. With no lives left, the unresolved people are shown as stranded on the result screen.
+Bombing a barrack opens it and sets its roof burning. It releases one person every 24 video
+frames, whatever the helicopter is doing. People walk out in two groups of eight to waiting
+spots 8 pixels apart, up to 88 pixels from the camp, farthest spots first. Land beside a
+group and stop: the nearest waiting person approaches as the runner sprite. The cabin holds
+16. Land on the pad at home to unload people one at a time; each walks to the office door
+and counts as saved on leaving the cabin.
 
-On destruction, the helicopter catches fire and falls at two pixels per elapsed video frame, retaining its current horizontal speed and direction within the world bounds. Its top clamps to LANDED=153; the 90-frame ground burn begins only after touchdown, including on the last life. During the final 24 frames the hull disappears and low embers replace the tall flames. At 60 Hz this is 1.5 seconds on the ground, with 0.4 seconds of embers. Controls and combat are disabled throughout; pause/resume cannot rearm the fire/turn sampler. Lives and passengers are charged once at the initial hit. Hard landings use the same burn phase without an airborne fall.
+Saved + lost + aboard + everyone still at the camps always equals 64; the runner counts with
+its camp until it boards or dies. A crash loses everyone aboard and one helicopter; the next
+starts at home. The HUD shows spare helicopters (excluding the one flying), right-justified;
+camp indicators change from a number to `o` when opened and `-` when emptied. The mission
+ends when all 64 are saved or lost, or the last helicopter is destroyed; the results screen
+lists saved, lost, stranded and the session's best rescue. A perfect rescue is 64.
 
-Joystick 1 controls flight independently of facing. The helicopter starts facing left. Releasing horizontal input brakes into a hover without changing aim. A short FIRE press shoots on release. A tiny video-interrupt callback samples FIRE every video frame, starting a fresh hold timer on the first held sample. A producer counter latches released taps until the main loop acknowledges them; redraws cannot swallow a complete press/release between updates. Menus, pause and respawn gate the sampler and discard old events before rearming. The first turn requires 30 held video frames (0.5 seconds at 60 Hz), then turns repeat every 18 frames through left/front/right/front; release after a turn does not shoot. Front view drops bombs; side views fire in the facing direction. Each bomb snapshots horizontal speed (0–3 pixels/frame) and direction at release and retains that momentum independently of later helicopter movement. Vertical descent remains 2 pixels/frame. Hovering drops fall straight down. Drift uses bounded word positions and the existing swept collision tests before ground retirement. Flying forward pitches the nose down, backward pitches it up; side shots rise or fall with that pitch. Spawn/resume gates require a released button. Shots expire after 90 frames or on leaving the camera view; retirement happens before accepting a new tap. Horizontal movement on the ground is disabled. Descending onto an exposed runner kills that person. Player shots, shells and jet missiles can kill the runner.
+People persist across trips and crashes. Landing on a runner or an exposed person kills them;
+so do player shots, tank shells and jet missiles. Lost people never return or count twice.
 
-Unloading the last person in a nonempty cabin marks a delivery pending; `sorties` increments after every homeward walker has entered the post-office door at x=1992. Empty visits, partial unloading, and crashes do not unlock jets. Passengers count as saved when they leave the cabin, and mission completion waits for walkers to reach the door. The first completed delivery enables a six-second enemy-territory launch countdown. Jets make three passes at 120 pixels/second, joined by two 48-frame turns with a 16-pixel horizontal arc and 30-pixel altitude change. They scout the first pass, then can fire two aimed missiles, one active at a time, before departing west. Missiles expire at 90 frames or at the border/sky/ground bounds. The second completed delivery enables the pursuing drone. Tanks and jets stay west of the neutral zone; drones may cross it. Home replenishes no lives.
+## Controls and flight
 
-Pause requires holding P on TI (ASCII 80 in the runtime keyboard table), or keypad 0 on Coleco, for 12 frames. A release rearms the pause edge; FIRE also resumes. This removes the old TI single-sample numeric-0 entry path and rejects brief key noise. Pause stops sounds and resets the elapsed-frame clock on resume. The reported spontaneous pause has not been captured with an input trace, so this is a defensive input fix rather than a proven keyboard-runtime diagnosis. Tank travel is 15 pixels/second and drone vertical travel is 30 pixels/second at 60 Hz, using fractional accumulators so a slower loop does not freeze them. Horizontal helicopter acceleration/braking is per update, with cruising movement driven by elapsed frames.
+Joystick 1 flies independently of facing; the helicopter starts facing left. Releasing
+horizontal input brakes to a hover without changing aim. Horizontal acceleration and braking
+step once per update (0–3 px/frame); cruising distance follows elapsed frames.
 
-## Display and sound
+FIRE is sampled every video frame by an `ON FRAME` handler, so taps survive slow updates: a
+press shorter than 30 frames (0.5 s) fires on release; holding turns after 30 frames and
+then every 18, cycling left → front → right → front. Releasing after a turn does not fire.
+Side views shoot in the facing direction and follow the nose pitch; the front view drops
+bombs that keep the helicopter's sideways speed at release. Shots expire after 90 frames or
+on leaving the view; old shots retire before a new tap is accepted. Weapons are disabled on
+the ground, and so is sideways flight: lift off with UP first. Menus, pause and respawn gate
+the sampler and discard stale presses.
 
-Fourteen stars occupy separate sky rows 3–16. Rows 3–6 scroll at one-eighth of terrain speed, rows 7–11 at one-quarter, and rows 12–16 at three-eighths. Each eight-pixel terrain step moves the bands one, two, or three pixels respectively. The same row-dependent transform computes old and new positions, with intentional byte wrap at the viewport edges and no additional RAM. Characters 240–255 hold eight sub-character horizontal phases in gray and white. Old cells are cleared before plotting new ones, and unique rows prevent stars erasing each other at wraparound. No sprite slots or VDP reads are needed. Rows 22–23 are continuous ground, with no bottom gameplay messages; PAUSED temporarily replaces SPARES in the top HUD.
+Holding DOWN descends at 1 px/frame, speeding up every 24 held frames to 3 px/frame;
+releasing DOWN brakes to a hover. Touching down faster than 1 px/frame crashes, even during
+spawn invulnerability; short taps land safely. Holding P (TI) or keypad 0 (ColecoVision) for
+12 frames pauses; the same key or FIRE resumes. Pause silences sound and resets the frame
+clock.
 
-Holding DOWN starts at one pixel per video frame and increases descent speed after each 24 held frames, up to three pixels per frame. Releasing DOWN immediately brakes to a hover; UP also clears the descent accumulator. Touchdown above one pixel per frame crashes, including during spawn invulnerability, and the main loop skips boarding and weapons after that crash. Short descent taps remain safe. Grounded `fire_shot` returns before allocating a projectile, setting a cooldown, or making a weapon sound.
+A destroyed helicopter catches fire and falls at 2 px/frame, keeping its sideways speed. It
+burns for 90 frames on the ground (the last 24 as low embers), then the next helicopter
+launches or the mission ends. Lives and passengers are charged once, at the hit. The crash
+uses sprite slots 0–3 only (flames ahead of the grey hull) with every other sprite hidden.
 
-Helicopter contact with either a boarding runner or an exposed crowd member triggers an eight-frame noise squish: a sharp initial burst followed by a lower coarse tail. Bullet casualties do not trigger it. Repeated casualties in one landing share the same short envelope; active explosions retain priority. Existing sound decay, pause, and reset paths silence it.
+## Enemies
 
-256×192 TMS9918 display. Rows 0–1 are HUD, rows 2–16 sky, rows 17–21 scrollable scenery, rows 22–23 ground. Ground contact is helicopter top y=153, runner y=160, tank y=156. Two 16×16 white sprites form a 32×16 helicopter with two main-rotor beats in left/right/front views, each with level and two banked poses. Side views also alternate cross and diagonal tail-rotor blades; mirrored and banked frames derive from the same animated source art. There are 64 sprite patterns and 112 scenery characters (128–239), plus fire characters 126–127 and star phases 240–255. Moving crowds alternate character sets 0–31 and 64–95 in the bottom screen third, preserving the HUD font above. Standing poses occupy 96–119 in that third; code 120 holds the home fence/pad composite. Title/results restore the borrowed uppercase font and colors before drawing. Tanks use two 16×16 halves; other actors use one each. The helicopter and player shots retain scanline priority; lower-priority ground actors/effects can disappear on congested lines.
+All enemy activity and border checks use the DMZ fence, x=1568.
 
-The post office spans x=1960..2039: an 80×16-pixel red/cream building on a blue apron, with an inset door and POST sign. The flag at x=2016 occupies row 17, with one pole tile on row 18 meeting the row-19 roof. The landing pad is beside the building at x=1904..1959. The neutral zone spans x=1568..1888, a full 320 pixels. Each boundary fence starts on the ground horizon (row 21) and extends into the foreground (row 22). Its near end projects 25% farther from the screen centre; the posts and rails are generated together in eight perspective poses. The ground anchor scrolls exactly with the world, preventing the old independent-row drift. All writes clip to the ground rows. Flag animation changes two character patterns every 16 frames and consumes no sprite slots.
+- **Tank.** One at a time, 32×16 pixels with left, right and front views; it appears 2.5 s
+  after the helicopter crosses west of the fence and crawls toward it at 15 px/s, never
+  past the fence. It fires one shell every 140 frames (100 once 16 people are saved) when the
+  helicopter is within 220 pixels. Shells fly 2 px/frame sideways and rise 1 px/frame, or fly
+  flat when the helicopter is low (y > 130). **When the helicopter is overhead the turret
+  shows its front view and the shell goes straight up from its centre at 2 px/frame**, so
+  hovering above a tank is not safe. Contact with the hull crashes the helicopter.
+- **Jets.** Enabled after the first completed delivery (every walker has entered the office).
+  A launch countdown of 6 s, then three passes at 120 px/s joined by two 48-frame banking
+  turns, all west of the fence. The first pass scouts; then it can fire two aimed missiles,
+  one at a time (3 px/frame, retiring after 90 frames or at the sky, ground or fence). After
+  its last pass a departing jet retires as soon as it is wholly off camera, so the gap before
+  the next jet does not depend on how far west the world extends.
+- **Drone.** Enabled after the second completed delivery. It enters at the fence, chases the
+  helicopter (60 px/s sideways, 30 px/s vertically) and may cross the DMZ to home.
 
-The main and tail rotors share a four-video-frame beat, twice the preceding eight-frame beat. A separate accumulator toggles at most once per update, so slow updates cannot skip both poses and freeze the blades. Flight and other animation timings remain independent.
+## Display
 
-Sound channel 0 carries the engine: quiet idle, stronger alternating airborne pulses, and higher pitch under horizontal load. Channel 1 plays a short gun sweep or a longer descending bomb whistle; when free, it carries a nearby jet's distance-dependent pitch/volume or a drone's alternating warning. Channel 2 carries rising boarding and descending unloading chirps, plus a three-note completed-delivery cue. Channel 3 carries periodic rotor noise, overridden by tank cannon fire, missile launches, or a fading explosion. Explosions override launches; launches cannot interrupt an active explosion. Fixed-rate noise avoids coupling explosion pitch to rescue tones. Effects expire using frame deltas; pause, new helicopters, title and results explicitly silence all four channels and clear effect state. No music player or blocking sound delays.
+256×192 TMS9918 screen. Rows 0–1 HUD (PAUSED replaces SPARES while paused), rows 2–16 sky,
+rows 17–21 scenery (row 20 is the crowd row), rows 22–23 ground. Ground contact: helicopter
+top y=153 (its lowest ink at y=167 touches ground row 21 at y=168), runner y=160, tank 156.
 
-## Practice setup and larger tanks
+**Scrolling.** The camera moves in 8-pixel steps. A scroll update composes the crowd row
+first (without touching the visible one), then `crowd_commit` WAITs for vblank and copies
+rows 17–19 and the crowd row back to back, so roofs and their footings always share a camera
+position. The flag, camp fires and open doors (rows 17–19) are written immediately after, ahead
+of the ground rows and fences, so they land before the beam reaches them; otherwise a
+burning camp shows its closed roof and door for a frame after each scroll. Then rows 21–22
+are copied and the fence stamps drawn. Row 23 is drawn once by `game_screen`.
 
-The hidden title sequence 838 opens a 1–9 helicopter prompt; zero cancels. Key edges count once and release separates the code from the choice. Normal games use three helicopters. Practice saved counts carry a custom five-pixel asterisk in character 60, including default-value practice runs. The best score inherits its run's marker; a normal run clears a marked record on an equal score. Eight right-justified spare icons fit beside the shortened SPARES label, excluding the current helicopter and guarding zero-life underflow.
+**Stars.** Fourteen stars, one per sky row 3–16, in three parallax bands: rows 3–6 move 1,
+rows 7–11 2 and rows 12–16 3 pixels per 8-pixel camera step, wrapping at the screen edges.
+Characters 240–255 hold eight sub-cell phases in two shapes. Each star is redrawn in one pass
+and its old cell cleared only when it has left it; because each star owns its row, that
+never erases another star. `star_row` ends with row 0, so the star list can change length.
 
-Tanks occupy 32×16 pixels with left/right mirrored views and a distinct front turret when the helicopter is overhead. Their hull stays grounded at y=163..170 and their turret begins at y=158. Sprite pattern 12 is reused with patterns 59–63, filling all 64 available 16×16 patterns. The full width remains west of the DMZ. Hull/cabin contact replaces the old broad tank crash radius. Tank and aircraft projectile hits use the swept bounding rectangle of the 3×3 shot between updates, avoiding endpoint tunnelling and inflated radial hit windows. This is a conservative box sweep, not pixel-perfect diagonal intersection. Bombs are tested before ground retirement. A destroyed target consumes the projectile immediately.
+**Fences, pad, office and flag.** Each fence is a clipped 5×2 perspective stamp from the
+horizon (row 21) into the foreground (row 22) whose near end leans away from the screen
+centre; empty stamp cells are transparent, and the one cell crossing the landing pad is
+precomposed with the pad marking (character 120). The flag waves by redefining two
+characters every 16 frames.
 
-## Source and validation
+**Crowds (characters, not sprites).** All 64 people are background characters in row 20, so
+a whole crowd costs no sprite slots; only the runner is a sprite.
+- *Appearance.* Three looks by `id % 3`; poses `(anim/8 + id) AND 3`, so neighbours are out of
+  step; walking speeds of 60, 48 or 40 px/s from a stride of 4, 5 or 6 frames per 4-pixel
+  step, with each person's step clock offset by its id (one shared clock, no per-person
+  timers).
+- *Settled crowds.* A camp with no walkers has everyone on world-aligned spots 8 pixels apart,
+  so each person owns a cell: 24 prebuilt standing characters (3 looks × 4 poses × black or
+  blue paper) are written straight into the name row.
+- *Moving crowds.* Camps with walkers, and homeward walkers near the office, go through the
+  compositor. A person sits on a 4-pixel grid, so they fill one cell or straddle two. ROM
+  holds pre-shifted copies of every pose (unshifted, and the two halves of a 4-pixel shift).
+  A 256-byte RAM buffer holds the row's pixels; the first person in a cell copies in the
+  scenery pattern beneath it, then every silhouette touching the cell is ORed in, so
+  overlapping people merge. Each 8-pixel cell has one palette (a TMS9918 limit): the first
+  person's look, except that office wall, window and door cells keep their own. Patterns and
+  colours upload to the hidden half of a double-buffered character set (codes 0–31 or 64–95
+  in the bottom screen third), then one name-row copy switches over.
+- Settled camps stay on the cheap path even while a neighbour evacuates: crowds of different
+  camps are at least 64 pixels apart and never share a cell.
 
-The project lives in `AI-Games/games/Choplifter/`. `src/CHOPLIFT.bas` owns the game. `assets/generate.py` owns art and scenery and emits `src/assets.bas` and the fixed-ROM `src/menu_font.bas`. Build scripts regenerate before compiling, run the repository truncation and GOSUB gates, check source contracts and asset geometry, assemble, check fixed/bank sizes, and verify the packed data bank. Shared checkers, the Classic99 loader and its input profile resolve from the `AI-Games` root, two directories above the game. The TI uses the unhuman/CVBasic fork, xdt99 and linkticart. All builds are sequential.
+**Sprites.** Two 16×16 sprites make the 32×16 helicopter, in left, right and front views
+with two rotor beats each and level or banked poses; side views alternate cross and diagonal
+tail-rotor blades. Main and tail rotors share a four-frame beat that never skips both poses on
+a slow update. There are 64 sprite patterns; 13–14 are the crash flames. Slots (the VDP draws
+4 per scanline, lowest first):
 
-Sixty-one regression tests execute control, pause, projectile, jet, crowd, scenery and crash routines from BASIC source, with known-bad mutations. Generated TI assembly was inspected for the jet table lookup, banked pose selection, flight multiply boundary, bomb momentum word arithmetic, person stride division, and dynamic pattern/color VRAM transfers. Fixed TI code uses 24,240 / 24,336 bytes; the data bank uses 8,042 / 8,190 bytes. Game variables occupy 838 TI bytes and 813 of the Coleco's 814 bytes. Both target builds pass all checks. Bomb tests cover both directions at speeds 0–3 and frame deltas 1–6, independent release momentum, recycled slots, world boundaries, and drifting tank hits; mutations remove drift or couple it to current input and must fail. Input tests cover taps through 29 held frames and the 30-frame turn boundary across update steps 1–6; known-bad mutations restore the old short threshold or count pre-press time and must fail. New tests exercise sound envelopes and note-off, four-frame rotor pacing at frame deltas 1–6, all nine setup choices, marked best-score ties, all tank views, and swept hits/misses. Classic99 captures in build/practice-menu.png, build/practice-nine.png, and build/review-tank/ verify setup and tank rendering; production was restored immediately. New regression checks cover ground weapon rejection, soft/hard touchdowns at frame deltas 1–6, squish causes/expiry, all star positions across the scrolling world in both directions, distinct layer displacements and rejection of stale-trail/collapsed-layer mutations, and bottom-row ownership. Classic99 captures in build/stars-home.png, build/stars-scroll.png, build/hard-landing.png, and build/review-squish/landing.png confirm rendering and landing outcomes. Production was restored after the separate casualty review. Later captures in build/star-layers-home.png, build/star-layers-west.png, and build/star-layers-east.png verify layered movement and return to the same star positions when scrolling back. The final 280 ms FIRE tap capture (build/fire-check-tap-final.png) shows a shot with unchanged facing. Extended hold/repeat timing is covered by source-executing tests; the longer interactive review was interrupted by window closure and focus changes. Sound balance remains unauditioned. Classic99 captures verify the revised home scenery, pause, helicopter poses, varied evacuees, and passengers walking toward the office. Remaining verification limits are recorded in README.md.
+| Slots | Owner |
+|---|---|
+| 0–1 | helicopter (pinned) |
+| 2 | tank shell |
+| 3 | jet missile |
+| 4–5 | player shots |
+| 6–11 | tank left/right, runner, jet, drone, explosion — rotating |
 
-## Crowd evacuation (2026-10-03)
+On the ground beside a tank there are six sprites for four places. Keeping the shell and
+missile right after the helicopter means a projectile that can destroy it is never the one
+dropped (it used to be: the shell was invisible exactly when it was about to hit). The
+rotating block takes its order from `rot_map`, which changes every update and reverses on
+alternate updates, so on a crowded line the tank halves and runner take turns (flicker)
+instead of one vanishing; lines with four or fewer sprites never flicker. `#sprite_shown`
+has one bit per slot so an inactive actor's slot is hidden once and then costs a bit test.
 
-Each of the 64 people has a world position and explicit indoors/escaping/waiting/boarding/lost/aboard/walking-home/inside-office state. Camp population includes everyone not yet boarded or lost. Escape timers run for every opened camp, off screen and with a full cabin; boarding does not control release. Eight waiting positions on either side are eight pixels apart, with the farthest filled first. Three appearances use yellow, white, or tan clothing and four independently phased walking or waving poses. Four-pixel movement uses elapsed video frames with per-person speeds of 60, 48, or 40 pixels/second at 60 Hz. Faster walkers can pass slower ones without either disappearing.
+## Sound
 
-The nearest waiting person becomes a matching boarding sprite. Leaving that runner behind returns the same person to the crowd. Crowd members can be hit by player shots, shells and missiles or crushed on landing; lost people cannot reappear or be counted twice. Unloading releases one aboard person every 12 frames beside the helicopter, then that person walks to the office door. Home walkers remain safe across helicopter losses.
+Channel 0 carries the engine: quiet idle on the pad, stronger alternating airborne pulses and
+a higher pitch under horizontal load. Channel 1 plays a short gun sweep or a longer falling
+bomb whistle; when free it carries a nearby jet's distance-dependent tone or the drone's
+alternating warning. Channel 2 carries rising boarding and falling unloading chirps and a
+three-note delivery chime. Channel 3 carries periodic rotor noise, overridden by tank fire,
+missile launches, explosions (which win over launches) and an eight-frame squish when the
+helicopter lands on a person. Effects expire on frame deltas; pause, new helicopters, the
+title and the results silence all four channels and clear effect state. No music player.
 
-The moving-crowd renderer composes a 256-byte pixel row in RAM, OR-ing every overlapping silhouette, with four-pixel alignment and clipping at both viewport edges. Shifted silhouettes and scenery backgrounds are precomputed in ROM. Two short TI byte-copy/OR kernels replace per-pixel BASIC loops; Coleco retains the equivalent BASIC path. Each occupied eight-pixel cell shares one palette; the post-office wall, windows, and door retain their background pixels and palette. Patterns upload to the inactive VRAM set (4096 or 4608), with colors at 12288 or 12800. The 32-character name row is committed with one SCREEN blit after composition; only then does the buffer selector flip. Terrain scrolling and open-door overlays never overwrite this row beforehand. Settled groups bypass pixel composition and uploads entirely, using 24 prebuilt standing glyphs with black/blue terrain palettes. The TI scans state bytes and clips world positions in a compact native loop; the portable implementation yields the same name row. Fire and crowd use no extra sprites.
+## Practice setup
 
-Source-executing tests cover independent release, closed camps, full cabins, frame deltas 1/2/3/4/6, individual pacing, permanent casualties, all 64 boarding/unloading, abandonment, pixel unions, office backgrounds, door entry, and delivery completion. Known-bad composition and draw-order mutations are rejected. Classic99 captures in `build/review-crowd/` and `build/review-unload/` show varied escapees, passengers leaving the cabin toward the office, and a finished 16-person delivery with the entrance clear. Separate review cartridges change initial conditions only; production is restored immediately after each capture. Full uninterrupted mission play and original-hardware timing remain unverified.
+The hidden title sequence 838 opens a 1–9 helicopter prompt (0 cancels); normal games use
+three. Practice saved counts carry a small asterisk (character 60) and the best rescue keeps
+its marker; an unmarked run wins a tie. Up to eight spare icons fit beside SPARES.
 
-## Performance and input verification (2026-10-03)
+## TI native kernels
 
-Four per-camp active-walker counts skip simulation for settled/closed groups. Homeward walkers are counted until door entry. Off-screen camps still release and move people correctly; only drawing is culled. Landing-contact checks run on a touchdown rather than calling a collision routine for every waiting person on every update. A 224-pixel centre-distance bound covers settled groups; 336 covers an abandoned boarding runner returning toward the camp. Fine clipping precedes glyph work. Standing and walking renderers preserve each person's identity, appearance and state.
+Each kernel is inline `ASM` inside a BASIC routine, with the BASIC original kept as the
+ColecoVision path:
 
-The isolated `tools/profile.py` harness measures 32 scrolling updates without per-update instrumentation. At Classic99 Normal speed, empty / all-offscreen / visible-waiting workloads changed from 225 / 329 / 728 video frames to 94 / 104 / 177. This is 2.4× / 3.2× / 4.1× faster for that workload, not a claim of full-loop 60 FPS. Captures are in `build/perf/`. The normal production cart is restored after temporary reviews.
+| Routine | Work |
+|---|---|
+| `stars_draw` | the star field, one pass per star |
+| `walk_camp` | one camp's escaping and homeward walkers (same stride DIVs as `person_stride`) |
+| `compose_block` | one camp's people into the crowd pixel buffer (`crowd_plot`/`crowd_cell`) |
+| `crowd_draw` | clearing the cell map and uploading cell palettes |
+| `waiting_scan`, `waiting_draw` | settled people and the scenery row copy |
 
-New gates execute the actual TI byte kernels, compare native waiting-row output with the portable renderer over viewports and animation phases, reject writes into the displayed crowd buffers, reject terrain overwrites of row 20, and confirm idle/offscreen crowds avoid composition and gait work. Input tests simulate video interrupts independently from main-loop gaps up to 30 frames and retain the 30-frame initial hold / 18-frame repeat boundary. Both production builds pass all 57 tests. The compiler's `#CROWD_PIXEL assigned but never read` warning is expected: the TI kernels read it directly in assembly. Real-hardware timing, Coleco emulator play and final sound balance remain unverified.
+Rules they follow: registers r0–r9 only (r10 is CVBasic's stack; r11 is used only for a local
+`bl`); the vblank handler has its own workspace, so registers survive interrupts; every VDP
+address-and-data write is wrapped in `limi 0`/`limi 2`, as the runtime's `WRTVRM` does, so the
+handler cannot move the address between the two halves; and a kernel ends in `RETURN` or is
+followed by statements that reload what they use, because inline `ASM` does not invalidate
+the compiler's register cache (checked in the generated assembly).
 
-Final TI review: `build/perf/verified-tap.png` captures a 90 ms tap producing a shot without turning. Desktop captures could show only repainted regions; `tools/capture.ps1` now invalidates the full client region and requests a complete image with PrintWindow (Classic99 DIB mode), with desktop capture as a fallback. The running review uses DIB mode. Audio logging was explicitly verified off.
+## Source, tools and validation
 
-Capture limitation: some live-motion captures still omit unchanged regions even through PrintWindow; the static full-client capture is complete. The no-erase and hidden-pattern-bank guarantees are checked from actual write sequences, rather than inferred from a single screenshot. Continuous-video and original-hardware flicker verification remain outstanding.
+- `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map and the star
+  table and writes `src/assets.bas` (all banked data, including the menu font).
+- `tools/build.py` — generation, the 69 source-executing tests (once per `build.ps1 All`),
+  the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
+  its verification, budget checks, an even-address check on every indexed word table (from
+  xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address
+  that the listing hides), packing, and assembly assertions.
+- `tools/check.py` — a strict interpreter that executes the game's BASIC routines and its TI
+  kernels (registers, status flags, `DIV`, local `bl`, memory writes and the VDP ports, which
+  must be written with interrupts off). Unknown statements and instructions are errors.
+  Native kernels are compared with their portable twins over sweeps and randomised scenes,
+  and known-bad mutations of every kernel must fail.
+- `tools/profile.py` — benchmark carts: full-loop and component cases, `--micro` per-routine
+  costs, `--stub ROUTINE` to attribute cost, and `--review` for a production-code cart that
+  starts airborne over evacuating camps. Benchmarks call routines out of context and look
+  scrambled on screen; use `--review` to judge rendering.
+- `tools/run-bench.ps1` — runs a benchmark cart in its own Classic99, starts it (title key,
+  then 2) and captures the finished screen. `tools/capture.ps1` screenshots and drives a
+  specific Classic99 process. `launch-ti.ps1` opens a separate review session of the
+  production cart.
 
-## Coherent house scrolling and ground contact (2026-10-03)
-
-The preceding crowd optimization left terrain rows 17–19 moving in camera_tick while row 20 waited for crowd composition. A slow update could therefore show a house's roof/walls and footing at different camera positions. camera_tick now only marks the terrain dirty and moves the stars. crowd_draw prepares the replacement row (including hidden-bank pixel/color uploads) before crowd_commit waits for a video frame and copies the three upper scenery rows immediately followed by row 20. Remaining terrain/flag/fire overlays follow. Stationary crowd redraws skip the synchronization wait. No additional RAM is used; fixed TI code grows by 42 bytes to 24,030, leaving 306 bytes. Generated TI assembly confirms the wait and consecutive 96-byte/32-byte name-table transfers have no crowd processing between them.
-
-New source-executing tests preserve the entire house band until composition finishes and check ordered, synchronized presentation for empty, settled and moving crowds, scrolling both ways on TI and Coleco paths. Mutations restore early terrain writes, remove the wait or split the two transfers and must fail. LANDED is now 153: the level helicopter's lowest ink is at y=167, adjoining ground row 21 at y=168. Geometry tests resolve the actual sprite patterns and VDP y+1 bias for every facing/rotor beat and reject the former one-pixel gap. Ground weapon, soft/hard touchdown, boarding and casualty checks use the revised landing position.
-
-Both builds pass all 57 tests and existing repository gates. The initial runtime review was on the sandbox's isolated Windows desktop. Launching Classic99 outside the sandbox exposed the actual interactive desktop, where the production game was verified running and the user confirmed much improved scrolling. The isolated emulator was closed. Launch/capture actions must use the interactive desktop; capture tools refuse to send keys when focus acquisition fails. Audio logging was explicitly verified off and the debugger closed. Original-hardware timing remains unverified.
-
-## Fence overlap at the landing pad (2026-10-03)
-
-The 5×2 fence stamps used to write all ten tiles, including entirely blank gray cells. The home fence erased the start of the pad; changes in perspective moved that erased rectangle, making the pad flash. Empty cells now map to zero in generated fence lookup tables and issue no VPOKE. The generator derives a home-fence table from the underlying world map and precomposes its single pad-overlap tile with the white marking and black apron (character 120, bottom-third pattern/color addresses 5056/13248). Posts and rails keep their existing shapes; the pad's markings survive every phase. No additional RAM is required: the fence reuses fire_char before camp_fronts needs it.
-
-A pixel-level test failed against the old renderer (gray replaced a white marking), then passed across every visible pad viewport in both directions. Mutations restore opaque rectangle writes or omit the special overlap tile and must fail.
-
-Final pad-fix budgets: TI fixed code 24,150 / 24,336 bytes, data bank 7,210 / 8,190; RAM remains 838 TI and 813 / 814 Coleco bytes. Both target builds pass 57 tests. Generated assembly was checked for both code-120 uploads and the transparent/home fence lookups. The production TI cart (SHA256 7CB5DBA093D92CFE427C4D0B5E5B5A8DC8CCFCE345B10FF4081B70547539A056) was reloaded on the interactive desktop and captured running. Pad preservation is covered by the viewport pixel sweep; the runtime capture was during flight over a camp.
-
-
-## Burning helicopter crashes (2026-10-03)
-
-The crash renderer uses only four sprites: alternating yellow/red flames in slots 0–1, ahead of the gray helicopter halves in slots 2–3. All old actor sprites are hidden on entry, and ordinary actors are not drawn during the sequence. This stays within the TMS9918's four-sprites-per-scanline limit. Two unused legacy runner patterns (13–14) hold the fire poses; current runners already use patterns 47–58. Ground fire reaches pixel 167, directly above the ground at 168. The final 24 frames replace patterns 13–14 with two short ember poses and hide the hull. Every crash restores the tall flame patterns before drawing. Main/tail rotor art and normal sprite priority are preserved.
-
-Fire crackle uses the existing noise envelope, with a burst at the initial hit and another on ground impact. The envelope stays audible through the main burn and fades during the embers. There are no blocking waits, extra RAM variables, per-frame pattern uploads, or VDP reads. The only crash-specific pattern transfers are 64 bytes on entry and 64 bytes at the ember transition.
-
-To fit the code, the results screen, results input loop and best-score update now share the permanently selected TI data bank with the assets. Coleco remains unbanked. Generated assembly was checked for the crash movement multiply's low-word store and reload across the movement-routine boundary. The full sprite-art block remains 2,048 contiguous bytes; the flame label aliases its two patterns rather than duplicating them. Ember art adds 64 bytes. The fixed/data-bank limits and packed bank bytes pass the existing build checks, with 426/212 bytes free respectively; RAM remains 838 TI and 813 Coleco bytes.
-
-Three additional regression tests cover high, low and grounded crashes at several frame deltas, final-life timing, world clipping, once-only passenger/life accounting, pause-safe fire gating, sprite priority, tall-fire restoration after embers, and exact generated-art layout. Mutations that count down during the fall, omit ground clamping, skip clearing old sprites or load embers prematurely must fail. Both platform builds pass all 60 tests. Classic99 captures in `build/review-crash/` show the airborne flames, impact/ground burn, embers, and banked final-life results. Production was restored immediately after the isolated review. `production-respawn.png` confirms a hard landing returns the next helicopter home, with one reserve remaining. Sound balance remains unauditioned.
-
-
-## Two-screen camp setback (2026-10-04)
-
-The world grows from six to eight screens (1,536 to 2,048 pixels). Camp centres remain 128, 384, 640 and 896, preserving camp spacing and evacuee destinations. An additional 512 pixels of open enemy terrain separate the last camp from the demilitarized-zone boundary: its east wall ends at x=920 and the enemy fence is at x=1568, a 648-pixel gap instead of 136. The DMZ remains 320 pixels wide. Both fences, the landing pad, post office, flag, home spawn and unloading destinations move east by 512 pixels. Tank limits, jet turns, missile/shell retirement and drone entry follow the new boundary.
-
-The map has five rows of 256 columns (1,280 bytes), and camera positions run from 0 to 1792. The 256-byte menu font moves from the permanent TI bank into fixed ROM, leaving space for the map's additional 320 bytes. It is emitted separately by the same asset generator; the production and profiling builders copy its include. There is no new RAM or per-frame actor work.
-
-SCREEN source stride is only eight bits on both TMS backends. Three consecutive one-row transfers now advance a word source offset by 256, followed immediately by the crowd row, after a single WAIT. They still transfer the same 128 visible cells per scrolling update. The strict test interpreter models the byte-sized SCREEN arguments. A new regression sweeps all camera positions in both directions on both rendering paths, checks the actual camp-to-fence gap, and rejects the old camera limit, fence location, crowd-row offset and a multirow copy whose 256-byte stride wraps to zero. Existing home, unloading, pad/flag, star, world-boundary and enemy-border checks use the enlarged world.
-
-Both production builds pass all 61 regression tests and the repository gates. Final TI usage is 24,240 / 24,336 fixed bytes and 8,042 / 8,190 bank bytes; RAM remains 838 TI bytes and 813 / 814 Coleco bytes. Generated TI assembly confirms word-sized 256-byte row advances and consecutive scenery transfers. Classic99 captures in build/spacing-home.png, build/spacing-boundary.png, build/spacing-open-east.png, build/spacing-open-west.png and build/spacing-camp.png verify the home, boundary, added open terrain and nearest house. The normal production cartridge was restored after review, with audio logging verified off.
+Verified in Classic99: the production review cart scrolling over two evacuating camps with a
+tank, shells and crashes (clean rendering, overlays in place), and every benchmark case. The
+ColecoVision build has been booted and flown briefly in CoolCV. Not verified: original
+hardware, sound balance and a complete 64-person mission played through.

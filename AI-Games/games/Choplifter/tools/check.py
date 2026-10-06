@@ -53,14 +53,24 @@ class Basic:
     def expr(self,s):
         s=s.strip()
         s=re.sub(r'\bAND\b','&',s,flags=re.I)
+        s=re.sub(r'\bXOR\b','^',s,flags=re.I)
         s=re.sub(r'\bOR\b','|',s,flags=re.I)
-        s=re.sub(r'(#?[a-z_]\w*)\(([^()]+)\)',lambda m:str(self.a[m[1]][self.expr(m[2])]),s,flags=re.I)
+        s=re.sub(r'(#?[a-z_]\w*)\(([^()]+)\)',lambda m:str(self.element(m[1],self.expr(m[2]))),s,flags=re.I)
         s=re.sub(r'#?[a-z_]\w*(?:\.\w+)?',lambda m:str(self.v.get(m[0].lower(),0)),s,flags=re.I)
         s=s.replace('<>','!=')
         s=s.replace('/','//')
         s=re.sub(r'(?<![<>=!])=(?!=)','==',s)
-        if not re.fullmatch(r'[\d\s+*/%<>=!()&|\-]+',s):raise ValueError('Expression '+s)
+        if not re.fullmatch(r'[\d\s+*/%<>=!()&|^\-]+',s):raise ValueError('Expression '+s)
         return int(eval(s,{'__builtins__':{}},{}))
+    def element(self,name,index):
+        # CVBasic reads a plain name(i) as BYTES; only #name(i) reads words.
+        # A word table reached without '#' compiles to a byte read of the
+        # wrong address, so the model must refuse it rather than hand back
+        # the Python list's word.
+        value=self.a[name][index]
+        if not name.startswith('#') and not 0<=value<=255:
+            raise ValueError(f'byte read {name}({index}) of word value {value}')
+        return value
     def call(self,name):
         self.events.append(('call',name))
         self.calls[name]=self.calls.get(name,0)+1
@@ -117,18 +127,46 @@ class Basic:
                 if flow:return flow
         return False
     def native(self,lines):
-        """Execute the actual TI byte-copy/OR kernels, rejecting unknown opcodes."""
-        regs=[0]*16;memory={};bases={};ptr=0x4000
+        """Execute the actual TI kernels, rejecting unknown opcodes. DIM arrays
+        are array_NAME and DATA tables cvb_NAME, as in the generated assembly;
+        a word table is #NAME -> _NAME. Writes outside every array are errors."""
+        regs=[0]*16;memory={};bases={};ptr=0x4000;layout=[]
+        dims=set(re.findall(r'^DIM (#?\w+)\(',SOURCE,re.M))
         for name,data in self.a.items():
-            bases[('array_' if name in ('crowd_pixels','crowd_cells','person_state','#person_x') else 'cvb_')+name.replace('#','_')]=ptr
+            bases[('array_' if name in dims else 'cvb_')+name.replace('#','_')]=ptr
+            layout.append((name,ptr))
             if name.startswith('#'):data=[v for word in data for v in (word>>8,word&255)]
             for i,v in enumerate(data):memory[ptr+i]=v
             ptr=(ptr+len(data)+3)&~1
+        def store(addr,value,byte):
+            for a,v in ((addr,value),) if byte else ((addr,value>>8),(addr+1,value&255)):
+                if a not in memory:raise ValueError(f'native write outside arrays at {a:#x}')
+                memory[a]=v
+        def variable(dest,value):
+            name=dest[5:];name='#'+name[1:] if name.startswith('_') else name
+            self.v[name]=value
         labels={s[:-1].lower():i for i,s in enumerate(lines) if s.endswith(':')}
+        # VDP ports: two address bytes (low, then high with >40 for writing),
+        # then auto-incrementing data. Port writes need interrupts held off,
+        # or the vblank handler can move the address between the two halves.
+        vdp={'latch':[],'addr':None,'ints':True}
+        def port(dest,value):
+            if vdp['ints']:raise ValueError('VDP port written with interrupts enabled')
+            if dest=='@vdpwadr':
+                vdp['latch'].append(value)
+                if len(vdp['latch'])==2:
+                    low,high=vdp['latch'];vdp['latch']=[]
+                    if not high&0x40:raise ValueError('VDP address set for reading')
+                    vdp['addr']=((high&0x3f)<<8)|low
+            elif dest=='@vdpwdata':
+                if vdp['latch'] or vdp['addr'] is None:raise ValueError('VDP data before a full address')
+                self.transfers.append((vdp['addr'],1));self.vram[vdp['addr']]=value
+                vdp['addr']+=1
+            else:raise ValueError('Unsupported native destination: '+dest)
         def operand(s,byte=False):
             if s.startswith('@cvb_'):
                 name=s[5:];name='#'+name[1:] if name.startswith('_') else name
-                return self.v[name]
+                return self.v.get(name,0)  # CVBasic variables start at zero
             if s.startswith('*r'):
                 reg=int(s[2:].rstrip('+'));addr=regs[reg]
                 if s.endswith('+'):regs[reg]+=1 if byte else 2
@@ -138,11 +176,24 @@ class Basic:
         pc=0;zero=False;steps=0;compare=0
         while pc<len(lines):
             steps+=1
-            if steps>5000:raise ValueError('Native loop runaway')
+            if steps>40000:raise ValueError('Native loop runaway')
             line=lines[pc].lower();pc+=1
             if line.endswith(':'):continue
             op,args=line.split(None,1);parts=args.split(',')
-            if op in ('mov','li','ai','a','s','srl','sla','andi'):
+            if op=='mov' and not re.fullmatch('r[0-9]+',parts[1]):
+                value=operand(parts[0]);dest=parts[1]
+                if dest.startswith('@cvb_'):variable(dest,value)
+                elif dest.startswith('*r'):
+                    reg=int(dest[2:].rstrip('+'));store(regs[reg],value,False)
+                    if dest.endswith('+'):regs[reg]+=2
+                else:raise ValueError('Unsupported native destination: '+dest)
+                compare=value;zero=value==0
+            elif op=='div':
+                src=operand(parts[0]);reg=int(parts[1][1:])
+                if src>regs[reg]:  # otherwise the TMS9900 sets overflow and leaves both
+                    dividend=(regs[reg]<<16)|regs[reg+1]
+                    regs[reg],regs[reg+1]=dividend//src,dividend%src
+            elif op in ('mov','li','ai','a','s','srl','sla','andi','ori'):
                 reg=int(parts[1][1:]) if op=='mov' else int(parts[0][1:])
                 if op=='ai':regs[reg]+=operand(parts[1])
                 elif op=='li':regs[reg]=operand(parts[1])
@@ -151,32 +202,73 @@ class Basic:
                 elif op=='srl':regs[reg]>>=operand(parts[1])
                 elif op=='sla':regs[reg]<<=operand(parts[1])
                 elif op=='andi':regs[reg]&=operand(parts[1])
+                elif op=='ori':regs[reg]|=operand(parts[1])
                 else:regs[reg]=operand(parts[0])
                 regs[reg]&=65535
+                # Like the TMS9900, these compare their result with zero.
+                compare=regs[reg];zero=compare==0
+            elif op in ('neg','swpb'):
+                reg=int(args[1:]);value=regs[reg]
+                regs[reg]=(-value)&65535 if op=='neg' else ((value&255)<<8)|(value>>8)
+                if op=='neg':compare=regs[reg];zero=compare==0
+            elif op=='limi':vdp['ints']=operand(args)!=0
+            elif op=='c':
+                compare=operand(parts[0])-operand(parts[1]);zero=compare==0
+            elif op=='jeq':
+                if zero:pc=labels[args]
+            elif op=='jmp':pc=labels[args]
+            elif op=='bl':
+                # Local subroutine: the TMS9900 keeps the return address in R11.
+                if not args.startswith('@'):raise ValueError('Unsupported bl: '+line)
+                regs[11]=pc;pc=labels[args[1:]]
+            elif op=='b':
+                if args!='*r11':raise ValueError('Unsupported branch: '+line)
+                pc=regs[11]
+            elif op=='movb' and parts[1].startswith('@cvb_'):
+                value=operand(parts[0],True);variable(parts[1],value);compare=value;zero=value==0
+            elif op=='movb' and parts[1].startswith('@'):port(parts[1],operand(parts[0],True))
             elif op in ('movb','socb'):
                 value=operand(parts[0],True);dest=parts[1]
                 if dest.startswith('*r'):
                     reg=int(dest[2:].rstrip('+'));addr=regs[reg]
+                    if addr not in memory:raise ValueError(f'native write outside arrays at {addr:#x}')
                     memory[addr]=(memory[addr]|value) if op=='socb' else value
                     if dest.endswith('+'):regs[reg]+=1
-                else:regs[int(dest[1:])]=value<<8
+                    value=memory[addr]
+                else:
+                    # A byte move replaces only the register's high byte.
+                    reg=int(dest[1:]);regs[reg]=(value<<8)|(regs[reg]&255)
+                compare=value;zero=value==0
             elif op in ('dec','inc','clr'):
                 reg=int(args[1:]);regs[reg]=(0 if op=='clr' else regs[reg]+(-1 if op=='dec' else 1))&65535
                 zero=regs[reg]==0
             elif op in ('ci','cb'):
                 compare=operand(parts[0],op=='cb')-operand(parts[1],op=='cb')
                 zero=compare==0
-            elif op in ('jne','jhe','jl'):
-                if {'jne':not zero,'jhe':compare>=0,'jl':compare<0}[op]:pc=labels[args]
+            elif op in ('jne','jhe','jl','jle','jh'):
+                taken={'jne':not zero,'jhe':compare>=0,'jl':compare<0,'jle':compare<=0,'jh':compare>0}[op]
+                if taken:pc=labels[args]
             else:raise ValueError('Unsupported native instruction: '+line)
-        for name in ('crowd_pixels','crowd_cells'):
-            base=bases['array_'+name]
-            self.a[name]=[memory[base+i] for i in range(len(self.a[name]))]
+        for name,base in layout:
+            if name.startswith('#'):
+                self.a[name]=[memory[base+2*i]*256+memory[base+2*i+1] for i in range(len(self.a[name]))]
+            else:
+                self.a[name]=[memory[base+i] for i in range(len(self.a[name]))]
     def statements(self,line):
         for part in line.split(':'):
             part=part.strip()
             if not part:continue
             if part=='WAIT':self.events.append(('wait',));continue
+            if part=='CLS':
+                self.transfers.append((6144,768))
+                for a in range(6144,6912):self.vram[a]=32
+                continue
+            if part.startswith('PRINT AT '):
+                m=re.fullmatch(r'PRINT AT ([^,]+),"([^"]*)"',part)
+                if not m:raise ValueError('Unsupported PRINT: '+part)
+                pos=6144+self.expr(m[1]);self.transfers.append((pos,len(m[2])))
+                for i,ch in enumerate(m[2]):self.vram[pos+i]=ord(ch)
+                continue
             if part=='RETURN':return 'return'
             if part=='EXIT FOR':return 'exit'
             if part.startswith('GOSUB '):self.call(part[6:]);continue
@@ -269,10 +361,13 @@ class Tests(unittest.TestCase):
         b.a['crowd_bases']=[0]*8+[255-v for v in generate.TILES[5][0]]+generate.TILES[28][0]+generate.TILES[29][0]
         standing=[v for k in range(3) for v in generate.PERSON_ROWS[k*64:k*64+32]]*2
         for ch in range(24):b.patterns[ch+96]=standing[ch*8:ch*8+8]
-        b.a['menu_font']=generate.MENU_FONT;b.a['menu_colors']=[0xF1]*256;b.a['camp_bits']=[1,2,4,8]
+        b.a['menu_font']=generate.MENU_FONT;b.a['camp_bits']=[1,2,4,8]
         b.a['person_kind']=[i%3 for i in range(64)];b.a['waiting_kind']=[96+(i%3)*4 for i in range(64)]
         b.a['tile_art']=[v for bits,_ in generate.TILES for v in bits]
-        b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW
+        b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW+[0,0]
+        b.a['#sprite_bit']=[int(v) for v in re.search(r'^#sprite_bit:\nDATA ([\d,]+)$',SOURCE,re.M)[1].split(',')]
+        rot=re.search(r'^rot_map:\n((?:DATA BYTE [\d,]+\n)+)',SOURCE,re.M)[1]
+        b.a['rot_map']=[int(v) for line in rot.splitlines() for v in line[10:].split(',')]
         b.a['ground_row']=[129]*32
         b.a['fence_codes']=generate.FENCE_CODES
         b.a['home_fence_codes']=generate.HOME_FENCE_CODES
@@ -580,12 +675,21 @@ class Tests(unittest.TestCase):
         b.call('weapon_tick');self.assertEqual(b.v['fire_request'],0)
 
     def test_waiting_fast_path_matches_portable_renderer(self):
+        self.waiting_paths_agree(SOURCE)
+        # The native scan covers one camp per call: stopping short of 16 people
+        # or scanning from the wrong camp must be caught.
+        for good,bad in (('ASM andi r6,15\nASM jne waiting_scan_loop','ASM andi r6,7\nASM jne waiting_scan_loop'),
+                         ('        cp=tc*16\n','        cp=tc*8\n')):
+            self.assertIn(good,SOURCE)
+            with self.assertRaises((AssertionError,KeyError,ValueError)):
+                self.waiting_paths_agree(SOURCE.replace(good,bad))
+    def waiting_paths_agree(self,source):
         import generate as art
         for camera in range(0,1793,64):
             for anim in (0,8,16,24):
                 results=[]
                 for target in ('TI994A','COLECO'):
-                    b=self.state();b.r=Basic(target=target).r
+                    b=self.state();b.r=Basic(source,target=target).r
                     b.a['person_state']=[2 if i%5 else 4 for i in range(64)]
                     for i in range(64):
                         offset=88-(i%16//2)*8
@@ -643,7 +747,7 @@ class Tests(unittest.TestCase):
                     self.assertEqual({a:b.vram.get(a,32) for a in old},old)
                     call=b.call
                     def inspect(label):
-                        if label in ('crowd_plot','waiting_draw'):
+                        if label in ('crowd_plot','compose_block','waiting_draw'):
                             self.assertEqual({a:b.vram.get(a,32) for a in old},old)
                         call(label)
                     b.call=inspect;b.call('crowd_draw');b.call=call
@@ -691,7 +795,7 @@ class Tests(unittest.TestCase):
         b=self.escaped_crowd();b.v.update({'#camera':1792,'hy':80,'old_y':80,'crowd_dirty':1,'anim':0})
         self.assertEqual(b.a['camp_active'],[0]*4)
         b.calls={};b.call('escape_tick');b.call('crowd_draw')
-        for routine in ('person_stride','crowd_landing','crowd_plot','crowd_cell','waiting_draw'):
+        for routine in ('person_stride','walk_camp','crowd_landing','crowd_plot','crowd_cell','waiting_draw'):
             self.assertEqual(b.calls.get(routine,0),0,routine)
         self.assertEqual(b.v.get('crowd_mask',0),0)
         b.v.update({'#camera':0,'crowd_dirty':1});b.call('crowd_draw')
@@ -766,20 +870,105 @@ class Tests(unittest.TestCase):
         b.v['fire_held']=0;b.a['shot_ttl'][0]=1;b.call('weapon_tick')
         self.assertEqual(b.a['shot_on'],[0,0])
 
+    TANK_L=(48,240,248);TANK_R=(236,244,252);RUNNER=tuple(range(188,236))
+    def scanline(self,b,line):
+        """Sprites the VDP shows on a scanline: the first four by slot."""
+        return [data for _,data in sorted(b.sprites.items()) if data[0]<line<=data[0]+16][:4]
     def test_shots_survive_four_sprite_scanline_limit(self):
         def visible(source):
             b=self.state();b.r=Basic(source).r
             b.v.update({'#camera':0,'#hx':120,'hy':153,'tank_on':1,'#tank_x':140})
             b.a['shot_on']=[1,1];b.a['shot_y']=[160,160];b.a['#shot_x']=[80,200]
             b.call('draw_actors')
-            row=[data for _,data in sorted(b.sprites.items()) if data[0]<160<=data[0]+16][:4]
-            return sum(data[2]==68 for data in row)
+            return sum(data[2]==68 for data in self.scanline(b,160))
         self.assertEqual(visible(SOURCE),2)
-        bad=SOURCE.replace('draw_slot=4:draw_on=tank_on','draw_slot=2:draw_on=tank_on')
-        bad=bad.replace('draw_slot=6:draw_on=runner_on','draw_slot=3:draw_on=runner_on')
-        bad=bad.replace('draw_slot=di+2','draw_slot=di+4')
-        self.assertEqual(visible(bad),0)
+        bad=SOURCE.replace('    draw_slot=di+4\n','    draw_slot=di+10\n')
+        self.assertNotEqual(bad,SOURCE)
+        self.assertLess(visible(bad),2)
 
+    def test_deadly_projectiles_never_drop_and_ground_actors_take_turns(self):
+        # Landed beside a firing tank with a runner approaching: helicopter,
+        # tank halves, shell and runner all cross scanline 165 -- six sprites
+        # for four places. The shell must show on every update; the tank
+        # halves and runner must each show on some of them (flicker).
+        def watch(source,passes=12):
+            b=self.state();b.r=Basic(source).r
+            b.v.update({'#camera':0,'#hx':120,'hy':153,'tank_on':1,'#tank_x':152,
+                        'shell_on':1,'#shell_x':140,'shell_y':156,'runner_on':1,'#runner_x':100,'runner_id':0})
+            b.a['shot_on']=[0,0];b.call('hide_all')
+            seen=[]
+            for _ in range(passes):
+                b.call('draw_actors')
+                seen.append([data[2] for data in self.scanline(b,165)])
+            return seen
+        seen=watch(SOURCE)
+        self.assertTrue(all(68 in row for row in seen),seen)
+        for group in (self.TANK_L,self.TANK_R,self.RUNNER):
+            self.assertTrue(any(set(row)&set(group) for row in seen),(group,seen))
+        # The original bug: the shell queued behind the tank is never drawn.
+        late=watch(SOURCE.replace('draw_slot=2\nIF shell_on THEN','draw_slot=11\nIF shell_on THEN'))
+        self.assertFalse(all(68 in row for row in late))
+        # Without rotation one ground actor never gets a place.
+        still=watch(SOURCE.replace('sprite_rot=sprite_rot+1\n','sprite_rot=0\n'))
+        self.assertFalse(all(any(set(row)&set(g) for row in still) for g in (self.TANK_L,self.TANK_R,self.RUNNER)))
+        # rot_map: each phase is one-to-one onto slots 6-11, and any two
+        # rotating actors each lead the other in at least a third of phases.
+        table=self.state().a['rot_map']
+        self.assertEqual(len(table),72)
+        rows=[table[r*6:r*6+6] for r in range(12)]
+        for rot,row in enumerate(rows):self.assertEqual(sorted(row),list(range(6,12)),rot)
+        for a in range(6):
+            for c in range(6):
+                if a!=c:self.assertGreaterEqual(sum(row[a]<row[c] for row in rows),4,(a,c))
+
+    def test_tank_fires_straight_up_when_overhead(self):
+        def fire(source,hx):
+            b=self.state();b.r=Basic(source).r
+            b.v.update({'tank_on':1,'#tank_x':400,'#hx':hx,'hy':80,'old_y':80,'#tank_wait':0,
+                        'shell_on':0,'dt':2,'#elapsed':2,'invuln':0,'crash_timer':0,'lives':3,'runner_on':0})
+            b.call('tank_tick')
+            path=[]
+            while b.v['shell_on'] and len(path)<80:
+                path.append((b.v['#shell_x'],b.v['shell_y']))
+                b.call('shell_tick')
+            return b,path
+        b,path=fire(SOURCE,388)  # helicopter body spans the turret: front view
+        self.assertEqual(b.v['tank_face'],2)
+        self.assertEqual({x for x,_ in path},{415})
+        self.assertEqual([y for _,y in path[:3]],[150,146,142])
+        self.assertTrue(b.v['crash_timer'],'a hovering helicopter above the turret is hit')
+        b,path=fire(SOURCE,200)  # off to the side: the familiar diagonal
+        self.assertEqual(b.v['shell_dir'],1)
+        self.assertGreater(path[0][0]-path[-1][0],0)
+        bad,path=fire(SOURCE.replace('IF tank_face = 2 THEN #shell_x=#tank_x+15:shell_y=150:shell_dir=2',''),388)
+        self.assertFalse(bad.v['crash_timer'],'without the rule the shell flies away under it')
+    def test_inactive_sprites_hide_once_and_reappear(self):
+        b=self.state();b.v.update({'#camera':0,'#hx':120,'hy':80,'tank_on':1,'#tank_x':140,'runner_on':0})
+        b.a['shot_on']=[1,0];b.a['shot_y']=[90,0];b.a['#shot_x']=[60,0]
+        b.call('hide_all');b.call('draw_actors')
+        shows=lambda pats:any(d[0]!=209 and d[2] in pats for d in b.sprites.values())
+        self.assertTrue(shows((68,)) and shows(self.TANK_L) and shows(self.TANK_R))
+        # Deactivated actors are hidden on the next pass ...
+        b.v['tank_on']=0;b.a['shot_on']=[0,0];b.call('draw_actors')
+        self.assertFalse(shows((68,)) or shows(self.TANK_L) or shows(self.TANK_R))
+        # ... and only once: a further idle pass writes no sprite at all
+        # beyond the helicopter's own two slots, whatever the rotation phase.
+        for _ in range(12):
+            b.sprites={};b.call('draw_actors')
+            self.assertEqual(sorted(b.sprites),[0,1])
+        # Off-camera actors are hidden too, and come back when in view.
+        b.call('hide_all');b.v.update({'tank_on':1,'#tank_x':140});b.call('draw_actors')
+        b.v['#tank_x']=900;b.call('draw_actors')
+        self.assertFalse(shows(self.TANK_L) or shows(self.TANK_R))
+        b.v['#tank_x']=140;b.call('draw_actors')
+        self.assertTrue(shows(self.TANK_L) and shows(self.TANK_R))
+        # A mask that is never cleared would leave a stale bit after hide_all.
+        b.call('hide_all');self.assertEqual(b.v['#sprite_shown'],0)
+        bad=self.state();bad.r=Basic(SOURCE.replace('#sprite_shown=#sprite_shown XOR #slot_bit','#slot_bit=0')).r
+        bad.v.update({'#camera':0,'#hx':120,'hy':80,'tank_on':1,'#tank_x':140})
+        bad.call('draw_actors');bad.v['tank_on']=0;bad.call('draw_actors')
+        bad.sprites={};bad.call('draw_actors')
+        self.assertTrue(set(bad.sprites)-{0,1})  # the broken mask keeps rewriting hidden slots
     def test_jet_turns_passes_and_departure(self):
         for dt in (1,2,3,4,6):
             b=self.state();b.v.update({'#hx':1500,'hy':140,'sorties':1,'#elapsed':dt,'dt':dt,'invuln':255})
@@ -792,6 +981,20 @@ class Tests(unittest.TestCase):
             self.assertEqual(directions,{0,1});self.assertGreater(len(heights),8)
             self.assertGreater(turns,0);self.assertEqual(b.v['jet_passes'],2)
             self.assertEqual(b.v['jet_on'],0)
+        # After its last pass a departing jet retires on its first step wholly
+        # off camera, not after flying on to the world's west edge.
+        def depart(source):
+            b=self.state();b.r=Basic(source).r
+            b.v.update({'#hx':1500,'#camera':1388,'hy':140,'sorties':1,'#elapsed':2,'dt':2,'invuln':255})
+            b.call('jet_spawn')
+            for _ in range(3000):
+                if not b.v['jet_on']:break
+                b.call('jet_tick')
+            self.assertEqual((b.v['jet_on'],b.v['jet_passes']),(0,2))
+            return b.v['#jet_x']
+        x=depart(SOURCE)
+        self.assertLess(x+16,1388);self.assertGreaterEqual(x+16+4,1388)
+        self.assertLess(depart(SOURCE.replace('IF #jet_x+16 < #camera THEN jet_on=0:RETURN','')),8)
 
     def test_jet_missile_ammo_and_border(self):
         b=self.state();b.v.update({'#hx':600,'#jet_x':500,'jet_ammo':2,'jet_passes':0,'jet_y':58})
@@ -917,7 +1120,7 @@ class Tests(unittest.TestCase):
             b.vram={6784+i:200+i for i in range(32)}
             visible=dict(b.vram);call=b.call
             def inspect(label):
-                if label=='crowd_plot':self.assertEqual(b.vram,visible)
+                if label in ('crowd_plot','compose_block'):self.assertEqual(b.vram,visible)
                 call(label)
             b.call=inspect;b.call('crowd_draw')
             self.assertNotEqual(b.vram,visible)
@@ -987,7 +1190,7 @@ class Tests(unittest.TestCase):
         verify(SOURCE)
 
         for before,after in (
-                ('IF fire_char THEN VPOKE #fence_addr,fire_char','VPOKE #fence_addr,fence_char'),
+                ('IF fire_char THEN VPOKE #vaddr,fire_char','VPOKE #vaddr,fence_char'),
                 ('fire_char=home_fence_codes(fence_char-160)','fire_char=fence_codes(fence_char-160)')):
             self.assertIn(before,SOURCE)
             with self.assertRaises(AssertionError):verify(SOURCE.replace(before,after))
@@ -1065,42 +1268,127 @@ class Tests(unittest.TestCase):
         bad=SOURCE.replace('IF hy = LANDED THEN RETURN\nIF fire_timer','IF fire_timer')
         b=self.state();b.r=Basic(bad).r;b.call('fire_shot');self.assertNotEqual(b.a['shot_on'],[0,0])
 
-    def test_star_parallax_wrap_and_sky_ownership(self):
+    def star_sweep(self,source=SOURCE,target='TI994A',cameras=None):
+        """Scroll the star field and return the first frame whose pixels differ
+        from the parallax model, or None. Every camera step and both directions,
+        including jumps of several steps per update (slow updates)."""
         import generate as art
-        b=self.state()
-        for camera in list(range(0,1793,8))+list(range(1792,-1,-8)):
+        b=self.state();b.r=Basic(source,target=target).r
+        if cameras is None:
+            cameras=list(range(0,1793,8))+list(range(1792,-1,-8))+list(range(0,1793,24))+list(range(1792,-1,-40))
+        for camera in cameras:
             b.v['#camera']=camera;b.call('stars_draw')
+            if not all(6144+96<=a<6144+544 for a in b.vram):return (camera,'write outside sky rows 3-16')
             cells={a:c for a,c in b.vram.items() if c!=32}
-            self.assertEqual(len(cells),14)
-            self.assertTrue(all(6144+96<=a<6144+544 for a in b.vram))
+            if len(cells)!=len(art.STAR_X):return (camera,f'{len(cells)} star cells')
             actual=set()
             for a,c in cells.items():
-                self.assertTrue(240<=c<=255)
+                if not 240<=c<=255:return (camera,f'character {c}')
                 row,col=divmod(a-6144,32)
                 for y,bits in enumerate(art.STAR_BITS[(c-240)*8:(c-239)*8]):
                     actual.update((col*8+x,row*8+y) for x in range(8) if bits&(128>>x))
             expected={((x-camera//8*(1+(row>=7)+(row>=12)))%256,row*8+(2 if i%2 else 5))
                       for i,(x,row) in enumerate(zip(art.STAR_X,art.STAR_ROW))}
-            self.assertEqual(actual,expected)
-        b.vram={};b.call('stars_draw');self.assertFalse(b.vram)
-        # Distinct physical displacements, not just distinct layer constants.
-        for index,want in ((0,1),(4,2),(9,3)):
-            b.v.update(star_i=index,star_pos=0);b.call('star_position');before=b.v['star_pos']
-            b.v['star_pos']=1;b.call('star_position')
-            self.assertEqual((before-b.v['star_pos'])%256,want)
-        # A collapsed layer and erasing with the NEW offset must both be caught.
-        bad=self.state();bad.r=Basic(SOURCE.replace('star_pos=star_pos+star_pos+star_pos','star_pos=star_pos+star_pos')).r
-        bad.v.update(star_i=9,star_pos=1);bad.call('star_position')
-        self.assertNotEqual((art.STAR_X[9]-bad.v['star_pos'])%256,3)
-        bad=self.state();bad.r=Basic(SOURCE.replace('star_pos=star_old','star_pos=star_scroll')).r
-        bad.v['#camera']=0;bad.call('stars_draw')
-        bad.v['#camera']=64;bad.call('stars_draw')
-        self.assertGreater(sum(c!=32 for c in bad.vram.values()),14)
+            if actual!=expected:return (camera,'pixels differ from the parallax model')
+        return b
+    def test_star_parallax_wrap_and_sky_ownership(self):
+        import generate as art
+        for target in ('TI994A','COLECO'):
+            b=self.star_sweep(target=target)
+            self.assertIsInstance(b,Basic,(target,b))
+            # A stationary camera writes nothing.
+            b.vram={};b.transfers=[];b.call('stars_draw');self.assertFalse(b.transfers)
+            # One scroll step only rewrites stars, clearing a cell only when a star leaves it.
+            b.transfers=[];b.v['#camera']=b.v['#camera']+8;b.call('stars_draw')
+            self.assertLessEqual(len(b.transfers),2*len(art.STAR_X))
+            self.assertGreaterEqual(len(b.transfers),len(art.STAR_X))
+        # The native and portable renderers write the same cells for every view.
+        native=self.star_sweep(target='TI994A',cameras=list(range(0,1793,8)))
+        portable=self.star_sweep(target='COLECO',cameras=list(range(0,1793,8)))
+        self.assertEqual(native.vram,portable.vram)
+        # Collapsed layers, a wrong erase offset, a missing erase and a broken
+        # row-0 terminator must all be caught on the path they break.
+        mutations=(
+            ('TI994A','ASM ci r8,12\nASM jl stars_layer\nASM a r4,r6','ASM ci r8,12\nASM jl stars_layer\nASM a r5,r6'),
+            ('TI994A','ASM s r0,r7\nASM neg r7','ASM s r0,r7\nASM neg r7\nASM mov r6,r7'),
+            ('TI994A','ASM jeq stars_kept\nASM a r8,r7','ASM jmp stars_kept\nASM a r8,r7'),
+            ('TI994A','ASM ci r8,0\nASM jeq stars_done','ASM ci r8,99\nASM jeq stars_done'),
+            ('COLECO','IF star_row(star_i) >= 12 THEN star_pos=star_pos+star_scroll','IF star_row(star_i) >= 12 THEN star_pos=star_pos+star_old'),
+            ('COLECO','star_cell=star_x(star_i)-star_cell','star_cell=star_x(star_i)-star_pos'),
+            ('COLECO','        VPOKE #vaddr,32\n','        star_char=32\n'),
+        )
+        for target,good,bad in mutations:
+            self.assertIn(good,SOURCE)
+            with self.assertRaises((AssertionError,ValueError,KeyError,IndexError),msg=bad):
+                result=self.star_sweep(SOURCE.replace(good,bad),target=target)
+                self.assertIsInstance(result,Basic)
+        # Port writes with interrupts enabled are rejected by the interpreter.
+        with self.assertRaises(ValueError):
+            self.star_sweep(SOURCE.replace('ASM limi 0\nASM swpb r0','ASM swpb r0'),cameras=[0,8])
 
+    def test_camp_fire_reject_matches_full_scan(self):
+        # The off-screen reject is an optimisation only: every camera position
+        # must draw exactly what testing every fire tile would.
+        reject=('        #relative=#camp_x(tc)+16\n        IF #relative >= #camera THEN\n'
+                '            #relative=#relative-#camera\n            IF #relative < 296 THEN GOSUB camp_fire\n        END IF\n')
+        self.assertIn(reject,SOURCE)
+        full=SOURCE.replace(reject,'        GOSUB camp_fire\n')
+        # Reference camp_fire: the original per-tile clip, no alignment assumed.
+        start=full.index('\ncamp_fire:\n');end=full.index('\nRETURN\n',start)
+        full=full[:start]+('\ncamp_fire:\n#fire_world=#camp_x(tc)-24\nFOR fire_tile=0 TO 5\n'
+            '    IF #fire_world >= #camera THEN\n        #fire_screen=#fire_world-#camera\n'
+            '        IF #fire_screen < 256 THEN\n            #vaddr=#fire_screen/8\n'
+            '            #vaddr=#vaddr+6720\n            fire_char=126+(fire_tile AND 1)\n'
+            '            VPOKE #vaddr,fire_char\n        END IF\n    END IF\n'
+            '    #fire_world=#fire_world+8\nNEXT fire_tile')+full[end:]
+        self.assertNotEqual(full.count('IF #vaddr >= 6752 THEN EXIT FOR'),SOURCE.count('IF #vaddr >= 6752 THEN EXIT FOR'))
+        for camera in range(0,1793,8):
+            writes=[]
+            for source in (SOURCE,full):
+                b=self.state();b.r=Basic(source).r;b.v['#camera']=camera
+                b.call('camp_fronts');writes.append(b.vram)
+            self.assertEqual(writes[0],writes[1],camera)
+        # Too tight a reject drops the edge tiles and must be caught.
+        tight=SOURCE.replace('IF #relative < 296 THEN','IF #relative < 280 THEN')
+        b=self.state();b.r=Basic(tight).r;b.v['#camera']=640+16-288;b.call('camp_fronts')
+        c=self.state();c.v['#camera']=640+16-288;c.call('camp_fronts')
+        self.assertNotEqual(b.vram,c.vram)
+    def test_house_overlays_follow_the_synchronised_copy(self):
+        # A scroll commit waits for vblank and copies rows 17-20; camp fires,
+        # doors and the flag (rows 17-19) must be the very next writes, ahead
+        # of the ground rows and fences, so the beam never shows a burning
+        # camp with its closed roof for a frame.
+        def order(source):
+            b=self.state();b.r=Basic(source).r
+            b.v.update({'#camera':256,'terrain_dirty':1,'crowd_mask':0,'#crowd_map':800,'flag_visible':0})
+            b.events=[];b.transfers=[]
+            b.call('crowd_commit')
+            rows=[(a-6144)//32 for a,_ in b.transfers]
+            return rows
+        rows=order(SOURCE)
+        self.assertEqual(rows[:4],[17,18,19,20])
+        overlay=[i for i,r in enumerate(rows) if r in (17,18,19) and i>=4]
+        ground=[i for i,r in enumerate(rows) if r in (21,22)]
+        self.assertTrue(overlay and ground and max(overlay)<min(ground),rows)
+        late=SOURCE.replace('GOSUB flag_position\nGOSUB camp_fronts\n#mapoff=#camera/8','#mapoff=#camera/8')
+        late=late.replace('GOSUB fence_boundary\nterrain_dirty=0','GOSUB fence_boundary\nGOSUB flag_position\nGOSUB camp_fronts\nterrain_dirty=0')
+        self.assertNotEqual(late,SOURCE)
+        rows=order(late)
+        overlay=[i for i,r in enumerate(rows) if r in (17,18,19) and i>=4]
+        self.assertGreater(max(overlay),min(i for i,r in enumerate(rows) if r in (21,22)))
     def test_ground_replaces_status_row(self):
         b=self.state();b.v['#camera']=1792;b.call('terrain')
-        self.assertEqual([b.vram[6880+x] for x in range(32)],[129]*32)
         self.assertEqual([b.vram[6848+x] for x in range(32) if x>16],[129]*15)
+        # Row 23 is game_screen's alone: scrolling never rewrites it, and no
+        # routine reachable during play writes there.
+        self.assertFalse([a for a,_ in b.transfers if a>=6880])
+        b=self.state();b.v.update(anim=0,crowd_pose=255);b.call('game_screen')
+        self.assertEqual([b.vram[6880+x] for x in range(32)],[129]*32)
+        b.transfers=[]
+        for camera in list(range(0,1793,8))+list(range(1792,-1,-8)):
+            b.v['#camera']=camera;b.call('terrain');b.call('stars_draw')
+        b.call('hud')
+        self.assertFalse([a for a,n in b.transfers if a+n>6880])
         for routine in ('hud','game_screen','pause_game','pause_end'):
             for line in b.r[routine]:
                 m=re.search(r'PRINT AT (\d+)',line)
@@ -1180,13 +1468,15 @@ class Tests(unittest.TestCase):
 
     def test_individual_paces_and_overlapping_poses(self):
         import generate as art
-        b=self.state();b.v['dt']=2
-        travel=[0,0,0]
-        for frame in range(2,62,2):
-            b.v['#crowd_clock']=frame
-            for who in range(3):
-                b.v['ep']=who;b.call('person_stride');travel[who]+=b.v['crowd_step']
-        self.assertEqual(travel,[60,48,40])
+        # Three appearances walk at 60, 48 and 40 px/s: one second of 2-frame
+        # updates through the real escape_tick, on both renderers' paths.
+        for target in ('TI994A','COLECO'):
+            b=self.state();b.r=Basic(target=target).r
+            b.v.update({'dt':2,'#crowd_clock':0,'home_walking':0})
+            b.a['person_state']=[0]*64;b.a['person_state'][:3]=[1,1,1]
+            b.a['#person_x'][:3]=[128,128,128];b.a['camp_active']=[3,0,0,0]
+            for _ in range(30):b.call('escape_tick')
+            self.assertEqual([abs(x-128) for x in b.a['#person_x'][:3]],[60,48,40],target)
         def draw(source):
             b=self.state();b.r=Basic(source).r
             b.a['world_map']=[32]*1280;b.a['camp_open']=[1]*4;b.a['person_state']=[0]*64;b.a['camp_active'][0]=1
@@ -1200,8 +1490,136 @@ class Tests(unittest.TestCase):
         expected={(world+x,y) for who,world in enumerate((40,44,48))
                   for y,row in enumerate(art.person(who,False,who)) for x,ink in enumerate(row) if ink}
         self.assertEqual(draw(SOURCE),expected)
-        bad=SOURCE.replace('ASM socb r0,*r2+','ASM movb r0,*r2+')
+        self.assertEqual(SOURCE.count('ASM socb *r1+,*r0+'),8)
+        bad=SOURCE.replace('ASM socb *r1+,*r0+','ASM movb *r1+,*r0+')
         self.assertNotEqual(draw(bad),expected)
+
+    def walker_runs(self,source,trials=120):
+        """Random crowds stepped through escape_tick on the native and portable
+        paths; returns the first differing observation, or None."""
+        import random
+        rng=random.Random(1983)
+        for trial in range(trials):
+            states=[rng.choice((0,1,1,1,2,4,5,6,6,7)) for _ in range(64)]
+            xs=[]
+            for i,s in enumerate(states):
+                camp=(128,384,640,896)[i//16]
+                if s==1:xs.append(camp+4*rng.randint(-24,24))
+                elif s==6:xs.append(1896+4*rng.randint(0,26))
+                else:xs.append(4*rng.randint(0,511))
+            dt=rng.randint(1,6);clock=rng.choice((0,59994,59999,rng.randint(0,59999)))
+            released=[rng.choice((14,15,16,16)) for _ in range(4)]
+            escape=[rng.randint(0,30) for _ in range(4)]
+            runs=[]
+            for target in ('TI994A','COLECO'):
+                b=self.state();b.r=Basic(source,target=target).r
+                b.a['person_state']=list(states);b.a['#person_x']=list(xs)
+                b.a['camp_active']=[sum(s==1 for s in states[c*16:c*16+16]) for c in range(4)]
+                b.a['camp_released']=list(released);b.a['camp_escape']=list(escape)
+                b.v.update({'dt':dt,'#crowd_clock':clock,'home_walking':states.count(6),'crowd_dirty':0})
+                seen=[]
+                for step in range(6):
+                    b.call('escape_tick')
+                    seen.append((list(b.a['person_state']),list(b.a['#person_x']),list(b.a['camp_active']),
+                                 b.v['home_walking'],b.v['crowd_dirty'],b.v['#crowd_clock']))
+                    b.v['crowd_dirty']=0
+                runs.append(seen)
+            if runs[0]!=runs[1]:return trial
+        return None
+    def crowd_row_ink(self,source,target,walking,camera,anim):
+        """Ink pixels of the crowd row with camp `walking` mid-evacuation and
+        every other camp settled at its waiting spots."""
+        b=self.state();b.r=Basic(source,target=target).r
+        b.a['person_state']=[2]*64;b.a['camp_active']=[0]*4
+        for i in range(64):
+            offset=88-(i%16//2)*8
+            b.a['#person_x'][i]=b.a['#camp_x'][i//16]+(offset if i&1 else -offset)
+        for i in range(walking*16,walking*16+16,2):
+            b.a['person_state'][i]=1;b.a['#person_x'][i]-=12 if i&1 else -12
+        b.a['camp_active'][walking]=8
+        b.v.update({'#camera':camera,'anim':anim,'crowd_pose':255,'crowd_dirty':1,'home_walking':0})
+        b.call('crowd_draw')
+        return {(col*8+x,y) for col in range(32) for code in [b.vram[6784+col]] if code in b.patterns
+                for y,bits in enumerate(b.patterns[code]) for x in range(8) if bits&(128>>x)}
+    def test_settled_camps_skip_the_compositor(self):
+        # Composite every visible camp (the previous renderer) for reference.
+        old=SOURCE.replace('        IF camp_active(tc) THEN\n#if TI994A\n            cp=tc*16:crowd_mode=0',
+                           '        IF 1 THEN\n#if TI994A\n            cp=tc*16:crowd_mode=0')
+        old=old.replace('#endif\nGOSUB crowd_settled\nGOSUB crowd_doors\nGOSUB crowd_commit\ncrowd_bank=64-crowd_bank',
+                        '#endif\nGOSUB crowd_doors\nGOSUB crowd_commit\ncrowd_bank=64-crowd_bank')
+        self.assertNotEqual(old,SOURCE)
+        self.assertEqual(old.count('GOSUB crowd_settled'),1)  # only waiting_draw keeps it
+        for target in ('TI994A','COLECO'):
+            for walking in (0,1):
+                for camera in range(0,641,32):
+                    want=self.crowd_row_ink(old,target,walking,camera,8)
+                    self.assertEqual(self.crowd_row_ink(SOURCE,target,walking,camera,8),want,(target,walking,camera))
+        # Dropping the settled pass loses the neighbouring crowd.
+        bad=SOURCE.replace('#endif\nGOSUB crowd_settled\nGOSUB crowd_doors','#endif\nGOSUB crowd_doors')
+        self.assertNotEqual(self.crowd_row_ink(bad,'TI994A',0,192,8),self.crowd_row_ink(SOURCE,'TI994A',0,192,8))
+    def compositor_runs(self,source,trials=60):
+        """Random moving-crowd scenes drawn by the native and portable paths;
+        returns the first trial whose name row, pixels or VRAM differ."""
+        import random
+        rng=random.Random(4096)
+        for trial in range(trials):
+            camera=8*rng.randint(0,224)
+            if trial%5==0:camera=8*rng.randint(204,224)   # home: office tiles, walkers
+            states=[0]*64;xs=[0]*64;active=[0]*4
+            for c in range(4):
+                walking=rng.random()<0.6
+                for i in range(c*16,c*16+16):
+                    camp=(128,384,640,896)[c]
+                    s=rng.choice((1,1,2,2,2,4,5)) if walking else rng.choice((2,2,2,4))
+                    states[i]=s;xs[i]=camp+4*rng.randint(-24,24)
+                    if s==1:active[c]+=1
+            for i in rng.sample(range(64),rng.randint(0,10)):
+                states[i]=6;xs[i]=1896+4*rng.randint(0,26)
+                active[i//16]-=0
+            # Exact edge cases: half a person at the left edge, a straddle at cell 31.
+            states[0]=1;xs[0]=camera-4 if camera>=4 else 4;states[1]=1;xs[1]=camera+252
+            active=[sum(s==1 for s in states[c*16:c*16+16]) for c in range(4)]
+            anim=rng.randint(0,255);bank=rng.choice((0,64))
+            rows=[]
+            for target in ('TI994A','COLECO'):
+                b=self.state();b.r=Basic(source,target=target).r
+                b.a['person_state']=list(states);b.a['#person_x']=list(xs);b.a['camp_active']=list(active)
+                b.a['crowd_pixels']=[0]*256
+                b.v.update({'#camera':camera,'anim':anim,'crowd_pose':255,'crowd_dirty':1,'terrain_dirty':0,
+                            'home_walking':states.count(6),'crowd_bank':bank})
+                b.call('crowd_draw')
+                rows.append((list(b.a['crowd_cells']),list(b.a['crowd_pixels']),dict(b.vram)))
+            if rows[0]!=rows[1]:return trial
+        return None
+    def test_native_compositor_matches_portable(self):
+        self.assertIsNone(self.compositor_runs(SOURCE))
+        mutations=(('ASM ci r1,4\nASM jne compose_next','ASM ci r1,8\nASM jne compose_next'),
+                   ('ASM ci r7,31\nASM jeq compose_next','ASM ci r7,32\nASM jeq compose_next'),
+                   ('ASM ai r1,32\nASM jmp compose_palette','ASM ai r1,16\nASM jmp compose_palette'),
+                   ('ASM ai r9,4\nASM compose_still:','ASM ai r9,0\nASM compose_still:'),
+                   ('ASM li r8,192\nASM bl @compose_cell','ASM li r8,384\nASM bl @compose_cell'),
+                   ('ASM ci r1,157\nASM jeq compose_door','ASM ci r1,158\nASM jeq compose_door'))
+        for good,bad in mutations:
+            self.assertIn(good,SOURCE)
+            caught=None
+            try:caught=self.compositor_runs(SOURCE.replace(good,bad),trials=40)
+            except (ValueError,KeyError,IndexError):caught='error'
+            self.assertIsNotNone(caught,bad)
+    def test_native_walkers_match_portable(self):
+        self.assertIsNone(self.walker_runs(SOURCE))
+        # Each of these breaks one rule of the native walk and must be caught.
+        mutations=(('ASM jle walk_store\nASM mov r0,r8','ASM jle walk_store\nASM mov r8,r8'),
+                   ('ASM andi r1,1\nASM jne walk_east','ASM andi r1,1\nASM jeq walk_east'),
+                   ('ASM movb *r9,r1\nASM ai r1,-256','ASM movb *r9,r1\nASM ai r1,0'),
+                   ('ASM s r4,r1\nASM clr r0','ASM clr r0'),
+                   ('ASM ci r8,1992\nASM jhe walk_inside','ASM ci r8,1984\nASM jhe walk_inside'),
+                   ('ASM li r0,256\nASM movb r0,@cvb_CROWD_DIRTY','ASM li r0,0\nASM movb r0,@cvb_CROWD_DIRTY'))
+        for good,bad in mutations:
+            self.assertIn(good,SOURCE)
+            caught=None
+            try:caught=self.walker_runs(SOURCE.replace(good,bad),trials=40)
+            except (ValueError,KeyError,IndexError):caught='error'
+            self.assertIsNotNone(caught,bad)
 
     def test_unload_walks_to_office_before_unlocking_jets(self):
         b=self.state();b.a['person_state']=[0]*64;b.a['person_state'][:2]=[5,5]

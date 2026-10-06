@@ -27,8 +27,15 @@ DIM shot_slope(2)
 DIM shot_speed(2)
 DIM shot_drift(2)
 
-' Sprite ownership: heli 0,1; shots 2,3; tank 4,5; runner 6;
-' jet 7; shell 8; drone 9; explosion 10; jet missile 11.
+' Sprite ownership: heli 0,1; tank shell 2; jet missile 3; player shots 4,5;
+' 6-11 rotate each update between tank halves, runner, jet, drone and
+' explosion (draw_actors, rot_map). The crash uses 0-3 with all others hidden.
+' #vaddr is the shared name-table address for VPOKE: computed and written in
+' the same routine, never held across a GOSUB (Coleco RAM is nearly full).
+
+' boot: opens the code segment tools/build.py hands to the short-branch pass
+' (cvb_BOOT..BANK_0_FREE). Keep CONST and DIM above it: they emit EQU lines.
+boot:
 fire_gate=2
 ON FRAME GOSUB fire_control
 SPRITE FLICKER OFF
@@ -160,10 +167,12 @@ GOSUB game_screen
 GOSUB clock_reset
 
 main_loop:
-WAIT
+' At most 30 updates per second, but never idle: an update that already took
+' two or more video frames starts the next one immediately. (A scrolling
+' update still synchronises its scenery copy in crowd_commit.)
 #now=FRAME
 #elapsed=#now-#last
-IF #elapsed < 2 THEN GOTO main_loop
+IF #elapsed < 2 THEN WAIT:GOTO main_loop
 #last=#now
 IF #elapsed > 6 THEN #elapsed=6
 dt=#elapsed
@@ -604,16 +613,6 @@ FOR ep=0 TO 63
 NEXT ep
 RETURN
 
-home_walk:
-IF #person_x(ep) < 1992 THEN
-    #person_x(ep)=#person_x(ep)+crowd_step
-    IF #person_x(ep) >= 1992 THEN person_state(ep)=7:home_walking=home_walking-1
-ELSE
-    person_state(ep)=7:home_walking=home_walking-1
-END IF
-crowd_dirty=1
-RETURN
-
 lose_runner:
 IF runner_on THEN
     camp_left(runner_camp)=camp_left(runner_camp)-1
@@ -649,6 +648,9 @@ IF #crowd_clock >= 60000 THEN #crowd_clock=0
 #crowd_clock=#crowd_clock+dt
 FOR ec=0 TO 3
     IF camp_active(ec) OR home_walking THEN
+#if TI994A
+        GOSUB walk_camp
+#else
         FOR ep=ec*16 TO ec*16+15
             IF person_state(ep) = 1 THEN
                 GOSUB person_stride
@@ -659,6 +661,7 @@ FOR ec=0 TO 3
                 IF crowd_step THEN GOSUB home_walk
             END IF
         NEXT ep
+#endif
     END IF
 NEXT ec
 ' Ground contact is an event, not 64 subroutine calls on every flight update.
@@ -672,6 +675,120 @@ IF hy = LANDED THEN
 END IF
 RETURN
 
+#if TI994A
+walk_camp:
+' Native walk of camp ec's escaping (1) and homeward (6) people. The same
+' arithmetic as the portable person_stride/escape_walk/home_walk below:
+' strides crossed = (clock+p)/stride - (clock+p-dt)/stride, 4 px each;
+' escapees stop at camp_x +/- (88-lane), walkers at the office door (1992).
+ASM movb @cvb_EC,r3
+ASM srl r3,8
+ASM sla r3,4
+ASM mov @cvb__CROWD_CLOCK,r2
+ASM movb @cvb_DT,r4
+ASM srl r4,8
+ASM mov r3,r5
+ASM srl r5,3
+ASM ai r5,array__CAMP_X
+ASM mov *r5,r5
+ASM walk_loop:
+ASM mov r3,r9
+ASM ai r9,array_PERSON_STATE
+ASM movb *r9,r9
+ASM srl r9,8
+ASM ci r9,1
+ASM jeq walk_gait
+ASM ci r9,6
+ASM jne walk_next
+ASM walk_gait:
+ASM mov r3,r6
+ASM ai r6,cvb_PERSON_KIND
+ASM movb *r6,r6
+ASM srl r6,8
+ASM ai r6,4
+ASM mov r2,r1
+ASM a r3,r1
+ASM clr r0
+ASM div r6,r0
+ASM mov r0,r7
+ASM mov r2,r1
+ASM a r3,r1
+ASM s r4,r1
+ASM clr r0
+ASM div r6,r0
+ASM s r0,r7
+ASM jeq walk_next
+ASM sla r7,2
+ASM andi r7,255
+ASM li r0,256
+ASM movb r0,@cvb_CROWD_DIRTY
+ASM mov r3,r6
+ASM a r3,r6
+ASM ai r6,array__PERSON_X
+ASM mov *r6,r8
+ASM ci r9,6
+ASM jeq walk_home
+ASM mov r3,r0
+ASM andi r0,14
+ASM sla r0,2
+ASM neg r0
+ASM ai r0,88
+ASM mov r3,r1
+ASM andi r1,1
+ASM jne walk_east
+ASM neg r0
+ASM walk_east:
+ASM a r5,r0
+ASM c r8,r0
+ASM jhe walk_back
+ASM a r7,r8
+ASM c r8,r0
+ASM jle walk_store
+ASM mov r0,r8
+ASM jmp walk_store
+ASM walk_back:
+ASM jeq walk_store
+ASM s r7,r8
+ASM c r8,r0
+ASM jhe walk_store
+ASM mov r0,r8
+ASM walk_store:
+ASM mov r8,*r6
+ASM c r8,r0
+ASM jne walk_next
+ASM mov r3,r9
+ASM ai r9,array_PERSON_STATE
+ASM li r1,512
+ASM movb r1,*r9
+ASM mov r3,r9
+ASM srl r9,4
+ASM ai r9,array_CAMP_ACTIVE
+ASM movb *r9,r1
+ASM ai r1,-256
+ASM movb r1,*r9
+ASM jmp walk_next
+ASM walk_home:
+ASM ci r8,1992
+ASM jhe walk_inside
+ASM a r7,r8
+ASM mov r8,*r6
+ASM ci r8,1992
+ASM jl walk_next
+ASM walk_inside:
+ASM mov r3,r9
+ASM ai r9,array_PERSON_STATE
+ASM li r1,1792
+ASM movb r1,*r9
+ASM movb @cvb_HOME_WALKING,r1
+ASM ai r1,-256
+ASM movb r1,@cvb_HOME_WALKING
+ASM walk_next:
+ASM inc r3
+ASM mov r3,r0
+ASM andi r0,15
+ASM jne walk_loop
+RETURN
+#else
 person_stride:
 crowd_stride=4+person_kind(ep)
 #gait_now=#crowd_clock+ep
@@ -680,6 +797,16 @@ crowd_stride=4+person_kind(ep)
 #gait_before=#gait_before/crowd_stride
 crowd_step=#gait_now-#gait_before
 crowd_step=crowd_step*4
+RETURN
+
+home_walk:
+IF #person_x(ep) < 1992 THEN
+    #person_x(ep)=#person_x(ep)+crowd_step
+    IF #person_x(ep) >= 1992 THEN person_state(ep)=7:home_walking=home_walking-1
+ELSE
+    person_state(ep)=7:home_walking=home_walking-1
+END IF
+crowd_dirty=1
 RETURN
 
 escape_walk:
@@ -706,6 +833,7 @@ IF #person_x(ep) = #escape_goal THEN
 END IF
 crowd_dirty=1
 RETURN
+#endif
 
 crowd_landing:
 IF hy <> LANDED THEN RETURN
@@ -766,7 +894,8 @@ crowd_dirty=1:hud_dirty=1
 RETURN
 
 enemy_tick:
-IF #hx < 1572 THEN
+' Enemies act while the helicopter is west of the DMZ fence (x=1568).
+IF #hx < 1568 THEN
     IF tank_on = 0 THEN
         IF #tank_wait > #elapsed THEN
             #tank_wait=#tank_wait-#elapsed
@@ -875,6 +1004,10 @@ ELSE
             IF #jet_x <= #jet_left THEN
                 #jet_x=#jet_left:jet_turn=1:jet_age=0
             END IF
+        ELSE
+            ' Departing after its last pass: gone once wholly off camera, so
+            ' the next jet's countdown does not depend on the world's width.
+            IF #jet_x+16 < #camera THEN jet_on=0:RETURN
         END IF
     ELSE
         #jet_x=#jet_x+#jet_step
@@ -991,6 +1124,10 @@ ELSE
             IF #hx < #tank_x THEN shell_dir=1
             shell_rise=1
             IF hy > 130 THEN shell_rise=0
+            ' Overhead, the turret faces front (tank_pose): fire straight up
+            ' from its centre, starting clear of the crowd row.
+            GOSUB tank_pose
+            IF tank_face = 2 THEN #shell_x=#tank_x+15:shell_y=150:shell_dir=2
             #tank_wait=140
             IF saved >= 16 THEN #tank_wait=100
         END IF
@@ -1012,14 +1149,19 @@ RETURN
 
 shell_tick:
 #shell_step=dt+dt
-IF shell_dir THEN
-    IF #shell_x > #shell_step THEN #shell_x=#shell_x-#shell_step ELSE shell_on=0:RETURN
+IF shell_dir = 2 THEN
+    ' Straight up at 2 px per frame, retiring at the top of the sky.
+    IF shell_y > #shell_step+24 THEN shell_y=shell_y-#shell_step ELSE shell_on=0:RETURN
 ELSE
-    #shell_x=#shell_x+#shell_step
-END IF
-IF #shell_x > 1572 THEN shell_on=0:RETURN
-IF shell_rise THEN
-    IF shell_y > dt+24 THEN shell_y=shell_y-dt ELSE shell_on=0:RETURN
+    IF shell_dir THEN
+        IF #shell_x > #shell_step THEN #shell_x=#shell_x-#shell_step ELSE shell_on=0:RETURN
+    ELSE
+        #shell_x=#shell_x+#shell_step
+    END IF
+    IF #shell_x >= 1568 THEN shell_on=0:RETURN
+    IF shell_rise THEN
+        IF shell_y > dt+24 THEN shell_y=shell_y-dt ELSE shell_on=0:RETURN
+    END IF
 END IF
 #ax=#hx+16:#bx=#shell_x
 GOSUB distance_x
@@ -1125,56 +1267,133 @@ GOSUB hud
 RETURN
 
 stars_draw:
-' High/middle/low stars move 1/2/3 pixels per eight-pixel terrain step.
+' High/middle/low stars (rows 3-6, 7-11, 12-16) move 1/2/3 pixels per
+' eight-pixel terrain step. Byte wrap is intentional: even the fastest layer
+' loops smoothly through screen edges. One pass per star: each star owns its
+' sky row, so clearing its old cell cannot touch another star, and the old cell
+' is cleared only when the star has left it. star_row ends with row 0.
 star_scroll=#camera/8
 IF star_visible THEN
     IF star_scroll = star_old THEN RETURN
-    FOR star_i=0 TO 13
-        star_pos=star_old
-        GOSUB star_position
-        VPOKE #star_addr,32
-    NEXT star_i
+ELSE
+    ' A freshly cleared screen has nothing to erase.
+    star_old=star_scroll
 END IF
-FOR star_i=0 TO 13
-    star_pos=star_scroll
-    GOSUB star_position
+#if TI994A
+' Native star pass. Each name-table write sets the VDP address with
+' interrupts held off, exactly as the runtime's WRTVRM does.
+ASM movb @cvb_STAR_SCROLL,r4
+ASM srl r4,8
+ASM movb @cvb_STAR_OLD,r5
+ASM srl r5,8
+ASM li r1,cvb_STAR_X
+ASM li r2,cvb_STAR_ROW
+ASM clr r3
+ASM stars_loop:
+ASM movb *r2+,r8
+ASM srl r8,8
+ASM ci r8,0
+ASM jeq stars_done
+ASM mov r4,r6
+ASM mov r5,r7
+ASM ci r8,7
+ASM jl stars_layer
+ASM a r4,r6
+ASM a r5,r7
+ASM ci r8,12
+ASM jl stars_layer
+ASM a r4,r6
+ASM a r5,r7
+ASM stars_layer:
+ASM movb *r1+,r0
+ASM srl r0,8
+ASM s r0,r6
+ASM neg r6
+ASM andi r6,255
+ASM s r0,r7
+ASM neg r7
+ASM andi r7,255
+ASM sla r8,5
+ASM ai r8,6144
+ASM srl r7,3
+ASM mov r6,r0
+ASM srl r0,3
+ASM c r0,r7
+ASM jeq stars_kept
+ASM a r8,r7
+ASM ori r7,16384
+ASM limi 0
+ASM swpb r7
+ASM movb r7,@VDPWADR
+ASM swpb r7
+ASM movb r7,@VDPWADR
+ASM li r7,8192
+ASM movb r7,@VDPWDATA
+ASM limi 2
+ASM stars_kept:
+ASM a r8,r0
+ASM ori r0,16384
+ASM andi r6,7
+ASM ai r6,240
+ASM mov r3,r7
+ASM andi r7,1
+ASM jeq stars_even
+ASM ai r6,8
+ASM stars_even:
+ASM swpb r6
+ASM limi 0
+ASM swpb r0
+ASM movb r0,@VDPWADR
+ASM swpb r0
+ASM movb r0,@VDPWADR
+ASM movb r6,@VDPWDATA
+ASM limi 2
+ASM inc r3
+ASM jmp stars_loop
+ASM stars_done:
+#else
+FOR star_i=0 TO 31
+    IF star_row(star_i) = 0 THEN EXIT FOR
+    star_pos=star_scroll:star_cell=star_old
+    IF star_row(star_i) >= 7 THEN star_pos=star_pos+star_scroll:star_cell=star_cell+star_old
+    IF star_row(star_i) >= 12 THEN star_pos=star_pos+star_scroll:star_cell=star_cell+star_old
+    star_pos=star_x(star_i)-star_pos
+    star_cell=star_x(star_i)-star_cell
+    star_cell=star_cell/8
+    #vaddr=star_row(star_i)*32
+    #vaddr=#vaddr+6144
+    IF star_cell <> star_pos/8 THEN
+        #vaddr=#vaddr+star_cell
+        VPOKE #vaddr,32
+        #vaddr=#vaddr-star_cell
+    END IF
+    star_cell=star_pos/8
+    #vaddr=#vaddr+star_cell
     star_char=240+(star_pos AND 7)
     IF star_i AND 1 THEN star_char=star_char+8
-    VPOKE #star_addr,star_char
+    VPOKE #vaddr,star_char
 NEXT star_i
+#endif
 star_old=star_scroll:star_visible=1
 RETURN
 
-star_position:
-' Apply the same row-dependent rate when erasing and drawing. Byte wrap is
-' intentional: even the fastest layer loops smoothly through screen edges.
-IF star_row(star_i) >= 12 THEN
-    star_pos=star_pos+star_pos+star_pos
-ELSE
-    IF star_row(star_i) >= 7 THEN star_pos=star_pos+star_pos
-END IF
-star_pos=star_x(star_i)-star_pos
-GOSUB star_address
-RETURN
-
-star_address:
-#star_addr=star_row(star_i)*32
-#star_addr=#star_addr+star_pos/8
-#star_addr=#star_addr+6144
-RETURN
-
 terrain:
+' Runs straight after crowd_commit's vblank-synchronised copy of rows 17-20.
+' Overlays on those rows go first (flag, camp fires and doors), so they land
+' before the beam reaches row 17; otherwise an open camp shows its closed
+' roof and door for a frame after each scroll. Lower rows follow.
+GOSUB flag_position
+GOSUB camp_fronts
 #mapoff=#camera/8
 #mapoff=#mapoff+1024
 SCREEN world_map,#mapoff,672,32,1
+' Row 22 erases the previous fence stamp. Row 23 is drawn once by game_screen:
+' nothing else ever writes it, so scrolling does not recopy it.
 SCREEN ground_row,0,704,32,1
-SCREEN ground_row,0,736,32,1
 #fence_world=1568
 GOSUB fence_boundary
 #fence_world=1888
 GOSUB fence_boundary
-GOSUB flag_position
-GOSUB camp_fronts
 terrain_dirty=0
 RETURN
 
@@ -1182,13 +1401,18 @@ camp_fronts:
 ' Open-door overlays use raw name-table addresses, no VDP reads.
 FOR tc=0 TO 3
     IF camp_open(tc) THEN
-        GOSUB camp_fire
+        ' Fire tiles start at x-24..x+16: skip camps wholly outside the view.
+        #relative=#camp_x(tc)+16
+        IF #relative >= #camera THEN
+            #relative=#relative-#camera
+            IF #relative < 296 THEN GOSUB camp_fire
+        END IF
         IF #camp_x(tc) >= #camera THEN
             #relative=#camp_x(tc)-#camera
             IF #relative < 256 THEN
-                #tileaddr=#relative/8
-                #tileaddr=#tileaddr+6752
-                VPOKE #tileaddr,136
+                #vaddr=#relative/8
+                #vaddr=#vaddr+6752
+                VPOKE #vaddr,136
                 ' Row 20 is committed by crowd_draw, never erased here.
             END IF
         END IF
@@ -1197,18 +1421,24 @@ NEXT tc
 RETURN
 
 camp_fire:
+' Six fire tiles from x-24 on row 18. The camera (camera_tick) and the camps
+' are cell aligned, so clip once at the left and write consecutive cells,
+' stopping at the right edge. camp_fronts only calls this when one shows.
+fire_tile=0
 #fire_world=#camp_x(tc)-24
-FOR fire_tile=0 TO 5
-    IF #fire_world >= #camera THEN
-        #fire_screen=#fire_world-#camera
-        IF #fire_screen < 256 THEN
-            #fire_addr=#fire_screen/8
-            #fire_addr=#fire_addr+6720
-            fire_char=126+(fire_tile AND 1)
-            VPOKE #fire_addr,fire_char
-        END IF
-    END IF
-    #fire_world=#fire_world+8
+IF #fire_world < #camera THEN
+    #fire_screen=#camera-#fire_world
+    fire_tile=#fire_screen/8
+    #fire_world=#camera
+END IF
+#vaddr=#fire_world-#camera
+#vaddr=#vaddr/8
+#vaddr=#vaddr+6720
+FOR fire_tile=fire_tile TO 5
+    IF #vaddr >= 6752 THEN EXIT FOR
+    fire_char=126+(fire_tile AND 1)
+    VPOKE #vaddr,fire_char
+    #vaddr=#vaddr+1
 NEXT fire_tile
 RETURN
 
@@ -1252,26 +1482,105 @@ IF crowd_mask = 0 THEN
     RETURN
 END IF
 IF crowd_shift = 0 THEN GOSUB waiting_draw:RETURN
+' 255 marks a cell no silhouette has touched yet.
+#if TI994A
+ASM li r0,array_CROWD_CELLS
+ASM li r1,65280
+ASM li r2,32
+ASM compose_clear:
+ASM movb r1,*r0+
+ASM dec r2
+ASM jne compose_clear
+#else
 FOR cc=0 TO 31
     crowd_cells(cc)=255
 NEXT cc
+#endif
+' Pixel-merge only camps with walkers. A settled camp's people stand on
+' world-aligned cells at least 64 px from any other camp's crowd, so they keep
+' the prebuilt standing characters (crowd_settled, after the upload below).
 FOR tc=0 TO 3
     IF crowd_mask AND camp_bits(tc) THEN
-        FOR cp=tc*16 TO tc*16+15
-            IF person_state(cp) = 1 THEN GOSUB crowd_plot
-            IF person_state(cp) = 2 THEN GOSUB crowd_plot
-        NEXT cp
+        IF camp_active(tc) THEN
+#if TI994A
+            cp=tc*16:crowd_mode=0
+            GOSUB compose_block
+#else
+            FOR cp=tc*16 TO tc*16+15
+                IF person_state(cp) = 1 THEN GOSUB crowd_plot
+                IF person_state(cp) = 2 THEN GOSUB crowd_plot
+            NEXT cp
+#endif
+        END IF
     END IF
 NEXT tc
 IF crowd_mask AND 16 THEN
+#if TI994A
+    FOR tc=0 TO 3
+        cp=tc*16:crowd_mode=6
+        GOSUB compose_block
+    NEXT tc
+#else
     FOR cp=0 TO 63
         IF person_state(cp) = 6 THEN GOSUB crowd_plot
     NEXT cp
+#endif
 END IF
 ' Upload into the hidden pattern set; the old row remains intact until SCREEN.
 #crowd_color_addr=crowd_bank*8
 #crowd_color_addr=#crowd_color_addr+4096
 DEFINE VRAM #crowd_color_addr,256,VARPTR crowd_pixels(0)
+' Occupied cells get their 8-byte palette in the hidden colour set and name
+' their own pattern; the others show the scenery code underneath.
+#if TI994A
+ASM movb @cvb_CROWD_BANK,r4
+ASM srl r4,8
+ASM mov @cvb__CROWD_MAP,r5
+ASM ai r5,cvb_WORLD_MAP
+ASM li r2,array_CROWD_CELLS
+ASM clr r3
+ASM paint_loop:
+ASM clr r0
+ASM movb *r2,r0
+ASM ci r0,65280
+ASM jeq paint_scenery
+ASM srl r0,8
+ASM ai r0,cvb_PERSON_COLORS
+ASM mov r0,r1
+ASM mov r3,r0
+ASM a r4,r0
+ASM sla r0,3
+ASM ai r0,12288
+ASM ori r0,16384
+ASM limi 0
+ASM swpb r0
+ASM movb r0,@VDPWADR
+ASM swpb r0
+ASM movb r0,@VDPWADR
+ASM movb *r1+,@VDPWDATA
+ASM movb *r1+,@VDPWDATA
+ASM movb *r1+,@VDPWDATA
+ASM movb *r1+,@VDPWDATA
+ASM movb *r1+,@VDPWDATA
+ASM movb *r1+,@VDPWDATA
+ASM movb *r1+,@VDPWDATA
+ASM movb *r1+,@VDPWDATA
+ASM limi 2
+ASM mov r3,r0
+ASM a r4,r0
+ASM swpb r0
+ASM movb r0,*r2
+ASM jmp paint_next
+ASM paint_scenery:
+ASM mov r5,r1
+ASM a r3,r1
+ASM movb *r1,*r2
+ASM paint_next:
+ASM inc r2
+ASM inc r3
+ASM ci r3,32
+ASM jl paint_loop
+#else
 FOR cc=0 TO 31
     IF crowd_cells(cc) <> 255 THEN
         #crowd_color_addr=cc+crowd_bank
@@ -1284,6 +1593,8 @@ FOR cc=0 TO 31
         crowd_cells(cc)=world_map(#crowd_index)
     END IF
 NEXT cc
+#endif
+GOSUB crowd_settled
 GOSUB crowd_doors
 GOSUB crowd_commit
 crowd_bank=64-crowd_bank
@@ -1305,11 +1616,41 @@ FOR cc=0 TO 31
     crowd_cells(cc)=world_map(#crowd_map+cc)
 NEXT cc
 #endif
+GOSUB crowd_settled
+GOSUB crowd_doors
+GOSUB crowd_commit
+RETURN
+
+crowd_settled:
+' Settled camps near the view (crowd_mask, no walkers) write prebuilt standing
+' characters straight into the name row, 16 people per camp.
+FOR tc=0 TO 3
+    IF crowd_mask AND camp_bits(tc) THEN
+        IF camp_active(tc) = 0 THEN
 #if TI994A
-' Scan the 64 state bytes cheaply; only visible waiting people reach plotting.
+            cp=tc*16
+            GOSUB waiting_scan
+#else
+            FOR cp=tc*16 TO tc*16+15
+                IF person_state(cp) = 2 THEN GOSUB waiting_plot
+            NEXT cp
+#endif
+        END IF
+    END IF
+NEXT tc
+RETURN
+
+#if TI994A
+waiting_scan:
+' Scan one camp's 16 state bytes from person cp; only visible waiting people
+' reach plotting.
+ASM movb @cvb_CP,r3
+ASM srl r3,8
 ASM li r1,array_PERSON_STATE
+ASM a r3,r1
 ASM li r2,array__PERSON_X
-ASM clr r3
+ASM a r3,r2
+ASM a r3,r2
 ASM mov @cvb__CAMERA,r4
 ASM movb @cvb_ANIM,r5
 ASM srl r5,11
@@ -1342,20 +1683,11 @@ ASM sla r0,8
 ASM movb r0,*r8
 ASM waiting_scan_next:
 ASM inc r3
-ASM ci r3,64
-ASM jl waiting_scan_loop
-#else
-FOR tc=0 TO 3
-    IF crowd_mask AND camp_bits(tc) THEN
-        FOR cp=tc*16 TO tc*16+15
-            IF person_state(cp) = 2 THEN GOSUB waiting_plot
-        NEXT cp
-    END IF
-NEXT tc
-#endif
-GOSUB crowd_doors
-GOSUB crowd_commit
+ASM mov r3,r6
+ASM andi r6,15
+ASM jne waiting_scan_loop
 RETURN
+#endif
 
 crowd_commit:
 ' Prepare people first. Keep roof/walls and their footings on the same camera
@@ -1410,6 +1742,171 @@ FOR tc=0 TO 3
 NEXT tc
 RETURN
 
+#if TI994A
+compose_block:
+' Native compositor for the 16 people from cp. crowd_mode 0 plots escaping
+' and waiting people (states 1 and 2); otherwise only that state (6, homeward).
+' The same rules as the portable crowd_plot/crowd_glyph/crowd_cell/
+' crowd_background: 4-pixel positions, pre-shifted glyph rows (+192 right
+' half, +384 left half) ORed into crowd_pixels, and each cell's background
+' and palette chosen by the first person drawn into it.
+ASM jmp compose_start
+' compose_cell: r7 cell, r8 shift offset, r9 glyph offset, r2 kind*8.
+ASM compose_cell:
+ASM mov r7,r0
+ASM ai r0,array_CROWD_CELLS
+ASM clr r1
+ASM movb *r0,r1
+ASM ci r1,65280
+ASM jne compose_merge
+ASM mov @cvb__CROWD_MAP,r1
+ASM a r7,r1
+ASM ai r1,cvb_WORLD_MAP
+ASM movb *r1,r1
+ASM srl r1,8
+ASM ci r1,133
+ASM jeq compose_wall
+ASM ci r1,156
+ASM jeq compose_window
+ASM ci r1,157
+ASM jeq compose_door
+ASM ci r1,132
+ASM jne compose_ground
+ASM mov r2,r1
+ASM ai r1,32
+ASM jmp compose_palette
+ASM compose_ground:
+ASM mov r2,r1
+ASM compose_palette:
+ASM swpb r1
+ASM movb r1,*r0
+ASM li r1,cvb_CROWD_BASES
+ASM jmp compose_base
+ASM compose_wall:
+ASM li r1,20480
+ASM movb r1,*r0
+ASM li r1,cvb_CROWD_BASES
+ASM ai r1,8
+ASM jmp compose_base
+ASM compose_window:
+ASM li r1,22528
+ASM movb r1,*r0
+ASM li r1,cvb_CROWD_BASES
+ASM ai r1,16
+ASM jmp compose_base
+ASM compose_door:
+ASM li r1,6144
+ASM movb r1,*r0
+ASM li r1,cvb_CROWD_BASES
+ASM ai r1,24
+ASM compose_base:
+ASM mov r7,r0
+ASM sla r0,3
+ASM ai r0,array_CROWD_PIXELS
+ASM movb *r1+,*r0+
+ASM movb *r1+,*r0+
+ASM movb *r1+,*r0+
+ASM movb *r1+,*r0+
+ASM movb *r1+,*r0+
+ASM movb *r1+,*r0+
+ASM movb *r1+,*r0+
+ASM movb *r1+,*r0+
+ASM compose_merge:
+ASM mov r9,r1
+ASM a r8,r1
+ASM ai r1,cvb_PERSON_ROWS
+ASM mov r7,r0
+ASM sla r0,3
+ASM ai r0,array_CROWD_PIXELS
+ASM socb *r1+,*r0+
+ASM socb *r1+,*r0+
+ASM socb *r1+,*r0+
+ASM socb *r1+,*r0+
+ASM socb *r1+,*r0+
+ASM socb *r1+,*r0+
+ASM socb *r1+,*r0+
+ASM socb *r1+,*r0+
+ASM b *r11
+' Main scan: r3 person, r4 camera, r5 anim/8, r6 mode.
+ASM compose_start:
+ASM movb @cvb_CP,r3
+ASM srl r3,8
+ASM mov @cvb__CAMERA,r4
+ASM movb @cvb_ANIM,r5
+ASM srl r5,11
+ASM movb @cvb_CROWD_MODE,r6
+ASM srl r6,8
+ASM compose_loop:
+ASM mov r3,r0
+ASM ai r0,array_PERSON_STATE
+ASM clr r1
+ASM movb *r0,r1
+ASM srl r1,8
+ASM mov r6,r6
+ASM jne compose_only
+ASM ci r1,1
+ASM jeq compose_take
+ASM ci r1,2
+ASM jne compose_next
+ASM jmp compose_take
+ASM compose_only:
+ASM c r1,r6
+ASM jne compose_next
+ASM compose_take:
+ASM mov r3,r2
+ASM ai r2,cvb_PERSON_KIND
+ASM movb *r2,r2
+ASM srl r2,8
+ASM sla r2,3
+ASM mov r3,r9
+ASM a r5,r9
+ASM andi r9,3
+ASM a r2,r9
+ASM ci r1,2
+ASM jeq compose_still
+ASM ai r9,4
+ASM compose_still:
+ASM sla r9,3
+ASM mov r3,r0
+ASM a r3,r0
+ASM ai r0,array__PERSON_X
+ASM mov *r0,r0
+ASM c r0,r4
+ASM jhe compose_visible
+ASM mov r4,r1
+ASM s r0,r1
+ASM ci r1,4
+ASM jne compose_next
+ASM clr r7
+ASM li r8,384
+ASM bl @compose_cell
+ASM jmp compose_next
+ASM compose_visible:
+ASM s r4,r0
+ASM ci r0,256
+ASM jhe compose_next
+ASM mov r0,r7
+ASM srl r7,3
+ASM andi r0,4
+ASM jeq compose_whole
+ASM li r8,192
+ASM bl @compose_cell
+ASM ci r7,31
+ASM jeq compose_next
+ASM inc r7
+ASM li r8,384
+ASM bl @compose_cell
+ASM jmp compose_next
+ASM compose_whole:
+ASM clr r8
+ASM bl @compose_cell
+ASM compose_next:
+ASM inc r3
+ASM mov r3,r0
+ASM andi r0,15
+ASM jne compose_loop
+RETURN
+#else
 crowd_plot:
 IF #person_x(cp) < #camera THEN
     #crowd_rel=#camera-#person_x(cp)
@@ -1450,22 +1947,9 @@ IF crowd_cells(cc) = 255 THEN GOSUB crowd_background
 #crowd_source=#crowd_glyph
 IF crowd_shift = 1 THEN #crowd_source=#crowd_source+192
 IF crowd_shift = 2 THEN #crowd_source=#crowd_source+384
-#if TI994A
-ASM mov @cvb__CROWD_SOURCE,r1
-ASM ai r1,cvb_PERSON_ROWS
-ASM mov @cvb__CROWD_PIXEL,r2
-ASM ai r2,array_CROWD_PIXELS
-ASM li r3,8
-ASM crowd_merge_loop:
-ASM movb *r1+,r0
-ASM socb r0,*r2+
-ASM dec r3
-ASM jne crowd_merge_loop
-#else
 FOR cy=0 TO 7
     crowd_pixels(#crowd_pixel+cy)=crowd_pixels(#crowd_pixel+cy) OR person_rows(#crowd_source+cy)
 NEXT cy
-#endif
 RETURN
 
 crowd_background:
@@ -1481,26 +1965,21 @@ IF crowd_under = 157 THEN crowd_cells(cc)=24
 IF crowd_under = 133 THEN #crowd_source=8
 IF crowd_under = 156 THEN #crowd_source=16
 IF crowd_under = 157 THEN #crowd_source=24
-#if TI994A
-ASM mov @cvb__CROWD_SOURCE,r1
-ASM ai r1,cvb_CROWD_BASES
-ASM mov @cvb__CROWD_PIXEL,r2
-ASM ai r2,array_CROWD_PIXELS
-ASM li r3,8
-ASM crowd_copy_loop:
-ASM movb *r1+,*r2+
-ASM dec r3
-ASM jne crowd_copy_loop
-#else
 FOR cb=0 TO 7
     crowd_pixels(#crowd_pixel+cb)=crowd_bases(#crowd_source+cb)
 NEXT cb
-#endif
 RETURN
+#endif
 
 menu_restore:
+' The crowd's pixel buffer is idle on menu screens: fill it with the font
+' colour (white on black) rather than keep 256 identical bytes in ROM.
+FOR ini=0 TO 127
+    crowd_pixels(ini)=241
+    crowd_pixels(ini+128)=241
+NEXT ini
 DEFINE VRAM 4608,256,menu_font
-DEFINE VRAM 12800,256,menu_colors
+DEFINE VRAM 12800,256,VARPTR crowd_pixels(0)
 RETURN
 
 fence_boundary:
@@ -1522,11 +2001,11 @@ FOR fence_y=0 TO 1
         IF #fence_col >= fence_trim THEN
             #fence_draw=#fence_col-fence_trim
             IF #fence_draw < 32 THEN
-                #fence_addr=#fence_row+#fence_draw
+                #vaddr=#fence_row+#fence_draw
                 ' fire_char is idle here; camp_fronts uses it after both fences.
                 fire_char=fence_codes(fence_char-160)
                 IF #fence_world = 1888 THEN fire_char=home_fence_codes(fence_char-160)
-                IF fire_char THEN VPOKE #fence_addr,fire_char
+                IF fire_char THEN VPOKE #vaddr,fire_char
             END IF
         END IF
         #fence_col=#fence_col+1
@@ -1539,32 +2018,32 @@ RETURN
 flag_position:
 ' Clear the old flag footprint. The pole ends directly on the office roof.
 IF flag_visible THEN
-    #flag_addr=flag_col
-    #flag_addr=#flag_addr+6688
-    VPOKE #flag_addr,32
+    #vaddr=flag_col
+    #vaddr=#vaddr+6688
+    VPOKE #vaddr,32
     IF flag_col < 31 THEN
-        #flag_addr=#flag_addr+1
-        VPOKE #flag_addr,32
-        #flag_addr=#flag_addr-1
+        #vaddr=#vaddr+1
+        VPOKE #vaddr,32
+        #vaddr=#vaddr-1
     END IF
-    #flag_addr=#flag_addr+32
-    VPOKE #flag_addr,32
+    #vaddr=#vaddr+32
+    VPOKE #vaddr,32
 END IF
 flag_visible=0
 #flag_screen=2016-#camera
 IF #flag_screen < 256 THEN
     flag_visible=1
     flag_col=#flag_screen/8
-    #flag_addr=flag_col
-    #flag_addr=#flag_addr+6688
-    VPOKE #flag_addr,144
+    #vaddr=flag_col
+    #vaddr=#vaddr+6688
+    VPOKE #vaddr,144
     IF flag_col < 31 THEN
-        #flag_addr=#flag_addr+1
-        VPOKE #flag_addr,145
-        #flag_addr=#flag_addr-1
+        #vaddr=#vaddr+1
+        VPOKE #vaddr,145
+        #vaddr=#vaddr-1
     END IF
-    #flag_addr=#flag_addr+32
-    VPOKE #flag_addr,146
+    #vaddr=#vaddr+32
+    VPOKE #vaddr,146
 END IF
 RETURN
 
@@ -1587,21 +2066,21 @@ digit_value=saved:#digit_pos=6150:GOSUB digits
 digit_value=aboard:#digit_pos=6161:GOSUB digits
 digit_value=lost:#digit_pos=6170:GOSUB digits
 FOR hc=0 TO 3
-    #hudaddr=hc+hc+hc
-    #hudaddr=#hudaddr+6182
+    #vaddr=hc+hc+hc
+    #vaddr=#vaddr+6182
     hudchar=49+hc
     IF camp_open(hc) THEN hudchar=111
     IF camp_left(hc) = 0 THEN hudchar=45
-    VPOKE #hudaddr,hudchar
+    VPOKE #vaddr,hudchar
 NEXT hc
 spares=0
 IF lives > 0 THEN spares=lives-1
 FOR hs=0 TO 7
     hudchar=32
     IF hs+spares > 7 THEN hudchar=140
-    #hudaddr=hs
-    #hudaddr=#hudaddr+6200
-    VPOKE #hudaddr,hudchar
+    #vaddr=hs
+    #vaddr=#vaddr+6200
+    VPOKE #vaddr,hudchar
 NEXT hs
 hudchar=32
 IF practice THEN hudchar=60
@@ -1622,45 +2101,95 @@ GOSUB flag_wave
 IF crash_timer THEN GOSUB crash_draw:RETURN
 draw_slot=0:draw_color=15
 GOSUB heli_draw
-draw_slot=4:draw_on=tank_on:#draw_world=#tank_x:draw_y=155:draw_pat=48:draw_color=3
-GOSUB tank_pose
-IF tank_face = 0 THEN draw_pat=240
-IF tank_face = 2 THEN draw_pat=248
-GOSUB world_sprite
-draw_slot=5:#draw_world=#tank_x+16:draw_color=3:draw_pat=236
-IF tank_face = 0 THEN draw_pat=244
-IF tank_face = 2 THEN draw_pat=252
-GOSUB world_sprite
-draw_slot=6:draw_on=runner_on:#draw_world=#runner_x:draw_y=159:draw_color=11
-crowd_kind=person_kind(runner_id)
-crowd_pose_index=anim/8+runner_id
-crowd_pose_index=crowd_pose_index AND 3
-draw_pat=crowd_kind*16+188
-draw_pat=draw_pat+crowd_pose_index*4
-IF crowd_kind = 1 THEN draw_color=15
-IF crowd_kind = 2 THEN draw_color=10
-GOSUB world_sprite
-FOR di=0 TO 1
-    draw_slot=di+2:draw_on=shot_on(di):#draw_world=#shot_x(di)
-    draw_y=shot_y(di)-1:draw_pat=68:draw_color=11
+' Sprite slots (the VDP shows only 4 per scanline, lowest slots first):
+'   0-1 helicopter, 2 tank shell, 3 jet missile, 4-5 player shots - fixed, so
+'   nothing that can destroy the helicopter is ever a crowded line's lost one;
+'   6-11 tank halves, runner, jet, drone, blast - rotated by rot_map, so on an
+'   overloaded line each drops out in turn (flicker) instead of one vanishing.
+' Inactive actors skip their pose work; sprite_off hides each slot once.
+sprite_rot=sprite_rot+1
+IF sprite_rot >= 12 THEN sprite_rot=0
+rot_base=sprite_rot*6
+draw_slot=2
+IF shell_on THEN
+    #draw_world=#shell_x:draw_y=shell_y-1:draw_pat=68:draw_color=8
     GOSUB world_sprite
-NEXT di
-draw_slot=7:draw_on=jet_on:#draw_world=#jet_x:draw_y=jet_y-1:draw_pat=60:draw_color=7
-IF jet_dir = 0 THEN draw_pat=176
-IF jet_turn THEN
-    draw_pat=180
-    IF jet_dir = 0 THEN draw_pat=184
+ELSE
+    GOSUB sprite_off
 END IF
-GOSUB world_sprite
-draw_slot=8:draw_on=shell_on:#draw_world=#shell_x:draw_y=shell_y-1:draw_pat=68:draw_color=8
-GOSUB world_sprite
-draw_slot=9:draw_on=drone_on:#draw_world=#drone_x:draw_y=drone_y-1:draw_pat=64:draw_color=10
-GOSUB world_sprite
-draw_slot=10:draw_on=blast_timer:#draw_world=#blast_x:draw_y=blast_y-1:draw_pat=72:draw_color=10
-IF anim AND 8 THEN draw_pat=76:draw_color=8
-GOSUB world_sprite
-draw_slot=11:draw_on=missile_on:#draw_world=#missile_x:draw_y=missile_y-1:draw_pat=68:draw_color=8
-GOSUB world_sprite
+draw_slot=3
+IF missile_on THEN
+    #draw_world=#missile_x:draw_y=missile_y-1:draw_pat=68:draw_color=8
+    GOSUB world_sprite
+ELSE
+    GOSUB sprite_off
+END IF
+FOR di=0 TO 1
+    draw_slot=di+4
+    IF shot_on(di) THEN
+        #draw_world=#shot_x(di):draw_y=shot_y(di)-1:draw_pat=68:draw_color=11
+        GOSUB world_sprite
+    ELSE
+        GOSUB sprite_off
+    END IF
+NEXT di
+IF tank_on THEN
+    GOSUB tank_pose
+    draw_slot=rot_map(rot_base)
+    #draw_world=#tank_x:draw_y=155:draw_pat=48:draw_color=3
+    IF tank_face = 0 THEN draw_pat=240
+    IF tank_face = 2 THEN draw_pat=248
+    GOSUB world_sprite
+    draw_slot=rot_map(rot_base+1)
+    #draw_world=#tank_x+16:draw_color=3:draw_pat=236
+    IF tank_face = 0 THEN draw_pat=244
+    IF tank_face = 2 THEN draw_pat=252
+    GOSUB world_sprite
+ELSE
+    draw_slot=rot_map(rot_base):GOSUB sprite_off
+    draw_slot=rot_map(rot_base+1):GOSUB sprite_off
+END IF
+draw_slot=rot_map(rot_base+2)
+IF runner_on THEN
+    #draw_world=#runner_x:draw_y=159:draw_color=11
+    crowd_kind=person_kind(runner_id)
+    crowd_pose_index=anim/8+runner_id
+    crowd_pose_index=crowd_pose_index AND 3
+    draw_pat=crowd_kind*16+188
+    draw_pat=draw_pat+crowd_pose_index*4
+    IF crowd_kind = 1 THEN draw_color=15
+    IF crowd_kind = 2 THEN draw_color=10
+    GOSUB world_sprite
+ELSE
+    GOSUB sprite_off
+END IF
+draw_slot=rot_map(rot_base+3)
+IF jet_on THEN
+    #draw_world=#jet_x:draw_y=jet_y-1:draw_pat=60:draw_color=7
+    IF jet_dir = 0 THEN draw_pat=176
+    IF jet_turn THEN
+        draw_pat=180
+        IF jet_dir = 0 THEN draw_pat=184
+    END IF
+    GOSUB world_sprite
+ELSE
+    GOSUB sprite_off
+END IF
+draw_slot=rot_map(rot_base+4)
+IF drone_on THEN
+    #draw_world=#drone_x:draw_y=drone_y-1:draw_pat=64:draw_color=10
+    GOSUB world_sprite
+ELSE
+    GOSUB sprite_off
+END IF
+draw_slot=rot_map(rot_base+5)
+IF blast_timer THEN
+    #draw_world=#blast_x:draw_y=blast_y-1:draw_pat=72:draw_color=10
+    IF anim AND 8 THEN draw_pat=76:draw_color=8
+    GOSUB world_sprite
+ELSE
+    GOSUB sprite_off
+END IF
 RETURN
 
 crash_draw:
@@ -1710,31 +2239,46 @@ END IF
 RETURN
 
 world_sprite:
-IF draw_on THEN
-    IF #draw_world >= #camera THEN
-        #screen_x=#draw_world-#camera
-        IF #screen_x < 256 THEN
-            draw_x=#screen_x
-            SPRITE draw_slot,draw_y,draw_x,draw_pat,draw_color
-            RETURN
-        END IF
-    ELSE
-        #screen_x=#camera-#draw_world
-        IF #screen_x < 16 THEN
-            draw_x=32-#screen_x
-            draw_color=draw_color+128
-            SPRITE draw_slot,draw_y,draw_x,draw_pat,draw_color
-            RETURN
-        END IF
+' Draw an active actor at its world position, or hide it when off camera.
+' #sprite_shown has one bit per slot (#sprite_bit) so hidden slots stay free.
+#slot_bit=#sprite_bit(draw_slot)
+IF #draw_world >= #camera THEN
+    #screen_x=#draw_world-#camera
+    IF #screen_x < 256 THEN
+        draw_x=#screen_x
+        SPRITE draw_slot,draw_y,draw_x,draw_pat,draw_color
+        #sprite_shown=#sprite_shown OR #slot_bit
+        RETURN
+    END IF
+ELSE
+    #screen_x=#camera-#draw_world
+    IF #screen_x < 16 THEN
+        draw_x=32-#screen_x
+        draw_color=draw_color+128
+        SPRITE draw_slot,draw_y,draw_x,draw_pat,draw_color
+        #sprite_shown=#sprite_shown OR #slot_bit
+        RETURN
     END IF
 END IF
-SPRITE draw_slot,209,0,0,0
+GOSUB sprite_off
+RETURN
+
+sprite_off:
+' Hide a world-actor slot once; while it stays hidden this is one bit test.
+' (Word AND into a variable first: a bare IF #word AND n can test one byte.)
+#slot_bit=#sprite_bit(draw_slot)
+#slot_bit=#slot_bit AND #sprite_shown
+IF #slot_bit THEN
+    SPRITE draw_slot,209,0,0,0
+    #sprite_shown=#sprite_shown XOR #slot_bit
+END IF
 RETURN
 
 hide_all:
 FOR hi=0 TO 31
     SPRITE hi,209,0,0,0
 NEXT hi
+#sprite_shown=0
 RETURN
 
 sound_tick:
@@ -1923,8 +2467,18 @@ RETURN
 practice_star:
 DATA BYTE 80,32,248,32,80,0,0,0
 
-' Keep the menu font in fixed ROM to leave room for the eight-screen map.
-INCLUDE "menu_font.bas"
+' One bit per world-actor sprite slot, for #sprite_shown.
+#sprite_bit:
+DATA 1,2,4,8,16,32,64,128,256,512,1024,2048
+
+' Rotating sprite block: rot_map(phase*6+actor) is the physical slot (6-11)
+' of actor 0-5 (tank left/right, runner, jet, drone, blast) in phase 0-11.
+' The offset advances each phase and odd phases reverse the order, so any two
+' actors sharing a crowded scanline take turns; every row is one-to-one.
+rot_map:
+DATA BYTE 6,7,8,9,10,11,11,10,9,8,7,6,7,8,9,10,11,6,6,11,10,9,8,7
+DATA BYTE 8,9,10,11,6,7,7,6,11,10,9,8,9,10,11,6,7,8,8,7,6,11,10,9
+DATA BYTE 10,11,6,7,8,9,9,8,7,6,11,10,11,6,7,8,9,10,10,9,8,7,6,11
 
 #if TI994A
 BANK 1

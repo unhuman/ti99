@@ -2,7 +2,8 @@ param([int]$ReviewProcessId=0)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $rom=Join-Path $PSScriptRoot 'build/ti/CHOPLIFT_8.bin'
-$emulator='C:\GameBase\TI99-4A\Emulators\classic99\classic99.exe'
+# The Classic99 the user runs (QI399.087); the GameBase copy is years older.
+$emulator='C:\Users\Howie\Downloads\classic99\classic99.exe'
 if (!(Test-Path -LiteralPath $rom)) { throw 'Build the TI cartridge first.' }
 $reviewRoot=Join-Path $PSScriptRoot 'build/review'
 New-Item -ItemType Directory -Force -Path $reviewRoot | Out-Null
@@ -19,5 +20,22 @@ if ($ReviewProcessId) {
 }
 [void]$chopProcess.WaitForInputIdle(3000)
 & (Join-Path $projectRoot 'tools/classic99-load.ps1') -ProcessId $chopProcess.Id -Rom $rom -LoadTimeoutMs 3000
-& (Join-Path $PSScriptRoot 'tools/capture.ps1') -ProcessId $chopProcess.Id -Keys '0x20,0x32' -GapMs 1000 -SettleMs 2500 -Out (Join-Path $PSScriptRoot 'build/title.png')
-Write-Output ('Loaded production ROM: {0}; SHA256 {1}' -f $rom,(Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash)
+# Start the cart by what is on screen, not by fixed delays: a 2 pressed while the
+# console is still resetting only acts as "any key" and leaves the menu waiting.
+Add-Type -AssemblyName System.Drawing
+$capture=Join-Path $PSScriptRoot 'tools/capture.ps1'
+$shot=Join-Path $PSScriptRoot 'build/title.png'
+function Test-Cyan($c) { $c.R -lt 140 -and $c.G -gt 180 -and $c.B -gt 180 }
+$screen=''
+Start-Sleep -Milliseconds 2000
+for ($i=0; $i -lt 12; $i++) {
+    & $capture -ProcessId $chopProcess.Id -SettleMs 200 -Out $shot 3>$null | Out-Null
+    $b=[System.Drawing.Bitmap]::FromFile($shot)
+    try { $mid=$b.GetPixel([int]($b.Width/2),[int]($b.Height*0.62)); $top=$b.GetPixel([int]($b.Width*0.89),[int]($b.Height*0.09)) } finally { $b.Dispose() }
+    if (-not (Test-Cyan $mid)) { $screen='cart'; break }
+    $screen=if (Test-Cyan $top) { 'menu' } else { 'title' }
+    $key=if ($screen -eq 'title') { '0x20' } else { '0x32' }
+    & $capture -ProcessId $chopProcess.Id -Keys $key -HoldMs 150 -SettleMs 1500 -Out $shot | Out-Null
+}
+if ($screen -ne 'cart') { throw "The cartridge did not start (stuck on the TI $screen screen)." }
+Write-Output ('Loaded production ROM: {0}; SHA256 {1}; title capture {2}' -f $rom,(Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash,$shot)

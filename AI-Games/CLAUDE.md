@@ -173,6 +173,12 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
     `ai r0,<label>` + `mov *r0` pair (how the compiler indexes a word table), reads the
     label's resolved address out of the `xas99` listing, and reports any that is odd.
     Verified against the real defect, not just against a passing build.
+  - **Read the label's VALUE, never the next listing row.** xas99 pads a `DATA` (word)
+    block to an even address, but a label alone on the line above it keeps the odd
+    location counter: Choplifter's `#sprite_bit` label was `>FEAF` while the listing showed
+    its data at `>FEB0`, so a check that binds a label to the next emitted address passes
+    the bug. `romcheck.py` reads the `ai r0,<label>` operand; Choplifter's `tools/build.py`
+    reads xas99's `-E` symbol file. Proven against a deliberately odd block.
 - **A "STOP EVERYTHING" ROUTINE THAT ENUMERATES STATE BY HAND GOES STALE, AND
   NOTHING TELLS YOU.** Keystone Kapers' `snd_off` silences the chip and clears
   the effect latches between rounds. It named channels 0, 1 and 2 and four decay
@@ -329,6 +335,16 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
     cached value and condition flags before returning to BASIC (for a byte in
     R0, `ASM MOVB @cvb_NAME,R0`). Check the generated assembly. Keystone's
     cancel-key scanner needs this to avoid silencing effects on ordinary frames.
+  - **Inline `ASM` that writes the VDP ports must hold interrupts off across each
+    address-and-data sequence** (`LIMI 0` … `LIMI 2`, exactly as the runtime's `WRTVRM`
+    does): the vblank handler sets its own VDP address, and landing between your two
+    address bytes sends the data elsewhere. The handler runs in its own workspace
+    (`>8320`), so main registers R0-R9 survive it; R10 is CVBasic's stack. Choplifter's
+    `tools/check.py` interpreter rejects a port write made with interrupts enabled.
+  - **A word `DATA` table is read through a `#` label** (`#tbl:` / `#tbl(i)`). Written
+    as `tbl(i)` it compiles to a BYTE read at an un-doubled index, with no warning; a test
+    model that holds the table as a list of words will agree with the bug, so make it
+    refuse word values read through a byte name.
   - **An UNDEFINED name in `#if` is silently FALSE** — no error, no warning. So a mistyped
     `-DEXPRT=1` compiles the *other* branch and every tool in the chain reports success. When a `-D`
     selects which content a cart carries, that is a wrong cart with a right-looking name. **Make the
@@ -458,6 +474,21 @@ Every game is built the same way — that consistency is the point.
   **Hide the sprites before the blit, not after** — the normal draw puts them back on the same
   pass. Hide only the ones that belong to the screen: a HUD or radar sprite blinking out on
   every crossing is a new fault in place of the old one.
+
+- **AN OVERLAY POKED AFTER A VBLANK-SYNCHRONISED COPY RACES THE BEAM.** Choplifter copies its
+  scenery rows straight after a `WAIT`, then pokes the burning roofs and open doors back over
+  them. Queued behind two more row copies, the fence stamps and the flag, those pokes finished
+  after the beam had passed rows 17-19 whenever two camps were in view, so for one frame per
+  scroll an evacuating camp showed its closed roof and door. It reads as video corruption, and a
+  screenshot only catches it sometimes. **After a synchronised copy, restore the overlays on the
+  rows just copied first, top of the screen first**, then do everything lower down.
+- **ON A CROWDED SCANLINE, GIVE WHATEVER CAN KILL THE PLAYER THE SLOTS RIGHT AFTER THE
+  PLAYER.** The VDP draws four sprites per line, lowest slot first. Choplifter's tank shell sat
+  in slot 8, behind the tank's two halves, so with the helicopter landed beside a tank the shell
+  was the fifth sprite on its lines exactly when it was about to hit: deaths "for no reason".
+  Pin the player, put enemy projectiles next, and rotate the rest each update (from a ROM table,
+  reversing the order on alternate updates so any two neighbours take turns), so overload becomes
+  flicker instead of an invisible bullet. CVBasic's `SPRITE FLICKER` would rotate the player too.
 
 - **A SENTINEL VALUE THAT IS ALSO A VALID VALUE WILL EAT THE VALID ONE, AND ONLY HALF THE TIME.**
   Keystone Kapers stored a table of support-beam COLUMNS with 0 meaning "no more entries" — and
