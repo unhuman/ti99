@@ -4,8 +4,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # Sparse far-sky layer: one star per row avoids overlap during wrapped scroll.
-STAR_X=[19,173,82,231,47,142,6,201,111,60,218,154,33,190]
-STAR_ROW=list(range(3,17))
+# A sparse, irregular sky: three far stars (rows 3-6), two middle (7-11) and
+# three near (12-16), on uneven rows and spread across the width.
+STAR_X=[31,158,212,97,236,9,129,183]
+STAR_ROW=[3,5,6,8,10,12,13,15]
 # Each star owns its sky row: stars_draw clears a star's old cell without
 # checking for a neighbour, which is only safe while no two stars share a row.
 assert len(STAR_X)==len(STAR_ROW) and len(set(STAR_ROW))==len(STAR_ROW)

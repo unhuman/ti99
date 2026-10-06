@@ -285,6 +285,8 @@ def main():
     parser.add_argument('--review', action='store_true',
                         help='no benchmark: the real game, starting airborne over camps 1-2 '
                              'as they begin to evacuate, jets enabled and nine helicopters')
+    parser.add_argument('--calm', action='store_true',
+                        help='with --review: no tank and no jets, to watch crowds and boarding')
     args = parser.parse_args()
     source = args.source.read_text(encoding='utf-8')
     if args.review:
@@ -292,8 +294,10 @@ def main():
         source = sub(source, 'GOTO title\n', 'start_lives=9\nGOTO new_game\n')
         source = sub(source, '#hx=1920\nhy=LANDED\n', '#hx=640\nhy=96\n')
         source = sub(source, 'GOSUB new_heli\nGOSUB game_screen\nGOSUB clock_reset\n',
-                     'camp_open(1)=1:camp_open(2)=1:sorties=1\n'
+                     'camp_open(1)=1:camp_open(2)=1' + ('' if args.calm else ':sorties=1') + '\n'
                      'GOSUB new_heli\nGOSUB game_screen\nGOSUB clock_reset\n')
+        if args.calm:
+            source = sub(source, '#tank_wait=150\n#jet_wait', '#tank_wait=60000\n#jet_wait')
         out = ROOT/'build'/args.out; out.mkdir(parents=True, exist_ok=True)
         (out/'PROFILE.bas').write_text(source, encoding='utf-8', newline='\n')
         (out/'assets.bas').write_bytes(args.assets.read_bytes())

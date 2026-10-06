@@ -365,13 +365,14 @@ class Tests(unittest.TestCase):
         b.a['person_kind']=[i%3 for i in range(64)];b.a['waiting_kind']=[96+(i%3)*4 for i in range(64)]
         b.a['tile_art']=[v for bits,_ in generate.TILES for v in bits]
         b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW+[0,0]
-        b.a['#sprite_bit']=[int(v) for v in re.search(r'^#sprite_bit:\nDATA ([\d,]+)$',SOURCE,re.M)[1].split(',')]
-        rot=re.search(r'^rot_map:\n((?:DATA BYTE [\d,]+\n)+)',SOURCE,re.M)[1]
-        b.a['rot_map']=[int(v) for line in rot.splitlines() for v in line[10:].split(',')]
+        # Every DATA table written in the game source itself (not assets.bas).
+        for label,body in re.findall(r'^(#?\w+):\n((?:DATA(?: BYTE)? [\d,]+\n)+)',SOURCE,re.M):
+            b.a[label]=[int(v) for line in body.splitlines() for v in line.split(' ',2)[-1].split(',')]
         b.a['ground_row']=[129]*32
         b.a['fence_codes']=generate.FENCE_CODES
         b.a['home_fence_codes']=generate.HOME_FENCE_CODES
-        b.v.update({'#hx':160,'#runner_x':172,'runner_on':1,'runner_camp':0})
+        b.v.update({'#hx':160,'board_count':1})
+        b.a['#person_x'][0]=172;b.a['camp_active'][0]=1
         return b
     def total(self,b):
         return sum(b.a['camp_left'])+sum(b.v[x] for x in ('saved','lost','aboard'))
@@ -383,7 +384,8 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):structure(SOURCE.replace('#digit_pos=6161','#digit_pos=6160'))
     def test_board_and_capacity(self):
         b=self.state();b.call('people_tick')
-        self.assertEqual((b.v['aboard'],b.a['camp_left'][0],b.v['runner_on']),(1,15,0))
+        self.assertEqual((b.v['aboard'],b.a['camp_left'][0],b.v['board_count']),(1,15,0))
+        self.assertEqual((b.a['person_state'][0],b.a['camp_active'][0]),(5,0))
         self.assertEqual(self.total(b),64)
         b=self.state();b.v['aboard']=16;b.a['camp_left'][1]=0
         b.call('people_tick');self.assertEqual(b.v['aboard'],16);self.assertEqual(self.total(b),64)
@@ -488,10 +490,12 @@ class Tests(unittest.TestCase):
         b=self.state()
         for camp in range(4):
             for person in range(16):
-                b.v.update({'#hx':160,'#runner_x':172,'runner_on':1,'runner_camp':camp,'runner_id':camp*16+person,'transfer_timer':0})
+                who=camp*16+person
+                b.a['person_state'][who]=3;b.a['#person_x'][who]=172;b.a['camp_active'][camp]+=1
+                b.v.update({'#hx':160,'board_count':1,'transfer_timer':0})
                 b.call('people_tick');self.assertEqual(self.total(b),64)
             self.assertEqual(b.v['aboard'],16)
-            b.v.update({'#hx':1920,'runner_on':0})
+            b.v.update({'#hx':1920,'board_count':0})
             for person in range(16):
                 b.v['transfer_timer']=0;b.call('people_tick');self.assertEqual(self.total(b),64)
         self.assertEqual((b.v['saved'],b.v['lost'],b.v['aboard']),(64,0,0))
@@ -501,11 +505,12 @@ class Tests(unittest.TestCase):
         self.assertNotEqual(self.total(b),64)
     def test_camp_lookup_and_spawn(self):
         b=self.state();self.assertEqual(b.expr('#camp_x(1)'),384)
-        b.v.update({'#hx':400,'runner_on':0,'transfer_timer':0})
-        b.a['person_state'][16]=2;b.a['#person_x'][16]=416
+        b.a['person_state'][0]=2;b.v['board_count']=0;b.a['camp_active'][0]=0
+        b.v.update({'#hx':400,'transfer_timer':0})
+        b.a['person_state'][16]=2;b.a['#person_x'][16]=432   # 20 px from the door
         b.call('people_tick')
-        self.assertEqual((b.v['runner_on'],b.v['runner_camp'],b.v['#runner_x']),(1,1,416))
-        self.assertEqual(b.a['person_state'][16],3)
+        self.assertEqual((b.v['board_count'],b.a['camp_active'][1]),(1,1))
+        self.assertEqual((b.a['person_state'][16],b.a['#person_x'][16]),(3,430))
     def test_tank_rate_across_frame_deltas(self):
         for dt in (1,2,3,4,6):
             b=self.state();b.v.update({'#hx':500,'#tank_x':100,'#tank_wait':60000,'#elapsed':dt,'dt':dt})
@@ -691,6 +696,7 @@ class Tests(unittest.TestCase):
                 for target in ('TI994A','COLECO'):
                     b=self.state();b.r=Basic(source,target=target).r
                     b.a['person_state']=[2 if i%5 else 4 for i in range(64)]
+                    b.a['camp_active']=[0]*4;b.v['board_count']=0
                     for i in range(64):
                         offset=88-(i%16//2)*8
                         b.a['#person_x'][i]=b.a['#camp_x'][i//16]+(offset if i&1 else -offset)
@@ -870,7 +876,7 @@ class Tests(unittest.TestCase):
         b.v['fire_held']=0;b.a['shot_ttl'][0]=1;b.call('weapon_tick')
         self.assertEqual(b.a['shot_on'],[0,0])
 
-    TANK_L=(48,240,248);TANK_R=(236,244,252);RUNNER=tuple(range(188,236))
+    TANK_L=(48,240,248);TANK_R=(236,244,252)
     def scanline(self,b,line):
         """Sprites the VDP shows on a scanline: the first four by slot."""
         return [data for _,data in sorted(b.sprites.items()) if data[0]<line<=data[0]+16][:4]
@@ -887,14 +893,14 @@ class Tests(unittest.TestCase):
         self.assertLess(visible(bad),2)
 
     def test_deadly_projectiles_never_drop_and_ground_actors_take_turns(self):
-        # Landed beside a firing tank with a runner approaching: helicopter,
-        # tank halves, shell and runner all cross scanline 165 -- six sprites
-        # for four places. The shell must show on every update; the tank
-        # halves and runner must each show on some of them (flicker).
+        # Landed beside a firing tank: helicopter, tank halves and shell all
+        # cross scanline 165 -- five sprites for four places (runners are crowd
+        # characters now). The shell must show on every update; the tank halves
+        # must each show on some of them (flicker).
         def watch(source,passes=12):
             b=self.state();b.r=Basic(source).r
             b.v.update({'#camera':0,'#hx':120,'hy':153,'tank_on':1,'#tank_x':152,
-                        'shell_on':1,'#shell_x':140,'shell_y':156,'runner_on':1,'#runner_x':100,'runner_id':0})
+                        'shell_on':1,'#shell_x':140,'shell_y':156})
             b.a['shot_on']=[0,0];b.call('hide_all')
             seen=[]
             for _ in range(passes):
@@ -903,14 +909,14 @@ class Tests(unittest.TestCase):
             return seen
         seen=watch(SOURCE)
         self.assertTrue(all(68 in row for row in seen),seen)
-        for group in (self.TANK_L,self.TANK_R,self.RUNNER):
+        for group in (self.TANK_L,self.TANK_R):
             self.assertTrue(any(set(row)&set(group) for row in seen),(group,seen))
         # The original bug: the shell queued behind the tank is never drawn.
         late=watch(SOURCE.replace('draw_slot=2\nIF shell_on THEN','draw_slot=11\nIF shell_on THEN'))
         self.assertFalse(all(68 in row for row in late))
         # Without rotation one ground actor never gets a place.
         still=watch(SOURCE.replace('sprite_rot=sprite_rot+1\n','sprite_rot=0\n'))
-        self.assertFalse(all(any(set(row)&set(g) for row in still) for g in (self.TANK_L,self.TANK_R,self.RUNNER)))
+        self.assertFalse(all(any(set(row)&set(g) for row in still) for g in (self.TANK_L,self.TANK_R)))
         # rot_map: each phase is one-to-one onto slots 6-11, and any two
         # rotating actors each lead the other in at least a third of phases.
         table=self.state().a['rot_map']
@@ -921,6 +927,72 @@ class Tests(unittest.TestCase):
             for c in range(6):
                 if a!=c:self.assertGreaterEqual(sum(row[a]<row[c] for row in rows),4,(a,c))
 
+    def test_unsafe_descent_strains_the_engine(self):
+        def engine(fall,anim):
+            b=self.state();b.v.update({'hy':100,'hspeed':0,'crash_timer':0,'rotor_phase':0,'dt':2,
+                                      'fall_speed':fall,'anim':anim})
+            b.call('sound_tick');return b.sounds[0]
+        safe=engine(1,0)
+        self.assertEqual(engine(0,0),safe)
+        for fall in (2,3):
+            quiet,loud=engine(fall,0),engine(fall,4)
+            self.assertLess(quiet[0],safe[0])          # a smaller divisor is a higher note
+            self.assertEqual(quiet[0],loud[0])
+            self.assertNotEqual(quiet[1],loud[1])      # it pulses
+            self.assertGreater(min(quiet[1],loud[1]),safe[1])
+        self.assertLess(engine(3,0)[0],engine(2,0)[0])  # faster is higher still
+        # Releasing DOWN brakes the descent, and the cue stops with it.
+        b=self.state();b.v.update({'hy':100,'fall_speed':3,'dt':2,'crash_timer':0,'hspeed':0,'rotor_phase':0})
+        b.call('fly');b.call('sound_tick');self.assertEqual(b.sounds[0],safe)
+    def test_crowds_keep_moving_during_a_crash(self):
+        def crash_run(source):
+            b=self.state();b.r=Basic(source).r
+            body=b.r['crash_frame'];self.assertEqual(body[-1],'GOTO draw_frame')
+            b.a['person_state']=[0]*64;b.a['camp_released']=[12,16,16,16];b.a['camp_escape']=[0]*4
+            for i in range(10):b.a['person_state'][i]=1;b.a['#person_x'][i]=128
+            b.a['person_state'][10:12]=[2,2];b.a['#person_x'][10:12]=[172,48]  # 10 stands where the wreck lands
+            b.a['person_state'][63]=6;b.a['#person_x'][63]=1960
+            b.a['camp_active']=[10,0,0,0]
+            b.v.update({'#hx':160,'hy':100,'old_y':100,'dt':2,'invuln':0,'lives':3,'home_walking':1,
+                        'crash_timer':0,'anim':0,'#crowd_clock':0,'runner_on':0})
+            b.call('crash')
+            for _ in range(200):
+                if not b.v['crash_timer']:break
+                b.execute(body[:-1])
+            return b
+        b=crash_run(SOURCE)
+        self.assertEqual(b.a['camp_released'][0],16)               # releases continued
+        self.assertTrue(all(s in (1,2) for s in b.a['person_state'][:16]))
+        self.assertNotEqual(b.a['#person_x'][:10],[128]*10)        # walkers walked
+        self.assertEqual((b.a['person_state'][63],b.v['home_walking']),(7,0))
+        self.assertEqual((b.v['lost'],b.a['person_state'][10]),(0,2))  # the wreck lands on no one
+        bad=crash_run(SOURCE.replace('old_y=hy\nGOSUB escape_tick\nGOSUB crash_tick','GOSUB escape_tick\nGOSUB crash_tick'))
+        self.assertGreater(bad.v['lost'],0)
+        frozen=crash_run(SOURCE.replace('old_y=hy\nGOSUB escape_tick\nGOSUB crash_tick','old_y=hy\nGOSUB crash_tick'))
+        self.assertEqual(frozen.a['camp_released'][0],12)
+    def test_deliveries_raise_the_threat(self):
+        b=self.state()
+        tables={k:b.a[k] for k in ('tank_reload','jet_missiles','#jet_delay','#drone_delay')}
+        for name,table in tables.items():self.assertGreaterEqual(len(table),5,name)
+        for i in range(4):  # every level strictly harder, never easier
+            for name in ('tank_reload','#jet_delay','#drone_delay'):
+                self.assertGreater(tables[name][i],tables[name][i+1],name)
+            self.assertLessEqual(tables['jet_missiles'][i],tables['jet_missiles'][i+1])
+        self.assertGreater(tables['jet_missiles'][4],tables['jet_missiles'][0])
+        # The level follows completed deliveries (people_tick) and stops at 4.
+        for done in range(7):
+            b=self.state();b.v.update({'sorties':done,'threat':min(done,4),'delivery_pending':1,
+                                      'home_walking':0,'runner_on':0,'hy':80,'old_y':80})
+            b.call('people_tick')
+            self.assertEqual((b.v['sorties'],b.v['threat']),(done+1,min(done+1,4)))
+        # Enemies read their level: a jet's missiles and a tank's reload.
+        for level in range(5):
+            b=self.state();b.v.update({'threat':level,'sorties':1,'#hx':1000,'#jet_wait':0,'#elapsed':2,'jet_on':0})
+            b.call('jet_spawn');self.assertEqual(b.v['jet_ammo'],tables['jet_missiles'][level])
+            self.assertEqual(b.v['#jet_wait'],tables['#jet_delay'][level])
+            b=self.state();b.v.update({'threat':level,'tank_on':1,'#tank_x':400,'#hx':300,'hy':80,
+                                      '#tank_wait':0,'shell_on':0,'dt':2,'#elapsed':2,'invuln':255})
+            b.call('tank_tick');self.assertEqual(b.v['#tank_wait'],tables['tank_reload'][level])
     def test_tank_fires_straight_up_when_overhead(self):
         def fire(source,hx):
             b=self.state();b.r=Basic(source).r
@@ -1008,8 +1080,8 @@ class Tests(unittest.TestCase):
 
     def escaped_crowd(self, source=SOURCE):
         b=self.state();b.r=Basic(source).r
-        b.v.update({'#hx':1912,'hy':80,'old_y':80,'runner_on':0})
-        b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4
+        b.v.update({'#hx':1912,'hy':80,'old_y':80,'board_count':0})
+        b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4;b.a['camp_active']=[0]*4
         for _ in range(240):b.call('escape_tick')
         return b
 
@@ -1052,12 +1124,46 @@ class Tests(unittest.TestCase):
             self.assertEqual((b.v['aboard'],b.v['saved']),(0,(camp+1)*16))
         self.assertEqual(self.total(b),64)
 
+    def test_streamed_boarding(self):
+        # Landed between camp 1's groups: 14 people are within reach.
+        def land(aboard):
+            b=self.escaped_crowd();b.v.update({'#hx':344,'hy':153,'old_y':153,'dt':2,'aboard':aboard})
+            b.a['camp_left'][1]=16
+            return b
+        b=land(0);order=[];most=0;spots=list(b.a['#person_x'])
+        for frame in range(0,600,2):
+            before=list(b.a['person_state'])
+            b.call('people_tick');self.assertEqual(self.total(b),64)
+            order+=[i for i,(s,t) in enumerate(zip(before,b.a['person_state'])) if s==2 and t in (3,5)]
+            running=[i for i,s in enumerate(b.a['person_state']) if s==3]
+            most=max(most,len(running))
+            self.assertEqual(b.v['board_count'],len(running))
+            self.assertEqual(b.a['camp_active'][1],len(running))
+            if b.v['aboard']==14 and not running:break
+        self.assertEqual(b.v['aboard'],14)
+        self.assertLess(frame,240)                       # about 4 s, not ~17 s one at a time
+        self.assertGreaterEqual(most,5)                  # several run at once
+        self.assertEqual(spots[order[0]],352)            # nearest first
+        # Four free seats: exactly four run and board, the rest keep waiting.
+        b=land(12)
+        for _ in range(300):
+            b.call('people_tick')
+            self.assertLessEqual(b.v['board_count']+b.v['aboard'],16)
+        self.assertEqual((b.v['aboard'],b.v['board_count']),(16,0))
+        self.assertEqual(b.a['person_state'][16:32].count(2),12)
+        # A runner is as exposed as anyone outside.
+        b=land(0)
+        for _ in range(3):b.call('people_tick')
+        who=b.a['person_state'].index(3);count=b.v['board_count']
+        b.v.update({'#crowd_shot_x':b.a['#person_x'][who]+4,'crowd_radius':3});b.call('crowd_hit')
+        self.assertEqual((b.a['person_state'][who],b.v['board_count'],b.v['lost']),(4,count-1,1))
+        self.assertEqual(self.total(b),64)
     def test_runner_returns_to_crowd_when_left_behind(self):
-        b=self.escaped_crowd();b.v.update({'#hx':200,'hy':153,'old_y':153})
-        b.call('choose_runner');who=b.v['runner_id']
-        self.assertEqual(b.a['person_state'][who],3)
+        b=self.escaped_crowd();b.v.update({'#hx':220,'hy':153,'old_y':153})   # door 16 px past the group
+        b.call('board_tick');who=b.a['person_state'].index(3)
+        self.assertEqual(b.v['board_count'],1)
         b.v['#hx']=1912;b.call('people_tick')
-        self.assertEqual((b.v['runner_on'],b.a['person_state'][who]),(0,1))
+        self.assertEqual((b.v['board_count'],b.a['person_state'][who]),(0,1))
         b.call('new_heli')
         for _ in range(50):b.call('escape_tick')
         self.assertEqual(b.a['person_state'][who],2)
@@ -1108,7 +1214,7 @@ class Tests(unittest.TestCase):
             b=self.escaped_crowd(SOURCE.replace(before,after))
             self.assertNotEqual(b.a['person_state'],[2]*64)
         b=self.state();b.r=Basic(SOURCE.replace('lost=lost+1','lost=lost+2')).r
-        b.a['person_state'][0]=2;b.v.update({'#crowd_shot_x':4,'crowd_radius':3})
+        b.a['person_state'][0]=2;b.a['#person_x'][0]=0;b.v.update({'#crowd_shot_x':4,'crowd_radius':3})
         b.call('crowd_hit');self.assertNotEqual(self.total(b),64)
 
     def test_crowd_row_is_not_cleared_while_composing(self):
@@ -1244,7 +1350,6 @@ class Tests(unittest.TestCase):
             b.call('crowd_landing');self.assertEqual(b.v['noise_kind'],4)
             for _ in range(9//dt+1):b.call('sound_tick')
             self.assertEqual((b.v['noise_timer'],b.sounds[3][1]),(0,0))
-        b=self.state();b.call('lose_runner');self.assertEqual(b.v.get('noise_kind',0),0)
         b=self.state();b.v['ep']=1;b.call('lose_person');self.assertEqual(b.v.get('noise_kind',0),0)
         b=self.state();b.v.update(noise_kind=3,noise_timer=20);b.call('squish_sound')
         self.assertEqual((b.v['noise_kind'],b.v['noise_timer']),(3,20))
@@ -1570,7 +1675,7 @@ class Tests(unittest.TestCase):
                 walking=rng.random()<0.6
                 for i in range(c*16,c*16+16):
                     camp=(128,384,640,896)[c]
-                    s=rng.choice((1,1,2,2,2,4,5)) if walking else rng.choice((2,2,2,4))
+                    s=rng.choice((1,1,2,2,2,3,4,5)) if walking else rng.choice((2,2,2,4))
                     states[i]=s;xs[i]=camp+4*rng.randint(-24,24)
                     if s==1:active[c]+=1
             for i in rng.sample(range(64),rng.randint(0,10)):
@@ -1578,7 +1683,7 @@ class Tests(unittest.TestCase):
                 active[i//16]-=0
             # Exact edge cases: half a person at the left edge, a straddle at cell 31.
             states[0]=1;xs[0]=camera-4 if camera>=4 else 4;states[1]=1;xs[1]=camera+252
-            active=[sum(s==1 for s in states[c*16:c*16+16]) for c in range(4)]
+            active=[sum(s in (1,3) for s in states[c*16:c*16+16]) for c in range(4)]
             anim=rng.randint(0,255);bank=rng.choice((0,64))
             rows=[]
             for target in ('TI994A','COLECO'):
@@ -1598,7 +1703,8 @@ class Tests(unittest.TestCase):
                    ('ASM ai r1,32\nASM jmp compose_palette','ASM ai r1,16\nASM jmp compose_palette'),
                    ('ASM ai r9,4\nASM compose_still:','ASM ai r9,0\nASM compose_still:'),
                    ('ASM li r8,192\nASM bl @compose_cell','ASM li r8,384\nASM bl @compose_cell'),
-                   ('ASM ci r1,157\nASM jeq compose_door','ASM ci r1,158\nASM jeq compose_door'))
+                   ('ASM ci r1,157\nASM jeq compose_door','ASM ci r1,158\nASM jeq compose_door'),
+                   ('ASM ci r1,3\nASM jh compose_next','ASM ci r1,2\nASM jh compose_next'))
         for good,bad in mutations:
             self.assertIn(good,SOURCE)
             caught=None

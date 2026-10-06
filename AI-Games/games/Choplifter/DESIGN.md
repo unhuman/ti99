@@ -41,10 +41,10 @@ benchmark run (2026-10-06).
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 21,852 | 24,336 | 2,484 free |
-| TI fixed area, unoptimised | 23,492 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank | 8,044 | 8,190 | assets, menu font, results screen |
-| TI RAM | 810 | 7,854 | |
+| TI fixed area (after short branches) | 21,834 | 24,336 | 2,502 free |
+| TI fixed area, unoptimised | 23,446 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank | 8,032 | 8,190 | assets, menu font, results screen |
+| TI RAM | 806 | 7,854 | |
 | ColecoVision RAM | 809 | 814 | nearly full; see `#vaddr` |
 
 `tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (about 410 branches,
@@ -74,7 +74,7 @@ front/side helicopter poses and pronounced pitch in travel. Reference material i
 build dependency.
 
 This is new code and new pixel art, not a conversion. TI adaptations: an eight-screen world,
-eight-pixel scenery scrolling, character-composited crowds with one boarding-runner sprite,
+eight-pixel scenery scrolling, character-composited crowds that also board as characters,
 one tank, jet and drone at a time, a single fire/turn button and no fuel limit. The jets'
 bounded three-pass route is an adaptation, not a claim of identical original AI.
 
@@ -87,21 +87,31 @@ between two boundary fences. Four camps at x=128, 384, 640 and 896 hold 16 peopl
 nearest camp's outer wall is 648 pixels from the enemy-side fence.
 
 Bombing a barrack opens it and sets its roof burning. It releases one person every 24 video
-frames, whatever the helicopter is doing. People walk out in two groups of eight to waiting
-spots 8 pixels apart, up to 88 pixels from the camp, farthest spots first. Land beside a
-group and stop: the nearest waiting person approaches as the runner sprite. The cabin holds
-16. Land on the pad at home to unload people one at a time; each walks to the office door
-and counts as saved on leaving the cabin.
+frames, whatever the helicopter is doing, including during a crash. People walk out in two
+groups of eight to waiting spots 8 pixels apart, up to 88 pixels from the camp, farthest
+spots first. The cabin holds 16.
 
-Saved + lost + aboard + everyone still at the camps always equals 64; the runner counts with
+**Boarding.** Landed with seats to spare, the nearest waiting person within 104 pixels of the
+cabin door starts running for it, and one more joins on every update, so a whole group is
+running within a second or two; each boards on reaching the door. Runners never outnumber the
+free seats (`board_count`), so a nearly full cabin is never chased by people who cannot get
+in. Runners are crowd characters (walking poses, no sprite) and as exposed as anyone outside.
+If the helicopter ends up more than 180 pixels away they walk back to their places; while it
+hovers nearby they wait. A group of 14 within reach boards in about four seconds (the
+previous one-runner-at-a-time scheme took about 17 for a full cabin). Land on the pad at home
+to unload people one at a time; each walks to the office door and counts as saved on leaving
+the cabin.
+
+Saved + lost + aboard + everyone still at the camps always equals 64; a runner counts with
 its camp until it boards or dies. A crash loses everyone aboard and one helicopter; the next
 starts at home. The HUD shows spare helicopters (excluding the one flying), right-justified;
 camp indicators change from a number to `o` when opened and `-` when emptied. The mission
 ends when all 64 are saved or lost, or the last helicopter is destroyed; the results screen
 lists saved, lost, stranded and the session's best rescue. A perfect rescue is 64.
 
-People persist across trips and crashes. Landing on a runner or an exposed person kills them;
-so do player shots, tank shells and jet missiles. Lost people never return or count twice.
+People persist across trips and crashes. Landing on an exposed person (escaping, waiting or
+running) kills them; so do player shots, tank shells and jet missiles. Lost people never return
+or count twice.
 
 ## Controls and flight
 
@@ -120,7 +130,8 @@ the sampler and discard stale presses.
 
 Holding DOWN descends at 1 px/frame, speeding up every 24 held frames to 3 px/frame;
 releasing DOWN brakes to a hover. Touching down faster than 1 px/frame crashes, even during
-spawn invulnerability; short taps land safely. Holding P (TI) or keypad 0 (ColecoVision) for
+spawn invulnerability; short taps land safely. While the descent is that fast the engine warns
+with a higher, pulsing whine (higher still at full speed), which stops when DOWN is released. Holding P (TI) or keypad 0 (ColecoVision) for
 12 frames pauses; the same key or FIRE resumes. Pause silences sound and resets the frame
 clock.
 
@@ -128,21 +139,33 @@ A destroyed helicopter catches fire and falls at 2 px/frame, keeping its sideway
 burns for 90 frames on the ground (the last 24 as low embers), then the next helicopter
 launches or the mission ends. Lives and passengers are charged once, at the hit. The crash
 uses sprite slots 0–3 only (flames ahead of the grey hull) with every other sprite hidden.
+Meanwhile camps keep releasing people and walkers keep walking; the wreck's impact counts as no
+landing on anyone (`old_y` follows it).
 
 ## Enemies
 
-All enemy activity and border checks use the DMZ fence, x=1568.
+All enemy activity and border checks use the DMZ fence, x=1568. Enemies never multiply (four
+sprites per scanline); they push harder instead. **Threat** is the number of completed
+deliveries, capped at 4, and sets each enemy's parameters from small ROM tables
+(`tank_reload`, `jet_missiles`, `#jet_delay`, `#drone_delay`), every level strictly harder:
+
+| Threat | 0 | 1 | 2 | 3 | 4 |
+|---|---:|---:|---:|---:|---:|
+| Frames between tank shells | 140 | 125 | 110 | 95 | 80 |
+| Missiles per jet | 2 | 2 | 3 | 3 | 4 |
+| Frames before the next jet | 360 | 320 | 280 | 240 | 200 |
+| Frames before the next drone | 240 | 210 | 180 | 150 | 120 |
 
 - **Tank.** One at a time, 32×16 pixels with left, right and front views; it appears 2.5 s
   after the helicopter crosses west of the fence and crawls toward it at 15 px/s, never
-  past the fence. It fires one shell every 140 frames (100 once 16 people are saved) when the
-  helicopter is within 220 pixels. Shells fly 2 px/frame sideways and rise 1 px/frame, or fly
+  past the fence. It fires one shell per reload (above) when the helicopter is within 220
+  pixels. Shells fly 2 px/frame sideways and rise 1 px/frame, or fly
   flat when the helicopter is low (y > 130). **When the helicopter is overhead the turret
   shows its front view and the shell goes straight up from its centre at 2 px/frame**, so
   hovering above a tank is not safe. Contact with the hull crashes the helicopter.
 - **Jets.** Enabled after the first completed delivery (every walker has entered the office).
   A launch countdown of 6 s, then three passes at 120 px/s joined by two 48-frame banking
-  turns, all west of the fence. The first pass scouts; then it can fire two aimed missiles,
+  turns, all west of the fence. The first pass scouts; then it can fire its aimed missiles,
   one at a time (3 px/frame, retiring after 90 frames or at the sky, ground or fence). After
   its last pass a departing jet retires as soon as it is wholly off camera, so the gap before
   the next jet does not depend on how far west the world extends.
@@ -153,7 +176,7 @@ All enemy activity and border checks use the DMZ fence, x=1568.
 
 256×192 TMS9918 screen. Rows 0–1 HUD (PAUSED replaces SPARES while paused), rows 2–16 sky,
 rows 17–21 scenery (row 20 is the crowd row), rows 22–23 ground. Ground contact: helicopter
-top y=153 (its lowest ink at y=167 touches ground row 21 at y=168), runner y=160, tank 156.
+top y=153 (its lowest ink at y=167 touches ground row 21 at y=168), tank y=156.
 
 **Scrolling.** The camera moves in 8-pixel steps. A scroll update composes the crowd row
 first (without touching the visible one), then `crowd_commit` WAITs for vblank and copies
@@ -163,11 +186,13 @@ of the ground rows and fences, so they land before the beam reaches them; otherw
 burning camp shows its closed roof and door for a frame after each scroll. Then rows 21–22
 are copied and the fence stamps drawn. Row 23 is drawn once by `game_screen`.
 
-**Stars.** Fourteen stars, one per sky row 3–16, in three parallax bands: rows 3–6 move 1,
+**Stars.** A sparse sky of eight stars on uneven rows (three far, two middle, three near), in
+three parallax bands: rows 3–6 move 1,
 rows 7–11 2 and rows 12–16 3 pixels per 8-pixel camera step, wrapping at the screen edges.
 Characters 240–255 hold eight sub-cell phases in two shapes. Each star is redrawn in one pass
-and its old cell cleared only when it has left it; because each star owns its row, that
-never erases another star. `star_row` ends with row 0, so the star list can change length.
+and its old cell cleared only when it has left it; because each star owns its row (the
+generator asserts it), that never erases another star. `star_row` ends with row 0, so the
+list in `assets/generate.py` can change length freely.
 
 **Fences, pad, office and flag.** Each fence is a clipped 5×2 perspective stamp from the
 horizon (row 21) into the foreground (row 22) whose near end leans away from the screen
@@ -176,7 +201,7 @@ precomposed with the pad marking (character 120). The flag waves by redefining t
 characters every 16 frames.
 
 **Crowds (characters, not sprites).** All 64 people are background characters in row 20, so
-a whole crowd costs no sprite slots; only the runner is a sprite.
+a whole crowd costs no sprite slots, runners included.
 - *Appearance.* Three looks by `id % 3`; poses `(anim/8 + id) AND 3`, so neighbours are out of
   step; walking speeds of 60, 48 or 40 px/s from a stride of 4, 5 or 6 frames per 4-pixel
   step, with each person's step clock offset by its id (one shared clock, no per-person
@@ -184,7 +209,8 @@ a whole crowd costs no sprite slots; only the runner is a sprite.
 - *Settled crowds.* A camp with no walkers has everyone on world-aligned spots 8 pixels apart,
   so each person owns a cell: 24 prebuilt standing characters (3 looks × 4 poses × black or
   blue paper) are written straight into the name row.
-- *Moving crowds.* Camps with walkers, and homeward walkers near the office, go through the
+- *Moving crowds.* Camps with walkers or runners, and homeward walkers near the office, go
+  through the
   compositor. A person sits on a 4-pixel grid, so they fill one cell or straddle two. ROM
   holds pre-shifted copies of every pose (unshifted, and the two halves of a 4-pixel shift).
   A 256-byte RAM buffer holds the row's pixels; the first person in a cell copies in the
@@ -208,20 +234,24 @@ a slow update. There are 64 sprite patterns; 13–14 are the crash flames. Slots
 | 2 | tank shell |
 | 3 | jet missile |
 | 4–5 | player shots |
-| 6–11 | tank left/right, runner, jet, drone, explosion — rotating |
+| 6–11 | tank left/right, a spare, jet, drone, explosion — rotating |
 
-On the ground beside a tank there are six sprites for four places. Keeping the shell and
+On the ground beside a tank there are five sprites for four places (helicopter, tank halves,
+shell). Keeping the shell and
 missile right after the helicopter means a projectile that can destroy it is never the one
 dropped (it used to be: the shell was invisible exactly when it was about to hit). The
 rotating block takes its order from `rot_map`, which changes every update and reverses on
-alternate updates, so on a crowded line the tank halves and runner take turns (flicker)
+alternate updates, so on a crowded line the tank halves take turns (flicker)
 instead of one vanishing; lines with four or fewer sprites never flicker. `#sprite_shown`
-has one bit per slot so an inactive actor's slot is hidden once and then costs a bit test.
+has one bit per slot so an inactive actor's slot is hidden once and then costs a bit test. The
+spare rotating actor (the old runner's place) is still cleared every update, so no image left
+in a rotated slot survives.
 
 ## Sound
 
-Channel 0 carries the engine: quiet idle on the pad, stronger alternating airborne pulses and
-a higher pitch under horizontal load. Channel 1 plays a short gun sweep or a longer falling
+Channel 0 carries the engine: quiet idle on the pad, stronger alternating airborne pulses, a
+higher pitch under horizontal load, and a louder pulsing whine while the descent is too fast to
+land on. Channel 1 plays a short gun sweep or a longer falling
 bomb whistle; when free it carries a nearby jet's distance-dependent tone or the drone's
 alternating warning. Channel 2 carries rising boarding and falling unloading chirps and a
 three-note delivery chime. Channel 3 carries periodic rotor noise, overridden by tank fire,
@@ -229,7 +259,9 @@ missile launches, explosions (which win over launches) and an eight-frame squish
 helicopter lands on a person. Effects expire on frame deltas; pause, new helicopters, the
 title and the results silence all four channels and clear effect state. No music player.
 
-## Practice setup
+## Title and practice setup
+
+The title ends with the repository's credit line, 2026 UNHUMAN AND CLAUDE.
 
 The hidden title sequence 838 opens a 1–9 helicopter prompt (0 cancels); normal games use
 three. Practice saved counts carry a small asterisk (character 60) and the best rescue keeps
@@ -259,7 +291,7 @@ the compiler's register cache (checked in the generated assembly).
 
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map and the star
   table and writes `src/assets.bas` (all banked data, including the menu font).
-- `tools/build.py` — generation, the 69 source-executing tests (once per `build.ps1 All`),
+- `tools/build.py` — generation, the 73 source-executing tests (once per `build.ps1 All`),
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
   its verification, budget checks, an even-address check on every indexed word table (from
   xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address
@@ -279,6 +311,7 @@ the compiler's register cache (checked in the generated assembly).
   production cart.
 
 Verified in Classic99: the production review cart scrolling over two evacuating camps with a
-tank, shells and crashes (clean rendering, overlays in place), and every benchmark case. The
+tank, shells and crashes (clean rendering, overlays in place); a soft landing beside a settled
+crowd that boarded 16 in about two seconds of play; and every benchmark case. The
 ColecoVision build has been booted and flown briefly in CoolCV. Not verified: original
 hardware, sound balance and a complete 64-person mission played through.

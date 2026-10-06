@@ -1,4 +1,5 @@
 ' CHOPLIFTER — original CVBasic implementation, TI-99/4A first.
+' 2026 UNHUMAN AND CLAUDE
 ' Positions are world pixels. No compound comparisons on the TI backend.
 #if TI994A
 BANK ROM 128
@@ -28,7 +29,7 @@ DIM shot_speed(2)
 DIM shot_drift(2)
 
 ' Sprite ownership: heli 0,1; tank shell 2; jet missile 3; player shots 4,5;
-' 6-11 rotate each update between tank halves, runner, jet, drone and
+' 6-11 rotate each update between tank halves, a spare, jet, drone and
 ' explosion (draw_actors, rot_map). The crash uses 0-3 with all others hidden.
 ' #vaddr is the shared name-table address for VPOKE: computed and written in
 ' the same routine, never held across a GOSUB (Coleco RAM is nearly full).
@@ -80,7 +81,7 @@ PRINT AT 610,"LAND: PICK UP   HOLD P: PAUSE"
 PRINT AT 610,"LAND: PICK UP   HOLD 0: PAUSE"
 #endif
 PRINT AT 674,"PRESS FIRE OR 1 TO LAUNCH"
-PRINT AT 738,"TI-99/4A  /  CVBASIC  /  2026"
+PRINT AT 740,"2026 UNHUMAN AND CLAUDE"
 SPRITE 0,71,112,0,15
 SPRITE 1,71,128,4,15
 GOSUB release_input
@@ -141,6 +142,7 @@ lost=0
 aboard=0
 lives=start_lives
 sorties=0
+threat=0
 anim=0
 pause_hold=0
 pause_latched=0
@@ -160,7 +162,7 @@ crowd_pose=255
 crowd_dirty=1
 home_walking=0
 delivery_pending=0
-runner_on=0
+board_count=0
 ended=0
 GOSUB new_heli
 GOSUB game_screen
@@ -200,6 +202,10 @@ IF hud_dirty THEN GOSUB hud
 GOTO main_loop
 
 crash_frame:
+' Camps keep releasing people and walkers keep walking while the wreck falls
+' and burns. old_y follows the wreck, so its impact is no landing on anyone.
+old_y=hy
+GOSUB escape_tick
 GOSUB crash_tick
 IF crash_timer = 0 THEN
     IF lives = 0 THEN GOTO result_screen
@@ -239,8 +245,8 @@ tank_motion=0
 drone_motion=0
 blast_timer=0
 #tank_wait=150
-#jet_wait=360
-#drone_wait=240
+#jet_wait=#jet_delay(threat)
+#drone_wait=#drone_delay(threat)
 #camera=65535
 hud_dirty=1
 RETURN
@@ -470,7 +476,7 @@ IF jet_on THEN
     #hit_x=#jet_x:hit_width=16:hit_top=jet_y+3:hit_bottom=jet_y+12
     GOSUB shot_hits_box
     IF hit_found THEN
-            jet_on=0:#jet_wait=300
+            jet_on=0:#jet_wait=#jet_delay(threat)
             #blast_x=#jet_x:blast_y=jet_y
             GOSUB explode
             shot_on(wi)=0
@@ -481,22 +487,11 @@ IF drone_on THEN
     #hit_x=#drone_x+2:hit_width=12:hit_top=drone_y+2:hit_bottom=drone_y+13
     GOSUB shot_hits_box
     IF hit_found THEN
-            drone_on=0:#drone_wait=240
+            drone_on=0:#drone_wait=#drone_delay(threat)
             #blast_x=#drone_x:blast_y=drone_y
             GOSUB explode
             shot_on(wi)=0
             RETURN
-    END IF
-END IF
-IF runner_on THEN
-    IF shot_y(wi) > 155 THEN
-        #ax=#shot_x(wi):#bx=#runner_x+4
-        GOSUB distance_x
-        IF #distance < 9 THEN
-            GOSUB lose_runner
-            shot_on(wi)=0
-            RETURN
-        END IF
     END IF
 END IF
 IF shot_y(wi) > 155 THEN
@@ -530,6 +525,9 @@ GOSUB escape_tick
 IF delivery_pending THEN
     IF home_walking = 0 THEN
         sorties=sorties+1
+        ' Each completed delivery raises the threat, up to level 4.
+        threat=sorties
+        IF threat > 4 THEN threat=4
         delivery_pending=0
         chime_kind=3:chime_timer=36
         SOUND 2,280,11
@@ -555,48 +553,7 @@ IF hy = LANDED THEN
         END IF
     END IF
 END IF
-IF runner_on THEN
-    #ax=#hx+16:#bx=#runner_x+4
-    GOSUB distance_x
-    IF #distance > 180 THEN
-        person_state(runner_id)=1
-        camp_active(runner_camp)=camp_active(runner_camp)+1
-        #person_x(runner_id)=#runner_x AND 65532
-        runner_on=0:crowd_dirty=1
-        RETURN
-    END IF
-    IF hy = LANDED THEN
-        IF old_y < LANDED THEN
-            IF #distance < 13 THEN GOSUB lose_runner:GOSUB squish_sound:RETURN
-        END IF
-        IF aboard < CAPACITY THEN
-            IF #distance < 8 THEN
-                camp_left(runner_camp)=camp_left(runner_camp)-1
-                person_state(runner_id)=5
-                aboard=aboard+1
-                runner_on=0
-                transfer_timer=12
-                chime_kind=1:chime_timer=10
-                SOUND 2,360,10
-                hud_dirty=1
-                RETURN
-            END IF
-            IF #distance < 104 THEN
-                IF #runner_x+4 < #hx+16 THEN
-                    #runner_x=#runner_x+dt
-                ELSE
-                    #runner_x=#runner_x-dt
-                END IF
-            END IF
-        END IF
-    END IF
-ELSE
-    IF transfer_timer = 0 THEN
-        IF aboard < CAPACITY THEN
-            GOSUB choose_runner
-        END IF
-    END IF
-END IF
+GOSUB board_tick
 RETURN
 
 unload_person:
@@ -611,17 +568,6 @@ FOR ep=0 TO 63
         RETURN
     END IF
 NEXT ep
-RETURN
-
-lose_runner:
-IF runner_on THEN
-    camp_left(runner_camp)=camp_left(runner_camp)-1
-    person_state(runner_id)=4
-    lost=lost+1
-    runner_on=0
-    transfer_timer=30
-    hud_dirty=1
-END IF
 RETURN
 
 escape_tick:
@@ -670,6 +616,7 @@ IF hy = LANDED THEN
         FOR ep=0 TO 63
             IF person_state(ep) = 1 THEN GOSUB crowd_landing
             IF person_state(ep) = 2 THEN GOSUB crowd_landing
+            IF person_state(ep) = 3 THEN GOSUB crowd_landing
         NEXT ep
     END IF
 END IF
@@ -843,26 +790,83 @@ GOSUB distance_x
 IF #distance < 13 THEN GOSUB lose_person:GOSUB squish_sound
 RETURN
 
-choose_runner:
-IF hy <> LANDED THEN RETURN
-#nearest_person=105
-nearest_id=255
-FOR ep=0 TO 63
-    IF person_state(ep) = 2 THEN
-        #ax=#hx+16:#bx=#person_x(ep)+4
-        GOSUB distance_x
-        IF #distance < #nearest_person THEN
-            #nearest_person=#distance
-            nearest_id=ep
+board_tick:
+' Boarding. Landed with seats to spare, the nearest waiting person within
+' reach runs for the cabin door, one more each update, so a whole group is
+' running within a second or two. Runners (state 3) are crowd members, drawn
+' by the crowd renderer and as exposed as anyone outside. Each boards on
+' reaching the door; left behind (helicopter more than 180 px away) they walk
+' back to their places. board_count runners never outnumber the free seats.
+#board_door=#hx+12
+IF hy = LANDED THEN
+    board_seats=CAPACITY-aboard
+    IF board_seats > board_count THEN
+        #nearest_person=104
+        nearest_id=255
+        FOR ec=0 TO 3
+            #ax=#camp_x(ec):#bx=#board_door
+            GOSUB distance_x
+            IF #distance < 200 THEN
+                FOR ep=ec*16 TO ec*16+15
+                    IF person_state(ep) = 2 THEN
+                        #ax=#person_x(ep)
+                        GOSUB distance_x
+                        IF #distance < #nearest_person THEN
+                            #nearest_person=#distance
+                            nearest_id=ep
+                        END IF
+                    END IF
+                NEXT ep
+            END IF
+        NEXT ec
+        IF nearest_id < 255 THEN
+            ep=nearest_id:ec=ep/16
+            person_state(ep)=3
+            camp_active(ec)=camp_active(ec)+1
+            board_count=board_count+1
+            crowd_dirty=1
         END IF
     END IF
+END IF
+IF board_count = 0 THEN RETURN
+FOR ep=0 TO 63
+    IF person_state(ep) = 3 THEN GOSUB board_run
 NEXT ep
-IF nearest_id = 255 THEN RETURN
-runner_id=nearest_id
-runner_camp=runner_id/16
-#runner_x=#person_x(runner_id)
-person_state(runner_id)=3
-runner_on=1:crowd_dirty=1
+RETURN
+
+board_run:
+ec=ep/16
+#ax=#person_x(ep):#bx=#board_door
+GOSUB distance_x
+IF #distance > 180 THEN
+    ' Left behind: back to the crowd, on the 4-pixel walking grid.
+    person_state(ep)=1
+    #person_x(ep)=#person_x(ep) AND 65532
+    board_count=board_count-1
+    crowd_dirty=1
+    RETURN
+END IF
+IF hy <> LANDED THEN RETURN
+IF #distance < 8 THEN
+    ' (board_count never exceeds the free seats; a full cabin is a guard.)
+    IF aboard >= CAPACITY THEN RETURN
+    camp_left(ec)=camp_left(ec)-1
+    camp_active(ec)=camp_active(ec)-1
+    person_state(ep)=5
+    aboard=aboard+1
+    board_count=board_count-1
+    chime_kind=1:chime_timer=10
+    SOUND 2,360,10
+    hud_dirty=1:crowd_dirty=1
+    RETURN
+END IF
+' Run for the door at a pixel per frame.
+IF #person_x(ep) < #board_door THEN
+    #person_x(ep)=#person_x(ep)+dt
+ELSE
+    #person_x(ep)=#person_x(ep)-dt
+END IF
+crowd_dirty=1
 RETURN
 
 crowd_hit:
@@ -871,6 +875,7 @@ crowd_struck=0
 FOR ep=0 TO 63
     IF person_state(ep) = 1 THEN GOSUB crowd_hit_person
     IF person_state(ep) = 2 THEN GOSUB crowd_hit_person
+    IF person_state(ep) = 3 THEN GOSUB crowd_hit_person
     IF crowd_struck THEN RETURN
 NEXT ep
 RETURN
@@ -887,6 +892,7 @@ RETURN
 lose_person:
 ec=ep/16
 IF person_state(ep) = 1 THEN camp_active(ec)=camp_active(ec)-1
+IF person_state(ep) = 3 THEN camp_active(ec)=camp_active(ec)-1:board_count=board_count-1
 person_state(ep)=4
 camp_left(ec)=camp_left(ec)-1
 lost=lost+1
@@ -959,7 +965,7 @@ ELSE
     jet_dir=1
     jet_turn=0
     jet_passes=0
-    jet_ammo=2
+    jet_ammo=jet_missiles(threat)
     jet_fire=60
     jet_y=88
     #jet_left=24
@@ -967,7 +973,7 @@ ELSE
     #jet_right=#hx+144
     IF #jet_right > 1528 THEN #jet_right=1528
     #jet_x=#jet_right
-    #jet_wait=360
+    #jet_wait=#jet_delay(threat)
 END IF
 RETURN
 
@@ -1082,13 +1088,6 @@ GOSUB distance_y
 IF #distance < 20 THEN
     IF ydistance < 10 THEN GOSUB crash:missile_on=0
 END IF
-IF runner_on THEN
-    IF missile_y > 153 THEN
-        #ax=#runner_x+4:#bx=#missile_x
-        GOSUB distance_x
-        IF #distance < 10 THEN GOSUB lose_runner:missile_on=0:RETURN
-    END IF
-END IF
 IF missile_y > 153 THEN
     #crowd_shot_x=#missile_x:crowd_radius=10
     GOSUB crowd_hit
@@ -1128,8 +1127,7 @@ ELSE
             ' from its centre, starting clear of the crowd row.
             GOSUB tank_pose
             IF tank_face = 2 THEN #shell_x=#tank_x+15:shell_y=150:shell_dir=2
-            #tank_wait=140
-            IF saved >= 16 THEN #tank_wait=100
+            #tank_wait=tank_reload(threat)
         END IF
     END IF
 END IF
@@ -1169,13 +1167,6 @@ ay=hy+8:by=shell_y
 GOSUB distance_y
 IF #distance < 17 THEN
     IF ydistance < 9 THEN GOSUB crash:shell_on=0
-END IF
-IF runner_on THEN
-    IF shell_y > 153 THEN
-        #ax=#runner_x+4:#bx=#shell_x
-        GOSUB distance_x
-        IF #distance < 8 THEN GOSUB lose_runner:shell_on=0:RETURN
-    END IF
 END IF
 IF shell_y > 153 THEN
     #crowd_shot_x=#shell_x:crowd_radius=8
@@ -1509,6 +1500,7 @@ FOR tc=0 TO 3
             FOR cp=tc*16 TO tc*16+15
                 IF person_state(cp) = 1 THEN GOSUB crowd_plot
                 IF person_state(cp) = 2 THEN GOSUB crowd_plot
+                IF person_state(cp) = 3 THEN GOSUB crowd_plot
             NEXT cp
 #endif
         END IF
@@ -1744,8 +1736,8 @@ RETURN
 
 #if TI994A
 compose_block:
-' Native compositor for the 16 people from cp. crowd_mode 0 plots escaping
-' and waiting people (states 1 and 2); otherwise only that state (6, homeward).
+' Native compositor for the 16 people from cp. crowd_mode 0 plots escaping,
+' waiting and boarding people (states 1-3); otherwise only that state (6).
 ' The same rules as the portable crowd_plot/crowd_glyph/crowd_cell/
 ' crowd_background: 4-pixel positions, pre-shifted glyph rows (+192 right
 ' half, +384 left half) ORed into crowd_pixels, and each cell's background
@@ -1845,9 +1837,9 @@ ASM srl r1,8
 ASM mov r6,r6
 ASM jne compose_only
 ASM ci r1,1
-ASM jeq compose_take
-ASM ci r1,2
-ASM jne compose_next
+ASM jl compose_next
+ASM ci r1,3
+ASM jh compose_next
 ASM jmp compose_take
 ASM compose_only:
 ASM c r1,r6
@@ -2104,7 +2096,7 @@ GOSUB heli_draw
 ' Sprite slots (the VDP shows only 4 per scanline, lowest slots first):
 '   0-1 helicopter, 2 tank shell, 3 jet missile, 4-5 player shots - fixed, so
 '   nothing that can destroy the helicopter is ever a crowded line's lost one;
-'   6-11 tank halves, runner, jet, drone, blast - rotated by rot_map, so on an
+'   6-11 tank halves, a spare, jet, drone, blast - rotated by rot_map, so on an
 '   overloaded line each drops out in turn (flicker) instead of one vanishing.
 ' Inactive actors skip their pose work; sprite_off hides each slot once.
 sprite_rot=sprite_rot+1
@@ -2149,20 +2141,9 @@ ELSE
     draw_slot=rot_map(rot_base):GOSUB sprite_off
     draw_slot=rot_map(rot_base+1):GOSUB sprite_off
 END IF
-draw_slot=rot_map(rot_base+2)
-IF runner_on THEN
-    #draw_world=#runner_x:draw_y=159:draw_color=11
-    crowd_kind=person_kind(runner_id)
-    crowd_pose_index=anim/8+runner_id
-    crowd_pose_index=crowd_pose_index AND 3
-    draw_pat=crowd_kind*16+188
-    draw_pat=draw_pat+crowd_pose_index*4
-    IF crowd_kind = 1 THEN draw_color=15
-    IF crowd_kind = 2 THEN draw_color=10
-    GOSUB world_sprite
-ELSE
-    GOSUB sprite_off
-END IF
+' Actor 2 (formerly the runner) is spare; its slot is still cleared every
+' update so no image left there survives the rotation.
+draw_slot=rot_map(rot_base+2):GOSUB sprite_off
 draw_slot=rot_map(rot_base+3)
 IF jet_on THEN
     #draw_world=#jet_x:draw_y=jet_y-1:draw_pat=60:draw_color=7
@@ -2296,6 +2277,14 @@ ELSE
         #sfx_pitch=820-hspeed*48
         sfx_volume=5
         IF rotor_phase THEN sfx_volume=3
+        ' Descending too fast to land on: the engine strains with a pulsing,
+        ' higher whine (a smaller divisor is a higher note).
+        IF fall_speed > 1 THEN
+            #sfx_pitch=430
+            IF fall_speed > 2 THEN #sfx_pitch=330
+            sfx_volume=7
+            IF anim AND 4 THEN sfx_volume=11
+        END IF
     END IF
     SOUND 0,#sfx_pitch,sfx_volume
 END IF
@@ -2472,13 +2461,25 @@ DATA BYTE 80,32,248,32,80,0,0,0
 DATA 1,2,4,8,16,32,64,128,256,512,1024,2048
 
 ' Rotating sprite block: rot_map(phase*6+actor) is the physical slot (6-11)
-' of actor 0-5 (tank left/right, runner, jet, drone, blast) in phase 0-11.
+' of actor 0-5 (tank left/right, spare, jet, drone, blast) in phase 0-11.
 ' The offset advances each phase and odd phases reverse the order, so any two
 ' actors sharing a crowded scanline take turns; every row is one-to-one.
 rot_map:
 DATA BYTE 6,7,8,9,10,11,11,10,9,8,7,6,7,8,9,10,11,6,6,11,10,9,8,7
 DATA BYTE 8,9,10,11,6,7,7,6,11,10,9,8,9,10,11,6,7,8,8,7,6,11,10,9
 DATA BYTE 10,11,6,7,8,9,9,8,7,6,11,10,11,6,7,8,9,10,10,9,8,7,6,11
+
+' Threat level 0-4 (completed deliveries, capped) sets how hard enemies push;
+' counts stay at one tank, jet and drone (four sprites per scanline). Delays
+' are video frames. The byte tables are padded to an even length.
+tank_reload:
+DATA BYTE 140,125,110,95,80,0
+jet_missiles:
+DATA BYTE 2,2,3,3,4,0
+#jet_delay:
+DATA 360,320,280,240,200
+#drone_delay:
+DATA 240,210,180,150,120
 
 #if TI994A
 BANK 1

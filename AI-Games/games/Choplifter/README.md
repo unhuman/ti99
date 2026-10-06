@@ -27,21 +27,24 @@ release ALPHA LOCK if it interferes with the joystick's vertical axis.
 
 You start at home on the right. Fly west across the demilitarised zone, turn to face front
 and bomb a barrack: its roof burns and sixteen people pour out in two groups, even while you
-are away or your cabin is full. Land beside a group and stop; they come aboard one at a time.
+are away or your cabin is full. Land beside a group and stop: everyone within reach runs for
+the cabin at once, as many as there are free seats, and climbs aboard on arrival.
 Fly home and land on the **H pad**; passengers step out and walk into the post office. Lift
 off with UP before moving sideways on the ground. Weapons do not work on the ground.
 
-Holding DOWN speeds up the descent, and touching down fast crashes. A crash loses everyone
-aboard. Do not land on people or shoot through them. Tanks shell you whenever you come
+Holding DOWN speeds up the descent, and touching down fast crashes; the engine warns with a
+high, pulsing whine while you are coming down too fast. A crash loses everyone aboard, but the
+camps keep emptying while the wreck burns. Do not land on people or shoot through them. Tanks shell you whenever you come
 within range, and **straight up when you hover over them**. Jets arrive after your first
-completed delivery and make three passes with two missiles; after the second delivery a
-drone hunts you, even across the DMZ. Camp indicators change from a number to `o` when opened
+completed delivery and make three passes firing missiles; after the second delivery a drone
+hunts you, even across the DMZ. Every completed delivery (up to four) makes them press harder:
+tanks reload faster, jets carry more missiles, and the next jet and drone come sooner. Camp indicators change from a number to `o` when opened
 and `-` when emptied; the helicopter icons are your **spare** helicopters. The mission ends
 when all 64 people are saved or lost, or the last helicopter is destroyed. There is no fuel.
 
-Shells and missiles are always drawn, even on a crowded scanline. When too many sprites
-share a line (say a tank and a running passenger beside your landed helicopter), the tank
-halves and the runner flicker in turn rather than one disappearing.
+Shells and missiles are always drawn, even on a crowded scanline. When too many sprites share
+a line (a tank firing beside your landed helicopter), the tank halves flicker in turn rather
+than one disappearing.
 
 For practice, type **838** at the title and choose **1–9 helicopters** (`0` cancels).
 Practice saved counts carry a small asterisk, and the best rescue keeps its marker.
@@ -69,7 +72,7 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 21,852 / 24,336 B fixed (+ 8,044 / 8,190 B bank) | 810 / 7,854 B |
+| TI-99/4A | 21,834 / 24,336 B fixed (+ 8,032 / 8,190 B bank) | 806 / 7,854 B |
 | ColecoVision | 24,576 B ROM | 809 / 814 B |
 
 ## Speed
@@ -90,19 +93,21 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
 
 - `src/CHOPLIFT.bas`: game logic, input, rendering and sound.
 - `assets/generate.py`: art, world map and star table; writes `src/assets.bas`.
-- `tools/check.py`: 69 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 73 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, pause, weapons, enemies, sprite
-  priority, scrolling order, scenery, stars, sound envelopes and crashes.
+  priority, scrolling order, scenery, stars, sound envelopes, boarding, the threat ramp and
+  crashes.
 - `tools/build.py`: generation, tests and gates, compilation, assembly, branch shortening,
   budget and word-alignment checks, and cartridge packing.
 - `tools/profile.py` and `tools/run-bench.ps1`: speed benchmarks (whole-loop, per-routine and
-  stubbed variants) and a production-code review cart (`--review`). Benchmark carts look
+  stubbed variants) and a production-code review cart (`--review`, with `--calm` for no
+  enemies). Benchmark carts look
   scrambled on screen by design.
 
 Verified in Classic99 with the production code: scrolling over evacuating camps, tanks,
-shells and crashes. Not yet verified: original hardware, sound balance and a full 64-person
-playthrough.
+shells, crashes, and a whole group boarding together. Not yet verified: original hardware,
+sound balance and a full 64-person playthrough.
 
 ## Design references
 
