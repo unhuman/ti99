@@ -996,8 +996,10 @@ def crane_wait_spot(source):
             if vm.v['st']==base.v['s_dead']:return False
         return True
     # Risk only grows to the right (the patrol never passes the turnaround),
-    # so the spot's two ends stand for all eight positions.
-    assert survives(edge,120) and survives(edge+7,120), ('no 8-px crane waiting spot at the girder left end',edge)
+    # so the spot's two ends stand for all four positions, and the fifth
+    # pins the width: exactly four safe pixels, no more.
+    assert survives(edge,120) and survives(edge+3,120), ('no 4-px crane waiting spot at the girder left end',edge)
+    assert not survives(edge+4,120), ('crane waiting spot wider than four pixels',edge)
     assert not survives(pail*8-8,120), 'lower-right lunch pail is collectable without risk'
     assert survives(212,168) and survives(231,168), 'bottom-right ground corner no longer safe'
     # The first tour has one roamer and time enough: its patrol is unchanged.
@@ -3056,9 +3058,11 @@ def main():
         (source.replace('DATA BYTE 8, 3,29,1,232','DATA BYTE 8, 3,28,1,232'),fixture_contract),
         (source.replace('bx = 224','bx = 216'),fixture_contract),
         (source.replace('by = 25','by = 27',1),fixture_contract),
-        (source.replace('IF ry = 120 THEN rlo = 151','IF ry = 120 THEN rlo = 144',1),crane_wait_spot),
-        (source.replace('IF levelno >= 4 THEN\n\t\t\tIF ry = 120 THEN rlo = 151',
-                        'IF levelno >= 1 THEN\n\t\t\tIF ry = 120 THEN rlo = 151',1),crane_wait_spot),
+        (source.replace('IF ry = 120 THEN rlo = 147','IF ry = 120 THEN rlo = 144',1),crane_wait_spot),
+        (source.replace('IF ry = 120 THEN rlo = 147','IF ry = 120 THEN rlo = 146',1),crane_wait_spot),
+        (source.replace('IF ry = 120 THEN rlo = 147','IF ry = 120 THEN rlo = 148',1),crane_wait_spot),
+        (source.replace('IF levelno >= 4 THEN\n\t\t\tIF ry = 120 THEN rlo = 147',
+                        'IF levelno >= 1 THEN\n\t\t\tIF ry = 120 THEN rlo = 147',1),crane_wait_spot),
         (source.replace("no figure stands beside it.\n\t\tGOSUB elev_back\n",
                         "no figure stands beside it.\n\t\tGOSUB elev_back\n\t\tSPRITE 17,23,240,16,13\n",1),fixture_contract),
         (source.replace('IF girder_mark(c) THEN ch = T_GIRDR','ch = T_GIRDR'),girder_spacing),

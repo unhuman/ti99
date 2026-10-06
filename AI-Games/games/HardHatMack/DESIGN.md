@@ -2907,11 +2907,14 @@ playtest report ("often you just fall off"). The ground's right end
 
 **The change.**
 - On repeat tours (`levelno >= 4`, two roamers), `site_route` turns the
-  girder patrol at 151 instead of 144. That leaves mx 136-143 safe: an 8 px
+  girder patrol at 147 instead of 144. That leaves mx 136-139 safe: a 4 px
   spot.
 - The stage-5 OSHA starts at that turnaround instead of inside the spot.
-- It is deliberately not wider. The girder's lunch pail (columns 19-20) is
-  picked up from mx ≥ 144, and a wider spot would make it risk-free.
+- The width is the playtester's choice. A first pass gave 8 px (a
+  turnaround of 151), which was narrowed to four on review.
+- It must stay below 9 px in any case: the girder's lunch pail (columns
+  19-20) is picked up from mx ≥ 144, and a wider spot would make it
+  risk-free.
 - The first tour (one roamer) keeps the 144 turnaround, because the
   playtester found its timing fair.
 - Both enemy kinds share one touch box; the "OSHA versus vandal" difference
@@ -2920,17 +2923,19 @@ playtest report ("often you just fall off"). The ground's right end
 **Validation.** `crane_wait_spot` derives the girder's left edge and the
 pail's column from the map. Over a full joint patrol cycle (850 calls), it
 checks that:
-- both ends of the 8 px spot survive;
-- the pail pickup position does not;
+- both ends of the 4 px spot survive, and the fifth pixel does not, so the
+  width is pinned at exactly four;
+- the pail pickup position does not survive;
 - the ground's right end stays safe;
 - stage 2's patrol is unchanged.
 
-Three mutations must fail:
+Four mutations must fail:
 - the old turnaround (144);
-- an off-by-one turnaround (150);
+- a 3 px spot (146);
+- a 5 px spot (148);
 - applying the change to the first tour.
 
 **Budgets.** The fixed area is 22,360/24,336 bytes, and RAM use is 574 bytes.
 
 Production SHA-256:
-`14B84F3BC9AD474DC95D8E73F388B4D073FDE9347821AD2433804BF01FB9A95E`.
+`CC726608E980C82ED730A82A4ABA2D852D996DBFF8F3991657B4C9A967C77EE1`.

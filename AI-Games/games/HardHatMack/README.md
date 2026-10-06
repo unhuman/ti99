@@ -117,7 +117,7 @@ Type **838** on the title, then a digit **1-9 for total lives**, then **1-6 for
 the starting stage**. Stages 4-6 repeat screens 1-3 with the harder second-tour
 enemy setup; stage 4 starts level 1 with two roaming enemies. On stage 5 (the
 Level 2 screen with two roamers) the lower-right girder's patrol turns back
-early enough to leave an eight-pixel spot at its left end to wait for the
+early enough to leave a four-pixel spot at its left end to wait for the
 rising crane; its lunch pail stays inside the patrol. The chosen number
 appears beside the prompt before play begins. Release each key between digits.
 These choices apply to one game only. Reserve hats exclude the current
