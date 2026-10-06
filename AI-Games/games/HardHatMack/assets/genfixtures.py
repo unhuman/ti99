@@ -232,6 +232,10 @@ def tables():
                       8,8,0x68,0x98,0x88,0x98,0x68,0,
                       0,0,0xb0,0xc8,0x88,0x88,0x88,0]
     out['credit_col']=[0xf1]*8
+    # HUD reserve count <hat>x<n>: the compiler font's own lowercase x, copied
+    # to code 31 (below the font) because 96-127 are scenery during play.
+    out['hudx_pat']=[0,0,0x88,0x50,0x20,0x50,0x88,0]
+    out['hudx_col']=[0xf0]*8
     # User's Apple II screenshot: low outlined housing, dark blue centre,
     # red side panels, white feed cap and angled oval shoulder outlets.
     nozzle_rows=(

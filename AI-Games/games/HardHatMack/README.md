@@ -134,9 +134,12 @@ set that record. Normal play clears the current-game marker, and a higher
 normal score replaces an 838 record without an asterisk. Equal scores retain
 the existing record and its marker. On TI-99, the gameplay score has a one-cell
 left margin and is right-aligned in a six-digit field; its 838 marker follows
-the field. **BONUS** and its timer occupy columns 10-19, reserve hats follow, and
-the stage ends the row as **L1**, **L10**, etc. Three-digit stages display just
-their number to keep all eight possible reserve hats visible. High score
+the field. **BONUS** and its timer occupy columns 10-19. Up to five yellow
+reserve hats follow, right-justified to column 27; with six or more spares
+(possible only through 838 plus the 7,000-point bonus, up to nine) the reserve
+reads as one hat, a small x and the count with no spaces, e.g. hat-x-9. Column
+28 always stays blank, and the stage ends the row right-justified as **L1**,
+**L10**, etc.; three-digit stages display just their number. High score
 appears only on the title. Scores omit leading zeroes and
 reach 327,675 points using five-point storage units; further awards saturate
 at that maximum. All point awards and the 7,000-point extra life are unchanged.

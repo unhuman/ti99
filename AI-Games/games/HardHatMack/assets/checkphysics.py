@@ -436,10 +436,13 @@ def inventory_contract(source):
     vm.v.update(lv=1)
     vm.run('try_fill')
     assert vm.v['carry'] == 0 and vm.arrays['gapst'][0] == 1, 'level-1 deposit broken'
-    vm.v.update(i=5, xlife=0)
-    vm.v['#score'] = 10000
-    vm.run('hud_score')
-    assert vm.v['i'] == 5, 'extra-life HUD clobbered pickup index'
+    # Two sentinels no loop exit can produce: a single small one (it was 5)
+    # silently equalled the five-slot hat loop's exit value.
+    for sentinel in (77, 201):
+        vm.v.update(i=sentinel, xlife=0)
+        vm.v['#score'] = 10000
+        vm.run('hud_score')
+        assert vm.v['i'] == sentinel, 'extra-life HUD clobbered pickup index'
 
 
 def hammer_release(source):
@@ -656,7 +659,7 @@ def fidelity(source):
     for stage in (1,2,3):
         vm=level(stage)
         assert vm.screen[1:7]==list(map(ord,'  5000')), ('score missing on first level frame',stage)
-        assert vm.screen[27:29]==[vm.v['t_hat']]*2, ('top-row reserve hats missing after level paint',stage)
+        assert vm.screen[20:29]==reserve_row(2,vm.v), ('top-row reserve hats missing after level paint',stage)
         assert vm.screen[16:20]==list(map(ord,'5000')), ('bonus missing on first level frame',stage)
     # Carrying a loose block through an elevator ride and dying must restore
     # the item, clear inventory, and permit it to be picked up again.
@@ -973,6 +976,60 @@ def title_scores(source):
         assert win.v['#hi']==2000 and win.v['hi838']==assisted, 'completion score provenance wrong'
 
 
+def reserve_row(spares, v):
+    # Expected TI row-0 cells 20..28 for this many spare Macks: up to five
+    # yellow hats right-justified to column 27; then <hat><x><count> with no
+    # gaps, still ending at column 27. Columns 20-22 and 28 always stay blank.
+    row=[32]*9
+    if spares<=5:
+        for i in range(spares):row[7-i]=v['t_hat']
+    else:
+        tail=[v['t_hat'],v['t_hudx']]+[ord(c) for c in str(spares)]
+        row[8-len(tail):8]=tail
+    return row
+
+
+def reserve_hud(source):
+    vm=Basic(source);vm.v.update(lv=3,lives=2,levelno=3);vm.run('init_level')
+    assert vm.v['t_hudx']<32, 'HUD multiply sign must sit below the runtime font'
+    assert (vm.v['t_hudx'],1,'hudx_pat',0) in vm.pattern_writes, 'HUD x glyph never uploaded'
+    assert (vm.v['t_hudx'],1,'hudx_col',0) in vm.color_writes, 'HUD x colour never uploaded'
+    # Nothing else may own the code: every DEFINE CHAR range and every
+    # literal DEFINE VRAM pattern/colour address, from the source itself.
+    code=vm.v['t_hudx']
+    vram_lines=[line for line in vm.lines if line.startswith('define vram ')]
+    assert vram_lines and all(re.match(r'define vram (#presszone \+ )?\d+,\d+,',line) for line in vram_lines), (
+        'unrecognised DEFINE VRAM form: the code-31 ownership scan would go blind')
+    for line in vm.lines:
+        m=re.match(r'define (?:char|color) (\w+),(\w+),(\w+)',line)
+        if m and m[3]!='hudx_pat' and m[3]!='hudx_col' and not m[1].startswith('#'):
+            start,count=vm.expr(m[1]),vm.expr(m[2])
+            assert not start<=code<start+count, ('HUD x code owned by another upload',line)
+        m=re.match(r'define vram (#presszone \+ )?(\d+),(\d+),',line)
+        if m:
+            for zone in ((0,2048) if m[1] else (0,)):
+                addr,count=zone+int(m[2]),int(m[3])
+                for base in (0,2048,4096,8192,10240,12288):
+                    assert not (addr<base+code*8+8 and base+code*8<addr+count), ('HUD x code overwritten',line)
+    # Every spare count draws exactly. Columns 20-22 are blank from the level
+    # paint; the routine owns 23-28, so seed junk there and a missed cell shows.
+    assert vm.screen[20:23]==[32]*3, 'gap after the bonus not blank at level start'
+    rows=[]
+    for spares in list(range(13))+[6,5,9,8,0]:
+        vm.screen[23:29]=[vm.v['t_brick']]*6
+        vm.v['lives']=spares;vm.run('hud_lives')
+        assert vm.bank==1, 'reserve HUD leaks its bank'
+        assert vm.screen[20:29]==reserve_row(spares,vm.v), ('reserve row wrong',spares,vm.screen[20:29])
+        rows.append(vm.screen[20:29])
+    assert all(a!=b for a,b in zip(rows[:13],rows[1:13])), 'a one-life change leaves the reserve row unchanged'
+    # The level label keeps its right-justified place with column 28 clear.
+    for level in (1,9,10,99,100,255):
+        vm.v.update(levelno=level,lives=9);vm.run('hud_all')
+        label=('l'+str(level) if level<100 else str(level)).rjust(3)
+        assert ''.join(map(chr,vm.screen[29:32]))==label and vm.screen[28]==32, ('level label/gap',level)
+        assert vm.screen[20:29]==reserve_row(9,vm.v), ('level label disturbs the reserve',level)
+
+
 def score_range(source):
     vm=Basic(source)
     # Both final digits (0/5), old overflow boundary, and full six-digit range.
@@ -996,7 +1053,7 @@ def score_range(source):
     vm.v.update(lv=1,levelno=1);vm.run('init_level')
     vm.v.update(game838=1,hi838=1,**{'#score':65535,'#hi':65535,'#bonus':5000});vm.run('hud_all')
     assert ''.join(map(chr,vm.screen[1:8]))=='327675*', 'HUD score overlaps marker'
-    assert vm.screen[8:10]==[32]*2 and vm.screen[20]==32 and vm.screen[21:29]==[32]*5+[vm.v['t_hat']]*3, (
+    assert vm.screen[8:10]==[32]*2 and vm.screen[20:29]==reserve_row(3,vm.v), (
         'top-row hats overlap the score or bonus')
     assert ''.join(map(chr,vm.screen[10:20]))=='bonus 5000', 'bonus did not move left as a unit'
     for level in (1,9,10,99,100,255,1):
@@ -2054,7 +2111,7 @@ def setup_inputs(source):
             assert vm.v['game838']==1, '838 game not marked'
             assert (11*32+20,str(level)) in vm.prints, '838 level selection was not shown'
             vm.run('init_level')
-            assert vm.screen[21:29]==[32]*(9-lives)+[vm.v['t_hat']]*(lives-1), 'top-row reserve hats wrong'
+            assert vm.screen[20:29]==reserve_row(lives-1,vm.v), 'top-row reserve hats wrong'
             if level==4:
                 assert vm.v['lv']==1 and vm.v['von']==1 and vm.v['oon']==1, '838 level 4 does not start the harder two-enemy level 1'
     # Incorrect code, a held digit, and title navigation must not select a level.
@@ -2775,6 +2832,7 @@ def main():
     upper_conveyor(source)
     title_scores(source)
     score_range(source)
+    reserve_hud(source)
     mack_animation(source)
     elevator_dance(source)
     elevator_boarding(source)
@@ -3001,7 +3059,9 @@ def main():
         (source.replace('CPOS(0,HUD_BONUS_COL),<.4>#bonus','CPOS(0,2),<.4>#bonus'),score_range),
         (source.replace('PRINT AT CPOS(0,10),"BONUS "','PRINT AT CPOS(0,15),"BONUS "'),score_range),
         (source.replace('PRINT AT CPOS(0,10),"BONUS "','PRINT AT CPOS(0,11),"BONUS "'),score_range),
-        (source.replace('#va = VADDR(0,21)','#va = VADDR(0,7)'),score_range),
+        (source.replace('#va = VADDR(0,23)','#va = VADDR(0,22)'),score_range),
+        (source.replace('IF lives <= 5 THEN RETURN','IF lives <= 8 THEN RETURN'),reserve_hud),
+        (source.replace("\tVPOKE #va,ch\t\t' column 28: the gap before the level label\n",'',1),reserve_hud),
         (source.replace('DEFINE CHAR 225,2,spigot_pat','DEFINE CHAR 231,2,spigot_pat'),fidelity),
         (source.replace('DATA BYTE 8, 18,6,1,226','DATA BYTE 8, 18,6,1,232'),fidelity),
         (source.replace("mx = 120\t' place Mack one character right", "mx = 112\t' place Mack one character right"),fidelity),

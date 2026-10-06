@@ -2787,3 +2787,68 @@ Slow-motion review carts in Classic99 QI399.087 showed:
 
 Production SHA-256:
 `A7B21D9F6A44CBF835FDA35878AA25D9CD2538B16B1A6E1CECD2DFFA2052DA03`.
+
+## 54. TI reserve HUD: five hats, then hat-x-count (2026-10-05)
+
+Extra Macks: exactly one bonus per game, at 7,000 points (`hud_score`; the
+flag resets only for a new game). A normal game starts with two spares, so
+three is the normal maximum. The 838 setup allows 1-9 Macks (0-8 spares), and
+the bonus on top of that gives the true maximum of nine spares.
+
+The old row (eight hat slots in columns 21-28, superseding §46) had two
+problems:
+- nine spares saturated it, so the first death changed nothing on screen;
+- `L10` sat flush against the last hat.
+
+The TI row is now:
+- columns 1-6 score, 7 the 838 marker, 10-19 `BONUS` and its timer;
+- columns 20-22 blank;
+- columns 23-27 the reserve, right-justified to column 27;
+- column 28 always blank;
+- columns 29-31 the level, right-justified (`L5`, `L10`, `100`).
+
+**The reserve.**
+- Zero to five spares draw that many yellow hats (`T_HAT`). The test is
+  `hl_slot + lives > 4`: addition only, so a call with `lives = 0` cannot wrap.
+- Six or more draw `<hat><x><count>` in three adjacent cells (columns 25-27)
+  with no spaces. A two-digit count would start at column 24; that is
+  defensive, since the maximum is 9.
+- Every one-life change now alters the row.
+- The `x` is the compiler font's own lowercase x, copied to code 31
+  (`T_HUDX`), below the runtime font's 32-127. The font's own x (code 120) is
+  borrowed by scenery during play.
+  - `genfixtures.py` generates it as `hudx_pat`/`hudx_col`.
+  - `banked_hud_all` uploads it at every level start.
+- The ColecoVision branch keeps its eight-slot loop until that HUD is reviewed.
+
+**Validation.** `reserve_hud` in `assets/checkphysics.py` checks:
+- spares 0-12 cell by cell over junk-seeded columns 23-28, including the 6→5
+  and 9→8 transitions, and that every one-life change alters the row;
+- the level label at 1, 9, 10, 99, 100 and 255 with column 28 clear;
+- the glyph upload;
+- that no other upload in the source (every `DEFINE CHAR`/`COLOR` range and
+  every `DEFINE VRAM` address in all three thirds) covers code 31. The scan
+  fails if a `DEFINE VRAM` form it cannot parse appears.
+
+Three mutations must fail:
+- shifting the reserve start;
+- raising the threshold to eight;
+- dropping the column-28 blank.
+
+The `fidelity`, `score_range` and `setup_inputs` row expectations share the
+`reserve_row` model.
+
+The full gate caught a weak test. `inventory_contract` guards against the
+hat loop clobbering a caller's `i` by planting `i = 5` and checking it
+survives. The new five-slot loop exits at exactly 5, so the clobbering
+mutation passed. The test now plants 77 and 201, values no loop exit
+produces. Classic99 captures show `hat x8` and `L10` on level 10,
+and three hats with `L9` on level 9.
+
+**Budgets.**
+- The fixed area is unchanged at 22,354/24,336.
+- Bank 2 has 1,134 B free; banks 1, 3 and 4 have 4, 28 and 360.
+- RAM use is 574 bytes.
+
+Production SHA-256:
+`7079FD493BC7B1CBF11E429B6EA1B68FF876E9E540B27AA5DA1E432D60A91FBC`.
