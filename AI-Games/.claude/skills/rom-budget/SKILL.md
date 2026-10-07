@@ -14,6 +14,15 @@ description: >-
 Moved verbatim from the root `CLAUDE.md` (§3A and its trailing sections) on 2026-09-28 so it
 loads only when needed. Section references like "§3A" mean the root `CLAUDE.md`.
 
+- **A BOOT-ONLY BANK FREES THE DATA BANK FOR COLD CODE.** Choplifter's unoptimised fixed image
+  went 232 bytes past `>FFFE` with its single data bank 122 bytes from full. Art uploaded only
+  at power-on (all sprites, scenery characters and colours, ~4.5 KB) moved to a second bank,
+  `assets_boot.bas` after `BANK 2`, which `boot:` selects around the `DEFINE`s and then
+  restores to the permanent data bank. That left room in the data bank for the title, setup
+  and results code, which the fixed area then lost. Keep any table that is redefined later (a
+  crash's flame sprites) in the play-time bank as its own copy. The cart doubles to 64 KB.
+  **Measure the overflow first** by assembling a scratch copy with `aorg >9000`: `BANK_0_FREE`
+  then reads how far past the limit the unoptimised image is.
 - **Measure the final routine before bank padding.** An xas99 profiler that
   sizes routines only between named labels loses the last routine; stopping at
   the next bank's first label can also include padding. Keystone's profiler now

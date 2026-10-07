@@ -300,7 +300,8 @@ def main():
             source = sub(source, '#tank_wait=150\n#jet_wait', '#tank_wait=60000\n#jet_wait')
         out = ROOT/'build'/args.out; out.mkdir(parents=True, exist_ok=True)
         (out/'PROFILE.bas').write_text(source, encoding='utf-8', newline='\n')
-        (out/'assets.bas').write_bytes(args.assets.read_bytes())
+        for name in ('assets.bas','assets_boot.bas'):
+            (out/name).write_bytes((args.assets.parent/name).read_bytes())
         used, unopt, _ = build_ti(out, 'PROFILE', 'CHOP REVIEW')
         print(f'Review cart (not a benchmark), fixed code {used}/24336:', out/'PROFILE_8.bin')
         return
@@ -312,9 +313,8 @@ def main():
         source = sub(source, 'IF hud_dirty THEN GOSUB hud\nGOTO main_loop\n',
                      'IF hud_dirty THEN GOSUB hud\nGOTO bench_tick\n')
     # Remove code the benchmark never reaches so instrumentation fits the
-    # fixed-code budget: the title/setup UI and pause.
-    source = cut(source, 'title', 'new_game', 'GOTO new_game')
-    source = cut(source, 'pause_game', 'practice_star')
+    # fixed-code budget: pause. (The title and setup are banked cold code.)
+    source = cut(source, 'pause_game', 'back_key')
     source = cut(source, 'menu_restore', 'fence_boundary')
     if args.micro:
         # The helicopter is invulnerable throughout: crash code never runs.
@@ -325,7 +325,8 @@ def main():
         source = sub(source, f'\n{label}:\n', f'\n{label}:\nRETURN\n')
     out = ROOT/'build'/args.out; out.mkdir(parents=True, exist_ok=True)
     (out/'PROFILE.bas').write_text(source, encoding='utf-8', newline='\n')
-    (out/'assets.bas').write_bytes(args.assets.read_bytes())
+    for name in ('assets.bas','assets_boot.bas'):
+        (out/name).write_bytes((args.assets.parent/name).read_bytes())
     # Same compile/assemble/short-branch/pack path as the production cart, so
     # the benchmark times the code that ships.
     used, unopt, _ = build_ti(out, 'PROFILE', 'CHOP PROFILE')

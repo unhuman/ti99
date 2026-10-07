@@ -35,11 +35,16 @@ class Basic:
         self.v={}; self.a={}; self.r={}; self.vram={}; self.sprites={};self.patterns={};self.sprite_patterns={}
         self.sounds={};self.sound_writes=[]
         self.calls={};self.transfers=[];self.events=[]
+        # TI keys held on the console keyboard matrix: 'fctn', '8', '9'.
+        self.keys=set()
         self.v.update({name.lower():int(value) for name,value in
                        re.findall(r'^CONST (\w+) = (\d+)$',source,re.M)})
         lines=source.splitlines()
         name=None
         enabled=True
+        # Labels in source order: a routine that runs off its last line falls
+        # through into the next label, as the compiled code does.
+
         for line in lines:
             if line.startswith('#if '): enabled=line[4:]==target;continue
             if line=='#else':enabled=not enabled;continue
@@ -74,7 +79,21 @@ class Basic:
     def call(self,name):
         self.events.append(('call',name))
         self.calls[name]=self.calls.get(name,0)+1
-        self.execute(self.r[name])
+        # Run until RETURN, following GOTO (a jump or a tail call into a
+        # routine that returns for us) and falling through labels.
+        # (Tests may swap in self.r from a mutated source: its insertion order
+        # is the source order.)
+        order=list(self.r)
+        index=order.index(name)
+        while True:
+            flow=self.execute(self.r[order[index]])
+            if flow=='return':return
+            if isinstance(flow,tuple):
+                self.events.append(('goto',flow[1]))
+                index=order.index(flow[1]);continue
+            if flow:raise ValueError(f'{flow} outside a loop in {name}')
+            index+=1
+            if index==len(order):return  # a snippet a test appended
     def execute(self,lines):
         pc=0
         while pc<len(lines):
@@ -172,7 +191,18 @@ class Basic:
                 if s.endswith('+'):regs[reg]+=1 if byte else 2
                 return memory[addr] if byte else memory[addr]*256+memory[addr+1]
             if re.fullmatch('r[0-9]+',s):return regs[int(s[1:])] >> (8 if byte else 0)
+            if s.startswith('>'):return int(s[1:],16)
             return bases[s] if s in bases else int(s)
+        # The console keyboard through the CRU: LDCR of 3 bits at >0024 selects
+        # a column, STCR of 8 bits at >0006 reads its rows (a held key reads 0).
+        # Column 0 row bit >10 is FCTN; column 1 >08 is 9; column 2 >08 is 8.
+        cru={'column':None}
+        def keyboard_rows():
+            rows=0xFF;column=cru['column']
+            if column==0 and 'fctn' in self.keys:rows&=~0x10
+            if column==1 and '9' in self.keys:rows&=~0x08
+            if column==2 and '8' in self.keys:rows&=~0x08
+            return rows<<8
         pc=0;zero=False;steps=0;compare=0
         while pc<len(lines):
             steps+=1
@@ -212,6 +242,23 @@ class Basic:
                 regs[reg]=(-value)&65535 if op=='neg' else ((value&255)<<8)|(value>>8)
                 if op=='neg':compare=regs[reg];zero=compare==0
             elif op=='limi':vdp['ints']=operand(args)!=0
+            elif op in ('ldcr','stcr'):
+                # Only the keyboard scan: R12 must hold the right CRU base and
+                # interrupts must be off (the vblank handler scans it too).
+                if vdp['ints']:raise ValueError('keyboard CRU access with interrupts enabled')
+                reg=int(parts[0][1:])
+                if op=='ldcr':
+                    if (regs[12],parts[1])!=(0x24,'3'):raise ValueError('Unsupported '+line)
+                    cru['column']=regs[reg]>>8
+                else:
+                    if (regs[12],parts[1])!=(0x06,'8') or cru['column'] is None:raise ValueError('Unsupported '+line)
+                    regs[reg]=keyboard_rows()
+            elif op=='src':
+                if args!='r12,7':raise ValueError('Unsupported '+line)
+                regs[12]=((regs[12]>>7)|(regs[12]<<9))&65535
+            elif op=='czc':
+                # Equal when every 1 bit of the mask is 0 in the destination.
+                zero=(operand(parts[0])&operand(parts[1]))==0
             elif op=='c':
                 compare=operand(parts[0])-operand(parts[1]);zero=compare==0
             elif op=='jeq':
@@ -271,6 +318,7 @@ class Basic:
                 continue
             if part=='RETURN':return 'return'
             if part=='EXIT FOR':return 'exit'
+            if part.startswith('GOTO '):return ('goto',part[5:].strip())
             if part.startswith('GOSUB '):self.call(part[6:]);continue
             if part.startswith('SOUND '):
                 ch,pitch,volume=[self.expr(x) for x in part[6:].split(',')]
@@ -321,7 +369,7 @@ class Basic:
                 continue
             if part.startswith('SPRITE '):
                 slot,*data=[self.expr(x) for x in part[7:].split(',')]
-                self.sprites[slot]=data
+                self.sprites[slot]=data;self.events.append(('sprite',slot))
                 continue
             if part.startswith('VPOKE '):
                 addr,value=part[6:].split(',')
@@ -347,10 +395,12 @@ class Tests(unittest.TestCase):
         b.a['person_state']=[0]*64;b.a['#person_x']=[0]*64;b.a['crowd_cells']=[0]*32
         b.a['person_state'][0]=3
         b.a['crowd_pixels']=[0]*256
+        b.a['tank_on']=[0,0];b.a['#tank_x']=[0,0]
+        b.v.update(wave_id=255,last_out=255)
         for name in ('#shot_x','shot_y','shot_dir','shot_on','shot_ttl','shot_slope','shot_speed','shot_drift'):b.a[name]=[0,0]
         sys.path.insert(0,str(ROOT/'assets'))
         import generate
-        b.a['jet_arc']=generate.JET_ARC
+        b.a['jet_arc']=generate.JET_ARC;b.a['shell_arc']=generate.SHELL_ARC
         b.a['crash_flames']=[v for a in generate.SPRITES[13:15] for v in generate.sprite_bytes(a)]
         b.a['crash_embers']=[v for rows in generate.CRASH_EMBERS for v in generate.sprite_bytes(generate.fire_sprite(rows))]
         b.a['world_map']=[c for row in generate.MAP for c in row]
@@ -358,7 +408,7 @@ class Tests(unittest.TestCase):
         rows=generate.PERSON_ROWS
         b.a['person_rows']=rows+[v>>4 for v in rows]+[(v<<4)&255 for v in rows]
         b.a['person_colors']=generate.PERSON_COLORS
-        b.a['crowd_bases']=[0]*8+[255-v for v in generate.TILES[5][0]]+generate.TILES[28][0]+generate.TILES[29][0]
+        b.a['crowd_bases']=generate.CROWD_BASES
         standing=[v for k in range(3) for v in generate.PERSON_ROWS[k*64:k*64+32]]*2
         for ch in range(24):b.patterns[ch+96]=standing[ch*8:ch*8+8]
         b.a['menu_font']=generate.MENU_FONT;b.a['camp_bits']=[1,2,4,8]
@@ -477,12 +527,16 @@ class Tests(unittest.TestCase):
         for f,e in zip(art.CRASH_FLAMES,art.CRASH_EMBERS):
             self.assertLess(sum(v.bit_count() for v in e),sum(v.bit_count() for v in f)//3)
             self.assertEqual(max(y for y,v in enumerate(e) if v),14)
-        generated=(ROOT/'src/assets.bas').read_text(encoding='utf-8')
-        sprite_block=generated.split('sprite_art:\n')[1].split('crash_embers:\n')[0]
-        data=[int(v) for line in sprite_block.splitlines() if 'DATA BYTE' in line
-              for v in line.split('DATA BYTE')[1].split(',')]
+        def block(name,label,end):
+            text=(ROOT/'src'/name).read_text(encoding='utf-8').split(label+':\n')[1].split(end+':\n')[0]
+            return [int(v) for line in text.splitlines() if 'DATA BYTE' in line
+                    for v in line.split('DATA BYTE')[1].split(',')]
+        # All 64 sprites go up once at power-on from the boot bank; a crash
+        # redefines slots 13/14 from the copy in the data bank.
+        data=block('assets_boot.bas','sprite_art','tile_art')
         self.assertEqual(data,[v for a in art.SPRITES for v in art.sprite_bytes(a)])
         self.assertEqual(data[13*32:15*32],sum(flame,[]))
+        self.assertEqual(block('assets.bas','crash_flames','crash_embers'),sum(flame,[]))
     def test_landing_casualty(self):
         b=self.state();b.v['old_y']=150;b.call('people_tick')
         self.assertEqual((b.v['lost'],b.v['aboard']),(1,0));self.assertEqual(self.total(b),64)
@@ -513,9 +567,16 @@ class Tests(unittest.TestCase):
         self.assertEqual((b.a['person_state'][16],b.a['#person_x'][16]),(3,430))
     def test_tank_rate_across_frame_deltas(self):
         for dt in (1,2,3,4,6):
-            b=self.state();b.v.update({'#hx':500,'#tank_x':100,'#tank_wait':60000,'#elapsed':dt,'dt':dt})
+            b=self.state();b.v.update({'#hx':500,'#tank_wait':60000,'#elapsed':dt,'dt':dt})
+            b.a['tank_on']=[1,1];b.a['#tank_x']=[100,800]
             for _ in range(60//dt):b.call('tank_tick')
-            self.assertEqual(b.v['#tank_x'],115)
+            self.assertEqual(b.a['#tank_x'],[115,785])
+        # One tank stops 40 px short of the other ahead of it, from either side.
+        for xs,hx in (([300,330],1000),([700,660],100)):
+            b=self.state();b.v.update({'#hx':hx,'#tank_wait':60000,'#elapsed':2,'dt':2})
+            b.a['tank_on']=[1,1];b.a['#tank_x']=list(xs)
+            for _ in range(60):b.call('tank_tick')
+            self.assertEqual(abs(b.a['#tank_x'][0]-b.a['#tank_x'][1]),40,xs)
     def test_flight_rate_and_braking(self):
         for dt in (1,2,3,4,6):
             b=self.state();b.v.update({'#hx':500,'hy':100,'dt':dt,'hspeed':3,'hdir':0,'face':1,'cont1.right':1})
@@ -525,15 +586,34 @@ class Tests(unittest.TestCase):
             for _ in range(4):b.call('fly')
             self.assertEqual((b.v['hspeed'],b.v['face']),(0,1))
     def test_open_barrack_and_destroy_tank(self):
-        b=self.state();b.a.update({'#shot_x':[128,0],'shot_y':[144,0],'shot_dir':[2,0],'shot_on':[1,0]})
-        b.a['camp_open']=[0]*4
-        b.call('move_shot')
+        # Strafing opens a barrack; a bomb falls past it.
+        def shoot(direction,x,y,tank=None):
+            b=self.state();b.a.update({'#shot_x':[x,0],'shot_y':[y,0],'shot_dir':[direction,0],'shot_on':[1,0]})
+            b.a['camp_open']=[0]*4;b.v.update(runner_on=0,dt=2)
+            if tank is not None:b.a['tank_on']=[1,0];b.a['#tank_x']=[tank,0]
+            b.call('move_shot');return b
+        b=shoot(0,128,144)
         self.assertEqual((b.a['camp_open'][0],b.a['shot_on'][0]),(1,0))
-        b.v.update({'tank_on':1,'#tank_x':128,'runner_on':0})
-        b.a['#shot_x'][0]=140
-        b.a['shot_on'][0]=1;b.a['shot_y'][0]=152
-        b.call('move_shot')
-        self.assertEqual((b.v['tank_on'],b.a['shot_on'][0]),(0,0))
+        b=shoot(2,128,144)
+        self.assertEqual((b.a['camp_open'][0],b.a['shot_on'][0]),(0,1))
+        # A bomb destroys a tank on the foreground plane; a sideways shot does not.
+        b=shoot(2,140,180,tank=128)
+        self.assertEqual((b.a['tank_on'][0],b.a['shot_on'][0]),(0,0))
+        b=shoot(1,140,180,tank=128)
+        self.assertEqual(b.a['tank_on'][0],1)
+        # Bombs carry on past the crowd row down to the tanks; shots stop.
+        for direction,alive in ((2,1),(0,0)):
+            b=shoot(direction,600,172)
+            self.assertEqual(b.a['shot_on'][0],alive)
+        self.assertEqual(shoot(2,600,190).a['shot_on'][0],0)
+    def test_air_targets_need_a_sideways_shot(self):
+        for direction,hit in ((0,1),(1,1),(2,0)):
+            for name,setup in (('jet_on',{'jet_on':1,'#jet_x':300,'jet_y':80}),
+                               ('drone_on',{'drone_on':1,'#drone_x':300,'drone_y':80})):
+                b=self.state();b.v.update(setup);b.v.update(runner_on=0,dt=2)
+                b.a.update({'#shot_x':[306,0],'shot_y':[86,0],'shot_dir':[direction,0],'shot_on':[1,0]})
+                b.call('move_shot')
+                self.assertEqual(b.v[name],1-hit,(name,direction))
     def test_ground_and_world_limits(self):
         for x,control,expected in ((17,'cont1.left',16),(2007,'cont1.right',2008)):
             b=self.state();b.v.update({'#hx':x,'hy':100,'dt':6,'hspeed':3,'hdir':int('left' in control),control:1})
@@ -548,7 +628,17 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(art.TILES),112)
         self.assertTrue(all(len(bits)==8 for bits,_ in art.TILES))
         self.assertEqual([len(row) for row in art.MAP],[256]*5)
-        for col in (16,48,80,112):self.assertEqual(art.MAP[3][col],135)
+        for col in (16,48,80,112):
+            # Chimney over the west end; the doorway and porch straddle col-1/col.
+            self.assertEqual([art.MAP[1][c] for c in range(col-2,col+2)],[155,32,32,32])
+            self.assertEqual(art.MAP[2][col-2:col+2],[130,135,153,131])
+            self.assertEqual(art.MAP[3][col-2:col+2],[132,154,147,132])
+        # Hills: flanks and body on the crowd row, matching tops above.
+        for start,width,west,east in art.MOUNDS:
+            self.assertIn(west+east,range(1,5))
+            self.assertEqual(art.MAP[3][start-west:start+width+east],
+                             art.FOOT_WEST[2-west:]+[142]+[133]*(width-2)+[143]+art.FOOT_EAST[:east])
+            self.assertEqual(art.MAP[2][start+1:start+width-1],art.HILL_TOPS[width])
         self.assertEqual(art.MAP[4][242],138)
         self.assertNotEqual(art.SPRITES[0],art.SPRITES[2])
         self.assertNotEqual(art.SPRITES[0],art.SPRITES[20])
@@ -564,11 +654,14 @@ class Tests(unittest.TestCase):
             self.assertEqual(fences,[1568,1888])
             camps=[int(n) for n in re.findall(r'#camp_x\(\d\)=(\d+)',source)]
             self.assertEqual(camps,[128,384,640,896])
-            # Old nearest wall ended at 920, 136 pixels short of the fence.
-            # Add exactly two 256-pixel screens without shifting camp spacing.
-            east_wall=(max(i for i,ch in enumerate(art.MAP[2]) if ch==133)+1)*8
-            self.assertEqual(fences[0]-east_wall,136+2*256)
-            self.assertFalse(any(ch in (133,134,135) for row in art.MAP
+            # The nearest camp sat 136 pixels short of the fence (from its
+            # centre, 160). Add exactly two 256-pixel screens without shifting
+            # camp spacing; the open ground holds only mounds.
+            hut=(130,131,132,135,147,153,154,155)
+            east_wall=(max(i for i,ch in enumerate(art.MAP[2]) if ch in hut)+1)*8
+            self.assertEqual(fences[0]-camps[-1],160+2*256)
+            self.assertEqual(east_wall,camps[-1]+16)
+            self.assertFalse(any(ch in hut for row in art.MAP
                                  for ch in row[east_wall//8:fences[0]//8]))
             for target in ('TI994A','COLECO'):
                 b=self.state();b.r=Basic(source,target=target).r
@@ -598,7 +691,10 @@ class Tests(unittest.TestCase):
         self.assertEqual(b.v.get('jet_on',0),0)
         b.v['transfer_timer']=0;b.v['#hx']=1920;b.call('people_tick');b.v['#hx']=500;b.call('jet_spawn')
         self.assertEqual(b.v.get('sorties',0),0) # the last passenger is still walking to the door
-        for _ in range(50):b.call('people_tick')
+        # ... and stops to wave at the helicopter (90 frames) before going in.
+        for _ in range(60):b.call('people_tick')
+        self.assertEqual(b.v.get('sorties',0),0)
+        for _ in range(40):b.call('people_tick')
         b.call('jet_spawn')
         self.assertEqual((b.v['sorties'],b.v['jet_on']),(1,1))
         b.call('new_heli');self.assertEqual(b.v['sorties'],1)
@@ -855,11 +951,12 @@ class Tests(unittest.TestCase):
             b.call('move_shot');self.assertEqual(b.a['shot_on'][0],0)
             self.assertLess(b.a['#shot_x'][0],2112)
         for direction,x in ((0,490),(1,544)):
-            b=self.state();b.v.update({'wi':0,'dt':6,'tank_on':1,'#tank_x':500})
-            b.a['#shot_x'][0]=x;b.a['shot_y'][0]=155;b.a['shot_dir'][0]=2
+            b=self.state();b.v.update({'wi':0,'dt':6})
+            b.a['tank_on']=[1,0];b.a['#tank_x']=[500,0]
+            b.a['#shot_x'][0]=x;b.a['shot_y'][0]=175;b.a['shot_dir'][0]=2
             b.a['shot_on'][0]=1;b.a['shot_speed'][0]=3;b.a['shot_drift'][0]=direction
             b.call('move_shot')
-            self.assertEqual((b.v['tank_on'],b.a['shot_on'][0]),(0,0))
+            self.assertEqual((b.a['tank_on'][0],b.a['shot_on'][0]),(0,0))
 
     def test_offscreen_shots_release_pool_before_fire(self):
         def check(source):
@@ -880,53 +977,57 @@ class Tests(unittest.TestCase):
     def scanline(self,b,line):
         """Sprites the VDP shows on a scanline: the first four by slot."""
         return [data for _,data in sorted(b.sprites.items()) if data[0]<line<=data[0]+16][:4]
-    def test_shots_survive_four_sprite_scanline_limit(self):
-        def visible(source):
-            b=self.state();b.r=Basic(source).r
-            b.v.update({'#camera':0,'#hx':120,'hy':153,'tank_on':1,'#tank_x':140})
-            b.a['shot_on']=[1,1];b.a['shot_y']=[160,160];b.a['#shot_x']=[80,200]
-            b.call('draw_actors')
-            return sum(data[2]==68 for data in self.scanline(b,160))
-        self.assertEqual(visible(SOURCE),2)
-        bad=SOURCE.replace('    draw_slot=di+4\n','    draw_slot=di+10\n')
-        self.assertNotEqual(bad,SOURCE)
-        self.assertLess(visible(bad),2)
-
-    def test_deadly_projectiles_never_drop_and_ground_actors_take_turns(self):
-        # Landed beside a firing tank: helicopter, tank halves and shell all
-        # cross scanline 165 -- five sprites for four places (runners are crowd
-        # characters now). The shell must show on every update; the tank halves
-        # must each show on some of them (flicker).
-        def watch(source,passes=12):
-            b=self.state();b.r=Basic(source).r
-            b.v.update({'#camera':0,'#hx':120,'hy':153,'tank_on':1,'#tank_x':152,
-                        'shell_on':1,'#shell_x':140,'shell_y':156})
-            b.a['shot_on']=[0,0];b.call('hide_all')
-            seen=[]
-            for _ in range(passes):
-                b.call('draw_actors')
-                seen.append([data[2] for data in self.scanline(b,165)])
-            return seen
-        seen=watch(SOURCE)
-        self.assertTrue(all(68 in row for row in seen),seen)
-        for group in (self.TANK_L,self.TANK_R):
-            self.assertTrue(any(set(row)&set(group) for row in seen),(group,seen))
-        # The original bug: the shell queued behind the tank is never drawn.
-        late=watch(SOURCE.replace('draw_slot=2\nIF shell_on THEN','draw_slot=11\nIF shell_on THEN'))
-        self.assertFalse(all(68 in row for row in late))
-        # Without rotation one ground actor never gets a place.
-        still=watch(SOURCE.replace('sprite_rot=sprite_rot+1\n','sprite_rot=0\n'))
-        self.assertFalse(all(any(set(row)&set(g) for row in still) for g in (self.TANK_L,self.TANK_R)))
-        # rot_map: each phase is one-to-one onto slots 6-11, and any two
-        # rotating actors each lead the other in at least a third of phases.
-        table=self.state().a['rot_map']
-        self.assertEqual(len(table),72)
-        rows=[table[r*6:r*6+6] for r in range(12)]
-        for rot,row in enumerate(rows):self.assertEqual(sorted(row),list(range(6,12)),rot)
-        for a in range(6):
-            for c in range(6):
-                if a!=c:self.assertGreaterEqual(sum(row[a]<row[c] for row in rows),4,(a,c))
-
+    def flicker_frames(self,b,line,frames=32):
+        """What the VDP shows on a scanline over successive frames with SPRITE
+        FLICKER on: the TI vblank copy starts one slot later each frame
+        (cvbasic_9900_prologue.asm), and the VDP draws the first four sprites
+        in that order that cross the line (y=208 would end the list)."""
+        shown=[]
+        for frame in range(frames):
+            order=[(frame+i)%32 for i in range(32)]
+            on=[]
+            for slot in order:
+                data=b.sprites.get(slot)
+                if not data:continue
+                if data[0]==208:break
+                if data[0]<line<=data[0]+16:on.append(slot)
+            shown.append(on[:4])
+        return shown
+    def test_sprite_flicker_shares_crowded_lines(self):
+        boot=SOURCE.split('\nboot:\n')[1].split('\nGOTO title')[0]
+        self.assertIn('SPRITE FLICKER ON',boot)
+        self.assertNotIn('SPRITE FLICKER OFF',SOURCE)
+        # Every actor active: each has its own slot, 0-12.
+        b=self.state()
+        b.v.update({'#camera':0,'#hx':120,'hy':100,'shell_on':1,'#shell_x':130,'shell_y':104,
+                    'missile_on':1,'#missile_x':170,'missile_y':104,'jet_on':1,'#jet_x':60,'jet_y':100,
+                    'drone_on':1,'#drone_x':200,'drone_y':100,'blast_timer':10,'#blast_x':90,'blast_y':100})
+        b.a['tank_on']=[1,1];b.a['#tank_x']=[20,200]
+        b.a['shot_on']=[1,1];b.a['shot_y']=[104,104];b.a['#shot_x']=[100,180]
+        b.call('hide_all');b.call('draw_actors')
+        self.assertEqual(sorted(s for s,d in b.sprites.items() if d[0]!=209),list(range(13)))
+        # Nine sprites cross the helicopter's scanline: each takes its turn
+        # within 32 frames, and the helicopter shows in most of them.
+        frames=self.flicker_frames(b,108)
+        crowded=[s for s,d in b.sprites.items() if d[0]<108<=d[0]+16]
+        self.assertGreater(len(crowded),4)
+        for slot in crowded:self.assertTrue(any(slot in f for f in frames),slot)
+        self.assertGreater(sum(0 in f for f in frames),20)
+        # Without flicker the fifth and later slots would never be drawn.
+        fixed=[[s for s in sorted(crowded)][:4]]*32
+        self.assertFalse(all(any(slot in f for f in fixed) for slot in crowded))
+    def test_tanks_and_landed_helicopter_never_share_scanlines(self):
+        # Tanks run on the foreground plane below the crowd row: a helicopter
+        # on the ground (rows 153-168 drawn) and two tanks with a shell leaving
+        # (rows 175-190) need at most four sprites per line between them.
+        b=self.state()
+        b.v.update({'#camera':0,'#hx':120,'hy':153,'shell_on':1,'#shell_x':150,'shell_y':176})
+        b.a['tank_on']=[1,1];b.a['#tank_x']=[100,150]
+        b.call('hide_all');b.call('draw_actors')
+        for line in range(0,192):
+            on=[s for s,d in b.sprites.items() if d[0]!=209 and d[0]<line<=d[0]+16]
+            self.assertLessEqual(len(on),5,line)
+            if 0 in on:self.assertFalse({6,7,8,9}&set(on),line)
     def test_unsafe_descent_strains_the_engine(self):
         def engine(fall,anim):
             b=self.state();b.v.update({'hy':100,'hspeed':0,'crash_timer':0,'rotor_phase':0,'dt':2,
@@ -990,55 +1091,96 @@ class Tests(unittest.TestCase):
             b=self.state();b.v.update({'threat':level,'sorties':1,'#hx':1000,'#jet_wait':0,'#elapsed':2,'jet_on':0})
             b.call('jet_spawn');self.assertEqual(b.v['jet_ammo'],tables['jet_missiles'][level])
             self.assertEqual(b.v['#jet_wait'],tables['#jet_delay'][level])
-            b=self.state();b.v.update({'threat':level,'tank_on':1,'#tank_x':400,'#hx':300,'hy':80,
+            b=self.state();b.v.update({'threat':level,'#hx':300,'hy':145,'#camera':200,
                                       '#tank_wait':0,'shell_on':0,'dt':2,'#elapsed':2,'invuln':255})
+            b.a['tank_on']=[1,0];b.a['#tank_x']=[400,0]
             b.call('tank_tick');self.assertEqual(b.v['#tank_wait'],tables['tank_reload'][level])
-    def test_tank_fires_straight_up_when_overhead(self):
-        def fire(source,hx):
+            self.assertEqual(b.v['shell_on'],1)
+    def test_tank_lobs_shells_that_land(self):
+        # Tanks lob short shells under gravity, only at a helicopter on or just
+        # above the ground (y >= 137), aimed at where it is, from the barrel
+        # tip: each rises 32 px, falls and bursts within 36 frames. No shell
+        # flies flat across the map, and a tank off screen holds its fire.
+        def fire(source,offset,hy,dt=2,move=0,invuln=0,camera=287):
+            # offset: helicopter centre minus the tank's centre (x=415).
             b=self.state();b.r=Basic(source).r
-            b.v.update({'tank_on':1,'#tank_x':400,'#hx':hx,'hy':80,'old_y':80,'#tank_wait':0,
-                        'shell_on':0,'dt':2,'#elapsed':2,'invuln':0,'crash_timer':0,'lives':3,'runner_on':0})
+            b.a['tank_on']=[1,0];b.a['#tank_x']=[400,0]
+            b.v.update({'#hx':415+offset-16,'hy':hy,'old_y':hy,'#tank_wait':0,'#camera':camera,
+                        'shell_on':0,'dt':dt,'#elapsed':dt,'invuln':invuln,'crash_timer':0,'lives':3,'runner_on':0})
             b.call('tank_tick')
+            b.v['#hx']+=move
             path=[]
-            while b.v['shell_on'] and len(path)<80:
-                path.append((b.v['#shell_x'],b.v['shell_y']))
-                b.call('shell_tick')
+            while b.v['shell_on'] and len(path)<200:
+                b.call('shell_tick');path.append((b.v['#shell_x'],b.v['shell_y']))
             return b,path
-        b,path=fire(SOURCE,388)  # helicopter body spans the turret: front view
-        self.assertEqual(b.v['tank_face'],2)
-        self.assertEqual({x for x,_ in path},{415})
-        self.assertEqual([y for _,y in path[:3]],[150,146,142])
-        self.assertTrue(b.v['crash_timer'],'a hovering helicopter above the turret is hit')
-        b,path=fire(SOURCE,200)  # off to the side: the familiar diagonal
-        self.assertEqual(b.v['shell_dir'],1)
-        self.assertGreater(path[0][0]-path[-1][0],0)
-        bad,path=fire(SOURCE.replace('IF tank_face = 2 THEN #shell_x=#tank_x+15:shell_y=150:shell_dir=2',''),388)
-        self.assertFalse(bad.v['crash_timer'],'without the rule the shell flies away under it')
+        # Reach is 3 px per frame of flight: about 72 px at y=137, 93 at 145,
+        # 105 on the ground (from the muzzle, 14-15 px off the tank's centre).
+        for dt in (2,3,6):
+            cases=[(o,137) for o in (-60,-30,0,30,60)]+[(o,145) for o in (-90,-40,0,40,90)]
+            cases+=[(o,153) for o in (-110,-60,0,60,110)]
+            for offset,hy in cases:
+                b,path=fire(SOURCE,offset,hy,dt)
+                self.assertTrue(path,(dt,offset,hy))
+                self.assertTrue(b.v['crash_timer'],('aimed at a still helicopter, it hits',dt,offset,hy))
+                self.assertLessEqual(len(path),-(-36//dt))
+        # The shell leaves the barrel tip the turret faces: west, east or up.
+        for offset,muzzle in ((-60,400),(60,429),(0,415)):
+            b=self.state();b.a['tank_on']=[1,0];b.a['#tank_x']=[400,0]
+            b.v.update({'#hx':415+offset-16,'hy':145,'#tank_wait':0,'#camera':287,'shell_on':0,'dt':2,'#elapsed':2})
+            b.call('tank_tick');self.assertEqual((b.v['#shell_x'],b.v['shell_y']),(muzzle,176))
+        for dt in (2,6):
+            b,path=fire(SOURCE,-100,153,dt,move=-80,invuln=255)  # it moves away
+            ys=[y for _,y in path];top=ys.index(min(ys))
+            if dt==2:self.assertEqual(min(ys),144)
+            self.assertEqual(ys[:top+1],sorted(ys[:top+1],reverse=True))   # climbs ...
+            self.assertEqual(ys[top:],sorted(ys[top:]))                     # ... then falls
+            self.assertEqual((ys[-1],b.v['shell_on']),(164,0))              # and bursts
+            self.assertLessEqual(abs(path[-1][0]-(415-100)),4)   # rounded speed, one frame past
+        # Too high, too far, or the tank off screen: no shell.
+        for offset,hy,camera in ((20,130,287),(20,60,287),(130,153,287),(-130,153,287),
+                                 (-60,153,0),(60,153,600)):
+            b,path=fire(SOURCE,offset,hy,camera=camera);self.assertEqual((b.v['shell_on'],path),(0,[]))
+        # The landing kills whoever stands there, once.
+        b=self.state();b.a['tank_on']=[1,0];b.a['#tank_x']=[400,0]
+        b.v.update({'#hx':415-80-16,'hy':153,'old_y':153,'#tank_wait':0,'#camera':287,
+                    'shell_on':0,'dt':2,'#elapsed':2,'invuln':0,'crash_timer':0,'lives':3,'runner_on':0})
+        b.call('tank_tick');b.v['#hx']=1000
+        b.a['person_state'][20]=2;b.a['#person_x'][20]=415-80-4
+        while b.v['shell_on']:b.call('shell_tick')
+        self.assertEqual((b.a['person_state'][20],b.v['lost']),(4,1))
+        # A shell that never bursts runs on across the world.
+        _,path=fire(SOURCE.replace('IF shell_t = 36 THEN','IF shell_t = 99 THEN'),-60,153,move=500)
+        self.assertGreater(len(path),100)
+        # The source's burst frame and the generator's arc agree.
+        import generate as art
+        self.assertIn(f'IF shell_t = {art.SHELL_LAST} THEN',SOURCE)
+        self.assertIn(f'shell_n={art.SHELL_LAST}-shell_t',SOURCE)
     def test_inactive_sprites_hide_once_and_reappear(self):
-        b=self.state();b.v.update({'#camera':0,'#hx':120,'hy':80,'tank_on':1,'#tank_x':140,'runner_on':0})
+        b=self.state();b.v.update({'#camera':0,'#hx':120,'hy':80,'runner_on':0})
+        b.a['tank_on']=[1,0];b.a['#tank_x']=[140,0]
         b.a['shot_on']=[1,0];b.a['shot_y']=[90,0];b.a['#shot_x']=[60,0]
         b.call('hide_all');b.call('draw_actors')
         shows=lambda pats:any(d[0]!=209 and d[2] in pats for d in b.sprites.values())
         self.assertTrue(shows((68,)) and shows(self.TANK_L) and shows(self.TANK_R))
         # Deactivated actors are hidden on the next pass ...
-        b.v['tank_on']=0;b.a['shot_on']=[0,0];b.call('draw_actors')
+        b.a['tank_on']=[0,0];b.a['shot_on']=[0,0];b.call('draw_actors')
         self.assertFalse(shows((68,)) or shows(self.TANK_L) or shows(self.TANK_R))
         # ... and only once: a further idle pass writes no sprite at all
-        # beyond the helicopter's own two slots, whatever the rotation phase.
+        # beyond the helicopter's own two slots.
         for _ in range(12):
             b.sprites={};b.call('draw_actors')
             self.assertEqual(sorted(b.sprites),[0,1])
         # Off-camera actors are hidden too, and come back when in view.
-        b.call('hide_all');b.v.update({'tank_on':1,'#tank_x':140});b.call('draw_actors')
-        b.v['#tank_x']=900;b.call('draw_actors')
+        b.call('hide_all');b.a['tank_on']=[1,0];b.a['#tank_x']=[140,0];b.call('draw_actors')
+        b.a['#tank_x'][0]=900;b.call('draw_actors')
         self.assertFalse(shows(self.TANK_L) or shows(self.TANK_R))
-        b.v['#tank_x']=140;b.call('draw_actors')
+        b.a['#tank_x'][0]=140;b.call('draw_actors')
         self.assertTrue(shows(self.TANK_L) and shows(self.TANK_R))
         # A mask that is never cleared would leave a stale bit after hide_all.
         b.call('hide_all');self.assertEqual(b.v['#sprite_shown'],0)
         bad=self.state();bad.r=Basic(SOURCE.replace('#sprite_shown=#sprite_shown XOR #slot_bit','#slot_bit=0')).r
-        bad.v.update({'#camera':0,'#hx':120,'hy':80,'tank_on':1,'#tank_x':140})
-        bad.call('draw_actors');bad.v['tank_on']=0;bad.call('draw_actors')
+        bad.v.update({'#camera':0,'#hx':120,'hy':80});bad.a['tank_on']=[1,0];bad.a['#tank_x']=[140,0]
+        bad.call('draw_actors');bad.a['tank_on']=[0,0];bad.call('draw_actors')
         bad.sprites={};bad.call('draw_actors')
         self.assertTrue(set(bad.sprites)-{0,1})  # the broken mask keeps rewriting hidden slots
     def test_jet_turns_passes_and_departure(self):
@@ -1069,14 +1211,40 @@ class Tests(unittest.TestCase):
         self.assertLess(depart(SOURCE.replace('IF #jet_x+16 < #camera THEN jet_on=0:RETURN','')),8)
 
     def test_jet_missile_ammo_and_border(self):
-        b=self.state();b.v.update({'#hx':600,'#jet_x':500,'jet_ammo':2,'jet_passes':0,'jet_y':58})
-        b.call('jet_attack');self.assertEqual(b.v.get('missile_on',0),0)
-        b.v['jet_passes']=1;b.call('jet_attack')
-        self.assertEqual((b.v['missile_on'],b.v['jet_ammo']),(1,1))
+        # An eastbound jet at y=58 ahead of an airborne helicopter in line.
+        def jet(**v):
+            b=self.state()
+            b.v.update({'#hx':600,'hy':58,'#jet_x':500,'jet_ammo':2,'jet_passes':1,'jet_y':58,
+                        'jet_dir':0,'jet_turn':0,'#camera':400,'dt':2})
+            b.v.update(v);b.call('jet_attack');return b
+        b=jet(jet_passes=0);self.assertEqual(b.v.get('missile_on',0),0)
+        b=jet()
+        self.assertEqual((b.v['missile_on'],b.v['jet_ammo'],b.v['missile_aim']),(1,1,0))
         b.v.update({'#missile_x':1566,'missile_dir':0});b.call('missile_tick')
         self.assertEqual(b.v['missile_on'],0)
         b.v['jet_fire']=0;b.call('jet_attack');self.assertEqual(b.v['jet_ammo'],0)
         b.v.update(missile_on=0,jet_fire=0);b.call('jet_attack');self.assertEqual(b.v['missile_on'],0)
+        # Straight ahead only: not behind the jet, not out of line, not off screen.
+        for v in ({'#hx':400},{'hy':90},{'#camera':560},{'#camera':200,'#jet_x':100,'#hx':300}):
+            self.assertEqual(jet(**v).v.get('missile_on',0),0,v)
+        self.assertEqual(jet(**{'hy':72}).v['missile_on'],1)   # within 16 px of line
+        # A missile flies level at 4 px/frame, nose first.
+        b=jet();x,y=b.v['#missile_x'],b.v['missile_y']
+        b.v['#hx']=1000;b.call('missile_tick')
+        self.assertEqual((b.v['#missile_x']-x,b.v['missile_y']),(8,y))
+        # Over a landed helicopter the jet drops a bomb, released as far ahead as
+        # the helicopter is below; it drifts 2 and falls 2 px a frame onto it.
+        b=jet(hy=153,**{'#hx':500+8+95-16})   # centre 95 ahead, 95 below the jet's centre
+        self.assertEqual((b.v['missile_on'],b.v['missile_aim']),(1,2))
+        self.assertEqual(jet(hy=153,**{'#hx':500+8+60-16}).v.get('missile_on',0),0)
+        b.v['invuln']=0;b.v['crash_timer']=0;b.v['lives']=3
+        while b.v['missile_on']:b.call('missile_tick')
+        self.assertTrue(b.v['crash_timer'])
+        b=jet(hy=153,**{'#hx':500+8+95-16});b.v['#hx']+=200;path=[]   # it lifts away
+        while b.v['missile_on']:b.call('missile_tick');path.append((b.v['#missile_x'],b.v['missile_y']))
+        steps={(x1-x0,y1-y0) for (x0,y0),(x1,y1) in zip(path,path[1:])}
+        self.assertEqual(steps,{(4,4)})
+        self.assertGreater(path[-1][1],166)
 
     def escaped_crowd(self, source=SOURCE):
         b=self.state();b.r=Basic(source).r
@@ -1261,9 +1429,12 @@ class Tests(unittest.TestCase):
         col=b.v['flag_col']
         self.assertEqual(b.vram[6144+18*32+col],146)
         self.assertEqual(b.vram[6144+17*32+col],144)
+        # The pole meets the stub drawn into the roof character beneath it.
         roof=art.MAP[2][224+col]
-        self.assertIn(roof,range(151,156))
-        self.assertEqual(sum(c in range(151,156) for c in art.MAP[2]),10)
+        self.assertEqual(roof,139)
+        self.assertTrue(all(row&128 for row in art.TILES[roof-128][0][:3]))
+        self.assertEqual(art.MAP[2][247:252],[151,151,152,151,139])
+        self.assertEqual(art.MAP[3][249],157)   # the walkers' door, x=1992
         # Read fence placements from production source, not a second layout model.
         terrain=SOURCE.split('\nterrain:\n')[1].split('\nfence_boundary:\n')[0]
         boundaries=[int(n) for n in re.findall(r'#fence_world=(\d+)',terrain)]
@@ -1284,15 +1455,15 @@ class Tests(unittest.TestCase):
                         bits=art.PAD_FENCE_ART[(ch-120)*8:(ch-119)*8]
                         colors=art.PAD_FENCE_COLORS[(ch-120)*8:(ch-119)*8]
                     else:
-                        bits,color=art.TILES[ch-128];colors=[color]*8
-                    base,palette=art.TILES[under-128]
+                        bits,color=art.TILES[ch-128];colors=art.row_colors(color)
+                    base,palette=art.TILES[under-128];palette=art.row_colors(palette)
                     for y in range(8):
                         for px in range(8):
                             actual=(colors[y]>>4) if bits[y] & (128>>px) else (colors[y]&15)
-                            # All pad markings must survive; its black apron
+                            # All pad markings must survive; its blue apron
                             # may gain white fence pixels, never gray holes.
-                            if base[y] & (128>>px):self.assertEqual(actual,palette>>4)
-                            else:self.assertIn(actual,(palette>>4,palette&15))
+                            if base[y] & (128>>px):self.assertEqual(actual,palette[y]>>4)
+                            else:self.assertIn(actual,(palette[y]>>4,palette[y]&15))
         verify(SOURCE)
 
         for before,after in (
@@ -1367,8 +1538,9 @@ class Tests(unittest.TestCase):
                 b.call('fly')
                 if b.v.get('crash_timer',0):break
             self.assertEqual((b.v['lives'],b.v['aboard'],b.v['lost']),(2,0,2))
+            # Releasing DOWN brakes at once; only gravity's slow sink remains.
             b=self.state();b.v.update(hy=130,dt=dt,fall_speed=3,fall_hold=20)
-            b.call('fly');self.assertEqual((b.v['hy'],b.v['fall_speed']),(130,0))
+            b.call('fly');self.assertEqual((b.v['hy'],b.v['fall_speed']),(130+dt//6,0))
             b.v.update(hy=152,**{'cont1.down':1});b.call('fly');self.assertEqual(b.v['lives'],3)
         bad=SOURCE.replace('IF hy = LANDED THEN RETURN\nIF fire_timer','IF fire_timer')
         b=self.state();b.r=Basic(bad).r;b.call('fire_shot');self.assertNotEqual(b.a['shot_on'],[0,0])
@@ -1431,33 +1603,38 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.star_sweep(SOURCE.replace('ASM limi 0\nASM swpb r0','ASM swpb r0'),cameras=[0,8])
 
-    def test_camp_fire_reject_matches_full_scan(self):
-        # The off-screen reject is an optimisation only: every camera position
-        # must draw exactly what testing every fire tile would.
-        reject=('        #relative=#camp_x(tc)+16\n        IF #relative >= #camera THEN\n'
-                '            #relative=#relative-#camera\n            IF #relative < 296 THEN GOSUB camp_fire\n        END IF\n')
-        self.assertIn(reject,SOURCE)
-        full=SOURCE.replace(reject,'        GOSUB camp_fire\n')
-        # Reference camp_fire: the original per-tile clip, no alignment assumed.
-        start=full.index('\ncamp_fire:\n');end=full.index('\nRETURN\n',start)
-        full=full[:start]+('\ncamp_fire:\n#fire_world=#camp_x(tc)-24\nFOR fire_tile=0 TO 5\n'
-            '    IF #fire_world >= #camera THEN\n        #fire_screen=#fire_world-#camera\n'
-            '        IF #fire_screen < 256 THEN\n            #vaddr=#fire_screen/8\n'
-            '            #vaddr=#vaddr+6720\n            fire_char=126+(fire_tile AND 1)\n'
-            '            VPOKE #vaddr,fire_char\n        END IF\n    END IF\n'
-            '    #fire_world=#fire_world+8\nNEXT fire_tile')+full[end:]
-        self.assertNotEqual(full.count('IF #vaddr >= 6752 THEN EXIT FOR'),SOURCE.count('IF #vaddr >= 6752 THEN EXIT FOR'))
+    def test_blown_out_barracks_show_hole_and_fire_inside(self):
+        # An open barrack's two middle columns (camp-1 and the camp column)
+        # show the ragged hole on row 19 (134, 136) and burn inside on the
+        # crowd row (126, 127), at every camera position, clipped to the view.
+        def expected(camera,base,first):
+            want={}
+            for camp in (128,384,640,896):
+                for k in (0,1):
+                    x=camp-8+8*k-camera
+                    if 0<=x<256:want[base+x//8]=first+k*(2 if first==134 else 1)
+            return want
+        def fronts(source,camera):
+            b=self.state();b.r=Basic(source).r;b.v['#camera']=camera
+            b.call('camp_fronts');return b.vram
+        def doors(source,camera):
+            b=self.state();b.r=Basic(source).r;b.v['#camera']=camera
+            b.a['crowd_cells']=[129]*32;b.a['crowd_cells'][5]=7   # an occupied cell
+            b.call('crowd_doors')
+            return {6784+c:v for c,v in enumerate(b.a['crowd_cells']) if v in (126,127)},b.a['crowd_cells'][5]
         for camera in range(0,1793,8):
-            writes=[]
-            for source in (SOURCE,full):
-                b=self.state();b.r=Basic(source).r;b.v['#camera']=camera
-                b.call('camp_fronts');writes.append(b.vram)
-            self.assertEqual(writes[0],writes[1],camera)
-        # Too tight a reject drops the edge tiles and must be caught.
-        tight=SOURCE.replace('IF #relative < 296 THEN','IF #relative < 280 THEN')
-        b=self.state();b.r=Basic(tight).r;b.v['#camera']=640+16-288;b.call('camp_fronts')
-        c=self.state();c.v['#camera']=640+16-288;c.call('camp_fronts')
-        self.assertNotEqual(b.vram,c.vram)
+            self.assertEqual(fronts(SOURCE,camera),expected(camera,6752,134),camera)
+            cells,occupied=doors(SOURCE,camera)
+            want=expected(camera,6784,126);want.pop(6784+5,None)
+            self.assertEqual(cells,want,camera);self.assertEqual(occupied,7)
+        bad=SOURCE.replace('#fire_world=#camp_x(tc)-8\n        FOR fire_tile=0 TO 1\n            IF #fire_world >= #camera THEN\n                #vaddr',
+                           '#fire_world=#camp_x(tc)\n        FOR fire_tile=0 TO 1\n            IF #fire_world >= #camera THEN\n                #vaddr')
+        self.assertNotEqual(bad,SOURCE)
+        self.assertNotEqual(fronts(bad,0),expected(0,6752,134))
+        # The fire inside animates: two frames, the same colours for both.
+        import generate as art
+        self.assertNotEqual(art.FIRE0,art.FIRE1)
+        self.assertEqual(len(art.FIRE_COLORS),16)
     def test_house_overlays_follow_the_synchronised_copy(self):
         # A scroll commit waits for vblank and copies rows 17-20; camp fires,
         # doors and the flag (rows 17-19) must be the very next writes, ahead
@@ -1559,7 +1736,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(art.TANKS[1],[r[::-1] for r in art.TANKS[0]])
         self.assertNotEqual(art.TANKS[2],art.TANKS[0])
         for x,face in ((100,1),(200,2),(260,0)):
-            b=self.state();b.v.update({'#hx':x,'#tank_x':200});b.call('tank_pose')
+            b=self.state();b.v.update({'#hx':x,'ti':1});b.a['#tank_x']=[900,200];b.call('tank_pose')
             self.assertEqual(b.v['tank_face'],face)
         for old,new,y,want in ((170,194,160,0),(175,199,160,0),(180,204,160,1),
                                (232,256,160,0),(240,216,160,1),(180,204,154,0)):
@@ -1567,9 +1744,9 @@ class Tests(unittest.TestCase):
                 'hit_width':26,'hit_top':158,'hit_bottom':170})
             b.a['#shot_x'][0]=new;b.a['shot_y'][0]=y;b.call('shot_hits_box')
             self.assertEqual(b.v['hit_found'],want)
-        b=self.state();b.v.update({'dt':6,'tank_on':1,'#tank_x':200,'runner_on':0})
-        b.a['#shot_x'][0]=215;b.a['shot_y'][0]=160;b.a['shot_dir'][0]=2;b.a['shot_on'][0]=1
-        b.call('move_shot');self.assertEqual((b.v['tank_on'],b.a['shot_on'][0]),(0,0))
+        b=self.state();b.v.update({'dt':6,'runner_on':0});b.a['tank_on']=[0,1];b.a['#tank_x']=[0,200]
+        b.a['#shot_x'][0]=215;b.a['shot_y'][0]=176;b.a['shot_dir'][0]=2;b.a['shot_on'][0]=1
+        b.call('move_shot');self.assertEqual((b.a['tank_on'][1],b.a['shot_on'][0]),(0,0))
 
     def test_individual_paces_and_overlapping_poses(self):
         import generate as art
@@ -1735,11 +1912,36 @@ class Tests(unittest.TestCase):
         self.assertEqual((b.v['aboard'],b.v['saved'],b.a['person_state'][0]),(1,1,6))
         self.assertEqual(b.a['#person_x'][0],1932)
         self.assertEqual(b.v.get('sorties',0),0)
-        for _ in range(60):
+        for _ in range(120):
             b.call('people_tick');self.assertEqual(self.total(b),64)
         self.assertEqual(b.a['person_state'][:2],[7,7])
         self.assertTrue(all(x>=1992 for x in b.a['#person_x'][:2]))
         self.assertEqual((b.v['aboard'],b.v['saved'],b.v['sorties']),(0,2,1))
+
+    def test_crowd_palettes_keep_the_scenery(self):
+        # A walker's cell is redrawn from CROWD_BASES in a PERSON_COLORS
+        # palette. Without the person it must look like the scenery, except
+        # where a third colour cannot fit: the mound's bump row fills blue, a
+        # window pane's brick edges and the doorway's frame turn dark.
+        import generate as art
+        def look(bits,colors):
+            return [[(colors[y]>>4) if bits[y]&(128>>x) else colors[y]&15 for x in range(8)] for y in range(8)]
+        P,B=art.PERSON_COLORS,art.CROWD_BASES
+        cases=[(132,32+k*8,0,set()) for k in range(3)]+[
+            (133,80,8,{(5,x) for x in range(8)}),
+            (156,88,16,{(0,0),(0,7)}),
+            (157,24,24,{(y,x) for y in range(8) for x in (0,7)})]
+        for code,palette,base,allowed in cases:
+            bits,color=art.TILES[code-128]
+            want=look(bits,art.row_colors(color));got=look(B[base:base+8],P[palette:palette+8])
+            diff={(y,x) for y in range(8) for x in range(8) if want[y][x]!=got[y][x]}
+            self.assertEqual(diff,diff&allowed,code)
+            # ... and every row draws a person in a colour unlike its paper.
+            self.assertTrue(all(c>>4!=c&15 for c in P[palette:palette+8]),code)
+        # Every crowd-row scenery code the compositors special-case, and no other.
+        scenery=SOURCE.split('ASM compose_cell:')[1].split('ASM compose_palette:')[0].split('ASM srl r1,8\n')[1]
+        special={int(n) for n in re.findall(r'ASM ci r1,(\d+)\nASM j',scenery)}
+        self.assertEqual(special,{132,133,156,157})
 
     def test_walkers_preserve_office_background(self):
         import generate as art
@@ -1748,9 +1950,174 @@ class Tests(unittest.TestCase):
         b.v.update({'#camera':1792,'crowd_pose':255,'crowd_dirty':1,'home_walking':1})
         b.call('crowd_draw');col=(1976-1792)//8
         silhouette=[sum(ink<<(7-x) for x,ink in enumerate(row)) for row in art.person(0,True,0)]
-        self.assertEqual(b.patterns[col],[a|p for a,p in zip(art.TILES[156-128][0],silhouette)])
-        self.assertEqual([b.vram[12288+col*8+y] for y in range(8)],[0x6F]*8)
+        self.assertEqual(art.MAP[3][1976//8],156)
+        self.assertEqual(b.patterns[col],[a|p for a,p in zip(art.CROWD_BASES[16:24],silhouette)])
+        self.assertEqual([b.vram[12288+col*8+y] for y in range(8)],art.PERSON_COLORS[88:96])
         b.a['person_state'][0]=7;b.v['crowd_dirty']=1;b.call('crowd_draw')
         self.assertEqual(b.vram[6784+col],156)
+
+    def test_rescued_people_wave_at_the_helicopter(self):
+        # Unloading four (ids 0-3): id 0 (one in four) waves, and id 3, the
+        # last out, always waves. One at a time, standing still at x=1964 for
+        # 90 frames; nobody waves twice and everyone goes in afterwards.
+        for target in ('TI994A','COLECO'):
+            b=self.state();b.r=Basic(target=target).r
+            b.a['person_state']=[0]*64;b.a['person_state'][:4]=[5]*4;b.a['camp_left'][0]=16
+            b.v.update({'#hx':1920,'aboard':4,'runner_on':0,'dt':2})
+            wavers=[];still={}
+            for tick in range(300):
+                b.call('people_tick')
+                w=b.v['wave_id']
+                if w<64:
+                    if not wavers or wavers[-1]!=w:wavers.append(w)
+                    self.assertEqual(b.a['#person_x'][w],1964)
+                    still[w]=still.get(w,0)+2
+            self.assertEqual(wavers,[0,3],target)
+            self.assertEqual(b.v['last_out'],3)
+            self.assertEqual(b.a['person_state'][:4],[7]*4)
+            self.assertGreaterEqual(still[3],88)
+        # The waver is drawn with the standing poses (arm up and down) by both
+        # compositors, on plain night 4 px short of the building (for
+        # contrast); walkers keep the walking poses. At x=1964 the figure
+        # straddles two black cells: its left half in one, right in the next.
+        import generate as art
+        self.assertEqual(art.MAP[3][1960//8:1976//8],[32,32])
+        self.assertNotEqual(art.MAP[3][1976//8],32)   # the building starts at 1976
+        standing=[sum(p<<(7-x) for x,p in enumerate(r)) for r in art.person(2,False,(1+5)&3)]
+        # (its raised arm reaches x=7 of the figure: x=1971, 4 px short of 1976)
+        for target in ('TI994A','COLECO'):
+            rows=[]
+            for wave in (255,5):
+                b=self.state();b.r=Basic(target=target).r
+                b.a['person_state']=[0]*64;b.a['person_state'][5]=6;b.a['#person_x'][5]=1964
+                b.v.update({'#camera':1792,'crowd_pose':255,'crowd_dirty':1,'home_walking':1,'wave_id':wave,'anim':8})
+                b.call('crowd_draw');cell=(1964-1792)//8
+                # (crowd_bank was 0: this pass uploaded the first set, codes 0-31)
+                rows.append((b.patterns.get(cell),b.patterns.get(cell+1)))
+                colors=[b.vram[12288+c*8+y] for c in (cell,cell+1) for y in range(8)]
+            self.assertNotEqual(*rows)
+            self.assertEqual(rows[1],([v>>4 for v in standing],[(v<<4)&255 for v in standing]),target)
+            self.assertTrue(all(c&15==1 for c in colors),colors)   # black paper
+    def test_waving_walker_stands_still_on_both_paths(self):
+        bad=SOURCE.replace('ASM c r0,r3\nASM jeq walk_next\nASM walk_gait:','ASM c r0,r3\nASM walk_gait:')
+        self.assertNotEqual(bad,SOURCE)
+        def walk(source,target):
+            b=self.state();b.r=Basic(source,target=target).r
+            b.a['person_state']=[0]*64;b.a['person_state'][4]=6;b.a['#person_x'][4]=1964
+            b.v.update({'dt':6,'home_walking':1,'wave_id':4,'wave_time':200,'#crowd_clock':0})
+            for _ in range(10):b.call('escape_tick')
+            return b.a['#person_x'][4]
+        self.assertEqual([walk(SOURCE,t) for t in ('TI994A','COLECO')],[1964,1964])
+        self.assertNotEqual(walk(bad,'TI994A'),1964)
+    def test_gravity_settles_an_idle_helicopter(self):
+        for dt in (2,3,6):
+            b=self.state();b.v.update(hy=100,dt=dt,hspeed=0)
+            for _ in range(120//dt):b.call('fly')
+            self.assertEqual(b.v['hy'],120,dt)                 # 10 px/s, stick centred
+            for control in ('cont1.left','cont1.right','cont1.up'):
+                b=self.state();b.v.update({'hy':100,'dt':dt,'hspeed':0,control:1})
+                for _ in range(120//dt):b.call('fly')
+                self.assertLessEqual(b.v['hy'],100,(control,dt))
+            # It settles on the ground gently, never as a hard landing.
+            b=self.state();b.v.update(hy=140,dt=dt,aboard=3)
+            for _ in range(600//dt):b.call('fly')
+            self.assertEqual((b.v['hy'],b.v['lives'],b.v.get('crash_timer',0)),(153,3,0))
+    def test_title_helicopter_circles_the_name(self):
+        title=SOURCE.split('\ntitle:\n')[1].split('\ntitle_heli:\n')[0]
+        self.assertIn('PRINT AT 740,"2026 UNHUMAN AND AI C&C"',title)
+        self.assertIn('"PRESS FIRE TO LAUNCH"',title)
+        self.assertNotIn('cont1.key = 1',title)
+        texts=[(int(m[1]),len(m[2])) for m in re.finditer(r'PRINT AT (\d+),"([^"]*)"',title)]
+        boxes=[((p%32)*8,(p//32)*8,n*8) for p,n in texts]
+        b=self.state();b.v.update({'#hx':0,'rotor_clock':0,'rotor_phase':0})
+        path=[]
+        for frame in range(264):
+            b.call('title_heli')
+            y,x,pat,color=b.sprites[0];x2=b.sprites[1][1]
+            self.assertEqual(x2,x+16)
+            path.append((x,y,pat))
+            for tx,ty,w in boxes:   # never over any text
+                self.assertFalse(x<tx+w and tx<x+32 and y+1<ty+8 and ty<y+17,(frame,x,y,tx,ty))
+        self.assertEqual(b.v['#hx'],0)   # one loop in 264 frames
+        # Eastbound along the top facing right and banked (80), down the east
+        # side in the front view (32), westbound along the bottom facing left
+        # and banked (144), up the west side in the front view.
+        for i,((x0,y0,p0),(x1,y1,p1)) in enumerate(zip(path,path[1:])):
+            h=2*(i+2)%528
+            if 2<=h<208:self.assertEqual((p1&~8,x1-x0,y1-y0),(80,2,0),h)
+            if 210<=h<264:self.assertEqual((p1&~8,x1-x0,y1-y0),(32,0,2),h)
+            if 266<=h<472:self.assertEqual((p1&~8,x1-x0,y1-y0),(144,-2,0),h)
+            if 474<=h<528:self.assertEqual((p1&~8,x1-x0,y1-y0),(32,0,-2),h)
+        self.assertEqual({pat&~8 for x,y,pat in path},{32,80,144})
+        self.assertEqual(len({pat&8 for x,y,pat in path}),2)   # the rotor turns
+    def test_practice_setup_only_asks_for_helicopters(self):
+        setup=SOURCE.split('\nsetup838:\n')[1].split('\nsetup_choice:\n')[0]
+        prints=re.findall(r'PRINT AT \d+,"([^"]*)"',setup)
+        self.assertEqual(prints,['HELICOPTERS (1-9)?'])
+        self.assertNotIn('GOTO title',setup)
+        b=Basic();b.v.update(menu_key=0,practice=0);b.call('setup_choice');self.assertEqual(b.v['practice'],0)
+    def test_back_or_redo_returns_to_title(self):
+        for keys,want in (({'fctn','9'},1),({'fctn','8'},1),({'fctn'},0),({'9'},0),({'8'},0),(set(),0)):
+            b=self.state();b.keys=set(keys);b.call('back_key')
+            self.assertEqual(b.v['back_pressed'],want,keys)
+        b=self.state();b.r=Basic(target='COLECO').r;b.v['cont1.key']=11;b.call('back_key')
+        self.assertEqual(b.v['back_pressed'],1)
+        # Checked at the top level of the main loop (never inside a GOSUB, so
+        # GOTO title leaves no return address), and from the pause.
+        loop=SOURCE.split('\nmain_loop:\n')[1].split('\ndraw_frame:\n')[0]
+        self.assertIn('GOSUB back_key\nIF back_pressed THEN GOTO title\n',loop)
+        self.assertIn('IF pause_trigger THEN GOSUB pause_game\nIF back_pressed THEN GOTO title\n',loop)
+        self.assertIn('GOSUB back_key\nIF back_pressed THEN GOTO pause_end',SOURCE)
+    def test_second_tank_after_first_delivery(self):
+        def tick(sorties,hx=900,tanks=(0,0),xs=(0,0)):
+            b=self.state();b.v.update({'sorties':sorties,'#hx':hx,'hy':40,'#tank_wait':0,'#elapsed':2,'dt':2,'#camera':hx-112})
+            b.a['tank_on']=list(tanks);b.a['#tank_x']=list(xs)
+            b.call('tank_tick');return b
+        b=tick(0)
+        self.assertEqual((b.a['tank_on'],b.a['#tank_x'][0],b.v['#tank_wait']),([1,0],740,150))
+        b=tick(0,tanks=(1,0),xs=(740,0))
+        self.assertEqual(b.a['tank_on'],[1,0])                 # one tank before a delivery
+        b=tick(1,tanks=(1,0),xs=(740,0))
+        self.assertEqual((b.a['tank_on'],b.a['#tank_x'][1]),([1,1],1080))   # the other side
+        b=tick(1,tanks=(0,1),xs=(0,1080))
+        self.assertEqual((b.a['tank_on'],b.a['#tank_x'][0]),([1,1],740))
+        b=tick(1,hx=100)
+        self.assertEqual((b.a['tank_on'],b.a['#tank_x'][0]),([1,0],280))   # near the west end
+        # Nothing arrives while the helicopter is past the fence.
+        b=tick(1,hx=1600)
+        self.assertEqual(b.a['tank_on'],[0,0])
+
+    def test_scroll_moves_sprites_on_the_same_vblank(self):
+        # A scrolling commit draws every sprite, the helicopter last, then
+        # WAITs, then copies the scenery: the vblank that ends the WAIT copies
+        # the new sprite positions, so the helicopter never sits at its old
+        # screen place over scrolled scenery (it used to shake).
+        def commit(terrain):
+            b=self.state()
+            b.v.update({'#camera':256,'#hx':400,'hy':100,'terrain_dirty':terrain,'crowd_mask':0,
+                        '#crowd_map':800,'flag_visible':0,'actors_drawn':0})
+            b.events=[];b.call('crowd_commit');return b
+        b=commit(1)
+        ev=b.events;wait=ev.index(('wait',))
+        self.assertIn(('call','draw_actors'),ev[:wait])
+        sprites=[e[1] for e in ev[:wait] if e[0]=='sprite']
+        self.assertEqual(sprites[-2:],[0,1])
+        self.assertEqual(ev[wait+1][0],'screen')
+        self.assertEqual(b.v['actors_drawn'],1)
+        b=commit(0)
+        self.assertNotIn(('call','draw_actors'),b.events);self.assertEqual(b.v['actors_drawn'],0)
+        loop=SOURCE.split('\ndraw_frame:\n')[1].split('\nGOTO main_loop')[0]
+        self.assertIn('actors_drawn=0\nGOSUB crowd_draw\nIF actors_drawn = 0 THEN GOSUB draw_actors',loop)
+    def test_no_turning_on_the_ground(self):
+        for hy,turns in ((153,False),(120,True)):
+            b=self.state();b.v.update({'hy':hy,'face':1,'turn_phase':2,'fire_gate':0,'cont1.button':1})
+            for _ in range(120):b.call('fire_control')
+            self.assertEqual(b.v['face']!=1,turns,hy)
+        # Lifting off with FIRE still held starts a fresh hold: no instant turn.
+        b=self.state();b.v.update({'hy':153,'face':1,'turn_phase':2,'fire_gate':0,'cont1.button':1})
+        for _ in range(60):b.call('fire_control')
+        b.v['hy']=150
+        for _ in range(20):b.call('fire_control')
+        self.assertEqual(b.v['face'],1)
 
 if __name__=='__main__':unittest.main()

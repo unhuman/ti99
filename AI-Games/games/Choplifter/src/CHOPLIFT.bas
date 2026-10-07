@@ -1,5 +1,5 @@
 ' CHOPLIFTER — original CVBasic implementation, TI-99/4A first.
-' 2026 UNHUMAN AND CLAUDE
+' 2026 UNHUMAN AND AI C&C
 ' Positions are world pixels. No compound comparisons on the TI backend.
 #if TI994A
 BANK ROM 128
@@ -27,10 +27,14 @@ DIM shot_ttl(2)
 DIM shot_slope(2)
 DIM shot_speed(2)
 DIM shot_drift(2)
+DIM tank_on(2)
+DIM #tank_x(2)
 
 ' Sprite ownership: heli 0,1; tank shell 2; jet missile 3; player shots 4,5;
-' 6-11 rotate each update between tank halves, a spare, jet, drone and
-' explosion (draw_actors, rot_map). The crash uses 0-3 with all others hidden.
+' tank 0 halves 6,7; tank 1 halves 8,9; jet 10; air mine 11; explosion 12.
+' SPRITE FLICKER is on: the vblank copy starts one slot later each frame, so
+' a crowded scanline drops a different sprite each frame instead of always
+' the same one. The crash uses 0-3 with all others hidden.
 ' #vaddr is the shared name-table address for VPOKE: computed and written in
 ' the same routine, never held across a GOSUB (Coleco RAM is nearly full).
 
@@ -39,22 +43,30 @@ DIM shot_drift(2)
 boot:
 fire_gate=2
 ON FRAME GOSUB fire_control
-SPRITE FLICKER OFF
+SPRITE FLICKER ON
+' Art uploaded only at power-on lives in the TI's boot bank (assets_boot.bas);
+' everything read while playing stays in the permanently selected data bank.
+#if TI994A
+BANK SELECT 2
+#endif
 DEFINE SPRITE 0,64,sprite_art
-DEFINE CHAR 60,1,practice_star
 DEFINE CHAR 128,112,tile_art
 DEFINE COLOR 128,112,tile_colors
 DEFINE COLOR 144,2,flag_colors
 ' Codes 14-31 are reserved for fire/crowds; 128-239 belong to scenery.
-DEFINE VRAM 5104,16,fire_frame0
 DEFINE COLOR 126,2,fire_colors
-DEFINE COLOR 152,4,office_sign_colors
 DEFINE VRAM 4864,192,waiting_art
 DEFINE VRAM 13056,192,waiting_colors
-DEFINE VRAM 5056,8,pad_fence_art
-DEFINE VRAM 13248,8,pad_fence_colors
+' Bottom-third characters 120-124: the pad-fence cell and the foothills.
+DEFINE VRAM 5056,40,low_art
+DEFINE VRAM 13248,40,low_colors
 DEFINE CHAR 240,16,star_bits
 DEFINE COLOR 240,16,star_colors
+#if TI994A
+BANK SELECT 1
+#endif
+DEFINE CHAR 60,1,practice_star
+DEFINE VRAM 5104,16,fire_frame0
 #camp_x(0)=128
 #camp_x(1)=384
 #camp_x(2)=640
@@ -62,78 +74,6 @@ DEFINE COLOR 240,16,star_colors
 best=0
 best_practice=0
 GOTO title
-
-title:
-start_lives=3:practice=0:title_seq=0:title_key=15
-GOSUB silence
-GOSUB hide_all
-GOSUB menu_restore
-CLS
-PRINT AT 104,"C H O P L I F T E R"
-PRINT AT 169,"RESCUE OPERATIONS"
-PRINT AT 354,"64 PEOPLE. THREE HELICOPTERS."
-PRINT AT 418,"FREE THE CAMPS. FLY THEM HOME."
-PRINT AT 482,"JOYSTICK: FLY  TAP FIRE: SHOOT"
-PRINT AT 546,"HOLD FIRE: TURN  FRONT: BOMB"
-#if TI994A
-PRINT AT 610,"LAND: PICK UP   HOLD P: PAUSE"
-#else
-PRINT AT 610,"LAND: PICK UP   HOLD 0: PAUSE"
-#endif
-PRINT AT 674,"PRESS FIRE OR 1 TO LAUNCH"
-PRINT AT 740,"2026 UNHUMAN AND CLAUDE"
-SPRITE 0,71,112,0,15
-SPRITE 1,71,128,4,15
-GOSUB release_input
-title_wait:
-WAIT
-GOSUB title_code
-IF title_seq = 3 THEN GOTO setup838
-IF cont1.button THEN GOTO new_game
-IF cont1.key = 1 THEN GOTO new_game
-GOTO title_wait
-
-title_code:
-menu_key=cont1.key
-IF menu_key = title_key THEN RETURN
-title_key=menu_key
-IF menu_key = 15 THEN RETURN
-IF menu_key = 8 THEN
-    IF title_seq = 2 THEN title_seq=3 ELSE title_seq=1
-ELSE
-    IF menu_key = 3 THEN
-        IF title_seq = 1 THEN title_seq=2 ELSE title_seq=0
-    ELSE
-        title_seq=0
-    END IF
-END IF
-RETURN
-
-setup838:
-GOSUB hide_all
-CLS
-PRINT AT 232,"PRACTICE FLIGHT"
-PRINT AT 326,"HELICOPTERS: 1 TO 9"
-PRINT AT 422,"0 CANCELS"
-PRINT AT 518,"SAVED COUNTS MARKED *"
-GOSUB release_input
-title_key=8
-setup_wait:
-WAIT
-menu_key=cont1.key
-IF menu_key = 0 THEN GOTO title
-IF menu_key = 15 THEN title_key=15
-IF title_key <> 15 THEN GOTO setup_wait
-GOSUB setup_choice
-IF practice THEN GOTO new_game
-GOTO setup_wait
-
-setup_choice:
-IF menu_key < 1 THEN RETURN
-IF menu_key > 9 THEN RETURN
-start_lives=menu_key
-practice=1
-RETURN
 
 new_game:
 GOSUB release_input
@@ -161,6 +101,8 @@ crowd_bank=0
 crowd_pose=255
 crowd_dirty=1
 home_walking=0
+wave_id=255
+last_out=255
 delivery_pending=0
 board_count=0
 ended=0
@@ -178,8 +120,13 @@ IF #elapsed < 2 THEN WAIT:GOTO main_loop
 #last=#now
 IF #elapsed > 6 THEN #elapsed=6
 dt=#elapsed
+' BACK (FCTN-9) or REDO (FCTN-8) abandons the mission for the title. This is
+' the top level of the loop, never inside a GOSUB, so no return is left behind.
+GOSUB back_key
+IF back_pressed THEN GOTO title
 GOSUB pause_input
 IF pause_trigger THEN GOSUB pause_game
+IF back_pressed THEN GOTO title
 anim=anim+dt
 GOSUB rotor_tick
 GOSUB sound_tick
@@ -196,8 +143,11 @@ END IF
 IF ended THEN GOTO result_screen
 draw_frame:
 GOSUB camera_tick
+' A scrolling update draws the sprites inside crowd_commit, just before the
+' vblank that moves the scenery (actors_drawn); otherwise draw them here.
+actors_drawn=0
 GOSUB crowd_draw
-GOSUB draw_actors
+IF actors_drawn = 0 THEN GOSUB draw_actors
 IF hud_dirty THEN GOSUB hud
 GOTO main_loop
 
@@ -235,7 +185,9 @@ shot_on(0)=0
 shot_on(1)=0
 fire_timer=0
 transfer_timer=0
-tank_on=0
+tank_on(0)=0
+tank_on(1)=0
+sink_clock=0
 jet_on=0
 jet_turn=0
 missile_on=0
@@ -289,6 +241,17 @@ ELSE
         END IF
     ELSE
         fall_speed=0:fall_hold=0
+        ' Gravity: with the stick centred the helicopter sinks 1 px every 6
+        ' frames (10 px/s), slow enough to settle on the ground safely.
+        IF input_dir = 2 THEN
+            IF hy < LANDED THEN
+                sink_clock=sink_clock+dt
+                IF sink_clock >= 6 THEN
+                    sink_clock=sink_clock-6
+                    hy=hy+1
+                END IF
+            END IF
+        END IF
     END IF
 END IF
 IF hy = LANDED THEN
@@ -352,6 +315,8 @@ IF cont1.button THEN
         ' The first observed held frame starts a fresh hold timer.
         RETURN
     END IF
+    ' The helicopter cannot turn while it is on the ground.
+    IF hy = LANDED THEN fire_hold=0:RETURN
     fire_hold=fire_hold+1
     ' First turn after 30 held frames; subsequent turns repeat every 18.
     IF fire_hold >= 30 THEN
@@ -408,8 +373,7 @@ RETURN
 
 cull_shot:
 IF #shot_x(wi) < #camera THEN shot_on(wi)=0
-#shot_edge=#camera+255
-IF #shot_x(wi) > #shot_edge THEN shot_on(wi)=0
+IF #shot_x(wi) > #camera+255 THEN shot_on(wi)=0
 RETURN
 
 move_shot:
@@ -444,33 +408,40 @@ ELSE
         IF #shot_x(wi) > 2046 THEN shot_on(wi)=0:RETURN
     END IF
 END IF
-' Keep ground-crossing bombs alive until collision tests have run.
+' Bombs (front view) only destroy tanks, which sit on the foreground plane
+' below the crowd row; strafing (side views) opens barracks and downs jets
+' and air mines. Keep ground-crossing bombs alive until these tests have run.
+IF shot_dir(wi) = 2 THEN
+    FOR ti=0 TO 1
+        IF tank_on(ti) THEN
+            #hit_x=#tank_x(ti)+3:hit_width=26:hit_top=177:hit_bottom=190
+            GOSUB shot_hits_box
+            IF hit_found THEN
+                tank_on(ti)=0:#tank_wait=240
+                #blast_x=#tank_x(ti)+8:blast_y=176
+                GOSUB explode
+                shot_on(wi)=0
+                RETURN
+            END IF
+        END IF
+    NEXT ti
+    GOTO shot_people
+END IF
 IF shot_y(wi) > 142 THEN
     FOR wc=0 TO 3
         IF camp_open(wc) = 0 THEN
             #ax=#shot_x(wi):#bx=#camp_x(wc)
             GOSUB distance_x
-            IF #distance < 32 THEN
+            IF #distance < 24 THEN
                 camp_open(wc)=1
                 terrain_dirty=1
                 shot_on(wi)=0
-                #blast_x=#camp_x(wc):blast_y=144
+                #blast_x=#camp_x(wc)-8:blast_y=148
                 GOSUB explode
                 RETURN
             END IF
         END IF
     NEXT wc
-END IF
-IF tank_on THEN
-    #hit_x=#tank_x+3:hit_width=26:hit_top=158:hit_bottom=170
-    GOSUB shot_hits_box
-    IF hit_found THEN
-            tank_on=0:#tank_wait=240
-            #blast_x=#tank_x+8:blast_y=156
-            GOSUB explode
-            shot_on(wi)=0
-            RETURN
-    END IF
 END IF
 IF jet_on THEN
     #hit_x=#jet_x:hit_width=16:hit_top=jet_y+3:hit_bottom=jet_y+12
@@ -484,7 +455,7 @@ IF jet_on THEN
     END IF
 END IF
 IF drone_on THEN
-    #hit_x=#drone_x+2:hit_width=12:hit_top=drone_y+2:hit_bottom=drone_y+13
+    #hit_x=#drone_x+3:hit_width=10:hit_top=drone_y+3:hit_bottom=drone_y+12
     GOSUB shot_hits_box
     IF hit_found THEN
             drone_on=0:#drone_wait=#drone_delay(threat)
@@ -494,12 +465,20 @@ IF drone_on THEN
             RETURN
     END IF
 END IF
+shot_people:
+' Anything crossing the crowd row can hit a person. Shots stop at the ground;
+' bombs carry on down to the tanks' plane.
 IF shot_y(wi) > 155 THEN
-    #crowd_shot_x=#shot_x(wi):crowd_radius=9
-    GOSUB crowd_hit
-    IF crowd_struck THEN shot_on(wi)=0
+    IF shot_y(wi) < 172 THEN
+        #crowd_shot_x=#shot_x(wi):crowd_radius=9
+        GOSUB crowd_hit
+        IF crowd_struck THEN shot_on(wi)=0
+    END IF
 END IF
-IF shot_y(wi) > 171 THEN shot_on(wi)=0
+IF shot_y(wi) > 171 THEN
+    IF shot_dir(wi) < 2 THEN shot_on(wi)=0
+    IF shot_y(wi) > 191 THEN shot_on(wi)=0
+END IF
 RETURN
 
 shot_hits_box:
@@ -547,7 +526,7 @@ IF hy = LANDED THEN
                     transfer_timer=12
                     chime_kind=2:chime_timer=10
                     SOUND 2,210,10
-                    IF aboard = 0 THEN delivery_pending=1
+                    IF aboard = 0 THEN delivery_pending=1:last_out=ep
                 END IF
             END IF
         END IF
@@ -603,13 +582,16 @@ FOR ec=0 TO 3
                 IF crowd_step THEN GOSUB escape_walk
             END IF
             IF person_state(ep) = 6 THEN
-                GOSUB person_stride
-                IF crowd_step THEN GOSUB home_walk
+                IF ep <> wave_id THEN
+                    GOSUB person_stride
+                    IF crowd_step THEN GOSUB home_walk
+                END IF
             END IF
         NEXT ep
 #endif
     END IF
 NEXT ec
+IF home_walking THEN GOSUB wave_tick
 ' Ground contact is an event, not 64 subroutine calls on every flight update.
 IF hy = LANDED THEN
     IF old_y < LANDED THEN
@@ -647,6 +629,11 @@ ASM ci r9,1
 ASM jeq walk_gait
 ASM ci r9,6
 ASM jne walk_next
+' The walker waving at the helicopter (wave_id) stands still.
+ASM movb @cvb_WAVE_ID,r0
+ASM srl r0,8
+ASM c r0,r3
+ASM jeq walk_next
 ASM walk_gait:
 ASM mov r3,r6
 ASM ai r6,cvb_PERSON_KIND
@@ -782,6 +769,46 @@ crowd_dirty=1
 RETURN
 #endif
 
+wave_tick:
+' Some rescued people stop just short of the home to wave at the helicopter
+' before going in: one in four, and always the last one out of the cabin
+' (last_out), who cuts short anyone else's wave. One waves at a time, for 90
+' frames, at x=1964 (on the black ground 4 px short of the building, for
+' contrast), then steps past the spot (1964-1971, which no walk step can
+' jump) so nobody waves twice. The walk skips wave_id and the crowd
+' draws it with the standing poses, whose arm goes up and down.
+IF wave_id < 64 THEN
+    IF wave_time > dt THEN wave_time=wave_time-dt ELSE GOSUB wave_end
+END IF
+FOR ep=0 TO 63
+    IF person_state(ep) = 6 THEN
+        IF #person_x(ep) >= 1964 THEN
+            IF #person_x(ep) < 1972 THEN GOSUB wave_choose
+        END IF
+    END IF
+NEXT ep
+RETURN
+
+wave_end:
+#person_x(wave_id)=1972
+wave_id=255
+crowd_dirty=1
+RETURN
+
+wave_choose:
+IF ep = wave_id THEN RETURN
+IF ep = last_out THEN
+    IF wave_id < 64 THEN GOSUB wave_end
+ELSE
+    IF wave_id < 64 THEN RETURN
+    IF ep AND 3 THEN RETURN
+END IF
+wave_id=ep
+wave_time=90
+#person_x(ep)=1964
+crowd_dirty=1
+RETURN
+
 crowd_landing:
 IF hy <> LANDED THEN RETURN
 IF old_y >= LANDED THEN RETURN
@@ -901,19 +928,11 @@ RETURN
 
 enemy_tick:
 ' Enemies act while the helicopter is west of the DMZ fence (x=1568).
-IF #hx < 1568 THEN
-    IF tank_on = 0 THEN
-        IF #tank_wait > #elapsed THEN
-            #tank_wait=#tank_wait-#elapsed
-        ELSE
-            tank_on=1
-            IF #hx > 180 THEN #tank_x=#hx-160 ELSE #tank_x=#hx+180
-            #tank_wait=150
-        END IF
-    END IF
-    GOSUB jet_spawn
-END IF
-IF tank_on THEN GOSUB tank_tick
+' A shell fired this update (tank_tick) first moves on the next one, so it is
+' always drawn at the muzzle before it can do anything.
+IF #hx < 1568 THEN GOSUB jet_spawn
+IF shell_on THEN GOSUB shell_tick
+GOSUB tank_tick
 IF jet_on THEN GOSUB jet_tick
 IF missile_on THEN GOSUB missile_tick
 IF sorties >= 2 THEN
@@ -921,17 +940,29 @@ IF sorties >= 2 THEN
         IF #drone_wait > #elapsed THEN
             #drone_wait=#drone_wait-#elapsed
         ELSE
-            drone_on=1
-            #drone_x=1568
-            drone_y=32
+            IF #hx < 1568 THEN
+                ' An air mine floats in from just beyond the east edge of view.
+                drone_on=1
+                #drone_x=#camera+256
+                IF #drone_x > 1552 THEN #drone_x=1552
+                drone_y=32
+            END IF
         END IF
     END IF
 END IF
 IF drone_on THEN
-    IF #drone_x < #hx THEN #drone_x=#drone_x+dt ELSE #drone_x=#drone_x-dt
+    ' It drifts toward the helicopter at 30 px/s on both axes and stops at
+    ' the DMZ fence.
     drone_motion=drone_motion+dt
     drone_step=drone_motion/2
     drone_motion=drone_motion AND 1
+    #ax=#hx+8
+    IF #drone_x < #ax THEN
+        #drone_x=#drone_x+drone_step
+        IF #drone_x > 1552 THEN #drone_x=1552
+    ELSE
+        IF #drone_x > #ax THEN #drone_x=#drone_x-drone_step
+    END IF
     IF drone_y < hy THEN
         drone_y=drone_y+drone_step
         IF drone_y > hy THEN drone_y=hy
@@ -945,11 +976,10 @@ IF drone_on THEN
     GOSUB distance_x
     ay=hy+8:by=drone_y+8
     GOSUB distance_y
-    IF #distance < 18 THEN
-        IF ydistance < 12 THEN GOSUB crash
+    IF #distance < 16 THEN
+        IF ydistance < 10 THEN GOSUB crash
     END IF
 END IF
-IF shell_on THEN GOSUB shell_tick
 RETURN
 
 jet_spawn:
@@ -1002,10 +1032,10 @@ IF jet_turn THEN
         END IF
     END IF
 ELSE
-    #jet_step=dt+dt
+    #bullet_step=dt+dt
     IF jet_dir THEN
-        IF #jet_x <= #jet_step THEN jet_on=0:RETURN
-        #jet_x=#jet_x-#jet_step
+        IF #jet_x <= #bullet_step THEN jet_on=0:RETURN
+        #jet_x=#jet_x-#bullet_step
         IF jet_passes < 2 THEN
             IF #jet_x <= #jet_left THEN
                 #jet_x=#jet_left:jet_turn=1:jet_age=0
@@ -1016,7 +1046,7 @@ ELSE
             IF #jet_x+16 < #camera THEN jet_on=0:RETURN
         END IF
     ELSE
-        #jet_x=#jet_x+#jet_step
+        #jet_x=#jet_x+#bullet_step
         IF #jet_x >= #jet_right THEN
             #jet_x=#jet_right:jet_turn=1:jet_age=0
         END IF
@@ -1040,22 +1070,39 @@ IF jet_turn THEN RETURN
 IF jet_ammo = 0 THEN RETURN
 IF missile_on THEN RETURN
 IF #hx >= 1568 THEN RETURN
+' Only a jet on screen fires.
+IF #jet_x+8 < #camera THEN RETURN
+IF #jet_x+8 >= #camera+256 THEN RETURN
 IF jet_dir THEN
     IF #hx > #jet_x THEN RETURN
 ELSE
     IF #hx < #jet_x THEN RETURN
 END IF
-#ax=#hx:#bx=#jet_x
+' Jets fire only straight ahead along their line of flight: air-to-air
+' missiles at a helicopter in the air, bombs at one on the ground. A missile
+' leaves the nose level and flies on at the jet's 2 px/frame plus 2 of its
+' own, so the jet fires only with the helicopter ahead and in line (centres
+' within 16 px of height). A bomb keeps the jet's 2 px/frame and falls 2
+' px/frame, landing as far ahead as it falls: it is released with the landed
+' helicopter that far ahead (within one update's travel).
+#ax=#hx+16:#bx=#jet_x+8
 GOSUB distance_x
-IF #distance > 220 THEN RETURN
+ay=hy+8:by=jet_y+8
+GOSUB distance_y
+IF hy = LANDED THEN
+    IF #distance > ydistance+12 THEN RETURN
+    IF #distance+12 < ydistance THEN RETURN
+    missile_aim=2
+ELSE
+    IF #distance > 220 THEN RETURN
+    IF ydistance >= 16 THEN RETURN
+    missile_aim=0
+END IF
 missile_on=1
 missile_ttl=90
 missile_dir=jet_dir
 #missile_x=#jet_x+8
 missile_y=jet_y+8
-missile_aim=1
-IF hy+8 > missile_y THEN missile_aim=2
-IF hy+8 = missile_y THEN missile_aim=0
 jet_ammo=jet_ammo-1
 jet_fire=60
 IF noise_timer = 0 THEN
@@ -1067,20 +1114,17 @@ RETURN
 missile_tick:
 IF missile_ttl <= dt THEN missile_on=0:RETURN
 missile_ttl=missile_ttl-dt
-#missile_step=dt+dt+dt
+' A missile flies level at 4 px/frame; a bomb drifts on at 2 and falls 2.
+#bullet_step=dt+dt
+IF missile_aim = 0 THEN #bullet_step=#bullet_step+#bullet_step
 IF missile_dir THEN
-    IF #missile_x <= #missile_step THEN missile_on=0:RETURN
-    #missile_x=#missile_x-#missile_step
+    IF #missile_x <= #bullet_step THEN missile_on=0:RETURN
+    #missile_x=#missile_x-#bullet_step
 ELSE
-    #missile_x=#missile_x+#missile_step
+    #missile_x=#missile_x+#bullet_step
 END IF
 IF #missile_x >= 1568 THEN missile_on=0:RETURN
-IF missile_aim = 1 THEN
-    IF missile_y <= dt+24 THEN missile_on=0:RETURN
-    missile_y=missile_y-dt
-END IF
-IF missile_aim = 2 THEN missile_y=missile_y+dt
-IF missile_y > 166 THEN missile_on=0:RETURN
+IF missile_aim = 2 THEN missile_y=missile_y+dt+dt
 #ax=#hx+16:#bx=#missile_x
 GOSUB distance_x
 ay=hy+8:by=missile_y
@@ -1093,85 +1137,167 @@ IF missile_y > 153 THEN
     GOSUB crowd_hit
     IF crowd_struck THEN missile_on=0
 END IF
+' A bomb bursts on the ground.
+IF missile_y > 166 THEN missile_on=0
 RETURN
 
 tank_tick:
+' Tanks drive on the foreground plane (rows 22-23), below the barracks and
+' the crowd row, so they never share scanlines with a landed helicopter and
+' only bombs reach them. One tank until the first delivery, then up to two.
+' They crawl toward the helicopter at 15 px/s, never past x=1536, and one
+' stops 40 px short of the other. A single timer (#tank_wait, counting only
+' while the helicopter is west of the fence) spaces arrivals and shells: when
+' it runs out a missing tank arrives, or else the first tank on screen that
+' can reach the helicopter lobs a shell. One shell is in the air at a time.
 tank_motion=tank_motion+dt
 tank_step=tank_motion/4
 tank_motion=tank_motion AND 3
-IF #tank_x < #hx THEN
-    IF #tank_x < 1536 THEN #tank_x=#tank_x+tank_step
-    IF #tank_x > 1536 THEN #tank_x=1536
-ELSE
-    IF #tank_x > 8 THEN #tank_x=#tank_x-tank_step
+FOR ti=0 TO 1
+    IF tank_on(ti) THEN GOSUB tank_move
+NEXT ti
+IF #hx >= 1568 THEN RETURN
+IF #tank_wait > #elapsed THEN #tank_wait=#tank_wait-#elapsed:RETURN
+#tank_wait=0
+ti=0
+IF tank_on(0) = 0 THEN GOTO tank_spawn
+IF sorties THEN
+    ti=1
+    IF tank_on(1) = 0 THEN GOTO tank_spawn
 END IF
-IF #tank_wait > #elapsed THEN
-    #tank_wait=#tank_wait-#elapsed
-ELSE
-    IF shell_on = 0 THEN
-        #ax=#hx:#bx=#tank_x
-        GOSUB distance_x
-        IF #distance < 220 THEN
-            shell_on=1
-            IF noise_timer = 0 THEN
-                noise_kind=1:noise_timer=12
-                SOUND 3,6,10
-            END IF
-            #shell_x=#tank_x+16
-            shell_y=156
-            shell_dir=0
-            IF #hx < #tank_x THEN shell_dir=1
-            shell_rise=1
-            IF hy > 130 THEN shell_rise=0
-            ' Overhead, the turret faces front (tank_pose): fire straight up
-            ' from its centre, starting clear of the crowd row.
-            GOSUB tank_pose
-            IF tank_face = 2 THEN #shell_x=#tank_x+15:shell_y=150:shell_dir=2
-            #tank_wait=tank_reload(threat)
+IF shell_on THEN RETURN
+FOR ti=0 TO 1
+    IF tank_on(ti) THEN GOSUB tank_aim
+    IF shell_on THEN RETURN
+NEXT ti
+RETURN
+
+tank_spawn:
+' Behind the helicopter (160 px west), or 180 px east near the west end or
+' when the other tank is already on the west side.
+tank_on(ti)=1
+#tank_wait=150
+#ax=#hx+180
+IF #ax > 1536 THEN #ax=1536
+IF #hx > 180 THEN
+    tj=1-ti
+    IF tank_on(tj) = 0 THEN
+        #ax=#hx-160
+    ELSE
+        IF #tank_x(tj) >= #hx THEN #ax=#hx-160
+    END IF
+END IF
+#tank_x(ti)=#ax
+RETURN
+
+tank_move:
+' Crawl toward the helicopter unless the other tank is within 40 px ahead.
+#ax=#tank_x(ti)
+tj=1-ti
+#bx=#tank_x(tj)
+IF #ax < #hx THEN
+    IF tank_on(tj) THEN
+        IF #bx > #ax THEN
+            IF #bx < #ax+40 THEN RETURN
         END IF
     END IF
-END IF
-' Cabin/skids must overlap the visible hull, not an oversized radius.
-IF hy+14 >= 163 THEN
-    IF #hx+27 >= #tank_x+3 THEN
-        IF #hx+4 < #tank_x+29 THEN GOSUB crash
+    #ax=#ax+tank_step
+    IF #ax > 1536 THEN #ax=1536
+ELSE
+    IF tank_on(tj) THEN
+        IF #bx < #ax THEN
+            IF #bx+40 > #ax THEN RETURN
+        END IF
     END IF
+    IF #ax > 8 THEN #ax=#ax-tank_step
 END IF
+#tank_x(ti)=#ax
+RETURN
+
+tank_aim:
+' Tank ti lobs a shell at the helicopter's centre, from its barrel tip, but
+' only while the tank is on screen and the helicopter is on or just above the
+' ground (research: tanks cannot hit a helicopter that stays airborne).
+' shell_arc is a short 32-pixel arc under gravity: find the frame of its fall
+' that reaches the helicopter's height, then the horizontal speed (1/16 px
+' per frame) that arrives with it. Needing more than 3 px per frame (a reach
+' of about 105 px on the ground), the turret holds its fire.
+IF hy < 137 THEN RETURN
+#bx=#tank_x(ti)+15
+IF #bx < #camera THEN RETURN
+IF #bx >= #camera+256 THEN RETURN
+GOSUB tank_pose
+IF tank_face = 1 THEN #bx=#tank_x(ti)
+IF tank_face = 0 THEN #bx=#tank_x(ti)+29
+#ax=#hx+16
+GOSUB distance_x
+IF #distance >= 112 THEN RETURN
+FOR shell_t=20 TO 36
+    IF shell_arc(shell_t) >= hy+8 THEN EXIT FOR
+NEXT shell_t
+#distance=#distance*16
+#distance=#distance+shell_t/2
+#distance=#distance/shell_t
+IF #distance > 48 THEN RETURN
+shell_vx=#distance
+shell_dir=0
+IF #ax < #bx THEN shell_dir=1
+#shell_x=#bx
+shell_y=176
+shell_t=0
+shell_frac=0
+shell_on=1
+IF noise_timer = 0 THEN
+    noise_kind=1:noise_timer=12
+    SOUND 3,6,10
+END IF
+#tank_wait=tank_reload(threat)
 RETURN
 
 tank_pose:
+' Tank ti faces the helicopter, or shows its front when it is overhead.
 tank_face=2
-IF #hx+28 < #tank_x+16 THEN tank_face=1
-IF #hx+4 > #tank_x+16 THEN tank_face=0
+IF #hx+28 < #tank_x(ti)+16 THEN tank_face=1
+IF #hx+4 > #tank_x(ti)+16 THEN tank_face=0
 RETURN
 
 shell_tick:
-#shell_step=dt+dt
-IF shell_dir = 2 THEN
-    ' Straight up at 2 px per frame, retiring at the top of the sky.
-    IF shell_y > #shell_step+24 THEN shell_y=shell_y-#shell_step ELSE shell_on=0:RETURN
+' A lob lasts 36 frames: shell_arc gives its height on each frame, and the
+' aimed horizontal speed keeps a 1/16-pixel remainder. It bursts on landing
+' on the crowd plane, so no shell crosses the map.
+' Advance by the frames elapsed, but never past the burst on frame 36.
+shell_n=36-shell_t
+IF shell_n > dt THEN shell_n=dt
+shell_t=shell_t+shell_n
+shell_y=shell_arc(shell_t)
+#bullet_step=0
+FOR shell_k=1 TO shell_n
+    shell_frac=shell_frac+shell_vx
+    #bullet_step=#bullet_step+shell_frac/16
+    shell_frac=shell_frac AND 15
+NEXT shell_k
+IF shell_dir THEN
+    IF #shell_x < #bullet_step THEN shell_on=0:RETURN
+    #shell_x=#shell_x-#bullet_step
 ELSE
-    IF shell_dir THEN
-        IF #shell_x > #shell_step THEN #shell_x=#shell_x-#shell_step ELSE shell_on=0:RETURN
-    ELSE
-        #shell_x=#shell_x+#shell_step
-    END IF
+    #shell_x=#shell_x+#bullet_step
     IF #shell_x >= 1568 THEN shell_on=0:RETURN
-    IF shell_rise THEN
-        IF shell_y > dt+24 THEN shell_y=shell_y-dt ELSE shell_on=0:RETURN
+END IF
+' Harmless for its first 8 frames: a shell fired under a low helicopter
+' passes through it visibly instead of striking before anyone sees it.
+IF shell_t >= 8 THEN
+    #ax=#hx+16:#bx=#shell_x
+    GOSUB distance_x
+    ay=hy+8:by=shell_y
+    GOSUB distance_y
+    IF #distance < 17 THEN
+        IF ydistance < 9 THEN GOSUB crash:shell_on=0:RETURN
     END IF
 END IF
-#ax=#hx+16:#bx=#shell_x
-GOSUB distance_x
-ay=hy+8:by=shell_y
-GOSUB distance_y
-IF #distance < 17 THEN
-    IF ydistance < 9 THEN GOSUB crash:shell_on=0
-END IF
-IF shell_y > 153 THEN
+IF shell_t = 36 THEN
     #crowd_shot_x=#shell_x:crowd_radius=8
     GOSUB crowd_hit
-    IF crowd_struck THEN shell_on=0
+    shell_on=0
 END IF
 RETURN
 
@@ -1389,48 +1515,27 @@ terrain_dirty=0
 RETURN
 
 camp_fronts:
-' Open-door overlays use raw name-table addresses, no VDP reads.
+' A shot-open barrack is blown out: its two middle columns (west of the camp
+' column and the camp column itself) show the ragged hole on row 19 (134 and
+' 136). The fire inside is on the crowd row (crowd_doors). Raw name-table
+' addresses, no VDP reads.
 FOR tc=0 TO 3
     IF camp_open(tc) THEN
-        ' Fire tiles start at x-24..x+16: skip camps wholly outside the view.
-        #relative=#camp_x(tc)+16
-        IF #relative >= #camera THEN
-            #relative=#relative-#camera
-            IF #relative < 296 THEN GOSUB camp_fire
-        END IF
-        IF #camp_x(tc) >= #camera THEN
-            #relative=#camp_x(tc)-#camera
-            IF #relative < 256 THEN
-                #vaddr=#relative/8
-                #vaddr=#vaddr+6752
-                VPOKE #vaddr,136
-                ' Row 20 is committed by crowd_draw, never erased here.
+        #fire_world=#camp_x(tc)-8
+        FOR fire_tile=0 TO 1
+            IF #fire_world >= #camera THEN
+                #vaddr=#fire_world-#camera
+                IF #vaddr < 256 THEN
+                    #vaddr=#vaddr/8
+                    #vaddr=#vaddr+6752
+                    fire_char=134+fire_tile+fire_tile
+                    VPOKE #vaddr,fire_char
+                END IF
             END IF
-        END IF
+            #fire_world=#fire_world+8
+        NEXT fire_tile
     END IF
 NEXT tc
-RETURN
-
-camp_fire:
-' Six fire tiles from x-24 on row 18. The camera (camera_tick) and the camps
-' are cell aligned, so clip once at the left and write consecutive cells,
-' stopping at the right edge. camp_fronts only calls this when one shows.
-fire_tile=0
-#fire_world=#camp_x(tc)-24
-IF #fire_world < #camera THEN
-    #fire_screen=#camera-#fire_world
-    fire_tile=#fire_screen/8
-    #fire_world=#camera
-END IF
-#vaddr=#fire_world-#camera
-#vaddr=#vaddr/8
-#vaddr=#vaddr+6720
-FOR fire_tile=fire_tile TO 5
-    IF #vaddr >= 6752 THEN EXIT FOR
-    fire_char=126+(fire_tile AND 1)
-    VPOKE #vaddr,fire_char
-    #vaddr=#vaddr+1
-NEXT fire_tile
 RETURN
 
 crowd_draw:
@@ -1581,8 +1686,7 @@ FOR cc=0 TO 31
         DEFINE VRAM #crowd_color_addr,8,VARPTR person_colors(crowd_cells(cc))
         crowd_cells(cc)=cc+crowd_bank
     ELSE
-        #crowd_index=#crowd_map+cc
-        crowd_cells(cc)=world_map(#crowd_index)
+        crowd_cells(cc)=world_map(#crowd_map+cc)
     END IF
 NEXT cc
 #endif
@@ -1686,6 +1790,11 @@ crowd_commit:
 ' position: only these four short row blits occur after WAIT, before scanout.
 ' SCREEN stride is byte-sized; use word offsets for the 256-column map.
 IF terrain_dirty THEN
+    ' Sprites first, helicopter last, then the WAIT: the vblank that ends it
+    ' copies the new sprite positions and the scenery follows at once, so the
+    ' helicopter never sits at its old screen place over scrolled scenery.
+    GOSUB draw_actors
+    actors_drawn=1
     #mapoff=#camera/8
     WAIT
     SCREEN world_map,#mapoff,544,32,1
@@ -1721,15 +1830,21 @@ RETURN
 #endif
 
 crowd_doors:
+' A blown-out barrack burns inside its two middle columns (126 and 127, the
+' animated fire), except where someone stands in front.
 FOR tc=0 TO 3
     IF camp_open(tc) THEN
-        IF #camp_x(tc) >= #camera THEN
-            #relative=#camp_x(tc)-#camera
-            IF #relative < 256 THEN
-                cc=#relative/8
-                IF crowd_cells(cc) >= 128 THEN crowd_cells(cc)=136
+        #fire_world=#camp_x(tc)-8
+        FOR fire_tile=0 TO 1
+            IF #fire_world >= #camera THEN
+                #relative=#fire_world-#camera
+                IF #relative < 256 THEN
+                    cc=#relative/8
+                    IF crowd_cells(cc) >= 128 THEN crowd_cells(cc)=126+fire_tile
+                END IF
             END IF
-        END IF
+            #fire_world=#fire_world+8
+        NEXT fire_tile
     END IF
 NEXT tc
 RETURN
@@ -1856,6 +1971,10 @@ ASM andi r9,3
 ASM a r2,r9
 ASM ci r1,2
 ASM jeq compose_still
+ASM movb @cvb_WAVE_ID,r0
+ASM srl r0,8
+ASM c r0,r3
+ASM jeq compose_still
 ASM ai r9,4
 ASM compose_still:
 ASM sla r9,3
@@ -1929,7 +2048,10 @@ crowd_kind=person_kind(cp)
 crowd_pose_index=anim/8+cp
 crowd_pose_index=crowd_pose_index AND 3
 #crowd_glyph=crowd_kind*8+crowd_pose_index
-IF person_state(cp) <> 2 THEN #crowd_glyph=#crowd_glyph+4
+' Waiting people and the one waving at the helicopter use the standing poses.
+IF person_state(cp) <> 2 THEN
+    IF cp <> wave_id THEN #crowd_glyph=#crowd_glyph+4
+END IF
 #crowd_glyph=#crowd_glyph*8
 RETURN
 
@@ -1946,7 +2068,8 @@ RETURN
 
 crowd_background:
 ' Prepare once per occupied cell, then combine every overlapping silhouette.
-' Office walkers share the existing wall/door palette to preserve the facade.
+' A hut wall, mound, home window or doorway keeps its scenery under a walker
+' (CROWD_BASES and PERSON_COLORS in assets/generate.py).
 crowd_cells(cc)=crowd_kind*8
 crowd_under=world_map(#crowd_map+cc)
 IF crowd_under = 132 THEN crowd_cells(cc)=crowd_cells(cc)+32
@@ -2008,7 +2131,8 @@ NEXT fence_y
 RETURN
 
 flag_position:
-' Clear the old flag footprint. The pole ends directly on the office roof.
+' Clear the old flag footprint. The pole meets the stub drawn into the home's
+' roof character (139), so it stands on the roof.
 IF flag_visible THEN
     #vaddr=flag_col
     #vaddr=#vaddr+6688
@@ -2022,10 +2146,10 @@ IF flag_visible THEN
     VPOKE #vaddr,32
 END IF
 flag_visible=0
-#flag_screen=2016-#camera
-IF #flag_screen < 256 THEN
+#relative=2008-#camera
+IF #relative < 256 THEN
     flag_visible=1
-    flag_col=#flag_screen/8
+    flag_col=#relative/8
     #vaddr=flag_col
     #vaddr=#vaddr+6688
     VPOKE #vaddr,144
@@ -2091,17 +2215,10 @@ RETURN
 draw_actors:
 GOSUB flag_wave
 IF crash_timer THEN GOSUB crash_draw:RETURN
-draw_slot=0:draw_color=15
-GOSUB heli_draw
-' Sprite slots (the VDP shows only 4 per scanline, lowest slots first):
-'   0-1 helicopter, 2 tank shell, 3 jet missile, 4-5 player shots - fixed, so
-'   nothing that can destroy the helicopter is ever a crowded line's lost one;
-'   6-11 tank halves, a spare, jet, drone, blast - rotated by rot_map, so on an
-'   overloaded line each drops out in turn (flicker) instead of one vanishing.
-' Inactive actors skip their pose work; sprite_off hides each slot once.
-sprite_rot=sprite_rot+1
-IF sprite_rot >= 12 THEN sprite_rot=0
-rot_base=sprite_rot*6
+' Fixed sprite slots (see the header); SPRITE FLICKER rotates the order the
+' VDP sees them in, so on an overloaded scanline (four per line) every sprite
+' takes its turn. Inactive actors skip their pose work; sprite_off hides each
+' slot once.
 draw_slot=2
 IF shell_on THEN
     #draw_world=#shell_x:draw_y=shell_y-1:draw_pat=68:draw_color=8
@@ -2111,7 +2228,19 @@ ELSE
 END IF
 draw_slot=3
 IF missile_on THEN
-    #draw_world=#missile_x:draw_y=missile_y-1:draw_pat=68:draw_color=8
+    ' Missile-shaped, nose first (sprite 47 east, 48 west), or a bomb (49);
+    ' each is centred on #missile_x and missile_y.
+    IF missile_aim = 2 THEN
+        #draw_world=#missile_x-2:draw_y=missile_y-4:draw_pat=196
+    ELSE
+        IF missile_dir THEN
+            #draw_world=#missile_x-10:draw_pat=192
+        ELSE
+            #draw_world=#missile_x-5:draw_pat=188
+        END IF
+        draw_y=missile_y-2
+    END IF
+    draw_color=15
     GOSUB world_sprite
 ELSE
     GOSUB sprite_off
@@ -2125,26 +2254,27 @@ FOR di=0 TO 1
         GOSUB sprite_off
     END IF
 NEXT di
-IF tank_on THEN
-    GOSUB tank_pose
-    draw_slot=rot_map(rot_base)
-    #draw_world=#tank_x:draw_y=155:draw_pat=48:draw_color=3
-    IF tank_face = 0 THEN draw_pat=240
-    IF tank_face = 2 THEN draw_pat=248
-    GOSUB world_sprite
-    draw_slot=rot_map(rot_base+1)
-    #draw_world=#tank_x+16:draw_color=3:draw_pat=236
-    IF tank_face = 0 THEN draw_pat=244
-    IF tank_face = 2 THEN draw_pat=252
-    GOSUB world_sprite
-ELSE
-    draw_slot=rot_map(rot_base):GOSUB sprite_off
-    draw_slot=rot_map(rot_base+1):GOSUB sprite_off
-END IF
-' Actor 2 (formerly the runner) is spare; its slot is still cleared every
-' update so no image left there survives the rotation.
-draw_slot=rot_map(rot_base+2):GOSUB sprite_off
-draw_slot=rot_map(rot_base+3)
+' Tanks on the foreground plane: tracks on y=189, under the crowd row.
+FOR ti=0 TO 1
+    draw_slot=ti+ti+6
+    IF tank_on(ti) THEN
+        GOSUB tank_pose
+        #draw_world=#tank_x(ti):draw_y=174:draw_pat=48:draw_color=3
+        IF tank_face = 0 THEN draw_pat=240
+        IF tank_face = 2 THEN draw_pat=248
+        GOSUB world_sprite
+        draw_slot=draw_slot+1
+        #draw_world=#tank_x(ti)+16:draw_color=3:draw_pat=236
+        IF tank_face = 0 THEN draw_pat=244
+        IF tank_face = 2 THEN draw_pat=252
+        GOSUB world_sprite
+    ELSE
+        GOSUB sprite_off
+        draw_slot=draw_slot+1
+        GOSUB sprite_off
+    END IF
+NEXT ti
+draw_slot=10
 IF jet_on THEN
     #draw_world=#jet_x:draw_y=jet_y-1:draw_pat=60:draw_color=7
     IF jet_dir = 0 THEN draw_pat=176
@@ -2156,14 +2286,14 @@ IF jet_on THEN
 ELSE
     GOSUB sprite_off
 END IF
-draw_slot=rot_map(rot_base+4)
+draw_slot=11
 IF drone_on THEN
-    #draw_world=#drone_x:draw_y=drone_y-1:draw_pat=64:draw_color=10
+    #draw_world=#drone_x:draw_y=drone_y-1:draw_pat=64:draw_color=6
     GOSUB world_sprite
 ELSE
     GOSUB sprite_off
 END IF
-draw_slot=rot_map(rot_base+5)
+draw_slot=12
 IF blast_timer THEN
     #draw_world=#blast_x:draw_y=blast_y-1:draw_pat=72:draw_color=10
     IF anim AND 8 THEN draw_pat=76:draw_color=8
@@ -2171,6 +2301,9 @@ IF blast_timer THEN
 ELSE
     GOSUB sprite_off
 END IF
+' The helicopter last: on a scrolling update the vblank WAIT follows at once.
+draw_slot=0:draw_color=15
+GOSUB heli_draw
 RETURN
 
 crash_draw:
@@ -2429,17 +2562,21 @@ pause_game:
 GOSUB silence
 PRINT AT 50,"PAUSED"
 GOSUB release_input
-#pause_last=FRAME
+' The main loop's frame clock is idle while paused (clock_reset restarts it).
+#last=FRAME
 pause_wait:
 WAIT
-#pause_now=FRAME
-#pause_delta=#pause_now-#pause_last
-#pause_last=#pause_now
-IF #pause_delta > 6 THEN #pause_delta=6
-dt=#pause_delta
+#now=FRAME
+#elapsed=#now-#last
+#last=#now
+IF #elapsed > 6 THEN #elapsed=6
+dt=#elapsed
 GOSUB pause_input
 IF pause_trigger THEN GOTO pause_end
 IF cont1.button THEN GOTO pause_end
+' BACK/REDO leaves the pause; the main loop then returns to the title.
+GOSUB back_key
+IF back_pressed THEN GOTO pause_end
 GOTO pause_wait
 pause_end:
 PRINT AT 50,"SPARES"
@@ -2451,27 +2588,67 @@ fire_turned=0
 hud_dirty=1
 GOSUB clock_reset
 dt=2
+#elapsed=2
+RETURN
+
+back_key:
+' BACK (FCTN-9) or REDO (FCTN-8) on the TI, read from the keyboard matrix:
+' CVBasic's key scan stops at FCTN, and a bare FCTN can look like a joystick
+' button (CLAUDE.md). Keypad # (11) on ColecoVision.
+back_pressed=0
+#if TI994A
+' Keep the interrupt's keyboard scan out of this short CRU transaction.
+ASM limi 0
+ASM li r12,>0024
+ASM clr r0
+ASM ldcr r0,3
+ASM src r12,7
+ASM li r12,>0006
+ASM stcr r2,8
+ASM li r1,>1000
+ASM czc r1,r2
+ASM jne back_key_done
+' Column 1 row 3 is 9 (BACK); column 2 row 3 is 8 (REDO).
+ASM li r12,>0024
+ASM li r0,>0100
+ASM ldcr r0,3
+ASM src r12,7
+ASM li r12,>0006
+ASM stcr r2,8
+ASM li r1,>0800
+ASM czc r1,r2
+ASM jeq back_key_hit
+ASM li r12,>0024
+ASM li r0,>0200
+ASM ldcr r0,3
+ASM src r12,7
+ASM li r12,>0006
+ASM stcr r2,8
+ASM czc r1,r2
+ASM jne back_key_done
+ASM back_key_hit:
+ASM li r0,>0100
+ASM movb r0,@cvb_BACK_PRESSED
+ASM back_key_done:
+ASM limi 2
+' The compiler caches back_pressed in r0 across ASM: reload value and flags.
+ASM movb @cvb_BACK_PRESSED,r0
+#else
+IF cont1.key = 11 THEN back_pressed=1
+#endif
 RETURN
 
 practice_star:
 DATA BYTE 80,32,248,32,80,0,0,0
 
-' One bit per world-actor sprite slot, for #sprite_shown.
+' One bit per world-actor sprite slot (0-12), for #sprite_shown.
 #sprite_bit:
-DATA 1,2,4,8,16,32,64,128,256,512,1024,2048
+DATA 1,2,4,8,16,32,64,128,256,512,1024,2048,4096
 
-' Rotating sprite block: rot_map(phase*6+actor) is the physical slot (6-11)
-' of actor 0-5 (tank left/right, spare, jet, drone, blast) in phase 0-11.
-' The offset advances each phase and odd phases reverse the order, so any two
-' actors sharing a crowded scanline take turns; every row is one-to-one.
-rot_map:
-DATA BYTE 6,7,8,9,10,11,11,10,9,8,7,6,7,8,9,10,11,6,6,11,10,9,8,7
-DATA BYTE 8,9,10,11,6,7,7,6,11,10,9,8,9,10,11,6,7,8,8,7,6,11,10,9
-DATA BYTE 10,11,6,7,8,9,9,8,7,6,11,10,11,6,7,8,9,10,10,9,8,7,6,11
-
-' Threat level 0-4 (completed deliveries, capped) sets how hard enemies push;
-' counts stay at one tank, jet and drone (four sprites per scanline). Delays
-' are video frames. The byte tables are padded to an even length.
+' Threat level 0-4 (completed deliveries, capped) sets how hard enemies push:
+' the second tank arrives after the first delivery, and otherwise counts stay
+' at one jet and one air mine. Delays are video frames. The byte tables are
+' padded to an even length.
 tank_reload:
 DATA BYTE 140,125,110,95,80,0
 jet_missiles:
@@ -2505,12 +2682,11 @@ digit_value=64-saved-lost:#digit_pos=6550:GOSUB digits
 PRINT AT 487,"BEST RESCUE    "
 digit_value=best:#digit_pos=6646:GOSUB digits
 IF best_practice THEN VPOKE 6648,60
-PRINT AT 615,"FIRE OR 1 TO CONTINUE"
+PRINT AT 614,"PRESS FIRE TO CONTINUE"
 GOSUB release_input
 result_wait:
 WAIT
 IF cont1.button THEN GOTO title
-IF cont1.key = 1 THEN GOTO title
 GOTO result_wait
 
 best_update:
@@ -2523,4 +2699,114 @@ ELSE
 END IF
 RETURN
 
+' The title and the hidden practice setup are cold code too.
+title:
+start_lives=3:practice=0:title_seq=0:title_key=15
+GOSUB silence
+GOSUB hide_all
+GOSUB menu_restore
+CLS
+PRINT AT 135,"C H O P L I F T E R"
+PRINT AT 200,"RESCUE OPERATIONS"
+PRINT AT 354,"64 PEOPLE. THREE HELICOPTERS."
+PRINT AT 418,"FREE THE CAMPS. FLY THEM HOME."
+PRINT AT 482,"JOYSTICK: FLY  TAP FIRE: SHOOT"
+PRINT AT 546,"HOLD FIRE: TURN  FRONT: BOMB"
+#if TI994A
+PRINT AT 610,"LAND: PICK UP   HOLD P: PAUSE"
+#else
+PRINT AT 610,"LAND: PICK UP   HOLD 0: PAUSE"
+#endif
+PRINT AT 678,"PRESS FIRE TO LAUNCH"
+PRINT AT 740,"2026 UNHUMAN AND AI C&C"
+#hx=0:rotor_clock=0:rotor_phase=0
+GOSUB title_heli
+GOSUB release_input
+title_wait:
+WAIT
+GOSUB title_heli
+GOSUB title_code
+IF title_seq = 3 THEN GOTO setup838
+IF cont1.button THEN GOTO new_game
+GOTO title_wait
+
+title_heli:
+' The helicopter circles the name clockwise at 2 px a frame on a 528-pixel
+' loop (#hx is the distance round it): banked side views eastbound along the
+' top and westbound along the bottom, the front view down the east side and up
+' the west side. The loop clears the text: x 8-247, y 8-79.
+#hx=#hx+2
+IF #hx >= 528 THEN #hx=0
+dt=1:GOSUB rotor_tick
+hy=0:hspeed=1
+IF #hx < 208 THEN
+    face=0:hdir=0
+    draw_x=#hx+8:draw_y=7
+ELSE
+    IF #hx < 264 THEN
+        face=2:hspeed=0
+        draw_x=216:draw_y=#hx-201
+    ELSE
+        IF #hx < 472 THEN
+            face=1:hdir=1
+            #relative=480-#hx
+            draw_x=#relative:draw_y=63
+        ELSE
+            face=2:hspeed=0
+            #relative=535-#hx
+            draw_x=8:draw_y=#relative
+        END IF
+    END IF
+END IF
+GOSUB heli_pose
+SPRITE 0,draw_y,draw_x,draw_pat,15
+draw_x=draw_x+16
+draw_pat=draw_pat+4
+SPRITE 1,draw_y,draw_x,draw_pat,15
+RETURN
+
+title_code:
+menu_key=cont1.key
+IF menu_key = title_key THEN RETURN
+title_key=menu_key
+IF menu_key = 15 THEN RETURN
+IF menu_key = 8 THEN
+    IF title_seq = 2 THEN title_seq=3 ELSE title_seq=1
+ELSE
+    IF menu_key = 3 THEN
+        IF title_seq = 1 THEN title_seq=2 ELSE title_seq=0
+    ELSE
+        title_seq=0
+    END IF
+END IF
+RETURN
+
+setup838:
+' The hidden practice setup only asks for the number of helicopters; a digit
+' 1-9 starts the game. There is no way back to the title from here.
+GOSUB hide_all
+CLS
+PRINT AT 359,"HELICOPTERS (1-9)?"
+GOSUB release_input
+title_key=8
+setup_wait:
+WAIT
+menu_key=cont1.key
+IF menu_key = 15 THEN title_key=15
+IF title_key <> 15 THEN GOTO setup_wait
+GOSUB setup_choice
+IF practice THEN GOTO new_game
+GOTO setup_wait
+
+setup_choice:
+IF menu_key < 1 THEN RETURN
+IF menu_key > 9 THEN RETURN
+start_lives=menu_key
+practice=1
+RETURN
+
 INCLUDE "assets.bas"
+#if TI994A
+BANK 2
+#endif
+INCLUDE "assets_boot.bas"

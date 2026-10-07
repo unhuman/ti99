@@ -47,19 +47,24 @@ def build_ti(out, name, title):
         run(sys.executable,SHORT,'verify',*files,cwd=out)
     used=fixed_used(out, name)
     if used > FIXED_CAP: raise RuntimeError(f'Fixed area overflow: {used}/{FIXED_CAP}')
-    bank=(out/f'{name}_b3.bin').read_bytes()
-    if len(bank) != 8192: raise RuntimeError(f'Unexpected data-bank size {len(bank)}')
+    # BANK 1 (physical 3) is the data bank, selected for good at start-up;
+    # BANK 2 (physical 4) holds art uploaded only at power-on.
+    if (out/f'{name}_b5.bin').exists(): raise RuntimeError('Unexpected third bank')
+    banks=[(out/f'{name}_b{n}.bin').read_bytes() for n in (3,4)]
+    for n,bank in zip((3,4),banks):
+        if len(bank) != 8192: raise RuntimeError(f'Unexpected bank {n} size {len(bank)}')
     run(sys.executable,CV/'linkticart.py',f'{name}_b0.bin',f'{name}_8.bin',title,cwd=out)
     cartpath=out/f'{name}_8.bin'
     cart=bytearray(cartpath.read_bytes())
-    if len(cart) != 32768: raise RuntimeError('Expected a 32 KB cart')
-    if cart[24576:] != bank: raise RuntimeError('Packed data bank does not match assembly')
-    # One TI menu entry: blank the copied headers on loader pages 1 and 2.
+    if len(cart) != 65536: raise RuntimeError('Expected a 64 KB cart')
+    for page,bank in zip((3,4),banks):
+        if cart[page*8192:(page+1)*8192] != bank: raise RuntimeError(f'Packed bank {page} does not match assembly')
+    # One TI menu entry: blank the copied headers on the loader and padding pages.
     hdr=bytes(cart[:80])
-    for off in (8192,16384):
+    for off in range(8192,len(cart),8192):
         if cart[off:off+80] == hdr: cart[off]=0
     cartpath.write_bytes(cart)
-    return used, unopt, len(bank[:-2].rstrip(b'\xff'))
+    return used, unopt, [len(bank[:-2].rstrip(b'\xff')) for bank in banks]
 
 def word_tables_even(out, name):
     """Every word table the code indexes (ai r0,label / mov *r0) must start on
@@ -93,8 +98,9 @@ def main():
     for f in (ROOT/'src').glob('*.bas'):
         (out/f.name).write_bytes(f.read_bytes())
     if target == 'ti':
-        used,unopt,bank_used=build_ti(out,'CHOPLIFT','CHOPLIFTER')
-        print(f'TI fixed: {used}/{FIXED_CAP} (unoptimised {unopt}); data bank: {bank_used}/8190; cart: 32768 bytes')
+        used,unopt,(data_used,boot_used)=build_ti(out,'CHOPLIFT','CHOPLIFTER')
+        print(f'TI fixed: {used}/{FIXED_CAP} (unoptimised {unopt}); data bank: {data_used}/8190;'
+              f' boot bank: {boot_used}/8190; cart: 65536 bytes')
         # The single multiply in flight must store the low word, then reload at a label.
         asm=(out/'CHOPLIFT.a99').read_text()
         assert re.search(r'mpy\s+r1,r0\s+mov\s+r1,@cvb__MOVE',asm,re.I)

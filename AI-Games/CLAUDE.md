@@ -482,6 +482,17 @@ Every game is built the same way — that consistency is the point.
   scroll an evacuating camp showed its closed roof and door. It reads as video corruption, and a
   screenshot only catches it sometimes. **After a synchronised copy, restore the overlays on the
   rows just copied first, top of the screen first**, then do everything lower down.
+- **SPRITES WRITTEN AFTER A VBLANK-SYNCHRONISED SCROLL LAG IT, AND THE PLAYER SHAKES.** The
+  same Choplifter commit copied the scrolled rows right after its `WAIT` and drew the sprites
+  later in the update. CVBasic's vblank handler copies the sprite table, so for a frame or two
+  the helicopter sat at its old screen position over scenery that had already jumped 8 px,
+  reported as "the helicopter shakes when scrolling". **Draw the sprites immediately before
+  the synchronising `WAIT`, the player last**, so the vblank that ends it carries both.
+- **A PROJECTILE THAT CAN STRIKE IN THE UPDATE THAT CREATES IT IS NEVER DRAWN.** Choplifter's
+  tanks fired and moved the new shell in the same pass; under a low helicopter the shell hit
+  before any frame showed it: "something shot me down that didn't exist". Move a new
+  projectile from the next update on (so it is drawn at its muzzle first), and keep it
+  harmless for its first few frames when it starts inside or beside the target.
 - **ON A CROWDED SCANLINE, GIVE WHATEVER CAN KILL THE PLAYER THE SLOTS RIGHT AFTER THE
   PLAYER.** The VDP draws four sprites per line, lowest slot first. Choplifter's tank shell sat
   in slot 8, behind the tank's two halves, so with the helicopter landed beside a tank the shell
@@ -489,7 +500,22 @@ Every game is built the same way — that consistency is the point.
   Pin the player, put enemy projectiles next, and rotate the rest each update (from a ROM table,
   reversing the order on alternate updates so any two neighbours take turns), so overload becomes
   flicker instead of an invisible bullet. CVBasic's `SPRITE FLICKER` would rotate the player too.
+  - **The pinned scheme still drops SOMETHING for good, and the player read it the same way.**
+    Choplifter's air mine sat in the rotating block; with the helicopter, shell and missile on a
+    line it could stay invisible until it hit, and the report was again "I died for no reason".
+    The player asked for flicker, and `SPRITE FLICKER ON` with fixed slots is what shipped: the
+    TI vblank copy starts one slot later each frame over all 32, so every sprite on a crowded
+    line shows on most frames (low slots most often), the player included. Moving the tanks to
+    a plane of their own below the crowd row removed the worst overload outright.
 
+- **A SOURCE-EXECUTING TEST INTERPRETER THAT ENDS A ROUTINE AT EVERY LABEL NEVER RUNS THE CODE
+  AFTER AN INTERNAL ONE.** Choplifter's `check.py` split the source into routines at labels and
+  returned when one ran out of lines. A new `shot_people:` label inside `move_shot` (a `GOTO`
+  target) would have cut the crowd hits and the ground retirement out of every test that called
+  `move_shot`, noticed only by tests that happen to check those effects; compiled code falls
+  through. Model fall-through into the next label and `GOTO`
+  (a jump or a tail call) in the interpreter, as Choplifter's now does, or keep labels out of
+  routines.
 - **A SENTINEL VALUE THAT IS ALSO A VALID VALUE WILL EAT THE VALID ONE, AND ONLY HALF THE TIME.**
   Keystone Kapers stored a table of support-beam COLUMNS with 0 meaning "no more entries" — and
   column 0 is where the west end wall stands. Every west wall was silently skipped while the east
