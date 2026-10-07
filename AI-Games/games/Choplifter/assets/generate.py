@@ -485,14 +485,18 @@ for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
 
 # Burst timelines, one row per two frames: blast_draw reads row
 # (blast_end - blast_timer) / 2. Air bursts are rows 0-17 (blast_end 36),
-# ground bursts 18-35 (72), small ground bursts 36-45 (92) and tiny ones
-# 46-51 (104): a smaller blast_end is a bigger burst, which a smaller one
-# never cuts short. Per row: the
-# core's pattern, colour and rise (smoke drifts up), the debris clusters'
-# pattern and colour, and each of the three clusters' offset from the
-# burst. Debris flies ballistically; on the ground it comes down at the
-# burst's level and lies there. Offsets are stored +64.
-BLAST_KINDS=(('air',36,18),('ground',72,18),('small',92,10),('tiny',104,6))
+# ground bursts 18-35 (72), small bursts 36-45 (92), small core-only bursts
+# 46-55 (112), tiny bursts 56-61 (124) and tiny core-only ones 62-67 (136):
+# a smaller blast_end is a bigger burst, which a smaller one never cuts
+# short. A small or tiny burst that hits something (a person) throws its
+# spray of debris; one on bare ground with no target plays only its core,
+# the same flash and smoke without the spray. Per row: the core's pattern,
+# colour and rise (smoke drifts up), the debris clusters' pattern and colour
+# (pattern 0: none, blast_draw hides them), and each of the three clusters'
+# offset from the burst. Debris flies ballistically; on the ground it comes
+# down at the burst's level and lies there. Offsets are stored +64.
+BLAST_KINDS=(('air',36,18),('ground',72,18),('small',92,10),('small_core',112,10),
+             ('tiny',124,6),('tiny_core',136,6))
 BIG_CORE=([('fire',15)]*2+[('fire',11)]*2+[('ring',11)]*2+[('ring',10)]*2
           +[('ring',9)]*2+[('ring',8)]*2+[('smoke',14)]*6)
 BIG_RISE=[0]*12+[-2,-4,-6,-8,-10,-12]
@@ -523,15 +527,21 @@ def flight(vx,vy,g,rows,grounded):
     return out
 BLAST_ROWS=[]   # (core pattern, colour, rise, debris pattern, colour, 3 offsets)
 for kind,end,rows in BLAST_KINDS:
-    core,rise,debris,throw,g=BLAST_TIMELINES[kind]
+    core_only=kind.endswith('_core')
+    core,rise,debris,throw,g=BLAST_TIMELINES[kind[:-5] if core_only else kind]
     paths=[flight(vx,vy,g,rows,kind!='air') for vx,vy in throw]
     assert len(core)==len(rise)==len(debris)==rows and end==2*len(BLAST_ROWS)+2*rows
     for row in range(rows):
-        BLAST_ROWS.append((BLAST_SLOT[core[row][0]]*4,core[row][1],rise[row],
-                           BLAST_SLOT[debris[row][0]]*4,debris[row][1],[p[row] for p in paths]))
-# blast_draw steps through the clusters' rows by this stride (di=di+52).
+        if core_only:
+            spray=(0,0,[(0,0)]*3)
+        else:
+            spray=(BLAST_SLOT[debris[row][0]]*4,debris[row][1],[p[row] for p in paths])
+        BLAST_ROWS.append((BLAST_SLOT[core[row][0]]*4,core[row][1],rise[row])+spray)
+# Pattern 0 means "no spray": no debris art may use it.
+assert all(r[3] for r in BLAST_ROWS if r[4]) and min(BLAST_SLOT.values())>0
+# blast_draw steps through the clusters' rows by this stride (di=di+68).
 BLAST_STRIDE=len(BLAST_ROWS)
-assert BLAST_STRIDE==52
+assert BLAST_STRIDE==68
 assert all(-64<=v<64 for r in BLAST_ROWS for xy in r[5] for v in xy)
 # Person palettes, eight rows each, by crowd_cells offset: yellow, white and
 # tan clothing on the night (0-23); the home doorway (24); the three kinds in

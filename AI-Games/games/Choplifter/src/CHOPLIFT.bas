@@ -526,19 +526,27 @@ IF shot_y(wi) > 155 THEN
     END IF
 END IF
 IF shot_y(wi) > 171 THEN
-    IF shot_dir(wi) < 2 THEN GOTO shot_burst
-    IF shot_y(wi) > 185 THEN GOTO shot_burst
+    IF shot_dir(wi) < 2 THEN GOTO shot_miss
+    IF shot_y(wi) > 185 THEN GOTO shot_miss
 END IF
 RETURN
 
+shot_miss:
+' The ground and no target.
+crowd_struck=0
 shot_burst:
-' A shot or bomb ends in a person or on the ground: a bomb bursts (small), a
-' shot puffs (tiny), where it is but no lower than the ground's surface.
+' A shot or bomb ends in a person (crowd_struck) or on the ground: a bomb
+' bursts small, a shot puffs tiny, with the spray only for a person, where it
+' is but no lower than the ground's surface.
 shot_on(wi)=0
 #ax=#shot_x(wi)-7:ay=shot_y(wi)-7
 IF ay > 176 THEN ay=176
-IF shot_dir(wi) = 2 THEN GOTO burst_small
-GOTO burst_tiny
+IF shot_dir(wi) = 2 THEN
+    IF crowd_struck THEN GOTO burst_small
+    GOTO burst_small_core
+END IF
+IF crowd_struck THEN GOTO burst_tiny
+GOTO burst_tiny_core
 
 hits_heli:
 ' Does a threat's box (#hit_x..#hit_x+hit_width-1, hit_top..hit_bottom)
@@ -1224,12 +1232,12 @@ IF missile_ttl > dt THEN missile_ttl=missile_ttl-dt ELSE missile_ttl=0
 #bullet_step=dt+dt
 IF missile_aim = 0 THEN #bullet_step=#bullet_step+#bullet_step
 IF missile_dir THEN
-    IF #missile_x <= #bullet_step THEN GOTO missile_burst
+    IF #missile_x <= #bullet_step THEN GOTO missile_miss
     #missile_x=#missile_x-#bullet_step
 ELSE
     #missile_x=#missile_x+#bullet_step
 END IF
-IF #missile_x >= 1568 THEN GOTO missile_burst
+IF #missile_x >= 1568 THEN GOTO missile_miss
 IF missile_aim = 2 THEN
     missile_y=missile_y+dt+dt
 ELSE
@@ -1247,13 +1255,18 @@ IF missile_y > 153 THEN
     GOSUB crowd_hit
     IF crowd_struck THEN GOTO missile_burst
 END IF
-IF missile_y > 166 THEN GOTO missile_burst
+IF missile_y > 166 THEN GOTO missile_miss
 RETURN
 
+missile_miss:
+' The ground, the fence or the world's edge, and no target.
+crowd_struck=0
 missile_burst:
+' Its spray only when it hit someone (crowd_struck).
 missile_on=0
 #ax=#missile_x-8:ay=missile_y-8
-GOTO burst_small
+IF crowd_struck THEN GOTO burst_small
+GOTO burst_small_core
 
 tank_tick:
 ' Tanks drive on the foreground plane (rows 22-23), below the barracks and
@@ -1411,7 +1424,8 @@ IF shell_t = 36 THEN
     GOSUB crowd_hit
     shell_on=0
     #ax=#shell_x-7:ay=shell_y-7
-    GOTO burst_small
+    IF crowd_struck THEN GOTO burst_small
+    GOTO burst_small_core
 END IF
 RETURN
 
@@ -2364,7 +2378,8 @@ blast_draw:
 ' shaped and coloured from ROM tables by its kind and age (blast_end minus
 ' blast_timer, one row per two frames), so no particle needs RAM. Offsets
 ' are stored +64. di (idle once draw_actors' shot loop is done) steps
-' through the three clusters' rows, 52 apart (BLAST_ROWS in the generator).
+' through the three clusters' rows, 68 apart (BLAST_ROWS in the generator).
+' A burst on bare ground has no spray: its debris pattern is 0.
 IF blast_timer = 0 THEN
     FOR draw_slot=12 TO 15
         GOSUB sprite_off
@@ -2379,6 +2394,12 @@ draw_pat=blast_cpat(blast_row):draw_color=blast_ccol(blast_row)
 draw_slot=12
 GOSUB blast_sprite
 draw_pat=blast_dpat(blast_row)
+IF draw_pat = 0 THEN
+    FOR draw_slot=13 TO 15
+        GOSUB sprite_off
+    NEXT draw_slot
+    RETURN
+END IF
 di=blast_row
 FOR draw_slot=13 TO 15
     #draw_world=#blast_x+blast_dx(di)
@@ -2386,7 +2407,7 @@ FOR draw_slot=13 TO 15
     draw_y=blast_y+blast_dy(di)
     draw_color=blast_dcol(blast_row)
     GOSUB blast_sprite
-    di=di+52
+    di=di+68
 NEXT draw_slot
 RETURN
 
@@ -2809,7 +2830,8 @@ END IF
 RETURN
 
 ' Bursts (blast_draw), biggest first: air and ground (36 frames), small (20)
-' and tiny (12). blast_end selects the kind's rows in the blast_* tables and
+' and tiny (12), each of the last two with its spray (a hit) or core only (bare
+' ground). blast_end selects the kind's rows in the blast_* tables and
 ' blast_timer counts its frames down.
 explode_air:
 ' A big burst in the air (a jet, an air mine, the helicopter hit in flight):
@@ -2827,31 +2849,38 @@ noise_kind=3
 SOUND 3,6,15
 RETURN
 
+' A bomb, missile or shell bursts small where it ends, at #ax,ay (the burst
+' sprite's top left): with its spray of dirt and sparks when it hit someone
+' (burst_small), only the core's flash and smoke on bare ground
+' (burst_small_core). A shot puffs tiny, the same way (burst_tiny,
+' burst_tiny_core). blast_row carries the kind's blast_end to burst_play.
 burst_small:
-' A bomb, missile or shell striking the ground or a person at #ax,ay (the
-' burst sprite's top left): a small burst of dirt and sparks. A burst never
-' cuts short a bigger one still playing (a smaller blast_end).
-IF blast_timer THEN
-    IF blast_end < 92 THEN RETURN
-END IF
-#blast_x=#ax:blast_y=ay
-blast_end=92:blast_timer=20
-IF noise_timer < 12 THEN
-    noise_kind=3:noise_timer=12
-    SOUND 3,6,11
-END IF
-RETURN
-
+blast_row=92:GOTO burst_play
+burst_small_core:
+blast_row=112:GOTO burst_play
 burst_tiny:
-' A shot striking the ground or a person at #ax,ay: a tiny puff of sparks.
+blast_row=124:GOTO burst_play
+burst_tiny_core:
+blast_row=136
+burst_play:
+' A burst never cuts short a bigger one still playing (a smaller blast_end).
 IF blast_timer THEN
-    IF blast_end < 104 THEN RETURN
+    IF blast_end < blast_row THEN RETURN
 END IF
 #blast_x=#ax:blast_y=ay
-blast_end=104:blast_timer=12
-IF noise_timer < 6 THEN
-    noise_kind=3:noise_timer=6
-    SOUND 3,6,8
+blast_end=blast_row
+IF blast_row < 124 THEN
+    blast_timer=20
+    IF noise_timer < 12 THEN
+        noise_kind=3:noise_timer=12
+        SOUND 3,6,11
+    END IF
+ELSE
+    blast_timer=12
+    IF noise_timer < 6 THEN
+        noise_kind=3:noise_timer=6
+        SOUND 3,6,8
+    END IF
 END IF
 RETURN
 
