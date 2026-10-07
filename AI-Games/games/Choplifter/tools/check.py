@@ -23,10 +23,14 @@ def structure(source):
             raise ValueError('Unsafe compound comparison: '+line)
     if 'DIM camp_left(4)' not in source: raise ValueError('Missing four-camp array')
     if 'DIM #shot_x(2)' not in source: raise ValueError('Missing two-shot pool')
+    # The HUD band's template (assets/generate.py) holds a "00" placeholder in
+    # each count capsule; hud must write its digits exactly there.
+    import generate
     hud=source.split('\nhud:\n',1)[1].split('\ndigits:\n',1)[0]
-    template=re.search(r'PRINT AT 0,"([^"]+)"',source)[1]
+    template=generate.HUD_ROWS
     fields=[int(x)-6144 for x in re.findall(r'#digit_pos=(\d+)',hud)]
-    if fields != [m.start() for m in re.finditer('00',template)]:
+    zeros=[i for i in range(len(template)-1) if template[i]==template[i+1]==48]
+    if fields != zeros:
         raise ValueError('HUD digits must replace the three 00 placeholders')
 
 class Vars(dict):
@@ -417,10 +421,14 @@ class Tests(unittest.TestCase):
         for label,field in (('blast_cpat',0),('blast_ccol',1),('blast_dpat',3),('blast_dcol',4)):
             b.a[label]=[r[field] for r in rows]
         b.a['blast_cdy']=[r[2]+64 for r in rows]
+        b.a['blast_fall']=generate.BLAST_FALL;b.a['blast_fpat']=generate.BLAST_FPAT
+        b.a['blast_fcol']=generate.BLAST_FCOL
         b.a['blast_dx']=[r[5][q][0]+64 for q in range(3) for r in rows]
         b.a['blast_dy']=[r[5][q][1]+64 for q in range(3) for r in rows]
         b.a['crash_flames']=[v for a in generate.SPRITES[13:15] for v in generate.sprite_bytes(a)]
         b.a['crash_embers']=[v for rows in generate.CRASH_EMBERS for v in generate.sprite_bytes(generate.fire_sprite(rows))]
+        for label,stage in (('crash_burn2',1),('crash_burn3',2)):
+            b.a[label]=[v for rows in generate.CRASH_STAGES[stage] for v in generate.sprite_bytes(generate.fire_sprite(rows))]
         b.a['world_map']=[c for row in generate.MAP for c in row]
         b.a['fire_frame0']=generate.FIRE0;b.a['fire_frame1']=generate.FIRE1
         rows=generate.PERSON_ROWS
@@ -433,6 +441,7 @@ class Tests(unittest.TestCase):
         b.a['person_kind']=[i%3 for i in range(64)];b.a['waiting_kind']=[96+(i%3)*4 for i in range(64)]
         b.a['tile_art']=[v for bits,_ in generate.TILES for v in bits]
         b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW+[0,0]
+        b.a['hud_rows']=generate.HUD_ROWS
         # Every DATA table written in the game source itself (not assets.bas).
         for label,body in re.findall(r'^(#?\w+):\n((?:DATA(?: BYTE)? [\d,]+\n)+)',SOURCE,re.M):
             b.a[label]=[int(v) for line in body.splitlines() for v in line.split(' ',2)[-1].split(',')]
@@ -449,7 +458,7 @@ class Tests(unittest.TestCase):
         for bad in ('PRINT AT 31,"XX"','IF a = 1 AND b = 2 THEN a=0'):
             with self.assertRaises(ValueError):structure(SOURCE+'\n'+bad)
         with self.assertRaises(ValueError):Basic().execute(['MYSTERY 1'])
-        with self.assertRaises(ValueError):structure(SOURCE.replace('#digit_pos=6160','#digit_pos=6161'))
+        with self.assertRaises(ValueError):structure(SOURCE.replace('#digit_pos=6187','#digit_pos=6188'))
     def test_board_and_capacity(self):
         b=self.state();b.call('people_tick')
         self.assertEqual((b.v['aboard'],b.a['camp_left'][0],b.v['board_count']),(1,15,0))
@@ -505,8 +514,11 @@ class Tests(unittest.TestCase):
                             b.call('sound_tick');b.call('crash_tick');burn_frames+=dt
                             self.assertEqual(b.v['hy'],153)
                             self.assertLessEqual(burn_frames,96)
-                            if b.v['crash_timer']<=36:
-                                self.assertEqual(b.sprite_patterns[13]+b.sprite_patterns[14],b.a['crash_embers'])
+                            # The fire burns down in stages as the timer runs out.
+                            timer=b.v['crash_timer']
+                            stage=('crash_flames' if timer>60 else 'crash_burn2' if timer>40
+                                   else 'crash_burn3' if timer>24 else 'crash_embers')
+                            self.assertEqual(b.sprite_patterns[13]+b.sprite_patterns[14],b.a[stage],timer)
                         self.assertGreaterEqual(burn_frames,90)
                         self.assertLess(burn_frames,90+dt)
                         self.assertEqual((b.v['lives'],b.v['lost']),(lives-1,2))
@@ -553,9 +565,9 @@ class Tests(unittest.TestCase):
                 self.assertTrue(frames)
                 burst=False
                 for timer,blast,live in frames:
-                    self.assertLessEqual(set(live),{0,1,12,13,14,15},(hy,dt,timer))
+                    self.assertLessEqual(set(live),{0,1,12,13,14,15,16},(hy,dt,timer))
                     self.assertFalse({s[2] for s in live.values()}&self.HELI_PATTERNS,(hy,dt,timer))
-                    burst|=bool({12,13,14,15}&set(live))
+                    burst|=bool({12,13,14,15,16}&set(live))
                     if timer<=12:self.assertEqual((live,blast),({},0),(hy,dt,timer))
                     elif timer<90:self.assertEqual({0,1}&set(live),{0,1},(hy,dt,timer))
                 self.assertTrue(burst)
@@ -595,6 +607,20 @@ class Tests(unittest.TestCase):
         for f,e in zip(art.CRASH_FLAMES,art.CRASH_EMBERS):
             self.assertLess(sum(v.bit_count() for v in e),sum(v.bit_count() for v in f)//3)
             self.assertEqual(max(y for y,v in enumerate(e) if v),14)
+        # It burns down gradually: each of the four stages smaller and lower
+        # than the one before, every one standing on row 14, and no stage
+        # less than half the size of the one before (no jump from a big fire
+        # to a few pixels).
+        self.assertEqual(art.CRASH_STAGES[0],art.CRASH_FLAMES)
+        self.assertEqual(art.CRASH_STAGES[-1],art.CRASH_EMBERS)
+        for half in range(2):
+            sizes=[sum(v.bit_count() for v in stage[half]) for stage in art.CRASH_STAGES]
+            tops=[min(y for y,v in enumerate(stage[half]) if v) for stage in art.CRASH_STAGES]
+            self.assertEqual(sizes,sorted(sizes,reverse=True));self.assertEqual(len(set(sizes)),4)
+            self.assertEqual(tops,sorted(tops));self.assertEqual(len(set(tops)),4)
+            for big,small in zip(sizes,sizes[1:]):self.assertGreaterEqual(small*2,big,sizes)
+            for stage in art.CRASH_STAGES:
+                self.assertEqual(max(y for y,v in enumerate(stage[half]) if v),14)
         def block(name,label,end):
             text=(ROOT/'src'/name).read_text(encoding='utf-8').split(label+':\n')[1].split(end+':\n')[0]
             return [int(v) for line in text.splitlines() if 'DATA BYTE' in line
@@ -604,7 +630,11 @@ class Tests(unittest.TestCase):
         data=block('assets_boot.bas','sprite_art','tile_art')
         self.assertEqual(data,[v for a in art.SPRITES for v in art.sprite_bytes(a)])
         self.assertEqual(data[13*32:15*32],sum(flame,[]))
-        self.assertEqual(block('assets.bas','crash_flames','crash_embers'),sum(flame,[]))
+        self.assertEqual(block('assets.bas','crash_flames','crash_burn2'),sum(flame,[]))
+        for label,end,stage in (('crash_burn2','crash_burn3',1),('crash_burn3','crash_embers',2),
+                                ('crash_embers','world_map',3)):
+            self.assertEqual(block('assets.bas',label,end),
+                             [v for rows in art.CRASH_STAGES[stage] for v in art.sprite_bytes(art.fire_sprite(rows))])
     def test_landing_casualty(self):
         b=self.state();b.v['old_y']=150;b.call('people_tick')
         self.assertEqual((b.v['lost'],b.v['aboard']),(1,0));self.assertEqual(self.total(b),64)
@@ -1813,8 +1843,8 @@ class Tests(unittest.TestCase):
             b.call('best_update');self.assertEqual((b.v['best'],b.v['best_practice']),(max(saved,best),want))
         for lives in range(10):
             b=self.state();b.v['lives']=lives;b.call('hud')
-            spares=min(5,max(0,lives-1))
-            self.assertEqual([b.vram[6171+i] for i in range(5)],[32]*(5-spares)+[140]*spares)
+            spares=min(4,max(0,lives-1))
+            self.assertEqual([b.vram[6201+i] for i in range(4)],[32]*(4-spares)+[140]*spares)
 
     def test_tank_views_and_projectile_sweeps(self):
         import generate as art
@@ -2109,8 +2139,8 @@ class Tests(unittest.TestCase):
             self.assertEqual((b.v['hy'],b.v['lives'],b.v.get('crash_timer',0)),(153,3,0))
     def test_title_helicopter_circles_the_name(self):
         title=SOURCE.split('\ntitle:\n')[1].split('\ntitle_heli:\n')[0]
-        self.assertIn('PRINT AT 740,"2026 UNHUMAN AND AI C&C"',title)
-        self.assertIn('"PRESS FIRE TO LAUNCH"',title)
+        self.assertIn('PRINT AT 676,"2026 UNHUMAN AND AI C&C"',title)
+        self.assertIn('PRINT AT 742,"PRESS FIRE TO START"',title)
         self.assertNotIn('cont1.key = 1',title)
         texts=[(int(m[1]),len(m[2])) for m in re.finditer(r'PRINT AT (\d+),"([^"]*)"',title)]
         boxes=[((p%32)*8,(p//32)*8,n*8) for p,n in texts]
@@ -2391,7 +2421,7 @@ class Tests(unittest.TestCase):
         # 1, 2 or 3 (or LEFT/RIGHT) picks easy, medium or hard, shown in
         # brackets on the title; a held key acts once; 8-3-8 still opens the
         # hidden setup without its 3 changing the difficulty.
-        def line(b):return ''.join(chr(b.vram.get(6144+578+i,32)) for i in range(28))
+        def line(b):return ''.join(chr(b.vram.get(6144+482+i,32)) for i in range(28))
         for target in ('TI994A','COLECO'):
             b=Basic(target=target);b.v.update(title_key=15,difficulty=1)
             def press(key=None,stick=None):
@@ -2432,8 +2462,16 @@ class Tests(unittest.TestCase):
                                 'blast_y':blast_y,'#camera':200})
                     b.call('blast_draw')
                     row=(end-timer)//2;seen.append(row)
-                    for slot in range(12,16):
+                    for slot in range(12,17):
                         self.assertNotEqual(b.sprites.get(slot,[0])[0],208,(kind,blast_y,timer,slot))
+                    # Only an air burst drops a chunk, straight down, hidden
+                    # once it is below the screen.
+                    drop=b.sprites.get(16,[209])
+                    if kind=='air' and blast_y+art.BLAST_FALL[row]<191:
+                        self.assertEqual(drop,[blast_y+art.BLAST_FALL[row]-1,100,
+                                               art.BLAST_FPAT[row],art.BLAST_FCOL[row]],(blast_y,row))
+                    else:
+                        self.assertEqual(drop[0],209,(kind,blast_y,row))
                     if blast_y==100:
                         core=b.sprites[12]
                         self.assertEqual((core[2],core[3]),(rows[row][0],rows[row][1]))
@@ -2453,7 +2491,7 @@ class Tests(unittest.TestCase):
         b=self.state();b.v.update(blast_timer=0)
         b.sprites={i:[100,100,200,15] for i in range(32)}
         b.v['#sprite_shown']=65535;b.call('blast_draw')
-        self.assertEqual({i for i in range(12,16) if b.sprites[i][0]==209},{12,13,14,15})
+        self.assertEqual({i for i in range(12,17) if b.sprites[i][0]==209},{12,13,14,15,16})
         # A core-only burst that follows a sprayed one takes its spray away,
         # and every small or tiny kind has its core-only twin: the same core
         # rows, no debris.
@@ -2468,6 +2506,98 @@ class Tests(unittest.TestCase):
             sprayed=rows[(e-2*n)//2:(e-2*n)//2+n];bare=rows[(c-2*m)//2:(c-2*m)//2+m]
             self.assertEqual([r[:3] for r in sprayed],[r[:3] for r in bare])
             self.assertTrue(all(r[3] for r in sprayed) and not any(r[3] for r in bare))
+
+    def test_hud_band_capsules_in_the_requested_order(self):
+        # Rows 0-2 are a magenta band with black capsules: left to right the
+        # dead (red dot), those on board (cyan) and the saved (bright green),
+        # each with two digits, then up to four spare helicopters, right-
+        # justified. A practice game's star stands on the band after the
+        # saved capsule.
+        import generate as art
+        code=art.HUD_CODE
+        for practice in (0,1):
+            b=self.state();b.v.update(anim=0,crowd_pose=255,lost=7,aboard=3,saved=12,lives=4,practice=practice)
+            b.call('game_screen')
+            row=lambda r:[b.vram[6144+r*32+c] for c in range(32)]
+            self.assertEqual(row(0)+row(2),art.HUD_ROWS[:32]+art.HUD_ROWS[64:])
+            middle=row(1)
+            self.assertEqual([middle[c] for c in (3,10,17)],[code['dead'],code['aboard'],code['saved']])
+            self.assertEqual(''.join(chr(middle[c]) for c in (4,5,11,12,18,19)),'070312')
+            self.assertEqual(middle[25:29],[32,140,140,140])
+            self.assertEqual(middle[21],code['practice'] if practice else code['band'])
+        # The hud routine names the band's codes it writes.
+        hud=SOURCE.split('\nhud:\n')[1].split('\ndigits:\n')[0]
+        self.assertIn(f"hudchar={code['band']}\nIF practice THEN hudchar={code['practice']}",hud)
+        # Dot colours (foreground on the capsule's black) and the band's magenta.
+        colors={name:c[0] for name,(_,c) in art.HUD_CHARS.items()}
+        self.assertEqual([colors[n]>>4 for n in ('dead','aboard','saved')],[8,7,3])
+        self.assertEqual({colors[n]&15 for n in ('dead','aboard','saved')},{1})
+        self.assertEqual({colors[n]&15 for n in art.HUD_CHARS if n not in ('dead','aboard','saved')},{13})
+        # Uploaded once, to the top screen third only, below the reserved 14.
+        boot=SOURCE.split('\nboot:\n')[1].split('\nnew_game:\n')[0]
+        n=len(art.HUD_CHARS)*8
+        self.assertIn(f'DEFINE VRAM 8,{n},hud_art',boot);self.assertIn(f'DEFINE VRAM 8200,{n},hud_colors',boot)
+        self.assertLessEqual(8+n,14*8)
+        # The helicopter never flies up into the band (rows 0-2, y 0-23), and
+        # the pause notice is printed below it on a row no star uses.
+        b=self.state();b.v.update({'hy':40,'dt':2,'cont1.up':1})
+        for _ in range(40):b.call('fly')
+        self.assertGreaterEqual(b.v['hy'],24)
+        self.assertIn('PRINT AT 141,"PAUSED"',SOURCE)
+        self.assertNotIn(141//32,art.STAR_ROW)
+
+    def test_results_show_the_skill_level_and_mark_practice(self):
+        # The mission summary names the skill level played; a practice (838)
+        # game puts the small star (character 60) after the level and after
+        # its saved count, and the best rescue keeps its own marker.
+        def results(difficulty,practice):
+            b=self.state();b.v.update(difficulty=difficulty,practice=practice,saved=12,lost=7,
+                                     best=20,best_practice=0,lives=0,**{'cont1.key':15,'cont1.button':0})
+            body=b.r['result_screen'];b.r['results_draw']=body[:body.index('GOSUB release_input')]
+            b.call('results_draw')
+            return lambda row,col,n:''.join(chr(b.vram.get(6144+row*32+col+i,32)) for i in range(n))
+        for difficulty,word in enumerate(('EASY','MEDIUM','HARD')):
+            for practice in (0,1):
+                text=results(difficulty,practice)
+                star='<' if practice else ' '      # character 60 is the star
+                self.assertEqual(text(7,7,15),'SKILL LEVEL    ')
+                self.assertEqual(text(7,22,len(word)+1),word+star,(difficulty,practice))
+                self.assertEqual(text(9,7,17),'PEOPLE SAVED   12')
+                self.assertEqual(text(9,24,1),star)
+                self.assertEqual(text(11,7,17),'PEOPLE LOST    07')
+                self.assertEqual(text(13,7,17),'STRANDED       45')
+                self.assertEqual(text(15,7,17),'BEST RESCUE    20')
+                self.assertEqual(text(5,7,16),'MISSION ENDED   ')
+
+    def test_air_burst_chunk_borrows_the_helicopters_mask_bit(self):
+        # Slot 16 (an air burst's falling chunk) has no bit of its own in the
+        # 16-bit #sprite_shown: it uses bit 0, which is free because the
+        # helicopter's slots 0 and 1 are drawn with SPRITE directly and never
+        # go through world_sprite or sprite_off. Prove both halves.
+        b=self.state();slots=set();original=b.call
+        def call(name):
+            if name in ('world_sprite','sprite_off'):slots.add(b.v['draw_slot'])
+            original(name)
+        b.call=call
+        b.v.update({'#camera':0,'#hx':120,'hy':100,'shell_on':1,'#shell_x':130,'shell_y':104,
+                    'missile_on':1,'#missile_x':170,'missile_y':104,'jet_on':1,'#jet_x':60,'jet_y':100,
+                    'drone_on':1,'#drone_x':200,'drone_y':100,'blast_timer':30,'blast_end':36,
+                    '#blast_x':90,'blast_y':40})
+        b.a['tank_on']=[1,1];b.a['#tank_x']=[20,200]
+        b.a['shot_on']=[1,1];b.a['shot_y']=[104,104];b.a['#shot_x']=[100,180]
+        b.call('hide_all');b.call('draw_actors')
+        self.assertFalse(slots&{0,1});self.assertIn(16,slots)
+        self.assertEqual(b.a['#sprite_bit'][16],1)
+        self.assertNotEqual(b.sprites[16][0],209)
+        self.assertTrue(b.v['#sprite_shown']&1)
+        heli=(b.sprites[0],b.sprites[1])
+        # When the burst ends the chunk hides, and the helicopter stays.
+        b.v['blast_timer']=0;b.call('draw_actors')
+        self.assertEqual(b.sprites[16][0],209);self.assertFalse(b.v['#sprite_shown']&1)
+        self.assertEqual((b.sprites[0],b.sprites[1]),heli)
+        # A crash draws the wreck with SPRITE too.
+        b.v.update(invuln=0,blast_timer=0);b.call('crash');slots.clear()
+        b.v['crash_timer']=60;b.call('draw_actors');self.assertFalse(slots&{0,1})
 
     def test_misses_burst_on_the_ground(self):
         # Every bomb, jet missile or bomb, tank shell and shot bursts where it

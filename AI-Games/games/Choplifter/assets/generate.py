@@ -74,7 +74,7 @@ for facing in ('right', 'left', 'front'):
         SPRITES.extend([([r[:16] for r in a]), ([r[16:] for r in a])])
 # 12 tank, 13/14 crash flames, 15 jet, 16 drone, 17 shot, 18/19 explosion core
 # (BLAST_ART below).
-# 47-49 missiles and bomb, 50-57 explosion pieces, 58 free (the walking
+# 47-49 missiles and bomb, 50-58 explosion pieces (the walking
 # people sprites once there are unused: runners are crowd characters).
 a = canvas(16, 16)
 rect(a, 1, 7, 14, 5); rect(a, 4, 4, 8, 4); rect(a, 0, 4, 8, 1)
@@ -91,6 +91,21 @@ CRASH_EMBERS=[[0]*11+[0x0200,0x1220,0x3bb8,0x7ffc,0],
 def fire_sprite(rows):
     return [[(bits>>(15-x))&1 for x in range(16)] for bits in rows]
 SPRITES.extend(fire_sprite(rows) for rows in CRASH_FLAMES)
+def burn_down(rows,height,trim):
+    """A flame sprite burned lower: squashed to `height` rows, still standing
+    on row 14, and `trim` columns narrower on each side."""
+    mask=((1<<(16-2*trim))-1)<<trim
+    out=[0]*16
+    for y in range(15-height,15):
+        out[y]=rows[round((y-(15-height))*14/(height-1))]&mask
+    return out
+# A landed wreck burns down in stages (crash_tick redefines sprites 13/14):
+# full flames, then lower and narrower ones (crash_burn2, crash_burn3), then
+# the embers, each smaller than the last (never less than half of it: no
+# jump from a big fire to a few pixels), all standing on row 14.
+CRASH_STAGES=[CRASH_FLAMES,[burn_down(r,9,2) for r in CRASH_FLAMES],
+              [burn_down(r,6,3) for r in CRASH_FLAMES],CRASH_EMBERS]
+
 a = canvas(16, 16)
 rect(a, 0, 7, 16, 3); rect(a, 6, 3, 3, 10); rect(a, 13, 4, 2, 7)
 rect(a, 3, 6, 9, 1); SPRITES.append(a)
@@ -444,7 +459,8 @@ SPRITES[49]=a
 # few separate pixels, so four sprites read as a spray of particles. 18/19:
 # the fireball, then its broken, spreading ring; 50 smoke; 51-53 sparks
 # spreading apart (tight, wider, widest); 54 embers; 55 dirt clods; 56 the
-# small burst's flash; 57 the tiny burst's puff. 58 is free.
+# small burst's flash; 57 the tiny burst's puff; 58 an air burst's chunk
+# falling with a trail of sparks above it. No sprite pattern is free.
 def bitmap(rows):
     assert len(rows)==16 and all(len(r)==16 and set(r)<=set('.#') for r in rows)
     return [[int(ch=='#') for ch in r] for r in rows]
@@ -474,13 +490,17 @@ BLAST_ART={
                  '.......#........','.....#.#.#......','......###.......','....#######.....',
                  '......###.......','.....#.#.#......','.......#........','................',
                  '................','................','................','................']),
+ 'drop':bitmap(['................','................','................','........#.......',
+                '................','................','.......#........','................',
+                '................','........#.......','................','.......##.......',
+                '......####......','.......##.......','................','................']),
  'puff':bitmap(['................','................','................','................',
                 '................','......#.#.......','.......#........','.....#####......',
                 '.......#........','......#.#.......','................','................',
                 '................','................','................','................']),
 }
 BLAST_SLOT={'fire':18,'ring':19,'smoke':50,'spark1':51,'spark2':52,'spark3':53,
-            'ember':54,'dirt':55,'flash':56,'puff':57}
+            'ember':54,'dirt':55,'flash':56,'puff':57,'drop':58}
 for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
 
 # Burst timelines, one row per two frames: blast_draw reads row
@@ -537,6 +557,16 @@ for kind,end,rows in BLAST_KINDS:
         else:
             spray=(BLAST_SLOT[debris[row][0]]*4,debris[row][1],[p[row] for p in paths])
         BLAST_ROWS.append((BLAST_SLOT[core[row][0]]*4,core[row][1],rise[row])+spray)
+# An air burst also drops a burning chunk straight down (slot 16), so it
+# reads as a burst in the sky: blast_fall is how far it has fallen at each
+# of the air rows (0-17), starting at 1 px/frame and pulled down at 0.18 px
+# per frame squared, no further than 120 px; blast_fpat and blast_fcol its
+# pattern and colour.
+AIR_ROWS=dict((k,(e,n)) for k,e,n in BLAST_KINDS)['air'][1]
+BLAST_FALL=[min(120,round((2*r+1)*1.0+0.09*(2*r+1)**2)) for r in range(AIR_ROWS)]
+BLAST_FPAT=[BLAST_SLOT['drop']*4]*AIR_ROWS
+BLAST_FCOL=[15,15,11,11,11,10,10,10,9,9,9,8,8,8,6,6,6,6]
+assert len(BLAST_FCOL)==AIR_ROWS and BLAST_FALL==sorted(BLAST_FALL)
 # Pattern 0 means "no spray": no debris art may use it.
 assert all(r[3] for r in BLAST_ROWS if r[4]) and min(BLAST_SLOT.values())>0
 # blast_draw steps through the clusters' rows by this stride (di=di+68).
@@ -663,6 +693,48 @@ PAD_FENCE_COLORS+=[0x11]*(8-len(PAD_FENCE_COLORS))
 # CVBasic/TMS font @.._: restore the borrowed bottom-third back buffer on menus.
 MENU_FONT=[112, 136, 152, 168, 152, 128, 112, 0, 32, 80, 136, 136, 248, 136, 136, 0, 240, 136, 136, 240, 136, 136, 240, 0, 112, 136, 128, 128, 128, 136, 112, 0, 240, 136, 136, 136, 136, 136, 240, 0, 248, 128, 128, 240, 128, 128, 248, 0, 248, 128, 128, 240, 128, 128, 128, 0, 112, 136, 128, 184, 136, 136, 112, 0, 136, 136, 136, 248, 136, 136, 136, 0, 112, 32, 32, 32, 32, 32, 112, 0, 8, 8, 8, 8, 136, 136, 112, 0, 136, 144, 160, 192, 160, 144, 136, 0, 128, 128, 128, 128, 128, 128, 248, 0, 136, 216, 168, 168, 136, 136, 136, 0, 136, 200, 200, 168, 152, 152, 136, 0, 112, 136, 136, 136, 136, 136, 112, 0, 240, 136, 136, 240, 128, 128, 128, 0, 112, 136, 136, 136, 136, 168, 144, 104, 240, 136, 136, 240, 160, 144, 136, 0, 112, 136, 128, 112, 8, 136, 112, 0, 248, 32, 32, 32, 32, 32, 32, 0, 136, 136, 136, 136, 136, 136, 112, 0, 136, 136, 136, 136, 80, 80, 32, 0, 136, 136, 136, 168, 168, 216, 136, 0, 136, 136, 80, 32, 80, 136, 136, 0, 136, 136, 136, 112, 32, 32, 32, 0, 248, 8, 16, 32, 64, 128, 248, 0, 120, 96, 96, 96, 96, 96, 120, 0, 0, 128, 64, 32, 16, 8, 0, 0, 240, 48, 48, 48, 48, 48, 240, 0, 32, 80, 136, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 248, 0]
 
+# The HUD (rows 0-2), after the arcade's: a magenta band with four black
+# capsules, pointed at both ends and 10 pixels tall (y 7-16, centred in the
+# band): left to right the dead (a red dot), those on board (cyan) and the
+# saved (bright green), each with two white digits, then the spare
+# helicopters (up to four icons, right-justified). Its characters 1-13 are
+# uploaded to the TOP screen third only (DEFINE VRAM), where codes below 32
+# are otherwise unused; the digits are the font's and the icon is 140.
+HUD_MAGENTA,HUD_BLACK=13,1
+def hud_band(bits):
+    return (bits,[HUD_BLACK*16+HUD_MAGENTA]*8)
+HUD_DOT=[0,0x38,0x7C,0x7C,0x7C,0x38,0,0]
+HUD_CHARS={'band':hud_band([0]*8),'top':hud_band([0]*7+[255]),'bottom':hud_band([255]+[0]*7),
+           'left_top':hud_band([0]*7+[0x07]),
+           'left':hud_band([0x1F,0x3F,0x7F,0xFF,0xFF,0x7F,0x3F,0x1F]),
+           'left_bottom':hud_band([0x07]+[0]*7),
+           'right_top':hud_band([0]*7+[0xE0]),
+           'right':hud_band([0xF8,0xFC,0xFE,0xFF,0xFF,0xFE,0xFC,0xF8]),
+           'right_bottom':hud_band([0xE0]+[0]*7),
+           # Dots: medium red 8, cyan 7, light green 3, on the capsule's black.
+           'dead':(HUD_DOT,[0x81]*8),'aboard':(HUD_DOT,[0x71]*8),'saved':(HUD_DOT,[0x31]*8),
+           # A practice (838) game's star, white on the band, after the saved box.
+           'practice':([80,32,248,32,80,0,0,0],[0xF0|HUD_MAGENTA]*8)}
+HUD_CODE={name:i+1 for i,name in enumerate(HUD_CHARS)}
+assert max(HUD_CODE.values())<14   # 14-31 are reserved (see CHOPLIFT.bas boot)
+# (first column, dot, inner cells): the count boxes are cap, dot, two
+# digits, cap; the spares box cap, four icons, cap.
+HUD_BOXES=((2,'dead',3),(9,'aboard',3),(16,'saved',3),(24,None,4))
+HUD_PRACTICE_COLUMN=21
+def hud_rows():
+    rows=[[HUD_CODE['band']]*32 for _ in range(3)]
+    for first,dot,inner in HUD_BOXES:
+        last=first+inner+1
+        for row,end in ((0,'_top'),(1,''),(2,'_bottom')):
+            rows[row][first]=HUD_CODE['left'+end];rows[row][last]=HUD_CODE['right'+end]
+        for col in range(first+1,last):
+            rows[0][col]=HUD_CODE['top'];rows[2][col]=HUD_CODE['bottom'];rows[1][col]=32
+        if dot:
+            rows[1][first+1]=HUD_CODE[dot];rows[1][first+2]=rows[1][first+3]=48
+    assert rows[1][HUD_PRACTICE_COLUMN]==HUD_CODE['band']
+    return sum(rows,[])
+HUD_ROWS=hud_rows()
+
 def emit(label, data):
     assert len(data) % 2 == 0, label
     return label + ':\n' + ''.join('    DATA BYTE '+','.join(str(v) for v in data[i:i+16])+'\n' for i in range(0,len(data),16))
@@ -687,10 +759,14 @@ def generate():
     boot += emit('waiting_colors',WAITING_COLORS)
     boot += emit('star_bits',STAR_BITS)
     boot += emit('star_colors',STAR_COLORS)
+    boot += emit('hud_art',[b for bits,_ in HUD_CHARS.values() for b in bits])
+    boot += emit('hud_colors',[c for _,colors in HUD_CHARS.values() for c in colors])
     text = head
     # A crash redefines slots 13/14 as flames, then embers; a fresh crash
     # restores the full flames after the preceding ember phase.
     text += emit('crash_flames', [b for a in SPRITES[13:15] for b in sprite_bytes(a)])
+    for label,stage in (('crash_burn2',CRASH_STAGES[1]),('crash_burn3',CRASH_STAGES[2])):
+        text += emit(label, [b for rows in stage for b in sprite_bytes(fire_sprite(rows))])
     text += emit('crash_embers', [b for rows in CRASH_EMBERS for b in sprite_bytes(fire_sprite(rows))])
     text += emit('world_map', [c for r in MAP for c in r])
     text += emit('ground_row', [129]*32)
@@ -701,6 +777,9 @@ def generate():
     for label,field in (('blast_cpat',0),('blast_ccol',1),('blast_dpat',3),('blast_dcol',4)):
         text += emit(label,[r[field] for r in BLAST_ROWS])
     text += emit('blast_cdy',[r[2]+64 for r in BLAST_ROWS])
+    text += emit('blast_fall',BLAST_FALL)
+    text += emit('blast_fpat',BLAST_FPAT)
+    text += emit('blast_fcol',BLAST_FCOL)
     # The three clusters' rows one after another, BLAST_STRIDE apart.
     text += emit('blast_dx',[r[5][p][0]+64 for p in range(3) for r in BLAST_ROWS])
     text += emit('blast_dy',[r[5][p][1]+64 for p in range(3) for r in BLAST_ROWS])
@@ -717,6 +796,7 @@ def generate():
     text += emit('camp_bits',[1,2,4,8])
     text += emit('person_kind',[i%3 for i in range(64)])
     text += emit('waiting_kind',[96+(i%3)*4 for i in range(64)])
+    text += emit('hud_rows',HUD_ROWS)
     text += emit('star_x',STAR_X)
     # Row 0 ends the list (both renderers stop there); the second 0 keeps the
     # DATA BYTE block even so later word tables stay aligned.

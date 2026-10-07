@@ -420,6 +420,27 @@ look like a bug, it looks like the game is broken — so these are rules, not pr
   - A setup/options screen that asks for "number of cars" still means TOTAL cars (3 cars = 3
     plays). Only the in-game HUD counts reserves.
 
+- **DIFFICULTY IS PICKED ON THE TITLE SCREEN, ONE WAY, IN EVERY GAME** (the user's preferred
+  pattern, first shipped in Choplifter: `title_code`, `title_level`, DESIGN.md *Title*).
+  - **One line, `1 EASY  2 MEDIUM  3 HARD`, with the chosen level in brackets drawn in a
+    contrasting colour** (recolour just the two bracket characters, e.g. light red on black,
+    with `DEFINE COLOR` from an 8-byte table; check no other screen uses those characters).
+    The white text stays white; the coloured brackets move.
+  - **Keys 1-3 pick directly, LEFT/RIGHT step.** Read the stick as two pseudo-keys (20, 21) so
+    one edge-triggered `title_key` test serves both and a held key acts once. LEFT/RIGHT are
+    safe from the ALPHA LOCK short; UP/DOWN are not (skill `ti-input-screens`).
+  - **FIRE starts, never a digit**; the prompt is the last line, `PRESS FIRE TO START`.
+  - **Medium at power-on, then the pick persists between games**: set it in the one-time boot
+    path, never in the title routine, which every game over re-enters.
+  - **A digit that continues a hidden cheat sequence is not a choice** (Choplifter's 3 inside
+    8-3-8), so typing the cheat does not change the level as a side effect.
+  - **Difficulty scales how hard enemies push, never whether they try**: ROM tables indexed
+    `5 * difficulty + level` (rows of five levels; each level harder than the one before, each
+    difficulty harder than the one below at the same level), plus small per-difficulty tables
+    for how they fire (reload, aim tolerance, reach) and move. See skill `game-timing-tuning`.
+  - **The end-of-game summary names the level played**, and marks practice/cheat games (838)
+    with the same star as their scores.
+
 ## 8. Per-Game Structure & Lifecycle
 
 Every game is built the same way — that consistency is the point.

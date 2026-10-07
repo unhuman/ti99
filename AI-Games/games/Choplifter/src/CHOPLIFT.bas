@@ -32,7 +32,7 @@ DIM #tank_x(2)
 
 ' Sprite ownership: heli 0,1; tank shell 2; jet missile 3; player shots 4,5;
 ' tank 0 halves 6,7; tank 1 halves 8,9; jet 10; air mine 11; explosion core
-' 12 and its three debris clusters 13-15.
+' 12, its three debris clusters 13-15 and an air burst's falling chunk 16.
 ' SPRITE FLICKER is on: the vblank copy starts one slot later each frame, so
 ' a crowded scanline drops a different sprite each frame instead of always
 ' the same one. A crash hides the helicopter and every other actor: only its
@@ -57,6 +57,10 @@ DEFINE COLOR 128,112,tile_colors
 DEFINE COLOR 144,2,flag_colors
 ' Codes 14-31 are reserved for fire/crowds; 128-239 belong to scenery.
 DEFINE COLOR 126,2,fire_colors
+' Codes 1-13 are the HUD band's (assets/generate.py HUD_CHARS), in the top
+' screen third only: patterns at 8, colours at 8192+8.
+DEFINE VRAM 8,104,hud_art
+DEFINE VRAM 8200,104,hud_colors
 DEFINE VRAM 4864,192,waiting_art
 DEFINE VRAM 13056,192,waiting_colors
 ' Bottom-third characters 120-124: the pad-fence cell and the foothills.
@@ -1454,13 +1458,15 @@ CLS
 flag_visible=0
 flag_last=255
 star_visible=0
-PRINT AT 0,"SAVED 00 ABOARD 00 LOST 00"
+' Rows 0-2: the HUD band and its capsules, its counts filled in at once (the
+' template's 00 placeholders never reach a frame on their own).
+SCREEN hud_rows,0,0,32,3
+GOSUB hud
 SCREEN ground_row,0,704,32,1
 SCREEN ground_row,0,736,32,1
 terrain_dirty=1
 GOSUB camera_tick
 GOSUB crowd_draw
-GOSUB hud
 RETURN
 
 stars_draw:
@@ -2258,23 +2264,26 @@ END IF
 RETURN
 
 hud:
-' One row: the three counts, then the spare helicopters (the reserves, not
-' the one flying) right-justified in columns 27-31, so at most five show.
-digit_value=saved:#digit_pos=6150:GOSUB digits
-digit_value=aboard:#digit_pos=6160:GOSUB digits
-digit_value=lost:#digit_pos=6168:GOSUB digits
+' The band's capsules (row 1), left to right: the dead (red dot), those on
+' board (cyan) and the saved (bright green), then the spare helicopters (the
+' reserves, not the one flying) right-justified in the fourth capsule's
+' columns 25-28, so at most four show. A practice game's star (code 13)
+' stands on the band after the saved capsule (else the band, code 1).
+digit_value=lost:#digit_pos=6180:GOSUB digits
+digit_value=aboard:#digit_pos=6187:GOSUB digits
+digit_value=saved:#digit_pos=6194:GOSUB digits
 spares=0
 IF lives > 0 THEN spares=lives-1
-FOR hs=0 TO 4
+FOR hs=0 TO 3
     hudchar=32
-    IF hs+spares > 4 THEN hudchar=140
+    IF hs+spares > 3 THEN hudchar=140
     #vaddr=hs
-    #vaddr=#vaddr+6171
+    #vaddr=#vaddr+6201
     VPOKE #vaddr,hudchar
 NEXT hs
-hudchar=32
-IF practice THEN hudchar=60
-VPOKE 6152,hudchar
+hudchar=1
+IF practice THEN hudchar=13
+VPOKE 6197,hudchar
 hud_dirty=0
 RETURN
 
@@ -2381,7 +2390,7 @@ blast_draw:
 ' through the three clusters' rows, 68 apart (BLAST_ROWS in the generator).
 ' A burst on bare ground has no spray: its debris pattern is 0.
 IF blast_timer = 0 THEN
-    FOR draw_slot=12 TO 15
+    FOR draw_slot=12 TO 16
         GOSUB sprite_off
     NEXT draw_slot
     RETURN
@@ -2393,6 +2402,23 @@ draw_y=blast_y+blast_cdy(blast_row)
 draw_pat=blast_cpat(blast_row):draw_color=blast_ccol(blast_row)
 draw_slot=12
 GOSUB blast_sprite
+' An air burst (rows 0-17) also drops a burning chunk straight down (slot
+' 16), so it reads as a burst in the sky, not on the ground. blast_fall is
+' how far it has fallen (no bias); below the screen it is hidden.
+draw_slot=16
+IF blast_end = 36 THEN
+    draw_y=blast_fall(blast_row)
+    IF draw_y < 191-blast_y THEN
+        draw_y=draw_y+blast_y
+        draw_y=draw_y-1
+        draw_pat=blast_fpat(blast_row):draw_color=blast_fcol(blast_row)
+        GOSUB world_sprite
+    ELSE
+        GOSUB sprite_off
+    END IF
+ELSE
+    GOSUB sprite_off
+END IF
 draw_pat=blast_dpat(blast_row)
 IF draw_pat = 0 THEN
     FOR draw_slot=13 TO 15
@@ -2659,7 +2685,8 @@ RETURN
 
 pause_game:
 GOSUB silence
-PRINT AT 45,"PAUSED"
+' In the sky below the HUD band, on row 4, which no star uses.
+PRINT AT 141,"PAUSED"
 GOSUB release_input
 ' The main loop's frame clock is idle while paused (clock_reset restarts it).
 #last=FRAME
@@ -2678,7 +2705,7 @@ GOSUB back_key
 IF back_pressed THEN GOTO pause_end
 GOTO pause_wait
 pause_end:
-PRINT AT 45,"      "
+PRINT AT 141,"      "
 GOSUB release_input
 fire_gate=1
 fire_held=0
@@ -2740,9 +2767,11 @@ RETURN
 practice_star:
 DATA BYTE 80,32,248,32,80,0,0,0
 
-' One bit per world-actor sprite slot (0-15), for #sprite_shown.
+' One bit per world-actor sprite slot (0-16), for #sprite_shown. Slot 16
+' (an air burst's falling chunk) shares bit 0 with slot 0: the helicopter's
+' slots 0 and 1 are drawn with SPRITE directly and never use the mask.
 #sprite_bit:
-DATA 1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768
+DATA 1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,1
 
 #if TI994A
 BANK 1
@@ -2770,6 +2799,9 @@ DATA 360,320,280,240,200,240,210,180,150,120,180,160,140,120,100
 ' How enemies fire, by difficulty (easy, medium, hard): frames between a
 ' jet's missiles, how far out of line (px) it still fires, and a tank
 ' shell's top speed in 1/16 px per frame (its reach).
+' The title's difficulty brackets: light red (9) on black, all eight rows.
+bracket_colors:
+DATA BYTE 145,145,145,145,145,145,145,145
 jet_reload:
 DATA BYTE 90,60,40,0
 jet_aim:
@@ -2806,8 +2838,9 @@ GOTO explode_ground
 
 crash_tick:
 ' Hold the burn timer during the fall; the final life also reaches the
-' ground. On the ground: flames, then embers from 36 frames before the end
-' and nothing at all for the last 12.
+' ground. On the ground the fire burns down in stages: full flames, then
+' lower and narrower ones from 60 and from 40 frames before the end, embers
+' from 24, and nothing at all for the last 12 (crash_draw).
 IF hy < LANDED THEN
     #move=hspeed*dt
     GOSUB move_heli
@@ -2819,12 +2852,18 @@ IF hy < LANDED THEN
         GOSUB explode_ground
     END IF
 ELSE
-    IF crash_timer > 36 THEN
-        IF crash_timer <= 36+dt THEN DEFINE SPRITE 13,2,crash_embers
+    IF crash_timer > 60 THEN
+        IF crash_timer <= 60+dt THEN DEFINE SPRITE 13,2,crash_burn2
+    END IF
+    IF crash_timer > 40 THEN
+        IF crash_timer <= 40+dt THEN DEFINE SPRITE 13,2,crash_burn3
+    END IF
+    IF crash_timer > 24 THEN
+        IF crash_timer <= 24+dt THEN DEFINE SPRITE 13,2,crash_embers
     END IF
     IF crash_timer > dt THEN crash_timer=crash_timer-dt ELSE crash_timer=0
 END IF
-IF crash_timer > 36 THEN
+IF crash_timer > 24 THEN
     IF noise_timer < 6 THEN noise_timer=6
 END IF
 RETURN
@@ -2898,10 +2937,15 @@ END IF
 draw_x=#hv-#camera+6
 draw_y=hy-1
 draw_pat=52+rotor_phase*4
-SPRITE 0,draw_y,draw_x,draw_pat,10
+' The two halves swap yellow (10) and red (8) every 8 frames: the fire
+' flickers between the colours as well as between its two shapes.
+draw_color=10
+IF anim AND 8 THEN draw_color=8
+SPRITE 0,draw_y,draw_x,draw_pat,draw_color
 draw_x=draw_x+10
 draw_pat=108-draw_pat
-SPRITE 1,draw_y,draw_x,draw_pat,8
+draw_color=18-draw_color
+SPRITE 1,draw_y,draw_x,draw_pat,draw_color
 RETURN
 ' Cold results code shares the permanently selected data bank on TI.
 
@@ -2914,13 +2958,21 @@ GOSUB best_update
 PRINT AT 167,"MISSION COMPLETE"
 IF lives = 0 THEN PRINT AT 167,"MISSION ENDED   "
 IF saved = 64 THEN PRINT AT 167,"PERFECT RESCUE! "
-PRINT AT 263,"PEOPLE SAVED   "
-digit_value=saved:#digit_pos=6422:GOSUB digits
-IF practice THEN VPOKE 6424,60
-PRINT AT 327,"PEOPLE LOST    "
-digit_value=lost:#digit_pos=6486:GOSUB digits
-PRINT AT 391,"STRANDED       "
-digit_value=64-saved-lost:#digit_pos=6550:GOSUB digits
+' The skill level played; a practice (838) game marks it, and its saved
+' count, with the small star (character 60) right after.
+PRINT AT 231,"SKILL LEVEL    "
+#vaddr=6394
+IF difficulty = 0 THEN PRINT AT 246,"EASY"
+IF difficulty = 1 THEN PRINT AT 246,"MEDIUM":#vaddr=6396
+IF difficulty = 2 THEN PRINT AT 246,"HARD"
+IF practice THEN VPOKE #vaddr,60
+PRINT AT 295,"PEOPLE SAVED   "
+digit_value=saved:#digit_pos=6454:GOSUB digits
+IF practice THEN VPOKE 6456,60
+PRINT AT 359,"PEOPLE LOST    "
+digit_value=lost:#digit_pos=6518:GOSUB digits
+PRINT AT 423,"STRANDED       "
+digit_value=64-saved-lost:#digit_pos=6582:GOSUB digits
 PRINT AT 487,"BEST RESCUE    "
 digit_value=best:#digit_pos=6646:GOSUB digits
 IF best_practice THEN VPOKE 6648,60
@@ -2947,25 +2999,19 @@ start_lives=3:practice=0:title_seq=0:title_key=15
 GOSUB silence
 GOSUB hide_all
 GOSUB menu_restore
+' The difficulty line's brackets are light red on black, so the chosen level
+' stands out from the white text. (Characters 91 and 93 appear on no other
+' screen; the crowd recolours its cells in play and menu_restore resets the
+' bottom third.)
+DEFINE COLOR 91,1,bracket_colors
+DEFINE COLOR 93,1,bracket_colors
 CLS
 PRINT AT 135,"C H O P L I F T E R"
 PRINT AT 200,"RESCUE OPERATIONS"
-PRINT AT 322,"FREE 64 PEOPLE. FLY THEM HOME."
-PRINT AT 386,"JOYSTICK: FLY  TAP FIRE: SHOOT"
-#if TI994A
-PRINT AT 418,"HOLD FIRE OR SPACE: TURN"
-#else
-PRINT AT 418,"HOLD FIRE OR *: TURN"
-#endif
-PRINT AT 450,"FACE FRONT TO BOMB TANKS"
-#if TI994A
-PRINT AT 482,"LAND: PICK UP   HOLD P: PAUSE"
-#else
-PRINT AT 482,"LAND: PICK UP   HOLD 0: PAUSE"
-#endif
+PRINT AT 386,"FREE 64 PEOPLE. FLY THEM HOME."
 GOSUB title_level
-PRINT AT 678,"PRESS FIRE TO LAUNCH"
-PRINT AT 740,"2026 UNHUMAN AND AI C&C"
+PRINT AT 676,"2026 UNHUMAN AND AI C&C"
+PRINT AT 742,"PRESS FIRE TO START"
 #hx=0:rotor_clock=0:rotor_phase=0
 GOSUB title_heli
 GOSUB release_input
@@ -3044,9 +3090,9 @@ IF menu_key >= 1 THEN
 END IF
 title_level:
 ' The difficulty line: the chosen level in brackets.
-IF difficulty = 0 THEN PRINT AT 578,"[1 EASY]  2 MEDIUM   3 HARD "
-IF difficulty = 1 THEN PRINT AT 578," 1 EASY  [2 MEDIUM]  3 HARD "
-IF difficulty = 2 THEN PRINT AT 578," 1 EASY   2 MEDIUM  [3 HARD]"
+IF difficulty = 0 THEN PRINT AT 482,"[1 EASY]  2 MEDIUM   3 HARD "
+IF difficulty = 1 THEN PRINT AT 482," 1 EASY  [2 MEDIUM]  3 HARD "
+IF difficulty = 2 THEN PRINT AT 482," 1 EASY   2 MEDIUM  [3 HARD]"
 RETURN
 
 setup838:

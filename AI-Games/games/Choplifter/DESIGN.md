@@ -26,10 +26,10 @@ Current-state design. History is in git; sizes below are from the latest build
   for 32 walkers 1.56, sprites with every actor on 0.78 / all off 0.34, enemies and weapons
   0.53, sound + rotor + pause input + flight 0.34. A scrolling update costs whole frames:
   its synchronised WAIT rounds the work up.
-- **Hardware sprites.** At most 16 world sprites, each in a fixed slot (*Sprites* below),
+- **Hardware sprites.** At most 17 world sprites, each in a fixed slot (*Sprites* below),
   with CVBasic's `SPRITE FLICKER ON`: on a scanline with more than four, every sprite takes
   its turn, the helicopter included. Tanks run on their own plane below the crowd row, so a
-  landed helicopter never shares a scanline with them. An explosion is four sprites placed
+  landed helicopter never shares a scanline with them. An explosion is four or five sprites placed
   from ROM tables, with no per-particle RAM or arithmetic beyond an index.
 - **VDP work per scrolling update.** One WAIT, then rows 17–20 (128 bytes, back to back),
   then the flag and the blown-out barracks' row-19 overlays, then rows 21–22 (64 bytes) and
@@ -46,12 +46,12 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,198 | 24,336 | 2,138 free |
-| TI fixed area, unoptimised | 23,966 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 7,140 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
-| TI boot bank (`BANK 2`) | 4,634 | 8,190 | art uploaded only at power-on |
+| TI fixed area (after short branches) | 22,370 | 24,336 | 1,966 free |
+| TI fixed area, unoptimised | 24,146 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 7,654 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
+| TI boot bank (`BANK 2`) | 4,842 | 8,190 | art uploaded only at power-on |
 | TI RAM | 806 | 7,854 | |
-| ColecoVision ROM | 27,542 | 32,768 | |
+| ColecoVision ROM | 28,283 | 32,768 | |
 | ColecoVision RAM | 808 | 814 | nearly full; see `#vaddr` |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
@@ -158,10 +158,18 @@ waves twice, and the next delivery's jets wait until everyone is inside.
 
 Saved + lost + aboard + everyone still at the camps always equals 64; a runner counts with
 its camp until it boards or dies. A crash loses everyone aboard and one helicopter; the next
-starts at home. The HUD is one row: SAVED, ABOARD and LOST, then the spare helicopters
-(excluding the one flying) right-justified in columns 27–31, so at most five show. There
-are no camp indicators. The mission ends when all 64 are saved or lost, or the last
-helicopter is destroyed; the results screen lists saved, lost, stranded and the session's
+starts at home. The HUD, after the arcade's, is a magenta band (rows 0–2) holding four black
+capsules with pointed ends, 10 pixels tall (y 7–16): left to right the dead (a red dot),
+those on board (cyan) and the saved (bright green), each with two white digits, then the
+spare helicopters (excluding the one flying), right-justified in the fourth capsule's four
+cells, so at most four show. A practice game's star stands on the band after the saved
+capsule. The band's 13 characters (`HUD_CHARS`: band, capsule edges and ends, three dots,
+the star) are uploaded once to codes 1–13 of the top screen third only, where codes below 32
+are otherwise unused; `game_screen` copies the template (`hud_rows`) and `hud` writes the
+counts, icons and star. There are no camp indicators. The band ends at y 23 and the
+helicopter climbs no higher than y 25, so it never flies into it. The mission ends when all 64 are saved or lost, or the last
+helicopter is destroyed; the results screen lists the skill level played, then saved,
+lost, stranded and the session's
 best rescue. A perfect rescue is 64.
 
 People persist across trips and crashes. Landing on an exposed person (escaping, waiting or
@@ -203,9 +211,14 @@ level so `GOTO title` leaves no return address on the stack.
 the main loop crashes at the top of the next update, so the frame between shows the threat
 touching the helicopter. From the crash on, the helicopter itself is never drawn: it and
 every other actor are hidden at once, a burst plays where it was hit (an air burst, or a
-ground burst if it was landed), and only its burning wreck is drawn, flames in slots 0–1,
-falling at 2 px/frame with its sideways speed. On landing it bursts again (a ground burst)
-and burns for 90 frames: flames, then low embers for frames 36–13, then nothing at all for
+ground burst if it was landed), and only its burning wreck is drawn, flames in slots 0–1
+whose two halves swap yellow and red every 8 frames, falling at 2 px/frame with its
+sideways speed. On landing it bursts again (a ground burst) and burns for 90 frames,
+burning down in four stages as `crash_tick` redefines sprites 13–14: full flames (15 rows,
+142 pixels), then lower and narrower ones from 60 frames before the end (`crash_burn2`, 9
+rows, 76) and from 40 (`crash_burn3`, 6 rows, 43), then embers from 24 (4 rows, 26), each
+at least half the one before so the fire never drops from a blaze to a few pixels
+(`burn_down` in the generator squashes and narrows the full flames); nothing at all for
 the last 12, by which time the burst is over and erased too. Only then does the next
 helicopter appear on the pad (`new_heli`, `game_screen`), drawn with its own patterns, or
 the mission ends. Lives and passengers are charged once, at the crash. Meanwhile camps keep
@@ -312,8 +325,8 @@ shell 3×3. Player shots use the same jet boxes.
 
 ## Display
 
-256×192 TMS9918 screen. Row 0 HUD, row 1 empty (PAUSED, centred, while paused), rows 2–16
-sky, rows 17–21 scenery (row 20 is the crowd row), rows 22–23 ground. The ground is dark blue
+256×192 TMS9918 screen. Rows 0–2 the HUD band, rows 3–16 sky (PAUSED, centred on row 4,
+which no star uses, while paused), rows 17–21 scenery (row 20 is the crowd row), rows 22–23 ground. The ground is dark blue
 (the mountains rise out of it in the same colour), the landing pad gray with a white rim,
 and the fence stamps white on the ground's blue. Ground contact: helicopter
 top y=153 (its lowest ink at y=167 touches ground row 21 at y=168); tanks on rows 22–23.
@@ -410,7 +423,8 @@ with two rotor beats each and level or banked poses; side views alternate cross 
 tail-rotor blades. Main and tail rotors share a four-frame beat that never skips both poses on
 a slow update. There are 64 sprite patterns; 13–14 are the crash flames, 18–19 the
 explosion's fireball and ring, 47–49 the missiles and bomb, 50–57 the explosion's smoke,
-sparks, embers, dirt, flash and puff, and 58 is free. Fixed slots:
+sparks, embers, dirt, flash and puff, and 58 an air burst's falling chunk; none is free.
+Fixed slots:
 
 | Slots | Owner |
 |---|---|
@@ -423,15 +437,18 @@ sparks, embers, dirt, flash and puff, and 58 is free. Fixed slots:
 | 11 | air mine |
 | 12 | explosion core |
 | 13–15 | explosion debris |
+| 16 | an air burst's falling chunk |
 
 The VDP draws four sprites per scanline. `SPRITE FLICKER ON` makes the TI's vblank copy start
 one slot later each frame (all 32 slots in turn), so on an overloaded line every sprite,
 the helicopter included, is drawn on most frames and none is left invisible (an invisible
 mine or shell read as dying for no reason). Low slots show most often; lines with four or
-fewer sprites never flicker. `#sprite_shown` has one bit per slot (0–15), so an inactive
+fewer sprites never flicker. `#sprite_shown` has one bit per slot (0–15; slot 16 shares bit 0,
+which is free because the helicopter's slots 0 and 1 are drawn with `SPRITE` directly and
+never use the mask, and a test proves both halves), so an inactive
 actor's slot is hidden once and then costs a bit test.
 
-**Explosions** (`blast_draw`) are four sprites: a core and three clusters of three to eight
+**Explosions** (`blast_draw`) are four sprites (five in the air): a core and three clusters of three to eight
 separate pixels each, so they read as a spray of particles. Everything comes from ROM
 tables written by `assets/generate.py` (`BLAST_ROWS`), one row per two frames, indexed by
 `(blast_end − blast_timer) / 2`: the core's pattern, colour and rise, the debris' pattern
@@ -448,7 +465,10 @@ and colour, and each cluster's offset from the burst (stored +64). Six kinds:
 
 A big burst's core flashes white, turns yellow, opens into a ring that reddens and becomes
 gray smoke rising 12 px; its debris (white, then yellow, orange, red embers) is thrown on
-ballistic arcs up to 60 px out. In the air the debris falls on past the burst; on the ground
+ballistic arcs up to 60 px out. An air burst also drops a burning chunk with a trail of
+sparks straight down (slot 16, pattern 58), up to 120 px over its 36 frames
+(`blast_fall`, `blast_fpat`, `blast_fcol`; hidden once below the screen), so it reads as a
+burst in the sky rather than on the ground. In the air the debris falls on past the burst; on the ground
 it comes down at the burst's level and lies there. A small burst is a white star flash, dirt
 thrown up and falling back, then a dust puff. A tiny burst is a 5×5 puff that flashes white
 and fades through red to gray, with three sparks hopping up to 6 px out. A core-only kind
@@ -479,18 +499,25 @@ title and the results silence all four channels and clear effect state. No music
 The title centres the name (row 4) and RESCUE OPERATIONS (row 6), with the helicopter
 circling them clockwise at 2 px a frame on a 528-pixel loop (`title_heli`, x 8–247,
 y 8–79, clear of all text): banked and facing its way along the top (east) and bottom
-(west), in the front view down and up the sides, rotor turning. Four short lines of
-instructions follow (rows 10–15), then the difficulty on row 18, `1 EASY  2 MEDIUM  3 HARD`
-with the chosen one in brackets (`title_level`). Keys 1–3 pick it, or LEFT/RIGHT step it;
+(west), in the front view down and up the sides, rotor turning. Below them FREE 64 PEOPLE.
+FLY THEM HOME. (row 12), then the difficulty on row 15, `1 EASY  2 MEDIUM  3 HARD` with
+the chosen one in brackets drawn light red (characters 91 and 93 recoloured with
+`DEFINE COLOR` from `bracket_colors`; no other screen uses them, the crowd recolours its own
+cells in play and `menu_restore` resets the bottom third), so the pick stands out from the
+white text (`title_level`); there are no control instructions on the
+title (the README has them). Keys 1–3 pick the difficulty, or LEFT/RIGHT step it;
 `title_code` reads the stick as keys 20 and 21 so one edge test serves both, and a 3 that
 continues an 8-3 sequence is not a choice. The pick lasts from game to game (medium at
-power-on). FIRE launches (no digit); the credit line reads 2026 UNHUMAN AND AI C&C (the
-bottom third's font has no lower case). The results screen also continues with FIRE only.
+power-on). The credit line, 2026 UNHUMAN AND AI C&C (the bottom third's font has no lower
+case), is on row 21 and PRESS FIRE TO START on row 23: FIRE starts (no digit). The results
+screen also continues with FIRE only. It lists SKILL LEVEL (EASY, MEDIUM or HARD) on row 7,
+then PEOPLE SAVED, PEOPLE LOST and STRANDED on rows 9, 11 and 13, and BEST RESCUE on row
+15; a practice (838) game puts the small star after the skill level and the saved count.
 
 The hidden title sequence 838 shows one line, HELICOPTERS (1-9)?, and a digit 1–9 starts a
 practice game at the difficulty last picked; there is no way back from it. Normal games use
 three helicopters. Practice saved counts carry a small asterisk (character 60) and the best
-rescue keeps its marker; an unmarked run wins a tie. At most five spare icons show.
+rescue keeps its marker; an unmarked run wins a tie. At most four spare icons show.
 
 ## TI native kernels
 
@@ -517,7 +544,7 @@ the compiler's register cache (checked in the generated assembly).
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map, the star
   table, the shell arc and the explosion timelines, and writes `src/assets.bas` (play-time
   data, including the menu font) and `src/assets_boot.bas` (power-on uploads).
-- `tools/build.py` — generation, the 94 source-executing tests (once per `build.ps1 All`),
+- `tools/build.py` — generation, the 97 source-executing tests (once per `build.ps1 All`),
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
   its verification, budget checks, an even-address check on every indexed word table (from
   xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address

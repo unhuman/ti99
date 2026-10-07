@@ -13,7 +13,7 @@ hardware. A ColecoVision build is produced at `build/coleco/choplift.rom`.
 
 | Control | Action |
 |---|---|
-| `1` `2` `3` or LEFT/RIGHT at the title | Pick easy, medium or hard (shown in brackets; kept between games) |
+| `1` `2` `3` or LEFT/RIGHT at the title | Pick easy, medium or hard (shown in red brackets; kept between games) |
 | FIRE at the title | Start |
 | Joystick up/down | Climb/descend; holding DOWN builds descent speed |
 | Release DOWN | Stop descending; use short presses for a soft landing |
@@ -45,7 +45,8 @@ Holding DOWN speeds up the descent, and touching down fast crashes; the engine w
 high, pulsing whine while you are coming down too fast. Anything that hits you is drawn
 touching you first, and only what is drawn counts: the cabin, nose, skids and tail boom,
 not the rotor or the empty air around them. A crash is a burst of fire and sparks where you
-were hit; the burning wreck falls, bursts again on the ground and burns out, and only then,
+were hit; the burning wreck falls, flickering yellow and red, bursts again on the ground and
+burns down gradually to embers, and only then,
 with the screen clear, does the next helicopter appear on the pad. A crash loses everyone
 aboard, but the camps keep emptying while the wreck burns. Do not land on people or shoot
 through them.
@@ -71,11 +72,13 @@ level with them, and air mines come later and drift at half speed; hard is the r
 Medium is the game as it was before the levels existed.
 
 Everything that blows up bursts into sparks and smoke: tanks, barracks, jets, air mines and
-your helicopter. Every bomb, missile and shell bursts where it lands, and your shots leave a
+your helicopter; a burst in the sky also drops a burning chunk that falls away below it.
+Every bomb, missile and shell bursts where it lands, and your shots leave a
 tiny puff where they hit. When one hits a person the burst throws a spray of sparks and
 dirt; on bare ground with no target you see only its flash and smoke, so you can tell a
-miss from a hit. The top line shows SAVED, ABOARD and LOST, and on the right your **spare**
-helicopters (not counting the one you are flying). The mission ends when all 64 people are
+miss from a hit. The magenta band at the top counts, left to right, the people lost (red
+dot), on board (cyan) and saved (green), and the last box holds your **spare** helicopters
+(not counting the one you are flying). The mission ends when all 64 people are
 saved or lost, or the last helicopter is destroyed. There is no fuel.
 
 When more than four sprites share a scanline they flicker in turn (sprite flicker is on), so
@@ -84,9 +87,13 @@ can strike. The helicopter holds its place on screen while the scenery scrolls p
 8-pixel steps, and sprites move on the same frame as the scenery, so it does not shake or
 jitter. The ground is dark blue and the landing pad gray with a white rim and an H.
 
+The mission summary names the skill level you played, with your saved, lost and stranded
+counts and the session's best rescue.
+
 For practice, type **838** at the title and answer **1–9** for the number of helicopters.
-Practice saved counts carry a small asterisk, and the best rescue keeps its marker. Up to
-five spare icons show.
+The summary marks a practice game with a small asterisk after its skill level and saved
+count, and the best rescue keeps its marker. Up to
+four spare icons show.
 
 ## Build
 
@@ -111,8 +118,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,198 / 24,336 B fixed (+ 7,140 and 4,634 / 8,190 B banks) | 806 / 7,854 B |
-| ColecoVision | 27,542 / 32,768 B ROM | 808 / 814 B |
+| TI-99/4A | 22,370 / 24,336 B fixed (+ 7,654 and 4,842 / 8,190 B banks) | 806 / 7,854 B |
+| ColecoVision | 28,283 / 32,768 B ROM | 808 / 814 B |
 
 ## Speed
 
@@ -135,7 +142,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   two-colours-per-row limit), world map, star table and shell arc; writes `src/assets.bas`
   (play-time data) and `src/assets_boot.bas` (art uploaded once at power-on, in its own TI
   bank).
-- `tools/check.py`: 94 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 97 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,
