@@ -46,13 +46,13 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,370 | 24,336 | 1,966 free |
-| TI fixed area, unoptimised | 24,146 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI fixed area (after short branches) | 22,478 | 24,336 | 1,858 free |
+| TI fixed area, unoptimised | 24,266 | 24,574 | xas99's first pass must stay below >FFFE |
 | TI data bank (`BANK 1`) | 7,654 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
 | TI boot bank (`BANK 2`) | 4,842 | 8,190 | art uploaded only at power-on |
-| TI RAM | 806 | 7,854 | |
-| ColecoVision ROM | 28,283 | 32,768 | |
-| ColecoVision RAM | 808 | 814 | nearly full; see `#vaddr` |
+| TI RAM | 810 | 7,854 | |
+| ColecoVision ROM | 28,379 | 32,768 | |
+| ColecoVision RAM | 811 | 814 | nearly full; see `#vaddr` |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
 files. `assets.bas` (crash flames, map, crowd glyphs and palettes, fire frames, arcs, the
@@ -79,7 +79,8 @@ the jet, missile and shell moves share `#bullet_step`. An explosion's whole stat
 `#blast_x`, `blast_y`, `blast_timer` and `blast_end` (its kind); `blast_draw` steps through
 its debris rows with `di`, idle once `draw_actors`' shot loop is done, and a small burst
 takes its position in the scratch `#ax`/`ay`. `hide_all` counts with `ini`; dropping the
-camp indicators freed `hc`. Six bytes are left.
+camp indicators freed `hc`. The rotor's chop costs three: `chop_period`, `chop_frame` and
+`sound_busy`. Three bytes are left.
 
 ## Research and adaptation
 
@@ -422,8 +423,8 @@ a whole crowd costs no sprite slots, runners included.
 with two rotor beats each and level or banked poses; side views alternate cross and diagonal
 tail-rotor blades. Main and tail rotors share a four-frame beat that never skips both poses on
 a slow update. There are 64 sprite patterns; 13–14 are the crash flames, 18–19 the
-explosion's fireball and ring, 47–49 the missiles and bomb, 50–57 the explosion's smoke,
-sparks, embers, dirt, flash and puff, and 58 an air burst's falling chunk; none is free.
+explosion's fireball and ring, 47–49 the missiles and bomb, 51–57 the explosion's sparks,
+embers, dirt, flash and puff, and 58 an air burst's falling chunk; 50 is free.
 Fixed slots:
 
 | Slots | Owner |
@@ -463,15 +464,16 @@ and colour, and each cluster's offset from the burst (stored +64). Six kinds:
 | Tiny burst | 124 | 12 | the player's sideways shots hitting a person |
 | Tiny, core only | 136 | 12 | the same on bare ground |
 
-A big burst's core flashes white, turns yellow, opens into a ring that reddens and becomes
-gray smoke rising 12 px; its debris (white, then yellow, orange, red embers) is thrown on
+A big burst's core flashes white, turns yellow, opens into a ring that reddens to dark red and
+fades out where it burst; nothing rises (a gray smoke puff rising 12 px once ended each
+burst and read as a second, white explosion popping up at the end). Its debris (white, then yellow, orange, red embers) is thrown on
 ballistic arcs up to 60 px out. An air burst also drops a burning chunk with a trail of
 sparks straight down (slot 16, pattern 58), up to 120 px over its 36 frames
 (`blast_fall`, `blast_fpat`, `blast_fcol`; hidden once below the screen), so it reads as a
 burst in the sky rather than on the ground. In the air the debris falls on past the burst; on the ground
 it comes down at the burst's level and lies there. A small burst is a white star flash, dirt
-thrown up and falling back, then a dust puff. A tiny burst is a 5×5 puff that flashes white
-and fades through red to gray, with three sparks hopping up to 6 px out. A core-only kind
+thrown up and falling back, the flash fading through yellow and red to dark red. A tiny
+burst is a 5×5 puff that flashes white and fades through red to dark red, with three sparks hopping up to 6 px out. A core-only kind
 has the same core rows with debris pattern 0, which `blast_draw` reads as "no spray" and
 hides slots 13–15 (no debris art uses pattern 0; the generator asserts it). A burst places its
 own sprites; a particle below the screen is hidden rather than given y=208 (which would end
@@ -483,12 +485,19 @@ a hit's burst outranks the same size on bare ground, and a tiny core only replac
 
 ## Sound
 
-Channel 0 carries the engine: quiet idle on the pad, stronger alternating airborne pulses, a
-higher pitch under horizontal load, and a louder pulsing whine while the descent is too fast to
-land on. Channel 1 plays a short gun sweep or a longer falling
+Channel 0 carries the engine: a steady hum, quiet on the pad and higher under horizontal
+load, and a louder pulsing whine while the descent is too fast to land on. **The rotor's chop**
+is on channel 3: low white noise (type 6) restarted on each beat and dying away frame by frame
+(`chop_air`, quieter `chop_ground` on the pad). The beat quickens with speed: every 12
+frames idling on the pad (5 Hz), 9 hovering, then 8, 7 and 6 (10 Hz) as horizontal speed
+builds (`chop_period`, set by `sound_tick`). The vblank handler (`fire_control`) times it,
+so the beat stays steady whatever the update rate, and writes only single bytes (the noise
+type, then volumes); `sound_tick` raises `sound_busy` while it writes, so the handler never
+lands between the two bytes of a main-loop frequency write (`sn76489_freq` writes them with
+interrupts on). `silence` clears `chop_period` before it quiets the chip. Channel 1 plays a short gun sweep or a longer falling
 bomb whistle; when free it carries a nearby jet's distance-dependent tone or the air mine's
 alternating warning. Channel 2 carries rising boarding and falling unloading chirps and a
-three-note delivery chime. Channel 3 carries periodic rotor noise, overridden by tank fire,
+three-note delivery chime. Channel 3's chop gives way to tank fire,
 missile launches, explosions (which win over launches; a small burst is a shorter, quieter
 crack and a tiny one a soft tick, neither cutting a louder one short) and an eight-frame squish when the helicopter
 lands on a person. Effects expire on frame deltas; pause, new helicopters, the
@@ -544,7 +553,7 @@ the compiler's register cache (checked in the generated assembly).
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map, the star
   table, the shell arc and the explosion timelines, and writes `src/assets.bas` (play-time
   data, including the menu font) and `src/assets_boot.bas` (power-on uploads).
-- `tools/build.py` — generation, the 97 source-executing tests (once per `build.ps1 All`),
+- `tools/build.py` — generation, the 98 source-executing tests (once per `build.ps1 All`),
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
   its verification, budget checks, an even-address check on every indexed word table (from
   xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address

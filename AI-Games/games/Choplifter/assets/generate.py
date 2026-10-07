@@ -457,7 +457,9 @@ SPRITES[49]=a
 
 # Explosions (blast_draw): a core sprite and three debris clusters, each a
 # few separate pixels, so four sprites read as a spray of particles. 18/19:
-# the fireball, then its broken, spreading ring; 50 smoke; 51-53 sparks
+# the fireball, then its broken, spreading ring; 50 is free (a rising gray
+# smoke puff once ended each burst, and read as a second, white explosion
+# popping up); 51-53 sparks
 # spreading apart (tight, wider, widest); 54 embers; 55 dirt clods; 56 the
 # small burst's flash; 57 the tiny burst's puff; 58 an air burst's chunk
 # falling with a trail of sparks above it. No sprite pattern is free.
@@ -477,10 +479,6 @@ BLAST_ART={
                 '..####...####...','.###.......###..','..##........##..','.###.........##.',
                 '..##........###.','.###.......##...','..####....####..','...#.######.#...',
                 '....#..##..#....','......#..#......','................','................']),
- 'smoke':bitmap(['................','................','......#.#.......','....#.###.#.....',
-                 '.....#####......','...#.#.#.#.#....','....#######.....','...#.#.#.#.#....',
-                 '....#.###.#.....','......#.#.......','................','................',
-                 '................','................','................','................']),
  'spark1':dots([(7,7),(8,7),(7,8),(8,8),(6,6),(9,6),(6,9),(9,9)]),
  'spark2':dots([(7,7),(8,8),(4,6),(11,5),(5,10),(10,11),(7,3),(9,12)]),
  'spark3':dots([(2,7),(13,6),(7,1),(8,13),(4,3),(11,11)]),
@@ -499,7 +497,7 @@ BLAST_ART={
                 '.......#........','......#.#.......','................','................',
                 '................','................','................','................']),
 }
-BLAST_SLOT={'fire':18,'ring':19,'smoke':50,'spark1':51,'spark2':52,'spark3':53,
+BLAST_SLOT={'fire':18,'ring':19,'spark1':51,'spark2':52,'spark3':53,
             'ember':54,'dirt':55,'flash':56,'puff':57,'drop':58}
 for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
 
@@ -510,23 +508,25 @@ for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
 # a smaller blast_end is a bigger burst, which a smaller one never cuts
 # short. A small or tiny burst that hits something (a person) throws its
 # spray of debris; one on bare ground with no target plays only its core,
-# the same flash and smoke without the spray. Per row: the core's pattern,
-# colour and rise (smoke drifts up), the debris clusters' pattern and colour
+# the same flash fading out, without the spray. Per row: the core's pattern,
+# colour and rise (all 0 now: nothing rises), the debris clusters' pattern and colour
 # (pattern 0: none, blast_draw hides them), and each of the three clusters'
 # offset from the burst. Debris flies ballistically; on the ground it comes
 # down at the burst's level and lies there. Offsets are stored +64.
 BLAST_KINDS=(('air',36,18),('ground',72,18),('small',92,10),('small_core',112,10),
              ('tiny',124,6),('tiny_core',136,6))
+# Every core fades out where it burst, through red to dark red, then (big
+# bursts) is gone (colour 0) while the last embers fall: nothing rises.
 BIG_CORE=([('fire',15)]*2+[('fire',11)]*2+[('ring',11)]*2+[('ring',10)]*2
-          +[('ring',9)]*2+[('ring',8)]*2+[('smoke',14)]*6)
-BIG_RISE=[0]*12+[-2,-4,-6,-8,-10,-12]
+          +[('ring',9)]*2+[('ring',8)]*2+[('ring',6)]*4+[('ring',0)]*2)
+BIG_RISE=[0]*18
 BIG_DEBRIS=([('spark1',15)]*4+[('spark2',11)]*4+[('spark2',10)]*4+[('spark3',9)]*3
             +[('ember',8)]*2+[('ember',6)])
-SMALL_CORE=[('flash',15)]*2+[('flash',11)]*2+[('flash',9)]*2+[('smoke',14)]*4
-SMALL_RISE=[0]*6+[-1,-2,-3,-4]
+SMALL_CORE=[('flash',15)]*2+[('flash',11)]*2+[('flash',9)]*2+[('flash',8)]*2+[('flash',6)]*2
+SMALL_RISE=[0]*10
 SMALL_DEBRIS=[('spark1',15)]*2+[('dirt',11)]*3+[('dirt',10)]*3+[('ember',6)]*2
-TINY_CORE=[('puff',15),('puff',11),('puff',9),('puff',8),('puff',14),('puff',14)]
-TINY_RISE=[0,0,0,-1,-2,-3]
+TINY_CORE=[('puff',15),('puff',11),('puff',9),('puff',8),('puff',6),('puff',6)]
+TINY_RISE=[0]*6
 TINY_DEBRIS=[('ember',15),('ember',11),('ember',11),('ember',9),('ember',8),('ember',6)]
 BIG_THROW=((-1.6,-1.8),(0.3,-2.4),(1.7,-1.4))
 SMALL_THROW=((-0.9,-1.6),(0.2,-2.0),(1.0,-1.4))

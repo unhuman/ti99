@@ -335,10 +335,18 @@ class Basic:
             if part.startswith('GOTO '):return ('goto',part[5:].strip())
             if part.startswith('GOSUB '):self.call(part[6:]);continue
             if part.startswith('SOUND '):
-                ch,pitch,volume=[self.expr(x) for x in part[6:].split(',')]
+                # SOUND ch,pitch,vol; an empty or missing field leaves that
+                # register alone (SOUND 3,6 sets the noise type only, SOUND 3,,v
+                # the volume only: single-byte writes).
+                args=part[6:].split(',')
+                if len(args) not in (2,3):raise ValueError('Invalid SOUND '+part)
+                ch=self.expr(args[0]);old=self.sounds.get(ch,(0,0))
+                pitch=self.expr(args[1]) if args[1].strip() else old[0]
+                volume=self.expr(args[2]) if len(args)==3 else old[1]
                 if not 0<=ch<=3 or not 0<=volume<=15:raise ValueError('Invalid SOUND '+part)
                 if not 0<=pitch<=(7 if ch==3 else 1023):raise ValueError('Invalid divisor '+part)
-                self.sounds[ch]=(pitch,volume);self.sound_writes.append((ch,pitch,volume))
+                self.sounds[ch]=(pitch,volume)
+                self.sound_writes.append((ch,pitch if args[1].strip() else None,volume if len(args)==3 else None))
                 continue
             if part.startswith('DEFINE VRAM '):
                 addr,count,origin=part[12:].split(',',2)
@@ -1637,7 +1645,12 @@ class Tests(unittest.TestCase):
             b.a['person_state'][1]=2;b.a['#person_x'][1]=172
             b.call('crowd_landing');self.assertEqual(b.v['noise_kind'],4)
             for _ in range(9//dt+1):b.call('sound_tick')
-            self.assertEqual((b.v['noise_timer'],b.sounds[3][1]),(0,0))
+            self.assertEqual(b.v['noise_timer'],0)
+            # The squish is over: on the next video frame the rotor's chop
+            # (idling on the pad) has the noise channel again.
+            b.sound_writes=[];b.call('fire_control')
+            self.assertEqual([(c,v) for c,p,v in b.sound_writes if v is not None],
+                             [(3,b.a['chop_ground'][b.v['chop_frame']])])
         b=self.state();b.v['ep']=1;b.call('lose_person');self.assertEqual(b.v.get('noise_kind',0),0)
         b=self.state();b.v.update(noise_kind=3,noise_timer=20);b.call('squish_sound')
         self.assertEqual((b.v['noise_kind'],b.v['noise_timer']),(3,20))
@@ -2506,6 +2519,51 @@ class Tests(unittest.TestCase):
             sprayed=rows[(e-2*n)//2:(e-2*n)//2+n];bare=rows[(c-2*m)//2:(c-2*m)//2+m]
             self.assertEqual([r[:3] for r in sprayed],[r[:3] for r in bare])
             self.assertTrue(all(r[3] for r in sprayed) and not any(r[3] for r in bare))
+
+    def test_rotor_chop_is_steady_and_quickens_with_speed(self):
+        # The rotor's chop: low white noise restarted every chop_period video
+        # frames and dying away, timed by the vblank handler so the beat does
+        # not depend on the update rate. Slowest idling on the pad, quicker
+        # hovering, quicker still cruising, fastest at full speed.
+        def period(hy,hspeed,crash=0):
+            b=self.state();b.v.update(hy=hy,hspeed=hspeed,crash_timer=crash,dt=2,fall_speed=0)
+            b.call('sound_tick');return b.v['chop_period'],b.v['sound_busy']
+        periods=[period(153,0)[0],period(100,0)[0]]+[period(100,h)[0] for h in (1,2,3)]
+        self.assertEqual(periods,[12,9,8,7,6])
+        self.assertEqual(period(100,0)[1],0)                 # the fence is lifted again
+        self.assertEqual(period(100,0,crash=50)[0],0)         # no rotor in a crash
+        # Frame by frame in the vblank handler: a noise restart on each beat,
+        # then volumes falling away; quieter on the pad.
+        import generate as art
+        def frames(hy,chop,count,**v):
+            b=self.state();b.v.update(hy=hy,chop_period=chop,chop_frame=chop-1,fire_gate=2,noise_timer=0)
+            b.v.update(v);b.sound_writes=[]
+            for _ in range(count):b.call('fire_control')
+            return b.sound_writes
+        for hy,table in ((100,'chop_air'),(153,'chop_ground')):
+            for chop in (6,9,12):
+                writes=frames(hy,chop,2*chop)
+                volumes=[v for c,p,v in writes if c==3 and v is not None]
+                expected=self.state().a[table][:chop]*2
+                self.assertEqual(volumes,expected,(hy,chop))
+                self.assertEqual([w for w in writes if w[1] is not None],[(3,6,None)]*2)
+                self.assertEqual({c for c,_,_ in writes},{3})   # only the noise channel
+        air=self.state().a['chop_air'];ground=self.state().a['chop_ground']
+        self.assertEqual(air,sorted(air,reverse=True));self.assertGreater(air[0],ground[0])
+        # Never while a noise effect plays, nor while sound_tick is writing,
+        # nor with no rotor.
+        self.assertEqual(frames(100,9,20,noise_timer=10),[])
+        self.assertEqual(frames(100,9,20,sound_busy=1),[])
+        self.assertEqual(frames(100,0,20),[])
+        # Silence stops the chop before it quiets the chip.
+        silence=self.state().r['silence']
+        self.assertLess(silence.index('chop_period=0'),silence.index('SOUND 3,0,0'))
+        # The engine hum is steady (the chop carries the rhythm).
+        hums=set()
+        for beat in (0,1):
+            b=self.state();b.v.update(hy=100,hspeed=2,crash_timer=0,dt=2,rotor_phase=beat,anim=beat*4)
+            b.call('sound_tick');hums.add(b.sounds[0])
+        self.assertEqual(len(hums),1)
 
     def test_hud_band_capsules_in_the_requested_order(self):
         # Rows 0-2 are a magenta band with black capsules: left to right the

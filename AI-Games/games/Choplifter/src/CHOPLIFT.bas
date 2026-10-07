@@ -329,6 +329,27 @@ RETURN
 fire_control:
 ' Vblank samples every video frame, even while scenery is being composed.
 ' Producer counter / consumer acknowledgement preserves taps between updates.
+' First the rotor's chop (chop_period frames a beat, set by sound_tick; 0 for
+' none), timed here every video frame so the beat stays steady however long
+' an update takes: low white noise restarted on each beat, its volume falling
+' away frame by frame (chop_air on the wing, chop_ground idling on the pad).
+' Volume and noise-type writes are single bytes, and sound_tick fences its
+' own writes with sound_busy, so this never lands between the two bytes of a
+' main-loop frequency write. A noise effect (noise_timer) has the channel.
+IF chop_period THEN
+    chop_frame=chop_frame+1
+    IF chop_frame >= chop_period THEN chop_frame=0
+    IF noise_timer = 0 THEN
+        IF sound_busy = 0 THEN
+            IF chop_frame = 0 THEN SOUND 3,6
+            IF hy = LANDED THEN
+                SOUND 3,,chop_ground(chop_frame)
+            ELSE
+                SOUND 3,,chop_air(chop_frame)
+            END IF
+        END IF
+    END IF
+END IF
 IF fire_gate = 2 THEN RETURN
 ' SPACE (TI) or keypad * (ColecoVision) turns the helicopter one step per
 ' press, exactly as each beat of a held FIRE does; in the air only.
@@ -2525,16 +2546,23 @@ IF blast_timer > dt THEN blast_timer=blast_timer-dt ELSE blast_timer=0
 IF gun_timer > dt THEN gun_timer=gun_timer-dt ELSE gun_timer=0
 IF chime_timer > dt THEN chime_timer=chime_timer-dt ELSE chime_timer=0
 IF noise_timer > dt THEN noise_timer=noise_timer-dt ELSE noise_timer=0
-' Tone 0: engine load and blade pulse; quiet idle on the pad.
+' fire_control writes the rotor's chop between video frames: keep it off the
+' chip while this routine writes it.
+sound_busy=1
+' Tone 0: a steady engine hum, higher under horizontal load and quiet on the
+' pad. The rotor's chop on the noise channel quickens with speed: a beat every
+' 12 frames idling on the pad, 9 hovering, 8, 7 and 6 cruising faster.
 IF crash_timer THEN
+    chop_period=0
     SOUND 0,0,0
 ELSE
     #sfx_pitch=920
     sfx_volume=2
+    chop_period=12
     IF hy < LANDED THEN
         #sfx_pitch=820-hspeed*48
-        sfx_volume=5
-        IF rotor_phase THEN sfx_volume=3
+        sfx_volume=4
+        chop_period=9-hspeed
         ' Descending too fast to land on: the engine strains with a pulsing,
         ' higher whine (a smaller divisor is a higher note).
         IF fall_speed > 1 THEN
@@ -2549,6 +2577,7 @@ END IF
 GOSUB weapon_sound
 GOSUB rescue_sound
 GOSUB noise_sound
+sound_busy=0
 RETURN
 
 weapon_sound:
@@ -2620,11 +2649,9 @@ IF noise_timer THEN
     END IF
     RETURN
 END IF
-SOUND 3,0,0
-IF crash_timer THEN RETURN
-IF hy < LANDED THEN
-    IF rotor_phase THEN SOUND 3,2,4 ELSE SOUND 3,2,2
-END IF
+' No effect playing: the rotor's chop has the channel (fire_control); with no
+' rotor (a crash) it is silent.
+IF chop_period = 0 THEN SOUND 3,0,0
 RETURN
 
 squish_sound:
@@ -2637,6 +2664,8 @@ SOUND 3,4,12
 RETURN
 
 silence:
+' The chop first, so the vblank handler cannot sound it again after this.
+chop_period=0
 fire_gate=2
 SOUND 0,0,0
 SOUND 1,0,0
@@ -2766,6 +2795,14 @@ RETURN
 
 practice_star:
 DATA BYTE 80,32,248,32,80,0,0,0
+
+' The rotor's chop, by frame of its beat (fire_control reads them in the
+' vblank handler, so they stay in the fixed area): a sharp attack dying away,
+' quieter idling on the pad. A short beat (fast flight) cuts the decay short.
+chop_air:
+DATA BYTE 12,9,7,5,4,3,2,2,1,1,1,1
+chop_ground:
+DATA BYTE 7,5,4,3,2,2,1,1,1,1,1,1
 
 ' One bit per world-actor sprite slot (0-16), for #sprite_shown. Slot 16
 ' (an air burst's falling chunk) shares bit 0 with slot 0: the helicopter's

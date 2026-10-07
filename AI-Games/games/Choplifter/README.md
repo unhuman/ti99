@@ -41,8 +41,9 @@ door, and some stop on the dark ground beside it to wave at you first. The last 
 always does. Lift off with UP before moving sideways on the ground. Weapons and turning do
 not work on the ground.
 
-Holding DOWN speeds up the descent, and touching down fast crashes; the engine warns with a
-high, pulsing whine while you are coming down too fast. Anything that hits you is drawn
+The rotor chops quicker the faster you fly, slower when hovering and slowest idling on the
+pad. Holding DOWN speeds up the descent, and touching down fast crashes; the engine warns with
+a high, pulsing whine while you are coming down too fast. Anything that hits you is drawn
 touching you first, and only what is drawn counts: the cabin, nose, skids and tail boom,
 not the rotor or the empty air around them. A crash is a burst of fire and sparks where you
 were hit; the burning wreck falls, flickering yellow and red, bursts again on the ground and
@@ -118,8 +119,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,370 / 24,336 B fixed (+ 7,654 and 4,842 / 8,190 B banks) | 806 / 7,854 B |
-| ColecoVision | 28,283 / 32,768 B ROM | 808 / 814 B |
+| TI-99/4A | 22,478 / 24,336 B fixed (+ 7,654 and 4,842 / 8,190 B banks) | 810 / 7,854 B |
+| ColecoVision | 28,379 / 32,768 B ROM | 811 / 814 B |
 
 ## Speed
 
@@ -142,7 +143,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   two-colours-per-row limit), world map, star table and shell arc; writes `src/assets.bas`
   (play-time data) and `src/assets_boot.bas` (art uploaded once at power-on, in its own TI
   bank).
-- `tools/check.py`: 97 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 98 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,

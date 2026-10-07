@@ -140,6 +140,15 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
     offsets belong in bare literals from the start.
   - **`tools/bigconst.py` sweeps every game for it** and exits non-zero if it finds one. Run it after
     any layout change.
+- **A `SOUND` IN AN `ON FRAME` HANDLER CAN LAND BETWEEN THE TWO BYTES OF A MAIN-LOOP
+  FREQUENCY WRITE.** On the TI, `sn76489_freq` writes the latch-and-low-nibble byte and then
+  the high byte with interrupts on; a byte the vblank handler writes in between re-latches the
+  chip, so the main loop's second byte lands in the wrong register (a wrong pitch and a stray
+  volume until the next write). Timing a sound in the handler is still the way to a steady
+  beat, since the main loop's own rate wanders. Choplifter's rotor chop does it safely: the handler
+  writes only single-byte registers (`SOUND 3,6` sets the noise type alone, `SOUND 3,,v` the
+  volume alone, both supported syntax), skips while the main loop's sound routine raises a
+  `sound_busy` fence, and `silence` clears the handler's state before it quiets the chip.
 - **Every sound effect needs an explicit note-off.** `SOUND ch,f,v` latches; with no `SOUND ch,f,0`
   the last tone sustains forever ("sticky" audio). Two `SOUND` calls on the *same* channel back to
   back just cancel the first — a two-note effect needs two channels. Keep a per-channel decay
