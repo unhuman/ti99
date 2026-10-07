@@ -493,6 +493,31 @@ Every game is built the same way — that consistency is the point.
   before any frame showed it: "something shot me down that didn't exist". Move a new
   projectile from the next update on (so it is drawn at its muzzle first), and keep it
   harmless for its first few frames when it starts inside or beside the target.
+  - **The same holds for the hit itself.** A hit found in the update before any frame shows
+    the two touching replaces the player with an explosion while the threat still looks a few
+    pixels away, and players report it as "explodes early" or "the hit box is too big" even
+    when the boxes are exact. Choplifter marks the hit (`crash_pending`) and crashes at the
+    top of the next update, so one frame shows the contact. And test against boxes cut from
+    the art per facing (cabin plus tail boom, a jet's fuselage plus its wings), checked
+    pixel by pixel against the sprite data, never a radius around the sprite's centre.
+- **A SPRITE THE CAMERA FOLLOWS IN 8-PIXEL STEPS SAWTOOTHS ON SCREEN, AND IT LOOKS LIKE THE
+  SPRITE IS JERKING.** Character scrolling moves the view 8 px at a time; a player sprite
+  drawn at its true x creeps 0-7 px ahead and jumps back 8 at every step. Choplifter's
+  report: "it's a sprite, so why is it moving left and right during scrolling?" Draw it
+  (and hit it, and fire from it) at a visible x rounded down to the camera's step while the
+  camera follows, and at its true x where the camera has stopped at a world end; the scenery
+  then steps past a steady sprite. Keep the physics on the true x.
+- **A WORLD LIMIT MUST BE CHECKED AGAINST THE BOUNDARY AS DRAWN ON THE ACTOR'S PLANE.**
+  Choplifter's DMZ fence is a perspective stamp whose near end leans up to 32 px depending
+  on where it is on screen; tanks drive on the near plane and were clamped to the fence's
+  anchor, so they parked half across it. Derive the limit from the stamp's ink on the
+  actor's rows at the worst lean (its test reads the fence art), not from the anchor.
+- **A SPAWN POINT CLAMPED TO A WORLD LIMIT CAN LAND IN VIEW, ON TOP OF THE PLAYER.**
+  Choplifter's air mine spawned just beyond the view's east edge, clamped to the fence; near
+  the fence the clamp put it on screen, at the top, where a helicopter flying high could be
+  touching it the moment it appeared: "it's tricky to explode for no reason". Pick the
+  spawn so it is out of view after clamping (the other edge, if need be), and test every
+  camera position.
 - **ON A CROWDED SCANLINE, GIVE WHATEVER CAN KILL THE PLAYER THE SLOTS RIGHT AFTER THE
   PLAYER.** The VDP draws four sprites per line, lowest slot first. Choplifter's tank shell sat
   in slot 8, behind the tank's two halves, so with the helicopter landed beside a tank the shell

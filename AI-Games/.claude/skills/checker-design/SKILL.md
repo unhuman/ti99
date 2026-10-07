@@ -171,3 +171,17 @@ because every new gate and test was appended to a serial list. Timed
   fit and clips the right edge. A two-pixel detail does not survive eyeballing a 4× crop. Print the
   RGB at a computed coordinate, or simulate the draw from the data and print the resulting
   character codes.
+
+- **A MUTATION THAT WRAPS A COUNTER CAN LAND BACK ON THE GOOD ANSWER.** Choplifter's
+  hold-to-turn test lowered the turn threshold from 18 to 12 frames and expected a held
+  tap of 15 frames to turn. It did not "turn": after the first turn the 8-bit hold counter
+  went below zero, wrapped to 253, turned on every remaining frame, and four turns brought
+  the facing back to where it started. The test reported the mutation as harmless. Put a
+  mutation just past the boundary it tests (16 at a 17-frame tap) so it makes exactly one
+  difference, and check the state it should change, not only the final one.
+- **WHEN A TEST HARNESS SETS AN INPUT THAT THE GAME DERIVES ANOTHER VALUE FROM, DERIVE IT IN
+  THE HARNESS TOO, BUT ONLY FOR THE TEST'S WRITES.** Choplifter's tests place the helicopter
+  by writing `#hx`; the game now draws and hits at a derived visible x, `#hv`. The harness's
+  variable store updates `#hv` whenever a TEST writes `#hx`, while the interpreter's own
+  assignments bypass that hook, so the game's derivation still runs and has its own test.
+  Without the bypass, the harness would mask a broken derivation everywhere at once.

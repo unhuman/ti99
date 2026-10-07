@@ -1,7 +1,7 @@
 # Choplifter — TI-99/4A / CVBasic
 
-Current-state design. History is in git; numbers below are from the latest build and
-benchmark run (2026-10-06).
+Current-state design. History is in git; sizes below are from the latest build
+(2026-10-07); full-loop speeds were re-measured the same day, per-routine costs on 2026-10-06.
 
 ## Performance budget
 
@@ -15,9 +15,9 @@ benchmark run (2026-10-06).
 
   | Situation | Original | Now |
   |---|---:|---:|
-  | Cruising over open terrain | 160 (12/s) | 96 (**20/s**) |
-  | Over a settled crowd with tank, jet, air mine and shots | 256 (7.5/s) | 152 (**12.6/s**) |
-  | Two camps evacuating at once (32 walkers in view) | 380 (5/s) | 191 (**10/s**) |
+  | Cruising over open terrain | 160 (12/s) | 95 (**20/s**) |
+  | Over a settled crowd with tank, jet, air mine and shots | 256 (7.5/s) | 154 (**12.5/s**) |
+  | Two camps evacuating at once (32 walkers in view) | 380 (5/s) | 192 (**10/s**) |
 
 - **Cost model.** One video frame buys only about 1,300–1,500 instructions of compiled
   CVBasic (code runs from the 8-bit 32K expansion). Per-call costs from
@@ -26,15 +26,18 @@ benchmark run (2026-10-06).
   for 32 walkers 1.56, sprites with every actor on 0.78 / all off 0.34, enemies and weapons
   0.53, sound + rotor + pause input + flight 0.34. A scrolling update costs whole frames:
   its synchronised WAIT rounds the work up.
-- **Hardware sprites.** At most 13 world sprites, each in a fixed slot (*Sprites* below),
+- **Hardware sprites.** At most 16 world sprites, each in a fixed slot (*Sprites* below),
   with CVBasic's `SPRITE FLICKER ON`: on a scanline with more than four, every sprite takes
   its turn, the helicopter included. Tanks run on their own plane below the crowd row, so a
-  landed helicopter never shares a scanline with them.
+  landed helicopter never shares a scanline with them. An explosion is four sprites placed
+  from ROM tables, with no per-particle RAM or arithmetic beyond an index.
 - **VDP work per scrolling update.** One WAIT, then rows 17–20 (128 bytes, back to back),
   then the flag and the blown-out barracks' row-19 overlays, then rows 21–22 (64 bytes) and
   the fence stamps. Row 23 is
   static. Stars write 14–28 cells, and none while the camera is still. No VDP reads, no
-  GCHAR, no COINC; collisions use world coordinates.
+  GCHAR, no COINC; collisions use world coordinates and boxes cut to the drawn shapes
+  (*Enemies*). The VDP's sprite-coincidence flag is not used: it is one bit for every pair
+  of sprites and is a frame behind the update.
 - **TI native kernels** (each with a portable BASIC twin used by ColecoVision and tested
   against it): star field, crowd walking, moving-crowd compositor, crowd colour upload,
   settled-crowd scan and row copy. See *TI native kernels*.
@@ -43,21 +46,26 @@ benchmark run (2026-10-06).
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,028 | 24,336 | 2,308 free |
-| TI fixed area, unoptimised | 23,760 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 4,886 | 8,190 | play-time data, menu font; title, setup and results code |
+| TI fixed area (after short branches) | 22,072 | 24,336 | 2,264 free |
+| TI fixed area, unoptimised | 23,808 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 6,774 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
 | TI boot bank (`BANK 2`) | 4,634 | 8,190 | art uploaded only at power-on |
-| TI RAM | 798 | 7,854 | |
-| ColecoVision ROM | 25,622 | 32,768 | |
-| ColecoVision RAM | 802 | 814 | nearly full; see `#vaddr` |
+| TI RAM | 806 | 7,854 | |
+| ColecoVision ROM | 27,120 | 32,768 | |
+| ColecoVision RAM | 808 | 814 | nearly full; see `#vaddr` |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
-files. `assets.bas` (crash flames, map, crowd glyphs and palettes, fire frames, arcs, menu
-font) goes into the data bank, which start-up selects for good. `assets_boot.bas` (all 64
-sprites, the scenery characters and colours, waiting people, stars) goes into the boot bank,
-which `boot:` selects only around those uploads. With the boot-only art out of it, the data
-bank also holds the cold code: the title (and its helicopter), the 838 setup and the
-results. ColecoVision builds the same source unbanked.
+files. `assets.bas` (crash flames, map, crowd glyphs and palettes, fire frames, arcs, the
+explosion timelines, menu font) goes into the data bank, which start-up selects for good.
+`assets_boot.bas` (all 64 sprites, the scenery characters and colours, waiting people,
+stars) goes into the boot bank, which `boot:` selects only around those uploads. With the
+boot-only art out of it, the data bank also holds the enemy and hit-box tables and the cold
+code: the crash routines (`crash`, `crash_tick`, the burst triggers and `crash_draw`, which
+run only after a crash or a hit), the title (and its helicopter), the 838 setup and the
+results. The crash routines moved there when the explosions, difficulty levels and new
+collision code pushed the unoptimised fixed image past >FFFE; code in the data bank runs
+at the same speed, since bank 1 never leaves the window during play. ColecoVision builds
+the same source unbanked.
 
 `tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (about 425 branches,
 1.7 KB saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
@@ -67,7 +75,11 @@ table (all white on black) is filled at run time from the idle crowd pixel buffe
 VPOKE address used by every routine that computes an address and writes it immediately,
 never across a GOSUB. The tank's aim reuses `#distance`, the air mine's target `#ax`
 (scratch results of `distance_x`), the pause its frame counters from the main loop, and
-the jet, missile and shell moves share `#bullet_step`.
+the jet, missile and shell moves share `#bullet_step`. An explosion's whole state is
+`#blast_x`, `blast_y`, `blast_timer` and `blast_end` (its kind); `blast_draw` steps through
+its debris rows with `di`, idle once `draw_actors`' shot loop is done, and a small burst
+takes its position in the scratch `#ax`/`ay`. `hide_all` counts with `ini`; dropping the
+camp indicators freed `hc`. Six bytes are left.
 
 ## Research and adaptation
 
@@ -104,23 +116,26 @@ airborne mines are small, slow, homing objects in the footage.
 
 This is new code and new pixel art, not a conversion. TI adaptations: an eight-screen world,
 eight-pixel scenery scrolling, character-composited crowds that also board as characters,
-up to two tanks, one jet and one air mine, a single fire/turn button, gravity instead of a
-fuel limit, and bombs for tanks but strafing for everything else. The jets'
-bounded three-pass route and the shells' arc are adaptations, not claims of identical
-original AI.
+up to two tanks, one jet and one air mine, a single fire/turn button (with SPACE or keypad
+`*` as a turn key), gravity instead of a fuel limit, bombs for tanks but strafing for
+everything else, three difficulty levels, and particle explosions drawn with four sprites.
+The jets' bounded three-pass route, the shells' arc and the missiles' dive are adaptations,
+not claims of identical original AI.
 
 ## Play and accounting
 
-The world is 2,048 pixels wide. Home is at the east end: the helicopter spawns at x=1920,
-lands on the pad at 1896 < x < 1953, and unloads beside a 40×13 brick building (x=1976–2015,
-door at x=1992) with its flag on the roof at x=2008. Each passenger walks to the door, and
+The world is 2,048 pixels wide. Home is at the east end: a 40×13 brick building
+(x=1976–2015, door at x=1992) with its flag on the roof at x=2008, and against its west wall
+a landing pad 56 pixels wide (x=1920–1975). The helicopter spawns in the middle of the pad
+(x=1932) and unloads only with all 32 of its pixels on it (1920 ≤ x ≤ 1944). Each passenger walks to the door, and
 some stop on the way to wave at the helicopter (*Play and accounting*). A 320-pixel demilitarised zone (DMZ)
 spans x=1568–1888 between two boundary fences. Four camps at x=128, 384, 640 and 896 hold 16
 people each; each barrack is 32 pixels wide (x−16 to x+15), and the nearest one's outer wall
 is 656 pixels from the enemy-side fence.
 
-Strafing a barrack (a sideways shot lower than y=143 within 24 pixels of its centre; bombs
-pass by) blows it open: its middle is a ragged hole with a fire burning inside. It releases one person every 24 video
+Strafing a barrack (a sideways shot whose 3×3 touches the drawn hut, x−16 to x+15, at or
+below its roof line, y ≥ 151; bombs pass by) blows it open in a ground burst: its middle is
+a ragged hole with a fire burning inside. It releases one person every 24 video
 frames, whatever the helicopter is doing, including during a crash. People walk out in two
 groups of eight to waiting spots 8 pixels apart, up to 88 pixels from the camp, farthest
 spots first. The cabin holds 16.
@@ -143,14 +158,15 @@ waves twice, and the next delivery's jets wait until everyone is inside.
 
 Saved + lost + aboard + everyone still at the camps always equals 64; a runner counts with
 its camp until it boards or dies. A crash loses everyone aboard and one helicopter; the next
-starts at home. The HUD shows spare helicopters (excluding the one flying), right-justified;
-camp indicators change from a number to `o` when opened and `-` when emptied. The mission
-ends when all 64 are saved or lost, or the last helicopter is destroyed; the results screen
-lists saved, lost, stranded and the session's best rescue. A perfect rescue is 64.
+starts at home. The HUD is one row: SAVED, ABOARD and LOST, then the spare helicopters
+(excluding the one flying) right-justified in columns 27–31, so at most five show. There
+are no camp indicators. The mission ends when all 64 are saved or lost, or the last
+helicopter is destroyed; the results screen lists saved, lost, stranded and the session's
+best rescue. A perfect rescue is 64.
 
 People persist across trips and crashes. Landing on an exposed person (escaping, waiting or
-running) kills them; so do player shots, a tank shell's landing and jet bombs. Lost people never return
-or count twice.
+running) kills them; so do player shots and bombs, a tank shell's landing and a jet's bomb or
+diving missile. Lost people never return or count twice.
 
 ## Controls and flight
 
@@ -159,10 +175,12 @@ horizontal input brakes to a hover without changing aim. Horizontal acceleration
 step once per update (0–3 px/frame); cruising distance follows elapsed frames.
 
 FIRE is sampled every video frame by an `ON FRAME` handler, so taps survive slow updates: a
-press shorter than 30 frames (0.5 s) fires on release; holding turns after 30 frames and
-then every 18, cycling left → front → right → front. Releasing after a turn does not fire.
-The helicopter cannot turn on the ground: the hold timer stays at zero while it is landed,
-so lifting off with FIRE held starts a fresh hold.
+press shorter than 18 frames (0.3 s) fires on release; holding turns after 18 frames and
+then every 15 (0.25 s), cycling left → front → right → front (`turn_step`). Releasing after
+a turn does not fire. SPACE (TI) or keypad `*` (ColecoVision), read by the same handler,
+turns one step per press, edge-triggered (`turn_key`), and never fires. The helicopter
+cannot turn on the ground: the hold timer stays at zero while it is landed, so lifting off
+with FIRE held starts a fresh hold, and the turn key does nothing there.
 Side views shoot in the facing direction and follow the nose pitch; the front view drops
 bombs that keep the helicopter's sideways speed at release. Shots expire after 90 frames or
 on leaving the view; old shots retire before a new tap is accepted. Weapons are disabled on
@@ -181,34 +199,63 @@ from the pause; keypad # does it on ColecoVision. `back_key` reads the TI keyboa
 over the CRU, because the key scan stops at FCTN, and the main loop tests it at its top
 level so `GOTO title` leaves no return address on the stack.
 
-A destroyed helicopter catches fire and falls at 2 px/frame, keeping its sideways speed. It
-burns for 90 frames on the ground (the last 24 as low embers), then the next helicopter
-launches or the mission ends. Lives and passengers are charged once, at the hit. The crash
-uses sprite slots 0–3 only (flames ahead of the grey hull) with every other sprite hidden.
-Meanwhile camps keep releasing people and walkers keep walking; the wreck's impact counts as no
-landing on anyone (`old_y` follows it).
+**Crashes.** A hit is drawn before it explodes: `hits_heli` only sets `crash_pending`, and
+the main loop crashes at the top of the next update, so the frame between shows the threat
+touching the helicopter. From the crash on, the helicopter itself is never drawn: it and
+every other actor are hidden at once, a burst plays where it was hit (an air burst, or a
+ground burst if it was landed), and only its burning wreck is drawn, flames in slots 0–1,
+falling at 2 px/frame with its sideways speed. On landing it bursts again (a ground burst)
+and burns for 90 frames: flames, then low embers for frames 36–13, then nothing at all for
+the last 12, by which time the burst is over and erased too. Only then does the next
+helicopter appear on the pad (`new_heli`, `game_screen`), drawn with its own patterns, or
+the mission ends. Lives and passengers are charged once, at the crash. Meanwhile camps keep
+releasing people and walkers keep walking; the wreck's impact counts as no landing on anyone
+(`old_y` follows it).
 
 ## Enemies
 
 All enemy activity and border checks use the DMZ fence, x=1568. Enemies never multiply (four
-sprites per scanline); they push harder instead. **Threat** is the number of completed
-deliveries, capped at 4, and sets each enemy's parameters from small ROM tables
-(`tank_reload`, `jet_missiles`, `#jet_delay`, `#drone_delay`), every level strictly harder,
-and the first completed delivery brings a second tank:
+sprites per scanline); they push harder instead. The **difficulty** (easy, medium or hard,
+picked on the title; medium at power-on) and the **level**, the number of completed
+deliveries capped at 4, together give `threat = 5 × difficulty + level`, which indexes rows of
+five in small ROM tables (`tank_reload`, `jet_missiles`, `#jet_delay`, `#drone_delay`): every
+level strictly harder than the one before, and every difficulty harder than the one below
+at the same level. The first completed delivery brings a second tank on every difficulty.
 
-| Threat | 0 | 1 | 2 | 3 | 4 |
+| Level | 0 | 1 | 2 | 3 | 4 |
 |---|---:|---:|---:|---:|---:|
-| Frames between tank shells | 140 | 125 | 110 | 95 | 80 |
-| Missiles per jet | 2 | 2 | 3 | 3 | 4 |
-| Frames before the next jet | 360 | 320 | 280 | 240 | 200 |
-| Frames before the next air mine | 240 | 210 | 180 | 150 | 120 |
+| Frames between tank shells: easy / medium / hard | 200 / 140 / 100 | 180 / 125 / 90 | 160 / 110 / 80 | 140 / 95 / 70 | 120 / 80 / 60 |
+| Missiles per jet | 1 / 2 / 3 | 1 / 2 / 3 | 2 / 3 / 4 | 2 / 3 / 4 | 2 / 4 / 5 |
+| Frames before the next jet | 480 / 360 / 270 | 440 / 320 / 240 | 400 / 280 / 210 | 360 / 240 / 180 | 320 / 200 / 150 |
+| Frames before the next air mine | 360 / 240 / 180 | 320 / 210 / 160 | 280 / 180 / 140 | 240 / 150 / 120 | 200 / 120 / 100 |
+
+The difficulty also sets how enemies fire and chase, from three-entry tables (easy / medium /
+hard): a tank shell's top speed (`tank_speed`, 2.5 / 3 / 3.5 px per frame: a reach on the
+ground of about 90 / 105 / 120 px), the frames between a jet's missiles (`jet_reload`, 90 /
+60 / 40), how far out of line a jet still fires (`jet_aim`, 10 / 16 / 24 px), and the air
+mine's drift (15 / 30 / 45 px/s).
+
+**Hits** test boxes cut to what is drawn, never a radius. The helicopter (`hits_heli`, at
+its visible x `#hv`, see *Scrolling*) is its cabin, nose and skids (rows 5–14) plus, in the
+side views, its tail boom (rows 8–9); the columns of each depend on the facing
+(`heli_box`): 11–28 and 2–12 facing right, 3–20 and 19–29 facing left, 9–24 in the front
+view. The rotor blade, mast and tail rotor, and the sprite's empty corners, do not count.
+Threats: the air mine's ball and spikes (x+3–11, y+3–11), the jet's fuselage (all 16
+columns, rows 6–9) and its wings and tail fin (rows 3–12, columns 6–14 flying west, 1–9
+flying east; `jet_body`, `jet_wings`), a missile 11×3 or a bomb 4×6 about its centre, a
+shell 3×3. Player shots use the same jet boxes.
 
 - **Tanks.** 32×16 pixels with left, right and front views; the side views raise the
   barrel about 25°. They drive on their own plane in the foreground (rows 22–23, tracks at
   y=189, sprite y=174), below the barracks and the crowd row, so only bombs reach them and a
   landed helicopter never shares their scanlines. One tank until the first completed
   delivery, then up to two (`tank_on(2)`, `#tank_x(2)`). They crawl toward the helicopter at
-  15 px/s, never past x=1536, and one stops 40 px short of the other ahead of it. A single
+  15 px/s, never past x=1504, and one stops 40 px short of the other ahead of it. The limit
+  is the fence as drawn: its perspective stamp leans its near end up to 32 px west when it
+  stands at the west edge of the view, so on the tanks' rows its westernmost ink is x=1536,
+  and a tank at 1504 ends (barrel tip, x+30) at 1534. At the old limit, 1536, a tank stood
+  half over the fence. Jets turn at x ≤ 1528 (16 px wide) and the air mine stops at 1552.
+  A single
   timer (`#tank_wait`, counting only while the helicopter is west of the fence) spaces
   arrivals and shells: when it runs out a missing tank arrives (160 px behind the
   helicopter, or 180 px ahead near the west end or when the other tank is already behind),
@@ -223,42 +270,58 @@ and the first completed delivery brings a second tank:
   whoever stands at the impact. The tank aims at the helicopter's centre: it finds the frame
   of the fall that reaches that height and the rounded horizontal speed, in 1/16 px per
   frame, that arrives with it, so a helicopter that stays put is hit and one that moves is
-  missed. It fires one shell per reload (above), and only when the speed is at most 3
-  px/frame: a reach of about 105 pixels on the ground and 72 at y=137. A new shell is drawn
-  at the muzzle before it first moves and is harmless for its first 8 frames, so no shell
-  strikes before it has been seen; a helicopter landed right over a tank is hit when the
-  lob comes back down. A slow update never carries a shell past its burst frame, and no
-  shell outlives its 36 frames or crosses the fence.
-- **Weapons.** Bombs (front view) destroy tanks and nothing else in the sky; they fall past
-  the crowd row (hurting anyone they cross) down to y=191. Sideways shots open barracks and
-  down jets and air mines, and stop at the ground.
+  missed. It fires one shell per reload (above), and only when the speed is within
+  `tank_speed` (on medium 3 px/frame: a reach of about 105 pixels on the ground and 72 at
+  y=137) and the helicopter is within 128 px. A new shell is drawn at the muzzle before it
+  first moves and is harmless for its first 8 frames, so no shell strikes before it has
+  been seen; a helicopter landed right over a tank is hit when the lob comes back down. A
+  slow update never carries a shell past its burst frame, and no shell outlives its 36
+  frames or crosses the fence. Its landing is a small ground burst.
+- **Weapons.** Bombs (front view) destroy tanks (a ground burst) and nothing else in the
+  sky; they fall past the crowd row (hurting anyone they cross) and, missing, burst on the
+  ground below the tanks' tracks (y > 185, a small burst). Sideways shots open barracks and
+  down jets and air mines (air bursts), and stop at the ground.
 - **Jets.** Enabled after the first completed delivery (every walker has gone indoors at home).
   A launch countdown of 6 s, then three passes at 120 px/s joined by two 48-frame banking
   turns, all west of the fence. The first pass scouts; after that a jet on screen fires
   only straight ahead along its line of flight, one weapon at a time (research: air-to-air
-  missiles at a helicopter in the air, bombs at one on the ground). A **missile** (a
-  missile-shaped sprite, nose first) leaves the nose level and flies on at the jet's 2
-  px/frame plus 2 of its own, retiring after 90 frames or at the fence; the jet fires it
-  only with the helicopter ahead and in line (centres within 16 px of height). A **bomb**
-  keeps the jet's 2 px/frame and falls 2 px/frame, so it lands as far ahead as it falls; the
-  jet releases it with a landed helicopter that far ahead, and it bursts on the ground,
-  killing anyone it lands on. After
+  missiles at a helicopter in the air, bombs at one on the ground), at most one every
+  `jet_reload` frames. A **missile** (a missile-shaped sprite, nose first) leaves the nose
+  level and flies on at the jet's 2 px/frame plus 2 of its own for half a second
+  (`missile_ttl`, 30 frames), then noses down 2 px/frame until it bursts on the ground (or
+  in the crowd, at the fence or at the world's west edge: none just vanishes); the jet fires
+  it only with the helicopter ahead and in line (centres within `jet_aim` px of height). A
+  **bomb** keeps the jet's 2 px/frame and falls 2 px/frame, so it lands as far ahead as it
+  falls; the jet releases it with a landed helicopter that far ahead, and it bursts on the
+  ground, killing anyone it lands on. After
   its last pass a departing jet retires as soon as it is wholly off camera, so the gap before
   the next jet does not depend on how far west the world extends.
 - **Air mine** (the `drone_*` variables). Enabled after the second completed delivery, while
-  the helicopter is west of the fence. A small dark-red spiked ball, it floats in from just
-  beyond the east edge of the view and drifts toward the helicopter at 30 px/s on both axes,
-  stopping at the fence (x ≤ 1552). Touching it crashes the helicopter; one shot destroys it.
+  the helicopter is west of the fence. A small dark-red spiked ball, it appears out of view
+  at mid height (y=88): 8 px beyond the east edge of the view, or 8 px beyond the west edge
+  when the east edge is past the fence. It drifts toward the helicopter at 15, 30 or 45 px/s
+  on both axes, in quarter pixels, stopping at the fence (x ≤ 1552). Touching it crashes the
+  helicopter; one shot destroys it. It used to appear at y=32 and, near the fence, at x=1552
+  even when that was on screen, which could put it on top of a helicopter flying high near
+  the fence: a crash with nothing visibly coming.
 
 ## Display
 
-256×192 TMS9918 screen. Rows 0–1 HUD (PAUSED replaces SPARES while paused), rows 2–16 sky,
-rows 17–21 scenery (row 20 is the crowd row), rows 22–23 ground. The ground is dark blue
-(the mountains rise out of it in the same colour), the landing pad gray concrete, and the
-fence stamps white on the ground's blue. Ground contact: helicopter
+256×192 TMS9918 screen. Row 0 HUD, row 1 empty (PAUSED, centred, while paused), rows 2–16
+sky, rows 17–21 scenery (row 20 is the crowd row), rows 22–23 ground. The ground is dark blue
+(the mountains rise out of it in the same colour), the landing pad gray with a white rim,
+and the fence stamps white on the ground's blue. Ground contact: helicopter
 top y=153 (its lowest ink at y=167 touches ground row 21 at y=168); tanks on rows 22–23.
 
-**Scrolling.** The camera moves in 8-pixel steps. A scroll update composes the crowd row
+**Scrolling.** The camera moves in 8-pixel steps, following the helicopter at screen x 112.
+The helicopter is drawn at its *visible* x, `#hv` (set by `move_heli`): while the camera
+follows (112 < x < 1904) that is `#hx` rounded down to 8, so it stays at screen x 112 and
+the scenery steps past it, instead of creeping 0–7 px ahead and jumping back 8 at every
+camera step (a sawtooth the player saw as the helicopter jerking left and right); at either
+end of the world, where the camera stops, it is `#hx`. Everything the player judges by eye
+uses `#hv`: drawing, hits, the shots' muzzle, the cabin door for boarding and unloading,
+landing on people, the pad, and the enemies' aim. The physics keeps `#hx`. A scroll update
+composes the crowd row
 first (without touching the visible one), then `crowd_commit` draws every sprite for the new
 camera, the helicopter last, WAITs for vblank and copies rows 17–19 and the crowd row back to
 back. The vblank that ends the WAIT copies the new sprite positions, so the sprites and the
@@ -293,18 +356,22 @@ a small peak (148), the tall snow-capped summit (149), a middling peak (158) and
 small one (150), with valleys between and a few white rocks; any 4-, 5- or 6-wide
 selection of tops joins up. The flanks rise only from 5 to 8 pixels, and one or two
 foothill characters on each side carry the slope down to the ground (121, 122 west; 123,
-124 east: bottom-third characters uploaded with the pad-fence cell 120 as `low_art`), so a
+124 east: bottom-third characters uploaded after the reserved cell 120 as `low_art`), so a
 range climbs over 2–3 characters per side instead of jumping up (`MOUNDS` gives each
 range's width and foothills). They sit in the gaps between the crowds (the generator
 asserts no range or foothill reaches a waiting spot or the home fence). The home is five characters on rows 19–20 (columns 247–251) with the flag pole's stub
-drawn into the last roof character (139), so the pole stands on the roof; the blue pad runs
-from column 238 to 253, with the H at 242 and a sloped east end.
+drawn into the last roof character (139), so the pole stands on the roof. The landing pad
+(`PAD_ART`) is a gray slab seven characters wide on row 21 (columns 240–246, x 1920–1975)
+right against the building's west wall: a white rim with yellow lights at both ends, a
+white H in the middle (column 243) and a dark shadow under its front edge (codes 159, 137,
+138, 141). Its plain rows carry white ink, so a fence stamp drawn over it would stay white.
 
 **Fences, pad and flag.** Each fence is a clipped 5×2 perspective stamp from the
 horizon (row 21) into the foreground (row 22) whose near end leans away from the screen
-centre; empty stamp cells are transparent, and the one cell crossing the landing pad is
-precomposed with the pad marking (character 120). The flag waves by redefining two
-characters every 16 frames.
+centre; empty stamp cells are transparent. The home fence's stamps end at column 238, so
+none crosses the pad; character 120 stays reserved for a precomposed pad-and-fence cell
+(the generator builds one if a stamp ever lands on the pad) and holds blanks. The flag
+waves by redefining two characters every 16 frames.
 
 **Crowds (characters, not sprites).** All 64 people are background characters in row 20, so
 a whole crowd costs no sprite slots, runners included.
@@ -336,25 +403,49 @@ a whole crowd costs no sprite slots, runners included.
 **Sprites.** Two 16×16 sprites make the 32×16 helicopter, in left, right and front views
 with two rotor beats each and level or banked poses; side views alternate cross and diagonal
 tail-rotor blades. Main and tail rotors share a four-frame beat that never skips both poses on
-a slow update. There are 64 sprite patterns; 13–14 are the crash flames. Fixed slots:
+a slow update. There are 64 sprite patterns; 13–14 are the crash flames, 18–19 the
+explosion's fireball and ring, 47–49 the missiles and bomb, 50–56 the explosion's smoke,
+sparks, embers, dirt and flash, and 57–58 are free. Fixed slots:
 
 | Slots | Owner |
 |---|---|
-| 0–1 | helicopter |
+| 0–1 | helicopter (after a crash, its burning wreck) |
 | 2 | tank shell |
 | 3 | jet missile or bomb (patterns 47/48, 49) |
 | 4–5 | player shots |
 | 6–7, 8–9 | tank 0 and tank 1 halves |
 | 10 | jet |
 | 11 | air mine |
-| 12 | explosion |
+| 12 | explosion core |
+| 13–15 | explosion debris |
 
 The VDP draws four sprites per scanline. `SPRITE FLICKER ON` makes the TI's vblank copy start
 one slot later each frame (all 32 slots in turn), so on an overloaded line every sprite,
 the helicopter included, is drawn on most frames and none is left invisible (an invisible
 mine or shell read as dying for no reason). Low slots show most often; lines with four or
-fewer sprites never flicker. `#sprite_shown` has one bit per slot (0–12), so an inactive
+fewer sprites never flicker. `#sprite_shown` has one bit per slot (0–15), so an inactive
 actor's slot is hidden once and then costs a bit test.
+
+**Explosions** (`blast_draw`) are four sprites: a core and three clusters of three to eight
+separate pixels each, so they read as a spray of particles. Everything comes from ROM
+tables written by `assets/generate.py` (`BLAST_ROWS`), one row per two frames, indexed by
+`(blast_end − blast_timer) / 2`: the core's pattern, colour and rise, the debris' pattern
+and colour, and each cluster's offset from the burst (stored +64). Three kinds:
+
+| Kind | `blast_end` | Frames | Used for |
+|---|---:|---:|---|
+| Air burst | 36 | 36 | jets and air mines shot down, the helicopter hit in flight |
+| Ground burst | 72 | 36 | tanks, barracks, the helicopter hit landed or its wreck landing |
+| Small burst | 92 | 20 | bombs, jet missiles and bombs, and tank shells hitting the ground |
+
+A big burst's core flashes white, turns yellow, opens into a ring that reddens and becomes
+gray smoke rising 12 px; its debris (white, then yellow, orange, red embers) is thrown on
+ballistic arcs up to 60 px out. In the air the debris falls on past the burst; on the ground
+it comes down at the burst's level and lies there. A small burst is a white star flash, dirt
+thrown up and falling back, then a dust puff. A burst places its own sprites; a particle
+below the screen is hidden rather than given y=208 (which would end the sprite list). One
+burst plays at a time: a big one replaces whatever is playing, and a small one never cuts a
+big one short.
 
 ## Sound
 
@@ -364,8 +455,9 @@ land on. Channel 1 plays a short gun sweep or a longer falling
 bomb whistle; when free it carries a nearby jet's distance-dependent tone or the air mine's
 alternating warning. Channel 2 carries rising boarding and falling unloading chirps and a
 three-note delivery chime. Channel 3 carries periodic rotor noise, overridden by tank fire,
-missile launches, explosions (which win over launches) and an eight-frame squish when the
-helicopter lands on a person. Effects expire on frame deltas; pause, new helicopters, the
+missile launches, explosions (which win over launches; a small burst is a shorter, quieter
+crack that never cuts a louder one short) and an eight-frame squish when the helicopter
+lands on a person. Effects expire on frame deltas; pause, new helicopters, the
 title and the results silence all four channels and clear effect state. No music player.
 
 ## Title and practice setup
@@ -373,14 +465,18 @@ title and the results silence all four channels and clear effect state. No music
 The title centres the name (row 4) and RESCUE OPERATIONS (row 6), with the helicopter
 circling them clockwise at 2 px a frame on a 528-pixel loop (`title_heli`, x 8–247,
 y 8–79, clear of all text): banked and facing its way along the top (east) and bottom
-(west), in the front view down and up the sides, rotor turning. FIRE launches (no digit);
-the credit line reads 2026 UNHUMAN AND AI C&C (the bottom third's font has no lower case).
-The results screen also continues with FIRE only.
+(west), in the front view down and up the sides, rotor turning. Four short lines of
+instructions follow (rows 10–15), then the difficulty on row 18, `1 EASY  2 MEDIUM  3 HARD`
+with the chosen one in brackets (`title_level`). Keys 1–3 pick it, or LEFT/RIGHT step it;
+`title_code` reads the stick as keys 20 and 21 so one edge test serves both, and a 3 that
+continues an 8-3 sequence is not a choice. The pick lasts from game to game (medium at
+power-on). FIRE launches (no digit); the credit line reads 2026 UNHUMAN AND AI C&C (the
+bottom third's font has no lower case). The results screen also continues with FIRE only.
 
 The hidden title sequence 838 shows one line, HELICOPTERS (1-9)?, and a digit 1–9 starts a
-practice game; there is no way back from it. Normal games use three helicopters. Practice
-saved counts carry a small asterisk (character 60) and the best rescue keeps its marker; an
-unmarked run wins a tie. Up to eight spare icons fit beside SPARES.
+practice game at the difficulty last picked; there is no way back from it. Normal games use
+three helicopters. Practice saved counts carry a small asterisk (character 60) and the best
+rescue keeps its marker; an unmarked run wins a tie. At most five spare icons show.
 
 ## TI native kernels
 
@@ -405,9 +501,9 @@ the compiler's register cache (checked in the generated assembly).
 ## Source, tools and validation
 
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map, the star
-  table and the shell arc, and writes `src/assets.bas` (play-time data, including the menu
-  font) and `src/assets_boot.bas` (power-on uploads).
-- `tools/build.py` — generation, the 84 source-executing tests (once per `build.ps1 All`),
+  table, the shell arc and the explosion timelines, and writes `src/assets.bas` (play-time
+  data, including the menu font) and `src/assets_boot.bas` (power-on uploads).
+- `tools/build.py` — generation, the 94 source-executing tests (once per `build.ps1 All`),
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
   its verification, budget checks, an even-address check on every indexed word table (from
   xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address
@@ -416,13 +512,18 @@ the compiler's register cache (checked in the generated assembly).
   kernels (registers, status flags, `DIV`, local `bl`, memory writes, the VDP ports, which
   must be written with interrupts off, and the keyboard matrix through the CRU). A routine
   falls through into the next label and follows `GOTO`, as compiled code does. Unknown
-  statements and instructions are errors.
+  statements and instructions are errors. A test that places the helicopter by setting
+  `#hx` places it where it is seen (`#hv` follows); the game's own assignments bypass that,
+  so `move_heli`'s rule is tested on its own. Hit boxes are checked against the sprite art
+  pixel by pixel in every facing; the fence limit against the fence stamps' ink.
   Native kernels are compared with their portable twins over sweeps and randomised scenes,
   and known-bad mutations of every kernel must fail.
 - `tools/profile.py` — benchmark carts: full-loop and component cases, `--micro` per-routine
   costs, `--stub ROUTINE` to attribute cost, and `--review` for a production-code cart that
   starts airborne over evacuating camps. Benchmarks call routines out of context and look
-  scrambled on screen; use `--review` to judge rendering.
+  scrambled on screen; use `--review` to judge rendering. The benchmark code itself goes in
+  the data bank, in place of the title and results code it never reaches: the fixed area's
+  unoptimised image has no room for it.
 - `tools/run-bench.ps1` — runs a benchmark cart in its own Classic99, starts it (title key,
   then 2) and captures the finished screen. `tools/capture.ps1` screenshots and drives a
   specific Classic99 process. `launch-ti.ps1` opens a separate review session of the
@@ -436,6 +537,13 @@ walking out in front of them, a mound, the home building, flag and pad, a lob ar
 tank and an air mine drifting in. After this round: the reference-style barracks with the
 blown-out hole and the fire inside, the taller, peaked mountains, two tanks on the foreground plane with
 raised barrels and their lobs, gravity bringing an idle helicopter down, a passenger waving
-in front of the home, and the title helicopter circling the name. The
-ColecoVision build has been booted and flown briefly in CoolCV. Not verified: original
-hardware, sound balance and a complete 64-person mission played through.
+in front of the home, and the title helicopter circling the name. On 2026-10-07, frame
+bursts captured from scenario carts built from the production source: a crash in flight
+(the mine drawn touching the helicopter, then no helicopter at all while the air burst,
+the falling flames, the ground burst on landing and the embers played out, an empty frame,
+and the new helicopter on the new pad); the helicopter holding one screen column through
+70 frames of scrolling while the scenery stepped past; bombs bursting on the ground; a jet
+missile flying level, nosing down and bursting; and a tank stopping with its barrel short
+of the fence. The ColecoVision build has been booted and flown briefly in CoolCV (before
+this round). Not verified: original hardware, sound balance and a complete 64-person
+mission played through.

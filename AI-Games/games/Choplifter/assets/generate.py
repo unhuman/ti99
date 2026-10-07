@@ -72,8 +72,10 @@ for facing in ('right', 'left', 'front'):
         if facing == 'left':
             a = [r[::-1] for r in a]
         SPRITES.extend([([r[:16] for r in a]), ([r[16:] for r in a])])
-# 12 tank, 13/14 crash flames, 15 jet, 16 drone, 17 shot, 18/19 blast.
-# Boarding people use patterns 47..58; the two former runner slots are free.
+# 12 tank, 13/14 crash flames, 15 jet, 16 drone, 17 shot, 18/19 explosion core
+# (BLAST_ART below).
+# 47-49 missiles and bomb, 50-56 explosion pieces, 57-58 free (the walking
+# people sprites once there are unused: runners are crowd characters).
 a = canvas(16, 16)
 rect(a, 1, 7, 14, 5); rect(a, 4, 4, 8, 4); rect(a, 0, 4, 8, 1)
 for x in (3, 7, 11): rect(a, x, 10, 2, 1, 0)
@@ -165,7 +167,7 @@ def row_colors(color):
 
 # Scenery is painted as pixel art, one letter per pixel. The TMS9918 allows
 # two colours per 8x1 segment; paint() rejects art that needs a third.
-INK={'.':1,'K':1,'W':15,'B':4,'R':6,'G':14}
+INK={'.':1,'K':1,'W':15,'B':4,'R':6,'G':14,'Y':11}
 def paint(rows):
     """(bits, row colours) tiles for 8x8 cells, row by row, left to right."""
     assert len(rows)%8==0 and all(len(row)==len(rows[0]) for row in rows)
@@ -292,11 +294,28 @@ HOME=[
  'WWWWWWWWWWWWWWWWWKKKKKKWWWWWWWWWWWWWWWWW',
 ]
 HOME_CELLS=paint(HOME)
-# The ground is dark blue; the landing pad is gray concrete, and its east end
-# slopes down into the ground.
+# The ground is dark blue. The landing pad is a gray slab seven characters
+# wide (columns 240-246, x 1920-1975) right against the building's west
+# wall: a white rim, an H in the middle, yellow lights at both ends and a
+# dark shadow under its front edge. A helicopter unloads only when all of
+# its 32 pixels are on it (1920 <= x <= 1944).
 GROUND=0x14
-PAD=0xFE
-PAD_END=paint(['GGGGGGGB','GGGGGGBB','GGGGGBBB','GGGGBBBB','GGGBBBBB','GGBBBBBB','GBBBBBBB','BBBBBBBB'])[0]
+PAD_ART=paint([
+ 'Y'+'W'*54+'Y',
+ 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
+ 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
+ 'W'+'G'*23+'GWWWWWWG'+'G'*23+'W',
+ 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
+ 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
+ 'W'*56,
+ 'K'*56,
+])
+# Plain rows get white ink (their bits are clear): a fence stamp crossing the
+# pad draws white over any of its rows.
+PAD_ART=[(bits,[c if b else 0xF0|c&15 for b,c in zip(bits,colors)]) for bits,colors in PAD_ART]
+assert PAD_ART[1]==PAD_ART[2]==PAD_ART[4]==PAD_ART[5]
+PAD_COLUMNS=range(240,247)
+PAD_LEFT,PAD_RIGHT=240*8,247*8
 
 # Characters 128..159. Each colour is one byte for all eight rows or a list.
 TILES = [
@@ -309,11 +328,11 @@ TILES = [
     HUT_OPEN_CELLS[0],                 # 134 blown-out hut, west half (row 19)
     HUT_CELLS[5],                      # 135 hut, west of the doorway (row 19)
     HUT_OPEN_CELLS[1],                 # 136 blown-out hut, east half (row 19)
-    ([0]*8,PAD),                       # 137 pad
-    ([129,129,129,255,129,129,129,0],PAD), # 138 H
+    PAD_ART[1],                        # 137 landing pad
+    PAD_ART[3],                        # 138 landing pad, H
     HOME_CELLS[4],                     # 139 home window under the flag pole
     ([0,126,24,63,127,24,126,0],0xF1), # 140 spare
-    PAD_END,                           # 141 pad east end
+    PAD_ART[6],                        # 141 landing pad, east end
     MOUND_CELLS[0],                    # 142 hill, west flank (crowd row)
     MOUND_CELLS[2],                    # 143 hill, east flank (crowd row)
     ([213,162,213,162,255,255,255,255],0xF4), # 144 flag canton/stripes (colours below)
@@ -372,7 +391,7 @@ TILES += [
     HOME_CELLS[5],                     # 156 home window, lower (crowd row)
     HOME_CELLS[7],                     # 157 home door, lower (crowd row)
     MOUND_TOP_CELLS[2],                # 158 hill top, lumpy (row 19)
-    ([0]*8,0x1E),                      # 159 padding before fence patterns
+    PAD_ART[0],                        # 159 landing pad, west end
 ]
 # Every column of the home's two rows is one of three upper and two lower
 # characters; check the building reuses them rather than needing more.
@@ -420,6 +439,84 @@ for y,row in enumerate(('#..#','.##.','####','####','####','.##.')):
     for x,ch in enumerate(row):
         if ch=='#':a[y][x]=1
 SPRITES[49]=a
+
+# Explosions (blast_draw): a core sprite and three debris clusters, each a
+# few separate pixels, so four sprites read as a spray of particles. 18/19:
+# the fireball, then its broken, spreading ring; 50 smoke; 51-53 sparks
+# spreading apart (tight, wider, widest); 54 embers; 55 dirt clods; 56 the
+# small burst's flash. 57 and 58 are free.
+def bitmap(rows):
+    assert len(rows)==16 and all(len(r)==16 and set(r)<=set('.#') for r in rows)
+    return [[int(ch=='#') for ch in r] for r in rows]
+def dots(points):
+    a=canvas(16,16)
+    for x,y in points:a[y][x]=1
+    return a
+BLAST_ART={
+ 'fire':bitmap(['................','................','................','.......#........',
+                '.....#.##.#.....','....########....','...#########....','..###########...',
+                '...##########...','....#########...','...#.#######....','......##.##.....',
+                '.......#........','................','................','................']),
+ 'ring':bitmap(['................','......#...#.....','...#..##.###....','....######.##.#.',
+                '..####...####...','.###.......###..','..##........##..','.###.........##.',
+                '..##........###.','.###.......##...','..####....####..','...#.######.#...',
+                '....#..##..#....','......#..#......','................','................']),
+ 'smoke':bitmap(['................','................','......#.#.......','....#.###.#.....',
+                 '.....#####......','...#.#.#.#.#....','....#######.....','...#.#.#.#.#....',
+                 '....#.###.#.....','......#.#.......','................','................',
+                 '................','................','................','................']),
+ 'spark1':dots([(7,7),(8,7),(7,8),(8,8),(6,6),(9,6),(6,9),(9,9)]),
+ 'spark2':dots([(7,7),(8,8),(4,6),(11,5),(5,10),(10,11),(7,3),(9,12)]),
+ 'spark3':dots([(2,7),(13,6),(7,1),(8,13),(4,3),(11,11)]),
+ 'ember':dots([(6,8),(9,7),(8,10)]),
+ 'dirt':dots([(5,6),(6,6),(9,5),(9,6),(7,9),(8,9),(4,10),(11,9)]),
+ 'flash':bitmap(['................','................','................','................',
+                 '.......#........','.....#.#.#......','......###.......','....#######.....',
+                 '......###.......','.....#.#.#......','.......#........','................',
+                 '................','................','................','................']),
+}
+BLAST_SLOT={'fire':18,'ring':19,'smoke':50,'spark1':51,'spark2':52,'spark3':53,
+            'ember':54,'dirt':55,'flash':56}
+for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
+
+# Burst timelines, one row per two frames: blast_draw reads row
+# (blast_end - blast_timer) / 2. Air bursts are rows 0-17 (blast_end 36),
+# ground bursts 18-35 (72) and small ground bursts 36-45 (92). Per row: the
+# core's pattern, colour and rise (smoke drifts up), the debris clusters'
+# pattern and colour, and each of the three clusters' offset from the
+# burst. Debris flies ballistically; on the ground it comes down at the
+# burst's level and lies there. Offsets are stored +64.
+BLAST_KINDS=(('air',36,18),('ground',72,18),('small',92,10))
+BIG_CORE=([('fire',15)]*2+[('fire',11)]*2+[('ring',11)]*2+[('ring',10)]*2
+          +[('ring',9)]*2+[('ring',8)]*2+[('smoke',14)]*6)
+BIG_RISE=[0]*12+[-2,-4,-6,-8,-10,-12]
+BIG_DEBRIS=([('spark1',15)]*4+[('spark2',11)]*4+[('spark2',10)]*4+[('spark3',9)]*3
+            +[('ember',8)]*2+[('ember',6)])
+SMALL_CORE=[('flash',15)]*2+[('flash',11)]*2+[('flash',9)]*2+[('smoke',14)]*4
+SMALL_RISE=[0]*6+[-1,-2,-3,-4]
+SMALL_DEBRIS=[('spark1',15)]*2+[('dirt',11)]*3+[('dirt',10)]*3+[('ember',6)]*2
+BIG_THROW=((-1.6,-1.8),(0.3,-2.4),(1.7,-1.4))
+SMALL_THROW=((-0.9,-1.6),(0.2,-2.0),(1.0,-1.4))
+def flight(vx,vy,g,rows,grounded):
+    """Offsets at the middle of each two-frame row; grounded debris stops
+    where it comes back down to the burst's level."""
+    out=[]
+    for row in range(rows):
+        t=row*2+1
+        if grounded and vy*t+g*t*t/2>0:t=-2*vy/g
+        out.append((round(vx*t),round(vy*t+g*t*t/2)))
+    return out
+BLAST_ROWS=[]   # (core pattern, colour, rise, debris pattern, colour, 3 offsets)
+for kind,end,rows in BLAST_KINDS:
+    core,rise,debris=(SMALL_CORE,SMALL_RISE,SMALL_DEBRIS) if kind=='small' else (BIG_CORE,BIG_RISE,BIG_DEBRIS)
+    throw,g=(SMALL_THROW,0.18) if kind=='small' else (BIG_THROW,0.12)
+    paths=[flight(vx,vy,g,rows,kind!='air') for vx,vy in throw]
+    assert len(core)==len(rise)==len(debris)==rows and end==2*len(BLAST_ROWS)+2*rows
+    for row in range(rows):
+        BLAST_ROWS.append((BLAST_SLOT[core[row][0]]*4,core[row][1],rise[row],
+                           BLAST_SLOT[debris[row][0]]*4,debris[row][1],[p[row] for p in paths]))
+assert len(BLAST_ROWS)==46
+assert all(-64<=v<64 for r in BLAST_ROWS for xy in r[5] for v in xy)
 # Person palettes, eight rows each, by crowd_cells offset: yellow, white and
 # tan clothing on the night (0-23); the home doorway (24); the three kinds in
 # front of a hut wall, dark feet on its white footing (32-55); spare (56-79);
@@ -507,9 +604,8 @@ for camp in CAMPS:
     MAP[3][camp-2:camp+2]=[132,154,147,132]
 MAP[2][247:252]=[151,151,152,151,139]
 MAP[3][247:252]=[156,156,157,156,156]
-MAP[4][238:254]=[137]*16
-MAP[4][242]=138
-MAP[4][254]=141
+MAP[4][240:247]=[159,137,137,138,137,137,141]
+PAD_CODES=(159,137,138,141)
 
 # Transparent fence stamps must leave the landing pad beneath them intact.
 # Most stamps lie on plain gray ground; one upper-row cell of the home fence
@@ -524,14 +620,19 @@ for shape in range(8):
         if not FENCE_CODES[index]:continue
         world_col=1888//8+col-max(4-shape,0)
         under=MAP[4][world_col]
-        if under not in (137,138):continue
+        if under not in PAD_CODES:continue
         base,color=TILES[under-128]
         bits,_=TILES[32+index]
         assert all(c>>4==15 for c in row_colors(color)) # same white ink as the fence
         HOME_FENCE_CODES[index]=120+len(PAD_FENCE_ART)//8
         PAD_FENCE_ART.extend(a|b for a,b in zip(base,bits))
         PAD_FENCE_COLORS.extend(row_colors(color))
-assert len(PAD_FENCE_ART)==8 # one reserved bottom-third character, code 120
+# At most one composed cell, code 120 (none for the current pad: the home
+# fence's stamps end at column 238). Code 120 stays reserved either way, so
+# the foothills that follow it in low_art keep their codes (121-124).
+assert len(PAD_FENCE_ART) in (0,8)
+PAD_FENCE_ART+=[0]*(8-len(PAD_FENCE_ART))
+PAD_FENCE_COLORS+=[0x11]*(8-len(PAD_FENCE_COLORS))
 
 # CVBasic/TMS font @.._: restore the borrowed bottom-third back buffer on menus.
 MENU_FONT=[112, 136, 152, 168, 152, 128, 112, 0, 32, 80, 136, 136, 248, 136, 136, 0, 240, 136, 136, 240, 136, 136, 240, 0, 112, 136, 128, 128, 128, 136, 112, 0, 240, 136, 136, 136, 136, 136, 240, 0, 248, 128, 128, 240, 128, 128, 248, 0, 248, 128, 128, 240, 128, 128, 128, 0, 112, 136, 128, 184, 136, 136, 112, 0, 136, 136, 136, 248, 136, 136, 136, 0, 112, 32, 32, 32, 32, 32, 112, 0, 8, 8, 8, 8, 136, 136, 112, 0, 136, 144, 160, 192, 160, 144, 136, 0, 128, 128, 128, 128, 128, 128, 248, 0, 136, 216, 168, 168, 136, 136, 136, 0, 136, 200, 200, 168, 152, 152, 136, 0, 112, 136, 136, 136, 136, 136, 112, 0, 240, 136, 136, 240, 128, 128, 128, 0, 112, 136, 136, 136, 136, 168, 144, 104, 240, 136, 136, 240, 160, 144, 136, 0, 112, 136, 128, 112, 8, 136, 112, 0, 248, 32, 32, 32, 32, 32, 32, 0, 136, 136, 136, 136, 136, 136, 112, 0, 136, 136, 136, 136, 80, 80, 32, 0, 136, 136, 136, 168, 168, 216, 136, 0, 136, 136, 80, 32, 80, 136, 136, 0, 136, 136, 136, 112, 32, 32, 32, 0, 248, 8, 16, 32, 64, 128, 248, 0, 120, 96, 96, 96, 96, 96, 120, 0, 0, 128, 64, 32, 16, 8, 0, 0, 240, 48, 48, 48, 48, 48, 240, 0, 32, 80, 136, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 248, 0]
@@ -571,6 +672,12 @@ def generate():
     text += emit('home_fence_codes',HOME_FENCE_CODES)
     text += emit('flag_frame0', FLAG0)
     text += emit('flag_frame1', FLAG1)
+    for label,field in (('blast_cpat',0),('blast_ccol',1),('blast_dpat',3),('blast_dcol',4)):
+        text += emit(label,[r[field] for r in BLAST_ROWS])
+    text += emit('blast_cdy',[r[2]+64 for r in BLAST_ROWS])
+    # The three clusters' rows one after another, 46 apart.
+    text += emit('blast_dx',[r[5][p][0]+64 for p in range(3) for r in BLAST_ROWS])
+    text += emit('blast_dy',[r[5][p][1]+64 for p in range(3) for r in BLAST_ROWS])
     text += emit('jet_arc', JET_ARC)
     text += emit('shell_arc', SHELL_ARC)
     text += emit('fire_frame0', FIRE0)

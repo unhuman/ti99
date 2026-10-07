@@ -56,6 +56,7 @@ IF bench_crowd = 1 THEN GOSUB bench_waiting
 IF bench_crowd = 2 THEN GOSUB bench_walkers
 IF bench_case = 5 THEN GOSUB bench_enemies
 hy=80:old_y=80:runner_on=0:hspeed=3:hdir=1:dt=2:invuln=255
+#move=0:GOSUB move_heli
 terrain_dirty=1
 GOSUB camera_tick
 GOSUB crowd_draw
@@ -64,7 +65,7 @@ bench_i=0
 #last=FRAME
 IF bench_case >= 4 THEN GOTO main_loop
 FOR bench_i=0 TO 31
-    #hx=#hx-8
+    #move=8:GOSUB move_heli
     anim=anim+2
     GOSUB people_tick
     GOSUB camera_tick
@@ -152,6 +153,7 @@ DIM #bench_result(10)
 bench_case=0
 GOSUB bench_waiting
 #hx=512:hy=80:old_y=80:hspeed=3:hdir=1:dt=2:invuln=255
+#move=0:GOSUB move_heli
 GOSUB bench_enemies
 GOSUB camera_tick
 terrain_dirty=1
@@ -199,14 +201,14 @@ NEXT bench_i
 #bench_result(4)=(FRAME-#bench_start)*4
 ' 5/6: sprites with every actor on, then every actor off.
 GOSUB bench_enemies
-runner_on=1:runner_id=16:#runner_x=#hx+40:blast_timer=30:missile_on=1:shell_on=1
+blast_end=36:blast_timer=30:#blast_x=#hx:blast_y=90:missile_on=1:shell_on=1
 #missile_x=#hx-30:missile_y=90:#shell_x=#hx+20:shell_y=120
 #bench_start=FRAME
 FOR bench_i=0 TO 63
     GOSUB draw_actors
 NEXT bench_i
 #bench_result(5)=FRAME-#bench_start
-tank_on=0:jet_on=0:drone_on=0:runner_on=0:blast_timer=0:missile_on=0:shell_on=0
+tank_on=0:jet_on=0:drone_on=0:blast_timer=0:missile_on=0:shell_on=0
 shot_on(0)=0:shot_on(1)=0
 #bench_start=FRAME
 FOR bench_i=0 TO 63
@@ -292,7 +294,7 @@ def main():
     if args.review:
         # Initial conditions only; every routine is the production one.
         source = sub(source, 'GOTO title\n', 'start_lives=9\nGOTO new_game\n')
-        source = sub(source, '#hx=1920\nhy=LANDED\n', '#hx=640\nhy=96\n')
+        source = sub(source, '#hx=1932\nhy=LANDED\n', '#hx=640\nhy=96\n')
         source = sub(source, 'GOSUB new_heli\nGOSUB game_screen\nGOSUB clock_reset\n',
                      'camp_open(1)=1:camp_open(2)=1' + ('' if args.calm else ':sorties=1') + '\n'
                      'GOSUB new_heli\nGOSUB game_screen\nGOSUB clock_reset\n')
@@ -307,7 +309,15 @@ def main():
         return
     source = sub(source, 'GOTO title\n', 'start_lives=3\nGOTO new_game\n')
     bench = MICRO if args.micro else BENCH
-    source = sub(source, '\nmain_loop:\n', bench+HELPERS+'\nmain_loop:\n')
+    # new_game runs into the benchmark's first line (its GOTO); the rest of its
+    # code goes in the data bank, which stays selected, in place of the title
+    # and results code a benchmark never reaches: the fixed area's unoptimised
+    # image has no room for it.
+    start, body = bench.lstrip('\n').split('\n', 1)
+    source = sub(source, '\nmain_loop:\n', '\n'+start+'\nmain_loop:\n')
+    source = cut(source, 'result_screen', 'title', 'GOTO result_screen')
+    source = cut(source, 'title', 'setup_choice', 'GOTO title')
+    source = sub(source, '\nsetup_choice:\n', '\n'+body+HELPERS+'\nsetup_choice:\n')
     source = sub(source, '\nGOSUB fly\n', '\nGOSUB bench_fly\n')
     if not args.micro:
         source = sub(source, 'IF hud_dirty THEN GOSUB hud\nGOTO main_loop\n',
@@ -319,8 +329,8 @@ def main():
     if args.micro:
         # The helicopter is invulnerable throughout: crash code never runs.
         source = cut(source, 'crash', 'crash_tick')
-        source = cut(source, 'crash_tick', 'explode')
-        source = cut(source, 'crash_draw', 'heli_draw')
+        source = cut(source, 'crash_tick', 'explode_air')
+        source = cut(source, 'crash_draw', 'result_screen')
     for label in args.stub:
         source = sub(source, f'\n{label}:\n', f'\n{label}:\nRETURN\n')
     out = ROOT/'build'/args.out; out.mkdir(parents=True, exist_ok=True)
