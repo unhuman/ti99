@@ -457,9 +457,9 @@ SPRITES[49]=a
 
 # Explosions (blast_draw): a core sprite and three debris clusters, each a
 # few separate pixels, so four sprites read as a spray of particles. 18/19:
-# the fireball, then its broken, spreading ring; 50 is free (a rising gray
-# smoke puff once ended each burst, and read as a second, white explosion
-# popping up); 51-53 sparks
+# the fireball, then its broken, spreading ring; 50 a firework rocket (a
+# rising gray smoke puff once ended each burst there, and read as a second,
+# white explosion popping up); 51-53 sparks
 # spreading apart (tight, wider, widest); 54 embers; 55 dirt clods; 56 the
 # small burst's flash; 57 the tiny burst's puff; 58 an air burst's chunk
 # falling with a trail of sparks above it. No sprite pattern is free.
@@ -497,7 +497,8 @@ BLAST_ART={
                 '.......#........','......#.#.......','................','................',
                 '................','................','................','................']),
 }
-BLAST_SLOT={'fire':18,'ring':19,'spark1':51,'spark2':52,'spark3':53,
+BLAST_ART['rocket']=dots([(7,6),(8,6),(7,7),(8,7),(7,9),(8,11),(7,13),(8,15)])
+BLAST_SLOT={'fire':18,'ring':19,'rocket':50,'spark1':51,'spark2':52,'spark3':53,
             'ember':54,'dirt':55,'flash':56,'puff':57,'drop':58}
 for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
 
@@ -735,6 +736,78 @@ def hud_rows():
     return sum(rows,[])
 HUD_ROWS=hud_rows()
 
+# Fireworks for a perfect rescue (and the title's HOWIE code), over the
+# home with the view at its east end (camera 1792). A script of rockets,
+# each with a start frame, launch column (screen x of its 16x16 sprite),
+# climb length, kind and colour scheme. A rocket climbs from y 158 by
+# FW_CLIMB, slowing, for its climb length in frames, then bursts there: a
+# core and five spark clusters, one row per two frames for 32 frames, from
+# tables like the explosions' (no RAM per particle). Each firework draws in
+# a group of six sprite slots (FW_SLOT, 2-31 in five groups), and a group is
+# never reused while it is still busy, so up to five burst at once and
+# flicker shares the crowded lines.
+FW_ROWS=16
+FW_CLIMB=[round(118*(1-(1-p/34)**2)) for p in range(35)]
+FW_RAMPS={'gold':(15,11,10,6),'red':(15,9,8,6),'green':(15,3,12,12),'blue':(15,7,5,4),
+          'magenta':(15,13,13,6),'silver':(15,15,14,14)}
+FW_RAMP_INDEX={name:i*4 for i,name in enumerate(FW_RAMPS)}
+FW_KIND_INDEX={'peony':0,'willow':FW_ROWS,'ring':2*FW_ROWS}
+# (start frame, x, climb frames, kind, colours): openers, then a finale
+# salvo of five.
+FW_SCRIPT=((0,176,26,'peony','gold'),(40,140,20,'willow','gold'),(70,186,30,'ring','blue'),
+           (100,120,16,'peony','red'),(125,160,34,'peony','green'),(150,100,22,'ring','magenta'),
+           (178,180,18,'willow','silver'),(205,132,28,'peony','blue'),(232,170,24,'ring','red'),
+           (258,110,30,'willow','gold'),(290,186,32,'peony','red'),(300,150,26,'peony','green'),
+           (310,120,20,'peony','blue'),(322,166,30,'ring','gold'),(334,134,34,'willow','silver'))
+FW_END=440        # frames: the last burst is over by then
+import math
+def fw_burst(kind):
+    """Per row: core pattern (0 none), core shade, debris pattern, debris
+    shade, and five (dx, dy) offsets of the clusters from the burst."""
+    rows=[]
+    for row in range(FW_ROWS):
+        t=2*row+1
+        if kind=='peony':
+            reach,g,flat,turn=40*(1-math.exp(-t/9)),0.02,1.0,90
+            core=('flash',0) if row<2 else ('ring',0) if row<4 else ('ring',1) if row<6 else None
+            part=('spark1' if row<3 else 'spark2' if row<9 else 'spark3' if row<13 else 'ember',
+                  0 if row<3 else 1 if row<8 else 2 if row<12 else 3)
+        elif kind=='willow':
+            reach,g,flat,turn=30*(1-math.exp(-t/7)),0.035,1.0,90
+            core=('flash',0) if row<2 else None
+            part=('spark2' if row<4 else 'spark3' if row<8 else 'drop',
+                  0 if row<2 else 1 if row<6 else 2 if row<11 else 3)
+        else:
+            reach,g,flat,turn=46*(1-math.exp(-t/8)),0.01,0.35,0
+            core=('ring',0) if row<4 else ('ring',1) if row<8 else None
+            part=('spark1' if row<4 else 'spark2' if row<10 else 'ember',
+                  0 if row<4 else 1 if row<9 else 2 if row<13 else 3)
+        offsets=[]
+        for q in range(5):
+            a=math.radians(turn+72*q)
+            offsets.append((round(reach*math.cos(a)),round(-flat*reach*math.sin(a)+g*t*t)))
+        rows.append((BLAST_SLOT[core[0]]*4 if core else 0,core[1] if core else 0,
+                     BLAST_SLOT[part[0]]*4,part[1],offsets))
+    return rows
+FW_BURST=fw_burst('peony')+fw_burst('willow')+fw_burst('ring')
+def fw_slots():
+    """Each firework's first sprite slot: the first group of six (2, 8, ...
+    26) free from its launch until 8 frames after its burst ends."""
+    busy=[-1]*5;slots=[]
+    for start,x,climb,kind,ramp in FW_SCRIPT:
+        group=next(g for g in range(5) if busy[g]<start)
+        busy[group]=start+climb+2*FW_ROWS+8
+        slots.append(2+group*6)
+    return slots
+FW_SLOT=fw_slots()
+for (start,x,climb,kind,ramp) in FW_SCRIPT:
+    assert 0<climb<len(FW_CLIMB) and start+climb+2*FW_ROWS+8<FW_END
+    y=158-FW_CLIMB[climb]
+    for r in FW_BURST[FW_KIND_INDEX[kind]:FW_KIND_INDEX[kind]+FW_ROWS]:
+        for dx,dy in r[4]:
+            assert 0<=x+dx<=239 and 0<y+dy<175,(start,x+dx,y+dy)
+assert all(-64<=v<64 for r in FW_BURST for xy in r[4] for v in xy)
+
 def emit(label, data):
     assert len(data) % 2 == 0, label
     return label + ':\n' + ''.join('    DATA BYTE '+','.join(str(v) for v in data[i:i+16])+'\n' for i in range(0,len(data),16))
@@ -761,6 +834,23 @@ def generate():
     boot += emit('star_colors',STAR_COLORS)
     boot += emit('hud_art',[b for bits,_ in HUD_CHARS.values() for b in bits])
     boot += emit('hud_colors',[c for _,colors in HUD_CHARS.values() for c in colors])
+    # The fireworks run with the boot bank selected (their code is there too).
+    boot += emit('fw_x',[f[1] for f in FW_SCRIPT]+[0])
+    boot += emit('fw_climb_len',[f[2] for f in FW_SCRIPT]+[0])
+    boot += emit('fw_kind',[FW_KIND_INDEX[f[3]] for f in FW_SCRIPT]+[0])
+    boot += emit('fw_ramp',[FW_RAMP_INDEX[f[4]] for f in FW_SCRIPT]+[0])
+    boot += emit('fw_slot',FW_SLOT+[0])
+    boot += emit('fw_climb',FW_CLIMB+[0])
+    boot += emit('fw_colors',[c for ramp in FW_RAMPS.values() for c in ramp])
+    boot += emit('fw_cpat',[r[0] for r in FW_BURST])
+    boot += emit('fw_cshade',[r[1] for r in FW_BURST])
+    boot += emit('fw_ppat',[r[2] for r in FW_BURST])
+    boot += emit('fw_pshade',[r[3] for r in FW_BURST])
+    # Five clusters per row, one after another (row*5+q), stored +64.
+    boot += emit('fw_dx',[r[4][q][0]+64 for r in FW_BURST for q in range(5)])
+    boot += emit('fw_dy',[r[4][q][1]+64 for r in FW_BURST for q in range(5)])
+    boot += '#fw_start:\n' + ''.join('    DATA '+','.join(str(f[0]) for f in FW_SCRIPT[i:i+8])+'\n'
+                                       for i in range(0,len(FW_SCRIPT),8))
     text = head
     # A crash redefines slots 13/14 as flames, then embers; a fresh crash
     # restores the full flames after the preceding ember phase.

@@ -80,7 +80,9 @@ dirt; on bare ground with no target you see only its flash and smoke, so you can
 miss from a hit. The magenta band at the top counts, left to right, the people lost (red
 dot), on board (cyan) and saved (green), and the last box holds your **spare** helicopters
 (not counting the one you are flying). The mission ends when all 64 people are
-saved or lost, or the last helicopter is destroyed. There is no fuel.
+saved or lost, or the last helicopter is destroyed. There is no fuel. Rescue all 64 and a
+fireworks display lights up the sky over the home before the summary: rockets whistling up
+and bursting into spheres, willows and rings in six colours, ending in a salvo of five.
 
 When more than four sprites share a scanline they flicker in turn (sprite flicker is on), so
 nothing that can hit you is ever invisible for long; a tank shell is always drawn before it
@@ -94,7 +96,8 @@ counts and the session's best rescue.
 For practice, type **838** at the title and answer **1–9** for the number of helicopters.
 The summary marks a practice game with a small asterisk after its skill level and saved
 count, and the best rescue keeps its marker. Up to
-four spare icons show.
+four spare icons show. Typing **HOWIE** at the title (**4-6-9-4-3** on the ColecoVision
+keypad) plays the fireworks without winning a game.
 
 ## Build
 
@@ -119,8 +122,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,478 / 24,336 B fixed (+ 7,654 and 4,842 / 8,190 B banks) | 810 / 7,854 B |
-| ColecoVision | 28,379 / 32,768 B ROM | 811 / 814 B |
+| TI-99/4A | 22,574 / 24,336 B fixed (+ 7,990 and 6,734 / 8,190 B banks) | 810 / 7,854 B |
+| ColecoVision | 30,242 / 32,768 B ROM | 811 / 814 B |
 
 ## Speed
 
@@ -143,7 +146,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   two-colours-per-row limit), world map, star table and shell arc; writes `src/assets.bas`
   (play-time data) and `src/assets_boot.bas` (art uploaded once at power-on, in its own TI
   bank).
-- `tools/check.py`: 98 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 101 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,

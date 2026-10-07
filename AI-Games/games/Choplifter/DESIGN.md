@@ -46,12 +46,12 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,478 | 24,336 | 1,858 free |
-| TI fixed area, unoptimised | 24,266 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 7,654 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
-| TI boot bank (`BANK 2`) | 4,842 | 8,190 | art uploaded only at power-on |
+| TI fixed area (after short branches) | 22,574 | 24,336 | 1,762 free |
+| TI fixed area, unoptimised | 24,370 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 7,990 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
+| TI boot bank (`BANK 2`) | 6,734 | 8,190 | art uploaded only at power-on; the fireworks code and tables |
 | TI RAM | 810 | 7,854 | |
-| ColecoVision ROM | 28,379 | 32,768 | |
+| ColecoVision ROM | 30,242 | 32,768 | |
 | ColecoVision RAM | 811 | 814 | nearly full; see `#vaddr` |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
@@ -424,7 +424,8 @@ with two rotor beats each and level or banked poses; side views alternate cross 
 tail-rotor blades. Main and tail rotors share a four-frame beat that never skips both poses on
 a slow update. There are 64 sprite patterns; 13–14 are the crash flames, 18–19 the
 explosion's fireball and ring, 47–49 the missiles and bomb, 51–57 the explosion's sparks,
-embers, dirt, flash and puff, and 58 an air burst's falling chunk; 50 is free.
+embers, dirt, flash and puff, 58 an air burst's falling chunk and 50 a firework rocket; none
+is free.
 Fixed slots:
 
 | Slots | Owner |
@@ -528,6 +529,37 @@ practice game at the difficulty last picked; there is no way back from it. Norma
 three helicopters. Practice saved counts carry a small asterisk (character 60) and the best
 rescue keeps its marker; an unmarked run wins a tie. At most four spare icons show.
 
+The hidden title word HOWIE (on the ColecoVision keypad its phone spelling, 4-6-9-4-3;
+`howie_keys`) plays the perfect-rescue fireworks as if the game had just been won: all 64
+saved and indoors, the helicopter home on the pad. `title_seq` counts it from 10 (11-14 the
+letters matched, 15 complete), so it never meets the 838 sequence (1-3); a wrong key resets
+it and is then read as an ordinary key, and the keypad's closing 3 is not a difficulty
+choice. Nothing is recorded, and it returns to the title.
+
+## Perfect rescue fireworks
+
+All 64 saved (`mission_over`): before the results, a fireworks display plays over the home,
+with the view at the east end (a helicopter that flew off while the last passenger walked in
+is brought home to the pad first). The script is `FW_SCRIPT` in `assets/generate.py`: 15
+fireworks over about 6 seconds (440 frames), in three kinds (a peony, an even sphere of
+sparks; a willow, gold trails drooping into falling embers; a ring, a flat halo) and six
+colour schemes (gold, red, green, blue, magenta, silver; each four shades, white to dark),
+ending in a salvo of five. Each rocket (sprite pattern 50, white) climbs from y 158 over its
+own climb length (`fw_climb`, slowing as it rises) with a rising whistle on channel 1, then
+bursts with a noise crack: a core (flash or ring) and five spark clusters, one table row per
+two frames for 32 frames (`fw_dx`, `fw_dy`, `fw_cpat`, `fw_ppat` and their shades). Each
+firework draws in a group of six sprite slots (`fw_slot`: five groups in slots 2-31), which
+the generator never reuses while it is busy, so up to five burst at once; sprite flicker
+shares the crowded lines, and the sky sparkles. The helicopter stands on the pad in slots
+0-1. FIRE ends the show after its first second.
+
+The code and its tables live in the TI's boot bank (bank 2, otherwise read only at power-on),
+the only bank with room; `show_fireworks` in the fixed area selects it around the call and
+gives the data bank back, so no bank switch happens in banked code. Its variables are all
+ones the game leaves idle by then (the frame clock `#last`/`#elapsed`, the draw scratch,
+`ini`, `di`, `ay`, `by`, `blast_row`, `#ax`, `#bx`, `#distance`, `sfx_volume`, `#sfx_pitch`),
+so it costs no RAM.
+
 ## TI native kernels
 
 Each kernel is inline `ASM` inside a BASIC routine, with the BASIC original kept as the
@@ -553,7 +585,7 @@ the compiler's register cache (checked in the generated assembly).
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map, the star
   table, the shell arc and the explosion timelines, and writes `src/assets.bas` (play-time
   data, including the menu font) and `src/assets_boot.bas` (power-on uploads).
-- `tools/build.py` — generation, the 98 source-executing tests (once per `build.ps1 All`),
+- `tools/build.py` — generation, the 101 source-executing tests (once per `build.ps1 All`),
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
   its verification, budget checks, an even-address check on every indexed word table (from
   xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address

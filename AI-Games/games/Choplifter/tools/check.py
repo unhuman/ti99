@@ -69,12 +69,21 @@ class Basic:
             elif name:
                 code=line.split("'")[0].strip()
                 if code:self.r[name].append(code)
+        # A label holding only DATA is a table: load it as the target sees it
+        # (a table can differ per target inside #if).
+        for label,body in self.r.items():
+            if body and all(l.startswith('DATA') for l in body):
+                self.a[label]=[int(v) for l in body for v in l.split(' ',2)[-1].split(',')]
     def expr(self,s):
         s=s.strip()
         s=re.sub(r'\bAND\b','&',s,flags=re.I)
         s=re.sub(r'\bXOR\b','^',s,flags=re.I)
         s=re.sub(r'\bOR\b','|',s,flags=re.I)
-        s=re.sub(r'(#?[a-z_]\w*)\(([^()]+)\)',lambda m:str(self.element(m[1],self.expr(m[2]))),s,flags=re.I)
+        # Innermost indexes first, until none is left (a(b(i)) needs two passes).
+        while True:
+            t=re.sub(r'(#?[a-z_]\w*)\(([^()]+)\)',lambda m:str(self.element(m[1],self.expr(m[2]))),s,flags=re.I)
+            if t==s:break
+            s=t
         s=re.sub(r'#?[a-z_]\w*(?:\.\w+)?',lambda m:str(self.v.get(m[0].lower(),0)),s,flags=re.I)
         s=s.replace('<>','!=')
         s=s.replace('/','//')
@@ -450,6 +459,16 @@ class Tests(unittest.TestCase):
         b.a['tile_art']=[v for bits,_ in generate.TILES for v in bits]
         b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW+[0,0]
         b.a['hud_rows']=generate.HUD_ROWS
+        g=generate;script=g.FW_SCRIPT
+        b.a.update({'fw_x':[f[1] for f in script]+[0],'fw_climb_len':[f[2] for f in script]+[0],
+                    'fw_kind':[g.FW_KIND_INDEX[f[3]] for f in script]+[0],
+                    'fw_ramp':[g.FW_RAMP_INDEX[f[4]] for f in script]+[0],'fw_slot':g.FW_SLOT+[0],
+                    'fw_climb':g.FW_CLIMB+[0],'fw_colors':[c for r in g.FW_RAMPS.values() for c in r],
+                    'fw_cpat':[r[0] for r in g.FW_BURST],'fw_cshade':[r[1] for r in g.FW_BURST],
+                    'fw_ppat':[r[2] for r in g.FW_BURST],'fw_pshade':[r[3] for r in g.FW_BURST],
+                    'fw_dx':[r[4][q][0]+64 for r in g.FW_BURST for q in range(5)],
+                    'fw_dy':[r[4][q][1]+64 for r in g.FW_BURST for q in range(5)],
+                    '#fw_start':[f[0] for f in script]})
         # Every DATA table written in the game source itself (not assets.bas).
         for label,body in re.findall(r'^(#?\w+):\n((?:DATA(?: BYTE)? [\d,]+\n)+)',SOURCE,re.M):
             b.a[label]=[int(v) for line in body.splitlines() for v in line.split(' ',2)[-1].split(',')]
@@ -2519,6 +2538,114 @@ class Tests(unittest.TestCase):
             sprayed=rows[(e-2*n)//2:(e-2*n)//2+n];bare=rows[(c-2*m)//2:(c-2*m)//2+m]
             self.assertEqual([r[:3] for r in sprayed],[r[:3] for r in bare])
             self.assertTrue(all(r[3] for r in sprayed) and not any(r[3] for r in bare))
+
+    def test_perfect_rescue_earns_the_fireworks(self):
+        # All 64 saved: the fireworks play over the home before the results;
+        # any other ending goes straight to the results. The display lives in
+        # the boot bank, selected only around the call in the fixed area.
+        for saved,lost,shows in ((64,0,1),(63,1,0),(0,64,0)):
+            b=self.state();b.v.update(saved=saved,lost=lost,**{'#camera':1792})
+            b.r['show_fireworks']=['RETURN'];b.r['result_screen']=['RETURN']
+            b.call('mission_over')
+            self.assertEqual(b.calls.get('show_fireworks',0),shows,saved)
+            self.assertIn(('goto','result_screen'),b.events)
+        # A helicopter that flew off is brought home, so the show is over it.
+        b=self.state();b.v.update(saved=64,lost=0,anim=0,crowd_pose=255,hy=60,**{'#hx':900,'#camera':788})
+        b.r['show_fireworks']=['RETURN'];b.r['result_screen']=['RETURN']
+        b.call('mission_over')
+        self.assertEqual((b.v['#camera'],b.v['#hv'],b.v['hy']),(1792,1932,b.v['landed']))
+        main=SOURCE.split('\nmain_loop:\n')[1].split('\ndraw_frame:\n')[0]
+        self.assertIn('IF ended THEN GOTO mission_over',main)
+        trampoline=SOURCE.split('\nshow_fireworks:\n')[1].split('\nRETURN\n')[0]
+        self.assertEqual([l for l in trampoline.splitlines() if not l.startswith("'")],
+                         ['#if TI994A','BANK SELECT 2','#endif','GOSUB fireworks','#if TI994A','BANK SELECT 1','#endif'])
+        fixed=SOURCE.split('\nBANK 1\n')[0]
+        self.assertIn('\nshow_fireworks:\n',fixed);self.assertIn('\nmission_over:\n',fixed)
+        banked=SOURCE.split('\nBANK 2\n')[1]
+        self.assertIn('\nfireworks:\n',banked);self.assertIn('\nfirework_draw:\n',banked)
+
+    def test_fireworks_follow_the_script(self):
+        # Every frame of the show, drawn from the script: rockets climbing
+        # from y 158, bursts of a core and five clusters at the table's
+        # offsets and colours, each firework only in its own six slots (2-31),
+        # no two fireworks in one slot at once, nothing at y 208, everything
+        # hidden by the end; a climbing rocket whistles higher as it rises and
+        # a fresh burst cracks.
+        import generate as art
+        self.assertIn(f'IF #elapsed >= {art.FW_END} THEN GOTO fireworks_end',SOURCE)
+        self.assertIn(f'FOR ini=0 TO {len(art.FW_SCRIPT)-1}\n    GOSUB firework_draw',SOURCE)
+        self.assertIn(f"SPRITE draw_slot,draw_y,draw_x,{art.BLAST_SLOT['rocket']*4},15",SOURCE)
+        b=self.state();b.sprites={};pitches=[];cracks=0
+        for frame in range(art.FW_END+1):
+            owners={}
+            b.v.update({'#elapsed':frame,'sfx_volume':0,'#sfx_pitch':0})
+            for k,(start,x,climb,kind,ramp) in enumerate(art.FW_SCRIPT):
+                before=dict(b.sprites)
+                b.v['ini']=k;b.call('firework_draw')
+                written={slot for slot,data in b.sprites.items() if before.get(slot)!=data}
+                group=set(range(art.FW_SLOT[k],art.FW_SLOT[k]+6))
+                self.assertLessEqual(written,group,(frame,k))
+                phase=frame-start
+                if 0<=phase<climb:
+                    self.assertEqual(b.sprites[art.FW_SLOT[k]],
+                                     [157-art.FW_CLIMB[phase],x,art.BLAST_SLOT['rocket']*4,15])
+                    pitches.append((k,phase,b.v['#sfx_pitch']))
+                elif 0<=phase-climb<32:
+                    row=art.FW_KIND_INDEX[kind]+(phase-climb)//2
+                    pat,shade,ppat,pshade,offs=art.FW_BURST[row]
+                    colors=art.FW_RAMPS[ramp];by=157-art.FW_CLIMB[climb]
+                    core=b.sprites[art.FW_SLOT[k]]
+                    self.assertEqual(core,[by,x,pat,colors[shade]] if pat else [209,0,0,0])
+                    for q,(dx,dy) in enumerate(offs):
+                        self.assertEqual(b.sprites[art.FW_SLOT[k]+1+q],[by+dy,x+dx,ppat,colors[pshade]])
+                    cracks+=phase==climb
+                for slot in written:
+                    if b.sprites[slot][0]!=209:
+                        self.assertNotIn(slot,owners,(frame,k,slot));owners[slot]=k
+            for data in b.sprites.values():self.assertNotEqual(data[0],208)
+            if frame>=art.FW_END-30:
+                self.assertTrue(all(d[0]==209 for d in b.sprites.values()),frame)
+        self.assertTrue(set(b.sprites)<=set(range(2,32)))
+        self.assertEqual(cracks,len(art.FW_SCRIPT))
+        # Higher (a smaller divisor) as each rocket climbs.
+        for k in range(len(art.FW_SCRIPT)):
+            mine=[p for kk,_,p in pitches if kk==k]
+            self.assertEqual(mine,sorted(mine,reverse=True))
+        # A burst's first frames are loud.
+        b=self.state();start,x,climb,_,_=art.FW_SCRIPT[0]
+        b.v.update({'#elapsed':start+climb,'sfx_volume':0,'ini':0});b.call('firework_draw')
+        self.assertEqual(b.v['sfx_volume'],15)
+
+    def test_howie_on_the_title_plays_the_fireworks(self):
+        # HOWIE on the title (4-6-9-4-3 on the ColecoVision keypad) plays the
+        # perfect-rescue display; a wrong key resets it; 8-3-8 still works,
+        # and the keypad's closing 3 does not pick HARD.
+        for target,word in (('TI994A',(72,79,87,73,69)),('COLECO',(4,6,9,4,3))):
+            b=Basic(target=target);b.v.update(title_key=15,difficulty=1)
+            b.a['howie_keys']=list(word)+[0]
+            def press(key):
+                b.v['cont1.key']=key;b.call('title_code')
+                b.v['cont1.key']=15;b.call('title_code')
+            for key in word:press(key)
+            self.assertEqual((b.v['title_seq'],b.v['difficulty']),(15,1),target)
+            b.v['title_seq']=0
+            for key in word[:3]+(1,):press(key)
+            self.assertEqual((b.v['title_seq'],b.v['difficulty']),(0,0),target)
+            for key in (8,3,8):press(key)
+            self.assertEqual(b.v['title_seq'],3,target)
+        keys=re.search(r'howie_keys:\n#if TI994A\nDATA BYTE ([\d,]+)\n#else\nDATA BYTE ([\d,]+)\n#endif',SOURCE)
+        self.assertEqual([int(v) for v in keys[1].split(',')],[ord(c) for c in 'HOWIE']+[0])
+        self.assertEqual([int(v) for v in keys[2].split(',')],[4,6,9,4,3,0])
+        wait=SOURCE.split('\ntitle_wait:\n')[1].split('\ntitle_fireworks:\n')[0]
+        self.assertIn('IF title_seq = 15 THEN GOTO title_fireworks',wait)
+        # The display as if the game were won: all 64 saved and indoors, the
+        # helicopter home; nothing recorded, then back to the title.
+        b=self.state();b.v.update(start_lives=3,best=20,anim=0,crowd_pose=255)
+        b.r['show_fireworks']=['RETURN'];b.r['title']=['RETURN']
+        b.call('title_fireworks')
+        self.assertEqual((b.v['saved'],b.v['lost'],b.v['aboard'],b.v['#hv'],b.v['best']),(64,0,0,1932,20))
+        self.assertEqual(set(b.a['person_state']),{7})
+        self.assertEqual(b.calls.get('show_fireworks'),1);self.assertNotIn('best_update',b.calls)
 
     def test_rotor_chop_is_steady_and_quickens_with_speed(self):
         # The rotor's chop: low white noise restarted every chop_period video

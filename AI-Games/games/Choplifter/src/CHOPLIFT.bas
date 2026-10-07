@@ -155,7 +155,7 @@ IF crash_timer THEN GOTO draw_frame
 IF saved+lost = 64 THEN
     IF home_walking = 0 THEN ended=1
 END IF
-IF ended THEN GOTO result_screen
+IF ended THEN GOTO mission_over
 draw_frame:
 GOSUB camera_tick
 ' A scrolling update draws the sprites inside crowd_commit, just before the
@@ -165,6 +165,34 @@ GOSUB crowd_draw
 IF actors_drawn = 0 THEN GOSUB draw_actors
 IF hud_dirty THEN GOSUB hud
 GOTO main_loop
+
+mission_over:
+' A perfect rescue (all 64 saved) earns a fireworks display over the home
+' before the results. The view moves home first if the helicopter has flown
+' off while the last passenger walked in.
+IF saved = 64 THEN
+    IF #camera <> 1792 THEN
+        #hx=1932:#move=0:GOSUB move_heli
+        hy=LANDED:hspeed=0
+        #camera=65535
+        GOSUB game_screen
+    END IF
+    GOSUB show_fireworks
+END IF
+GOTO result_screen
+
+show_fireworks:
+' The display's code and tables live in the boot bank (bank 2 on the TI): it
+' is selected around the call from here, the fixed area, never from banked
+' code (CLAUDE.md), and the data bank is given back afterwards.
+#if TI994A
+BANK SELECT 2
+#endif
+GOSUB fireworks
+#if TI994A
+BANK SELECT 1
+#endif
+RETURN
 
 crash_frame:
 ' Camps keep releasing people and walkers keep walking while the wreck falls
@@ -2836,6 +2864,14 @@ DATA 360,320,280,240,200,240,210,180,150,120,180,160,140,120,100
 ' How enemies fire, by difficulty (easy, medium, hard): frames between a
 ' jet's missiles, how far out of line (px) it still fires, and a tank
 ' shell's top speed in 1/16 px per frame (its reach).
+' The title's secret HOWIE: TI key codes, or the ColecoVision keypad's
+' phone spelling of it (4-6-9-4-3).
+howie_keys:
+#if TI994A
+DATA BYTE 72,79,87,73,69,0
+#else
+DATA BYTE 4,6,9,4,3,0
+#endif
 ' The title's difficulty brackets: light red (9) on black, all eight rows.
 bracket_colors:
 DATA BYTE 145,145,145,145,145,145,145,145
@@ -3057,8 +3093,26 @@ WAIT
 GOSUB title_heli
 GOSUB title_code
 IF title_seq = 3 THEN GOTO setup838
+IF title_seq = 15 THEN GOTO title_fireworks
 IF cont1.button THEN GOTO new_game
 GOTO title_wait
+
+title_fireworks:
+' HOWIE: the perfect-rescue display, as if the game had just been won: all
+' 64 saved and inside, the helicopter home on its pad. Nothing is recorded,
+' and it returns to the title.
+saved=64:lost=0:aboard=0:lives=start_lives:practice=0
+FOR ini=0 TO 63
+    person_state(ini)=7
+NEXT ini
+FOR ini=0 TO 3
+    camp_open(ini)=1:camp_left(ini)=0:camp_released(ini)=16:camp_active(ini)=0
+NEXT ini
+home_walking=0:wave_id=255:board_count=0:delivery_pending=0
+GOSUB new_heli
+GOSUB game_screen
+GOSUB show_fireworks
+GOTO title
 
 title_heli:
 ' The helicopter circles the name clockwise at 2 px a frame on a 528-pixel
@@ -3104,6 +3158,17 @@ IF cont1.right THEN menu_key=21
 IF menu_key = title_key THEN RETURN
 title_key=menu_key
 IF menu_key = 15 THEN RETURN
+' HOWIE (on the ColecoVision keypad its phone spelling, 4-6-9-4-3) plays the
+' perfect-rescue fireworks: title_seq is 10 plus the letters matched, and 15
+' when the word is complete.
+IF title_seq >= 10 THEN
+    IF menu_key = howie_keys(title_seq-10) THEN
+        title_seq=title_seq+1
+        RETURN
+    END IF
+    title_seq=0
+END IF
+IF menu_key = howie_keys(0) THEN title_seq=11:RETURN
 IF menu_key = 8 THEN
     IF title_seq = 2 THEN title_seq=3 ELSE title_seq=1
 ELSE
@@ -3160,4 +3225,103 @@ INCLUDE "assets.bas"
 #if TI994A
 BANK 2
 #endif
+' The fireworks run with this bank (the TI's boot bank) selected, by
+' show_fireworks in the fixed area.
+
+fireworks:
+' A fireworks display over the home (the view at its east end): the script
+' is FW_SCRIPT in assets/generate.py. Every video frame, each firework is
+' drawn from its phase, the frames since its start: a rocket climbing from y
+' 158 (fw_climb) for fw_climb_len frames, whistling higher as it rises, then
+' its burst with a crack: a core and five spark clusters in its group of six
+' sprite slots (fw_slot), one table row per two frames, coloured from its
+' scheme (fw_ramp: four shades, white to dark). Then the group is hidden.
+' FIRE ends the show after its first second. The helicopter stands on the
+' pad. Every variable used is one the game leaves idle by now: the frame
+' clock (#last, #elapsed), the draw scratch, ini, di, ay, by, blast_row, #ax,
+' #bx, #distance, sfx_volume and #sfx_pitch.
+GOSUB silence
+GOSUB hide_all
+draw_slot=0:draw_color=15
+GOSUB heli_draw
+#last=FRAME
+fireworks_loop:
+WAIT
+#elapsed=FRAME-#last
+IF #elapsed >= 440 THEN GOTO fireworks_end
+IF #elapsed >= 60 THEN
+    IF cont1.button THEN GOTO fireworks_end
+END IF
+sfx_volume=0:#sfx_pitch=0
+FOR ini=0 TO 14
+    GOSUB firework_draw
+NEXT ini
+IF #sfx_pitch THEN SOUND 1,#sfx_pitch,6 ELSE SOUND 1,0,0
+SOUND 3,6,sfx_volume
+GOTO fireworks_loop
+fireworks_end:
+GOSUB silence
+GOSUB hide_all
+RETURN
+
+firework_draw:
+' Firework ini at #elapsed frames into the show.
+IF #elapsed < #fw_start(ini) THEN RETURN
+#distance=#elapsed-#fw_start(ini)
+draw_slot=fw_slot(ini)
+draw_x=fw_x(ini)
+blast_row=fw_climb_len(ini)
+IF #distance < blast_row THEN
+    ' Climbing (pattern 200 is the rocket, sprite 50).
+    draw_y=fw_climb(#distance)
+    draw_y=157-draw_y
+    SPRITE draw_slot,draw_y,draw_x,200,15
+    #sfx_pitch=#distance+#distance
+    #sfx_pitch=320-#sfx_pitch
+    RETURN
+END IF
+by=fw_climb(blast_row)
+by=157-by
+#distance=#distance-blast_row
+IF #distance >= 32 THEN
+    ' Over: hide the group for 8 frames (the loop can take more than one),
+    ' after which another firework may have it (the generator checks).
+    IF #distance < 40 THEN
+        FOR di=0 TO 5
+            blast_row=draw_slot+di
+            SPRITE blast_row,209,0,0,0
+        NEXT di
+    END IF
+    RETURN
+END IF
+blast_row=#distance/2
+' A fresh burst cracks, loudest at first.
+IF blast_row < 4 THEN
+    di=15-blast_row-blast_row-blast_row
+    IF di > sfx_volume THEN sfx_volume=di
+END IF
+blast_row=blast_row+fw_kind(ini)
+di=fw_ramp(ini)
+draw_pat=fw_cpat(blast_row)
+IF draw_pat THEN
+    draw_color=fw_colors(di+fw_cshade(blast_row))
+    SPRITE draw_slot,by,draw_x,draw_pat,draw_color
+ELSE
+    SPRITE draw_slot,209,0,0,0
+END IF
+draw_pat=fw_ppat(blast_row)
+draw_color=fw_colors(di+fw_pshade(blast_row))
+#ax=blast_row
+#ax=#ax+#ax+#ax+#ax+#ax
+FOR ay=1 TO 5
+    draw_y=by+fw_dy(#ax)
+    draw_y=draw_y-64
+    #bx=draw_x+fw_dx(#ax)
+    #bx=#bx-64
+    blast_row=draw_slot+ay
+    SPRITE blast_row,draw_y,#bx,draw_pat,draw_color
+    #ax=#ax+1
+NEXT ay
+RETURN
+
 INCLUDE "assets_boot.bas"
