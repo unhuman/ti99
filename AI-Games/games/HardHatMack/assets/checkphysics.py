@@ -1198,6 +1198,13 @@ def difficulty_contract(source):
     for state in (0,8):
         vm=Basic(source);vm.v.update(mgon=1,mgarm=1,mgx=160,mgd=0,mgtk=1,st=state,mmove=0)
         vm.run('mag_move');assert vm.v['mgx']==160, 'magnet ran on a held step'
+    # The level 2 crane platform, with Mack riding it.
+    vm=Basic(source);vm.v.update(lv=2,levelno=2);vm.run('init_level')
+    vm.v.update(bmon=1,bmactive=1,bmy=150,bmd=0,bonbeam=1,mx=100,my=134,st=vm.v['s_walk'],mmove=0)
+    vm.run('beam_move')
+    assert (vm.v['bmy'],vm.v['my'])==(150,134), 'crane ran on a held step'
+    vm.v['mmove']=1;vm.run('beam_move')
+    assert (vm.v['bmy'],vm.v['my'])==(149,133), 'crane rider left behind'
     # Level 2/3 roamers through the real actors_move: (4 + rate * calls) / 8 steps.
     for level in (2,3):
         for chosen,rate in ((0,3),(1,4),(2,5)):
@@ -3342,6 +3349,8 @@ def main():
         (source.replace('IF mmove THEN GOSUB route_step','GOSUB route_step'),difficulty_contract),
         (source.replace("lift_move:\n\t' Easy holds the paddles with the other machines; a rider stays aboard.\n\tIF mmove = 0 THEN RETURN\n",'lift_move:\n'),difficulty_contract),
         (source.replace("banked_mag_move:\n\t' The magnet, with Mack aboard or not, is held with the other machines.\n\tIF mmove = 0 THEN RETURN\n",'banked_mag_move:\n'),difficulty_contract),
+        (source.replace("beam_move:\n\tIF lv = 3 THEN GOTO lift_move\n\t' Easy holds the crane with the other machines. Its rider and the swept\n\t' catch below follow the beam, so they hold with it.\n\tIF mmove = 0 THEN RETURN\n",
+                        'beam_move:\n\tIF lv = 3 THEN GOTO lift_move\n'),difficulty_contract),
         (source.replace('IF macc >= 8 THEN','IF macc > 8 THEN'),difficulty_contract),
         (source.replace('rrate = diffnow + 3','rrate = 4'),difficulty_contract),
         (source.replace('\t\tmrate = 6\n','\t\tmrate = 8\n'),difficulty_contract),

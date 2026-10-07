@@ -1675,6 +1675,9 @@ elev_move:
 	'
 beam_move:
 	IF lv = 3 THEN GOTO lift_move
+	' Easy holds the crane with the other machines. Its rider and the swept
+	' catch below follow the beam, so they hold with it.
+	IF mmove = 0 THEN RETURN
 	IF st = S_DEAD THEN RETURN
 	IF bmon = 0 THEN RETURN
 	IF bmactive = 0 THEN

@@ -120,8 +120,9 @@ brackets, as Choplifter does. Press 1, 2 or 3, or step with the joystick's LEFT
 from game to game. A 3 typed as part of 838 is not a choice, and a key or
 direction still held from the previous screen does not count. Medium is the
 tuned game. Easy runs the machines at three-quarter speed: both belts and the
-paddle lift (their riders with them), the presses, the jaws, the furnace flame,
-the slag, the magnet and the loose jackhammer. Easy also slows every roamer to
+paddle lift and the level 2 crane platform (their riders with them), the
+presses, the jaws, the furnace flame, the slag, the magnet and the loose
+jackhammer. Easy also slows every roamer to
 three quarters and spaces the level 1 rivets further apart (255 world steps
 instead of 240/200). Hard keeps Medium's machines; its level 2/3 roamers are a
 quarter faster and rivets come closer together (160, then 150). The bonus clock,

@@ -2984,10 +2984,11 @@ Production SHA-256:
 - both presses and the level 2 jaws;
 - the level 2 furnace flame (the "fire out of the top right");
 - the slag, which rides the lower belt;
-- the magnet, including its ride with Mack.
+- the magnet, including its ride with Mack;
+- the level 2 crane platform (`beam_move`) and its rider, added on review.
 
-The level 2 crane beam, the level 1 elevator, the springs and the factory output
-were not on the list, so they keep their speed on every setting. Hard keeps
+The level 1 elevator, the springs and the factory output were not on the list,
+so they keep their speed on every setting. Hard keeps
 Medium's machines: every jump window `checkphysics.py` proves against them still
 holds.
 
@@ -3014,8 +3015,9 @@ apply together.
     animated from `hzphase`. Without that, Mack would slide along a belt that
     is standing still: the game-timing-tuning rule that two things moving
     together share one clock.
-  - `lift_move` and `banked_mag_move` return on a held step. Each carries its
-    own rider inside the routine, so the rider holds too.
+  - `lift_move`, `banked_mag_move` and `beam_move` (the crane platform)
+    return on a held step. Each carries its own rider inside the routine, so
+    the rider holds too.
 - **Beats.** Fixed-phase sounds go through `machine_beat`, a guard that falls
   through into `machine_clack`, because a held phase repeats. These are the
   jackhammer work tick, the jaws' 48, the presses' 28 and 44, and the slag's
@@ -3062,7 +3064,7 @@ re-pointed:
 `elev_reset`.
 
 Budgets after the change:
-- fixed area: 22,122/24,336 bytes, with 404 bytes under `>FFFE` unoptimized;
+- fixed area: 22,132/24,336 bytes, with 390 bytes under `>FFFE` unoptimized;
 - data bank 4 bytes free, bank 2 188, title bank 114, motion bank 98;
 - RAM: 588 bytes.
 
@@ -3079,8 +3081,8 @@ dial and pace code:
 - a 24-step belt run on levels 2 and 3. The rider's displacement must equal
   the belt clock's;
 - held clocks and silent beats on levels 2 and 3;
-- every other named machine held: paddles, magnet empty and loaded,
-  jackhammer and both level 1 roamers;
+- every other named machine held: paddles, magnet empty and loaded, the crane
+  platform with Mack aboard, the jackhammer and both level 1 roamers;
 - the level 2/3 roamer counts through the real `actors_move`;
 - ownership of characters 27-30 across every `DEFINE` range and VRAM address.
 
@@ -3088,13 +3090,13 @@ dial and pace code:
 starting tag, and the new layout. `score_range` checks the HUD tag. The harness
 starts each VM by running the game's own `banked_difficulty` at Medium, so a
 routine called directly sees the same clocks as one reached by play.
-32 new defect mutations must fail, one per gate, dial, title rule and tag rule.
-A 33rd candidate was dropped rather than kept: `racc > 8` only shifts the
+33 new defect mutations must fail, one per gate, dial, title rule and tag rule
+(the crane platform's gate was the 33rd, added on review). One more candidate was dropped rather than kept: `racc > 8` only shifts the
 roamers' phase at the same rate, which is not a defect.
 
-All eight TI gates pass with all 238 defect mutations rejected. Classic99 runs
+All eight TI gates pass with all 239 defect mutations rejected. Classic99 runs
 this cart (QI399.087). The title, tag and HUD rows were also rendered offline
 from the checker's VM.
 
 Production SHA-256:
-`1F5037C7CD7F3CC4BCAF11641FDA6430958F70E741700D153E37BE9669492C40`.
+`B0BEAC3F75997C12DD8BA526244900C063FD652FB80AF4EB115A2DCA703CC8CC`.
