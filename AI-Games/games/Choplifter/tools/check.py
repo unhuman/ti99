@@ -460,10 +460,12 @@ class Tests(unittest.TestCase):
         b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW+[0,0]
         b.a['hud_rows']=generate.HUD_ROWS
         g=generate;script=g.FW_SCRIPT
-        b.a.update({'fw_x':[f[1] for f in script]+[0],'fw_climb_len':[f[2] for f in script]+[0],
-                    'fw_kind':[g.FW_KIND_INDEX[f[3]] for f in script]+[0],
-                    'fw_ramp':[g.FW_RAMP_INDEX[f[4]] for f in script]+[0],'fw_slot':g.FW_SLOT+[0],
-                    'fw_climb':g.FW_CLIMB+[0],'fw_colors':[c for r in g.FW_RAMPS.values() for c in r],
+        b.a.update({'fw_climb_len':[f[3] for f in script]+[0],
+                    'fw_kind':[g.FW_KIND_INDEX[f[4]] for f in script]+[0],
+                    'fw_ramp':[g.FW_RAMP_INDEX[f[5]] for f in script]+[0],'fw_slot':g.FW_SLOT+[0],
+                    'fw_px':[x for path in g.FW_PATHS for x,_ in path],
+                    'fw_py':[y for path in g.FW_PATHS for _,y in path],'fw_trail':g.FW_TRAIL,
+                    '#fw_path':g.FW_PATH_START,'fw_colors':[c for r in g.FW_RAMPS.values() for c in r],
                     'fw_cpat':[r[0] for r in g.FW_BURST],'fw_cshade':[r[1] for r in g.FW_BURST],
                     'fw_ppat':[r[2] for r in g.FW_BURST],'fw_pshade':[r[3] for r in g.FW_BURST],
                     'fw_dx':[r[4][q][0]+64 for r in g.FW_BURST for q in range(5)],
@@ -2565,35 +2567,46 @@ class Tests(unittest.TestCase):
         self.assertIn('\nfireworks:\n',banked);self.assertIn('\nfirework_draw:\n',banked)
 
     def test_fireworks_follow_the_script(self):
-        # Every frame of the show, drawn from the script: rockets climbing
-        # from y 158, bursts of a core and five clusters at the table's
-        # offsets and colours, each firework only in its own six slots (2-31),
-        # no two fireworks in one slot at once, nothing at y 208, everything
-        # hidden by the end; a climbing rocket whistles higher as it rises and
-        # a fresh burst cracks.
+        # Every frame of the show, drawn from the script: rockets rising from
+        # behind the home's roof along slanted paths, trailing three embers at
+        # their positions 2, 4 and 6 frames before; bursts of a core and five
+        # clusters at the table's offsets and colours, each firework only in
+        # its own six slots (2-31), no two fireworks in one slot at once,
+        # nothing at y 208, everything hidden by the end; a climbing rocket
+        # whistles higher as it rises and a fresh burst cracks.
         import generate as art
         self.assertIn(f'IF #elapsed >= {art.FW_END} THEN GOTO fireworks_end',SOURCE)
         self.assertIn(f'FOR ini=0 TO {len(art.FW_SCRIPT)-1}\n    GOSUB firework_draw',SOURCE)
-        self.assertIn(f"SPRITE draw_slot,draw_y,draw_x,{art.BLAST_SLOT['rocket']*4},15",SOURCE)
+        self.assertIn(f"SPRITE draw_slot,fw_py(#ax),fw_px(#ax),{art.BLAST_SLOT['rocket']*4},15",SOURCE)
+        self.assertIn(f"SPRITE blast_row,fw_py(#bx),fw_px(#bx),{art.BLAST_SLOT['ember']*4},fw_trail(di)",SOURCE)
+        # Every rocket starts over the home's roof (screen x 184-223, roof y 152).
+        for path in art.FW_PATHS:
+            x,y=path[0];self.assertTrue(184<=x+7<=223 and 152<=y+8<=153,(x,y))   # head at the roof line
         b=self.state();b.sprites={};pitches=[];cracks=0
         for frame in range(art.FW_END+1):
             owners={}
             b.v.update({'#elapsed':frame,'sfx_volume':0,'#sfx_pitch':0})
-            for k,(start,x,climb,kind,ramp) in enumerate(art.FW_SCRIPT):
+            for k,(start,x0,bx,climb,kind,ramp) in enumerate(art.FW_SCRIPT):
                 before=dict(b.sprites)
                 b.v['ini']=k;b.call('firework_draw')
                 written={slot for slot,data in b.sprites.items() if before.get(slot)!=data}
                 group=set(range(art.FW_SLOT[k],art.FW_SLOT[k]+6))
                 self.assertLessEqual(written,group,(frame,k))
-                phase=frame-start
+                phase=frame-start;path=art.FW_PATHS[k];slot=art.FW_SLOT[k]
                 if 0<=phase<climb:
-                    self.assertEqual(b.sprites[art.FW_SLOT[k]],
-                                     [157-art.FW_CLIMB[phase],x,art.BLAST_SLOT['rocket']*4,15])
+                    x,y=path[phase]
+                    self.assertEqual(b.sprites[slot],[y,x,art.BLAST_SLOT['rocket']*4,15])
+                    for back in (1,2,3):
+                        if phase>=2*back:
+                            tx,ty=path[phase-2*back]
+                            self.assertEqual(b.sprites[slot+back],
+                                             [ty,tx,art.BLAST_SLOT['ember']*4,art.FW_TRAIL[back]])
+                        else:self.assertEqual(b.sprites[slot+back][0],209)
                     pitches.append((k,phase,b.v['#sfx_pitch']))
                 elif 0<=phase-climb<32:
                     row=art.FW_KIND_INDEX[kind]+(phase-climb)//2
                     pat,shade,ppat,pshade,offs=art.FW_BURST[row]
-                    colors=art.FW_RAMPS[ramp];by=157-art.FW_CLIMB[climb]
+                    colors=art.FW_RAMPS[ramp];x,by=path[-1]
                     core=b.sprites[art.FW_SLOT[k]]
                     self.assertEqual(core,[by,x,pat,colors[shade]] if pat else [209,0,0,0])
                     for q,(dx,dy) in enumerate(offs):
@@ -2612,7 +2625,7 @@ class Tests(unittest.TestCase):
             mine=[p for kk,_,p in pitches if kk==k]
             self.assertEqual(mine,sorted(mine,reverse=True))
         # A burst's first frames are loud.
-        b=self.state();start,x,climb,_,_=art.FW_SCRIPT[0]
+        b=self.state();start,_,_,climb,_,_=art.FW_SCRIPT[0]
         b.v.update({'#elapsed':start+climb,'sfx_volume':0,'ini':0});b.call('firework_draw')
         self.assertEqual(b.v['sfx_volume'],15)
 
@@ -2849,9 +2862,12 @@ class Tests(unittest.TestCase):
                 if not b.a['shot_on'][0]:break
                 b.call('move_shot')
             self.assertEqual(b.a['shot_on'][0],0,(direction,y))
-            self.assertEqual(b.a['person_state'][5],4 if person else 0)
+            # Only sideways shots kill people: a bomb falls on the tanks'
+            # plane, in front of the crowd, past them to the ground.
+            killed=person and direction<2
+            self.assertEqual(b.a['person_state'][5],4 if killed else 2 if person else 0,(direction,y))
             x,y=b.a['#shot_x'][0]-7,min(b.a['shot_y'][0]-7,176)
-            kind=('small' if direction==2 else 'tiny')+('' if person else '_core')
+            kind=('small' if direction==2 else 'tiny')+('' if killed else '_core')
             burst(b,kind,x,y)
         # One burst at a time: a smaller burst never cuts short a bigger one
         # still playing (a smaller blast_end); an equal or smaller one restarts.

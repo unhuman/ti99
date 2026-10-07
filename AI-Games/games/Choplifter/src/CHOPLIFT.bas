@@ -569,13 +569,16 @@ IF drone_on THEN
     END IF
 END IF
 shot_people:
-' Anything crossing the crowd row can hit a person. Shots stop at the ground;
-' bombs carry on down to the tanks' plane, below whose tracks they burst.
-IF shot_y(wi) > 155 THEN
-    IF shot_y(wi) < 172 THEN
-        #crowd_shot_x=#shot_x(wi):crowd_radius=9
-        GOSUB crowd_hit
-        IF crowd_struck THEN GOTO shot_burst
+' A sideways shot crossing the crowd row can hit a person, and stops at the
+' ground. Bombs fall on the tanks' plane, in front of the crowd: they pass
+' people by and burst below the tanks' tracks.
+IF shot_dir(wi) < 2 THEN
+    IF shot_y(wi) > 155 THEN
+        IF shot_y(wi) < 172 THEN
+            #crowd_shot_x=#shot_x(wi):crowd_radius=9
+            GOSUB crowd_hit
+            IF crowd_struck THEN GOTO shot_burst
+        END IF
     END IF
 END IF
 IF shot_y(wi) > 171 THEN
@@ -3231,11 +3234,13 @@ BANK 2
 fireworks:
 ' A fireworks display over the home (the view at its east end): the script
 ' is FW_SCRIPT in assets/generate.py. Every video frame, each firework is
-' drawn from its phase, the frames since its start: a rocket climbing from y
-' 158 (fw_climb) for fw_climb_len frames, whistling higher as it rises, then
-' its burst with a crack: a core and five spark clusters in its group of six
-' sprite slots (fw_slot), one table row per two frames, coloured from its
-' scheme (fw_ramp: four shades, white to dark). Then the group is hidden.
+' drawn from its phase, the frames since its start: a rocket rising from
+' behind the home along its slanted path (fw_px, fw_py from #fw_path) for
+' fw_climb_len frames, trailing three embers at its earlier positions and
+' whistling higher as it climbs, then its burst at the path's end with a
+' crack: a core and five spark clusters in its group of six sprite slots
+' (fw_slot), one table row per two frames, coloured from its scheme (fw_ramp:
+' four shades, white to dark). Then the group is hidden.
 ' FIRE ends the show after its first second. The helicopter stands on the
 ' pad. Every variable used is one the game leaves idle by now: the frame
 ' clock (#last, #elapsed), the draw scratch, ini, di, ay, by, blast_row, #ax,
@@ -3269,19 +3274,28 @@ firework_draw:
 IF #elapsed < #fw_start(ini) THEN RETURN
 #distance=#elapsed-#fw_start(ini)
 draw_slot=fw_slot(ini)
-draw_x=fw_x(ini)
 blast_row=fw_climb_len(ini)
 IF #distance < blast_row THEN
-    ' Climbing (pattern 200 is the rocket, sprite 50).
-    draw_y=fw_climb(#distance)
-    draw_y=157-draw_y
-    SPRITE draw_slot,draw_y,draw_x,200,15
+    ' Climbing: the head (pattern 200, sprite 50) where its path is now, and
+    ' embers (216, sprite 54) where it was 2, 4 and 6 frames ago, fading.
+    #ax=#fw_path(ini)+#distance
+    SPRITE draw_slot,fw_py(#ax),fw_px(#ax),200,15
+    FOR di=1 TO 3
+        blast_row=draw_slot+di
+        IF #distance >= di+di THEN
+            #bx=#ax-di-di
+            SPRITE blast_row,fw_py(#bx),fw_px(#bx),216,fw_trail(di)
+        ELSE
+            SPRITE blast_row,209,0,0,0
+        END IF
+    NEXT di
     #sfx_pitch=#distance+#distance
     #sfx_pitch=320-#sfx_pitch
     RETURN
 END IF
-by=fw_climb(blast_row)
-by=157-by
+' The burst, at the path's end.
+#ax=#fw_path(ini)+blast_row
+draw_x=fw_px(#ax):by=fw_py(#ax)
 #distance=#distance-blast_row
 IF #distance >= 32 THEN
     ' Over: hide the group for 8 frames (the loop can take more than one),

@@ -49,9 +49,9 @@ Current-state design. History is in git; sizes below are from the latest build
 | TI fixed area (after short branches) | 22,574 | 24,336 | 1,762 free |
 | TI fixed area, unoptimised | 24,370 | 24,574 | xas99's first pass must stay below >FFFE |
 | TI data bank (`BANK 1`) | 7,990 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
-| TI boot bank (`BANK 2`) | 6,734 | 8,190 | art uploaded only at power-on; the fireworks code and tables |
+| TI boot bank (`BANK 2`) | 7,516 | 8,190 | art uploaded only at power-on; the fireworks code and tables |
 | TI RAM | 810 | 7,854 | |
-| ColecoVision ROM | 30,242 | 32,768 | |
+| ColecoVision ROM | 30,975 | 32,768 | |
 | ColecoVision RAM | 811 | 814 | nearly full; see `#vaddr` |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
@@ -174,8 +174,9 @@ lost, stranded and the session's
 best rescue. A perfect rescue is 64.
 
 People persist across trips and crashes. Landing on an exposed person (escaping, waiting or
-running) kills them; so do player shots and bombs, a tank shell's landing and a jet's bomb or
-diving missile. Lost people never return or count twice.
+running) kills them; so do the player's sideways shots (never the bombs: they fall on the
+tanks' plane, in front of the crowd), a tank shell's landing and a jet's bomb or diving
+missile. Lost people never return or count twice.
 
 ## Controls and flight
 
@@ -292,11 +293,12 @@ shell 3×3. Player shots use the same jet boxes.
   slow update never carries a shell past its burst frame, and no shell outlives its 36
   frames or crosses the fence. Its landing is a small ground burst.
 - **Weapons.** Bombs (front view) destroy tanks (a ground burst) and nothing else in the
-  sky; they fall past the crowd row (hurting anyone they cross) and, missing, burst on the
-  ground below the tanks' tracks (y > 185). Sideways shots open barracks and down jets and
+  sky; they fall on the tanks' plane, in front of the crowd, so they pass people by, and,
+  missing, burst on the ground below the tanks' tracks (y > 185). Sideways shots open barracks and down jets and
   air mines (air bursts), and stop at the ground. Whatever ends in a person or on the ground
-  bursts there (`shot_burst`, `missile_burst`, `shell_tick`): a bomb, a jet's missile or
-  bomb and a tank shell with a small burst, a sideways shot with a tiny puff. Hitting a
+  bursts there (`shot_burst`, `missile_burst`, `shell_tick`): a bomb (on the ground only),
+  a jet's missile or bomb and a tank shell with a small burst, a sideways shot with a tiny
+  puff. Hitting a
   person (`crowd_struck`) throws the burst's spray; bare ground with no target, or a missile
   ending at the fence or the world's edge (`shot_miss`, `missile_miss`), plays only its
   core, so a miss reads differently from a hit.
@@ -544,9 +546,13 @@ is brought home to the pad first). The script is `FW_SCRIPT` in `assets/generate
 fireworks over about 6 seconds (440 frames), in three kinds (a peony, an even sphere of
 sparks; a willow, gold trails drooping into falling embers; a ring, a flat halo) and six
 colour schemes (gold, red, green, blue, magenta, silver; each four shades, white to dark),
-ending in a salvo of five. Each rocket (sprite pattern 50, white) climbs from y 158 over its
-own climb length (`fw_climb`, slowing as it rises) with a rising whistle on channel 1, then
-bursts with a noise crack: a core (flash or ring) and five spark clusters, one table row per
+ending in a salvo of five. Every rocket rises from behind the home: its head (sprite pattern
+50, white) appears at the roof line over the building and flies a straight, slanted path to
+its burst point (`fw_px`, `fw_py`, precomputed per rocket from `#fw_path`), slowing as it
+climbs, at its own angle, from 11° east of vertical to 51° west, fanning out over the sky.
+Three embers (pattern 54, yellow, light red, dark red) trail it at its positions 2, 4 and 6
+frames before, so the trail follows the angle. A rising whistle on channel 1 goes with it.
+Then it bursts with a noise crack: a core (flash or ring) and five spark clusters, one table row per
 two frames for 32 frames (`fw_dx`, `fw_dy`, `fw_cpat`, `fw_ppat` and their shades). Each
 firework draws in a group of six sprite slots (`fw_slot`: five groups in slots 2-31), which
 the generator never reuses while it is busy, so up to five burst at once; sprite flicker

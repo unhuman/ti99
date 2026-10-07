@@ -497,7 +497,8 @@ BLAST_ART={
                 '.......#........','......#.#.......','................','................',
                 '................','................','................','................']),
 }
-BLAST_ART['rocket']=dots([(7,6),(8,6),(7,7),(8,7),(7,9),(8,11),(7,13),(8,15)])
+# A rocket's bright head; its trail is three ember sprites along its path.
+BLAST_ART['rocket']=dots([(7,7),(8,7),(7,8),(8,8),(6,7),(9,8)])
 BLAST_SLOT={'fire':18,'ring':19,'rocket':50,'spark1':51,'spark2':52,'spark3':53,
             'ember':54,'dirt':55,'flash':56,'puff':57,'drop':58}
 for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
@@ -738,27 +739,44 @@ HUD_ROWS=hud_rows()
 
 # Fireworks for a perfect rescue (and the title's HOWIE code), over the
 # home with the view at its east end (camera 1792). A script of rockets,
-# each with a start frame, launch column (screen x of its 16x16 sprite),
-# climb length, kind and colour scheme. A rocket climbs from y 158 by
-# FW_CLIMB, slowing, for its climb length in frames, then bursts there: a
-# core and five spark clusters, one row per two frames for 32 frames, from
-# tables like the explosions' (no RAM per particle). Each firework draws in
-# a group of six sprite slots (FW_SLOT, 2-31 in five groups), and a group is
-# never reused while it is still busy, so up to five burst at once and
-# flicker shares the crowded lines.
+# each with a start frame, launch column and burst column (screen x of its
+# 16x16 sprite), climb length, kind and colour scheme. Every rocket rises
+# from behind the home's roof (y FW_LAUNCH_Y, x over the building) and flies
+# a straight, slanted path to its burst point, slowing as it climbs (FW_CLIMB
+# of the climb length): some nearly straight up, most fanning out west over
+# the sky. Its trail is three ember sprites at its earlier positions, so the
+# trail follows the angle. Then it bursts: a core and five spark clusters,
+# one row per two frames for 32 frames, from tables like the explosions' (no
+# RAM per particle). Each firework draws in a group of six sprite slots
+# (FW_SLOT, 2-31 in five groups), and a group is never reused while it is
+# still busy, so up to five burst at once and flicker shares the crowded
+# lines.
 FW_ROWS=16
 FW_CLIMB=[round(118*(1-(1-p/34)**2)) for p in range(35)]
+FW_LAUNCH_Y=145            # sprite top: the head at the roof line (y 152)
+FW_HOME_X=(178,206)        # launch columns: the head over the home's roof
 FW_RAMPS={'gold':(15,11,10,6),'red':(15,9,8,6),'green':(15,3,12,12),'blue':(15,7,5,4),
           'magenta':(15,13,13,6),'silver':(15,15,14,14)}
 FW_RAMP_INDEX={name:i*4 for i,name in enumerate(FW_RAMPS)}
 FW_KIND_INDEX={'peony':0,'willow':FW_ROWS,'ring':2*FW_ROWS}
-# (start frame, x, climb frames, kind, colours): openers, then a finale
-# salvo of five.
-FW_SCRIPT=((0,176,26,'peony','gold'),(40,140,20,'willow','gold'),(70,186,30,'ring','blue'),
-           (100,120,16,'peony','red'),(125,160,34,'peony','green'),(150,100,22,'ring','magenta'),
-           (178,180,18,'willow','silver'),(205,132,28,'peony','blue'),(232,170,24,'ring','red'),
-           (258,110,30,'willow','gold'),(290,186,32,'peony','red'),(300,150,26,'peony','green'),
-           (310,120,20,'peony','blue'),(322,166,30,'ring','gold'),(334,134,34,'willow','silver'))
+# (start frame, launch x, burst x, climb frames, kind, colours): openers,
+# then a finale salvo of five.
+FW_SCRIPT=((0,196,176,22,'peony','gold'),(40,190,128,16,'willow','gold'),
+           (70,200,186,26,'ring','blue'),(100,186,96,14,'peony','red'),
+           (125,194,150,30,'peony','green'),(150,182,70,18,'ring','magenta'),
+           (178,192,206,12,'willow','silver'),(205,188,118,24,'peony','blue'),
+           (232,198,160,20,'ring','red'),(258,184,84,16,'willow','gold'),
+           (290,186,196,26,'peony','red'),(300,192,140,20,'peony','green'),
+           (310,186,100,14,'peony','blue'),(322,196,160,22,'ring','gold'),
+           (334,190,124,18,'willow','silver'))
+def fw_path(x0,bx,climb):
+    """(x, y) of the rocket's sprite on each frame of its climb and, last,
+    the burst point."""
+    top=FW_CLIMB[climb]
+    return [(round(x0+(bx-x0)*FW_CLIMB[p]/top),FW_LAUNCH_Y-FW_CLIMB[p]) for p in range(climb+1)]
+FW_PATHS=[fw_path(x0,bx,climb) for _,x0,bx,climb,_,_ in FW_SCRIPT]
+FW_PATH_START=[sum(len(path) for path in FW_PATHS[:k]) for k in range(len(FW_PATHS))]
+FW_TRAIL=[0,11,9,6]        # the trail's three embers, nearest first
 FW_END=440        # frames: the last burst is over by then
 import math
 def fw_burst(kind):
@@ -794,18 +812,23 @@ def fw_slots():
     """Each firework's first sprite slot: the first group of six (2, 8, ...
     26) free from its launch until 8 frames after its burst ends."""
     busy=[-1]*5;slots=[]
-    for start,x,climb,kind,ramp in FW_SCRIPT:
+    for start,x0,bx,climb,kind,ramp in FW_SCRIPT:
         group=next(g for g in range(5) if busy[g]<start)
         busy[group]=start+climb+2*FW_ROWS+8
         slots.append(2+group*6)
     return slots
 FW_SLOT=fw_slots()
-for (start,x,climb,kind,ramp) in FW_SCRIPT:
+for (start,x0,bx,climb,kind,ramp),path in zip(FW_SCRIPT,FW_PATHS):
     assert 0<climb<len(FW_CLIMB) and start+climb+2*FW_ROWS+8<FW_END
-    y=158-FW_CLIMB[climb]
+    assert FW_HOME_X[0]<=x0<=FW_HOME_X[1]          # it rises from behind the home
+    x,y=path[-1]
+    assert 25<=y<=80 and all(0<=px<=239 for px,_ in path)
     for r in FW_BURST[FW_KIND_INDEX[kind]:FW_KIND_INDEX[kind]+FW_ROWS]:
         for dx,dy in r[4]:
             assert 0<=x+dx<=239 and 0<y+dy<175,(start,x+dx,y+dy)
+# Various angles: from nearly straight up to well over to the west.
+FW_LEANS=sorted(round(math.degrees(math.atan2(x0-bx,FW_CLIMB[climb]))) for _,x0,bx,climb,_,_ in FW_SCRIPT)
+assert FW_LEANS[0]<=-2 and FW_LEANS[-1]>=40 and len(set(FW_LEANS))>=10
 assert all(-64<=v<64 for r in FW_BURST for xy in r[4] for v in xy)
 
 def emit(label, data):
@@ -835,12 +858,16 @@ def generate():
     boot += emit('hud_art',[b for bits,_ in HUD_CHARS.values() for b in bits])
     boot += emit('hud_colors',[c for _,colors in HUD_CHARS.values() for c in colors])
     # The fireworks run with the boot bank selected (their code is there too).
-    boot += emit('fw_x',[f[1] for f in FW_SCRIPT]+[0])
-    boot += emit('fw_climb_len',[f[2] for f in FW_SCRIPT]+[0])
-    boot += emit('fw_kind',[FW_KIND_INDEX[f[3]] for f in FW_SCRIPT]+[0])
-    boot += emit('fw_ramp',[FW_RAMP_INDEX[f[4]] for f in FW_SCRIPT]+[0])
+    boot += emit('fw_climb_len',[f[3] for f in FW_SCRIPT]+[0])
+    boot += emit('fw_kind',[FW_KIND_INDEX[f[4]] for f in FW_SCRIPT]+[0])
+    boot += emit('fw_ramp',[FW_RAMP_INDEX[f[5]] for f in FW_SCRIPT]+[0])
     boot += emit('fw_slot',FW_SLOT+[0])
-    boot += emit('fw_climb',FW_CLIMB+[0])
+    # Every rocket's path, one after another (#fw_path: where each begins);
+    # the last point of each is its burst.
+    pad=[0] if sum(map(len,FW_PATHS))%2 else []
+    boot += emit('fw_px',[x for path in FW_PATHS for x,_ in path]+pad)
+    boot += emit('fw_py',[y for path in FW_PATHS for _,y in path]+pad)
+    boot += emit('fw_trail',FW_TRAIL)
     boot += emit('fw_colors',[c for ramp in FW_RAMPS.values() for c in ramp])
     boot += emit('fw_cpat',[r[0] for r in FW_BURST])
     boot += emit('fw_cshade',[r[1] for r in FW_BURST])
@@ -849,8 +876,9 @@ def generate():
     # Five clusters per row, one after another (row*5+q), stored +64.
     boot += emit('fw_dx',[r[4][q][0]+64 for r in FW_BURST for q in range(5)])
     boot += emit('fw_dy',[r[4][q][1]+64 for r in FW_BURST for q in range(5)])
-    boot += '#fw_start:\n' + ''.join('    DATA '+','.join(str(f[0]) for f in FW_SCRIPT[i:i+8])+'\n'
-                                       for i in range(0,len(FW_SCRIPT),8))
+    for label,words in (('#fw_start',[f[0] for f in FW_SCRIPT]),('#fw_path',FW_PATH_START)):
+        boot += label+':\n' + ''.join('    DATA '+','.join(str(v) for v in words[i:i+8])+'\n'
+                                      for i in range(0,len(words),8))
     text = head
     # A crash redefines slots 13/14 as flames, then embers; a fresh crash
     # restores the full flames after the preceding ember phase.

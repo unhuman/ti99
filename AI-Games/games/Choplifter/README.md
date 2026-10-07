@@ -50,7 +50,7 @@ were hit; the burning wreck falls, flickering yellow and red, bursts again on th
 burns down gradually to embers, and only then,
 with the screen clear, does the next helicopter appear on the pad. A crash loses everyone
 aboard, but the camps keep emptying while the wreck burns. Do not land on people or shoot
-through them.
+through them; your bombs fall in front of the crowd and pass people by.
 **Tanks** roll along the foreground below the camps, so only **bombs** (face front and tap
 FIRE) destroy them. They **lob short shells** from raised barrels that rise and fall under
 gravity, aimed at where you are when they fire, and only while they are on screen and you
@@ -82,7 +82,8 @@ dot), on board (cyan) and saved (green), and the last box holds your **spare** h
 (not counting the one you are flying). The mission ends when all 64 people are
 saved or lost, or the last helicopter is destroyed. There is no fuel. Rescue all 64 and a
 fireworks display lights up the sky over the home before the summary: rockets whistling up
-and bursting into spheres, willows and rings in six colours, ending in a salvo of five.
+from behind the building at fanning angles, trailing sparks, and bursting into spheres,
+willows and rings in six colours, ending in a salvo of five.
 
 When more than four sprites share a scanline they flicker in turn (sprite flicker is on), so
 nothing that can hit you is ever invisible for long; a tank shell is always drawn before it
@@ -122,8 +123,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,574 / 24,336 B fixed (+ 7,990 and 6,734 / 8,190 B banks) | 810 / 7,854 B |
-| ColecoVision | 30,242 / 32,768 B ROM | 811 / 814 B |
+| TI-99/4A | 22,574 / 24,336 B fixed (+ 7,990 and 7,516 / 8,190 B banks) | 810 / 7,854 B |
+| ColecoVision | 30,975 / 32,768 B ROM | 811 / 814 B |
 
 ## Speed
 
