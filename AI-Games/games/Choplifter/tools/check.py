@@ -2444,6 +2444,9 @@ class Tests(unittest.TestCase):
                 self.assertEqual(sorted(set(seen)),list(range(first,first+count)),kind)
         # Ground bursts never throw debris below where they burst.
         self.assertTrue(all(dy<=0 for r in rows[18:] for _,dy in r[5]))
+        # blast_draw steps the clusters' rows by the generator's stride.
+        self.assertIn(f'di=di+{art.BLAST_STRIDE}',SOURCE)
+        self.assertEqual(art.BLAST_STRIDE,len(rows))
         b=self.state();b.v.update(blast_timer=0)
         b.sprites={i:[100,100,200,15] for i in range(32)}
         b.v['#sprite_shown']=65535;b.call('blast_draw')
@@ -2451,8 +2454,7 @@ class Tests(unittest.TestCase):
 
     def test_misses_burst_on_the_ground(self):
         # A bomb, a jet's missile or bomb, or a tank shell that hits nothing
-        # bursts on the ground (a small burst, 20 frames) rather than vanish,
-        # and a small burst never cuts short a big one still playing.
+        # bursts on the ground (a small burst, 20 frames) rather than vanish.
         def small(b,x,y):
             self.assertEqual((b.v['blast_end'],b.v['blast_timer'],b.v['#blast_x'],b.v['blast_y']),(92,20,x,y))
         b=self.state();b.v.update(wi=0,dt=2,blast_timer=0)
@@ -2476,10 +2478,42 @@ class Tests(unittest.TestCase):
         b.call('tank_tick');b.v['#hx']=1000
         while b.v['shell_on']:b.call('shell_tick')
         small(b,b.v['#shell_x']-7,164-7)
-        for end,timer,kept in ((36,20,True),(72,3,True),(92,10,False),(36,0,False)):
+        # Every projectile that ends in a person or on the ground bursts there
+        # too: bombs and jet missiles small, the player's shots a tiny puff
+        # (12 frames). Nothing that dies in the crowd row just vanishes.
+        def tiny(b,x,y):
+            self.assertEqual((b.v['blast_end'],b.v['blast_timer'],b.v['#blast_x'],b.v['blast_y']),(104,12,x,y))
+        for direction,y,person in ((2,158,True),(0,158,True),(1,170,False),(0,170,False)):
+            b=self.state();b.v.update(wi=0,dt=2,blast_timer=0)
+            b.a['person_state']=[0]*64;b.a['camp_active']=[0]*4
+            if person:b.a['person_state'][5]=2;b.a['#person_x'][5]=600-4
+            b.a.update({'#shot_x':[600,0],'shot_y':[y,0],'shot_dir':[direction,0],'shot_on':[1,0],
+                        'shot_slope':[0 if direction==2 else 2,0],'shot_speed':[0,0]})
+            for _ in range(20):
+                if not b.a['shot_on'][0]:break
+                b.call('move_shot')
+            self.assertEqual(b.a['shot_on'][0],0,(direction,y))
+            self.assertEqual(b.a['person_state'][5],4 if person else 0)
+            x,y=b.a['#shot_x'][0]-7,min(b.a['shot_y'][0]-7,176)
+            if direction==2:small(b,x,y)
+            else:tiny(b,x,y)
+        b=self.state();b.v.update({'#hx':1500,'hy':40,'missile_on':1,'missile_aim':2,'missile_ttl':30,
+                                  'missile_dir':1,'#missile_x':900,'missile_y':150,'dt':2,'blast_timer':0})
+        b.a['person_state']=[0]*64;b.a['person_state'][5]=2;b.a['#person_x'][5]=900-4-4
+        b.call('missile_tick')
+        self.assertEqual((b.v['missile_on'],b.a['person_state'][5]),(0,4))
+        small(b,b.v['#missile_x']-8,b.v['missile_y']-8)
+        # One burst at a time: a smaller burst never cuts short a bigger one
+        # still playing (a smaller blast_end); an equal or smaller one restarts.
+        for routine,end,timer,kept in (('burst_small',36,20,True),('burst_small',72,3,True),
+                                       ('burst_small',92,10,False),('burst_small',104,6,False),
+                                       ('burst_small',36,0,False),('burst_tiny',72,30,True),
+                                       ('burst_tiny',92,10,True),('burst_tiny',104,6,False),
+                                       ('burst_tiny',36,0,False)):
             b=self.state();b.v.update({'blast_end':end,'blast_timer':timer,'#blast_x':5,'blast_y':6,
                                       '#ax':500,'ay':150,'noise_timer':0})
-            b.call('burst_small')
-            self.assertEqual((b.v['blast_end'],b.v['#blast_x']),(end,5) if kept else (92,500),(end,timer))
+            b.call(routine)
+            new=92 if routine=='burst_small' else 104
+            self.assertEqual((b.v['blast_end'],b.v['#blast_x']),(end,5) if kept else (new,500),(routine,end,timer))
 
 if __name__=='__main__':unittest.main()

@@ -71,8 +71,8 @@ level with them, and air mines come later and drift at half speed; hard is the r
 Medium is the game as it was before the levels existed.
 
 Everything that blows up bursts into sparks and smoke: tanks, barracks, jets, air mines and
-your helicopter, and every bomb, missile and shell that misses bursts where it hits the
-ground. The top line shows SAVED, ABOARD and LOST, and on the right your **spare**
+your helicopter. Every bomb, missile and shell bursts where it hits the ground or a person,
+and your shots leave a tiny puff of sparks where they hit. The top line shows SAVED, ABOARD and LOST, and on the right your **spare**
 helicopters (not counting the one you are flying). The mission ends when all 64 people are
 saved or lost, or the last helicopter is destroyed. There is no fuel.
 
@@ -109,8 +109,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,072 / 24,336 B fixed (+ 6,774 and 4,634 / 8,190 B banks) | 806 / 7,854 B |
-| ColecoVision | 27,120 / 32,768 B ROM | 808 / 814 B |
+| TI-99/4A | 22,102 / 24,336 B fixed (+ 6,958 and 4,634 / 8,190 B banks) | 806 / 7,854 B |
+| ColecoVision | 27,282 / 32,768 B ROM | 808 / 814 B |
 
 ## Speed
 

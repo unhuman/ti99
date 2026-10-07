@@ -517,27 +517,28 @@ IF drone_on THEN
 END IF
 shot_people:
 ' Anything crossing the crowd row can hit a person. Shots stop at the ground;
-' bombs carry on down to the tanks' plane.
+' bombs carry on down to the tanks' plane, below whose tracks they burst.
 IF shot_y(wi) > 155 THEN
     IF shot_y(wi) < 172 THEN
         #crowd_shot_x=#shot_x(wi):crowd_radius=9
         GOSUB crowd_hit
-        IF crowd_struck THEN shot_on(wi)=0
+        IF crowd_struck THEN GOTO shot_burst
     END IF
 END IF
 IF shot_y(wi) > 171 THEN
-    IF shot_dir(wi) < 2 THEN
-        shot_on(wi)=0
-    ELSE
-        ' A bomb that reaches the ground (below the tanks' tracks) bursts.
-        IF shot_y(wi) > 185 THEN
-            shot_on(wi)=0
-            #ax=#shot_x(wi)-7:ay=176
-            GOSUB burst_small
-        END IF
-    END IF
+    IF shot_dir(wi) < 2 THEN GOTO shot_burst
+    IF shot_y(wi) > 185 THEN GOTO shot_burst
 END IF
 RETURN
+
+shot_burst:
+' A shot or bomb ends in a person or on the ground: a bomb bursts (small), a
+' shot puffs (tiny), where it is but no lower than the ground's surface.
+shot_on(wi)=0
+#ax=#shot_x(wi)-7:ay=shot_y(wi)-7
+IF ay > 176 THEN ay=176
+IF shot_dir(wi) = 2 THEN GOTO burst_small
+GOTO burst_tiny
 
 hits_heli:
 ' Does a threat's box (#hit_x..#hit_x+hit_width-1, hit_top..hit_bottom)
@@ -2363,7 +2364,7 @@ blast_draw:
 ' shaped and coloured from ROM tables by its kind and age (blast_end minus
 ' blast_timer, one row per two frames), so no particle needs RAM. Offsets
 ' are stored +64. di (idle once draw_actors' shot loop is done) steps
-' through the three clusters' rows, 46 apart.
+' through the three clusters' rows, 52 apart (BLAST_ROWS in the generator).
 IF blast_timer = 0 THEN
     FOR draw_slot=12 TO 15
         GOSUB sprite_off
@@ -2385,7 +2386,7 @@ FOR draw_slot=13 TO 15
     draw_y=blast_y+blast_dy(di)
     draw_color=blast_dcol(blast_row)
     GOSUB blast_sprite
-    di=di+46
+    di=di+52
 NEXT draw_slot
 RETURN
 
@@ -2807,8 +2808,9 @@ IF crash_timer > 36 THEN
 END IF
 RETURN
 
-' Bursts (blast_draw): blast_end selects the kind's rows in the blast_*
-' tables and blast_timer counts its frames down.
+' Bursts (blast_draw), biggest first: air and ground (36 frames), small (20)
+' and tiny (12). blast_end selects the kind's rows in the blast_* tables and
+' blast_timer counts its frames down.
 explode_air:
 ' A big burst in the air (a jet, an air mine, the helicopter hit in flight):
 ' its debris arcs out and falls on past it.
@@ -2826,9 +2828,9 @@ SOUND 3,6,15
 RETURN
 
 burst_small:
-' A bomb, missile or shell striking the ground at #ax,ay (the burst sprite's
-' top left): a small burst of dirt and sparks. It never cuts short a big
-' burst that is still playing.
+' A bomb, missile or shell striking the ground or a person at #ax,ay (the
+' burst sprite's top left): a small burst of dirt and sparks. A burst never
+' cuts short a bigger one still playing (a smaller blast_end).
 IF blast_timer THEN
     IF blast_end < 92 THEN RETURN
 END IF
@@ -2837,6 +2839,19 @@ blast_end=92:blast_timer=20
 IF noise_timer < 12 THEN
     noise_kind=3:noise_timer=12
     SOUND 3,6,11
+END IF
+RETURN
+
+burst_tiny:
+' A shot striking the ground or a person at #ax,ay: a tiny puff of sparks.
+IF blast_timer THEN
+    IF blast_end < 104 THEN RETURN
+END IF
+#blast_x=#ax:blast_y=ay
+blast_end=104:blast_timer=12
+IF noise_timer < 6 THEN
+    noise_kind=3:noise_timer=6
+    SOUND 3,6,8
 END IF
 RETURN
 

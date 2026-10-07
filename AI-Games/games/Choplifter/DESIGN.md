@@ -46,12 +46,12 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,072 | 24,336 | 2,264 free |
-| TI fixed area, unoptimised | 23,808 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 6,774 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
+| TI fixed area (after short branches) | 22,102 | 24,336 | 2,234 free |
+| TI fixed area, unoptimised | 23,846 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 6,958 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
 | TI boot bank (`BANK 2`) | 4,634 | 8,190 | art uploaded only at power-on |
 | TI RAM | 806 | 7,854 | |
-| ColecoVision ROM | 27,120 | 32,768 | |
+| ColecoVision ROM | 27,282 | 32,768 | |
 | ColecoVision RAM | 808 | 814 | nearly full; see `#vaddr` |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
@@ -279,8 +279,10 @@ shell 3×3. Player shots use the same jet boxes.
   frames or crosses the fence. Its landing is a small ground burst.
 - **Weapons.** Bombs (front view) destroy tanks (a ground burst) and nothing else in the
   sky; they fall past the crowd row (hurting anyone they cross) and, missing, burst on the
-  ground below the tanks' tracks (y > 185, a small burst). Sideways shots open barracks and
-  down jets and air mines (air bursts), and stop at the ground.
+  ground below the tanks' tracks (y > 185). Sideways shots open barracks and down jets and
+  air mines (air bursts), and stop at the ground. Whatever ends in a person or on the ground
+  bursts there (`shot_burst`, `missile_burst`, `shell_tick`): a bomb, a jet's missile or
+  bomb and a tank shell with a small burst, a sideways shot with a tiny puff.
 - **Jets.** Enabled after the first completed delivery (every walker has gone indoors at home).
   A launch countdown of 6 s, then three passes at 120 px/s joined by two 48-frame banking
   turns, all west of the fence. The first pass scouts; after that a jet on screen fires
@@ -404,8 +406,8 @@ a whole crowd costs no sprite slots, runners included.
 with two rotor beats each and level or banked poses; side views alternate cross and diagonal
 tail-rotor blades. Main and tail rotors share a four-frame beat that never skips both poses on
 a slow update. There are 64 sprite patterns; 13–14 are the crash flames, 18–19 the
-explosion's fireball and ring, 47–49 the missiles and bomb, 50–56 the explosion's smoke,
-sparks, embers, dirt and flash, and 57–58 are free. Fixed slots:
+explosion's fireball and ring, 47–49 the missiles and bomb, 50–57 the explosion's smoke,
+sparks, embers, dirt, flash and puff, and 58 is free. Fixed slots:
 
 | Slots | Owner |
 |---|---|
@@ -430,22 +432,26 @@ actor's slot is hidden once and then costs a bit test.
 separate pixels each, so they read as a spray of particles. Everything comes from ROM
 tables written by `assets/generate.py` (`BLAST_ROWS`), one row per two frames, indexed by
 `(blast_end − blast_timer) / 2`: the core's pattern, colour and rise, the debris' pattern
-and colour, and each cluster's offset from the burst (stored +64). Three kinds:
+and colour, and each cluster's offset from the burst (stored +64). Four kinds:
 
 | Kind | `blast_end` | Frames | Used for |
 |---|---:|---:|---|
 | Air burst | 36 | 36 | jets and air mines shot down, the helicopter hit in flight |
 | Ground burst | 72 | 36 | tanks, barracks, the helicopter hit landed or its wreck landing |
-| Small burst | 92 | 20 | bombs, jet missiles and bombs, and tank shells hitting the ground |
+| Small burst | 92 | 20 | bombs, jet missiles and bombs, and tank shells hitting the ground or a person |
+| Tiny burst | 104 | 12 | the player's sideways shots hitting the ground or a person |
 
 A big burst's core flashes white, turns yellow, opens into a ring that reddens and becomes
 gray smoke rising 12 px; its debris (white, then yellow, orange, red embers) is thrown on
 ballistic arcs up to 60 px out. In the air the debris falls on past the burst; on the ground
 it comes down at the burst's level and lies there. A small burst is a white star flash, dirt
-thrown up and falling back, then a dust puff. A burst places its own sprites; a particle
-below the screen is hidden rather than given y=208 (which would end the sprite list). One
-burst plays at a time: a big one replaces whatever is playing, and a small one never cuts a
-big one short.
+thrown up and falling back, then a dust puff. A tiny burst is a 5×5 puff that flashes white
+and fades through red to gray, with three sparks hopping up to 6 px out. A burst places its
+own sprites; a particle below the screen is hidden rather than given y=208 (which would end
+the sprite list). It sits where the projectile ended, but no lower than the ground's surface
+(burst top at y 176). One burst plays at a time, and a smaller one never cuts short a bigger
+one still playing: a smaller `blast_end` is the bigger burst, so a big one replaces anything,
+a small one replaces a small or tiny one, and a tiny one only another tiny one.
 
 ## Sound
 
@@ -456,7 +462,7 @@ bomb whistle; when free it carries a nearby jet's distance-dependent tone or the
 alternating warning. Channel 2 carries rising boarding and falling unloading chirps and a
 three-note delivery chime. Channel 3 carries periodic rotor noise, overridden by tank fire,
 missile launches, explosions (which win over launches; a small burst is a shorter, quieter
-crack that never cuts a louder one short) and an eight-frame squish when the helicopter
+crack and a tiny one a soft tick, neither cutting a louder one short) and an eight-frame squish when the helicopter
 lands on a person. Effects expire on frame deltas; pause, new helicopters, the
 title and the results silence all four channels and clear effect state. No music player.
 

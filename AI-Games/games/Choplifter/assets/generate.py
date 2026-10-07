@@ -74,7 +74,7 @@ for facing in ('right', 'left', 'front'):
         SPRITES.extend([([r[:16] for r in a]), ([r[16:] for r in a])])
 # 12 tank, 13/14 crash flames, 15 jet, 16 drone, 17 shot, 18/19 explosion core
 # (BLAST_ART below).
-# 47-49 missiles and bomb, 50-56 explosion pieces, 57-58 free (the walking
+# 47-49 missiles and bomb, 50-57 explosion pieces, 58 free (the walking
 # people sprites once there are unused: runners are crowd characters).
 a = canvas(16, 16)
 rect(a, 1, 7, 14, 5); rect(a, 4, 4, 8, 4); rect(a, 0, 4, 8, 1)
@@ -444,7 +444,7 @@ SPRITES[49]=a
 # few separate pixels, so four sprites read as a spray of particles. 18/19:
 # the fireball, then its broken, spreading ring; 50 smoke; 51-53 sparks
 # spreading apart (tight, wider, widest); 54 embers; 55 dirt clods; 56 the
-# small burst's flash. 57 and 58 are free.
+# small burst's flash; 57 the tiny burst's puff. 58 is free.
 def bitmap(rows):
     assert len(rows)==16 and all(len(r)==16 and set(r)<=set('.#') for r in rows)
     return [[int(ch=='#') for ch in r] for r in rows]
@@ -474,19 +474,25 @@ BLAST_ART={
                  '.......#........','.....#.#.#......','......###.......','....#######.....',
                  '......###.......','.....#.#.#......','.......#........','................',
                  '................','................','................','................']),
+ 'puff':bitmap(['................','................','................','................',
+                '................','......#.#.......','.......#........','.....#####......',
+                '.......#........','......#.#.......','................','................',
+                '................','................','................','................']),
 }
 BLAST_SLOT={'fire':18,'ring':19,'smoke':50,'spark1':51,'spark2':52,'spark3':53,
-            'ember':54,'dirt':55,'flash':56}
+            'ember':54,'dirt':55,'flash':56,'puff':57}
 for name,slot in BLAST_SLOT.items():SPRITES[slot]=BLAST_ART[name]
 
 # Burst timelines, one row per two frames: blast_draw reads row
 # (blast_end - blast_timer) / 2. Air bursts are rows 0-17 (blast_end 36),
-# ground bursts 18-35 (72) and small ground bursts 36-45 (92). Per row: the
+# ground bursts 18-35 (72), small ground bursts 36-45 (92) and tiny ones
+# 46-51 (104): a smaller blast_end is a bigger burst, which a smaller one
+# never cuts short. Per row: the
 # core's pattern, colour and rise (smoke drifts up), the debris clusters'
 # pattern and colour, and each of the three clusters' offset from the
 # burst. Debris flies ballistically; on the ground it comes down at the
 # burst's level and lies there. Offsets are stored +64.
-BLAST_KINDS=(('air',36,18),('ground',72,18),('small',92,10))
+BLAST_KINDS=(('air',36,18),('ground',72,18),('small',92,10),('tiny',104,6))
 BIG_CORE=([('fire',15)]*2+[('fire',11)]*2+[('ring',11)]*2+[('ring',10)]*2
           +[('ring',9)]*2+[('ring',8)]*2+[('smoke',14)]*6)
 BIG_RISE=[0]*12+[-2,-4,-6,-8,-10,-12]
@@ -495,8 +501,17 @@ BIG_DEBRIS=([('spark1',15)]*4+[('spark2',11)]*4+[('spark2',10)]*4+[('spark3',9)]
 SMALL_CORE=[('flash',15)]*2+[('flash',11)]*2+[('flash',9)]*2+[('smoke',14)]*4
 SMALL_RISE=[0]*6+[-1,-2,-3,-4]
 SMALL_DEBRIS=[('spark1',15)]*2+[('dirt',11)]*3+[('dirt',10)]*3+[('ember',6)]*2
+TINY_CORE=[('puff',15),('puff',11),('puff',9),('puff',8),('puff',14),('puff',14)]
+TINY_RISE=[0,0,0,-1,-2,-3]
+TINY_DEBRIS=[('ember',15),('ember',11),('ember',11),('ember',9),('ember',8),('ember',6)]
 BIG_THROW=((-1.6,-1.8),(0.3,-2.4),(1.7,-1.4))
 SMALL_THROW=((-0.9,-1.6),(0.2,-2.0),(1.0,-1.4))
+TINY_THROW=((-0.6,-1.1),(0.1,-1.4),(0.7,-1.0))
+# Each kind's (core, rise, debris, throw, gravity in px per frame squared).
+BLAST_TIMELINES={'air':(BIG_CORE,BIG_RISE,BIG_DEBRIS,BIG_THROW,0.12),
+                 'ground':(BIG_CORE,BIG_RISE,BIG_DEBRIS,BIG_THROW,0.12),
+                 'small':(SMALL_CORE,SMALL_RISE,SMALL_DEBRIS,SMALL_THROW,0.18),
+                 'tiny':(TINY_CORE,TINY_RISE,TINY_DEBRIS,TINY_THROW,0.22)}
 def flight(vx,vy,g,rows,grounded):
     """Offsets at the middle of each two-frame row; grounded debris stops
     where it comes back down to the burst's level."""
@@ -508,14 +523,15 @@ def flight(vx,vy,g,rows,grounded):
     return out
 BLAST_ROWS=[]   # (core pattern, colour, rise, debris pattern, colour, 3 offsets)
 for kind,end,rows in BLAST_KINDS:
-    core,rise,debris=(SMALL_CORE,SMALL_RISE,SMALL_DEBRIS) if kind=='small' else (BIG_CORE,BIG_RISE,BIG_DEBRIS)
-    throw,g=(SMALL_THROW,0.18) if kind=='small' else (BIG_THROW,0.12)
+    core,rise,debris,throw,g=BLAST_TIMELINES[kind]
     paths=[flight(vx,vy,g,rows,kind!='air') for vx,vy in throw]
     assert len(core)==len(rise)==len(debris)==rows and end==2*len(BLAST_ROWS)+2*rows
     for row in range(rows):
         BLAST_ROWS.append((BLAST_SLOT[core[row][0]]*4,core[row][1],rise[row],
                            BLAST_SLOT[debris[row][0]]*4,debris[row][1],[p[row] for p in paths]))
-assert len(BLAST_ROWS)==46
+# blast_draw steps through the clusters' rows by this stride (di=di+52).
+BLAST_STRIDE=len(BLAST_ROWS)
+assert BLAST_STRIDE==52
 assert all(-64<=v<64 for r in BLAST_ROWS for xy in r[5] for v in xy)
 # Person palettes, eight rows each, by crowd_cells offset: yellow, white and
 # tan clothing on the night (0-23); the home doorway (24); the three kinds in
@@ -675,7 +691,7 @@ def generate():
     for label,field in (('blast_cpat',0),('blast_ccol',1),('blast_dpat',3),('blast_dcol',4)):
         text += emit(label,[r[field] for r in BLAST_ROWS])
     text += emit('blast_cdy',[r[2]+64 for r in BLAST_ROWS])
-    # The three clusters' rows one after another, 46 apart.
+    # The three clusters' rows one after another, BLAST_STRIDE apart.
     text += emit('blast_dx',[r[5][p][0]+64 for p in range(3) for r in BLAST_ROWS])
     text += emit('blast_dy',[r[5][p][1]+64 for p in range(3) for r in BLAST_ROWS])
     text += emit('jet_arc', JET_ARC)
