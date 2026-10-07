@@ -113,6 +113,24 @@ separate. Mack can carry only one block or jackhammer. A loose jackhammer passin
 behind Mack while he holds a block is hidden until clear, so the two cannot
 appear to be held together; its route continues normally. A new pickup resets
 the hold timer, even if Fire was already held. Fire starts a normal game at site 1 with three lives.
+
+**Difficulty.** The title's line `1 EASY  2 MEDIUM  3 HARD` shows the current choice in
+brackets, as Choplifter does. Press 1, 2 or 3, or step with the joystick's LEFT
+(easier) and RIGHT (harder). The game starts on Medium and keeps the last choice
+from game to game. A 3 typed as part of 838 is not a choice, and a key or
+direction still held from the previous screen does not count. Medium is the
+tuned game. Easy runs the machines at three-quarter speed: both belts and the
+paddle lift (their riders with them), the presses, the jaws, the furnace flame,
+the slag, the magnet and the loose jackhammer. Easy also slows every roamer to
+three quarters and spaces the level 1 rivets further apart (255 world steps
+instead of 240/200). Hard keeps Medium's machines; its level 2/3 roamers are a
+quarter faster and rivets come closer together (160, then 150). The bonus clock,
+lives, extra life and enemy count are the same on all three. The difficulty
+steps up one level after every six stages: Easy plays stages 1-6, Medium 7-12
+and Hard from 13 on; a Medium start reaches Hard at stage 7. Every score carries
+the difficulty the game was started on as a lowercase **e**, **m** or **h** after it.
+An 838 game shows **\*** instead, whatever the difficulty.
+
 Type **838** on the title, then a digit **1-9 for total lives**, then **1-6 for
 the starting stage**. Stages 4-6 repeat screens 1-3 with the harder second-tour
 enemy setup; stage 4 starts level 1 with two roaming enemies. On stage 5 (the
@@ -120,6 +138,7 @@ Level 2 screen with two roamers) the lower-right girder's patrol turns back
 early enough to leave a four-pixel spot at its left end to wait for the
 rising crane; its lunch pail stays inside the patrol. The chosen number
 appears beside the prompt before play begins. Release each key between digits.
+An 838 game plays at the difficulty shown on the title when the code was typed.
 These choices apply to one game only. Reserve hats exclude the current
 life; on TI-99 they are right-justified on the top HUD row after the bonus.
 The score and hats appear as each level opens. One extra life is awarded at 7,000 points.
@@ -128,16 +147,19 @@ F8 (REDO) or F9 (BACK) returns to the title during play, the 838 prompts,
 and the Game Over delay.
 The construction-themed title shows **LAST SCORE** and **HIGH SCORE** at the top,
 with matching full-height dithered white-to-yellow lettering (MACK restored to
-its original 115-pixel width), Mack on a riveted girder, and the credit
-**2026 UNHUMAN and C&C AI** above the controls, with **PRESS FIRE TO START**
-at the bottom. LAST SCORE starts directly under its label without space padding;
-its 838 asterisk follows the last digit. High score remains right-aligned. Scores persist between games until reset. An asterisk beside a
-score identifies an 838 game; the high-score marker stays with the game that
-set that record. Normal play clears the current-game marker, and a higher
-normal score replaces an 838 record without an asterisk. Equal scores retain
-the existing record and its marker. On TI-99, the gameplay score has a one-cell
-left margin and is right-aligned in a six-digit field; its 838 marker follows
-the field. **BONUS** and its timer occupy columns 10-19. Up to five yellow
+its original 115-pixel width) and Mack on a riveted girder. Below them, in
+Choplifter's order: the difficulty line on row 19, **PRESS FIRE TO START** on
+row 21 and the credit **2026 UNHUMAN and C&C AI** on row 23. The playing
+instructions were removed to make room. LAST SCORE starts directly under its
+label without space padding; its tag follows the last digit. High score remains
+right-aligned, with its tag in column 30. Scores persist between games until reset.
+Each saved score keeps the tag of the game that made it (**\*** for 838, else
+**e**/**m**/**h**). A higher score replaces the record with its own tag, and equal
+scores keep the existing record and tag. Before the first game neither score has
+a tag. The tags are characters 27-30 (beside the HUD's x at 31), because play
+borrows the font's lowercase letters. On TI-99, the gameplay score has a one-cell
+left margin and is right-aligned in a six-digit field; its tag follows in
+column 7. **BONUS** and its timer occupy columns 10-19. Up to five yellow
 reserve hats follow, right-justified to column 27; with six or more spares
 (possible only through 838 plus the 7,000-point bonus, up to nine) the reserve
 reads as one hat, a small x and the count with no spaces, e.g. hat-x-9. Column
@@ -146,7 +168,7 @@ reads as one hat, a small x and the count with no spaces, e.g. hat-x-9. Column
 appears only on the title. Scores omit leading zeroes and
 reach 327,675 points using five-point storage units; further awards saturate
 at that maximum. All point awards and the 7,000-point extra life are unchanged.
-It replaces the old title/instruction screen; Fire starts play directly.
+It replaces the old title/instruction screen; Fire starts play directly at the chosen difficulty.
 After GAME OVER, wait 1.25 seconds (75 frames at 60 Hz), then release and press
 Fire/Tab to return to the title. With no fresh press, the title returns
 automatically after 10 seconds, even if Fire remains held. The message has a

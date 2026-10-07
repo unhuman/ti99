@@ -141,6 +141,13 @@ class Basic:
             Basic._byte_cache=(tuple(values),offsets)
         self.byte_data,self.data_offsets=Basic._byte_cache
         self.v.update(mx=40, my=152, st=self.v['s_walk'], ely=209, jhz=1)
+        # Boot picks Medium, the tuned game, and every stage derives its
+        # difficulty dials from that choice. Run the game's own derivation so a
+        # routine called directly sees the same clocks as one reached by play.
+        self.v['difficulty'] = 1
+        self.bank = self.label_banks['banked_difficulty']
+        self.run('banked_difficulty')
+        self.bank = 1
 
     def tile(self, x, y):
         assert 0 <= x <= 255 and 0 <= y <= 191, (x, y)
@@ -185,6 +192,7 @@ class Basic:
         if key not in self.expr_cache:
             text = text.replace('cont1.button', 'input_button').replace('cont1.key', 'input_key')
             text = text.replace('cont2.button2', 'input_fctn')
+            text = text.replace('cont1.left', 'input_left').replace('cont1.right', 'input_right')
             text = re.sub(r'\$([\da-f]+)', lambda m: str(int(m[1], 16)), text)
             text = text.replace('<>', '!=')
             text = re.sub(r'(?<![<>!=])=(?!=)', '==', text)
@@ -332,6 +340,8 @@ class Basic:
                 values=[]
                 for token in re.findall(r'"[^"]*"|[^,]+',body):
                     if token.startswith('"'):values.append(token[1:-1])
+                    elif token.startswith('chr$(') and token.endswith(')'):
+                        values.append(chr(self.expr(token[5:-1])&255))
                     else:
                         number=re.fullmatch(r'(?:<(\.?)(\d+)>)?(.+)',token)
                         value=str(self.expr(number[3]));width=int(number[2] or 0)
@@ -782,10 +792,11 @@ def fidelity(source):
     assert vm.arrays['pnycar'][0]==before[0]+1
     assert vm.arrays['pnycar'][2]==before[2]-1
     for n,x,y in ((2,176,168),(3,168,88),(3,16,88)):
-        vm=level(n);vm.v.update(rx=x,ry=y,rf=1,rp=0,atg=1)
+        vm=level(n);vm.v.update(rx=x,ry=y,rf=1,rp=0,rmove=1);vm.bank=2
         seen=set()
         for _ in range(600):
             vm.run('site_route');seen.add(vm.v['ry'])
+        vm.bank=1
         assert ({120,168} if n==2 else {88,120}) <= seen
 
 
@@ -923,15 +934,28 @@ def upper_conveyor(source):
         assert vm.v['st']!=vm.v['s_dead'], 'edge rule leaks onto another floor/site'
 
 
+def tag_cell(tag):
+    # Score tags: characters 27-30 hold *, e, m and h (838, easy, medium,
+    # hard); tag 0 (no game yet) draws nothing.
+    return tag+26 if tag else 32
+
+
 def title_scores(source):
-    for units in (0,1,2,5,7,40,13108,65535):
+    for index,units in enumerate((0,1,2,5,7,40,13108,65535)):
+        tag=index%5
         title=Basic(source)
-        title.v.update(last838=1,**{'#lastscore':units,'#hi':units})
+        title.v.update(lasttag=tag,hitag=4-tag,**{'#lastscore':units,'#hi':units})
         title.frame_inputs=iter([{},dict(input_button=0,input_key=15),dict(input_button=1)]+[{}]*60)
         title.run('title_screen')
-        text=str(units*5)+'*'
-        assert ''.join(map(chr,title.screen[34:34+len(text)]))==text, 'last score must start at its label with adjoining marker'
+        text=str(units*5)
+        assert ''.join(map(chr,title.screen[34:34+len(text)]))==text, 'last score must start at its label'
+        assert title.screen[34+len(text)]==tag_cell(tag), 'last score tag must adjoin it'
         assert ''.join(map(chr,title.screen[56:62]))==str(units*5).rjust(6), 'high score alignment changed'
+        assert title.screen[62]==tag_cell(4-tag), 'high score tag misplaced'
+        # Choplifter's order with the playing instructions gone.
+        assert ''.join(map(chr,title.screen[19*32+2:19*32+30]))==' 1 easy  [2 medium]  3 hard ', 'difficulty line'
+        for row in (17,18,20,22):
+            assert title.screen[row*32:row*32+32]==[32]*32, ('stray title text',row)
     over=source[source.index('game_over:\n'):source.index("\t' 75 video frames")]
     start=source[source.index('new_game:\n'):source.index('main_loop:\n')]
     clearpos=start.find('\tCLS\n');charpos=start.find('\tGOSUB game_chars')
@@ -945,35 +969,43 @@ def title_scores(source):
     assert vm.v['#score']==0 and vm.v['#lastscore']==1234 and vm.v['#hi']==1234, 'last/high score lost on restart'
     assert (34,'6170') in vm.prints and (56,'  6170') in vm.prints, 'title score values/positions wrong'
     assert (0*32+2,'last score') in vm.prints and (20,'high score') in vm.prints
-    assert (18*32+5,'2026 unhuman and c&c ai') in vm.prints, 'title credit missing'
-    assert (23*32+7,'press fire to start') in vm.prints, 'start prompt misplaced'
+    assert (23*32+5,'2026 unhuman and c&c ai') in vm.prints, 'title credit missing'
+    assert (21*32+7,'press fire to start') in vm.prints, 'start prompt misplaced'
+    assert not any('climb' in text or 'hammer' in text for _,text in vm.prints), (
+        'playing instructions are back on the title')
     title_index=next(i for i,p in enumerate(vm.pattern_writes) if p[2]=='title_pat')
     assert any(p[2]=='tile_pat' for p in vm.pattern_writes[title_index+1:]), 'title art leaks into gameplay'
     assert vm.bank==1 and vm.v['lv']==1 and vm.v['lives']==2, 'normal start changed'
     vm.v.update(**{'#score':600,'#hi':1234});vm.run('score_end_test')
     assert vm.v['#lastscore']==600 and vm.v['#hi']==1234, 'lower last score overwrites high score'
-    # Provenance belongs to each saved score, not to the current menu choice.
-    for assisted,score,last_star,high_star in ((1,2000,1,1),(0,700,0,1),(0,2000,0,1),(0,2500,0,0),(1,800,1,0)):
-        vm.v.update(game838=assisted,**{'#score':score})
+    # Provenance belongs to each saved score, not to the current menu choice:
+    # * for any 838 game, else the difficulty the game was STARTED on.
+    for assisted,chosen,score,last_tag,high_tag in ((1,1,2000,1,1),(0,1,700,3,1),(0,0,2000,2,1),
+                                                    (0,2,2500,4,4),(1,0,800,1,4),(0,0,3000,2,2)):
+        vm.v.update(game838=assisted,difficulty=chosen,levelno=13,**{'#score':score})
+        vm.bank=2;vm.run('banked_difficulty');vm.bank=1
         vm.run('score_end_test')
-        assert vm.v['last838']==last_star and vm.v['hi838']==high_star, '838 score provenance lost'
+        assert (vm.v['lasttag'],vm.v['hitag'])==(last_tag,high_tag), 'score tag provenance lost'
         vm.prints.clear()
         vm.frame_inputs=iter([{},dict(input_button=0,input_key=15),dict(input_button=1)]+[{}]*60)
         vm.run('score_start_test')
-        assert ((34+len(str(score*5)),'*') in vm.prints)==bool(last_star), 'last score asterisk wrong'
-        assert ((62,'*') in vm.prints)==bool(high_star), 'high score asterisk wrong'
+        assert (34+len(str(score*5)),chr(last_tag+26)) in vm.prints, 'last score tag wrong'
+        assert (62,chr(high_tag+26)) in vm.prints, 'high score tag wrong'
         assert vm.v['game838']==0, '838 status leaks into normal next game'
-    vm.v.update(game838=1,hi838=1);vm.prints.clear();vm.run('hud_all')
-    assert (7,'*') in vm.prints and (24,'*') not in vm.prints, 'current-score HUD marker wrong'
+        assert vm.v['difficulty']==chosen, 'a new game forgot the chosen difficulty'
+    for tag in range(1,5):
+        vm.v['gametag']=tag;vm.prints.clear();vm.run('hud_all')
+        assert (7,chr(tag+26)) in vm.prints, 'current-score HUD tag wrong'
     # Level completion can claim the record before game over.
     award=source[source.index('level_complete:\n'):source.index('\tlevelno = levelno + 1')]
     win=Basic(source+'\nBANK 0\naward_test:\n'+award+'\tRETURN\n')
     for assisted in (1,0):
-        win.v.update(lv=1,game838=assisted,**{'#score':1000,'#bonus':5000,'#hi':900})
+        win.v.update(lv=1,game838=assisted,difficulty=2,**{'#score':1000,'#bonus':5000,'#hi':900})
+        win.bank=2;win.run('banked_difficulty');win.bank=1
         # Fifty four-frame ticks, followed by the level-one fanfare.
         win.frame_inputs=iter([{}]*400)
         win.run('award_test')
-        assert win.v['#hi']==2000 and win.v['hi838']==assisted, 'completion score provenance wrong'
+        assert win.v['#hi']==2000 and win.v['hitag']==(1 if assisted else 4), 'completion score provenance wrong'
 
 
 def crane_wait_spot(source):
@@ -1061,13 +1093,145 @@ def reserve_hud(source):
         assert vm.screen[20:29]==reserve_row(9,vm.v), ('level label disturbs the reserve',level)
 
 
+def difficulty_contract(source):
+    # The title's choice, as in Choplifter: 1/2/3 or LEFT/RIGHT, a 3 that
+    # continues 8-3 is not a choice, and a held key acts once.
+    line={0:'[1 easy]  2 medium   3 hard ',1:' 1 easy  [2 medium]  3 hard ',
+          2:' 1 easy   2 medium  [3 hard]'}
+    idle=dict(input_key=15,input_button=0,input_left=0,input_right=0)
+    def press(**held):
+        return [dict(idle)]+[dict(idle,**held)]*3
+    def key(k):return press(input_key=k)
+    left,right=press(input_left=1),press(input_right=1)
+    def title(start,actions,opening=()):
+        vm=Basic(source);vm.v['difficulty']=start
+        trace=list(opening) or [dict(idle)]
+        for action in actions:trace+=action
+        vm.frame_inputs=iter(trace+[dict(idle),dict(idle,input_button=1)]+[dict(idle)]*60)
+        vm.run('title_screen')
+        assert vm.bank==1, 'title leaks its bank'
+        return vm
+    for start,actions,expected in ((1,[key(1)],0),(1,[key(2)],1),(0,[key(3)],2),(1,[left],0),
+                                   (0,[left],0),(1,[right],2),(2,[right],2),(2,[left,left],0),
+                                   (0,[right,key(1),right],1),(1,[key(8),key(3)],1),
+                                   (1,[key(8),key(1)],0),(2,[key(5),key(3)],2),(1,[key(0)],1),
+                                   (1,[key(4)],1),(0,[key(9)],0)):
+        vm=title(start,actions)
+        assert vm.v['difficulty']==expected and vm.v['game838']==0, ('title difficulty choice',start,actions,expected)
+        assert ''.join(map(chr,vm.screen[610:638]))==line[expected], ('difficulty line',expected)
+    for start,held,expected in ((2,'input_left',1),(0,'input_right',1)):
+        vm=title(start,[[dict(idle)]+[dict(idle,**{held:1})]*12])
+        assert vm.v['difficulty']==expected, ('held stick stepped more than once',held)
+    # A direction still held from the screen before (FIRE at game over) is not a choice.
+    vm=title(1,[],opening=[dict(idle,input_left=1,input_button=1)]+[dict(idle,input_left=1)]*6)
+    assert vm.v['difficulty']==1, 'held direction from the last screen changed the difficulty'
+    # 8-3-8 keeps the shown choice and tags the game *.
+    for start in (0,2):
+        vm=Basic(source);vm.v.update(difficulty=start,lv=1,lives=2,input_key=15)
+        vm.frame_inputs=iter([dict(idle)]+key(8)+key(3)+key(8)+key(2)+key(1)+[dict(idle)]*50)
+        vm.run('title_screen')
+        assert vm.v['game838']==1 and vm.v['difficulty']==start, '838 changed the difficulty'
+        vm.run('init_level')
+        assert (vm.v['gametag'],vm.v['diffnow'])==(1,start), '838 game not tagged * at its difficulty'
+    boot=source[source.index('\nboot:\n'):source.index('\nnew_game:\n')]
+    assert re.search(r'^\tdifficulty = 1$',boot,re.M), 'power-on difficulty is not Medium'
+    # The dials. Medium is today's tuned game, typed out independently:
+    # machines and level 1 roamers every step, level 2/3 roamers every second
+    # step, rivets 240 then 200 steps apart. One level up after stages 6 and 12.
+    expect={0:(6,3,255,255),1:(8,4,200,240),2:(8,5,150,160)}
+    for chosen in range(3):
+        for level in list(range(1,31))+[255]:
+            vm=Basic(source);vm.v.update(difficulty=chosen,levelno=level,game838=0,btm=240)
+            vm.bank=2;vm.run('banked_difficulty')
+            now=min(2,chosen+(level>=7)+(level>=13))
+            assert vm.v['diffnow']==now, ('difficulty ramp',chosen,level,vm.v['diffnow'])
+            assert (vm.v['mrate'],vm.v['rrate'],vm.v['btmset'],vm.v['btm'])==expect[now], ('dials',now)
+            assert vm.v['gametag']==chosen+2, 'tag must name the chosen start, not the ramp'
+            assert 0<vm.v['mrate']<=8 and 0<vm.v['rrate']<=8, 'a pace would need a second drain'
+        vm=Basic(source);vm.v.update(difficulty=chosen,lv=1,levelno=1,lives=2);vm.run('init_level')
+        assert vm.v['btm']==expect[chosen][3] and vm.bank==1, 'first rivet delay'
+    # world_step's machine gate: 6 of every 8 steps on Easy, spread out.
+    world=source[source.index('\tmacc = macc + mrate'):]
+    world=world[:world.index('\tGOSUB mack_step\n')]
+    pacer=Basic(source+'\nBANK 0\nmachine_tick:\n'+world+'\tRETURN\n')
+    for chosen,moves in ((0,6),(1,8),(2,8)):
+        pacer.v.update(difficulty=chosen,levelno=1);pacer.bank=2;pacer.run('banked_difficulty');pacer.bank=1
+        seen=''
+        for _ in range(64):pacer.run('machine_tick');seen+=str(pacer.v['mmove'])
+        assert seen.count('1')==moves*8 and '00' not in seen, ('machine pace',chosen,seen)
+    # A held step holds every machine, and the rider with its belt.
+    clock=source[source.index('\nsite_step:\n')+1:source.index('\tIF lv = 1 THEN GOTO bell_step')]
+    for level,mx,my,per_px in ((2,44,157,2),(3,60,58,1)):
+        vm=Basic(source.replace('site_step:\n','belt_clock:\n',1)+'\nBANK 0\n'+clock+'\tRETURN\n'+
+                 'easy_tick:\n'+world+'\tRETURN\n')
+        vm.v.update(lv=level,levelno=level,difficulty=0);vm.run('init_level')
+        vm.v.update(mx=mx,my=my,st=vm.v['s_walk'],jr=0,jl=0)
+        held=0
+        for _ in range(24):
+            vm.run('easy_tick');held+=1-vm.v['mmove']
+            vm.run('conv_sup');vm.run('site_step')
+        advance=vm.v['hzphase']
+        assert held==6 and advance==18, ('belt clock not held on Easy',level,held,advance)
+        assert abs(vm.v['mx']-mx)==advance//per_px, ('rider slips on the held belt',level,vm.v['mx'])
+    for level,beat in ((2,28),(3,44)):
+        vm=Basic(source);vm.v.update(lv=level,levelno=level);vm.run('init_level')
+        vm.v.update(mmove=0,hzphase=beat,clawclock=48,mx=240,my=0,st=vm.v['s_walk'],
+                    **{'#slagclock':120})
+        vm.sound.clear();vm.run('site_step')
+        assert (vm.v['hzphase'],vm.v['clawclock'],vm.v['#slagclock'])==(beat,48,120), 'machine clock ran on a held step'
+        assert vm.sound==[], ('a held machine phase rang again',level,vm.sound)
+        vm.v.update(mmove=1,hzphase=beat-1,snd1=0,snd3=0);vm.sound.clear();vm.run('site_step')
+        assert (1,180,10) in vm.sound, 'press beat lost'
+    # Every other machine named for Easy holds too.
+    vm=Basic(source);vm.v.update(lv=3,levelno=3);vm.run('init_level')
+    before=list(vm.arrays['pnycar']);vm.v['mmove']=0;vm.run('lift_move')
+    assert vm.arrays['pnycar']==before and vm.v['pnphase']==0, 'paddles ran on a held step'
+    vm=Basic(source);vm.v.update(lv=1,levelno=4,lives=2);vm.run('init_level')
+    vm.v.update(jhtk=0,mx=240,my=0,mmove=0)
+    old=tuple(vm.v[k] for k in ('jhx','jhy','vx','vy','ox','oy'))
+    for _ in range(20):vm.run('actors_step');vm.run('actors_move')
+    assert tuple(vm.v[k] for k in ('jhx','jhy','vx','vy','ox','oy'))==old, 'jackhammer or a level 1 roamer ran on a held step'
+    vm.v['mmove']=1
+    for _ in range(20):vm.run('actors_step');vm.run('actors_move')
+    now=tuple(vm.v[k] for k in ('jhx','jhy','vx','vy','ox','oy'))
+    assert old[:2]!=now[:2] and old[2:4]!=now[2:4] and old[4:]!=now[4:], 'level 1 movers stuck'
+    for state in (0,8):
+        vm=Basic(source);vm.v.update(mgon=1,mgarm=1,mgx=160,mgd=0,mgtk=1,st=state,mmove=0)
+        vm.run('mag_move');assert vm.v['mgx']==160, 'magnet ran on a held step'
+    # Level 2/3 roamers through the real actors_move: (4 + rate * calls) / 8 steps.
+    for level in (2,3):
+        for chosen,rate in ((0,3),(1,4),(2,5)):
+            vm=Basic(source);vm.v.update(lv=level,levelno=level,difficulty=chosen);vm.run('init_level')
+            vm.v.update(mx=240,my=0,jhtk=1);steps=0
+            for _ in range(80):
+                old=tuple(vm.v[k] for k in ('vx','vy','ox','oy'));vm.run('actors_move')
+                steps+=tuple(vm.v[k] for k in ('vx','vy','ox','oy'))!=old
+            assert vm.v['st']!=vm.v['s_dead'] and steps==(4+rate*80)//8, ('roamer pace',level,chosen,steps)
+    # The tag glyphs: below the font, beside the HUD x, uploaded by the title
+    # and by nothing else (every DEFINE CHAR/COLOR range and VRAM address).
+    vm=Basic(source);vm.frame_inputs=iter([dict(idle)]*2+[dict(idle,input_button=1)]+[dict(idle)]*60)
+    vm.run('title_screen')
+    assert (27,4,'tag_pat',0) in vm.pattern_writes and (27,4,'tag_col',0) in vm.color_writes, 'tag glyphs not uploaded'
+    for line in vm.lines:
+        m=re.match(r'define (?:char|color) (\w+),(\w+),(\w+)',line)
+        if m and m[3] not in ('tag_pat','tag_col') and not m[1].startswith('#'):
+            start,count=vm.expr(m[1]),vm.expr(m[2])
+            assert start+count<=27 or start>30, ('tag code owned by another upload',line)
+        m=re.match(r'define vram (#presszone \+ )?(\d+),(\d+),',line)
+        if m:
+            for zone in ((0,2048) if m[1] else (0,)):
+                addr,count=zone+int(m[2]),int(m[3])
+                for base in (0,2048,4096,8192,10240,12288):
+                    assert not (addr<base+31*8 and base+27*8<addr+count), ('tag code overwritten',line)
+
+
 def score_range(source):
     vm=Basic(source)
     # Both final digits (0/5), old overflow boundary, and full six-digit range.
     for units in (0,1,2,5,7,40,1399,1400,13107,13108,65535):
-        vm.v.update(game838=0,**{'#scvalue':units,'#scpos':100})
+        vm.v.update(gametag=3,**{'#scvalue':units,'#scpos':100})
         vm.run('score_print')
-        assert ''.join(map(chr,vm.screen[1:8]))==str(units*5).rjust(6)+' ', 'HUD score formatting/range wrong'
+        assert ''.join(map(chr,vm.screen[1:8]))==str(units*5).rjust(6)+chr(29), 'HUD score formatting/range wrong'
         assert vm.screen[0]==32, 'HUD score lost its left margin'
         assert vm.bank==1, 'score renderer did not restore level-data bank'
         vm.bank=3;vm.v['#scpos']=100;vm.run('banked_score_left')
@@ -1082,8 +1246,8 @@ def score_range(source):
     vm.v['#score']=1400;vm.run('hud_score');vm.run('hud_score')
     assert vm.v['lives']==3, 'extra life threshold changed or repeats'
     vm.v.update(lv=1,levelno=1);vm.run('init_level')
-    vm.v.update(game838=1,hi838=1,**{'#score':65535,'#hi':65535,'#bonus':5000});vm.run('hud_all')
-    assert ''.join(map(chr,vm.screen[1:8]))=='327675*', 'HUD score overlaps marker'
+    vm.v.update(gametag=1,**{'#score':65535,'#hi':65535,'#bonus':5000});vm.run('hud_all')
+    assert ''.join(map(chr,vm.screen[1:8]))=='327675'+chr(27), 'HUD score overlaps its tag'
     assert vm.screen[8:10]==[32]*2 and vm.screen[20:29]==reserve_row(3,vm.v), (
         'top-row hats overlap the score or bonus')
     assert ''.join(map(chr,vm.screen[10:20]))=='bonus 5000', 'bonus did not move left as a unit'
@@ -1092,8 +1256,8 @@ def score_range(source):
         label=('l'+str(level) if level<100 else str(level)).rjust(3)
         assert ''.join(map(chr,vm.screen[29:32]))==label, (
             'level not right-aligned or stale digits remain',level)
-    vm.v.update(game838=0,hi838=0,**{'#score':1,'#hi':2,'#bonus':0});vm.run('hud_all')
-    assert ''.join(map(chr,vm.screen[1:8]))=='     5 ', 'old score digits/marker remain'
+    vm.v.update(gametag=4,**{'#score':1,'#hi':2,'#bonus':0});vm.run('hud_all')
+    assert ''.join(map(chr,vm.screen[1:8]))=='     5'+chr(30), 'old score digits/tag remain'
     assert ''.join(map(chr,vm.screen[16:20]))=='   0', 'zero bonus missing or padded'
 
 
@@ -2051,13 +2215,19 @@ def speed_contract(source):
     vm.v.update(st=8)
     for _ in range(20):vm.run('mag_move')
     assert vm.v['mgx']==130 and vm.v['mx']==130, 'loaded magnet speed'
+    # Level 2/3 roamers take the pace banked_actors_move derives each world
+    # step (its own accumulator, executed here): Medium is every second step.
+    pace=source[source.index('\tracc = racc + rrate'):source.index("\t' Jackhammer/drill: NON-LETHAL")]
     for level in (2,3):
-        vm=Basic(source);vm.v.update(lv=level,rx=168 if level==2 else 200,ry=120 if level==2 else 88,rf=0,rp=0)
-        for tick in range(20):vm.v['atg']=tick;vm.run('site_route')
+        vm=Basic(source+'\nBANK 2\nroamer_tick:\n'+pace+'\tGOSUB site_route\n\tRETURN\n')
+        vm.v.update(lv=level,rx=168 if level==2 else 200,ry=120 if level==2 else 88,rf=0,rp=0)
+        vm.bank=2
+        for tick in range(20):vm.run('roamer_tick')
         assert vm.v['rx']==(158 if level==2 else 190), 'enemy walk rate'
         vm.v.update(rp=1,ry=120 if level==2 else 88)
-        for tick in range(20):vm.v['atg']=tick;vm.run('site_route')
+        for tick in range(20):vm.run('roamer_tick')
         assert vm.v['ry']==(130 if level==2 else 98), 'enemy climb rate'
+        vm.bank=1
         vm=Basic(source);vm.v.update(lv=level);vm.run('init_level')
         vm.v.update(mx=44 if level==2 else 60,my=157 if level==2 else 58)
         start=vm.v['mx']
@@ -2873,6 +3043,7 @@ def main():
     factory_challenge(source)
     upper_conveyor(source)
     title_scores(source)
+    difficulty_contract(source)
     score_range(source)
     reserve_hud(source)
     crane_wait_spot(source)
@@ -3079,8 +3250,8 @@ def main():
         (source.replace('\tCLS\n\tGOSUB game_chars','\tGOSUB game_chars',1),title_scores),
         (source.replace('BANK SELECT 3','BANK SELECT 2'),title_scores),
         (source.replace('2026 UNHUMAN and C&C AI','2026'),title_scores),
-        (source.replace('hi838 = game838','hi838 = 0'),title_scores),
-        (source.replace('last838 = game838','last838 = 0'),title_scores),
+        (source.replace('hitag = gametag','hitag = 0'),title_scores),
+        (source.replace('lasttag = gametag','lasttag = 0'),title_scores),
         (source.replace('game838 = 0','game838 = 1'),title_scores),
         (source.replace('game838 = 1','game838 = 0'),setup_inputs),
         (source.replace('IF #score > #hi THEN','IF #score >= #hi THEN'),title_scores),
@@ -3154,6 +3325,42 @@ def main():
         (source.replace('ex = 108\n\tGOSUB hazard_hit\n\tex = 132','ex = 112\n\tGOSUB hazard_hit\n\tex = 132',1),gear_sparks),
         (source.replace('\tIF my >= 148 THEN\n','\tIF my >= 140 THEN\n',1),gear_sparks),
         (source.replace('IF my + 16 >= 160 THEN','IF my + 16 >= 152 THEN',1),visual_hazards),
+    ])
+    # Difficulty: Easy holds every named machine with its riders and beats,
+    # the dials and the six-stage ramp, the title's choice, and the tags.
+    mutants.extend([
+        (source.replace('IF mmove = 0 THEN cvdrag = 0','cvdrag = cvdrag'),difficulty_contract),
+        (source.replace('hzphase = hzphase + mmove','hzphase = hzphase + 1'),difficulty_contract),
+        (source.replace('clawclock = clawclock + mmove','clawclock = clawclock + 1'),difficulty_contract),
+        (source.replace('#slagclock = #slagclock + mmove','#slagclock = #slagclock + 1'),difficulty_contract),
+        (source.replace('IF clawclock = 48 THEN GOSUB machine_beat','IF clawclock = 48 THEN GOSUB machine_clack'),difficulty_contract),
+        (source.replace('IF hzphase = 28 THEN GOSUB machine_beat','IF hzphase = 28 THEN GOSUB machine_clack'),difficulty_contract),
+        (source.replace('IF hzphase = 44 THEN GOSUB machine_beat','IF hzphase = 44 THEN GOSUB machine_clack'),difficulty_contract),
+        (source.replace('IF mmove THEN GOSUB work_sound','GOSUB work_sound'),difficulty_contract),
+        (source.replace("route_drill:\n\t' The loose jackhammer slows with the machines on Easy.\n\tIF mmove = 0 THEN RETURN\n",'route_drill:\n'),difficulty_contract),
+        (source.replace("route_vand:\n\t' Level 1's roamers share the machine pace (Easy: three steps in four).\n\tIF mmove = 0 THEN RETURN\n",'route_vand:\n'),difficulty_contract),
+        (source.replace('IF mmove THEN GOSUB route_step','GOSUB route_step'),difficulty_contract),
+        (source.replace("lift_move:\n\t' Easy holds the paddles with the other machines; a rider stays aboard.\n\tIF mmove = 0 THEN RETURN\n",'lift_move:\n'),difficulty_contract),
+        (source.replace("banked_mag_move:\n\t' The magnet, with Mack aboard or not, is held with the other machines.\n\tIF mmove = 0 THEN RETURN\n",'banked_mag_move:\n'),difficulty_contract),
+        (source.replace('IF macc >= 8 THEN','IF macc > 8 THEN'),difficulty_contract),
+        (source.replace('rrate = diffnow + 3','rrate = 4'),difficulty_contract),
+        (source.replace('\t\tmrate = 6\n','\t\tmrate = 8\n'),difficulty_contract),
+        (source.replace('\t\tbtmset = 150\n','\t\tbtmset = 200\n'),difficulty_contract),
+        (source.replace('IF levelno >= 13 THEN diffnow = diffnow + 1','diffnow = diffnow'),difficulty_contract),
+        (source.replace('IF diffnow > 2 THEN diffnow = 2','diffnow = diffnow'),difficulty_contract),
+        (source.replace('gametag = difficulty + 2','gametag = diffnow + 2'),difficulty_contract),
+        (source.replace('IF game838 THEN gametag = 1','gametag = gametag'),difficulty_contract),
+        (source.replace('IF titlenext = 0 THEN\n\t\t\tdiffpick','IF titlenext < 3 THEN\n\t\t\tdiffpick'),difficulty_contract),
+        (source.replace('IF diffpick < 3 THEN','IF diffpick < 4 THEN'),difficulty_contract),
+        (source.replace('\tIF cont1.left THEN setupkey = 20\n',''),difficulty_contract),
+        (source.replace('IF difficulty < 2 THEN difficulty = difficulty + 1','difficulty = difficulty + 1'),difficulty_contract),
+        (source.replace('\tGOSUB read_key\n\ttitleheld = setupkey\n','\ttitleheld = cont1.key\n'),difficulty_contract),
+        (source.replace('\t\ttlwide = 9\n','\t\ttlwide = 8\n'),difficulty_contract),
+        (source.replace('DEFINE CHAR 27,4,tag_pat','DEFINE CHAR 26,4,tag_pat'),difficulty_contract),
+        (source.replace('new_game:\n\tdclean = 0\n','new_game:\n\tdifficulty = 1\n\tdclean = 0\n'),title_scores),
+        (source.replace('PRINT CHR$(gametag + 26)','PRINT CHR$(gametag + 27)'),score_range),
+        (source.replace('IF hitag THEN PRINT CHR$(hitag + 26)','PRINT "*"'),title_scores),
+        (source.replace('PRINT AT CPOS(21,7),"PRESS FIRE TO START"','PRINT AT CPOS(21,7),"PRESS FIRE TO START"\n\tPRINT AT CPOS(20,3),"STICK MOVE  UP/DOWN CLIMB"'),title_scores),
     ])
     bucket_exits = {}
     for job in bucket_jobs:

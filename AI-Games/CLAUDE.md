@@ -320,6 +320,10 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
     `MSYS2_ARG_CONV_EXCL='*'` set for that one call. `games/KeystoneKapers/build-ti.sh`'s
     `cygpy` helper does both, and detects a Cygwin interpreter with
     `sys.platform == "cygwin"` rather than assuming one.
+  - **A third half: Cygwin's python cannot read a Git Bash heredoc on stdin.**
+    `python3.9.exe - <<'EOF'` dies with `init_sys_streams: <stdin> is a
+    directory` before running a line. Write the script to a file and pass its
+    path in the `/cygdrive/...` form above.
 - **PYTHON'S BYTECODE CACHE IS STALE FOR A WHOLE SECOND, which is long enough to matter when a
   generator and its consumers run back to back.** `.pyc` freshness compares **whole seconds**
   of mtime, so editing `genart.py` and re-running a script that imports it inside the same

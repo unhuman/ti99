@@ -248,6 +248,9 @@ boot:
 		READ BYTE drillx(i)
 		READ BYTE drilly(i)
 	NEXT i
+	' Medium until the player picks another on the title screen; the choice
+	' then stays from game to game (banked_difficulty reads it each stage).
+	difficulty = 1
 
 new_game:
 	dclean = 0
@@ -395,7 +398,7 @@ main_loop:
 
 inventory_draw:
 	#if TI994A
-	BANK SELECT 3
+	BANK SELECT 2
 	#endif
 	GOSUB banked_inventory_draw
 	#if TI994A
@@ -524,7 +527,7 @@ factory_output:
 	IF boxfall < 2 THEN RETURN
 	workfx = 255
 	#if TI994A
-	BANK SELECT 2
+	BANK SELECT 4
 	#endif
 	GOSUB banked_factory_output
 	#if TI994A
@@ -601,6 +604,10 @@ reset_claws:
 	firedepth = 0
 	RETURN
 
+machine_beat:
+	' A machine's own beat at a fixed phase. On a step Easy holds, the phase
+	' repeats; the beat must not ring twice.
+	IF mmove = 0 THEN RETURN
 machine_clack:
 	' Metallic ring over a short noise impact; never interrupt death/riveting.
 	IF snd3 > 3 THEN RETURN
@@ -676,7 +683,7 @@ level_complete:
 	GOSUB completion_music
 	IF #score > #hi THEN
 		#hi = #score
-		hi838 = game838
+		hitag = gametag
 	END IF
 	levelno = levelno + 1
 	lv = lv + 1
@@ -693,14 +700,14 @@ game_over:
 	' (including a loose/carried jackhammer) remain hidden.
 	gameov = 0
 	#lastscore = #score
-	last838 = game838
+	lasttag = gametag
 	' One blank character around all four sides of the message.
 	PRINT AT CPOS(10,10),"           "
 	PRINT AT CPOS(11,10)," GAME OVER "
 	PRINT AT CPOS(12,10),"           "
 	IF #score > #hi THEN
 		#hi = #score
-		hi838 = game838
+		hitag = gametag
 	END IF
 	' 75 video frames = 1.25 seconds before a fresh Fire; 600 = auto-title.
 	GOSUB gameover_wait
@@ -786,6 +793,15 @@ world_step:
 	' A single simulation clock for Mack, enemies, hazards and platforms.
 	' Stop immediately on death: no later catch can revive him in this tick.
 	IF st = S_DEAD THEN RETURN
+	' Easy runs the machines, the jackhammer and level 1's roamers at mrate
+	' eighths of this clock (banked_difficulty). mrate never exceeds 8, so
+	' one drain is enough; at 8 (Medium, Hard) mmove is 1 on every step.
+	macc = macc + mrate
+	mmove = 0
+	IF macc >= 8 THEN
+		macc = macc - 8
+		mmove = 1
+	END IF
 	GOSUB mack_step
 	IF st = S_DEAD THEN RETURN
 	GOSUB actors_step
@@ -1777,6 +1793,8 @@ conv_sup:
 						' Factory belt matches walking: right input cancels drift.
 						cvdrag = hzphase AND 1
 						IF lv = 3 THEN cvdrag = 1
+						' A held machine step holds its belt, and the rider with it.
+						IF mmove = 0 THEN cvdrag = 0
 						IF cvdrag THEN
 						IF cvdir(ci) = 0 THEN
 							IF mx < 240 THEN mx = mx + 1
@@ -1819,6 +1837,8 @@ belt_surface:
 	RETURN
 
 lift_move:
+	' Easy holds the paddles with the other machines; a rider stays aboard.
+	IF mmove = 0 THEN RETURN
 	pnoldx = pnxcar(pnside)
 	pnphase = pnphase + 1
 	IF pnphase >= 224 THEN pnphase = 0
@@ -2165,14 +2185,14 @@ bolt_move:
 			bx = bx - bvel
 		ELSE
 			bon = 0
-			btm = 200
+			btm = btmset
 		END IF
 		IF bph = 0 THEN
 			by = by + 2
 			fy = by + 9
 			IF fy > 180 THEN
 				bon = 0
-				btm = 200
+				btm = btmset
 			ELSE
 				' Collision is armed only below the floor it last
 				' bounced on (bnx), so each level rings ONCE.
@@ -2310,63 +2330,9 @@ route_step:
 	END IF
 	RETURN
 
-site_route:
-	' Walk each tier out and back, then use its actual edge chain.
-	' rp 1 descends, 2 ascends; rf is horizontal facing.
-	IF (atg AND 1) = 0 THEN RETURN
-	rlo = 168
-	rhi = 232
-	rtop = 88
-	rbot = 120
-	IF rx < 128 THEN
-		rlo = 16
-		rhi = 72
-	END IF
-	IF lv = 2 THEN
-		rlo = 112
-		IF ry = 120 THEN rlo = 144
-		' With two roamers (repeat tours) the lower-right girder turnaround
-		' moves to 147, so its left end (mx 136-139, touch range 7) is a
-		' four-pixel spot to wait for the crane instead of a single pixel.
-		' The lunch pail there (cols 19-20, picked up from mx 144) stays
-		' inside the patrol. One roamer on the first tour leaves time enough.
-		IF levelno >= 4 THEN
-			IF ry = 120 THEN rlo = 147
-		END IF
-		rhi = 204
-		rtop = 120
-		rbot = 168
-	END IF
-	IF rp = 1 THEN
-		ry = ry + 1
-		IF ry = rbot THEN
-			rp = 0
-			rf = 0
-		END IF
-		RETURN
-	END IF
-	IF rp = 2 THEN
-		ry = ry - 1
-		IF ry = rtop THEN
-			rp = 0
-			rf = 0
-		END IF
-		RETURN
-	END IF
-	IF rf = 0 THEN
-		rx = rx - 1
-		IF rx <= rlo THEN rf = 1
-	ELSE
-		rx = rx + 1
-		IF rx >= rhi THEN
-			rx = rhi
-			rp = 1
-			IF ry = rbot THEN rp = 2
-		END IF
-	END IF
-	RETURN
-
 route_drill:
+	' The loose jackhammer slows with the machines on Easy.
+	IF mmove = 0 THEN RETURN
 	tcx = drillx(jhway)
 	tgy = drilly(jhway)
 	IF jhx < tcx THEN jhx = jhx + 1
@@ -2382,6 +2348,8 @@ route_drill:
 	RETURN
 
 route_vand:
+	' Level 1's roamers share the machine pace (Easy: three steps in four).
+	IF mmove = 0 THEN RETURN
 	rx = vx
 	ry = vy
 	rb = vb
@@ -2667,10 +2635,13 @@ furnace_step:
 	RETURN
 
 site_step:
-	hzphase = hzphase + 1
+	' Every machine clock advances by mmove: on a step Easy holds, belts,
+	' presses, jaws, flame, slag and their animation all stand still together
+	' (riders are held where they are read). Their hazards still strike.
+	hzphase = hzphase + mmove
 	IF hzphase >= 128 THEN hzphase = 0
 	IF carry = 2 THEN
-		IF (hzphase AND 7) = 0 THEN GOSUB machine_clack
+		IF (hzphase AND 7) = 0 THEN GOSUB machine_beat
 	END IF
 	IF lv = 1 THEN GOTO bell_step
 	IF lv = 3 THEN GOTO factory_step
@@ -2683,12 +2654,13 @@ site_step:
 		END IF
 	END IF
 	' Paired jaws slide inward/outward across the lower-left ledge.
-	#slagclock = #slagclock + 1
+	#slagclock = #slagclock + mmove
 	IF #slagclock >= 317 THEN #slagclock = 0
-	clawclock = clawclock + 1
+	' A held step cannot rest on 15: every advance that reaches it skips on.
+	clawclock = clawclock + mmove
 	IF (clawclock AND 15) = 15 THEN clawclock = clawclock + 1
 	IF clawclock >= 96 THEN clawclock = 0
-	IF clawclock = 48 THEN GOSUB machine_clack
+	IF clawclock = 48 THEN GOSUB machine_beat
 	clawstep = clawclock / 3
 	IF clawstep > 16 THEN clawstep = 32 - clawstep
 	ey = 123
@@ -2721,7 +2693,7 @@ site_step:
 	END IF
 	' Park fully visible below the mounting beam; never retract into it.
 	IF pressy < 105 THEN pressy = 105
-	IF hzphase = 28 THEN GOSUB machine_clack
+	IF hzphase = 28 THEN GOSUB machine_beat
 	ex = 184
 	ey = pressy
 	hbw = 8
@@ -2733,7 +2705,8 @@ site_step:
 	slagphase = #slagclock / 2
 	IF #slagclock = 120 THEN
 		workfx = 2
-		GOSUB work_sound
+		' Once per emission: a held step repeats 120.
+		IF mmove THEN GOSUB work_sound
 	END IF
 	IF slagphase >= 60 THEN RETURN
 	blobx = 44
@@ -2783,7 +2756,7 @@ factory_step:
 		END IF
 	END IF
 	IF pressy < 41 THEN pressy = 41
-	IF hzphase = 44 THEN GOSUB machine_clack
+	IF hzphase = 44 THEN GOSUB machine_beat
 	ex = 56
 	ey = pressy
 	hbw = 8
@@ -4694,8 +4667,125 @@ banked_hud_all:
 	GOSUB banked_hud_lives
 	RETURN
 
+site_route:
+	' Walk each tier out and back, then use its actual edge chain.
+	' rp 1 descends, 2 ascends; rf is horizontal facing.
+	' Paced by rmove (banked_actors_move): Medium every second step.
+	IF rmove = 0 THEN RETURN
+	rlo = 168
+	rhi = 232
+	rtop = 88
+	rbot = 120
+	IF rx < 128 THEN
+		rlo = 16
+		rhi = 72
+	END IF
+	IF lv = 2 THEN
+		rlo = 112
+		IF ry = 120 THEN rlo = 144
+		' With two roamers (repeat tours) the lower-right girder turnaround
+		' moves to 147, so its left end (mx 136-139, touch range 7) is a
+		' four-pixel spot to wait for the crane instead of a single pixel.
+		' The lunch pail there (cols 19-20, picked up from mx 144) stays
+		' inside the patrol. One roamer on the first tour leaves time enough.
+		IF levelno >= 4 THEN
+			IF ry = 120 THEN rlo = 147
+		END IF
+		rhi = 204
+		rtop = 120
+		rbot = 168
+	END IF
+	IF rp = 1 THEN
+		ry = ry + 1
+		IF ry = rbot THEN
+			rp = 0
+			rf = 0
+		END IF
+		RETURN
+	END IF
+	IF rp = 2 THEN
+		ry = ry - 1
+		IF ry = rtop THEN
+			rp = 0
+			rf = 0
+		END IF
+		RETURN
+	END IF
+	IF rf = 0 THEN
+		rx = rx - 1
+		IF rx <= rlo THEN rf = 1
+	ELSE
+		rx = rx + 1
+		IF rx >= rhi THEN
+			rx = rhi
+			rp = 1
+			IF ry = rbot THEN rp = 2
+		END IF
+	END IF
+	RETURN
+
+banked_inventory_draw:
+	' Both a carried brick and the jackhammer are held IN FRONT of Mack,
+	' on the side he is facing.
+	' The white outline is cosmetic: slot 31 lets a roaming jackhammer retain
+	' its earlier scanline priority even when Mack carries a brick.
+	SPRITE 31,209,0,0,0
+	IF carry = 0 THEN
+		SPRITE 1,209,0,0,0
+	ELSE
+		IF mdir = 1 THEN
+			jx2 = mx + 8
+		ELSE
+			jx2 = mx - 8
+		END IF
+		IF carry = 1 THEN
+			IF lv = 3 THEN
+				SPRITE 1,my - 1,jx2,88,15
+			ELSE
+				SPRITE 1,my - 1,jx2,28,6
+				SPRITE 31,my - 1,jx2,96,15
+			END IF
+		ELSE
+			' Carried jackhammer keeps hammering (alternate frames 24/40),
+			' same as when it roams -- it must not freeze in Mack's hands.
+			jcf = 24
+			IF FRAME AND 8 THEN jcf = 40
+			SPRITE 1,my - 1,jx2,jcf,7
+		END IF
+	END IF
+	' Walk-cycle toggle (~every 8 frames) for the drill and vandal.
+	anm2 = 0
+	IF FRAME AND 8 THEN anm2 = 1
+	SPRITE 3,209,0,0,0
+	IF jhtk = 0 THEN
+		' A loose drill can pace Mack at the same speed. Occlude it behind
+		' his occupied hands so it never looks like a second carried item.
+		hit = 0
+		IF carry = 1 THEN
+			ex = jhx
+			ey = jhy
+			hbw = 18
+			hbh = 12
+			GOSUB mack_hit
+		END IF
+		IF hit = 0 THEN
+			jfr = 24
+			IF anm2 = 1 THEN jfr = 40
+			SPRITE 3,jhy - 1,jhx,jfr,7
+		END IF
+	END IF
+	RETURN
+
 banked_actors_move:
-	atg = atg + 1
+	' Level 2/3 roamers (site_route) step rrate eighths of a pixel per world
+	' step: 3, 4 or 5 for Easy, Medium (every second step) or Hard. rrate
+	' never exceeds 8, so one drain is enough.
+	racc = racc + rrate
+	rmove = 0
+	IF racc >= 8 THEN
+		racc = racc - 8
+		rmove = 1
+	END IF
 	' Jackhammer/drill: NON-LETHAL -- touch it empty-handed to catch it for
 	' good, then rivet the filled gaps. (Movement is in actors_step.)
 	IF jhtk = 0 THEN
@@ -4749,7 +4839,8 @@ banked_actors_move:
 			rb = ob
 			rd = odr
 			rsv = osv
-			GOSUB route_step
+			' Level 1's second roamer keeps the vandal's pace (route_vand).
+			IF mmove THEN GOSUB route_step
 			ob = rb
 			odr = rd
 			osv = rsv
@@ -4782,7 +4873,45 @@ banked_actors_move:
 	END IF
 	RETURN
 
+banked_difficulty:
+	' This stage's difficulty dials (DESIGN.md section 57). Play starts at the
+	' title's choice and steps up one level after every six stages (at 7 and
+	' 13), staying at Hard from then on. Medium is the tuned game.
+	diffnow = difficulty
+	IF levelno >= 7 THEN diffnow = diffnow + 1
+	IF levelno >= 13 THEN diffnow = diffnow + 1
+	IF diffnow > 2 THEN diffnow = 2
+	' Machines, the jackhammer and level 1's roamers: eighths of a step per
+	' world step (world_step), so 8 is every step.
+	mrate = 8
+	' Level 2/3 roamers: Easy 3, Medium 4 (every second step), Hard 5.
+	rrate = diffnow + 3
+	' World steps between rivets after one leaves the screen (bolt_move).
+	btmset = 200
+	IF diffnow = 0 THEN
+		' Easy: everything three-quarter speed and rivets further apart.
+		mrate = 6
+		btmset = 255
+		btm = 255
+	END IF
+	IF diffnow = 2 THEN
+		' Hard: rivets closer together; the machines keep Medium's timing.
+		btmset = 150
+		btm = 160
+	END IF
+	macc = 0
+	mmove = 1
+	' Half full: Medium's roamers step on their first world step, as the old
+	' odd/even gate did.
+	racc = 4
+	' The score's tag: * for an 838 game, else e, m or h for the title's
+	' choice. They are characters 27-30, so the character is the tag + 26.
+	gametag = difficulty + 2
+	IF game838 THEN gametag = 1
+	RETURN
+
 banked_enemy_setup:
+	GOSUB banked_difficulty
 	' First tour retains the original site cast; repeat tours choose each
 	' roamer independently. Two vandals or two inspectors are both valid.
 	vkind = 0
@@ -5117,40 +5246,6 @@ victory_music3:
 	DATA BYTE 113,143,143,12
 	DATA BYTE 107,214,170,28
 
-banked_factory_output:
-	IF boxfall < 2 THEN RETURN
-	outputtick = outputtick + 1
-	IF boxfall = 2 THEN
-		IF outputtick = 10 THEN
-			boxfall = 3
-			outputtick = 0
-			' Visible rivet pixels (x+6..8,y+4..8) begin inside the nozzle.
-			boxy = 168
-			boxx = 52
-			' Delivery side is saved from the input, not Mack's later position.
-			IF outputside = 1 THEN boxx = 189
-			GOSUB machine_clack
-		END IF
-		RETURN
-	END IF
-	IF outputside = 0 THEN
-		boxx = boxx + 1
-	ELSE
-		boxx = boxx - 1
-	END IF
-	' Shoot diagonally out of the tilted mouth, then arc into the bucket.
-	IF outputtick <= 8 THEN
-		boxy = boxy - 1
-	ELSE
-		boxy = boxy + 2
-	END IF
-	IF outputtick = 16 THEN
-		boxfall = 0
-		workfx = 4
-		IF nbox = 0 THEN lvdone = 1
-	END IF
-	RETURN
-
 banked_mag_catch:
 	' Only an armed magnet can catch airborne Mack beneath its two-cell span.
 	IF mgon = 0 THEN RETURN
@@ -5177,6 +5272,8 @@ banked_mag_catch:
 	RETURN
 
 banked_mag_move:
+	' The magnet, with Mack aboard or not, is held with the other machines.
+	IF mmove = 0 THEN RETURN
 	IF mgon = 0 THEN RETURN
 	IF mgarm = 0 THEN RETURN
 	IF st = 9 THEN
@@ -5478,58 +5575,6 @@ animation_end:
 	#if TI994A
 	BANK 3
 	#endif
-
-banked_inventory_draw:
-	' Both a carried brick and the jackhammer are held IN FRONT of Mack,
-	' on the side he is facing.
-	' The white outline is cosmetic: slot 31 lets a roaming jackhammer retain
-	' its earlier scanline priority even when Mack carries a brick.
-	SPRITE 31,209,0,0,0
-	IF carry = 0 THEN
-		SPRITE 1,209,0,0,0
-	ELSE
-		IF mdir = 1 THEN
-			jx2 = mx + 8
-		ELSE
-			jx2 = mx - 8
-		END IF
-		IF carry = 1 THEN
-			IF lv = 3 THEN
-				SPRITE 1,my - 1,jx2,88,15
-			ELSE
-				SPRITE 1,my - 1,jx2,28,6
-				SPRITE 31,my - 1,jx2,96,15
-			END IF
-		ELSE
-			' Carried jackhammer keeps hammering (alternate frames 24/40),
-			' same as when it roams -- it must not freeze in Mack's hands.
-			jcf = 24
-			IF FRAME AND 8 THEN jcf = 40
-			SPRITE 1,my - 1,jx2,jcf,7
-		END IF
-	END IF
-	' Walk-cycle toggle (~every 8 frames) for the drill and vandal.
-	anm2 = 0
-	IF FRAME AND 8 THEN anm2 = 1
-	SPRITE 3,209,0,0,0
-	IF jhtk = 0 THEN
-		' A loose drill can pace Mack at the same speed. Occlude it behind
-		' his occupied hands so it never looks like a second carried item.
-		hit = 0
-		IF carry = 1 THEN
-			ex = jhx
-			ey = jhy
-			hbw = 18
-			hbh = 12
-			GOSUB mack_hit
-		END IF
-		IF hit = 0 THEN
-			jfr = 24
-			IF anm2 = 1 THEN jfr = 40
-			SPRITE 3,jhy - 1,jhx,jfr,7
-		END IF
-	END IF
-	RETURN
 
 banked_girder_chars:
 	' Codes 120-123 are site-specific scenery; restore on every level/death.
@@ -5902,6 +5947,18 @@ credit_pat:
 credit_col:
 	' Generated by assets/genfixtures.py; edit the generator.
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+tag_pat:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $00,$A8,$70,$20,$70,$A8,$00,$00
+	DATA BYTE $00,$00,$70,$88,$F8,$80,$70,$00
+	DATA BYTE $00,$00,$D0,$A8,$A8,$A8,$A8,$00
+	DATA BYTE $80,$80,$F0,$88,$88,$88,$88,$00
+tag_col:
+	' Generated by assets/genfixtures.py; edit the generator.
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$F0,$F0,$F0
 banked_score_print:
 	' Split five-point units into a five-digit quotient and a final 0 or 5.
 	' Never multiply the full score into an overflowing 16-bit temporary.
@@ -6042,14 +6099,15 @@ banked_tramp_step:
 banked_hud_score:
 	#if TI994A
 	' Leave a left margin, right-align six score digits, and reserve column 7
-	' for the assisted-game marker. The title uses banked_score_left below.
+	' for the score's tag. The title uses banked_score_left below.
 	PRINT AT CPOS(0,1),"       "
 	#scpos = 1
 	GOSUB banked_score_print
 	#else
 	GOSUB banked_score_left
 	#endif
-	IF game838 THEN PRINT "*"
+	' The tag: * for an 838 game, else e, m or h (characters 27-30).
+	PRINT CHR$(gametag + 26)
 	RETURN
 
 banked_score_left:
@@ -6079,28 +6137,34 @@ banked_title:
 	CLS
 	DEFINE CHAR 128,83,title_pat
 	DEFINE COLOR 128,83,title_col
+	' Score tags *, e, m and h are characters 27-30, below the font beside the
+	' HUD's x (31): play borrows the lowercase letters. Nothing else loads them.
+	DEFINE CHAR 27,4,tag_pat
+	DEFINE COLOR 27,4,tag_col
 	SCREEN title_map
 	PRINT AT CPOS(0,2),"LAST SCORE"
 	PRINT AT CPOS(0,20),"HIGH SCORE"
 	#scvalue = #lastscore
 	#scpos = 34
 	GOSUB banked_score_left
-	IF last838 THEN PRINT "*"
+	IF lasttag THEN PRINT CHR$(lasttag + 26)
 	#scvalue = #hi
 	#scpos = 56
 	GOSUB banked_score_print
-	IF hi838 THEN PRINT AT CPOS(1,30),"*"
-	PRINT AT CPOS(23,7),"PRESS FIRE TO START"
-	PRINT AT CPOS(20,3),"STICK MOVE  UP/DOWN CLIMB"
-	PRINT AT CPOS(21,2),"FIRE JUMP / HOLD DROP HAMMER"
-	PRINT AT CPOS(18,5),"2026 UNHUMAN and C&C AI"
+	IF hitag THEN PRINT CHR$(hitag + 26)
+	' Choplifter's order: difficulty, start prompt, credit.
+	GOSUB title_level
+	PRINT AT CPOS(21,7),"PRESS FIRE TO START"
+	PRINT AT CPOS(23,5),"2026 UNHUMAN and C&C AI"
 	SPRITE 0,111,40,0,15
 	SPRITE 8,111,40,60,13
 	SPRITE 1,111,56,24,7
 title_release:
 	WAIT
 	IF cont1.button THEN GOTO title_release
-	titleheld = cont1.key
+	' A key or stick direction held from the last screen does not count.
+	GOSUB read_key
+	titleheld = setupkey
 	titlecode = 0
 title_loop:
 	WAIT
@@ -6117,6 +6181,23 @@ title_loop:
 			IF setupkey = 8 THEN GOTO setup838
 		END IF
 		titlecode = titlenext
+		' 1, 2 or 3 picks the difficulty, unless that 3 continues 8-3-8.
+		IF titlenext = 0 THEN
+			diffpick = setupkey - 1
+			IF diffpick < 3 THEN
+				difficulty = diffpick
+				GOSUB title_level
+			END IF
+		END IF
+	END IF
+	' The stick steps through it: LEFT easier, RIGHT harder.
+	IF setupkey = 20 THEN
+		IF difficulty THEN difficulty = difficulty - 1
+		GOSUB title_level
+	END IF
+	IF setupkey = 21 THEN
+		IF difficulty < 2 THEN difficulty = difficulty + 1
+		GOSUB title_level
 	END IF
 	GOTO title_loop
 
@@ -6161,8 +6242,8 @@ menu_key:
 		setupkey = 15
 		RETURN
 	END IF
-	' A held digit is consumed once, including the final 8 and equal answers.
-	setupkey = cont1.key
+	' A held key is consumed once, including the final 8 and equal answers.
+	GOSUB read_key
 	IF setupkey = 15 THEN
 		titleheld = 15
 		RETURN
@@ -6172,6 +6253,30 @@ menu_key:
 		RETURN
 	END IF
 	titleheld = setupkey
+	RETURN
+
+read_key:
+	' Digits, plus the stick as 20 (LEFT) and 21 (RIGHT) for the difficulty
+	' line. The 838 prompts take only digits, so they ignore the stick.
+	setupkey = cont1.key
+	IF cont1.left THEN setupkey = 20
+	IF cont1.right THEN setupkey = 21
+	RETURN
+
+title_level:
+	' The difficulty line, as in Choplifter: the choice in brackets. Draw the
+	' plain line, then the pair of brackets around the current choice.
+	PRINT AT CPOS(19,2)," 1 EASY   2 MEDIUM   3 HARD "
+	#tlpos = 610
+	tlwide = 7
+	IF difficulty = 1 THEN
+		#tlpos = 619
+		tlwide = 9
+	END IF
+	IF difficulty = 2 THEN #tlpos = 630
+	PRINT AT #tlpos,"["
+	#tlpos = #tlpos + tlwide
+	PRINT AT #tlpos,"]"
 	RETURN
 
 title_pat:
@@ -6318,6 +6423,40 @@ title_end:
 	#if TI994A
 	BANK 4
 	#endif
+
+banked_factory_output:
+	IF boxfall < 2 THEN RETURN
+	outputtick = outputtick + 1
+	IF boxfall = 2 THEN
+		IF outputtick = 10 THEN
+			boxfall = 3
+			outputtick = 0
+			' Visible rivet pixels (x+6..8,y+4..8) begin inside the nozzle.
+			boxy = 168
+			boxx = 52
+			' Delivery side is saved from the input, not Mack's later position.
+			IF outputside = 1 THEN boxx = 189
+			GOSUB machine_clack
+		END IF
+		RETURN
+	END IF
+	IF outputside = 0 THEN
+		boxx = boxx + 1
+	ELSE
+		boxx = boxx - 1
+	END IF
+	' Shoot diagonally out of the tilted mouth, then arc into the bucket.
+	IF outputtick <= 8 THEN
+		boxy = boxy - 1
+	ELSE
+		boxy = boxy + 2
+	END IF
+	IF outputtick = 16 THEN
+		boxfall = 0
+		workfx = 4
+		IF nbox = 0 THEN lvdone = 1
+	END IF
+	RETURN
 
 banked_mack_air_chars:
 	DEFINE SPRITE 35,2,mack_jump_left

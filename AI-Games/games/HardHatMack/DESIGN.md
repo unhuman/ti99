@@ -113,13 +113,15 @@ while dodging the **vandal**, the **OSHA man**, and (level 1) **thrown bolts**:
 3. **Rivet Works** — carry 6 steel boxes (one at a time) to either machine marked **IN**.
 
 Clearing level 3 loops the game harder: **faster and more targeted, never more enemies**
-(house rule — see §10 Difficulty loop).
+(house rule — see §10 Difficulty loop). The title also offers **Easy / Medium / Hard**
+(section 57), which ramps up one level every six stages.
 
 ## §2 Controls (joystick 1)
 
 - **Left/Right** — walk. **Up/Down** — climb ladders (and enter pater-noster zones, L3).
 - **Fire** — jump. Direction held at takeoff sets the fixed horizontal momentum of the arc.
 - Title: **FIRE** starts; **8-3-8** on the keypad opens level select (repo convention).
+  **1/2/3** or the stick's **LEFT/RIGHT** choose Easy, Medium or Hard (section 57).
 
 ## §3 Screen & HUD
 
@@ -544,6 +546,11 @@ death / complete; SFX ch 2 (pickup, deposit, jump blips), noise ch 3 (rivet dril
 | OSHA homing band | ±8 px | ±16 px, homing step every frame |
 | Bonus tick | 60 f | 45 f |
 | Enemy count | 2 per level | **unchanged** (user rule) |
+
+This table is the original plan. What shipped for repeat tours is section 23
+(two roamers from stage 4, the stage-5 waiting spot). The title's Easy/Medium/Hard
+and its six-stage ramp (section 57) work independently of the tour and follow the
+same rule: speed and timing only, never more enemies.
 
 ## §11 Historical build notes (current commands: README and section 14)
 
@@ -2939,3 +2946,155 @@ Four mutations must fail:
 
 Production SHA-256:
 `CC726608E980C82ED730A82A4ABA2D852D996DBFF8F3991657B4C9A967C77EE1`.
+
+## 57. Easy / Medium / Hard (2026-10-07)
+
+**The title.** It copies Choplifter's presentation.
+- Row 19: `[1 EASY]  2 MEDIUM   3 HARD `, with brackets around the choice.
+  `title_level` prints the plain line, then two brackets from a column and a
+  width. That uses less of the title bank than three full lines.
+- Row 21: **PRESS FIRE TO START**. Row 23: the credit.
+- The two playing-instruction lines were removed to make room (the user's call).
+  Rows 17, 18, 20 and 22 stay blank.
+- Keys 1/2/3 pick a level. The stick steps it: LEFT is easier, RIGHT harder.
+  `read_key` maps the stick to keys 20 and 21 ahead of `menu_key`'s held-key
+  latch, so a held direction acts once.
+- The 8-3-8 tracker runs first. A 3 that continues 8-3 is not a choice; any
+  other 1-3 is, including a 1 straight after an 8.
+- A key or direction still held from the previous screen does not count:
+  `title_release` seeds the latch through `read_key`.
+- `difficulty` is set to Medium (1) once, on the boot path above `new_game`, so
+  the choice carries from game to game.
+- 838 plays at the difficulty shown on the title. It asks no extra question,
+  and its `*` tag covers the difficulty anyway.
+
+**What it changes.** Medium is the tuned game, unchanged.
+
+| Dial | Easy | Medium | Hard |
+|---|---|---|---|
+| Machines and their riders (eighths of a world step) | 6 | 8 | 8 |
+| Loose jackhammer, level 1 roamers | 6 | 8 | 8 |
+| Level 2/3 roamers (`site_route`) | 3 | 4 | 5 |
+| First rivet / later rivets (world steps) | 255 / 255 | 240 / 200 | 160 / 150 |
+| Bonus clock, lives, 7,000-point extra life, enemy count | same | same | same |
+
+"Machines" is the user's list:
+- the level 2 belts and the level 3 flat belt, with Mack's drag;
+- the level 3 paddle lift;
+- both presses and the level 2 jaws;
+- the level 2 furnace flame (the "fire out of the top right");
+- the slag, which rides the lower belt;
+- the magnet, including its ride with Mack.
+
+The level 2 crane beam, the level 1 elevator, the springs and the factory output
+were not on the list, so they keep their speed on every setting. Hard keeps
+Medium's machines: every jump window `checkphysics.py` proves against them still
+holds.
+
+**The ramp.** `banked_difficulty` sets `diffnow`:
+- the title's choice, plus one from stage 7 and one more from stage 13, capped
+  at Hard;
+- so Easy plays stages 1-6, Medium 7-12 and Hard from 13 on;
+- a Medium start reaches Hard at stage 7, and Hard stays Hard.
+
+It runs at the end of every `init_level`, through `banked_enemy_setup`. The
+repeat-tour roamers (section 23) still come from `levelno`, so both changes
+apply together.
+
+**Mechanism.**
+- **The machine pace.** `world_step` adds `mrate` to `macc` and sets
+  `mmove` on each eighth. One drain is enough because a rate never exceeds 8.
+  At 8, `mmove` is 1 on every step, so Medium and Hard run exactly as before.
+- **The machine clocks** (`hzphase`, `clawclock`, `#slagclock`) advance by
+  `mmove`, not by 1. A held step therefore freezes everything those clocks
+  drive at once: belt animation, presses, jaws, flame, slag, gear sparks,
+  processor flash and fuse.
+- **Riders.**
+  - `conv_sup` drops the belt drag on a held step, because both belts are
+    animated from `hzphase`. Without that, Mack would slide along a belt that
+    is standing still: the game-timing-tuning rule that two things moving
+    together share one clock.
+  - `lift_move` and `banked_mag_move` return on a held step. Each carries its
+    own rider inside the routine, so the rider holds too.
+- **Beats.** Fixed-phase sounds go through `machine_beat`, a guard that falls
+  through into `machine_clack`, because a held phase repeats. These are the
+  jackhammer work tick, the jaws' 48, the presses' 28 and 44, and the slag's
+  `work_sound` at 120. The rivet bounce is not a machine phase and keeps
+  `machine_clack`.
+- **Hazards** are still tested on held steps; only the motion stops.
+- **Level 2/3 roamers.** The old `atg` odd/even gate became an accumulator in
+  `banked_actors_move`: `racc`/`rrate` set `rmove`. It starts half full, so
+  Medium's first step moves, as the odd/even gate's did. Both roamers read the
+  same `rmove`, so their spacing is fixed and the stage-5 waiting spot
+  (section 56) is unchanged on every setting.
+- **Level 1.** `route_vand` (the vandal) and the second roamer's `route_step`
+  call follow `mmove`.
+- **Rivets.** `bolt_move` reloads from `btmset`. All values fit a byte: an
+  Easy 300 would have truncated to 44, the hardest setting of all.
+
+**Score tags.**
+- `gametag` ranks the game: 1 is 838 (`*`), and 2-4 are e, m and h from the
+  title's choice, not the ramp. It is set per stage by `banked_difficulty`.
+- `hitag` and `lasttag` replace `hi838` and `last838`; 0 means no game yet,
+  with no tag drawn.
+- The tags are characters 27-30, generated in `genfixtures.py` from the
+  compiler font's `*`, e, m and h, beside the HUD's x at 31. Gameplay borrows
+  96-111, which include the font's e, h and m.
+- `banked_title` uploads them. Nothing else loads 27-30, so they survive play.
+- The character is the tag plus 26, printed with `PRINT CHR$` at the cursor:
+  - HUD column 7 (`banked_hud_score`, both targets);
+  - after the left-aligned LAST SCORE;
+  - column 30 after HIGH SCORE.
+- A higher score replaces the record with its own tag, and equal scores keep
+  the old one, as before.
+
+**Banks.** `banked_difficulty`, the accumulator and the gates did not fit as
+things stood. The unoptimized fixed pass had 134 bytes below `>FFFE`, the title
+bank 28 and bank 2 1,134. Three pure routines moved, and their wrappers were
+re-pointed:
+- `site_route`: fixed to bank 2. It is called only from bank 2.
+- `banked_inventory_draw`: title bank to bank 2. It calls only fixed
+  `mack_hit`.
+- `banked_factory_output`: bank 2 to the motion bank. It calls only fixed
+  `machine_clack`.
+
+`elev_back` could not move: the death handler reaches it from bank 2 through
+`elev_reset`.
+
+Budgets after the change:
+- fixed area: 22,122/24,336 bytes, with 404 bytes under `>FFFE` unoptimized;
+- data bank 4 bytes free, bank 2 188, title bank 114, motion bank 98;
+- RAM: 588 bytes.
+
+**Validation.** `difficulty_contract` in `checkphysics.py` runs the real title,
+dial and pace code:
+- every title case: keys, stick, held keys, 8-3 versus 8-1, 0/4/9, and a held
+  direction from the last screen;
+- the line and the brackets on screen;
+- 838 tagging and difficulty;
+- the boot default;
+- the dial table, typed out independently, for each choice over stages 1-30
+  and 255, plus the first rivet after a real `init_level`;
+- Easy's 6-of-8 machine gate, spread with no two held steps in a row;
+- a 24-step belt run on levels 2 and 3. The rider's displacement must equal
+  the belt clock's;
+- held clocks and silent beats on levels 2 and 3;
+- every other named machine held: paddles, magnet empty and loaded,
+  jackhammer and both level 1 roamers;
+- the level 2/3 roamer counts through the real `actors_move`;
+- ownership of characters 27-30 across every `DEFINE` range and VRAM address.
+
+`title_scores` now checks tag provenance, including a ramped game that keeps its
+starting tag, and the new layout. `score_range` checks the HUD tag. The harness
+starts each VM by running the game's own `banked_difficulty` at Medium, so a
+routine called directly sees the same clocks as one reached by play.
+32 new defect mutations must fail, one per gate, dial, title rule and tag rule.
+A 33rd candidate was dropped rather than kept: `racc > 8` only shifts the
+roamers' phase at the same rate, which is not a defect.
+
+All eight TI gates pass with all 238 defect mutations rejected. Classic99 runs
+this cart (QI399.087). The title, tag and HUD rows were also rendered offline
+from the checker's VM.
+
+Production SHA-256:
+`1F5037C7CD7F3CC4BCAF11641FDA6430958F70E741700D153E37BE9669492C40`.

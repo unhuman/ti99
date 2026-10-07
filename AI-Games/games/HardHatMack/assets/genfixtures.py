@@ -243,6 +243,13 @@ def tables():
     # to code 31 (below the font) because 96-127 are scenery during play.
     out['hudx_pat']=[0,0,0x88,0x50,0x20,0x50,0x88,0]
     out['hudx_col']=[0xf0]*8
+    # Score tags, codes 27-30 beside it: the compiler font's * and lowercase
+    # e, m, h (838, easy, medium, hard). The character is the tag plus 26.
+    out['tag_pat']=[0,0xa8,0x70,0x20,0x70,0xa8,0,0,
+                   0,0,0x70,0x88,0xf8,0x80,0x70,0,
+                   0,0,0xd0,0xa8,0xa8,0xa8,0xa8,0,
+                   0x80,0x80,0xf0,0x88,0x88,0x88,0x88,0]
+    out['tag_col']=[0xf0]*32
     # User's Apple II screenshot: low outlined housing, dark blue centre,
     # red side panels, white feed cap and angled oval shoulder outlets.
     nozzle_rows=(
