@@ -307,10 +307,15 @@ class Basic:
                 if not args.startswith('@'):raise ValueError('Unsupported bl: '+line)
                 regs[11]=pc;pc=labels[args[1:]]
             elif op=='b':
-                if args!='*r11':raise ValueError('Unsupported branch: '+line)
-                pc=regs[11]
+                # A local long branch (b @label) or a local return (b *r11).
+                if args.startswith('@'):pc=labels[args[1:]]
+                elif args=='*r11':pc=regs[11]
+                else:raise ValueError('Unsupported branch: '+line)
             elif op=='movb' and parts[1].startswith('@cvb_'):
                 value=operand(parts[0],True);variable(parts[1],value);compare=value;zero=value==0
+            elif op=='socb' and parts[1].startswith('@cvb_'):
+                value=operand(parts[1],True)|operand(parts[0],True)
+                variable(parts[1],value);compare=value;zero=value==0
             elif op=='movb' and parts[1].startswith('@'):port(parts[1],operand(parts[0],True))
             elif op in ('movb','socb'):
                 value=operand(parts[0],True);dest=parts[1]
@@ -451,6 +456,10 @@ class Tests(unittest.TestCase):
         b.a['crowd_pixels']=[0]*256
         b.a['tank_on']=[0,0];b.a['#tank_x']=[0,0]
         b.v.update(wave_id=255,last_out=255)
+        # As if the walk (escape_tick) had found someone in view at every camp:
+        # renderer tests then exercise the compositor's own culling. Tests of
+        # the walk's derivation set it themselves.
+        b.v['crowd_seen']=15
         for name in ('#shot_x','shot_y','shot_dir','shot_on','shot_ttl','shot_slope','shot_speed','shot_drift'):b.a[name]=[0,0]
         sys.path.insert(0,str(ROOT/'assets'))
         import generate
@@ -477,7 +486,7 @@ class Tests(unittest.TestCase):
         for ch in range(24):b.patterns[ch+96]=standing[ch*8:ch*8+8]
         b.a['menu_font']=generate.MENU_FONT;b.a['camp_bits']=[1,2,4,8]
         b.a['person_kind']=[i%3 for i in range(64)];b.a['waiting_kind']=[96+(i%3)*4 for i in range(64)]
-        b.a['camp_spot']=generate.CAMP_SPOT_TABLE
+        b.a['roam_goal']=generate.ROAM_TABLE;b.a['roam_phase']=generate.ROAM_PHASE
         b.a['tile_art']=[v for bits,_ in generate.TILES for v in bits]
         b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW+[0,0]
         b.a['hud_rows']=generate.HUD_ROWS
@@ -708,8 +717,8 @@ class Tests(unittest.TestCase):
         self.assertNotEqual(self.total(b),64)
     def test_camp_lookup_and_spawn(self):
         b=self.state();self.assertEqual(b.expr('#camp_x(1)'),384)
-        b.a['person_state'][0]=2;b.v['board_count']=0;b.a['camp_active'][0]=0
-        b.v.update({'#hx':400,'transfer_timer':0})
+        b.a['person_state'][0]=2;b.v['board_count']=0;b.a['camp_active']=[1,1,0,0]
+        b.v.update({'#hx':400,'transfer_timer':0,'#camera':288})
         b.a['person_state'][16]=2;b.a['#person_x'][16]=432   # 20 px from the door
         b.call('people_tick')
         self.assertEqual((b.v['board_count'],b.a['camp_active'][1]),(1,1))
@@ -928,38 +937,6 @@ class Tests(unittest.TestCase):
         b.v['cont1.button']=0;b.call('fire_control');b.call('clock_reset')
         b.call('weapon_tick');self.assertEqual(b.v['fire_request'],0)
 
-    def test_waiting_fast_path_matches_portable_renderer(self):
-        self.waiting_paths_agree(SOURCE)
-        # The native scan covers one camp per call: stopping short of 16 people
-        # or scanning from the wrong camp must be caught.
-        for good,bad in (('ASM andi r6,15\nASM jne waiting_scan_loop','ASM andi r6,7\nASM jne waiting_scan_loop'),
-                         ('        cp=tc*16\n','        cp=tc*8\n')):
-            self.assertIn(good,SOURCE)
-            with self.assertRaises((AssertionError,KeyError,ValueError)):
-                self.waiting_paths_agree(SOURCE.replace(good,bad))
-    def waiting_paths_agree(self,source):
-        import generate as art
-        for camera in range(0,1793,64):
-            for anim in (0,8,16,24):
-                results=[]
-                for target in ('TI994A','COLECO'):
-                    b=self.state();b.r=Basic(source,target=target).r
-                    b.a['person_state']=[2 if i%5 else 4 for i in range(64)]
-                    b.a['camp_active']=[0]*4;b.v['board_count']=0
-                    for i in range(64):
-                        b.a['#person_x'][i]=b.a['#camp_x'][i//16]+b.a['camp_spot'][i%16]-128
-                    b.v.update({'#camera':camera,'anim':anim,'crowd_pose':255,'crowd_dirty':1})
-                    b.call('crowd_draw')
-                    results.append([b.vram[6784+c] for c in range(32)])
-                    self.assertEqual(b.calls.get('crowd_cell',0),0)
-                    for i,state in enumerate(b.a['person_state']):
-                        x=b.a['#person_x'][i]-camera
-                        if state==2 and 0<=x<256:
-                            expected=96+(i%3)*4+((anim//8+i)&3)
-                            if art.MAP[3][(x+camera)//8]==132:expected+=12
-                            self.assertEqual(results[-1][x//8],expected)
-                self.assertEqual(*results)
-
     def test_crowd_commit_keeps_front_patterns_and_row_intact(self):
         def verify(source):
             b=self.state();b.r=Basic(source).r
@@ -1046,17 +1023,20 @@ class Tests(unittest.TestCase):
         with self.assertRaises(AssertionError):verify(SOURCE.replace('CONST LANDED = 153','CONST LANDED = 152'))
 
     def test_idle_and_offscreen_crowds_skip_expensive_work(self):
-        b=self.escaped_crowd();b.v.update({'#camera':1792,'hy':80,'old_y':80,'crowd_dirty':1,'anim':0})
-        self.assertEqual(b.a['camp_active'],[0]*4)
+        # Nobody outside: no walk at all. People out but none in view: the walk
+        # runs (cheaply), the compositor does not.
+        b=self.state();b.a['person_state']=[0]*64;b.a['camp_active']=[0]*4
+        b.v.update({'#camera':1792,'hy':80,'old_y':80,'crowd_dirty':1,'anim':0,'home_walking':0})
         b.calls={};b.call('escape_tick');b.call('crowd_draw')
-        for routine in ('person_stride','walk_camp','crowd_landing','crowd_plot','crowd_cell','waiting_draw'):
+        for routine in ('walk_camp','walk_person','crowd_landing','compose_block','crowd_plot','crowd_cell'):
             self.assertEqual(b.calls.get(routine,0),0,routine)
-        self.assertEqual(b.v.get('crowd_mask',0),0)
-        b.v.update({'#camera':0,'crowd_dirty':1});b.call('crowd_draw')
-        self.assertEqual(b.calls.get('crowd_cell',0),0)
-        b.a['person_state'][0]=1;b.a['camp_active'][0]=1
+        self.assertEqual((b.v['crowd_seen'],b.v.get('crowd_mask',0)),(0,0))
+        b=self.escaped_crowd();b.v.update({'#camera':1792,'crowd_dirty':1})
+        b.calls={};b.call('escape_tick');b.call('crowd_draw')
+        self.assertEqual((b.v['crowd_seen'],b.calls.get('compose_block',0)),(0,0))
+        b.a['person_state'][0]=1
         b.v.update(ep=0);b.call('lose_person')
-        self.assertEqual(b.a['camp_active'],[0]*4)
+        self.assertEqual(b.a['camp_active'],[5,6,6,6])
 
     def test_banking_pose_and_shot_angles(self):
         for face in range(3):
@@ -1203,11 +1183,11 @@ class Tests(unittest.TestCase):
             b=self.state();b.r=Basic(source).r
             body=b.r['crash_frame'];self.assertEqual(body[-1],'GOTO draw_frame')
             b.a['person_state']=[0]*64;b.a['camp_released']=[12,16,16,16];b.a['camp_escape']=[0]*4
-            for i in range(10):b.a['person_state'][i]=1;b.a['#person_x'][i]=128
-            b.a['person_state'][10:12]=[2,2];b.a['#person_x'][10:12]=[172,48]  # 10 stands where the wreck lands
+            for i in range(3):b.a['person_state'][i]=1;b.a['#person_x'][i]=128
+            b.a['person_state'][10:12]=[3,2];b.a['#person_x'][10:12]=[172,48]  # 10 stands where the wreck lands
             b.a['person_state'][63]=6;b.a['#person_x'][63]=1960
-            b.a['camp_active']=[10,0,0,0]
-            b.v.update({'#hx':160,'hy':100,'old_y':100,'dt':2,'invuln':0,'lives':3,'home_walking':1,
+            b.a['camp_active']=[5,0,0,0]
+            b.v.update({'#hx':160,'hy':100,'old_y':100,'dt':2,'invuln':0,'lives':3,'home_walking':1,'board_count':1,
                         'crash_timer':0,'anim':0,'#crowd_clock':0,'runner_on':0})
             b.call('crash')
             for _ in range(200):
@@ -1215,11 +1195,10 @@ class Tests(unittest.TestCase):
                 b.execute(body[:-1])
             return b
         b=crash_run(SOURCE)
-        self.assertGreaterEqual(b.a['camp_released'][0],16)        # releases continued (and a stroller)
-        self.assertTrue(all(s in (1,2) for s in b.a['person_state'][:16]))
-        self.assertNotEqual(b.a['#person_x'][:10],[128]*10)        # walkers walked
+        self.assertEqual(b.a['camp_released'][0],13)               # releases continued, up to six out
+        self.assertNotEqual(b.a['#person_x'][:3],[128]*3)          # walkers walked
         self.assertEqual((b.a['person_state'][63],b.v['home_walking']),(7,0))
-        self.assertEqual((b.v['lost'],b.a['person_state'][10]),(0,2))  # the wreck lands on no one
+        self.assertEqual((b.v['lost'],b.a['person_state'][10]),(0,3))  # the wreck lands on no one
         bad=crash_run(SOURCE.replace('old_y=hy\nGOSUB escape_tick\nGOSUB crash_tick','GOSUB escape_tick\nGOSUB crash_tick'))
         self.assertGreater(bad.v['lost'],0)
         frozen=crash_run(SOURCE.replace('old_y=hy\nGOSUB escape_tick\nGOSUB crash_tick','old_y=hy\nGOSUB crash_tick'))
@@ -1409,124 +1388,266 @@ class Tests(unittest.TestCase):
         self.assertEqual(steps,{(4,4)})
         self.assertGreater(path[-1][1],166)
 
-    def escaped_crowd(self, source=SOURCE):
+    def escaped_crowd(self, source=SOURCE, clock=0):
+        """Every camp open with its first six out (as many as may be at once),
+        standing at their goals for crowd_clock `clock`; the view where all
+        four camps are within 400 px of its centre; the helicopter at home."""
+        import generate as art
         b=self.state();b.r=Basic(source).r
-        b.v.update({'#hx':1912,'hy':80,'old_y':80,'board_count':0,'#camera':1792})
-        b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4;b.a['camp_active']=[0]*4
-        for _ in range(240):b.call('escape_tick')
+        b.v.update({'#hx':1912,'hy':80,'old_y':80,'board_count':0,'#camera':384,'#crowd_clock':clock})
+        b.a['person_state']=[0]*64;b.a['camp_released']=[6]*4;b.a['camp_active']=[6]*4
+        for c in range(4):
+            for i in range(6):
+                b.a['person_state'][c*16+i]=2
+                b.a['#person_x'][c*16+i]=b.a['#camp_x'][c]+art.ROAM_GOALS[art.roam_goal_index(i,clock)]
         return b
 
-    def test_all_people_escape_without_helicopter(self):
-        b=self.escaped_crowd()
-        self.assertEqual(b.a['camp_released'],[16]*4)
-        self.assertEqual(b.a['person_state'],[2]*64)
-        self.assertEqual(self.total(b),64)
-        for camp in range(4):
-            positions=sorted(b.a['#person_x'][camp*16:camp*16+16])
-            self.assertTrue(all(y-x>=8 for x,y in zip(positions,positions[1:])))
-        b.v.update(aboard=16);b.a['camp_left'][3]=0
-        for _ in range(100):b.call('people_tick')
-        self.assertEqual(b.a['person_state'],[2]*64) # no disappearing offscreen queue
+    def come_out(self,source=SOURCE,updates=0):
+        """Every camp freshly opened, nobody out yet, run `updates` updates of
+        escape_tick (dt 2) with the view as in escaped_crowd."""
+        b=self.state();b.r=Basic(source).r
+        b.v.update({'#hx':1912,'hy':80,'old_y':80,'board_count':0,'#camera':384,'dt':2})
+        b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4;b.a['camp_active']=[0]*4
+        b.a['camp_escape']=[0]*4
+        for _ in range(updates):b.call('escape_tick')
+        return b
+
+    def test_hostages_come_out_a_few_at_a_time(self):
+        # As in the Apple II original: a burning barrack lets one out every 16
+        # frames while fewer than six of its people are outside (camp_active
+        # counts them); the rest wait inside and come out as others leave,
+        # whether the helicopter is near or not. Nobody disappears.
+        b=self.come_out()
+        for _ in range(300):
+            b.call('escape_tick')
+            for c in range(4):
+                out=sum(s in (1,2,3,8) for s in b.a['person_state'][c*16:c*16+16])
+                self.assertEqual(out,b.a['camp_active'][c])
+                self.assertLessEqual(out,6)
+            self.assertEqual(self.total(b),64)
+        self.assertEqual((b.a['camp_released'],b.a['camp_active']),([6]*4,[6]*4))
+        self.assertEqual(b.a['person_state'][6:16],[0]*10)
+        # Two picked up from camp 0: the next two come out, 16 frames apart.
+        for who in (0,1):
+            b.a['person_state'][who]=5;b.a['camp_active'][0]-=1;b.a['camp_left'][0]-=1;b.v['aboard']+=1
+        b.call('escape_tick');self.assertEqual(b.a['camp_released'][0],7)
+        for _ in range(6):b.call('escape_tick')
+        self.assertEqual(b.a['camp_released'][0],7)
+        for _ in range(4):b.call('escape_tick')
+        self.assertEqual((b.a['camp_released'][0],b.a['camp_active'][0]),(8,6))
         self.assertEqual(self.total(b),64)
 
     def test_escape_clock_and_closed_house(self):
         for dt in (1,2,3,4,6):
-            b=self.state();b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4
+            b=self.state();b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4;b.a['camp_active']=[0]*4
             b.a['camp_open']=[1,0,0,0]
             b.v.update({'dt':dt,'hy':80,'runner_on':0,'aboard':16,'#hx':1912})
             for _ in range(60//dt):b.call('escape_tick')
             self.assertEqual(b.a['camp_released'],[4,0,0,0])    # one every 16 frames
-            self.assertEqual(b.a['#person_x'][0],68)
             self.assertEqual(b.a['person_state'][16:],[0]*48)
 
-    def test_crowd_can_board_all_64(self):
-        b=self.escaped_crowd();b.v.update(hy=153,old_y=153)
-        for camp,origin in enumerate(b.a['#camp_x']):
-            for x,want in ((origin-96,8),(origin+64,16)):
-                b.v['#hx']=x
-                for _ in range(900):
-                    b.call('people_tick')
-                    self.assertEqual(self.total(b),64)
-                    if b.v['aboard']==want:break
-                self.assertEqual(b.v['aboard'],want)
-            self.assertEqual(b.a['person_state'][camp*16:camp*16+16],[5]*16)
-            b.v['#hx']=1928
-            for _ in range(100):b.call('people_tick')
-            self.assertEqual((b.v['aboard'],b.v['saved']),(0,(camp+1)*16))
+    def test_hostages_run_about_their_ground(self):
+        # Outside, everyone dashes to a goal on the camp's open ground (-88..+92
+        # px), stands a while and dashes on, not in step; standing people never
+        # overlap (even and odd ones use interleaved goals, ROAM_GOALS). Out of
+        # sight (the camp 400 px or more from the view's centre) they stand
+        # still.
+        b=self.come_out(updates=60);b.v['#camera']=640-128     # camp 2 centred; camp 0 is 512 px off
+        frozen=b.a['#person_x'][:6]
+        visits=[set() for _ in range(64)];stood=[0]*64;mixed=0
+        for _ in range(1500):
+            b.call('escape_tick')
+            st=b.a['person_state'];xs=b.a['#person_x']
+            for i in range(32,38):
+                self.assertTrue(640-88<=xs[i]<=640+92,(i,xs[i]))
+                if st[i]==2:stood[i]+=1;visits[i].add(xs[i])
+            standing=[xs[i] for i in range(32,38) if st[i]==2]
+            self.assertTrue(all(abs(p-q)>=12 for k,p in enumerate(standing) for q in standing[k+1:]))
+            mixed+=0<sum(st[i]==1 for i in range(32,38))<6
+        for i in range(32,38):
+            self.assertGreaterEqual(len(visits[i]),6,i)     # many places
+            self.assertGreater(stood[i],400,i)               # with pauses
+        self.assertGreater(mixed,1000)                       # some dash while others stand
+        self.assertEqual(b.a['#person_x'][:6],frozen)        # camp 0, out of sight
         self.assertEqual(self.total(b),64)
 
-    def test_streamed_boarding(self):
-        # Landed by camp 1: those within 104 px of the door (356) are in reach.
-        import generate as art
-        reach=sum(abs(384+v-356)<104 for v in art.CAMP_SPOTS)
-        self.assertEqual(reach,15)
-        def land(aboard):
-            b=self.escaped_crowd();b.v.update({'#hx':344,'hy':153,'old_y':153,'dt':2,'aboard':aboard})
-            b.a['camp_left'][1]=16
-            return b
-        b=land(0);order=[];most=0;spots=list(b.a['#person_x'])
-        for frame in range(0,600,2):
+    def test_people_wait_under_a_low_helicopter(self):
+        # Standing, people wave (the standing poses' arm). Under a helicopter
+        # landed or low over them (CHASE_Y), someone standing within 40 px of
+        # its door stays there, waiting to get in, while runners pass beneath
+        # it. Under a high one they carry on running about, so nobody piles up
+        # under a hovering helicopter. Not at one that is crashing.
+        def run(hy,crash=0,updates=900):
+            b=self.escaped_crowd();b.v.update({'#camera':640-128,'dt':2,'#hx':628,'hy':hy,'old_y':hy,'crash_timer':crash})
+            door=b.v['#hv']+12;held={};passed=set();left=set()
+            for _ in range(updates):
+                b.call('escape_tick')
+                for i in range(32,38):
+                    x=b.a['#person_x'][i];st=b.a['person_state'][i]
+                    if i in held and x!=held[i]:left.add(i)
+                    if abs(x-door)<40:
+                        if st==2 and i not in held:held[i]=x
+                        if st==1:passed.add(i)
+            return b,held,passed,left
+        chase_y=self.state().v['chase_y']
+        b,held,passed,left=run(chase_y)
+        self.assertTrue(held);self.assertFalse(left)              # once standing there, they stay
+        self.assertTrue(passed)                                    # runners pass beneath
+        b,held,passed,left=run(chase_y-1)                         # higher: they come and go
+        self.assertTrue(held);self.assertEqual(left,set(held))
+        b,held,passed,left=run(chase_y,crash=30)                  # crashing: the same
+        self.assertTrue(held);self.assertEqual(left,set(held))
+
+    def chase_scene(self,hy,aboard=0,count=10,first=300,spacing=10):
+        """Camp 1's people 16.. standing west of a door at about 404, the view on
+        them; `count` of them, `spacing` px apart from x `first`."""
+        b=self.state();b.v.update({'#hx':392,'hy':hy,'old_y':hy,'dt':2,'#camera':272,'aboard':aboard,'board_count':0})
+        b.a['person_state']=[0]*64;b.a['camp_active']=[0,count,0,0];b.a['camp_released'][1]=count
+        b.a['camp_left'][0]-=aboard
+        for k in range(count):b.a['person_state'][16+k]=2;b.a['#person_x'][16+k]=first+spacing*k
+        return b
+
+    def test_up_to_six_chase_and_board(self):
+        # Landed with free seats, the nearest within 104 px of the door chase it
+        # (one more each update) and board on reaching it: never more than six
+        # at once, nor more than the free seats. Nearest first. With the cabin
+        # full nobody chases; they wave it off and wait where they are.
+        b=self.chase_scene(153);order=[];most=0
+        for _ in range(400):
             before=list(b.a['person_state'])
             b.call('people_tick');self.assertEqual(self.total(b),64)
-            order+=[i for i,(s,t) in enumerate(zip(before,b.a['person_state'])) if s==2 and t in (3,5)]
-            running=[i for i,s in enumerate(b.a['person_state']) if s==3]
-            most=max(most,len(running))
-            self.assertEqual(b.v['board_count'],len(running))
-            self.assertEqual(b.a['camp_active'][1],len(running))
-            if b.v['aboard']==reach and not running:break
-        self.assertEqual(b.v['aboard'],reach)
-        self.assertLess(frame,240)                       # about 4 s, not ~17 s one at a time
-        self.assertGreaterEqual(most,5)                  # several run at once
-        self.assertEqual(spots[order[0]],352)            # nearest first
-        # Four free seats: exactly four run and board, the rest keep waiting.
-        b=land(12)
+            order+=[i for i,(s,t) in enumerate(zip(before,b.a['person_state'])) if s==2 and t==3]
+            chasing=b.a['person_state'].count(3)
+            self.assertEqual(b.v['board_count'],chasing);self.assertLessEqual(chasing,6)
+            most=max(most,chasing)
+            if b.v['aboard']==10:break
+        self.assertEqual((b.v['aboard'],most),(10,6))
+        self.assertEqual(order[:6],[25,24,23,22,21,20])
+        b=self.chase_scene(153,aboard=13)
         for _ in range(300):
-            b.call('people_tick')
-            self.assertLessEqual(b.v['board_count']+b.v['aboard'],16)
-        self.assertEqual((b.v['aboard'],b.v['board_count']),(16,0))
-        self.assertEqual(b.a['person_state'][16:32].count(2),12)
-        # A runner is as exposed as anyone outside.
-        b=land(0)
+            b.call('people_tick');self.assertLessEqual(b.a['person_state'].count(3),3)
+        self.assertEqual((b.v['aboard'],b.a['person_state'][16:26].count(2)),(16,7))
+        held=list(b.a['#person_x'])
+        for _ in range(100):b.call('people_tick')
+        self.assertEqual((b.a['#person_x'],b.v['board_count']),(held,0))
+        self.assertEqual(self.total(b),64)
+        # A chaser is as exposed as anyone outside.
+        b=self.chase_scene(153)
         for _ in range(3):b.call('people_tick')
         who=b.a['person_state'].index(3);count=b.v['board_count']
         b.v.update({'#crowd_shot_x':b.a['#person_x'][who]+4,'crowd_radius':3});b.call('crowd_hit')
         self.assertEqual((b.a['person_state'][who],b.v['board_count'],b.v['lost']),(4,count-1,1))
         self.assertEqual(self.total(b),64)
-    def test_runner_returns_to_crowd_when_left_behind(self):
-        b=self.escaped_crowd();b.v.update({'#hx':220,'hy':153,'old_y':153})   # door 16 px past the group
-        b.call('board_tick');who=b.a['person_state'].index(3)
-        self.assertEqual(b.v['board_count'],1)
-        b.v['#hx']=1912;b.call('people_tick')
-        self.assertEqual((b.v['board_count'],b.a['person_state'][who]),(0,1))
-        b.call('new_heli')
-        for _ in range(50):b.call('escape_tick')
-        self.assertEqual(b.a['person_state'][who],2)
+
+    def test_chasers_gather_under_a_hovering_helicopter(self):
+        # Low over them (CHASE_Y) but flying, they run beneath it and stop 10-17
+        # px from its door, "sometimes stopping directly underneath you": land
+        # there and those within 13 px are crushed, as in the original. Above
+        # CHASE_Y nobody sets off.
+        chase_y=self.state().v['chase_y']
+        b=self.chase_scene(chase_y-1,count=6,first=320,spacing=12)
+        for _ in range(100):b.call('people_tick')
+        self.assertEqual(b.a['person_state'].count(3),0)
+        b=self.chase_scene(chase_y,count=6,first=320,spacing=12)
+        door=b.v['#hv']+12;changes=0
+        for _ in range(200):
+            before=list(b.a['person_state']);b.call('people_tick')
+            changes+=sum(x!=y for x,y in zip(before,b.a['person_state']))
+        gaps=[door-b.a['#person_x'][16+k] for k in range(6)]
+        self.assertEqual(b.a['person_state'][16:22],[2]*6)
+        self.assertTrue(all(6<=g<=19 for g in gaps),gaps)
+        self.assertEqual(changes,12)                         # each set off and stopped once
+        under=sum(abs(g)<13 for g in gaps);self.assertTrue(0<under<6,gaps)
+        b.v.update({'hy':b.v['landed'],'old_y':chase_y});b.call('people_tick')
+        self.assertEqual(b.v['lost'],under);self.assertEqual(self.total(b),64)
+
+    def test_chasers_give_up_and_run_home(self):
+        # A chaser gives up and runs home (8) when someone nearer is waiting and
+        # as many chase as may, or with the helicopter more than 180 px away.
+        # Homing people run a pixel a frame to their own hut, ignoring the
+        # helicopter unless it lands within 24 px of them, then run about again.
+        b=self.state();b.v.update({'#hx':1228,'hy':153,'old_y':153,'dt':2,'#camera':1100,'board_count':6})
+        b.a['person_state']=[0]*64;b.a['camp_active']=[0,0,6,1]
+        for k in range(6):b.a['person_state'][32+k]=3;b.a['#person_x'][32+k]=1100+8*k   # led far from camp 2
+        door=b.v['#hv']+12
+        b.a['person_state'][48]=2;b.a['#person_x'][48]=door                      # camp 3, at the door
+        b.call('people_tick')
+        self.assertEqual((b.a['person_state'][32:38],b.v['board_count']),([8]*6,0))
+        b.call('people_tick');self.assertEqual(b.a['person_state'][48],5)   # chased and boarded at once
+        # Running home they ignore a landing 30 px ahead, not one within 24 px.
+        x=b.a['#person_x'][32]
+        b.v.update({'#hx':x-30-12,'#camera':x-30-128});door=b.v['#hv']+12
+        b.a['#person_x'][32]=door+30
+        b.call('people_tick');self.assertEqual(b.a['person_state'][32],8)
+        b.a['#person_x'][32]=door+20
+        b.call('people_tick');self.assertEqual(b.a['person_state'][32],3)
+        # The rest reach their hut and run about again; left behind, so does 32.
+        b.v.update({'#hx':1912,'hy':80,'old_y':80})
+        for _ in range(400):b.call('people_tick')
+        self.assertTrue(all(s in (1,2) for s in b.a['person_state'][32:38]),b.a['person_state'][32:38])
+        self.assertTrue(all(640-88<=x<=640+92 for x in b.a['#person_x'][32:38]))
         self.assertEqual(self.total(b),64)
 
-    def test_runner_is_never_led_out_of_its_crowds_reach(self):
-        # Landing again and again further on drags runners along; past 190 px
-        # from their camp they give up and walk back. crowd_draw draws a camp's
-        # people only while the camp is within 336 px of the view's centre,
-        # which covers 190 px, a 6-frame step, half the view and the 4-px left
-        # edge, so a runner can never stand in view undrawn.
-        draw=SOURCE.split('\ncrowd_draw:\n')[1].split('\nIF crowd_mask = 0 THEN')[0]
-        self.assertIn('IF camp_active(tc) THEN #nearest_person=336',draw)
-        self.assertIn('IF #distance > 190 THEN GOTO board_left',SOURCE)
-        self.assertLess(190+6+128+4,336)
-        b=self.escaped_crowd();b.v.update({'hy':153,'old_y':153,'dt':2})
-        camp=b.a['#camp_x'][3];b.v['#hx']=camp+88+48         # door 60 px past the farthest
-        farthest=0
-        for step in range(600):
-            if step%20==19 and step<300:b.v['#hx']+=48        # land 48 px further on
-            if step==300:b.v.update({'#hx':1912,'hy':80,'old_y':80})
-            b.call('people_tick')
-            for i in range(48,64):
-                if b.a['person_state'][i] in (1,3):
-                    away=abs(b.a['#person_x'][i]-camp);farthest=max(farthest,away)
-                    self.assertLessEqual(away,196,(step,i))
-            self.assertEqual(self.total(b),64)
-        self.assertGreater(farthest,180)                       # they were dragged
-        self.assertEqual(b.a['person_state'][48:64].count(2)+b.v['aboard'],16)   # and came back
+    def test_nobody_passes_the_dmz_fence(self):
+        # Chasers stop at x 1552, short of the DMZ fence (1568), however near
+        # beyond it the helicopter lands.
+        b=self.state();b.v.update({'#hx':1580,'hy':153,'old_y':153,'dt':6,'#camera':1450,'board_count':1})
+        b.a['person_state']=[0]*64;b.a['camp_active']=[0,0,0,1]
+        b.a['person_state'][48]=3;b.a['#person_x'][48]=1530
+        for _ in range(20):b.call('people_tick')
+        self.assertEqual((b.a['person_state'][48],b.a['#person_x'][48]),(3,1552))
+
+    def test_everyone_outside_in_view_is_drawn(self):
+        # Every person outside (running about, standing, chasing or homing)
+        # whose 8 pixels start on screen is drawn, wherever it is: the walk
+        # marks the camps with anyone in view (crowd_seen) and the compositor
+        # draws them, strays far from their camp included (the old camp-
+        # distance gate lost them: "they get lost and disappear").
+        import random
+        def missing(source,trials=60):
+            rng=random.Random(64)
+            for trial in range(trials):
+                b=self.state();b.r=Basic(source).r;b.v['crowd_seen']=0
+                camera=8*rng.randint(0,224)
+                for i in range(64):
+                    st=rng.choice((0,0,1,2,3,8,4))
+                    camp=b.a['#camp_x'][i//16]
+                    b.a['person_state'][i]=st
+                    b.a['#person_x'][i]=camp+4*rng.randint(-22,23) if st in (1,2) else rng.randint(0,1552)
+                b.a['camp_active']=[sum(st in (1,2,3,8) for st in b.a['person_state'][c*16:c*16+16]) for c in range(4)]
+                b.v.update({'#camera':camera,'#hx':1912,'hy':80,'old_y':80,'dt':2,'crowd_dirty':1,
+                            'crowd_pose':255,'home_walking':0})
+                b.call('escape_tick');b.call('crowd_draw')
+                for i in range(64):
+                    if b.a['person_state'][i] in (1,2,3,8):
+                        rel=b.a['#person_x'][i]-camera
+                        if 0<=rel<=248:
+                            code=b.vram[6784+rel//8]
+                            if not (code<32 or 64<=code<96):return (trial,i,rel)
+            return None
+        self.assertIsNone(missing(SOURCE))
+        for good,bad in (('ASM socb r1,@cvb_CROWD_SEEN','ASM movb r1,@cvb_CROWD_SEEN'),
+                         ('crowd_mask=crowd_seen','crowd_mask=crowd_seen AND 3')):
+            self.assertIn(good,SOURCE)
+            self.assertIsNotNone(missing(SOURCE.replace(good,bad)),bad)
+
+    def test_crowd_can_board_all_64(self):
+        # Landed beside each camp in turn, everyone comes out, runs about, is
+        # picked up and flown home: all 64 saved.
+        b=self.come_out();b.v.update({'hy':153,'old_y':153})
+        for camp,origin in enumerate(b.a['#camp_x']):
+            for trip in range(2):
+                b.v.update({'#hx':origin-12,'#camera':origin-128})
+                for _ in range(2000):
+                    b.call('people_tick')
+                    self.assertEqual(self.total(b),64)
+                    if b.v['aboard']==16 or b.a['camp_left'][camp]==0:break
+                b.v.update({'#hx':1928,'#camera':1792})
+                for _ in range(400):
+                    b.call('people_tick')
+                    if b.v['aboard']==0:break
+            self.assertEqual((b.a['camp_left'][camp],b.v['saved']),(0,(camp+1)*16))
+        self.assertEqual(self.total(b),64)
 
     def test_menu_font_is_read_from_the_boot_bank(self):
         # The menu font lives in the TI's boot bank: menu_restore, in the fixed
@@ -1540,58 +1661,15 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):bad.call('menu_restore')
 
     def test_mission_starts_with_the_nearest_barrack_burning(self):
-        # As in the Apple II original: the barrack nearest home is already
-        # open and all its people are out, scattering to their spots, where
-        # they stand within 2.2 s (a helicopter needs longer to get there);
-        # the rest are shut.
-        import generate as art
+        # As in the Apple II original: the barrack nearest home is already open
+        # with its first six out; the rest are shut.
         b=self.state();b.v.update(start_lives=3,**{'cont1.key':15})
         b.r['init']=b.r['new_game'][:b.r['new_game'].index('GOSUB new_heli')]
         b.call('init')
-        self.assertEqual((b.a['camp_open'],b.a['camp_released']),([0,0,0,1],[0,0,0,16]))
-        self.assertEqual((b.a['person_state'],b.a['camp_active']),([0]*48+[1]*16,[0,0,0,16]))
+        self.assertEqual((b.a['camp_open'],b.a['camp_released']),([0,0,0,1],[0,0,0,6]))
+        self.assertEqual((b.a['person_state'],b.a['camp_active']),([0]*48+[1]*6+[0]*10,[0,0,0,6]))
+        self.assertEqual(b.a['#person_x'][48:54],[896]*6)
         self.assertEqual(self.total(b),64)
-        b.v.update({'dt':2,'#camera':1792,'home_walking':0})
-        for _ in range(66):b.call('escape_tick')
-        self.assertEqual((b.a['person_state'],b.a['camp_active']),([0]*48+[2]*16,[0]*4))
-        self.assertEqual(b.a['#person_x'][48:],[896+v for v in art.CAMP_SPOTS])
-        self.assertEqual(self.total(b),64)
-
-    def test_waiting_spots_are_scattered(self):
-        # A knot by the hut (two in front of its walls) thinning out to
-        # stragglers, with gaps, rather than two solid rows of eight.
-        import generate as art
-        b=self.escaped_crowd()
-        for camp in range(4):
-            xs=sorted(x-b.a['#camp_x'][camp] for x in b.a['#person_x'][camp*16:camp*16+16])
-            self.assertEqual(xs,sorted(art.CAMP_SPOTS))
-        self.assertIn(-16,art.CAMP_SPOTS);self.assertIn(8,art.CAMP_SPOTS)   # the hut's walls
-        near=sum(abs(v+4)<=36 for v in art.CAMP_SPOTS);far=sum(abs(v+4)>60 for v in art.CAMP_SPOTS)
-        self.assertGreater(near,far)
-        self.assertEqual(len(art.CAMP_GAPS),5)
-
-    def test_settled_people_stroll_one_at_a_time(self):
-        # In view, a settled camp's people take turns strolling to the gap
-        # nearest their spot and back: one away at a time (the last maybe
-        # still walking back), everyone settled on a spot or a gap in a cell
-        # of its own, and everyone takes a turn. Out of view nobody strolls.
-        import generate as art
-        b=self.escaped_crowd();before=list(b.a['#person_x'][:48])
-        b.v.update({'#camera':896-128,'dt':2,'anim':0})
-        homes=[896+v for v in art.CAMP_SPOTS];gaps=[896+v for v in art.CAMP_ALT]
-        strolled=set()
-        for _ in range(3000):
-            b.call('escape_tick');b.v['anim']=(b.v['anim']+2)&255
-            xs=b.a['#person_x'][48:64];st=b.a['person_state'][48:64]
-            self.assertLessEqual(sum(x!=h for x,h in zip(xs,homes)),2)
-            for i in range(16):
-                if st[i]==2:self.assertIn(xs[i],(homes[i],gaps[i]))
-                if xs[i]==gaps[i]:strolled.add(i)
-            settled=[x for x,s in zip(xs,st) if s==2]
-            self.assertEqual(len(settled),len(set(settled)))
-            self.assertEqual(b.a['camp_active'][3],st.count(1))
-        self.assertEqual(strolled,set(range(16)))
-        self.assertEqual(b.a['#person_x'][:48],before)
 
     def test_crowd_casualties_are_individual_and_permanent(self):
         b=self.escaped_crowd()
@@ -1599,10 +1677,12 @@ class Tests(unittest.TestCase):
             b.v.update({'#crowd_shot_x':b.a['#person_x'][who]+4,'crowd_radius':3})
             b.call('crowd_hit')
             self.assertEqual(b.a['person_state'][who],4)
-        self.assertEqual((b.v['lost'],b.a['camp_left'][0]),(3,13))
+        self.assertEqual((b.v['lost'],b.a['camp_left'][0],b.a['camp_active'][0]),(3,13,3))
         b.call('crowd_hit');self.assertEqual(b.v['lost'],3)
         b.v.update({'#hx':b.a['#person_x'][3]-12,'hy':153,'old_y':150,'ep':3})
         b.call('crowd_landing');self.assertEqual(b.a['person_state'][3],4)
+        b.a['person_state'][4]=8;b.v.update({'#crowd_shot_x':b.a['#person_x'][4]+4})
+        b.call('crowd_hit');self.assertEqual(b.a['person_state'][4],4)        # homing too
         self.assertEqual(self.total(b),64)
 
     def test_crowd_composites_and_screen_edge_clipping(self):
@@ -1632,11 +1712,13 @@ class Tests(unittest.TestCase):
                 self.assertTrue(all(not (b.vram[6784+c]<32 or 64<=b.vram[6784+c]<96) for c in range(32)))
 
     def test_crowd_mutations_are_rejected(self):
+        good=self.come_out(updates=300).a['person_state']
         for before,after in (('camp_released(ec)+1','camp_released(ec)+2'),
-                             ('IF camp_open(ec) THEN','IF camp_open(ec) = 0 THEN')):
+                             ('IF camp_open(ec) THEN','IF camp_open(ec) = 0 THEN'),
+                             ('IF camp_active(ec) < 6 THEN','IF camp_active(ec) < 7 THEN')):
             self.assertIn(before,SOURCE)
-            b=self.escaped_crowd(SOURCE.replace(before,after))
-            self.assertNotEqual(b.a['person_state'],[2]*64)
+            b=self.come_out(SOURCE.replace(before,after),updates=300)
+            self.assertNotEqual(b.a['person_state'],good,after)
         b=self.state();b.r=Basic(SOURCE.replace('lost=lost+1','lost=lost+2')).r
         b.a['person_state'][0]=2;b.a['#person_x'][0]=0;b.v.update({'#crowd_shot_x':4,'crowd_radius':3})
         b.call('crowd_hit');self.assertNotEqual(self.total(b),64)
@@ -1737,7 +1819,8 @@ class Tests(unittest.TestCase):
         def draw(source):
             b=self.state();b.r=Basic(source).r
             b.v.update({'#camera':1792,'crowd_dirty':1,'crowd_pose':255})
-            b.a['camp_open']=[0]*4;b.a['person_state']=[0]*64
+            b.a['camp_open']=[0]*4;b.a['person_state']=[0]*64;b.a['camp_active']=[0]*4
+            b.call('escape_tick')            # the walk finds nobody in view
             b.call('crowd_draw');return b
         b=draw(SOURCE)
         self.assertEqual([b.vram[6784+x] for x in range(32)],art.MAP[3][224:256])
@@ -1748,14 +1831,14 @@ class Tests(unittest.TestCase):
         self.assertNotEqual([bad.vram[6784+x] for x in range(32)],art.MAP[3][224:256])
 
     def test_camp_evacuates_offscreen_with_full_cabin(self):
-        b=self.state();b.a['camp_open']=[1,0,0,0];b.a['camp_released']=[0]*4
+        # Off screen with the cabin full, a burning barrack still lets its
+        # first six out (they stand by the hut until anyone can see them).
+        b=self.state();b.a['camp_open']=[1,0,0,0];b.a['camp_released']=[0]*4;b.a['camp_active']=[0]*4
         b.a['person_state']=[0]*64;b.a['camp_left'][3]=0
         b.v.update({'#hx':1920,'#camera':1792,'aboard':16,'runner_on':0,'hy':100,'dt':6})
-        for _ in range(80):b.call('escape_tick')
-        self.assertEqual(b.a['camp_released'],[16,0,0,0])
-        self.assertEqual(b.a['person_state'][:16],[2]*16)
-        self.assertLess(min(b.a['#person_x'][:16]),128)
-        self.assertGreater(max(b.a['#person_x'][:16]),128)
+        for _ in range(80):b.call('people_tick')
+        self.assertEqual((b.a['camp_released'],b.a['camp_active']),([6,0,0,0],[6,0,0,0]))
+        self.assertEqual(b.a['person_state'][:16],[1]*6+[0]*10)
         self.assertEqual(self.total(b),64)
 
     def test_crowd_casualty_counted_once(self):
@@ -2014,14 +2097,15 @@ class Tests(unittest.TestCase):
     def test_individual_paces_and_overlapping_poses(self):
         import generate as art
         # Three appearances walk at 60, 48 and 40 px/s: one second of 2-frame
-        # updates through the real escape_tick, on both renderers' paths.
+        # updates through the real escape_tick, on both renderers' paths
+        # (rescued people walking to the office).
         for target in ('TI994A','COLECO'):
             b=self.state();b.r=Basic(target=target).r
-            b.v.update({'dt':2,'#crowd_clock':0,'home_walking':0})
-            b.a['person_state']=[0]*64;b.a['person_state'][:3]=[1,1,1]
-            b.a['#person_x'][:3]=[128,128,128];b.a['camp_active']=[3,0,0,0]
+            b.v.update({'dt':2,'#crowd_clock':0,'home_walking':3})
+            b.a['person_state']=[0]*64;b.a['person_state'][:3]=[6,6,6]
+            b.a['#person_x'][:3]=[1800,1800,1800];b.a['camp_active']=[0]*4
             for _ in range(30):b.call('escape_tick')
-            self.assertEqual([abs(x-128) for x in b.a['#person_x'][:3]],[60,48,40],target)
+            self.assertEqual([x-1800 for x in b.a['#person_x'][:3]],[60,48,40],target)
         def draw(source):
             b=self.state();b.r=Basic(source).r
             b.a['world_map']=[32]*1280;b.a['camp_open']=[1]*4;b.a['person_state']=[0]*64;b.a['camp_active'][0]=1
@@ -2045,68 +2129,47 @@ class Tests(unittest.TestCase):
         import random
         rng=random.Random(1983)
         for trial in range(trials):
-            states=[rng.choice((0,1,1,1,2,4,5,6,6,7)) for _ in range(64)]
+            states=[rng.choice((0,1,1,2,2,3,4,5,6,6,7,8)) for _ in range(64)]
             xs=[]
             for i,s in enumerate(states):
                 camp=(128,384,640,896)[i//16]
-                if s==1:xs.append(camp+4*rng.randint(-24,24))
+                if s in (1,2):xs.append(camp+4*rng.randint(-22,23))
                 elif s==6:xs.append(1896+4*rng.randint(0,26))
+                elif s in (3,8):xs.append(rng.randint(0,1552))
                 else:xs.append(4*rng.randint(0,511))
             dt=rng.randint(1,6);clock=rng.choice((0,59994,59999,rng.randint(0,59999)))
-            # Whose strollers may go: 72 and 448 put a camp 184-192 px from the
-            # view's centre, near the edge of their reach.
+            # 72 and 448 put a camp near the 400 px edge of where people run about.
             camera=rng.choice((0,256,512,768,1792,72,448,8*rng.randint(0,224)))
-            # Releasing, out, or with a stroller home (16-31) or away (32-47).
-            released=[rng.choice((14,15,16,16,rng.randint(16,47),rng.randint(32,47))) for _ in range(4)]
+            released=[rng.choice((4,5,6,14,15,16)) for _ in range(4)]
             escape=[rng.randint(0,30) for _ in range(4)]
+            hx=rng.choice((1912,8*rng.randint(14,190),rng.choice((128,384,640,896))+rng.randint(-48,48)))
+            crash=rng.choice((0,0,30))
+            hy=rng.choice((153,113,112,60))
+            if trial<8:
+                # People standing 20-36 px either side of a helicopter's door by
+                # camp 2 (landed, just too high, high, just low enough): who
+                # stays to wait for it.
+                hx=632;hy=(153,112,60,113)[trial%4];crash=0
+                for k,off in enumerate((-36,-28,-20,20,28,36)):
+                    states[32+k]=2;xs[32+k]=644+off
             runs=[]
             for target in ('TI994A','COLECO'):
                 b=self.state();b.r=Basic(source,target=target).r
                 b.a['person_state']=list(states);b.a['#person_x']=list(xs)
-                b.a['camp_active']=[sum(s==1 for s in states[c*16:c*16+16]) for c in range(4)]
+                b.a['camp_active']=[sum(s in (1,2,3,8) for s in states[c*16:c*16+16]) for c in range(4)]
                 b.a['camp_released']=list(released);b.a['camp_escape']=list(escape)
                 b.v.update({'dt':dt,'#crowd_clock':clock,'home_walking':states.count(6),'crowd_dirty':0,
-                            '#camera':camera})
+                            '#camera':camera,'#hx':hx,'crash_timer':crash,'hy':hy,'old_y':hy})
                 seen=[]
                 for step in range(6):
                     b.call('escape_tick')
                     seen.append((list(b.a['person_state']),list(b.a['#person_x']),list(b.a['camp_active']),
                                  b.v['home_walking'],b.v['crowd_dirty'],b.v['#crowd_clock'],
-                                 list(b.a['camp_released']),list(b.a['camp_escape'])))
+                                 list(b.a['camp_released']),list(b.a['camp_escape']),b.v['crowd_seen']))
                     b.v['crowd_dirty']=0
                 runs.append(seen)
             if runs[0]!=runs[1]:return trial
         return None
-    def crowd_row_ink(self,source,target,walking,camera,anim):
-        """Ink pixels of the crowd row with camp `walking` mid-evacuation and
-        every other camp settled at its waiting spots."""
-        b=self.state();b.r=Basic(source,target=target).r
-        b.a['person_state']=[2]*64;b.a['camp_active']=[0]*4
-        for i in range(64):
-            b.a['#person_x'][i]=b.a['#camp_x'][i//16]+b.a['camp_spot'][i%16]-128
-        for i in range(walking*16,walking*16+16,2):
-            b.a['person_state'][i]=1;b.a['#person_x'][i]-=12 if i&1 else -12
-        b.a['camp_active'][walking]=8
-        b.v.update({'#camera':camera,'anim':anim,'crowd_pose':255,'crowd_dirty':1,'home_walking':0})
-        b.call('crowd_draw')
-        return {(col*8+x,y) for col in range(32) for code in [b.vram[6784+col]] if code in b.patterns
-                for y,bits in enumerate(b.patterns[code]) for x in range(8) if bits&(128>>x)}
-    def test_settled_camps_skip_the_compositor(self):
-        # Composite every visible camp (the previous renderer) for reference.
-        old=SOURCE.replace('        IF camp_active(tc) THEN\n#if TI994A\n            cp=tc*16:crowd_mode=0',
-                           '        IF 1 THEN\n#if TI994A\n            cp=tc*16:crowd_mode=0')
-        old=old.replace('#endif\nGOSUB crowd_settled\nGOSUB crowd_doors\nGOSUB crowd_commit\ncrowd_bank=64-crowd_bank',
-                        '#endif\nGOSUB crowd_doors\nGOSUB crowd_commit\ncrowd_bank=64-crowd_bank')
-        self.assertNotEqual(old,SOURCE)
-        self.assertEqual(old.count('GOSUB crowd_settled'),1)  # only waiting_draw keeps it
-        for target in ('TI994A','COLECO'):
-            for walking in (0,1):
-                for camera in range(0,641,32):
-                    want=self.crowd_row_ink(old,target,walking,camera,8)
-                    self.assertEqual(self.crowd_row_ink(SOURCE,target,walking,camera,8),want,(target,walking,camera))
-        # Dropping the settled pass loses the neighbouring crowd.
-        bad=SOURCE.replace('#endif\nGOSUB crowd_settled\nGOSUB crowd_doors','#endif\nGOSUB crowd_doors')
-        self.assertNotEqual(self.crowd_row_ink(bad,'TI994A',0,192,8),self.crowd_row_ink(SOURCE,'TI994A',0,192,8))
     def compositor_runs(self,source,trials=60):
         """Random moving-crowd scenes drawn by the native and portable paths;
         returns the first trial whose name row, pixels or VRAM differ."""
@@ -2120,15 +2183,17 @@ class Tests(unittest.TestCase):
                 walking=rng.random()<0.6
                 for i in range(c*16,c*16+16):
                     camp=(128,384,640,896)[c]
-                    s=rng.choice((1,1,2,2,2,3,4,5)) if walking else rng.choice((2,2,2,4))
-                    states[i]=s;xs[i]=camp+4*rng.randint(-24,24)
+                    s=rng.choice((1,1,2,2,2,3,4,5,8)) if walking else rng.choice((2,2,2,4))
+                    states[i]=s;xs[i]=camp+4*rng.randint(-24,24) if s!=8 else rng.randint(0,1552)
                     if s==1:active[c]+=1
             for i in rng.sample(range(64),rng.randint(0,10)):
                 states[i]=6;xs[i]=1896+4*rng.randint(0,26)
                 active[i//16]-=0
-            # Exact edge cases: half a person at the left edge, a straddle at cell 31.
+            # Exact edge cases: half a person at the left edge, a straddle at cell 31,
+            # and at home a walker on the office doorway (column 249).
             states[0]=1;xs[0]=camera-4 if camera>=4 else 4;states[1]=1;xs[1]=camera+252
-            active=[sum(s in (1,3) for s in states[c*16:c*16+16]) for c in range(4)]
+            if trial%5==0:states[63]=6;xs[63]=1988
+            active=[sum(s in (1,2,3,8) for s in states[c*16:c*16+16]) for c in range(4)]
             anim=rng.randint(0,255);bank=rng.choice((0,64))
             rows=[]
             for target in ('TI994A','COLECO'):
@@ -2149,7 +2214,8 @@ class Tests(unittest.TestCase):
                    ('ASM ai r9,4\nASM compose_still:','ASM ai r9,0\nASM compose_still:'),
                    ('ASM li r8,192\nASM bl @compose_cell','ASM li r8,384\nASM bl @compose_cell'),
                    ('ASM ci r1,157\nASM jeq compose_door','ASM ci r1,158\nASM jeq compose_door'),
-                   ('ASM ci r1,3\nASM jh compose_next','ASM ci r1,2\nASM jh compose_next'))
+                   ('ASM ci r1,3\nASM jh compose_next','ASM ci r1,2\nASM jh compose_next'),
+                   ('ASM ci r1,8\nASM jeq compose_take','ASM ci r1,9\nASM jeq compose_take'))
         for good,bad in mutations:
             self.assertIn(good,SOURCE)
             caught=None
@@ -2160,15 +2226,19 @@ class Tests(unittest.TestCase):
         self.assertIsNone(self.walker_runs(SOURCE))
         # Each of these breaks one rule of the native walk and must be caught.
         mutations=(('ASM jle walk_store\nASM mov r0,r8','ASM jle walk_store\nASM mov r8,r8'),
-                   ('ASM jne walk_spot\nASM ai r0,16','ASM jne walk_spot\nASM ai r0,0'),
-                   ('ASM ai r1,-32\nASM c r1,r0','ASM ai r1,-16\nASM c r1,r0'),
                    ('ASM ai r0,-128\nASM a r5,r0','ASM ai r0,-120\nASM a r5,r0'),
-                   # camp_wander: who goes next, the view test, the timers, the count.
-                   ('ASM ai r2,7\nASM andi r2,15','ASM ai r2,5\nASM andi r2,15'),
-                   ('ASM ci r1,224\nASM jhe wander_done','ASM ci r1,160\nASM jhe wander_done'),
-                   ('ASM ai r0,44\nASM jmp wander_time','ASM ai r0,40\nASM jmp wander_time'),
-                   ('ASM ab r0,*r1\nASM wander_done:','ASM wander_done:'),
-                   ('ASM movb *r9,r1\nASM ai r1,-256','ASM movb *r9,r1\nASM ai r1,0'),
+                   # The goal: three steps a pair, the parity's own cycle.
+                   ('ASM srl r9,1\nASM a r9,r1','ASM srl r9,1'),
+                   ('ASM sla r9,3\nASM a r9,r1','ASM sla r9,2\nASM a r9,r1'),
+                   # Waving, out of sight, crowd_seen, homing.
+                   ('ASM ci r0,40\nASM jl walk_skip','ASM ci r0,24\nASM jl walk_skip'),
+                   ('ASM ci r9,2\nASM jne walk_roam','ASM ci r9,1\nASM jne walk_roam'),
+                   ('ASM ci r0,113\nASM jl walk_roam','ASM ci r0,60\nASM jl walk_roam'),
+                   ('ASM movb @cvb_CRASH_TIMER,r0\nASM jne walk_roam','ASM movb @cvb_CRASH_TIMER,r0\nASM jeq walk_roam'),
+                   ('ASM ci r0,400\nASM jl walk_seen','ASM ci r0,200\nASM jl walk_seen'),
+                   ('ASM ci r0,288\nASM jhe walk_unseen','ASM ci r0,256\nASM jhe walk_unseen'),
+                   ('ASM a r4,r8\nASM c r8,r5','ASM a r4,r8\nASM a r4,r8\nASM c r8,r5'),
+                   ('ASM andi r1,127\nASM c r1,r4','ASM andi r1,63\nASM c r1,r4'),
                    ('ASM s r4,r1\nASM clr r0','ASM clr r0'),
                    ('ASM ci r8,1992\nASM jhe walk_inside','ASM ci r8,1984\nASM jhe walk_inside'),
                    ('ASM li r0,256\nASM movb r0,@cvb_CROWD_DIRTY','ASM li r0,0\nASM movb r0,@cvb_CROWD_DIRTY'))
@@ -2274,7 +2344,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(rows[1],([v>>4 for v in standing],[(v<<4)&255 for v in standing]),target)
             self.assertTrue(all(c&15==1 for c in colors),colors)   # black paper
     def test_waving_walker_stands_still_on_both_paths(self):
-        bad=SOURCE.replace('ASM c r0,r3\nASM jeq walk_next\nASM walk_gait:','ASM c r0,r3\nASM walk_gait:')
+        bad=SOURCE.replace('ASM c r0,r3\nASM jeq walk_next\nASM bl @walk_steps','ASM c r0,r3\nASM bl @walk_steps')
         self.assertNotEqual(bad,SOURCE)
         def walk(source,target):
             b=self.state();b.r=Basic(source,target=target).r

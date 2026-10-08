@@ -19,6 +19,10 @@ Current-state design. History is in git; sizes below are from the latest build
   | Over a settled crowd with tank, jet, air mine and shots | 256 (7.5/s) | 154 (**12.5/s**) |
   | Two camps evacuating at once (32 walkers in view) | 380 (5/s) | 192 (**10/s**) |
 
+  The crowd rows were measured with all 16 of a camp outside on fixed spots. Since
+  2026-10-07 at most six are out and they run about, always through the compositor;
+  `tools/profile.py`'s crowd cases now set that up and are due to be re-measured.
+
 - **Cost model.** One video frame buys only about 1,300–1,500 instructions of compiled
   CVBasic (code runs from the 8-bit 32K expansion). Per-call costs from
   `profile.py --micro`, in frames: stars 0.48, terrain rows and overlays near open camps
@@ -39,23 +43,23 @@ Current-state design. History is in git; sizes below are from the latest build
   (*Enemies*). The VDP's sprite-coincidence flag is not used: it is one bit for every pair
   of sprites and is a frame behind the update.
 - **TI native kernels** (each with a portable BASIC twin used by ColecoVision and tested
-  against it): star field, crowd walking, the camps' strollers, moving-crowd compositor,
-  crowd colour upload, settled-crowd scan and row copy. See *TI native kernels*.
+  against it): star field, the people's walk, moving-crowd compositor and crowd colour
+  upload. See *TI native kernels*.
 
 ## Size budget
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,694 | 24,336 | 1,642 free |
-| TI fixed area, unoptimised | 24,498 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 8,032 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
-| TI boot bank (`BANK 2`) | 7,960 | 8,190 | art uploaded only at power-on; the fireworks code and tables; the menu font |
-| TI RAM | 810 | 7,854 | |
-| ColecoVision ROM | 31,578 | 32,768 | |
-| ColecoVision RAM | 811 | 814 | nearly full; see `#vaddr` |
+| TI fixed area (after short branches) | 22,648 | 24,336 | 1,688 free |
+| TI fixed area, unoptimised | 24,468 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 7,796 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
+| TI boot bank (`BANK 2`) | 7,576 | 8,190 | art uploaded only at power-on; the fireworks code and tables; the menu font |
+| TI RAM | 812 | 7,854 | |
+| ColecoVision ROM | 31,202 | 32,768 | |
+| ColecoVision RAM | 812 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
-files. `assets.bas` (crash flames, map, crowd glyphs and palettes, waiting spots, fire
+files. `assets.bas` (crash flames, map, crowd glyphs and palettes, roaming goals, fire
 frames, arcs, the explosion timelines) goes into the data bank, which start-up selects for
 good. `assets_boot.bas` (all 64 sprites, the scenery characters and colours, waiting
 people, stars, the fireworks, the menu font) goes into the boot bank, which `boot:` selects
@@ -64,7 +68,7 @@ around the fireworks and the font's upload (the vblank handler reads only fixed 
 With the boot-only art out of it, the data bank also holds the enemy and hit-box tables and
 the cold code: the crash routines (`crash`, `crash_tick`, the burst triggers and
 `crash_draw`, which run only after a crash or a hit), the camps' occasional events
-(`first_camp`, `camp_wander`), the title (and its helicopter), the 838 setup and the
+(`first_camp`), the title (and its helicopter), the 838 setup and the
 results. The crash routines moved there when the explosions, difficulty levels and new
 collision code pushed the unoptimised fixed image past >FFFE; code in the data bank runs
 at the same speed, since bank 1 never leaves the window during play. ColecoVision builds
@@ -139,44 +143,56 @@ is 656 pixels from the enemy-side fence.
 
 Strafing a barrack (a sideways shot whose 3×3 touches the drawn hut, x−16 to x+15, at or
 below its roof line, y ≥ 151; bombs pass by) blows it open in a ground burst: its middle is
-a ragged hole with a fire burning inside. It releases one person every 16 video
-frames, whatever the helicopter is doing, including during a crash. People walk out to
-both sides, west and east in turn, farthest spots first, to waiting spots scattered as in
-the Apple II original (`CAMP_SPOTS` in `assets/generate.py`, offsets from the camp: −88,
-−72, −64, −48, −40, −32, −24, −16, 8, 16, 24, 32, 48, 56, 72, 88): a knot by the hut, two
-of them in front of its walls (−16 and 8, where the settled crowd's barrack-wall paper
-draws them), thinning out to stragglers 88 pixels away, with five gaps (−80, −56, 40, 64,
-80). The barrack nearest home (camp 3) is already open when a mission starts, as in the
-original, and all sixteen are out, scattering to their spots (`first_camp`): the slowest
-is settled within 2.2 s, while a helicopter at its top speed (3 px a frame) needs 5.3 s to
-reach the nearest of them. The cabin holds 16.
+a ragged hole with a fire burning inside. As in the Apple II original, only a handful of its
+people are ever outside: it lets one out every 16 video frames while fewer than six of them
+are (`camp_active` counts those outside), whatever the helicopter is doing, including during
+a crash; the rest wait inside and come out as others are picked up or killed. The barrack
+nearest home (camp 3) is already open when a mission starts ("One barracks has been blown
+open so the hostages can get free", the Apple II manual), with its first six out
+(`first_camp`). The cabin holds 16.
 
-**Milling.** Once a camp is out, its people mill about while it is in view (the camp within
-224 pixels of the view's centre, the settled crowd's reach): every couple of seconds one of
-them strolls from its spot to the nearest gap (`CAMP_ALT`, 8–40 pixels away), is called
-back 92–107 frames after setting off (the stroll there included) and strolls back; 60–75
-frames after that the next one goes. Who goes next
-steps by 7 of 16, so everyone takes a turn. Only one is away at a time, so the gaps they
-share are never double-booked and every settled person still owns a cell. `camp_wander`
-runs off the camp's release clock (`camp_escape`), and the stroller lives in
-`camp_released` (16 + its index, plus 16 while away), both idle once a camp is out, so it
-costs no RAM; `walk_camp` and `escape_walk` take a walker's goal from `camp_spot` (spots,
-then gaps, +128) and that. Out of view nobody sets off, so a stroll costs the compositor
-only where it can be seen.
+**Hostages outside**, after the Apple II original and the downloaded play-through (states:
+0 inside, 1 running about, 2 standing, 3 chasing, 4 lost, 5 aboard, 6 walking to the office,
+7 in it, 8 homing):
+- *Running about* ("running about frantically, desperate for a chance to escape"). Each heads
+  for a goal on its camp's open ground (−88 to +92 px, between the mounds), stands a while,
+  then dashes on (`ROAM_GOALS`, `ROAM_PHASE` in `assets/generate.py`). Goal n of person i (its
+  index in the camp) is entry (n + 3·(i/2)) mod 8 of its parity's cycle, the next one every 128
+  frames from its own phase, so they do not move in step. Even and odd people use interleaved
+  cycles 12 px apart, so they never share a spot, and two of one parity whose clocks agree aim
+  at least 24 px apart: standing people do not overlap or bunch (in a 3,000-update simulation
+  none stood closer than 12 px, and 2.4 of the 6 were moving on average). Each cycle steps 24
+  or 48 px: a short dash at the person's walking speed, then a pause of a second or more.
+  With the camp 400 px or more from the view's centre nobody can see them, and they stand
+  still.
+- *Waving and waiting* ("The hostages would run and wave as your helicopter passed by
+  them"). Standing, they wave: the standing poses' arm goes up and down. Under a helicopter
+  landed or low over them (`CHASE_Y`) and not crashing, anyone standing within 40 px of its
+  door stays there, waiting to get in, while runners pass beneath it. Under a high one they
+  carry on running about, so nobody piles up under a hovering helicopter (an earlier rule
+  that held everyone standing under any helicopter gathered the whole crowd there in a
+  minute).
+- *Chasing.* With the helicopter landed, or low over them (`CHASE_Y`: sprite y 113 or lower,
+  the skids within 40 px of the ground), the nearest person outside within 104 px of its door
+  starts chasing it, one more each update, up to six or the free seats (`board_count`).
+  Chasers run a pixel a frame. Landed, they board on reaching the door. Flying, they stop
+  underneath it, 10–17 px from the door ("sometimes stopping directly underneath you. If you
+  land on them, they will die", StrategyWiki's walkthrough), so a landing there crushes
+  those within 13 px. Someone already standing within 24 px of a hovering helicopter's door
+  stays put rather than flip between chasing and standing. Nobody passes x 1552, short of
+  the DMZ fence.
+- *Giving up.* Once as many chase as may, anyone chasing farther from the door than the
+  nearest person waiting gives up, and so does a chaser the helicopter leaves more than 180 px
+  behind: it runs home (homing), a pixel a frame, to its own hut, ignoring the helicopter
+  unless it lands with its door within 24 px of it, then runs about again. There is no leash:
+  runners follow as far as they are led.
+- *Full cabin* ("Once the chopper is full, no more hostages will attempt to board; they will
+  wave the helicopter off and wait for its return"). Chasers stop where they are and wave.
+- `walk_camp` (native) and `walk_person` (its portable twin) move everyone outside except the
+  chasers, which `board_run` moves; the walk also marks `crowd_seen`, the camps with anyone
+  outside within 16 px of the view, which the renderer draws and boarding searches.
 
-**Boarding.** Landed with seats to spare, the nearest waiting person within 104 pixels of the
-cabin door starts running for it, and one more joins on every update, so a whole group is
-running within a second or two; each boards on reaching the door. Runners never outnumber the
-free seats (`board_count`), so a nearly full cabin is never chased by people who cannot get
-in. Runners are crowd characters (walking poses, no sprite) and as exposed as anyone outside.
-If the helicopter ends up more than 180 pixels away they walk back to their places; while it
-hovers nearby they wait. Landing again and again a little further on leads runners along,
-but a runner more than 190 pixels from its own camp gives up and walks back too: the crowd
-is drawn only around camps near the view (336 pixels from its centre for a camp with
-walkers), and 190 plus a 6-frame step, half the view and the 4-pixel left edge stays inside
-that, so a runner can never stand in view undrawn. A door within reach of anyone's spot is
-under 192 pixels from the camp, so the limit never cuts short an ordinary run. A group of 14 within reach boards in about four seconds (the
-previous one-runner-at-a-time scheme took about 17 for a full cabin). Land on the pad at home
+Land on the pad at home
 to unload people one at a time; each walks to the building's door and counts as saved on
 leaving the cabin. One in four (ids divisible by 4), and always the last one out of the
 cabin (`last_out`), stops at x=1964 on the black ground, its raised arm 4 px short of the
@@ -408,7 +424,7 @@ foothill characters on each side carry the slope down to the ground (121, 122 we
 124 east: bottom-third characters uploaded after the reserved cell 120 as `low_art`), so a
 range climbs over 2–3 characters per side instead of jumping up (`MOUNDS` gives each
 range's width and foothills). They sit in the gaps between the crowds (the generator
-asserts no range or foothill reaches a waiting spot or the home fence). The home is five characters on rows 19–20 (columns 247–251) with the flag pole's stub
+asserts no range or foothill reaches the ground the people run about on, or the home fence). The home is five characters on rows 19–20 (columns 247–251) with the flag pole's stub
 drawn into the last roof character (139), so the pole stands on the roof. The landing pad
 (`PAD_ART`) is a gray slab seven characters wide on row 21 (columns 240–246, x 1920–1975)
 right against the building's west wall: a white rim with yellow lights at both ends, a
@@ -428,12 +444,8 @@ a whole crowd costs no sprite slots, runners included.
   step; walking speeds of 60, 48 or 40 px/s from a stride of 4, 5 or 6 frames per 4-pixel
   step, with each person's step clock offset by its id (one shared clock, no per-person
   timers).
-- *Settled crowds.* A camp with no walkers has everyone on world-aligned spots (or a
-  stroller on its gap), so each person owns a cell: 24 prebuilt standing characters (3 looks
-  × 4 poses × night or barrack-wall paper) are written straight into the name row.
-- *Moving crowds.* Camps with walkers or runners, and homeward walkers near the home, go
-  through the
-  compositor. A person sits on a 4-pixel grid, so they fill one cell or straddle two. ROM
+- *Drawing.* Everyone outside in the camps `crowd_seen` marks, and the homeward walkers near
+  the home, go through the compositor. A person sits on a 4-pixel grid, so they fill one cell or straddle two. ROM
   holds pre-shifted copies of every pose (unshifted, and the two halves of a 4-pixel shift).
   A 256-byte RAM buffer holds the row's pixels; the first person in a cell copies in the
   scenery pattern beneath it, then every silhouette touching the cell is ORed in, so
@@ -446,8 +458,11 @@ a whole crowd costs no sprite slots, runners included.
   cell. Patterns and
   colours upload to the hidden half of a double-buffered character set (codes 0–31 or 64–95
   in the bottom screen third), then one name-row copy switches over.
-- Settled camps stay on the cheap path even while a neighbour evacuates: crowds of different
-  camps are at least 64 pixels apart and never share a cell.
+- The renderer selects by person, not by camp: the walk marks a camp when any of its people
+  outside is within 16 px of the view, wherever that person is, so a chaser or homer far
+  from its camp is drawn too. An earlier gate on the camp's own distance from the view lost
+  people led far away ("they get lost and disappear"). With nobody in view, nothing is
+  composed. (The prebuilt standing characters of the old fixed spots are gone.)
 
 **Sprites.** Two 16×16 sprites make the 32×16 helicopter, in left, right and front views
 with two rotor beats each and level or banked poses; side views alternate cross and diagonal
@@ -607,11 +622,9 @@ ColecoVision path:
 | Routine | Work |
 |---|---|
 | `stars_draw` | the star field, one pass per star |
-| `walk_camp` | one camp's escaping, strolling and homeward walkers (same stride DIVs as `person_stride`; goals from `camp_spot`) |
-| `camp_wander` | a settled camp's next stroller and its timers (the compiled BASIC was 392 bytes, too big for the data bank) |
+| `walk_camp` | one camp's people outside (running about, waving, homing; `crowd_seen`) and homeward walkers; portable twin `walk_person` |
 | `compose_block` | one camp's people into the crowd pixel buffer (`crowd_plot`/`crowd_cell`) |
 | `crowd_draw` | clearing the cell map and uploading cell palettes |
-| `waiting_scan`, `waiting_draw` | settled people and the scenery row copy |
 
 Rules they follow: registers r0–r9 only (r10 is CVBasic's stack; r11 is used only for a local
 `bl`); the vblank handler has its own workspace, so registers survive interrupts; every VDP

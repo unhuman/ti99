@@ -527,9 +527,12 @@ Every game is built the same way — that consistency is the point.
   centre, which is cheap and was correct while people stayed at their spots. Runners follow
   a landed helicopter, so landing again and again further on led one out of that range: it
   stood on screen, alive and still shootable, and was never drawn. Reported as "sometimes
-  they get lost and disappear". Bound the member by the same constant the cull uses (a
-  runner gives up 190 px from its camp: 190 + a 6-frame step + half the view + the 4-px
-  left edge < 336) and have a test read both numbers out of the source.
+  they get lost and disappear". The first fix, a leash bounding the member by the cull's
+  constant, worked and was still the wrong fix: the player asked why people turn back.
+  **Derive the selection from the members**: Choplifter's walk now marks a camp in
+  `crowd_seen` when any of its people is within 16 px of the view, wherever that is, and
+  the renderer draws those camps; a test places people anywhere, strays included, and
+  checks every one in view is drawn.
 - **A PROJECTILE THAT CAN STRIKE IN THE UPDATE THAT CREATES IT IS NEVER DRAWN.** Choplifter's
   tanks fired and moved the new shell in the same pass; under a low helicopter the shell hit
   before any frame showed it: "something shot me down that didn't exist". Move a new

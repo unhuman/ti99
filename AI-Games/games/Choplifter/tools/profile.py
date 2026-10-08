@@ -7,13 +7,16 @@ finished screen). Each case reports the video frames taken by 32 updates
 
 Component cases (call people/camera/crowd/sprite routines directly, dt=2,
 scrolling 8 px per update; comparable with the 2026-10-03 figures):
-  0 empty world near home   1 64 waiting people off-screen
-  2 visible waiting crowd   3 visible evacuating crowd (32 walkers)
+  0 empty world near home   1 every camp out (six each), off-screen
+  2 visible crowds running about   3 two camps letting six each out (12 walkers)
+  (Cases 1-3 and 5-6 count six out per camp since 2026-10-07, when the
+  hostages started running about as in the Apple II original; earlier figures
+  had all 16 out.)
 Full-loop cases (the real main_loop, including its WAIT and frame-delta logic;
 only the joystick-reading `fly` is replaced by an 8-px-per-update westward
 flight with the helicopter invulnerable):
-  4 open terrain, no enemies   5 waiting crowd + tank, jet, drone and shots
-  6 evacuating crowd, no enemies
+  4 open terrain, no enemies   5 crowds out + tank, jet, drone and shots
+  6 two camps letting people out, no enemies
 
 --stub ROUTINE (repeatable) makes a routine return immediately, to attribute
 cost by difference. A stubbed build is a measurement, not a playable game.
@@ -21,8 +24,8 @@ cost by difference. A stubbed build is a measurement, not a playable game.
 --micro times single routines instead, as frames per 64 calls with no WAIT
 (divide by 64 for frames per call; 1 frame is ~50,000 TMS9900 cycles):
   0 stars_draw per scroll step   1 terrain rows and overlays
-  2 settled-crowd row            3 moving-crowd compositor (32 walkers)
-  4 escape_tick (32 walkers)     5 draw_actors, all actors on
+  2 crowd row, camps 0-2 out     3 moving-crowd compositor (12 walkers)
+  4 escape_tick (12 walkers)     5 draw_actors, all actors on
   6 draw_actors, all off         7 enemy_tick + weapon_tick
   8 sound, rotor, pause input, flight   9 crowd_commit incl. its WAIT
 """
@@ -97,30 +100,34 @@ GOTO bench_done
 
 HELPERS = '''
 bench_waiting:
-' Every person settled at their waiting spot, as after a full evacuation
-' (the spot escape_walk/walk_camp stop at: camp_x +/- (88 - lane)).
-FOR ep=0 TO 63
-    person_state(ep)=2
-    ec=ep/16
-    escape_lane=(ep AND 15)/2
-    escape_lane=escape_lane*8
-    #person_x(ep)=#camp_x(ec)-88+escape_lane
-    IF ep AND 1 THEN #person_x(ep)=#camp_x(ec)+88-escape_lane
-NEXT ep
-FOR ini=0 TO 3
-    camp_open(ini)=1
-NEXT ini
+' Every camp open with its first six out, standing at their goals for
+' crowd_clock 0 (walk_camp's walk_goal), as the walk had seen them all.
+FOR ec=0 TO 3
+    camp_open(ec)=1:camp_released(ec)=6:camp_active(ec)=6
+    FOR ep=ec*16 TO ec*16+5
+        person_state(ep)=2
+        escape_lane=ep AND 15
+        escape_lane=escape_lane/2
+        escape_lane=escape_lane*3
+        escape_lane=escape_lane AND 7
+        IF ep AND 1 THEN escape_lane=escape_lane+8
+        #person_x(ep)=#camp_x(ec)+roam_goal(escape_lane)
+        #person_x(ep)=#person_x(ep)-128
+    NEXT ep
+NEXT ec
+crowd_seen=15
 RETURN
 
 bench_walkers:
-' Camps 1 and 2 have just released everyone: 32 walkers leave the doors.
-FOR ep=16 TO 47
-    person_state(ep)=1
-    ec=ep/16
-    #person_x(ep)=#camp_x(ec)
-NEXT ep
-camp_active(1)=16:camp_active(2)=16
-camp_open(1)=1:camp_open(2)=1
+' Camps 1 and 2 have just let six each out: 12 walkers leave the doors.
+FOR ec=1 TO 2
+    FOR ep=ec*16 TO ec*16+5
+        person_state(ep)=1
+        #person_x(ep)=#camp_x(ec)
+    NEXT ep
+    camp_active(ec)=6:camp_released(ec)=6:camp_open(ec)=1
+NEXT ec
+crowd_seen=6
 RETURN
 
 bench_enemies:
@@ -173,7 +180,7 @@ FOR bench_i=0 TO 63
     GOSUB terrain
 NEXT bench_i
 #bench_result(1)=FRAME-#bench_start
-' 2: settled-crowd row (waiting_draw), recomposed per call, no scenery copy.
+' 2: crowd row with camps 0-2's people out, recomposed per call, no scenery copy.
 #camera=400
 #bench_start=FRAME
 FOR bench_i=0 TO 63
@@ -181,7 +188,7 @@ FOR bench_i=0 TO 63
     GOSUB crowd_draw
 NEXT bench_i
 #bench_result(2)=FRAME-#bench_start
-' 3: moving-crowd compositor with 32 walkers spread around camps 1-2.
+' 3: moving-crowd compositor with 12 walkers spread around camps 1-2.
 GOSUB bench_walkers
 FOR ep=16 TO 47
     #person_x(ep)=#person_x(ep)+(ep AND 15)*4-32
@@ -193,7 +200,7 @@ FOR bench_i=0 TO 15
     GOSUB crowd_draw
 NEXT bench_i
 #bench_result(3)=(FRAME-#bench_start)*4
-' 4: walking logic for those 32 walkers (16 calls, dt=2).
+' 4: walking logic for those 12 walkers (16 calls, dt=2).
 #bench_start=FRAME
 FOR bench_i=0 TO 15
     GOSUB escape_tick

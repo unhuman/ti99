@@ -31,17 +31,19 @@ release ALPHA LOCK if it interferes with the joystick's vertical axis.
 
 You start at home on the right, on the landing pad beside the brick headquarters with the
 flag on its roof. Fly
-west across the demilitarised zone. As in the Apple II original, the nearest barrack is
-already burning and its sixteen people are out, scattered around it. For the others, drop
-low and **strafe** one of the blue barracks (fire sideways; bombs pass by): it is blown
-open, a fire burns inside, and sixteen people pour out to both sides, even while you are
-away or your cabin is full. They gather in a knot around the hut, two in front of its walls,
-thinning out to a few stragglers, and while you are near they mill about: every couple of
-seconds one of them strolls over to a gap nearby, waits and strolls back. Land beside them
-and stop: everyone within reach runs for the cabin at once, as many as there are free seats,
-and climbs aboard on arrival. Lift off and land again a little further on and runners keep
-following, but not more than about 190 pixels from their camp: there they give up and walk
-back. Fly home and land on the gray **H pad** against the building:
+west across the demilitarised zone. The hostages behave as in the Apple II original. The
+nearest barrack is already burning when you start, with some of its people out. For the
+others, drop low and **strafe** one of the blue barracks (fire sideways; bombs pass by): it
+is blown open, a fire burns inside, and its sixteen people come out a few at a time, even
+while you are away or your cabin is full. Only about six are ever outside; more come out
+as others are picked up. Outside they run about on their own, dash, stop, look around and
+dash again, and they stop and wave as you fly over. Come down low over them and up to six
+run underneath you: land right on them and you crush them, so set down beside them. Landed,
+those within reach run for the cabin, as many as there are free seats, and climb aboard.
+Lift off and land again further on and the runners follow, as far as you lead them (never
+past the DMZ fence); but if someone nearer is waiting, or you leave them far behind, they
+give up and run all the way back to their own barrack, ignoring you unless you land right
+beside them. With the cabin full they wave you off and wait for you to come back. Fly home and land on the gray **H pad** against the building:
 passengers only step out with the whole helicopter on the pad. They walk in through the
 door, and some stop on the dark ground beside it to wave at you first. The last one out
 always does. Lift off with UP before moving sideways on the ground. Weapons and turning do
@@ -131,8 +133,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,694 / 24,336 B fixed (+ 8,032 and 7,960 / 8,190 B banks) | 810 / 7,854 B |
-| ColecoVision | 31,578 / 32,768 B ROM | 811 / 814 B |
+| TI-99/4A | 22,648 / 24,336 B fixed (+ 7,796 and 7,576 / 8,190 B banks) | 812 / 7,854 B |
+| ColecoVision | 31,202 / 32,768 B ROM | 812 / 814 B |
 
 ## Speed
 
@@ -143,6 +145,9 @@ Measured in Classic99 at normal speed with `tools/profile.py`, full game loop:
 | Cruising | 20 (was 12) |
 | Combat over a crowd: tank, jet, air mine, shots | 12.5 (was 7.5) |
 | Two camps evacuating at once | 10 (was 5) |
+
+(The crowd figures predate the hostages running about, with at most six out per camp; they
+are due to be measured again.)
 
 The TI build uses small assembly kernels for the star field, crowd walking and crowd
 drawing; the ColecoVision build runs the equivalent BASIC. See [DESIGN.md](DESIGN.md) for the

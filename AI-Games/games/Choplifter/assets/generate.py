@@ -586,10 +586,6 @@ PERSON_COLORS=([v for ink in INKS for v in [ink*16+1]*8]+[0xF1]*8
                +[0xF4]*8
                +[0xF1]+[0xF6]*5+[0x1F]*2)
 assert len(PERSON_COLORS)==96
-# Standing characters 96-107 on the night and 108-119 for a hut wall (the
-# waiting_scan +12): yellow, white, tan, four poses each.
-WAITING_COLORS=([v for ink in INKS for v in [ink*16+1]*32]
-                +[v for ink in INKS for _ in range(4) for v in [ink*16+4]*6+[0x1F]*2])
 
 # A 32x16 tank, with hull/tracks grounded on the same row in all three views.
 # Reuse old tank slot 12; the five remaining halves fill slots 59..63.
@@ -639,8 +635,8 @@ for shape in range(8):
 MAP = [[32]*256 for _ in range(5)]
 MAP[4] = [128]*256
 CAMPS=(16,48,80,112)
-# Hills sit in the gaps between the crowds (waiting spots reach 11 columns
-# west and 12 east of a camp), never under a settled crowd. (start, width):
+# Hills sit in the gaps between the crowds (the people run about from 11
+# columns west to 12 east of a camp, ROAM_GOALS), never under them. (start, width):
 # a width-w hill has its flanks and body on the crowd row and w-2 tops above.
 # (start, width, west foothills, east foothills): the range's own columns
 # start..start+width-1, with one or two foothill characters on each side.
@@ -660,25 +656,34 @@ for camp in CAMPS:
     MAP[1][camp-2]=155
     MAP[2][camp-2:camp+2]=[130,135,153,131]
     MAP[3][camp-2:camp+2]=[132,154,147,132]
-# Where a camp's 16 people wait: x offsets from the camp of each one's
-# 8-pixel cell, in release order (farthest first, west and east in turn).
-# Scattered as in the Apple II original: a knot by the hut, two of them in
-# front of its walls, thinning out to stragglers 88 px away, with five gaps.
-# CAMP_ALT is each one's wandering spot, the nearest gap: one person per camp
-# at a time strolls there and back (camp_wander). The settled crowd's
-# prebuilt characters cover the ground and the hut's walls (132), so both
-# lists stand only there, never on the hole or the door.
-CAMP_SPOTS=(-88,88,-72,72,-64,56,-48,48,-40,32,-32,24,-24,16,-16,8)
-CAMP_GAPS=sorted(set(range(-88,89,8))-set(CAMP_SPOTS)-{-8,0})
-CAMP_ALT=tuple(min(CAMP_GAPS,key=lambda g:(abs(g-s),abs(g))) for s in CAMP_SPOTS)
-assert len(set(CAMP_SPOTS))==16 and all(v%8==0 and abs(v)<=88 for v in CAMP_SPOTS)
-assert all((v>0)==(i&1) for i,v in enumerate(CAMP_SPOTS))   # odd ids walk east
-assert all(abs(a-s)<=40 for a,s in zip(CAMP_ALT,CAMP_SPOTS)) and len(CAMP_GAPS)==5
+# Hostages running about outside a burning barrack, as in the Apple II
+# original: each heads for a goal on the camp's open ground (x offsets from
+# the camp: the mounds leave -88..+96), stands a while, then heads for the
+# next. Even-numbered people (index i in the camp) use the first eight goals
+# and odd-numbered the other eight, interleaved 12 px apart, so the two never
+# share a spot; goal n of person i is cycle[(n + 3*(i//2)) % 8], the next one
+# every 128 frames from its phase ROAM_PHASE[i], so they do not move in step,
+# and people of one parity whose clocks agree aim at least 24 px apart. Each
+# cycle steps 24 or 48 px: a short dash, then a pause of a second or more.
+# Goals may be in front of the hut (its walls, hole and door), as in the
+# original.
+ROAM_GOALS=(-88,-40,8,56,80,32,-16,-64, -76,-28,20,68,92,44,-4,-52)
+ROAM_PHASE=[(i*37)%128 for i in range(16)]
+assert len(set(ROAM_GOALS))==16 and all(v%4==0 and -88<=v<=96 for v in ROAM_GOALS)
+for half in (ROAM_GOALS[:8],ROAM_GOALS[8:]):
+    assert all(abs(half[i]-half[i-1]) in (24,48) for i in range(8))
+    assert min(b-a for a,b in zip(sorted(half),sorted(half)[1:]))>=24
+assert min(b-a for a,b in zip(sorted(ROAM_GOALS),sorted(ROAM_GOALS)[1:]))>=12
+assert len(set(ROAM_PHASE))==16 and max(ROAM_PHASE)<128
+def roam_goal_index(i,clock):
+    """Which ROAM_GOALS entry person i (0-15) heads for at crowd_clock."""
+    return ((clock+ROAM_PHASE[i])//128+3*(i//2))%8+8*(i%2)
 for camp in CAMPS:
-    for v in CAMP_SPOTS:assert MAP[3][camp+v//8] in (32,132),(camp,v)
-    for v in CAMP_ALT:assert MAP[3][camp+v//8]==32,(camp,v)
-# As stored (camp_spot): the spots, then the gaps, each +128.
-CAMP_SPOT_TABLE=[v+128 for v in CAMP_SPOTS+CAMP_ALT]
+    for v in ROAM_GOALS:
+        for col in {camp+v//8,camp+(v+7)//8}:
+            assert MAP[3][col] in (32,132,154,147),(camp,v)
+# As stored (roam_goal): each +128.
+ROAM_TABLE=[v+128 for v in ROAM_GOALS]
 MAP[2][247:252]=[151,151,152,151,139]
 MAP[3][247:252]=[156,156,157,156,156]
 MAP[4][240:247]=[159,137,137,138,137,137,141]
@@ -890,9 +895,6 @@ def generate():
     boot += emit('low_colors',PAD_FENCE_COLORS+[v for _,c in FOOT for v in row_colors(c)])
     boot += emit('flag_colors', FLAG_COLORS)
     boot += emit('fire_colors', FIRE_COLORS)
-    standing=[b for kind in range(3) for b in PERSON_ROWS[kind*64:kind*64+32]]
-    boot += emit('waiting_art',standing*2)
-    boot += emit('waiting_colors',WAITING_COLORS)
     boot += emit('star_bits',STAR_BITS)
     boot += emit('star_colors',STAR_COLORS)
     boot += emit('hud_art',[b for bits,_ in HUD_CHARS.values() for b in bits])
@@ -955,9 +957,9 @@ def generate():
     text += emit('person_colors',PERSON_COLORS)
     text += emit('camp_bits',[1,2,4,8])
     text += emit('person_kind',[i%3 for i in range(64)])
-    text += emit('waiting_kind',[96+(i%3)*4 for i in range(64)])
-    # Each person's waiting spot, then its wandering gap (CAMP_SPOTS, +128).
-    text += emit('camp_spot',CAMP_SPOT_TABLE)
+    # Where the people run about (ROAM_GOALS, +128) and each one's phase.
+    text += emit('roam_goal',ROAM_TABLE)
+    text += emit('roam_phase',ROAM_PHASE)
     text += emit('hud_rows',HUD_ROWS)
     text += emit('star_x',STAR_X)
     # Row 0 ends the list (both renderers stop there); the second 0 keeps the

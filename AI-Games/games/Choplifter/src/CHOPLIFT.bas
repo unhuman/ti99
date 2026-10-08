@@ -7,6 +7,8 @@ BANK SELECT 1
 #endif
 CONST CAPACITY = 16
 CONST LANDED = 153
+' People chase a helicopter landed or at least this low (sprite y) over them.
+CONST CHASE_Y = 113
 DIM camp_left(4)
 DIM camp_open(4)
 DIM #camp_x(4)
@@ -61,8 +63,6 @@ DEFINE COLOR 126,2,fire_colors
 ' screen third only: patterns at 8, colours at 8192+8.
 DEFINE VRAM 8,104,hud_art
 DEFINE VRAM 8200,104,hud_colors
-DEFINE VRAM 4864,192,waiting_art
-DEFINE VRAM 13056,192,waiting_colors
 ' Bottom-third characters 120-124: the pad-fence cell and the foothills.
 DEFINE VRAM 5056,40,low_art
 DEFINE VRAM 13248,40,low_colors
@@ -705,24 +705,26 @@ NEXT ep
 RETURN
 
 escape_tick:
-' Every burning camp evacuates independently, including off screen/full cabin:
-' one person every 16 frames. Once all are out, camp_escape times the camp's
-' stroller instead (camp_wander).
+' Every burning camp lets its people out independently, including off screen
+' or with the cabin full: one every 16 frames while fewer than six of them are
+' outside, as in the Apple II original, where only a handful are out at a time
+' and more come out as others are picked up. camp_active counts a camp's
+' people outside: running about or standing (1, 2), chasing (3), homing (8).
 FOR ec=0 TO 3
     IF camp_open(ec) THEN
         IF camp_escape(ec) > dt THEN
             camp_escape(ec)=camp_escape(ec)-dt
         ELSE
             IF camp_released(ec) < 16 THEN
-                ep=ec*16+camp_released(ec)
-                person_state(ep)=1
-                camp_active(ec)=camp_active(ec)+1
-                #person_x(ep)=#camp_x(ec)
-                camp_released(ec)=camp_released(ec)+1
-                camp_escape(ec)=camp_escape(ec)+16-dt
-                crowd_dirty=1
-            ELSE
-                GOSUB camp_wander
+                IF camp_active(ec) < 6 THEN
+                    ep=ec*16+camp_released(ec)
+                    person_state(ep)=1
+                    camp_active(ec)=camp_active(ec)+1
+                    #person_x(ep)=#camp_x(ec)
+                    camp_released(ec)=camp_released(ec)+1
+                    camp_escape(ec)=camp_escape(ec)+16-dt
+                    crowd_dirty=1
+                END IF
             END IF
         END IF
     END IF
@@ -730,22 +732,18 @@ NEXT ec
 ' Staggered clocks give individuals three walking speeds without 64 timers.
 IF #crowd_clock >= 60000 THEN #crowd_clock=0
 #crowd_clock=#crowd_clock+dt
+' The walk also notes which camps have anyone in view (crowd_seen), for the
+' crowd renderer and boarding. #distance: the camp from the view's centre.
+crowd_seen=0
 FOR ec=0 TO 3
     IF camp_active(ec) OR home_walking THEN
+        #ax=#camp_x(ec):#bx=#camera+128
+        GOSUB distance_x
 #if TI994A
         GOSUB walk_camp
 #else
         FOR ep=ec*16 TO ec*16+15
-            IF person_state(ep) = 1 THEN
-                GOSUB person_stride
-                IF crowd_step THEN GOSUB escape_walk
-            END IF
-            IF person_state(ep) = 6 THEN
-                IF ep <> wave_id THEN
-                    GOSUB person_stride
-                    IF crowd_step THEN GOSUB home_walk
-                END IF
-            END IF
+            GOSUB walk_person
         NEXT ep
 #endif
     END IF
@@ -758,6 +756,7 @@ IF hy = LANDED THEN
             IF person_state(ep) = 1 THEN GOSUB crowd_landing
             IF person_state(ep) = 2 THEN GOSUB crowd_landing
             IF person_state(ep) = 3 THEN GOSUB crowd_landing
+            IF person_state(ep) = 8 THEN GOSUB crowd_landing
         NEXT ep
     END IF
 END IF
@@ -765,12 +764,71 @@ RETURN
 
 #if TI994A
 walk_camp:
-' Native walk of camp ec's escaping (1) and homeward (6) people. The same
-' arithmetic as the portable person_stride/escape_walk/home_walk below:
-' strides crossed = (clock+p)/stride - (clock+p-dt)/stride, 4 px each;
-' escapees stop at their spot (camp_spot; the camp's stroller, while it is
-' away, at its gap: camp_released = 32 + its index), walkers at the office
-' door (1992).
+' Native walk of camp ec's people outside and walking home. The portable
+' walk_person below is the same rule for one person (a test holds them equal):
+' - Anyone outside (1 running about, 2 standing, 3 chasing, 8 homing) within
+'   16 px of the view marks the camp in crowd_seen.
+' - Homing (8): a pixel a frame back to the hut, then running about again.
+' - Running about (1, 2), only with the camp within 400 px of the view's
+'   centre (#distance; further out nobody sees them, so they stand still):
+'   standing, they wave (the standing poses); one standing within 40 px of
+'   the door of a helicopter landed or low over them (CHASE_Y, 113 here; not
+'   crashing) stays there, waiting to get in, while runners pass beneath; a standing one sets off when its goal moves on (every 128
+'   frames from its phase); a runner steps 4 px a stride to its goal and
+'   stands there: for index i in the camp, camp_x - 128 + roam_goal(8 * (i
+'   AND 1) + (((clock + roam_phase(i)) / 128 + 3 * (i / 2)) AND 7)), so even
+'   and odd people never share a spot (ROAM_GOALS in assets/generate.py).
+' - Walking home (6) to the office door (1992), except the one waving.
+' Strides crossed = (clock+p)/stride - (clock+p-dt)/stride, 4 px each.
+ASM jmp walk_start
+' walk_steps: r7 = pixels to step this update (0 for none); uses r0, r1, r9.
+ASM walk_steps:
+ASM mov r3,r9
+ASM ai r9,cvb_PERSON_KIND
+ASM movb *r9,r9
+ASM srl r9,8
+ASM ai r9,4
+ASM mov r2,r1
+ASM a r3,r1
+ASM clr r0
+ASM div r9,r0
+ASM mov r0,r7
+ASM mov r2,r1
+ASM a r3,r1
+ASM s r4,r1
+ASM clr r0
+ASM div r9,r0
+ASM s r0,r7
+ASM sla r7,2
+ASM andi r7,255
+ASM b *r11
+' walk_goal: r0 = person r3's goal; uses r1, r9.
+ASM walk_goal:
+ASM mov r3,r9
+ASM andi r9,15
+ASM mov r9,r1
+ASM ai r1,cvb_ROAM_PHASE
+ASM movb *r1,r1
+ASM srl r1,8
+ASM a r2,r1
+ASM srl r1,7
+ASM andi r9,14
+ASM a r9,r1
+ASM srl r9,1
+ASM a r9,r1
+ASM andi r1,7
+ASM mov r3,r9
+ASM andi r9,1
+ASM sla r9,3
+ASM a r9,r1
+ASM ai r1,cvb_ROAM_GOAL
+ASM movb *r1,r0
+ASM srl r0,8
+ASM ai r0,-128
+ASM a r5,r0
+ASM b *r11
+' r2 clock, r3 person, r4 dt, r5 camp x, r6 -> its x, r8 its x, r9 state.
+ASM walk_start:
 ASM movb @cvb_EC,r3
 ASM srl r3,8
 ASM sla r3,4
@@ -786,60 +844,84 @@ ASM mov r3,r9
 ASM ai r9,array_PERSON_STATE
 ASM movb *r9,r9
 ASM srl r9,8
-ASM ci r9,1
-ASM jeq walk_gait
-ASM ci r9,6
-ASM jne walk_next
-' The walker waving at the helicopter (wave_id) stands still.
-ASM movb @cvb_WAVE_ID,r0
-ASM srl r0,8
-ASM c r0,r3
-ASM jeq walk_next
-ASM walk_gait:
-ASM mov r3,r6
-ASM ai r6,cvb_PERSON_KIND
-ASM movb *r6,r6
-ASM srl r6,8
-ASM ai r6,4
-ASM mov r2,r1
-ASM a r3,r1
-ASM clr r0
-ASM div r6,r0
-ASM mov r0,r7
-ASM mov r2,r1
-ASM a r3,r1
-ASM s r4,r1
-ASM clr r0
-ASM div r6,r0
-ASM s r0,r7
-ASM jeq walk_next
-ASM sla r7,2
-ASM andi r7,255
-ASM li r0,256
-ASM movb r0,@cvb_CROWD_DIRTY
 ASM mov r3,r6
 ASM a r3,r6
 ASM ai r6,array__PERSON_X
 ASM mov *r6,r8
 ASM ci r9,6
-ASM jeq walk_home
-ASM mov r3,r0
-ASM andi r0,15
+ASM jne walk_not_six
+ASM b @walk_six
+ASM walk_not_six:
+ASM ci r9,3
+ASM jeq walk_seen
+ASM ci r9,8
+ASM jeq walk_seen
+ASM ci r9,1
+ASM jl walk_skip
+ASM ci r9,2
+ASM jh walk_skip
+ASM mov @cvb__DISTANCE,r0
+ASM ci r0,400
+ASM jl walk_seen
+ASM walk_skip:
+ASM b @walk_next
+ASM walk_seen:
+ASM mov r8,r0
+ASM s @cvb__CAMERA,r0
+ASM ai r0,16
+ASM ci r0,288
+ASM jhe walk_unseen
 ASM mov r3,r1
 ASM srl r1,4
-ASM ai r1,array_CAMP_RELEASED
+ASM ai r1,cvb_CAMP_BITS
+ASM movb *r1,r1
+ASM socb r1,@cvb_CROWD_SEEN
+ASM walk_unseen:
+ASM ci r9,3
+ASM jeq walk_skip
+ASM ci r9,8
+ASM jne walk_roamer
+ASM b @walk_homing
+ASM walk_roamer:
+ASM ci r9,2
+ASM jne walk_roam
+ASM movb @cvb_CRASH_TIMER,r0
+ASM jne walk_roam
+ASM movb @cvb_HY,r0
+ASM srl r0,8
+ASM ci r0,113
+ASM jl walk_roam
+ASM mov @cvb__HV,r0
+ASM ai r0,12
+ASM s r8,r0
+ASM abs r0
+ASM ci r0,40
+ASM jl walk_skip
+ASM walk_roam:
+ASM ci r9,1
+ASM jeq walk_run
+' Standing: only once its clock has crossed a 128-frame mark.
+ASM mov r3,r1
+ASM andi r1,15
+ASM ai r1,cvb_ROAM_PHASE
 ASM movb *r1,r1
 ASM srl r1,8
-ASM ai r1,-32
-ASM c r1,r0
-ASM jne walk_spot
-ASM ai r0,16
-ASM walk_spot:
-ASM ai r0,cvb_CAMP_SPOT
-ASM movb *r0,r0
-ASM srl r0,8
-ASM ai r0,-128
-ASM a r5,r0
+ASM a r2,r1
+ASM andi r1,127
+ASM c r1,r4
+ASM jhe walk_skip
+ASM bl @walk_goal
+ASM c r8,r0
+ASM jeq walk_skip
+ASM li r1,256
+ASM jmp walk_state
+ASM walk_run:
+ASM bl @walk_steps
+ASM mov r7,r7
+ASM jeq walk_next
+ASM li r0,256
+ASM movb r0,@cvb_CROWD_DIRTY
+ASM bl @walk_goal
 ASM c r8,r0
 ASM jhe walk_back
 ASM a r7,r8
@@ -857,18 +939,52 @@ ASM walk_store:
 ASM mov r8,*r6
 ASM c r8,r0
 ASM jne walk_next
+ASM li r1,512
+' walk_state: the new state in r1's high byte.
+ASM walk_state:
 ASM mov r3,r9
 ASM ai r9,array_PERSON_STATE
-ASM li r1,512
 ASM movb r1,*r9
-ASM mov r3,r9
-ASM srl r9,4
-ASM ai r9,array_CAMP_ACTIVE
-ASM movb *r9,r1
-ASM ai r1,-256
-ASM movb r1,*r9
+ASM li r0,256
+ASM movb r0,@cvb_CROWD_DIRTY
+ASM walk_next:
+ASM inc r3
+ASM mov r3,r0
+ASM andi r0,15
+ASM jeq walk_done
+ASM b @walk_loop
+' Homing: a pixel a frame to the hut, then running about again.
+ASM walk_homing:
+ASM li r0,256
+ASM movb r0,@cvb_CROWD_DIRTY
+ASM c r8,r5
+ASM jhe walk_westward
+ASM a r4,r8
+ASM c r8,r5
+ASM jl walk_keep
+ASM jmp walk_arrive
+ASM walk_westward:
+ASM s r4,r8
+ASM c r8,r5
+ASM jh walk_keep
+ASM walk_arrive:
+ASM mov r5,*r6
+ASM li r1,256
+ASM jmp walk_state
+ASM walk_keep:
+ASM mov r8,*r6
 ASM jmp walk_next
-ASM walk_home:
+' Walking home to the office, except the one waving (wave_id).
+ASM walk_six:
+ASM movb @cvb_WAVE_ID,r0
+ASM srl r0,8
+ASM c r0,r3
+ASM jeq walk_next
+ASM bl @walk_steps
+ASM mov r7,r7
+ASM jeq walk_next
+ASM li r0,256
+ASM movb r0,@cvb_CROWD_DIRTY
 ASM ci r8,1992
 ASM jhe walk_inside
 ASM a r7,r8
@@ -876,20 +992,98 @@ ASM mov r8,*r6
 ASM ci r8,1992
 ASM jl walk_next
 ASM walk_inside:
-ASM mov r3,r9
-ASM ai r9,array_PERSON_STATE
 ASM li r1,1792
-ASM movb r1,*r9
-ASM movb @cvb_HOME_WALKING,r1
-ASM ai r1,-256
-ASM movb r1,@cvb_HOME_WALKING
-ASM walk_next:
-ASM inc r3
-ASM mov r3,r0
-ASM andi r0,15
-ASM jne walk_loop
+ASM movb @cvb_HOME_WALKING,r0
+ASM ai r0,-256
+ASM movb r0,@cvb_HOME_WALKING
+ASM jmp walk_state
+ASM walk_done:
 RETURN
 #else
+walk_person:
+' Person ep of camp ec: the portable twin of walk_camp (the same rules).
+IF person_state(ep) = 6 THEN GOTO walk_office
+IF person_state(ep) = 3 THEN GOTO walk_seen
+IF person_state(ep) = 8 THEN GOTO walk_seen
+IF person_state(ep) = 0 THEN RETURN
+IF person_state(ep) > 2 THEN RETURN
+IF #distance >= 400 THEN RETURN
+walk_seen:
+#crowd_rel=#person_x(ep)-#camera
+#crowd_rel=#crowd_rel+16
+IF #crowd_rel < 288 THEN crowd_seen=crowd_seen OR camp_bits(ec)
+IF person_state(ep) = 3 THEN RETURN
+IF person_state(ep) = 8 THEN GOTO walk_homing
+IF person_state(ep) = 2 THEN
+    IF crash_timer = 0 THEN
+        IF hy >= CHASE_Y THEN
+            #crowd_rel=#hv+12
+            IF #crowd_rel > #person_x(ep) THEN
+                #crowd_rel=#crowd_rel-#person_x(ep)
+            ELSE
+                #crowd_rel=#person_x(ep)-#crowd_rel
+            END IF
+            IF #crowd_rel < 40 THEN RETURN
+        END IF
+    END IF
+    escape_lane=ep AND 15
+    #crowd_rel=#crowd_clock+roam_phase(escape_lane)
+    escape_lane=#crowd_rel AND 127
+    IF escape_lane >= dt THEN RETURN
+    GOSUB roam_target
+    IF #person_x(ep) <> #escape_goal THEN person_state(ep)=1:crowd_dirty=1
+    RETURN
+END IF
+GOSUB person_stride
+IF crowd_step = 0 THEN RETURN
+crowd_dirty=1
+GOSUB roam_target
+IF #person_x(ep) < #escape_goal THEN
+    #person_x(ep)=#person_x(ep)+crowd_step
+    IF #person_x(ep) > #escape_goal THEN #person_x(ep)=#escape_goal
+ELSE
+    IF #person_x(ep) > #escape_goal THEN
+        #person_x(ep)=#person_x(ep)-crowd_step
+        IF #person_x(ep) < #escape_goal THEN #person_x(ep)=#escape_goal
+    END IF
+END IF
+IF #person_x(ep) = #escape_goal THEN person_state(ep)=2
+RETURN
+
+walk_homing:
+crowd_dirty=1
+IF #person_x(ep) < #camp_x(ec) THEN
+    #person_x(ep)=#person_x(ep)+dt
+    IF #person_x(ep) < #camp_x(ec) THEN RETURN
+ELSE
+    #person_x(ep)=#person_x(ep)-dt
+    IF #person_x(ep) > #camp_x(ec) THEN RETURN
+END IF
+#person_x(ep)=#camp_x(ec)
+person_state(ep)=1
+RETURN
+
+walk_office:
+IF ep = wave_id THEN RETURN
+GOSUB person_stride
+IF crowd_step THEN GOSUB home_walk
+RETURN
+
+roam_target:
+' #escape_goal: person ep's goal, as in walk_camp's walk_goal.
+escape_lane=ep AND 15
+#escape_goal=#crowd_clock+roam_phase(escape_lane)
+#escape_goal=#escape_goal/128
+escape_lane=escape_lane AND 14
+#escape_goal=#escape_goal+escape_lane
+escape_lane=escape_lane/2
+#escape_goal=#escape_goal+escape_lane
+escape_lane=#escape_goal AND 7
+IF ep AND 1 THEN escape_lane=escape_lane+8
+#escape_goal=#camp_x(ec)+roam_goal(escape_lane)
+#escape_goal=#escape_goal-128
+RETURN
+
 person_stride:
 crowd_stride=4+person_kind(ep)
 #gait_now=#crowd_clock+ep
@@ -906,28 +1100,6 @@ IF #person_x(ep) < 1992 THEN
     IF #person_x(ep) >= 1992 THEN person_state(ep)=7:home_walking=home_walking-1
 ELSE
     person_state(ep)=7:home_walking=home_walking-1
-END IF
-crowd_dirty=1
-RETURN
-
-escape_walk:
-ec=ep/16
-escape_lane=ep AND 15
-IF camp_released(ec) = escape_lane+32 THEN escape_lane=escape_lane+16
-#escape_goal=#camp_x(ec)+camp_spot(escape_lane)
-#escape_goal=#escape_goal-128
-IF #person_x(ep) < #escape_goal THEN
-    #person_x(ep)=#person_x(ep)+crowd_step
-    IF #person_x(ep) > #escape_goal THEN #person_x(ep)=#escape_goal
-ELSE
-    IF #person_x(ep) > #escape_goal THEN
-        #person_x(ep)=#person_x(ep)-crowd_step
-        IF #person_x(ep) < #escape_goal THEN #person_x(ep)=#escape_goal
-    END IF
-END IF
-IF #person_x(ep) = #escape_goal THEN
-    person_state(ep)=2
-    camp_active(ec)=camp_active(ec)-1
 END IF
 crowd_dirty=1
 RETURN
@@ -982,40 +1154,34 @@ IF #distance < 13 THEN GOSUB lose_person:GOSUB squish_sound
 RETURN
 
 board_tick:
-' Boarding. Landed with seats to spare, the nearest waiting person within
-' reach runs for the cabin door, one more each update, so a whole group is
-' running within a second or two. Runners (state 3) are crowd members, drawn
-' by the crowd renderer and as exposed as anyone outside. Each boards on
-' reaching the door; left behind (helicopter more than 180 px away) they walk
-' back to their places. board_count runners never outnumber the free seats.
+' Boarding, as in the Apple II original. With the helicopter landed, or low
+' over them (CHASE_Y), the nearest person outside within 104 px of its door
+' (running about or standing; a homing one only when it lands within 24 px)
+' starts chasing it (3), one more each update, up to six or the free seats.
+' Once as many chase as may, anyone chasing farther than the nearest one
+' waiting gives up (board_run). Only camps with someone in view (crowd_seen)
+' are searched: anyone within reach of the door is in view.
 #board_door=#hv+12
-IF hy = LANDED THEN
-    board_seats=CAPACITY-aboard
-    IF board_seats > board_count THEN
-        #nearest_person=104
-        nearest_id=255
-        FOR ec=0 TO 3
-            #ax=#camp_x(ec):#bx=#board_door
-            GOSUB distance_x
-            IF #distance < 200 THEN
-                FOR ep=ec*16 TO ec*16+15
-                    IF person_state(ep) = 2 THEN
-                        #ax=#person_x(ep)
-                        GOSUB distance_x
-                        IF #distance < #nearest_person THEN
-                            #nearest_person=#distance
-                            nearest_id=ep
-                        END IF
-                    END IF
-                NEXT ep
-            END IF
-        NEXT ec
-        IF nearest_id < 255 THEN
-            ep=nearest_id:ec=ep/16
-            person_state(ep)=3
-            camp_active(ec)=camp_active(ec)+1
+board_seats=CAPACITY-aboard
+IF board_seats > 6 THEN board_seats=6
+nearest_id=255
+IF hy >= CHASE_Y THEN
+    #nearest_person=104
+    #bx=#board_door
+    FOR ec=0 TO 3
+        IF crowd_seen AND camp_bits(ec) THEN
+            FOR ep=ec*16 TO ec*16+15
+                GOSUB board_candidate
+            NEXT ep
+        END IF
+    NEXT ec
+    IF nearest_id < 255 THEN
+        IF board_count < board_seats THEN
+            person_state(nearest_id)=3
             board_count=board_count+1
             crowd_dirty=1
+            ' A free place was taken: nobody gives up this update.
+            nearest_id=255
         END IF
     END IF
 END IF
@@ -1025,44 +1191,75 @@ FOR ep=0 TO 63
 NEXT ep
 RETURN
 
+board_candidate:
+' Person ep, if it could chase and is nearer the door (#bx) than the best yet.
+' One standing under a hovering helicopter (within 24 px) stays where it is:
+' chasers stop there 10-17 px from the door, and up to 3 more on the grid.
+IF person_state(ep) = 8 THEN
+    IF hy <> LANDED THEN RETURN
+    #ax=#person_x(ep):GOSUB distance_x
+    IF #distance >= 24 THEN RETURN
+ELSE
+    IF person_state(ep) = 0 THEN RETURN
+    IF person_state(ep) > 2 THEN RETURN
+    #ax=#person_x(ep):GOSUB distance_x
+    IF hy <> LANDED THEN
+        IF #distance < 24 THEN RETURN
+    END IF
+END IF
+IF #distance >= #nearest_person THEN RETURN
+#nearest_person=#distance
+nearest_id=ep
+RETURN
+
 board_run:
-' Left behind with the helicopter more than 180 px away, or led more than 190
-' px from the camp by landing again and again further on: crowd_draw draws a
-' camp's people only while the camp is near the view, so further out they
-' would vanish (it is checked with them at 190 plus a step).
+' A chaser runs for the door at a pixel a frame, never past the DMZ fence
+' (x 1552). It gives up and runs home (8) with the helicopter more than 180 px
+' away, or when someone nearer is waiting (nearest_id) and as many chase as
+' may. With the cabin full it stops and waves it off; under a hovering
+' helicopter it stops 10-17 px from the door, so some stand right where it
+' would land, as in the original.
 ec=ep/16
-#ax=#person_x(ep):#bx=#camp_x(ec)
-GOSUB distance_x
-IF #distance > 190 THEN GOTO board_left
 #ax=#person_x(ep):#bx=#board_door
 GOSUB distance_x
-IF #distance > 180 THEN GOTO board_left
-IF hy <> LANDED THEN RETURN
-IF #distance < 8 THEN
-    ' (board_count never exceeds the free seats; a full cabin is a guard.)
-    IF aboard >= CAPACITY THEN RETURN
-    camp_left(ec)=camp_left(ec)-1
-    camp_active(ec)=camp_active(ec)-1
-    person_state(ep)=5
-    aboard=aboard+1
-    board_count=board_count-1
-    chime_kind=1:chime_timer=10
-    SOUND 2,360,10
-    hud_dirty=1:crowd_dirty=1
-    RETURN
+IF #distance > 180 THEN GOTO chase_home
+IF nearest_id < 255 THEN
+    IF #distance > #nearest_person THEN GOTO chase_home
 END IF
-' Run for the door at a pixel per frame.
+IF aboard >= CAPACITY THEN GOTO chase_stop
+IF hy <> LANDED THEN
+    #ax=ep AND 7
+    #ax=#ax+10
+    IF #distance < #ax THEN GOTO chase_stop
+ELSE
+    IF #distance < 8 THEN
+        camp_left(ec)=camp_left(ec)-1
+        camp_active(ec)=camp_active(ec)-1
+        person_state(ep)=5
+        aboard=aboard+1
+        board_count=board_count-1
+        chime_kind=1:chime_timer=10
+        SOUND 2,360,10
+        hud_dirty=1:crowd_dirty=1
+        RETURN
+    END IF
+END IF
 IF #person_x(ep) < #board_door THEN
     #person_x(ep)=#person_x(ep)+dt
+    IF #person_x(ep) > 1552 THEN #person_x(ep)=1552
 ELSE
     #person_x(ep)=#person_x(ep)-dt
 END IF
 crowd_dirty=1
 RETURN
 
-board_left:
-' Back to the crowd, on the 4-pixel walking grid.
-person_state(ep)=1
+chase_stop:
+person_state(ep)=2
+GOTO chase_end
+chase_home:
+person_state(ep)=8
+chase_end:
+' Back on the 4-pixel walking grid.
 #person_x(ep)=#person_x(ep) AND 65532
 board_count=board_count-1
 crowd_dirty=1
@@ -1075,6 +1272,7 @@ FOR ep=0 TO 63
     IF person_state(ep) = 1 THEN GOSUB crowd_hit_person
     IF person_state(ep) = 2 THEN GOSUB crowd_hit_person
     IF person_state(ep) = 3 THEN GOSUB crowd_hit_person
+    IF person_state(ep) = 8 THEN GOSUB crowd_hit_person
     IF crowd_struck THEN RETURN
 NEXT ep
 RETURN
@@ -1089,9 +1287,10 @@ END IF
 RETURN
 
 lose_person:
+' Everyone this can happen to is outside (1, 2, 3 or 8).
 ec=ep/16
-IF person_state(ep) = 1 THEN camp_active(ec)=camp_active(ec)-1
-IF person_state(ep) = 3 THEN camp_active(ec)=camp_active(ec)-1:board_count=board_count-1
+camp_active(ec)=camp_active(ec)-1
+IF person_state(ep) = 3 THEN board_count=board_count-1
 person_state(ep)=4
 camp_left(ec)=camp_left(ec)-1
 lost=lost+1
@@ -1710,30 +1909,16 @@ IF crowd_dirty = 0 THEN RETURN
 ' Compose in RAM, then blit once: never expose a cleared crowd mid-frame.
 #crowd_map=#camera/8
 #crowd_map=#crowd_map+768
-crowd_mask=0:crowd_shift=0
-FOR tc=0 TO 3
-    IF camp_open(tc) THEN
-        #ax=#camp_x(tc):#bx=#camera+128
-        GOSUB distance_x
-        #nearest_person=224
-        IF camp_active(tc) THEN #nearest_person=336
-        IF #distance < #nearest_person THEN
-            crowd_mask=crowd_mask OR camp_bits(tc)
-            IF camp_active(tc) THEN crowd_shift=1
-        END IF
-    END IF
-NEXT tc
+' The camps with anyone in view (crowd_seen, from the walk) and the walkers
+' going home near the home: everyone outside goes through the compositor.
+crowd_mask=crowd_seen
 IF home_walking THEN
-    IF #camera > 1664 THEN
-        crowd_mask=crowd_mask OR 16
-        crowd_shift=1
-    END IF
+    IF #camera > 1664 THEN crowd_mask=crowd_mask OR 16
 END IF
 IF crowd_mask = 0 THEN
     GOSUB crowd_commit
     RETURN
 END IF
-IF crowd_shift = 0 THEN GOSUB waiting_draw:RETURN
 ' 255 marks a cell no silhouette has touched yet.
 #if TI994A
 ASM li r0,array_CROWD_CELLS
@@ -1748,23 +1933,19 @@ FOR cc=0 TO 31
     crowd_cells(cc)=255
 NEXT cc
 #endif
-' Pixel-merge only camps with walkers. A settled camp's people stand on
-' world-aligned cells at least 64 px from any other camp's crowd, so they keep
-' the prebuilt standing characters (crowd_settled, after the upload below).
 FOR tc=0 TO 3
     IF crowd_mask AND camp_bits(tc) THEN
-        IF camp_active(tc) THEN
 #if TI994A
-            cp=tc*16:crowd_mode=0
-            GOSUB compose_block
+        cp=tc*16:crowd_mode=0
+        GOSUB compose_block
 #else
-            FOR cp=tc*16 TO tc*16+15
-                IF person_state(cp) = 1 THEN GOSUB crowd_plot
-                IF person_state(cp) = 2 THEN GOSUB crowd_plot
-                IF person_state(cp) = 3 THEN GOSUB crowd_plot
-            NEXT cp
+        FOR cp=tc*16 TO tc*16+15
+            IF person_state(cp) = 1 THEN GOSUB crowd_plot
+            IF person_state(cp) = 2 THEN GOSUB crowd_plot
+            IF person_state(cp) = 3 THEN GOSUB crowd_plot
+            IF person_state(cp) = 8 THEN GOSUB crowd_plot
+        NEXT cp
 #endif
-        END IF
     END IF
 NEXT tc
 IF crowd_mask AND 16 THEN
@@ -1846,100 +2027,10 @@ FOR cc=0 TO 31
     END IF
 NEXT cc
 #endif
-GOSUB crowd_settled
 GOSUB crowd_doors
 GOSUB crowd_commit
 crowd_bank=64-crowd_bank
 RETURN
-
-waiting_draw:
-' Settled evacuees occupy distinct world-aligned cells: no pixel compositor.
-#if TI994A
-ASM mov @cvb__CROWD_MAP,r1
-ASM ai r1,cvb_WORLD_MAP
-ASM li r2,array_CROWD_CELLS
-ASM li r3,32
-ASM waiting_copy_loop:
-ASM movb *r1+,*r2+
-ASM dec r3
-ASM jne waiting_copy_loop
-#else
-FOR cc=0 TO 31
-    crowd_cells(cc)=world_map(#crowd_map+cc)
-NEXT cc
-#endif
-GOSUB crowd_settled
-GOSUB crowd_doors
-GOSUB crowd_commit
-RETURN
-
-crowd_settled:
-' Settled camps near the view (crowd_mask, no walkers) write prebuilt standing
-' characters straight into the name row, 16 people per camp.
-FOR tc=0 TO 3
-    IF crowd_mask AND camp_bits(tc) THEN
-        IF camp_active(tc) = 0 THEN
-#if TI994A
-            cp=tc*16
-            GOSUB waiting_scan
-#else
-            FOR cp=tc*16 TO tc*16+15
-                IF person_state(cp) = 2 THEN GOSUB waiting_plot
-            NEXT cp
-#endif
-        END IF
-    END IF
-NEXT tc
-RETURN
-
-#if TI994A
-waiting_scan:
-' Scan one camp's 16 state bytes from person cp; only visible waiting people
-' reach plotting.
-ASM movb @cvb_CP,r3
-ASM srl r3,8
-ASM li r1,array_PERSON_STATE
-ASM a r3,r1
-ASM li r2,array__PERSON_X
-ASM a r3,r2
-ASM a r3,r2
-ASM mov @cvb__CAMERA,r4
-ASM movb @cvb_ANIM,r5
-ASM srl r5,11
-ASM waiting_scan_loop:
-ASM clr r0
-ASM movb *r1+,r0
-ASM mov *r2+,r8
-ASM ci r0,512
-ASM jne waiting_scan_next
-ASM s r4,r8
-ASM ci r8,256
-ASM jhe waiting_scan_next
-ASM srl r8,3
-ASM ai r8,array_CROWD_CELLS
-ASM mov r3,r6
-ASM a r5,r6
-ASM andi r6,3
-ASM mov r3,r7
-ASM ai r7,cvb_WAITING_KIND
-ASM movb *r7,r0
-ASM srl r0,8
-ASM a r6,r0
-ASM movb *r8,r6
-ASM li r7,33792
-ASM cb r6,r7
-ASM jne waiting_plain
-ASM ai r0,12
-ASM waiting_plain:
-ASM sla r0,8
-ASM movb r0,*r8
-ASM waiting_scan_next:
-ASM inc r3
-ASM mov r3,r6
-ASM andi r6,15
-ASM jne waiting_scan_loop
-RETURN
-#endif
 
 crowd_commit:
 ' Prepare people first. Keep roof/walls and their footings on the same camera
@@ -1968,23 +2059,6 @@ IF terrain_dirty THEN GOSUB terrain
 crowd_dirty=0
 RETURN
 
-#if TI994A
-#else
-waiting_plot:
-IF #person_x(cp) < #camera THEN RETURN
-#crowd_rel=#person_x(cp)-#camera
-IF #crowd_rel >= 256 THEN RETURN
-cc=#crowd_rel/8
-crowd_pose_index=anim/8+cp
-crowd_pose_index=crowd_pose_index AND 3
-crowd_kind=person_kind(cp)
-crowd_under=crowd_cells(cc)
-crowd_cells(cc)=96+crowd_kind*4+crowd_pose_index
-IF crowd_under = 132 THEN crowd_cells(cc)=crowd_cells(cc)+12
-RETURN
-
-#endif
-
 crowd_doors:
 ' A blown-out barrack burns inside its two middle columns (126 and 127, the
 ' animated fire), except where someone stands in front.
@@ -2007,8 +2081,8 @@ RETURN
 
 #if TI994A
 compose_block:
-' Native compositor for the 16 people from cp. crowd_mode 0 plots escaping,
-' waiting and boarding people (states 1-3); otherwise only that state (6).
+' Native compositor for the 16 people from cp. crowd_mode 0 plots everyone
+' outside (states 1-3 and 8); otherwise only that state (6).
 ' The same rules as the portable crowd_plot/crowd_glyph/crowd_cell/
 ' crowd_background: 4-pixel positions, pre-shifted glyph rows (+192 right
 ' half, +384 left half) ORed into crowd_pixels, and each cell's background
@@ -2107,6 +2181,8 @@ ASM movb *r0,r1
 ASM srl r1,8
 ASM mov r6,r6
 ASM jne compose_only
+ASM ci r1,8
+ASM jeq compose_take
 ASM ci r1,1
 ASM jl compose_next
 ASM ci r1,3
@@ -2204,7 +2280,7 @@ crowd_kind=person_kind(cp)
 crowd_pose_index=anim/8+cp
 crowd_pose_index=crowd_pose_index AND 3
 #crowd_glyph=crowd_kind*8+crowd_pose_index
-' Waiting people and the one waving at the helicopter use the standing poses.
+' Standing people (2) and the one waving at the home use the standing poses.
 IF person_state(cp) <> 2 THEN
     IF cp <> wave_id THEN #crowd_glyph=#crowd_glyph+4
 END IF
@@ -2917,125 +2993,12 @@ DATA BYTE 40,48,56,0
 
 first_camp:
 ' The barrack nearest home (camp 3) is already burning when a mission
-' starts and its people are all out, scattering to their spots (as in the
-' Apple II original): settled within 2.2 s, long before a helicopter from
-' home can reach them.
-camp_open(3)=1:camp_released(3)=16:camp_active(3)=16
-FOR ep=48 TO 63
+' starts, as in the Apple II original, with its first six people out.
+camp_open(3)=1:camp_released(3)=6:camp_active(3)=6
+FOR ep=48 TO 53
     person_state(ep)=1
     #person_x(ep)=896
 NEXT ep
-RETURN
-
-camp_wander:
-' Once a camp is out, its people mill about: every couple of seconds one of
-' them, while the camp is in view, strolls from its spot to the nearest gap
-' (camp_spot's second half), waits there and strolls back. camp_released
-' holds 16 + the stroller's index, plus 16 while it is away; walk_camp and
-' escape_walk take its goal from that. Who goes next steps by 7 of 16, so
-' everyone takes a turn. Only one is away at a time, so the gaps they share
-' are never double-booked. The TI runs it native (the compiled BASIC below,
-' ColecoVision's, is too big for the data bank); a test holds them equal.
-#if TI994A
-' r3 ec, r4 -> camp_released(ec), r5 -> camp_escape(ec), r2 the new value.
-ASM movb @cvb_EC,r3
-ASM srl r3,8
-ASM mov r3,r4
-ASM ai r4,array_CAMP_RELEASED
-ASM mov r3,r5
-ASM ai r5,array_CAMP_ESCAPE
-ASM movb *r4,r2
-ASM srl r2,8
-ASM ci r2,32
-ASM jl wander_pick
-' Away: called back, and the next one goes 60-75 frames later.
-ASM ai r2,-16
-ASM mov r2,r0
-ASM ai r0,44
-ASM jmp wander_time
-ASM wander_pick:
-ASM li r0,10240
-ASM movb r0,*r5
-' Out of view (the camp 224 px or more from the view's centre): nobody goes.
-ASM mov r3,r1
-ASM sla r1,1
-ASM ai r1,array__CAMP_X
-ASM mov *r1,r1
-ASM s @cvb__CAMERA,r1
-ASM ai r1,-128
-ASM abs r1
-ASM ci r1,224
-ASM jhe wander_done
-ASM ai r2,7
-ASM andi r2,15
-ASM mov r3,r1
-ASM sla r1,4
-ASM a r2,r1
-ASM ai r1,array_PERSON_STATE
-ASM movb *r1,r1
-ASM srl r1,8
-ASM ai r2,16
-ASM ci r1,2
-ASM jne wander_go
-' Away for 92-107 frames, the stroll there included.
-ASM ai r2,16
-ASM mov r2,r0
-ASM ai r0,60
-ASM wander_time:
-ASM swpb r0
-ASM movb r0,*r5
-ASM wander_go:
-ASM mov r2,r0
-ASM swpb r0
-ASM movb r0,*r4
-' Set the stroller off if it stands still (state 2 to 1).
-ASM andi r2,15
-ASM sla r3,4
-ASM a r2,r3
-ASM ai r3,array_PERSON_STATE
-ASM movb *r3,r1
-ASM srl r1,8
-ASM ci r1,2
-ASM jne wander_done
-ASM li r0,256
-ASM movb r0,*r3
-ASM movb r0,@cvb_CROWD_DIRTY
-ASM movb @cvb_EC,r1
-ASM srl r1,8
-ASM ai r1,array_CAMP_ACTIVE
-ASM ab r0,*r1
-ASM wander_done:
-#else
-' (escape_lane is escape_walk's scratch, free until it runs.)
-escape_lane=camp_released(ec)
-IF escape_lane >= 32 THEN
-    ' Called back, and the next one goes 60-75 frames later.
-    escape_lane=escape_lane-16
-    camp_escape(ec)=escape_lane+44
-ELSE
-    camp_escape(ec)=40
-    #ax=#camp_x(ec):#bx=#camera+128
-    GOSUB distance_x
-    IF #distance >= 224 THEN RETURN
-    escape_lane=escape_lane+7
-    escape_lane=escape_lane AND 15
-    ep=ec*16+escape_lane
-    escape_lane=escape_lane+16
-    camp_released(ec)=escape_lane
-    IF person_state(ep) <> 2 THEN RETURN
-    ' Away for 92-107 frames, the stroll there included.
-    escape_lane=escape_lane+16
-    camp_escape(ec)=escape_lane+60
-END IF
-camp_released(ec)=escape_lane
-ep=escape_lane AND 15
-ep=ec*16+ep
-IF person_state(ep) = 2 THEN
-    person_state(ep)=1
-    camp_active(ec)=camp_active(ec)+1
-    crowd_dirty=1
-END IF
-#endif
 RETURN
 
 crash:
