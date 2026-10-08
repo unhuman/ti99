@@ -11,6 +11,9 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'assets'))
 SOURCE=(ROOT/'src/CHOPLIFT.bas').read_text(encoding='utf-8')
+# The generated tables in each TI bank (assets.bas: data bank; assets_boot.bas: boot bank).
+DATA_LABELS,BOOT_LABELS=(set(re.findall(r'^(\w+):',(ROOT/'src'/f).read_text(encoding='utf-8'),re.M))
+                         for f in ('assets.bas','assets_boot.bas'))
 
 def structure(source):
     for line in source.splitlines():
@@ -49,6 +52,10 @@ class Basic:
         self.v=Vars(); self.a={}; self.r={}; self.vram={}; self.sprites={};self.patterns={};self.sprite_patterns={}
         self.sounds={};self.sound_writes=[]
         self.calls={};self.transfers=[];self.events=[]
+        # The TI's selected cartridge bank: 1 (the data bank, assets.bas) during
+        # play, 2 (the boot bank, assets_boot.bas) only where BANK SELECT 2 says.
+        # An upload from a table in the other bank reads the wrong page.
+        self.target=target;self.bank=1
         # TI keys held on the console keyboard matrix: 'fctn', '8', '9'.
         self.keys=set()
         self.v.update({name.lower():int(value) for name,value in
@@ -247,7 +254,7 @@ class Basic:
                     dividend=(regs[reg]<<16)|regs[reg+1]
                     regs[reg],regs[reg+1]=dividend//src,dividend%src
             elif op in ('mov','li','ai','a','s','srl','sla','andi','ori'):
-                reg=int(parts[1][1:]) if op=='mov' else int(parts[0][1:])
+                reg=int(parts[1][1:]) if op in ('mov','a','s') else int(parts[0][1:])
                 if op=='ai':regs[reg]+=operand(parts[1])
                 elif op=='li':regs[reg]=operand(parts[1])
                 elif op in ('a','s'):
@@ -260,10 +267,18 @@ class Basic:
                 regs[reg]&=65535
                 # Like the TMS9900, these compare their result with zero.
                 compare=regs[reg];zero=compare==0
-            elif op in ('neg','swpb'):
+            elif op in ('neg','swpb','abs'):
                 reg=int(args[1:]);value=regs[reg]
-                regs[reg]=(-value)&65535 if op=='neg' else ((value&255)<<8)|(value>>8)
-                if op=='neg':compare=regs[reg];zero=compare==0
+                if op=='abs':regs[reg]=(-value)&65535 if value&32768 else value
+                else:regs[reg]=(-value)&65535 if op=='neg' else ((value&255)<<8)|(value>>8)
+                if op!='swpb':compare=regs[reg];zero=compare==0
+            elif op=='ab':
+                # Add the source's high byte to a byte in memory.
+                if not parts[1].startswith('*r') or parts[1].endswith('+'):raise ValueError('Unsupported '+line)
+                addr=regs[int(parts[1][2:])]
+                if addr not in memory:raise ValueError(f'native write outside arrays at {addr:#x}')
+                memory[addr]=(memory[addr]+operand(parts[0],True))&255
+                compare=memory[addr];zero=compare==0
             elif op=='limi':vdp['ints']=operand(args)!=0
             elif op in ('ldcr','stcr'):
                 # Only the keyboard scan: R12 must hold the right CRU base and
@@ -329,6 +344,7 @@ class Basic:
             part=part.strip()
             if not part:continue
             if part=='WAIT':self.events.append(('wait',));continue
+            if part.startswith('BANK SELECT '):self.bank=int(part[12:]);continue
             if part=='CLS':
                 self.transfers.append((6144,768))
                 for a in range(6144,6912):self.vram[a]=32
@@ -363,7 +379,12 @@ class Basic:
                 m=re.fullmatch(r'VARPTR (\w+)\((.*)\)',origin)
                 if m:
                     offset=self.expr(m[2]);data=self.a[m[1]][offset:offset+count]
-                else:data=self.a[origin][:count]
+                else:
+                    data=self.a[origin][:count]
+                    if self.target=='TI994A':
+                        for bank,labels in ((1,DATA_LABELS),(2,BOOT_LABELS)):
+                            if origin in labels and self.bank!=bank:
+                                raise ValueError(f'{origin} read from bank {bank} with bank {self.bank} selected')
                 if len(data)!=count:raise ValueError('Short VRAM source')
                 self.transfers.append((addr,count))
                 for i,value in enumerate(data):
@@ -456,15 +477,16 @@ class Tests(unittest.TestCase):
         for ch in range(24):b.patterns[ch+96]=standing[ch*8:ch*8+8]
         b.a['menu_font']=generate.MENU_FONT;b.a['camp_bits']=[1,2,4,8]
         b.a['person_kind']=[i%3 for i in range(64)];b.a['waiting_kind']=[96+(i%3)*4 for i in range(64)]
+        b.a['camp_spot']=generate.CAMP_SPOT_TABLE
         b.a['tile_art']=[v for bits,_ in generate.TILES for v in bits]
         b.a['star_x']=generate.STAR_X;b.a['star_row']=generate.STAR_ROW+[0,0]
         b.a['hud_rows']=generate.HUD_ROWS
         g=generate;script=g.FW_SCRIPT
-        b.a.update({'fw_climb_len':[f[3] for f in script]+[0],
-                    'fw_kind':[g.FW_KIND_INDEX[f[4]] for f in script]+[0],
-                    'fw_ramp':[g.FW_RAMP_INDEX[f[5]] for f in script]+[0],'fw_slot':g.FW_SLOT+[0],
+        b.a.update({'fw_climb_len':[f[3] for f in script],
+                    'fw_kind':[g.FW_KIND_INDEX[f[4]] for f in script],
+                    'fw_ramp':[g.FW_RAMP_INDEX[f[5]] for f in script],'fw_slot':g.FW_SLOT,
                     'fw_px':[x for path in g.FW_PATHS for x,_ in path],
-                    'fw_py':[y for path in g.FW_PATHS for _,y in path],'fw_trail':g.FW_TRAIL,
+                    'fw_rise':g.FW_RISE,'fw_trail':g.FW_TRAIL,
                     '#fw_path':g.FW_PATH_START,'fw_colors':[c for r in g.FW_RAMPS.values() for c in r],
                     'fw_cpat':[r[0] for r in g.FW_BURST],'fw_cshade':[r[1] for r in g.FW_BURST],
                     'fw_ppat':[r[2] for r in g.FW_BURST],'fw_pshade':[r[3] for r in g.FW_BURST],
@@ -671,9 +693,9 @@ class Tests(unittest.TestCase):
         b=self.state()
         for camp in range(4):
             for person in range(16):
-                who=camp*16+person
-                b.a['person_state'][who]=3;b.a['#person_x'][who]=172;b.a['camp_active'][camp]+=1
-                b.v.update({'#hx':160,'board_count':1,'transfer_timer':0})
+                who=camp*16+person;near=b.a['#camp_x'][camp]      # beside its own camp
+                b.a['person_state'][who]=3;b.a['#person_x'][who]=near+12;b.a['camp_active'][camp]+=1
+                b.v.update({'#hx':near,'board_count':1,'transfer_timer':0})
                 b.call('people_tick');self.assertEqual(self.total(b),64)
             self.assertEqual(b.v['aboard'],16)
             b.v.update({'#hx':1920,'board_count':0})
@@ -925,8 +947,7 @@ class Tests(unittest.TestCase):
                     b.a['person_state']=[2 if i%5 else 4 for i in range(64)]
                     b.a['camp_active']=[0]*4;b.v['board_count']=0
                     for i in range(64):
-                        offset=88-(i%16//2)*8
-                        b.a['#person_x'][i]=b.a['#camp_x'][i//16]+(offset if i&1 else -offset)
+                        b.a['#person_x'][i]=b.a['#camp_x'][i//16]+b.a['camp_spot'][i%16]-128
                     b.v.update({'#camera':camera,'anim':anim,'crowd_pose':255,'crowd_dirty':1})
                     b.call('crowd_draw')
                     results.append([b.vram[6784+c] for c in range(32)])
@@ -1194,7 +1215,7 @@ class Tests(unittest.TestCase):
                 b.execute(body[:-1])
             return b
         b=crash_run(SOURCE)
-        self.assertEqual(b.a['camp_released'][0],16)               # releases continued
+        self.assertGreaterEqual(b.a['camp_released'][0],16)        # releases continued (and a stroller)
         self.assertTrue(all(s in (1,2) for s in b.a['person_state'][:16]))
         self.assertNotEqual(b.a['#person_x'][:10],[128]*10)        # walkers walked
         self.assertEqual((b.a['person_state'][63],b.v['home_walking']),(7,0))
@@ -1390,7 +1411,7 @@ class Tests(unittest.TestCase):
 
     def escaped_crowd(self, source=SOURCE):
         b=self.state();b.r=Basic(source).r
-        b.v.update({'#hx':1912,'hy':80,'old_y':80,'board_count':0})
+        b.v.update({'#hx':1912,'hy':80,'old_y':80,'board_count':0,'#camera':1792})
         b.a['person_state']=[0]*64;b.a['camp_released']=[0]*4;b.a['camp_active']=[0]*4
         for _ in range(240):b.call('escape_tick')
         return b
@@ -1414,7 +1435,7 @@ class Tests(unittest.TestCase):
             b.a['camp_open']=[1,0,0,0]
             b.v.update({'dt':dt,'hy':80,'runner_on':0,'aboard':16,'#hx':1912})
             for _ in range(60//dt):b.call('escape_tick')
-            self.assertEqual(b.a['camp_released'],[3,0,0,0])
+            self.assertEqual(b.a['camp_released'],[4,0,0,0])    # one every 16 frames
             self.assertEqual(b.a['#person_x'][0],68)
             self.assertEqual(b.a['person_state'][16:],[0]*48)
 
@@ -1435,7 +1456,10 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.total(b),64)
 
     def test_streamed_boarding(self):
-        # Landed between camp 1's groups: 14 people are within reach.
+        # Landed by camp 1: those within 104 px of the door (356) are in reach.
+        import generate as art
+        reach=sum(abs(384+v-356)<104 for v in art.CAMP_SPOTS)
+        self.assertEqual(reach,15)
         def land(aboard):
             b=self.escaped_crowd();b.v.update({'#hx':344,'hy':153,'old_y':153,'dt':2,'aboard':aboard})
             b.a['camp_left'][1]=16
@@ -1449,8 +1473,8 @@ class Tests(unittest.TestCase):
             most=max(most,len(running))
             self.assertEqual(b.v['board_count'],len(running))
             self.assertEqual(b.a['camp_active'][1],len(running))
-            if b.v['aboard']==14 and not running:break
-        self.assertEqual(b.v['aboard'],14)
+            if b.v['aboard']==reach and not running:break
+        self.assertEqual(b.v['aboard'],reach)
         self.assertLess(frame,240)                       # about 4 s, not ~17 s one at a time
         self.assertGreaterEqual(most,5)                  # several run at once
         self.assertEqual(spots[order[0]],352)            # nearest first
@@ -1478,6 +1502,96 @@ class Tests(unittest.TestCase):
         for _ in range(50):b.call('escape_tick')
         self.assertEqual(b.a['person_state'][who],2)
         self.assertEqual(self.total(b),64)
+
+    def test_runner_is_never_led_out_of_its_crowds_reach(self):
+        # Landing again and again further on drags runners along; past 190 px
+        # from their camp they give up and walk back. crowd_draw draws a camp's
+        # people only while the camp is within 336 px of the view's centre,
+        # which covers 190 px, a 6-frame step, half the view and the 4-px left
+        # edge, so a runner can never stand in view undrawn.
+        draw=SOURCE.split('\ncrowd_draw:\n')[1].split('\nIF crowd_mask = 0 THEN')[0]
+        self.assertIn('IF camp_active(tc) THEN #nearest_person=336',draw)
+        self.assertIn('IF #distance > 190 THEN GOTO board_left',SOURCE)
+        self.assertLess(190+6+128+4,336)
+        b=self.escaped_crowd();b.v.update({'hy':153,'old_y':153,'dt':2})
+        camp=b.a['#camp_x'][3];b.v['#hx']=camp+88+48         # door 60 px past the farthest
+        farthest=0
+        for step in range(600):
+            if step%20==19 and step<300:b.v['#hx']+=48        # land 48 px further on
+            if step==300:b.v.update({'#hx':1912,'hy':80,'old_y':80})
+            b.call('people_tick')
+            for i in range(48,64):
+                if b.a['person_state'][i] in (1,3):
+                    away=abs(b.a['#person_x'][i]-camp);farthest=max(farthest,away)
+                    self.assertLessEqual(away,196,(step,i))
+            self.assertEqual(self.total(b),64)
+        self.assertGreater(farthest,180)                       # they were dragged
+        self.assertEqual(b.a['person_state'][48:64].count(2)+b.v['aboard'],16)   # and came back
+
+    def test_menu_font_is_read_from_the_boot_bank(self):
+        # The menu font lives in the TI's boot bank: menu_restore, in the fixed
+        # area, selects it around the upload and gives the data bank back.
+        self.assertIn('menu_font',BOOT_LABELS);self.assertNotIn('menu_font',DATA_LABELS)
+        self.assertIn('\nmenu_restore:\n',SOURCE.split('\nBANK 1\n')[0])
+        b=self.state();b.call('menu_restore')
+        self.assertEqual((b.bank,[b.vram[4608+i] for i in range(256)]),(1,b.a['menu_font']))
+        bad=self.state();bad.r=Basic(SOURCE.replace('#if TI994A\nBANK SELECT 2\n#endif\nDEFINE VRAM 4608',
+                                                     'DEFINE VRAM 4608')).r
+        with self.assertRaises(ValueError):bad.call('menu_restore')
+
+    def test_mission_starts_with_the_nearest_barrack_burning(self):
+        # As in the Apple II original: the barrack nearest home is already
+        # open and all its people are out, scattering to their spots, where
+        # they stand within 2.2 s (a helicopter needs longer to get there);
+        # the rest are shut.
+        import generate as art
+        b=self.state();b.v.update(start_lives=3,**{'cont1.key':15})
+        b.r['init']=b.r['new_game'][:b.r['new_game'].index('GOSUB new_heli')]
+        b.call('init')
+        self.assertEqual((b.a['camp_open'],b.a['camp_released']),([0,0,0,1],[0,0,0,16]))
+        self.assertEqual((b.a['person_state'],b.a['camp_active']),([0]*48+[1]*16,[0,0,0,16]))
+        self.assertEqual(self.total(b),64)
+        b.v.update({'dt':2,'#camera':1792,'home_walking':0})
+        for _ in range(66):b.call('escape_tick')
+        self.assertEqual((b.a['person_state'],b.a['camp_active']),([0]*48+[2]*16,[0]*4))
+        self.assertEqual(b.a['#person_x'][48:],[896+v for v in art.CAMP_SPOTS])
+        self.assertEqual(self.total(b),64)
+
+    def test_waiting_spots_are_scattered(self):
+        # A knot by the hut (two in front of its walls) thinning out to
+        # stragglers, with gaps, rather than two solid rows of eight.
+        import generate as art
+        b=self.escaped_crowd()
+        for camp in range(4):
+            xs=sorted(x-b.a['#camp_x'][camp] for x in b.a['#person_x'][camp*16:camp*16+16])
+            self.assertEqual(xs,sorted(art.CAMP_SPOTS))
+        self.assertIn(-16,art.CAMP_SPOTS);self.assertIn(8,art.CAMP_SPOTS)   # the hut's walls
+        near=sum(abs(v+4)<=36 for v in art.CAMP_SPOTS);far=sum(abs(v+4)>60 for v in art.CAMP_SPOTS)
+        self.assertGreater(near,far)
+        self.assertEqual(len(art.CAMP_GAPS),5)
+
+    def test_settled_people_stroll_one_at_a_time(self):
+        # In view, a settled camp's people take turns strolling to the gap
+        # nearest their spot and back: one away at a time (the last maybe
+        # still walking back), everyone settled on a spot or a gap in a cell
+        # of its own, and everyone takes a turn. Out of view nobody strolls.
+        import generate as art
+        b=self.escaped_crowd();before=list(b.a['#person_x'][:48])
+        b.v.update({'#camera':896-128,'dt':2,'anim':0})
+        homes=[896+v for v in art.CAMP_SPOTS];gaps=[896+v for v in art.CAMP_ALT]
+        strolled=set()
+        for _ in range(3000):
+            b.call('escape_tick');b.v['anim']=(b.v['anim']+2)&255
+            xs=b.a['#person_x'][48:64];st=b.a['person_state'][48:64]
+            self.assertLessEqual(sum(x!=h for x,h in zip(xs,homes)),2)
+            for i in range(16):
+                if st[i]==2:self.assertIn(xs[i],(homes[i],gaps[i]))
+                if xs[i]==gaps[i]:strolled.add(i)
+            settled=[x for x,s in zip(xs,st) if s==2]
+            self.assertEqual(len(settled),len(set(settled)))
+            self.assertEqual(b.a['camp_active'][3],st.count(1))
+        self.assertEqual(strolled,set(range(16)))
+        self.assertEqual(b.a['#person_x'][:48],before)
 
     def test_crowd_casualties_are_individual_and_permanent(self):
         b=self.escaped_crowd()
@@ -1636,7 +1750,7 @@ class Tests(unittest.TestCase):
     def test_camp_evacuates_offscreen_with_full_cabin(self):
         b=self.state();b.a['camp_open']=[1,0,0,0];b.a['camp_released']=[0]*4
         b.a['person_state']=[0]*64;b.a['camp_left'][3]=0
-        b.v.update({'#hx':1920,'aboard':16,'runner_on':0,'hy':100,'dt':6})
+        b.v.update({'#hx':1920,'#camera':1792,'aboard':16,'runner_on':0,'hy':100,'dt':6})
         for _ in range(80):b.call('escape_tick')
         self.assertEqual(b.a['camp_released'],[16,0,0,0])
         self.assertEqual(b.a['person_state'][:16],[2]*16)
@@ -1939,7 +2053,11 @@ class Tests(unittest.TestCase):
                 elif s==6:xs.append(1896+4*rng.randint(0,26))
                 else:xs.append(4*rng.randint(0,511))
             dt=rng.randint(1,6);clock=rng.choice((0,59994,59999,rng.randint(0,59999)))
-            released=[rng.choice((14,15,16,16)) for _ in range(4)]
+            # Whose strollers may go: 72 and 448 put a camp 184-192 px from the
+            # view's centre, near the edge of their reach.
+            camera=rng.choice((0,256,512,768,1792,72,448,8*rng.randint(0,224)))
+            # Releasing, out, or with a stroller home (16-31) or away (32-47).
+            released=[rng.choice((14,15,16,16,rng.randint(16,47),rng.randint(32,47))) for _ in range(4)]
             escape=[rng.randint(0,30) for _ in range(4)]
             runs=[]
             for target in ('TI994A','COLECO'):
@@ -1947,12 +2065,14 @@ class Tests(unittest.TestCase):
                 b.a['person_state']=list(states);b.a['#person_x']=list(xs)
                 b.a['camp_active']=[sum(s==1 for s in states[c*16:c*16+16]) for c in range(4)]
                 b.a['camp_released']=list(released);b.a['camp_escape']=list(escape)
-                b.v.update({'dt':dt,'#crowd_clock':clock,'home_walking':states.count(6),'crowd_dirty':0})
+                b.v.update({'dt':dt,'#crowd_clock':clock,'home_walking':states.count(6),'crowd_dirty':0,
+                            '#camera':camera})
                 seen=[]
                 for step in range(6):
                     b.call('escape_tick')
                     seen.append((list(b.a['person_state']),list(b.a['#person_x']),list(b.a['camp_active']),
-                                 b.v['home_walking'],b.v['crowd_dirty'],b.v['#crowd_clock']))
+                                 b.v['home_walking'],b.v['crowd_dirty'],b.v['#crowd_clock'],
+                                 list(b.a['camp_released']),list(b.a['camp_escape'])))
                     b.v['crowd_dirty']=0
                 runs.append(seen)
             if runs[0]!=runs[1]:return trial
@@ -1963,8 +2083,7 @@ class Tests(unittest.TestCase):
         b=self.state();b.r=Basic(source,target=target).r
         b.a['person_state']=[2]*64;b.a['camp_active']=[0]*4
         for i in range(64):
-            offset=88-(i%16//2)*8
-            b.a['#person_x'][i]=b.a['#camp_x'][i//16]+(offset if i&1 else -offset)
+            b.a['#person_x'][i]=b.a['#camp_x'][i//16]+b.a['camp_spot'][i%16]-128
         for i in range(walking*16,walking*16+16,2):
             b.a['person_state'][i]=1;b.a['#person_x'][i]-=12 if i&1 else -12
         b.a['camp_active'][walking]=8
@@ -2041,7 +2160,14 @@ class Tests(unittest.TestCase):
         self.assertIsNone(self.walker_runs(SOURCE))
         # Each of these breaks one rule of the native walk and must be caught.
         mutations=(('ASM jle walk_store\nASM mov r0,r8','ASM jle walk_store\nASM mov r8,r8'),
-                   ('ASM andi r1,1\nASM jne walk_east','ASM andi r1,1\nASM jeq walk_east'),
+                   ('ASM jne walk_spot\nASM ai r0,16','ASM jne walk_spot\nASM ai r0,0'),
+                   ('ASM ai r1,-32\nASM c r1,r0','ASM ai r1,-16\nASM c r1,r0'),
+                   ('ASM ai r0,-128\nASM a r5,r0','ASM ai r0,-120\nASM a r5,r0'),
+                   # camp_wander: who goes next, the view test, the timers, the count.
+                   ('ASM ai r2,7\nASM andi r2,15','ASM ai r2,5\nASM andi r2,15'),
+                   ('ASM ci r1,224\nASM jhe wander_done','ASM ci r1,160\nASM jhe wander_done'),
+                   ('ASM ai r0,44\nASM jmp wander_time','ASM ai r0,40\nASM jmp wander_time'),
+                   ('ASM ab r0,*r1\nASM wander_done:','ASM wander_done:'),
                    ('ASM movb *r9,r1\nASM ai r1,-256','ASM movb *r9,r1\nASM ai r1,0'),
                    ('ASM s r4,r1\nASM clr r0','ASM clr r0'),
                    ('ASM ci r8,1992\nASM jhe walk_inside','ASM ci r8,1984\nASM jhe walk_inside'),
@@ -2577,8 +2703,9 @@ class Tests(unittest.TestCase):
         import generate as art
         self.assertIn(f'IF #elapsed >= {art.FW_END} THEN GOTO fireworks_end',SOURCE)
         self.assertIn(f'FOR ini=0 TO {len(art.FW_SCRIPT)-1}\n    GOSUB firework_draw',SOURCE)
-        self.assertIn(f"SPRITE draw_slot,fw_py(#ax),fw_px(#ax),{art.BLAST_SLOT['rocket']*4},15",SOURCE)
-        self.assertIn(f"SPRITE blast_row,fw_py(#bx),fw_px(#bx),{art.BLAST_SLOT['ember']*4},fw_trail(di)",SOURCE)
+        self.assertIn(f"SPRITE draw_slot,fw_rise(#distance),fw_px(#ax+#distance),{art.BLAST_SLOT['rocket']*4},15",SOURCE)
+        self.assertIn(f"SPRITE blast_row,fw_rise(#bx),fw_px(#ax+#bx),{art.BLAST_SLOT['ember']*4},fw_trail(di)",SOURCE)
+        self.assertIn(f"IF #distance >= {art.FW_DONE} THEN RETURN",SOURCE)
         # Every rocket starts over the home's roof (screen x 184-223, roof y 152).
         for path in art.FW_PATHS:
             x,y=path[0];self.assertTrue(184<=x+7<=223 and 152<=y+8<=153,(x,y))   # head at the roof line

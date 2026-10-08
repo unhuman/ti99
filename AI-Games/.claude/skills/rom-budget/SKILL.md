@@ -239,6 +239,16 @@ cost a debugging session:
   - **Delete `NAME_b*.bin` before assembling** — linkticart appends every bank file it finds, so
     a stale one from a previous build is packed into the cart and inflates the page count.
 
+- **ARRAY-HEAVY BASIC IS 2-3x THE SIZE OF THE SAME ROUTINE IN TMS9900, AND BANKED CODE
+  GETS NO SHORT BRANCHES.** Choplifter's `camp_wander`, 25 statements of byte-array reads
+  and writes, compiled to 392 bytes: every `camp_released(ec)` reloads and shifts `ec` and
+  adds the array base, and every IF is a long branch (the short-branch pass only rewrites
+  the fixed area). Written as a native kernel with the BASIC kept as the ColecoVision twin
+  it is 172 bytes, and the twin test holds them equal. When a bank is a few hundred bytes
+  short, measure the new routines first (label to label in xas99's `-E` symbol file); a
+  table only read on menus (a 256-byte font) can also move to another bank behind a
+  fixed-area `BANK SELECT` pair, provided the vblank handler reads only fixed tables.
+
 - **A scrolling playfield's char map cannot be compressed** on this hardware. The TMS9918 has no
   scroll register, so a 1-char pan rewrites the whole 24×24 name table; only CVBasic's built-in
   `SCREEN` blit is fast enough, and it copies **literal char codes from CPU memory**. Any packed

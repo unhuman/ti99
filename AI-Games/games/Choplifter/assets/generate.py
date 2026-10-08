@@ -660,6 +660,25 @@ for camp in CAMPS:
     MAP[1][camp-2]=155
     MAP[2][camp-2:camp+2]=[130,135,153,131]
     MAP[3][camp-2:camp+2]=[132,154,147,132]
+# Where a camp's 16 people wait: x offsets from the camp of each one's
+# 8-pixel cell, in release order (farthest first, west and east in turn).
+# Scattered as in the Apple II original: a knot by the hut, two of them in
+# front of its walls, thinning out to stragglers 88 px away, with five gaps.
+# CAMP_ALT is each one's wandering spot, the nearest gap: one person per camp
+# at a time strolls there and back (camp_wander). The settled crowd's
+# prebuilt characters cover the ground and the hut's walls (132), so both
+# lists stand only there, never on the hole or the door.
+CAMP_SPOTS=(-88,88,-72,72,-64,56,-48,48,-40,32,-32,24,-24,16,-16,8)
+CAMP_GAPS=sorted(set(range(-88,89,8))-set(CAMP_SPOTS)-{-8,0})
+CAMP_ALT=tuple(min(CAMP_GAPS,key=lambda g:(abs(g-s),abs(g))) for s in CAMP_SPOTS)
+assert len(set(CAMP_SPOTS))==16 and all(v%8==0 and abs(v)<=88 for v in CAMP_SPOTS)
+assert all((v>0)==(i&1) for i,v in enumerate(CAMP_SPOTS))   # odd ids walk east
+assert all(abs(a-s)<=40 for a,s in zip(CAMP_ALT,CAMP_SPOTS)) and len(CAMP_GAPS)==5
+for camp in CAMPS:
+    for v in CAMP_SPOTS:assert MAP[3][camp+v//8] in (32,132),(camp,v)
+    for v in CAMP_ALT:assert MAP[3][camp+v//8]==32,(camp,v)
+# As stored (camp_spot): the spots, then the gaps, each +128.
+CAMP_SPOT_TABLE=[v+128 for v in CAMP_SPOTS+CAMP_ALT]
 MAP[2][247:252]=[151,151,152,151,139]
 MAP[3][247:252]=[156,156,157,156,156]
 MAP[4][240:247]=[159,137,137,138,137,137,141]
@@ -745,9 +764,11 @@ HUD_ROWS=hud_rows()
 # a straight, slanted path to its burst point, slowing as it climbs (FW_CLIMB
 # of the climb length): some nearly straight up, most fanning out west over
 # the sky. Its trail is three ember sprites at its earlier positions, so the
-# trail follows the angle. Then it bursts: a core and five spark clusters,
-# one row per two frames for 32 frames, from tables like the explosions' (no
-# RAM per particle). Each firework draws in a group of six sprite slots
+# trail follows the angle. Every rocket climbs the same curve, so its height
+# on each frame is one shared table (FW_RISE) and only its x is stored per
+# rocket. Then it bursts: a core and five spark clusters, one row per two
+# frames for 32 frames, from tables like the explosions' (no RAM per
+# particle). Each firework draws in a group of six sprite slots
 # (FW_SLOT, 2-31 in five groups), and a group is never reused while it is
 # still busy, so up to five burst at once and flicker shares the crowded
 # lines.
@@ -759,16 +780,31 @@ FW_RAMPS={'gold':(15,11,10,6),'red':(15,9,8,6),'green':(15,3,12,12),'blue':(15,7
           'magenta':(15,13,13,6),'silver':(15,15,14,14)}
 FW_RAMP_INDEX={name:i*4 for i,name in enumerate(FW_RAMPS)}
 FW_KIND_INDEX={'peony':0,'willow':FW_ROWS,'ring':2*FW_ROWS}
-# (start frame, launch x, burst x, climb frames, kind, colours): openers,
-# then a finale salvo of five.
+# (start frame, launch x, burst x, climb frames, kind, colours): ten
+# openers one at a time, then the finale: a quickening salvo of five, a
+# triple and a pair, another triple and pair, and a crescendo of five at
+# once. Each wave waits for the groups the last one frees (fw_slots checks).
 FW_SCRIPT=((0,196,176,22,'peony','gold'),(40,190,128,16,'willow','gold'),
            (70,200,186,26,'ring','blue'),(100,186,96,14,'peony','red'),
            (125,194,150,30,'peony','green'),(150,182,70,18,'ring','magenta'),
            (178,192,206,12,'willow','silver'),(205,188,118,24,'peony','blue'),
            (232,198,160,20,'ring','red'),(258,184,84,16,'willow','gold'),
+           # The salvo.
            (290,186,196,26,'peony','red'),(300,192,140,20,'peony','green'),
            (310,186,100,14,'peony','blue'),(322,196,160,22,'ring','gold'),
-           (334,190,124,18,'willow','silver'))
+           (334,190,124,18,'willow','silver'),
+           # A triple, then a pair.
+           (366,182,72,18,'peony','magenta'),(366,200,180,24,'ring','green'),
+           (368,192,128,14,'willow','gold'),
+           (394,198,198,20,'peony','blue'),(394,186,104,26,'peony','red'),
+           # Another triple and pair.
+           (430,190,150,28,'peony','silver'),(430,204,206,12,'willow','red'),
+           (432,180,64,22,'ring','blue'),
+           (458,194,112,16,'peony','gold'),(462,186,170,24,'peony','magenta'),
+           # The crescendo.
+           (528,190,128,30,'ring','gold'),(528,198,186,22,'peony','red'),
+           (530,182,72,20,'peony','blue'),(530,204,206,14,'willow','silver'),
+           (532,186,98,26,'peony','green'))
 def fw_path(x0,bx,climb):
     """(x, y) of the rocket's sprite on each frame of its climb and, last,
     the burst point."""
@@ -776,8 +812,11 @@ def fw_path(x0,bx,climb):
     return [(round(x0+(bx-x0)*FW_CLIMB[p]/top),FW_LAUNCH_Y-FW_CLIMB[p]) for p in range(climb+1)]
 FW_PATHS=[fw_path(x0,bx,climb) for _,x0,bx,climb,_,_ in FW_SCRIPT]
 FW_PATH_START=[sum(len(path) for path in FW_PATHS[:k]) for k in range(len(FW_PATHS))]
+FW_RISE=[FW_LAUNCH_Y-c for c in FW_CLIMB]   # a rocket's sprite y by frame of its climb
+assert all(y==FW_RISE[p] for path in FW_PATHS for p,(_,y) in enumerate(path))
 FW_TRAIL=[0,11,9,6]        # the trail's three embers, nearest first
-FW_END=440        # frames: the last burst is over by then
+FW_END=630        # frames: the last burst is over by then
+FW_DONE=80        # frames after its start by which any firework is over and hidden
 import math
 def fw_burst(kind):
     """Per row: core pattern (0 none), core shade, debris pattern, debris
@@ -820,6 +859,7 @@ def fw_slots():
 FW_SLOT=fw_slots()
 for (start,x0,bx,climb,kind,ramp),path in zip(FW_SCRIPT,FW_PATHS):
     assert 0<climb<len(FW_CLIMB) and start+climb+2*FW_ROWS+8<FW_END
+    assert climb+2*FW_ROWS+8<=FW_DONE
     assert FW_HOME_X[0]<=x0<=FW_HOME_X[1]          # it rises from behind the home
     x,y=path[-1]
     assert 25<=y<=80 and all(0<=px<=239 for px,_ in path)
@@ -858,15 +898,16 @@ def generate():
     boot += emit('hud_art',[b for bits,_ in HUD_CHARS.values() for b in bits])
     boot += emit('hud_colors',[c for _,colors in HUD_CHARS.values() for c in colors])
     # The fireworks run with the boot bank selected (their code is there too).
-    boot += emit('fw_climb_len',[f[3] for f in FW_SCRIPT]+[0])
-    boot += emit('fw_kind',[FW_KIND_INDEX[f[4]] for f in FW_SCRIPT]+[0])
-    boot += emit('fw_ramp',[FW_RAMP_INDEX[f[5]] for f in FW_SCRIPT]+[0])
-    boot += emit('fw_slot',FW_SLOT+[0])
-    # Every rocket's path, one after another (#fw_path: where each begins);
-    # the last point of each is its burst.
+    FW_PAD=[0]*(len(FW_SCRIPT)%2)   # per-firework byte tables, padded even
+    boot += emit('fw_climb_len',[f[3] for f in FW_SCRIPT]+FW_PAD)
+    boot += emit('fw_kind',[FW_KIND_INDEX[f[4]] for f in FW_SCRIPT]+FW_PAD)
+    boot += emit('fw_ramp',[FW_RAMP_INDEX[f[5]] for f in FW_SCRIPT]+FW_PAD)
+    boot += emit('fw_slot',FW_SLOT+FW_PAD)
+    # Every rocket's path x, one after another (#fw_path: where each begins;
+    # the last point of each is its burst); y by frame is fw_rise, shared.
     pad=[0] if sum(map(len,FW_PATHS))%2 else []
     boot += emit('fw_px',[x for path in FW_PATHS for x,_ in path]+pad)
-    boot += emit('fw_py',[y for path in FW_PATHS for _,y in path]+pad)
+    boot += emit('fw_rise',FW_RISE+[0]*(len(FW_RISE)%2))
     boot += emit('fw_trail',FW_TRAIL)
     boot += emit('fw_colors',[c for ramp in FW_RAMPS.values() for c in ramp])
     boot += emit('fw_cpat',[r[0] for r in FW_BURST])
@@ -907,13 +948,16 @@ def generate():
     text += emit('fire_frame1', FIRE1)
     text += emit('person_rows',PERSON_ROWS+[v>>4 for v in PERSON_ROWS]+[(v<<4)&255 for v in PERSON_ROWS])
     text += emit('crowd_bases',CROWD_BASES)
-    # The bottom-third menu font lives in the data bank; its colours (all
-    # white on black) are filled at run time, not stored as 256 equal bytes.
-    text += emit('menu_font',MENU_FONT)
+    # The bottom-third menu font lives in the boot bank (menu_restore selects
+    # it around the upload); its colours (all white on black) are filled at
+    # run time, not stored as 256 equal bytes.
+    boot += emit('menu_font',MENU_FONT)
     text += emit('person_colors',PERSON_COLORS)
     text += emit('camp_bits',[1,2,4,8])
     text += emit('person_kind',[i%3 for i in range(64)])
     text += emit('waiting_kind',[96+(i%3)*4 for i in range(64)])
+    # Each person's waiting spot, then its wandering gap (CAMP_SPOTS, +128).
+    text += emit('camp_spot',CAMP_SPOT_TABLE)
     text += emit('hud_rows',HUD_ROWS)
     text += emit('star_x',STAR_X)
     # Row 0 ends the list (both renderers stop there); the second 0 keeps the

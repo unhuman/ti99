@@ -522,6 +522,14 @@ Every game is built the same way — that consistency is the point.
   the helicopter sat at its old screen position over scenery that had already jumped 8 px,
   reported as "the helicopter shakes when scrolling". **Draw the sprites immediately before
   the synchronising `WAIT`, the player last**, so the vblank that ends it carries both.
+- **A RENDERER THAT CULLS A GROUP BY ITS ANCHOR LOSES ANY MEMBER THAT CAN STRAY.**
+  Choplifter draws a camp's crowd only while the CAMP is within 336 px of the view's
+  centre, which is cheap and was correct while people stayed at their spots. Runners follow
+  a landed helicopter, so landing again and again further on led one out of that range: it
+  stood on screen, alive and still shootable, and was never drawn. Reported as "sometimes
+  they get lost and disappear". Bound the member by the same constant the cull uses (a
+  runner gives up 190 px from its camp: 190 + a 6-frame step + half the view + the 4-px
+  left edge < 336) and have a test read both numbers out of the source.
 - **A PROJECTILE THAT CAN STRIKE IN THE UPDATE THAT CREATES IT IS NEVER DRAWN.** Choplifter's
   tanks fired and moved the new shell in the same pass; under a low helicopter the shell hit
   before any frame showed it: "something shot me down that didn't exist". Move a new

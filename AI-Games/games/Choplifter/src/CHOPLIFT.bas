@@ -108,6 +108,7 @@ NEXT ini
 FOR ini=0 TO 63
     person_state(ini)=0
 NEXT ini
+GOSUB first_camp
 #crowd_clock=0
 crowd_bank=0
 crowd_pose=255
@@ -704,20 +705,24 @@ NEXT ep
 RETURN
 
 escape_tick:
-' Every burning camp evacuates independently, including off screen/full cabin.
+' Every burning camp evacuates independently, including off screen/full cabin:
+' one person every 16 frames. Once all are out, camp_escape times the camp's
+' stroller instead (camp_wander).
 FOR ec=0 TO 3
     IF camp_open(ec) THEN
-        IF camp_released(ec) < 16 THEN
-            IF camp_escape(ec) > dt THEN
-                camp_escape(ec)=camp_escape(ec)-dt
-            ELSE
+        IF camp_escape(ec) > dt THEN
+            camp_escape(ec)=camp_escape(ec)-dt
+        ELSE
+            IF camp_released(ec) < 16 THEN
                 ep=ec*16+camp_released(ec)
                 person_state(ep)=1
                 camp_active(ec)=camp_active(ec)+1
                 #person_x(ep)=#camp_x(ec)
                 camp_released(ec)=camp_released(ec)+1
-                camp_escape(ec)=camp_escape(ec)+24-dt
+                camp_escape(ec)=camp_escape(ec)+16-dt
                 crowd_dirty=1
+            ELSE
+                GOSUB camp_wander
             END IF
         END IF
     END IF
@@ -763,7 +768,9 @@ walk_camp:
 ' Native walk of camp ec's escaping (1) and homeward (6) people. The same
 ' arithmetic as the portable person_stride/escape_walk/home_walk below:
 ' strides crossed = (clock+p)/stride - (clock+p-dt)/stride, 4 px each;
-' escapees stop at camp_x +/- (88-lane), walkers at the office door (1992).
+' escapees stop at their spot (camp_spot; the camp's stroller, while it is
+' away, at its gap: camp_released = 32 + its index), walkers at the office
+' door (1992).
 ASM movb @cvb_EC,r3
 ASM srl r3,8
 ASM sla r3,4
@@ -817,15 +824,21 @@ ASM mov *r6,r8
 ASM ci r9,6
 ASM jeq walk_home
 ASM mov r3,r0
-ASM andi r0,14
-ASM sla r0,2
-ASM neg r0
-ASM ai r0,88
+ASM andi r0,15
 ASM mov r3,r1
-ASM andi r1,1
-ASM jne walk_east
-ASM neg r0
-ASM walk_east:
+ASM srl r1,4
+ASM ai r1,array_CAMP_RELEASED
+ASM movb *r1,r1
+ASM srl r1,8
+ASM ai r1,-32
+ASM c r1,r0
+ASM jne walk_spot
+ASM ai r0,16
+ASM walk_spot:
+ASM ai r0,cvb_CAMP_SPOT
+ASM movb *r0,r0
+ASM srl r0,8
+ASM ai r0,-128
 ASM a r5,r0
 ASM c r8,r0
 ASM jhe walk_back
@@ -899,13 +912,10 @@ RETURN
 
 escape_walk:
 ec=ep/16
-escape_lane=(ep AND 15)/2
-escape_lane=escape_lane*8
-IF ep AND 1 THEN
-    #escape_goal=#camp_x(ec)+88-escape_lane
-ELSE
-    #escape_goal=#camp_x(ec)-88+escape_lane
-END IF
+escape_lane=ep AND 15
+IF camp_released(ec) = escape_lane+32 THEN escape_lane=escape_lane+16
+#escape_goal=#camp_x(ec)+camp_spot(escape_lane)
+#escape_goal=#escape_goal-128
 IF #person_x(ep) < #escape_goal THEN
     #person_x(ep)=#person_x(ep)+crowd_step
     IF #person_x(ep) > #escape_goal THEN #person_x(ep)=#escape_goal
@@ -1016,17 +1026,17 @@ NEXT ep
 RETURN
 
 board_run:
+' Left behind with the helicopter more than 180 px away, or led more than 190
+' px from the camp by landing again and again further on: crowd_draw draws a
+' camp's people only while the camp is near the view, so further out they
+' would vanish (it is checked with them at 190 plus a step).
 ec=ep/16
+#ax=#person_x(ep):#bx=#camp_x(ec)
+GOSUB distance_x
+IF #distance > 190 THEN GOTO board_left
 #ax=#person_x(ep):#bx=#board_door
 GOSUB distance_x
-IF #distance > 180 THEN
-    ' Left behind: back to the crowd, on the 4-pixel walking grid.
-    person_state(ep)=1
-    #person_x(ep)=#person_x(ep) AND 65532
-    board_count=board_count-1
-    crowd_dirty=1
-    RETURN
-END IF
+IF #distance > 180 THEN GOTO board_left
 IF hy <> LANDED THEN RETURN
 IF #distance < 8 THEN
     ' (board_count never exceeds the free seats; a full cabin is a guard.)
@@ -1047,6 +1057,14 @@ IF #person_x(ep) < #board_door THEN
 ELSE
     #person_x(ep)=#person_x(ep)-dt
 END IF
+crowd_dirty=1
+RETURN
+
+board_left:
+' Back to the crowd, on the 4-pixel walking grid.
+person_state(ep)=1
+#person_x(ep)=#person_x(ep) AND 65532
+board_count=board_count-1
 crowd_dirty=1
 RETURN
 
@@ -2231,7 +2249,15 @@ FOR ini=0 TO 127
     crowd_pixels(ini)=241
     crowd_pixels(ini+128)=241
 NEXT ini
+' The font itself is in the TI's boot bank, selected around its upload here
+' in the fixed area (the vblank handler reads only fixed tables).
+#if TI994A
+BANK SELECT 2
+#endif
 DEFINE VRAM 4608,256,menu_font
+#if TI994A
+BANK SELECT 1
+#endif
 DEFINE VRAM 12800,256,VARPTR crowd_pixels(0)
 RETURN
 
@@ -2887,7 +2913,130 @@ DATA BYTE 40,48,56,0
 
 ' The crash routines below run only after a crash: they share the data
 ' bank, which stays selected, to keep the fixed area's unoptimised image
-' below >FFFE (CLAUDE.md section 3A).
+' below >FFFE (CLAUDE.md section 3A). So do the camps' occasional events.
+
+first_camp:
+' The barrack nearest home (camp 3) is already burning when a mission
+' starts and its people are all out, scattering to their spots (as in the
+' Apple II original): settled within 2.2 s, long before a helicopter from
+' home can reach them.
+camp_open(3)=1:camp_released(3)=16:camp_active(3)=16
+FOR ep=48 TO 63
+    person_state(ep)=1
+    #person_x(ep)=896
+NEXT ep
+RETURN
+
+camp_wander:
+' Once a camp is out, its people mill about: every couple of seconds one of
+' them, while the camp is in view, strolls from its spot to the nearest gap
+' (camp_spot's second half), waits there and strolls back. camp_released
+' holds 16 + the stroller's index, plus 16 while it is away; walk_camp and
+' escape_walk take its goal from that. Who goes next steps by 7 of 16, so
+' everyone takes a turn. Only one is away at a time, so the gaps they share
+' are never double-booked. The TI runs it native (the compiled BASIC below,
+' ColecoVision's, is too big for the data bank); a test holds them equal.
+#if TI994A
+' r3 ec, r4 -> camp_released(ec), r5 -> camp_escape(ec), r2 the new value.
+ASM movb @cvb_EC,r3
+ASM srl r3,8
+ASM mov r3,r4
+ASM ai r4,array_CAMP_RELEASED
+ASM mov r3,r5
+ASM ai r5,array_CAMP_ESCAPE
+ASM movb *r4,r2
+ASM srl r2,8
+ASM ci r2,32
+ASM jl wander_pick
+' Away: called back, and the next one goes 60-75 frames later.
+ASM ai r2,-16
+ASM mov r2,r0
+ASM ai r0,44
+ASM jmp wander_time
+ASM wander_pick:
+ASM li r0,10240
+ASM movb r0,*r5
+' Out of view (the camp 224 px or more from the view's centre): nobody goes.
+ASM mov r3,r1
+ASM sla r1,1
+ASM ai r1,array__CAMP_X
+ASM mov *r1,r1
+ASM s @cvb__CAMERA,r1
+ASM ai r1,-128
+ASM abs r1
+ASM ci r1,224
+ASM jhe wander_done
+ASM ai r2,7
+ASM andi r2,15
+ASM mov r3,r1
+ASM sla r1,4
+ASM a r2,r1
+ASM ai r1,array_PERSON_STATE
+ASM movb *r1,r1
+ASM srl r1,8
+ASM ai r2,16
+ASM ci r1,2
+ASM jne wander_go
+' Away for 92-107 frames, the stroll there included.
+ASM ai r2,16
+ASM mov r2,r0
+ASM ai r0,60
+ASM wander_time:
+ASM swpb r0
+ASM movb r0,*r5
+ASM wander_go:
+ASM mov r2,r0
+ASM swpb r0
+ASM movb r0,*r4
+' Set the stroller off if it stands still (state 2 to 1).
+ASM andi r2,15
+ASM sla r3,4
+ASM a r2,r3
+ASM ai r3,array_PERSON_STATE
+ASM movb *r3,r1
+ASM srl r1,8
+ASM ci r1,2
+ASM jne wander_done
+ASM li r0,256
+ASM movb r0,*r3
+ASM movb r0,@cvb_CROWD_DIRTY
+ASM movb @cvb_EC,r1
+ASM srl r1,8
+ASM ai r1,array_CAMP_ACTIVE
+ASM ab r0,*r1
+ASM wander_done:
+#else
+' (escape_lane is escape_walk's scratch, free until it runs.)
+escape_lane=camp_released(ec)
+IF escape_lane >= 32 THEN
+    ' Called back, and the next one goes 60-75 frames later.
+    escape_lane=escape_lane-16
+    camp_escape(ec)=escape_lane+44
+ELSE
+    camp_escape(ec)=40
+    #ax=#camp_x(ec):#bx=#camera+128
+    GOSUB distance_x
+    IF #distance >= 224 THEN RETURN
+    escape_lane=escape_lane+7
+    escape_lane=escape_lane AND 15
+    ep=ec*16+escape_lane
+    escape_lane=escape_lane+16
+    camp_released(ec)=escape_lane
+    IF person_state(ep) <> 2 THEN RETURN
+    ' Away for 92-107 frames, the stroll there included.
+    escape_lane=escape_lane+16
+    camp_escape(ec)=escape_lane+60
+END IF
+camp_released(ec)=escape_lane
+ep=escape_lane AND 15
+ep=ec*16+ep
+IF person_state(ep) = 2 THEN
+    person_state(ep)=1
+    camp_active(ec)=camp_active(ec)+1
+    crowd_dirty=1
+END IF
+#endif
+RETURN
 
 crash:
 ' The helicopter is gone the moment it crashes: it and every other actor are
@@ -3235,8 +3384,8 @@ fireworks:
 ' A fireworks display over the home (the view at its east end): the script
 ' is FW_SCRIPT in assets/generate.py. Every video frame, each firework is
 ' drawn from its phase, the frames since its start: a rocket rising from
-' behind the home along its slanted path (fw_px, fw_py from #fw_path) for
-' fw_climb_len frames, trailing three embers at its earlier positions and
+' behind the home along its slanted path (x from fw_px at #fw_path, y from
+' fw_rise, the climb every rocket shares) for fw_climb_len frames, trailing three embers at its earlier positions and
 ' whistling higher as it climbs, then its burst at the path's end with a
 ' crack: a core and five spark clusters in its group of six sprite slots
 ' (fw_slot), one table row per two frames, coloured from its scheme (fw_ramp:
@@ -3253,12 +3402,12 @@ GOSUB heli_draw
 fireworks_loop:
 WAIT
 #elapsed=FRAME-#last
-IF #elapsed >= 440 THEN GOTO fireworks_end
+IF #elapsed >= 630 THEN GOTO fireworks_end
 IF #elapsed >= 60 THEN
     IF cont1.button THEN GOTO fireworks_end
 END IF
 sfx_volume=0:#sfx_pitch=0
-FOR ini=0 TO 14
+FOR ini=0 TO 29
     GOSUB firework_draw
 NEXT ini
 IF #sfx_pitch THEN SOUND 1,#sfx_pitch,6 ELSE SOUND 1,0,0
@@ -3273,18 +3422,21 @@ firework_draw:
 ' Firework ini at #elapsed frames into the show.
 IF #elapsed < #fw_start(ini) THEN RETURN
 #distance=#elapsed-#fw_start(ini)
+' Long over and hidden (the generator checks FW_DONE), so the finale's
+' thirty cost little.
+IF #distance >= 80 THEN RETURN
 draw_slot=fw_slot(ini)
 blast_row=fw_climb_len(ini)
 IF #distance < blast_row THEN
     ' Climbing: the head (pattern 200, sprite 50) where its path is now, and
     ' embers (216, sprite 54) where it was 2, 4 and 6 frames ago, fading.
-    #ax=#fw_path(ini)+#distance
-    SPRITE draw_slot,fw_py(#ax),fw_px(#ax),200,15
+    #ax=#fw_path(ini)
+    SPRITE draw_slot,fw_rise(#distance),fw_px(#ax+#distance),200,15
     FOR di=1 TO 3
         blast_row=draw_slot+di
         IF #distance >= di+di THEN
-            #bx=#ax-di-di
-            SPRITE blast_row,fw_py(#bx),fw_px(#bx),216,fw_trail(di)
+            #bx=#distance-di-di
+            SPRITE blast_row,fw_rise(#bx),fw_px(#ax+#bx),216,fw_trail(di)
         ELSE
             SPRITE blast_row,209,0,0,0
         END IF
@@ -3295,7 +3447,7 @@ IF #distance < blast_row THEN
 END IF
 ' The burst, at the path's end.
 #ax=#fw_path(ini)+blast_row
-draw_x=fw_px(#ax):by=fw_py(#ax)
+draw_x=fw_px(#ax):by=fw_rise(blast_row)
 #distance=#distance-blast_row
 IF #distance >= 32 THEN
     ' Over: hide the group for 8 frames (the loop can take more than one),

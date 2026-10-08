@@ -179,6 +179,12 @@ because every new gate and test was appended to a serial list. Timed
   the facing back to where it started. The test reported the mutation as harmless. Put a
   mutation just past the boundary it tests (16 at a 17-frame tap) so it makes exactly one
   difference, and check the state it should change, not only the final one.
+- **MODEL `BANK SELECT` IN A SOURCE-EXECUTING INTERPRETER, OR A MOVED TABLE PASSES.**
+  Choplifter's menu font moved from the data bank to the boot bank. The interpreter ignored
+  banks, so dropping the `BANK SELECT 2` around its upload would still have passed, while
+  the cart would upload whatever the data bank holds at that address. It now tracks the
+  selected bank and fails a `DEFINE` from a generated table in the other one (the labels
+  come from each bank's generated file), with a mutation test removing the switch.
 - **WHEN A TEST HARNESS SETS AN INPUT THAT THE GAME DERIVES ANOTHER VALUE FROM, DERIVE IT IN
   THE HARNESS TOO, BUT ONLY FOR THE TEST'S WRITES.** Choplifter's tests place the helicopter
   by writing `#hx`; the game now draws and hits at a derived visible x, `#hv`. The harness's

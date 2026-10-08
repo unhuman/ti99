@@ -31,11 +31,17 @@ release ALPHA LOCK if it interferes with the joystick's vertical axis.
 
 You start at home on the right, on the landing pad beside the brick headquarters with the
 flag on its roof. Fly
-west across the demilitarised zone, drop low and **strafe** one of the blue barracks (fire
-sideways; bombs pass by): it is blown open, a fire burns inside, and sixteen people pour out
-in two groups, even while you are away or your cabin is full. Land beside a group and stop:
-everyone within reach runs for the cabin at once, as many as there are free seats, and
-climbs aboard on arrival. Fly home and land on the gray **H pad** against the building:
+west across the demilitarised zone. As in the Apple II original, the nearest barrack is
+already burning and its sixteen people are out, scattered around it. For the others, drop
+low and **strafe** one of the blue barracks (fire sideways; bombs pass by): it is blown
+open, a fire burns inside, and sixteen people pour out to both sides, even while you are
+away or your cabin is full. They gather in a knot around the hut, two in front of its walls,
+thinning out to a few stragglers, and while you are near they mill about: every couple of
+seconds one of them strolls over to a gap nearby, waits and strolls back. Land beside them
+and stop: everyone within reach runs for the cabin at once, as many as there are free seats,
+and climbs aboard on arrival. Lift off and land again a little further on and runners keep
+following, but not more than about 190 pixels from their camp: there they give up and walk
+back. Fly home and land on the gray **H pad** against the building:
 passengers only step out with the whole helicopter on the pad. They walk in through the
 door, and some stop on the dark ground beside it to wave at you first. The last one out
 always does. Lift off with UP before moving sideways on the ground. Weapons and turning do
@@ -83,7 +89,9 @@ dot), on board (cyan) and saved (green), and the last box holds your **spare** h
 saved or lost, or the last helicopter is destroyed. There is no fuel. Rescue all 64 and a
 fireworks display lights up the sky over the home before the summary: rockets whistling up
 from behind the building at fanning angles, trailing sparks, and bursting into spheres,
-willows and rings in six colours, ending in a salvo of five.
+willows and rings in six colours. Ten go up one at a time, then the finale: a quickening
+salvo of five, a triple and a pair, another triple and pair, and a crescendo of five at
+once, about ten and a half seconds in all.
 
 When more than four sprites share a scanline they flicker in turn (sprite flicker is on), so
 nothing that can hit you is ever invisible for long; a tank shell is always drawn before it
@@ -123,8 +131,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,574 / 24,336 B fixed (+ 7,990 and 7,516 / 8,190 B banks) | 810 / 7,854 B |
-| ColecoVision | 30,975 / 32,768 B ROM | 811 / 814 B |
+| TI-99/4A | 22,694 / 24,336 B fixed (+ 8,032 and 7,960 / 8,190 B banks) | 810 / 7,854 B |
+| ColecoVision | 31,578 / 32,768 B ROM | 811 / 814 B |
 
 ## Speed
 
@@ -147,7 +155,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   two-colours-per-row limit), world map, star table and shell arc; writes `src/assets.bas`
   (play-time data) and `src/assets_boot.bas` (art uploaded once at power-on, in its own TI
   bank).
-- `tools/check.py`: 101 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 106 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,

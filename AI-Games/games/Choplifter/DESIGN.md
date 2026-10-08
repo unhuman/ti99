@@ -39,29 +39,32 @@ Current-state design. History is in git; sizes below are from the latest build
   (*Enemies*). The VDP's sprite-coincidence flag is not used: it is one bit for every pair
   of sprites and is a frame behind the update.
 - **TI native kernels** (each with a portable BASIC twin used by ColecoVision and tested
-  against it): star field, crowd walking, moving-crowd compositor, crowd colour upload,
-  settled-crowd scan and row copy. See *TI native kernels*.
+  against it): star field, crowd walking, the camps' strollers, moving-crowd compositor,
+  crowd colour upload, settled-crowd scan and row copy. See *TI native kernels*.
 
 ## Size budget
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,574 | 24,336 | 1,762 free |
-| TI fixed area, unoptimised | 24,370 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 7,990 | 8,190 | play-time data and tables, menu font; crash, title, setup and results code |
-| TI boot bank (`BANK 2`) | 7,516 | 8,190 | art uploaded only at power-on; the fireworks code and tables |
+| TI fixed area (after short branches) | 22,694 | 24,336 | 1,642 free |
+| TI fixed area, unoptimised | 24,498 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 8,032 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
+| TI boot bank (`BANK 2`) | 7,960 | 8,190 | art uploaded only at power-on; the fireworks code and tables; the menu font |
 | TI RAM | 810 | 7,854 | |
-| ColecoVision ROM | 30,975 | 32,768 | |
+| ColecoVision ROM | 31,578 | 32,768 | |
 | ColecoVision RAM | 811 | 814 | nearly full; see `#vaddr` |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
-files. `assets.bas` (crash flames, map, crowd glyphs and palettes, fire frames, arcs, the
-explosion timelines, menu font) goes into the data bank, which start-up selects for good.
-`assets_boot.bas` (all 64 sprites, the scenery characters and colours, waiting people,
-stars) goes into the boot bank, which `boot:` selects only around those uploads. With the
-boot-only art out of it, the data bank also holds the enemy and hit-box tables and the cold
-code: the crash routines (`crash`, `crash_tick`, the burst triggers and `crash_draw`, which
-run only after a crash or a hit), the title (and its helicopter), the 838 setup and the
+files. `assets.bas` (crash flames, map, crowd glyphs and palettes, waiting spots, fire
+frames, arcs, the explosion timelines) goes into the data bank, which start-up selects for
+good. `assets_boot.bas` (all 64 sprites, the scenery characters and colours, waiting
+people, stars, the fireworks, the menu font) goes into the boot bank, which `boot:` selects
+only around those uploads; `show_fireworks` and `menu_restore`, in the fixed area, select it
+around the fireworks and the font's upload (the vblank handler reads only fixed tables).
+With the boot-only art out of it, the data bank also holds the enemy and hit-box tables and
+the cold code: the crash routines (`crash`, `crash_tick`, the burst triggers and
+`crash_draw`, which run only after a crash or a hit), the camps' occasional events
+(`first_camp`, `camp_wander`), the title (and its helicopter), the 838 setup and the
 results. The crash routines moved there when the explosions, difficulty levels and new
 collision code pushed the unoptimised fixed image past >FFFE; code in the data bank runs
 at the same speed, since bank 1 never leaves the window during play. ColecoVision builds
@@ -136,10 +139,30 @@ is 656 pixels from the enemy-side fence.
 
 Strafing a barrack (a sideways shot whose 3×3 touches the drawn hut, x−16 to x+15, at or
 below its roof line, y ≥ 151; bombs pass by) blows it open in a ground burst: its middle is
-a ragged hole with a fire burning inside. It releases one person every 24 video
-frames, whatever the helicopter is doing, including during a crash. People walk out in two
-groups of eight to waiting spots 8 pixels apart, up to 88 pixels from the camp, farthest
-spots first. The cabin holds 16.
+a ragged hole with a fire burning inside. It releases one person every 16 video
+frames, whatever the helicopter is doing, including during a crash. People walk out to
+both sides, west and east in turn, farthest spots first, to waiting spots scattered as in
+the Apple II original (`CAMP_SPOTS` in `assets/generate.py`, offsets from the camp: −88,
+−72, −64, −48, −40, −32, −24, −16, 8, 16, 24, 32, 48, 56, 72, 88): a knot by the hut, two
+of them in front of its walls (−16 and 8, where the settled crowd's barrack-wall paper
+draws them), thinning out to stragglers 88 pixels away, with five gaps (−80, −56, 40, 64,
+80). The barrack nearest home (camp 3) is already open when a mission starts, as in the
+original, and all sixteen are out, scattering to their spots (`first_camp`): the slowest
+is settled within 2.2 s, while a helicopter at its top speed (3 px a frame) needs 5.3 s to
+reach the nearest of them. The cabin holds 16.
+
+**Milling.** Once a camp is out, its people mill about while it is in view (the camp within
+224 pixels of the view's centre, the settled crowd's reach): every couple of seconds one of
+them strolls from its spot to the nearest gap (`CAMP_ALT`, 8–40 pixels away), is called
+back 92–107 frames after setting off (the stroll there included) and strolls back; 60–75
+frames after that the next one goes. Who goes next
+steps by 7 of 16, so everyone takes a turn. Only one is away at a time, so the gaps they
+share are never double-booked and every settled person still owns a cell. `camp_wander`
+runs off the camp's release clock (`camp_escape`), and the stroller lives in
+`camp_released` (16 + its index, plus 16 while away), both idle once a camp is out, so it
+costs no RAM; `walk_camp` and `escape_walk` take a walker's goal from `camp_spot` (spots,
+then gaps, +128) and that. Out of view nobody sets off, so a stroll costs the compositor
+only where it can be seen.
 
 **Boarding.** Landed with seats to spare, the nearest waiting person within 104 pixels of the
 cabin door starts running for it, and one more joins on every update, so a whole group is
@@ -147,7 +170,12 @@ running within a second or two; each boards on reaching the door. Runners never 
 free seats (`board_count`), so a nearly full cabin is never chased by people who cannot get
 in. Runners are crowd characters (walking poses, no sprite) and as exposed as anyone outside.
 If the helicopter ends up more than 180 pixels away they walk back to their places; while it
-hovers nearby they wait. A group of 14 within reach boards in about four seconds (the
+hovers nearby they wait. Landing again and again a little further on leads runners along,
+but a runner more than 190 pixels from its own camp gives up and walks back too: the crowd
+is drawn only around camps near the view (336 pixels from its centre for a camp with
+walkers), and 190 plus a 6-frame step, half the view and the 4-pixel left edge stays inside
+that, so a runner can never stand in view undrawn. A door within reach of anyone's spot is
+under 192 pixels from the camp, so the limit never cuts short an ordinary run. A group of 14 within reach boards in about four seconds (the
 previous one-runner-at-a-time scheme took about 17 for a full cabin). Land on the pad at home
 to unload people one at a time; each walks to the building's door and counts as saved on
 leaving the cabin. One in four (ids divisible by 4), and always the last one out of the
@@ -400,9 +428,9 @@ a whole crowd costs no sprite slots, runners included.
   step; walking speeds of 60, 48 or 40 px/s from a stride of 4, 5 or 6 frames per 4-pixel
   step, with each person's step clock offset by its id (one shared clock, no per-person
   timers).
-- *Settled crowds.* A camp with no walkers has everyone on world-aligned spots 8 pixels apart,
-  so each person owns a cell: 24 prebuilt standing characters (3 looks × 4 poses × night or
-  barrack-wall paper) are written straight into the name row.
+- *Settled crowds.* A camp with no walkers has everyone on world-aligned spots (or a
+  stroller on its gap), so each person owns a cell: 24 prebuilt standing characters (3 looks
+  × 4 poses × night or barrack-wall paper) are written straight into the name row.
 - *Moving crowds.* Camps with walkers or runners, and homeward walkers near the home, go
   through the
   compositor. A person sits on a 4-pixel grid, so they fill one cell or straddle two. ROM
@@ -542,14 +570,19 @@ choice. Nothing is recorded, and it returns to the title.
 
 All 64 saved (`mission_over`): before the results, a fireworks display plays over the home,
 with the view at the east end (a helicopter that flew off while the last passenger walked in
-is brought home to the pad first). The script is `FW_SCRIPT` in `assets/generate.py`: 15
-fireworks over about 6 seconds (440 frames), in three kinds (a peony, an even sphere of
+is brought home to the pad first). The script is `FW_SCRIPT` in `assets/generate.py`: 30
+fireworks over about 10½ seconds (630 frames), in three kinds (a peony, an even sphere of
 sparks; a willow, gold trails drooping into falling embers; a ring, a flat halo) and six
-colour schemes (gold, red, green, blue, magenta, silver; each four shades, white to dark),
-ending in a salvo of five. Every rocket rises from behind the home: its head (sprite pattern
-50, white) appears at the roof line over the building and flies a straight, slanted path to
-its burst point (`fw_px`, `fw_py`, precomputed per rocket from `#fw_path`), slowing as it
-climbs, at its own angle, from 11° east of vertical to 51° west, fanning out over the sky.
+colour schemes (gold, red, green, blue, magenta, silver; each four shades, white to dark).
+Ten openers go up one at a time; then the finale of twenty: a quickening salvo of five, a
+triple and a pair, another triple and pair, and a crescendo of five at once, each wave
+going up as the last frees its sprite groups. Every rocket rises from behind the home: its
+head (sprite pattern 50, white) appears at the roof line over the building and flies a
+straight, slanted path to its burst point, slowing as it climbs, at its own angle, from 11°
+east of vertical to 51° west, fanning out over the sky. Its x on each frame is precomputed
+per rocket (`fw_px` from `#fw_path`); its height is one shared table (`fw_rise`), since every
+rocket climbs the same curve. A firework 80 frames past its start (`FW_DONE`) is over and
+hidden, so it costs the loop only a compare.
 Three embers (pattern 54, yellow, light red, dark red) trail it at its positions 2, 4 and 6
 frames before, so the trail follows the angle. A rising whistle on channel 1 goes with it.
 Then it bursts with a noise crack: a core (flash or ring) and five spark clusters, one table row per
@@ -574,7 +607,8 @@ ColecoVision path:
 | Routine | Work |
 |---|---|
 | `stars_draw` | the star field, one pass per star |
-| `walk_camp` | one camp's escaping and homeward walkers (same stride DIVs as `person_stride`) |
+| `walk_camp` | one camp's escaping, strolling and homeward walkers (same stride DIVs as `person_stride`; goals from `camp_spot`) |
+| `camp_wander` | a settled camp's next stroller and its timers (the compiled BASIC was 392 bytes, too big for the data bank) |
 | `compose_block` | one camp's people into the crowd pixel buffer (`crowd_plot`/`crowd_cell`) |
 | `crowd_draw` | clearing the cell map and uploading cell palettes |
 | `waiting_scan`, `waiting_draw` | settled people and the scenery row copy |
@@ -590,8 +624,8 @@ the compiler's register cache (checked in the generated assembly).
 
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map, the star
   table, the shell arc and the explosion timelines, and writes `src/assets.bas` (play-time
-  data, including the menu font) and `src/assets_boot.bas` (power-on uploads).
-- `tools/build.py` — generation, the 101 source-executing tests (once per `build.ps1 All`),
+  data) and `src/assets_boot.bas` (power-on uploads, the fireworks and the menu font).
+- `tools/build.py` — generation, the 106 source-executing tests (once per `build.ps1 All`),
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
   its verification, budget checks, an even-address check on every indexed word table (from
   xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address
