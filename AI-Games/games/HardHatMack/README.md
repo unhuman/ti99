@@ -147,9 +147,10 @@ These choices apply to one game only. Reserve hats exclude the current
 life; on both targets they are right-justified on the top HUD row after the bonus.
 The score and hats appear as each level opens. One extra life is awarded at 7,000 points.
 Classic99 uses arrows/Tab; CoolCV uses arrows/Space/M and ColEm uses
-arrows/Ctrl (or M)/Space for movement, jump, and release. On TI-99,
-F8 (REDO) or F9 (BACK) returns to the title during play, the 838 prompts,
-and the Game Over delay.
+arrows/Ctrl (or M)/Space for movement, jump, and release. Return to the title
+during play, the 838 prompts, or the Game Over delay with F8 (REDO) or F9 (BACK)
+on TI-99, or either keypad `*` or `#` on ColecoVision. In ColEm these keys are
+`-` and `=`; in CoolCV they are O and P. Release the key before pressing it again.
 The construction-themed title shows **LAST SCORE** and **HIGH SCORE** at the top,
 with matching full-height dithered white-to-yellow lettering (MACK restored to
 its original 115-pixel width) and Mack on a riveted girder. Below them, in

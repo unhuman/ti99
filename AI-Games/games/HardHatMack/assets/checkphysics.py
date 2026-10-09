@@ -2422,6 +2422,45 @@ def title_hotkeys(source):
         '838 confirmation delay ignores BACK')
 
 
+def coleco_hotkeys(source):
+    """The actual Coleco path treats either keypad symbol as one title request."""
+    for key in (10,11):
+        vm=Basic(source,ti=False)
+        vm.v['input_key']=key
+        vm.run('back_key')
+        assert vm.v['backreq']==1, ('Coleco title shortcut missing',key)
+        vm.run('back_key')
+        assert vm.v['backreq']==0, 'held shortcut repeatedly resets the title'
+        vm.v['input_key']=15;vm.run('back_key')
+        assert vm.v['backreq']==0, 'key release requests the title'
+        vm.v['input_key']=key;vm.run('back_key')
+        assert vm.v['backreq']==1, 'released shortcut did not re-arm'
+        for prompt in ('setup_lives','setup_level'):
+            vm=Basic(source,ti=False);vm.bank=3;vm.v['titleheld']=15
+            vm.frame_inputs=iter([dict(input_key=key)])
+            vm.run(prompt)
+            assert vm.v['title_abort']==1, ('Coleco 838 prompt ignores shortcut',prompt,key)
+        for age in (1,40,90):
+            vm=Basic(source,ti=False)
+            vm.frame_inputs=iter([{}]*(age-1)+[dict(input_key=key)])
+            vm.run('gameover_wait')
+            assert vm.wait_count==age, ('Coleco Game Over ignores shortcut',key,age)
+        vm=Basic(source,ti=False);vm.bank=3;vm.v['titleheld']=15
+        vm.frame_inputs=iter([dict(input_key=2)]+[{}]*9+[dict(input_key=key)])
+        vm.run('setup_level')
+        assert vm.v['title_abort']==1 and vm.wait_count==11, (
+            'Coleco 838 confirmation ignores shortcut',key)
+    for key in (8,9,12,15):
+        vm=Basic(source,ti=False);vm.v['input_key']=key
+        vm.run('back_key')
+        assert vm.v['backreq']==0, ('other Coleco key resets title',key)
+    vm=Basic(source,ti=False);vm.bank=3;vm.v.update(titleheld=15,input_key=10)
+    vm.run('menu_key')
+    assert vm.v['title_abort']==1, 'title menu ignores Coleco shortcut'
+    vm.v['title_abort']=0;vm.run('menu_key')
+    assert vm.v['title_abort']==0, 'held shortcut retriggers on redrawn title'
+
+
 def repeat_enemies(source):
     # Execute the real completion transition, stopping before the frame loop.
     advance=source[source.index('\tlevelno = levelno + 1'):source.index('\ngame_over:')]
@@ -3106,6 +3145,7 @@ def main():
     chain_and_pickups(source)
     setup_inputs(source)
     title_hotkeys(source)
+    coleco_hotkeys(source)
     repeat_enemies(source)
     factory_challenge(source)
     upper_conveyor(source)
@@ -3297,6 +3337,10 @@ def main():
         (source.replace('ASM LI R0,>0100','ASM LI R0,>0300',1),title_hotkeys),
         (source.replace('ASM LI R0,>0200','ASM LI R0,>0300',1),title_hotkeys),
         (source.replace('ASM LI R1,>0800','ASM LI R1,>0400',1),title_hotkeys),
+        (source.replace('IF backkey = 10 THEN backnow = 1','IF backkey = 12 THEN backnow = 1'),coleco_hotkeys),
+        (source.replace('IF backkey = 11 THEN backnow = 1','IF backkey = 12 THEN backnow = 1'),coleco_hotkeys),
+        (source.replace('IF backold = 0 THEN backreq = 1','IF backold = 1 THEN backreq = 1'),coleco_hotkeys),
+        (source.replace('backold = backnow','backold = 0'),coleco_hotkeys),
         (source.replace('DATA BYTE 8, 3,29,1,232','DATA BYTE 8, 3,28,1,232'),fixture_contract),
         (source.replace('bx = 224','bx = 216'),fixture_contract),
         (source.replace('by = 25','by = 27',1),fixture_contract),

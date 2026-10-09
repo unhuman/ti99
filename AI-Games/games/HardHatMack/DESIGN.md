@@ -121,6 +121,7 @@ Clearing level 3 loops the game harder: **faster and more targeted, never more e
 - **Left/Right** — walk. **Up/Down** — climb ladders (and enter pater-noster zones, L3).
 - **Button 1 / Fire** — jump. Direction held at takeoff sets the fixed horizontal momentum of the arc.
 - **Release jackhammer** — hold Fire for 45 frames on TI-99; press button 2 on ColecoVision.
+- **Return to title** — F8/REDO or F9/BACK on TI; keypad `*` or `#` on ColecoVision.
 - Title: **FIRE** starts; **8-3-8** on the keypad opens level select (repo convention).
   **1/2/3** or the stick's **LEFT/RIGHT** choose Easy, Medium or Hard (section 57).
 
@@ -3115,12 +3116,12 @@ Both targets now compile the existing `BANK ROM 128`, four `BANK` regions, and
 the matching `BANK SELECT` wrappers. TI-only keyboard scanning remains under
 `#if TI994A`. On Coleco, CVBasic maps the shared code to a fixed
 16 KiB region and the other code/data through its 16 KiB MegaCart mapper.
-The assembled image is 131,072 bytes, with 569 of 814 RAM bytes used. The
+The assembled image is 131,072 bytes, with 572 of 814 RAM bytes used. The
 gasm80 symbol table reports these free bytes:
 
 | Bank | Role | Coleco free bytes |
 |---|---|---:|
-| 0 | shared code | 1,738 |
+| 0 | shared code | 1,681 |
 | 1 | level data and parser | 9,992 |
 | 2 | actors and audio | 11,214 |
 | 3 | title and scenery | 9,727 |
@@ -3155,3 +3156,17 @@ inventory gating, the level-start latch, and the released hammer's pickup lock.
 ColEm's default keyboard mapping uses Ctrl or M for button 1 and Space for
 button 2; CoolCV uses Space and M. The checked 128 KiB cart loaded in both
 emulators, and ColEm displayed the revised first-level HUD and game-over screen.
+
+## 60. ColecoVision keypad title shortcuts (2026-10-09)
+
+ColecoVision keypad `*` (CVBasic `CONT1.KEY=10`) and `#` (`=11`) use the same
+return-to-title request as TI REDO/BACK. The request is polled during play, both
+838 prompts and their confirmation delay, and both Game Over wait phases. A
+fresh-press latch prevents a held key from repeatedly aborting the redrawn
+title; release re-arms it. Other keypad keys retain their menu roles. ColEm's
+default keyboard equivalents are `-` and `=`, and CoolCV's are O and P.
+`coleco_hotkeys` executes the Coleco preprocessor path through these transitions
+and rejects missing keys or a broken latch.
+The production MegaCart was checked in ColEm: from level 1, `-` returned to
+the title; after starting level 1 again, `=` did the same. The normal title
+cart was then reloaded. The TI build kept its prior cartridge hash.

@@ -740,6 +740,16 @@ back_key:
 	ASM LIMI 2
 	' Inline ASM does not invalidate CVBasic's cached R0 value.
 	ASM MOVB @cvb_BACKREQ,R0
+	#else
+	' ColecoVision keypad * and # serve the TI REDO/BACK title shortcut.
+	backnow = 0
+	backkey = cont1.key
+	IF backkey = 10 THEN backnow = 1
+	IF backkey = 11 THEN backnow = 1
+	IF backnow THEN
+		IF backold = 0 THEN backreq = 1
+	END IF
+	backold = backnow
 	#endif
 	RETURN
 
