@@ -13,11 +13,11 @@ hardware. A ColecoVision build is produced at `build/coleco/choplift.rom`.
 
 | Control | Action |
 |---|---|
-| `1` `2` `3` or LEFT/RIGHT at the title | Pick easy, medium or hard (shown in red brackets; kept between games) |
+| `1` `2` `3` or LEFT/RIGHT at the title | Pick easy, medium or hard (shown in cyan brackets; kept between games) |
 | FIRE at the title | Start |
 | Joystick up/down | Climb/descend; holding DOWN builds descent speed |
 | Release DOWN | Stop descending; use short presses for a soft landing |
-| Stick centred | Gravity: the helicopter sinks slowly and settles safely |
+| No UP or DOWN | Gravity: the helicopter sinks slowly, even while flying sideways; tap UP to hold altitude |
 | Joystick left/right | Fly sideways; facing stays independent |
 | Release left/right | Brake into a hover, keeping your aim |
 | Tap FIRE in flight | Fire on release: sideways when facing left/right, a bomb when facing front |
@@ -32,7 +32,8 @@ release ALPHA LOCK if it interferes with the joystick's vertical axis.
 You start at home on the right, on the landing pad beside the brick headquarters with the
 flag on its roof. Fly
 west across the demilitarised zone. The hostages behave as in the Apple II original. The
-nearest barrack is already burning when you start, with some of its people out. For the
+nearest barrack is already burning when you start, with six of its people spread across
+their wandering ground. For the
 others, drop low and **strafe** one of the blue barracks (fire sideways; bombs pass by): it
 is blown open, a fire burns inside, and its sixteen people come out a few at a time, even
 while you are away or your cabin is full. Only about six are ever outside; more come out
@@ -43,7 +44,7 @@ those within reach run for the cabin, as many as there are free seats, and climb
 Lift off and land again further on and the runners follow, as far as you lead them (never
 past the DMZ fence); but if someone nearer is waiting, or you leave them far behind, they
 give up and run all the way back to their own barrack, ignoring you unless you land right
-beside them. With the cabin full they wave you off and wait for you to come back. Fly home and land on the gray **H pad** against the building:
+beside them. With the cabin full they wave you off and wait for you to come back. Fly home and land on the red pad's **yellow octagon** beside the building:
 passengers only step out with the whole helicopter on the pad. They walk in through the
 door, and some stop on the dark ground beside it to wave at you first. The last one out
 always does. Lift off with UP before moving sideways on the ground. Weapons and turning do
@@ -59,6 +60,12 @@ burns down gradually to embers, and only then,
 with the screen clear, does the next helicopter appear on the pad. A crash loses everyone
 aboard, but the camps keep emptying while the wreck burns. Do not land on people or shoot
 through them; your bombs fall in front of the crowd and pass people by.
+The home scene shows FIRST, SECOND or THIRD SORTIE between two solid bars when a new
+helicopter arrives. Its rotor turns while the message is up. Press UP to lift off and clear
+any sortie message immediately; FIRST SORTIE waits for that move, while later messages
+also clear after a brief pause. The hidden practice mode numbers sorties four through nine.
+The two boundary fences enclose a 320-pixel demilitarized zone west of the landing pad.
+
 **Tanks** roll along the foreground below the camps, so only **bombs** (face front and tap
 FIRE) destroy them. They **lob short shells** from raised barrels that rise and fall under
 gravity, aimed at where you are when they fire, and only while they are on screen and you
@@ -99,10 +106,12 @@ When more than four sprites share a scanline they flicker in turn (sprite flicke
 nothing that can hit you is ever invisible for long; a tank shell is always drawn before it
 can strike. The helicopter holds its place on screen while the scenery scrolls past it in
 8-pixel steps, and sprites move on the same frame as the scenery, so it does not shake or
-jitter. The ground is dark blue and the landing pad gray with a white rim and an H.
+jitter. A low blue horizon runs behind the people, buildings and landed helicopter. The
+landing apron is dark red, with a gray sidewalk by the building and a yellow landing marker.
 
-The mission summary names the skill level you played, with your saved, lost and stranded
-counts and the session's best rescue.
+The mission summary centres its heading at the top and the FIRE prompt at the bottom. It
+names the skill level you played, with your saved, lost and stranded counts and the
+session's best rescue.
 
 For practice, type **838** at the title and answer **1–9** for the number of helicopters.
 The summary marks a practice game with a small asterisk after its skill level and saved
@@ -133,8 +142,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,648 / 24,336 B fixed (+ 7,796 and 7,576 / 8,190 B banks) | 812 / 7,854 B |
-| ColecoVision | 31,202 / 32,768 B ROM | 812 / 814 B |
+| TI-99/4A | 22,750 / 24,336 B fixed (+ 8,188 and 8,186 / 8,190 B banks) | 812 / 7,854 B |
+| ColecoVision | 32,100 / 32,768 B ROM | 812 / 814 B |
 
 ## Speed
 
@@ -160,7 +169,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   two-colours-per-row limit), world map, star table and shell arc; writes `src/assets.bas`
   (play-time data) and `src/assets_boot.bas` (art uploaded once at power-on, in its own TI
   bank).
-- `tools/check.py`: 106 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 111 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,

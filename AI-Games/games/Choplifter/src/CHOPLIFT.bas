@@ -56,21 +56,24 @@ BANK SELECT 2
 DEFINE SPRITE 0,64,sprite_art
 DEFINE CHAR 128,112,tile_art
 DEFINE COLOR 128,112,tile_colors
-DEFINE COLOR 144,2,flag_colors
 ' Codes 14-31 are reserved for fire/crowds; 128-239 belong to scenery.
 DEFINE COLOR 126,2,fire_colors
 ' Codes 1-13 are the HUD band's (assets/generate.py HUD_CHARS), in the top
 ' screen third only: patterns at 8, colours at 8192+8.
 DEFINE VRAM 8,104,hud_art
 DEFINE VRAM 8200,104,hud_colors
-' Bottom-third characters 120-124: the pad-fence cell and the foothills.
-DEFINE VRAM 5056,40,low_art
-DEFINE VRAM 13248,40,low_colors
+' Codes 14-22 of the top third are the moon's (assets/generate.py MOON).
+DEFINE VRAM 112,72,moon_art
+DEFINE VRAM 8304,72,moon_colors
+' Bottom-third characters 120-125: pad-fence cell, foothills and low horizon.
+DEFINE VRAM 5056,48,low_art
+DEFINE VRAM 13248,48,low_colors
 DEFINE CHAR 240,16,star_bits
 DEFINE COLOR 240,16,star_colors
 #if TI994A
 BANK SELECT 1
 #endif
+DEFINE COLOR 144,2,flag_colors
 DEFINE CHAR 60,1,practice_star
 DEFINE VRAM 5104,16,fire_frame0
 #camp_x(0)=128
@@ -108,8 +111,8 @@ NEXT ini
 FOR ini=0 TO 63
     person_state(ini)=0
 NEXT ini
-GOSUB first_camp
 #crowd_clock=0
+GOSUB first_camp
 crowd_bank=0
 crowd_pose=255
 crowd_dirty=1
@@ -120,7 +123,7 @@ delivery_pending=0
 board_count=0
 ended=0
 GOSUB new_heli
-GOSUB game_screen
+GOSUB show_sortie
 GOSUB clock_reset
 
 main_loop:
@@ -173,7 +176,7 @@ mission_over:
 ' off while the last passenger walked in.
 IF saved = 64 THEN
     IF #camera <> 1792 THEN
-        #hx=1932:#move=0:GOSUB move_heli
+        #hx=1904:#move=0:GOSUB move_heli
         hy=LANDED:hspeed=0
         #camera=65535
         GOSUB game_screen
@@ -195,6 +198,20 @@ BANK SELECT 1
 #endif
 RETURN
 
+show_sortie:
+' Draw the home scene first, then the overlay from the boot bank. Clear only
+' its sky cells and restore their stars; a second full redraw would flash.
+GOSUB game_screen
+#if TI994A
+BANK SELECT 2
+#endif
+GOSUB sortie_overlay
+#if TI994A
+BANK SELECT 1
+#endif
+GOSUB stars_draw
+RETURN
+
 crash_frame:
 ' Camps keep releasing people and walkers keep walking while the wreck falls
 ' and burns. old_y follows the wreck, so its impact is no landing on anyone.
@@ -204,7 +221,7 @@ GOSUB crash_tick
 IF crash_timer = 0 THEN
     IF lives = 0 THEN GOTO result_screen
     GOSUB new_heli
-    GOSUB game_screen
+    GOSUB show_sortie
     GOSUB clock_reset
 END IF
 GOTO draw_frame
@@ -214,7 +231,7 @@ GOSUB silence
 rotor_clock=0:rotor_phase=0
 fall_speed=0:fall_hold=0
 ' A new helicopter stands in the middle of the landing pad.
-#hx=1932
+#hx=1888
 hy=LANDED
 hspeed=0
 hdir=0
@@ -288,15 +305,13 @@ ELSE
         END IF
     ELSE
         fall_speed=0:fall_hold=0
-        ' Gravity: with the stick centred the helicopter sinks 1 px every 6
-        ' frames (10 px/s), slow enough to settle on the ground safely.
-        IF input_dir = 2 THEN
-            IF hy < LANDED THEN
-                sink_clock=sink_clock+dt
-                IF sink_clock >= 6 THEN
-                    sink_clock=sink_clock-6
-                    hy=hy+1
-                END IF
+        ' Without vertical thrust the helicopter sinks 1 px every 6 frames
+        ' (10 px/s), including while it flies sideways.
+        IF hy < LANDED THEN
+            sink_clock=sink_clock+dt
+            IF sink_clock >= 6 THEN
+                sink_clock=sink_clock-6
+                hy=hy+1
             END IF
         END IF
     END IF
@@ -667,10 +682,10 @@ IF delivery_pending THEN
 END IF
 IF transfer_timer > dt THEN transfer_timer=transfer_timer-dt ELSE transfer_timer=0
 ' Unloading needs the whole helicopter (all 32 pixels) on the landing pad,
-' x 1920-1975: 1920 <= #hv <= 1944.
+' the flat back of the pad west of the building: 1872 <= #hv <= 1912.
 IF hy = LANDED THEN
-    IF #hv >= 1920 THEN
-        IF #hv <= 1944 THEN
+    IF #hv >= 1872 THEN
+        IF #hv <= 1912 THEN
             IF aboard THEN
                 IF transfer_timer = 0 THEN
                     GOSUB unload_person
@@ -778,7 +793,7 @@ walk_camp:
 '   stands there: for index i in the camp, camp_x - 128 + roam_goal(8 * (i
 '   AND 1) + (((clock + roam_phase(i)) / 128 + 3 * (i / 2)) AND 7)), so even
 '   and odd people never share a spot (ROAM_GOALS in assets/generate.py).
-' - Walking home (6) to the office door (1992), except the one waving.
+' - Walking home (6) to the office door (1960), except the one waving.
 ' Strides crossed = (clock+p)/stride - (clock+p-dt)/stride, 4 px each.
 ASM jmp walk_start
 ' walk_steps: r7 = pixels to step this update (0 for none); uses r0, r1, r9.
@@ -985,11 +1000,11 @@ ASM mov r7,r7
 ASM jeq walk_next
 ASM li r0,256
 ASM movb r0,@cvb_CROWD_DIRTY
-ASM ci r8,1992
+ASM ci r8,1960
 ASM jhe walk_inside
 ASM a r7,r8
 ASM mov r8,*r6
-ASM ci r8,1992
+ASM ci r8,1960
 ASM jl walk_next
 ASM walk_inside:
 ASM li r1,1792
@@ -1095,9 +1110,9 @@ crowd_step=crowd_step*4
 RETURN
 
 home_walk:
-IF #person_x(ep) < 1992 THEN
+IF #person_x(ep) < 1960 THEN
     #person_x(ep)=#person_x(ep)+crowd_step
-    IF #person_x(ep) >= 1992 THEN person_state(ep)=7:home_walking=home_walking-1
+    IF #person_x(ep) >= 1960 THEN person_state(ep)=7:home_walking=home_walking-1
 ELSE
     person_state(ep)=7:home_walking=home_walking-1
 END IF
@@ -1109,8 +1124,8 @@ wave_tick:
 ' Some rescued people stop just short of the home to wave at the helicopter
 ' before going in: one in four, and always the last one out of the cabin
 ' (last_out), who cuts short anyone else's wave. One waves at a time, for 90
-' frames, at x=1964 (on the black ground 4 px short of the building, for
-' contrast), then steps past the spot (1964-1971, which no walk step can
+' frames, at x=1932 (on the ground 4 px short of the building, for
+' contrast), then steps past the spot (1932-1939, which no walk step can
 ' jump) so nobody waves twice. The walk skips wave_id and the crowd
 ' draws it with the standing poses, whose arm goes up and down.
 IF wave_id < 64 THEN
@@ -1118,15 +1133,15 @@ IF wave_id < 64 THEN
 END IF
 FOR ep=0 TO 63
     IF person_state(ep) = 6 THEN
-        IF #person_x(ep) >= 1964 THEN
-            IF #person_x(ep) < 1972 THEN GOSUB wave_choose
+        IF #person_x(ep) >= 1932 THEN
+            IF #person_x(ep) < 1940 THEN GOSUB wave_choose
         END IF
     END IF
 NEXT ep
 RETURN
 
 wave_end:
-#person_x(wave_id)=1972
+#person_x(wave_id)=1940
 wave_id=255
 crowd_dirty=1
 RETURN
@@ -1141,7 +1156,7 @@ ELSE
 END IF
 wave_id=ep
 wave_time=90
-#person_x(ep)=1964
+#person_x(ep)=1932
 crowd_dirty=1
 RETURN
 
@@ -1214,7 +1229,7 @@ RETURN
 
 board_run:
 ' A chaser runs for the door at a pixel a frame, never past the DMZ fence
-' (x 1552). It gives up and runs home (8) with the helicopter more than 180 px
+' (x 1472). It gives up and runs home (8) with the helicopter more than 180 px
 ' away, or when someone nearer is waiting (nearest_id) and as many chase as
 ' may. With the cabin full it stops and waves it off; under a hovering
 ' helicopter it stops 10-17 px from the door, so some stand right where it
@@ -1246,7 +1261,7 @@ ELSE
 END IF
 IF #person_x(ep) < #board_door THEN
     #person_x(ep)=#person_x(ep)+dt
-    IF #person_x(ep) > 1552 THEN #person_x(ep)=1552
+    IF #person_x(ep) > 1472 THEN #person_x(ep)=1472
 ELSE
     #person_x(ep)=#person_x(ep)-dt
 END IF
@@ -1298,10 +1313,10 @@ crowd_dirty=1:hud_dirty=1
 RETURN
 
 enemy_tick:
-' Enemies act while the helicopter is west of the DMZ fence (x=1568).
+' Enemies act while the helicopter is west of the DMZ fence (x=1488).
 ' A shell fired this update (tank_tick) first moves on the next one, so it is
 ' always drawn at the muzzle before it can do anything.
-IF #hx < 1568 THEN GOSUB jet_spawn
+IF #hx < 1488 THEN GOSUB jet_spawn
 IF shell_on THEN GOSUB shell_tick
 GOSUB tank_tick
 IF jet_on THEN GOSUB jet_tick
@@ -1311,14 +1326,14 @@ IF sorties >= 2 THEN
         IF #drone_wait > #elapsed THEN
             #drone_wait=#drone_wait-#elapsed
         ELSE
-            IF #hx < 1568 THEN
+            IF #hx < 1488 THEN
                 ' An air mine drifts in at mid height from out of view, never
                 ' from the top of the screen and never on top of the
                 ' helicopter: from beyond the east edge, or the west edge when
-                ' the east one is past the DMZ fence (x 1552).
+                ' the east one is past the DMZ fence (x 1472).
                 drone_on=1
                 #drone_x=#camera+264
-                IF #drone_x > 1552 THEN #drone_x=#camera-24
+                IF #drone_x > 1472 THEN #drone_x=#camera-24
                 drone_y=88
             END IF
         END IF
@@ -1335,7 +1350,7 @@ IF drone_on THEN
     #ax=#hv+8
     IF #drone_x < #ax THEN
         #drone_x=#drone_x+drone_step
-        IF #drone_x > 1552 THEN #drone_x=1552
+        IF #drone_x > 1472 THEN #drone_x=1472
     ELSE
         IF #drone_x > #ax THEN #drone_x=#drone_x-drone_step
     END IF
@@ -1358,7 +1373,7 @@ jet_spawn:
 ' A sortie counts only when the last person in a nonempty cabin has unloaded.
 ' Keep the launch countdown untouched throughout the first collection.
 IF sorties = 0 THEN RETURN
-IF #hx >= 1568 THEN RETURN
+IF #hx >= 1488 THEN RETURN
 IF jet_on THEN RETURN
 IF #jet_wait > #elapsed THEN
     #jet_wait=#jet_wait-#elapsed
@@ -1373,7 +1388,7 @@ ELSE
     #jet_left=24
     IF #hx > 184 THEN #jet_left=#hx-160
     #jet_right=#hx+144
-    IF #jet_right > 1528 THEN #jet_right=1528
+    IF #jet_right > 1448 THEN #jet_right=1448
     #jet_x=#jet_right
     #jet_wait=#jet_delay(threat)
 END IF
@@ -1453,7 +1468,7 @@ IF jet_passes = 0 THEN RETURN
 IF jet_turn THEN RETURN
 IF jet_ammo = 0 THEN RETURN
 IF missile_on THEN RETURN
-IF #hx >= 1568 THEN RETURN
+IF #hx >= 1488 THEN RETURN
 ' Only a jet on screen fires.
 IF #jet_x+8 < #camera THEN RETURN
 IF #jet_x+8 >= #camera+256 THEN RETURN
@@ -1510,7 +1525,7 @@ IF missile_dir THEN
 ELSE
     #missile_x=#missile_x+#bullet_step
 END IF
-IF #missile_x >= 1568 THEN GOTO missile_miss
+IF #missile_x >= 1488 THEN GOTO missile_miss
 IF missile_aim = 2 THEN
     missile_y=missile_y+dt+dt
 ELSE
@@ -1545,8 +1560,8 @@ tank_tick:
 ' Tanks drive on the foreground plane (rows 22-23), below the barracks and
 ' the crowd row, so they never share scanlines with a landed helicopter and
 ' only bombs reach them. One tank until the first delivery, then up to two.
-' They crawl toward the helicopter at 15 px/s, never past x=1504 (its east
-' end 1535: the DMZ fence leans up to 32 px west at the tanks' plane when it
+' They crawl toward the helicopter at 15 px/s, never past x=1424 (its east
+' end 1455: the DMZ fence leans up to 32 px west at the tanks' plane when it
 ' is near the west edge of the view), and one stops 40 px short of the
 ' other. A single timer (#tank_wait, counting only
 ' while the helicopter is west of the fence) spaces arrivals and shells: when
@@ -1558,7 +1573,7 @@ tank_motion=tank_motion AND 3
 FOR ti=0 TO 1
     IF tank_on(ti) THEN GOSUB tank_move
 NEXT ti
-IF #hx >= 1568 THEN RETURN
+IF #hx >= 1488 THEN RETURN
 IF #tank_wait > #elapsed THEN #tank_wait=#tank_wait-#elapsed:RETURN
 #tank_wait=0
 ti=0
@@ -1580,7 +1595,7 @@ tank_spawn:
 tank_on(ti)=1
 #tank_wait=150
 #ax=#hx+180
-IF #ax > 1504 THEN #ax=1504
+IF #ax > 1424 THEN #ax=1424
 IF #hx > 180 THEN
     tj=1-ti
     IF tank_on(tj) = 0 THEN
@@ -1604,7 +1619,7 @@ IF #ax < #hx THEN
         END IF
     END IF
     #ax=#ax+tank_step
-    IF #ax > 1504 THEN #ax=1504
+    IF #ax > 1424 THEN #ax=1424
 ELSE
     IF tank_on(tj) THEN
         IF #bx < #ax THEN
@@ -1684,7 +1699,7 @@ IF shell_dir THEN
     #shell_x=#shell_x-#bullet_step
 ELSE
     #shell_x=#shell_x+#bullet_step
-    IF #shell_x >= 1568 THEN shell_on=0:RETURN
+    IF #shell_x >= 1488 THEN shell_on=0:RETURN
 END IF
 ' Harmless for its first 8 frames: a shell fired under a low helicopter
 ' passes through it visibly instead of striking before anyone sees it.
@@ -1705,10 +1720,6 @@ RETURN
 distance_x:
 IF #ax > #bx THEN #distance=#ax-#bx ELSE #distance=#bx-#ax
 RETURN
-distance_y:
-IF ay > by THEN ydistance=ay-by ELSE ydistance=by-ay
-RETURN
-
 camera_tick:
 #newcam=0
 IF #hx > 112 THEN #newcam=#hx-112
@@ -1731,7 +1742,9 @@ star_visible=0
 ' template's 00 placeholders never reach a frame on their own).
 SCREEN hud_rows,0,0,32,3
 GOSUB hud
-SCREEN ground_row,0,704,32,1
+' The moon stands still in the sky (rows 5-7, columns 26-28): no star row
+' crosses it and nothing scrolls the sky.
+SCREEN moon_cells,0,186,3,3,3
 SCREEN ground_row,0,736,32,1
 terrain_dirty=1
 GOSUB camera_tick
@@ -1859,21 +1872,23 @@ GOSUB camp_fronts
 #mapoff=#camera/8
 #mapoff=#mapoff+1024
 SCREEN world_map,#mapoff,672,32,1
-' Row 22 erases the previous fence stamp. Row 23 is drawn once by game_screen:
-' nothing else ever writes it, so scrolling does not recopy it.
-SCREEN ground_row,0,704,32,1
-#fence_world=1568
+' Row 22 (the pad's front half near home) also erases the previous fence
+' stamp. Row 23 is drawn once by game_screen: nothing else ever writes it, so
+' scrolling does not recopy it.
+#mapoff=#mapoff+256
+SCREEN world_map,#mapoff,704,32,1
+#fence_world=1488
 GOSUB fence_boundary
-#fence_world=1888
+#fence_world=1808
 GOSUB fence_boundary
 terrain_dirty=0
 RETURN
 
 camp_fronts:
-' A shot-open barrack is blown out: its two middle columns (west of the camp
-' column and the camp column itself) show the ragged hole on row 19 (134 and
-' 136). The fire inside is on the crowd row (crowd_doors). Raw name-table
-' addresses, no VDP reads.
+' A shot-open barrack keeps its ragged hole on row 19 (134 and 136).
+' When no people are visible, crowd_commit copies the unmodified map row 20;
+' stamp the fire there as well. Otherwise crowd_doors puts it in crowd_cells.
+' Raw name-table addresses, no VDP reads.
 FOR tc=0 TO 3
     IF camp_open(tc) THEN
         #fire_world=#camp_x(tc)-8
@@ -1883,8 +1898,8 @@ FOR tc=0 TO 3
                 IF #vaddr < 256 THEN
                     #vaddr=#vaddr/8
                     #vaddr=#vaddr+6752
-                    fire_char=134+fire_tile+fire_tile
-                    VPOKE #vaddr,fire_char
+                    VPOKE #vaddr,134+fire_tile+fire_tile
+                    IF crowd_mask = 0 THEN VPOKE #vaddr+32,126+fire_tile
                 END IF
             END IF
             #fire_world=#fire_world+8
@@ -1913,7 +1928,7 @@ IF crowd_dirty = 0 THEN RETURN
 ' going home near the home: everyone outside goes through the compositor.
 crowd_mask=crowd_seen
 IF home_walking THEN
-    IF #camera > 1664 THEN crowd_mask=crowd_mask OR 16
+    IF #camera > 1632 THEN crowd_mask=crowd_mask OR 16
 END IF
 IF crowd_mask = 0 THEN
     GOSUB crowd_commit
@@ -2054,6 +2069,8 @@ IF crowd_mask THEN
     SCREEN crowd_cells,0,640,32,1
 ELSE
     SCREEN world_map,#crowd_map,640,32,1
+    ' Even without a terrain scroll, a crowd redraw must restore the fire.
+    IF terrain_dirty = 0 THEN GOSUB camp_fronts
 END IF
 IF terrain_dirty THEN GOSUB terrain
 crowd_dirty=0
@@ -2359,7 +2376,7 @@ FOR fence_y=0 TO 1
                 #vaddr=#fence_row+#fence_draw
                 ' fire_char is idle here; camp_fronts uses it after both fences.
                 fire_char=fence_codes(fence_char-160)
-                IF #fence_world = 1888 THEN fire_char=home_fence_codes(fence_char-160)
+                IF #fence_world = 1808 THEN fire_char=home_fence_codes(fence_char-160)
                 IF fire_char THEN VPOKE #vaddr,fire_char
             END IF
         END IF
@@ -2386,7 +2403,7 @@ IF flag_visible THEN
     VPOKE #vaddr,32
 END IF
 flag_visible=0
-#relative=2008-#camera
+#relative=1976-#camera
 IF #relative < 256 THEN
     flag_visible=1
     flag_col=#relative/8
@@ -2977,9 +2994,9 @@ DATA BYTE 72,79,87,73,69,0
 #else
 DATA BYTE 4,6,9,4,3,0
 #endif
-' The title's difficulty brackets: light red (9) on black, all eight rows.
+' The title's difficulty brackets: cyan (7) on black, all eight rows.
 bracket_colors:
-DATA BYTE 145,145,145,145,145,145,145,145
+DATA BYTE 113,113,113,113,113,113,113,113
 jet_reload:
 DATA BYTE 90,60,40,0
 jet_aim:
@@ -2991,13 +3008,20 @@ DATA BYTE 40,48,56,0
 ' bank, which stays selected, to keep the fixed area's unoptimised image
 ' below >FFFE (CLAUDE.md section 3A). So do the camps' occasional events.
 
+distance_y:
+' Used by the occasional missile aim; the data bank stays selected in play.
+IF ay > by THEN ydistance=ay-by ELSE ydistance=by-ay
+RETURN
+
 first_camp:
 ' The barrack nearest home (camp 3) is already burning when a mission
 ' starts, as in the Apple II original, with its first six people out.
+' Put them at their distinct first wandering goals, not all at the doorway.
 camp_open(3)=1:camp_released(3)=6:camp_active(3)=6
 FOR ep=48 TO 53
     person_state(ep)=1
-    #person_x(ep)=896
+    #person_x(ep)=#camp_x(3)+first_out(ep-48)
+    #person_x(ep)=#person_x(ep)-128
 NEXT ep
 RETURN
 
@@ -3143,9 +3167,9 @@ GOSUB hide_all
 GOSUB menu_restore
 CLS
 GOSUB best_update
-PRINT AT 167,"MISSION COMPLETE"
-IF lives = 0 THEN PRINT AT 167,"MISSION ENDED   "
-IF saved = 64 THEN PRINT AT 167,"PERFECT RESCUE! "
+PRINT AT 72,"MISSION COMPLETE"
+IF lives = 0 THEN PRINT AT 72," MISSION REPORT "
+IF saved = 64 THEN PRINT AT 72,"PERFECT RESCUE! "
 ' The skill level played; a practice (838) game marks it, and its saved
 ' count, with the small star (character 60) right after.
 PRINT AT 231,"SKILL LEVEL    "
@@ -3164,7 +3188,7 @@ digit_value=64-saved-lost:#digit_pos=6582:GOSUB digits
 PRINT AT 487,"BEST RESCUE    "
 digit_value=best:#digit_pos=6646:GOSUB digits
 IF best_practice THEN VPOKE 6648,60
-PRINT AT 614,"PRESS FIRE TO CONTINUE"
+PRINT AT 741,"PRESS FIRE TO CONTINUE"
 GOSUB release_input
 result_wait:
 WAIT
@@ -3187,7 +3211,7 @@ start_lives=3:practice=0:title_seq=0:title_key=15
 GOSUB silence
 GOSUB hide_all
 GOSUB menu_restore
-' The difficulty line's brackets are light red on black, so the chosen level
+' The difficulty line's brackets are cyan on black, so the chosen level
 ' stands out from the white text. (Characters 91 and 93 appear on no other
 ' screen; the crowd recolours its cells in play and menu_restore resets the
 ' bottom third.)
@@ -3198,7 +3222,7 @@ PRINT AT 135,"C H O P L I F T E R"
 PRINT AT 200,"RESCUE OPERATIONS"
 PRINT AT 386,"FREE 64 PEOPLE. FLY THEM HOME."
 GOSUB title_level
-PRINT AT 676,"2026 UNHUMAN AND AI C&C"
+PRINT AT 644,"2026 UNHUMAN AND AI C&C"
 PRINT AT 742,"PRESS FIRE TO START"
 #hx=0:rotor_clock=0:rotor_phase=0
 GOSUB title_heli
@@ -3340,8 +3364,38 @@ INCLUDE "assets.bas"
 #if TI994A
 BANK 2
 #endif
-' The fireworks run with this bank (the TI's boot bank) selected, by
-' show_fireworks in the fixed area.
+' The fireworks and sortie overlay run with this bank (the TI's boot bank)
+' selected by fixed-area wrappers.
+
+sortie_overlay:
+' Character 23 is a two-pixel solid line in the middle screen third only.
+' Both lines use the same ten cells, centred above and below the title.
+DEFINE VRAM 2232,8,hud_art
+DEFINE VRAM 10424,8,sortie_bar_colors
+SCREEN sortie_bar_cells,0,331,10,1
+ini=start_lives-lives
+IF ini > 2 THEN ini=3
+ini=ini*16
+SCREEN sortie_titles,ini,361,14,1
+IF ini = 48 THEN VPOKE 6515,start_lives-lives+49
+SCREEN sortie_bar_cells,0,395,10,1
+draw_color=15
+ini=0
+sortie_wait:
+draw_slot=0
+GOSUB heli_draw
+WAIT
+IF cont1.up THEN hy=152:GOTO sortie_clear
+dt=1:GOSUB rotor_tick
+IF lives = start_lives THEN GOTO sortie_wait
+ini=ini+1
+IF ini < 90 THEN GOTO sortie_wait
+sortie_clear:
+' One narrow name-table copy removes the whole panel; stride zero reuses
+' the same 14 spaces on all three rows, then stars_draw fills covered stars.
+SCREEN sortie_blank_cells,0,329,14,3,0
+star_visible=0
+RETURN
 
 fireworks:
 ' A fireworks display over the home (the view at its east end): the script

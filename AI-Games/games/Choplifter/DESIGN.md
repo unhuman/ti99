@@ -1,7 +1,7 @@
 # Choplifter — TI-99/4A / CVBasic
 
 Current-state design. History is in git; sizes below are from the latest build
-(2026-10-07); full-loop speeds were re-measured the same day, per-routine costs on 2026-10-06.
+(2026-10-08); full-loop speeds were re-measured on 2026-10-07, per-routine costs on 2026-10-06.
 
 ## Performance budget
 
@@ -50,32 +50,37 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,648 | 24,336 | 1,688 free |
-| TI fixed area, unoptimised | 24,468 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 7,796 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
-| TI boot bank (`BANK 2`) | 7,576 | 8,190 | art uploaded only at power-on; the fireworks code and tables; the menu font |
+| TI fixed area (after short branches) | 22,750 | 24,336 | 1,586 free |
+| TI fixed area, unoptimised | 24,570 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 8,188 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
+| TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
 | TI RAM | 812 | 7,854 | |
-| ColecoVision ROM | 31,202 | 32,768 | |
+| ColecoVision ROM | 32,100 | 32,768 | last non-padding byte |
 | ColecoVision RAM | 812 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
 files. `assets.bas` (crash flames, map, crowd glyphs and palettes, roaming goals, fire
 frames, arcs, the explosion timelines) goes into the data bank, which start-up selects for
-good. `assets_boot.bas` (all 64 sprites, the scenery characters and colours, waiting
-people, stars, the fireworks, the menu font) goes into the boot bank, which `boot:` selects
-only around those uploads; `show_fireworks` and `menu_restore`, in the fixed area, select it
-around the fireworks and the font's upload (the vblank handler reads only fixed tables).
+good. `assets_boot.bas` (all 64 sprites, scenery characters and colours, stars, sortie
+overlay tables, fireworks and the menu font) goes into the boot bank. `boot:` selects it
+around power-on uploads; `show_sortie`, `show_fireworks` and `menu_restore`, in the fixed area,
+select it around their respective calls (the vblank handler reads only fixed tables).
 With the boot-only art out of it, the data bank also holds the enemy and hit-box tables and
 the cold code: the crash routines (`crash`, `crash_tick`, the burst triggers and
 `crash_draw`, which run only after a crash or a hit), the camps' occasional events
-(`first_camp`), the title (and its helicopter), the 838 setup and the
+(`first_camp`, `distance_y`), the title (and its helicopter), the 838 setup and the
 results. The crash routines moved there when the explosions, difficulty levels and new
 collision code pushed the unoptimised fixed image past >FFFE; code in the data bank runs
 at the same speed, since bank 1 never leaves the window during play. ColecoVision builds
 the same source unbanked.
 
-`tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (about 425 branches,
-1.7 KB saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
+`show_sortie` builds the home scene, selects the boot bank for `sortie_overlay`, then
+restores the play-time bank and redraws stars in the cleared sky cells. It does not rebuild
+the whole screen when the message ends. The overlay code and text stay out of the nearly
+full fixed area and data bank.
+
+`tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (455 branches,
+1,820 bytes saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
 then; it also checks both bank images and their place in the cart. The menu font's colour
 table (all white on black) is filled at run time from the idle crowd pixel buffer instead of
 256 identical ROM bytes. ColecoVision RAM is the tightest budget: `#vaddr` is one shared
@@ -132,14 +137,16 @@ not claims of identical original AI.
 
 ## Play and accounting
 
-The world is 2,048 pixels wide. Home is at the east end: a 40×13 brick building
-(x=1976–2015, door at x=1992) with its flag on the roof at x=2008, and against its west wall
-a landing pad 56 pixels wide (x=1920–1975). The helicopter spawns in the middle of the pad
-(x=1932) and unloads only with all 32 of its pixels on it (1920 ≤ x ≤ 1944). Each passenger walks to the door, and
-some stop on the way to wave at the helicopter (*Play and accounting*). A 320-pixel demilitarised zone (DMZ)
-spans x=1568–1888 between two boundary fences. Four camps at x=128, 384, 640 and 896 hold 16
+The world is 2,048 pixels wide. Home is at the east end: a 40×16 brick building
+(x=1944–1983, door at x=1960) with its flag on the roof at x=1976. A dark-red landing
+apron spreads in perspective from x=1872–2007 at its back edge to x=1842–2037 at its
+front, with a gray sidewalk by the building and a yellow octagonal landing marker.
+The helicopter spawns at x=1888 and unloads only when all 32 of its pixels are on the
+landing area (1872 ≤ x ≤ 1912). Each passenger walks to the door, and some stop on the
+way to wave at the helicopter (*Play and accounting*). A 320-pixel demilitarised zone (DMZ)
+spans x=1488–1808 between two boundary fences. Four camps at x=128, 384, 640 and 896 hold 16
 people each; each barrack is 32 pixels wide (x−16 to x+15), and the nearest one's outer wall
-is 656 pixels from the enemy-side fence.
+is 576 pixels from the enemy-side fence.
 
 Strafing a barrack (a sideways shot whose 3×3 touches the drawn hut, x−16 to x+15, at or
 below its roof line, y ≥ 151; bombs pass by) blows it open in a ground burst: its middle is
@@ -149,7 +156,8 @@ are (`camp_active` counts those outside), whatever the helicopter is doing, incl
 a crash; the rest wait inside and come out as others are picked up or killed. The barrack
 nearest home (camp 3) is already open when a mission starts ("One barracks has been blown
 open so the hostages can get free", the Apple II manual), with its first six out
-(`first_camp`). The cabin holds 16.
+(`first_camp`). They start at six distinct first wandering goals instead of all occupying
+the barrack doorway. The cabin holds 16.
 
 **Hostages outside**, after the Apple II original and the downloaded play-through (states:
 0 inside, 1 running about, 2 standing, 3 chasing, 4 lost, 5 aboard, 6 walking to the office,
@@ -176,10 +184,10 @@ open so the hostages can get free", the Apple II manual), with its first six out
   the skids within 40 px of the ground), the nearest person outside within 104 px of its door
   starts chasing it, one more each update, up to six or the free seats (`board_count`).
   Chasers run a pixel a frame. Landed, they board on reaching the door. Flying, they stop
-  underneath it, 10–17 px from the door ("sometimes stopping directly underneath you. If you
-  land on them, they will die", StrategyWiki's walkthrough), so a landing there crushes
-  those within 13 px. Someone already standing within 24 px of a hovering helicopter's door
-  stays put rather than flip between chasing and standing. Nobody passes x 1552, short of
+  underneath it, 10–17 px from the door, so a landing there crushes those within 13 px.
+  [Dan Gorlin's 1983 *JoyStik* article](https://www.digitpress.com/library/magazines/joystik/joystik_sep83.pdf)
+  describes that danger on page 16. Someone already standing within 24 px of a hovering helicopter's door
+  stays put rather than flip between chasing and standing. Nobody passes x 1472, short of
   the DMZ fence.
 - *Giving up.* Once as many chase as may, anyone chasing farther from the door than the
   nearest person waiting gives up, and so does a chaser the helicopter leaves more than 180 px
@@ -195,15 +203,22 @@ open so the hostages can get free", the Apple II manual), with its first six out
 Land on the pad at home
 to unload people one at a time; each walks to the building's door and counts as saved on
 leaving the cabin. One in four (ids divisible by 4), and always the last one out of the
-cabin (`last_out`), stops at x=1964 on the black ground, its raised arm 4 px short of the
-building (for contrast), and waves at the helicopter for 90 frames: standing poses, arm up
+cabin (`last_out`), stops at x=1932 on the low horizon, its raised arm 4 px short of the
+building, and waves at the helicopter for 90 frames: standing poses, arm up
 and down. One waves at a time (`wave_id`); the last
 one out cuts short anyone else's wave. A waver steps past the spot afterwards, so nobody
 waves twice, and the next delivery's jets wait until everyone is inside.
 
 Saved + lost + aboard + everyone still at the camps always equals 64; a runner counts with
 its camp until it boards or dies. A crash loses everyone aboard and one helicopter; the next
-starts at home. The HUD, after the arcade's, is a magenta band (rows 0–2) holding four black
+starts at home. `game_screen` first draws the pad, post office and HUD. An overlay then
+shows FIRST, SECOND or THIRD SORTIE on row 11 between continuous orange 2-pixel bars on
+rows 10 and 12. The helicopter is visible with its rotor turning throughout the overlay.
+UP lifts it one pixel and clears any sortie message immediately. FIRST SORTIE waits for
+that move; subsequent messages also clear after 90 frames. Hidden practice runs display
+SORTIE 4 through SORTIE 9. Clearing copies spaces only into the 14 by 3 sky rectangle and
+`stars_draw` restores covered stars, avoiding a full-screen flash. The HUD,
+after the arcade's, is a magenta band (rows 0–2) holding four black
 capsules with pointed ends, 10 pixels tall (y 7–16): left to right the dead (a red dot),
 those on board (cyan) and the saved (bright green), each with two white digits, then the
 spare helicopters (excluding the one flying), right-justified in the fourth capsule's four
@@ -242,9 +257,10 @@ the ground, and so is sideways flight: lift off with UP first. Menus, pause and 
 the sampler and discard stale presses.
 
 Holding DOWN descends at 1 px/frame, speeding up every 24 held frames to 3 px/frame;
-releasing DOWN brakes. **Gravity:** with the stick centred (no direction at all) the
-helicopter sinks 1 px every 6 frames (10 px/s, `sink_clock`), slow enough to settle on the
-ground safely; any direction holds it up. Touching down faster than 1 px/frame crashes, even during
+releasing DOWN brakes. **Gravity:** without UP or DOWN, the helicopter sinks 1 px every
+6 frames (10 px/s, `sink_clock`), including while flying left or right. The pilot must
+correct with UP to hold altitude. This descent is slow enough to settle safely on the
+ground. Touching down faster than 1 px/frame crashes, even during
 spawn invulnerability; short taps land safely. While the descent is that fast the engine warns
 with a higher, pulsing whine (higher still at full speed), which stops when DOWN is released. Holding P (TI) or keypad 0 (ColecoVision) for
 12 frames pauses; the same key or FIRE resumes. Pause silences sound and resets the frame
@@ -273,7 +289,7 @@ releasing people and walkers keep walking; the wreck's impact counts as no landi
 
 ## Enemies
 
-All enemy activity and border checks use the DMZ fence, x=1568. Enemies never multiply (four
+All enemy activity and border checks use the DMZ fence, x=1488. Enemies never multiply (four
 sprites per scanline); they push harder instead. The **difficulty** (easy, medium or hard,
 picked on the title; medium at power-on) and the **level**, the number of completed
 deliveries capped at 4, together give `threat = 5 × difficulty + level`, which indexes rows of
@@ -309,11 +325,11 @@ shell 3×3. Player shots use the same jet boxes.
   y=189, sprite y=174), below the barracks and the crowd row, so only bombs reach them and a
   landed helicopter never shares their scanlines. One tank until the first completed
   delivery, then up to two (`tank_on(2)`, `#tank_x(2)`). They crawl toward the helicopter at
-  15 px/s, never past x=1504, and one stops 40 px short of the other ahead of it. The limit
+  15 px/s, never past x=1424, and one stops 40 px short of the other ahead of it. The limit
   is the fence as drawn: its perspective stamp leans its near end up to 32 px west when it
-  stands at the west edge of the view, so on the tanks' rows its westernmost ink is x=1536,
-  and a tank at 1504 ends (barrel tip, x+30) at 1534. At the old limit, 1536, a tank stood
-  half over the fence. Jets turn at x ≤ 1528 (16 px wide) and the air mine stops at 1552.
+  stands at the west edge of the view, so on the tanks' rows its westernmost ink is x=1456,
+  and a tank at 1424 ends (barrel tip, x+30) at 1454. Jets turn at x ≤ 1448
+  (16 px wide) and the air mine stops at 1472.
   A single
   timer (`#tank_wait`, counting only while the helicopter is west of the fence) spaces
   arrivals and shells: when it runs out a missing tank arrives (160 px behind the
@@ -365,18 +381,20 @@ shell 3×3. Player shots use the same jet boxes.
   the helicopter is west of the fence. A small dark-red spiked ball, it appears out of view
   at mid height (y=88): 8 px beyond the east edge of the view, or 8 px beyond the west edge
   when the east edge is past the fence. It drifts toward the helicopter at 15, 30 or 45 px/s
-  on both axes, in quarter pixels, stopping at the fence (x ≤ 1552). Touching it crashes the
-  helicopter; one shot destroys it. It used to appear at y=32 and, near the fence, at x=1552
-  even when that was on screen, which could put it on top of a helicopter flying high near
-  the fence: a crash with nothing visibly coming.
+  on both axes, in quarter pixels, stopping at the fence (x ≤ 1472). Touching it crashes the
+  helicopter; one shot destroys it. The off-screen spawn avoids placing it directly on a
+  helicopter flying high near the fence.
 
 ## Display
 
-256×192 TMS9918 screen. Rows 0–2 the HUD band, rows 3–16 sky (PAUSED, centred on row 4,
-which no star uses, while paused), rows 17–21 scenery (row 20 is the crowd row), rows 22–23 ground. The ground is dark blue
-(the mountains rise out of it in the same colour), the landing pad gray with a white rim,
-and the fence stamps white on the ground's blue. Ground contact: helicopter
-top y=153 (its lowest ink at y=167 touches ground row 21 at y=168); tanks on rows 22–23.
+256×192 TMS9918 screen. Rows 0–2 are the HUD band, rows 3–16 sky (PAUSED,
+centred on row 4, which no star uses, while paused), rows 17–19 distant scenery,
+and row 20 the crowd and building fronts. The lower four pixels of blank row-20
+cells are dark blue, making a horizon at y=164 behind the people, buildings and
+landed helicopter. Rows 21–23 are solid blue ground except for the apron and
+fence art. Crowd characters use black paper above the horizon and blue paper below
+it. Ground contact stays at helicopter top y=153 (its lowest ink at y=167 touches
+row 21 at y=168); tanks use rows 22–23.
 
 **Scrolling.** The camera moves in 8-pixel steps, following the helicopter at screen x 112.
 The helicopter is drawn at its *visible* x, `#hv` (set by `move_heli`): while the camera
@@ -414,7 +432,9 @@ line, a brick chimney at its west end (row 18), a dark doorway under the roof's 
 white porch below it with a ramp and rails, and a white footing. Shot open, it is blown
 out: its two middle columns (west of the camp column, and the camp column) show a ragged
 hole on row 19 (134, 136, written by `camp_fronts`) with a fire burning inside on the crowd
-row (126, 127, written into the crowd row by `crowd_doors` unless someone stands there). The
+row (126, 127). `crowd_doors` writes the fire into a composed crowd row, while `camp_fronts`
+stamps it directly when no people are visible and the raw map row is copied. It remains open
+after the last hostage leaves, through scrolling and screen rebuilds. The
 fire's two frames swap every 8 frames. Mountains are rough blue ranges 4–6 columns wide
 and up to 16 pixels tall: flanks and body on the crowd row (142, 133, 143), and on row 19
 a small peak (148), the tall snow-capped summit (149), a middling peak (158) and another
@@ -424,17 +444,22 @@ foothill characters on each side carry the slope down to the ground (121, 122 we
 124 east: bottom-third characters uploaded after the reserved cell 120 as `low_art`), so a
 range climbs over 2–3 characters per side instead of jumping up (`MOUNDS` gives each
 range's width and foothills). They sit in the gaps between the crowds (the generator
-asserts no range or foothill reaches the ground the people run about on, or the home fence). The home is five characters on rows 19–20 (columns 247–251) with the flag pole's stub
-drawn into the last roof character (139), so the pole stands on the roof. The landing pad
-(`PAD_ART`) is a gray slab seven characters wide on row 21 (columns 240–246, x 1920–1975)
-right against the building's west wall: a white rim with yellow lights at both ends, a
-white H in the middle (column 243) and a dark shadow under its front edge (codes 159, 137,
-138, 141). Its plain rows carry white ink, so a fence stamp drawn over it would stay white.
+asserts no range or foothill reaches the ground the people run about on, or the home fence).
+The foothills use blue paper in their lower four rows, matching the low horizon so
+their unpainted pixels do not make black notches at the ground line.
+The low-horizon character is code 125, uploaded just after those foothills; codes 126–127
+remain the barracks fire.
+The home is five characters on rows 19–20 (columns 243–247), with the flag pole's stub
+drawn into the last roof character (139). The apron (`PAD_PIXELS`) is drawn across rows
+21–22 from column 228 to the world edge. Its back edge runs x=1872–2007; its front
+edge widens to x=1842–2037. A gray sidewalk sits at the building, and a flattened
+yellow octagon under the spawn point marks where to land. `pad_cells` reuses plain
+ground cells and assigns the distinctive cells free character codes.
 
 **Fences, pad and flag.** Each fence is a clipped 5×2 perspective stamp from the
 horizon (row 21) into the foreground (row 22) whose near end leans away from the screen
-centre; empty stamp cells are transparent. The home fence's stamps end at column 238, so
-none crosses the pad; character 120 stays reserved for a precomposed pad-and-fence cell
+centre; empty stamp cells are transparent. The home fence's stamps end at column 229, so
+none crosses the colored apron; character 120 stays reserved for a precomposed pad-and-fence cell
 (the generator builds one if a stamp ever lands on the pad) and holds blanks. The flag
 waves by redefining two characters every 16 frames.
 
@@ -556,7 +581,7 @@ circling them clockwise at 2 px a frame on a 528-pixel loop (`title_heli`, x 8�
 y 8–79, clear of all text): banked and facing its way along the top (east) and bottom
 (west), in the front view down and up the sides, rotor turning. Below them FREE 64 PEOPLE.
 FLY THEM HOME. (row 12), then the difficulty on row 15, `1 EASY  2 MEDIUM  3 HARD` with
-the chosen one in brackets drawn light red (characters 91 and 93 recoloured with
+the chosen one in brackets drawn cyan (characters 91 and 93 recoloured with
 `DEFINE COLOR` from `bracket_colors`; no other screen uses them, the crowd recolours its own
 cells in play and `menu_restore` resets the bottom third), so the pick stands out from the
 white text (`title_level`); there are no control instructions on the
@@ -564,8 +589,10 @@ title (the README has them). Keys 1–3 pick the difficulty, or LEFT/RIGHT step 
 `title_code` reads the stick as keys 20 and 21 so one edge test serves both, and a 3 that
 continues an 8-3 sequence is not a choice. The pick lasts from game to game (medium at
 power-on). The credit line, 2026 UNHUMAN AND AI C&C (the bottom third's font has no lower
-case), is on row 21 and PRESS FIRE TO START on row 23: FIRE starts (no digit). The results
-screen also continues with FIRE only. It lists SKILL LEVEL (EASY, MEDIUM or HARD) on row 7,
+case), is on row 20 and PRESS FIRE TO START on row 23: FIRE starts (no digit). The results
+screen also continues with FIRE only. Its heading is centred on row 2 (MISSION REPORT when
+lives run out), with PRESS FIRE TO CONTINUE centred on the bottom row (23). It lists SKILL
+LEVEL (EASY, MEDIUM or HARD) on row 7,
 then PEOPLE SAVED, PEOPLE LOST and STRANDED on rows 9, 11 and 13, and BEST RESCUE on row
 15; a practice (838) game puts the small star after the skill level and the saved count.
 
@@ -608,7 +635,7 @@ shares the crowded lines, and the sky sparkles. The helicopter stands on the pad
 0-1. FIRE ends the show after its first second.
 
 The code and its tables live in the TI's boot bank (bank 2, otherwise read only at power-on),
-the only bank with room; `show_fireworks` in the fixed area selects it around the call and
+alongside the sortie overlay; `show_fireworks` in the fixed area selects it around the call and
 gives the data bank back, so no bank switch happens in banked code. Its variables are all
 ones the game leaves idle by then (the frame clock `#last`/`#elapsed`, the draw scratch,
 `ini`, `di`, `ay`, `by`, `blast_row`, `#ax`, `#bx`, `#distance`, `sfx_volume`, `#sfx_pitch`),

@@ -4,14 +4,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # Sparse far-sky layer: one star per row avoids overlap during wrapped scroll.
-# A sparse, irregular sky: three far stars (rows 3-6), two middle (7-11) and
-# three near (12-16), on uneven rows and spread across the width.
+# A sparse, irregular sky: one far star (rows 3-6), three middle (7-11) and
+# four near (12-16), on uneven rows and spread across the width. Rows 5-7
+# belong to the moon (MOON_ROW) and row 4 to PAUSED, so no star crosses them.
 STAR_X=[31,158,212,97,236,9,129,183]
-STAR_ROW=[3,5,6,8,10,12,13,15]
+STAR_ROW=[3,9,16,8,10,12,13,15]
+MOON_ROW,MOON_COL=5,26           # its top-left character, fixed on screen
 # Each star owns its sky row: stars_draw clears a star's old cell without
 # checking for a neighbour, which is only safe while no two stars share a row.
 assert len(STAR_X)==len(STAR_ROW) and len(set(STAR_ROW))==len(STAR_ROW)
 assert all(3<=row<=16 for row in STAR_ROW)
+assert not set(STAR_ROW)&{4,MOON_ROW,MOON_ROW+1,MOON_ROW+2}
 STAR_BITS=[]
 for kind in range(2):
     for phase in range(8):
@@ -182,7 +185,7 @@ def row_colors(color):
 
 # Scenery is painted as pixel art, one letter per pixel. The TMS9918 allows
 # two colours per 8x1 segment; paint() rejects art that needs a third.
-INK={'.':1,'K':1,'W':15,'B':4,'R':6,'G':14,'Y':11}
+INK={'.':1,'K':1,'W':15,'B':4,'R':6,'G':14,'Y':11,'D':10,'C':7,'O':8}
 def paint(rows):
     """(bits, row colours) tiles for 8x8 cells, row by row, left to right."""
     assert len(rows)%8==0 and all(len(row)==len(rows[0]) for row in rows)
@@ -287,9 +290,26 @@ FOOT=paint(ground_rise([0,1,1,1,2,1,2,2, 3,2,3,3,4,4,4,5, 5,4,4,3,3,3,2,3, 2,2,1
 FOOT_WEST=[121,122]
 FOOT_EAST=[123,124]
 
+# The home end of the world (after the SG-1000 version's base): the post
+# office five characters wide at columns 243-247 (x 1944-1983), with 64 px of
+# land east of it to the world's end; in front of it a gray sidewalk, and a
+# wide dark-red landing pad in perspective with a yellow octagon where a new
+# helicopter stands. The home-side DMZ fence is at x 1808. The game uses these
+# as literals (CVBasic CONSTs over 255 truncate); the tests compare them.
+HOME_COL=243
+HOME_X=HOME_COL*8                     # 1944, the building's west wall
+HOME_DOOR_X=HOME_X+16                 # 1960, where walkers go in (the door)
+WAVE_X=HOME_X-12                      # 1932, a waver stands here (arm 4 px short)
+FLAG_X=HOME_X+32                      # 1976, the pole on the last roof character
+ENEMY_FENCE_X=1488
+HOME_FENCE_X=1808
+SPAWN_X=1888                          # a new helicopter stands on the octagon
+FIREWORKS_X=1904                      # on the pad, with the view at its east end
+UNLOAD_MIN,UNLOAD_MAX=1872,HOME_X-32  # all 32 px on the pad, west of the building
+
 # Home: a low brick building with white roof edge, window bands either side
-# of a dark door, and a white footing. Columns 247-251; the flag pole stands
-# on the roof of the last column (x=2008).
+# of a dark door, and a white footing. Columns HOME_COL..HOME_COL+4; the flag
+# pole stands on the roof of the last column (FLAG_X).
 HOME=[
  '................................W.......',
  '................................W.......',
@@ -309,28 +329,42 @@ HOME=[
  'WWWWWWWWWWWWWWWWWKKKKKKWWWWWWWWWWWWWWWWW',
 ]
 HOME_CELLS=paint(HOME)
-# The ground is dark blue. The landing pad is a gray slab seven characters
-# wide (columns 240-246, x 1920-1975) right against the building's west
-# wall: a white rim, an H in the middle, yellow lights at both ends and a
-# dark shadow under its front edge. A helicopter unloads only when all of
-# its 32 pixels are on it (1920 <= x <= 1944).
+# The ground is dark blue. The landing pad (after the SG-1000 version's) is a
+# dark-red apron seen in perspective on rows 21 and 22: its back edge runs
+# x 1872-2007 under the building's footing and each line nearer is 2 px wider
+# at both ends, so its ends step out to x 1842-2037 at the front. A gray
+# sidewalk lies in front of the building on row 21 (x 1936-1991 at the back,
+# 1 px wider each line), and a flattened yellow octagon (x 1884-1923, lines
+# 2-11) marks where a new helicopter stands (SPAWN_X). PAD_PIXELS paints both
+# rows; pad_cells() cuts them into characters (reusing the plain ground ones).
 GROUND=0x14
-PAD_ART=paint([
- 'Y'+'W'*54+'Y',
- 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
- 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
- 'W'+'G'*23+'GWWWWWWG'+'G'*23+'W',
- 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
- 'W'+'G'*23+'GWGGGGWG'+'G'*23+'W',
- 'W'*56,
- 'K'*56,
-])
-# Plain rows get white ink (their bits are clear): a fence stamp crossing the
-# pad draws white over any of its rows.
-PAD_ART=[(bits,[c if b else 0xF0|c&15 for b,c in zip(bits,colors)]) for bits,colors in PAD_ART]
-assert PAD_ART[1]==PAD_ART[2]==PAD_ART[4]==PAD_ART[5]
-PAD_COLUMNS=range(240,247)
-PAD_LEFT,PAD_RIGHT=240*8,247*8
+# The foothill tiles replace the ordinary horizon cell. Keep the lower four
+# rows' paper blue even where a slope has no ink, or black notches appear
+# between a mountain and the newly raised ground line.
+FOOT=[(bits,colors[:4]+[(color&0xF0)|(GROUND&15) for color in colors[4:]])
+      for bits,colors in FOOT]
+HORIZON_TILE=125                   # free bottom-third code, before fire 126-127
+HORIZON_ART=[0]*8
+HORIZON_COLORS=[0x11]*4+[GROUND]*4  # sky above, blue ground below
+PAD_COL0=228                                 # x 1824: the pad's art from here
+PAD_BACK=(1872,2007)
+SIDEWALK_BACK=(HOME_X-8,HOME_X+47)
+OCTAGON_X=SPAWN_X+16                         # its centre, under the helicopter
+def pad_pixel(x,y):
+    left,right=PAD_BACK[0]-2*y,PAD_BACK[1]+2*y
+    if not left<=x<=right:return 'B'
+    if y<8 and SIDEWALK_BACK[0]-y<=x<=SIDEWALK_BACK[1]+y:return 'G'
+    d=x-OCTAGON_X
+    edges={2:[(-12,11)],3:[(-16,-13),(12,15)],4:[(-20,-17),(16,19)],
+           5:[(-20,-19),(18,19)],6:[(-20,-19),(18,19)],7:[(-20,-19),(18,19)],
+           8:[(-20,-19),(18,19)],9:[(-20,-17),(16,19)],10:[(-16,-13),(12,15)],
+           11:[(-12,11)]}
+    if any(a<=d<=b for a,b in edges.get(y,())):return 'D'
+    return 'R'
+PAD_PIXELS=[''.join(pad_pixel(x,y) for x in range(PAD_COL0*8,2048)) for y in range(16)]
+assert UNLOAD_MIN>=PAD_BACK[0] and UNLOAD_MAX+31<HOME_X and UNLOAD_MIN<=SPAWN_X<=UNLOAD_MAX
+assert UNLOAD_MIN<=FIREWORKS_X<=UNLOAD_MAX and FIREWORKS_X>=1904   # the view at its east end
+assert OCTAGON_X+19<SIDEWALK_BACK[0]-7      # the octagon is clear of the sidewalk
 
 # Characters 128..159. Each colour is one byte for all eight rows or a list.
 TILES = [
@@ -343,11 +377,11 @@ TILES = [
     HUT_OPEN_CELLS[0],                 # 134 blown-out hut, west half (row 19)
     HUT_CELLS[5],                      # 135 hut, west of the doorway (row 19)
     HUT_OPEN_CELLS[1],                 # 136 blown-out hut, east half (row 19)
-    PAD_ART[1],                        # 137 landing pad
-    PAD_ART[3],                        # 138 landing pad, H
+    ([0]*8, GROUND),                   # 137 free (was the old pad)
+    ([0]*8, GROUND),                   # 138 free (was the old pad)
     HOME_CELLS[4],                     # 139 home window under the flag pole
-    ([0,126,24,63,127,24,126,0],0xF1), # 140 spare
-    PAD_ART[6],                        # 141 landing pad, east end
+    ([0,126,24,63,127,24,126,0],0xF1), # 140 spare-helicopter HUD icon
+    ([0]*8, GROUND),                   # 141 free (was the old pad)
     MOUND_CELLS[0],                    # 142 hill, west flank (crowd row)
     MOUND_CELLS[2],                    # 143 hill, east flank (crowd row)
     ([213,162,213,162,255,255,255,255],0xF4), # 144 flag canton/stripes (colours below)
@@ -406,7 +440,7 @@ TILES += [
     HOME_CELLS[5],                     # 156 home window, lower (crowd row)
     HOME_CELLS[7],                     # 157 home door, lower (crowd row)
     MOUND_TOP_CELLS[2],                # 158 hill top, lumpy (row 19)
-    PAD_ART[0],                        # 159 landing pad, west end
+    ([0]*8, GROUND),                   # 159 free (was the old pad)
 ]
 # Every column of the home's two rows is one of three upper and two lower
 # characters; check the building reuses them rather than needing more.
@@ -576,11 +610,11 @@ BLAST_STRIDE=len(BLAST_ROWS)
 assert BLAST_STRIDE==68
 assert all(-64<=v<64 for r in BLAST_ROWS for xy in r[5] for v in xy)
 # Person palettes, eight rows each, by crowd_cells offset: yellow, white and
-# tan clothing on the night (0-23); the home doorway (24); the three kinds in
+# tan clothing against sky above the low blue horizon (0-23); the home doorway (24); the three kinds in
 # front of a hut wall, dark feet on its white footing (32-55); spare (56-79);
 # the hill body (80); a home window (88). See CROWD_BASES.
 INKS=(11,15,10)
-PERSON_COLORS=([v for ink in INKS for v in [ink*16+1]*8]+[0xF1]*8
+PERSON_COLORS=([v for ink in INKS for v in [ink*16+1]*4+[ink*16+4]*4]+[0xF1]*8
                +[v for ink in INKS for v in [ink*16+4]*6+[0x1F]*2]
                +[v for ink in INKS for v in [ink*16+14]*8]
                +[0xF4]*8
@@ -629,11 +663,16 @@ for shape in range(8):
         for col in range(5):
             bits=[sum(a[row*8+y][col*8+x]<<(7-x) for x in range(8)) for y in range(8)]
             TILES.append((bits,0xF0|GROUND&15))
+# A stamp cell without ink is never drawn: its code is free for the pad.
+FENCE_CODES=[160+i if any(bits) else 0 for i,(bits,_) in enumerate(TILES[32:112])]
 
 # Eight screens: two extra screens between the camps and the enemy fence.
-# The demilitarized zone itself remains 320 pixels wide.
-MAP = [[32]*256 for _ in range(5)]
-MAP[4] = [128]*256
+# The demilitarized zone between the two fences is 320 pixels wide.
+assert HOME_FENCE_X-ENEMY_FENCE_X==320
+MAP = [[32]*256 for _ in range(6)]
+MAP[3] = [HORIZON_TILE]*256          # row 20, horizon behind people and buildings
+MAP[4] = [128]*256                   # row 21, solid ground below the low horizon
+MAP[5] = [129]*256                   # row 22, the foreground ground
 CAMPS=(16,48,80,112)
 # Hills sit in the gaps between the crowds (the people run about from 11
 # columns west to 12 east of a camp, ROAM_GOALS), never under them. (start, width):
@@ -641,7 +680,7 @@ CAMPS=(16,48,80,112)
 # (start, width, west foothills, east foothills): the range's own columns
 # start..start+width-1, with one or two foothill characters on each side.
 MOUNDS=((0,4,0,1),(31,4,2,2),(62,5,1,2),(95,4,2,2),(130,6,2,1),(145,4,1,2),
-        (160,5,2,2),(176,6,2,2),(188,4,1,1),(204,5,2,2),(222,4,2,2))
+        (160,5,2,2),(176,6,2,2),(188,4,1,1),(204,5,2,2),(218,4,2,2))
 HILL_TOPS={4:[148,150],5:[148,149,150],6:[148,149,158,150]}
 for start,width,west,east in MOUNDS:
     MAP[3][start-west:start]=FOOT_WEST[2-west:]
@@ -649,7 +688,7 @@ for start,width,west,east in MOUNDS:
     MAP[3][start+width:start+width+east]=FOOT_EAST[:east]
     MAP[2][start+1:start+width-1]=HILL_TOPS[width]
     first,end=start-west,start+width+east
-    assert first>=0 and end<=1888//8   # clear of the home fence
+    assert first>=0 and end<=HOME_FENCE_X//8   # clear of the home fence
     for camp in CAMPS:
         assert end<=camp-11 or first>camp+12,(start,camp)
 for camp in CAMPS:
@@ -681,18 +720,42 @@ def roam_goal_index(i,clock):
 for camp in CAMPS:
     for v in ROAM_GOALS:
         for col in {camp+v//8,camp+(v+7)//8}:
-            assert MAP[3][col] in (32,132,154,147),(camp,v)
+            assert MAP[3][col] in (HORIZON_TILE,132,154,147),(camp,v)
 # As stored (roam_goal): each +128.
 ROAM_TABLE=[v+128 for v in ROAM_GOALS]
-MAP[2][247:252]=[151,151,152,151,139]
-MAP[3][247:252]=[156,156,157,156,156]
-MAP[4][240:247]=[159,137,137,138,137,137,141]
-PAD_CODES=(159,137,138,141)
+FIRST_OUT=[ROAM_TABLE[roam_goal_index(i,0)] for i in range(6)]
+assert min(b-a for a,b in zip(sorted(FIRST_OUT),sorted(FIRST_OUT)[1:]))>=12
+MAP[2][HOME_COL:HOME_COL+5]=[151,151,152,151,139]
+MAP[3][HOME_COL:HOME_COL+5]=[156,156,157,156,156]
+assert MAP[3][HOME_DOOR_X//8]==157 and MAP[3][WAVE_X//8]==HORIZON_TILE and MAP[3][(WAVE_X+8)//8]==HORIZON_TILE
 
-# Transparent fence stamps must leave the landing pad beneath them intact.
-# Most stamps lie on plain gray ground; one upper-row cell of the home fence
-# crosses the pad. Precompose that cell instead of painting a gray rectangle.
-FENCE_CODES=[160+i if any(bits) else 0 for i,(bits,_) in enumerate(TILES[32:112])]
+def pad_cells():
+    """Cut the pad's two rows into characters: plain ground keeps 128/129,
+    every other distinct cell takes a free code (the old pad's, then blank
+    fence stamp cells). Returns {code: (bits, colours)}."""
+    free=[137,138,141,159]+[160+i for i,c in enumerate(FENCE_CODES) if not c]
+    cells={}
+    for row in range(2):
+        rows=PAD_PIXELS[row*8:row*8+8]
+        for k,(bits,colors) in enumerate(paint(rows)):
+            if not any(bits) and colors==[GROUND]*8:
+                code=128+row
+            else:
+                key=(tuple(bits),tuple(colors))
+                code=next((c for c,v in cells.items() if v==key),None)
+                if code is None:
+                    code=free.pop(0);cells[code]=key
+            MAP[4+row][PAD_COL0+k]=code
+    return cells
+PAD_TILES=pad_cells()
+for code,(bits,colors) in PAD_TILES.items():
+    TILES[code-128]=(list(bits),list(colors))
+PAD_CODES=tuple(sorted(PAD_TILES))
+PAD_COLUMNS=range(PAD_COL0,256)
+
+# Transparent fence stamps must leave the landing pad beneath them intact. A
+# stamp cell that landed on a pad character would be precomposed as code 120;
+# the home fence (HOME_FENCE_X) keeps clear of the pad at every lean.
 HOME_FENCE_CODES=FENCE_CODES.copy()
 PAD_FENCE_ART=[]
 PAD_FENCE_COLORS=[]
@@ -700,8 +763,8 @@ for shape in range(8):
     for col in range(5):
         index=shape*10+col
         if not FENCE_CODES[index]:continue
-        world_col=1888//8+col-max(4-shape,0)
-        under=MAP[4][world_col]
+        world_col=HOME_FENCE_X//8+col-max(4-shape,0)
+        under=MAP[4+index//5%2][world_col]
         if under not in PAD_CODES:continue
         base,color=TILES[under-128]
         bits,_=TILES[32+index]
@@ -710,11 +773,49 @@ for shape in range(8):
         PAD_FENCE_ART.extend(a|b for a,b in zip(base,bits))
         PAD_FENCE_COLORS.extend(row_colors(color))
 # At most one composed cell, code 120 (none for the current pad: the home
-# fence's stamps end at column 238). Code 120 stays reserved either way, so
+# fence's stamps end at column 229). Code 120 stays reserved either way, so
 # the foothills that follow it in low_art keep their codes (121-124).
-assert len(PAD_FENCE_ART) in (0,8)
+assert len(PAD_FENCE_ART)==0
 PAD_FENCE_ART+=[0]*(8-len(PAD_FENCE_ART))
 PAD_FENCE_COLORS+=[0x11]*(8-len(PAD_FENCE_COLORS))
+
+# The moon, fixed in the sky (after the Apple II version's): a banded white
+# orb with cyan and orange-red streaks and two dark specks, transcribed from
+# the reference at its own pixel grid (22 x 20) and centred in three
+# characters by three. A character row segment can hold two colours: inside
+# the orb that is white and one streak colour; at its rim, the black sky and
+# one. Characters 14-22 of the TOP screen third only (rows MOON_ROW..+2 are
+# there), which nothing else uses: the HUD has 1-13 and the crowd and fire
+# codes 14-31 are bottom-third ones.
+MOON=[
+ '........................',
+ '........................',
+ '.........WWWWWWW........',
+ '.........WWWWWWW........',
+ '.....WWWCCCWWWCCCCC.....',
+ '.....WWWCCOCCOCCCCCC....',
+ '....WWWWWWCCCCCCWWWWW...',
+ '...WWWWWWWCCCCCCWWWWW...',
+ '..OOOOOOWOOOOWWWWWWWWW..',
+ '..WWWWWWCCCCCWWWWWWWWWW.',
+ '.WWWWWWWWWCCCCCWCCCCCCC.',
+ '.WWWWW..WWCCCCCWCCCCCCC.',
+ '.OOOOOOOWWWOOOOOOOOOOOO.',
+ '.WWWWWWWCCCCCCCCCCCCCCC.',
+ '.WWWWWWWWOOOOOOWWWWWWWW.',
+ '..CCCCCCCCCCCWWWWWWWWW..',
+ '..WWWWWWOOOOWWWOOOOOOO..',
+ '...CCCCCWWCCCCCCCCCCC...',
+ '....OOOOWWWOWWWW.OOO....',
+ '.....WWWCCCCCCCCCCCC....',
+ '......WWWOOOOOWWOOO.....',
+ '.........WWWWWWW........',
+ '........................',
+ '........................',
+]
+MOON_CELLS=paint(MOON)
+MOON_CODE=14
+assert MOON_ROW+2<8 and MOON_CODE+len(MOON_CELLS)-1<=31
 
 # CVBasic/TMS font @.._: restore the borrowed bottom-third back buffer on menus.
 MENU_FONT=[112, 136, 152, 168, 152, 128, 112, 0, 32, 80, 136, 136, 248, 136, 136, 0, 240, 136, 136, 240, 136, 136, 240, 0, 112, 136, 128, 128, 128, 136, 112, 0, 240, 136, 136, 136, 136, 136, 240, 0, 248, 128, 128, 240, 128, 128, 248, 0, 248, 128, 128, 240, 128, 128, 128, 0, 112, 136, 128, 184, 136, 136, 112, 0, 136, 136, 136, 248, 136, 136, 136, 0, 112, 32, 32, 32, 32, 32, 112, 0, 8, 8, 8, 8, 136, 136, 112, 0, 136, 144, 160, 192, 160, 144, 136, 0, 128, 128, 128, 128, 128, 128, 248, 0, 136, 216, 168, 168, 136, 136, 136, 0, 136, 200, 200, 168, 152, 152, 136, 0, 112, 136, 136, 136, 136, 136, 112, 0, 240, 136, 136, 240, 128, 128, 128, 0, 112, 136, 136, 136, 136, 168, 144, 104, 240, 136, 136, 240, 160, 144, 136, 0, 112, 136, 128, 112, 8, 136, 112, 0, 248, 32, 32, 32, 32, 32, 32, 0, 136, 136, 136, 136, 136, 136, 112, 0, 136, 136, 136, 136, 80, 80, 32, 0, 136, 136, 136, 168, 168, 216, 136, 0, 136, 136, 80, 32, 80, 136, 136, 0, 136, 136, 136, 112, 32, 32, 32, 0, 248, 8, 16, 32, 64, 128, 248, 0, 120, 96, 96, 96, 96, 96, 120, 0, 0, 128, 64, 32, 16, 8, 0, 0, 240, 48, 48, 48, 48, 48, 240, 0, 32, 80, 136, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 248, 0]
@@ -761,6 +862,16 @@ def hud_rows():
     return sum(rows,[])
 HUD_ROWS=hud_rows()
 
+# HUD's first character is eight blank pattern rows. Colour only the middle
+# two backgrounds orange, so one reused pattern draws a solid two-pixel bar.
+SORTIE_BAR_COLORS=[0x11]*3+[0x19]*2+[0x11]*3
+SORTIE_BAR_CELLS=[23]*10
+SORTIE_TITLES=[ord(c) for line in (' FIRST SORTIE   ','SECOND SORTIE   ',
+                                  ' THIRD SORTIE   ','   SORTIE 0     ')
+               for c in line]
+SORTIE_TITLES=SORTIE_TITLES[:-2]  # the final SCREEN copies only 14 bytes
+assert len(SORTIE_TITLES)==62
+
 # Fireworks for a perfect rescue (and the title's HOWIE code), over the
 # home with the view at its east end (camera 1792). A script of rockets,
 # each with a start frame, launch column and burst column (screen x of its
@@ -780,7 +891,7 @@ HUD_ROWS=hud_rows()
 FW_ROWS=16
 FW_CLIMB=[round(118*(1-(1-p/34)**2)) for p in range(35)]
 FW_LAUNCH_Y=145            # sprite top: the head at the roof line (y 152)
-FW_HOME_X=(178,206)        # launch columns: the head over the home's roof
+FW_HOME_X=(146,174)        # launch columns: the head over the home's roof
 FW_RAMPS={'gold':(15,11,10,6),'red':(15,9,8,6),'green':(15,3,12,12),'blue':(15,7,5,4),
           'magenta':(15,13,13,6),'silver':(15,15,14,14)}
 FW_RAMP_INDEX={name:i*4 for i,name in enumerate(FW_RAMPS)}
@@ -789,27 +900,27 @@ FW_KIND_INDEX={'peony':0,'willow':FW_ROWS,'ring':2*FW_ROWS}
 # openers one at a time, then the finale: a quickening salvo of five, a
 # triple and a pair, another triple and pair, and a crescendo of five at
 # once. Each wave waits for the groups the last one frees (fw_slots checks).
-FW_SCRIPT=((0,196,176,22,'peony','gold'),(40,190,128,16,'willow','gold'),
-           (70,200,186,26,'ring','blue'),(100,186,96,14,'peony','red'),
-           (125,194,150,30,'peony','green'),(150,182,70,18,'ring','magenta'),
-           (178,192,206,12,'willow','silver'),(205,188,118,24,'peony','blue'),
-           (232,198,160,20,'ring','red'),(258,184,84,16,'willow','gold'),
+FW_SCRIPT=((0,164,176,21,'peony','gold'),(40,158,128,16,'willow','gold'),
+           (70,168,186,25,'ring','blue'),(100,154,96,14,'peony','red'),
+           (125,162,150,29,'peony','green'),(150,150,70,18,'ring','magenta'),
+           (178,160,206,12,'willow','silver'),(205,156,118,23,'peony','blue'),
+           (232,166,160,20,'ring','red'),(258,152,84,16,'willow','gold'),
            # The salvo.
-           (290,186,196,26,'peony','red'),(300,192,140,20,'peony','green'),
-           (310,186,100,14,'peony','blue'),(322,196,160,22,'ring','gold'),
-           (334,190,124,18,'willow','silver'),
+           (290,154,196,25,'peony','red'),(300,160,140,20,'peony','green'),
+           (310,154,100,14,'peony','blue'),(322,164,160,21,'ring','gold'),
+           (334,158,124,18,'willow','silver'),
            # A triple, then a pair.
-           (366,182,72,18,'peony','magenta'),(366,200,180,24,'ring','green'),
-           (368,192,128,14,'willow','gold'),
-           (394,198,198,20,'peony','blue'),(394,186,104,26,'peony','red'),
+           (366,150,72,18,'peony','magenta'),(366,168,180,23,'ring','green'),
+           (368,160,128,14,'willow','gold'),
+           (394,166,198,20,'peony','blue'),(394,154,104,25,'peony','red'),
            # Another triple and pair.
-           (430,190,150,28,'peony','silver'),(430,204,206,12,'willow','red'),
-           (432,180,64,22,'ring','blue'),
-           (458,194,112,16,'peony','gold'),(462,186,170,24,'peony','magenta'),
+           (430,158,150,27,'peony','silver'),(430,172,206,12,'willow','red'),
+           (432,148,64,22,'ring','blue'),
+           (458,162,112,16,'peony','gold'),(462,154,170,23,'peony','magenta'),
            # The crescendo.
-           (528,190,128,30,'ring','gold'),(528,198,186,22,'peony','red'),
-           (530,182,72,20,'peony','blue'),(530,204,206,14,'willow','silver'),
-           (532,186,98,26,'peony','green'))
+           (528,158,128,29,'ring','gold'),(528,166,186,22,'peony','red'),
+           (530,150,72,20,'peony','blue'),(530,172,206,14,'willow','silver'),
+           (532,154,98,25,'peony','green'))
 def fw_path(x0,bx,climb):
     """(x, y) of the rocket's sprite on each frame of its climb and, last,
     the burst point."""
@@ -817,7 +928,7 @@ def fw_path(x0,bx,climb):
     return [(round(x0+(bx-x0)*FW_CLIMB[p]/top),FW_LAUNCH_Y-FW_CLIMB[p]) for p in range(climb+1)]
 FW_PATHS=[fw_path(x0,bx,climb) for _,x0,bx,climb,_,_ in FW_SCRIPT]
 FW_PATH_START=[sum(len(path) for path in FW_PATHS[:k]) for k in range(len(FW_PATHS))]
-FW_RISE=[FW_LAUNCH_Y-c for c in FW_CLIMB]   # a rocket's sprite y by frame of its climb
+FW_RISE=[FW_LAUNCH_Y-c for c in FW_CLIMB[:max(f[3] for f in FW_SCRIPT)+1]]
 assert all(y==FW_RISE[p] for path in FW_PATHS for p,(_,y) in enumerate(path))
 FW_TRAIL=[0,11,9,6]        # the trail's three embers, nearest first
 FW_END=630        # frames: the last burst is over by then
@@ -873,7 +984,7 @@ for (start,x0,bx,climb,kind,ramp),path in zip(FW_SCRIPT,FW_PATHS):
             assert 0<=x+dx<=239 and 0<y+dy<175,(start,x+dx,y+dy)
 # Various angles: from nearly straight up to well over to the west.
 FW_LEANS=sorted(round(math.degrees(math.atan2(x0-bx,FW_CLIMB[climb]))) for _,x0,bx,climb,_,_ in FW_SCRIPT)
-assert FW_LEANS[0]<=-2 and FW_LEANS[-1]>=40 and len(set(FW_LEANS))>=10
+assert FW_LEANS[0]<=-2 and FW_LEANS[-1]>=30 and len(set(FW_LEANS))>=10
 assert all(-64<=v<64 for r in FW_BURST for xy in r[4] for v in xy)
 
 def emit(label, data):
@@ -890,15 +1001,23 @@ def generate():
     boot += emit('sprite_art', [b for a in SPRITES for b in sprite_bytes(a)])
     boot += emit('tile_art', [b for bits,_ in TILES for b in bits])
     boot += emit('tile_colors', [v for _,c in TILES for v in row_colors(c)])
-    # Bottom-third characters 120-124: the pad-fence cell, then the foothills.
-    boot += emit('low_art',PAD_FENCE_ART+[b for bits,_ in FOOT for b in bits])
-    boot += emit('low_colors',PAD_FENCE_COLORS+[v for _,c in FOOT for v in row_colors(c)])
-    boot += emit('flag_colors', FLAG_COLORS)
+    # Bottom-third characters 120-125: pad-fence cell, foothills, then horizon.
+    boot += emit('low_art',PAD_FENCE_ART+[b for bits,_ in FOOT for b in bits]+HORIZON_ART)
+    boot += emit('low_colors',PAD_FENCE_COLORS+[v for _,c in FOOT for v in row_colors(c)]+HORIZON_COLORS)
     boot += emit('fire_colors', FIRE_COLORS)
     boot += emit('star_bits',STAR_BITS)
+    # The moon's characters, uploaded to the top screen third only.
+    boot += emit('moon_art',[b for bits,_ in MOON_CELLS for b in bits])
+    boot += emit('moon_colors',[c for _,colors in MOON_CELLS for c in colors])
     boot += emit('star_colors',STAR_COLORS)
     boot += emit('hud_art',[b for bits,_ in HUD_CHARS.values() for b in bits])
     boot += emit('hud_colors',[c for _,colors in HUD_CHARS.values() for c in colors])
+    # A continuous orange line in character 23 of the middle screen third.
+    # The title overlay uses the same ten cells above and below its text.
+    boot += emit('sortie_bar_colors',SORTIE_BAR_COLORS)
+    boot += emit('sortie_bar_cells',SORTIE_BAR_CELLS)
+    boot += emit('sortie_titles',SORTIE_TITLES)
+    boot += emit('sortie_blank_cells',[32]*14)
     # The fireworks run with the boot bank selected (their code is there too).
     FW_PAD=[0]*(len(FW_SCRIPT)%2)   # per-firework byte tables, padded even
     boot += emit('fw_climb_len',[f[3] for f in FW_SCRIPT]+FW_PAD)
@@ -926,11 +1045,14 @@ def generate():
     # A crash redefines slots 13/14 as flames, then embers; a fresh crash
     # restores the full flames after the preceding ember phase.
     text += emit('crash_flames', [b for a in SPRITES[13:15] for b in sprite_bytes(a)])
+    text += emit('flag_colors',FLAG_COLORS)
     for label,stage in (('crash_burn2',CRASH_STAGES[1]),('crash_burn3',CRASH_STAGES[2])):
         text += emit(label, [b for rows in stage for b in sprite_bytes(fire_sprite(rows))])
     text += emit('crash_embers', [b for rows in CRASH_EMBERS for b in sprite_bytes(fire_sprite(rows))])
     text += emit('world_map', [c for r in MAP for c in r])
     text += emit('ground_row', [129]*32)
+    # The moon's 3x3 block of characters, row by row (+ a pad byte).
+    text += emit('moon_cells',[MOON_CODE+i for i in range(9)]+[0])
     text += emit('fence_codes',FENCE_CODES)
     text += emit('home_fence_codes',HOME_FENCE_CODES)
     text += emit('flag_frame0', FLAG0)
@@ -960,6 +1082,7 @@ def generate():
     # Where the people run about (ROAM_GOALS, +128) and each one's phase.
     text += emit('roam_goal',ROAM_TABLE)
     text += emit('roam_phase',ROAM_PHASE)
+    text += emit('first_out',FIRST_OUT)
     text += emit('hud_rows',HUD_ROWS)
     text += emit('star_x',STAR_X)
     # Row 0 ends the list (both renderers stop there); the second 0 keeps the
