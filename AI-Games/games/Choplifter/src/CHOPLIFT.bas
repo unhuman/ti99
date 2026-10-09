@@ -7,6 +7,7 @@ BANK SELECT 1
 #endif
 CONST CAPACITY = 16
 CONST LANDED = 153
+CONST HOME_LANDED = 160
 ' People chase a helicopter landed or at least this low (sprite y) over them.
 CONST CHASE_Y = 113
 DIM camp_left(4)
@@ -178,7 +179,7 @@ mission_over:
 IF saved = 64 THEN
     IF #camera <> 1792 THEN
         #hx=1904:#move=0:GOSUB move_heli
-        hy=LANDED:hspeed=0
+        hy=land_y:hspeed=0
         #camera=65535
         GOSUB game_screen
     END IF
@@ -233,7 +234,7 @@ rotor_clock=0:rotor_phase=0
 fall_speed=0:fall_hold=0
 ' A new helicopter stands in the middle of the landing pad.
 #hx=1888
-hy=LANDED
+hy=HOME_LANDED
 hspeed=0
 hdir=0
 #move=0:GOSUB move_heli
@@ -287,7 +288,7 @@ IF cont1.up THEN
     IF hy > 25+dt THEN hy=hy-dt ELSE hy=25
 ELSE
     IF cont1.down THEN
-        IF hy < LANDED THEN
+        IF hy < land_y THEN
             IF fall_speed = 0 THEN fall_speed=1
             fall_hold=fall_hold+dt
             IF fall_hold >= 24 THEN
@@ -298,8 +299,8 @@ ELSE
             IF fall_speed > 1 THEN fall_step=fall_step+dt
             IF fall_speed > 2 THEN fall_step=fall_step+dt
             hy=hy+fall_step
-            IF hy >= LANDED THEN
-                hy=LANDED
+            IF hy >= land_y THEN
+                hy=land_y
                 IF fall_speed > 1 THEN invuln=0:GOSUB crash:RETURN
                 fall_speed=0:fall_hold=0
             END IF
@@ -308,7 +309,7 @@ ELSE
         fall_speed=0:fall_hold=0
         ' Without vertical thrust the helicopter sinks 1 px every 6 frames
         ' (10 px/s), including while it flies sideways.
-        IF hy < LANDED THEN
+        IF hy < land_y THEN
             sink_clock=sink_clock+dt
             IF sink_clock >= 6 THEN
                 sink_clock=sink_clock-6
@@ -317,7 +318,7 @@ ELSE
         END IF
     END IF
 END IF
-IF hy = LANDED THEN
+IF hy = land_y THEN
     hspeed=0
 ELSE
     IF input_dir < 2 THEN
@@ -350,6 +351,10 @@ END IF
 IF #hx > 112 THEN
     IF #hx < 1904 THEN #hv=#hx AND 65528
 END IF
+' The post-office apron is seven pixels nearer, east of the fence's last ink.
+land_y=LANDED
+IF #hv >= 1840 THEN land_y=HOME_LANDED
+IF hy > land_y THEN hy=land_y:hspeed=0
 RETURN
 
 weapon_tick:
@@ -387,7 +392,7 @@ IF chop_period THEN
     IF noise_timer = 0 THEN
         IF sound_busy = 0 THEN
             IF chop_frame = 0 THEN SOUND 3,6
-            IF hy = LANDED THEN
+            IF hy = land_y THEN
                 SOUND 3,,chop_ground(chop_frame)
             ELSE
                 SOUND 3,,chop_air(chop_frame)
@@ -405,7 +410,7 @@ IF cont1.key = 10 THEN
 #endif
     IF turn_key = 0 THEN
         turn_key=1
-        IF hy < LANDED THEN GOSUB turn_step
+        IF hy < land_y THEN GOSUB turn_step
     END IF
 ELSE
     turn_key=0
@@ -423,7 +428,7 @@ IF cont1.button THEN
         RETURN
     END IF
     ' The helicopter cannot turn while it is on the ground.
-    IF hy = LANDED THEN fire_hold=0:RETURN
+    IF hy = land_y THEN fire_hold=0:RETURN
     fire_hold=fire_hold+1
     ' First turn after 18 held frames (0.3 s; a tap is shorter); subsequent
     ' turns repeat every 15.
@@ -452,7 +457,7 @@ IF turn_phase = 2 THEN face=1
 RETURN
 
 fire_shot:
-IF hy = LANDED THEN RETURN
+IF hy = land_y THEN RETURN
 IF fire_timer THEN RETURN
 FOR wi=0 TO 1
     IF shot_on(wi) = 0 THEN
@@ -684,7 +689,7 @@ END IF
 IF transfer_timer > dt THEN transfer_timer=transfer_timer-dt ELSE transfer_timer=0
 ' Unloading needs the whole helicopter (all 32 pixels) on the landing pad,
 ' the flat back of the pad west of the building: 1872 <= #hv <= 1912.
-IF hy = LANDED THEN
+IF hy = land_y THEN
     IF #hv >= 1872 THEN
         IF #hv <= 1912 THEN
             IF aboard THEN
@@ -712,6 +717,7 @@ unload_found=0
 FOR ep=0 TO 63
     IF person_state(ep) = 5 THEN
         person_state(ep)=6
+        ' Begin under the cabin, then walk out toward the office.
         #person_x(ep)=#hv+12
         #person_x(ep)=#person_x(ep) AND 65532
         home_walking=home_walking+1:crowd_dirty=1:unload_found=1
@@ -766,8 +772,8 @@ FOR ec=0 TO 3
 NEXT ec
 IF home_walking THEN GOSUB wave_tick
 ' Ground contact is an event, not 64 subroutine calls on every flight update.
-IF hy = LANDED THEN
-    IF old_y < LANDED THEN
+IF hy = land_y THEN
+    IF old_y < land_y THEN
         FOR ep=0 TO 63
             IF person_state(ep) = 1 THEN GOSUB crowd_landing
             IF person_state(ep) = 2 THEN GOSUB crowd_landing
@@ -1162,8 +1168,7 @@ crowd_dirty=1
 RETURN
 
 crowd_landing:
-IF hy <> LANDED THEN RETURN
-IF old_y >= LANDED THEN RETURN
+' escape_tick calls this only on the first grounded update.
 #ax=#hv+16:#bx=#person_x(ep)+4
 GOSUB distance_x
 IF #distance < 13 THEN GOSUB lose_person:GOSUB squish_sound
@@ -1212,14 +1217,14 @@ board_candidate:
 ' One standing under a hovering helicopter (within 24 px) stays where it is:
 ' chasers stop there 10-17 px from the door, and up to 3 more on the grid.
 IF person_state(ep) = 8 THEN
-    IF hy <> LANDED THEN RETURN
+    IF hy <> land_y THEN RETURN
     #ax=#person_x(ep):GOSUB distance_x
     IF #distance >= 24 THEN RETURN
 ELSE
     IF person_state(ep) = 0 THEN RETURN
     IF person_state(ep) > 2 THEN RETURN
     #ax=#person_x(ep):GOSUB distance_x
-    IF hy <> LANDED THEN
+    IF hy <> land_y THEN
         IF #distance < 24 THEN RETURN
     END IF
 END IF
@@ -1243,7 +1248,7 @@ IF nearest_id < 255 THEN
     IF #distance > #nearest_person THEN GOTO chase_home
 END IF
 IF aboard >= CAPACITY THEN GOTO chase_stop
-IF hy <> LANDED THEN
+IF hy <> land_y THEN
     #ax=ep AND 7
     #ax=#ax+10
     IF #distance < #ax THEN GOTO chase_stop
@@ -1490,7 +1495,7 @@ END IF
 GOSUB distance_x
 ay=hy+8:by=jet_y+8
 GOSUB distance_y
-IF hy = LANDED THEN
+IF hy = land_y THEN
     IF #distance > ydistance+12 THEN RETURN
     IF #distance+12 < ydistance THEN RETURN
     missile_aim=2
@@ -2632,7 +2637,7 @@ RETURN
 heli_pose:
 draw_pat=face*16
 IF hspeed THEN
-    IF hy < LANDED THEN
+    IF hy < land_y THEN
         IF hdir = 0 THEN draw_pat=draw_pat+80 ELSE draw_pat=draw_pat+128
     END IF
 END IF
@@ -2710,7 +2715,7 @@ ELSE
     #sfx_pitch=920
     sfx_volume=2
     chop_period=12
-    IF hy < LANDED THEN
+    IF hy < land_y THEN
         #sfx_pitch=820-hspeed*48
         sfx_volume=4
         chop_period=9-hspeed
@@ -3046,7 +3051,7 @@ crash_timer=90
 hud_dirty=1
 shell_on=0:missile_on=0
 #blast_x=#hv+8:blast_y=hy
-IF hy < LANDED THEN GOTO explode_air
+IF hy < land_y THEN GOTO explode_air
 GOTO explode_ground
 
 crash_tick:
@@ -3054,12 +3059,12 @@ crash_tick:
 ' ground. On the ground the fire burns down in stages: full flames, then
 ' lower and narrower ones from 60 and from 40 frames before the end, embers
 ' from 24, and nothing at all for the last 12 (crash_draw).
-IF hy < LANDED THEN
+IF hy < land_y THEN
     #move=hspeed*dt
     GOSUB move_heli
     hy=hy+dt+dt
-    IF hy >= LANDED THEN
-        hy=LANDED
+    IF hy >= land_y THEN
+        hy=land_y
         hspeed=0
         #blast_x=#hv+8:blast_y=hy
         GOSUB explode_ground
@@ -3407,7 +3412,7 @@ sortie_wait:
 draw_slot=0
 GOSUB heli_draw
 WAIT
-IF cont1.up THEN hy=152:GOTO sortie_clear
+IF cont1.up THEN hy=land_y-1:GOTO sortie_clear
 dt=1:GOSUB rotor_tick
 IF lives = start_lives THEN GOTO sortie_wait
 ini=ini+1

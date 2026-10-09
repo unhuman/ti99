@@ -44,8 +44,8 @@ those within reach run for the cabin, as many as there are free seats, and climb
 Lift off and land again further on and the runners follow, as far as you lead them (never
 past the DMZ fence); but if someone nearer is waiting, or you leave them far behind, they
 give up and run all the way back to their own barrack, ignoring you unless you land right
-beside them. With the cabin full they wave you off and wait for you to come back. Fly home and land on the red pad's **yellow octagon** beside the building:
-passengers only step out with the whole helicopter on the pad. They walk in through the
+beside them. With the cabin full they wave you off and wait for you to come back. Fly home and land on the red pad's **yellow octagon** beside the building. East of the rightmost fence, the helicopter settles seven pixels lower into the pad than it does on field ground.
+Passengers only step out with the whole helicopter on the pad. They start under the middle of its cabin, walk out across the sidewalk and enter through the
 door, and some stop on the dark ground beside it to wave at you first. The last one out
 always does. Lift off with UP before moving sideways on the ground. Weapons and turning do
 not work on the ground.
@@ -107,7 +107,7 @@ nothing that can hit you is ever invisible for long; a tank shell is always draw
 can strike. The helicopter holds its place on screen while the scenery scrolls past it in
 8-pixel steps, and sprites move on the same frame as the scenery, so it does not shake or
 jitter. A low blue horizon runs behind the people, buildings and landed helicopter. The
-landing apron is dark red, with a gray sidewalk by the building and a yellow landing marker.
+landing apron is dark red, with a gray sidewalk by the building and a yellow landing marker beneath the lower home landing position.
 
 The mission summary centres its heading at the top and the FIRE prompt at the bottom. It
 names the skill level you played, with your saved, lost and stranded counts and the
@@ -143,8 +143,8 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,750 / 24,336 B fixed (+ 8,188 and 8,182 / 8,190 B banks) | 812 / 7,854 B |
-| ColecoVision | 32,100 / 32,768 B ROM | 812 / 814 B |
+| TI-99/4A | 22,730 / 24,336 B fixed (+ 8,180 and 8,186 / 8,190 B banks) | 814 / 7,854 B |
+| ColecoVision | 32,217 / 32,768 B ROM | 813 / 814 B |
 
 ## Speed
 

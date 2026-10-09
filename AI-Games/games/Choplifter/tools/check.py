@@ -461,6 +461,7 @@ class Basic:
 class Tests(unittest.TestCase):
     def state(self):
         b=Basic();b.v.update(saved=0,lost=0,aboard=0,lives=3,dt=2,hy=b.v['landed'],old_y=b.v['landed'])
+        b.v['land_y']=b.v['landed']
         # Medium, the default: threat starts its row at 5 * difficulty.
         b.v.update(difficulty=1,threat=5)
         b.a['camp_left']=[16]*4;b.a['camp_open']=[1]*4;b.a['#camp_x']=[128,384,640,896]
@@ -556,11 +557,38 @@ class Tests(unittest.TestCase):
                             for c in range(art.UNLOAD_MIN//8,(art.UNLOAD_MAX+31)//8+1)))
         b=self.state();b.call('new_heli')
         self.assertEqual(b.v['#hx'],art.SPAWN_X)
+        self.assertEqual((b.v['hy'],b.v['land_y']),(160,160))
         for x,want in ((1871,0),(1872,1),(1888,1),(1912,1),(1913,0),(1920,0)):
             b=self.state();b.v.update({'#hx':x,'aboard':16,'runner_on':0,'transfer_timer':0})
+            b.call('move_heli');b.v['hy']=b.v['land_y']
             b.a['camp_left']=[0,16,16,16]
             b.a['person_state'][:16]=[5]*16
             b.call('people_tick');self.assertEqual(b.v['saved'],want);self.assertEqual(self.total(b),64)
+        b=self.state();b.v.update({'#hx':1888,'aboard':1,'transfer_timer':0})
+        b.call('move_heli');b.a['person_state'][0]=5
+        b.call('people_tick');self.assertEqual(b.v['saved'],0)
+
+    def test_home_apron_lands_lower_only_past_the_fence(self):
+        def verify(source,target):
+            for x,ground in ((160,153),(1839,153),(1840,160),(1872,160),
+                             (1888,160),(2008,160)):
+                b=self.state();b.r=Basic(source,target=target).r
+                b.v.update({'#hx':x,'hy':ground-1,'dt':1,'cont1.down':1})
+                b.call('move_heli')
+                self.assertEqual(b.v['land_y'],ground,(target,x))
+                b.call('fly')
+                self.assertEqual((b.v['hy'],b.v['hspeed'],b.v.get('crash_timer',0)),
+                                 (ground,0,0),(target,x))
+                b.v['cont1.down']=0;b.v['cont1.up']=1
+                b.call('fly')
+                self.assertEqual(b.v['hy'],ground-1,(target,x))
+        for target in ('TI994A','COLECO'):
+            verify(SOURCE,target)
+            for boundary in ('1808','2048'):
+                bad=SOURCE.replace('IF #hv >= 1840 THEN land_y=HOME_LANDED',
+                                   f'IF #hv >= {boundary} THEN land_y=HOME_LANDED')
+                self.assertNotEqual(bad,SOURCE)
+                with self.assertRaises(AssertionError):verify(bad,target)
     def test_crash_and_repeated_collision(self):
         b=self.state();b.v.update(aboard=9,invuln=0,crash_timer=0);b.a['camp_left'][0]=7
         b.call('crash');b.call('crash')
@@ -603,13 +631,13 @@ class Tests(unittest.TestCase):
                         self.assertGreaterEqual(burn_frames,90)
                         self.assertLess(burn_frames,90+dt)
                         self.assertEqual((b.v['lives'],b.v['lost']),(lives-1,2))
-                        b.call('new_heli');self.assertEqual(b.v['hy'],153)
+                        b.call('new_heli');self.assertEqual((b.v['hy'],b.v['land_y']),(160,160))
                         b.v['invuln']=0;b.call('crash')
                         self.assertEqual(b.sprite_patterns[13]+b.sprite_patterns[14],b.a['crash_flames'])
         verify(SOURCE)
         for before,after in (
                 ('hy=hy+dt+dt','hy=hy+dt+dt\n    crash_timer=crash_timer-dt'),
-                ('IF hy >= LANDED THEN\n        hy=LANDED','IF hy > 250 THEN\n        hy=LANDED'),
+                ('IF hy >= land_y THEN\n        hy=land_y','IF hy > 250 THEN\n        hy=land_y'),
                 ('DEFINE SPRITE 13,2,crash_flames','DEFINE SPRITE 13,2,crash_embers')):
             self.assertIn(before,SOURCE)
             with self.assertRaises(AssertionError):verify(SOURCE.replace(before,after))
@@ -726,9 +754,11 @@ class Tests(unittest.TestCase):
                 who=camp*16+person;near=b.a['#camp_x'][camp]      # beside its own camp
                 b.a['person_state'][who]=3;b.a['#person_x'][who]=near+12;b.a['camp_active'][camp]+=1
                 b.v.update({'#hx':near,'board_count':1,'transfer_timer':0})
+                b.call('move_heli');b.v['hy']=b.v['land_y']
                 b.call('people_tick');self.assertEqual(self.total(b),64)
             self.assertEqual(b.v['aboard'],16)
             b.v.update({'#hx':1888,'board_count':0})
+            b.call('move_heli');b.v['hy']=b.v['land_y']
             for person in range(16):
                 b.v['transfer_timer']=0;b.call('people_tick');self.assertEqual(self.total(b),64)
         self.assertEqual((b.v['saved'],b.v['lost'],b.v['aboard']),(64,0,0))
@@ -932,9 +962,11 @@ class Tests(unittest.TestCase):
         b=self.state();b.v.update({'#hx':500,'aboard':2,'runner_on':0,'#jet_wait':0,'#elapsed':2})
         b.a['person_state'][:2]=[5,5]
         b.call('jet_spawn');self.assertEqual(b.v.get('jet_on',0),0)
-        b.v['#hx']=1888;b.call('people_tick');b.v['#hx']=500;b.call('jet_spawn')
+        b.v['#hx']=1888;b.call('move_heli');b.v['hy']=b.v['land_y']
+        b.call('people_tick');b.v['#hx']=500;b.call('move_heli');b.call('jet_spawn')
         self.assertEqual(b.v.get('jet_on',0),0)
-        b.v['transfer_timer']=0;b.v['#hx']=1888;b.call('people_tick');b.v['#hx']=500;b.call('jet_spawn')
+        b.v['transfer_timer']=0;b.v['#hx']=1888;b.call('move_heli');b.v['hy']=b.v['land_y']
+        b.call('people_tick');b.v['#hx']=500;b.call('move_heli');b.call('jet_spawn')
         self.assertEqual(b.v.get('sorties',0),0) # the last passenger is still walking to the door
         # ... and stops to wave at the helicopter (90 frames) before going in.
         for _ in range(60):b.call('people_tick')
@@ -1088,22 +1120,25 @@ class Tests(unittest.TestCase):
     def test_helicopter_skids_touch_ground_in_every_landed_pose(self):
         import generate as art
         def verify(source):
-            for face in range(3):
-                for beat in range(2):
-                    b=self.state();b.r=Basic(source).r
-                    b.v['landed']=Basic(source).v['landed']
-                    b.call('new_heli')
-                    b.v.update({'#camera':1792,'face':face,'rotor_phase':beat})
-                    b.call('draw_actors')
-                    bottoms=[]
-                    for slot in (0,1):
-                        sy,sx,pattern,color=b.sprites[slot]
-                        pixels=art.SPRITES[pattern//4]
-                        bottoms.append(sy+1+max(y for y,row in enumerate(pixels) if any(row)))
-                    self.assertEqual(max(bottoms)+1,21*8)
-                    self.assertEqual(b.v['hy'],b.v['landed'])
+            for x,camera,ground in ((160,48,153),(1888,1792,160)):
+                for face in range(3):
+                    for beat in range(2):
+                        b=self.state();version=Basic(source);b.r=version.r
+                        b.v['landed']=version.v['landed'];b.v['home_landed']=version.v['home_landed']
+                        b.call('new_heli')
+                        b.v.update({'#hx':x,'#camera':camera,'face':face,'rotor_phase':beat})
+                        b.call('move_heli');b.v['hy']=b.v['land_y']
+                        b.call('draw_actors')
+                        bottoms=[]
+                        for slot in (0,1):
+                            sy,sx,pattern,color=b.sprites[slot]
+                            pixels=art.SPRITES[pattern//4]
+                            bottoms.append(sy+1+max(y for y,row in enumerate(pixels) if any(row)))
+                        self.assertEqual(max(bottoms)+1,ground+15)
+                        self.assertEqual((b.v['hy'],b.v['land_y']),(ground,ground))
         verify(SOURCE)
         with self.assertRaises(AssertionError):verify(SOURCE.replace('CONST LANDED = 153','CONST LANDED = 152'))
+        with self.assertRaises(AssertionError):verify(SOURCE.replace('CONST HOME_LANDED = 160','CONST HOME_LANDED = 161'))
 
     def test_idle_and_offscreen_crowds_skip_expensive_work(self):
         # Nobody outside: no walk at all. People out but none in view: the walk
@@ -1721,11 +1756,13 @@ class Tests(unittest.TestCase):
         for camp,origin in enumerate(b.a['#camp_x']):
             for trip in range(2):
                 b.v.update({'#hx':origin-12,'#camera':origin-128})
+                b.call('move_heli');b.v['hy']=b.v['land_y']
                 for _ in range(2000):
                     b.call('people_tick')
                     self.assertEqual(self.total(b),64)
                     if b.v['aboard']==16 or b.a['camp_left'][camp]==0:break
                 b.v.update({'#hx':1888,'#camera':1792})
+                b.call('move_heli');b.v['hy']=b.v['land_y']
                 for _ in range(400):
                     b.call('people_tick')
                     if b.v['aboard']==0:break
@@ -1781,11 +1818,11 @@ class Tests(unittest.TestCase):
                 b.statements=observe
                 b.call('show_sortie')
                 self.assertEqual(waits[0],5 if lives==start else 90)
-                self.assertEqual(b.v['hy'],152 if lives==start else b.v['landed'])
+                self.assertEqual(b.v['hy'],159 if lives==start else b.v['home_landed'])
                 self.assertEqual(b.bank,1)
                 self.assertEqual(b.calls.get('game_screen'),1)
                 self.assertEqual(b.calls.get('sortie_overlay'),1)
-                self.assertTrue(all(p is not None and p[0]==152 and p[1]==112
+                self.assertTrue(all(p is not None and p[0]==159 and p[1]==112
                                     for p in poses),poses[:5])
                 self.assertEqual({p[2] for p in poses[:6]},{16,24})
                 visible=shown[0]
@@ -1826,7 +1863,7 @@ class Tests(unittest.TestCase):
                     if waits[0]==3:b.v['cont1.up']=1
                 return run(line)
             b.statements=lift;b.call('show_sortie')
-            self.assertEqual((waits[0],b.v['hy']),(3,152))
+            self.assertEqual((waits[0],b.v['hy']),(3,159))
         # The old separate-screen design cleared the scenery before printing.
         bad=self.state();bad.r=Basic(SOURCE.replace('DEFINE VRAM 2232',
                                                   'CLS\nDEFINE VRAM 2232')).r
@@ -2070,7 +2107,7 @@ class Tests(unittest.TestCase):
             b=self.state();b.v.update(hy=130,dt=dt,fall_speed=3,fall_hold=20)
             b.call('fly');self.assertEqual((b.v['hy'],b.v['fall_speed']),(130+dt//6,0))
             b.v.update(hy=152,**{'cont1.down':1});b.call('fly');self.assertEqual(b.v['lives'],3)
-        bad=SOURCE.replace('IF hy = LANDED THEN RETURN\nIF fire_timer','IF fire_timer')
+        bad=SOURCE.replace('IF hy = land_y THEN RETURN\nIF fire_timer','IF fire_timer')
         b=self.state();b.r=Basic(bad).r;b.call('fire_shot');self.assertNotEqual(b.a['shot_on'],[0,0])
 
     def star_sweep(self,source=SOURCE,target='TI994A',cameras=None):
@@ -2495,9 +2532,10 @@ class Tests(unittest.TestCase):
         b=self.state();b.a['person_state']=[0]*64;b.a['person_state'][:2]=[5,5]
         b.a['camp_left'][0]=14
         b.v.update({'#hx':1888,'aboard':2,'runner_on':0})
+        b.call('move_heli');b.v['hy']=b.v['land_y']
         b.call('people_tick')
         self.assertEqual((b.v['aboard'],b.v['saved'],b.a['person_state'][0]),(1,1,6))
-        self.assertEqual(b.a['#person_x'][0],1900)
+        self.assertEqual(b.a['#person_x'][0],1900)  # Cabin center; no gap at the exit.
         self.assertEqual(b.v.get('sorties',0),0)
         for _ in range(120):
             b.call('people_tick');self.assertEqual(self.total(b),64)
@@ -2551,6 +2589,7 @@ class Tests(unittest.TestCase):
             b=self.state();b.r=Basic(target=target).r
             b.a['person_state']=[0]*64;b.a['person_state'][:4]=[5]*4;b.a['camp_left'][0]=16
             b.v.update({'#hx':1888,'aboard':4,'runner_on':0,'dt':2})
+            b.call('move_heli');b.v['hy']=b.v['land_y']
             wavers=[];still={}
             for tick in range(300):
                 b.call('people_tick')
@@ -2884,7 +2923,7 @@ class Tests(unittest.TestCase):
         # per press, like each beat of a held FIRE: in the air only, never
         # firing, and not while the controls are off.
         for target,key,other in (('TI994A',32,10),('COLECO',10,32)):
-            b=Basic(target=target);b.v.update(hy=80,turn_phase=2,face=1,fire_gate=0,**{'cont1.key':15})
+            b=Basic(target=target);b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0,**{'cont1.key':15})
             faces=[]
             for _ in range(4):
                 b.v['cont1.key']=key
@@ -2894,7 +2933,7 @@ class Tests(unittest.TestCase):
             self.assertEqual(faces,[2,0,2,1],target)
             self.assertEqual(b.v.get('fire_events',0),0)
             for setup in ({'hy':153},{'fire_gate':2},{'cont1.key':other}):
-                b=Basic(target=target);b.v.update(hy=80,turn_phase=2,face=1,fire_gate=0,**{'cont1.key':key})
+                b=Basic(target=target);b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0,**{'cont1.key':key})
                 b.v.update(setup);b.call('fire_control');self.assertEqual(b.v['face'],1,(target,setup))
 
     def test_title_picks_difficulty_without_breaking_838(self):
@@ -3002,7 +3041,7 @@ class Tests(unittest.TestCase):
         b=self.state();b.v.update(saved=64,lost=0,anim=0,crowd_pose=255,hy=60,**{'#hx':900,'#camera':788})
         b.r['show_fireworks']=['RETURN'];b.r['result_screen']=['RETURN']
         b.call('mission_over')
-        self.assertEqual((b.v['#camera'],b.v['#hv'],b.v['hy']),(1792,1904,b.v['landed']))
+        self.assertEqual((b.v['#camera'],b.v['#hv'],b.v['hy']),(1792,1904,b.v['home_landed']))
         main=SOURCE.split('\nmain_loop:\n')[1].split('\ndraw_frame:\n')[0]
         self.assertIn('IF ended THEN GOTO mission_over',main)
         trampoline=SOURCE.split('\nshow_fireworks:\n')[1].split('\nRETURN\n')[0]

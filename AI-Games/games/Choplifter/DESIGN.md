@@ -50,13 +50,13 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,750 | 24,336 | 1,586 free |
-| TI fixed area, unoptimised | 24,570 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 8,188 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
-| TI boot bank (`BANK 2`) | 8,182 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
-| TI RAM | 812 | 7,854 | |
-| ColecoVision ROM | 32,100 | 32,768 | last non-padding byte |
-| ColecoVision RAM | 812 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
+| TI fixed area (after short branches) | 22,730 | 24,336 | 1,606 free |
+| TI fixed area, unoptimised | 24,550 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 8,180 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
+| TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
+| TI RAM | 814 | 7,854 | |
+| ColecoVision ROM | 32,217 | 32,768 | last non-padding byte |
+| ColecoVision RAM | 813 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
 files. `assets.bas` (crash flames, map, crowd glyphs and palettes, roaming goals, fire
@@ -142,8 +142,11 @@ The world is 2,048 pixels wide. Home is at the east end: a 40×16 brick building
 (x=1944–1983, door at x=1960) with its flag on the roof at x=1976. A dark-red landing
 apron spreads in perspective from x=1872–2007 at its back edge to x=1842–2037 at its
 front, with a gray sidewalk by the building and a yellow octagonal landing marker.
-The helicopter spawns at x=1888 and unloads only when all 32 of its pixels are on the
-landing area (1872 ≤ x ≤ 1912). Each passenger walks to the door, and some stop on the
+The helicopter spawns at x=1888, top y=160. Its field ground remains y=153; when its
+visible left edge is at x=1840 or farther east, beyond the home fence's last ink, the
+landing height is y=160. It unloads only at that height and when all 32 of its pixels
+are on the landing area (1872 ≤ x ≤ 1912). Each passenger starts beneath the
+cabin's middle (`#hv+12`), then walks out toward the door; some stop on the
 way to wave at the helicopter (*Play and accounting*). A 320-pixel demilitarised zone (DMZ)
 spans x=1488–1808 between two boundary fences. Four camps at x=128, 384, 640 and 896 hold 16
 people each; each barrack is 32 pixels wide (x−16 to x+15), and the nearest one's outer wall
@@ -202,7 +205,8 @@ the barrack doorway. The cabin holds 16.
   outside within 16 px of the view, which the renderer draws and boarding searches.
 
 Land on the pad at home
-to unload people one at a time; each walks to the building's door and counts as saved on
+to unload people one at a time; each starts beneath the cabin and walks out to its right,
+walks to the building's door and counts as saved on
 leaving the cabin. One in four (ids divisible by 4), and always the last one out of the
 cabin (`last_out`), stops at x=1932 on the low horizon, its raised arm 4 px short of the
 building, and waves at the helicopter for 90 frames: standing poses, arm up
@@ -397,8 +401,9 @@ and row 20 the crowd and building fronts. The lower four pixels of blank row-20
 cells are dark blue, making a horizon at y=164 behind the people, buildings and
 landed helicopter. Rows 21–23 are solid blue ground except for the apron and
 fence art. Crowd characters use black paper above the horizon and blue paper below
-it. Ground contact stays at helicopter top y=153 (its lowest ink at y=167 touches
-row 21 at y=168); tanks use rows 22–23.
+it. Field ground contact stays at helicopter top y=153 (its lowest ink at y=167 touches
+row 21 at y=168). East of the home fence's last ink, contact is at top y=160, so the
+lowest ink is y=174 inside the pad's circle; tanks use rows 22–23.
 
 **Scrolling.** The camera moves in 8-pixel steps, following the helicopter at screen x 112.
 The helicopter is drawn at its *visible* x, `#hv` (set by `move_heli`): while the camera
