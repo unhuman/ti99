@@ -53,7 +53,7 @@ Current-state design. History is in git; sizes below are from the latest build
 | TI fixed area (after short branches) | 22,750 | 24,336 | 1,586 free |
 | TI fixed area, unoptimised | 24,570 | 24,574 | xas99's first pass must stay below >FFFE |
 | TI data bank (`BANK 1`) | 8,188 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
-| TI boot bank (`BANK 2`) | 8,180 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
+| TI boot bank (`BANK 2`) | 8,182 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
 | TI RAM | 812 | 7,854 | |
 | ColecoVision ROM | 32,100 | 32,768 | last non-padding byte |
 | ColecoVision RAM | 812 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
@@ -77,7 +77,8 @@ the same source unbanked.
 `show_sortie` builds the home scene, selects the boot bank for `sortie_overlay`, then
 restores the play-time bank and redraws stars in the cleared sky cells. It does not rebuild
 the whole screen when the message ends. The overlay code and text stay out of the nearly
-full fixed area and data bank.
+full fixed area and data bank. On TI, the inline bar copy changes `r0`; the overlay reloads
+the sortie index before the title `SCREEN`, and `tools/build.py` checks the generated assembly.
 
 `tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (455 branches,
 1,820 bytes saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
@@ -213,7 +214,7 @@ Saved + lost + aboard + everyone still at the camps always equals 64; a runner c
 its camp until it boards or dies. A crash loses everyone aboard and one helicopter; the next
 starts at home. `game_screen` first draws the pad, post office and HUD. An overlay then
 shows FIRST, SECOND or THIRD SORTIE on row 11 between continuous orange 2-pixel bars on
-rows 10 and 12, each spanning the visible text for that message. The helicopter is visible
+rows 10 and 12, each one character shorter at both ends than its message. The helicopter is visible
 with its rotor turning throughout the overlay.
 The two spare bytes after each 14-character title hold its bar width and starting column;
 the TI draws both bars with one three-row copy before the title replaces the middle row.
@@ -668,7 +669,9 @@ the compiler's register cache (checked in the generated assembly).
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map, the star
   table, the shell arc and the explosion timelines, and writes `src/assets.bas` (play-time
   data) and `src/assets_boot.bas` (power-on uploads, the fireworks and the menu font).
-- `tools/build.py` — generation, the 106 source-executing tests (once per `build.ps1 All`),
+- `build.ps1` — builds the requested ROMs before the 112 source-executing tests; its
+  `-BuildOnly` and `-TestsOnly` switches let the review emulator run during regression.
+- `tools/build.py` — generation, optional source-executing tests for direct shell builds,
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
   its verification, budget checks, an even-address check on every indexed word table (from
   xas99's symbol file: a label alone on its line before a padded `DATA` keeps an odd address

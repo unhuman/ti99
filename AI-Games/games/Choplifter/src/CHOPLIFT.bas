@@ -3391,6 +3391,8 @@ ASM li r4,>0300
 ASM clr r5
 ASM bl @jsr
 ASM data CPYBLK
+' Inline ASM changed r0; CVBasic still assumes it holds ini*16 for SCREEN.
+ASM movb @cvb_INI,r0
 #else
 draw_color=sortie_titles(ini+14)
 #vaddr=sortie_titles(ini+15)

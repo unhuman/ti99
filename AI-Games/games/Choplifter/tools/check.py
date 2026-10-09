@@ -1747,6 +1747,15 @@ class Tests(unittest.TestCase):
         # The message overlays the home scene. The first waits for a real lift;
         # later ones time out. Clearing changes only sky cells, then puts back
         # their stars without a second full-screen rebuild.
+        def assert_bars(visible,background,title):
+            line=''.join(chr(visible[6144+11*32+c]) for c in range(32))
+            self.assertEqual(line.strip(),title)
+            first=line.index(title);last=first+len(title)
+            for row in (10,12):
+                for col in range(32):
+                    addr=6144+row*32+col
+                    expected=23 if first+1<=col<last-1 else background[addr]
+                    self.assertEqual(visible[addr],expected,(title,row,col))
         transition='GOSUB new_heli\nGOSUB show_sortie\nGOSUB clock_reset'
         self.assertIn(transition,SOURCE.split('\nnew_game:\n',1)[1].split('\nmain_loop:\n',1)[0])
         self.assertIn(transition,SOURCE.split('\ncrash_frame:\n',1)[1].split('\nnew_heli:\n',1)[0].replace('    ',''))
@@ -1786,20 +1795,15 @@ class Tests(unittest.TestCase):
                 self.assertEqual([visible[2232+i] for i in range(8)],[0]*8)
                 self.assertEqual([visible[10424+i] for i in range(8)],
                                  [0x11]*3+[0x19]*2+[0x11]*3)
-                line=''.join(chr(visible[6144+11*32+c]) for c in range(32))
-                self.assertEqual(line.strip(),title)
-                first=line.index(title);last=first+len(title)
-                for row in (10,12):
-                    for col in range(32):
-                        addr=6144+row*32+col
-                        expected=23 if first<=col<last else ref.vram[addr]
-                        self.assertEqual(visible[addr],expected,(title,row,col))
+                assert_bars(visible,ref.vram,title)
                 self.assertEqual([b.vram[a] for a in range(6144,6912)],
                                  [ref.vram[a] for a in range(6144,6912)])
-        # The former fixed ten-cell bar leaves both ends of SECOND uncovered.
+        # The previous full-width bar covers both end characters of SECOND.
         b=self.state();b.v.update(start_lives=3,lives=2)
-        b.a['sortie_titles'][16+14]=10
-        b.a['sortie_titles'][16+15]=11
+        b.a['sortie_bar_cells']=[23]*13+[0]
+        b.a['sortie_titles']=b.a['sortie_titles'][:]
+        b.a['sortie_titles'][16+14]=13
+        b.a['sortie_titles'][16+15]=9
         b.call('new_heli')
         shown=[];run=b.statements
         def capture(line):
@@ -1807,7 +1811,10 @@ class Tests(unittest.TestCase):
                 shown.append(dict(b.vram));b.v['cont1.up']=1
             return run(line)
         b.statements=capture;b.call('show_sortie')
-        self.assertNotEqual(shown[0][6144+10*32+9],23)
+        ref=self.state();ref.v.update(start_lives=3,lives=2)
+        ref.call('new_heli');ref.call('game_screen')
+        with self.assertRaises(AssertionError):
+            assert_bars(shown[0],ref.vram,'SECOND SORTIE')
         # Later messages also yield immediately to a lift instead of making
         # the player wait out their 90-frame timeout.
         for lives in (2,1):

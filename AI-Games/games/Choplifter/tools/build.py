@@ -28,10 +28,38 @@ def assemble(out, name):
     for f in out.glob(f'{name}_b*.bin'): f.unlink()
     run(sys.executable,XD/'xas99.py','-b','-R',f'{name}.a99','-L',f'{name}.lst','-E',f'{name}.equ',cwd=out)
 
+def check_sortie_title_reload(asm):
+    """TI inline ASM changes r0, but CVBasic caches the previous value of ini.
+    The title SCREEN must receive a fresh ini value after the bar copy."""
+    title=re.search(r'(?m)^[ \t]*; SCREEN sortie_titles,ini,361,14,1[ \t]*$',asm)
+    copies=list(re.finditer(r'(?m)^[ \t]*; ASM data CPYBLK[ \t]*$',asm))
+    if not title or not copies:
+        raise RuntimeError('Cannot find TI sortie bar copy and title SCREEN')
+    copy=max((m for m in copies if m.end()<title.start()),key=lambda m:m.start(),default=None)
+    if copy is None:
+        raise RuntimeError('Cannot find TI sortie bar copy before title SCREEN')
+    section=asm[copy.end():title.start()]
+    instructions=[line.strip() for line in section.splitlines()
+                  if line.strip() and not line.lstrip().startswith(';')]
+    if instructions!=['data CPYBLK','movb @cvb_INI,r0']:
+        raise RuntimeError(f'TI sortie title uses stale r0 after bar copy: {instructions}')
+    return copy.end(),title.start()
+
 def build_ti(out, name, title):
     """Compile, assemble, shorten branches, check budgets and pack a 32 KB cart.
     Returns (fixed bytes used, unoptimised fixed bytes, data-bank bytes used)."""
     run(CV/'cvbasic.exe','--ti994a',f'{name}.bas',f'{name}.a99',str(CV)+'/',cwd=out)
+    asm=(out/f'{name}.a99').read_text()
+    start,end=check_sortie_title_reload(asm)
+    bad_section=re.sub(r'(?m)^[ \t]*movb @cvb_INI,r0[ \t]*\n','',asm[start:end],count=1)
+    if bad_section==asm[start:end]:
+        raise RuntimeError('TI sortie reload self-test could not remove the reload')
+    try:
+        check_sortie_title_reload(asm[:start]+bad_section+asm[end:])
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError('TI sortie reload check accepts missing reload')
     assemble(out, name)
     unopt=fixed_used(out, name)
     # xas99's first pass rejects short jumps straddling >FFFF, so the

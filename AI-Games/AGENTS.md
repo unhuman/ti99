@@ -50,6 +50,10 @@ game's use of the **unhuman/CVBasic** fork, which supplies its preprocessor.
   Build both TI and ColecoVision for shared CVBasic changes; preserve and validate
   any additional targets the game supports. Run builds sequentially when they
   share generated files or tests that temporarily mutate the source.
+- For game development, produce all target ROMs first, then load the newest TI ROM
+  in a visible review emulator so the user can play while the slower regression
+  suite runs. Keep required generation, compile, assembly, and budget gates in
+  the build. If testing requires a fix, rebuild and reload before handoff.
 - Preserve `.gitattributes`: shell scripts and CVBasic sources need LF endings.
   Read documentation as UTF-8. On Windows, distinguish native paths from Cygwin
   `/cygdrive/c/...` paths; the game scripts handle the runtime/path conversions.

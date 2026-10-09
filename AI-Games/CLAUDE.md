@@ -352,6 +352,9 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
     cached value and condition flags before returning to BASIC (for a byte in
     R0, `ASM MOVB @cvb_NAME,R0`). Check the generated assembly. Keystone's
     cancel-key scanner needs this to avoid silencing effects on ordinary frames.
+    Choplifter's sortie overlay also needs the reload before `SCREEN` reads `ini`:
+    otherwise the compiler shifts the assembly's table pointer in R0 as if it
+    were the sortie index, drawing unrelated bytes in the message.
   - **Inline `ASM` that writes the VDP ports must hold interrupts off across each
     address-and-data sequence** (`LIMI 0` … `LIMI 2`, exactly as the runtime's `WRTVRM`
     does): the vblank handler sets its own VDP address, and landing between your two
@@ -465,6 +468,12 @@ Every game is built the same way — that consistency is the point.
 > until the docs that describe it match (and the cross-referenced line numbers/labels still point at
 > the right lines). When a change exposes a new toolchain hazard or rule, also record it in the
 > relevant section of this `CLAUDE.md` (e.g. the §2 compiler land-mines) so future games inherit it.
+
+> **Standing rule — build playable ROMs before the long regression suite.** For game development,
+> complete every target build and its required generation, compile, assembly and size checks first.
+> Load the newest production ROM in a visible review emulator so the user can play while the
+> regression suite runs. If the suite reveals a fault, fix it, rebuild and reload the review ROM.
+> A black capture or a background-only process does not establish visible runtime verification.
 
 > **Standing rule — leave the emulator running when you hand work back (continuous development).**
 > Finish every work session by launching the **newest** build in Classic99 (kill any older instance

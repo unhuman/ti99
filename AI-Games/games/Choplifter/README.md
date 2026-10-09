@@ -60,8 +60,8 @@ burns down gradually to embers, and only then,
 with the screen clear, does the next helicopter appear on the pad. A crash loses everyone
 aboard, but the camps keep emptying while the wreck burns. Do not land on people or shoot
 through them; your bombs fall in front of the crowd and pass people by.
-The home scene shows FIRST, SECOND or THIRD SORTIE between two solid bars sized to the
-text when a new helicopter arrives. Its rotor turns while the message is up. Press UP to lift off and clear
+The home scene shows FIRST, SECOND or THIRD SORTIE between two solid bars that stop one
+character short of each end of the text. Its rotor turns while the message is up. Press UP to lift off and clear
 any sortie message immediately; FIRST SORTIE waits for that move, while later messages
 also clear after a brief pause. The hidden practice mode numbers sorties four through nine.
 The two boundary fences enclose a 320-pixel demilitarized zone west of the landing pad.
@@ -128,8 +128,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1 All
 powershell -NoProfile -ExecutionPolicy Bypass -File launch-ti.ps1
 ```
 
-`build.ps1 TI` or `build.ps1 Coleco` builds one target; `build.ps1 All` runs the tests once
-and builds both (about three and a half minutes). Cygwin users may run `bash build-ti.sh` or
+`build.ps1 TI` or `build.ps1 Coleco` builds one target; `build.ps1 All` builds both before
+running the tests once. Use `build.ps1 All -BuildOnly`, launch the new TI ROM, then
+`build.ps1 All -TestsOnly` when someone wants to play while the tests run. Cygwin users may run `bash build-ti.sh` or
 `bash build-coleco.sh`; do not use Git Bash. Dependencies: the **unhuman/CVBasic** fork,
 Python 3.10+, xdt99's `xas99.py`, `linkticart.py`, Keystone Kapers' `shortbranches.py` (in
 this repository) and, for ColecoVision, `gasm80`. Override `CVBASIC_DIR`, `XDT99_DIR` or
@@ -142,7 +143,7 @@ reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,750 / 24,336 B fixed (+ 8,188 and 8,186 / 8,190 B banks) | 812 / 7,854 B |
+| TI-99/4A | 22,750 / 24,336 B fixed (+ 8,188 and 8,182 / 8,190 B banks) | 812 / 7,854 B |
 | ColecoVision | 32,100 / 32,768 B ROM | 812 / 814 B |
 
 ## Speed
