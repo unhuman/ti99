@@ -2757,6 +2757,32 @@ class Tests(unittest.TestCase):
         b.v.update({'hy':100,'dt':2,'cont1.right':1})
         for _ in range(60):b.call('fly')
         self.assertEqual(b.v['hy'],100)  # the old horizontal hover fails the gate
+
+    def test_coleco_game_clock_runs_at_two_thirds_video_speed(self):
+        loop=SOURCE.split('\nmain_loop:\n',1)[1].split("' BACK (FCTN-9)",1)[0]
+        self.assertIn('IF #elapsed < 2 THEN WAIT:GOTO main_loop',loop)
+        self.assertIn('IF #elapsed < 3 THEN WAIT:GOTO main_loop',loop)
+        coleco=loop.split('#last=#now\n#if TI994A\n',1)[1].split('#else\n',1)[1].split('#endif',1)[0]
+        def run(source,frames):
+            b=Basic('pace_probe:\n'+source+'RETURN\n',target='COLECO')
+            ticks=[]
+            for elapsed in frames:
+                b.v['#elapsed']=elapsed
+                b.call('pace_probe')
+                ticks.append(b.v['dt'])
+                self.assertEqual(b.v['#elapsed'],b.v['dt'])
+            return ticks,b.v['pace_rem']
+        ticks,rem=run(coleco,[3]*20)
+        self.assertEqual((ticks,rem),([2]*20,0))  # 60 video frames = 40 game frames
+        frames=[3,4,5,3,6,3,7,3,3,4,5,3,8,3]
+        ticks,rem=run(coleco,frames)
+        self.assertEqual(3*sum(ticks)+rem,2*sum(frames))
+        self.assertTrue(all(2<=tick<=6 for tick in ticks))
+        self.assertEqual(run(coleco,[12]),([6],0))  # a long hitch is capped
+        bad=coleco.replace('pace_rem=pace_rem+dt+dt','pace_rem=pace_rem+dt',1)
+        self.assertNotEqual(run(bad,[3]*20)[0],[2]*20)
+        b=Basic(target='COLECO');b.v['pace_rem']=2;b.call('clock_reset')
+        self.assertEqual(b.v['pace_rem'],0)
     def test_title_helicopter_circles_the_name(self):
         title=SOURCE.split('\ntitle:\n')[1].split('\ntitle_heli:\n')[0]
         self.assertIn('PRINT AT 644,"2026 UNHUMAN AND AI C&C"',title)
@@ -2795,8 +2821,12 @@ class Tests(unittest.TestCase):
         for keys,want in (({'fctn','9'},1),({'fctn','8'},1),({'fctn'},0),({'9'},0),({'8'},0),(set(),0)):
             b=self.state();b.keys=set(keys);b.call('back_key')
             self.assertEqual(b.v['back_pressed'],want,keys)
-        b=self.state();b.r=Basic(target='COLECO').r;b.v['cont1.key']=11;b.call('back_key')
-        self.assertEqual(b.v['back_pressed'],1)
+        for key,want in ((10,1),(11,1),(0,0),(15,0)):
+            b=self.state();b.r=Basic(target='COLECO').r;b.v['cont1.key']=key;b.call('back_key')
+            self.assertEqual(b.v['back_pressed'],want,key)
+        bad=SOURCE.replace('IF cont1.key = 10 THEN back_pressed=1\n','',1)
+        b=self.state();b.r=Basic(bad,target='COLECO').r;b.v['cont1.key']=10;b.call('back_key')
+        self.assertEqual(b.v['back_pressed'],0)
         # Checked at the top level of the main loop (never inside a GOSUB, so
         # GOTO title leaves no return address), and from the pause.
         loop=SOURCE.split('\nmain_loop:\n')[1].split('\ndraw_frame:\n')[0]

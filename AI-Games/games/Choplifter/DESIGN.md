@@ -1,7 +1,7 @@
 # Choplifter — TI-99/4A / CVBasic
 
 Current-state design. History is in git; sizes below are from the latest build
-(2026-10-08); full-loop speeds were re-measured on 2026-10-07, per-routine costs on 2026-10-06.
+(2026-10-09); full-loop TI speeds were re-measured on 2026-10-07, per-routine costs on 2026-10-06.
 
 ## Performance budget
 
@@ -10,6 +10,11 @@ Current-state design. History is in git; sizes below are from the latest build
   took 2 or more frames starts the next one immediately (`main_loop`), so the only idle wait
   is the scroll synchronisation below. At 6 frames per update the game still runs at true
   speed, just in coarser steps; beyond that it slows down.
+- **ColecoVision pace.** Its quicker loop waits for at least 3 physical frames per pass
+  (20 updates/s). An integer remainder converts elapsed video frames to game frames at
+  2/3 speed, clamped to 6 game frames for a long hitch. `dt` and `#elapsed` both receive
+  the converted value, so movement, enemies, people, sound envelopes and spawn delays
+  keep their relative timing. `clock_reset` clears the remainder. TI pacing is unchanged.
 - **Measured rates** (Classic99 Normal speed, `tools/profile.py` full-loop cases, video
   frames per 32 updates → updates per second):
 
@@ -55,8 +60,8 @@ Current-state design. History is in git; sizes below are from the latest build
 | TI data bank (`BANK 1`) | 8,180 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
 | TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
 | TI RAM | 814 | 7,854 | |
-| ColecoVision ROM | 32,162 | 32,768 | last non-padding byte |
-| ColecoVision RAM | 811 | 814 | nearly full; TI-only hold-turn counters are absent |
+| ColecoVision ROM | 32,228 | 32,768 | last non-padding byte |
+| ColecoVision RAM | 812 | 814 | nearly full; TI-only hold-turn counters are absent |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
 files. `assets.bas` (crash flames, map, crowd glyphs and palettes, roaming goals, fire
@@ -284,7 +289,7 @@ spawn invulnerability; short taps land safely. While the descent is that fast th
 with a higher, pulsing whine (higher still at full speed), which stops when DOWN is released. Holding P (TI) or keypad 0 (ColecoVision) for
 12 frames pauses; the same key or FIRE resumes. Pause silences sound and resets the frame
 clock. **BACK (FCTN-9) or REDO (FCTN-8)** abandons the mission for the title, from play or
-from the pause; keypad # does it on ColecoVision. `back_key` reads the TI keyboard matrix
+from the pause; keypad * or # does it on ColecoVision. `back_key` reads the TI keyboard matrix
 over the CRU, because the key scan stops at FCTN, and the main loop tests it at its top
 level so `GOTO title` leaves no return address on the stack.
 
@@ -690,7 +695,7 @@ the compiler's register cache (checked in the generated assembly).
 - `src/CHOPLIFT.bas` — the game. `assets/generate.py` owns art, the world map, the star
   table, the shell arc and the explosion timelines, and writes `src/assets.bas` (play-time
   data) and `src/assets_boot.bas` (power-on uploads, the fireworks and the menu font).
-- `build.ps1` — builds the requested ROMs before the 112 source-executing tests; its
+- `build.ps1` — builds the requested ROMs before the 119 source-executing tests; its
   `-BuildOnly` and `-TestsOnly` switches let the review emulator run during regression.
 - `tools/build.py` — generation, optional source-executing tests for direct shell builds,
   the repository truncation and GOSUB gates, compilation, assembly, the short-branch pass with
@@ -716,7 +721,8 @@ the compiler's register cache (checked in the generated assembly).
 - `tools/run-bench.ps1` — runs a benchmark cart in its own Classic99, starts it (title key,
   then 2) and captures the finished screen. `tools/capture.ps1` screenshots and drives a
   specific Classic99 process. `launch-ti.ps1` opens a separate review session of the
-  production cart.
+  production cart; `launch-coleco.ps1` opens the Coleco production ROM in ColEm
+  by default, or CoolCV with `-CoolCV`, on the user's visible desktop.
 
 Verified in Classic99: the production review cart scrolling over two evacuating camps with a
 tank, shells and crashes (clean rendering, overlays in place); a soft landing beside a settled

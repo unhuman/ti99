@@ -131,15 +131,29 @@ GOSUB clock_reset
 chime_kind=3:chime_timer=191
 
 main_loop:
-' At most 30 updates per second, but never idle: an update that already took
-' two or more video frames starts the next one immediately. (A scrolling
-' update still synchronises its scenery copy in crowd_commit.)
+' TI updates at most 30 times a second. Coleco's faster loop targets 20 and
+' advances the game clock at 2/3 video speed; keep the remainder across passes.
+' A busy pass starts the next one immediately. Scrolling still synchronises
+' its scenery copy in crowd_commit.
 #now=FRAME
 #elapsed=#now-#last
+#if TI994A
 IF #elapsed < 2 THEN WAIT:GOTO main_loop
+#else
+IF #elapsed < 3 THEN WAIT:GOTO main_loop
+#endif
 #last=#now
+#if TI994A
 IF #elapsed > 6 THEN #elapsed=6
 dt=#elapsed
+#else
+IF #elapsed > 9 THEN #elapsed=9
+dt=#elapsed
+pace_rem=pace_rem+dt+dt
+dt=pace_rem/3
+pace_rem=pace_rem-dt-dt-dt
+#elapsed=dt
+#endif
 ' BACK (FCTN-9) or REDO (FCTN-8) abandons the mission for the title. This is
 ' the top level of the loop, never inside a GOSUB, so no return is left behind.
 GOSUB back_key
@@ -279,6 +293,8 @@ IF crash_timer THEN fire_gate=2
 fire_held=0
 #if TI994A
 fire_hold=0:fire_turned=0
+#else
+pace_rem=0
 #endif
 fire_seen=fire_events
 #last=FRAME
@@ -2932,7 +2948,7 @@ RETURN
 back_key:
 ' BACK (FCTN-9) or REDO (FCTN-8) on the TI, read from the keyboard matrix:
 ' CVBasic's key scan stops at FCTN, and a bare FCTN can look like a joystick
-' button (CLAUDE.md). Keypad # (11) on ColecoVision.
+' button (CLAUDE.md). Keypad * (10) or # (11) on ColecoVision.
 back_pressed=0
 #if TI994A
 ' Keep the interrupt's keyboard scan out of this short CRU transaction.
@@ -2972,6 +2988,7 @@ ASM limi 2
 ' The compiler caches back_pressed in r0 across ASM: reload value and flags.
 ASM movb @cvb_BACK_PRESSED,r0
 #else
+IF cont1.key = 10 THEN back_pressed=1
 IF cont1.key = 11 THEN back_pressed=1
 #endif
 RETURN

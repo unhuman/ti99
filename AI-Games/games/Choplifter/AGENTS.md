@@ -13,3 +13,6 @@ launcher to `WinSta0\Default`; a direct `Start-Process` from Codex's private des
 produces audio without a user-visible window. Run it after each new TI ROM build.
 Do not stop an existing user emulator session without approval. `tools/capture.ps1` requires an explicit
 process ID; never send test input to whichever emulator happens to be first.
+Use `launch-coleco.ps1` for ColecoVision reviews. ColEm is the default emulator;
+pass `-CoolCV` only when the user asks for CoolCV. It also launches on
+`WinSta0\Default` and leaves existing emulator sessions alone.

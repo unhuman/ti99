@@ -24,11 +24,14 @@ hardware. A ColecoVision build is produced at `build/coleco/choplift.rom`.
 | Hold FIRE (TI) | Turn after 0.3 s, then every 0.25 s (left, front, right, front) |
 | SPACE (TI) / Button 2 (ColecoVision) | Turn one step per press, in the air |
 | Hold `P` (TI) / `0` (ColecoVision) | Pause; the same key or FIRE resumes |
-| BACK (`FCTN-9`) or REDO (`FCTN-8`) / keypad `#` | Abandon the mission and return to the title |
+| BACK (`FCTN-9`) or REDO (`FCTN-8`) / keypad `*` or `#` | Abandon the mission and return to the title |
 
 The supplied Classic99 profile uses **arrow keys and Tab for joystick 1**. On real hardware,
 release ALPHA LOCK if it interferes with the joystick's vertical axis.
 Sideways shots have a short, noisy crack; bombs keep their falling whistle.
+ColecoVision gameplay runs at two thirds of the video-frame speed, with a
+20-updates-per-second ceiling, so flight, people and threats have a more
+manageable pace. The TI-99/4A timing is unchanged.
 
 You start at home on the right, on the landing pad beside the brick headquarters with the
 flag on its roof. Fly
@@ -143,11 +146,14 @@ on the user's Windows `Default` desktop, with the project's input profile and pr
 cartridge. Direct launches from Codex's private desktop can play audio without showing a
 window or taskbar entry. The launcher leaves other emulator sessions alone. Pass
 `-ReviewProcessId` with the ID in `build/review/process-id.txt` to reload that session.
+`launch-coleco.ps1` opens the production Coleco ROM in a visible **ColEm** window on the
+same desktop by default. Pass `-CoolCV` to use CoolCV for a specific review. The launcher
+leaves other emulator sessions alone.
 
 | Target | Code | RAM |
 |---|---:|---:|
 | TI-99/4A | 22,752 / 24,336 B fixed (+ 8,180 and 8,186 / 8,190 B banks) | 814 / 7,854 B |
-| ColecoVision | 32,162 / 32,768 B ROM | 811 / 814 B |
+| ColecoVision | 32,228 / 32,768 B ROM | 812 / 814 B |
 
 ## Speed
 
@@ -177,7 +183,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   cells and adjusts the brackets and period for game text. The generator writes
   the menu's bottom-third copy, and the build replaces CVBasic's embedded glyphs
   on TI and ColecoVision without growing the ROM.
-- `tools/check.py`: 118 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 119 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,
