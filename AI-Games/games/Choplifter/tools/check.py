@@ -1790,6 +1790,39 @@ class Tests(unittest.TestCase):
                                                      'DEFINE VRAM 4608')).r
         with self.assertRaises(ValueError):bad.call('menu_restore')
 
+    def test_selected_font_replaces_compiler_glyphs_on_both_targets(self):
+        import font
+        sys.path.insert(0,str(ROOT/'tools'))
+        from build import patch_font
+        bitmap=font.glyphs()
+        self.assertEqual(len(bitmap),768)
+        self.assertEqual(bitmap[(65-32)*8:(66-32)*8],bytes((24,76,198,198,222,198,198,0)))
+        self.assertEqual(bitmap[(72-32)*8:(73-32)*8],bytes((198,198,198,222,198,198,198,0)))
+        for code,adjusted in font.GLYPH_TOUCHUPS.items():
+            self.assertEqual(bitmap[(code-32)*8:(code-31)*8],adjusted)
+        self.assertEqual(bitmap[(91-32)*8:(92-32)*8][0],0x1E)  # one clear pixel beside the digit
+        self.assertEqual(bitmap[(93-32)*8:(94-32)*8][0],0x78)  # matching gap after the word
+        self.assertEqual(bitmap[(91-32)*8:(92-32)*8][-1],0)
+        self.assertEqual(bitmap[(93-32)*8:(94-32)*8][-1],0)
+        self.assertEqual(bitmap[(46-32)*8:(47-32)*8][-2:],b'\xc0\xc0')  # low, left-aligned period
+        self.assertEqual(self.state().a['menu_font'],list(bitmap[256:512]))
+        for match in re.finditer(r'PRINT AT \d+,"([^"]*)"',SOURCE):
+            for character in set(match[1])-{' '}:
+                code=ord(character)
+                if 32<=code<128:
+                    self.assertNotEqual(bitmap[(code-32)*8:(code-31)*8],bytes(8),
+                                        f'Blank screen glyph {character!r} at {match.start()}')
+        for directive,prefix in (('byte','>'),('db','$')):
+            rows=[f'    {directive} '+','.join([prefix+'00']*8)+f' ; {prefix}{code:02x} glyph\n'
+                  for code in range(32,128)]
+            source='font_bitmaps'+(':' if directive=='db' else '')+'\n'+''.join(rows)
+            result=patch_font(source,bitmap)
+            self.assertIn(','.join(f'{prefix}{v:02x}' for v in bitmap[(65-32)*8:(66-32)*8]),result)
+            self.assertEqual(len(result.splitlines()),97)
+            bad=source.replace(f'; {prefix}41 glyph',f'; {prefix}42 glyph')
+            with self.assertRaises(ValueError):patch_font(bad,bitmap)
+            with self.assertRaises(ValueError):patch_font(source.replace('font_bitmaps','wrong_label'),bitmap)
+
     def test_each_new_helicopter_gets_a_framed_sortie_card(self):
         # The message overlays the home scene. The first waits for a real lift;
         # later ones time out. Clearing changes only sky cells, then puts back
@@ -2307,7 +2340,9 @@ class Tests(unittest.TestCase):
                     b.call('weapon_sound')
                     for _ in range(42//dt):b.call('sound_tick')
                     self.assertTrue(all(v==0 for _,v in b.sounds.values()))
-                    self.assertGreater(len({p for c,p,v in b.sound_writes if c==1 and v}),1)
+                    pitches={p for c,p,v in b.sound_writes if c==1 and v}
+                    if gun==2:self.assertGreater(len(pitches),1)
+                    else:self.assertEqual(pitches,{180})
                     b.v.update(gun_timer=10,chime_timer=10,noise_timer=10)
                     b.call('silence')
                     self.assertTrue(all(v==0 for _,v in b.sounds.values()))
@@ -2317,6 +2352,35 @@ class Tests(unittest.TestCase):
         b.v['#jet_x']=900;b.call('sound_tick');self.assertEqual(b.sounds[1][1],0)
         bad=SOURCE.replace('SOUND 3,0,0\ngun_timer=0','gun_timer=0')
         b=Basic(bad);b.sounds[3]=(6,12);b.call('silence');self.assertNotEqual(b.sounds[3][1],0)
+
+    def test_bullets_crack_briefly_and_bombs_keep_their_whistle(self):
+        for dt in (1,2,4):
+            b=self.state();b.v.update(face=0,hy=100,dt=dt)
+            b.call('fire_shot')
+            self.assertEqual((b.v['gun_kind'],b.v['gun_timer'],b.v['noise_kind'],b.v['noise_timer']),
+                             (1,3,4,8))
+            self.assertEqual((b.sounds[1],b.sounds[3]),((180,10),(4,12)))
+            for _ in range(9):b.call('sound_tick')
+            self.assertEqual(b.sounds[1][1],0)
+            self.assertEqual(b.v['noise_timer'],0)
+            self.assertEqual({p for c,p,v in b.sound_writes if c==1 and v},{180})
+            self.assertLessEqual(len([1 for c,p,v in b.sound_writes if c==3 and v]),9)
+        bomb=self.state();bomb.v.update(face=2,hy=100,dt=1)
+        bomb.call('fire_shot')
+        self.assertEqual((bomb.v['gun_kind'],bomb.v['gun_timer'],bomb.v.get('noise_timer',0)),(2,24,0))
+        bomb.call('sound_tick')
+        self.assertNotEqual(bomb.sounds[1][0],180)
+        occupied=self.state();occupied.v.update(face=0,hy=100,noise_timer=12,noise_kind=3)
+        occupied.call('fire_shot')
+        self.assertEqual((occupied.v['noise_timer'],occupied.v['noise_kind']),(12,3))
+        bad=SOURCE.replace('gun_kind=1:gun_timer=3','gun_kind=1:gun_timer=10')
+        self.assertNotEqual(bad,SOURCE)
+        b=self.state();b.r=Basic(bad).r;b.v.update(face=0,hy=100)
+        b.call('fire_shot');self.assertNotEqual(b.v['gun_timer'],3)
+        bad=SOURCE.replace('SOUND 1,180,10\n            GOSUB squish_sound','SOUND 1,180,10')
+        self.assertNotEqual(bad,SOURCE)
+        b=self.state();b.r=Basic(bad).r;b.v.update(face=0,hy=100)
+        b.call('fire_shot');self.assertNotEqual(b.v.get('noise_timer',0),8)
 
     def test_first_takeoff_tune_is_melodic_short_and_once(self):
         # The FIRST card waits for UP. Its return starts the only long chime;

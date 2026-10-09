@@ -50,12 +50,12 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,756 | 24,336 | 1,580 free |
-| TI fixed area, unoptimised | 24,572 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI fixed area (after short branches) | 22,752 | 24,336 | 1,584 free |
+| TI fixed area, unoptimised | 24,568 | 24,574 | xas99's first pass must stay below >FFFE |
 | TI data bank (`BANK 1`) | 8,180 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
 | TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
 | TI RAM | 814 | 7,854 | |
-| ColecoVision ROM | 32,255 | 32,768 | last non-padding byte |
+| ColecoVision ROM | 32,246 | 32,768 | last non-padding byte |
 | ColecoVision RAM | 813 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
@@ -65,6 +65,14 @@ good. `assets_boot.bas` (all 64 sprites, scenery characters and colours, stars, 
 overlay tables, fireworks and the menu font) goes into the boot bank. `boot:` selects it
 around power-on uploads; `show_sortie`, `show_fireworks` and `menu_restore`, in the fixed area,
 select it around their respective calls (the vblank handler reads only fixed tables).
+The font source is `assets/font.png`, an 8×8 grid for codes 32–127. The build replaces
+CVBasic's 768 embedded glyph bytes in the generated TI and ColecoVision assembly before
+assembly, so title, HUD and report text use the supplied font with no ROM growth.
+`assets/generate.py` writes codes 64–95 from the same sheet into the boot-bank
+`menu_font` table, so returning to a menu restores the same glyphs in the borrowed
+bottom-third pattern buffer. The supplied image has blank `[` and `]` cells.
+`assets/font.py` gives them seven-row shapes with an extra pixel of space around
+the selected difficulty, and puts the period at the bottom left of its cell.
 With the boot-only art out of it, the data bank also holds the enemy and hit-box tables and
 the cold code: the crash routines (`crash`, `crash_tick`, the burst triggers and
 `crash_draw`, which run only after a crash or a hit), the camps' occasional events
@@ -575,8 +583,11 @@ builds (`chop_period`, set by `sound_tick`). The vblank handler (`fire_control`)
 so the beat stays steady whatever the update rate, and writes only single bytes (the noise
 type, then volumes); `sound_tick` raises `sound_busy` while it writes, so the handler never
 lands between the two bytes of a main-loop frequency write (`sn76489_freq` writes them with
-interrupts on). `silence` clears `chop_period` before it quiets the chip. Channel 1 plays a short gun sweep or a longer falling
-bomb whistle; when free it carries a nearby jet's distance-dependent tone or the air mine's
+interrupts on). `silence` clears `chop_period` before it quiets the chip. A sideways shot
+plays a low, fixed-pitch, three-frame tone attack on channel 1 and retriggers a brief high-rate
+noise crack on channel 3, using the existing squish envelope; active explosion noise keeps
+priority. Bombs retain their longer falling whistle on channel 1. When free, channel 1
+carries a nearby jet's distance-dependent tone or the air mine's
 alternating warning. Channel 2 carries rising boarding and falling unloading chirps and a
 three-note delivery chime. The first takeoff alone plays a brisk three-bar C-major
 melody (C-D-E-G, E-G-A-G, D-E-G-C) through the same channel and timer; it starts

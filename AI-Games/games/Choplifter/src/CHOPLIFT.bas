@@ -480,11 +480,14 @@ FOR wi=0 TO 1
             END IF
         END IF
         fire_timer=6
-        gun_kind=1:gun_timer=10
-        SOUND 1,70,11
         IF face = 2 THEN
             gun_kind=2:gun_timer=24
             SOUND 1,180,10
+        ELSE
+            ' A shot cracks once; the bomb alone keeps the falling whistle.
+            gun_kind=1:gun_timer=3
+            SOUND 1,180,10
+            GOSUB squish_sound
         END IF
         EXIT FOR
     END IF
@@ -2748,8 +2751,8 @@ IF gun_timer THEN
         #sfx_pitch=564-gun_timer*16
         sfx_volume=6+gun_timer/6
     ELSE
-        #sfx_pitch=230-gun_timer*16
-        sfx_volume=5+gun_timer/2
+        #sfx_pitch=180
+        sfx_volume=5+gun_timer
     END IF
     SOUND 1,#sfx_pitch,sfx_volume
     RETURN

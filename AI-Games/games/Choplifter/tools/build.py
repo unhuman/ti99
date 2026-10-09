@@ -7,6 +7,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'assets'))
+from font import glyphs
 CYG = sys.platform == 'cygwin'
 PREFIX = '/cygdrive/c' if CYG else 'C:'
 CV = Path(os.environ.get('CVBASIC_DIR', PREFIX+'/Users/Howie/github.git/unhuman/CVBasic'))
@@ -15,6 +17,25 @@ GASM = Path(os.environ.get('GASM80', PREFIX+'/Users/Howie/github.git/nanochess/g
 # The shared, verified TMS9900 long-branch shortener (also used by Hard Hat Mack).
 SHORT = ROOT.parent/'KeystoneKapers'/'assets'/'shortbranches.py'
 FIXED_CAP = 24336
+
+def patch_font(assembly, font):
+    """Replace CVBasic's existing 96 glyphs in place, preserving ROM size."""
+    if len(font) != 96*8: raise ValueError('Expected ASCII 32-127 font bytes')
+    lines=assembly.splitlines(keepends=True)
+    labels=[i for i,line in enumerate(lines) if re.fullmatch(r'\s*font_bitmaps:?\s*',line)]
+    if len(labels)!=1: raise ValueError('Expected one font_bitmaps label')
+    first=labels[0]+1
+    for code in range(32,128):
+        i=first+code-32
+        if i>=len(lines): raise ValueError(f'Missing font glyph {code}')
+        m=re.fullmatch(r'(\s*)(byte|db)\s+((?:[>$][0-9a-fA-F]{2},){7}[>$][0-9a-fA-F]{2})(\s*;\s*[>$]([0-9a-fA-F]{2})\b[^\r\n]*)(\r?\n?)',lines[i],re.I)
+        if not m or int(m.group(5),16)!=code:
+            raise ValueError(f'Unexpected font glyph line for ASCII {code}: {lines[i].strip()}')
+        prefix='>' if m.group(2).lower()=='byte' else '$'
+        bitmap=font[(code-32)*8:(code-31)*8]
+        values=','.join(f'{prefix}{value:02x}' for value in bitmap)
+        lines[i]=m.group(1)+m.group(2)+' '+values+m.group(4)+m.group(6)
+    return ''.join(lines)
 
 def run(*args, cwd=ROOT):
     print('+', ' '.join(map(str,args)), flush=True)
@@ -49,7 +70,9 @@ def build_ti(out, name, title):
     """Compile, assemble, shorten branches, check budgets and pack a 32 KB cart.
     Returns (fixed bytes used, unoptimised fixed bytes, data-bank bytes used)."""
     run(CV/'cvbasic.exe','--ti994a',f'{name}.bas',f'{name}.a99',str(CV)+'/',cwd=out)
-    asm=(out/f'{name}.a99').read_text()
+    assembly=out/f'{name}.a99'
+    asm=patch_font(assembly.read_text(),glyphs())
+    assembly.write_text(asm)
     start,end=check_sortie_title_reload(asm)
     bad_section=re.sub(r'(?m)^[ \t]*movb @cvb_INI,r0[ \t]*\n','',asm[start:end],count=1)
     if bad_section==asm[start:end]:
@@ -140,6 +163,8 @@ def main():
         word_tables_even(out,'CHOPLIFT')
     else:
         run(CV/'cvbasic.exe','CHOPLIFT.bas','CHOPLIFT.asm',str(CV)+'/',cwd=out)
+        assembly=out/'CHOPLIFT.asm'
+        assembly.write_text(patch_font(assembly.read_text(),glyphs()))
         run(GASM,'CHOPLIFT.asm','-o','choplift.rom',cwd=out)
         print(f'Coleco ROM: {(out/"choplift.rom").stat().st_size} bytes')
     print('Build OK:',out)

@@ -28,6 +28,7 @@ hardware. A ColecoVision build is produced at `build/coleco/choplift.rom`.
 
 The supplied Classic99 profile uses **arrow keys and Tab for joystick 1**. On real hardware,
 release ALPHA LOCK if it interferes with the joystick's vertical axis.
+Sideways shots have a short, noisy crack; bombs keep their falling whistle.
 
 You start at home on the right, on the landing pad beside the brick headquarters with the
 flag on its roof. Fly
@@ -172,7 +173,11 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   two-colours-per-row limit), world map, star table and shell arc; writes `src/assets.bas`
   (play-time data) and `src/assets_boot.bas` (art uploaded once at power-on, in its own TI
   bank).
-- `tools/check.py`: 111 tests that execute the BASIC routines and the TI assembly kernels in a
+- `assets/font.png`: editable 8×8 font sheet. `assets/font.py` reads its ASCII 32–127
+  cells and adjusts the brackets and period for game text. The generator writes
+  the menu's bottom-third copy, and the build replaces CVBasic's embedded glyphs
+  on TI and ColecoVision without growing the ROM.
+- `tools/check.py`: 117 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,

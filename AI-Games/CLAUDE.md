@@ -162,6 +162,12 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
   n=100 → ~1100 Hz, n=250 → ~450 Hz, n=900 → ~124 Hz. In Puzzle Bobble this had a *high ping*
   standing in for the ceiling's low clunk and four effects silently masked, none of which
   produced any error.
+- **To replace CVBasic's built-in font without growing the cart, patch its generated
+  assembly before assembling.** The compiler emits 96 eight-byte glyph rows under
+  `font_bitmaps` on both TI and ColecoVision. Choplifter's `tools/build.py` validates
+  each code in order and substitutes bytes read from `assets/font.png`. A separate
+  bottom-third menu font table must come from the same image, because the game borrows
+  that pattern buffer during play and restores it when a menu returns.
 - **AN ODD-LENGTH `DATA BYTE` BLOCK SILENTLY MISALIGNS EVERY WORD TABLE AFTER IT.**
   The TMS9900 **ignores the low bit of a word address**: `mov *r0,@dst` from an odd
   address reads the word *below* it and does not fault. CVBasic emits `even` after its
