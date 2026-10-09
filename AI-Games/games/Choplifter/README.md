@@ -20,9 +20,9 @@ hardware. A ColecoVision build is produced at `build/coleco/choplift.rom`.
 | No UP or DOWN | Gravity: the helicopter sinks slowly, even while flying sideways; tap UP to hold altitude |
 | Joystick left/right | Fly sideways; facing stays independent |
 | Release left/right | Brake into a hover, keeping your aim |
-| Tap FIRE in flight | Fire on release: sideways when facing left/right, a bomb when facing front |
-| Hold FIRE | Turn after 0.3 s, then every 0.25 s (left, front, right, front) |
-| SPACE (TI) / keypad `*` (ColecoVision) | Turn one step per press, in the air |
+| FIRE (TI) / Button 1 (ColecoVision) in flight | Fire on release: sideways when facing left/right, a bomb when facing front |
+| Hold FIRE (TI) | Turn after 0.3 s, then every 0.25 s (left, front, right, front) |
+| SPACE (TI) / Button 2 (ColecoVision) | Turn one step per press, in the air |
 | Hold `P` (TI) / `0` (ColecoVision) | Pause; the same key or FIRE resumes |
 | BACK (`FCTN-9`) or REDO (`FCTN-8`) / keypad `#` | Abandon the mission and return to the title |
 
@@ -146,8 +146,8 @@ window or taskbar entry. The launcher leaves other emulator sessions alone. Pass
 
 | Target | Code | RAM |
 |---|---:|---:|
-| TI-99/4A | 22,730 / 24,336 B fixed (+ 8,180 and 8,186 / 8,190 B banks) | 814 / 7,854 B |
-| ColecoVision | 32,217 / 32,768 B ROM | 813 / 814 B |
+| TI-99/4A | 22,752 / 24,336 B fixed (+ 8,180 and 8,186 / 8,190 B banks) | 814 / 7,854 B |
+| ColecoVision | 32,162 / 32,768 B ROM | 811 / 814 B |
 
 ## Speed
 
@@ -177,7 +177,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   cells and adjusts the brackets and period for game text. The generator writes
   the menu's bottom-third copy, and the build replaces CVBasic's embedded glyphs
   on TI and ColecoVision without growing the ROM.
-- `tools/check.py`: 117 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 118 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,

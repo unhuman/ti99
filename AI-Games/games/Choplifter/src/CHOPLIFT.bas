@@ -243,8 +243,10 @@ hdir=0
 face=1
 turn_phase=2
 fire_held=0
+#if TI994A
 fire_turned=0
 fire_hold=0
+#endif
 fire_gate=2
 crash_timer=0
 crash_pending=0
@@ -274,7 +276,10 @@ RETURN
 clock_reset:
 fire_gate=1
 IF crash_timer THEN fire_gate=2
-fire_held=0:fire_hold=0:fire_turned=0
+fire_held=0
+#if TI994A
+fire_hold=0:fire_turned=0
+#endif
 fire_seen=fire_events
 #last=FRAME
 RETURN
@@ -403,12 +408,11 @@ IF chop_period THEN
     END IF
 END IF
 IF fire_gate = 2 THEN RETURN
-' SPACE (TI) or keypad * (ColecoVision) turns the helicopter one step per
-' press, exactly as each beat of a held FIRE does; in the air only.
+' SPACE (TI) or the ColecoVision right button turns one step per press.
 #if TI994A
 IF cont1.key = 32 THEN
 #else
-IF cont1.key = 10 THEN
+IF cont1.button2 THEN
 #endif
     IF turn_key = 0 THEN
         turn_key=1
@@ -421,6 +425,7 @@ IF fire_gate THEN
     IF cont1.button = 0 THEN fire_gate=0
     RETURN
 END IF
+#if TI994A
 IF cont1.button THEN
     IF fire_held = 0 THEN
         fire_held=1
@@ -447,6 +452,16 @@ ELSE
     fire_hold=0
     fire_turned=0
 END IF
+#else
+' ColecoVision's left button fires on release, even after a long hold;
+' the right button above is the only turn control.
+IF cont1.button THEN
+    fire_held=1
+ELSE
+    IF fire_held THEN fire_events=fire_events+1
+    fire_held=0
+END IF
+#endif
 RETURN
 
 turn_step:
@@ -2904,8 +2919,10 @@ PRINT AT 141,"      "
 GOSUB release_input
 fire_gate=1
 fire_held=0
+#if TI994A
 fire_hold=0
 fire_turned=0
+#endif
 hud_dirty=1
 GOSUB clock_reset
 dt=2
