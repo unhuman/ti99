@@ -147,8 +147,10 @@ cartridge. Direct launches from Codex's private desktop can play audio without s
 window or taskbar entry. The launcher leaves other emulator sessions alone. Pass
 `-ReviewProcessId` with the ID in `build/review/process-id.txt` to reload that session.
 `launch-coleco.ps1` opens the production Coleco ROM in a visible **ColEm** window on the
-same desktop by default. Pass `-CoolCV` to use CoolCV for a specific review. The launcher
-leaves other emulator sessions alone.
+same desktop by default. It requests NTSC video and 60 Hz synchronization: ColEm's bare-ROM
+default is unsynchronized, which makes frame-paced gameplay run at the host's speed.
+Pass `-CoolCV` to use CoolCV for a specific review. The launcher leaves other emulator
+sessions alone.
 
 | Target | Code | RAM |
 |---|---:|---:|

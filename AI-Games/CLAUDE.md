@@ -505,6 +505,12 @@ Every game is built the same way — that consistency is the point.
 > captures the cart there. Use that launcher for a visible handoff; a process on
 > `CodexSandboxDesktop-*` is not a visible review emulator. Check the reported ROM hash/PID.
 
+- **ColEm's bare-ROM launch is not a timing reference.** Its bundled manual lists
+  `-nosync` as the default; an unsynchronized emulator can advance a game using
+  `FRAME` faster than real NTSC hardware. For Windows ColecoVision reviews launch
+  with `-ntsc -sync 60` (Choplifter's `launch-coleco.ps1` does this), then compare
+  gameplay pacing. Do not tune game constants against an unconstrained emulator.
+
 - **SDL emulator input needs scan codes.** Windows `keybd_event(vk, 0, ...)`
   reached Classic99 but delivered no input to CoolCV, despite valid foreground
   focus and screenshots. Supply the scan code from `MapVirtualKey(vk, 0)`;

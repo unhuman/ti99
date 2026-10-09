@@ -15,6 +15,9 @@ Current-state design. History is in git; sizes below are from the latest build
   2/3 speed, clamped to 6 game frames for a long hitch. `dt` and `#elapsed` both receive
   the converted value, so movement, enemies, people, sound envelopes and spawn delays
   keep their relative timing. `clock_reset` clears the remainder. TI pacing is unchanged.
+  Source execution of 20 passes across 60 video frames with LEFT+UP held moves the
+  helicopter 171 px on TI and 114 px on Coleco, including acceleration. This comparison
+  assumes both emulators actually produce 60 video frames per second.
 - **Measured rates** (Classic99 Normal speed, `tools/profile.py` full-loop cases, video
   frames per 32 updates → updates per second):
 
@@ -722,7 +725,9 @@ the compiler's register cache (checked in the generated assembly).
   then 2) and captures the finished screen. `tools/capture.ps1` screenshots and drives a
   specific Classic99 process. `launch-ti.ps1` opens a separate review session of the
   production cart; `launch-coleco.ps1` opens the Coleco production ROM in ColEm
-  by default, or CoolCV with `-CoolCV`, on the user's visible desktop.
+  by default, or CoolCV with `-CoolCV`, on the user's visible desktop. The ColEm
+  launch forces NTSC and 60 Hz sync; its default `-nosync` would make the video-frame
+  clock run at an unconstrained host speed.
 
 Verified in Classic99: the production review cart scrolling over two evacuating camps with a
 tank, shells and crashes (clean rendering, overlays in place); a soft landing beside a settled

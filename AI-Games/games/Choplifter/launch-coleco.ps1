@@ -70,10 +70,13 @@ if (!(Test-Path -LiteralPath $rom)) { throw 'Build the Coleco cartridge first.' 
 if (!(Test-Path -LiteralPath $emulator)) { throw "$emulatorName is not installed at the expected path." }
 $reviewRoot=Join-Path $PSScriptRoot 'build/review'
 New-Item -ItemType Directory -Force -Path $reviewRoot | Out-Null
-$reviewProcess=Start-Process -FilePath $emulator -ArgumentList ('"{0}"' -f $rom) -WorkingDirectory (Split-Path $emulator) -WindowStyle Normal -PassThru
+# ColEm's documented default is -nosync. Without a 60 Hz clock the game's
+# FRAME-based movement and timers run at the host's emulation speed.
+$arguments=if ($CoolCV) { '"{0}"' -f $rom } else { '-ntsc -sync 60 "{0}"' -f $rom }
+$reviewProcess=Start-Process -FilePath $emulator -ArgumentList $arguments -WorkingDirectory (Split-Path $emulator) -WindowStyle Normal -PassThru
 Start-Sleep -Milliseconds 1200
 if ($reviewProcess.HasExited) { throw "$emulatorName exited with code $($reviewProcess.ExitCode)." }
 $reviewProcess.Id | Set-Content -LiteralPath (Join-Path $reviewRoot 'coleco-process-id.txt')
-$message='Launched Coleco production ROM: {0}; SHA256 {1}; {2} PID {3}' -f $rom,(Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash,$emulatorName,$reviewProcess.Id
+$message='Launched Coleco production ROM: {0}; SHA256 {1}; {2} PID {3}; arguments {4}' -f $rom,(Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash,$emulatorName,$reviewProcess.Id,$arguments
 if ($ResultPath) { Set-Content -LiteralPath $ResultPath -Value $message }
 Write-Output $message
