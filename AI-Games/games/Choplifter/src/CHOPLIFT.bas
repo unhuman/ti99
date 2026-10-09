@@ -127,6 +127,8 @@ ended=0
 GOSUB new_heli
 GOSUB show_sortie
 GOSUB clock_reset
+' FIRST SORTIE waits for UP; start its tune only after that first lift.
+chime_kind=3:chime_timer=191
 
 main_loop:
 ' At most 30 updates per second, but never idle: an update that already took
@@ -2701,6 +2703,9 @@ sound_tick:
 IF blast_timer > dt THEN blast_timer=blast_timer-dt ELSE blast_timer=0
 IF gun_timer > dt THEN gun_timer=gun_timer-dt ELSE gun_timer=0
 IF chime_timer > dt THEN chime_timer=chime_timer-dt ELSE chime_timer=0
+' The first-takeoff tune uses half-beats; its final delivery-style flourish
+' keeps the ordinary chime timing.
+IF chime_timer > 36 THEN chime_timer=chime_timer-dt
 IF noise_timer > dt THEN noise_timer=noise_timer-dt ELSE noise_timer=0
 ' fire_control writes the rotor's chop between video frames: keep it off the
 ' chip while this routine writes it.
@@ -2773,17 +2778,19 @@ IF #sfx_world > #hx THEN #sfx_distance=#sfx_world-#hx ELSE #sfx_distance=#hx-#sf
 RETURN
 
 rescue_sound:
-' Tone 2: rising board chirp, descending unload chirp, three-note delivery.
+' Tone 2: first-takeoff tune, boarding/unloading chirps, delivery chime.
 IF chime_timer = 0 THEN SOUND 2,0,0:RETURN
 IF chime_kind = 3 THEN
-    #sfx_pitch=140
-    IF chime_timer > 12 THEN #sfx_pitch=210
-    IF chime_timer > 24 THEN #sfx_pitch=280
+    ' One byte per beat; periods are doubled. The first sortie plays all
+    ' twelve beats, while the short delivery chime plays its final three.
+    #sfx_pitch=takeoff_notes(chime_timer/16)
+    #sfx_pitch=#sfx_pitch+#sfx_pitch
 ELSE
+    #sfx_pitch=chime_timer*20
     IF chime_kind = 1 THEN
-        #sfx_pitch=160+chime_timer*20
+        #sfx_pitch=#sfx_pitch+160
     ELSE
-        #sfx_pitch=410-chime_timer*20
+        #sfx_pitch=410-#sfx_pitch
     END IF
 END IF
 SOUND 2,#sfx_pitch,10
@@ -2951,6 +2958,11 @@ RETURN
 
 practice_star:
 DATA BYTE 80,32,248,32,80,0,0,0
+
+takeoff_notes:
+' Three brisk 4/4 bars in C: C-D-E-G, E-G-A-G, D-E-G-C.
+' Indexed backward from the timer; each byte is half a PSG period.
+DATA BYTE 54,72,85,95,72,64,72,85,72,85,95,107
 
 ' The rotor's chop, by frame of its beat (fire_control reads them in the
 ' vblank handler, so they stay in the fixed area): a sharp attack dying away,

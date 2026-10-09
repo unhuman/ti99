@@ -335,7 +335,9 @@ HOME_CELLS=paint(HOME)
 # at both ends, so its ends step out to x 1842-2037 at the front. A gray
 # sidewalk lies in front of the building on row 21 (x 1936-1991 at the back,
 # 1 px wider each line), and a flattened yellow octagon (x 1884-1923, lines
-# 2-11) marks where a new helicopter stands (SPAWN_X). PAD_PIXELS paints both
+# 2-11) marks where a new helicopter stands (SPAWN_X). A broad H inside the
+# octagon uses its yellow ink; each tile row stays within the two-colour limit.
+# PAD_PIXELS paints both
 # rows; pad_cells() cuts them into characters (reusing the plain ground ones).
 GROUND=0x14
 # The foothill tiles replace the ordinary horizon cell. Keep the lower four
@@ -360,6 +362,9 @@ def pad_pixel(x,y):
            8:[(-20,-19),(18,19)],9:[(-20,-17),(16,19)],10:[(-16,-13),(12,15)],
            11:[(-12,11)]}
     if any(a<=d<=b for a,b in edges.get(y,())):return 'D'
+    if 4<=y<=9:
+        if -11<=d<=-9 or 8<=d<=10:return 'D'
+        if 6<=y<=7 and -9<d<8:return 'D'
     return 'R'
 PAD_PIXELS=[''.join(pad_pixel(x,y) for x in range(PAD_COL0*8,2048)) for y in range(16)]
 assert UNLOAD_MIN>=PAD_BACK[0] and UNLOAD_MAX+31<HOME_X and UNLOAD_MIN<=SPAWN_X<=UNLOAD_MAX

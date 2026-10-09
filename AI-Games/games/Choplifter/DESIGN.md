@@ -50,12 +50,12 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,730 | 24,336 | 1,606 free |
-| TI fixed area, unoptimised | 24,550 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI fixed area (after short branches) | 22,756 | 24,336 | 1,580 free |
+| TI fixed area, unoptimised | 24,572 | 24,574 | xas99's first pass must stay below >FFFE |
 | TI data bank (`BANK 1`) | 8,180 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
 | TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
 | TI RAM | 814 | 7,854 | |
-| ColecoVision ROM | 32,217 | 32,768 | last non-padding byte |
+| ColecoVision ROM | 32,255 | 32,768 | last non-padding byte |
 | ColecoVision RAM | 813 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
@@ -80,8 +80,8 @@ the whole screen when the message ends. The overlay code and text stay out of th
 full fixed area and data bank. On TI, the inline bar copy changes `r0`; the overlay reloads
 the sortie index before the title `SCREEN`, and `tools/build.py` checks the generated assembly.
 
-`tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (455 branches,
-1,820 bytes saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
+`tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (454 branches,
+1,816 bytes saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
 then; it also checks both bank images and their place in the cart. The menu font's colour
 table (all white on black) is filled at run time from the idle crowd pixel buffer instead of
 256 identical ROM bytes. ColecoVision RAM is the tightest budget: `#vaddr` is one shared
@@ -93,7 +93,7 @@ the jet, missile and shell moves share `#bullet_step`. An explosion's whole stat
 its debris rows with `di`, idle once `draw_actors`' shot loop is done, and a small burst
 takes its position in the scratch `#ax`/`ay`. `hide_all` counts with `ini`; dropping the
 camp indicators freed `hc`. The rotor's chop costs three: `chop_period`, `chop_frame` and
-`sound_busy`. Three bytes are left.
+`sound_busy`. One byte is left.
 
 ## Research and adaptation
 
@@ -141,7 +141,8 @@ not claims of identical original AI.
 The world is 2,048 pixels wide. Home is at the east end: a 40×16 brick building
 (x=1944–1983, door at x=1960) with its flag on the roof at x=1976. A dark-red landing
 apron spreads in perspective from x=1872–2007 at its back edge to x=1842–2037 at its
-front, with a gray sidewalk by the building and a yellow octagonal landing marker.
+front, with a gray sidewalk by the building and a yellow octagonal landing marker
+with a wide H in its centre.
 The helicopter spawns at x=1888, top y=160. Its field ground remains y=153; when its
 visible left edge is at x=1840 or farther east, beyond the home fence's last ink, the
 landing height is y=160. It unloads only at that height and when all 32 of its pixels
@@ -577,11 +578,13 @@ lands between the two bytes of a main-loop frequency write (`sn76489_freq` write
 interrupts on). `silence` clears `chop_period` before it quiets the chip. Channel 1 plays a short gun sweep or a longer falling
 bomb whistle; when free it carries a nearby jet's distance-dependent tone or the air mine's
 alternating warning. Channel 2 carries rising boarding and falling unloading chirps and a
-three-note delivery chime. Channel 3's chop gives way to tank fire,
+three-note delivery chime. The first takeoff alone plays a brisk three-bar C-major
+melody (C-D-E-G, E-G-A-G, D-E-G-C) through the same channel and timer; it starts
+when UP clears FIRST SORTIE and ends after about two seconds. Channel 3's chop gives way to tank fire,
 missile launches, explosions (which win over launches; a small burst is a shorter, quieter
 crack and a tiny one a soft tick, neither cutting a louder one short) and an eight-frame squish when the helicopter
 lands on a person. Effects expire on frame deltas; pause, new helicopters, the
-title and the results silence all four channels and clear effect state. No music player.
+title and the results silence all four channels and clear effect state.
 
 ## Title and practice setup
 

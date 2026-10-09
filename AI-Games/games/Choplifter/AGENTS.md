@@ -8,6 +8,8 @@ Run `build.ps1 All` through PowerShell or the two Cygwin shell scripts sequentia
 `tools/check.py` executes selected BASIC routines; an unsupported statement must
 fail instead of being ignored. Keep the known-bad mutation tests.
 
-Use `launch-ti.ps1` for a separate Classic99 review session. Do not stop an existing
-user emulator session without approval. `tools/capture.ps1` requires an explicit
+Use `launch-ti.ps1` for a separate, visible Classic99 review session. It moves the
+launcher to `WinSta0\Default`; a direct `Start-Process` from Codex's private desktop
+produces audio without a user-visible window. Run it after each new TI ROM build.
+Do not stop an existing user emulator session without approval. `tools/capture.ps1` requires an explicit
 process ID; never send test input to whichever emulator happens to be first.

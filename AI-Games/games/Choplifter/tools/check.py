@@ -864,12 +864,22 @@ class Tests(unittest.TestCase):
                          (1944,1488,1808,1888))
         self.assertEqual((art.MOON_ROW,art.MOON_COL,art.MOON_CODE),(5,26,14))
         self.assertEqual(art.PAD_PIXELS[2][art.OCTAGON_X-art.PAD_COL0*8],'D')
-        self.assertEqual(art.PAD_PIXELS[7][art.OCTAGON_X-art.PAD_COL0*8],'R')
+        self.assertEqual(art.PAD_PIXELS[7][art.OCTAGON_X-art.PAD_COL0*8],'D')
         self.assertNotEqual(art.SPRITES[0],art.SPRITES[2])
         self.assertNotEqual(art.SPRITES[0],art.SPRITES[20])
         self.assertNotEqual(art.SPRITES[20],art.SPRITES[32])
         self.assertEqual(len(art.FLAG_COLORS),16)
         self.assertNotEqual(art.FLAG0,art.FLAG1)
+
+    def test_landing_pad_has_a_wide_h_inside_the_octagon(self):
+        import generate as art
+        center=art.OCTAGON_X-art.PAD_COL0*8
+        rows=[art.PAD_PIXELS[y][center-12:center+12] for y in range(4,10)]
+        strokes='RDDD'+'R'*16+'DDDR'
+        bridge='R'+'D'*22+'R'
+        self.assertEqual(rows,[strokes,strokes,bridge,bridge,strokes,strokes])
+        self.assertEqual(art.PAD_PIXELS[3][center], 'R')
+        self.assertEqual(art.PAD_PIXELS[10][center], 'R')
 
     def test_mountain_foothills_join_the_low_horizon(self):
         import generate as art
@@ -2307,6 +2317,33 @@ class Tests(unittest.TestCase):
         b.v['#jet_x']=900;b.call('sound_tick');self.assertEqual(b.sounds[1][1],0)
         bad=SOURCE.replace('SOUND 3,0,0\ngun_timer=0','gun_timer=0')
         b=Basic(bad);b.sounds[3]=(6,12);b.call('silence');self.assertNotEqual(b.sounds[3][1],0)
+
+    def test_first_takeoff_tune_is_melodic_short_and_once(self):
+        # The FIRST card waits for UP. Its return starts the only long chime;
+        # twelve notes make three bars in C, with a longer final cadence.
+        for target in ('TI994A','COLECO'):
+            b=self.state();version=Basic(target=target);b.r=version.r;b.target=target
+            b.r['begin_mission']=b.r['new_game']+['RETURN']
+            b.v.update(start_lives=3,**{'cont1.key':15})
+            run=b.statements
+            def lift(line):
+                if line=='WAIT' and b.calls.get('sortie_overlay'):
+                    b.v['cont1.up']=1
+                return run(line)
+            b.statements=lift
+            b.call('begin_mission')
+            self.assertEqual((b.v['hy'],b.v['chime_kind'],b.v['chime_timer']),(159,3,191))
+            notes=[214,190,170,144,170,144,128,144,190,170,144,108]
+            for beat,pitch in enumerate(notes):
+                b.v['chime_timer']=191-beat*16
+                b.call('rescue_sound')
+                self.assertEqual(b.sounds[2],(pitch,10),(target,beat))
+            b.v.update(chime_timer=191,dt=1)
+            for frame in range(114):b.call('sound_tick')
+            self.assertEqual((b.v['chime_timer'],b.sounds[2][1]),(0,0),target)
+            b.v['lives']=2
+            b.call('new_heli');b.call('show_sortie');b.call('clock_reset')
+            self.assertEqual((b.v['chime_timer'],b.sounds[2][1]),(0,0),target)
 
     def test_mine_warning_requires_spawned_mine(self):
         def flight(source,sorties):

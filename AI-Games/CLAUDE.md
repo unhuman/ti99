@@ -485,6 +485,13 @@ Every game is built the same way — that consistency is the point.
 > cart** — an emulator left open from an earlier build shows stale behavior and reads as "your fix
 > didn't work."
 
+> **Codex's Windows command desktop is private.** A Classic99 process started with an ordinary
+> `Start-Process`, even `-WindowStyle Normal`, may play audio while its window and taskbar entry
+> are absent from the user's desktop. Choplifter's `launch-ti.ps1` starts its review helper on
+> `WinSta0\Default` through `CreateProcessW` with `STARTUPINFO.lpDesktop`, then loads and
+> captures the cart there. Use that launcher for a visible handoff; a process on
+> `CodexSandboxDesktop-*` is not a visible review emulator. Check the reported ROM hash/PID.
+
 - **SDL emulator input needs scan codes.** Windows `keybd_event(vk, 0, ...)`
   reached Classic99 but delivered no input to CoolCV, despite valid foreground
   focus and screenshots. Supply the scan code from `MapVirtualKey(vk, 0)`;

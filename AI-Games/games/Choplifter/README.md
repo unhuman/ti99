@@ -44,7 +44,7 @@ those within reach run for the cabin, as many as there are free seats, and climb
 Lift off and land again further on and the runners follow, as far as you lead them (never
 past the DMZ fence); but if someone nearer is waiting, or you leave them far behind, they
 give up and run all the way back to their own barrack, ignoring you unless you land right
-beside them. With the cabin full they wave you off and wait for you to come back. Fly home and land on the red pad's **yellow octagon** beside the building. East of the rightmost fence, the helicopter settles seven pixels lower into the pad than it does on field ground.
+beside them. With the cabin full they wave you off and wait for you to come back. Fly home and land on the red pad's **yellow octagon with a wide H inside** beside the building. East of the rightmost fence, the helicopter settles seven pixels lower into the pad than it does on field ground.
 Passengers only step out with the whole helicopter on the pad. They start under the middle of its cabin, walk out across the sidewalk and enter through the
 door, and some stop on the dark ground beside it to wave at you first. The last one out
 always does. Lift off with UP before moving sideways on the ground. Weapons and turning do
@@ -64,6 +64,7 @@ The home scene shows FIRST, SECOND or THIRD SORTIE between two solid bars that s
 character short of each end of the text. Its rotor turns while the message is up. Press UP to lift off and clear
 any sortie message immediately; FIRST SORTIE waits for that move, while later messages
 also clear after a brief pause. The hidden practice mode numbers sorties four through nine.
+The first takeoff plays a short, upbeat three-bar tune once per mission.
 The two boundary fences enclose a 320-pixel demilitarized zone west of the landing pad.
 
 **Tanks** roll along the foreground below the camps, so only **bombs** (face front and tap
@@ -107,7 +108,7 @@ nothing that can hit you is ever invisible for long; a tank shell is always draw
 can strike. The helicopter holds its place on screen while the scenery scrolls past it in
 8-pixel steps, and sprites move on the same frame as the scenery, so it does not shake or
 jitter. A low blue horizon runs behind the people, buildings and landed helicopter. The
-landing apron is dark red, with a gray sidewalk by the building and a yellow landing marker beneath the lower home landing position.
+landing apron is dark red, with a gray sidewalk by the building and a yellow octagonal landing marker with a wide H beneath the lower home landing position.
 
 The mission summary centres its heading at the top and the FIRE prompt at the bottom. It
 names the skill level you played, with your saved, lost and stranded counts and the
@@ -136,10 +137,11 @@ Python 3.10+, xdt99's `xas99.py`, `linkticart.py`, Keystone Kapers' `shortbranch
 this repository) and, for ColecoVision, `gasm80`. Override `CVBASIC_DIR`, `XDT99_DIR` or
 `GASM80` as needed. `TI_SHORT_BRANCHES=0` skips the branch-shortening pass for comparison.
 
-`launch-ti.ps1` opens a separate Classic99 review session (the Downloads build) with the
-project's input profile and loads the production cartridge; it leaves other emulator
-sessions alone. Pass `-ReviewProcessId` with the ID in `build/review/process-id.txt` to
-reload that session.
+`launch-ti.ps1` opens a separate, visible Classic99 review session (the Downloads build)
+on the user's Windows `Default` desktop, with the project's input profile and production
+cartridge. Direct launches from Codex's private desktop can play audio without showing a
+window or taskbar entry. The launcher leaves other emulator sessions alone. Pass
+`-ReviewProcessId` with the ID in `build/review/process-id.txt` to reload that session.
 
 | Target | Code | RAM |
 |---|---:|---:|
