@@ -39,8 +39,9 @@ DIM #tank_x(2)
 ' a crowded scanline drops a different sprite each frame instead of always
 ' the same one. A crash hides the helicopter and every other actor: only its
 ' flames (0,1) and the explosion (12-15) are drawn until it is over.
-' #vaddr is the shared name-table address for VPOKE: computed and written in
-' the same routine, never held across a GOSUB (Coleco RAM is nearly full).
+' #vaddr is shared address scratch: raw VRAM for VPOKE, relative name-table
+' offset for SCREEN. Compute and use it in one routine, never across a GOSUB
+' (Coleco RAM is nearly full).
 
 ' boot: opens the code segment tools/build.py hands to the short-branch pass
 ' (cvb_BOOT..BANK_0_FREE). Keep CONST and DIM above it: they emit EQU lines.
@@ -3369,16 +3370,35 @@ BANK 2
 
 sortie_overlay:
 ' Character 23 is a two-pixel solid line in the middle screen third only.
-' Both lines use the same ten cells, centred above and below the title.
+' Each line spans the visible text above or below it.
 DEFINE VRAM 2232,8,hud_art
 DEFINE VRAM 10424,8,sortie_bar_colors
-SCREEN sortie_bar_cells,0,331,10,1
 ini=start_lives-lives
 IF ini > 2 THEN ini=3
 ini=ini*16
+#if TI994A
+' The 14 visible text bytes are followed by bar width and column. Copy the
+' same bar across three rows, then the title overwrites its middle copy.
+ASM movb @cvb_INI,r0
+ASM srl r0,8
+ASM ai r0,cvb_SORTIE_TITLES+14
+ASM movb *r0+,r6
+ASM movb *r0,r8
+ASM srl r8,8
+ASM ai r8,6464
+ASM li r9,cvb_SORTIE_BAR_CELLS
+ASM li r4,>0300
+ASM clr r5
+ASM bl @jsr
+ASM data CPYBLK
+#else
+draw_color=sortie_titles(ini+14)
+#vaddr=sortie_titles(ini+15)
+#vaddr=#vaddr+320
+SCREEN sortie_bar_cells,0,#vaddr,draw_color,3,0
+#endif
 SCREEN sortie_titles,ini,361,14,1
 IF ini = 48 THEN VPOKE 6515,start_lives-lives+49
-SCREEN sortie_bar_cells,0,395,10,1
 draw_color=15
 ini=0
 sortie_wait:

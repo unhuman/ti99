@@ -865,12 +865,18 @@ HUD_ROWS=hud_rows()
 # HUD's first character is eight blank pattern rows. Colour only the middle
 # two backgrounds orange, so one reused pattern draws a solid two-pixel bar.
 SORTIE_BAR_COLORS=[0x11]*3+[0x19]*2+[0x11]*3
-SORTIE_BAR_CELLS=[23]*10
-SORTIE_TITLES=[ord(c) for line in (' FIRST SORTIE   ','SECOND SORTIE   ',
-                                  ' THIRD SORTIE   ','   SORTIE 0     ')
-               for c in line]
-SORTIE_TITLES=SORTIE_TITLES[:-2]  # the final SCREEN copies only 14 bytes
-assert len(SORTIE_TITLES)==62
+SORTIE_BAR_CELLS=[23]*13+[0]  # 13 visible cells for SECOND; even byte block
+def sortie_titles():
+    titles=[]
+    for label,width,col in ((' FIRST SORTIE   ',12,10),('SECOND SORTIE   ',13,9),
+                            (' THIRD SORTIE   ',12,10),('   SORTIE 0     ',8,12)):
+        assert len(label)==16
+        titles.extend(ord(c) for c in label[:14])
+        # SCREEN copies the first 14 bytes; the two spare bytes give bar width/column.
+        titles.extend((width,col))
+    return titles
+SORTIE_TITLES=sortie_titles()
+assert len(SORTIE_TITLES)==64
 
 # Fireworks for a perfect rescue (and the title's HOWIE code), over the
 # home with the view at its east end (camera 1792). A script of rockets,
@@ -1013,7 +1019,7 @@ def generate():
     boot += emit('hud_art',[b for bits,_ in HUD_CHARS.values() for b in bits])
     boot += emit('hud_colors',[c for _,colors in HUD_CHARS.values() for c in colors])
     # A continuous orange line in character 23 of the middle screen third.
-    # The title overlay uses the same ten cells above and below its text.
+    # The title overlay copies as many cells as its current text spans.
     boot += emit('sortie_bar_colors',SORTIE_BAR_COLORS)
     boot += emit('sortie_bar_cells',SORTIE_BAR_CELLS)
     boot += emit('sortie_titles',SORTIE_TITLES)

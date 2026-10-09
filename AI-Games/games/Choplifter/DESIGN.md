@@ -53,7 +53,7 @@ Current-state design. History is in git; sizes below are from the latest build
 | TI fixed area (after short branches) | 22,750 | 24,336 | 1,586 free |
 | TI fixed area, unoptimised | 24,570 | 24,574 | xas99's first pass must stay below >FFFE |
 | TI data bank (`BANK 1`) | 8,188 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
-| TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
+| TI boot bank (`BANK 2`) | 8,180 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
 | TI RAM | 812 | 7,854 | |
 | ColecoVision ROM | 32,100 | 32,768 | last non-padding byte |
 | ColecoVision RAM | 812 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
@@ -213,7 +213,10 @@ Saved + lost + aboard + everyone still at the camps always equals 64; a runner c
 its camp until it boards or dies. A crash loses everyone aboard and one helicopter; the next
 starts at home. `game_screen` first draws the pad, post office and HUD. An overlay then
 shows FIRST, SECOND or THIRD SORTIE on row 11 between continuous orange 2-pixel bars on
-rows 10 and 12. The helicopter is visible with its rotor turning throughout the overlay.
+rows 10 and 12, each spanning the visible text for that message. The helicopter is visible
+with its rotor turning throughout the overlay.
+The two spare bytes after each 14-character title hold its bar width and starting column;
+the TI draws both bars with one three-row copy before the title replaces the middle row.
 UP lifts it one pixel and clears any sortie message immediately. FIRST SORTIE waits for
 that move; subsequent messages also clear after 90 frames. Hidden practice runs display
 SORTIE 4 through SORTIE 9. Clearing copies spaces only into the 14 by 3 sky rectangle and

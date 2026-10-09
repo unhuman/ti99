@@ -222,6 +222,9 @@ class Basic:
                 return memory[addr] if byte else memory[addr]*256+memory[addr+1]
             if re.fullmatch('r[0-9]+',s):return regs[int(s[1:])] >> (8 if byte else 0)
             if s.startswith('>'):return int(s[1:],16)
+            if '+' in s:
+                label,offset=s.split('+',1)
+                if label in bases:return bases[label]+int(offset)
             return bases[s] if s in bases else int(s)
         # The console keyboard through the CRU: LDCR of 3 bits at >0024 selects
         # a column, STCR of 8 bits at >0006 reads its rows (a held key reads 0).
@@ -305,7 +308,18 @@ class Basic:
             elif op=='bl':
                 # Local subroutine: the TMS9900 keeps the return address in R11.
                 if not args.startswith('@'):raise ValueError('Unsupported bl: '+line)
-                regs[11]=pc;pc=labels[args[1:]]
+                if args=='@jsr':
+                    if lines[pc].lower()!='data cpyblk':raise ValueError('Unsupported native call: '+lines[pc])
+                    pc+=1
+                    width=regs[6]>>8;rows=regs[4]>>8;stride=regs[5]>>8
+                    if not width or not rows:raise ValueError('Empty native screen copy')
+                    for row in range(rows):
+                        for col in range(width):
+                            src=regs[9]+row*stride+col
+                            if src not in memory:raise ValueError(f'native screen source outside arrays at {src:#x}')
+                            dst=regs[8]+row*32+col
+                            self.transfers.append((dst,1));self.vram[dst]=memory[src]
+                else:regs[11]=pc;pc=labels[args[1:]]
             elif op=='b':
                 # A local long branch (b @label) or a local return (b *r11).
                 if args.startswith('@'):pc=labels[args[1:]]
@@ -1772,12 +1786,28 @@ class Tests(unittest.TestCase):
                 self.assertEqual([visible[2232+i] for i in range(8)],[0]*8)
                 self.assertEqual([visible[10424+i] for i in range(8)],
                                  [0x11]*3+[0x19]*2+[0x11]*3)
-                for row in (10,12):
-                    self.assertEqual([visible[6144+row*32+c] for c in range(11,21)],[23]*10)
                 line=''.join(chr(visible[6144+11*32+c]) for c in range(32))
                 self.assertEqual(line.strip(),title)
+                first=line.index(title);last=first+len(title)
+                for row in (10,12):
+                    for col in range(32):
+                        addr=6144+row*32+col
+                        expected=23 if first<=col<last else ref.vram[addr]
+                        self.assertEqual(visible[addr],expected,(title,row,col))
                 self.assertEqual([b.vram[a] for a in range(6144,6912)],
                                  [ref.vram[a] for a in range(6144,6912)])
+        # The former fixed ten-cell bar leaves both ends of SECOND uncovered.
+        b=self.state();b.v.update(start_lives=3,lives=2)
+        b.a['sortie_titles'][16+14]=10
+        b.a['sortie_titles'][16+15]=11
+        b.call('new_heli')
+        shown=[];run=b.statements
+        def capture(line):
+            if line=='WAIT' and b.calls.get('sortie_overlay'):
+                shown.append(dict(b.vram));b.v['cont1.up']=1
+            return run(line)
+        b.statements=capture;b.call('show_sortie')
+        self.assertNotEqual(shown[0][6144+10*32+9],23)
         # Later messages also yield immediately to a lift instead of making
         # the player wait out their 90-frame timeout.
         for lives in (2,1):
@@ -2233,6 +2263,35 @@ class Tests(unittest.TestCase):
         b.v['#jet_x']=900;b.call('sound_tick');self.assertEqual(b.sounds[1][1],0)
         bad=SOURCE.replace('SOUND 3,0,0\ngun_timer=0','gun_timer=0')
         b=Basic(bad);b.sounds[3]=(6,12);b.call('silence');self.assertNotEqual(b.sounds[3][1],0)
+
+    def test_mine_warning_requires_spawned_mine(self):
+        def flight(source,sorties):
+            b=self.state();b.r=Basic(source).r
+            b.v.update({'#hx':500,'#camera':388,'hy':80,'aboard':12,
+                        'sorties':sorties,'drone_on':0,'#drone_wait':0,
+                        '#jet_wait':65535,'#tank_wait':65535,'#elapsed':2,
+                        'dt':2,'jet_on':0,'gun_timer':0,'crash_timer':0,'anim':0})
+            b.call('enemy_tick')
+            b.call('sound_tick')
+            return b
+        for sorties in (0,1):
+            b=flight(SOURCE,sorties)
+            self.assertEqual(b.v['drone_on'],0)
+            self.assertEqual(b.sounds[1][1],0)
+        b=flight(SOURCE,2)
+        self.assertEqual(b.v['drone_on'],1)
+        self.assertEqual(b.sounds[1],(210,5))
+        b.v['anim']=16;b.call('sound_tick')
+        self.assertEqual(b.sounds[1],(150,6))
+        b.call('new_heli');b.call('sound_tick')
+        self.assertEqual(b.v['drone_on'],0)
+        self.assertEqual(b.sounds[1][1],0)
+        bad=SOURCE.replace('IF sorties >= 2 THEN\n    IF drone_on = 0 THEN',
+                           'IF sorties >= 0 THEN\n    IF drone_on = 0 THEN')
+        self.assertNotEqual(bad,SOURCE)
+        b=flight(bad,0)
+        self.assertEqual(b.v['drone_on'],1)
+        self.assertNotEqual(b.sounds[1][1],0)
 
     def test_838_edges_choices_and_marked_best(self):
         for target in ('TI994A','COLECO'):

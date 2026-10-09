@@ -340,6 +340,10 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
   all come from code that no longer exists on disk. Observed as a checker insisting on a value
   that had just been changed. `rm -rf __pycache__` as the first step of any generate stage;
   both Keystone Kapers build scripts do.
+- **TOP-LEVEL PYTHON LOOP VARIABLES CAN REPLACE ART HELPERS.** Choplifter's sortie-table
+  generator used `for line,...` at module scope and replaced its `line()` drawing function.
+  Asset generation still completed, but crowd art failed when the tests called `person()`.
+  Build derived tables inside a function so loop names stay local, then run the art checks.
 - **Build BOTH targets every time**, not just TI. `#if TI994A` needs the **unhuman/CVBasic**
   fork (stock nanochess has no preprocessor).
   - **TI inline `ASM` does not invalidate the compiler's register cache.** After

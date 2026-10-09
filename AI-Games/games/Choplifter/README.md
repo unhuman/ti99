@@ -60,8 +60,8 @@ burns down gradually to embers, and only then,
 with the screen clear, does the next helicopter appear on the pad. A crash loses everyone
 aboard, but the camps keep emptying while the wreck burns. Do not land on people or shoot
 through them; your bombs fall in front of the crowd and pass people by.
-The home scene shows FIRST, SECOND or THIRD SORTIE between two solid bars when a new
-helicopter arrives. Its rotor turns while the message is up. Press UP to lift off and clear
+The home scene shows FIRST, SECOND or THIRD SORTIE between two solid bars sized to the
+text when a new helicopter arrives. Its rotor turns while the message is up. Press UP to lift off and clear
 any sortie message immediately; FIRST SORTIE waits for that move, while later messages
 also clear after a brief pause. The hidden practice mode numbers sorties four through nine.
 The two boundary fences enclose a 320-pixel demilitarized zone west of the landing pad.
