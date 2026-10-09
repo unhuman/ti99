@@ -3019,23 +3019,47 @@ class Tests(unittest.TestCase):
                 for _ in range(60//dt):b.call('enemy_tick')
                 self.assertEqual((b.v['#drone_x']-300,140-b.v['drone_y']),(px,px),(difficulty,dt))
 
-    def test_space_or_star_turns_one_step_per_press(self):
-        # SPACE (TI) or keypad * (ColecoVision) turns the helicopter one step
-        # per press, like each beat of a held FIRE: in the air only, never
-        # firing, and not while the controls are off.
-        for target,key,other in (('TI994A',32,10),('COLECO',10,32)):
-            b=Basic(target=target);b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0,**{'cont1.key':15})
-            faces=[]
-            for _ in range(4):
-                b.v['cont1.key']=key
-                for _ in range(40):b.call('fire_control')
-                faces.append(b.v['face'])
-                b.v['cont1.key']=15;b.call('fire_control')
-            self.assertEqual(faces,[2,0,2,1],target)
-            self.assertEqual(b.v.get('fire_events',0),0)
-            for setup in ({'hy':153},{'fire_gate':2},{'cont1.key':other}):
-                b=Basic(target=target);b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0,**{'cont1.key':key})
-                b.v.update(setup);b.call('fire_control');self.assertEqual(b.v['face'],1,(target,setup))
+    def test_ti_space_turns_one_step_per_press(self):
+        b=Basic(target='TI994A');b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0)
+        faces=[]
+        for _ in range(4):
+            b.v['cont1.key']=32
+            for _ in range(40):b.call('fire_control')
+            faces.append(b.v['face'])
+            b.v['cont1.key']=15;b.call('fire_control')
+        self.assertEqual(faces,[2,0,2,1])
+        self.assertEqual(b.v.get('fire_events',0),0)
+        for setup in ({'hy':153},{'fire_gate':2},{'cont1.key':10}):
+            b=Basic(target='TI994A');b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0,**{'cont1.key':32})
+            b.v.update(setup);b.call('fire_control');self.assertEqual(b.v['face'],1,setup)
+
+    def test_coleco_right_button_turns_and_left_button_only_fires(self):
+        b=Basic(target='COLECO');b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0)
+        faces=[]
+        for _ in range(4):
+            b.v['cont1.button2']=1
+            for _ in range(40):b.call('fire_control')
+            faces.append(b.v['face'])
+            b.v['cont1.button2']=0;b.call('fire_control')
+        self.assertEqual(faces,[2,0,2,1])
+        self.assertEqual(b.v.get('fire_events',0),0)
+        b.v['cont1.button']=1
+        for _ in range(60):b.call('fire_control')
+        self.assertEqual((b.v['face'],b.v.get('fire_events',0)),(1,0))
+        b.v['cont1.button']=0;b.call('fire_control')
+        self.assertEqual((b.v['face'],b.v['fire_events']),(1,1))
+        b.v.update(**{'cont1.button':1,'cont1.button2':1})
+        b.call('fire_control')
+        self.assertEqual(b.v['face'],2)
+        b.v['cont1.button']=0;b.call('fire_control')
+        self.assertEqual((b.v['face'],b.v['fire_events']),(2,2))
+        for setup in ({'hy':153},{'fire_gate':2},{'cont1.button2':0,'cont1.key':10}):
+            b=Basic(target='COLECO');b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0,**{'cont1.button2':1})
+            b.v.update(setup);b.call('fire_control');self.assertEqual(b.v['face'],1,setup)
+        bad=SOURCE.replace('IF cont1.button2 THEN','IF cont1.key = 10 THEN')
+        self.assertNotEqual(bad,SOURCE)
+        b=Basic(bad,target='COLECO');b.v.update(hy=80,land_y=b.v['landed'],turn_phase=2,face=1,fire_gate=0,**{'cont1.button2':1})
+        b.call('fire_control');self.assertEqual(b.v['face'],1)
 
     def test_title_picks_difficulty_without_breaking_838(self):
         # 1, 2 or 3 (or LEFT/RIGHT) picks easy, medium or hard, shown in

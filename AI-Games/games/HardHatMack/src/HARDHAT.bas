@@ -18,6 +18,8 @@
 	'     step of every jump read a neighbouring variable as its dy)
 	'   - array out-of-bounds is Coleco-FATAL -- exact sizes
 	'   - TI fixed-program cap 24,336 B -- build-ti.sh guards it
+	'   - both carts use banks 0-4; Coleco's 16 KiB shared bank and
+	'     MegaCart image are checked by build-coleco.sh
 	'
 	' 2026 UNHUMAN AND CLAUDE
 	'
@@ -89,11 +91,7 @@
 	CONST T_CAN    = 187	' bonus spray can (+200)
 	CONST T_HAT    = 188	' hard hat (HUD lives icon)
 	CONST T_HUDX   = 31	' small HUD multiply sign: codes 0-31 lie below the font
-	#if TI994A
 	CONST HUD_BONUS_COL = 16
-	#else
-	CONST HUD_BONUS_COL = 21
-	#endif
 
 	' ---- Level-stream opcodes (see level1_data) ----
 	' 0                        end of stream
@@ -117,10 +115,10 @@
 	'   14 col                 bolt drop column
 	'
 
-	#if TI994A
+	' Both targets need banking. The old unbanked Coleco image grew to 40 KiB:
+	' it booted from the visible 32 KiB window, then failed at level 1.
 	BANK ROM 128
 	BANK SELECT 1
-	#endif
 
 	CONST MAXITEM = 8	' girder pieces (L1) / lunchboxes (L2) / boxes (L3)
 	CONST MAXGAP  = 4
@@ -307,6 +305,7 @@ main_loop:
 		IF jbold = 0 THEN jbe = 1
 	END IF
 	jbold = jb
+#if TI994A
 	IF jb THEN
 		IF jbhc < 45 THEN
 			jbhc = jbhc + #fd
@@ -318,6 +317,16 @@ main_loop:
 	ELSE
 		jbhc = 0
 	END IF
+#else
+	' ColecoVision has two buttons: button 1 jumps, button 2 drops the hammer.
+	jb2 = cont1.button2
+	IF jb2 THEN
+		IF jb2old = 0 THEN
+			IF carry = 2 THEN GOSUB drop_hammer
+		END IF
+	END IF
+	jb2old = jb2
+#endif
 	IF st = S_DEAD THEN
 		GOSUB dead_tick
 		IF gameov = 1 THEN GOTO game_over
@@ -397,23 +406,15 @@ main_loop:
 	GOTO main_loop
 
 inventory_draw:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_inventory_draw
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 girder_chars:
-	#if TI994A
 	BANK SELECT 3
-	#endif
 	GOSUB banked_girder_chars
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 game_chars:
@@ -470,14 +471,10 @@ game_chars:
 	DEFINE COLOR T_HAZ0,3,haz_col
 	' The spare fuse poses live in bank 4; the data bank has
 	' only nineteen free bytes. Upload once, then animate by swapping codes.
-	#if TI994A
 	BANK SELECT 4
-	#endif
 	DEFINE CHAR 169,3,fuse_pat	' 165 is frame zero
 	DEFINE COLOR 169,3,fuse_col
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	DEFINE CHAR T_CONV0,5,conv_pat		' 156-160 full/bottom/top/drum/post
 	DEFINE COLOR T_CONV0,5,conv_col
 	DEFINE CHAR T_MAGNET,2,mag_pat
@@ -493,46 +490,30 @@ game_chars:
 	RETURN
 
 fixture_chars:
-	#if TI994A
 	BANK SELECT 3
-	#endif
 	GOSUB banked_fixture_chars
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 mack_air_chars:
-	#if TI994A
 	BANK SELECT 4
-	#endif
 	GOSUB banked_mack_air_chars
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 fixture_draw:
 	IF lv <> 3 THEN RETURN
-	#if TI994A
 	BANK SELECT 3
-	#endif
 	GOSUB banked_fixture_draw
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 factory_output:
 	IF boxfall < 2 THEN RETURN
 	workfx = 255
-	#if TI994A
 	BANK SELECT 4
-	#endif
 	GOSUB banked_factory_output
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	IF workfx = 4 THEN GOSUB work_sound
 	RETURN
 
@@ -623,33 +604,21 @@ work_sound:
 	IF st = S_DEAD THEN RETURN
 	IF snd3 > 3 THEN RETURN
 	IF snd1 > 2 THEN RETURN
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_work_sound
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 sound_tick:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_sound_tick
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 completion_music:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_completion_music
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 bonus_countdown:
@@ -775,14 +744,10 @@ back_key:
 	RETURN
 
 title_screen:
-	#if TI994A
 	BANK SELECT 3
-	#endif
 	GOSUB banked_title
 	GOSUB quiet_screen
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 	'
@@ -1071,13 +1036,9 @@ walk_tramp:
 chain_at:
 	' Banked to keep the unoptimized fixed area below >FFFE (xas99's first
 	' pass rejects short jumps that straddle it). Pure VPEEK logic, no calls.
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_chain_at
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 tramp_in2:
@@ -1105,13 +1066,9 @@ tramp_go:
 	RETURN
 
 st_tramp:
-	#if TI994A
 	BANK SELECT 3
-	#endif
 	GOSUB banked_tramp_step
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 st_climb:
@@ -1494,23 +1451,15 @@ ride_step_off:
 	' ---- Probes ----
 	'
 mag_move:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_mag_move
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 mag_catch:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_mag_catch
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 land_chk:
@@ -1858,13 +1807,9 @@ lift_move:
 	RETURN
 
 lift_positions:
-	#if TI994A
 	BANK SELECT 4
-	#endif
 	GOSUB banked_lift_positions
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 lift_sup:
@@ -2154,13 +2099,9 @@ actors_step:
 	RETURN
 
 actors_move:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_actors_move
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 bolt_move:
@@ -2371,7 +2312,7 @@ route_vand:
 	RETURN
 
 drop_hammer:
-	' Release the jackhammer on a long FIRE hold: warp it back to its
+	' Release the jackhammer: warp it back to its
 	' original spawn with its serpentine route pattern reset, and free
 	' Mack's hands so he can carry bricks again.
 	carry = 0
@@ -2424,13 +2365,9 @@ add_score:
 	RETURN
 
 score_print:
-	#if TI994A
 	BANK SELECT 3
-	#endif
 	GOSUB banked_hud_score
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 hud_score:
@@ -2476,13 +2413,9 @@ mack_burn:
 	RETURN
 
 death_cleanup:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_death_cleanup
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 dead_tick:
@@ -2592,13 +2525,9 @@ dead_resolve:
 	'
 spring_begin:
 	' Banked: the unoptimized fixed area must stay below >FFFE for xas99.
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_spring_begin
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 spring_transfer:
@@ -2606,35 +2535,23 @@ spring_transfer:
 	IF springbin THEN
 		IF springphase = 1 THEN GOTO bin_hop
 	END IF
-	#if TI994A
 	BANK SELECT 3
-	#endif
 	GOSUB banked_spring_transfer
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	IF springhit THEN GOTO mack_die
 	RETURN
 
 bin_hop:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_bin_hop
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	IF springhit THEN GOTO mack_die
 	RETURN
 
 furnace_step:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_furnace_step
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 site_step:
@@ -2863,53 +2780,33 @@ site_draw:
 	RETURN
 
 machinery_draw:
-	#if TI994A
 	BANK SELECT 4
-	#endif
 	GOSUB animated_machines
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 gear_sparks_draw:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_gear_sparks
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 gear_shock:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_gear_shock
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 enemy_draw:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_enemy_draw
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 enemy_setup:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_enemy_setup
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 quiet_screen:
@@ -2937,37 +2834,18 @@ quiet_audio:
 	RETURN
 
 hud_all:
-	#if TI994A
 	BANK SELECT 2
 	GOSUB banked_hud_all
 	BANK SELECT 1
 	#scvalue = #score
 	#scpos = 0
 	GOSUB score_print
-	#else
-	PRINT AT CPOS(0,15),"BONUS "
-	PRINT AT CPOS(0,21),<.4>#bonus
-	#scvalue = #score
-	#scpos = 0
-	GOSUB score_print
-	PRINT AT CPOS(0,25),"       "
-	IF levelno < 10 THEN PRINT AT CPOS(0,25),"LEVEL ",levelno
-	IF levelno >= 10 THEN
-		IF levelno < 100 THEN PRINT AT CPOS(0,26),"LVL ",levelno
-	END IF
-	IF levelno >= 100 THEN PRINT AT CPOS(0,26),"LV ",levelno
-	GOSUB hud_lives
-	#endif
 	RETURN
 
 hud_lives:
-	#if TI994A
 	BANK SELECT 2
-	#endif
 	GOSUB banked_hud_lives
-	#if TI994A
 	BANK SELECT 1
-	#endif
 	RETURN
 
 	'
@@ -2987,9 +2865,7 @@ hud_lives:
 	' - Elevator cols 1-2: boarded at bottom or top floor, it travels
 	'   the FULL shaft to the other end and parks.
 	'
-	#if TI994A
 	BANK 1
-	#endif
 
 init_level:
 	GOSUB quiet_screen
@@ -3080,7 +2956,11 @@ lv_parse:
 		#hacc = 0
 		#lf = FRAME
 		jbold = cont1.button
+		#if TI994A
 		jbhc = 0
+		#else
+		jb2old = cont1.button2
+		#endif
 		esup = 0
 		' Give the map writes a frame to settle before painting score and hats.
 		WAIT
@@ -4619,9 +4499,7 @@ slag_bitmap:
 asset_end:
 	DATA BYTE 72,72,77,65,67,75,26,1
 
-	#if TI994A
 	BANK 2
-	#endif
 
 crate_pat:
 	' Generated by assets/genconveyors.py; edit the generator.
@@ -4665,7 +4543,7 @@ banked_hud_all:
 	IF levelno >= 10 THEN
 		IF levelno < 100 THEN PRINT AT CPOS(0,29),"L",levelno
 	END IF
-	' A three-digit level fills the last three cells; all eight reserve hats fit.
+	' A three-digit level fills the last three cells, after the reserve gap.
 	IF levelno >= 100 THEN PRINT AT CPOS(0,29),levelno
 	GOSUB banked_hud_lives
 	RETURN
@@ -4805,7 +4683,9 @@ banked_actors_move:
 			IF hit = 1 THEN
 				jhtk = 1
 				carry = 2
+				#if TI994A
 				jbhc = 0
+				#endif
 				#sndpitch = 150
 				sndvol = 12
 				sfxlen = 10
@@ -5362,7 +5242,6 @@ banked_furnace_step:
 	RETURN
 
 banked_hud_lives:
-	#if TI994A
 	' Reserve hats, right-justified to column 27 so column 28 always stays
 	' blank before the level label. Up to five hats; six or more read as
 	' <hat><x><count> in adjacent cells, so every death changes the row.
@@ -5391,19 +5270,6 @@ banked_hud_lives:
 	ELSE
 		PRINT AT CPOS(0,27),lives
 	END IF
-	#else
-	' Eight reserve hats follow the centered bonus and precede the level.
-	#va = VADDR(0,7)
-	FOR hl_slot = 0 TO 7
-		IF hl_slot + lives > 7 THEN
-			ch = T_HAT
-		ELSE
-			ch = T_VOID
-		END IF
-		VPOKE #va,ch
-		#va = #va + 1
-	NEXT hl_slot
-	#endif
 	RETURN
 
 banked_spring_begin:
@@ -5575,9 +5441,7 @@ gearspark_col:
 animation_end:
 	DATA BYTE 72,72,77,65,78,73,77,2
 
-	#if TI994A
 	BANK 3
-	#endif
 
 banked_girder_chars:
 	' Codes 120-123 are site-specific scenery; restore on every level/death.
@@ -6100,15 +5964,11 @@ banked_tramp_step:
 	RETURN
 
 banked_hud_score:
-	#if TI994A
 	' Leave a left margin, right-align six score digits, and reserve column 7
 	' for the score's tag. The title uses banked_score_left below.
 	PRINT AT CPOS(0,1),"       "
 	#scpos = 1
 	GOSUB banked_score_print
-	#else
-	GOSUB banked_score_left
-	#endif
 	' The tag: * for an 838 game, else e, m or h (characters 27-30).
 	PRINT CHR$(gametag + 26)
 	RETURN
@@ -6423,9 +6283,7 @@ title_map:
 title_end:
 	DATA BYTE 72,72,77,84,73,84,76,3
 
-	#if TI994A
 	BANK 4
-	#endif
 
 banked_factory_output:
 	IF boxfall < 2 THEN RETURN

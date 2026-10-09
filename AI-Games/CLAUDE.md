@@ -55,6 +55,13 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
 
 - **Never `MODE 2`.** It compiles clean and renders broken on both targets. Use the default
   startup mode with `DEFINE CHAR`/`DEFINE COLOR`.
+- **A Coleco ROM can compile and boot while its later code is unreachable.** Hard Hat Mack's
+  unbanked Z80 image grew to 40,960 bytes: the title worked, but starting level 1 entered
+  code/data beyond the console's 32 KiB cartridge window. For a larger dual-target game,
+  use CVBasic's `BANK ROM 128` MegaCart layout on Coleco too, with `BANK SELECT` around every
+  cross-bank call or data read. Check the assembled 128 KiB image and `BANK_n_FREE` values;
+  gasm80 success alone did not catch the old image. Hard Hat Mack's
+  `assets/checkcoleco.py` rejects the unbanked size and out-of-range bank values.
 - **Never `<cmp> AND <cmp>` / `<cmp> OR <cmp>` on TI** — the 0.9.2 TMS9900 backend ANDs against
   a stale register. Nest single-comparison `IF`s.
 - **A bare `IF #word AND 1 THEN` can test the HIGH byte on TI.** Hard Hat Mack's

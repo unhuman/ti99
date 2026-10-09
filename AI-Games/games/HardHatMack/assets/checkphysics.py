@@ -16,8 +16,8 @@ import re
 SOURCE = Path(__file__).resolve().parent.parent / 'src/HARDHAT.bas'
 
 
-def ti_source_lines(source):
-    """Select the TI994A preprocessor path before the BASIC interpreter runs."""
+def ti_source_lines(source, ti=True):
+    """Select one target's preprocessor path before the BASIC interpreter runs."""
     active = True
     branches = []
     selected = []
@@ -26,8 +26,8 @@ def ti_source_lines(source):
         if directive.startswith('#if '):
             condition = directive[4:].strip()
             assert condition == 'ti994a', 'unsupported preprocessor condition: ' + condition
-            branches.append((active, True, False))
-            active = active
+            branches.append((active, ti, False))
+            active = active and ti
         elif directive == '#else':
             assert branches and not branches[-1][2], 'unmatched/duplicate #else'
             parent, condition, _ = branches[-1]
@@ -63,7 +63,7 @@ class Basic:
     _parse_source = None
     _parse_cache = None
 
-    def __init__(self, source, floor=168, holes=()):
+    def __init__(self, source, floor=168, holes=(), ti=True):
         self.v = defaultdict(int)
         self.arc = []
         self.arrays = {}
@@ -86,9 +86,9 @@ class Basic:
         self.bank = 1
         self.frame_inputs = repeat({})
         self.random_values = iter(())
-        if Basic._parse_source != source:
+        if Basic._parse_source != (source, ti):
             lines = [line.split("'")[0].strip().lower()
-                     for line in ti_source_lines(source)]
+                     for line in ti_source_lines(source, ti)]
             labels = {line[:-1]: i for i, line in enumerate(lines)
                       if re.fullmatch(r'\w+:', line)}
             label_banks = {}
@@ -112,7 +112,7 @@ class Basic:
                         elses[b] = branches[j + 1] if j + 1 < len(branches) else i
                     elses[start] = branches[0] if branches else i
             assert not stack
-            Basic._parse_source = source
+            Basic._parse_source = (source, ti)
             Basic._parse_cache = (lines, labels, label_banks, ends, elses)
         self.lines, self.labels, self.label_banks, self.ends, self.elses = Basic._parse_cache
         for line in self.lines:
@@ -128,7 +128,7 @@ class Basic:
         self.arc = list(map(int, data[10:].split(',')))
         size = int(re.search(r'dim jtab\((\d+)\)', '\n'.join(self.lines))[1])
         assert len(self.arc) == size == 16
-        if Basic._byte_source != source:
+        if Basic._byte_source != (source, ti):
             values=[];offsets={}
             for line in self.lines:
                 if line.endswith(':'):offsets[line[:-1]]=len(values)
@@ -137,7 +137,7 @@ class Basic:
                         value=value.strip()
                         assert re.fullmatch(r'\$[0-9a-f]+|[0-9]+',value), ('unsupported DATA literal',value)
                         values.append(int(value[1:],16) if value.startswith('$') else int(value))
-            Basic._byte_source=source
+            Basic._byte_source=(source, ti)
             Basic._byte_cache=(tuple(values),offsets)
         self.byte_data,self.data_offsets=Basic._byte_cache
         self.v.update(mx=40, my=152, st=self.v['s_walk'], ely=209, jhz=1)
@@ -491,6 +491,43 @@ def hammer_release(source):
         assert vm.v['jbhc']==0
         vm.v['jb']=1;vm.run('button_test')
         assert vm.v['jbe']==1 and vm.v['carry']==carry, 'fresh jump press broken'
+
+
+def coleco_hammer_release(source):
+    """Exercise both shipped Coleco button paths, including the level-start latch."""
+    block=source[source.index("\t' Button rising edge"):source.index('\tIF st = S_DEAD THEN\n\t\tGOSUB dead_tick')]
+    script=source+'\nBANK 0\nbutton_test:\n'+block+'\tRETURN\n'
+    for near_spawn in (False,True):
+        vm=Basic(script,ti=False)
+        vm.v.update(lv=1,input_button=1,input_button2=1)
+        vm.run('init_level')
+        assert vm.v['jb2old']==1, 'level start did not seed button 2 latch'
+        vm.v.update(mx=vm.v['jhx0'] if near_spawn else 100,my=vm.v['jhy0'],
+                    carry=2,jhtk=1,von=0,oon=0,jb=1,**{'#fd':1})
+        for _ in range(60):
+            vm.run('button_test');vm.run('actors_move')
+        assert vm.v['carry']==2, 'held jump or held-through-start button 2 dropped hammer'
+        vm.v['input_button2']=0;vm.run('button_test')
+        assert vm.v['carry']==2, 'button 2 release dropped hammer'
+        vm.v['input_button2']=1;vm.run('button_test');vm.run('actors_move')
+        assert vm.v['carry']==0 and vm.v['jhtk']==0, 'fresh button 2 press did not drop hammer'
+        assert (vm.v['jhx'],vm.v['jhy'])==(vm.v['jhx0'],vm.v['jhy0'])
+        for _ in range(70):vm.run('button_test');vm.run('actors_move')
+        assert vm.v['carry']==0, 'held button 2 recaught hammer'
+    for carry in (0,1):
+        vm=Basic(script,ti=False)
+        vm.v.update(carry=carry,jhtk=1,input_button2=1)
+        vm.run('button_test')
+        assert vm.v['carry']==carry, 'button 2 dropped wrong inventory'
+    vm=Basic(script,ti=False)
+    vm.v.update(carry=0,input_button2=1)
+    vm.run('button_test')
+    vm.v['carry']=2
+    vm.run('button_test')
+    assert vm.v['carry']==2, 'button 2 held through pickup dropped hammer'
+    vm.v['jb']=0;vm.run('button_test')
+    vm.v['jb']=1;vm.run('button_test')
+    assert vm.v['jbe']==1 and vm.v['carry']==2, 'button 1 jump also dropped hammer'
 
 
 def single_item(source):
@@ -1091,6 +1128,28 @@ def reserve_hud(source):
         label=('l'+str(level) if level<100 else str(level)).rjust(3)
         assert ''.join(map(chr,vm.screen[29:32]))==label and vm.screen[28]==32, ('level label/gap',level)
         assert vm.screen[20:29]==reserve_row(9,vm.v), ('level label disturbs the reserve',level)
+
+
+def coleco_hud(source):
+    """Run Coleco's compiled path; a TI-only HUD check missed the old row."""
+    vm=Basic(source,ti=False)
+    for spares in range(13):
+        for level in (1,10,100):
+            vm.v.update(lives=spares,levelno=level,gametag=3,
+                        **{'#score':65535 if level==100 else 0,
+                           '#bonus':0 if level==10 else 5000})
+            vm.run('hud_all')
+            row=vm.screen[:32]
+            score=str(vm.v['#score']*5).rjust(6)
+            bonus=str(vm.v['#bonus']).rjust(4)
+            label=('l'+str(level) if level<100 else str(level)).rjust(3)
+            expected=[32]*32
+            expected[1:8]=list(map(ord,score+chr(29)))
+            expected[10:20]=list(map(ord,'bonus '+bonus))
+            expected[20:29]=reserve_row(spares,vm.v)
+            expected[29:32]=list(map(ord,label))
+            assert row==expected, ('Coleco HUD spacing/content',spares,level,row,expected)
+            assert vm.bank==1, 'Coleco HUD leaks its bank'
 
 
 def difficulty_contract(source):
@@ -3036,6 +3095,7 @@ def main():
     clock_contract(source)
     inventory_contract(source)
     hammer_release(source)
+    coleco_hammer_release(source)
     single_item(source)
     machinery(source)
     transfers(source)
@@ -3053,6 +3113,7 @@ def main():
     difficulty_contract(source)
     score_range(source)
     reserve_hud(source)
+    coleco_hud(source)
     crane_wait_spot(source)
     mack_animation(source)
     elevator_dance(source)
@@ -3210,8 +3271,11 @@ def main():
         (source.replace('SOUND 1,#songharm,6','SOUND 1,#songharm,0'),sound_contract),
         (source.replace('RESTORE victory_music2','RESTORE victory_music1'),sound_contract),
         (source.replace('\tjhlock = 1\n','\tjhlock = 0\n'),hammer_release),
-        (source.replace('carry = 2\n\t\t\t\tjbhc = 0','carry = 2'),hammer_release),
+        (source.replace('\t\t\t\tjbhc = 0\n',''),hammer_release),
         (source.replace('IF carry = 2 THEN GOSUB drop_hammer','carry = carry'),hammer_release),
+        (source.replace('jb2 = cont1.button2','jb2 = cont1.button'),coleco_hammer_release),
+        (source.replace('IF jb2old = 0 THEN','IF jb2old = 255 THEN'),coleco_hammer_release),
+        (source.replace('jb2old = cont1.button2','jb2old = 0'),coleco_hammer_release),
         (source.replace('IF carry <> 0 THEN RETURN',''),single_item),
         (source.replace('IF carry = 0 THEN\n\t\t\t\' Grabbing','IF carry < 2 THEN\n\t\t\t\' Grabbing'),single_item),
         (source.replace('hbw = 18','hbw = 0'),single_item),
@@ -3291,6 +3355,9 @@ def main():
         (source.replace('#va = VADDR(0,23)','#va = VADDR(0,22)'),score_range),
         (source.replace('IF lives <= 5 THEN RETURN','IF lives <= 8 THEN RETURN'),reserve_hud),
         (source.replace("\tVPOKE #va,ch\t\t' column 28: the gap before the level label\n",'',1),reserve_hud),
+        (source.replace('CONST HUD_BONUS_COL = 16','CONST HUD_BONUS_COL = 21'),coleco_hud),
+        (source.replace('\t#scpos = 1\n\tGOSUB banked_score_print','\t#scpos = 0\n\tGOSUB banked_score_print',1),coleco_hud),
+        (source.replace('#va = VADDR(0,23)','#va = VADDR(0,7)',1),coleco_hud),
         (source.replace('DEFINE CHAR 225,2,spigot_pat','DEFINE CHAR 231,2,spigot_pat'),fidelity),
         (source.replace('DATA BYTE 8, 18,6,1,226','DATA BYTE 8, 18,6,1,232'),fidelity),
         (source.replace("mx = 120\t' place Mack one character right", "mx = 112\t' place Mack one character right"),fidelity),

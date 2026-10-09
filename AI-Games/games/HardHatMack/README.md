@@ -105,14 +105,17 @@ direction clear; both layers of the jumping pose mirror when he faces left.
 It follows distance walked, returns to a neutral pose
 when stopped, and keeps his original height, movement speed and collision bounds.
 
-Joystick 1: left/right walk, up/down climb, **Fire jumps** from a floor, chain,
+Joystick 1: left/right walk, up/down climb. **Button 1 jumps** from a floor, chain,
 crane beam, conveyor, or parked elevator. Direction at takeoff sets momentum.
-**Hold Fire for 0.75 seconds to release the jackhammer** (Tab in Classic99,
-Space in CoolCV). It returns to its starting position and cannot be re-caught until it and Mack
+On TI-99, **hold Fire for 0.75 seconds to release the jackhammer** (Tab in Classic99).
+On ColecoVision, **press button 2 to release it**; button 1 only jumps
+(CoolCV: button 1 = Space, button 2 = M; ColEm: button 1 = Ctrl or M,
+button 2 = Space).
+The jackhammer returns to its starting position and cannot be re-caught until it and Mack
 separate. Mack can carry only one block or jackhammer. A loose jackhammer passing
 behind Mack while he holds a block is hidden until clear, so the two cannot
-appear to be held together; its route continues normally. A new pickup resets
-the hold timer, even if Fire was already held. Fire starts a normal game at site 1 with three lives.
+appear to be held together; its route continues normally. On TI, a new pickup resets
+the hold timer, even if Fire was already held. Button 1 starts a normal game at site 1 with three lives.
 
 **Difficulty.** The title's line `1 EASY  2 MEDIUM  3 HARD` shows the current choice in
 brackets, as Choplifter does. Press 1, 2 or 3, or step with the joystick's LEFT
@@ -141,9 +144,10 @@ rising crane; its lunch pail stays inside the patrol. The chosen number
 appears beside the prompt before play begins. Release each key between digits.
 An 838 game plays at the difficulty shown on the title when the code was typed.
 These choices apply to one game only. Reserve hats exclude the current
-life; on TI-99 they are right-justified on the top HUD row after the bonus.
+life; on both targets they are right-justified on the top HUD row after the bonus.
 The score and hats appear as each level opens. One extra life is awarded at 7,000 points.
-Classic99 uses arrows/Tab; CoolCV uses arrows/Space for controller 1. On TI-99,
+Classic99 uses arrows/Tab; CoolCV uses arrows/Space/M and ColEm uses
+arrows/Ctrl (or M)/Space for movement, jump, and release. On TI-99,
 F8 (REDO) or F9 (BACK) returns to the title during play, the 838 prompts,
 and the Game Over delay.
 The construction-themed title shows **LAST SCORE** and **HIGH SCORE** at the top,
@@ -158,7 +162,7 @@ Each saved score keeps the tag of the game that made it (**\*** for 838, else
 **e**/**m**/**h**). A higher score replaces the record with its own tag, and equal
 scores keep the existing record and tag. Before the first game neither score has
 a tag. The tags are characters 27-30 (beside the HUD's x at 31), because play
-borrows the font's lowercase letters. On TI-99, the gameplay score has a one-cell
+borrows the font's lowercase letters. On both targets, the gameplay score has a one-cell
 left margin and is right-aligned in a six-digit field; its tag follows in
 column 7. **BONUS** and its timer occupy columns 10-19. Up to five yellow
 reserve hats follow, right-justified to column 27; with six or more spares
@@ -253,9 +257,14 @@ music is newly composed for this port; original-music matching remains open.
 From the project root on Windows:
 
 ```powershell
-& tools/hardhat-dev.ps1 BuildTI
-& tools/hardhat-dev.ps1 LaunchTI
+powershell -ExecutionPolicy Bypass -File tools/hardhat-dev.ps1 BuildAll
+powershell -ExecutionPolicy Bypass -File tools/hardhat-dev.ps1 LaunchTI
+powershell -ExecutionPolicy Bypass -File tools/hardhat-dev.ps1 LaunchColEm
 ```
+
+The launcher opens Classic99 on the visible desktop and loads the newest TI
+cartridge at the normal title. `LaunchColEm` opens the MegaCart in ColEm;
+`LaunchColeco` remains available for CoolCV.
 
 Or run `bash games/HardHatMack/build-ti.sh` followed by
 `bash games/HardHatMack/build-coleco.sh` using Cygwin bash.
@@ -269,8 +278,11 @@ physics rejection tests use up to four workers. The TI build also verifies the
 fixed-area size and all four packed banks. Its 64 KB
 cartridge contains the loader, setup/assets bank and separate banks for
 actors/audio, the title/setup screen plus extra scenery, and motion/animated machinery; their wrappers restore
-the setup/assets bank before returning. Coleco remains
-an unbanked cartridge within 32 KB. The TI build uses
+the setup/assets bank before returning. Coleco uses the same bank layout in a
+128 KB MegaCart image (use a MegaCart-compatible cartridge or emulator). Its
+build checks every populated 16 KB bank and rejects
+the old oversized unbanked image, which booted but could not run level 1.
+The TI build uses
 the repository's checked short-branch optimizer and verifies the resulting opcodes
 and destinations after reassembly. `TI_SHORT_BRANCHES=0` retains the comparison
 path with the same size gate. Starting play restores the gameplay characters
@@ -284,9 +296,10 @@ Editable conveyor, pincer, smasher, furnace and trampoline art lives in
 `assets/genmotion.py` owns the exact factory paddle-position tables.
 Run the changed generator with `--write`, then build; builds reject stale art.
 
-Current development focus (2026-10-03): build and review TI-99 only, per the
-user's request. Coleco validation will resume after the TI gameplay work.
-See DESIGN.md sections 19-25 for TI validation, budgets and verification limits.
+The Coleco bank repair was checked in CoolCV through the title, level 1 draw,
+active enemy/timer, difficulty input, Mack's walking input, and 838 starts of
+stages 2 and 3. See DESIGN.md
+section 58 for bank budgets and verification limits.
 
 The physics checker executes actual BASIC routines and all three level parsers.
 It checks objective handling, death rollback, timed hazard windows, magnet capture

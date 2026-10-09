@@ -55,8 +55,8 @@ Current-state design. History is in git; sizes below are from the latest build
 | TI data bank (`BANK 1`) | 8,180 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
 | TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
 | TI RAM | 814 | 7,854 | |
-| ColecoVision ROM | 32,246 | 32,768 | last non-padding byte |
-| ColecoVision RAM | 813 | 814 | nearly full; see `#vaddr` (`crowd_seen` took one) |
+| ColecoVision ROM | 32,162 | 32,768 | last non-padding byte |
+| ColecoVision RAM | 811 | 814 | nearly full; TI-only hold-turn counters are absent |
 
 The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
 files. `assets.bas` (crash flames, map, crowd glyphs and palettes, roaming goals, fire
@@ -260,13 +260,15 @@ Joystick 1 flies independently of facing; the helicopter starts facing left. Rel
 horizontal input brakes to a hover without changing aim. Horizontal acceleration and braking
 step once per update (0–3 px/frame); cruising distance follows elapsed frames.
 
-FIRE is sampled every video frame by an `ON FRAME` handler, so taps survive slow updates: a
-press shorter than 18 frames (0.3 s) fires on release; holding turns after 18 frames and
-then every 15 (0.25 s), cycling left → front → right → front (`turn_step`). Releasing after
-a turn does not fire. SPACE (TI) or keypad `*` (ColecoVision), read by the same handler,
-turns one step per press, edge-triggered (`turn_key`), and never fires. The helicopter
-cannot turn on the ground: the hold timer stays at zero while it is landed, so lifting off
-with FIRE held starts a fresh hold, and the turn key does nothing there.
+The fire button is sampled every video frame by an `ON FRAME` handler, so taps survive slow
+updates. On TI, a press shorter than 18 frames (0.3 s) fires on release; holding turns
+after 18 frames and then every 15 (0.25 s), cycling left → front → right → front
+(`turn_step`). Releasing after a turn does not fire. TI SPACE turns once per press. On
+ColecoVision, the left button fires once on release, even after a long hold, while the
+right button (`CONT1.BUTTON2`) turns once per press. Both turn inputs are edge-triggered
+(`turn_key`) and never fire. The helicopter cannot turn on the ground: TI's hold timer
+stays at zero while landed, so lifting off with FIRE held starts a fresh hold, and the
+dedicated turn inputs do nothing there.
 Side views shoot in the facing direction and follow the nose pitch; the front view drops
 bombs that keep the helicopter's sideways speed at release. Shots expire after 90 frames or
 on leaving the view; old shots retire before a new tap is accepted. Weapons are disabled on
