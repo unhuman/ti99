@@ -1,7 +1,7 @@
 # Hard Hat Mack — Design (CVBasic, dual-target TI-99/4A + ColecoVision)
 
-> **Current status (2026-10-02): TI-99/4A validation only; ColecoVision is paused at the user's request.**
-> Section 16 supersedes earlier mechanics, budgets and verification notes.
+> **Current status (2026-10-09): ColecoVision banked cart and first-level input verified in CoolCV; TI-99/4A remains the gameplay review target.**
+> Sections 16 and 58 supersede earlier mechanics, budgets and Coleco build notes.
 > Older sections remain as implementation history; README describes current play.
 > The construction title and hidden 838 setup are implemented; title music remains a design goal; repeat tours have two random enemies.
 
@@ -106,7 +106,7 @@ Three-screen construction-site platformer. Walk, climb, and jump through each sc
 while dodging the **vandal**, the **OSHA man**, and (level 1) **thrown bolts**:
 
 1. **Beams and Bolts** — carry 4 loose girder pieces into the 4 floor gaps, then grab the
-   roaming jackhammer (it can never be put down) and walk it over each filled gap to rivet it.
+   roaming jackhammer and walk it over each filled gap to rivet it.
 2. **Lunch Break** — collect 6 lunchboxes across a 3-tier site, then ride up under the armed
    electromagnet. (The Apple II original threatens an incinerator at the bottom; the ColecoVision
    reference we build to has none, so ours has none either — see §7 Level 2.)
@@ -119,7 +119,8 @@ Clearing level 3 loops the game harder: **faster and more targeted, never more e
 ## §2 Controls (joystick 1)
 
 - **Left/Right** — walk. **Up/Down** — climb ladders (and enter pater-noster zones, L3).
-- **Fire** — jump. Direction held at takeoff sets the fixed horizontal momentum of the arc.
+- **Button 1 / Fire** — jump. Direction held at takeoff sets the fixed horizontal momentum of the arc.
+- **Release jackhammer** — hold Fire for 45 frames on TI-99; press button 2 on ColecoVision.
 - Title: **FIRE** starts; **8-3-8** on the keypad opens level select (repo convention).
   **1/2/3** or the stick's **LEFT/RIGHT** choose Easy, Medium or Hard (section 57).
 
@@ -186,7 +187,8 @@ index-driven, no signed compares) · **FALL** (dy 1,2,3,3…; **fatal past
 Carrying (`carry`: 0 none / 1 girder / 2 jackhammer / 3 steel box) renders as **sprite 1
 held in front of Mack** on his facing side (both the girder brick and the jackhammer) — shares
 Mack's scanlines, never flickers apart. Girder auto-deposits over an OPEN gap; the jackhammer
-is dropped only by a **long FIRE hold** (which resets it to its start), and Mack can jump while
+is dropped by a **long FIRE hold on TI or a fresh button 2 press on ColecoVision**
+(which resets it to its start), and Mack can jump while
 carrying either; boxes auto-deliver at an IN hopper. Lunchboxes are instant char pickups.
 
 ## §6 Enemies & hazards (M3)
@@ -3100,3 +3102,56 @@ from the checker's VM.
 
 Production SHA-256:
 `B0BEAC3F75997C12DD8BA526244900C063FD652FB80AF4EB115A2DCA703CC8CC`.
+
+## 58. ColecoVision MegaCart repair (2026-10-09)
+
+The unbanked Coleco build had grown to 40,960 bytes. CVBasic and gasm80 both
+reported success, and CoolCV could show the title, but the cartridge exceeded
+the console's 32 KiB visible ROM window. Starting level 1 reached code and data
+beyond that window. The earlier 24,576-byte Coleco budget in historical sections
+no longer describes this source.
+
+Both targets now compile the existing `BANK ROM 128`, four `BANK` regions, and
+the matching `BANK SELECT` wrappers. TI-only keyboard scanning remains under
+`#if TI994A`. On Coleco, CVBasic maps the shared code to a fixed
+16 KiB region and the other code/data through its 16 KiB MegaCart mapper.
+The assembled image is 131,072 bytes, with 569 of 814 RAM bytes used. The
+gasm80 symbol table reports these free bytes:
+
+| Bank | Role | Coleco free bytes |
+|---|---|---:|
+| 0 | shared code | 1,738 |
+| 1 | level data and parser | 9,992 |
+| 2 | actors and audio | 11,214 |
+| 3 | title and scenery | 9,727 |
+| 4 | motion and machinery | 8,852 |
+
+`assets/checkcoleco.py` checks the actual ROM size, banking symbols, and all
+five bank bounds after assembly. Its self-test rejects the old unbanked size,
+an overflow value, a missing bank, and disabled bank switching.
+
+In CoolCV the production banked cart showed the title, started a fully painted
+level 1 with Fire, advanced its bonus clock and enemy patrol, accepted a title
+difficulty change, and moved Mack left in the first level. The 838 level select
+also entered stages 2 and 3, whose machinery and actors rendered. A full clear
+of all three levels on Coleco hardware remains to be verified.
+
+## 59. ColecoVision HUD and second action button (2026-10-09)
+
+The ColecoVision HUD now uses the same row as TI: a right-aligned score in
+columns 1-6, tag at 7, `BONUS` and timer in 10-19, blank 20-22, up to five
+right-justified reserve hats in 23-27, blank 28, and a right-justified level
+label in 29-31. Six or more reserves use hat-x-count. The older Coleco-only
+left-aligned score and eight-slot reserve layout described in sections 46/54
+is superseded. `coleco_hud` runs the Coleco preprocessor path and checks the
+complete row over scores, levels, bonuses, and reserve counts.
+
+ColecoVision button 1 has only the jump action. A fresh button 2 press releases
+a carried jackhammer immediately; holding either button does not trigger a
+second release. The level parser seeds the button 2 latch so a button held
+through the title or level transition cannot act as a new press. TI retains
+the 45-frame Fire hold. `coleco_hammer_release` exercises both input paths,
+inventory gating, the level-start latch, and the released hammer's pickup lock.
+ColEm's default keyboard mapping uses Ctrl or M for button 1 and Space for
+button 2; CoolCV uses Space and M. The checked 128 KiB cart loaded in both
+emulators, and ColEm displayed the revised first-level HUD and game-over screen.

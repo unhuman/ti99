@@ -2,12 +2,12 @@
 #
 # Build Hard Hat Mack (CVBasic) for ColecoVision.
 #
-#   cvbasic (default target = Coleco) -> gasm80 -> hardhat.rom
+#   cvbasic (default target = Coleco) -> gasm80 -> 128 KiB MegaCart
 #
 # Output: src/hardhat.rom -- load in CoolCV / blueMSX (ColecoVision).
 #
-# Same .bas source as the TI-99 build (build-ti.sh); only the toolchain
-# differs (no --ti994a, and gasm80 instead of xas99+linkticart). The main
+# Same .bas source and five-bank layout as the TI-99 build (build-ti.sh);
+# Coleco uses 16 KiB MegaCart banks. The main
 # loop is a single WAIT per frame, so both machines run the same 60Hz NTSC
 # tick rate natively.
 
@@ -20,6 +20,7 @@ SRC="HARDHAT.bas"       # canonical source (shared with the TI build)
 NAME="hardhat"          # output base name (dot-free, lowercase)
 ASM="${NAME}_col.asm"
 ROM="${NAME}.rom"
+SYM="${NAME}.sym"
 
 die() { echo "ERROR: $1" >&2; exit 1; }
 
@@ -58,10 +59,12 @@ rm -f "$ASM"
 [ -s "$ASM" ] || die "CVBasic produced no/empty $ASM"
 
 echo "[2/2] gasm80 assemble   $ASM -> $ROM"
-rm -f "$ROM"
-"$GASM80" "$ASM" -o "$ROM" \
+rm -f "$ROM" "$SYM"
+"$GASM80" "$ASM" -o "$ROM" -s "$SYM" \
     || die "gasm80 failed"
 [ -s "$ROM" ] || die "gasm80 produced no/empty $ROM"
+"$TRUNCPY" ../assets/checkcoleco.py --self-test "$ROM" "$SYM" \
+    || die "Coleco bank layout invalid"
 
 echo
 echo "Build OK ->  $(pwd)/$ROM"
