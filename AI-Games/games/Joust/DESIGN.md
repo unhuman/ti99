@@ -125,7 +125,7 @@ What it took on the TI, in order of what it bought:
 
 | change | where |
 |---|---|
-| **The vblank interrupt was 37% of the CPU.** CVBasic's handler copies all 128 sprite bytes and scans the whole keyboard every frame (~18,500 cycles). `tools/isrpatch.py` makes it copy only when the game publishes a finished pass (`sprok`: 2 every frame, 1 once, 0 hold), using CVBasic's `SPRITE FLICKER` path, which starts one slot later on each copy over all 32 slots (so the rotation advances once per pass), and skip the keyboard unless `kbscan` is set (title and 838 screens only). Publishing once per pass also means a half-drawn pass is never shown. | build-ti.sh step 2 |
+| **The vblank interrupt was 37% of the CPU.** CVBasic's handler copies all 128 sprite bytes and scans the whole keyboard every frame (~18,500 cycles). `tools/isrpatch.py` makes it copy only when the game publishes a finished pass (`sprok`: 2 every frame, 1 once, 0 hold), using CVBasic's `SPRITE FLICKER` path, which starts one slot later on each copy over all 32 slots (so the rotation advances once per pass) — patched to walk the slots with a stride of 7, as ColecoVision's runtime already does, so neighbouring slots are spread through the priority order instead of the same two staying hidden for most of a second, and skip the keyboard unless `kbscan` is set (title and 838 screens only). Publishing once per pass also means a half-drawn pass is never shown. | build-ti.sh step 2 |
 | **One loop over the knights instead of three.** Movement, the joust and the draw now all run in `k_one` on the scalar copy; `collide` and `draw_knights` (two more loops re-reading the arrays) are gone. Eggs likewise in `e_one`. | `k_one`, `e_one` |
 | **The scalar copy in and out is hand-written on the TI**: one indexed `MOVB`/`MOV` per field instead of ~130 cycles of index arithmetic each. The `#else` side is the same in BASIC, which is what ColecoVision compiles. | `#if TI994A` in `k_one`, `e_one` |
 | **Each knight thinks one tick in four** (target, separation, routing), staggered by slot. Movement is every tick. The old halving keyed on `FRAME` parity, which never changes when a pass takes an even number of frames, so half the knights never re-targeted at all; it now uses a tick counter. | `k_move`, `k_body` |
@@ -279,6 +279,11 @@ direction. So reversing in flight takes several beats, as it does in the arcade.
 Shadow Lords fly **higher** by preference — they bias their flap threshold upward, which
 is what makes them dangerous rather than merely fast.
 
+**Materialising** takes 36 passes (1.2 s) on a free pad, with a new knight allowed every
+24 passes (40 at the start of a wave). It shimmers through white, cyan, magenta and
+light blue, one colour a pass, to a rising tone. It used to blink white for 4 seconds
+with 1.7 s between knights, which read as slow.
+
 ### The three tiers fly differently — this is the character of the game
 
 Not one homing rule with the speed turned up. From the arcade behaviour (Joustmaster
@@ -352,10 +357,15 @@ shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 
 ## 7. Pterodactyl
 
-- **Debuts wave 8**, and appears in *any* wave that drags past a time limit — the
-  arcade's anti-camping device.
-- Enters from a screen edge at the player's altitude and **homes**, faster than any
-  knight, wrapping horizontally.
+- **Pterodactyl waves are 8, 13, 18...**: one arrives 10 seconds in. On any other wave
+  it comes only once the wave has dragged past 60 seconds — the arcade's anti-camping
+  device.
+- Enters from the screen edge **away from the player** at the player's altitude and flies
+  **one way only**, 2 px a pass, wrapping round the screen; it never turns back. It
+  follows the player's altitude, not their x. It screeches every 64 passes.
+- **It rests after a kill either way**: shot down, the next one waits 30 seconds; when it
+  kills the player it leaves with them and stays away 20 seconds. It used to come straight
+  back, which made shooting it pointless and a death a trap.
 - **Invincible except** to a lance in the **open mouth**: the player must be
   approximately level (`|dy| < 4`) and closing head-on, i.e. facing it. Any other contact
   kills the player.

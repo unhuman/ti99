@@ -507,9 +507,16 @@ new_wave:
 	wsurv = wegg
 	IF wave < 10 THEN wsurv = 0
 	IF wave = 2 THEN wsurv = 1
-	#wvt = 0			' frames elapsed in this wave (pterodactyl clock)
+	#wvt = 0			' passes elapsed in this wave (pterodactyl clock)
 	trst = 0
 	ptst = 0
+	#ptdl = 0
+	' PTERODACTYL WAVES are 8, 13, 18... : one comes early. On every other wave
+	' it only comes if the wave drags on.
+	ptwv = wave
+	WHILE ptwv > 12
+		ptwv = ptwv - 5
+	WEND
 	' AGGRESSION RISES WITH THE WAVE, not just with the tier. A Bounder in wave 12
 	' should not fly like a Bounder in wave 1: same strategy, sharper execution.
 	agg = wave
@@ -530,7 +537,7 @@ new_wave:
 	IF nwk > NKN THEN nwk = NKN
 	IF wegg = 1 THEN nwk = 0	' Egg wave: the eggs ARE the knights
 	kpend = nwk			' still to materialise this wave
-	spwt = 80			' passes until the next one may appear
+	spwt = 40			' passes until the next one may appear
 	FOR nwi = 0 TO NPAD - 1
 		padu(nwi) = 0
 	NEXT nwi
@@ -1145,7 +1152,7 @@ k_spawn:
 	padu(ksp) = 1
 	kon(ksl) = 2				' 2 = materialising, not yet solid
 	kpad(ksl) = ksp
-	kmat(ksl) = 120			' two seconds of flashing, no more
+	kmat(ksl) = 36			' just over a second of shimmer
 	#kx(ksl) = padx(ksp)
 	#kx(ksl) = #kx(ksl) * 256
 	#ky(ksl) = pady(ksp)
@@ -1166,7 +1173,7 @@ k_spawn:
 		IF kpend <= ksv THEN ktier(ksl) = 2
 	END IF
 	kpend = kpend - 1
-	spwt = 52
+	spwt = 24
 	sfn = SFX_SPAWN : GOSUB sfx_play
 	RETURN
 
@@ -2420,6 +2427,11 @@ do_death:
 	sprok = 2			' this loop WAITs per frame: copy every frame
 	SPRITE 0,SPRHID,0,0,0
 	SPRITE 1,SPRHID,0,0,0
+	IF ptst = 1 THEN
+		ptst = 0			' it leaves with its kill...
+		#ptdl = 600			' ...and stays away 20 seconds
+		SPRITE 21,SPRHID,0,0,0
+	END IF
 	sf0 = 0				' the loop below owns channel 0
 	sfn = SFX_DIE : GOSUB sfx_play
 	FOR ddi = 0 TO 30
@@ -2492,8 +2504,10 @@ draw:
 k_draw:
 	dky = #cy / 256
 	dkx = #cx / 256
-	dkc = 0
-	IF cmat AND 4 THEN dkc = 15
+	' A SHIMMER, not a blink: four colours a pass apart, so the knight seems
+	' to form out of light rather than switch on and off.
+	dkc = cmat AND 3
+	dkc = matcol(dkc)
 	dks = kni * 2
 	dks = dks + 2
 	SPRITE dks + 1,dky,dkx,P_BUZ,dkc
@@ -2655,37 +2669,45 @@ tr_draw:
 	' be able to call the shot at speed.
 ptero:
 	IF ptst = 0 THEN
-		ptw = 0
-		IF wave >= 8 THEN ptw = 1
-		IF #wvt > 1200 THEN ptw = 1	' 40 seconds: stop hiding
-		IF ptw = 1 THEN
-			IF #wvt > 300 THEN
-				ptst = 1
-				pty = #py / 256
-				ptx = 0
-				ptf = 0
-				IF #px > 32768 THEN
-					ptx = 255
-					ptf = 1
-				END IF
-				ptmo = 0
-				sfn = SFX_PTERO : GOSUB sfx_play
-			END IF
-		END IF
 		SPRITE 21,SPRHID,0,0,0
+		' A REST AFTER IT DIES OR KILLS YOU. It used to come straight back,
+		' which made a kill worth nothing and a death a trap.
+		IF #ptdl > 0 THEN
+			#ptdl = #ptdl - 1
+			RETURN
+		END IF
+		ptw = 0
+		IF ptwv = 8 THEN
+			IF #wvt > 300 THEN ptw = 1	' its own wave: 10 seconds in
+		END IF
+		IF #wvt > 1800 THEN ptw = 1	' any wave past 60 seconds: stop hiding
+		IF ptw = 1 THEN
+			ptst = 1
+			pty = #py / 256
+			' FROM THE FAR EDGE, flying ONE WAY for good: it wraps round the
+			' screen and never turns back, as in the arcade.
+			ptx = 0
+			ptf = 0
+			IF #px < 32768 THEN
+				ptx = 240
+				ptf = 1
+			END IF
+			ptmo = 0
+		END IF
 		RETURN
 	END IF
 
 	ptmo = ptmo + 1
 	ptmo = ptmo AND 63
+	IF ptmo = 1 THEN
+		sfn = SFX_PTERO : GOSUB sfx_play	' it screeches as it comes
+	END IF
 	pgx = #px / 256
 	pgy = #py / 256
-	IF ptx < pgx THEN
+	IF ptf = 0 THEN
 		ptx = ptx + 2
-		ptf = 0
 	ELSE
 		ptx = ptx - 2
-		ptf = 1
 	END IF
 	IF pty < pgy THEN pty = pty + 1
 	IF pty > pgy THEN pty = pty - 1
@@ -2716,6 +2738,7 @@ ptero:
 			END IF
 			IF ptc = 1 THEN
 				ptst = 0
+				#ptdl = 900			' 30 seconds before another
 				#score = #score + 100
 				sfn = SFX_PTKILL : GOSUB sfx_play
 				GOSUB prt_score
@@ -2856,19 +2879,20 @@ sfx_tick:
 	DATA 3,4,0,14,3,4,0
 	DATA 0,180,30,14,10,1,5
 	DATA 1,340,65506,13,9,1,0
-	DATA 2,500,65491,9,9,0,0
+	DATA 2,500,65524,9,36,0,0
 	DATA 1,150,20,11,8,1,0
 	DATA 1,600,60,11,4,2,0
 	DATA 3,5,0,12,2,4,12
 	DATA 2,250,65516,10,6,1,0
 	DATA 2,850,10,13,12,0,0
 	DATA 1,500,65496,13,10,1,0
-	DATA 2,70,3,13,20,0,0
+	DATA 2,28,4,13,12,1,21
 	DATA 0,60,35,15,24,0,5
 	DATA 2,400,65524,12,30,0,0
 	DATA 1,200,65532,12,40,0,0
 	DATA 0,500,0,9,3,0,0
 	DATA 3,6,0,15,8,2,0
+	DATA 3,4,0,10,8,1,0
 
 	INCLUDE "font.bas"
 
@@ -2887,4 +2911,7 @@ teg_row:
 
 tiercol:
 	DATA BYTE 8,14,5,0
+	' Materialising shimmer: white, cyan, magenta, light blue. Four bytes, even.
+matcol:
+	DATA BYTE 15,7,13,5
 

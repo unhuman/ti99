@@ -34,7 +34,7 @@ disagreed.
 
 `838` opens a two-digit wave selector -- handy for reaching the parts of the game
 that are otherwise a long way in: the **lava troll** appears at wave 3, the
-**bridges burn** at wave 3, **Hunters** at 4, the **pterodactyl** at 8, ledges start
+**bridges burn** at wave 3, **Hunters** at 4, the **pterodactyl** at 8 (then 13, 18...; on other waves only if you take over a minute), ledges start
 vanishing at 6, and **Shadow Lords** not until 16. It is not captioned on the title;
 there is no room for a caption, which is why it is written down here.
 
