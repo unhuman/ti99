@@ -39,10 +39,10 @@ Where sources disagree, the instruction card wins and the conflict is noted in p
 
 | question | answer |
 |---|---|
-| Loop | **Real-time**, one `WAIT` per frame |
+| Loop | **Real-time, fixed 30 Hz tick**: one pass every two frames (§1c) |
 | Max moving sprites | **13** — player, 6 knights, 4 eggs, pterodactyl, troll hand |
 | Per-actor work | **O(1)**: add velocity, clamp, **row-indexed** island test, test lava |
-| Enemy AI | **Reactive, no search**, and only on alternate frames |
+| Enemy AI | **Reactive, no search**; each knight thinks one tick in four |
 | VDP reads per frame | **Zero.** No `GCHAR`, no `COINC`; islands are a RAM table |
 | Collisions | player↔knights, player↔eggs, player↔pterodactyl, player↔hand. Knight↔knight is **not** tested (they pass through, as in the arcade) |
 
@@ -107,23 +107,32 @@ Three details that are not optional:
 Converted: the ×6 knight loop and both ×4 egg loops — ~100 of the ~130 per-frame
 iterations. Wave 1 went from ~12 to ~15 passes/sec.
 
-### 1c. The honest remaining gap
+### 1c. The fixed 30 Hz tick
 
-**Six knights of CVBasic physics do not fit in a TI-99 frame.** Measured on wave 12 the
-loop runs at **10 passes/sec**; wave 1 runs at 15, and the difference is ~2 extra live
-knights plus the troll and the pterodactyl. That puts one live knight at ~0.8 frames and
-knights at **~80% of a late-wave frame**.
+The loop used to run as fast as the work allowed: **15 passes/sec on wave 1, 10 by
+wave 12** on the TI, and 30-60 on ColecoVision. Every speed is per pass, so the game
+slowed down as the arena filled and the two machines played at different speeds. It now
+runs **one pass every two frames** (`main_tick` waits until `FRAME` has moved on by 2
+since the pass began) and holds that on every wave on both machines. The constants
+were rescaled for it (§3).
 
-The dials, with what each is worth:
+Measured in a cycle-counting emulator (TMS9900 with the >A000 RAM's wait states, and a
+Z80 for ColecoVision), driving real play on waves 1, 3, 8, 12 and 16: 30 passes/sec
+throughout, dipping only in the death animation. An artificial worst case, six live
+knights plus four eggs and the pterodactyl at once, runs at 24-28.
 
-| lever | effect | cost |
-|---|---|---|
-| `NKN` 6 → 4 | ~10 → ~14 passes/sec | a less crowded arena, which is a design loss |
-| Hand-write `k_body` via CVBasic's `ASM` statement | potentially 3-4× | two versions (9900 **and** Z80), and it is most of the game |
-| Accept the rate, scale movement by the frame delta | correct *speed*, chunkier motion | jitter between whole frames (`WAIT` quantises to 60/30/20…) |
+What it took on the TI, in order of what it bought:
 
-`lprate` (called from `main:`) draws the measured passes/sec as two digits at row 0
-column 20. **It is temporary** and comes out once this is settled.
+| change | where |
+|---|---|
+| **The vblank interrupt was 37% of the CPU.** CVBasic's handler copies all 128 sprite bytes and scans the whole keyboard every frame (~18,500 cycles). `tools/isrpatch.py` makes it copy only slots 0-15, only when the game publishes a finished pass (`sprok`: 2 every frame, 1 once, 0 hold), and skip the keyboard unless `kbscan` is set (title and 838 screens only). Publishing once per pass also means a half-drawn pass is never shown. | build-ti.sh step 2 |
+| **One loop over the knights instead of three.** Movement, the joust and the draw now all run in `k_one` on the scalar copy; `collide` and `draw_knights` (two more loops re-reading the arrays) are gone. Eggs likewise in `e_one`. | `k_one`, `e_one` |
+| **The scalar copy in and out is hand-written on the TI**: one indexed `MOVB`/`MOV` per field instead of ~130 cycles of index arithmetic each. The `#else` side is the same in BASIC, which is what ColecoVision compiles. | `#if TI994A` in `k_one`, `e_one` |
+| **Each knight thinks one tick in four** (target, separation, routing), staggered by slot. Movement is every tick. The old halving keyed on `FRAME` parity, which never changes when a pass takes an even number of frames, so half the knights never re-targeted at all; it now uses a tick counter. | `k_move`, `k_body` |
+| Island rows: an empty row costs one read (`ir1 = 255` means the whole row is empty), and the player's three island scans became one row-indexed pass (`p_isls`). | `k_isl3` callers, `p_isls` |
+| Per-tier speed limits computed once per wave (`set_ktop`); facing and frame held as pattern offsets; the joust's horizontal reject done inline before the `GOSUB`. | `set_ktop`, `k_one` |
+
+The loop-rate probe (`lprate`) has been removed now that the rate is settled.
 
 ---
 
@@ -205,14 +214,16 @@ is drawn. Deterministic, never random — a player must be able to learn the lay
 Position and velocity are `#px/#py`, `#vx/#vy`, all ×256. Screen position is `#px / 256`,
 which compiles to a shift, never a divide.
 
+All per **pass** (30 a second, §1c).
+
 | constant | value | meaning |
 |---|---|---|
-| `GRAV` | 24 | added to `#vy` each frame |
-| flap impulse | 660 | `#vy` set to −660 (2.6 px/frame up) — a bare literal, not a `CONST` |
-| terminal fall | 700 | ~2.7 px/frame |
-| `ACCX` | 20 | horizontal acceleration while steering |
-| top speed | 512 | 2 px/frame; knights get 400 + 90 × tier |
-| `FRIC` | 10 | decay when not steering |
+| `GRAV` | 11 | added to `#vy` each pass |
+| flap impulse | 200 | subtracted from `#vy` per press, upward speed capped at 550 (2.1 px/pass) — bare literals, not `CONST`s |
+| terminal fall | 590 | ~2.3 px/pass |
+| `ACCX` | 13 | horizontal acceleration while steering |
+| top speed | 550 | ~2.1 px/pass; knights get 430 + 70 × tier, plus 4.5 per aggression step (`set_ktop`) |
+| `FRIC` | 3 | decay when not steering |
 
 **Signed velocity in an unsigned world.** Every `#var` comparison compiles unsigned
 (`CLAUDE.md` §3A), so velocities are stored **+32768 biased**: "rising" is `#vy < 32768`
@@ -229,7 +240,7 @@ arithmetic wraps.
 - Sprite 0, **yellow**. Four frames: wings up, mid, down, skid.
 - Frame follows vertical motion, not a timer: rising → up, falling → mid, grounded and
   steering → skid.
-- **Spawn invulnerability** ~90 frames, shown by flashing. Without it a knight parked on
+- **Spawn invulnerability** 180 passes (6 s), shown by flashing. Without it a knight parked on
   the spawn point is an unavoidable death.
 - Steering is **left/right only**. Nothing reads the vertical axis: on the TI it shares a
   line with ALPHA LOCK and reports a direction that never releases (`CLAUDE.md` §3A).
@@ -245,9 +256,9 @@ arithmetic wraps.
 
 | tier | colour | score | top speed | flap cooldown | debut |
 |---|---|---|---|---|---|
-| Bounder | red | 500 | 400 | 26 frames | wave 1 |
-| Hunter | grey | 750 | 490 | 19 | **wave 4** |
-| Shadow Lord | blue | 1500 | 580 | 12 | **wave 16** |
+| Bounder | red | 500 | 430 | 28 passes | wave 1 |
+| Hunter | grey | 750 | 500 | 20 | **wave 4** |
+| Shadow Lord | blue | 1500 | 570 | 12 | **wave 16** |
 
 Shadow Lords fly **higher** by preference — they bias their flap threshold upward, which
 is what makes them dangerous rather than merely fast.
@@ -266,7 +277,7 @@ wiki, Wikipedia):
 Implemented as one shared flight routine steering toward a per-knight **target**
 `(ktx, kty)`; only the *choice of target* differs by tier, so the cost stays O(1):
 
-- **Bounder** re-rolls a destination every 50-120 frames, and **only one roll in four is
+- **Bounder** re-rolls a destination every 22-51 of its think ticks (3-7 s), and **only one roll in four is
   the player**. It reads as a creature going about its business that sometimes notices
   you. Explicitly **not a patrol** — pacing back and forth along a platform is what makes
   an enemy look like furniture.
@@ -282,7 +293,7 @@ the screen edge is nearer is the tell of an AI that does not know the screen wra
 Difficulty is flap eagerness, top speed and target choice — never fleeing, which reads as
 broken AI rather than as an easier game (`CLAUDE.md` §3A).
 
-> **The tier speeds are 400 / 490 / 580 and must be 16-bit.** Written as a plain
+> **The tier speeds (430 / 500 / 570 now, 400 / 490 / 580 when this was found) must be 16-bit.** Written as a plain
 > `ktop = 400 + tier*90` the 400 truncated to 144, giving 144 / 234 / 68 — **the Shadow
 > Lord would have been the slowest enemy in the game**, the same inversion that shipped in
 > RALLY-X. `tools/bigvar.py` caught it before the first build of this code.

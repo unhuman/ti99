@@ -2,11 +2,19 @@
 #
 # Build JOUST for the TI-99/4A.
 #
-#   cvbasic --ti994a  ->  xas99  ->  linkticart  ->  src/JOUST_8.bin
+#   cvbasic --ti994a  ->  isrpatch  ->  xas99  ->  linkticart  ->  src/JOUST_8.bin
 #
-# Same source as build-coleco.sh; only the toolchain differs. No pacing constant
-# is needed: the loop is one WAIT per frame doing O(1) work per actor on both
-# machines, so both run the same 60 Hz NTSC tick natively.
+# Same source as build-coleco.sh; only the toolchain differs. The game runs a
+# FIXED 30 Hz tick on both machines (one pass every 2 frames, see main_tick), so
+# speed no longer depends on how much is on screen.
+#
+# NEEDS THE preprocessor-if BRANCH of unhuman/CVBasic: the source uses #if TI994A
+# for the hand-written array copies in k_one/e_one. master does not know #if.
+#
+# isrpatch.py trims CVBasic's vblank interrupt on the generated assembly (sprite
+# copy only when the game publishes a finished frame, 16 slots; keyboard scan
+# only on the title screens). It fails the build if the handler text it expects
+# is not found, so a CVBasic update cannot silently undo it.
 #
 # On this machine cvbasic.exe/xas99.py have been flaky under the cygwin shell
 # (missing shared libs / mixed path forms). If this fails under bash, run the
@@ -50,13 +58,17 @@ TRUNCPY="python3"; command -v "$TRUNCPY" >/dev/null 2>&1 || TRUNCPY="python"
 "$TRUNCPY" ../../../tools/gosubtrace.py "$SRC" | grep -q "every GOSUB target reaches a return" \
     || die "a GOSUB target cannot reach a RETURN -- see CLAUDE.md 3A"
 
-echo "[1/3] cvbasic    $SRC -> $NAME.a99"
-rm -f "$NAME.a99"
-"$CVBASIC_DIR/cvbasic.exe" --ti994a "$SRC" "$NAME.a99" "$CVBASIC_DIR/" \
+echo "[1/4] cvbasic    $SRC -> ${NAME}_raw.a99"
+rm -f "$NAME.a99" "${NAME}_raw.a99"
+"$CVBASIC_DIR/cvbasic.exe" --ti994a "$SRC" "${NAME}_raw.a99" "$CVBASIC_DIR/" \
     || die "CVBasic compile failed (see messages above)"
-[ -s "$NAME.a99" ] || die "CVBasic produced no/empty $NAME.a99"
+[ -s "${NAME}_raw.a99" ] || die "CVBasic produced no/empty ${NAME}_raw.a99"
 
-echo "[2/3] xas99      $NAME.a99 -> $NAME.bin"
+echo "[2/4] isrpatch   ${NAME}_raw.a99 -> $NAME.a99"
+"$PY" ../tools/isrpatch.py "${NAME}_raw.a99" "$NAME.a99" \
+    || die "isrpatch failed -- the CVBasic interrupt handler changed (see tools/isrpatch.py)"
+
+echo "[3/4] xas99      $NAME.a99 -> $NAME.bin"
 rm -f "$NAME.bin" "${NAME}"_b*.bin
 "$PY" "$XDT99_DIR/xas99.py" -b -R "$NAME.a99" -L "$NAME.txt" \
     || die "xas99 failed (see $NAME.txt for assembly errors)"
@@ -65,7 +77,7 @@ FIRST="$NAME.bin"
 [ -s "${NAME}_b0.bin" ] && FIRST="${NAME}_b0.bin"
 [ -s "$FIRST" ] || die "xas99 produced no/empty $FIRST"
 
-echo "[3/3] linkticart $FIRST -> ${NAME}_8.bin   ('$CARTNAME')"
+echo "[4/4] linkticart $FIRST -> ${NAME}_8.bin   ('$CARTNAME')"
 rm -f "${NAME}_8.bin"
 "$PY" "$CVBASIC_DIR/linkticart.py" "$FIRST" "${NAME}_8.bin" "$CARTNAME" \
     || die "linkticart failed"

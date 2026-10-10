@@ -5,7 +5,9 @@
 #   cvbasic (default target)  ->  gasm80  ->  src/joust.rom
 #
 # Same source as build-ti.sh; only the toolchain differs (no --ti994a, and
-# gasm80 instead of xas99 + linkticart).
+# gasm80 instead of xas99 + linkticart). Like the TI build this needs the
+# preprocessor-if branch of unhuman/CVBasic; the #else side of each #if TI994A
+# is plain BASIC, which is what compiles here.
 
 CVBASIC_DIR="${CVBASIC_DIR:-/cygdrive/c/Users/Howie/github.git/unhuman/CVBasic}"
 GASM80="${GASM80:-/cygdrive/c/Users/Howie/github.git/nanochess/gasm80/gasm80.exe}"

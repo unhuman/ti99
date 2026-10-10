@@ -62,6 +62,11 @@ shows none.
 ./build-coleco.sh    ->  src/joust.rom      CoolCV / blueMSX
 ```
 
+Both need the **`preprocessor-if` branch of unhuman/CVBasic** (`#if TI994A` selects the
+TI's hand-written array copies in `k_one`/`e_one`). The TI script also runs
+`tools/isrpatch.py` between `cvbasic` and `xas99`; it trims the vblank interrupt (§1c)
+and fails the build if the handler text it expects has changed.
+
 Both scripts run the truncation gate (`tools/bigvar.py`, `tools/bigconst.py`) and
 `tools/gosubtrace.py` **before** compiling, so an 8-bit overflow or a `GOSUB` that cannot
 reach a `RETURN` fails the build rather than shipping.
@@ -74,19 +79,22 @@ to do by hand.
 
 | target | used | free |
 |---|---|---|
-| TI-99/4A program image | 21,974 / 24,336 | 2,362 |
+| TI-99/4A program image | 21,080 / 24,336 | 3,256 |
 | ColecoVision ROM | 16,384 | — |
-| ColecoVision RAM | 604 / 814 | 210 |
+| ColecoVision RAM | 599 / 814 | 215 |
 
 ## Speed
 
-**CPU is the binding limit, not the VDP.** `DESIGN.md` §1a-1c has the measured
-numbers; the short version is that six knights of CVBasic physics do not fit in a
-TI-99 frame, and the loop runs at **~15 passes/sec on wave 1 and ~10 on wave 12**.
+**The game runs a fixed 30 Hz tick on both machines**: one pass of the main loop every
+two frames (`main_tick`), and every speed, gravity and timer is per pass. Measured in
+play it holds 30 passes/sec on every wave from 1 to 16, on the TI and on ColecoVision;
+the only dips are the death animation. `DESIGN.md` §1c has the numbers and what it took.
+
+It used to run as fast as the work allowed, which on the TI was **15 passes/sec on
+wave 1 and 10 by wave 12**, so the whole game slowed down as the arena filled. On
+ColecoVision the same loop ran anywhere from 30 to 60, two to four times faster than the
+TI and changing with the action.
 
 Islands are indexed **by character row** (`ir1/ir2/ir3`) rather than scanned, which
 is what makes the per-actor test O(1) — see §1b, including why the same saving must
 *not* be taken by testing on alternate frames.
-
-`lprate` draws the measured passes/sec as two digits at row 0 column 20. **It is a
-temporary probe** and comes out once the frame rate is settled.

@@ -15,10 +15,15 @@
 	'   * A GOSUB left by GOTO never pops; on ColecoVision's 1 KB that is fatal.
 	' ==========================================================================
 
-	CONST GRAV = 44			' added to #vy every frame. Heavier than it looks:
+	' ALL MOTION IS PER PASS, and a pass is one 30 Hz tick (see main_tick). These
+	' were tuned when the loop managed ~15 passes a second; at 30 every velocity
+	' and impulse below is HALF the old figure, every acceleration a QUARTER, and
+	' every pass-counted timer DOUBLE, so the game moves at the speed it was tuned
+	' at -- only twice as smoothly.
+	CONST GRAV = 11			' added to #vy every pass. Heavier than it looks:
 					' Joust's mount FALLS, and the flap has to fight it
-	CONST ACCX = 52			' horizontal acceleration while steering
-	CONST FRIC = 12			' horizontal decay when not steering
+	CONST ACCX = 13			' horizontal acceleration while steering
+	CONST FRIC = 3			' horizontal decay when not steering
 	CONST NPLAT = 10		' islands, DIM 0..9 -- MEASURED, see assets/refmap.py
 	CONST NKN = 6			' knights, DIM 0..5 -- SIX. Joust is meant to be crowded
 	CONST NEGG = 4			' eggs, DIM 0..3
@@ -121,8 +126,6 @@
 	DIM #kvy(NKN)			' knight y velocity, biased
 	DIM ktier(NKN)			' 0 bounder, 1 hunter, 2 shadow lord
 	DIM kon(NKN)			' 0 dead, 1 mounted, 2 on foot
-	DIM kface(NKN)			' 0 right, 1 left
-	DIM kfrm(NKN)			' animation frame 0..3
 	DIM kflp(NKN)			' frames until this knight may flap again
 	DIM kty(NKN)			' target altitude, pixels -- what the AI steers to
 	DIM ktx(NKN)			' target x, pixels
@@ -148,6 +151,11 @@
 	DIM etier(NEGG)			' tier of the knight this egg came from
 	DIM #etm(NEGG)			' frames until the next state change
 
+	' KNIGHT TOP SPEED, per tier, for this wave (biased: 32768 +/- top). Set by
+	' set_ktop at every wave start; k_body only reads it.
+	DIM #kfastt(3)
+	DIM #kslowt(3)
+
 	stwv = 1			' 838 on the title overrides this
 	GOSUB setup
 	GOTO title_screen
@@ -157,6 +165,15 @@ setup:
 	SPRITE FLICKER OFF		' all-or-nothing in CVBasic: it would strobe the
 					' player too. Instead the player is sprite 0 --
 					' highest priority, never the one the VDP drops.
+	' THE VBLANK HANDLER IS TRIMMED BY tools/isrpatch.py (TI only). It copies
+	' sprite slots 0-15 and nothing past them, so slot 15 is the list terminator,
+	' and it copies only when told: sprok 2 = every frame (menus), 1 = once, at
+	' the end of a game pass, so a half-drawn pass is never shown. kbscan turns
+	' the keyboard scan on for the screens that read keys. Both are plain
+	' variables on ColecoVision too, where nothing reads them.
+	SPRITE 15,208,0,0,0
+	sprok = 2
+	kbscan = 1
 	' THE ARCADE FACE. Replaces CVBasic's stock 8x8, which is a thin generic ASCII
 	' font and reads like a BASIC listing rather than an arcade cabinet -- undoing a
 	' good deal of what the sprites are doing. 59 characters, 32-90, contiguous.
@@ -287,6 +304,8 @@ set_isl_on:
 
 	' ---------------------------------------------------------- title screen
 title_screen:
+	sprok = 2
+	kbscan = 1
 	GOSUB hide_all
 	CLS
 	PRINT AT 100,"J O U S T"
@@ -384,6 +403,7 @@ rd_get:
 	RETURN
 
 new_game:
+	kbscan = 0			' no keys read in play: the scan is skipped
 	#score = 0			' stored in TENS of points: every award in
 					' Joust is a multiple of 50, so this is exact
 					' and 16 bits then reaches 655,350.
@@ -405,6 +425,7 @@ new_wave:
 	' should not fly like a Bounder in wave 1: same strategy, sharper execution.
 	agg = wave
 	IF agg > 16 THEN agg = 16
+	GOSUB set_ktop
 	GOSUB set_islands		' erosion first: draw_field draws what survives
 	GOSUB draw_field
 	GOSUB spawn_player
@@ -419,7 +440,7 @@ new_wave:
 	nwk = 3 + wave
 	IF nwk > NKN THEN nwk = NKN
 	kpend = nwk			' still to materialise this wave
-	spwt = 40			' frames until the next one may appear
+	spwt = 80			' passes until the next one may appear
 	FOR nwi = 0 TO NPAD - 1
 		padu(nwi) = 0
 	NEXT nwi
@@ -430,7 +451,6 @@ new_wave:
 			ktier(nwi) = 0
 			IF wave > 2 THEN ktier(nwi) = nwi AND 1
 			IF wave > 5 THEN ktier(nwi) = 1 + (nwi AND 1)
-			kfrm(nwi) = 0
 			kflp(nwi) = 10 + nwi * 7
 			kfa(nwi) = 0
 			kwan(nwi) = nwi * 11	' stagger the first wander roll
@@ -443,7 +463,6 @@ new_wave:
 			#ky(nwi) = 8192
 			#kvx(nwi) = 32768
 			#kvy(nwi) = 32768
-			kface(nwi) = 0
 		END IF
 	NEXT nwi
 
@@ -451,6 +470,26 @@ new_wave:
 		est(nwi) = 0
 	NEXT nwi
 	GOSUB prt_hud
+	RETURN
+
+	' THE TIER SPEEDS for this wave: 430 + 70 x tier, plus 4.5 per aggression step.
+	' !! 16-BIT, AND MULTIPLIED VIA SEPARATE VARIABLES. As a plain variable the
+	' 860 truncates (TRUNCATION.md 1a); and on the 9900 MPY leaves the high word
+	' in r0, so the statement after a multiply must not read the multiplier back
+	' (CLAUDE.md 3A). Shadow Lord fastest -- the RALLY-X inversion is the bug
+	' this layout exists to avoid.
+set_ktop:
+	#sko = agg
+	#sko = #sko * 9
+	#sko = #sko / 2
+	FOR skt = 0 TO 2
+		#skv = skt
+		#skv = #skv * 70
+		#skv = #skv + 430
+		#skv = #skv + #sko
+		#kfastt(skt) = 32768 + #skv
+		#kslowt(skt) = 32768 - #skv
+	NEXT skt
 	RETURN
 
 	' --------------------------------------------------------- spawn player
@@ -473,7 +512,7 @@ spawn_player:
 	' x -- came up through the solid floor to hold it there. Death has to release
 	' the grip, or the death repeats forever.
 	trst = 0
-	binv = 90			' brief spawn invulnerability, in frames
+	binv = 180			' brief spawn invulnerability, in passes
 	' HOLD PAD 0 WHILE MATERIALISING. The player occupies a pad exactly as a
 	' knight does, so nothing can arrive on top of him during the one moment he
 	' cannot defend himself.
@@ -589,34 +628,41 @@ prt_lives:
 
 	' ============================================================ main loop
 main:
-	WAIT
+	#tkf = FRAME			' this pass's tick starts now
+	tpar = tpar XOR 1		' tick parity: alternate-tick work, half-pixel steps
 	#wvt = #wvt + 1
-	GOSUB lprate			' !! TEMPORARY -- see the note at lprate
 	GOSUB p_input
 	GOSUB p_move
 	GOSUB k_spawn
-	GOSUB k_move
+	' A wave ends only when nothing is left to fight AND nothing left to hatch.
+	' Counted on the way through k_move and e_move rather than by two more loops
+	' over the same arrays: anything alive sets mnl.
+	mnl = kpend
+	GOSUB k_move			' moves, jousts and draws every knight
 	GOSUB rb_move
 	GOSUB troll
 	GOSUB ptero
-	GOSUB e_move
-	GOSUB collide
+	GOSUB e_move			' moves, collects and draws every egg
 	GOSUB draw
 	GOSUB sfx_tick
-
-	' A wave ends only when nothing is left to fight AND nothing left to hatch.
-	mnl = 0
-	IF kpend > 0 THEN mnl = 1
-	FOR mni = 0 TO NKN - 1
-		IF kon(mni) > 0 THEN mnl = 1
-	NEXT mni
-	FOR mni = 0 TO NEGG - 1
-		IF est(mni) > 0 THEN mnl = 1
-	NEXT mni
+	sprok = 1			' publish this pass's sprites at the next vblank
 	IF mnl = 0 THEN GOSUB new_wave
 
 	IF pdead > 0 THEN GOSUB do_death
 	IF pover = 1 THEN GOTO game_over
+
+	' THE FIXED TICK: one pass every TWO frames, 30 a second, never faster. Every
+	' speed, gravity and timer in this file is per PASS, so a loop that ran as fast
+	' as the work allowed made the whole game slow down as the arena filled (15
+	' passes a second on wave 1, 10 by wave 12). With the work now inside two
+	' frames on every wave, the pass rate -- and so the game speed -- is constant.
+main_tick:
+	#tkd = FRAME
+	#tkd = #tkd - #tkf
+	IF #tkd < 2 THEN
+		WAIT
+		GOTO main_tick
+	END IF
 	GOTO main
 
 	' --------------------------------------------------------------- input
@@ -638,11 +684,11 @@ p_input:
 			' beat now adds to what you already have and the climb builds, so
 			' a single tap is a nudge and holding a rhythm is what gains
 			' height. Clamped so mashing cannot exceed a real climb rate.
-			#vy = #vy - 400
-			IF #vy < 32768 - 1100 THEN #vy = 32768 - 1100
-			pfa = 10			' one press, one beat of the wings
+			#vy = #vy - 200
+			IF #vy < 32768 - 550 THEN #vy = 32768 - 550
+			pfa = 20			' one press, one beat of the wings
 			SOUND 0,700,12
-			sf0 = 3
+			sf0 = 6
 		END IF
 	ELSE
 		pflp = 0
@@ -663,12 +709,12 @@ p_input:
 	IF cont1.left THEN
 		pin = 1
 		pface = 1
-		IF #vx > 32768 - 1100 THEN #vx = #vx - ACCX
+		IF #vx > 32768 - 550 THEN #vx = #vx - ACCX
 	END IF
 	IF cont1.right THEN
 		pin = 1
 		pface = 0
-		IF #vx < 32768 + 1100 THEN #vx = #vx + ACCX
+		IF #vx < 32768 + 550 THEN #vx = #vx + ACCX
 	END IF
 	IF pin = 0 THEN GOSUB p_fric
 	RETURN
@@ -690,7 +736,7 @@ p_fric:
 	' ------------------------------------------------------ player movement
 p_move:
 	#vy = #vy + GRAV
-	IF #vy > 32768 + 1180 THEN #vy = 32768 + 1180	' terminal fall speed
+	IF #vy > 32768 + 590 THEN #vy = 32768 + 590	' terminal fall speed
 
 	' 16-bit wrap does the signed arithmetic for us: adding (v - 32768) is
 	' correct whichever side of the bias v sits on.
@@ -707,12 +753,10 @@ p_move:
 		' unreachable -- nothing can get above it, so it can neither kill nor
 		' be killed, and the joust stops being a contest. A gentle downward
 		' shove means the top of the screen is a place you pass through.
-		#vy = 32768 + 220
+		#vy = 32768 + 110
 	END IF
 
-	GOSUB p_bump
-	GOSUB p_land
-	GOSUB p_side
+	GOSUB p_isls
 	' Same correction for the player: it is the feet that touch the lava, not the
 	' rider's head. Measured on the top, you had to be most of a body-length under
 	' the surface before it counted.
@@ -728,8 +772,8 @@ p_move:
 	IF pfa > 0 THEN
 		pfa = pfa - 1
 		pfrm = 2			' wings DOWN, the power stroke
-		IF pfa < 7 THEN pfrm = 1	' sweeping back up
-		IF pfa < 4 THEN pfrm = 0	' wings UP, recovered
+		IF pfa < 14 THEN pfrm = 1	' sweeping back up
+		IF pfa < 8 THEN pfrm = 0	' wings UP, recovered
 	ELSE
 		IF pgnd = 1 THEN
 			pfrm = 3
@@ -741,73 +785,109 @@ p_move:
 	END IF
 	RETURN
 
-	' Land on a platform when the FEET cross its surface while falling. Only
-	' downward motion lands: rising through a platform is allowed, as in the
-	' arcade.
-p_land:
+	' THE PLAYER AGAINST THE ISLANDS -- through the row table, like the knights.
+	'
+	' This used to be three loops over all ten islands (head bump, landing, side
+	' push), every pass, for ~9% of the whole frame. An island can only matter if
+	' its surface row is within reach of the body: from 7 px above the head (the
+	' underside band) to the feet + 8 (the landing band), which is at most four
+	' character rows. The row table holds only islands that are PRESENT, so the
+	' old plon() test goes too.
+	'
+	' Each candidate island gets bump, then land, then side, on the current #py.
+	' The three used to run as three separate passes over all islands; no two
+	' islands sit close enough, in x and y, for the order to matter.
+p_isls:
 	pgnd = 0
-	IF #vy < 32768 THEN RETURN
-	plf = #py / 256
-	plf = plf + MH			' feet
-	plc2 = #px / 256
-	plc2 = plc2 + 8			' centre x
-	FOR pli2 = 0 TO NPLAT - 1
-		plt = ply(pli2)			' ONE array read, then reject on it
-		IF plf >= plt THEN
-			IF plf <= plt + 8 THEN
-			IF plon(pli2) = 1 THEN
-				IF plc2 >= #plx1(pli2) THEN
-					IF plc2 <= #plx2(pli2) THEN
-						pgnd = 1
-						#py = plt - MH
-						#py = #py * 256
-						#vy = 32768
-					END IF
-				END IF
-			END IF
+	prw = #py / 256
+	IF prw >= 7 THEN
+		prw = prw - 7
+	ELSE
+		prw = 0
+	END IF
+	prw = prw / 8
+	prl = #py / 256
+	prl = prl + MH
+	prl = prl / 8
+	WHILE prw <= prl
+		pj = ir1(prw)
+		IF pj < 255 THEN		' ir1 empty means the whole row is
+			GOSUB p_isl
+			pj = ir2(prw)
+			IF pj < 255 THEN GOSUB p_isl
+			pj = ir3(prw)
+			IF pj < 255 THEN GOSUB p_isl
 		END IF
-		END IF
-	NEXT pli2
+		prw = prw + 1
+	WEND
 	RETURN
 
-	' PLATFORMS ARE SOLID FROM BELOW TOO. Rising through one was wrong -- in the
-	' arcade an island is a wall in every direction, which is exactly why the
-	' layout dictates the fight: you must fly AROUND, and a knight above you
-	' cannot simply be escaped by rising through the floor he stands on.
-	'
-	' An island is 8 px thick (one character row), so its underside is ply + 8.
-	' The head bumps when the sprite's top crosses that band while rising.
-p_bump:
-	IF #vy >= 32768 THEN RETURN		' only while rising
-	pbh = #py / 256				' the head is the sprite's top edge
-	pbb = pbh + MH - 1			' and this is the feet
-	pbc = #px / 256
-	pbc = pbc + 8				' centre x
-	FOR pbi = 0 TO NPLAT - 1
-		pbt = ply(pbi)
-		' BODY overlap, not head-only: the head can clear an 8 px band in one
-		' 4 px step while the body is still inside it, and head-only lets the
-		' player slide up through solid rock.
-		IF pbh <= pbt + 7 THEN
-			IF pbb >= pbt THEN
-			IF plon(pbi) = 1 THEN
-				IF pbc >= #plx1(pbi) THEN
-					IF pbc <= #plx2(pbi) THEN
-						#py = pbt + 8
+p_isl:
+	pjt = ply(pj)
+	#pjl = #plx1(pj)
+	#pjr = #plx2(pj)
+	pjh = #py / 256			' head: the sprite's top edge
+	pjc = #px / 256
+	pjc = pjc + 8			' centre x
+
+	' PLATFORMS ARE SOLID FROM BELOW TOO. In the arcade an island is a wall in
+	' every direction, which is exactly why the layout dictates the fight: you
+	' must fly AROUND, and a knight above you cannot simply be escaped by rising
+	' through the floor he stands on. The island is 8 px thick, so its underside
+	' is ply + 8, and the bump is a BODY overlap, not head-only: the head can
+	' clear an 8 px band in one step while the body is still inside it.
+	IF #vy < 32768 THEN
+		IF pjh <= pjt + 7 THEN
+			pjb = pjh + MH - 1
+			IF pjb >= pjt THEN
+				IF pjc >= #pjl THEN
+					IF pjc <= #pjr THEN
+						#py = pjt + 8
 						#py = #py * 256
-						' BOUNCED OFF, not stopped. Same rule as the
-						' ceiling: parked under a ledge you are as
-						' unreachable as parked on the roof, and the
-						' joust stops being a contest. A shove
-						' downward makes the underside a thing you
-						' glance off rather than hang from.
-						#vy = 32768 + 220
+						' BOUNCED OFF, not stopped. Parked under a ledge
+						' you are as unreachable as parked on the roof,
+						' and the joust stops being a contest.
+						#vy = 32768 + 110
+						pjh = pjt + 8
 					END IF
 				END IF
 			END IF
 		END IF
+	END IF
+
+	' Land when the FEET cross the surface while falling.
+	IF #vy >= 32768 THEN
+		pjf = pjh + MH			' feet
+		IF pjf >= pjt THEN
+			IF pjf <= pjt + 8 THEN
+				IF pjc >= #pjl THEN
+					IF pjc <= #pjr THEN
+						pgnd = 1
+						#py = pjt - MH
+						#py = #py * 256
+						#vy = 32768
+						pjh = pjt - MH
+					END IF
+				END IF
+			END IF
 		END IF
-	NEXT pbi
+	END IF
+
+	' NO ENTERING AN ISLAND FROM THE SIDE. Landing catches feet coming down and
+	' the bump catches the head coming up, but neither fires on something
+	' arriving horizontally, so the genuinely embedded case is pushed back out
+	' the way it came.
+	psh = pjh
+	psb = psh + MH - 1
+	IF psb >= pjt THEN
+		IF psh <= pjt + 7 THEN
+			psl = #px / 256
+			psr = psl + MH - 1
+			IF psr >= #pjl THEN
+				IF psl <= #pjr THEN GOSUB p_side1
+			END IF
+		END IF
+	END IF
 	RETURN
 
 	' --------------------------------------------------------- materialising
@@ -844,16 +924,14 @@ k_spawn:
 	padu(ksp) = 1
 	kon(ksl) = 2				' 2 = materialising, not yet solid
 	kpad(ksl) = ksp
-	kmat(ksl) = 60			' one second of flashing, no more
+	kmat(ksl) = 120			' two seconds of flashing, no more
 	#kx(ksl) = padx(ksp)
 	#kx(ksl) = #kx(ksl) * 256
 	#ky(ksl) = pady(ksp)
 	#ky(ksl) = #ky(ksl) * 256
 	#kvx(ksl) = 32768
 	#kvy(ksl) = 32768
-	kface(ksl) = 0
-	kfrm(ksl) = 1
-	kflp(ksl) = 8
+	kflp(ksl) = 16
 	kfa(ksl) = 0
 	kwan(ksl) = 0
 	ktx(ksl) = 128
@@ -862,16 +940,16 @@ k_spawn:
 	IF wave > 3 THEN ktier(ksl) = kpend AND 1
 	IF wave > 15 THEN ktier(ksl) = 2
 	kpend = kpend - 1
-	spwt = 26
+	spwt = 52
 	SOUND 2,600,10
-	sf2 = 4
+	sf2 = 8
 	RETURN
 
 	' A KNIGHT ON FOOT. He falls to the nearest surface and walks, and he is
 	' HELPLESS -- worth running down before his ride arrives.
 k_foot:
 	#cvy = #cvy + GRAV
-	IF #cvy > 33768 THEN #cvy = 33768
+	IF #cvy > 33268 THEN #cvy = 33268
 	#cy = #cy + #cvy
 	#cy = #cy - 32768
 	kmy = #cy / 256
@@ -908,8 +986,12 @@ k_foot:
 	' THE RIDERLESS BUZZARD. Flies in from the nearer screen edge, straight at the
 	' man on foot, collects him, and the pair go back on the attack.
 rb_move:
-	IF rbon = 0 THEN GOSUB rb_launch
-	IF rbon = 0 THEN RETURN
+	' rb_launch scans every knight, so it runs only when a man may be waiting:
+	' after a hatch (e_hatch) or when the bird has just finished a run.
+	IF rbon = 0 THEN
+		IF rbreq THEN GOSUB rb_launch
+		IF rbon = 0 THEN RETURN
+	END IF
 	' HIS MAN IS GONE -- collected, or fell in the lava. The bird does not vanish
 	' mid-air: it carries on across the screen and leaves. It cannot kill, cannot
 	' be killed, and does not wrap -- it simply exits and is done.
@@ -920,15 +1002,16 @@ rb_move:
 	IF rbon <> 1 THEN RETURN
 	rgx = #kx(rbt) / 256
 	rgy = #ky(rbt) / 256
+	rbs = 1 + tpar			' 1.5 px a pass: 1 and 2 on alternate ticks
 	IF rbx < rgx THEN
-		rbx = rbx + 3
+		rbx = rbx + rbs
 		rbf = 0
 	ELSE
-		rbx = rbx - 3
+		rbx = rbx - rbs
 		rbf = 1
 	END IF
-	IF rby < rgy THEN rby = rby + 2
-	IF rby > rgy THEN rby = rby - 2
+	IF rby < rgy THEN rby = rby + 1
+	IF rby > rgy THEN rby = rby - 1
 	GOSUB rb_clear
 	rdx = rbx - rgx
 	IF rbx < rgx THEN rdx = rgx - rbx
@@ -939,12 +1022,13 @@ rb_move:
 			' MOUNTED. He is dangerous again, and moving.
 			kon(rbt) = KLIVE
 			#kvx(rbt) = 32768
-			#kvy(rbt) = 32768 - 400
-			kflp(rbt) = 6
+			#kvy(rbt) = 32768 - 200
+			kflp(rbt) = 12
 			kwan(rbt) = 0
 			rbon = 0
+			rbreq = 1
 			SOUND 1,420,11
-			sf1 = 4
+			sf1 = 8
 		END IF
 	END IF
 	RETURN
@@ -955,15 +1039,17 @@ rb_flyby:
 	IF rbf = 0 THEN
 		IF rbx > 248 THEN
 			rbon = 0
+			rbreq = 1
 			RETURN
 		END IF
-		rbx = rbx + 3
+		rbx = rbx + 1 + tpar
 	ELSE
 		IF rbx < 6 THEN
 			rbon = 0
+			rbreq = 1
 			RETURN
 		END IF
-		rbx = rbx - 3
+		rbx = rbx - 1 - tpar
 	END IF
 	GOSUB rb_clear
 	RETURN
@@ -990,7 +1076,7 @@ rb_clear:
 		END IF
 	NEXT rbj
 	IF rbz = 1 THEN
-		IF rby > 10 THEN rby = rby - 3
+		IF rby > 10 THEN rby = rby - 1 - tpar
 	END IF
 	RETURN
 
@@ -1013,6 +1099,7 @@ rb_launch:
 			END IF
 		END IF
 	NEXT rbi
+	IF rbon = 0 THEN rbreq = 0		' nobody waiting: stop looking
 	RETURN
 
 	' NO ENTERING AN ISLAND FROM THE SIDE.
@@ -1026,54 +1113,32 @@ rb_launch:
 	' This runs AFTER both, so a landing or a bump has already snapped y clear of
 	' the band and cannot be undone here. What is left is the genuinely embedded
 	' case, and it is pushed back out the way it came.
-p_side:
-	psh = #py / 256
-	psb = psh + MH - 1
-	psl = #px / 256
-	psr = psl + MH - 1
-	FOR psi = 0 TO NPLAT - 1
-		pst = ply(psi)
-		IF psb >= pst THEN
-			IF psh <= pst + 7 THEN
-			IF plon(psi) = 1 THEN
-				IF psr >= #plx1(psi) THEN
-					IF psl <= #plx2(psi) THEN
-						' embedded: leave by the nearer face
-						#psc = psl
-						#psc = #psc + 8
-						#psm = #plx1(psi)
-						#psm = #psm + #plx2(psi)
-						#psm = #psm / 2
-						IF #psc < #psm THEN
-							#psx = #plx1(psi)
-							IF #psx > 16 THEN
-								#px = #psx - 16
-								#px = #px * 256
-							END IF
-						ELSE
-							#psx = #plx2(psi)
-							IF #psx < 254 THEN
-								#px = #psx + 1
-								#px = #px * 256
-							END IF
-						END IF
-						' BOUNCE, exactly like glancing off a
-						' knight. Stopping dead against rock is
-						' unreadable -- you cannot tell whether you
-						' hit something or the controls dropped an
-						' input. Reversing the momentum and taking
-						' the steering away for a moment MAKES the
-						' collision an event you can feel.
-						#vx = 65536 - #vx
-						pbnc = 12
-						SOUND 1,620,10
-						sf1 = 3
-					END IF
-				END IF
-			END IF
-			END IF
+	' embedded in island pj from the side: leave by the nearer face
+p_side1:
+	#psc = psl
+	#psc = #psc + 8
+	#psm = #pjl
+	#psm = #psm + #pjr
+	#psm = #psm / 2
+	IF #psc < #psm THEN
+		IF #pjl > 16 THEN
+			#px = #pjl - 16
+			#px = #px * 256
 		END IF
-	NEXT psi
+	ELSE
+		IF #pjr < 254 THEN
+			#px = #pjr + 1
+			#px = #px * 256
+		END IF
+	END IF
+	' BOUNCE, exactly like glancing off a knight. Stopping dead against rock is
+	' unreadable -- you cannot tell whether you hit something or the controls
+	' dropped an input. Reversing the momentum and taking the steering away for
+	' a moment MAKES the collision an event you can feel.
+	#vx = 65536 - #vx
+	pbnc = 24
+	SOUND 1,620,10
+	sf1 = 6
 	RETURN
 
 	' ----------------------------------------------------- knight movement
@@ -1084,10 +1149,20 @@ p_side:
 	' re-aims 30 times a second instead of 60, which is not a difference anybody
 	' can see -- and it halves the most expensive part of the loop.
 k_move:
-	kthf = FRAME
-	kthf = kthf AND 1
+	' THINKING RUNS ON ONE TICK IN FOUR per knight (target choice, separation,
+	' routing): decisions that persist, so re-aiming 7.5 times a second is not
+	' something anybody can see, and it spreads the cost -- knights 0 and 4 think
+	' on tick 0, 1 and 5 on tick 1, and so on. Movement is every tick.
+	tcnt = tcnt + 1
+	kthf = tcnt AND 3
+	cpx = #px / 256			' the player, for the jousts below
+	cpy = #py / 256
 	FOR kni = 0 TO NKN - 1
-		IF kon(kni) > 0 THEN GOSUB k_one
+		IF kon(kni) > 0 THEN
+			GOSUB k_one
+		ELSE
+			SPRITE 1 + kni,SPRHID,0,0,0
+		END IF
 	NEXT kni
 	RETURN
 
@@ -1109,55 +1184,124 @@ k_move:
 	' Anything indexed by ksj (another knight) or knj (an island) stays an array:
 	' those are genuinely different objects, not this one.
 k_one:
-	#cx = #kx(kni)
-	#cy = #ky(kni)
-	#cvx = #kvx(kni)
-	#cvy = #kvy(kni)
+	' THE COPY IN. In BASIC each of these is ~130 cycles on the 9900 -- index
+	' load, shift, add, dereference, store, for every field -- and with the copy
+	' out it was the single largest cost left in the pass. On the TI it is one
+	' indexed MOVB/MOV per field instead. The label after it is not decoration:
+	' inline ASM does not invalidate the compiler's register cache, and a branch
+	' target forces the next statement to load from memory (CLAUDE.md 3A).
+#if TI994A
+	ASM movb @cvb_KNI,r1
+	ASM srl r1,8
+	ASM movb @array_KON(r1),@cvb_CON
+	ASM movb @array_KTIER(r1),@cvb_CTIER
+	ASM movb @array_KTX(r1),@cvb_CTX
+	ASM movb @array_KTY(r1),@cvb_CTY
+	ASM movb @array_KFLP(r1),@cvb_CFLP
+	ASM movb @array_KFA(r1),@cvb_CFA
+	ASM sla r1,1
+	ASM mov @array__KX(r1),@cvb__CX
+	ASM mov @array__KY(r1),@cvb__CY
+	ASM mov @array__KVX(r1),@cvb__CVX
+	ASM mov @array__KVY(r1),@cvb__CVY
+#else
+	con = kon(kni)
+	ctier = ktier(kni)
 	ctx = ktx(kni)
 	cty = kty(kni)
 	cflp = kflp(kni)
 	cfa = kfa(kni)
-	cfrm = kfrm(kni)
-	cface = kface(kni)
-	ctier = ktier(kni)
-	cwan = kwan(kni)
-	con = kon(kni)
-	cmat = kmat(kni)
-	cpad = kpad(kni)
+	#cx = #kx(kni)
+	#cy = #ky(kni)
+	#cvx = #kvx(kni)
+	#cvy = #kvy(kni)
+#endif
+k_one_in:
+	' MATERIALISING: nothing moves. kmat and kpad are only ever needed here.
+	IF con = 2 THEN
+		cmat = kmat(kni) - 1
+		kmat(kni) = cmat
+		IF cmat = 0 THEN
+			con = KLIVE
+			kon(kni) = KLIVE
+			padu(kpad(kni)) = 0	' the pad is free again
+		END IF
+		mnl = 1
+		GOSUB k_draw
+		RETURN
+	END IF
 	GOSUB k_body
-	#kx(kni) = #cx
-	#ky(kni) = #cy
-	#kvx(kni) = #cvx
-	#kvy(kni) = #cvy
+	' THE JOUST AND THE DRAW RUN HERE, ON THE SCALARS. They used to be two more
+	' loops over the arrays (collide, draw_knights) re-reading everything this
+	' routine has just written back.
+	' The horizontal reject is done here, inline: most knights are nowhere near
+	' the player, and a GOSUB costs more than the test.
+	dky = #cy / 256
+	dkx = #cx / 256
+	IF pdead = 0 THEN
+		cdx = cpx - dkx
+		IF cpx < dkx THEN cdx = dkx - cpx
+		IF cdx < 12 THEN
+			IF con = KLIVE THEN GOSUB c_knight
+			IF con = KFOOT THEN GOSUB c_foot
+		END IF
+	END IF
+	' DRAWN HERE, from the scalars. A man on foot wears the colour he will
+	' become -- red, grey or blue -- which is the only warning you get of what
+	' is about to be flying at you: a blue man on a ledge means a Shadow Lord in
+	' a moment.
+	IF con = 0 THEN
+		SPRITE 1 + kni,SPRHID,0,0,0
+	ELSE
+		mnl = 1
+		dkc = tiercol(ctier)
+		IF con = KFOOT THEN
+			SPRITE 1 + kni,dky,dkx,36,dkc
+		ELSE
+			dkp = cface + cfrm	' both already pattern offsets
+			SPRITE 1 + kni,dky,dkx,dkp,dkc
+		END IF
+	END IF
+	' Written back: only what k_body can change. The frame and the facing are
+	' recomputed every pass and only k_draw reads them, so they never leave the
+	' scalars; the target only changes on a think tick.
+	' THE COPY OUT, the same way. The frame and the facing are recomputed every
+	' pass and only the draw above reads them, so they never leave the scalars.
+#if TI994A
+	ASM movb @cvb_KNI,r1
+	ASM srl r1,8
+	ASM movb @cvb_CON,@array_KON(r1)
+	ASM movb @cvb_CTX,@array_KTX(r1)
+	ASM movb @cvb_CTY,@array_KTY(r1)
+	ASM movb @cvb_CFLP,@array_KFLP(r1)
+	ASM movb @cvb_CFA,@array_KFA(r1)
+	ASM sla r1,1
+	ASM mov @cvb__CX,@array__KX(r1)
+	ASM mov @cvb__CY,@array__KY(r1)
+	ASM mov @cvb__CVX,@array__KVX(r1)
+	ASM mov @cvb__CVY,@array__KVY(r1)
+#else
+	kon(kni) = con
 	ktx(kni) = ctx
 	kty(kni) = cty
 	kflp(kni) = cflp
 	kfa(kni) = cfa
-	kfrm(kni) = cfrm
-	kface(kni) = cface
-	kwan(kni) = cwan
-	kon(kni) = con
-	kmat(kni) = cmat
+	#kx(kni) = #cx
+	#ky(kni) = #cy
+	#kvx(kni) = #cvx
+	#kvy(kni) = #cvy
+#endif
 	RETURN
 
 k_body:
 	' ONE test, not two. Written as two, a man who fell in the lava during k_foot
 	' cleared his own KFOOT state and then FELL THROUGH into the mounted-knight
 	' code below -- flying, jousting and being drawn as a dead slot.
+	kth = kni AND 3			' this knight's think tick (see k_move)
 	IF con = KFOOT THEN
 		GOSUB k_foot
 		RETURN
 	END IF
-	IF con = 2 THEN
-		cmat = cmat - 1
-		IF cmat = 0 THEN
-			con = 1
-			padu(cpad) = 0	' the pad is free again
-		END IF
-		RETURN
-	END IF
-	kpx = #px / 256
-	kpy = #py / 256
 	kmx = #cx / 256
 	kmy = #cy / 256
 	' !! 16-BIT, AND MULTIPLIED VIA A SEPARATE VARIABLE. As a plain `ktop` the 400
@@ -1166,14 +1310,8 @@ k_body:
 	' inversion that shipped in RALLY-X. tools/bigvar.py caught it before the build.
 	' The multiply reads #ktp2, not #ktop: on the 9900 MPY leaves the high word in
 	' r0 and reading back the variable just multiplied returns 0 (CLAUDE.md 3A).
-	#ktp2 = ctier
-	#ktop = #ktp2 * 140
-	#ktop = #ktop + 860
-	#kagg = agg
-	#kagg = #kagg * 9
-	#ktop = #ktop + #kagg	' faster every wave, on top of the tier
-	#kfast = 32768 + #ktop
-	#kslow = 32768 - #ktop
+	' Per tier, per wave: computed once in new_wave (set_ktop), not per knight per
+	' pass -- it was two multiplies for every knight on every frame.
 
 	' THE THREE TIERS FLY DIFFERENTLY. This is the whole character of the game and
 	' it is not one homing rule with the speed turned up:
@@ -1187,13 +1325,10 @@ k_body:
 	' Each knight steers toward a TARGET (ktx, kty) rather than at the player
 	' directly. Only the choice of target differs per tier, so the flight code
 	' below is shared and stays O(1).
-	kth = kni AND 1
 	IF kth = kthf THEN
 		IF ctier = 0 THEN GOSUB k_wander
 		IF ctier = 1 THEN GOSUB k_hunt
 		IF ctier = 2 THEN GOSUB k_lord
-	END IF
-	IF kth = kthf THEN
 
 	' SEPARATION -- they avoid each other on the way in. Without it every knight
 	' flies the same line to the same point, they stack into a single silhouette,
@@ -1271,7 +1406,7 @@ k_body:
 		cflp = cflp - 1
 	ELSE
 		IF kmy > cty THEN
-			cfa = 10		' they beat their wings too
+			cfa = 20		' they beat their wings too
 			' 820, NOT 420. A knight flaps once per cooldown while gravity
 			' collects 44 every frame in between: at the Bounder's 14-frame
 			' cooldown that is 616 of sink against 420 of lift, so EVERY
@@ -1279,18 +1414,18 @@ k_body:
 			' "enemies get stuck at the bottom" report. They were trying and
 			' losing to arithmetic. A player never hit this because a player
 			' can tap every frame; a knight cannot.
-			#cvy = #cvy - 820
-			IF #cvy < 32768 - 1150 THEN #cvy = 32768 - 1150
+			#cvy = #cvy - 410
+			IF #cvy < 32768 - 575 THEN #cvy = 32768 - 575
 			' EAGERER EVERY WAVE TOO, floored so it stays a flap and not
 			' a hover. Same strategy per tier, sharper execution.
-			kfc = 14 - ctier * 4
-			kfw = agg / 4
+			kfc = 28 - ctier * 8
+			kfw = agg / 2
 			IF kfc > kfw THEN
 				kfc = kfc - kfw
 			ELSE
-				kfc = 3
+				kfc = 6
 			END IF
-			IF kfc < 3 THEN kfc = 3
+			IF kfc < 6 THEN kfc = 6
 			cflp = kfc
 		END IF
 	END IF
@@ -1298,16 +1433,23 @@ k_body:
 	' Steer toward the target x THE SHORTER WAY ROUND THE WRAP -- chasing across
 	' the middle when the edge is nearer is the tell of an AI that does not know
 	' the screen wraps.
+	kgo = 0				' 0 steer right, 1 steer left
 	IF ctx > kmx THEN
 		kdd = ctx - kmx
-		IF kdd < 128 THEN GOSUB k_right ELSE GOSUB k_left
+		IF kdd >= 128 THEN kgo = 1
 	ELSE
 		kdd = kmx - ctx
-		IF kdd < 128 THEN GOSUB k_left ELSE GOSUB k_right
+		IF kdd < 128 THEN kgo = 1
+	END IF
+	cface = kgo * 16		' facing, as a pattern offset: 0 right, 16 left
+	IF kgo = 0 THEN
+		IF #cvx < #kfastt(ctier) THEN #cvx = #cvx + 9
+	ELSE
+		IF #cvx > #kslowt(ctier) THEN #cvx = #cvx - 9
 	END IF
 
 	#cvy = #cvy + GRAV
-	IF #cvy > 33468 THEN #cvy = 33468
+	IF #cvy > 33118 THEN #cvy = 33118
 
 	#cy = #cy + #cvy
 	#cy = #cy - 32768
@@ -1317,7 +1459,7 @@ k_body:
 	kmy = #cy / 256
 	IF kmy < TOPY THEN
 		#cy = 2048
-		#cvy = 32768 + 220	' knights are pushed off the ceiling too
+		#cvy = 32768 + 110	' knights are pushed off the ceiling too
 	END IF
 
 	' Knights obey the same solid islands the player does -- an enemy that can
@@ -1348,7 +1490,6 @@ k_body:
 	IF kth = kthf THEN
 		IF cty > kmy + 12 THEN krt = 1
 	END IF
-	IF krt = 2 THEN krt = 1	' target below: routing may apply
 	' ISLAND TESTS -- O(1) via the row table, not O(10) over every island.
 	'
 	' This loop was 44% of the whole frame. It is now three array reads per row
@@ -1360,18 +1501,20 @@ k_body:
 	' optional: the landing band is [kpt, kpt+8], nine values, and a nine-wide
 	' band straddles two rows precisely when kf is a multiple of 8. Dropping it
 	' would silently narrow the band and put knights through ledges again.
+	' ir1 is filled first, so ir1 = 255 means the whole row is empty: most rows
+	' are, and an empty one now costs one read instead of a GOSUB and three.
 	krw = kmy / 8
-	GOSUB k_isl3
+	IF ir1(krw) < 255 THEN GOSUB k_isl3
 	krw = kf / 8
 	kbw = krw * 8
 	IF kf = kbw THEN
 		IF krw > 0 THEN
 			krw = krw - 1
-			GOSUB k_isl3
+			IF ir1(krw) < 255 THEN GOSUB k_isl3
 			krw = krw + 1
 		END IF
 	END IF
-	GOSUB k_isl3
+	IF ir1(krw) < 255 THEN GOSUB k_isl3
 	' ROUTING IS THE ONE CASE THE ROW TABLE CANNOT SERVE: it wants every island
 	' BETWEEN the knight and its target, which is a range, not a row. So it keeps
 	' its own scan AND its own y-gate -- without the gate it would be slower than
@@ -1395,17 +1538,17 @@ k_body:
 		IF kfe > LAVAY THEN
 			#cy = LAVAY - MH
 			#cy = #cy * 256
-			#cvy = 32768 - 620
+			#cvy = 32768 - 310
 		END IF
 	END IF
 
 	IF cfa > 0 THEN
 		cfa = cfa - 1
-		cfrm = 2
-		IF cfa < 7 THEN cfrm = 1
-		IF cfa < 4 THEN cfrm = 0
+		cfrm = 8			' frame as a pattern offset: wings DOWN
+		IF cfa < 14 THEN cfrm = 4	' mid
+		IF cfa < 8 THEN cfrm = 0	' up
 	ELSE
-		cfrm = 1
+		cfrm = 4
 		IF #cvy < 32768 THEN cfrm = 0
 	END IF
 	RETURN
@@ -1499,7 +1642,7 @@ k_isl:
 					IF kmy <= kpt + 7 THEN
 						#cy = kpt + 8
 						#cy = #cy * 256
-						#cvy = 32768 + 220
+						#cvy = 32768 + 110
 					END IF
 				END IF
 			END IF
@@ -1508,11 +1651,12 @@ k_isl:
 	RETURN
 
 k_wander:
+	cwan = kwan(kni)
 	IF cwan > 0 THEN
-		cwan = cwan - 1
+		kwan(kni) = cwan - 1
 		RETURN
 	END IF
-	cwan = 22 + RANDOM(30)	' re-target often -- a Bounder that commits
+	kwan(kni) = 22 + RANDOM(30)	' re-target often -- a Bounder that commits
 					' to one heading for two seconds looks asleep
 	' HALF ITS ROLLS ARE THE PLAYER NOW, not a quarter. A Bounder that wanders
 	' three times out of four is scenery: it has to threaten often enough that you
@@ -1526,9 +1670,9 @@ k_wander:
 	IF kr > 0 THEN kr = 1
 	IF agg > 10 THEN kr = 0
 	IF kr = 0 THEN
-		ctx = kpx
-		cty = kpy - 4
-		IF kpy < 4 THEN cty = 0
+		ctx = cpx
+		cty = cpy - 4
+		IF cpy < 4 THEN cty = 0
 	ELSE
 		ctx = RANDOM(255)
 		cty = 24 + RANDOM(112)
@@ -1538,24 +1682,24 @@ k_wander:
 	' HUNTER -- seeks. Aims at the player, and one notch above him: level flight
 	' into a joust is a coin toss, so it wants the high side of the contact.
 k_hunt:
-	ctx = kpx
-	cty = kpy - 4
-	IF kpy < 4 THEN cty = 0
+	ctx = cpx
+	cty = cpy - 4
+	IF cpy < 4 THEN cty = 0
 	RETURN
 
 	' SHADOW LORD -- fast, high, and higher still as it closes. It lives in the
 	' top third and CLIMBS when near, because altitude decides the joust: the
 	' climb is the attack, not a retreat from it.
 k_lord:
-	ctx = kpx
-	cty = kpy - 12
-	IF kpy < 12 THEN cty = 0
-	klx = kpx - kmx
-	IF kmx > kpx THEN klx = kmx - kpx
+	ctx = cpx
+	cty = cpy - 12
+	IF cpy < 12 THEN cty = 0
+	klx = cpx - kmx
+	IF kmx > cpx THEN klx = kmx - cpx
 	IF klx < 56 THEN
 		' CLOSING -- commit to the attack. Aim above him, wherever he is.
-		cty = kpy - 24
-		IF kpy < 24 THEN cty = 0
+		cty = cpy - 24
+		IF cpy < 24 THEN cty = 0
 	ELSE
 		' FAR OFF -- prefer height while crossing, but only as a preference.
 		'
@@ -1572,26 +1716,32 @@ k_lord:
 	END IF
 	RETURN
 
-k_right:
-	cface = 0
-	IF #cvx < #kfast THEN #cvx = #cvx + 36
-	RETURN
-
-k_left:
-	cface = 1
-	IF #cvx > #kslow THEN #cvx = #cvx - 36
-	RETURN
-
 	' --------------------------------------------------------- egg movement
 e_move:
 	FOR egi = 0 TO NEGG - 1
-		IF est(egi) > 0 THEN GOSUB e_one
+		IF est(egi) > 0 THEN
+			GOSUB e_one
+		ELSE
+			SPRITE 7 + egi,SPRHID,0,0,0
+		END IF
 	NEXT egi
 	RETURN
 
 	' The egg lives in scalars while we work on it, exactly as the knight does --
 	' same reason, same saving. gtier is read-only here so it is loaded, not stored.
 e_one:
+#if TI994A
+	ASM movb @cvb_EGI,r1
+	ASM srl r1,8
+	ASM movb @array_EST(r1),@cvb_GST
+	ASM movb @array_ETIER(r1),@cvb_GTIER
+	ASM sla r1,1
+	ASM mov @array__EX(r1),@cvb__GX
+	ASM mov @array__EY(r1),@cvb__GY
+	ASM mov @array__EVX(r1),@cvb__GVX
+	ASM mov @array__EVY(r1),@cvb__GVY
+	ASM mov @array__ETM(r1),@cvb__GTM
+#else
 	#gx = #ex(egi)
 	#gy = #ey(egi)
 	#gvx = #evx(egi)
@@ -1599,20 +1749,40 @@ e_one:
 	gst = est(egi)
 	#gtm = #etm(egi)
 	gtier = etier(egi)
+#endif
+e_one_in:
 	GOSUB e_body
+	' Collected and drawn here, on the scalars -- see k_one.
+	IF gst > 0 THEN
+		mnl = 1
+		IF pdead = 0 THEN GOSUB c_egg
+	END IF
+	GOSUB e_draw
+#if TI994A
+	ASM movb @cvb_EGI,r1
+	ASM srl r1,8
+	ASM movb @cvb_GST,@array_EST(r1)
+	ASM sla r1,1
+	ASM mov @cvb__GX,@array__EX(r1)
+	ASM mov @cvb__GY,@array__EY(r1)
+	ASM mov @cvb__GVX,@array__EVX(r1)
+	ASM mov @cvb__GVY,@array__EVY(r1)
+	ASM mov @cvb__GTM,@array__ETM(r1)
+#else
 	#ex(egi) = #gx
 	#ey(egi) = #gy
 	#evx(egi) = #gvx
 	#evy(egi) = #gvy
 	est(egi) = gst
 	#etm(egi) = #gtm
+#endif
 	RETURN
 
 e_body:
 	IF gst = 1 THEN
 		IF #gtm > 0 THEN #gtm = #gtm - 1
 		#gvy = #gvy + GRAV
-		IF #gvy > 33468 THEN #gvy = 33468
+		IF #gvy > 33118 THEN #gvy = 33118
 		#gy = #gy + #gvy
 		#gy = #gy - 32768
 		#gx = #gx + #gvx
@@ -1645,10 +1815,10 @@ e_body:
 	' Resting, then cracking, then a fresh knight one tier higher.
 	IF #gtm > 0 THEN
 		#gtm = #gtm - 1
-		IF #gtm = 90 THEN
+		IF #gtm = 180 THEN
 			gst = 3
 			SOUND 2,300,10
-			sf2 = 6
+			sf2 = 12
 		END IF
 		RETURN
 	END IF
@@ -1659,12 +1829,13 @@ e_body:
 	' off the end of its island it falls again, which is the arcade's behaviour and
 	' makes a ledge a bad place to leave one.
 e_rest:
+	egfr = 3 + tpar			' 3.5 a pass: 3 and 4 on alternate ticks
 	IF #gvx > 32768 THEN
-		#gvx = #gvx - 14
+		#gvx = #gvx - egfr
 		IF #gvx < 32768 THEN #gvx = 32768
 	ELSE
 		IF #gvx < 32768 THEN
-			#gvx = #gvx + 14
+			#gvx = #gvx + egfr
 			IF #gvx > 32768 THEN #gvx = 32768
 		END IF
 	END IF
@@ -1719,7 +1890,7 @@ e_isl:
 						#gy = ept - 16
 						#gy = #gy * 256
 						gst = 2
-						#gtm = 240	' now the REST timer
+						#gtm = 480	' now the REST timer
 						' KEEP THE SIDEWAYS MOMENTUM. An egg that
 						' stops dead the instant it touches rock
 						' looks glued on; it should skid and
@@ -1775,38 +1946,26 @@ e_hatch:
 			#ky(ehj) = #gy
 			#kvx(ehj) = 32768
 			#kvy(ehj) = 32768
-			kflp(ehj) = 20
-			kface(ehj) = 0
+			kflp(ehj) = 40
 			gst = 0
 			ehd = 1
+			mnl = 1			' k_move has run: count him here
+			rbreq = 1		' a man is waiting: rb_launch, look
 		END IF
 		END IF
 	NEXT ehj
 	' No free slot: wait and try again shortly rather than losing the hatch.
-	IF ehd = 0 THEN #gtm = 30
+	IF ehd = 0 THEN #gtm = 60
 	RETURN
 
 	' ----------------------------------------------------------- collisions
-collide:
-	IF pdead > 0 THEN RETURN
-	cpx = #px / 256
-	cpy = #py / 256
-
-	FOR cni = 0 TO NKN - 1
-		IF kon(cni) = 1 THEN GOSUB c_knight
-		IF kon(cni) = KFOOT THEN GOSUB c_foot
-	NEXT cni
-
-	FOR cni = 0 TO NEGG - 1
-		IF est(cni) > 0 THEN GOSUB c_egg
-	NEXT cni
-	RETURN
-
 	' Boxes overlap, then ALTITUDE decides. Written as nested single tests --
-	' `a AND b` on comparisons is miscompiled by the 9900 backend.
+	' `a AND b` on comparisons is miscompiled by the 9900 backend. Called from
+	' k_one on the CURRENT KNIGHT'S SCALARS (#cx, #cy, con...), which k_one
+	' writes back afterwards; cpx/cpy are the player, set at the top of k_move.
 c_knight:
-	ckx = #kx(cni) / 256
-	cky = #ky(cni) / 256
+	ckx = #cx / 256
+	cky = #cy / 256
 	cdx = cpx - ckx
 	IF cpx < ckx THEN cdx = ckx - cpx
 	' TIGHTER THAN IT WAS. At 11 px a "collision" started while the birds were
@@ -1830,32 +1989,32 @@ c_knight:
 		RETURN
 	END IF
 	' level lances: both bounce, nobody dies
-	#kvx(cni) = 65536 - #kvx(cni)
+	#cvx = 65536 - #cvx
 	#vx = 65536 - #vx
 	SOUND 1,500,11
-	sf1 = 4
+	sf1 = 8
 	RETURN
 
 k_unhorse:
-	kon(cni) = 0
-	kus = 50 + ktier(cni) * 25		' 500 / 750 / 1250, in tens
+	con = KDEAD
+	kus = 50 + ctier * 25		' 500 / 750 / 1000, in tens
 	#score = #score + kus
 	SOUND 0,400,13
-	sf0 = 5
+	sf0 = 10
 	' Drop an egg carrying the knight's momentum.
 	kud = 0				' egg placed? -- a flag, never an early RETURN
 	FOR kuj = 0 TO NEGG - 1
 		IF kud = 0 THEN
 		IF est(kuj) = 0 THEN
 			est(kuj) = 1
-			#ex(kuj) = #kx(cni)
-			#ey(kuj) = #ky(cni)
-			#evx(kuj) = #kvx(cni)
+			#ex(kuj) = #cx
+			#ey(kuj) = #cy
+			#evx(kuj) = #cvx
 			' POP UPWARD out of the joust, keeping the knight's sideways
 			' momentum. An egg that simply drops from where he died is on
 			' top of the player and reads as no egg at all.
-			#evy(kuj) = 32768 - 520
-			etier(kuj) = ktier(cni)
+			#evy(kuj) = 32768 - 260
+			etier(kuj) = ctier
 			' GRACE: about a quarter second (16 frames). Half a second sounded
 			' right and was not -- a popped egg is often back on the rock
 			' inside 30 frames, so the window where it was both AIRBORNE and
@@ -1864,10 +2023,7 @@ k_unhorse:
 			' Without ANY grace the egg loop -- which runs later in this
 			' very frame -- eats the egg where it was laid, since it is
 			' created within collision range of the player by definition.
-			' Half a second is long enough that the egg visibly leaves the
-			' joust before it counts, and short enough that a deliberate
-			' mid-air catch is still on.
-			#etm(kuj) = 16
+			#etm(kuj) = 32
 			kud = 1
 		END IF
 		END IF
@@ -1879,29 +2035,30 @@ k_unhorse:
 	' came out of -- the arcade lets you collect a hatched knight before his ride
 	' arrives, and that window is the reward for watching the eggs.
 c_foot:
-	cfx = #kx(cni) / 256
-	cfy = #ky(cni) / 256
+	cfx = #cx / 256
+	cfy = #cy / 256
 	cdx = cpx - cfx
 	IF cpx < cfx THEN cdx = cfx - cpx
 	IF cdx > 11 THEN RETURN
 	cdy = cpy - cfy
 	IF cpy < cfy THEN cdy = cfy - cpy
 	IF cdy > 11 THEN RETURN
-	kon(cni) = KDEAD
+	con = KDEAD
 	ecoll = ecoll + 1
 	ceg = ecoll
 	IF ceg > 4 THEN ceg = 4
 	#score = #score + ceg * 25
 	SOUND 1,250,13
-	sf1 = 5
+	sf1 = 10
 	GOSUB prt_score
 	RETURN
 
 	' 250, 500, 750, then 1000 -- in tens, and capped.
 c_egg:
+	' Called from e_one on the CURRENT EGG'S SCALARS (#gx, #gy, gst, #gtm).
 	' An egg still in its grace period has not left the joust yet.
-	IF est(cni) = 1 THEN
-		IF #etm(cni) > 0 THEN RETURN
+	IF gst = 1 THEN
+		IF #gtm > 0 THEN RETURN
 	END IF
 	' CENTRE TO CENTRE. The egg is 8x9 drawn in the LOWER part of its cell, so its
 	' middle sits 11 px below its sprite origin while the bird's sits 8 below its
@@ -1909,9 +2066,9 @@ c_egg:
 	' the edge of the box is the difference between a catch and a miss -- and it
 	' erred toward missing, which is exactly what "touched it and did not get it"
 	' feels like.
-	cex = #ex(cni) / 256
+	cex = #gx / 256
 	cex = cex + 7			' art occupies columns 3-10, so the middle is +7
-	cey = #ey(cni) / 256
+	cey = #gy / 256
 	cey = cey + 11
 	cpx2 = cpx + 8
 	cpy2 = cpy + 8
@@ -1921,23 +2078,23 @@ c_egg:
 	cdy = cpy2 - cey
 	IF cpy2 < cey THEN cdy = cey - cpy2
 	IF cdy > 10 THEN RETURN
-	est(cni) = 0
+	gst = 0
 	ecoll = ecoll + 1
 	ceg = ecoll
 	IF ceg > 4 THEN ceg = 4
 	#score = #score + ceg * 25
 	SOUND 1,250,13
-	sf1 = 5
+	sf1 = 10
 	GOSUB prt_score
 	RETURN
 
 	' ---------------------------------------------------------------- death
 do_death:
+	sprok = 2			' this loop WAITs per frame: copy every frame
+	SPRITE 0,SPRHID,0,0,0
 	FOR ddi = 0 TO 30
 		WAIT
 		SOUND 0,200 + ddi * 20,13
-		SPRITE 0,SPRHID,0,0,0
-		GOSUB draw_knights
 	NEXT ddi
 	SOUND 0,800,0
 	IF lives > 0 THEN lives = lives - 1
@@ -1954,6 +2111,7 @@ do_death:
 	RETURN
 
 game_over:
+	sprok = 2
 	GOSUB hide_all
 	PRINT AT 300,"GAME OVER"
 	FOR ddi = 0 TO 120
@@ -1973,11 +2131,10 @@ draw:
 	drc = 11
 	IF binv > 0 THEN
 		drc = 1
-		IF binv AND 4 THEN drc = 11
+		IF binv AND 8 THEN drc = 11
 	END IF
 	SPRITE 0,dry,drx,drp,drc
-	GOSUB draw_knights
-	GOSUB draw_eggs
+	' knights and eggs are drawn by k_one and e_one as they are moved
 	IF rbon = 1 THEN
 		rbp = rbf * 16
 		rbp = rbp + 4
@@ -1987,74 +2144,39 @@ draw:
 	END IF
 	RETURN
 
-draw_knights:
-	FOR dki = 0 TO NKN - 1
-		IF kon(dki) = 0 THEN
-			SPRITE 1 + dki,SPRHID,0,0,0
-		ELSE
-			IF kon(dki) = KFOOT THEN
-				dky = #ky(dki) / 256
-				dkx = #kx(dki) / 256
-				' THE MAN WEARS THE COLOUR HE WILL BECOME -- red, grey or
-				' blue, the same lookup the mounted knights use below. He
-				' already carries that tier (e_hatch set it when the egg
-				' cracked), so the colour is free, and it is the only
-				' warning you get of what is about to be flying at you:
-				' a blue man on a ledge means a Shadow Lord in a moment.
-				dkc = 8
-				IF ktier(dki) = 1 THEN dkc = 14
-				IF ktier(dki) = 2 THEN dkc = 5
-				SPRITE 1 + dki,dky,dkx,36,dkc
-			ELSE
-			IF kon(dki) = 2 THEN
-				' materialising: flash, and draw nothing on alternate
-				' frames so it reads as arriving rather than lurking
-				dkc = 0
-				IF kmat(dki) AND 2 THEN dkc = 15
-				dky = #ky(dki) / 256
-				dkx = #kx(dki) / 256
-				SPRITE 1 + dki,dky,dkx,4,dkc
-			ELSE
-			dkp = kface(dki) * 16
-			dkp = dkp + kfrm(dki) * 4
-			dky = #ky(dki) / 256
-			dkx = #kx(dki) / 256
-			dkc = 8
-			IF ktier(dki) = 1 THEN dkc = 14
-			IF ktier(dki) = 2 THEN dkc = 5
-			SPRITE 1 + dki,dky,dkx,dkp,dkc
-			END IF
-			END IF
-		END IF
-	NEXT dki
+	' A MATERIALISING knight, from k_one: flash, and draw nothing on alternate
+	' beats so it reads as arriving rather than lurking.
+k_draw:
+	dky = #cy / 256
+	dkx = #cx / 256
+	dkc = 0
+	IF cmat AND 4 THEN dkc = 15
+	SPRITE 1 + kni,dky,dkx,4,dkc
 	RETURN
 
-draw_eggs:
-	FOR dei = 0 TO NEGG - 1
-		IF est(dei) = 0 THEN
-			SPRITE 7 + dei,SPRHID,0,0,0
-		ELSE
-			dey = #ey(dei) / 256
-			dex = #ex(dei) / 256
-			dec = 15
-			dep = 32
-			' NOT YET COLLECTABLE -> drawn GREY rather than white. The grace
-			' period was invisible, so an egg you touched and did not get
-			' looked like a missed collision or a dropped input rather than a
-			' rule. A rule the player cannot see is indistinguishable from a
-			' bug, and this one costs a single colour to show.
-			IF est(dei) = 1 THEN
-				IF #etm(dei) > 0 THEN dec = 14
-			END IF
-			IF est(dei) = 3 THEN
-				' CRACKED, and flashing. The pattern change is the real
-				' warning; the flash only draws the eye to it.
-				dep = 40
-				IF #etm(dei) AND 4 THEN dec = 9
-			END IF
-			SPRITE 7 + dei,dey,dex,dep,dec
-		END IF
-	NEXT dei
+	' THE CURRENT EGG, from e_one's scalars.
+e_draw:
+	IF gst = 0 THEN
+		SPRITE 7 + egi,SPRHID,0,0,0
+		RETURN
+	END IF
+	dey = #gy / 256
+	dex = #gx / 256
+	dec = 15
+	dep = 32
+	' NOT YET COLLECTABLE -> drawn GREY rather than white. The grace period was
+	' invisible, so an egg you touched and did not get looked like a missed
+	' collision or a dropped input rather than a rule.
+	IF gst = 1 THEN
+		IF #gtm > 0 THEN dec = 14
+	END IF
+	IF gst = 3 THEN
+		' CRACKED, and flashing. The pattern change is the real warning; the
+		' flash only draws the eye to it.
+		dep = 40
+		IF #gtm AND 8 THEN dec = 9
+	END IF
+	SPRITE 7 + egi,dey,dex,dep,dec
 	RETURN
 
 hide_all:
@@ -2091,7 +2213,7 @@ troll:
 				trx = tpx
 				trhy = 184
 				SOUND 2,900,11
-				sf2 = 6
+				sf2 = 12
 			END IF
 		END IF
 		SPRITE 12,SPRHID,0,0,0
@@ -2102,9 +2224,11 @@ troll:
 	IF trst = 1 THEN
 		' rising. It tracks sideways slowly -- you can outrun it, but not by
 		' much, and not while still climbing out of the pit.
-		IF trhy > 184 - trr THEN trhy = trhy - 3
-		IF trx < tpx THEN trx = trx + 1
-		IF trx > tpx THEN trx = trx - 1
+		IF trhy > 184 - trr THEN trhy = trhy - 1 - tpar	' 1.5 px a pass
+		IF tpar THEN			' sideways at half a pixel a pass
+			IF trx < tpx THEN trx = trx + 1
+			IF trx > tpx THEN trx = trx - 1
+		END IF
 		GOSUB tr_draw
 		' caught?
 		tdy = tpy + 16
@@ -2139,15 +2263,15 @@ troll:
 	' through the base, which is solid rock. Your horizontal movement is stopped
 	' anyway (see p_input), so there is nothing for it to follow.
 	#vx = 32768
-	#py = #py + 200
+	#py = #py + 100
 	#vy = 32768
 	trhy = tpy + 14
 	GOSUB tr_draw
 	IF tresc >= trneed THEN
 		trst = 0
-		#vy = 32768 - 1200		' torn free, and thrown clear
+		#vy = 32768 - 600		' torn free, and thrown clear
 		SOUND 1,300,13
-		sf1 = 6
+		sf1 = 12
 		RETURN
 	END IF
 	IF tpy + 16 >= 190 THEN
@@ -2188,9 +2312,9 @@ ptero:
 	IF ptst = 0 THEN
 		ptw = 0
 		IF wave >= 8 THEN ptw = 1
-		IF #wvt > 2400 THEN ptw = 1	' 40 seconds: stop hiding
+		IF #wvt > 1200 THEN ptw = 1	' 40 seconds: stop hiding
 		IF ptw = 1 THEN
-			IF #wvt > 600 THEN
+			IF #wvt > 300 THEN
 				ptst = 1
 				pty = #py / 256
 				ptx = 0
@@ -2201,7 +2325,7 @@ ptero:
 				END IF
 				ptmo = 0
 				SOUND 2,200,12
-				sf2 = 10
+				sf2 = 20
 			END IF
 		END IF
 		SPRITE 13,SPRHID,0,0,0
@@ -2209,21 +2333,21 @@ ptero:
 	END IF
 
 	ptmo = ptmo + 1
-	ptmo = ptmo AND 31
+	ptmo = ptmo AND 63
 	pgx = #px / 256
 	pgy = #py / 256
 	IF ptx < pgx THEN
-		ptx = ptx + 4
+		ptx = ptx + 2
 		ptf = 0
 	ELSE
-		ptx = ptx - 4
+		ptx = ptx - 2
 		ptf = 1
 	END IF
-	IF pty < pgy THEN pty = pty + 2
-	IF pty > pgy THEN pty = pty - 2
+	IF pty < pgy THEN pty = pty + 1
+	IF pty > pgy THEN pty = pty - 1
 
 	ptp = 48
-	IF ptmo < 12 THEN ptp = 52	' mouth open on the low part of the cycle
+	IF ptmo < 24 THEN ptp = 52	' mouth open on the low part of the cycle
 	SPRITE 13,pty,ptx,ptp,10
 
 	IF pdead > 0 THEN RETURN
@@ -2247,7 +2371,7 @@ ptero:
 				ptst = 0
 				#score = #score + 100
 				SOUND 0,180,13
-				sf0 = 12
+				sf0 = 24
 				GOSUB prt_score
 				SPRITE 13,SPRHID,0,0,0
 				RETURN
@@ -2255,48 +2379,6 @@ ptero:
 		END IF
 	END IF
 	IF binv = 0 THEN pdead = 1
-	RETURN
-
-	' ====================== TEMPORARY: LOOP RATE PROBE ======================
-	' Two digits at row 0, column 20: LOOP PASSES PER SECOND.
-	'
-	' There is a WAIT at the top of the main loop, so every pass costs at least
-	' one vblank and the achievable rates are quantised: 60, 30, 20, 15. That
-	' makes this number diagnostic rather than merely informative --
-	'
-	'   60  the loop finishes inside one frame. Any remaining sluggishness is
-	'       the EMULATOR, or the physics constants, and not the code.
-	'   30  the body overruns one frame and WAIT costs a whole second one. The
-	'       fix is to make the body cheaper, and HALF a frame of work is enough
-	'       to get back to 60 -- there is no partial credit.
-	'   20  it is overrunning two.
-	'
-	' Three optimisation passes have been made on the strength of counted array
-	' reads. This measures the thing itself, so the next pass is aimed rather
-	' than guessed -- and it tells us when to STOP, which counting never did.
-	'
-	' Remove this routine, its GOSUB and its variables once the answer is known.
-lprate:
-	lpc = lpc + 1
-	#lpd = FRAME
-	#lpd = #lpd - #lpl
-	IF #lpd < 60 THEN RETURN
-	#lpl = FRAME
-	lph = lpc / 10
-	' 6144 is the name table base and 20 is the column -- added as SEPARATE steps.
-	' Written as the finished address AND then given the base a second time, the
-	' write landed at 12308, well outside the name table: nothing appeared, and
-	' nothing complained. Exactly the VPOKE hazard in CLAUDE.md 3A.
-	#lpa = 20
-	#lpa = #lpa + 6144
-	lpv = 48 + lph
-	VPOKE #lpa,lpv
-	#lpa = #lpa + 1
-	lpv = lph * 10
-	lpv = lpc - lpv
-	lpv = 48 + lpv
-	VPOKE #lpa,lpv
-	lpc = 0
 	RETURN
 
 	' ------------------------------------------------------------ sound tick
@@ -2323,6 +2405,11 @@ sfx_tick:
 	' Character colours, EIGHT BYTES PER CHARACTER (one per scan line) -- supply
 	' fewer and DEFINE COLOR reads whatever follows in ROM as colour data.
 	' 7 chars x 8 = 56 bytes, an even run.
+	' Mount colour per tier: red Bounder, grey Hunter, blue Shadow Lord. Four
+	' bytes, an even run.
+tiercol:
+	DATA BYTE 8,14,5,0
+
 col_chars:
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' platform left, grey on black
 	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' platform middle

@@ -299,6 +299,12 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
   with `WAIT`. `VPOKE` operands must be precomputed into plain vars (ISR race), and TI
   `DEFINE CHAR`/`COLOR` are synchronous (safe in bulk).
 - **Sprite y = 208 terminates the sprite list** — hide sprites at 209, and watch for `y-1`.
+- **ON THE TI, CVBasic's VBLANK HANDLER TAKES ABOUT A THIRD OF THE CPU BEFORE YOUR CODE RUNS.**
+  Every frame it copies all 128 sprite-mirror bytes to the VDP and scans the whole keyboard,
+  ~18,500 cycles, 37% of the TMS9900 measured in Joust. A game that uses 16 sprites and reads
+  only the joystick in play pays it all anyway. Joust's `tools/isrpatch.py` rewrites the two
+  spots in the generated `.a99` (copy slots 0-15 only when the game sets a flag, scan keys only
+  on menu screens) and fails the build if the handler text changes.
 - Misc: 8-bit `FOR` to 255 loops forever; `ON GOTO` is 0-based; `DEF FN` args substitute
   textually (parenthesize every use); a computed `FOR 1 TO 0` still runs the body once.
 - **`DEFINE CHAR/COLOR/SPRITE` CANNOT TAKE A RAM ARRAY, AND IT DOES NOT SAY SO.**
