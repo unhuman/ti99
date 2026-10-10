@@ -12,7 +12,7 @@
 # for the hand-written array copies in k_one/e_one. master does not know #if.
 #
 # isrpatch.py trims CVBasic's vblank interrupt on the generated assembly (sprite
-# copy only when the game publishes a finished frame, 16 slots; keyboard scan
+# copy only when the game publishes a finished frame; keyboard scan
 # only on the title screens). It fails the build if the handler text it expects
 # is not found, so a CVBasic update cannot silently undo it.
 #
@@ -89,6 +89,18 @@ rm -f "${NAME}_8.bin"
 # getting that wrong reads as a 6 KB overflow on a build with 10 KB free.
 RAW=$(wc -c < "$FIRST")
 USED=$((RAW - 16384))
+# BANKED, the fixed image is padded to the full window, so its size says
+# nothing: read the end of the code from BANK_0_FREE (>FFFE minus the end) in
+# the listing instead. >A000..>FFFE is 24,574 bytes.
+if [ -s "${NAME}_b0.bin" ]; then
+    FREE0=$(awk '/BANK_0_FREE:/ {print $2; exit}' "$NAME.txt")
+    [ -n "$FREE0" ] || die "BANK_0_FREE not found in $NAME.txt"
+    USED=$((24574 - 0x$FREE0))
+    FREE1=$(awk '/BANK_1_FREE:/ {print $2; exit}' "$NAME.txt")
+    [ -n "$FREE1" ] || die "BANK_1_FREE not found in $NAME.txt"
+    [ $((0x$FREE1)) -lt 32768 ] || die "bank 1 (the data bank) is over 8 KB"
+    echo "Data bank 1: $((0x$FREE1)) bytes free"
+fi
 echo
 if [ "$USED" -gt "$CAP" ]; then
     die "program image is $USED bytes, $((USED - CAP)) OVER the ${CAP}-byte cap --

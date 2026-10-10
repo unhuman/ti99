@@ -40,7 +40,7 @@ Where sources disagree, the instruction card wins and the conflict is noted in p
 | question | answer |
 |---|---|
 | Loop | **Real-time, fixed 30 Hz tick**: one pass every two frames (§1c) |
-| Max moving sprites | **13** — player, 6 knights, 4 eggs, pterodactyl, troll hand |
+| Max moving sprites | **22 slots** — player and 6 knights as rider + mount pairs (14), 4 eggs, rescue bird, troll hand and arm, pterodactyl. `SPRITE FLICKER ON` shares a crowded scanline round everybody (§13) |
 | Per-actor work | **O(1)**: add velocity, clamp, **row-indexed** island test, test lava |
 | Enemy AI | **Reactive, no search**; each knight thinks one tick in four |
 | VDP reads per frame | **Zero.** No `GCHAR`, no `COINC`; islands are a RAM table |
@@ -125,7 +125,7 @@ What it took on the TI, in order of what it bought:
 
 | change | where |
 |---|---|
-| **The vblank interrupt was 37% of the CPU.** CVBasic's handler copies all 128 sprite bytes and scans the whole keyboard every frame (~18,500 cycles). `tools/isrpatch.py` makes it copy only slots 0-15, only when the game publishes a finished pass (`sprok`: 2 every frame, 1 once, 0 hold), and skip the keyboard unless `kbscan` is set (title and 838 screens only). Publishing once per pass also means a half-drawn pass is never shown. | build-ti.sh step 2 |
+| **The vblank interrupt was 37% of the CPU.** CVBasic's handler copies all 128 sprite bytes and scans the whole keyboard every frame (~18,500 cycles). `tools/isrpatch.py` makes it copy only when the game publishes a finished pass (`sprok`: 2 every frame, 1 once, 0 hold), using CVBasic's `SPRITE FLICKER` path, which starts one slot later on each copy over all 32 slots (so the rotation advances once per pass), and skip the keyboard unless `kbscan` is set (title and 838 screens only). Publishing once per pass also means a half-drawn pass is never shown. | build-ti.sh step 2 |
 | **One loop over the knights instead of three.** Movement, the joust and the draw now all run in `k_one` on the scalar copy; `collide` and `draw_knights` (two more loops re-reading the arrays) are gone. Eggs likewise in `e_one`. | `k_one`, `e_one` |
 | **The scalar copy in and out is hand-written on the TI**: one indexed `MOVB`/`MOV` per field instead of ~130 cycles of index arithmetic each. The `#else` side is the same in BASIC, which is what ColecoVision compiles. | `#if TI994A` in `k_one`, `e_one` |
 | **Each knight thinks one tick in four** (target, separation, routing), staggered by slot. Movement is every tick. The old halving keyed on `FRAME` parity, which never changes when a pass takes an even number of frames, so half the knights never re-targeted at all; it now uses a tick counter. | `k_move`, `k_body` |
@@ -141,11 +141,16 @@ The loop-rate probe (`lprate`) has been removed now that the rate is settled.
 32×24 characters, 256×192 pixels.
 
 ```
-row  0   SCORE 000000                      ♦♦     <- score, SPARE lives
-rows 1-19  sky: platforms, knights, eggs, pterodactyl
-row  20  lava surface (2-frame animation)
-rows 21-23  lava body, and where the troll hand rises from
+rows 0-20  sky: rock ledges, knights, eggs, pterodactyl; base ledge on row 21
+rows 22-23 cols 5-25: the rock base, with the score (col 9) and SPARE lives
+           (col 17) set into it, as in the arcade
+rows 22-23 cols 0-4, 26-31: the lava pit -- flames (4 frames, cycled every
+           5 passes by redefining two characters) over molten rock
 ```
+The ledges are drawn as rock: a yellow top edge over two shades of red rock with a
+jagged underside. The base and lava rows are drawn once by `draw_field`; only the
+two flame characters change after that (`lava_tick`), so the animation costs two
+8-byte `DEFINE CHAR`s every 5 passes.
 
 Horizontal **wrap** is free: `#px` is 8.8 fixed point, so 256 px × 256 = 65536 and the
 16-bit variable wraps by itself. The top of the screen is a **ceiling** you bump against.
@@ -221,9 +226,10 @@ All per **pass** (30 a second, §1c).
 | `GRAV` | 11 | added to `#vy` each pass |
 | flap impulse | 200 | subtracted from `#vy` per press, upward speed capped at 550 (2.1 px/pass) — bare literals, not `CONST`s |
 | terminal fall | 590 | ~2.3 px/pass |
-| `ACCX` | 13 | horizontal acceleration while steering |
+| `ACCX` | 13 | horizontal acceleration while running (stick held on the ground) |
 | top speed | 550 | ~2.1 px/pass; knights get 430 + 70 × tier, plus 4.5 per aggression step (`set_ktop`) |
-| `FRIC` | 3 | decay when not steering |
+| skid | 30 | per-pass braking when the stick is pushed against the run (|vx| > 40) |
+| flap steer | 120 | added to `#vx` in the stick's direction on each flap, clamped to 550 |
 
 **Signed velocity in an unsigned world.** Every `#var` comparison compiles unsigned
 (`CLAUDE.md` §3A), so velocities are stored **+32768 biased**: "rising" is `#vy < 32768`
@@ -233,13 +239,23 @@ arithmetic wraps.
 
 **Flap is edge-triggered** — holding fire does not hover. Each press is one impulse.
 
+**Momentum is the arcade's feel.** There is no friction: let go of the stick and the bird
+keeps its speed, in the air and on the ground. On a ledge the stick runs (accelerates)
+and pushing against the run skids to a stop. In the air the stick only turns the bird to
+face; speed changes come from flapping with the stick held, each beat adding 120 in that
+direction. So reversing in flight takes several beats, as it does in the arcade.
+
 ---
 
 ## 4. The player
 
-- Sprite 0, **yellow**. Four frames: wings up, mid, down, skid.
-- Frame follows vertical motion, not a timer: rising → up, falling → mid, grounded and
-  steering → skid.
+- Two sprites: a **white** rider in slot 0, drawn 4 px above a **yellow** ostrich in
+  slot 1. The pair is one 16×20 figure (§13).
+- Eight mount frames per facing: stand, four running beats, skid, wings up, wings down.
+  A flap shows wings down for 10 passes, then up. On the ground the run beats advance
+  with speed (one beat per 4 passes, twice as fast above 300) and a footfall clicks on
+  two of them; a skid shows the skid frame and squeals. In the air: wings up falling,
+  down rising.
 - **Spawn invulnerability** 180 passes (6 s), shown by flashing. Without it a knight parked on
   the spawn point is an unavoidable death.
 - Steering is **left/right only**. Nothing reads the vertical axis: on the TI it shares a
@@ -474,26 +490,57 @@ dedicated font is part of this port, generated by `assets/genfont.py` into `src/
 
 ### Sprites (16×16, `DEFINE SPRITE n` counts whole sprites; pattern = n×4)
 
+**Every knight is two sprites, rider over mount**, so the rider can carry the tier's
+colour (red Bounder, grey Hunter, blue Shadow Lord) over a yellow ostrich or green
+buzzard. `assets/genart.py` draws each figure once on a 16×20 canvas and splits it:
+the mount is canvas rows 4-19 drawn at (x, y), the rider rows 0-15 at (x, y-4), and the
+build fails if a pixel belongs to both (with flicker either layer may be on top).
+
 | n | pattern | what |
 |---|---|---|
-| 0-3 | 0,4,8,12 | mount facing **right**: wings up, mid, down, skid |
-| 4-7 | 16,20,24,28 | the same four facing **left** (the VDP cannot mirror) |
-| 8 | 32 | egg |
-| 9 | 36 | unhorsed knight, on foot |
-| 10-11 | 40,44 | pterodactyl, mouth **closed** / **open** |
-| 12 | 48 | troll hand |
+| 0-7 | 0-28 | ostrich facing **right**: stand, run ×4, skid, wings up, wings down |
+| 8-15 | 32-60 | the same facing **left** (the VDP cannot mirror) |
+| 16-23 / 24-31 | 64-124 | buzzard, right / left, same eight frames |
+| 32-33 | 128,132 | rider, right / left |
+| 34-35 | 136,140 | egg, cracked egg |
+| 36-37 | 144,148 | unhorsed knight on foot, right / left |
+| 38-39 | 152,156 | troll hand, troll arm |
+| 40-43 | 160-172 | pterodactyl: shut R, open R, shut L, open L |
+
+Slots: 0-1 player (rider, mount); 2-13 knights (rider 2+2k, mount 3+2k); 14-17 eggs;
+18 rescue bird; 19-20 troll hand and arm; 21 pterodactyl; 22-31 always hidden.
+`SPRITE FLICKER ON` rotates the copy so a line with more than four sprites flickers
+instead of losing the same ones every frame.
 
 ### Characters
 
 | code | count | what |
 |---|---|---|
-| 128 | 3 | island: left cap, middle, right cap |
-| 131 | 2 | lava surface, 2 animation frames |
-| 133 | 1 | lava body |
+| 128 | 3 | rock ledge: left cap, middle, right cap |
+| 131 | 2 | lava flames (two phases of the same 4-frame cycle, `flame0-3`) |
+| 133 | 1 | molten rock under the flames |
 | 134 | 1 | spare-life icon |
 | 135 | 1 | spawn pad |
-| 136 | 1 | troll arm segment (the stretch below the hand) |
+| 136 | 1 | rock of the base |
 | 137 | 1 | egg waiting on a ledge (Egg waves, §9) |
+| 138-139 | 2 | base: left and right slope |
+
+**The art and its data live in bank 1 on the TI.** The cart is banked (`BANK ROM 128`,
+`BANK SELECT 1` at the top, all `DATA` after `BANK 1`); bank 1 stays selected, so
+the code reads it like ordinary ROM. `build-ti.sh` checks the fixed area from
+`BANK_0_FREE` in the listing and bank 1 from `BANK_1_FREE`. ColecoVision is
+unbanked, within its 32 KB window.
+
+### Sound
+
+Effects are rows of `#sfxt` (channel, start divisor, per-pass step, volume, passes,
+volume drop, chained effect) started by `sfn = SFX_x : GOSUB sfx_play` and stepped by
+`sfx_tick` once a pass, which also sends every note-off. The sweep is what makes them
+read as the arcade's sounds rather than beeps: flap is a burst of low noise, footfalls
+click, a skid squeals, lances meeting clank (tone + noise), a defeated knight's note
+falls away, an egg pickup chirps upward, a knight materialising shimmers, the
+pterodactyl screeches, and its death is a long dive. Channel 3 (noise) is changed
+volume-only while it decays, since rewriting its type restarts the noise.
 
 ---
 

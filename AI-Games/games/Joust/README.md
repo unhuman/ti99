@@ -21,6 +21,7 @@ disagreed.
 | 6 | Island erosion (bridge w3, ledges w6+) | built |
 | 7 | Pterodactyl (wave 8, and slow waves) | built |
 | 8 | Egg & Survival waves, bonuses | built |
+| 9 | Arcade look, feel and sound: rock ledges, lava pit, score in the base, two-colour knights with running/skid/flap frames, momentum and skids, swept sound effects | built |
 
 ## Controls
 
@@ -38,6 +39,9 @@ vanishing at 6, and **Shadow Lords** not until 16. It is not captioned on the ti
 there is no room for a caption, which is why it is written down here.
 
 **Flap is edge-triggered** — holding fire does not hover; each press is one impulse.
+**It plays on momentum, like the arcade**: let go and the bird keeps going. On a ledge
+the stick runs, and pushing against the run skids. In the air the stick turns you to
+face; flap with it held to build speed that way.
 **Nothing reads the vertical axis**: on the TI it shares a line with ALPHA LOCK, which
 reports a direction that never releases.
 
@@ -84,9 +88,10 @@ to do by hand.
 
 | target | used | free |
 |---|---|---|
-| TI-99/4A program image | 23,064 / 24,336 | 1,272 |
-| ColecoVision ROM | 16,384 | — |
-| ColecoVision RAM | 633 / 814 | 181 |
+| TI-99/4A fixed program image | 23,742 / 24,336 | 594 |
+| TI-99/4A data bank 1 (art, font, tables) | 2,470 / 8,192 | 5,722 |
+| ColecoVision ROM | 24,576 (14,280 used) | — |
+| ColecoVision RAM | 678 / 814 | 136 |
 
 ## Speed
 

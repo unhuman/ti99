@@ -1,3 +1,12 @@
+	' THE TI CART IS BANKED: the program runs from the 24,336-byte fixed area
+	' copied into RAM, and ALL ITS DATA -- art, font, flame frames, tables --
+	' lives in bank 1, which is selected here and never deselected, so every
+	' DEFINE and every table read finds it without a switch. ColecoVision's
+	' 32 KB window holds it all unbanked.
+#if TI994A
+	BANK ROM 128
+	BANK SELECT 1
+#endif
 	' ==========================================================================
 	' JOUST -- CVBasic, dual target TI-99/4A + ColecoVision.
 	'
@@ -23,7 +32,6 @@
 	CONST GRAV = 11			' added to #vy every pass. Heavier than it looks:
 					' Joust's mount FALLS, and the flap has to fight it
 	CONST ACCX = 13			' horizontal acceleration while steering
-	CONST FRIC = 3			' horizontal decay when not steering
 	CONST NPLAT = 10		' islands, DIM 0..9 -- MEASURED, see assets/refmap.py
 	CONST NKN = 6			' knights, DIM 0..5 -- SIX. Joust is meant to be crowded
 	CONST NEGG = 4			' eggs, DIM 0..3
@@ -40,11 +48,53 @@
 	CONST PLATL = 128
 	CONST PLATM = 129
 	CONST PLATR = 130
-	CONST LAVAA = 131
+	CONST LAVAA = 131		' lava surface, flames -- two out-of-step
+	CONST LAVAB = 132		' characters, animated by lava_tick
+	CONST LAVAC = 133		' lava body
+	CONST SFX_FLAP = 1
+	CONST SFX_STEP = 2
+	CONST SFX_SKID = 3
+	CONST SFX_CLANK = 4
+	CONST SFX_UNHORSE = 6
+	CONST SFX_EGGGET = 7
+	CONST SFX_SPAWN = 8
+	CONST SFX_RESCUE = 9
+	CONST SFX_BUMP = 10
+	CONST SFX_HATCH = 11
+	CONST SFX_GRAB = 13
+	CONST SFX_ESCAPE = 14
+	CONST SFX_PTERO = 15
+	CONST SFX_PTKILL = 16
+	CONST SFX_XLIFE = 17
+	CONST SFX_SURV = 18
+	CONST SFX_DIGIT = 19
+	CONST SFX_DIE = 20
 	CONST LIFECH = 134
 	CONST PADCH = 135
-	CONST ARMCH = 136
+	CONST ROCKCH = 136		' the base's body, below its surface
 	CONST EGGCH = 137		' an egg waiting on a ledge (Egg waves)
+	CONST ROCKL = 138		' ... its sloping left end
+	CONST ROCKR = 139		' ... and right end
+	' SPRITE PATTERNS (pattern number = 16x16 sprite index x 4; see setup).
+	CONST P_OST = 0			' ostrich, 8 frames right then 8 left
+	CONST P_BUZ = 64		' buzzard, the same layout
+	CONST P_RIDER = 128		' rider, right then left
+	CONST P_EGG = 136
+	CONST P_EGGX = 140		' cracked
+	CONST P_RUN = 144		' knight on foot, right then left
+	CONST P_HAND = 152
+	CONST P_ARM = 156
+	CONST P_PT = 160		' pterodactyl: shut, open right; shut, open left
+	' MOUNT FRAMES, as pattern offsets within one facing.
+	CONST F_STAND = 0
+	CONST F_SKID = 20
+	CONST F_UP = 24			' wings up
+	CONST F_DOWN = 28		' wings down
+	' SPRITE SLOTS. Every figure is TWO sprites, rider over mount, so the slots
+	' are handed out in blocks -- grep here before taking one:
+	'   0-1 player (rider, mount)   2-13 knights (2 + 2*kni rider, +1 mount)
+	'   14-17 eggs   18 rescue bird   19 troll hand   20 troll arm
+	'   21 pterodactyl   22-31 unused, held hidden
 	CONST NTEG = 12			' Egg wave: eggs on the ledges, DIM 0..11
 	CONST NPAD = 5			' pads, DIM 0..4 -- one is on the BASE
 	CONST KDEAD = 0
@@ -170,16 +220,21 @@
 
 	' ------------------------------------------------------------------ setup
 setup:
-	SPRITE FLICKER OFF		' all-or-nothing in CVBasic: it would strobe the
-					' player too. Instead the player is sprite 0 --
-					' highest priority, never the one the VDP drops.
+	' FLICKER ON. Two sprites a figure means two birds side by side already fill
+	' a scanline's four, and the fifth is simply not drawn. Rotating the slots
+	' turns that into flicker shared round everybody, the player included, which
+	' players read as busy rather than as an invisible enemy (CLAUDE.md 7A's
+	' Choplifter lesson). Rider and mount never share a pixel, so it does not
+	' matter which of the two the rotation puts on top.
+	SPRITE FLICKER ON
 	' THE VBLANK HANDLER IS TRIMMED BY tools/isrpatch.py (TI only). It copies
-	' sprite slots 0-15 and nothing past them, so slot 15 is the list terminator,
-	' and it copies only when told: sprok 2 = every frame (menus), 1 = once, at
-	' the end of a game pass, so a half-drawn pass is never shown. kbscan turns
-	' the keyboard scan on for the screens that read keys. Both are plain
-	' variables on ColecoVision too, where nothing reads them.
-	SPRITE 15,208,0,0,0
+	' the sprites only when told: sprok 2 = every frame (menus), 1 = once, at the
+	' end of a game pass, so a half-drawn pass is never shown. kbscan turns the
+	' keyboard scan on for the screens that read keys. Both are plain variables
+	' on ColecoVision too, where nothing reads them.
+	FOR hai = 0 TO 31
+		SPRITE hai,SPRHID,0,0,0
+	NEXT hai
 	sprok = 2
 	kbscan = 1
 	' THE ARCADE FACE. Replaces CVBasic's stock 8x8, which is a thin generic ASCII
@@ -188,17 +243,20 @@ setup:
 	' Colours are left alone: a DEFINE COLOR run this long would cost another 472
 	' bytes to say "white" 59 times.
 	DEFINE CHAR 32,59,font_bits
-	DEFINE CHAR PLATL,10,chr_plat_l
-	DEFINE COLOR PLATL,10,col_chars
-	DEFINE SPRITE 0,4,spr_mount_r	' patterns 0,4,8,12  -- facing right
-	DEFINE SPRITE 4,4,spr_mount_l	' patterns 16,20,24,28 -- facing left
-	DEFINE SPRITE 8,1,spr_egg	' pattern 32
-	DEFINE SPRITE 9,1,spr_runner	' pattern 36
-	DEFINE SPRITE 10,1,spr_egg_x	' pattern 40 -- cracked, about to hatch
-	DEFINE SPRITE 11,1,spr_hand	' pattern 44 -- the troll's fist
-	DEFINE SPRITE 12,1,spr_pt_s	' pattern 48 -- pterodactyl, mouth shut
-	DEFINE SPRITE 13,1,spr_pt_o	' pattern 52 -- mouth OPEN, the only target
-	DEFINE SPRITE 14,1,spr_arm	' pattern 56 -- the troll's forearm
+	' Characters 128-139 and their colours, generated together (genart.py).
+	DEFINE CHAR PLATL,12,chr_plat_l
+	DEFINE COLOR PLATL,12,col_chars
+	DEFINE SPRITE 0,8,spr_ost_r	' P_OST
+	DEFINE SPRITE 8,8,spr_ost_l
+	DEFINE SPRITE 16,8,spr_buz_r	' P_BUZ
+	DEFINE SPRITE 24,8,spr_buz_l
+	DEFINE SPRITE 32,2,spr_rider	' P_RIDER
+	DEFINE SPRITE 34,1,spr_egg	' P_EGG
+	DEFINE SPRITE 35,1,spr_egg_x	' P_EGGX
+	DEFINE SPRITE 36,2,spr_runner	' P_RUN
+	DEFINE SPRITE 38,1,spr_hand	' P_HAND
+	DEFINE SPRITE 39,1,spr_arm	' P_ARM
+	DEFINE SPRITE 40,4,spr_pt	' P_PT
 
 	' THE ISLANDS -- MEASURED FROM AN ARCADE SCREENSHOT, not invented. See
 	' assets/refmap.py, which classifies every pixel of a reference shot as rock
@@ -406,8 +464,7 @@ rd_get:
 	rdv = 48 + tdg
 	VPOKE #rda,rdv
 	#rdp = #rdp + 1
-	SOUND 0,500,9
-	sf0 = 3
+	sfn = SFX_DIGIT : GOSUB sfx_play
 	RETURN
 
 new_game:
@@ -540,8 +597,7 @@ surv_bonus:
 	sprok = 2
 	GOSUB hide_all
 	PRINT AT 358,"SURVIVAL BONUS 3000"
-	SOUND 1,200,12
-	sf1 = 40
+	sfn = SFX_SURV : GOSUB sfx_play
 	FOR sbi = 0 TO 120
 		WAIT
 		GOSUB sfx_tick
@@ -639,12 +695,25 @@ draw_field:
 	' ROWS 22-23 ONLY, below the base. It used to start at row 20 -- the base's own
 	' row -- and paint over it, so the floor you were standing on was drawn as
 	' lava. Collision read the island table and was right; only the picture lied.
+	' ROWS 22-23: THE BASE STANDS IN THE LAVA. Under the base's span (columns
+	' 5-25) its rock goes down to the bottom of the screen, sloping in at each
+	' end, and the score is cut into it; either side is the pit, flames on top.
 	FOR dfi = 0 TO 31
-		#dfa = 704 + dfi		' row 22, the lava surface
-		#dfa = #dfa + 6144
-		VPOKE #dfa,LAVAA
+		#dfa = 6848 + dfi		' row 22 = 704, plus the name table's 6144
+		dfc = LAVAA
+		IF dfi AND 1 THEN dfc = LAVAB
+		dfd = LAVAC
+		IF dfi >= 5 THEN
+			IF dfi <= 25 THEN
+				dfc = ROCKCH
+				IF dfi = 5 THEN dfc = ROCKL
+				IF dfi = 25 THEN dfc = ROCKR
+				dfd = dfc
+			END IF
+		END IF
+		VPOKE #dfa,dfc
 		#dfa = #dfa + 32
-		VPOKE #dfa,133
+		VPOKE #dfa,dfd
 	NEXT dfi
 	RETURN
 
@@ -665,8 +734,9 @@ draw_plat:
 	RETURN
 
 	' ---------------------------------------------------------------- HUD
+	' THE SCORE IS IN THE BASE, as in the arcade: row 22, columns 9-14, with the
+	' spare birds at columns 17-20. The top of the screen is all sky.
 prt_hud:
-	PRINT AT 0,"SCORE"
 	GOSUB prt_score
 	GOSUB prt_lives
 	RETURN
@@ -683,14 +753,13 @@ prt_score:
 		ELSE
 			#nxtb = #nxtb + 2000
 		END IF
-		SOUND 2,120,12
-		sf2 = 30
+		sfn = SFX_XLIFE : GOSUB sfx_play
 		GOSUB prt_lives
 	END IF
 	#psv = #score
 	#psd = 10000
 	psc = 6
-	#psa = 6144 + 6
+	#psa = 6857			' row 22 col 9: 704 + 9 + 6144
 prt_sloop:
 	IF psc = 1 THEN
 		psn = 0			' the appended tens digit
@@ -720,7 +789,7 @@ prt_lives:
 	' empties from the left (CLAUDE.md 7A). Tested as slot + spares > 3, never
 	' as slot >= 4 - spares: spares is unsigned and can exceed 4 with extra birds.
 	FOR pli = 0 TO 3
-		#pla = 6144 + 26
+		#pla = 6865			' row 22 col 17: 704 + 17 + 6144
 		#pla = #pla + pli
 		plc = BLANK
 		IF pli + plv > 3 THEN plc = LIFECH
@@ -755,6 +824,8 @@ main:
 	END IF
 	GOSUB draw
 	GOSUB sfx_tick
+	lavt = lavt + 1
+	IF lavt >= 5 THEN GOSUB lava_tick
 	sprok = 1			' publish this pass's sprites at the next vblank
 	IF mnl = 0 THEN GOSUB new_wave
 
@@ -784,9 +855,11 @@ p_input:
 
 	' FLAP IS EDGE TRIGGERED -- holding fire must not hover. The released state
 	' has to be seen before the next flap counts.
+	pflnow = 0
 	IF cont1.button THEN
 		IF pflp = 0 THEN
 			pflp = 1
+			pflnow = 1			' this pass's beat steers, below
 			IF trst = 2 THEN tresc = tresc + 1
 			' ADDITIVE, not a reset. Setting the velocity outright meant the
 			' FIRST flap was the whole climb -- full power from a standing
@@ -797,8 +870,7 @@ p_input:
 			#vy = #vy - 200
 			IF #vy < 32768 - 550 THEN #vy = 32768 - 550
 			pfa = 20			' one press, one beat of the wings
-			SOUND 0,700,12
-			sf0 = 6
+			sfn = SFX_FLAP : GOSUB sfx_play
 		END IF
 	ELSE
 		pflp = 0
@@ -816,29 +888,46 @@ p_input:
 	' In the troll's grip the steering does nothing. The flap above still counts --
 	' it is the only thing that does, and each one banks toward tearing free.
 	IF trst = 2 THEN RETURN
-	IF cont1.left THEN
-		pin = 1
-		pface = 1
-		IF #vx > 32768 - 550 THEN #vx = #vx - ACCX
+	' THE ARCADE'S CONTROLS. Momentum is KEPT: letting go of the stick does not
+	' slow the bird, on the ground or in the air -- it runs or glides on until you
+	' do something about it. On the ground the stick is the throttle, and pushing
+	' AGAINST the run is a skid, braking hard with the feet out, before the bird
+	' turns. In the air the stick only turns you round: speed comes from the wings,
+	' so a flap with the stick held is what pushes you that way.
+	pskd = 0
+	pdir = 0
+	IF cont1.left THEN pdir = 1
+	IF cont1.right THEN pdir = 2
+	IF pdir = 0 THEN RETURN
+	pin = 1
+	IF pgnd = 1 THEN
+		IF pdir = 2 THEN
+			IF #vx < 32768 - 40 THEN
+				pskd = 1		' running left, pushing right
+				#vx = #vx + 30
+			ELSE
+				pface = 0
+				IF #vx < 32768 + 550 THEN #vx = #vx + ACCX
+			END IF
+		ELSE
+			IF #vx > 32768 + 40 THEN
+				pskd = 1
+				#vx = #vx - 30
+			ELSE
+				pface = 1
+				IF #vx > 32768 - 550 THEN #vx = #vx - ACCX
+			END IF
+		END IF
+		RETURN
 	END IF
-	IF cont1.right THEN
-		pin = 1
-		pface = 0
-		IF #vx < 32768 + 550 THEN #vx = #vx + ACCX
-	END IF
-	IF pin = 0 THEN GOSUB p_fric
-	RETURN
-
-	' Decay toward the biased zero from whichever side we are on. Written as two
-	' one-sided tests because a signed subtraction here would wrap.
-p_fric:
-	IF #vx > 32768 THEN
-		#vx = #vx - FRIC
-		IF #vx < 32768 THEN #vx = 32768
-	ELSE
-		IF #vx < 32768 THEN
-			#vx = #vx + FRIC
-			IF #vx > 32768 THEN #vx = 32768
+	pface = pdir AND 1		' 1 left, 0 right
+	IF pflnow = 1 THEN
+		IF pdir = 2 THEN
+			#vx = #vx + 120
+			IF #vx > 32768 + 550 THEN #vx = 32768 + 550
+		ELSE
+			#vx = #vx - 120
+			IF #vx < 32768 - 550 THEN #vx = 32768 - 550
 		END IF
 	END IF
 	RETURN
@@ -879,18 +968,40 @@ p_move:
 
 	' Animation: frame follows vertical motion, not a timer.
 	' A flap in progress owns the frame; otherwise the pose follows the motion.
+	' pfrm is a pattern offset within one facing (F_* and the run beats 4-16).
 	IF pfa > 0 THEN
 		pfa = pfa - 1
-		pfrm = 2			' wings DOWN, the power stroke
-		IF pfa < 14 THEN pfrm = 1	' sweeping back up
-		IF pfa < 8 THEN pfrm = 0	' wings UP, recovered
+		pfrm = F_DOWN			' the power stroke
+		IF pfa < 10 THEN pfrm = F_UP	' recovered
 	ELSE
 		IF pgnd = 1 THEN
-			pfrm = 3
-			IF pin = 0 THEN pfrm = 1
+			IF pskd = 1 THEN
+				pfrm = F_SKID
+				IF tpar THEN GOSUB sfx_skid
+			ELSE
+				#pspd = #vx - 32768
+				IF #vx < 32768 THEN #pspd = 32768 - #vx
+				IF #pspd < 40 THEN
+					pfrm = F_STAND
+				ELSE
+					' FOUR BEATS, faster as the bird does: the legs are the
+					' speedometer. A footfall on the two striding beats.
+					prun = prun + 1
+					IF #pspd > 300 THEN prun = prun + 1
+					prb = prun / 4
+					prb = prb AND 3
+					prb = prb * 4
+					prb = prb + 4
+					IF prb <> pfrm THEN
+						IF prb = 4 THEN GOSUB sfx_step
+						IF prb = 12 THEN GOSUB sfx_step
+					END IF
+					pfrm = prb
+				END IF
+			END IF
 		ELSE
-			pfrm = 1
-			IF #vy < 32768 THEN pfrm = 0
+			pfrm = F_UP			' falling: wings raised
+			IF #vy < 32768 THEN pfrm = F_DOWN
 		END IF
 	END IF
 	RETURN
@@ -1056,8 +1167,7 @@ k_spawn:
 	END IF
 	kpend = kpend - 1
 	spwt = 52
-	SOUND 2,600,10
-	sf2 = 8
+	sfn = SFX_SPAWN : GOSUB sfx_play
 	RETURN
 
 	' A KNIGHT ON FOOT. He falls to the nearest surface and walks, and he is
@@ -1142,8 +1252,7 @@ rb_move:
 			kwan(rbt) = 0
 			rbon = 0
 			rbreq = 1
-			SOUND 1,420,11
-			sf1 = 8
+			sfn = SFX_RESCUE : GOSUB sfx_play
 		END IF
 	END IF
 	RETURN
@@ -1252,8 +1361,7 @@ p_side1:
 	' a moment MAKES the collision an event you can feel.
 	#vx = 65536 - #vx
 	pbnc = 24
-	SOUND 1,620,10
-	sf1 = 6
+	sfn = SFX_BUMP : GOSUB sfx_play
 	RETURN
 
 	' ----------------------------------------------------- knight movement
@@ -1276,7 +1384,9 @@ k_move:
 		IF kon(kni) > 0 THEN
 			GOSUB k_one
 		ELSE
-			SPRITE 1 + kni,SPRHID,0,0,0
+			dks = kni * 2
+	SPRITE dks + 2,SPRHID,0,0,0
+	SPRITE dks + 3,SPRHID,0,0,0
 		END IF
 	NEXT kni
 	RETURN
@@ -1365,16 +1475,28 @@ k_one_in:
 	' become -- red, grey or blue -- which is the only warning you get of what
 	' is about to be flying at you: a blue man on a ledge means a Shadow Lord in
 	' a moment.
+	' Two slots per knight: dks the rider, dks + 1 the mount (see the slot map).
+	dks = kni * 2
+	dks = dks + 2
 	IF con = 0 THEN
-		SPRITE 1 + kni,SPRHID,0,0,0
+		SPRITE dks,SPRHID,0,0,0
+		SPRITE dks + 1,SPRHID,0,0,0
 	ELSE
 		mnl = 1
 		dkc = tiercol(ctier)
 		IF con = KFOOT THEN
-			SPRITE 1 + kni,dky,dkx,36,dkc
+			SPRITE dks,SPRHID,0,0,0
+			dkp = cface / 8		' 0 or 4: the runner faces like the rider
+			dkp = dkp + P_RUN
+			SPRITE dks + 1,dky,dkx,dkp,dkc
 		ELSE
 			dkp = cface + cfrm	' both already pattern offsets
-			SPRITE 1 + kni,dky,dkx,dkp,dkc
+			dkp = dkp + P_BUZ
+			SPRITE dks + 1,dky,dkx,dkp,12
+			dkp = cface / 8
+			dkp = dkp + P_RIDER
+			dky = dky - 4
+			SPRITE dks,dky,dkx,dkp,dkc
 		END IF
 	END IF
 	' Written back: only what k_body can change. The frame and the facing are
@@ -1556,7 +1678,7 @@ k_body:
 		kdd = kmx - ctx
 		IF kdd < 128 THEN kgo = 1
 	END IF
-	cface = kgo * 16		' facing, as a pattern offset: 0 right, 16 left
+	cface = kgo * 32		' facing, as a pattern offset: 0 right, 32 left
 	IF kgo = 0 THEN
 		IF #cvx < #kfastt(ctier) THEN #cvx = #cvx + 9
 	ELSE
@@ -1601,6 +1723,7 @@ k_body:
 	' inside solid rock. Reverted.
 	kf = kmy + MH			' feet
 	kc = kmx + 8			' centre x
+	cgnd = 0			' k_isl sets it on landing
 	krt = 0
 	IF kth = kthf THEN
 		IF cty > kmy + 12 THEN krt = 1
@@ -1657,14 +1780,27 @@ k_body:
 		END IF
 	END IF
 
+	' The frame, as a pattern offset (F_* and the run beats 4-16), as the player.
 	IF cfa > 0 THEN
 		cfa = cfa - 1
-		cfrm = 8			' frame as a pattern offset: wings DOWN
-		IF cfa < 14 THEN cfrm = 4	' mid
-		IF cfa < 8 THEN cfrm = 0	' up
+		cfrm = F_DOWN
+		IF cfa < 10 THEN cfrm = F_UP
 	ELSE
-		cfrm = 4
-		IF #cvy < 32768 THEN cfrm = 0
+		IF cgnd = 1 THEN
+			cfrm = F_STAND
+			IF #cvx > 32768 + 60 THEN cgnd = 2
+			IF #cvx < 32768 - 60 THEN cgnd = 2
+			IF cgnd = 2 THEN
+				cfrm = tcnt + kni
+				cfrm = cfrm / 2
+				cfrm = cfrm AND 3
+				cfrm = cfrm * 4
+				cfrm = cfrm + 4
+			END IF
+		ELSE
+			cfrm = F_UP
+			IF #cvy < 32768 THEN cfrm = F_DOWN
+		END IF
 	END IF
 	RETURN
 
@@ -1745,6 +1881,7 @@ k_isl:
 							#cy = kpt - MH
 							#cy = #cy * 256
 							#cvy = 32768
+							cgnd = 1
 						END IF
 					END IF
 				END IF
@@ -1837,7 +1974,7 @@ e_move:
 		IF est(egi) > 0 THEN
 			GOSUB e_one
 		ELSE
-			SPRITE 7 + egi,SPRHID,0,0,0
+			SPRITE 14 + egi,SPRHID,0,0,0
 		END IF
 	NEXT egi
 	RETURN
@@ -1932,8 +2069,7 @@ e_body:
 		#gtm = #gtm - 1
 		IF #gtm = 180 THEN
 			gst = 3
-			SOUND 2,300,10
-			sf2 = 12
+			sfn = SFX_HATCH : GOSUB sfx_play
 		END IF
 		RETURN
 	END IF
@@ -2106,8 +2242,7 @@ c_knight:
 	' level lances: both bounce, nobody dies
 	#cvx = 65536 - #cvx
 	#vx = 65536 - #vx
-	SOUND 1,500,11
-	sf1 = 8
+	sfn = SFX_CLANK : GOSUB sfx_play
 	RETURN
 
 k_unhorse:
@@ -2115,8 +2250,7 @@ k_unhorse:
 	kus = 50 + ctier * 25		' 500 / 750, in tens
 	IF ctier = 2 THEN kus = 150	' Shadow Lord 1500
 	#score = #score + kus
-	SOUND 0,400,13
-	sf0 = 10
+	sfn = SFX_UNHORSE : GOSUB sfx_play
 	' Drop an egg carrying the knight's momentum.
 	kud = 0				' egg placed? -- a flag, never an early RETURN
 	FOR kuj = 0 TO NEGG - 1
@@ -2277,8 +2411,7 @@ egg_award:
 	ceg = ecoll
 	IF ceg > 4 THEN ceg = 4
 	#score = #score + ceg * 25
-	SOUND 1,250,13
-	sf1 = 10
+	sfn = SFX_EGGGET : GOSUB sfx_play
 	GOSUB prt_score
 	RETURN
 
@@ -2286,9 +2419,13 @@ egg_award:
 do_death:
 	sprok = 2			' this loop WAITs per frame: copy every frame
 	SPRITE 0,SPRHID,0,0,0
+	SPRITE 1,SPRHID,0,0,0
+	sf0 = 0				' the loop below owns channel 0
+	sfn = SFX_DIE : GOSUB sfx_play
 	FOR ddi = 0 TO 30
 		WAIT
 		SOUND 0,200 + ddi * 20,13
+		GOSUB sfx_tick
 	NEXT ddi
 	SOUND 0,800,0
 	wlost = 1			' no Survival bonus for this wave
@@ -2319,23 +2456,34 @@ draw:
 	' The player is sprite 0 on purpose: with flicker off the VDP drops the
 	' HIGHEST-numbered sprites on a crowded scanline, so slot 0 can never be the
 	' one that disappears.
-	drp = pface * 16
-	drp = drp + pfrm * 4
+	' THE PLAYER: a white-armoured rider on the yellow ostrich. pfrm is already a
+	' pattern offset within one facing; a facing is 8 frames, 32 patterns.
+	drp = pface * 32
+	drp = drp + pfrm
 	dry = #py / 256
 	drx = #px / 256
 	drc = 11
+	dkc = 15
 	IF binv > 0 THEN
-		drc = 1
-		IF binv AND 8 THEN drc = 11
+		IF binv AND 8 THEN
+			drc = 1
+			dkc = 1
+		END IF
 	END IF
-	SPRITE 0,dry,drx,drp,drc
+	dkp = pface * 4
+	dkp = dkp + P_RIDER
+	dky = dry - 4
+	SPRITE 0,dky,drx,dkp,dkc
+	SPRITE 1,dry,drx,drp,drc
 	' knights and eggs are drawn by k_one and e_one as they are moved
-	IF rbon = 1 THEN
-		rbp = rbf * 16
-		rbp = rbp + 4
-		SPRITE 11,rby,rbx,rbp,7
+	' THE RESCUE BIRD: a riderless buzzard, beating its wings as it comes.
+	IF rbon > 0 THEN
+		rbp = rbf * 32
+		rbp = rbp + P_BUZ + F_UP
+		IF tcnt AND 4 THEN rbp = rbp + 4
+		SPRITE 18,rby,rbx,rbp,12
 	ELSE
-		SPRITE 11,SPRHID,0,0,0
+		SPRITE 18,SPRHID,0,0,0
 	END IF
 	RETURN
 
@@ -2346,19 +2494,23 @@ k_draw:
 	dkx = #cx / 256
 	dkc = 0
 	IF cmat AND 4 THEN dkc = 15
-	SPRITE 1 + kni,dky,dkx,4,dkc
+	dks = kni * 2
+	dks = dks + 2
+	SPRITE dks + 1,dky,dkx,P_BUZ,dkc
+	dky = dky - 4
+	SPRITE dks,dky,dkx,P_RIDER,dkc
 	RETURN
 
 	' THE CURRENT EGG, from e_one's scalars.
 e_draw:
 	IF gst = 0 THEN
-		SPRITE 7 + egi,SPRHID,0,0,0
+		SPRITE 14 + egi,SPRHID,0,0,0
 		RETURN
 	END IF
 	dey = #gy / 256
 	dex = #gx / 256
 	dec = 15
-	dep = 32
+	dep = P_EGG
 	' NOT YET COLLECTABLE -> drawn GREY rather than white. The grace period was
 	' invisible, so an egg you touched and did not get looked like a missed
 	' collision or a dropped input rather than a rule.
@@ -2368,14 +2520,14 @@ e_draw:
 	IF gst = 3 THEN
 		' CRACKED, and flashing. The pattern change is the real warning; the
 		' flash only draws the eye to it.
-		dep = 40
+		dep = P_EGGX
 		IF #gtm AND 8 THEN dec = 9
 	END IF
-	SPRITE 7 + egi,dey,dex,dep,dec
+	SPRITE 14 + egi,dey,dex,dep,dec
 	RETURN
 
 hide_all:
-	FOR hai = 0 TO 14
+	FOR hai = 0 TO 21
 		SPRITE hai,SPRHID,0,0,0
 	NEXT hai
 	RETURN
@@ -2387,8 +2539,8 @@ hide_all:
 	' with the wave, which is what turns the pits from scenery into territory.
 troll:
 	IF wave < 3 THEN
-		SPRITE 12,SPRHID,0,0,0
-		SPRITE 14,SPRHID,0,0,0
+		SPRITE 19,SPRHID,0,0,0
+		SPRITE 20,SPRHID,0,0,0
 		RETURN
 	END IF
 	trw = agg
@@ -2407,12 +2559,11 @@ troll:
 				trst = 1
 				trx = tpx
 				trhy = 184
-				SOUND 2,900,11
-				sf2 = 12
+				sfn = SFX_GRAB : GOSUB sfx_play
 			END IF
 		END IF
-		SPRITE 12,SPRHID,0,0,0
-		SPRITE 14,SPRHID,0,0,0
+		SPRITE 19,SPRHID,0,0,0
+		SPRITE 20,SPRHID,0,0,0
 		RETURN
 	END IF
 
@@ -2465,8 +2616,7 @@ troll:
 	IF tresc >= trneed THEN
 		trst = 0
 		#vy = 32768 - 600		' torn free, and thrown clear
-		SOUND 1,300,13
-		sf1 = 12
+		sfn = SFX_ESCAPE : GOSUB sfx_play
 		RETURN
 	END IF
 	IF tpy + 16 >= 190 THEN
@@ -2481,7 +2631,7 @@ troll:
 	' 14 px below the fist, so the two move as one limb and the reach stays
 	' visually anchored to the pit it comes from.
 tr_draw:
-	SPRITE 12,trhy,trx,44,9
+	SPRITE 19,trhy,trx,P_HAND,9
 	' The arm is ITS OWN sprite -- an angled forearm, not a second fist. Two hands
 	' stacked read as two trolls, which is the opposite of the one long limb the
 	' effect needs.
@@ -2492,9 +2642,9 @@ tr_draw:
 	' between them and is hidden when the hand is close enough not to need it.
 	tay = 176
 	IF trhy > 162 THEN
-		SPRITE 14,SPRHID,0,0,0
+		SPRITE 20,SPRHID,0,0,0
 	ELSE
-		SPRITE 14,tay,trx,56,6
+		SPRITE 20,tay,trx,P_ARM,6
 	END IF
 	RETURN
 
@@ -2519,11 +2669,10 @@ ptero:
 					ptf = 1
 				END IF
 				ptmo = 0
-				SOUND 2,200,12
-				sf2 = 20
+				sfn = SFX_PTERO : GOSUB sfx_play
 			END IF
 		END IF
-		SPRITE 13,SPRHID,0,0,0
+		SPRITE 21,SPRHID,0,0,0
 		RETURN
 	END IF
 
@@ -2541,9 +2690,12 @@ ptero:
 	IF pty < pgy THEN pty = pty + 1
 	IF pty > pgy THEN pty = pty - 1
 
-	ptp = 48
-	IF ptmo < 24 THEN ptp = 52	' mouth open on the low part of the cycle
-	SPRITE 13,pty,ptx,ptp,10
+	ptp = ptf * 8			' facing: 0 right, 8 left
+	ptp = ptp + P_PT
+	ptop = 0
+	IF ptmo < 24 THEN ptop = 1	' mouth open on the low part of the cycle
+	IF ptop = 1 THEN ptp = ptp + 4
+	SPRITE 21,pty,ptx,ptp,13
 
 	IF pdead > 0 THEN RETURN
 	ptdx = pgx - ptx
@@ -2554,7 +2706,7 @@ ptero:
 	IF ptdy > 11 THEN RETURN
 
 	' THE ONLY WAY TO KILL IT: mouth open, lances level, and you facing it.
-	IF ptp = 52 THEN
+	IF ptop = 1 THEN
 		IF ptdy < 5 THEN
 			ptc = 0
 			IF pface = 0 THEN
@@ -2565,10 +2717,9 @@ ptero:
 			IF ptc = 1 THEN
 				ptst = 0
 				#score = #score + 100
-				SOUND 0,180,13
-				sf0 = 24
+				sfn = SFX_PTKILL : GOSUB sfx_play
 				GOSUB prt_score
-				SPRITE 13,SPRHID,0,0,0
+				SPRITE 21,SPRHID,0,0,0
 				RETURN
 			END IF
 		END IF
@@ -2576,25 +2727,149 @@ ptero:
 	IF binv = 0 THEN pdead = 1
 	RETURN
 
-	' ------------------------------------------------------------ sound tick
-	' EVERY latched channel needs an explicit note-off or the tone sustains for
-	' ever. Ticked after every WAIT, including inside the death animation.
-sfx_tick:
-	IF sf0 > 0 THEN
-		sf0 = sf0 - 1
-		IF sf0 = 0 THEN SOUND 0,800,0
+	' THE PIT BURNS. Two flame characters, out of step, re-uploaded from four
+	' frames: 16 bytes of pattern instead of rewriting every lava cell.
+lava_tick:
+	lavt = 0
+	lavf = lavf + 1
+	lavf = lavf AND 3
+	IF lavf = 0 THEN
+		DEFINE CHAR LAVAA,1,flame0
+		DEFINE CHAR LAVAB,1,flame2
 	END IF
-	IF sf1 > 0 THEN
-		sf1 = sf1 - 1
-		IF sf1 = 0 THEN SOUND 1,800,0
+	IF lavf = 1 THEN
+		DEFINE CHAR LAVAA,1,flame1
+		DEFINE CHAR LAVAB,1,flame3
 	END IF
-	IF sf2 > 0 THEN
-		sf2 = sf2 - 1
-		IF sf2 = 0 THEN SOUND 2,800,0
+	IF lavf = 2 THEN
+		DEFINE CHAR LAVAA,1,flame2
+		DEFINE CHAR LAVAB,1,flame0
+	END IF
+	IF lavf = 3 THEN
+		DEFINE CHAR LAVAA,1,flame3
+		DEFINE CHAR LAVAB,1,flame1
 	END IF
 	RETURN
 
+sfx_step:
+	sfn = SFX_STEP
+	GOTO sfx_play
+sfx_skid:
+	sfn = SFX_SKID
+	GOTO sfx_play
+
+	' ------------------------------------------------------------ sound effects
+	' EVERY EFFECT IS A ROW OF #sfxt (bank 1 on the TI): channel, start divisor,
+	' per-pass change, volume, passes, volume drop per pass, and the effect to
+	' start alongside it. A sweep is what makes these read as the arcade's
+	' chirps, clanks and dives instead of beeps: the egg pickup climbs, a
+	' defeated knight's note falls away, the flap is a burst of noise. The
+	' divisor is SMALLER for a HIGHER note, so a rising chirp has a negative
+	' step (stored as 65536 - n; the add wraps). Channel 3 is noise and its
+	' "divisor" is the noise type. Every one is stopped by sfx_tick.
+sfx_play:
+	#sfi = sfn * 7
+sfx_row:					' a label here: the TI must not read #sfi back from r0
+	sfc = #sfxt(#sfi)
+	#sfp = #sfxt(#sfi + 1)
+	#sfd = #sfxt(#sfi + 2)
+	sfv = #sfxt(#sfi + 3)
+	sft = #sfxt(#sfi + 4)
+	sfk = #sfxt(#sfi + 5)
+	sfn = #sfxt(#sfi + 6)
+	IF sfc = 0 THEN
+		#sq0 = #sfp : #sw0 = #sfd : sv0 = sfv : sf0 = sft : sk0 = sfk
+		SOUND 0,#sq0,sv0
+	ELSEIF sfc = 1 THEN
+		#sq1 = #sfp : #sw1 = #sfd : sv1 = sfv : sf1 = sft : sk1 = sfk
+		SOUND 1,#sq1,sv1
+	ELSEIF sfc = 2 THEN
+		#sq2 = #sfp : #sw2 = #sfd : sv2 = sfv : sf2 = sft : sk2 = sfk
+		SOUND 2,#sq2,sv2
+	ELSE
+		snz = #sfp : sv3 = sfv : sf3 = sft : sk3 = sfk
+		SOUND 3,snz,sv3
+	END IF
+	IF sfn > 0 THEN GOTO sfx_play
+	RETURN
+
+	' ------------------------------------------------------------ sound tick
+	' EVERY latched channel needs an explicit note-off or the tone sustains for
+	' ever. Ticked once a pass, and after every WAIT in the loops that stop the
+	' game (death, banners).
+sfx_tick:
+	IF sf0 > 0 THEN
+		sf0 = sf0 - 1
+		IF sf0 = 0 THEN
+			SOUND 0,800,0
+		ELSE
+			#sq0 = #sq0 + #sw0
+			IF sv0 > sk0 THEN sv0 = sv0 - sk0
+			SOUND 0,#sq0,sv0
+		END IF
+	END IF
+	IF sf1 > 0 THEN
+		sf1 = sf1 - 1
+		IF sf1 = 0 THEN
+			SOUND 1,800,0
+		ELSE
+			#sq1 = #sq1 + #sw1
+			IF sv1 > sk1 THEN sv1 = sv1 - sk1
+			SOUND 1,#sq1,sv1
+		END IF
+	END IF
+	IF sf2 > 0 THEN
+		sf2 = sf2 - 1
+		IF sf2 = 0 THEN
+			SOUND 2,800,0
+		ELSE
+			#sq2 = #sq2 + #sw2
+			IF sv2 > sk2 THEN sv2 = sv2 - sk2
+			SOUND 2,#sq2,sv2
+		END IF
+	END IF
+	IF sf3 > 0 THEN
+		sf3 = sf3 - 1
+		IF sf3 = 0 THEN
+			SOUND 3,4,0
+		ELSE
+			IF sv3 > sk3 THEN sv3 = sv3 - sk3
+			SOUND 3,,sv3		' volume only: rewriting the type restarts the noise
+		END IF
+	END IF
+	RETURN
+
+	' -------------------------------------------- DATA: bank 1 on the TI
+#if TI994A
+	BANK 1
+#endif
 	INCLUDE "art.bas"
+
+	' Sound effect rows -- see sfx_play: channel, divisor, step, volume,
+	' passes, volume drop, chained effect.
+#sfxt:
+	DATA 0,0,0,0,0,0,0
+	DATA 3,6,0,13,3,4,0
+	DATA 3,5,0,7,1,0,0
+	DATA 0,70,3,9,3,2,0
+	DATA 1,45,2,13,5,2,5
+	DATA 3,4,0,14,3,4,0
+	DATA 0,180,30,14,10,1,5
+	DATA 1,340,65506,13,9,1,0
+	DATA 2,500,65491,9,9,0,0
+	DATA 1,150,20,11,8,1,0
+	DATA 1,600,60,11,4,2,0
+	DATA 3,5,0,12,2,4,12
+	DATA 2,250,65516,10,6,1,0
+	DATA 2,850,10,13,12,0,0
+	DATA 1,500,65496,13,10,1,0
+	DATA 2,70,3,13,20,0,0
+	DATA 0,60,35,15,24,0,5
+	DATA 2,400,65524,12,30,0,0
+	DATA 1,200,65532,12,40,0,0
+	DATA 0,500,0,9,3,0,0
+	DATA 3,6,0,15,8,2,0
+
 	INCLUDE "font.bas"
 
 	' Character colours, EIGHT BYTES PER CHARACTER (one per scan line) -- supply
@@ -2613,15 +2888,3 @@ teg_row:
 tiercol:
 	DATA BYTE 8,14,5,0
 
-col_chars:
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' platform left, grey on black
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' platform middle
-	DATA BYTE $E1,$E1,$E1,$E1,$E1,$E1,$E1,$E1	' platform right
-	DATA BYTE $A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8	' lava surface a, yellow on red
-	DATA BYTE $A8,$A8,$A8,$A8,$A8,$A8,$A8,$A8	' lava surface b
-	DATA BYTE $88,$88,$88,$88,$88,$88,$88,$88	' lava body, solid red
-	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1	' spare-life icon
-	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' spawn pad, CYAN -- it has to
-						' read as a pad against grey rock
-	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81	' troll arm, red -- it is lava
-	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' egg on a ledge, white

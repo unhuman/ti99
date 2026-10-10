@@ -7,41 +7,151 @@
 	' Every block is an EVEN number of bytes -- an odd DATA BYTE run misaligns every
 	' word table after it (TRUNCATION.md 1d).
 
-spr_mount_r:	' ostrich/buzzard facing RIGHT: up, mid, down, skid
-	DATA BYTE $01,$03,$03,$01,$07,$0D,$19,$31
-	DATA BYTE $61,$01,$07,$0F,$06,$0C,$18,$30
-	DATA BYTE $80,$C0,$C0,$80,$E0,$F0,$FC,$FE
-	DATA BYTE $F8,$F0,$F0,$E0,$C0,$60,$30,$18
-	DATA BYTE $01,$03,$03,$01,$07,$0F,$1F,$3F
-	DATA BYTE $7F,$3F,$0F,$07,$06,$0C,$18,$30
-	DATA BYTE $80,$C0,$C0,$80,$E0,$F0,$FC,$FE
-	DATA BYTE $F8,$F0,$E0,$C0,$C0,$60,$30,$18
-	DATA BYTE $01,$03,$03,$01,$07,$07,$0F,$1F
-	DATA BYTE $3F,$67,$0F,$07,$06,$0C,$18,$30
-	DATA BYTE $80,$C0,$C0,$80,$E0,$F0,$FC,$FE
-	DATA BYTE $F8,$F0,$E0,$C0,$C0,$60,$30,$18
-	DATA BYTE $01,$03,$03,$01,$07,$0F,$1F,$3F
-	DATA BYTE $7F,$3F,$0F,$07,$0E,$18,$38,$00
-	DATA BYTE $80,$C0,$C0,$80,$E0,$F0,$FC,$FE
-	DATA BYTE $F8,$F0,$E0,$C0,$70,$18,$1C,$00
+spr_ost_r:	' the player's OSTRICH facing RIGHT: stand, run1, run2, run3, run4, skid, up, down
+	DATA BYTE $00,$00,$00,$00,$00,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$0F,$04,$04,$04,$04,$0C
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$80,$80,$80,$80,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$0F,$06,$08,$10,$20,$60
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$80,$40,$20,$10,$0C
+	DATA BYTE $00,$00,$00,$00,$00,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$0F,$05,$04,$04,$04,$0C
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$C0,$20,$40,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$0F,$05,$04,$08,$10,$30
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$00,$80,$80,$80,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$0F,$0E,$10,$20,$00,$00
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$80,$80,$80,$80,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$0F,$02,$01,$00,$00,$00
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$80,$40,$A0,$50,$7C
+	DATA BYTE $E0,$70,$60,$20,$30,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$0F,$0F,$18,$00,$00,$00
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$80,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$30,$7F,$FF
+	DATA BYTE $7F,$3F,$1F,$0F,$1F,$03,$00,$00
+	DATA BYTE $00,$00,$18,$3E,$30,$30,$60,$E0
+	DATA BYTE $E0,$C0,$80,$80,$00,$00,$00,$00
 
-spr_mount_l:	' the same four, facing LEFT
-	DATA BYTE $01,$03,$03,$01,$07,$0F,$3F,$7F
-	DATA BYTE $1F,$0F,$0F,$07,$03,$06,$0C,$18
-	DATA BYTE $80,$C0,$C0,$80,$E0,$B0,$98,$8C
-	DATA BYTE $86,$80,$E0,$F0,$60,$30,$18,$0C
-	DATA BYTE $01,$03,$03,$01,$07,$0F,$3F,$7F
-	DATA BYTE $1F,$0F,$07,$03,$03,$06,$0C,$18
-	DATA BYTE $80,$C0,$C0,$80,$E0,$F0,$F8,$FC
-	DATA BYTE $FE,$FC,$F0,$E0,$60,$30,$18,$0C
-	DATA BYTE $01,$03,$03,$01,$07,$0F,$3F,$7F
-	DATA BYTE $1F,$0F,$07,$03,$03,$06,$0C,$18
-	DATA BYTE $80,$C0,$C0,$80,$E0,$E0,$F0,$F8
-	DATA BYTE $FC,$E6,$F0,$E0,$60,$30,$18,$0C
-	DATA BYTE $01,$03,$03,$01,$07,$0F,$3F,$7F
-	DATA BYTE $1F,$0F,$07,$03,$0E,$18,$38,$00
-	DATA BYTE $80,$C0,$C0,$80,$E0,$F0,$F8,$FC
-	DATA BYTE $FE,$FC,$F0,$E0,$70,$18,$1C,$00
+spr_ost_l:	' the player's OSTRICH facing LEFT: stand, run1, run2, run3, run4, skid, up, down
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$01,$01,$01,$01,$03
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F0,$20,$20,$20,$20,$30
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$01,$02,$04,$08,$30
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F0,$60,$10,$08,$04,$06
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$03,$04,$02,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F0,$A0,$20,$20,$20,$30
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$00,$01,$01,$01,$03
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F0,$A0,$20,$10,$08,$0C
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$01,$01,$01,$01,$03
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F0,$70,$08,$04,$00,$00
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$01,$02,$05,$0A,$3E
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F0,$40,$80,$00,$00,$00
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$01,$00,$00,$00,$00
+	DATA BYTE $07,$0E,$06,$04,$0C,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F0,$F0,$18,$00,$00,$00
+	DATA BYTE $00,$00,$18,$7C,$0C,$0C,$06,$07
+	DATA BYTE $07,$03,$01,$01,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$FE,$FF
+	DATA BYTE $FE,$FC,$F8,$F0,$F8,$C0,$00,$00
+
+spr_buz_r:	' the knights' BUZZARD facing RIGHT: stand, run1, run2, run3, run4, skid, up, down
+	DATA BYTE $00,$00,$00,$00,$00,$20,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$06,$04,$04,$04,$0E
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$C0,$40,$40,$40,$E0
+	DATA BYTE $00,$00,$00,$00,$00,$20,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$07,$0C,$10,$20,$70
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$80,$40,$20,$10,$1C
+	DATA BYTE $00,$00,$00,$00,$00,$20,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$07,$04,$04,$04,$0E
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$C0,$20,$60,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$20,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$07,$04,$08,$10,$38
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$00,$80,$80,$80,$E0
+	DATA BYTE $00,$00,$00,$00,$00,$20,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$0F,$10,$30,$00,$01
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$80,$80,$80,$80,$C0
+	DATA BYTE $00,$00,$00,$00,$00,$20,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$03,$01,$00,$00,$00
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$80,$40,$A0,$50,$7C
+	DATA BYTE $70,$70,$60,$20,$30,$30,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$0F,$1C,$00,$00,$00
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$C0,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$20,$71,$FF
+	DATA BYTE $7F,$3F,$1F,$0F,$1F,$03,$00,$00
+	DATA BYTE $00,$00,$38,$7E,$72,$70,$E0,$E0
+	DATA BYTE $E0,$E0,$C0,$C0,$C0,$80,$00,$00
+
+spr_buz_l:	' the knights' BUZZARD facing LEFT: stand, run1, run2, run3, run4, skid, up, down
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$03,$02,$02,$02,$07
+	DATA BYTE $00,$00,$00,$00,$00,$04,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$60,$20,$20,$20,$70
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$01,$02,$04,$08,$38
+	DATA BYTE $00,$00,$00,$00,$00,$04,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$E0,$30,$08,$04,$0E
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$03,$04,$06,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$04,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$E0,$20,$20,$20,$70
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$00,$01,$01,$01,$07
+	DATA BYTE $00,$00,$00,$00,$00,$04,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$E0,$20,$10,$08,$1C
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$01,$01,$01,$01,$03
+	DATA BYTE $00,$00,$00,$00,$00,$04,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$F0,$08,$0C,$00,$80
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$01,$02,$05,$0A,$3E
+	DATA BYTE $00,$00,$00,$00,$00,$04,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$C0,$80,$00,$00,$00
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$03,$00,$00,$00,$00
+	DATA BYTE $0E,$0E,$06,$04,$0C,$0C,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$F0,$38,$00,$00,$00
+	DATA BYTE $00,$00,$1C,$7E,$4E,$0E,$07,$07
+	DATA BYTE $07,$07,$03,$03,$03,$01,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$04,$8E,$FF
+	DATA BYTE $FE,$FC,$F8,$F0,$F8,$C0,$00,$00
+
+spr_rider:	' the rider, facing right then left -- drawn 4 px above his mount
+	DATA BYTE $00,$00,$06,$0F,$0F,$0F,$1F,$1E
+	DATA BYTE $0E,$0C,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$FF,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$60,$F0,$F0,$F0,$F8,$78
+	DATA BYTE $70,$30,$00,$00,$00,$00,$00,$00
 
 spr_egg:	' egg
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$07
@@ -49,17 +159,21 @@ spr_egg:	' egg
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$80
 	DATA BYTE $C0,$C0,$C0,$E0,$E0,$C0,$C0,$80
 
-spr_runner:	' unhorsed knight, on foot
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $10,$10,$11,$13,$11,$11,$13,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
-	DATA BYTE $C0,$C0,$E0,$F0,$E0,$20,$30,$00
-
 spr_egg_x:	' egg, cracked -- about to hatch
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$07
 	DATA BYTE $0D,$0B,$0E,$1D,$1B,$0F,$0D,$07
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$80
 	DATA BYTE $C0,$C0,$C0,$F0,$F0,$60,$C0,$80
+
+spr_runner:	' unhorsed knight, on foot, facing right then left
+	DATA BYTE $00,$00,$00,$00,$00,$00,$02,$02
+	DATA BYTE $02,$02,$03,$02,$02,$02,$02,$02
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$60
+	DATA BYTE $F0,$F0,$F0,$F0,$F0,$90,$90,$D8
+	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$06
+	DATA BYTE $0F,$0F,$0F,$0F,$0F,$09,$09,$1B
+	DATA BYTE $00,$00,$00,$00,$00,$00,$40,$40
+	DATA BYTE $40,$40,$C0,$40,$40,$40,$40,$40
 
 spr_hand:	' the lava troll's hand
 	DATA BYTE $00,$00,$63,$63,$67,$77,$7F,$7F
@@ -67,51 +181,89 @@ spr_hand:	' the lava troll's hand
 	DATA BYTE $00,$00,$18,$18,$38,$38,$F8,$F8
 	DATA BYTE $F8,$F0,$F0,$E0,$C0,$C0,$80,$80
 
-spr_pt_s:	' pterodactyl, mouth SHUT -- invulnerable
-	DATA BYTE $00,$0C,$1E,$3F,$7F,$FF,$7F,$3F
-	DATA BYTE $1F,$0F,$07,$03,$01,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$80,$C0,$F0,$FC
-	DATA BYTE $FF,$F8,$E0,$C0,$80,$00,$00,$00
-
-spr_pt_o:	' pterodactyl, mouth OPEN -- the only target
-	DATA BYTE $00,$0C,$1E,$3F,$7F,$FF,$7F,$3F
-	DATA BYTE $1F,$0F,$07,$02,$07,$0F,$1F,$00
-	DATA BYTE $00,$00,$00,$00,$80,$C0,$F0,$FC
-	DATA BYTE $FF,$80,$00,$00,$00,$80,$FF,$00
-
 spr_arm:	' the troll's forearm -- angled, not a second hand
 	DATA BYTE $03,$07,$07,$0F,$0F,$1F,$1E,$3E
 	DATA BYTE $3C,$7C,$78,$F8,$F0,$E0,$00,$00
 	DATA BYTE $C0,$C0,$80,$80,$00,$00,$00,$00
 	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
 
+spr_pt:	' pterodactyl: shut, OPEN facing right; shut, OPEN facing left
+	DATA BYTE $00,$00,$80,$C0,$70,$3C,$1F,$FF
+	DATA BYTE $7F,$0F,$0C,$18,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$1F,$F8
+	DATA BYTE $F0,$C0,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$1F,$FF
+	DATA BYTE $7F,$3F,$7B,$E6,$C0,$80,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$0C,$1F,$F0
+	DATA BYTE $F7,$CC,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$30,$F8,$1F
+	DATA BYTE $0F,$03,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$01,$03,$0E,$3C,$F8,$FF
+	DATA BYTE $FE,$F0,$30,$18,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$30,$F8,$0F
+	DATA BYTE $EF,$33,$00,$00,$00,$00,$00,$00
+	DATA BYTE $00,$00,$00,$00,$00,$00,$F8,$FF
+	DATA BYTE $FE,$FC,$DE,$67,$03,$01,$00,$00
+
 chr_plat_l:	' plat_l
-	DATA BYTE $7F,$FF,$C0,$C0,$C0,$C0,$40,$00
+	DATA BYTE $3F,$7F,$DD,$F7,$6F,$3B,$16,$04
 
 chr_plat_m:	' plat_m
-	DATA BYTE $FF,$FF,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$DD,$B7,$FB,$BE,$6A,$22
 
 chr_plat_r:	' plat_r
-	DATA BYTE $FE,$FF,$03,$03,$03,$03,$02,$00
+	DATA BYTE $FC,$FE,$BB,$EF,$F6,$DC,$68,$20
 
 chr_lava_a:	' lava_a
-	DATA BYTE $99,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $10,$32,$36,$7E,$FF,$FF,$FF,$FF
 
 chr_lava_b:	' lava_b
-	DATA BYTE $66,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $02,$46,$66,$F7,$FF,$FF,$FF,$FF
 
 chr_lava_c:	' lava_c
-	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+	DATA BYTE $FF,$DF,$FB,$FF,$BF,$F7,$FF,$FE
 
 chr_life:	' life
 	DATA BYTE $30,$78,$78,$30,$7C,$FE,$36,$63
 
 chr_pad:	' pad
-	DATA BYTE $FF,$FF,$DB,$81,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$DD,$B7,$FB,$BE,$6A,$22
 
-chr_arm:	' arm
-	DATA BYTE $3C,$3C,$7E,$7E,$7E,$7E,$3C,$3C
+chr_rock:	' rock
+	DATA BYTE $DF,$FB,$BF,$F7,$FE,$7F,$EF,$FD
 
 chr_egg:	' egg
 	DATA BYTE $3C,$7E,$7E,$FF,$FF,$7E,$7E,$3C
+
+chr_rock_l:	' rock_l
+	DATA BYTE $FF,$7D,$7F,$37,$3F,$1E,$1F,$0B
+
+chr_rock_r:	' rock_r
+	DATA BYTE $FF,$BE,$FE,$EC,$FC,$78,$F8,$D0
+
+col_chars:	' their colours, 8 bytes each, same order
+	DATA BYTE $B1,$A1,$A6,$86,$86,$61,$61,$61
+	DATA BYTE $B1,$A1,$A6,$86,$86,$61,$61,$61
+	DATA BYTE $B1,$A1,$A6,$86,$86,$61,$61,$61
+	DATA BYTE $B1,$B1,$A1,$A1,$8A,$8A,$86,$68
+	DATA BYTE $B1,$B1,$A1,$A1,$8A,$8A,$86,$68
+	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
+	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
+	DATA BYTE $F1,$71,$A6,$86,$86,$61,$61,$61
+	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
+	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
+	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
+
+flame0:	' lava flame, frame 0
+	DATA BYTE $10,$32,$36,$7E,$FF,$FF,$FF,$FF
+
+flame1:	' lava flame, frame 1
+	DATA BYTE $20,$24,$76,$7E,$FF,$FF,$FF,$FF
+
+flame2:	' lava flame, frame 2
+	DATA BYTE $00,$42,$67,$F7,$FF,$FF,$FF,$FF
+
+flame3:	' lava flame, frame 3
+	DATA BYTE $04,$44,$4E,$EE,$FF,$FF,$FF,$FF
 
