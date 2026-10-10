@@ -112,3 +112,6 @@ chr_pad:	' pad
 chr_arm:	' arm
 	DATA BYTE $3C,$3C,$7E,$7E,$7E,$7E,$3C,$3C
 
+chr_egg:	' egg
+	DATA BYTE $3C,$7E,$7E,$FF,$FF,$7E,$7E,$3C
+

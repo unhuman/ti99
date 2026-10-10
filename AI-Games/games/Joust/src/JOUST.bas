@@ -44,6 +44,8 @@
 	CONST LIFECH = 134
 	CONST PADCH = 135
 	CONST ARMCH = 136
+	CONST EGGCH = 137		' an egg waiting on a ledge (Egg waves)
+	CONST NTEG = 12			' Egg wave: eggs on the ledges, DIM 0..11
 	CONST NPAD = 5			' pads, DIM 0..4 -- one is on the BASE
 	CONST KDEAD = 0
 	CONST KLIVE = 1
@@ -156,6 +158,12 @@
 	DIM #kfastt(3)
 	DIM #kslowt(3)
 
+	' THE EGG WAVE'S TWELVE EGGS wait on the ledges as CHARACTERS (EGGCH), at the
+	' fixed spots in teg_col/teg_row. There are only four egg sprites, so an egg becomes
+	' a sprite only when it starts to hatch (teg_tick); until then it costs one
+	' byte here and nothing on any scanline.
+	DIM tegon(NTEG)			' 1 still waiting on its ledge
+
 	stwv = 1			' 838 on the title overrides this
 	GOSUB setup
 	GOTO title_screen
@@ -180,8 +188,8 @@ setup:
 	' Colours are left alone: a DEFINE COLOR run this long would cost another 472
 	' bytes to say "white" 59 times.
 	DEFINE CHAR 32,59,font_bits
-	DEFINE CHAR PLATL,9,chr_plat_l
-	DEFINE COLOR PLATL,9,col_chars
+	DEFINE CHAR PLATL,10,chr_plat_l
+	DEFINE COLOR PLATL,10,col_chars
 	DEFINE SPRITE 0,4,spr_mount_r	' patterns 0,4,8,12  -- facing right
 	DEFINE SPRITE 4,4,spr_mount_l	' patterns 16,20,24,28 -- facing left
 	DEFINE SPRITE 8,1,spr_egg	' pattern 32
@@ -408,16 +416,40 @@ new_game:
 					' Joust is a multiple of 50, so this is exact
 					' and 16 bits then reaches 655,350.
 	lives = 3
+	#nxtb = 2000			' next extra bird: 20,000, in tens
 	' 838 sets stwv; new_wave increments, so start one below it.
 	wave = stwv - 1
 	pover = 0
+	wsurv = 0			' no wave has been played, so none is owed a bonus
 	GOSUB new_wave
 	GOTO main
 
 	' ------------------------------------------------------------- new wave
 new_wave:
+	' THE SURVIVAL BONUS for the wave just finished: 3000 if it was a Survival
+	' wave and no bird was lost in it. Paid here, between waves, with the screen
+	' still showing the arena it was earned in.
+	' A bird lost on the very pass the wave ended has not been counted yet
+	' (do_death runs after this), hence pdead as well as wlost.
+	IF wsurv = 1 THEN
+		IF wlost = 0 THEN
+			IF pdead = 0 THEN GOSUB surv_bonus
+		END IF
+	END IF
 	wave = wave + 1
 	ecoll = 0			' eggs collected this wave -> award ladder
+	wlost = 0
+	' WAVE TYPE. Egg waves are 5, 10, 15...; Survival waves are 2 and then every
+	' 5th from 10, so from wave 10 on the two coincide (DESIGN.md 9).
+	wm5 = wave
+	WHILE wm5 >= 5
+		wm5 = wm5 - 5
+	WEND
+	wegg = 0
+	IF wm5 = 0 THEN wegg = 1
+	wsurv = wegg
+	IF wave < 10 THEN wsurv = 0
+	IF wave = 2 THEN wsurv = 1
 	#wvt = 0			' frames elapsed in this wave (pterodactyl clock)
 	trst = 0
 	ptst = 0
@@ -439,6 +471,7 @@ new_wave:
 	' the spawns, a low count reads as the game waiting rather than starting.
 	nwk = 3 + wave
 	IF nwk > NKN THEN nwk = NKN
+	IF wegg = 1 THEN nwk = 0	' Egg wave: the eggs ARE the knights
 	kpend = nwk			' still to materialise this wave
 	spwt = 80			' passes until the next one may appear
 	FOR nwi = 0 TO NPAD - 1
@@ -469,7 +502,59 @@ new_wave:
 	FOR nwi = 0 TO NEGG - 1
 		est(nwi) = 0
 	NEXT nwi
+	' THE EGG WAVE'S EGGS, on the ledges. Every island is back on an Egg wave
+	' (set_isl_on), so every spot in the table has rock under it.
+	tegn = 0
+	FOR nwi = 0 TO NTEG - 1
+		tegon(nwi) = wegg
+		IF wegg = 1 THEN
+			tegi = nwi
+			tegc = EGGCH
+			GOSUB teg_put
+			tegn = tegn + 1
+		END IF
+	NEXT nwi
+	tegi = 0
+	tegt = 150			' five seconds before the first one stirs
 	GOSUB prt_hud
+	' THE WAVE BANNER, two rows of open sky in the middle of the arena. It is
+	' background, so the knights fly over it; main clears it after 3 seconds.
+	PRINT AT 332,"WAVE ",wave
+	IF wegg = 1 THEN
+		IF wsurv = 1 THEN
+			PRINT AT 360,"EGG AND SURVIVAL"
+		ELSE
+			PRINT AT 364,"EGG WAVE"
+		END IF
+	ELSE
+		IF wsurv = 1 THEN PRINT AT 361,"SURVIVAL WAVE"
+	END IF
+	wbnr = 90
+	RETURN
+
+	' 3000 POINTS, shown between waves. The loop WAITs, so the sprite copy runs
+	' every frame and the sound is ticked every frame (CLAUDE.md 3A).
+surv_bonus:
+	#score = #score + 300
+	GOSUB prt_score
+	sprok = 2
+	GOSUB hide_all
+	PRINT AT 358,"SURVIVAL BONUS 3000"
+	SOUND 1,200,12
+	sf1 = 40
+	FOR sbi = 0 TO 120
+		WAIT
+		GOSUB sfx_tick
+	NEXT sbi
+	RETURN
+
+	' ONE LEDGE EGG, drawn or cleared: tegi is the spot, tegc the character.
+teg_put:
+	#tega = teg_row(tegi)
+	#tega = #tega * 32
+	#tega = #tega + teg_col(tegi)
+	#tega = #tega + 6144
+	VPOKE #tega,tegc
 	RETURN
 
 	' THE TIER SPEEDS for this wave: 430 + 70 x tier, plus 4.5 per aggression step.
@@ -588,6 +673,20 @@ prt_hud:
 
 	' Six digits, printed from #score which counts TENS, so a zero is appended.
 prt_score:
+	' AN EXTRA BIRD EVERY 20,000. Checked here because every award ends by
+	' printing the score. #nxtb stops at 65535 rather than wrapping, which would
+	' award a bird on every point from then on.
+	IF #score >= #nxtb THEN
+		IF lives < 9 THEN lives = lives + 1
+		IF #nxtb > 63535 THEN
+			#nxtb = 65535
+		ELSE
+			#nxtb = #nxtb + 2000
+		END IF
+		SOUND 2,120,12
+		sf2 = 30
+		GOSUB prt_lives
+	END IF
 	#psv = #score
 	#psd = 10000
 	psc = 6
@@ -617,11 +716,14 @@ prt_sloop:
 prt_lives:
 	plv = 0
 	IF lives > 0 THEN plv = lives - 1
+	' RIGHT-JUSTIFIED, so the last icon always sits in column 29 and the row
+	' empties from the left (CLAUDE.md 7A). Tested as slot + spares > 3, never
+	' as slot >= 4 - spares: spares is unsigned and can exceed 4 with extra birds.
 	FOR pli = 0 TO 3
 		#pla = 6144 + 26
 		#pla = #pla + pli
 		plc = BLANK
-		IF pli < plv THEN plc = LIFECH
+		IF pli + plv > 3 THEN plc = LIFECH
 		VPOKE #pla,plc
 	NEXT pli
 	RETURN
@@ -643,6 +745,14 @@ main:
 	GOSUB troll
 	GOSUB ptero
 	GOSUB e_move			' moves, collects and draws every egg
+	IF tegn > 0 THEN GOSUB teg_tick	' Egg wave: the eggs still on the ledges
+	IF wbnr > 0 THEN
+		wbnr = wbnr - 1
+		IF wbnr = 0 THEN
+			PRINT AT 332,"        "
+			PRINT AT 360,"                "
+		END IF
+	END IF
 	GOSUB draw
 	GOSUB sfx_tick
 	sprok = 1			' publish this pass's sprites at the next vblank
@@ -938,7 +1048,12 @@ k_spawn:
 	kty(ksl) = 60
 	ktier(ksl) = 0
 	IF wave > 3 THEN ktier(ksl) = kpend AND 1
-	IF wave > 15 THEN ktier(ksl) = 2
+	' SHADOW LORDS ARRIVE ONE MORE PER WAVE from 16: the last knight of wave 16,
+	' the last two of wave 17, and so on until every one is a Lord.
+	IF wave > 15 THEN
+		ksv = wave - 15
+		IF kpend <= ksv THEN ktier(ksl) = 2
+	END IF
 	kpend = kpend - 1
 	spwt = 52
 	SOUND 2,600,10
@@ -1997,7 +2112,8 @@ c_knight:
 
 k_unhorse:
 	con = KDEAD
-	kus = 50 + ctier * 25		' 500 / 750 / 1000, in tens
+	kus = 50 + ctier * 25		' 500 / 750, in tens
+	IF ctier = 2 THEN kus = 150	' Shadow Lord 1500
 	#score = #score + kus
 	SOUND 0,400,13
 	sf0 = 10
@@ -2044,16 +2160,9 @@ c_foot:
 	IF cpy < cfy THEN cdy = cfy - cpy
 	IF cdy > 11 THEN RETURN
 	con = KDEAD
-	ecoll = ecoll + 1
-	ceg = ecoll
-	IF ceg > 4 THEN ceg = 4
-	#score = #score + ceg * 25
-	SOUND 1,250,13
-	sf1 = 10
-	GOSUB prt_score
+	GOSUB egg_award
 	RETURN
 
-	' 250, 500, 750, then 1000 -- in tens, and capped.
 c_egg:
 	' Called from e_one on the CURRENT EGG'S SCALARS (#gx, #gy, gst, #gtm).
 	' An egg still in its grace period has not left the joust yet.
@@ -2078,7 +2187,92 @@ c_egg:
 	cdy = cpy2 - cey
 	IF cpy2 < cey THEN cdy = cey - cpy2
 	IF cdy > 10 THEN RETURN
+	' CAUGHT IN MID-AIR: +500 on top of the ladder. gst is still 1 (airborne)
+	' here; the grace period was dealt with above, so this is a real catch.
+	IF gst = 1 THEN #score = #score + 50
 	gst = 0
+	GOSUB egg_award
+	RETURN
+
+	' THE EGG WAVE'S LEDGE EGGS. Collected by touch, exactly like a sprite egg and
+	' on the same award ladder. Every few seconds, while an egg sprite is free, the
+	' next one STIRS: its character goes and a resting sprite egg takes its place,
+	' cracking almost at once and hatching six seconds later into a Bounder on
+	' foot. So the wave is a race -- collect them before they wake.
+	' While any are left the wave is not over (mnl).
+teg_tick:
+	mnl = 1
+	IF pdead = 0 THEN
+		tpcx = #px / 256
+		tpcx = tpcx + 8
+		tpcy = #py / 256
+		tpcy = tpcy + 8
+		FOR tgi = 0 TO NTEG - 1
+			IF tegon(tgi) = 1 THEN
+				tgx = teg_col(tgi) * 8
+				tgx = tgx + 4
+				tgd = tpcx - tgx
+				IF tpcx < tgx THEN tgd = tgx - tpcx
+				IF tgd < 11 THEN
+					tgy = teg_row(tgi) * 8
+					tgy = tgy + 4
+					tgd = tpcy - tgy
+					IF tpcy < tgy THEN tgd = tgy - tpcy
+					IF tgd < 11 THEN
+						tegon(tgi) = 0
+						tegn = tegn - 1
+						tegi = tgi
+						tegc = BLANK
+						GOSUB teg_put
+						GOSUB egg_award
+					END IF
+				END IF
+			END IF
+		NEXT tgi
+	END IF
+	IF tegn = 0 THEN RETURN
+	IF tegt > 0 THEN
+		tegt = tegt - 1
+		RETURN
+	END IF
+	tegt = 30			' no free egg sprite: look again in a second
+	tgs = 255
+	FOR tgi = 0 TO NEGG - 1
+		IF est(tgi) = 0 THEN tgs = tgi
+	NEXT tgi
+	IF tgs = 255 THEN RETURN
+	' The next waiting egg, round-robin from where the last one was taken.
+	' tegn > 0 here, so the search ends.
+	WHILE tegon(tegi) = 0
+		tegi = tegi + 1
+		IF tegi = NTEG THEN tegi = 0
+	WEND
+	tegon(tegi) = 0
+	tegn = tegn - 1
+	tegc = BLANK
+	GOSUB teg_put
+	' Sprite egg in the same place: the cell's art sits in sprite columns 3-10
+	' and its bottom row on the sprite's bottom row, so x = col*8 - 3 and the
+	' sprite top is one cell above the egg's own row.
+	#ex(tgs) = teg_col(tegi) * 8
+	#ex(tgs) = #ex(tgs) - 3
+	#ex(tgs) = #ex(tgs) * 256
+	#ey(tgs) = teg_row(tegi) * 8
+	#ey(tgs) = #ey(tgs) - 8
+	#ey(tgs) = #ey(tgs) * 256
+	#evx(tgs) = 32768
+	#evy(tgs) = 32768
+	etier(tgs) = 2			' the tier wheel turns 2 -> 0: a Bounder
+	#etm(tgs) = 200			' cracks at 180, hatches at 0
+	est(tgs) = 2
+	tegt = 120 - wave
+	IF wave > 60 THEN tegt = 60
+	RETURN
+
+	' THE EGG AWARD LADDER: 250, 500, 750, then 1000 for every egg after that in
+	' the wave -- in tens, and capped. Shared by sprite eggs, ledge eggs and a man
+	' run down on foot.
+egg_award:
 	ecoll = ecoll + 1
 	ceg = ecoll
 	IF ceg > 4 THEN ceg = 4
@@ -2097,6 +2291,7 @@ do_death:
 		SOUND 0,200 + ddi * 20,13
 	NEXT ddi
 	SOUND 0,800,0
+	wlost = 1			' no Survival bonus for this wave
 	IF lives > 0 THEN lives = lives - 1
 	GOSUB prt_lives
 	' SET A FLAG AND RETURN. Leaving a GOSUB by GOTO never pops its return
@@ -2407,6 +2602,14 @@ sfx_tick:
 	' 7 chars x 8 = 56 bytes, an even run.
 	' Mount colour per tier: red Bounder, grey Hunter, blue Shadow Lord. Four
 	' bytes, an even run.
+	' THE EGG WAVE'S TWELVE SPOTS: character column and row, each in the row
+	' directly above a ledge's surface, clear of every pad (nothing materialises
+	' on top of an egg) and of the banner rows 10-11. Twelve entries each: even.
+teg_col:
+	DATA BYTE 7,19,24,2,29,5,22,10,16,13,2,29
+teg_row:
+	DATA BYTE 20,20,20,20,20,13,12,7,7,15,6,6
+
 tiercol:
 	DATA BYTE 8,14,5,0
 
@@ -2421,3 +2624,4 @@ col_chars:
 	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71	' spawn pad, CYAN -- it has to
 						' read as a pad against grey rock
 	DATA BYTE $81,$81,$81,$81,$81,$81,$81,$81	' troll arm, red -- it is lava
+	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1	' egg on a ledge, white

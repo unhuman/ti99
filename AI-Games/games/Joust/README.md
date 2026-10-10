@@ -7,7 +7,7 @@ one tier meaner.
 
 ## Status
 
-**Phases 1-7 of 8 build and run on both targets.** See `DESIGN.md` §14 for the phase
+**All 8 phases build and run on both targets.** See `DESIGN.md` §14 for the phase
 plan; §0 records the arcade research the design is built on, including where sources
 disagreed.
 
@@ -20,7 +20,7 @@ disagreed.
 | 5 | Lava troll (wave 3+) | built |
 | 6 | Island erosion (bridge w3, ledges w6+) | built |
 | 7 | Pterodactyl (wave 8, and slow waves) | built |
-| 8 | Egg & Survival waves, bonuses | **next** |
+| 8 | Egg & Survival waves, bonuses | built |
 
 ## Controls
 
@@ -52,8 +52,13 @@ reports a direction that never releases.
 | Survival wave completed intact | 3000 |
 | Extra bird | every 20,000 |
 
-Three lives; the HUD shows **spares**, so a fresh game shows two icons and the last life
-shows none.
+Three lives; the HUD shows **spares**, right-justified, so a fresh game shows two icons
+and the last life shows none.
+
+**Egg waves** (5, 10, 15...) start with twelve eggs waiting on the ledges and no knights.
+Every few seconds one of them stirs, cracks and hatches, so collect them first.
+**Survival waves** (2, then 10, 15...) pay 3000 if you finish them without losing a bird.
+Each wave opens with a banner naming it.
 
 ## Build
 
@@ -79,9 +84,9 @@ to do by hand.
 
 | target | used | free |
 |---|---|---|
-| TI-99/4A program image | 21,080 / 24,336 | 3,256 |
+| TI-99/4A program image | 23,064 / 24,336 | 1,272 |
 | ColecoVision ROM | 16,384 | — |
-| ColecoVision RAM | 599 / 814 | 215 |
+| ColecoVision RAM | 633 / 814 | 181 |
 
 ## Speed
 

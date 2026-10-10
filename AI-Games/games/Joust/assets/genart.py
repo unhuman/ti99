@@ -365,6 +365,20 @@ X......X
 ..XXXX..
 ..XXXX..
 """,
+"egg": r"""
+..XXXX..
+.XXXXXX.
+.XXXXXX.
+XXXXXXXX
+XXXXXXXX
+.XXXXXX.
+.XXXXXX.
+..XXXX..
+""",
+# The EGG WAVE's twelve eggs wait on the ledges as CHARACTERS, not sprites:
+# there are four egg sprite slots, and a sprite costs a slot on every scanline it
+# crosses. The same shape as the egg sprite, one row shorter so it fits a cell,
+# sitting on the cell's bottom row -- i.e. on the ledge below it.
 "life": r"""
 ..XX....
 .XXXX...
@@ -458,7 +472,7 @@ def main():
         emit(fh, "spr_arm", sprite_bytes(ARM), "the troll's forearm -- angled, not a second hand")
 
         for name in ("plat_l", "plat_m", "plat_r", "lava_a", "lava_b", "lava_c", "life",
-                     "pad", "arm"):
+                     "pad", "arm", "egg"):
             emit(fh, "chr_" + name, char_bytes(CHARS[name]), name)
 
     n = os.path.getsize(out)
