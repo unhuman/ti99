@@ -66,9 +66,32 @@ def check_sortie_title_reload(asm):
         raise RuntimeError(f'TI sortie title uses stale r0 after bar copy: {instructions}')
     return copy.end(),title.start()
 
+def check_game_over_banks(asm, symbols):
+    """Both GAME OVER bank changes must run from persistent fixed code."""
+    banks={name.lower():int(bank) for name,bank in
+           re.findall(r'(?im)^(cvb_\w+):\s*\n\s+equ\s+>[0-9a-f]+\s*;[^\n]*\bb>(\d+)',symbols)}
+    expected={'cvb_game_over':0,'cvb_game_over_overlay':5,'cvb_game_over_done':5,
+              'cvb_result_screen':3}
+    for label,bank in expected.items():
+        if banks.get(label)!=bank:
+            raise RuntimeError(f'{label} must be in physical bank {bank}, got {banks.get(label)}')
+    m=re.search(r'(?ms)^cvb_GAME_OVER\s*\n(.*?)^cvb_SHOW_FIREWORKS\s*$',asm)
+    if not m:raise RuntimeError('Cannot find fixed GAME OVER bank wrapper')
+    instructions=[line.strip() for line in m[1].splitlines()
+                  if line.strip() and not line.lstrip().startswith(';')]
+    if instructions!=['clr @>600a','bl @jsr','data cvb_GAME_OVER_OVERLAY',
+                      'clr @>6006','b @cvb_RESULT_SCREEN']:
+        raise RuntimeError(f'GAME OVER bank switch is not wrapped in fixed code: {instructions}')
+    m=re.search(r'(?ms)^cvb_GAME_OVER_DONE\s*\n(.*?)^cvb_GAME_OVER_BAR\s*$',asm)
+    if not m:raise RuntimeError('Cannot find GAME OVER overlay return')
+    instructions=[line.strip() for line in m[1].splitlines()
+                  if line.strip() and not line.lstrip().startswith(';')]
+    if instructions!=['mov *r10+,r0','b *r0']:
+        raise RuntimeError(f'GAME OVER overlay did not return to fixed code: {instructions}')
+
 def build_ti(out, name, title):
-    """Compile, assemble, shorten branches, check budgets and pack a 32 KB cart.
-    Returns (fixed bytes used, unoptimised fixed bytes, data-bank bytes used)."""
+    """Compile, assemble, shorten branches, check budgets and pack a 64 KB cart.
+    Returns fixed, unoptimised fixed, and the three bank sizes."""
     run(CV/'cvbasic.exe','--ti994a',f'{name}.bas',f'{name}.a99',str(CV)+'/',cwd=out)
     assembly=out/f'{name}.a99'
     asm=patch_font(assembly.read_text(),glyphs())
@@ -98,17 +121,29 @@ def build_ti(out, name, title):
         run(sys.executable,SHORT,'verify',*files,cwd=out)
     used=fixed_used(out, name)
     if used > FIXED_CAP: raise RuntimeError(f'Fixed area overflow: {used}/{FIXED_CAP}')
-    # BANK 1 (physical 3) is the data bank, selected for good at start-up;
-    # BANK 2 (physical 4) holds art uploaded only at power-on.
-    if (out/f'{name}_b5.bin').exists(): raise RuntimeError('Unexpected third bank')
-    banks=[(out/f'{name}_b{n}.bin').read_bytes() for n in (3,4)]
-    for n,bank in zip((3,4),banks):
+    asm=assembly.read_text()
+    symbols=(out/f'{name}.equ').read_text()
+    check_game_over_banks(asm,symbols)
+    wrapper=asm.split('cvb_GAME_OVER\n',1)[1].split('cvb_SHOW_FIREWORKS',1)[0]
+    bad=asm.replace(wrapper,wrapper.replace('clr @>6006','',1),1)
+    if bad==asm:raise RuntimeError('GAME OVER bank-gate self-test could not remove restore')
+    try:
+        check_game_over_banks(bad,symbols)
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError('GAME OVER bank gate accepts a missing restore')
+    # BANK 1 (physical 3) holds play-time data; BANK 2 (physical 4) holds
+    # boot art; BANK 3 (physical 5) holds the cold GAME OVER overlay.
+    if (out/f'{name}_b6.bin').exists(): raise RuntimeError('Unexpected fourth bank')
+    banks=[(out/f'{name}_b{n}.bin').read_bytes() for n in (3,4,5)]
+    for n,bank in zip((3,4,5),banks):
         if len(bank) != 8192: raise RuntimeError(f'Unexpected bank {n} size {len(bank)}')
     run(sys.executable,CV/'linkticart.py',f'{name}_b0.bin',f'{name}_8.bin',title,cwd=out)
     cartpath=out/f'{name}_8.bin'
     cart=bytearray(cartpath.read_bytes())
     if len(cart) != 65536: raise RuntimeError('Expected a 64 KB cart')
-    for page,bank in zip((3,4),banks):
+    for page,bank in zip((3,4,5),banks):
         if cart[page*8192:(page+1)*8192] != bank: raise RuntimeError(f'Packed bank {page} does not match assembly')
     # One TI menu entry: blank the copied headers on the loader and padding pages.
     hdr=bytes(cart[:80])
@@ -149,9 +184,9 @@ def main():
     for f in (ROOT/'src').glob('*.bas'):
         (out/f.name).write_bytes(f.read_bytes())
     if target == 'ti':
-        used,unopt,(data_used,boot_used)=build_ti(out,'CHOPLIFT','CHOPLIFTER')
+        used,unopt,(data_used,boot_used,ending_used)=build_ti(out,'CHOPLIFT','CHOPLIFTER')
         print(f'TI fixed: {used}/{FIXED_CAP} (unoptimised {unopt}); data bank: {data_used}/8190;'
-              f' boot bank: {boot_used}/8190; cart: 65536 bytes')
+              f' boot bank: {boot_used}/8190; ending bank: {ending_used}/8190; cart: 65536 bytes')
         # The single multiply in flight must store the low word, then reload at a label.
         asm=(out/'CHOPLIFT.a99').read_text()
         assert re.search(r'mpy\s+r1,r0\s+mov\s+r1,@cvb__MOVE',asm,re.I)

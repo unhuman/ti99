@@ -657,7 +657,7 @@ class Tests(unittest.TestCase):
         one stands on the pad: (crash_timer, blast_timer, visible slots)."""
         b=self.state();b.r=Basic(source).r
         b.v.update({'hy':hy,'#hx':480,'#camera':368,'invuln':0,'dt':dt,'hspeed':0,'face':0})
-        b.sprites={i:[100,i*8,0,15] for i in range(32)}   # everything on
+        b.call('hide_all')
         b.call('crash')
         frames=[]
         for _ in range(400):
@@ -669,10 +669,9 @@ class Tests(unittest.TestCase):
             frames.append((b.v['crash_timer'],b.v['blast_timer'],self.visible(b)))
         return b,frames
     def test_crash_hides_the_helicopter_until_the_burst_is_over(self):
-        # The helicopter is gone the moment it crashes. Only its burning wreck
-        # (flames, then embers, slots 0-1) and the burst (12-15) are drawn,
-        # never a helicopter pattern; the last 12 frames show nothing at all,
-        # the burst long over, before a new helicopter appears at the pad.
+        # With no other actor active, only the wreck and burst are visible.
+        # The helicopter pattern is gone, and the wreck is erased before the
+        # next helicopter appears at the pad.
         for hy in (80,153):
             for dt in (1,2,6):
                 b,frames=self.crash_frames(SOURCE,hy,dt)
@@ -694,8 +693,7 @@ class Tests(unittest.TestCase):
                 self.assertEqual({s[3] for s in live.values()},{15})
                 self.assertEqual(live[0][1]+b.v['#camera'],1888)
         # The old crash drew the hull, grey, under its flames until the embers.
-        old=SOURCE.replace("GOSUB blast_draw\nIF crash_timer <= 12 THEN",
-                           "draw_slot=2:draw_color=14\nGOSUB heli_draw\nGOSUB blast_draw\nIF crash_timer <= 12 THEN")
+        old=SOURCE.replace("crash_draw:\n", "crash_draw:\ndraw_slot=2:draw_color=14\nGOSUB heli_draw\n")
         self.assertNotEqual(old,SOURCE)
         with self.assertRaises(AssertionError):
             _,frames=self.crash_frames(old,80)
@@ -712,6 +710,43 @@ class Tests(unittest.TestCase):
         face=b.v.get('face',0);b.v['cont1.button']=1
         for _ in range(60):b.call('fire_control')
         self.assertEqual(b.v.get('face',0),face)
+
+    def test_other_actors_remain_visible_during_a_crash(self):
+        def actor_slots(source):
+            b=self.state();b.r=Basic(source).r
+            b.v.update({'#camera':368,'#hx':480,'hy':80,'invuln':0,'dt':2,
+                        'shell_on':1,'#shell_x':410,'shell_y':81,
+                        'missile_on':1,'#missile_x':560,'missile_y':82,
+                        'jet_on':1,'#jet_x':450,'jet_y':81,
+                        'drone_on':1,'#drone_x':520,'drone_y':81})
+            b.a['tank_on']=[1,0];b.a['#tank_x']=[490,0]
+            b.a['shot_on']=[1,0];b.a['#shot_x']=[510,0];b.a['shot_y']=[81,0]
+            b.call('hide_all');b.call('draw_actors')
+            before={s:b.sprites[s][:] for s in (2,3,4,6,7,10,11)}
+            b.call('crash')
+            kept=all(b.sprites[s]==pose for s,pose in before.items())
+            b.v['#camera']=b.v['#camera']+8
+            b.call('draw_actors')
+            live=self.visible(b)
+            kept=kept and all(live.get(s)==[pose[0],pose[1]-8,*pose[2:]]
+                              for s,pose in before.items())
+            return b,live,kept
+        b,live,kept=actor_slots(SOURCE)
+        self.assertTrue(kept)
+        self.assertEqual({0,1,2,3,4,6,7,10,11,12,13,14,15,16}&set(live),
+                         {0,1,2,3,4,6,7,10,11,12,13,14,15,16})
+        self.assertFalse({s[2] for s in live.values()}&self.HELI_PATTERNS)
+        self.assertIn('SPRITE FLICKER ON',SOURCE)
+        overloaded=[s for s,d in live.items() if d[0]<85<=d[0]+16]
+        self.assertGreater(len(overloaded),4)
+        frames=self.flicker_frames(b,85)
+        for slot in overloaded:self.assertTrue(any(slot in frame for frame in frames),slot)
+        for bad in (SOURCE.replace('GOSUB silence\nDEFINE SPRITE 13,2,crash_flames',
+                                   'GOSUB silence\nGOSUB hide_all\nDEFINE SPRITE 13,2,crash_flames'),
+                    SOURCE.replace('GOSUB flag_wave\n',
+                                   'GOSUB flag_wave\nIF crash_timer THEN GOSUB crash_draw:RETURN\n',1)):
+            self.assertNotEqual(bad,SOURCE)
+            self.assertFalse(actor_slots(bad)[2])
 
     def test_crash_fire_art_becomes_small_grounded_embers(self):
         import generate as art
@@ -3193,13 +3228,15 @@ class Tests(unittest.TestCase):
         # the boot bank, selected only around the call in the fixed area.
         for saved,lost,shows in ((64,0,1),(63,1,0),(0,64,0)):
             b=self.state();b.v.update(saved=saved,lost=lost,**{'#camera':1792})
-            b.r['show_fireworks']=['RETURN'];b.r['result_screen']=['RETURN']
+            b.r['show_fireworks']=['RETURN'];b.r['game_over']=['GOTO result_screen']
+            b.r['result_screen']=['RETURN']
             b.call('mission_over')
             self.assertEqual(b.calls.get('show_fireworks',0),shows,saved)
             self.assertIn(('goto','result_screen'),b.events)
         # A helicopter that flew off is brought home, so the show is over it.
         b=self.state();b.v.update(saved=64,lost=0,anim=0,crowd_pose=255,hy=60,**{'#hx':900,'#camera':788})
-        b.r['show_fireworks']=['RETURN'];b.r['result_screen']=['RETURN']
+        b.r['show_fireworks']=['RETURN'];b.r['game_over']=['GOTO result_screen']
+        b.r['result_screen']=['RETURN']
         b.call('mission_over')
         self.assertEqual((b.v['#camera'],b.v['#hv'],b.v['hy']),(1792,1904,b.v['home_landed']))
         main=SOURCE.split('\nmain_loop:\n')[1].split('\ndraw_frame:\n')[0]
@@ -3211,6 +3248,41 @@ class Tests(unittest.TestCase):
         self.assertIn('\nshow_fireworks:\n',fixed);self.assertIn('\nmission_over:\n',fixed)
         banked=SOURCE.split('\nBANK 2\n')[1]
         self.assertIn('\nfireworks:\n',banked);self.assertIn('\nfirework_draw:\n',banked)
+
+    def test_game_over_overlay_waits_then_advances_to_report(self):
+        self.assertIn('\nBANK 3\n',SOURCE)
+        self.assertIn('END IF\ngame_over:',SOURCE.split('\nmission_over:\n')[1].split('\nshow_fireworks:\n')[0])
+        self.assertIn('IF lives = 0 THEN GOTO game_over',SOURCE.split('\ncrash_frame:\n')[1].split('\nnew_heli:\n')[0])
+        def finish(source,target,control):
+            b=self.state();b.r=Basic(source,target=target).r;b.target=target
+            b.r['result_screen']=['RETURN']
+            b.v.update({'frame':0,'cont1.key':15})
+            waits=[0];first=[None];run=b.statements
+            def frame(line):
+                if line=='WAIT':
+                    if first[0] is None:
+                        first[0]=(b.bank,
+                                  ''.join(chr(b.vram.get(6144+363+i,32)) for i in range(9)),
+                                  [b.vram.get(6144+p) for p in (332,338,396,402)])
+                    waits[0]+=1
+                    if waits[0]>250:raise AssertionError('GAME OVER did not end')
+                    b.v['frame']=waits[0]
+                    b.v['cont1.button'],b.v['cont1.key']=control(waits[0])
+                return run(line)
+            b.statements=frame
+            b.call('game_over')
+            self.assertEqual(first[0],(3 if target=='TI994A' else 1,'GAME OVER',[23]*4))
+            self.assertIn(('goto','result_screen'),b.events)
+            self.assertEqual((b.bank,b.v['fire_gate']),(1,2))
+            return waits[0]
+        for target in ('TI994A','COLECO'):
+            self.assertEqual(finish(SOURCE,target,lambda n:(0,15)),240)
+            self.assertEqual(finish(SOURCE,target,lambda n:(int(n<=160 or n>=171),15)),171)
+            self.assertEqual(finish(SOURCE,target,lambda n:(0,65 if n>=130 else 15)),130)
+            self.assertEqual(finish(SOURCE,target,lambda n:(1,15)),240)
+        bad=SOURCE.replace('IF cont1.button THEN GOTO game_over_pressed\n','')
+        self.assertNotEqual(bad,SOURCE)
+        self.assertNotEqual(finish(bad,'TI994A',lambda n:(int(n<=160 or n>=171),15)),171)
 
     def test_fireworks_follow_the_script(self):
         # Every frame of the show, drawn from the script: rockets rising from

@@ -692,3 +692,14 @@ must wait for an observed release in its own input loop before accepting FIRE.
 The timeout must never count as a release. Test a hold longer than the timeout,
 followed by a release and a new press, against the actual source and a mutation
 restoring the old timeout-plus-immediate-check path.
+
+### A BANK SWITCH CANNOT RETURN TO CODE IN THE DISAPPEARING BANK (2026-10-10)
+
+Choplifter's first GAME OVER overlay froze on TI despite compiling and packing.
+Its bank-1 wrapper executed `BANK SELECT 3` and then tried to branch to the
+overlay; the branch instruction disappeared with bank 1. The overlay initially
+had the symmetric fault on exit. Put both selections in fixed code: select the
+overlay bank, `GOSUB` its routine, select the play-time bank after it returns to
+fixed code, then branch to the report. Check the generated assembly and symbol
+bank annotations, and mutation-test the restore; source-level execution alone
+does not model instructions vanishing when a cartridge page changes.

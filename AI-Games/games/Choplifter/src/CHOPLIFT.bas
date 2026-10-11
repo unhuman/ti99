@@ -38,8 +38,8 @@ DIM #tank_x(2)
 ' 12, its three debris clusters 13-15 and an air burst's falling chunk 16.
 ' SPRITE FLICKER is on: the vblank copy starts one slot later each frame, so
 ' a crowded scanline drops a different sprite each frame instead of always
-' the same one. A crash hides the helicopter and every other actor: only its
-' flames (0,1) and the explosion (12-15) are drawn until it is over.
+' the same one. During a crash, other actors stay visible while the wreck
+' and explosion use the helicopter's slots and the burst slots.
 ' #vaddr is shared address scratch: raw VRAM for VPOKE, relative name-table
 ' offset for SCREEN. Compute and use it in one routine, never across a GOSUB
 ' (Coleco RAM is nearly full).
@@ -190,17 +190,23 @@ GOTO main_loop
 
 mission_over:
 ' A perfect rescue (all 64 saved) earns a fireworks display over the home
-' before the results. The view moves home first if the helicopter has flown
-' off while the last passenger walked in.
+' before the ending card and report. Reset its view and helicopter to the pad.
 IF saved = 64 THEN
-    IF #camera <> 1792 THEN
-        #hx=1904:#move=0:GOSUB move_heli
-        hy=land_y:hspeed=0
-        #camera=65535
-        GOSUB game_screen
-    END IF
+    GOSUB new_heli
+    #hx=1904:#hv=1904
+    GOSUB game_screen
     GOSUB show_fireworks
 END IF
+game_over:
+' The bank switch and its return must both execute from fixed code. Code in
+' either switched bank disappears as soon as BANK SELECT changes the page.
+#if TI994A
+BANK SELECT 3
+#endif
+GOSUB game_over_overlay
+#if TI994A
+BANK SELECT 1
+#endif
 GOTO result_screen
 
 show_fireworks:
@@ -237,7 +243,7 @@ old_y=hy
 GOSUB escape_tick
 GOSUB crash_tick
 IF crash_timer = 0 THEN
-    IF lives = 0 THEN GOTO result_screen
+    IF lives = 0 THEN GOTO game_over
     GOSUB new_heli
     GOSUB show_sortie
     GOSUB clock_reset
@@ -2510,7 +2516,6 @@ RETURN
 
 draw_actors:
 GOSUB flag_wave
-IF crash_timer THEN GOSUB crash_draw:RETURN
 ' Fixed sprite slots (see the header); SPRITE FLICKER rotates the order the
 ' VDP sees them in, so on an overloaded scanline (four per line) every sprite
 ' takes its turn. Inactive actors skip their pose work; sprite_off hides each
@@ -2591,6 +2596,7 @@ ELSE
 END IF
 GOSUB blast_draw
 ' The helicopter last: on a scrolling update the vblank WAIT follows at once.
+IF crash_timer THEN GOSUB crash_draw:RETURN
 draw_slot=0:draw_color=15
 GOSUB heli_draw
 RETURN
@@ -3081,14 +3087,12 @@ NEXT ep
 RETURN
 
 crash:
-' The helicopter is gone the moment it crashes: it and every other actor are
-' hidden, a burst plays where it was, and its burning wreck (crash_draw)
-' falls and burns out before a new one appears at the pad.
+' The helicopter is gone the moment it crashes. Other sprites stay in place
+' while its burst plays and the wreck (crash_draw) falls and burns out.
 crash_pending=0
 IF invuln THEN RETURN
 IF crash_timer THEN RETURN
 GOSUB silence
-GOSUB hide_all
 DEFINE SPRITE 13,2,crash_flames
 lost=lost+aboard
 aboard=0
@@ -3098,7 +3102,6 @@ NEXT cp
 lives=lives-1
 crash_timer=90
 hud_dirty=1
-shell_on=0:missile_on=0
 #blast_x=#hv+8:blast_y=hy
 IF hy < land_y THEN GOTO explode_air
 GOTO explode_ground
@@ -3192,10 +3195,8 @@ RETURN
 
 crash_draw:
 ' The helicopter itself is never drawn after a crash: its burning wreck is
-' (flames in slots 0 and 1, falling with it, then embers where it lies), with
-' the burst over it. The last 12 frames show nothing, so all of it is over
-' and erased before a new helicopter appears at the pad.
-GOSUB blast_draw
+' (flames in slots 0 and 1, falling with it, then embers where it lies).
+' The other actors and the burst are drawn first in draw_actors.
 IF crash_timer <= 12 THEN
     SPRITE 0,209,0,0,0
     SPRITE 1,209,0,0,0
@@ -3604,3 +3605,39 @@ NEXT ay
 RETURN
 
 INCLUDE "assets_boot.bas"
+
+#if TI994A
+BANK 3
+#endif
+' This cold ending lives in its own bank; the data and boot banks are full.
+game_over_overlay:
+GOSUB silence
+' Character 23 and its orange middle-third colour were loaded by the first
+' sortie. The seven-cell bars stop one cell before each end of GAME OVER.
+SCREEN game_over_bar,0,332,7,1
+SCREEN game_over_bar,0,396,7,1
+PRINT AT 363,"GAME OVER"
+#last=FRAME
+title_key=1
+game_over_wait:
+WAIT
+#elapsed=FRAME-#last
+IF #elapsed >= 240 THEN GOTO game_over_done
+' Wait for all controls to be released before accepting a new press. The
+' two-second minimum keeps the message readable even after a quick tap.
+IF cont1.button THEN GOTO game_over_pressed
+IF cont1.key <> 15 THEN GOTO game_over_pressed
+IF cont1.left THEN GOTO game_over_pressed
+IF cont1.right THEN GOTO game_over_pressed
+IF cont1.up THEN GOTO game_over_pressed
+IF cont1.down THEN GOTO game_over_pressed
+title_key=0
+GOTO game_over_wait
+game_over_pressed:
+IF title_key THEN GOTO game_over_wait
+IF #elapsed < 120 THEN GOTO game_over_wait
+game_over_done:
+RETURN
+
+game_over_bar:
+DATA BYTE 23,23,23,23,23,23,23,0
