@@ -482,33 +482,33 @@ CHARS = {
 "plat_l": (r"""
 XXXXXXXX
 XXXXXXXX
-.XXXXXXX
 ..XXXXXX
 ....XXXX
-......XX
-.......X
+......X.
 ........
-""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+........
+........
+""", [(Y11, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "plat_m": (r"""
 XXXXXXXX
 XXXXXXXX
 XX.XXXX.
-XXXXX.XX
-X.XXXXXX
-XXXX.XXX
-XXXXXXX.
-.XXXXXXX
-""", [(Y11, K), (Y10, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)]),
+XXXXXXXX
+.XXX.XX.
+..X...X.
+........
+........
+""", [(Y11, K), (Y10, K), (Y10, R6), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "plat_r": (r"""
 XXXXXXXX
 XXXXXXXX
-XXXXXXX.
 XXXXXX..
 XXXX....
-XX......
-X.......
+.X......
 ........
-""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+........
+........
+""", [(Y11, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 # THE LAVA'S SURFACE: flames. Two characters so neighbouring cells are out of
 # step; both are re-uploaded from FLAMES as the game runs (lava_tick), which
 # animates the whole pit for 16 bytes instead of rewriting every cell.
@@ -557,13 +557,13 @@ XXXXXXX.
 "pad": (r"""
 XXXXXXXX
 XXXXXXXX
-XX.XXXX.
-XXXXX.XX
-X.XXXXXX
 XXXX.XXX
+X.XXXXXX
 XXXXXXX.
-.XXXXXXX
-""", [(W, K), (CY, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)]),
+.XXXXXX.
+..XXXXX.
+..XXXX..
+""", [(W, K), (CY, K), (Y10, R6), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K)]),
 # THE BASE'S BODY, below its surface: solid rock down into the lava, with the
 # score panel cut into it.
 "rock": (r"""
@@ -619,66 +619,91 @@ CHARS["plat_m2"] = (r"""
 XXXXXXXX
 XXXXXXXX
 XXXX.XXX
-X.XXXXX.
-XXXXX.XX
-XX.XXXXX
-.XXXXX.X
-XXXX.XXX
-""", [(Y11, K), (Y10, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)])
+X.XXXXXX
+XXXXXXX.
+.XXXXXX.
+..XXXXX.
+..XXXX..
+""", [(Y11, K), (Y10, K), (Y10, R6), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K)])
 CHARS["und1l"] = (r"""
-.XXXXXXX
-...XXXXX
-.....XXX
-.......X
+..XX....
+..X.....
+........
+........
 ........
 ........
 ........
 ........
 """, [(R6, K)] * 8)
 CHARS["und1r"] = (r"""
-XXXXXXX.
-XXXXX...
-XXX.....
-X.......
+...XXX..
+....X...
+....X...
+........
 ........
 ........
 ........
 ........
 """, [(R6, K)] * 8)
 CHARS["und2"] = (r"""
-XXXXXXXX
-XXXXXXXX
-XXXXXXXX
-.XXXXX.X
-..XXX...
+..XXXX..
+...XX...
 ...X....
 ........
 ........
-""", [(R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+........
+........
+........
+""", [(R6, K)] * 8)
 CHARS["und3a"] = (r"""
-XXXXXXXX
-XXXXXXXX
-XXXXXXXX
-XXXXXXXX
-XXXXXXX.
-.XXXXX..
 ..XXX...
+..XX....
 ...X....
-""", [(R6, Y10), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+...X....
+........
+........
+........
+........
+""", [(R6, K)] * 8)
 CHARS["und3b"] = (r"""
+..X.XX..
+..X..X..
+.....X..
+........
+........
+........
+........
+........
+""", [(R6, K)] * 8)
+
+# THE FLOOR (base and bridges): the same lit top over solid rock, since the
+# base's body continues below it and the bridges span the pit.
+CHARS["floor"] = (r"""
 XXXXXXXX
 XXXXXXXX
-XXXXXXXX
-XXXXXXXX
+XX.XXXX.
+XXXXX.XX
+X.XXXXXX
+XXXX.XXX
+XXXXXXX.
 .XXXXXXX
-..XXXXXX
-...XX.X.
-....X...
-""", [(R6, Y10), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+""", [(Y11, K), (Y10, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)])
+
+# A PAD ON THE FLOOR: the pad's lit top over the floor's solid rock.
+CHARS["pad_floor"] = (r"""
+XXXXXXXX
+XXXXXXXX
+XX.XXXX.
+XXXXX.XX
+X.XXXXXX
+XXXX.XXX
+XXXXXXX.
+.XXXXXXX
+""", [(W, K), (CY, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)])
 
 CHAR_ORDER = ("plat_l", "plat_m", "plat_r", "lava_a", "lava_b", "lava_c", "life",
               "pad", "rock", "egg", "rock_l", "rock_r",
-              "plat_m2", "und1l", "und1r", "und2", "und3a", "und3b")
+              "plat_m2", "und1l", "und1r", "und2", "und3a", "und3b", "floor", "pad_floor")
 
 # FLAME FRAMES for the two lava-surface characters, cycled by lava_tick. Four
 # shapes, so the fire licks rather than blinks.

@@ -81,6 +81,8 @@
 	CONST UND2 = 143		'   two from an end
 	CONST UND3A = 144		'   three or more, two textures
 	CONST UND3B = 145
+	CONST FLOORCH = 146		' base and bridges: lit top over solid rock
+	CONST PADFL = 147		' a pad set into the floor
 	' SPRITE PATTERNS (pattern number = 16x16 sprite index x 4; see setup).
 	CONST P_OST = 0			' ostrich, 8 frames right then 8 left
 	CONST P_BUZ = 64		' buzzard, the same layout
@@ -252,9 +254,9 @@ setup:
 	DEFINE CHAR 32,59,font_bits
 	DEFINE COLOR 32,59,font_col	' yellow to red down each glyph
 	DEFINE COLOR 40,2,brk_col	' ( and ): the title's difficulty brackets
-	' Characters 128-139 and their colours, generated together (genart.py).
-	DEFINE CHAR PLATL,18,chr_plat_l
-	DEFINE COLOR PLATL,18,col_chars
+	' Characters 128-147 and their colours, generated together (genart.py).
+	DEFINE CHAR PLATL,20,chr_plat_l
+	DEFINE COLOR PLATL,20,col_chars
 	DEFINE SPRITE 0,8,spr_ost_r	' P_OST
 	DEFINE SPRITE 8,8,spr_ost_l
 	DEFINE SPRITE 16,8,spr_buz_r	' P_BUZ
@@ -2787,9 +2789,11 @@ draw_field:
 			#dfa = #dfa * 32
 			#dfa = #dfa + dfc
 			#dfa = #dfa + 6144
-			VPOKE #dfa,PADCH
+			dfp = PADCH			' a thick piece: any drip below still hangs from it
+			IF dfr >= 20 THEN dfp = PADFL
+			VPOKE #dfa,dfp
 			#dfa = #dfa + 1
-			VPOKE #dfa,PADCH
+			VPOKE #dfa,dfp
 		END IF
 	NEXT dfi
 
@@ -2826,42 +2830,40 @@ draw_field:
 draw_plat:
 	#dpa = #dfa
 	#dpa = #dpa + 6144
-	' THE SHAPE: a flat top the whole width, tapered end caps, and an underside
-	' in the row below that is deepest in the middle. Distances are biased +3
-	' so a ledge running off a screen edge (it wraps round to the other side)
-	' is treated as if it went on for three more columns: no taper at the edge.
-	dpl = dfc + 3
-	IF dfc = 0 THEN dpl = 0
-	dpr = dfd + 3
-	IF dfd = 31 THEN dpr = 37
-	IF dfr >= 20 THEN		' the floor: base and bridges run on into each other
-		dpl = 0
-		dpr = 37
+	' THE SHAPE: a flat top the whole width over a thin, RAGGED slab -- tapered
+	' end caps, and between them a thin or a thicker piece of rock per column,
+	' some with a drip of rock in the row below. Which one comes from a hash of
+	' the column and row (ledge_top/ledge_und), so every ledge is lopsided in its
+	' own way and none is a mirror image. A ledge running off a screen edge (it
+	' wraps round) does not taper there, and the floor never tapers.
+	dpl = dfc
+	dpr = dfd
+	IF dfc = 0 THEN dpl = 255
+	IF dfd = 31 THEN dpr = 255
+	IF dfr >= 20 THEN
+		dpl = 255
+		dpr = 255
 	END IF
 	FOR dpi = dfc TO dfd
-		dpx = dpi + 3
-		dpt = PLATM
-		dpe = dpi AND 2
-		IF dpe THEN dpt = PLATM2
-		IF dpx = dpl THEN dpt = PLATL
-		IF dpx = dpr THEN dpt = PLATR
+		dpe = dpi * 5
+		dpe = dpe + dfr
+		dpe = dpe + dfr
+		dpe = dpe AND 7
+		dpt = ledge_top(dpe)
+		dpo = ledge_und(dpe)
+		IF dpi = dpl THEN
+			dpt = PLATL
+			dpo = 0
+		END IF
+		IF dpi = dpr THEN
+			dpt = PLATR
+			dpo = 0
+		END IF
+		IF dfr >= 20 THEN dpt = FLOORCH
 		VPOKE #dpa,dpt
 		' The base and both bridges stand on rows 21-23's rock and lava.
 		IF dfr < 20 THEN
-			dpd = dpx - dpl
-			dpe = dpr - dpx
-			dpo = UND1L
-			IF dpe < dpd THEN
-				dpd = dpe
-				dpo = UND1R
-			END IF
-			IF dpd > 0 THEN
-				IF dpd = 2 THEN dpo = UND2
-				IF dpd > 2 THEN
-					dpo = UND3A
-					dpe = dpi AND 1
-					IF dpe THEN dpo = UND3B
-				END IF
+			IF dpo > 0 THEN
 				#dpb = #dpa + 32
 				VPOKE #dpb,dpo
 			END IF
@@ -2869,6 +2871,13 @@ draw_plat:
 		#dpa = #dpa + 1
 	NEXT dpi
 	RETURN
+
+	' Ledge pieces by column hash: surface character, and the drip below it
+	' (0 = none). Only thick pieces carry drips, so a drip always hangs from rock. 16 bytes, even.
+ledge_top:
+	DATA BYTE 129,140,129,140,140,129,140,140
+ledge_und:
+	DATA BYTE 0,143,0,0,144,0,141,145
 
 	' ---------------------------------------------------------- title screen
 	' THE LOGO, a knight and a Bounder squared up on a ledge, the controls, and

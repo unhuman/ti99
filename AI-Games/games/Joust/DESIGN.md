@@ -554,16 +554,19 @@ instead of losing the same ones every frame.
 | 136 | 1 | rock of the base |
 | 137 | 1 | egg waiting on a ledge (Egg waves, §9) |
 | 138-139 | 2 | base: left and right slope |
-| 140 | 1 | second ledge-middle texture, so long ledges are not one repeated tile |
-| 141-145 | 5 | ledge undersides, in the row below the surface: taper left/right (one column from an end), medium (two), deep ×2 (three or more) |
+| 140 | 1 | thick ledge piece (rock 8 px deep); 129 is the thin one (6 px) |
+| 141-145 | 5 | drips of rock, hung in the row below a thick piece |
+| 146 | 1 | floor: lit top over solid rock (base and bridges) |
+| 147 | 1 | spawn pad set into the floor |
 | 160-195 | 36 | title logo tiles (title screen only) |
 
-**Ledges are flat on top and hang like lumps of rock.** `draw_plat` draws the surface row
-the full width, with tapered end caps, and an underside row below it that deepens toward
-the middle, picked per column by distance from the nearer end. A ledge running off a
-screen edge (it wraps round) is treated as continuing three more columns, so it does not
-taper at the edge; the floor (base and bridges) never tapers. Collision is unchanged: a
-ledge is still its one 8 px surface row.
+**Ledges are flat on top and thin and ragged underneath, and no two are alike.**
+`draw_plat` lays the lit surface the full width with tapered end caps; between them each
+column gets a thin or a thick piece of rock, and some thick pieces a drip in the row
+below, chosen by a hash of column and row (`ledge_top`/`ledge_und`), so every ledge is
+lopsided in its own way. Pads are thick pieces with a cyan top. A ledge running off a
+screen edge (it wraps round) does not taper there, and the floor never tapers. Collision
+is unchanged: a ledge is still its one 8 px surface row.
 
 **The art and its data live in bank 1 on the TI.** The cart is banked (`BANK ROM 128`,
 `BANK SELECT 1` at the top, all `DATA` after `BANK 1`); bank 1 stays selected, so
