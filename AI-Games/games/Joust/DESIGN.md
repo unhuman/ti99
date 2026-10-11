@@ -44,7 +44,7 @@ Where sources disagree, the instruction card wins and the conflict is noted in p
 | Per-actor work | **O(1)**: add velocity, clamp, **row-indexed** island test, test lava |
 | Enemy AI | **Reactive, no search**; each knight thinks one tick in four |
 | VDP reads per frame | **Zero.** No `GCHAR`, no `COINC`; islands are a RAM table |
-| Collisions | player↔knights, player↔eggs, player↔pterodactyl, player↔hand. Knight↔knight is **not** tested (they pass through, as in the arcade) |
+| Collisions | player↔knights (bodies touch: within 11 px across and 13 px up or down, measured from the art; the higher lance wins, within 1 px both bounce), player↔eggs, player↔pterodactyl, player↔hand. Knight↔knight is **not** tested (they pass through, as in the arcade) |
 
 ### 1a. What actually costs — measured, not estimated
 
@@ -379,14 +379,19 @@ shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 
 ## 8. Lava troll
 
-- **From wave 3.** A hand rises from a lava pit when the player flies low over it.
+- **From wave 3.** A hand rises from an open lava pit when the player flies low over
+  it. On an Egg wave the bridges are back over the pits, so the hand stays down.
 - If it grabs you it drags you down; **flap rapidly to escape**. Each flap adds to an
   escape counter; the hand wins if the counter does not fill before it reaches the lava.
-- **Reach lengthens and grip strengthens with the wave number** — reach grows a few
-  pixels per wave, escape requires more flaps.
+- **Reach lengthens and grip strengthens with the wave number**: the fist's top rises
+  30 px above the lava plus a pixel per step of aggression, **capped at 42 px** because
+  that is as far as its arm goes; escape requires more flaps.
 - Being pulled under is a death.
-- Rendered as sprite 10 plus a stretched arm; the hand only exists while grabbing or
-  reaching, so it costs a sprite slot only when active.
+- Rendered as a grey fist (sprite 19) hanging on two straight forearm segments
+  (sprites 30 and 31) chained 14 px apart down into the lava, so it never floats free.
+  The arm takes the last two slots, so on a crowded line the arm drops out before any
+  bird. A segment that would sit below the screen is hidden, not placed (y 208 ends
+  the sprite list). All three only exist while the hand is reaching or holding.
 
 ---
 
@@ -537,11 +542,11 @@ build fails if a pixel belongs to both (with flicker either layer may be on top)
 | 32-33 | 128,132 | rider, right / left |
 | 34-35 | 136,140 | egg, cracked egg |
 | 36-37 | 144,148 | unhorsed knight on foot, right / left |
-| 38-39 | 152,156 | troll hand, troll arm |
+| 38-39 | 152,156 | troll hand, troll forearm segment |
 | 40-43 | 160-172 | pterodactyl: shut R, open R, shut L, open L |
 
 Slots: 0-1 player (rider, mount); 2-13 knights (rider 2+2k, mount 3+2k); 14-17 eggs;
-18 rescue bird; 19-20 troll hand and arm; 21 pterodactyl; 22-31 always hidden.
+18 rescue bird; 19 troll hand; 21 pterodactyl; 30-31 troll arm; 20 and 22-29 always hidden.
 `SPRITE FLICKER ON` rotates the copy so a line with more than four sprites flickers
 instead of losing the same ones every frame.
 

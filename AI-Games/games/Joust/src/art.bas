@@ -181,11 +181,11 @@ spr_hand:	' the lava troll's hand
 	DATA BYTE $00,$00,$18,$18,$38,$38,$F8,$F8
 	DATA BYTE $F8,$F0,$F0,$E0,$C0,$C0,$80,$80
 
-spr_arm:	' the troll's forearm -- angled, not a second hand
-	DATA BYTE $03,$07,$07,$0F,$0F,$1F,$1E,$3E
-	DATA BYTE $3C,$7C,$78,$F8,$F0,$E0,$00,$00
-	DATA BYTE $C0,$C0,$80,$80,$00,$00,$00,$00
-	DATA BYTE $00,$00,$00,$00,$00,$00,$00,$00
+spr_arm:	' the troll's forearm, one of two stacked segments
+	DATA BYTE $07,$07,$07,$0F,$0F,$0F,$0F,$0F
+	DATA BYTE $0F,$0F,$0F,$07,$07,$07,$07,$07
+	DATA BYTE $80,$80,$C0,$C0,$C0,$E0,$E0,$E0
+	DATA BYTE $C0,$C0,$80,$80,$80,$80,$80,$80
 
 spr_pt:	' pterodactyl: shut, OPEN facing right; shut, OPEN facing left
 	DATA BYTE $00,$00,$80,$C0,$70,$3C,$1F,$FF

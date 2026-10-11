@@ -101,8 +101,9 @@
 	' SPRITE SLOTS. Every figure is TWO sprites, rider over mount, so the slots
 	' are handed out in blocks -- grep here before taking one:
 	'   0-1 player (rider, mount)   2-13 knights (2 + 2*kni rider, +1 mount)
-	'   14-17 eggs   18 rescue bird   19 troll hand   20 troll arm
-	'   21 pterodactyl   22-31 unused, held hidden
+	'   14-17 eggs   18 rescue bird   19 troll hand   21 pterodactyl
+	'   30-31 troll arm, LAST so the arm is what drops out on a crowded line
+	'   20, 22-29 unused, held hidden
 	CONST NTEG = 12			' Egg wave: eggs on the ledges, DIM 0..11
 	CONST NPAD = 5			' pads, DIM 0..4 -- one is on the BASE
 	CONST KDEAD = 0
@@ -2078,12 +2079,15 @@ c_knight:
 	cky = #cy / 256
 	cdx = cpx - ckx
 	IF cpx < ckx THEN cdx = ckx - cpx
-	' TIGHTER THAN IT WAS. At 11 px a "collision" started while the birds were
-	' still visibly apart, and the resulting duel felt unearned.
-	IF cdx > 9 THEN RETURN
+	' THE BODIES, measured from the art. A bird is 13 px wide (x 0-12) and,
+	' with its rider, 15 px tall from the rider's shoulders to the knees
+	' (y -1 to +13; the thin legs and the lance are left out). Two figures
+	' touch when they are closer than that on both axes. The old 9 x 9 box
+	' let the birds overlap by four or five pixels each way with no joust.
+	IF cdx > 11 THEN RETURN
 	cdy = cpy - cky
 	IF cpy < cky THEN cdy = cky - cpy
-	IF cdy > 9 THEN RETURN
+	IF cdy > 13 THEN RETURN
 
 	' AND THE TIE WINDOW IS ONE PIXEL, not four. A bounce means the lances met
 	' dead level -- it should be the rare, surprising outcome, not the usual one.
@@ -2384,7 +2388,7 @@ e_draw:
 	RETURN
 
 hide_all:
-	FOR hai = 0 TO 21
+	FOR hai = 0 TO 31
 		SPRITE hai,SPRHID,0,0,0
 	NEXT hai
 	RETURN
@@ -2397,19 +2401,32 @@ hide_all:
 troll:
 	IF wave < 3 THEN
 		SPRITE 19,SPRHID,0,0,0
-		SPRITE 20,SPRHID,0,0,0
+		SPRITE 30,SPRHID,0,0,0
+		SPRITE 31,SPRHID,0,0,0
 		RETURN
 	END IF
 	trw = agg
-	trr = 44 + trw * 4		' how high it can reach above the lava
+	' HOW HIGH IT CAN REACH: no further than its arm. The fist hangs on two
+	' forearm segments that must still reach down into the lava, so its top can
+	' rise at most 42 px above the lava line; the reach grows by a pixel a step
+	' of aggression up to that. It used to be 44 + 4 per step, which let a lone
+	' fist float up past the base, attached to nothing.
+	trr = 30 + trw
+	IF trr > 42 THEN trr = 42
 	tpy = #py / 256
 	tpx = #px / 256
 
 	IF trst = 0 THEN
-		' only over a pit, and only if you are low enough to be worth grabbing
+		' only over an OPEN pit, and only if you are low enough to be worth
+		' grabbing. On an Egg wave the bridges are back and cover the pits, so
+		' the hand must not come up through them.
 		tover = 0
-		IF tpx < 40 THEN tover = 1
-		IF tpx > 207 THEN tover = 1
+		IF tpx < 40 THEN
+			IF plon(1) = 0 THEN tover = 1
+		END IF
+		IF tpx > 207 THEN
+			IF plon(2) = 0 THEN tover = 1
+		END IF
 		IF tover = 1 THEN
 			ttop = 184 - trr
 			IF tpy > ttop THEN
@@ -2420,7 +2437,8 @@ troll:
 			END IF
 		END IF
 		SPRITE 19,SPRHID,0,0,0
-		SPRITE 20,SPRHID,0,0,0
+		SPRITE 30,SPRHID,0,0,0
+		SPRITE 31,SPRHID,0,0,0
 		RETURN
 	END IF
 
@@ -2482,26 +2500,25 @@ troll:
 	END IF
 	RETURN
 
-	' THE FIST, AND THE ARM BEHIND IT. A hand hanging in mid-air over the lava
-	' reads as a floating object, not as something reaching OUT of the pit -- the
-	' arm is what makes it a troll. Sprite 14 is a second, CONNECTED segment held
-	' 14 px below the fist, so the two move as one limb and the reach stays
-	' visually anchored to the pit it comes from.
+	' THE FIST, AND THE ARM BEHIND IT. The fist hangs on a forearm of two
+	' straight segments, chained down from the wrist into the lava, so it is
+	' always visibly attached to the pit -- which is also why its reach is
+	' capped (trr above). A segment that would sit below the screen is hidden,
+	' never placed there: y 208 ends the sprite list. The arm takes slots 30-31,
+	' the last, so on a crowded line it is the arm that drops out, not a bird.
 tr_draw:
-	SPRITE 19,trhy,trx,P_HAND,9
-	' The arm is ITS OWN sprite -- an angled forearm, not a second fist. Two hands
-	' stacked read as two trolls, which is the opposite of the one long limb the
-	' effect needs.
-	' THE ARM STAYS IN THE PIT. Drawn at a fixed offset below the fist it rose out
-	' of the lava with it, and a whole troll climbing free of the pit is not what
-	' this is -- it is a limb reaching UP out of one. The forearm is therefore
-	' pinned near the lava line and only the FIST travels; the arm covers the gap
-	' between them and is hidden when the hand is close enough not to need it.
-	tay = 176
-	IF trhy > 162 THEN
-		SPRITE 20,SPRHID,0,0,0
+	SPRITE 19,trhy,trx,P_HAND,14
+	tay = trhy + 14
+	IF tay > 191 THEN
+		SPRITE 30,SPRHID,0,0,0
 	ELSE
-		SPRITE 20,tay,trx,P_ARM,6
+		SPRITE 30,tay,trx,P_ARM,14
+	END IF
+	tay = tay + 14
+	IF tay > 191 THEN
+		SPRITE 31,SPRHID,0,0,0
+	ELSE
+		SPRITE 31,tay,trx,P_ARM,14
 	END IF
 	RETURN
 
