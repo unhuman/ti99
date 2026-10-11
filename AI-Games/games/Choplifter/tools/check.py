@@ -132,7 +132,8 @@ class Basic:
                 block=[line[4:]]
                 while pc<len(lines) and lines[pc].startswith('ASM '):
                     block.append(lines[pc][4:]);pc+=1
-                self.native(block)
+                flow=self.native(block)
+                if flow:return flow
             elif line.startswith('IF '):
                 cond,tail=line[3:].split(' THEN',1)
                 if tail.strip():
@@ -216,6 +217,8 @@ class Basic:
             if s.startswith('@cvb_'):
                 name=s[5:];name='#'+name[1:] if name.startswith('_') else name
                 return self.v.get(name,0)  # CVBasic variables start at zero
+            if s=='@joy1_data':
+                return 64 if self.v.get('cont1.button',0) else 0
             if s.startswith('*r'):
                 reg=int(s[2:].rstrip('+'));addr=regs[reg]
                 if s.endswith('+'):regs[reg]+=1 if byte else 2
@@ -236,7 +239,7 @@ class Basic:
             if column==1 and '9' in self.keys:rows&=~0x08
             if column==2 and '8' in self.keys:rows&=~0x08
             return rows<<8
-        pc=0;zero=False;steps=0;compare=0
+        pc=0;zero=False;steps=0;compare=0;external=None
         while pc<len(lines):
             steps+=1
             if steps>40000:raise ValueError('Native loop runaway')
@@ -322,6 +325,7 @@ class Basic:
                 else:regs[11]=pc;pc=labels[args[1:]]
             elif op=='b':
                 # A local long branch (b @label) or a local return (b *r11).
+                if args=='@cvb_title':external=('goto','title');break
                 if args.startswith('@'):pc=labels[args[1:]]
                 elif args=='*r11':pc=regs[11]
                 else:raise ValueError('Unsupported branch: '+line)
@@ -358,6 +362,7 @@ class Basic:
                 self.a[name]=[memory[base+2*i]*256+memory[base+2*i+1] for i in range(len(self.a[name]))]
             else:
                 self.a[name]=[memory[base+i] for i in range(len(self.a[name]))]
+        return external
     def statements(self,line):
         for part in line.split(':'):
             part=part.strip()
@@ -3393,7 +3398,7 @@ class Tests(unittest.TestCase):
         def results(difficulty,practice):
             b=self.state();b.v.update(difficulty=difficulty,practice=practice,saved=12,lost=7,
                                      best=20,best_practice=0,lives=0,**{'cont1.key':15,'cont1.button':0})
-            body=b.r['result_screen'];b.r['results_draw']=body[:body.index('GOSUB release_input')]
+            b.r['results_draw']=b.r['result_screen'][:]
             b.call('results_draw')
             return lambda row,col,n:''.join(chr(b.vram.get(6144+row*32+col+i,32)) for i in range(n))
         for difficulty,word in enumerate(('EASY','MEDIUM','HARD')):
@@ -3409,6 +3414,38 @@ class Tests(unittest.TestCase):
                 self.assertEqual(text(15,7,17),'BEST RESCUE    20')
                 self.assertEqual(text(2,8,16),' MISSION REPORT ')
                 self.assertEqual(text(23,5,22),'PRESS FIRE TO CONTINUE')
+
+    def test_result_wait_needs_a_new_fire_press(self):
+        # Holding FIRE into the report used to time out release_input after 60
+        # frames, then dismiss the report on the very next frame.
+        def finish_frame(source,target):
+            b=self.state();b.r=Basic(source,target=target).r;b.target=target
+            b.v.update({'cont1.button':1,'cont1.key':15,'saved':3,'lost':1})
+            b.r['title']=['RETURN']
+            waits=[0];original=b.statements
+            def input_frame(line):
+                if line=='WAIT':
+                    waits[0]+=1
+                    if waits[0]>100:raise AssertionError('Report did not continue')
+                    b.v['cont1.button']=int(waits[0]<=75 or waits[0]>=85)
+                return original(line)
+            b.statements=input_frame
+            b.call('result_screen')
+            self.assertIn(('goto','title'),b.events)
+            return waits[0]
+        for target in ('TI994A','COLECO'):
+            self.assertEqual(finish_frame(SOURCE,target),85,target)
+        # Restore the old timed release plus immediate button check. This must
+        # reproduce the unwanted automatic return before FIRE is released.
+        marker='PRINT AT 741,"PRESS FIRE TO CONTINUE"\n'
+        self.assertEqual(SOURCE.count(marker),1)
+        before,tail=SOURCE.split(marker,1)
+        wait,after=tail.split('\nbest_update:\n',1)
+        self.assertIn('result_wait:',wait)
+        old=(before+marker+'GOSUB release_input\nresult_wait:\nWAIT\n'
+             'IF cont1.button THEN GOTO title\nGOTO result_wait\n'
+             '\nbest_update:\n'+after)
+        self.assertEqual(finish_frame(old,'TI994A'),61)
 
     def test_air_burst_chunk_borrows_the_helicopters_mask_bit(self):
         # Slot 16 (an air burst's falling chunk) has no bit of its own in the

@@ -1,7 +1,7 @@
 # Choplifter — TI-99/4A / CVBasic
 
 Current-state design. History is in git; sizes below are from the latest build
-(2026-10-09); full-loop TI speeds were re-measured on 2026-10-07, per-routine costs on 2026-10-06.
+(2026-10-10); full-loop TI speeds were re-measured on 2026-10-07, per-routine costs on 2026-10-06.
 
 ## Performance budget
 
@@ -623,7 +623,8 @@ title (the README has them). Keys 1–3 pick the difficulty, or LEFT/RIGHT step 
 continues an 8-3 sequence is not a choice. The pick lasts from game to game (medium at
 power-on). The credit line, 2026 UNHUMAN AND AI C&C (the bottom third's font has no lower
 case), is on row 20 and PRESS FIRE TO START on row 23: FIRE starts (no digit). The results
-screen also continues with FIRE only. Its heading is centred on row 2 (MISSION REPORT when
+screen requires FIRE to be released and pressed again to continue; holding FIRE through
+its arrival cannot skip it. Its heading is centred on row 2 (MISSION REPORT when
 lives run out), with PRESS FIRE TO CONTINUE centred on the bottom row (23). It lists SKILL
 LEVEL (EASY, MEDIUM or HARD) on row 7,
 then PEOPLE SAVED, PEOPLE LOST and STRANDED on rows 9, 11 and 13, and BEST RESCUE on row

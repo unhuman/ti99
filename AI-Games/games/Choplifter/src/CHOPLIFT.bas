@@ -3244,10 +3244,30 @@ PRINT AT 487,"BEST RESCUE    "
 digit_value=best:#digit_pos=6646:GOSUB digits
 IF best_practice THEN VPOKE 6648,60
 PRINT AT 741,"PRESS FIRE TO CONTINUE"
-GOSUB release_input
 result_wait:
+' silence leaves fire_gate at 2. Only an observed release arms this screen;
+' the next press continues. A timed release_input could expire while held.
 WAIT
-IF cont1.button THEN GOTO title
+#if TI994A
+' The data bank has little room; read the same FIRE bit as cont1.button.
+ASM movb @joy1_data,r0
+ASM andi r0,>4000
+ASM jne report_held
+ASM clr r0
+ASM movb r0,@cvb_FIRE_GATE
+ASM jmp report_checked
+ASM report_held:
+ASM movb @cvb_FIRE_GATE,r0
+ASM jne report_checked
+ASM b @cvb_TITLE
+ASM report_checked:
+#else
+IF cont1.button THEN
+    IF fire_gate = 0 THEN GOTO title
+ELSE
+    fire_gate=0
+END IF
+#endif
 GOTO result_wait
 
 best_update:

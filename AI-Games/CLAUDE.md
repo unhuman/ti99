@@ -682,3 +682,13 @@ direction controls, so it must not be accepted as a generic REDO/BACK command.
 Read the FCTN modifier and physical 8/9 matrix positions instead; Keystone
 Kapers' `ti_cancel_key` shows the CRU sequence. Test directional movement and
 shortcut keys in the running emulator together.
+
+### A CAPPED RELEASE WAIT DOES NOT PROVE A BUTTON WAS RELEASED (2026-10-10)
+
+Choplifter's mission report called a 60-frame `release_input` and then accepted
+FIRE immediately. If the player held FIRE past the timeout, the next frame
+returned to the title without a fresh press. A screen that needs a new press
+must wait for an observed release in its own input loop before accepting FIRE.
+The timeout must never count as a release. Test a hold longer than the timeout,
+followed by a release and a new press, against the actual source and a mutation
+restoring the old timeout-plus-immediate-check path.

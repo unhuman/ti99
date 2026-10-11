@@ -116,7 +116,8 @@ landing apron is dark red, with a gray sidewalk by the building and a yellow oct
 
 The mission summary centres its heading at the top and the FIRE prompt at the bottom. It
 names the skill level you played, with your saved, lost and stranded counts and the
-session's best rescue.
+session's best rescue. Release FIRE and press it again to continue; holding it through the
+summary leaves the report visible.
 
 For practice, type **838** at the title and answer **1–9** for the number of helicopters.
 The summary marks a practice game with a small asterisk after its skill level and saved
@@ -185,7 +186,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   cells and adjusts the brackets and period for game text. The generator writes
   the menu's bottom-third copy, and the build replaces CVBasic's embedded glyphs
   on TI and ColecoVision without growing the ROM.
-- `tools/check.py`: 119 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 120 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,
