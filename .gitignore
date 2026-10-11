@@ -104,3 +104,7 @@ Desktop.ini
 # than none: both were already broken by the very edit they had just made.
 _*.py
 Microsoft/
+
+
+## decompiled stuff
+Decompiled/
