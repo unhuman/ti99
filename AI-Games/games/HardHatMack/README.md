@@ -260,12 +260,13 @@ From the project root on Windows:
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/hardhat-dev.ps1 BuildAll
 powershell -ExecutionPolicy Bypass -File tools/hardhat-dev.ps1 LaunchTI
-powershell -ExecutionPolicy Bypass -File tools/hardhat-dev.ps1 LaunchColEm
+powershell -ExecutionPolicy Bypass -File tools/hardhat-dev.ps1 LaunchColeco
 ```
 
 The launcher opens Classic99 on the visible desktop and loads the newest TI
-cartridge at the normal title. `LaunchColEm` opens the MegaCart in ColEm;
-`LaunchColeco` remains available for CoolCV.
+cartridge at the normal title. **ColEm is the preferred ColecoVision review
+emulator**: `LaunchColeco` opens the MegaCart there. `LaunchColEm` is an alias;
+use `LaunchCoolCV` only when a CoolCV comparison is needed.
 
 Or run `bash games/HardHatMack/build-ti.sh` followed by
 `bash games/HardHatMack/build-coleco.sh` using Cygwin bash.

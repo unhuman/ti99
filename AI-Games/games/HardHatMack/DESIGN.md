@@ -3170,3 +3170,10 @@ and rejects missing keys or a broken latch.
 The production MegaCart was checked in ColEm: from level 1, `-` returned to
 the title; after starting level 1 again, `=` did the same. The normal title
 cart was then reloaded. The TI build kept its prior cartridge hash.
+
+## 61. Preferred ColecoVision review emulator (2026-10-10)
+
+Use ColEm for routine ColecoVision reviews. `tools/hardhat-dev.ps1 LaunchColeco`
+opens the latest production MegaCart on the visible desktop in ColEm;
+`LaunchColEm` is an alias. `LaunchCoolCV` remains available for a direct
+emulator comparison. Both launch actions report the ROM path and SHA-256.

@@ -4,7 +4,7 @@
 #
 #   cvbasic (default target = Coleco) -> gasm80 -> 128 KiB MegaCart
 #
-# Output: src/hardhat.rom -- load in CoolCV / blueMSX (ColecoVision).
+# Output: src/hardhat.rom -- review in ColEm (CoolCV / blueMSX also work).
 #
 # Same .bas source and five-bank layout as the TI-99 build (build-ti.sh);
 # Coleco uses 16 KiB MegaCart banks. The main
@@ -68,4 +68,4 @@ rm -f "$ROM" "$SYM"
 
 echo
 echo "Build OK ->  $(pwd)/$ROM"
-echo "Load it in CoolCV or blueMSX (ColecoVision)."
+echo "Review it in ColEm (or CoolCV / blueMSX)."
