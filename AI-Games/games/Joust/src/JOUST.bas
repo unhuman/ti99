@@ -75,6 +75,14 @@
 	CONST EGGCH = 137		' an egg waiting on a ledge (Egg waves)
 	CONST ROCKL = 138		' ... its sloping left end
 	CONST ROCKR = 139		' ... and right end
+	CONST PLATM2 = 140		' second ledge-middle texture, for unevenness
+	CONST UND1L = 141		' ledge undersides, in the row below the surface:
+	CONST UND1R = 142		'   one from an end (left / right taper)
+	CONST UND2 = 143		'   two from an end
+	CONST UND3A = 144		'   three or more, two textures
+	CONST UND3B = 145
+	CONST FLOORCH = 146		' base and bridges: lit top over solid rock
+	CONST PADFL = 147		' a pad set into the floor
 	' SPRITE PATTERNS (pattern number = 16x16 sprite index x 4; see setup).
 	CONST P_OST = 0			' ostrich, 8 frames right then 8 left
 	CONST P_BUZ = 64		' buzzard, the same layout
@@ -93,8 +101,9 @@
 	' SPRITE SLOTS. Every figure is TWO sprites, rider over mount, so the slots
 	' are handed out in blocks -- grep here before taking one:
 	'   0-1 player (rider, mount)   2-13 knights (2 + 2*kni rider, +1 mount)
-	'   14-17 eggs   18 rescue bird   19 troll hand   20 troll arm
-	'   21 pterodactyl   22-31 unused, held hidden
+	'   14-17 eggs   18 rescue bird   19 troll hand   21 pterodactyl
+	'   30-31 troll arm, LAST so the arm is what drops out on a crowded line
+	'   20, 22-29 unused, held hidden
 	CONST NTEG = 12			' Egg wave: eggs on the ledges, DIM 0..11
 	CONST NPAD = 5			' pads, DIM 0..4 -- one is on the BASE
 	CONST KDEAD = 0
@@ -215,6 +224,8 @@
 	DIM tegon(NTEG)			' 1 still waiting on its ledge
 
 	stwv = 1			' 838 on the title overrides this
+	stlv = 3
+	diff = 1			' MEDIUM at power-on; the pick then persists between games
 	GOSUB setup
 	GOTO title_screen
 
@@ -239,13 +250,14 @@ setup:
 	kbscan = 1
 	' THE ARCADE FACE. Replaces CVBasic's stock 8x8, which is a thin generic ASCII
 	' font and reads like a BASIC listing rather than an arcade cabinet -- undoing a
-	' good deal of what the sprites are doing. 59 characters, 32-90, contiguous.
-	' Colours are left alone: a DEFINE COLOR run this long would cost another 472
-	' bytes to say "white" 59 times.
+	' good deal of what the sprites are doing. 59 characters, 32-90, contiguous,
+	' bold to match the title logo and shaded like it (font_col, in bank 1).
 	DEFINE CHAR 32,59,font_bits
-	' Characters 128-139 and their colours, generated together (genart.py).
-	DEFINE CHAR PLATL,12,chr_plat_l
-	DEFINE COLOR PLATL,12,col_chars
+	DEFINE COLOR 32,59,font_col	' yellow to red down each glyph
+	DEFINE COLOR 40,2,brk_col	' ( and ): the title's difficulty brackets
+	' Characters 128-147 and their colours, generated together (genart.py).
+	DEFINE CHAR PLATL,20,chr_plat_l
+	DEFINE COLOR PLATL,20,col_chars
 	DEFINE SPRITE 0,8,spr_ost_r	' P_OST
 	DEFINE SPRITE 8,8,spr_ost_l
 	DEFINE SPRITE 16,8,spr_buz_r	' P_BUZ
@@ -368,111 +380,14 @@ set_isl_on:
 	plon(3 + sin) = 0
 	RETURN
 
-	' ---------------------------------------------------------- title screen
-title_screen:
-	sprok = 2
-	kbscan = 1
-	GOSUB hide_all
-	CLS
-	PRINT AT 100,"J O U S T"
-	PRINT AT 232,"THE HIGHER LANCE WINS"
-	PRINT AT 328,"FIRE     FLAP"
-	PRINT AT 392,"LEFT/RIGHT    STEER"
-	PRINT AT 520,"PRESS FIRE TO START"
-	PRINT AT 680,"2026 UNHUMAN & CLAUDE"
-	btnr = 0
-	t8 = 0
-	' SEED THE EDGE DETECTOR WITH WHAT IS ALREADY HELD. Seeding with 15 ("no key")
-	' asserts nothing is down when the title starts, which stops being true the
-	' moment anything precedes it -- a key still held would read as a fresh press.
-	tkl = cont1.key
-title_wait:
-	WAIT
-	' 8-3-8 OPENS THE WAVE SELECT. Edge triggered on cont1.key, which gives 0-9 on
-	' both targets (TI keyboard, Coleco keypad) and 15 for nothing -- and NOT on the
-	' joystick, whose vertical axis shares a line with ALPHA LOCK on the TI.
-	tk = cont1.key
-	IF tk <> tkl THEN
-		tkl = tk
-		IF tk = 8 THEN
-			IF t8 = 2 THEN
-				GOSUB setup838
-				GOTO new_game
-			END IF
-			t8 = 1
-		ELSE
-			IF tk = 3 THEN
-				IF t8 = 1 THEN
-					t8 = 2
-				ELSE
-					t8 = 0
-				END IF
-			ELSE
-				IF tk < 15 THEN t8 = 0
-			END IF
-		END IF
-	END IF
-	' RELEASE BEFORE PRESS. Arriving here with fire still held from the last
-	' game would otherwise start the next one before the screen was read.
-	IF btnr = 0 THEN
-		IF cont1.button = 0 THEN btnr = 1
-	ELSE
-		IF cont1.button THEN GOTO new_game
-	END IF
-	GOTO title_wait
-
-	' ------------------------------------------------------------- new game
-	' Wave selector: two digits, echoed as they are typed. Undocumented on screen
-	' -- there is no room for a caption -- so it lives in README.md instead.
-setup838:
-	GOSUB hide_all
-	CLS
-	PRINT AT 264,"START AT WAVE 01-99"
-	PRINT AT 360,"ENTER TWO DIGITS"
-	' !! #rdp IS 16-BIT ON PURPOSE. A plain variable is 8-BIT, so 463 would
-	' truncate to 207 and the digits would appear at row 6 instead of row 14 --
-	' silently, and looking like somebody's odd layout choice (TRUNCATION.md 1a).
-	#rdp = 463			' row 14, col 15
-	GOSUB rd_dig
-	sd1 = tdg
-	GOSUB rd_dig
-	stwv = sd1 * 10 + tdg
-	IF stwv < 1 THEN stwv = 1
-	' LET THE SECOND BEEP DECAY BEFORE LEAVING. The first digit's note is silenced
-	' by the second call's wait loop; after the second there is no loop left, and
-	' nothing between here and the game loop ticks the sound.
-	FOR sdw = 0 TO 5
-		WAIT
-		GOSUB sfx_tick
-	NEXT sdw
-	RETURN
-
-	' One digit: wait for every key to be RELEASED, then for a digit. Without the
-	' release wait the 8 that opened this screen is read as the first digit.
-rd_dig:
-rd_rel:
-	WAIT
-	GOSUB sfx_tick
-	IF cont1.key <> 15 THEN GOTO rd_rel
-rd_get:
-	WAIT
-	GOSUB sfx_tick
-	tdg = cont1.key
-	IF tdg > 9 THEN GOTO rd_get
-	#rda = #rdp
-	#rda = #rda + 6144
-	rdv = 48 + tdg
-	VPOKE #rda,rdv
-	#rdp = #rdp + 1
-	sfn = SFX_DIGIT : GOSUB sfx_play
-	RETURN
+	' The title, 838 and game-over screens live in bank 1, at the end.
 
 new_game:
 	kbscan = 0			' no keys read in play: the scan is skipped
 	#score = 0			' stored in TENS of points: every award in
 					' Joust is a multiple of 50, so this is exact
 					' and 16 bits then reaches 655,350.
-	lives = 3
+	lives = stlv			' 3, or whatever 838 asked for
 	#nxtb = 2000			' next extra bird: 20,000, in tens
 	' 838 sets stwv; new_wave increments, so start one below it.
 	wave = stwv - 1
@@ -507,13 +422,28 @@ new_wave:
 	wsurv = wegg
 	IF wave < 10 THEN wsurv = 0
 	IF wave = 2 THEN wsurv = 1
-	#wvt = 0			' frames elapsed in this wave (pterodactyl clock)
+	#wvt = 0			' passes elapsed in this wave (pterodactyl clock)
 	trst = 0
 	ptst = 0
+	#ptdl = 0
+	' PTERODACTYL WAVES are 8, 13, 18... : one comes early. On every other wave
+	' it only comes if the wave drags on.
+	ptwv = wave
+	WHILE ptwv > 12
+		ptwv = ptwv - 5
+	WEND
 	' AGGRESSION RISES WITH THE WAVE, not just with the tier. A Bounder in wave 12
 	' should not fly like a Bounder in wave 1: same strategy, sharper execution.
-	agg = wave
-	IF agg > 16 THEN agg = 16
+	' DIFFICULTY shifts it two waves either way: EASY flies like two waves
+	' earlier, HARD like two waves later.
+	agg = wave + diff
+	agg = agg + diff
+	IF agg > 2 THEN
+		agg = agg - 2
+	ELSE
+		agg = 1
+	END IF
+	IF agg > 20 THEN agg = 20
 	GOSUB set_ktop
 	GOSUB set_islands		' erosion first: draw_field draws what survives
 	GOSUB draw_field
@@ -530,7 +460,7 @@ new_wave:
 	IF nwk > NKN THEN nwk = NKN
 	IF wegg = 1 THEN nwk = 0	' Egg wave: the eggs ARE the knights
 	kpend = nwk			' still to materialise this wave
-	spwt = 80			' passes until the next one may appear
+	spwt = 40			' passes until the next one may appear
 	FOR nwi = 0 TO NPAD - 1
 		padu(nwi) = 0
 	NEXT nwi
@@ -661,77 +591,6 @@ spawn_player:
 	RETURN
 
 	' ------------------------------------------------------------ draw field
-draw_field:
-	CLS
-	FOR dfi = 0 TO NPLAT - 1
-		IF plon(dfi) = 1 THEN
-		dfr = ply(dfi) / 8		' surface pixel row -> character row
-		dfc = #plx1(dfi) / 8
-		dfd = #plx2(dfi) / 8
-		#dfa = dfr
-		#dfa = #dfa * 32
-		#dfa = #dfa + dfc
-		GOSUB draw_plat
-		END IF
-	NEXT dfi
-
-	' NO PAD WITHOUT ITS ISLAND -- see the padi() comment at the DIMs.
-	FOR dfi = 0 TO NPAD - 1
-		IF plon(padi(dfi)) = 1 THEN
-			dfr = pady(dfi) + 16		' the surface the pad sits on
-			dfr = dfr / 8
-			dfc = padx(dfi) / 8
-			#dfa = dfr
-			#dfa = #dfa * 32
-			#dfa = #dfa + dfc
-			#dfa = #dfa + 6144
-			VPOKE #dfa,PADCH
-			#dfa = #dfa + 1
-			VPOKE #dfa,PADCH
-		END IF
-	NEXT dfi
-
-	' The lava fills everything below the floor line.
-	' ROWS 22-23 ONLY, below the base. It used to start at row 20 -- the base's own
-	' row -- and paint over it, so the floor you were standing on was drawn as
-	' lava. Collision read the island table and was right; only the picture lied.
-	' ROWS 22-23: THE BASE STANDS IN THE LAVA. Under the base's span (columns
-	' 5-25) its rock goes down to the bottom of the screen, sloping in at each
-	' end, and the score is cut into it; either side is the pit, flames on top.
-	FOR dfi = 0 TO 31
-		#dfa = 6848 + dfi		' row 22 = 704, plus the name table's 6144
-		dfc = LAVAA
-		IF dfi AND 1 THEN dfc = LAVAB
-		dfd = LAVAC
-		IF dfi >= 5 THEN
-			IF dfi <= 25 THEN
-				dfc = ROCKCH
-				IF dfi = 5 THEN dfc = ROCKL
-				IF dfi = 25 THEN dfc = ROCKR
-				dfd = dfc
-			END IF
-		END IF
-		VPOKE #dfa,dfc
-		#dfa = #dfa + 32
-		VPOKE #dfa,dfd
-	NEXT dfi
-	RETURN
-
-	' ONE PLATFORM. #dfa is the name-table offset of its left cap, dfc..dfd the
-	' column span. VPOKE takes a RAW VRAM address and the name table starts at
-	' 6144, added as its OWN step -- folded into a constant expression it would
-	' truncate (CLAUDE.md 3A).
-draw_plat:
-	#dpa = #dfa
-	#dpa = #dpa + 6144
-	VPOKE #dpa,PLATL
-	FOR dpi = dfc + 1 TO dfd - 1
-		#dpa = #dpa + 1
-		VPOKE #dpa,PLATM
-	NEXT dpi
-	#dpa = #dpa + 1
-	VPOKE #dpa,PLATR
-	RETURN
 
 	' ---------------------------------------------------------------- HUD
 	' THE SCORE IS IN THE BASE, as in the arcade: row 22, columns 9-14, with the
@@ -831,6 +690,10 @@ main:
 
 	IF pdead > 0 THEN GOSUB do_death
 	IF pover = 1 THEN GOTO game_over
+	' REDO or BACK (FCTN 8 / FCTN 9; * on the Coleco keypad) quits to the
+	' title. Main is the top-level loop, not a GOSUB, so this GOTO leaks nothing.
+	GOSUB cancel_key
+	IF canc THEN GOTO quit_game
 
 	' THE FIXED TICK: one pass every TWO frames, 30 a second, never faster. Every
 	' speed, gravity and timer in this file is per PASS, so a loop that ran as fast
@@ -1145,7 +1008,7 @@ k_spawn:
 	padu(ksp) = 1
 	kon(ksl) = 2				' 2 = materialising, not yet solid
 	kpad(ksl) = ksp
-	kmat(ksl) = 120			' two seconds of flashing, no more
+	kmat(ksl) = 36			' just over a second of shimmer
 	#kx(ksl) = padx(ksp)
 	#kx(ksl) = #kx(ksl) * 256
 	#ky(ksl) = pady(ksp)
@@ -1158,7 +1021,8 @@ k_spawn:
 	ktx(ksl) = 128
 	kty(ksl) = 60
 	ktier(ksl) = 0
-	IF wave > 3 THEN ktier(ksl) = kpend AND 1
+	dhw = wave + diff		' Hunters from wave 5 / 4 / 3 by difficulty
+	IF dhw > 4 THEN ktier(ksl) = kpend AND 1
 	' SHADOW LORDS ARRIVE ONE MORE PER WAVE from 16: the last knight of wave 16,
 	' the last two of wave 17, and so on until every one is a Lord.
 	IF wave > 15 THEN
@@ -1166,7 +1030,7 @@ k_spawn:
 		IF kpend <= ksv THEN ktier(ksl) = 2
 	END IF
 	kpend = kpend - 1
-	spwt = 52
+	spwt = 24
 	sfn = SFX_SPAWN : GOSUB sfx_play
 	RETURN
 
@@ -2219,12 +2083,15 @@ c_knight:
 	cky = #cy / 256
 	cdx = cpx - ckx
 	IF cpx < ckx THEN cdx = ckx - cpx
-	' TIGHTER THAN IT WAS. At 11 px a "collision" started while the birds were
-	' still visibly apart, and the resulting duel felt unearned.
-	IF cdx > 9 THEN RETURN
+	' THE BODIES, measured from the art. A bird is 13 px wide (x 0-12) and,
+	' with its rider, 15 px tall from the rider's shoulders to the knees
+	' (y -1 to +13; the thin legs and the lance are left out). Two figures
+	' touch when they are closer than that on both axes. The old 9 x 9 box
+	' let the birds overlap by four or five pixels each way with no joust.
+	IF cdx > 11 THEN RETURN
 	cdy = cpy - cky
 	IF cpy < cky THEN cdy = cky - cpy
-	IF cdy > 9 THEN RETURN
+	IF cdy > 13 THEN RETURN
 
 	' AND THE TIE WINDOW IS ONE PIXEL, not four. A bounce means the lances met
 	' dead level -- it should be the rare, surprising outcome, not the usual one.
@@ -2420,6 +2287,11 @@ do_death:
 	sprok = 2			' this loop WAITs per frame: copy every frame
 	SPRITE 0,SPRHID,0,0,0
 	SPRITE 1,SPRHID,0,0,0
+	IF ptst = 1 THEN
+		ptst = 0			' it leaves with its kill...
+		#ptdl = 600			' ...and stays away 20 seconds
+		SPRITE 21,SPRHID,0,0,0
+	END IF
 	sf0 = 0				' the loop below owns channel 0
 	sfn = SFX_DIE : GOSUB sfx_play
 	FOR ddi = 0 TO 30
@@ -2441,15 +2313,6 @@ do_death:
 	GOSUB spawn_player
 	pdead = 0
 	RETURN
-
-game_over:
-	sprok = 2
-	GOSUB hide_all
-	PRINT AT 300,"GAME OVER"
-	FOR ddi = 0 TO 120
-		WAIT
-	NEXT ddi
-	GOTO title_screen
 
 	' ----------------------------------------------------------- rendering
 draw:
@@ -2492,8 +2355,10 @@ draw:
 k_draw:
 	dky = #cy / 256
 	dkx = #cx / 256
-	dkc = 0
-	IF cmat AND 4 THEN dkc = 15
+	' A SHIMMER, not a blink: four colours a pass apart, so the knight seems
+	' to form out of light rather than switch on and off.
+	dkc = cmat AND 3
+	dkc = matcol(dkc)
 	dks = kni * 2
 	dks = dks + 2
 	SPRITE dks + 1,dky,dkx,P_BUZ,dkc
@@ -2527,7 +2392,7 @@ e_draw:
 	RETURN
 
 hide_all:
-	FOR hai = 0 TO 21
+	FOR hai = 0 TO 31
 		SPRITE hai,SPRHID,0,0,0
 	NEXT hai
 	RETURN
@@ -2540,19 +2405,32 @@ hide_all:
 troll:
 	IF wave < 3 THEN
 		SPRITE 19,SPRHID,0,0,0
-		SPRITE 20,SPRHID,0,0,0
+		SPRITE 30,SPRHID,0,0,0
+		SPRITE 31,SPRHID,0,0,0
 		RETURN
 	END IF
 	trw = agg
-	trr = 44 + trw * 4		' how high it can reach above the lava
+	' HOW HIGH IT CAN REACH: no further than its arm. The fist hangs on two
+	' forearm segments that must still reach down into the lava, so its top can
+	' rise at most 42 px above the lava line; the reach grows by a pixel a step
+	' of aggression up to that. It used to be 44 + 4 per step, which let a lone
+	' fist float up past the base, attached to nothing.
+	trr = 30 + trw
+	IF trr > 42 THEN trr = 42
 	tpy = #py / 256
 	tpx = #px / 256
 
 	IF trst = 0 THEN
-		' only over a pit, and only if you are low enough to be worth grabbing
+		' only over an OPEN pit, and only if you are low enough to be worth
+		' grabbing. On an Egg wave the bridges are back and cover the pits, so
+		' the hand must not come up through them.
 		tover = 0
-		IF tpx < 40 THEN tover = 1
-		IF tpx > 207 THEN tover = 1
+		IF tpx < 40 THEN
+			IF plon(1) = 0 THEN tover = 1
+		END IF
+		IF tpx > 207 THEN
+			IF plon(2) = 0 THEN tover = 1
+		END IF
 		IF tover = 1 THEN
 			ttop = 184 - trr
 			IF tpy > ttop THEN
@@ -2563,7 +2441,8 @@ troll:
 			END IF
 		END IF
 		SPRITE 19,SPRHID,0,0,0
-		SPRITE 20,SPRHID,0,0,0
+		SPRITE 30,SPRHID,0,0,0
+		SPRITE 31,SPRHID,0,0,0
 		RETURN
 	END IF
 
@@ -2625,26 +2504,25 @@ troll:
 	END IF
 	RETURN
 
-	' THE FIST, AND THE ARM BEHIND IT. A hand hanging in mid-air over the lava
-	' reads as a floating object, not as something reaching OUT of the pit -- the
-	' arm is what makes it a troll. Sprite 14 is a second, CONNECTED segment held
-	' 14 px below the fist, so the two move as one limb and the reach stays
-	' visually anchored to the pit it comes from.
+	' THE FIST, AND THE ARM BEHIND IT. The fist hangs on a forearm of two
+	' straight segments, chained down from the wrist into the lava, so it is
+	' always visibly attached to the pit -- which is also why its reach is
+	' capped (trr above). A segment that would sit below the screen is hidden,
+	' never placed there: y 208 ends the sprite list. The arm takes slots 30-31,
+	' the last, so on a crowded line it is the arm that drops out, not a bird.
 tr_draw:
-	SPRITE 19,trhy,trx,P_HAND,9
-	' The arm is ITS OWN sprite -- an angled forearm, not a second fist. Two hands
-	' stacked read as two trolls, which is the opposite of the one long limb the
-	' effect needs.
-	' THE ARM STAYS IN THE PIT. Drawn at a fixed offset below the fist it rose out
-	' of the lava with it, and a whole troll climbing free of the pit is not what
-	' this is -- it is a limb reaching UP out of one. The forearm is therefore
-	' pinned near the lava line and only the FIST travels; the arm covers the gap
-	' between them and is hidden when the hand is close enough not to need it.
-	tay = 176
-	IF trhy > 162 THEN
-		SPRITE 20,SPRHID,0,0,0
+	SPRITE 19,trhy,trx,P_HAND,14
+	tay = trhy + 14
+	IF tay > 191 THEN
+		SPRITE 30,SPRHID,0,0,0
 	ELSE
-		SPRITE 20,tay,trx,P_ARM,6
+		SPRITE 30,tay,trx,P_ARM,14
+	END IF
+	tay = tay + 14
+	IF tay > 191 THEN
+		SPRITE 31,SPRHID,0,0,0
+	ELSE
+		SPRITE 31,tay,trx,P_ARM,14
 	END IF
 	RETURN
 
@@ -2655,40 +2533,83 @@ tr_draw:
 	' be able to call the shot at speed.
 ptero:
 	IF ptst = 0 THEN
-		ptw = 0
-		IF wave >= 8 THEN ptw = 1
-		IF #wvt > 1200 THEN ptw = 1	' 40 seconds: stop hiding
-		IF ptw = 1 THEN
-			IF #wvt > 300 THEN
-				ptst = 1
-				pty = #py / 256
-				ptx = 0
-				ptf = 0
-				IF #px > 32768 THEN
-					ptx = 255
-					ptf = 1
-				END IF
-				ptmo = 0
-				sfn = SFX_PTERO : GOSUB sfx_play
-			END IF
-		END IF
 		SPRITE 21,SPRHID,0,0,0
+		' A REST AFTER IT DIES OR KILLS YOU. It used to come straight back,
+		' which made a kill worth nothing and a death a trap.
+		IF #ptdl > 0 THEN
+			#ptdl = #ptdl - 1
+			RETURN
+		END IF
+		ptw = 0
+		IF ptwv = 8 THEN
+			IF #wvt > 300 THEN ptw = 1	' its own wave: 10 seconds in
+		END IF
+		IF #wvt > 1800 THEN ptw = 1	' any wave past 60 seconds: stop hiding
+		IF ptw = 1 THEN
+			ptst = 1
+			pty = #py / 256
+			' FROM THE FAR EDGE, flying ONE WAY for good: it wraps round the
+			' screen and never turns back, as in the arcade.
+			ptx = 0
+			ptf = 0
+			IF #px < 32768 THEN
+				ptx = 240
+				ptf = 1
+			END IF
+			ptmo = 0
+			' never born inside a ledge: lift it clear first
+			ptnx = ptx
+			ptny = pty
+			GOSUB pt_hit
+			WHILE pth = 1
+				IF ptny < 12 THEN
+					pth = 0
+				ELSE
+					ptny = ptny - 4
+					GOSUB pt_hit
+				END IF
+			WEND
+			pty = ptny
+		END IF
 		RETURN
 	END IF
 
 	ptmo = ptmo + 1
 	ptmo = ptmo AND 63
+	IF ptmo = 1 THEN
+		sfn = SFX_PTERO : GOSUB sfx_play	' it screeches as it comes
+	END IF
 	pgx = #px / 256
 	pgy = #py / 256
-	IF ptx < pgx THEN
-		ptx = ptx + 2
-		ptf = 0
+	' IT OBEYS THE ISLANDS, like everything else that flies. Each move is tried
+	' first and refused if it would put the body inside a ledge (pt_hit). Blocked
+	' going forward, it does not stop: it climbs or dives round the ledge's
+	' nearer edge and carries on next pass. Blocked going up or down, it simply
+	' holds its height until it has flown clear.
+	ptnx = ptx + 2
+	IF ptf = 1 THEN ptnx = ptx - 2
+	ptny = pty
+	GOSUB pt_hit
+	IF pth = 0 THEN
+		ptx = ptnx
 	ELSE
-		ptx = ptx - 2
-		ptf = 1
+		ptny = pty + 2
+		pti = ply(pthi) + 4
+		IF pty + 8 < pti THEN ptny = pty - 2	' above its middle: go over
+		IF ptny < 8 THEN ptny = 8
+		IF ptny > 160 THEN ptny = 160
+		ptnx = ptx
+		GOSUB pt_hit
+		IF pth = 0 THEN pty = ptny
 	END IF
-	IF pty < pgy THEN pty = pty + 1
-	IF pty > pgy THEN pty = pty - 1
+	ptnx = ptx
+	ptny = pty
+	IF pty < pgy THEN ptny = pty + 1
+	IF pty > pgy THEN ptny = pty - 1
+	IF ptny <> pty THEN
+		GOSUB pt_hit
+		IF pth = 0 THEN pty = ptny
+	END IF
 
 	ptp = ptf * 8			' facing: 0 right, 8 left
 	ptp = ptp + P_PT
@@ -2716,6 +2637,7 @@ ptero:
 			END IF
 			IF ptc = 1 THEN
 				ptst = 0
+				#ptdl = 900			' 30 seconds before another
 				#score = #score + 100
 				sfn = SFX_PTKILL : GOSUB sfx_play
 				GOSUB prt_score
@@ -2725,6 +2647,36 @@ ptero:
 		END IF
 	END IF
 	IF binv = 0 THEN pdead = 1
+	RETURN
+
+	' Would the pterodactyl's body at ptnx, ptny be inside a standing island?
+	' pth = 1 and pthi = which, if so. The body is x+1..x+14, y+3..y+12 of the
+	' sprite (its wing tips and beak are left out); an island is its surface row
+	' and the 10 rows of rock below it. 16-bit sums: the sprite's right edge
+	' passes 255 near the screen edge, where an 8-bit add would wrap to 0.
+pt_hit:
+	pth = 0
+	#ptr = ptnx
+	#ptr = #ptr + 14
+	#ptl = ptnx
+	#ptl = #ptl + 1
+	ptb = ptny + 12
+	ptt = ptny + 3
+	FOR pthi = 0 TO NPLAT - 1
+		IF plon(pthi) = 1 THEN
+		IF #ptr >= #plx1(pthi) THEN
+		IF #ptl <= #plx2(pthi) THEN
+		IF ptb >= ply(pthi) THEN
+			pti = ply(pthi) + 10
+			IF ptt <= pti THEN
+				pth = 1
+				RETURN
+			END IF
+		END IF
+		END IF
+		END IF
+		END IF
+	NEXT pthi
 	RETURN
 
 	' THE PIT BURNS. Two flame characters, out of step, re-uploaded from four
@@ -2839,6 +2791,128 @@ sfx_tick:
 	END IF
 	RETURN
 
+	' ------------------------------------------------------------- game over
+	' Over the arena, in the clear rows 10-12, as the arcade does it: the
+	' message, then the difficulty played (starred for an 838 game).
+game_over:
+	sprok = 2
+	GOSUB hide_all
+	PRINT AT 328,"  THY GAME IS OVER  "
+	PRINT AT 392,"                    "
+	IF diff = 0 THEN PRINT AT 396,"   EASY"
+	IF diff = 1 THEN PRINT AT 396," MEDIUM"
+	IF diff = 2 THEN PRINT AT 396,"   HARD"
+	IF chtd = 1 THEN PRINT AT 404,"*"
+	FOR ddi = 0 TO 240
+		WAIT
+		GOSUB sfx_tick
+	NEXT ddi
+	GOTO title_screen
+
+	' ---------------------------- 838 digits, quit to title, and game over above: fixed ROM (bank 1 is full)
+	' One digit: wait for every key to be RELEASED, then for a digit (or for
+	' ENTER, key 11 on both machines, when rden allows it). Without the release
+	' wait the key that opened this screen is read as the first digit. REDO or
+	' BACK sets canc and returns; every caller passes that straight up.
+rd_dig:
+rd_rel:
+	WAIT
+	GOSUB sfx_tick
+	GOSUB cancel_key
+	IF canc THEN RETURN
+	IF cont1.key <> 15 THEN GOTO rd_rel
+rd_get:
+	WAIT
+	GOSUB sfx_tick
+	GOSUB cancel_key
+	IF canc THEN RETURN
+	tdg = cont1.key
+	IF tdg = 11 THEN
+		IF rden THEN
+			sfn = SFX_DIGIT : GOSUB sfx_play
+			RETURN
+		END IF
+	END IF
+	IF tdg > 9 THEN GOTO rd_get
+	#rda = #rdp
+	#rda = #rda + 6144
+	rdv = 48 + tdg
+	VPOKE #rda,rdv
+	#rdp = #rdp + 1
+	sfn = SFX_DIGIT : GOSUB sfx_play
+	RETURN
+
+	' ------------------------------------------------------------ quit to title
+	' REDO / BACK. Every channel off -- by forcing each effect counter to its
+	' last pass and letting sfx_tick write the note-offs, so the set of channels
+	' silenced is exactly the set sfx_tick drives -- then wait (a second at most)
+	' for the key to come up, so the title does not see it.
+quit_game:
+	sf0 = 1
+	sf1 = 1
+	sf2 = 1
+	sf3 = 1
+	GOSUB sfx_tick
+	sprok = 2
+	GOSUB hide_all
+	FOR qgi = 0 TO 60
+		WAIT
+		GOSUB cancel_key
+		IF canc = 0 THEN qgi = 60
+	NEXT qgi
+	canc = 0
+	GOTO title_screen
+
+	' canc = 1 while REDO (FCTN 8) or BACK (FCTN 9) is held on the TI, or * on
+	' the Coleco keypad. The TI reads the keyboard matrix directly (CRU), so it
+	' works in play, where the interrupt's key scan is switched off, and does
+	' not depend on what the console's scan reports for FCTN. After Keystone
+	' Kapers' ti_cancel_key (CLAUDE.md, "BANKED CVBasic CALLERS AND TI FCTN").
+cancel_key:
+#if TI994A
+	canc = 0
+	ASM LIMI 0
+	' column 0, row 4 is FCTN
+	ASM LI R12,>0024
+	ASM CLR R0
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>1000
+	ASM CZC R1,R2
+	ASM JNE jq_done
+	' column 1 row 3 is 9 (BACK); column 2 row 3 is 8 (REDO)
+	ASM LI R12,>0024
+	ASM LI R0,>0100
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>0800
+	ASM CZC R1,R2
+	ASM JEQ jq_hit
+	ASM LI R12,>0024
+	ASM LI R0,>0200
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM CZC R1,R2
+	ASM JNE jq_done
+	ASM jq_hit:
+	ASM LI R0,>0100
+	ASM MOVB R0,@cvb_CANC
+	ASM jq_done:
+	ASM LIMI 2
+	' The compiler caches canc in R0 across ASM: reload value and flags.
+	ASM MOVB @cvb_CANC,R0
+#else
+	canc = 0
+	IF cont1.key = 10 THEN canc = 1
+#endif
+	RETURN
+
 	' -------------------------------------------- DATA: bank 1 on the TI
 #if TI994A
 	BANK 1
@@ -2856,19 +2930,20 @@ sfx_tick:
 	DATA 3,4,0,14,3,4,0
 	DATA 0,180,30,14,10,1,5
 	DATA 1,340,65506,13,9,1,0
-	DATA 2,500,65491,9,9,0,0
+	DATA 2,500,65524,9,36,0,0
 	DATA 1,150,20,11,8,1,0
 	DATA 1,600,60,11,4,2,0
 	DATA 3,5,0,12,2,4,12
 	DATA 2,250,65516,10,6,1,0
 	DATA 2,850,10,13,12,0,0
 	DATA 1,500,65496,13,10,1,0
-	DATA 2,70,3,13,20,0,0
+	DATA 2,28,4,13,12,1,21
 	DATA 0,60,35,15,24,0,5
 	DATA 2,400,65524,12,30,0,0
 	DATA 1,200,65532,12,40,0,0
 	DATA 0,500,0,9,3,0,0
 	DATA 3,6,0,15,8,2,0
+	DATA 3,4,0,10,8,1,0
 
 	INCLUDE "font.bas"
 
@@ -2887,4 +2962,285 @@ teg_row:
 
 tiercol:
 	DATA BYTE 8,14,5,0
+	' Materialising shimmer: white, cyan, magenta, light blue. Four bytes, even.
+matcol:
+	DATA BYTE 15,7,13,5
+	' The title's difficulty brackets, ( and ), in cyan. 16 bytes, even.
+brk_col:
+	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71
+
+	' ============================================ CODE IN BANK 1 (TI)
+	' Screens and the arena drawing run once a wave or less, so they live here
+	' with the data, out of the fixed area. Bank 1 stays selected, so calls in
+	' and out need no switching.
+draw_field:
+	CLS
+	FOR dfi = 0 TO NPLAT - 1
+		IF plon(dfi) = 1 THEN
+		dfr = ply(dfi) / 8		' surface pixel row -> character row
+		dfc = #plx1(dfi) / 8
+		dfd = #plx2(dfi) / 8
+		#dfa = dfr
+		#dfa = #dfa * 32
+		#dfa = #dfa + dfc
+		GOSUB draw_plat
+		END IF
+	NEXT dfi
+
+	' NO PAD WITHOUT ITS ISLAND -- see the padi() comment at the DIMs.
+	FOR dfi = 0 TO NPAD - 1
+		IF plon(padi(dfi)) = 1 THEN
+			dfr = pady(dfi) + 16		' the surface the pad sits on
+			dfr = dfr / 8
+			dfc = padx(dfi) / 8
+			#dfa = dfr
+			#dfa = #dfa * 32
+			#dfa = #dfa + dfc
+			#dfa = #dfa + 6144
+			dfp = PADCH			' a thick piece: any drip below still hangs from it
+			IF dfr >= 20 THEN dfp = PADFL
+			VPOKE #dfa,dfp
+			#dfa = #dfa + 1
+			VPOKE #dfa,dfp
+		END IF
+	NEXT dfi
+
+	' The lava fills everything below the floor line.
+	' ROWS 22-23 ONLY, below the base. It used to start at row 20 -- the base's own
+	' row -- and paint over it, so the floor you were standing on was drawn as
+	' lava. Collision read the island table and was right; only the picture lied.
+	' ROWS 22-23: THE BASE STANDS IN THE LAVA. Under the base's span (columns
+	' 5-25) its rock goes down to the bottom of the screen, sloping in at each
+	' end, and the score is cut into it; either side is the pit, flames on top.
+	FOR dfi = 0 TO 31
+		#dfa = 6848 + dfi		' row 22 = 704, plus the name table's 6144
+		dfc = LAVAA
+		IF dfi AND 1 THEN dfc = LAVAB
+		dfd = LAVAC
+		IF dfi >= 5 THEN
+			IF dfi <= 25 THEN
+				dfc = ROCKCH
+				IF dfi = 5 THEN dfc = ROCKL
+				IF dfi = 25 THEN dfc = ROCKR
+				dfd = dfc
+			END IF
+		END IF
+		VPOKE #dfa,dfc
+		#dfa = #dfa + 32
+		VPOKE #dfa,dfd
+	NEXT dfi
+	RETURN
+
+	' ONE PLATFORM. #dfa is the name-table offset of its left cap, dfc..dfd the
+	' column span. VPOKE takes a RAW VRAM address and the name table starts at
+	' 6144, added as its OWN step -- folded into a constant expression it would
+	' truncate (CLAUDE.md 3A).
+draw_plat:
+	#dpa = #dfa
+	#dpa = #dpa + 6144
+	' THE SHAPE: a flat top the whole width over a thin, RAGGED slab -- tapered
+	' end caps, and between them a thin or a thicker piece of rock per column,
+	' some with a drip of rock in the row below. Which one comes from a hash of
+	' the column and row (ledge_top/ledge_und), so every ledge is lopsided in its
+	' own way and none is a mirror image. A ledge running off a screen edge (it
+	' wraps round) does not taper there, and the floor never tapers.
+	dpl = dfc
+	dpr = dfd
+	IF dfc = 0 THEN dpl = 255
+	IF dfd = 31 THEN dpr = 255
+	IF dfr >= 20 THEN
+		dpl = 255
+		dpr = 255
+	END IF
+	FOR dpi = dfc TO dfd
+		dpe = dpi * 5
+		dpe = dpe + dfr
+		dpe = dpe + dfr
+		dpe = dpe AND 7
+		dpt = ledge_top(dpe)
+		dpo = ledge_und(dpe)
+		IF dpi = dpl THEN
+			dpt = PLATL
+			dpo = 0
+		END IF
+		IF dpi = dpr THEN
+			dpt = PLATR
+			dpo = 0
+		END IF
+		IF dfr >= 20 THEN dpt = FLOORCH
+		VPOKE #dpa,dpt
+		' The base and both bridges stand on rows 21-23's rock and lava.
+		IF dfr < 20 THEN
+			IF dpo > 0 THEN
+				#dpb = #dpa + 32
+				VPOKE #dpb,dpo
+			END IF
+		END IF
+		#dpa = #dpa + 1
+	NEXT dpi
+	RETURN
+
+	' Ledge pieces by column hash: surface character, and the drip below it
+	' (0 = none). Only thick pieces carry drips, so a drip always hangs from rock. 16 bytes, even.
+ledge_top:
+	DATA BYTE 129,140,129,140,140,129,140,140
+ledge_und:
+	DATA BYTE 0,143,0,0,144,0,141,145
+
+	' ---------------------------------------------------------- title screen
+	' THE LOGO, a knight and a Bounder squared up on a ledge, the controls, and
+	' the difficulty: 1-2-3 picks it, LEFT/RIGHT steps it, FIRE starts. The 3 in
+	' 8-3-8 continues the cheat and is not a choice (CLAUDE.md 7A).
+title_screen:
+	sprok = 2
+	kbscan = 1
+	GOSUB hide_all
+	CLS
+	DEFINE CHAR 148,LOGON,logo_chr
+	DEFINE COLOR 148,LOGON,logo_col
+	DEFINE CHAR 91,LOGON2,logo_chr2
+	DEFINE COLOR 91,LOGON2,logo_col2
+	SCREEN logo_map,0,5,22,6	' rows 0-5, columns 5-26
+	PRINT AT 229,"THE HIGHER LANCE WINS"
+	#dfa = 362			' a ledge, row 11 columns 10-21
+	dfc = 10
+	dfd = 21
+	dfr = 11
+	GOSUB draw_plat
+	SPRITE 0,68,96,P_RIDER,15
+	SPRITE 1,72,96,P_OST,11
+	SPRITE 2,68,144,P_RIDER + 4,8
+	SPRITE 3,72,144,P_BUZ + 32,12
+	PRINT AT 452,"FIRE FLAP   STICK STEER"
+	GOSUB title_diff
+	PRINT AT 646,"PRESS FIRE TO START"
+	PRINT AT 741,"2026 UNHUMAN & CLAUDE"
+	btnr = 0
+	t8 = 0
+	' SEED THE EDGE DETECTORS WITH WHAT IS ALREADY HELD, so a key or a stick
+	' direction still down from the last game is not read as a fresh press.
+	tkl = cont1.key
+	tjl = 0
+	IF cont1.left THEN tjl = 20
+	IF cont1.right THEN tjl = 21
+title_wait:
+	WAIT
+	' Keys, edge triggered on cont1.key: 0-9 on both machines, 15 for none.
+	tk = cont1.key
+	IF tk <> tkl THEN
+		tkl = tk
+		IF tk = 8 THEN
+			IF t8 = 2 THEN
+				GOSUB setup838
+				IF canc THEN GOTO quit_game	' backed out of 838
+				GOTO new_game
+			END IF
+			t8 = 1
+		ELSE
+			IF tk = 3 THEN
+				IF t8 = 1 THEN
+					t8 = 2			' 8-3...: the cheat, not HARD
+				ELSE
+					t8 = 0
+					diff = 2
+					GOSUB title_diff
+				END IF
+			ELSE
+				IF tk < 15 THEN
+					t8 = 0
+					IF tk = 1 THEN
+						diff = 0
+						GOSUB title_diff
+					END IF
+					IF tk = 2 THEN
+						diff = 1
+						GOSUB title_diff
+					END IF
+				END IF
+			END IF
+		END IF
+	END IF
+	' The stick as two pseudo-keys, 20 and 21, edge triggered the same way.
+	' LEFT/RIGHT only: on the TI the vertical axis shares ALPHA LOCK's line.
+	tj = 0
+	IF cont1.left THEN tj = 20
+	IF cont1.right THEN tj = 21
+	IF tj <> tjl THEN
+		tjl = tj
+		IF tj = 20 THEN
+			IF diff > 0 THEN diff = diff - 1
+			GOSUB title_diff
+		END IF
+		IF tj = 21 THEN
+			IF diff < 2 THEN diff = diff + 1
+			GOSUB title_diff
+		END IF
+	END IF
+	' RELEASE BEFORE PRESS: fire still held from the last game must not start
+	' the next one before the screen has been read.
+	IF btnr = 0 THEN
+		IF cont1.button = 0 THEN btnr = 1
+	ELSE
+		IF cont1.button THEN
+			stwv = 1
+			stlv = 3
+			chtd = 0
+			GOTO new_game
+		END IF
+	END IF
+	GOTO title_wait
+
+	' The difficulty line, the chosen one in brackets. '(' and ')' are coloured
+	' cyan at boot (brk_col) and nothing else on any screen prints them.
+title_diff:
+	IF diff = 0 THEN PRINT AT 546,"(1 EASY)  2 MEDIUM   3 HARD "
+	IF diff = 1 THEN PRINT AT 546," 1 EASY  (2 MEDIUM)  3 HARD "
+	IF diff = 2 THEN PRINT AT 546," 1 EASY   2 MEDIUM  (3 HARD)"
+	RETURN
+
+	' ------------------------------------------------------------- 838 setup
+	' Not captioned on the title -- it is written down in README.md. Asks for
+	' the number of mounts (lives), then the wave to start at. A game started
+	' here is marked with a star at the end.
+setup838:
+	GOSUB hide_all
+	CLS
+	PRINT AT 232,"MOUNTS 1-9"
+	PRINT AT 360,"START AT WAVE 01-99"
+#if TI994A
+	PRINT AT 487,"5 ENTER IS WAVE 5"
+	PRINT AT 678,"REDO OR BACK FOR TITLE"
+#else
+	PRINT AT 487,"  5 # IS WAVE 5"
+	PRINT AT 680,"* GOES TO THE TITLE"
+#endif
+	' !! #rdp IS 16-BIT: a plain variable would truncate these offsets.
+	#rdp = 244			' row 7, col 20
+	rden = 0
+	GOSUB rd_dig
+	IF canc THEN RETURN
+	stlv = tdg
+	IF stlv < 1 THEN stlv = 1
+	#rdp = 430			' row 13, col 14
+	GOSUB rd_dig
+	IF canc THEN RETURN
+	sd1 = tdg
+	' ENTER after one digit takes it as the whole wave: 5 ENTER is wave 5.
+	rden = 1
+	GOSUB rd_dig
+	IF canc THEN RETURN
+	IF tdg = 11 THEN
+		stwv = sd1
+	ELSE
+		stwv = sd1 * 10 + tdg
+	END IF
+	IF stwv < 1 THEN stwv = 1
+	chtd = 1
+	' LET THE LAST BEEP DECAY BEFORE LEAVING: nothing between here and the
+	' game loop ticks the sound.
+	FOR sdw = 0 TO 5
+		WAIT
+		GOSUB sfx_tick
+	NEXT sdw
+	RETURN
 

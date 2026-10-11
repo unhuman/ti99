@@ -44,6 +44,17 @@ swap("""!4
     movb @flicker,r11   ; here we write it rotated every frame
 """)
 
+# Flicker ORDER. The stock TI copy walks the slots in order (stride 1) from a
+# start that moves one slot per copy, so on a line holding slots 2-7 the same two
+# stay hidden for ~24 copies in a row -- knights visibly vanish for most of a
+# second. ColecoVision's runtime walks with a stride of 7 slots (coprime with 32,
+# so every slot is still written once), which spreads neighbouring slots across
+# the priority order and makes the hidden ones change every copy or two. Do the
+# same on the TI.
+swap("""    ai r11,-(sprites-1)   ; remove address and add the rest of the increment
+""", """    ai r11,-(sprites-1)+24 ; JOUST: stride 7 slots, as ColecoVision's runtime
+""")
+
 swap("""; key1 - this is a very simple read with no modifiers, it just gives access to the letters and numbers
     clr r11         ; column
 """, """; key1 - this is a very simple read with no modifiers, it just gives access to the letters and numbers

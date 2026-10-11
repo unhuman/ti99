@@ -44,7 +44,7 @@ Where sources disagree, the instruction card wins and the conflict is noted in p
 | Per-actor work | **O(1)**: add velocity, clamp, **row-indexed** island test, test lava |
 | Enemy AI | **Reactive, no search**; each knight thinks one tick in four |
 | VDP reads per frame | **Zero.** No `GCHAR`, no `COINC`; islands are a RAM table |
-| Collisions | player↔knights, player↔eggs, player↔pterodactyl, player↔hand. Knight↔knight is **not** tested (they pass through, as in the arcade) |
+| Collisions | player↔knights (bodies touch: within 11 px across and 13 px up or down, measured from the art; the higher lance wins, within 1 px both bounce), player↔eggs, player↔pterodactyl, player↔hand. Knight↔knight is **not** tested (they pass through, as in the arcade) |
 
 ### 1a. What actually costs — measured, not estimated
 
@@ -125,7 +125,7 @@ What it took on the TI, in order of what it bought:
 
 | change | where |
 |---|---|
-| **The vblank interrupt was 37% of the CPU.** CVBasic's handler copies all 128 sprite bytes and scans the whole keyboard every frame (~18,500 cycles). `tools/isrpatch.py` makes it copy only when the game publishes a finished pass (`sprok`: 2 every frame, 1 once, 0 hold), using CVBasic's `SPRITE FLICKER` path, which starts one slot later on each copy over all 32 slots (so the rotation advances once per pass), and skip the keyboard unless `kbscan` is set (title and 838 screens only). Publishing once per pass also means a half-drawn pass is never shown. | build-ti.sh step 2 |
+| **The vblank interrupt was 37% of the CPU.** CVBasic's handler copies all 128 sprite bytes and scans the whole keyboard every frame (~18,500 cycles). `tools/isrpatch.py` makes it copy only when the game publishes a finished pass (`sprok`: 2 every frame, 1 once, 0 hold), using CVBasic's `SPRITE FLICKER` path, which starts one slot later on each copy over all 32 slots (so the rotation advances once per pass) — patched to walk the slots with a stride of 7, as ColecoVision's runtime already does, so neighbouring slots are spread through the priority order instead of the same two staying hidden for most of a second, and skip the keyboard unless `kbscan` is set (title and 838 screens only). Publishing once per pass also means a half-drawn pass is never shown. | build-ti.sh step 2 |
 | **One loop over the knights instead of three.** Movement, the joust and the draw now all run in `k_one` on the scalar copy; `collide` and `draw_knights` (two more loops re-reading the arrays) are gone. Eggs likewise in `e_one`. | `k_one`, `e_one` |
 | **The scalar copy in and out is hand-written on the TI**: one indexed `MOVB`/`MOV` per field instead of ~130 cycles of index arithmetic each. The `#else` side is the same in BASIC, which is what ColecoVision compiles. | `#if TI994A` in `k_one`, `e_one` |
 | **Each knight thinks one tick in four** (target, separation, routing), staggered by slot. Movement is every tick. The old halving keyed on `FRAME` parity, which never changes when a pass takes an even number of frames, so half the knights never re-targeted at all; it now uses a tick counter. | `k_move`, `k_body` |
@@ -147,8 +147,10 @@ rows 22-23 cols 5-25: the rock base, with the score (col 9) and SPARE lives
 rows 22-23 cols 0-4, 26-31: the lava pit -- flames (4 frames, cycled every
            5 passes by redefining two characters) over molten rock
 ```
-The ledges are drawn as rock: a yellow top edge over two shades of red rock with a
-jagged underside. The base and lava rows are drawn once by `draw_field`; only the
+The ledges are drawn as rock: a light-tan lit edge shading through dark tan into
+dark-red rock and drips, so the colour blends from the top down rather than reading as
+a solid red slab; the base runs the same way, tan strata dithered into dark red, with
+bright red kept for the lava and its slopes. The base and lava rows are drawn once by `draw_field`; only the
 two flame characters change after that (`lava_tick`), so the animation costs two
 8-byte `DEFINE CHAR`s every 5 passes.
 
@@ -279,6 +281,11 @@ direction. So reversing in flight takes several beats, as it does in the arcade.
 Shadow Lords fly **higher** by preference — they bias their flap threshold upward, which
 is what makes them dangerous rather than merely fast.
 
+**Materialising** takes 36 passes (1.2 s) on a free pad, with a new knight allowed every
+24 passes (40 at the start of a wave). It shimmers through white, cyan, magenta and
+light blue, one colour a pass, to a rising tone. It used to blink white for 4 seconds
+with 1.7 s between knights, which read as slow.
+
 ### The three tiers fly differently — this is the character of the game
 
 Not one homing rule with the speed turned up. From the arcade behaviour (Joustmaster
@@ -352,10 +359,20 @@ shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 
 ## 7. Pterodactyl
 
-- **Debuts wave 8**, and appears in *any* wave that drags past a time limit — the
-  arcade's anti-camping device.
-- Enters from a screen edge at the player's altitude and **homes**, faster than any
-  knight, wrapping horizontally.
+- **Pterodactyl waves are 8, 13, 18...**: one arrives 10 seconds in. On any other wave
+  it comes only once the wave has dragged past 60 seconds — the arcade's anti-camping
+  device.
+- Enters from the screen edge **away from the player** at the player's altitude and flies
+  **one way only**, 2 px a pass, wrapping round the screen; it never turns back. It
+  follows the player's altitude, not their x. It screeches every 64 passes.
+- **It obeys the islands.** Every move is tried first (`pt_hit`: its body, x+1..x+14 and
+  y+3..y+12 of the sprite, against each standing ledge's surface and the 10 rows below)
+  and refused if it would enter rock. Blocked going forward it climbs over or dives under
+  the ledge, whichever edge is nearer, 2 px a pass; blocked going up or down it holds its
+  height until it is clear. It is never born inside a ledge: the spawn lifts it clear.
+- **It rests after a kill either way**: shot down, the next one waits 30 seconds; when it
+  kills the player it leaves with them and stays away 20 seconds. It used to come straight
+  back, which made shooting it pointless and a death a trap.
 - **Invincible except** to a lance in the **open mouth**: the player must be
   approximately level (`|dy| < 4`) and closing head-on, i.e. facing it. Any other contact
   kills the player.
@@ -367,14 +384,19 @@ shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 
 ## 8. Lava troll
 
-- **From wave 3.** A hand rises from a lava pit when the player flies low over it.
+- **From wave 3.** A hand rises from an open lava pit when the player flies low over
+  it. On an Egg wave the bridges are back over the pits, so the hand stays down.
 - If it grabs you it drags you down; **flap rapidly to escape**. Each flap adds to an
   escape counter; the hand wins if the counter does not fill before it reaches the lava.
-- **Reach lengthens and grip strengthens with the wave number** — reach grows a few
-  pixels per wave, escape requires more flaps.
+- **Reach lengthens and grip strengthens with the wave number**: the fist's top rises
+  30 px above the lava plus a pixel per step of aggression, **capped at 42 px** because
+  that is as far as its arm goes; escape requires more flaps.
 - Being pulled under is a death.
-- Rendered as sprite 10 plus a stretched arm; the hand only exists while grabbing or
-  reaching, so it costs a sprite slot only when active.
+- Rendered as a grey fist (sprite 19) hanging on two straight forearm segments
+  (sprites 30 and 31) chained 14 px apart down into the lava, so it never floats free.
+  The arm takes the last two slots, so on a crowded line the arm drops out before any
+  bird. A segment that would sit below the screen is hidden, not placed (y 208 ends
+  the sprite list). All three only exist while the hand is reaching or holding.
 
 ---
 
@@ -477,14 +499,44 @@ dedicated font is part of this port, generated by `assets/genfont.py` into `src/
 
 - **Characters 32-90 only** (space, digits, `A`-`Z`, and `&-.!/`), the set the game
   actually prints — 59 characters × 8 bytes = 472 bytes, which belongs in a bank on TI.
-- Williams' style: **narrow, heavy, squared-off** capitals on a 5×7 cell inside the 8×8,
-  with one blank column at the right for letter spacing and one blank row at the bottom.
+- **Bold, to match the logo**: two-pixel uprights, up to 7×7 inside the 8×8 (M and W need
+  seven), with a blank column and row for spacing. Each glyph is shaded like the logo,
+  yellow at the top to red at the foot, by `font_col` (`DEFINE COLOR 32,59`).
 - Digits are the distinctive part and get drawn first, since the score is the text most
   on screen.
 - Loaded with `DEFINE CHAR 32,59,font_bitmaps` at startup, after which every `PRINT`
   uses it with no further cost.
 
 ---
+
+## 12b. Title, difficulty, 838 and game over
+
+- **Title**: the arcade JOUST logo (176×48 px across the top six rows: flared tan
+  letters over a red drop shadow, traced from the arcade art into `genart.py`'s
+  `LOGO_ART` and cut into 117 tiles at characters 148-255 and 91-99), *THE HIGHER LANCE
+  WINS*, the player and a Bounder facing off on a ledge, the controls, the difficulty
+  line and *PRESS FIRE TO START*.
+- **Difficulty** follows CLAUDE.md 7A: `1 EASY  2 MEDIUM  3 HARD` with the chosen one in
+  cyan brackets (`(` and `)` are recoloured at boot and printed nowhere else). Keys 1-3
+  pick it, left/right steps it, fire starts; the 3 inside 8-3-8 is the cheat, not HARD.
+  `diff` is set to MEDIUM once at boot and persists. It shifts knight aggression two waves
+  either way (`agg = wave + 2·diff − 2`, clamped 1-20) and the Hunter debut (wave 5 / 4 / 3).
+- **838** asks for mounts (1-9, the lives the game starts with) and a starting wave
+  (01-99, or one digit then ENTER / Coleco `#`, key 11 on both), and flags the game
+  (`chtd`) for a star at the end.
+- **Back to the title**: REDO or BACK (FCTN 8 / 9) on the TI, `*` on the Coleco keypad,
+  in play or on the 838 screen. `cancel_key` reads the TI's keyboard matrix directly over
+  CRU (after Keystone Kapers' `ti_cancel_key`), so it works in play where the interrupt's
+  key scan is off. Play checks it in `main` and jumps to `quit_game`; the 838 digit reader
+  sets `canc` and returns, and each caller passes it up, so no GOSUB is left by GOTO.
+  `quit_game` silences every channel by forcing each effect onto its last pass and letting
+  `sfx_tick` write the note-offs, then waits (a second at most) for the key to come up.
+- **Game over** prints *THY GAME IS OVER* over the arena in the clear rows 10-12, with the
+  difficulty played below it (starred for an 838 game), and returns to the title.
+- The title and 838 screens, `draw_field` and `draw_plat` are **code in bank 1**
+  on the TI, after the data: they run once a wave or less, and bank 1 is always selected,
+  so calls in and out need no switching. That freed ~2 KB of the fixed area. The logo
+  then filled bank 1, so game over, the 838 digit reader and the quit path sit in fixed ROM.
 
 ## 13. Sprites & characters
 
@@ -504,11 +556,11 @@ build fails if a pixel belongs to both (with flicker either layer may be on top)
 | 32-33 | 128,132 | rider, right / left |
 | 34-35 | 136,140 | egg, cracked egg |
 | 36-37 | 144,148 | unhorsed knight on foot, right / left |
-| 38-39 | 152,156 | troll hand, troll arm |
+| 38-39 | 152,156 | troll hand, troll forearm segment |
 | 40-43 | 160-172 | pterodactyl: shut R, open R, shut L, open L |
 
 Slots: 0-1 player (rider, mount); 2-13 knights (rider 2+2k, mount 3+2k); 14-17 eggs;
-18 rescue bird; 19-20 troll hand and arm; 21 pterodactyl; 22-31 always hidden.
+18 rescue bird; 19 troll hand; 21 pterodactyl; 30-31 troll arm; 20 and 22-29 always hidden.
 `SPRITE FLICKER ON` rotates the copy so a line with more than four sprites flickers
 instead of losing the same ones every frame.
 
@@ -524,6 +576,19 @@ instead of losing the same ones every frame.
 | 136 | 1 | rock of the base |
 | 137 | 1 | egg waiting on a ledge (Egg waves, §9) |
 | 138-139 | 2 | base: left and right slope |
+| 140 | 1 | thick ledge piece (rock 8 px deep); 129 is the thin one (6 px) |
+| 141-145 | 5 | drips of rock, hung in the row below a thick piece |
+| 146 | 1 | floor: lit top over solid rock (base and bridges) |
+| 147 | 1 | spawn pad set into the floor |
+| 148-255, 91-99 | 117 | title logo tiles (title screen only) |
+
+**Ledges are flat on top and thin and ragged underneath, and no two are alike.**
+`draw_plat` lays the lit surface the full width with tapered end caps; between them each
+column gets a thin or a thick piece of rock, and some thick pieces a drip in the row
+below, chosen by a hash of column and row (`ledge_top`/`ledge_und`), so every ledge is
+lopsided in its own way. Pads are thick pieces with a white-and-grey top, as in the arcade. A ledge running off a
+screen edge (it wraps round) does not taper there, and the floor never tapers. Collision
+is unchanged: a ledge is still its one 8 px surface row.
 
 **The art and its data live in bank 1 on the TI.** The cart is banked (`BANK ROM 128`,
 `BANK SELECT 1` at the top, all `DATA` after `BANK 1`); bank 1 stays selected, so
