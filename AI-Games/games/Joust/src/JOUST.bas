@@ -690,6 +690,10 @@ main:
 
 	IF pdead > 0 THEN GOSUB do_death
 	IF pover = 1 THEN GOTO game_over
+	' REDO or BACK (FCTN 8 / FCTN 9; * on the Coleco keypad) quits to the
+	' title. Main is the top-level loop, not a GOSUB, so this GOTO leaks nothing.
+	GOSUB cancel_key
+	IF canc THEN GOTO quit_game
 
 	' THE FIXED TICK: one pass every TWO frames, 30 a second, never faster. Every
 	' speed, gravity and timer in this file is per PASS, so a loop that ran as fast
@@ -2722,6 +2726,128 @@ sfx_tick:
 	END IF
 	RETURN
 
+	' ------------------------------------------------------------- game over
+	' Over the arena, in the clear rows 10-12, as the arcade does it: the
+	' message, then the difficulty played (starred for an 838 game).
+game_over:
+	sprok = 2
+	GOSUB hide_all
+	PRINT AT 328,"  THY GAME IS OVER  "
+	PRINT AT 392,"                    "
+	IF diff = 0 THEN PRINT AT 396,"   EASY"
+	IF diff = 1 THEN PRINT AT 396," MEDIUM"
+	IF diff = 2 THEN PRINT AT 396,"   HARD"
+	IF chtd = 1 THEN PRINT AT 404,"*"
+	FOR ddi = 0 TO 240
+		WAIT
+		GOSUB sfx_tick
+	NEXT ddi
+	GOTO title_screen
+
+	' ---------------------------- 838 digits, quit to title, and game over above: fixed ROM (bank 1 is full)
+	' One digit: wait for every key to be RELEASED, then for a digit (or for
+	' ENTER, key 11 on both machines, when rden allows it). Without the release
+	' wait the key that opened this screen is read as the first digit. REDO or
+	' BACK sets canc and returns; every caller passes that straight up.
+rd_dig:
+rd_rel:
+	WAIT
+	GOSUB sfx_tick
+	GOSUB cancel_key
+	IF canc THEN RETURN
+	IF cont1.key <> 15 THEN GOTO rd_rel
+rd_get:
+	WAIT
+	GOSUB sfx_tick
+	GOSUB cancel_key
+	IF canc THEN RETURN
+	tdg = cont1.key
+	IF tdg = 11 THEN
+		IF rden THEN
+			sfn = SFX_DIGIT : GOSUB sfx_play
+			RETURN
+		END IF
+	END IF
+	IF tdg > 9 THEN GOTO rd_get
+	#rda = #rdp
+	#rda = #rda + 6144
+	rdv = 48 + tdg
+	VPOKE #rda,rdv
+	#rdp = #rdp + 1
+	sfn = SFX_DIGIT : GOSUB sfx_play
+	RETURN
+
+	' ------------------------------------------------------------ quit to title
+	' REDO / BACK. Every channel off -- by forcing each effect counter to its
+	' last pass and letting sfx_tick write the note-offs, so the set of channels
+	' silenced is exactly the set sfx_tick drives -- then wait (a second at most)
+	' for the key to come up, so the title does not see it.
+quit_game:
+	sf0 = 1
+	sf1 = 1
+	sf2 = 1
+	sf3 = 1
+	GOSUB sfx_tick
+	sprok = 2
+	GOSUB hide_all
+	FOR qgi = 0 TO 60
+		WAIT
+		GOSUB cancel_key
+		IF canc = 0 THEN qgi = 60
+	NEXT qgi
+	canc = 0
+	GOTO title_screen
+
+	' canc = 1 while REDO (FCTN 8) or BACK (FCTN 9) is held on the TI, or * on
+	' the Coleco keypad. The TI reads the keyboard matrix directly (CRU), so it
+	' works in play, where the interrupt's key scan is switched off, and does
+	' not depend on what the console's scan reports for FCTN. After Keystone
+	' Kapers' ti_cancel_key (CLAUDE.md, "BANKED CVBasic CALLERS AND TI FCTN").
+cancel_key:
+#if TI994A
+	canc = 0
+	ASM LIMI 0
+	' column 0, row 4 is FCTN
+	ASM LI R12,>0024
+	ASM CLR R0
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>1000
+	ASM CZC R1,R2
+	ASM JNE jq_done
+	' column 1 row 3 is 9 (BACK); column 2 row 3 is 8 (REDO)
+	ASM LI R12,>0024
+	ASM LI R0,>0100
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM LI R1,>0800
+	ASM CZC R1,R2
+	ASM JEQ jq_hit
+	ASM LI R12,>0024
+	ASM LI R0,>0200
+	ASM LDCR R0,3
+	ASM SRC R12,7
+	ASM LI R12,>0006
+	ASM STCR R2,8
+	ASM CZC R1,R2
+	ASM JNE jq_done
+	ASM jq_hit:
+	ASM LI R0,>0100
+	ASM MOVB R0,@cvb_CANC
+	ASM jq_done:
+	ASM LIMI 2
+	' The compiler caches canc in R0 across ASM: reload value and flags.
+	ASM MOVB @cvb_CANC,R0
+#else
+	canc = 0
+	IF cont1.key = 10 THEN canc = 1
+#endif
+	RETURN
+
 	' -------------------------------------------- DATA: bank 1 on the TI
 #if TI994A
 	BANK 1
@@ -2941,6 +3067,7 @@ title_wait:
 		IF tk = 8 THEN
 			IF t8 = 2 THEN
 				GOSUB setup838
+				IF canc THEN GOTO quit_game	' backed out of 838
 				GOTO new_game
 			END IF
 			t8 = 1
@@ -3014,17 +3141,34 @@ setup838:
 	GOSUB hide_all
 	CLS
 	PRINT AT 232,"MOUNTS 1-9"
+	PRINT AT 360,"START AT WAVE 01-99"
+#if TI994A
+	PRINT AT 487,"5 ENTER IS WAVE 5"
+	PRINT AT 678,"REDO OR BACK FOR TITLE"
+#else
+	PRINT AT 487,"  5 # IS WAVE 5"
+	PRINT AT 680,"* GOES TO THE TITLE"
+#endif
 	' !! #rdp IS 16-BIT: a plain variable would truncate these offsets.
 	#rdp = 244			' row 7, col 20
+	rden = 0
 	GOSUB rd_dig
+	IF canc THEN RETURN
 	stlv = tdg
 	IF stlv < 1 THEN stlv = 1
-	PRINT AT 360,"START AT WAVE 01-99"
 	#rdp = 430			' row 13, col 14
 	GOSUB rd_dig
+	IF canc THEN RETURN
 	sd1 = tdg
+	' ENTER after one digit takes it as the whole wave: 5 ENTER is wave 5.
+	rden = 1
 	GOSUB rd_dig
-	stwv = sd1 * 10 + tdg
+	IF canc THEN RETURN
+	IF tdg = 11 THEN
+		stwv = sd1
+	ELSE
+		stwv = sd1 * 10 + tdg
+	END IF
 	IF stwv < 1 THEN stwv = 1
 	chtd = 1
 	' LET THE LAST BEEP DECAY BEFORE LEAVING: nothing between here and the
@@ -3035,40 +3179,3 @@ setup838:
 	NEXT sdw
 	RETURN
 
-	' One digit: wait for every key to be RELEASED, then for a digit. Without the
-	' release wait the key that opened this screen is read as the first digit.
-rd_dig:
-rd_rel:
-	WAIT
-	GOSUB sfx_tick
-	IF cont1.key <> 15 THEN GOTO rd_rel
-rd_get:
-	WAIT
-	GOSUB sfx_tick
-	tdg = cont1.key
-	IF tdg > 9 THEN GOTO rd_get
-	#rda = #rdp
-	#rda = #rda + 6144
-	rdv = 48 + tdg
-	VPOKE #rda,rdv
-	#rdp = #rdp + 1
-	sfn = SFX_DIGIT : GOSUB sfx_play
-	RETURN
-
-	' ------------------------------------------------------------- game over
-	' Over the arena, in the clear rows 10-12, as the arcade does it: the
-	' message, then the difficulty played (starred for an 838 game).
-game_over:
-	sprok = 2
-	GOSUB hide_all
-	PRINT AT 328,"  THY GAME IS OVER  "
-	PRINT AT 392,"                    "
-	IF diff = 0 THEN PRINT AT 396,"   EASY"
-	IF diff = 1 THEN PRINT AT 396," MEDIUM"
-	IF diff = 2 THEN PRINT AT 396,"   HARD"
-	IF chtd = 1 THEN PRINT AT 404,"*"
-	FOR ddi = 0 TO 240
-		WAIT
-		GOSUB sfx_tick
-	NEXT ddi
-	GOTO title_screen

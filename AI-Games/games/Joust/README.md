@@ -32,13 +32,14 @@ disagreed.
 | Difficulty | `1` `2` `3`, or left/right, on the title | keypad `1` `2` `3`, or left/right |
 | Start | Fire on the title | Fire |
 | **Choose mounts and wave** | type `8` `3` `8` on the title | `8` `3` `8` |
+| Back to the title | `FCTN 8` (REDO) or `FCTN 9` (BACK), in play or on the 838 screen | `*` |
 
 The title picks **EASY, MEDIUM or HARD** (medium at power-on; the choice stays for the
 next game). Easy knights fly like two waves earlier and Hunters wait until wave 5; hard
 knights fly like two waves later and Hunters come from wave 3.
 
 `838` asks for the number of **mounts (1-9)**, then a two-digit **starting wave
-(01-99)** -- handy for reaching the parts of the game
+(01-99)**; one digit then ENTER (`#` on the Coleco) also works, so `5` ENTER is wave 5 -- handy for reaching the parts of the game
 that are otherwise a long way in: the **lava troll** appears at wave 3, the
 **bridges burn** at wave 3, **Hunters** at 4, the **pterodactyl** at 8 (then 13, 18...; on other waves only if you take over a minute), ledges start
 vanishing at 6, and **Shadow Lords** not until 16. It is not captioned on the title;
