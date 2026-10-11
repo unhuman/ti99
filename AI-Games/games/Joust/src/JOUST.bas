@@ -2557,6 +2557,19 @@ ptero:
 				ptf = 1
 			END IF
 			ptmo = 0
+			' never born inside a ledge: lift it clear first
+			ptnx = ptx
+			ptny = pty
+			GOSUB pt_hit
+			WHILE pth = 1
+				IF ptny < 12 THEN
+					pth = 0
+				ELSE
+					ptny = ptny - 4
+					GOSUB pt_hit
+				END IF
+			WEND
+			pty = ptny
 		END IF
 		RETURN
 	END IF
@@ -2568,13 +2581,35 @@ ptero:
 	END IF
 	pgx = #px / 256
 	pgy = #py / 256
-	IF ptf = 0 THEN
-		ptx = ptx + 2
+	' IT OBEYS THE ISLANDS, like everything else that flies. Each move is tried
+	' first and refused if it would put the body inside a ledge (pt_hit). Blocked
+	' going forward, it does not stop: it climbs or dives round the ledge's
+	' nearer edge and carries on next pass. Blocked going up or down, it simply
+	' holds its height until it has flown clear.
+	ptnx = ptx + 2
+	IF ptf = 1 THEN ptnx = ptx - 2
+	ptny = pty
+	GOSUB pt_hit
+	IF pth = 0 THEN
+		ptx = ptnx
 	ELSE
-		ptx = ptx - 2
+		ptny = pty + 2
+		pti = ply(pthi) + 4
+		IF pty + 8 < pti THEN ptny = pty - 2	' above its middle: go over
+		IF ptny < 8 THEN ptny = 8
+		IF ptny > 160 THEN ptny = 160
+		ptnx = ptx
+		GOSUB pt_hit
+		IF pth = 0 THEN pty = ptny
 	END IF
-	IF pty < pgy THEN pty = pty + 1
-	IF pty > pgy THEN pty = pty - 1
+	ptnx = ptx
+	ptny = pty
+	IF pty < pgy THEN ptny = pty + 1
+	IF pty > pgy THEN ptny = pty - 1
+	IF ptny <> pty THEN
+		GOSUB pt_hit
+		IF pth = 0 THEN pty = ptny
+	END IF
 
 	ptp = ptf * 8			' facing: 0 right, 8 left
 	ptp = ptp + P_PT
@@ -2612,6 +2647,36 @@ ptero:
 		END IF
 	END IF
 	IF binv = 0 THEN pdead = 1
+	RETURN
+
+	' Would the pterodactyl's body at ptnx, ptny be inside a standing island?
+	' pth = 1 and pthi = which, if so. The body is x+1..x+14, y+3..y+12 of the
+	' sprite (its wing tips and beak are left out); an island is its surface row
+	' and the 10 rows of rock below it. 16-bit sums: the sprite's right edge
+	' passes 255 near the screen edge, where an 8-bit add would wrap to 0.
+pt_hit:
+	pth = 0
+	#ptr = ptnx
+	#ptr = #ptr + 14
+	#ptl = ptnx
+	#ptl = #ptl + 1
+	ptb = ptny + 12
+	ptt = ptny + 3
+	FOR pthi = 0 TO NPLAT - 1
+		IF plon(pthi) = 1 THEN
+		IF #ptr >= #plx1(pthi) THEN
+		IF #ptl <= #plx2(pthi) THEN
+		IF ptb >= ply(pthi) THEN
+			pti = ply(pthi) + 10
+			IF ptt <= pti THEN
+				pth = 1
+				RETURN
+			END IF
+		END IF
+		END IF
+		END IF
+		END IF
+	NEXT pthi
 	RETURN
 
 	' THE PIT BURNS. Two flame characters, out of step, re-uploaded from four

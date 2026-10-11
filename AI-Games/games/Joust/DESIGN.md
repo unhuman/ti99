@@ -365,6 +365,11 @@ shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 - Enters from the screen edge **away from the player** at the player's altitude and flies
   **one way only**, 2 px a pass, wrapping round the screen; it never turns back. It
   follows the player's altitude, not their x. It screeches every 64 passes.
+- **It obeys the islands.** Every move is tried first (`pt_hit`: its body, x+1..x+14 and
+  y+3..y+12 of the sprite, against each standing ledge's surface and the 10 rows below)
+  and refused if it would enter rock. Blocked going forward it climbs over or dives under
+  the ledge, whichever edge is nearer, 2 px a pass; blocked going up or down it holds its
+  height until it is clear. It is never born inside a ledge: the spawn lifts it clear.
 - **It rests after a kill either way**: shot down, the next one waits 30 seconds; when it
   kills the player it leaves with them and stays away 20 seconds. It used to come straight
   back, which made shooting it pointless and a death a trap.
