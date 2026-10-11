@@ -209,7 +209,7 @@ chr_plat_l:	' plat_l
 	DATA BYTE $FF,$FF,$3F,$0F,$02,$00,$00,$00
 
 chr_plat_m:	' plat_m
-	DATA BYTE $FF,$FF,$DE,$FF,$76,$22,$00,$00
+	DATA BYTE $FF,$FF,$FF,$FF,$76,$22,$00,$00
 
 chr_plat_r:	' plat_r
 	DATA BYTE $FF,$FF,$FC,$F0,$40,$00,$00,$00
@@ -221,28 +221,28 @@ chr_lava_b:	' lava_b
 	DATA BYTE $02,$46,$66,$F7,$FF,$FF,$FF,$FF
 
 chr_lava_c:	' lava_c
-	DATA BYTE $FF,$DF,$FB,$FF,$BF,$F7,$FF,$FE
+	DATA BYTE $FF,$FF,$CF,$FF,$FF,$FC,$FF,$FF
 
 chr_life:	' life
 	DATA BYTE $30,$78,$78,$30,$7C,$FE,$36,$63
 
 chr_pad:	' pad
-	DATA BYTE $FF,$FF,$F7,$BF,$FE,$7E,$3E,$3C
+	DATA BYTE $FF,$FF,$FF,$FF,$FE,$7E,$3E,$3C
 
 chr_rock:	' rock
-	DATA BYTE $DF,$FB,$BF,$F7,$FE,$7F,$EF,$FD
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 
 chr_egg:	' egg
 	DATA BYTE $3C,$7E,$7E,$FF,$FF,$7E,$7E,$3C
 
 chr_rock_l:	' rock_l
-	DATA BYTE $FF,$7D,$7F,$37,$3F,$1E,$1F,$0B
+	DATA BYTE $FF,$7F,$7F,$3F,$3F,$1F,$1F,$0F
 
 chr_rock_r:	' rock_r
-	DATA BYTE $FF,$BE,$FE,$EC,$FC,$78,$F8,$D0
+	DATA BYTE $FF,$FE,$FE,$FC,$FC,$F8,$F8,$F0
 
 chr_plat_m2:	' plat_m2
-	DATA BYTE $FF,$FF,$F7,$BF,$FE,$7E,$3E,$3C
+	DATA BYTE $FF,$FF,$FF,$FF,$FE,$7E,$3E,$3C
 
 chr_und1l:	' und1l
 	DATA BYTE $30,$20,$00,$00,$00,$00,$00,$00
@@ -260,32 +260,32 @@ chr_und3b:	' und3b
 	DATA BYTE $2C,$24,$04,$00,$00,$00,$00,$00
 
 chr_floor:	' floor
-	DATA BYTE $FF,$FF,$DE,$FB,$BF,$F7,$FE,$7F
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 
 chr_pad_floor:	' pad_floor
-	DATA BYTE $FF,$FF,$DE,$FB,$BF,$F7,$FE,$7F
+	DATA BYTE $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
 
 col_chars:	' their colours, 8 bytes each, same order
-	DATA BYTE $B1,$A1,$61,$61,$61,$61,$61,$61
-	DATA BYTE $B1,$A1,$A6,$6A,$61,$61,$61,$61
-	DATA BYTE $B1,$A1,$61,$61,$61,$61,$61,$61
+	DATA BYTE $A1,$61,$61,$61,$61,$61,$61,$61
+	DATA BYTE $A1,$61,$61,$61,$61,$61,$61,$61
+	DATA BYTE $A1,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $B1,$B1,$A1,$A1,$8A,$8A,$86,$68
 	DATA BYTE $B1,$B1,$A1,$A1,$8A,$8A,$86,$68
-	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
+	DATA BYTE $89,$89,$89,$89,$89,$89,$89,$89
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
-	DATA BYTE $F1,$71,$A6,$6A,$61,$61,$61,$61
-	DATA BYTE $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+	DATA BYTE $F1,$E1,$61,$61,$61,$61,$61,$61
+	DATA BYTE $61,$61,$61,$A1,$61,$61,$61,$61
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
-	DATA BYTE $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
-	DATA BYTE $B1,$A1,$A6,$6A,$61,$61,$61,$61
+	DATA BYTE $61,$61,$61,$A1,$68,$68,$68,$68
+	DATA BYTE $61,$61,$61,$A1,$68,$68,$68,$68
+	DATA BYTE $A1,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
 	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
-	DATA BYTE $B1,$A1,$A6,$A6,$A6,$6A,$6A,$6A
-	DATA BYTE $F1,$71,$A6,$A6,$A6,$6A,$6A,$6A
+	DATA BYTE $A1,$61,$61,$61,$61,$61,$61,$61
+	DATA BYTE $F1,$E1,$61,$61,$61,$61,$61,$61
 
 flame0:	' lava flame, frame 0
 	DATA BYTE $10,$32,$36,$7E,$FF,$FF,$FF,$FF

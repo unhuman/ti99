@@ -147,8 +147,9 @@ rows 22-23 cols 5-25: the rock base, with the score (col 9) and SPARE lives
 rows 22-23 cols 0-4, 26-31: the lava pit -- flames (4 frames, cycled every
            5 passes by redefining two characters) over molten rock
 ```
-The ledges are drawn as rock: a yellow top edge over two shades of red rock with a
-jagged underside. The base and lava rows are drawn once by `draw_field`; only the
+The ledges are drawn as rock: a tan top edge over solid dark-red (brown) rock, with
+no dither, so they read as clean slabs as in the arcade; the base is the same smooth
+rock with two tan strata, and the lava is flat bright red. The base and lava rows are drawn once by `draw_field`; only the
 two flame characters change after that (`lava_tick`), so the animation costs two
 8-byte `DEFINE CHAR`s every 5 passes.
 
@@ -564,7 +565,7 @@ instead of losing the same ones every frame.
 `draw_plat` lays the lit surface the full width with tapered end caps; between them each
 column gets a thin or a thick piece of rock, and some thick pieces a drip in the row
 below, chosen by a hash of column and row (`ledge_top`/`ledge_und`), so every ledge is
-lopsided in its own way. Pads are thick pieces with a cyan top. A ledge running off a
+lopsided in its own way. Pads are thick pieces with a white-and-grey top, as in the arcade. A ledge running off a
 screen edge (it wraps round) does not taper there, and the floor never tapers. Collision
 is unchanged: a ledge is still its one 8 px surface row.
 

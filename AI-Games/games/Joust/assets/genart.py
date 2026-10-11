@@ -488,17 +488,17 @@ XXXXXXXX
 ........
 ........
 ........
-""", [(Y11, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "plat_m": (r"""
 XXXXXXXX
 XXXXXXXX
-XX.XXXX.
+XXXXXXXX
 XXXXXXXX
 .XXX.XX.
 ..X...X.
 ........
 ........
-""", [(Y11, K), (Y10, K), (Y10, R6), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "plat_r": (r"""
 XXXXXXXX
 XXXXXXXX
@@ -508,7 +508,7 @@ XXXX....
 ........
 ........
 ........
-""", [(Y11, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 # THE LAVA'S SURFACE: flames. Two characters so neighbouring cells are out of
 # step; both are re-uploaded from FLAMES as the game runs (lava_tick), which
 # animates the whole pit for 16 bytes instead of rewriting every cell.
@@ -534,14 +534,14 @@ XXXXXXXX
 """, [(Y11, K), (Y11, K), (Y10, K), (Y10, K), (R8, Y10), (R8, Y10), (R8, R6), (R6, R8)]),
 "lava_c": (r"""
 XXXXXXXX
-XX.XXXXX
-XXXXX.XX
 XXXXXXXX
-X.XXXXXX
-XXXX.XXX
+XX..XXXX
 XXXXXXXX
-XXXXXXX.
-""", [(R8, R6)] * 8),
+XXXXXXXX
+XXXXXX..
+XXXXXXXX
+XXXXXXXX
+""", [(R8, 9)] * 8),
 "life": (r"""
 ..XX....
 .XXXX...
@@ -557,25 +557,25 @@ XXXXXXX.
 "pad": (r"""
 XXXXXXXX
 XXXXXXXX
-XXXX.XXX
-X.XXXXXX
+XXXXXXXX
+XXXXXXXX
 XXXXXXX.
 .XXXXXX.
 ..XXXXX.
 ..XXXX..
-""", [(W, K), (CY, K), (Y10, R6), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(W, K), (GR, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 # THE BASE'S BODY, below its surface: solid rock down into the lava, with the
 # score panel cut into it.
 "rock": (r"""
-XX.XXXXX
-XXXXX.XX
-X.XXXXXX
-XXXX.XXX
-XXXXXXX.
-.XXXXXXX
-XXX.XXXX
-XXXXXX.X
-""", [(Y10, R6)] * 8),
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+""", [(R6, K), (R6, K), (R6, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "egg": (r"""
 ..XXXX..
 .XXXXXX.
@@ -590,24 +590,24 @@ XXXXXXXX
 # being a box sitting on it.
 "rock_l": (r"""
 XXXXXXXX
-.XXXXX.X
 .XXXXXXX
-..XX.XXX
+.XXXXXXX
 ..XXXXXX
-...XXXX.
+..XXXXXX
 ...XXXXX
-....X.XX
-""", [(Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6)]),
+...XXXXX
+....XXXX
+""", [(R6, K), (R6, K), (R6, K), (Y10, K), (R6, R8), (R6, R8), (R6, R8), (R6, R8)]),
 "rock_r": (r"""
 XXXXXXXX
-X.XXXXX.
 XXXXXXX.
-XXX.XX..
+XXXXXXX.
 XXXXXX..
-.XXXX...
+XXXXXX..
 XXXXX...
-XX.X....
-""", [(Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6)]),
+XXXXX...
+XXXX....
+""", [(R6, K), (R6, K), (R6, K), (Y10, K), (R6, R8), (R6, R8), (R6, R8), (R6, R8)]),
 }
 
 # A LEDGE'S UNDERSIDE, the row below its surface: thin at the ends, deepest in
@@ -618,13 +618,13 @@ XX.X....
 CHARS["plat_m2"] = (r"""
 XXXXXXXX
 XXXXXXXX
-XXXX.XXX
-X.XXXXXX
+XXXXXXXX
+XXXXXXXX
 XXXXXXX.
 .XXXXXX.
 ..XXXXX.
 ..XXXX..
-""", [(Y11, K), (Y10, K), (Y10, R6), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K)])
+""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
 CHARS["und1l"] = (r"""
 ..XX....
 ..X.....
@@ -681,25 +681,25 @@ CHARS["und3b"] = (r"""
 CHARS["floor"] = (r"""
 XXXXXXXX
 XXXXXXXX
-XX.XXXX.
-XXXXX.XX
-X.XXXXXX
-XXXX.XXX
-XXXXXXX.
-.XXXXXXX
-""", [(Y11, K), (Y10, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)])
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
 
 # A PAD ON THE FLOOR: the pad's lit top over the floor's solid rock.
 CHARS["pad_floor"] = (r"""
 XXXXXXXX
 XXXXXXXX
-XX.XXXX.
-XXXXX.XX
-X.XXXXXX
-XXXX.XXX
-XXXXXXX.
-.XXXXXXX
-""", [(W, K), (CY, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)])
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+""", [(W, K), (GR, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
 
 CHAR_ORDER = ("plat_l", "plat_m", "plat_r", "lava_a", "lava_b", "lava_c", "life",
               "pad", "rock", "egg", "rock_l", "rock_r",
