@@ -1,7 +1,7 @@
 # Choplifter — TI-99/4A / CVBasic
 
 Current-state design. History is in git; sizes below are from the latest build
-(2026-10-09); full-loop TI speeds were re-measured on 2026-10-07, per-routine costs on 2026-10-06.
+(2026-10-10); full-loop TI speeds were re-measured on 2026-10-07, per-routine costs on 2026-10-06.
 
 ## Performance budget
 
@@ -58,21 +58,25 @@ Current-state design. History is in git; sizes below are from the latest build
 
 | | Used | Limit | Notes |
 |---|---:|---:|---|
-| TI fixed area (after short branches) | 22,752 | 24,336 | 1,584 free |
-| TI fixed area, unoptimised | 24,568 | 24,574 | xas99's first pass must stay below >FFFE |
-| TI data bank (`BANK 1`) | 8,180 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
+| TI fixed area (after short branches) | 22,740 | 24,336 | 1,596 free |
+| TI fixed area, unoptimised | 24,552 | 24,574 | xas99's first pass must stay below >FFFE |
+| TI data bank (`BANK 1`) | 8,156 | 8,190 | play-time data and tables; crash, camp events, title, setup and results code |
 | TI boot bank (`BANK 2`) | 8,186 | 8,190 | art uploaded at power-on; the sortie overlay, fireworks code and tables; the menu font |
+| TI ending bank (`BANK 3`) | 364 | 8,190 | GAME OVER overlay and its bar data |
 | TI RAM | 814 | 7,854 | |
-| ColecoVision ROM | 32,228 | 32,768 | last non-padding byte |
+| ColecoVision ROM | 32,407 | 32,768 | last non-padding byte |
 | ColecoVision RAM | 812 | 814 | nearly full; TI-only hold-turn counters are absent |
 
-The TI cart is 64 KB: three loader pages and two banks. `assets/generate.py` writes two
+The TI cart is 64 KB: three loader pages and three banks. `assets/generate.py` writes two
 files. `assets.bas` (crash flames, map, crowd glyphs and palettes, roaming goals, fire
 frames, arcs, the explosion timelines) goes into the data bank, which start-up selects for
 good. `assets_boot.bas` (all 64 sprites, scenery characters and colours, stars, sortie
 overlay tables, fireworks and the menu font) goes into the boot bank. `boot:` selects it
 around power-on uploads; `show_sortie`, `show_fireworks` and `menu_restore`, in the fixed area,
-select it around their respective calls (the vblank handler reads only fixed tables).
+select it around their respective calls. `game_over` in the fixed area selects the ending
+bank, calls its overlay, restores the data bank, then jumps to the report. Both bank
+transitions execute from fixed code; a transition in either switched bank would remove its
+own next instruction. The vblank handler reads only fixed tables while that bank is selected.
 The font source is `assets/font.png`, an 8×8 grid for codes 32–127. The build replaces
 CVBasic's 768 embedded glyph bytes in the generated TI and ColecoVision assembly before
 assembly, so title, HUD and report text use the supplied font with no ROM growth.
@@ -96,9 +100,10 @@ the whole screen when the message ends. The overlay code and text stay out of th
 full fixed area and data bank. On TI, the inline bar copy changes `r0`; the overlay reloads
 the sortie index before the title `SCREEN`, and `tools/build.py` checks the generated assembly.
 
-`tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (454 branches,
-1,816 bytes saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
-then; it also checks both bank images and their place in the cart. The menu font's colour
+`tools/build.py` runs Keystone Kapers' verified `shortbranches.py` (453 branches,
+1,812 bytes saved) and fails if the unoptimised image reaches >FFFE, because that pass cannot run
+then; it also checks all three bank images and their place in the cart, and requires the
+GAME OVER entry and return switches to sit in fixed code. The menu font's colour
 table (all white on black) is filled at run time from the idle crowd pixel buffer instead of
 256 identical ROM bytes. ColecoVision RAM is the tightest budget: `#vaddr` is one shared
 VPOKE address used by every routine that computes an address and writes it immediately,
@@ -252,10 +257,14 @@ capsule. The band's 13 characters (`HUD_CHARS`: band, capsule edges and ends, th
 the star) are uploaded once to codes 1–13 of the top screen third only, where codes below 32
 are otherwise unused; `game_screen` copies the template (`hud_rows`) and `hud` writes the
 counts, icons and star. There are no camp indicators. The band ends at y 23 and the
-helicopter climbs no higher than y 25, so it never flies into it. The mission ends when all 64 are saved or lost, or the last
-helicopter is destroyed; the results screen lists the skill level played, then saved,
-lost, stranded and the session's
-best rescue. A perfect rescue is 64.
+helicopter climbs no higher than y 25, so it never flies into it. The mission ends when
+all 64 are saved or lost, or the last helicopter is destroyed. `GAME OVER` appears over the
+playfield on row 11 between seven-cell orange bars on rows 10 and 12, matching the sortie
+card's style. It stays for at least 120 video frames; a fresh key, FIRE or direction press
+can then advance, and it automatically advances after 240 frames. The overlay first observes
+all controls released, so a held crash input does not skip it. The results screen lists the
+skill level played, then saved, lost, stranded and the session's best rescue. A perfect
+rescue is 64.
 
 People persist across trips and crashes. Landing on an exposed person (escaping, waiting or
 running) kills them; so do the player's sideways shots (never the bombs: they fall on the
@@ -298,17 +307,19 @@ level so `GOTO title` leaves no return address on the stack.
 
 **Crashes.** A hit is drawn before it explodes: `hits_heli` only sets `crash_pending`, and
 the main loop crashes at the top of the next update, so the frame between shows the threat
-touching the helicopter. From the crash on, the helicopter itself is never drawn: it and
-every other actor are hidden at once, a burst plays where it was hit (an air burst, or a
-ground burst if it was landed), and only its burning wreck is drawn, flames in slots 0–1
-whose two halves swap yellow and red every 8 frames, falling at 2 px/frame with its
+touching the helicopter. From the crash on, the helicopter itself is never drawn: a burst
+plays where it was hit (an air burst, or a ground burst if it was landed), and its burning
+wreck is drawn as flames in slots 0–1. Other actors stay visible in their existing slots;
+their positions pause while the wreck falls, and the renderer keeps them aligned if the
+camera moves. Existing sprite flicker rotates priority on crowded scanlines. The wreck's
+two halves swap yellow and red every 8 frames, falling at 2 px/frame with its
 sideways speed. On landing it bursts again (a ground burst) and burns for 90 frames,
 burning down in four stages as `crash_tick` redefines sprites 13–14: full flames (15 rows,
 142 pixels), then lower and narrower ones from 60 frames before the end (`crash_burn2`, 9
 rows, 76) and from 40 (`crash_burn3`, 6 rows, 43), then embers from 24 (4 rows, 26), each
 at least half the one before so the fire never drops from a blaze to a few pixels
-(`burn_down` in the generator squashes and narrows the full flames); nothing at all for
-the last 12, by which time the burst is over and erased too. Only then does the next
+(`burn_down` in the generator squashes and narrows the full flames); the wreck disappears
+for the last 12 frames, by which time the burst is over too. Only then does the next
 helicopter appear on the pad (`new_heli`, `game_screen`), drawn with its own patterns, or
 the mission ends. Lives and passengers are charged once, at the crash. Meanwhile camps keep
 releasing people and walkers keep walking; the wreck's impact counts as no landing on anyone
@@ -623,7 +634,8 @@ title (the README has them). Keys 1–3 pick the difficulty, or LEFT/RIGHT step 
 continues an 8-3 sequence is not a choice. The pick lasts from game to game (medium at
 power-on). The credit line, 2026 UNHUMAN AND AI C&C (the bottom third's font has no lower
 case), is on row 20 and PRESS FIRE TO START on row 23: FIRE starts (no digit). The results
-screen also continues with FIRE only. Its heading is centred on row 2 (MISSION REPORT when
+screen requires FIRE to be released and pressed again to continue; holding FIRE through
+its arrival cannot skip it. Its heading is centred on row 2 (MISSION REPORT when
 lives run out), with PRESS FIRE TO CONTINUE centred on the bottom row (23). It lists SKILL
 LEVEL (EASY, MEDIUM or HARD) on row 7,
 then PEOPLE SAVED, PEOPLE LOST and STRANDED on rows 9, 11 and 13, and BEST RESCUE on row

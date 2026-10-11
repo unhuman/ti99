@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('BuildAll','BuildTI','BuildColeco','LaunchTI','LaunchColeco','LaunchColEm')][string]$Action='BuildAll',
+    [ValidateSet('BuildAll','BuildTI','BuildColeco','LaunchTI','LaunchColeco','LaunchColEm','LaunchCoolCV')][string]$Action='BuildAll',
     [switch]$OnDefaultDesktop,
     [string]$ResultPath=''
 )
@@ -90,7 +90,7 @@ if ($Action -like 'Build*') {
     $message = 'Loaded production TI ROM: {0} (SHA256 {1}); Classic99 PID {2}' -f $rom,(Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash,$emulatorProcess.Id
     if ($ResultPath) { Set-Content -LiteralPath $ResultPath -Value $message }
     Write-Output $message
-} elseif ($Action -eq 'LaunchColEm') {
+} elseif ($Action -in @('LaunchColeco','LaunchColEm')) {
     $emulator = Join-Path $env:USERPROFILE 'Downloads/ColEm/ColEm.exe'
     $rom = Join-Path $gameRoot 'src/hardhat.rom'
     if (!(Test-Path -LiteralPath $emulator)) { throw "ColEm not found at $emulator" }
@@ -106,7 +106,7 @@ if ($Action -like 'Build*') {
     $rom = Join-Path $gameRoot 'src/hardhat.rom'
     if (!(Test-Path -LiteralPath $emulator)) { throw "CoolCV not found at $emulator" }
     if (!(Test-Path -LiteralPath $rom)) { throw 'Build the Coleco ROM first' }
-    Get-Process CoolCV -ErrorAction SilentlyContinue | Stop-Process
+    Get-Process CoolCV,ColEm -ErrorAction SilentlyContinue | Stop-Process
     $emulatorProcess = Start-Process -FilePath $emulator -ArgumentList ('"{0}"' -f $rom) -WorkingDirectory (Split-Path $emulator) -WindowStyle Normal -PassThru
     $message = 'Launched production Coleco ROM: {0} (SHA256 {1}); CoolCV PID {2}' -f $rom,(Get-FileHash -LiteralPath $rom -Algorithm SHA256).Hash,$emulatorProcess.Id
     if ($ResultPath) { Set-Content -LiteralPath $ResultPath -Value $message }

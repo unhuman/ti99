@@ -60,9 +60,10 @@ a high, pulsing whine while you are coming down too fast. Anything that hits you
 touching you first, and only what is drawn counts: the cabin, nose, skids and tail boom,
 not the rotor or the empty air around them. A crash is a burst of fire and sparks where you
 were hit; the burning wreck falls, flickering yellow and red, bursts again on the ground and
-burns down gradually to embers, and only then,
-with the screen clear, does the next helicopter appear on the pad. A crash loses everyone
-aboard, but the camps keep emptying while the wreck burns. Do not land on people or shoot
+burns down gradually to embers. Tanks, aircraft, their weapons and your shots remain visible
+throughout the crash, with sprite flicker sharing crowded scanlines. Once the wreck is gone,
+the next helicopter appears on the pad. A crash loses everyone aboard, but the camps keep
+emptying while the wreck burns. Do not land on people or shoot
 through them; your bombs fall in front of the crowd and pass people by.
 The home scene shows FIRST, SECOND or THIRD SORTIE between two solid bars that stop one
 character short of each end of the text. Its rotor turns while the message is up. Press UP to lift off and clear
@@ -114,9 +115,15 @@ can strike. The helicopter holds its place on screen while the scenery scrolls p
 jitter. A low blue horizon runs behind the people, buildings and landed helicopter. The
 landing apron is dark red, with a gray sidewalk by the building and a yellow octagonal landing marker with a wide H beneath the lower home landing position.
 
+At the end of a mission, `GAME OVER` appears over the playfield with orange bars like a
+SORTIE message. It stays for at least two seconds; after that, a fresh key or control press
+opens the mission report, or it opens automatically after four seconds. A held control from
+the crash does not dismiss it.
+
 The mission summary centres its heading at the top and the FIRE prompt at the bottom. It
 names the skill level you played, with your saved, lost and stranded counts and the
-session's best rescue.
+session's best rescue. Release FIRE and press it again to continue; holding it through the
+summary leaves the report visible.
 
 For practice, type **838** at the title and answer **1–9** for the number of helicopters.
 The summary marks a practice game with a small asterisk after its skill level and saved
@@ -185,7 +192,7 @@ performance and size budgets, the scrolling pipeline, the crowd renderer and the
   cells and adjusts the brackets and period for game text. The generator writes
   the menu's bottom-third copy, and the build replaces CVBasic's embedded glyphs
   on TI and ColecoVision without growing the ROM.
-- `tools/check.py`: 119 tests that execute the BASIC routines and the TI assembly kernels in a
+- `tools/check.py`: 122 tests that execute the BASIC routines and the TI assembly kernels in a
   strict interpreter, compare each kernel with its BASIC twin, and reject known-bad
   mutations. They cover rescue accounting, crowds, controls, gravity, pause, BACK/REDO,
   weapons, enemies, sprite flicker, scrolling order, scenery, stars, sound envelopes,
