@@ -480,35 +480,35 @@ K, R6, R8, Y10, Y11, W, CY, GR = 1, 6, 8, 10, 11, 15, 7, 14
 
 CHARS = {
 "plat_l": (r"""
-..XXXXXX
+XXXXXXXX
+XXXXXXXX
 .XXXXXXX
-XX.XXX.X
-XXXX.XXX
-.XX.XXXX
-..XXX.XX
-...X.XX.
-.....X..
-""", [(Y11, K), (Y10, K), (Y10, R6), (R8, R6), (R8, R6), (R6, K), (R6, K), (R6, K)]),
+..XXXXXX
+....XXXX
+......XX
+.......X
+........
+""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "plat_m": (r"""
 XXXXXXXX
 XXXXXXXX
-XX.XXX.X
-X.XX.XXX
+XX.XXXX.
 XXXXX.XX
-X.XXXXX.
-.XX.X.X.
-..X...X.
-""", [(Y11, K), (Y10, K), (Y10, R6), (R8, R6), (R8, R6), (R6, K), (R6, K), (R6, K)]),
-"plat_r": (r"""
-XXXXXX..
+X.XXXXXX
+XXXX.XXX
 XXXXXXX.
-X.XXX.XX
-XXX.XXXX
-XXXX.XX.
-XX.XXX..
-.XX.X...
-..X.....
-""", [(Y11, K), (Y10, K), (Y10, R6), (R8, R6), (R8, R6), (R6, K), (R6, K), (R6, K)]),
+.XXXXXXX
+""", [(Y11, K), (Y10, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)]),
+"plat_r": (r"""
+XXXXXXXX
+XXXXXXXX
+XXXXXXX.
+XXXXXX..
+XXXX....
+XX......
+X.......
+........
+""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 # THE LAVA'S SURFACE: flames. Two characters so neighbouring cells are out of
 # step; both are re-uploaded from FLAMES as the game runs (lava_tick), which
 # animates the whole pit for 16 bytes instead of rewriting every cell.
@@ -557,13 +557,13 @@ XXXXXXX.
 "pad": (r"""
 XXXXXXXX
 XXXXXXXX
-XX.XXX.X
-X.XX.XXX
+XX.XXXX.
 XXXXX.XX
-X.XXXXX.
-.XX.X.X.
-..X...X.
-""", [(W, K), (CY, K), (Y10, R6), (R8, R6), (R8, R6), (R6, K), (R6, K), (R6, K)]),
+X.XXXXXX
+XXXX.XXX
+XXXXXXX.
+.XXXXXXX
+""", [(W, K), (CY, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)]),
 # THE BASE'S BODY, below its surface: solid rock down into the lava, with the
 # score panel cut into it.
 "rock": (r"""
@@ -575,7 +575,7 @@ XXXXXXX.
 .XXXXXXX
 XXX.XXXX
 XXXXXX.X
-""", [(R8, R6)] * 8),
+""", [(Y10, R6)] * 8),
 "egg": (r"""
 ..XXXX..
 .XXXXXX.
@@ -597,7 +597,7 @@ XXXXXXXX
 ...XXXX.
 ...XXXXX
 ....X.XX
-""", [(R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6)]),
+""", [(Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6)]),
 "rock_r": (r"""
 XXXXXXXX
 X.XXXXX.
@@ -607,10 +607,78 @@ XXXXXX..
 .XXXX...
 XXXXX...
 XX.X....
-""", [(R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6), (R8, R6)]),
+""", [(Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6), (Y10, R6)]),
 }
+
+# A LEDGE'S UNDERSIDE, the row below its surface: thin at the ends, deepest in
+# the middle, so each slab reads as a natural lump of rock hanging in the air
+# under a flat top. draw_plat picks one per column by its distance from the
+# nearer end (1 -> und1, 2 -> und2, 3+ -> und3a/b). Collision still treats the
+# ledge as the one surface row.
+CHARS["plat_m2"] = (r"""
+XXXXXXXX
+XXXXXXXX
+XXXX.XXX
+X.XXXXX.
+XXXXX.XX
+XX.XXXXX
+.XXXXX.X
+XXXX.XXX
+""", [(Y11, K), (Y10, K), (Y10, R6), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, Y10)])
+CHARS["und1l"] = (r"""
+.XXXXXXX
+...XXXXX
+.....XXX
+.......X
+........
+........
+........
+........
+""", [(R6, K)] * 8)
+CHARS["und1r"] = (r"""
+XXXXXXX.
+XXXXX...
+XXX.....
+X.......
+........
+........
+........
+........
+""", [(R6, K)] * 8)
+CHARS["und2"] = (r"""
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+.XXXXX.X
+..XXX...
+...X....
+........
+........
+""", [(R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+CHARS["und3a"] = (r"""
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXX.
+.XXXXX..
+..XXX...
+...X....
+""", [(R6, Y10), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+CHARS["und3b"] = (r"""
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+XXXXXXXX
+.XXXXXXX
+..XXXXXX
+...XX.X.
+....X...
+""", [(R6, Y10), (R6, Y10), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+
 CHAR_ORDER = ("plat_l", "plat_m", "plat_r", "lava_a", "lava_b", "lava_c", "life",
-              "pad", "rock", "egg", "rock_l", "rock_r")
+              "pad", "rock", "egg", "rock_l", "rock_r",
+              "plat_m2", "und1l", "und1r", "und2", "und3a", "und3b")
 
 # FLAME FRAMES for the two lava-surface characters, cycled by lava_tick. Four
 # shapes, so the fire licks rather than blinks.
@@ -651,6 +719,77 @@ XXXXXXXX
 XXXXXXXX
 XXXXXXXX
 """]
+
+
+
+# ------------------------------------------------------------------ title logo
+# "JOUST", 160 x 24 px: five heavy letters on a 4 px grid, corners rounded, shaded
+# white-hot at the top through yellow and orange to dark red at the foot -- the
+# same fire as the font. Cut into 8x8 tiles, duplicates (per tile row, since the
+# colour runs down the rows) shared; empty tiles are the space character.
+LOGO_LETTERS = {
+"J": [".######", "....##.", "....##.", "##..##.", "##..##.", ".####.."],
+"O": [".#####.", "##...##", "##...##", "##...##", "##...##", ".#####."],
+"U": ["##...##", "##...##", "##...##", "##...##", "##...##", ".#####."],
+"S": [".######", "##.....", ".#####.", ".....##", ".....##", "######."],
+"T": ["#######", "..###..", "..###..", "..###..", "..###..", "..###.."],
+}
+LOGO_GRAD = [15, 11, 11, 11, 11, 11, 11, 10, 10, 10, 10, 10, 9, 9, 9, 9, 9,
+             8, 8, 8, 8, 6, 6, 6]
+LOGO_FIRST = 160
+
+
+def logo_bitmap():
+    W, H = 160, 24
+    px = [[0] * W for _ in range(H)]
+    x0 = 2
+    for ch in "JOUST":
+        g = LOGO_LETTERS[ch]
+        for uy in range(6):
+            for ux in range(7):
+                if g[uy][ux] == "#":
+                    for y in range(4):
+                        for x in range(4):
+                            px[uy * 4 + y][x0 + ux * 4 + x] = 1
+        # ROUND THE CORNERS: an empty unit with filled units on two adjacent
+        # sides gets a 4 px quarter fill, and a filled outside corner loses one.
+        def at(ux, uy):
+            return 0 <= ux < 7 and 0 <= uy < 6 and g[uy][ux] == "#"
+        for uy in range(6):
+            for ux in range(7):
+                for dx, dy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+                    if at(ux, uy) and not at(ux - dx, uy) and not at(ux, uy - dy) and not at(ux - dx, uy - dy):
+                        # outside corner of a filled unit: shave it
+                        for k in range(3):
+                            for j in range(3 - k):
+                                xx = x0 + ux * 4 + (j if dx > 0 else 3 - j)
+                                yy = uy * 4 + (k if dy > 0 else 3 - k)
+                                px[yy][xx] = 0
+        x0 += 32
+    return px
+
+
+def logo_tiles():
+    px = logo_bitmap()
+    tiles, cols, keys, amap = [], [], {}, []
+    for tr in range(3):
+        for tc in range(20):
+            b = []
+            for y in range(8):
+                v = 0
+                for x in range(8):
+                    v = (v << 1) | px[tr * 8 + y][tc * 8 + x]
+                b.append(v)
+            if not any(b):
+                amap.append(32)
+                continue
+            key = (tr, tuple(b))
+            if key not in keys:
+                keys[key] = LOGO_FIRST + len(tiles)
+                tiles.append(b)
+                cols.append([LOGO_GRAD[tr * 8 + y] << 4 | 1 for y in range(8)])
+            amap.append(keys[key])
+    return tiles, cols, amap
 
 
 def rows(art):
@@ -745,6 +884,13 @@ def main():
         emit(fh, "col_chars", data, "their colours, 8 bytes each, same order")
         for i, f in enumerate(FLAMES):
             emit(fh, "flame%d" % i, char_bytes(f), "lava flame, frame %d" % i)
+        tiles, cols, amap = logo_tiles()
+        fh.write("\t' TITLE LOGO: %d tiles from character %d, their colours, and the\n"
+                 "\t' 20 x 3 name map (32 = an empty tile).\n" % (len(tiles), LOGO_FIRST))
+        fh.write("\tCONST LOGON = %d\n" % len(tiles))
+        emit(fh, "logo_chr", sum(tiles, []), "logo tiles")
+        emit(fh, "logo_col", sum(cols, []), "logo tile colours")
+        emit(fh, "logo_map", amap, "logo name map, 20 x 3")
 
     n = os.path.getsize(out)
     print("wrote %s (%d bytes)" % (os.path.normpath(out), n))

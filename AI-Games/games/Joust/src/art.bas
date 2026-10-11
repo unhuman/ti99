@@ -206,13 +206,13 @@ spr_pt:	' pterodactyl: shut, OPEN facing right; shut, OPEN facing left
 	DATA BYTE $FE,$FC,$DE,$67,$03,$01,$00,$00
 
 chr_plat_l:	' plat_l
-	DATA BYTE $3F,$7F,$DD,$F7,$6F,$3B,$16,$04
+	DATA BYTE $FF,$FF,$7F,$3F,$0F,$03,$01,$00
 
 chr_plat_m:	' plat_m
-	DATA BYTE $FF,$FF,$DD,$B7,$FB,$BE,$6A,$22
+	DATA BYTE $FF,$FF,$DE,$FB,$BF,$F7,$FE,$7F
 
 chr_plat_r:	' plat_r
-	DATA BYTE $FC,$FE,$BB,$EF,$F6,$DC,$68,$20
+	DATA BYTE $FF,$FF,$FE,$FC,$F0,$C0,$80,$00
 
 chr_lava_a:	' lava_a
 	DATA BYTE $10,$32,$36,$7E,$FF,$FF,$FF,$FF
@@ -227,7 +227,7 @@ chr_life:	' life
 	DATA BYTE $30,$78,$78,$30,$7C,$FE,$36,$63
 
 chr_pad:	' pad
-	DATA BYTE $FF,$FF,$DD,$B7,$FB,$BE,$6A,$22
+	DATA BYTE $FF,$FF,$DE,$FB,$BF,$F7,$FE,$7F
 
 chr_rock:	' rock
 	DATA BYTE $DF,$FB,$BF,$F7,$FE,$7F,$EF,$FD
@@ -241,19 +241,43 @@ chr_rock_l:	' rock_l
 chr_rock_r:	' rock_r
 	DATA BYTE $FF,$BE,$FE,$EC,$FC,$78,$F8,$D0
 
+chr_plat_m2:	' plat_m2
+	DATA BYTE $FF,$FF,$F7,$BE,$FB,$DF,$7D,$F7
+
+chr_und1l:	' und1l
+	DATA BYTE $7F,$1F,$07,$01,$00,$00,$00,$00
+
+chr_und1r:	' und1r
+	DATA BYTE $FE,$F8,$E0,$80,$00,$00,$00,$00
+
+chr_und2:	' und2
+	DATA BYTE $FF,$FF,$FF,$7D,$38,$10,$00,$00
+
+chr_und3a:	' und3a
+	DATA BYTE $FF,$FF,$FF,$FF,$FE,$7C,$38,$10
+
+chr_und3b:	' und3b
+	DATA BYTE $FF,$FF,$FF,$FF,$7F,$3F,$1A,$08
+
 col_chars:	' their colours, 8 bytes each, same order
-	DATA BYTE $B1,$A1,$A6,$86,$86,$61,$61,$61
-	DATA BYTE $B1,$A1,$A6,$86,$86,$61,$61,$61
-	DATA BYTE $B1,$A1,$A6,$86,$86,$61,$61,$61
+	DATA BYTE $B1,$A1,$A1,$A1,$61,$61,$61,$61
+	DATA BYTE $B1,$A1,$A6,$A6,$A6,$6A,$6A,$6A
+	DATA BYTE $B1,$A1,$A1,$A1,$61,$61,$61,$61
 	DATA BYTE $B1,$B1,$A1,$A1,$8A,$8A,$86,$68
 	DATA BYTE $B1,$B1,$A1,$A1,$8A,$8A,$86,$68
 	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
 	DATA BYTE $B1,$B1,$B1,$B1,$B1,$B1,$B1,$B1
-	DATA BYTE $F1,$71,$A6,$86,$86,$61,$61,$61
-	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
+	DATA BYTE $F1,$71,$A6,$A6,$A6,$6A,$6A,$6A
+	DATA BYTE $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
 	DATA BYTE $F1,$F1,$F1,$F1,$F1,$F1,$F1,$F1
-	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
-	DATA BYTE $86,$86,$86,$86,$86,$86,$86,$86
+	DATA BYTE $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+	DATA BYTE $A6,$A6,$A6,$A6,$A6,$A6,$A6,$A6
+	DATA BYTE $B1,$A1,$A6,$A6,$A6,$6A,$6A,$6A
+	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
+	DATA BYTE $61,$61,$61,$61,$61,$61,$61,$61
+	DATA BYTE $6A,$61,$61,$61,$61,$61,$61,$61
+	DATA BYTE $6A,$6A,$61,$61,$61,$61,$61,$61
+	DATA BYTE $6A,$6A,$61,$61,$61,$61,$61,$61
 
 flame0:	' lava flame, frame 0
 	DATA BYTE $10,$32,$36,$7E,$FF,$FF,$FF,$FF
@@ -266,4 +290,93 @@ flame2:	' lava flame, frame 2
 
 flame3:	' lava flame, frame 3
 	DATA BYTE $04,$44,$4E,$EE,$FF,$FF,$FF,$FF
+
+	' TITLE LOGO: 36 tiles from character 160, their colours, and the
+	' 20 x 3 name map (32 = an empty tile).
+	CONST LOGON = 36
+logo_chr:	' logo tiles
+	DATA BYTE $7F,$FF,$FF,$7F,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$FF,$FF,$3F,$3F,$3F,$3F
+	DATA BYTE $E0,$F0,$F0,$E0,$C0,$C0,$C0,$C0
+	DATA BYTE $00,$00,$01,$03,$07,$0F,$1F,$3F
+	DATA BYTE $7F,$FF,$FF,$FF,$C0,$C0,$C0,$C0
+	DATA BYTE $FE,$FF,$FF,$FF,$03,$03,$03,$03
+	DATA BYTE $00,$00,$80,$C0,$E0,$F0,$F8,$FC
+	DATA BYTE $06,$0F,$1F,$3F,$3F,$3F,$3F,$3F
+	DATA BYTE $00,$00,$80,$C0,$C0,$C0,$C0,$C0
+	DATA BYTE $00,$00,$01,$03,$03,$03,$03,$03
+	DATA BYTE $60,$F0,$F8,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $00,$00,$01,$03,$07,$0F,$0F,$07
+	DATA BYTE $FF,$FF,$FF,$FF,$00,$00,$00,$00
+	DATA BYTE $E0,$F0,$F0,$E0,$00,$00,$00,$00
+	DATA BYTE $07,$0F,$0F,$07,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$FF,$FF,$FC,$FC,$FC,$FC
+	DATA BYTE $00,$00,$00,$00,$06,$0F,$1F,$3F
+	DATA BYTE $00,$00,$00,$00,$00,$00,$80,$C0
+	DATA BYTE $3F,$3F,$3F,$3F,$3F,$3F,$3F,$3F
+	DATA BYTE $C0,$C0,$C0,$C0,$C0,$C0,$C0,$C0
+	DATA BYTE $03,$03,$03,$03,$03,$03,$03,$03
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$FC,$FC,$FC
+	DATA BYTE $03,$01,$00,$00,$00,$00,$00,$00
+	DATA BYTE $FF,$FF,$FF,$7F,$00,$00,$00,$00
+	DATA BYTE $FE,$FF,$FF,$FF,$03,$03,$03,$03
+	DATA BYTE $00,$00,$80,$C0,$E0,$F0,$F8,$FC
+	DATA BYTE $3F,$1F,$0F,$07,$03,$01,$00,$00
+	DATA BYTE $C0,$C0,$C0,$C0,$FF,$FF,$FF,$7F
+	DATA BYTE $3F,$3F,$3F,$3E,$FC,$F8,$F0,$E0
+	DATA BYTE $C0,$80,$00,$00,$00,$00,$00,$00
+	DATA BYTE $03,$03,$03,$03,$FF,$FF,$FF,$FE
+	DATA BYTE $FC,$F8,$F0,$E0,$C0,$80,$00,$00
+	DATA BYTE $00,$00,$00,$00,$07,$0F,$0F,$07
+	DATA BYTE $00,$00,$00,$00,$FF,$FF,$FF,$FF
+	DATA BYTE $3F,$3F,$3F,$3F,$3F,$1F,$0F,$07
+	DATA BYTE $FC,$FC,$FC,$FC,$FC,$F8,$F0,$E0
+
+logo_col:	' logo tile colours
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $F1,$B1,$B1,$B1,$B1,$B1,$B1,$A1
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $A1,$A1,$A1,$A1,$91,$91,$91,$91
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+	DATA BYTE $91,$81,$81,$81,$81,$61,$61,$61
+
+logo_map:	' logo name map, 20 x 3
+	DATA BYTE $20,$A0,$A1,$A2,$A3,$A4,$A5,$A6
+	DATA BYTE $A7,$A8,$A9,$AA,$AB,$A4,$AC,$AD
+	DATA BYTE $AE,$A1,$AF,$AD,$B0,$B1,$B2,$B3
+	DATA BYTE $B2,$B3,$B4,$B5,$B2,$B3,$B4,$B5
+	DATA BYTE $B6,$B7,$B8,$B9,$20,$B2,$B5,$20
+	DATA BYTE $BA,$BB,$BC,$BD,$BA,$BB,$BE,$BF
+	DATA BYTE $BA,$BB,$BE,$BF,$C0,$C1,$BE,$BF
+	DATA BYTE $20,$C2,$C3,$20
 

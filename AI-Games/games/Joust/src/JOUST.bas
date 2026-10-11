@@ -75,6 +75,12 @@
 	CONST EGGCH = 137		' an egg waiting on a ledge (Egg waves)
 	CONST ROCKL = 138		' ... its sloping left end
 	CONST ROCKR = 139		' ... and right end
+	CONST PLATM2 = 140		' second ledge-middle texture, for unevenness
+	CONST UND1L = 141		' ledge undersides, in the row below the surface:
+	CONST UND1R = 142		'   one from an end (left / right taper)
+	CONST UND2 = 143		'   two from an end
+	CONST UND3A = 144		'   three or more, two textures
+	CONST UND3B = 145
 	' SPRITE PATTERNS (pattern number = 16x16 sprite index x 4; see setup).
 	CONST P_OST = 0			' ostrich, 8 frames right then 8 left
 	CONST P_BUZ = 64		' buzzard, the same layout
@@ -215,6 +221,8 @@
 	DIM tegon(NTEG)			' 1 still waiting on its ledge
 
 	stwv = 1			' 838 on the title overrides this
+	stlv = 3
+	diff = 1			' MEDIUM at power-on; the pick then persists between games
 	GOSUB setup
 	GOTO title_screen
 
@@ -239,13 +247,14 @@ setup:
 	kbscan = 1
 	' THE ARCADE FACE. Replaces CVBasic's stock 8x8, which is a thin generic ASCII
 	' font and reads like a BASIC listing rather than an arcade cabinet -- undoing a
-	' good deal of what the sprites are doing. 59 characters, 32-90, contiguous.
-	' Colours are left alone: a DEFINE COLOR run this long would cost another 472
-	' bytes to say "white" 59 times.
+	' good deal of what the sprites are doing. 59 characters, 32-90, contiguous,
+	' bold to match the title logo and shaded like it (font_col, in bank 1).
 	DEFINE CHAR 32,59,font_bits
+	DEFINE COLOR 32,59,font_col	' yellow to red down each glyph
+	DEFINE COLOR 40,2,brk_col	' ( and ): the title's difficulty brackets
 	' Characters 128-139 and their colours, generated together (genart.py).
-	DEFINE CHAR PLATL,12,chr_plat_l
-	DEFINE COLOR PLATL,12,col_chars
+	DEFINE CHAR PLATL,18,chr_plat_l
+	DEFINE COLOR PLATL,18,col_chars
 	DEFINE SPRITE 0,8,spr_ost_r	' P_OST
 	DEFINE SPRITE 8,8,spr_ost_l
 	DEFINE SPRITE 16,8,spr_buz_r	' P_BUZ
@@ -368,111 +377,14 @@ set_isl_on:
 	plon(3 + sin) = 0
 	RETURN
 
-	' ---------------------------------------------------------- title screen
-title_screen:
-	sprok = 2
-	kbscan = 1
-	GOSUB hide_all
-	CLS
-	PRINT AT 100,"J O U S T"
-	PRINT AT 232,"THE HIGHER LANCE WINS"
-	PRINT AT 328,"FIRE     FLAP"
-	PRINT AT 392,"LEFT/RIGHT    STEER"
-	PRINT AT 520,"PRESS FIRE TO START"
-	PRINT AT 680,"2026 UNHUMAN & CLAUDE"
-	btnr = 0
-	t8 = 0
-	' SEED THE EDGE DETECTOR WITH WHAT IS ALREADY HELD. Seeding with 15 ("no key")
-	' asserts nothing is down when the title starts, which stops being true the
-	' moment anything precedes it -- a key still held would read as a fresh press.
-	tkl = cont1.key
-title_wait:
-	WAIT
-	' 8-3-8 OPENS THE WAVE SELECT. Edge triggered on cont1.key, which gives 0-9 on
-	' both targets (TI keyboard, Coleco keypad) and 15 for nothing -- and NOT on the
-	' joystick, whose vertical axis shares a line with ALPHA LOCK on the TI.
-	tk = cont1.key
-	IF tk <> tkl THEN
-		tkl = tk
-		IF tk = 8 THEN
-			IF t8 = 2 THEN
-				GOSUB setup838
-				GOTO new_game
-			END IF
-			t8 = 1
-		ELSE
-			IF tk = 3 THEN
-				IF t8 = 1 THEN
-					t8 = 2
-				ELSE
-					t8 = 0
-				END IF
-			ELSE
-				IF tk < 15 THEN t8 = 0
-			END IF
-		END IF
-	END IF
-	' RELEASE BEFORE PRESS. Arriving here with fire still held from the last
-	' game would otherwise start the next one before the screen was read.
-	IF btnr = 0 THEN
-		IF cont1.button = 0 THEN btnr = 1
-	ELSE
-		IF cont1.button THEN GOTO new_game
-	END IF
-	GOTO title_wait
-
-	' ------------------------------------------------------------- new game
-	' Wave selector: two digits, echoed as they are typed. Undocumented on screen
-	' -- there is no room for a caption -- so it lives in README.md instead.
-setup838:
-	GOSUB hide_all
-	CLS
-	PRINT AT 264,"START AT WAVE 01-99"
-	PRINT AT 360,"ENTER TWO DIGITS"
-	' !! #rdp IS 16-BIT ON PURPOSE. A plain variable is 8-BIT, so 463 would
-	' truncate to 207 and the digits would appear at row 6 instead of row 14 --
-	' silently, and looking like somebody's odd layout choice (TRUNCATION.md 1a).
-	#rdp = 463			' row 14, col 15
-	GOSUB rd_dig
-	sd1 = tdg
-	GOSUB rd_dig
-	stwv = sd1 * 10 + tdg
-	IF stwv < 1 THEN stwv = 1
-	' LET THE SECOND BEEP DECAY BEFORE LEAVING. The first digit's note is silenced
-	' by the second call's wait loop; after the second there is no loop left, and
-	' nothing between here and the game loop ticks the sound.
-	FOR sdw = 0 TO 5
-		WAIT
-		GOSUB sfx_tick
-	NEXT sdw
-	RETURN
-
-	' One digit: wait for every key to be RELEASED, then for a digit. Without the
-	' release wait the 8 that opened this screen is read as the first digit.
-rd_dig:
-rd_rel:
-	WAIT
-	GOSUB sfx_tick
-	IF cont1.key <> 15 THEN GOTO rd_rel
-rd_get:
-	WAIT
-	GOSUB sfx_tick
-	tdg = cont1.key
-	IF tdg > 9 THEN GOTO rd_get
-	#rda = #rdp
-	#rda = #rda + 6144
-	rdv = 48 + tdg
-	VPOKE #rda,rdv
-	#rdp = #rdp + 1
-	sfn = SFX_DIGIT : GOSUB sfx_play
-	RETURN
+	' The title, 838 and game-over screens live in bank 1, at the end.
 
 new_game:
 	kbscan = 0			' no keys read in play: the scan is skipped
 	#score = 0			' stored in TENS of points: every award in
 					' Joust is a multiple of 50, so this is exact
 					' and 16 bits then reaches 655,350.
-	lives = 3
+	lives = stlv			' 3, or whatever 838 asked for
 	#nxtb = 2000			' next extra bird: 20,000, in tens
 	' 838 sets stwv; new_wave increments, so start one below it.
 	wave = stwv - 1
@@ -519,8 +431,16 @@ new_wave:
 	WEND
 	' AGGRESSION RISES WITH THE WAVE, not just with the tier. A Bounder in wave 12
 	' should not fly like a Bounder in wave 1: same strategy, sharper execution.
-	agg = wave
-	IF agg > 16 THEN agg = 16
+	' DIFFICULTY shifts it two waves either way: EASY flies like two waves
+	' earlier, HARD like two waves later.
+	agg = wave + diff
+	agg = agg + diff
+	IF agg > 2 THEN
+		agg = agg - 2
+	ELSE
+		agg = 1
+	END IF
+	IF agg > 20 THEN agg = 20
 	GOSUB set_ktop
 	GOSUB set_islands		' erosion first: draw_field draws what survives
 	GOSUB draw_field
@@ -668,77 +588,6 @@ spawn_player:
 	RETURN
 
 	' ------------------------------------------------------------ draw field
-draw_field:
-	CLS
-	FOR dfi = 0 TO NPLAT - 1
-		IF plon(dfi) = 1 THEN
-		dfr = ply(dfi) / 8		' surface pixel row -> character row
-		dfc = #plx1(dfi) / 8
-		dfd = #plx2(dfi) / 8
-		#dfa = dfr
-		#dfa = #dfa * 32
-		#dfa = #dfa + dfc
-		GOSUB draw_plat
-		END IF
-	NEXT dfi
-
-	' NO PAD WITHOUT ITS ISLAND -- see the padi() comment at the DIMs.
-	FOR dfi = 0 TO NPAD - 1
-		IF plon(padi(dfi)) = 1 THEN
-			dfr = pady(dfi) + 16		' the surface the pad sits on
-			dfr = dfr / 8
-			dfc = padx(dfi) / 8
-			#dfa = dfr
-			#dfa = #dfa * 32
-			#dfa = #dfa + dfc
-			#dfa = #dfa + 6144
-			VPOKE #dfa,PADCH
-			#dfa = #dfa + 1
-			VPOKE #dfa,PADCH
-		END IF
-	NEXT dfi
-
-	' The lava fills everything below the floor line.
-	' ROWS 22-23 ONLY, below the base. It used to start at row 20 -- the base's own
-	' row -- and paint over it, so the floor you were standing on was drawn as
-	' lava. Collision read the island table and was right; only the picture lied.
-	' ROWS 22-23: THE BASE STANDS IN THE LAVA. Under the base's span (columns
-	' 5-25) its rock goes down to the bottom of the screen, sloping in at each
-	' end, and the score is cut into it; either side is the pit, flames on top.
-	FOR dfi = 0 TO 31
-		#dfa = 6848 + dfi		' row 22 = 704, plus the name table's 6144
-		dfc = LAVAA
-		IF dfi AND 1 THEN dfc = LAVAB
-		dfd = LAVAC
-		IF dfi >= 5 THEN
-			IF dfi <= 25 THEN
-				dfc = ROCKCH
-				IF dfi = 5 THEN dfc = ROCKL
-				IF dfi = 25 THEN dfc = ROCKR
-				dfd = dfc
-			END IF
-		END IF
-		VPOKE #dfa,dfc
-		#dfa = #dfa + 32
-		VPOKE #dfa,dfd
-	NEXT dfi
-	RETURN
-
-	' ONE PLATFORM. #dfa is the name-table offset of its left cap, dfc..dfd the
-	' column span. VPOKE takes a RAW VRAM address and the name table starts at
-	' 6144, added as its OWN step -- folded into a constant expression it would
-	' truncate (CLAUDE.md 3A).
-draw_plat:
-	#dpa = #dfa
-	#dpa = #dpa + 6144
-	VPOKE #dpa,PLATL
-	FOR dpi = dfc + 1 TO dfd - 1
-		#dpa = #dpa + 1
-		VPOKE #dpa,PLATM
-	NEXT dpi
-	#dpa = #dpa + 1
-	VPOKE #dpa,PLATR
-	RETURN
 
 	' ---------------------------------------------------------------- HUD
 	' THE SCORE IS IN THE BASE, as in the arcade: row 22, columns 9-14, with the
@@ -1165,7 +1014,8 @@ k_spawn:
 	ktx(ksl) = 128
 	kty(ksl) = 60
 	ktier(ksl) = 0
-	IF wave > 3 THEN ktier(ksl) = kpend AND 1
+	dhw = wave + diff		' Hunters from wave 5 / 4 / 3 by difficulty
+	IF dhw > 4 THEN ktier(ksl) = kpend AND 1
 	' SHADOW LORDS ARRIVE ONE MORE PER WAVE from 16: the last knight of wave 16,
 	' the last two of wave 17, and so on until every one is a Lord.
 	IF wave > 15 THEN
@@ -2454,15 +2304,6 @@ do_death:
 	pdead = 0
 	RETURN
 
-game_over:
-	sprok = 2
-	GOSUB hide_all
-	PRINT AT 300,"GAME OVER"
-	FOR ddi = 0 TO 120
-		WAIT
-	NEXT ddi
-	GOTO title_screen
-
 	' ----------------------------------------------------------- rendering
 draw:
 	' The player is sprite 0 on purpose: with flicker off the VDP drops the
@@ -2914,4 +2755,292 @@ tiercol:
 	' Materialising shimmer: white, cyan, magenta, light blue. Four bytes, even.
 matcol:
 	DATA BYTE 15,7,13,5
+	' The title's difficulty brackets, ( and ), in cyan. 16 bytes, even.
+brk_col:
+	DATA BYTE $71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71,$71
 
+	' ============================================ CODE IN BANK 1 (TI)
+	' Screens and the arena drawing run once a wave or less, so they live here
+	' with the data, out of the fixed area. Bank 1 stays selected, so calls in
+	' and out need no switching.
+draw_field:
+	CLS
+	FOR dfi = 0 TO NPLAT - 1
+		IF plon(dfi) = 1 THEN
+		dfr = ply(dfi) / 8		' surface pixel row -> character row
+		dfc = #plx1(dfi) / 8
+		dfd = #plx2(dfi) / 8
+		#dfa = dfr
+		#dfa = #dfa * 32
+		#dfa = #dfa + dfc
+		GOSUB draw_plat
+		END IF
+	NEXT dfi
+
+	' NO PAD WITHOUT ITS ISLAND -- see the padi() comment at the DIMs.
+	FOR dfi = 0 TO NPAD - 1
+		IF plon(padi(dfi)) = 1 THEN
+			dfr = pady(dfi) + 16		' the surface the pad sits on
+			dfr = dfr / 8
+			dfc = padx(dfi) / 8
+			#dfa = dfr
+			#dfa = #dfa * 32
+			#dfa = #dfa + dfc
+			#dfa = #dfa + 6144
+			VPOKE #dfa,PADCH
+			#dfa = #dfa + 1
+			VPOKE #dfa,PADCH
+		END IF
+	NEXT dfi
+
+	' The lava fills everything below the floor line.
+	' ROWS 22-23 ONLY, below the base. It used to start at row 20 -- the base's own
+	' row -- and paint over it, so the floor you were standing on was drawn as
+	' lava. Collision read the island table and was right; only the picture lied.
+	' ROWS 22-23: THE BASE STANDS IN THE LAVA. Under the base's span (columns
+	' 5-25) its rock goes down to the bottom of the screen, sloping in at each
+	' end, and the score is cut into it; either side is the pit, flames on top.
+	FOR dfi = 0 TO 31
+		#dfa = 6848 + dfi		' row 22 = 704, plus the name table's 6144
+		dfc = LAVAA
+		IF dfi AND 1 THEN dfc = LAVAB
+		dfd = LAVAC
+		IF dfi >= 5 THEN
+			IF dfi <= 25 THEN
+				dfc = ROCKCH
+				IF dfi = 5 THEN dfc = ROCKL
+				IF dfi = 25 THEN dfc = ROCKR
+				dfd = dfc
+			END IF
+		END IF
+		VPOKE #dfa,dfc
+		#dfa = #dfa + 32
+		VPOKE #dfa,dfd
+	NEXT dfi
+	RETURN
+
+	' ONE PLATFORM. #dfa is the name-table offset of its left cap, dfc..dfd the
+	' column span. VPOKE takes a RAW VRAM address and the name table starts at
+	' 6144, added as its OWN step -- folded into a constant expression it would
+	' truncate (CLAUDE.md 3A).
+draw_plat:
+	#dpa = #dfa
+	#dpa = #dpa + 6144
+	' THE SHAPE: a flat top the whole width, tapered end caps, and an underside
+	' in the row below that is deepest in the middle. Distances are biased +3
+	' so a ledge running off a screen edge (it wraps round to the other side)
+	' is treated as if it went on for three more columns: no taper at the edge.
+	dpl = dfc + 3
+	IF dfc = 0 THEN dpl = 0
+	dpr = dfd + 3
+	IF dfd = 31 THEN dpr = 37
+	IF dfr >= 20 THEN		' the floor: base and bridges run on into each other
+		dpl = 0
+		dpr = 37
+	END IF
+	FOR dpi = dfc TO dfd
+		dpx = dpi + 3
+		dpt = PLATM
+		dpe = dpi AND 2
+		IF dpe THEN dpt = PLATM2
+		IF dpx = dpl THEN dpt = PLATL
+		IF dpx = dpr THEN dpt = PLATR
+		VPOKE #dpa,dpt
+		' The base and both bridges stand on rows 21-23's rock and lava.
+		IF dfr < 20 THEN
+			dpd = dpx - dpl
+			dpe = dpr - dpx
+			dpo = UND1L
+			IF dpe < dpd THEN
+				dpd = dpe
+				dpo = UND1R
+			END IF
+			IF dpd > 0 THEN
+				IF dpd = 2 THEN dpo = UND2
+				IF dpd > 2 THEN
+					dpo = UND3A
+					dpe = dpi AND 1
+					IF dpe THEN dpo = UND3B
+				END IF
+				#dpb = #dpa + 32
+				VPOKE #dpb,dpo
+			END IF
+		END IF
+		#dpa = #dpa + 1
+	NEXT dpi
+	RETURN
+
+	' ---------------------------------------------------------- title screen
+	' THE LOGO, a knight and a Bounder squared up on a ledge, the controls, and
+	' the difficulty: 1-2-3 picks it, LEFT/RIGHT steps it, FIRE starts. The 3 in
+	' 8-3-8 continues the cheat and is not a choice (CLAUDE.md 7A).
+title_screen:
+	sprok = 2
+	kbscan = 1
+	GOSUB hide_all
+	CLS
+	DEFINE CHAR 160,LOGON,logo_chr
+	DEFINE COLOR 160,LOGON,logo_col
+	SCREEN logo_map,0,70,20,3	' rows 2-4, columns 6-25
+	PRINT AT 197,"THE HIGHER LANCE WINS"
+	#dfa = 330			' a ledge, row 10 columns 10-21
+	dfc = 10
+	dfd = 21
+	dfr = 10
+	GOSUB draw_plat
+	SPRITE 0,60,96,P_RIDER,15
+	SPRITE 1,64,96,P_OST,11
+	SPRITE 2,60,144,P_RIDER + 4,8
+	SPRITE 3,64,144,P_BUZ + 32,12
+	PRINT AT 452,"FIRE FLAP   STICK STEER"
+	GOSUB title_diff
+	PRINT AT 646,"PRESS FIRE TO START"
+	PRINT AT 741,"2026 UNHUMAN & CLAUDE"
+	btnr = 0
+	t8 = 0
+	' SEED THE EDGE DETECTORS WITH WHAT IS ALREADY HELD, so a key or a stick
+	' direction still down from the last game is not read as a fresh press.
+	tkl = cont1.key
+	tjl = 0
+	IF cont1.left THEN tjl = 20
+	IF cont1.right THEN tjl = 21
+title_wait:
+	WAIT
+	' Keys, edge triggered on cont1.key: 0-9 on both machines, 15 for none.
+	tk = cont1.key
+	IF tk <> tkl THEN
+		tkl = tk
+		IF tk = 8 THEN
+			IF t8 = 2 THEN
+				GOSUB setup838
+				GOTO new_game
+			END IF
+			t8 = 1
+		ELSE
+			IF tk = 3 THEN
+				IF t8 = 1 THEN
+					t8 = 2			' 8-3...: the cheat, not HARD
+				ELSE
+					t8 = 0
+					diff = 2
+					GOSUB title_diff
+				END IF
+			ELSE
+				IF tk < 15 THEN
+					t8 = 0
+					IF tk = 1 THEN
+						diff = 0
+						GOSUB title_diff
+					END IF
+					IF tk = 2 THEN
+						diff = 1
+						GOSUB title_diff
+					END IF
+				END IF
+			END IF
+		END IF
+	END IF
+	' The stick as two pseudo-keys, 20 and 21, edge triggered the same way.
+	' LEFT/RIGHT only: on the TI the vertical axis shares ALPHA LOCK's line.
+	tj = 0
+	IF cont1.left THEN tj = 20
+	IF cont1.right THEN tj = 21
+	IF tj <> tjl THEN
+		tjl = tj
+		IF tj = 20 THEN
+			IF diff > 0 THEN diff = diff - 1
+			GOSUB title_diff
+		END IF
+		IF tj = 21 THEN
+			IF diff < 2 THEN diff = diff + 1
+			GOSUB title_diff
+		END IF
+	END IF
+	' RELEASE BEFORE PRESS: fire still held from the last game must not start
+	' the next one before the screen has been read.
+	IF btnr = 0 THEN
+		IF cont1.button = 0 THEN btnr = 1
+	ELSE
+		IF cont1.button THEN
+			stwv = 1
+			stlv = 3
+			chtd = 0
+			GOTO new_game
+		END IF
+	END IF
+	GOTO title_wait
+
+	' The difficulty line, the chosen one in brackets. '(' and ')' are coloured
+	' cyan at boot (brk_col) and nothing else on any screen prints them.
+title_diff:
+	IF diff = 0 THEN PRINT AT 546,"(1 EASY)  2 MEDIUM   3 HARD "
+	IF diff = 1 THEN PRINT AT 546," 1 EASY  (2 MEDIUM)  3 HARD "
+	IF diff = 2 THEN PRINT AT 546," 1 EASY   2 MEDIUM  (3 HARD)"
+	RETURN
+
+	' ------------------------------------------------------------- 838 setup
+	' Not captioned on the title -- it is written down in README.md. Asks for
+	' the number of mounts (lives), then the wave to start at. A game started
+	' here is marked with a star at the end.
+setup838:
+	GOSUB hide_all
+	CLS
+	PRINT AT 232,"MOUNTS 1-9"
+	' !! #rdp IS 16-BIT: a plain variable would truncate these offsets.
+	#rdp = 244			' row 7, col 20
+	GOSUB rd_dig
+	stlv = tdg
+	IF stlv < 1 THEN stlv = 1
+	PRINT AT 360,"START AT WAVE 01-99"
+	#rdp = 430			' row 13, col 14
+	GOSUB rd_dig
+	sd1 = tdg
+	GOSUB rd_dig
+	stwv = sd1 * 10 + tdg
+	IF stwv < 1 THEN stwv = 1
+	chtd = 1
+	' LET THE LAST BEEP DECAY BEFORE LEAVING: nothing between here and the
+	' game loop ticks the sound.
+	FOR sdw = 0 TO 5
+		WAIT
+		GOSUB sfx_tick
+	NEXT sdw
+	RETURN
+
+	' One digit: wait for every key to be RELEASED, then for a digit. Without the
+	' release wait the key that opened this screen is read as the first digit.
+rd_dig:
+rd_rel:
+	WAIT
+	GOSUB sfx_tick
+	IF cont1.key <> 15 THEN GOTO rd_rel
+rd_get:
+	WAIT
+	GOSUB sfx_tick
+	tdg = cont1.key
+	IF tdg > 9 THEN GOTO rd_get
+	#rda = #rdp
+	#rda = #rda + 6144
+	rdv = 48 + tdg
+	VPOKE #rda,rdv
+	#rdp = #rdp + 1
+	sfn = SFX_DIGIT : GOSUB sfx_play
+	RETURN
+
+	' ------------------------------------------------------------- game over
+	' Over the arena, in the clear rows 10-12, as the arcade does it: the
+	' message, then the difficulty played (starred for an 838 game).
+game_over:
+	sprok = 2
+	GOSUB hide_all
+	PRINT AT 328,"  THY GAME IS OVER  "
+	PRINT AT 392,"                    "
+	IF diff = 0 THEN PRINT AT 396,"   EASY"
+	IF diff = 1 THEN PRINT AT 396," MEDIUM"
+	IF diff = 2 THEN PRINT AT 396,"   HARD"
+	IF chtd = 1 THEN PRINT AT 404,"*"
+	FOR ddi = 0 TO 240
+		WAIT
+		GOSUB sfx_tick
+	NEXT ddi
+	GOTO title_screen

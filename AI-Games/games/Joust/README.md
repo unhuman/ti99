@@ -29,14 +29,22 @@ disagreed.
 |---|---|---|
 | Flap | Fire, or space | Fire |
 | Steer | Joystick 1 left/right | Joystick 1 left/right |
+| Difficulty | `1` `2` `3`, or left/right, on the title | keypad `1` `2` `3`, or left/right |
 | Start | Fire on the title | Fire |
-| **Start at a chosen wave** | type `8` `3` `8` on the title | `8` `3` `8` |
+| **Choose mounts and wave** | type `8` `3` `8` on the title | `8` `3` `8` |
 
-`838` opens a two-digit wave selector -- handy for reaching the parts of the game
+The title picks **EASY, MEDIUM or HARD** (medium at power-on; the choice stays for the
+next game). Easy knights fly like two waves earlier and Hunters wait until wave 5; hard
+knights fly like two waves later and Hunters come from wave 3.
+
+`838` asks for the number of **mounts (1-9)**, then a two-digit **starting wave
+(01-99)** -- handy for reaching the parts of the game
 that are otherwise a long way in: the **lava troll** appears at wave 3, the
 **bridges burn** at wave 3, **Hunters** at 4, the **pterodactyl** at 8 (then 13, 18...; on other waves only if you take over a minute), ledges start
 vanishing at 6, and **Shadow Lords** not until 16. It is not captioned on the title;
-there is no room for a caption, which is why it is written down here.
+there is no room for a caption, which is why it is written down here. Every wave's
+content is in place by wave 21; later waves repeat it, faster. A game started with 838
+is marked with a star when it ends ("THY GAME IS OVER", then the difficulty played).
 
 **Flap is edge-triggered** — holding fire does not hover; each press is one impulse.
 **It plays on momentum, like the arcade**: let go and the bird keeps going. On a ledge
