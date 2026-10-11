@@ -488,7 +488,7 @@ XXXXXXXX
 ........
 ........
 ........
-""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "plat_m": (r"""
 XXXXXXXX
 XXXXXXXX
@@ -498,7 +498,7 @@ XXXXXXXX
 ..X...X.
 ........
 ........
-""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 "plat_r": (r"""
 XXXXXXXX
 XXXXXXXX
@@ -508,7 +508,7 @@ XXXX....
 ........
 ........
 ........
-""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 # THE LAVA'S SURFACE: flames. Two characters so neighbouring cells are out of
 # step; both are re-uploaded from FLAMES as the game runs (lava_tick), which
 # animates the whole pit for 16 bytes instead of rewriting every cell.
@@ -563,19 +563,19 @@ XXXXXXX.
 .XXXXXX.
 ..XXXXX.
 ..XXXX..
-""", [(W, K), (GR, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(W, K), (GR, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
 # THE BASE'S BODY, below its surface: solid rock down into the lava, with the
 # score panel cut into it.
 "rock": (r"""
 XXXXXXXX
+XXX.XXXX
+X.XXXX.X
+XX.XX.XX
+X.XXXXX.
 XXXXXXXX
 XXXXXXXX
 XXXXXXXX
-XXXXXXXX
-XXXXXXXX
-XXXXXXXX
-XXXXXXXX
-""", [(R6, K), (R6, K), (R6, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)]),
+""", [(Y10, K), (Y10, R6), (Y10, R6), (R6, Y10), (R6, Y10), (R6, K), (R6, K), (R6, K)]),
 "egg": (r"""
 ..XXXX..
 .XXXXXX.
@@ -597,7 +597,7 @@ XXXXXXXX
 ...XXXXX
 ...XXXXX
 ....XXXX
-""", [(R6, K), (R6, K), (R6, K), (Y10, K), (R6, R8), (R6, R8), (R6, R8), (R6, R8)]),
+""", [(Y10, K), (Y10, R6), (Y10, R6), (R6, Y10), (R6, R8), (R6, R8), (R6, R8), (R6, R8)]),
 "rock_r": (r"""
 XXXXXXXX
 XXXXXXX.
@@ -607,7 +607,7 @@ XXXXXX..
 XXXXX...
 XXXXX...
 XXXX....
-""", [(R6, K), (R6, K), (R6, K), (Y10, K), (R6, R8), (R6, R8), (R6, R8), (R6, R8)]),
+""", [(Y10, K), (Y10, R6), (Y10, R6), (R6, Y10), (R6, R8), (R6, R8), (R6, R8), (R6, R8)]),
 }
 
 # A LEDGE'S UNDERSIDE, the row below its surface: thin at the ends, deepest in
@@ -624,7 +624,7 @@ XXXXXXX.
 .XXXXXX.
 ..XXXXX.
 ..XXXX..
-""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)])
 CHARS["und1l"] = (r"""
 ..XX....
 ..X.....
@@ -687,7 +687,7 @@ XXXXXXXX
 XXXXXXXX
 XXXXXXXX
 XXXXXXXX
-""", [(Y10, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+""", [(Y11, K), (Y10, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)])
 
 # A PAD ON THE FLOOR: the pad's lit top over the floor's solid rock.
 CHARS["pad_floor"] = (r"""
@@ -699,7 +699,7 @@ XXXXXXXX
 XXXXXXXX
 XXXXXXXX
 XXXXXXXX
-""", [(W, K), (GR, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K), (R6, K)])
+""", [(W, K), (GR, K), (Y10, K), (Y10, K), (R6, K), (R6, K), (R6, K), (R6, K)])
 
 CHAR_ORDER = ("plat_l", "plat_m", "plat_r", "lava_a", "lava_b", "lava_c", "life",
               "pad", "rock", "egg", "rock_l", "rock_r",
@@ -748,71 +748,96 @@ XXXXXXXX
 
 
 # ------------------------------------------------------------------ title logo
-# "JOUST", 160 x 24 px: five heavy letters on a 4 px grid, corners rounded, shaded
-# white-hot at the top through yellow and orange to dark red at the foot -- the
-# same fire as the font. Cut into 8x8 tiles, duplicates (per tile row, since the
-# colour runs down the rows) shared; empty tiles are the space character.
-LOGO_LETTERS = {
-"J": [".######", "....##.", "....##.", "##..##.", "##..##.", ".####.."],
-"O": [".#####.", "##...##", "##...##", "##...##", "##...##", ".#####."],
-"U": ["##...##", "##...##", "##...##", "##...##", "##...##", ".#####."],
-"S": [".######", "##.....", ".#####.", ".....##", ".....##", "######."],
-"T": ["#######", "..###..", "..###..", "..###..", "..###..", "..###.."],
-}
-LOGO_GRAD = [15, 11, 11, 11, 11, 11, 11, 10, 10, 10, 10, 10, 9, 9, 9, 9, 9,
-             8, 8, 8, 8, 6, 6, 6]
-LOGO_FIRST = 160
-
-
-def logo_bitmap():
-    W, H = 160, 24
-    px = [[0] * W for _ in range(H)]
-    x0 = 2
-    for ch in "JOUST":
-        g = LOGO_LETTERS[ch]
-        for uy in range(6):
-            for ux in range(7):
-                if g[uy][ux] == "#":
-                    for y in range(4):
-                        for x in range(4):
-                            px[uy * 4 + y][x0 + ux * 4 + x] = 1
-        # ROUND THE CORNERS: an empty unit with filled units on two adjacent
-        # sides gets a 4 px quarter fill, and a filled outside corner loses one.
-        def at(ux, uy):
-            return 0 <= ux < 7 and 0 <= uy < 6 and g[uy][ux] == "#"
-        for uy in range(6):
-            for ux in range(7):
-                for dx, dy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
-                    if at(ux, uy) and not at(ux - dx, uy) and not at(ux, uy - dy) and not at(ux - dx, uy - dy):
-                        # outside corner of a filled unit: shave it
-                        for k in range(3):
-                            for j in range(3 - k):
-                                xx = x0 + ux * 4 + (j if dx > 0 else 3 - j)
-                                yy = uy * 4 + (k if dy > 0 else 3 - k)
-                                px[yy][xx] = 0
-        x0 += 32
-    return px
+# "JOUST" as the arcade draws it: tan letters, flared and jagged, over a red
+# drop shadow. 176 x 48 px (22 x 6 tiles), traced from the arcade logo.
+# Y = tan, R = red, . = black. The TMS allows two colours per 8-pixel row of a
+# tile; the drawing keeps to that (a row with tan picks red or black as its
+# second colour). Duplicate tiles are shared and empty ones are the space
+# character. There are more tiles than fit above the ledge characters, so they
+# run from LOGO_FIRST to 255 and the rest from LOGO_FIRST2 (unused by the font).
+LOGO_ART = """
+...................................................................................YYYYYRR......................................................................................
+.............................................................................YYYYYYYYYYYRR......RRRRYYYYYY......................................................................
+.........................................................................YYYYYYYYYRYYYYRRR......RRRRYYYYYYYYYY..................................................................
+.......................................................................YYYYYYYYYYRRYYYYRRR......RRRRYYYYYYYYYYYYY...............................................................
+.....................................................................YYYYYYYYYYRRRYYYYRRRR.....RRRRRYYYYYYYYYYYYYYY.............................................................
+.....................................................................YYYYYYYYRRRRYYYYRRRRR.....RRRRRYYYYYYYYYYYYYY..............................................................
+................................................YYYYYYYYRRRRR.........YYYYRRRRRRYYYYYRRRRR....RRRRRRRYYYYYYYYYYYYY.......YYYYYYYY...............................................
+...............................................YYYYYYYYYYRRRRRRR......YYYYRRRRRYYYYYRRRRRR....RRRRRRRYYYYYYYYYYYY......YYYYYYYYYYYY.............................................
+.............................................YYYYYYYYYYYYYYRRRRR......YYYRRRRRYYYYYYRRRRRR....RRRRRRRYYYYYYYYYYY......YYYYYYYYYYYYYYYY.......................................YYY
+.................................YYY........YYYYYYYYYYYYYYYYYRRR.......YRRRRRRYYYYYRRRRRRR...RRRRRRRRYYYYYYYYYYYRRRRRYYYYYYYYYYYYYYYYYYYY................................YYYYYY.
+..............................YYYYYYRRRR...YYYYYYYYYYYYYYYYYYYRRRRRR...RRRRRRYYYYYYRRRRRRR...RRRRRRRRYYYYYYYYYYRRRRRYYYYYYYYYYYYYYYYYYYYYY.............................YYYYYYY..
+..........................YYYYYYYYYRRRRR..YYYYYYYYYYYYYYYYYYYYRRRRRRRR......YYYYYYYRRRRRRR...RRRRRRRRYYYYYYYYYYRRRRYYYYYYYYYYYYYYYYYYYYYYYYYRRRRYYYYYYYYY.............YYYYYY....
+.......................YYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRR...YYYYYYYRRRRRRRR...RRRRRRRRYYYYYYYYYYRRRRYYYYYYYYYYYYYYYYYYYYYYYYYRRRRYYYYYYYYYYYYYYY.....YYYYYYY.....
+...................YYYYYYYYYYYYYYYRRRRRRRYYYYYYYYRRRRYYYYYYYYYYYRRRRRRRRRRYYYYYYYYRRRRRRRR...RRRRRRRRRYYYYYYYYYRRRRYYYYYYYYYYRRRRRRYYYYYYYYYRRRRYYYYYYYYYYYYYYYYYYYYYYYYYY......
+................YYYYYYYYYYYYYYYYYYRRRRRRYYYYYYYYYRRRRRYYYYYYYYYYYRRRRRRRRRYYYYYYYYRRRRRRRR...RRRRRRRRRYYYYYYYYYRRRRYYYYYYYYYRRRRRRRRRYYYYYYYRRRRYYYYYYYYYYYYYYYYYYYYYYYYYYY.....
+..............YYYYYRRRYYYYYYYYYYYRRRRRRYYYYYYYYYRRRRRRRYYYYYYYYYYRRRRRRRRYYYYYYYYRRRRRRRRR...RRRRRRRRRYYYYYYYYYRRRRYYYYYYYYYRRRRRRRRRRYYYYYYRRRRYYYYYYYYYYYYYYYYYYYYYYYYYYYYY...
+.............YYYYRRRRRYYYYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRYYYYYYYYYYYRRRRRRRYYYYYYYYRRRRRRRRR...RRRRRRRRRYYYYYYYYYRRRRYYYYYYYYYRRRRRRRRRRRRYYYYRRRRYYYYYYYYYYYYYYYYYYYYYYYYY.......
+.............YY.RRRRRRYYYYYYYYYYRRRRRRYYYYYYYYYRRRRRRRRRYYYYYYYYYYRRRRRRRYYYYYYYYRRRRRRRRRR..RRRRRRRRRYYYYYYYYYRRRRYYYYYYYYYYRRRRRRRRRRRRYYYRRRRYYYYYYYYYYYRRRYYYYYYYYYYY.......
+..............RRRRRRRRYYYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRRRYYYYYYYYYRRRRRRRYYYYYYYYRRRRRRRRRR..RRRRRRRRRYYYYYYYYRRRRRYYYYYYYYYYRRRRRRRRRRRRRYYRRRRYYYYYYYRRRRRYYYYYYYYYY..........
+......................YYYYYYYYYYRRRRRYYYYYYYYYRRRRRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYYRRRRRRRRRR..RRRRRRRRYYYYYYYYYRRRRRYYYYYYYYYYYYRRRRRRRRRRRRYRRRRYYYRRRRRRRRYYYYYYYYYY...........
+......................YYYYYYYYYRRRRRRYYYYYYYYYRRRRRRRRRR.YYYYYYYYYYRRRRYYYYYYYYYRRRRRRRRRRR..RRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYYYYY...RRRRRRRRRRRRRRRRRRRRRRRYYYYYYYYY.............
+......................YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR...YYYYYYYYYRRRRYYYYYYYYYRRRRRRRRRRR..RRRRRRRRYYYYYYYYYRRRRRRRYYYYYYYYYYYY.......RRRRRRRRRRRRRRRRYYYYYYYYYYY.............
+......................YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR...YYYYYYYYYRRRRYYYYYYYYYRRRRRRRRRRR..RRRRRRRRYYYYYYYYYRRRRRRRRRYYYYYYYYYYYY...........RRRRRRRRRRYYYYYYYYYY..............
+......................YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR....YYYYYYYYRRRYYYYYYYYYYRRRRRRRRRRR..RRRRRRRRYYYYYYYYYRRRRRRRRRRRRYYYYYYYYYY.........RRRRRRRRRRYYYYYYYYYYY..............
+......................YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR....YYYYYYYYRRRYYYYYYYYYYRRRRRRRRRRR..RRRRRRRRYYYYYYYYYRRRRRRRRRRRRRYYYYYYYYYYY......RRRRRRRRRRYYYYYYYYYYY...............
+......................YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR....YYYYYYYYRRRYYYYYYYYYYRRRRRRRRRRRR.RRRRRRRRYYYYYYYYYRRRRRRRRRRRRRRYYYYYYYYYYY....RRRRRRRRRRRYYYYYYYYYYY...............
+......................YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR....YYYYYYYYRRRYYYYYYYYYYYRRRRRRRRRRRRRRRRRRRRYYYYYYYYYRRRRRRRRRRRRRRRRYYYYYYYYYY..RRRRRRRRRRRYYYYYYYYYYY................
+...............R......YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR....YYYYYYYYRRRYYYYYYYYYYYRRRRRRRRRRRRRRRRRRRYYYYYYYYYYRRRRRRRRRRRRRRRRRRYYYYYYYYYYRRRRRRRRRRRYYYYYYYYYY.................
+........RRRRRRRR......YYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR....YYYYYYYYRRRYYYYYYYYYYYRRRRRRRRRRRRRRRRRRRYYYYYYYYYYRRRRRRRRRRRRRRRRRRRRYYYYYYYYYRRRRRRRRRYYYYYYYYYYY.................
+.......RRRRRRRRRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR....YYYYYYYYRRRYYYYYYYYYYYRRRRRRRRRRRRRRRRRRRYYYYYYYYYYRRRRRRYYRRRRRRRRRRRRRYYYYYYYYRRRRRRRRRYYYYYYYYYY..................
+......YYYRRRRRRRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRR...YYYYYYYYYRRRYYYYYYYYYYYYRRRRRRRRRRRRRRRRRYYYYYYYYYYYRRRRRRYYYRRRRRRRRRRRRRYYYYYYYYRRRRRRRYYYYYYYYYYY..................
+......YYYRRRRRRRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRRR..YYYYYYYYYRRRYYYYYYYYYYYYRRRRRRRRRRRRRRRRRYYYYYYYYYYYRRRRRRRYYYRRRRRRRRRRRRRYYYYYYYRRRRRRRYYYYYYYYYYY..........RRRR....
+.....YYYYRRRRRRRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYRRRRRRRRRRR.YYYYYYYYYYRRRYYYYYYYYYYYYYRRRRRRRRRRRRRRRYYYYYYYYYYYYRRRRRRRYYYYYRRRRRRRRRRRYYYYYYYYRRRRRRYYYYYYYYYYY.........RRRRRRRRR
+....YYYYYYRRRRRRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYYRRRRRRRRRRRYYYYYYYYYRRRRRYYYYYYYYYYYYYRRRRRRRRRRRRRYYYYYYYYYYYYYRRRRRRRYYYYYRRRRRRRRRRRYYYYYYYYRRRRRYYYYYYYYYYYY.......RRRRRRRRRRR
+..YYYYYYYYRRRRRRRRRRRRYYYYYYYYYRRRRRRRYYYYYYYYRRRRRRRRRRRYYYYYYYYYRRRRRYYYYYYYYYYYYYYRRRRRRRRRRRYYYYYYYYYYYYYYRRRRRRRYYYYYYYRRRRRRRRYYYYYYYYYYRRRRYYYYYYYYYYYY......RRRRRRRRRRRR
+..YYYYYYYYYRRRRRRRRRRRYYYYYYYYYRRRRRRRYYYYYYYYYRRRRRRRRRYYYYYYYYYYRRRRRYYYYYYYYYYYYYYYYYYRRRRYYYYYYYYYYYYYYYYYRRRRRRRYYYYYYYYYRRRRRRYYYYYYYYYYRRRRYYYYYYYYYYYYRRRRRRRRRRRRRRRRRR
+.YYYYYYYYYYYRRRRRRRRRYYYYYYYYYYRRRRRRRYYYYYYYYYYRRRRRRRYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRYYYYYYYYYYYRRRYYYYYYYYYYYRRRRYYYYYYYYYYYYRRRRRRRRRRRRRRRRRR
+YYYYYYYYYYYYYRRRRRRRYYYYYYYYYYYRRRRRRRRYYYYYYYYYRRRRRRRYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYYYRRRRYYYYYYYYYYYYYRRRRRRRRRRRRRRRRY
+.YYYYYYYYYYYYYYYRRYYYYYYYYYYYYYRRRRRRRRYYYYYYYYYYRRRRRYYYYYYYYYYRRRRRR...YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYYYRRRRYYYYYYYYYYYYYRRRRRRRRRRRRRRRYR
+..YYYYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRRRYYYYYYYYYYYRYYYYYYYYYYYYRRRRR.....YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYYRRRRRYYYYYYYYYYYYYYYRRRRRRRRRRRYYYR
+...YYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYRRRRR......YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRYYYYYYYYYYYYYYYYRRRRRR.YYYYYY.
+.....YYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRRRRRYYYYYYYYYYYYYYYYYYYYYYRRRR........YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYRRRRRYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYRRYYYYYYYY..
+......YYYYYYYYYYYYYYYYYYYYYYYRRRRRRRRRR..YYYYYYYYYYYYYYYYYYYYYRRRR...........YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY.RRRRYYYYYYYYYYYYYYYYYYYYYYYYRRRRRRRYYYYYYYYYYYYYYYYYYYYYYYYYYY..
+.......YYYYYYYYYYYYYYYYYYYYYRRRRRRRR......YYYYYYYYYYYYYYYYYYYYRR..............YYYYYYYYYYYYYYYYYYYYYRRRYYYYYYYYYY....YYYYYYYYYYYYYYYYYYYYYYY.....RRRRYYYYYYYYYYYYYYYYYYYYYYYYYY..
+........YYYYYYYYYYYYYYYYYYYRRRRRR..........YYYYYYYYYYYYYYYYYY..................YYYYYYYYYYYYYYYYYYYRRRRYYYYYYYYYY.....YYYYYYYYYYYYYYYYYYYYY......RRRRRYYYYYYYYYYYYYYYYYYYYYYYY...
+..........YYYYYYYYYYYYYYRRRRR...............YYYYYYYYYYYYYYY.....................YYYYYYYYYYYYYYYYYRRRRRYYYYYYYYYYY........YYYYYYYYYYYYYYYY.......RRRRRRYYYYYYYYYYYYYYYYYYYYYYY...
+............YYYYYYYYYYRRRR....................YYYYYYYYYYY.........................YYYYYYYYYYYYYY......YYYYYYYYYYY............YYYYYYYY..................YYYYYYYYYYYYYYYYYYYYY....
+...............................................YYYYYYYY...............................................Y.......YYY..........................................YYYYYYYY.............
+"""
+LOGO_COLS, LOGO_ROWS = 22, 6
+LOGO_FIRST = 148
+LOGO_FIRST2 = 91
+LOGO_PAL = {".": 1, "Y": 10, "R": 8}
 
 
 def logo_tiles():
-    px = logo_bitmap()
+    px = rows(LOGO_ART)
     tiles, cols, keys, amap = [], [], {}, []
-    for tr in range(3):
-        for tc in range(20):
-            b = []
+    for tr in range(LOGO_ROWS):
+        for tc in range(LOGO_COLS):
+            b, c = [], []
             for y in range(8):
+                seg = px[tr * 8 + y][tc * 8:tc * 8 + 8]
+                have = set(seg)
+                assert len(have) <= 2, "logo row %d col %d has 3 colours" % (tr * 8 + y, tc)
+                fg = "Y" if "Y" in have else ("R" if "R" in have else ".")
+                bgs = have - {fg}
+                bg = bgs.pop() if bgs else "."
                 v = 0
-                for x in range(8):
-                    v = (v << 1) | px[tr * 8 + y][tc * 8 + x]
+                for ch in seg:
+                    v = (v << 1) | (1 if ch == fg else 0)
                 b.append(v)
+                c.append(LOGO_PAL[fg] << 4 | LOGO_PAL[bg] if v else 0x11)
             if not any(b):
                 amap.append(32)
                 continue
-            key = (tr, tuple(b))
+            key = (tuple(b), tuple(c))
             if key not in keys:
-                keys[key] = LOGO_FIRST + len(tiles)
+                n = len(tiles)
+                keys[key] = LOGO_FIRST + n if LOGO_FIRST + n < 256 else LOGO_FIRST2 + n - (256 - LOGO_FIRST)
                 tiles.append(b)
-                cols.append([LOGO_GRAD[tr * 8 + y] << 4 | 1 for y in range(8)])
+                cols.append(c)
             amap.append(keys[key])
     return tiles, cols, amap
 
@@ -910,12 +935,17 @@ def main():
         for i, f in enumerate(FLAMES):
             emit(fh, "flame%d" % i, char_bytes(f), "lava flame, frame %d" % i)
         tiles, cols, amap = logo_tiles()
-        fh.write("\t' TITLE LOGO: %d tiles from character %d, their colours, and the\n"
-                 "\t' 20 x 3 name map (32 = an empty tile).\n" % (len(tiles), LOGO_FIRST))
-        fh.write("\tCONST LOGON = %d\n" % len(tiles))
-        emit(fh, "logo_chr", sum(tiles, []), "logo tiles")
-        emit(fh, "logo_col", sum(cols, []), "logo tile colours")
-        emit(fh, "logo_map", amap, "logo name map, 20 x 3")
+        n1 = 256 - LOGO_FIRST
+        fh.write("\t' TITLE LOGO: %d tiles, characters %d-255 then %d on, their colours,\n"
+                 "\t' and the %d x %d name map (32 = an empty tile).\n"
+                 % (len(tiles), LOGO_FIRST, LOGO_FIRST2, LOGO_COLS, LOGO_ROWS))
+        fh.write("\tCONST LOGON = %d\n" % n1)
+        fh.write("\tCONST LOGON2 = %d\n" % (len(tiles) - n1))
+        emit(fh, "logo_chr", sum(tiles[:n1], []), "logo tiles, first run")
+        emit(fh, "logo_chr2", sum(tiles[n1:], []), "logo tiles, second run")
+        emit(fh, "logo_col", sum(cols[:n1], []), "logo tile colours, first run")
+        emit(fh, "logo_col2", sum(cols[n1:], []), "logo tile colours, second run")
+        emit(fh, "logo_map", amap, "logo name map, %d x %d" % (LOGO_COLS, LOGO_ROWS))
 
     n = os.path.getsize(out)
     print("wrote %s (%d bytes)" % (os.path.normpath(out), n))

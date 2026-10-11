@@ -2888,19 +2888,21 @@ title_screen:
 	kbscan = 1
 	GOSUB hide_all
 	CLS
-	DEFINE CHAR 160,LOGON,logo_chr
-	DEFINE COLOR 160,LOGON,logo_col
-	SCREEN logo_map,0,70,20,3	' rows 2-4, columns 6-25
-	PRINT AT 197,"THE HIGHER LANCE WINS"
-	#dfa = 330			' a ledge, row 10 columns 10-21
+	DEFINE CHAR 148,LOGON,logo_chr
+	DEFINE COLOR 148,LOGON,logo_col
+	DEFINE CHAR 91,LOGON2,logo_chr2
+	DEFINE COLOR 91,LOGON2,logo_col2
+	SCREEN logo_map,0,5,22,6	' rows 0-5, columns 5-26
+	PRINT AT 229,"THE HIGHER LANCE WINS"
+	#dfa = 362			' a ledge, row 11 columns 10-21
 	dfc = 10
 	dfd = 21
-	dfr = 10
+	dfr = 11
 	GOSUB draw_plat
-	SPRITE 0,60,96,P_RIDER,15
-	SPRITE 1,64,96,P_OST,11
-	SPRITE 2,60,144,P_RIDER + 4,8
-	SPRITE 3,64,144,P_BUZ + 32,12
+	SPRITE 0,68,96,P_RIDER,15
+	SPRITE 1,72,96,P_OST,11
+	SPRITE 2,68,144,P_RIDER + 4,8
+	SPRITE 3,72,144,P_BUZ + 32,12
 	PRINT AT 452,"FIRE FLAP   STICK STEER"
 	GOSUB title_diff
 	PRINT AT 646,"PRESS FIRE TO START"
