@@ -142,11 +142,48 @@ BOLD = {'0': '.####. ##..## ##.### ###.## ##..## ##..## .####.',
 ')': '.##... ..##.. ...##. ...##. ...##. ..##.. .##...'}
 
 FIRST, LAST = 32, 90
-FONT_GRAD = (11, 11, 11, 10, 10, 9, 8, 8)   # light yellow .. red, per pixel row
+# Light yellow over dark yellow, then the bottom three drawn rows red (rows 4-6;
+# row 7 is the blank line-spacing row).
+FONT_GRAD = (11, 11, 10, 10, 8, 8, 8, 8)
+
+
+def joustify(rows):
+    """The logo's look on a 7x7 bold glyph: it LEANS forward and its stems
+    FLARE at the foot, like the swept bases of the JOUST letters.
+
+    rows: 7 strings of '#'/'.', up to 7 wide. Returns 7 lists of 8 pixels.
+    A glyph up to 6 wide moves one column right first, so the foot flare has
+    room on the left and column 7 stays blank for spacing (M and W, 7 wide,
+    keep column 0 and simply flare less)."""
+    w = len(rows[0])
+    shift = 1 if w <= 6 else 0
+    g = [[0] * 8 for _ in range(7)]
+    for y, r in enumerate(rows):
+        for x, c in enumerate(r):
+            if c == "#":
+                g[y][x + shift] = 1
+    out = [row[:] for row in g]
+    # flared feet: a stem standing on the bottom row grows a pixel to its left
+    for x in range(1, 8):
+        if g[6][x] and g[5][x] and not g[6][x - 1] and not g[5][x - 1]:
+            out[6][x - 1] = 1
+    # the lean: the top three rows sit one pixel to the right
+    for y in (0, 1, 2):
+        out[y] = [0] + out[y][:7]
+    return out
 
 
 def glyph_bytes(ch):
-    art = BOLD.get(ch, GLYPHS.get(ch))
+    if ch in BOLD:
+        out = []
+        for row in joustify(BOLD[ch].split()):
+            v = 0
+            for b in row:
+                v = (v << 1) | b
+            out.append(v)
+        out.append(0)               # blank row at the bottom
+        return out
+    art = GLYPHS.get(ch)
     if art is None:
         return [0] * 8
     rows = art.split()

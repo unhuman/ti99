@@ -17,7 +17,7 @@ disagreed.
 | 2 | Knights, altitude combat, eggs, hatching | built |
 | 3 | Waves, scoring, spare lives | built |
 | 4 | Arcade font | built |
-| 5 | Lava troll (wave 3+) | built |
+| 5 | Lava troll (wave 4+) | built |
 | 6 | Island erosion (bridge w3, ledges w6+) | built |
 | 7 | Pterodactyl (wave 8, and slow waves) | built |
 | 8 | Egg & Survival waves, bonuses | built |
@@ -40,12 +40,13 @@ knights fly like two waves later and Hunters come from wave 3.
 
 `838` asks for the number of **mounts (1-9)**, then a two-digit **starting wave
 (01-99)**; one digit then ENTER (`#` on the Coleco) also works, so `5` ENTER is wave 5 -- handy for reaching the parts of the game
-that are otherwise a long way in: the **lava troll** appears at wave 3, the
-**bridges burn** at wave 3, **Hunters** at 4, the **pterodactyl** at 8 (then 13, 18...; on other waves only if you take over a minute), ledges start
-vanishing at 6, and **Shadow Lords** not until 16. It is not captioned on the title;
+that are otherwise a long way in: the **bridges burn** at wave 3, the
+**lava troll** wakes at wave 4, **Hunters** at 4, the **pterodactyl** at 8 (then 13, 18...; on other waves only if you take over a minute), ledges start
+vanishing at 6 (which ones, on which wave, follows the arcade's own wave table), and **Shadow Lords** not until 16. It is not captioned on the title;
 there is no room for a caption, which is why it is written down here. Every wave's
 content is in place by wave 21; later waves repeat it, faster. A game started with 838
-is marked with a star when it ends ("THY GAME IS OVER", then the difficulty played).
+is marked with a star beside its score on the title, which shows the last score at the
+top left and the high score at the top right.
 
 **Flap is edge-triggered** — holding fire does not hover; each press is one impulse.
 **It plays on momentum, like the arcade**: let go and the bird keeps going. On a ledge

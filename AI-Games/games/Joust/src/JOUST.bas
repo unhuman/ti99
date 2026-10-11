@@ -299,8 +299,8 @@ setup:
 	' Dropping the whole arena a row costs nothing (there is dead space at the top
 	' either way) and gives it 8 px of margin.
 	#plx1(0) = 40  : #plx2(0) = 207 : ply(0) = 168	' BASE, solid rock beneath
-	#plx1(1) = 0   : #plx2(1) = 39  : ply(1) = 168	' bridge left  -- burns wave 3
-	#plx1(2) = 208 : #plx2(2) = 255 : ply(2) = 168	' bridge right -- burns wave 3
+	#plx1(1) = 0   : #plx2(1) = 39  : ply(1) = 168	' bridge left  -- burns wave 3, for good
+	#plx1(2) = 208 : #plx2(2) = 255 : ply(2) = 168	' bridge right -- burns wave 3, for good
 	#plx1(3) = 0   : #plx2(3) = 55  : ply(3) = 112	' left, middle height
 	#plx1(4) = 168 : #plx2(4) = 223 : ply(4) = 104	' right, middle height
 	#plx1(5) = 72  : #plx2(5) = 151 : ply(5) = 64	' upper middle, the big one
@@ -318,16 +318,22 @@ setup:
 	padx(3) = 16  : pady(3) = 96		' left, middle    (surface 112)
 	padx(4) = 160 : pady(4) = 16		' top right       (surface  32)
 	padi(0) = 0				' BASE            -- never erodes
-	padi(1) = 5				' upper middle    -- goes at waves 8, 12, 16...
-	padi(2) = 4				' right, middle   -- goes at waves 7, 11, 15...
-	padi(3) = 3				' left, middle    -- goes at waves 6, 10, 14...
+	padi(1) = 5				' upper middle    -- goes on waves 6-9, 13, 14...
+	padi(2) = 4				' right, middle   -- never erodes
+	padi(3) = 3				' left, middle    -- never erodes
 	padi(4) = 9				' top right       -- never erodes
 	RETURN
 
-	' EROSION. Deterministic, never random -- a player has to be able to learn the
-	' layout. The bridges burn at wave 3 and stay gone; from wave 6 one further
-	' ledge goes each wave, in a fixed order; and every Egg wave restores the lot,
-	' exactly as the arcade does.
+	' EROSION, AS THE ARCADE DOES IT. Williams' own source (JOUSTRV4.SRC, the
+	' WAVE TABLE) gives every wave a status byte whose top bits switch off
+	' three groups of cliffs; ero_tab below is that column, waves 1-90, with
+	' 81-90 repeating for ever exactly as the arcade's table does (WTBRST).
+	'   1  CLIF1L + CLIF1R  the high pair at the screen edges  -> islands 7, 8
+	'   2  CLIF2            the big upper-middle ledge (a pad) -> island 5
+	'   4  CLIF4            the lower-middle ledge             -> island 6
+	' The middle row (CLIF3U/L/R -> 3, 4, 9) and the base are never removed.
+	' Egg waves have every ledge. The bridges are separate: they burn at the
+	' start of wave 3 (TBRIDGE = 3) and NEVER come back, Egg waves included.
 set_islands:
 	GOSUB set_isl_on
 	' REBUILD THE ROW TABLE. Must run after every erosion change, and set_isl_on is
@@ -353,7 +359,7 @@ set_islands:
 	NEXT sii
 	RETURN
 
-	' the erosion rules themselves -- several early RETURNs, which is why the table
+	' the erosion rules themselves -- an early RETURN, which is why the table
 	' rebuild above wraps this rather than living inside it
 set_isl_on:
 	FOR sii = 0 TO NPLAT - 1
@@ -362,22 +368,17 @@ set_isl_on:
 	IF wave < 3 THEN RETURN			' waves 1-2: walk the whole floor
 	plon(1) = 0				' the bridges are gone for good
 	plon(2) = 0
-	sie = wave			' egg wave? then everything is back
-	WHILE sie >= 5
-		sie = sie - 5
+	sie = wave
+	WHILE sie > 90
+		sie = sie - 10
 	WEND
-	IF sie = 0 THEN
-		plon(1) = 1
-		plon(2) = 1
-		RETURN
+	sie = ero_tab(sie)
+	IF sie AND 1 THEN
+		plon(7) = 0
+		plon(8) = 0
 	END IF
-	IF wave < 6 THEN RETURN
-	' one more ledge per wave from 6, cycling 3,4,5,6 so it is learnable
-	' Cycle 3,4,5,6 -- the four ledges a player most relies on. The high pair and
-	' the top-right sliver stay, so the arena never loses its whole upper half.
-	sin = wave - 6
-	sin = sin AND 3
-	plon(3 + sin) = 0
+	IF sie AND 2 THEN plon(5) = 0
+	IF sie AND 4 THEN plon(6) = 0
 	RETURN
 
 	' The title, 838 and game-over screens live in bank 1, at the end.
@@ -2132,15 +2133,15 @@ k_unhorse:
 			' top of the player and reads as no egg at all.
 			#evy(kuj) = 32768 - 260
 			etier(kuj) = ctier
-			' GRACE: about a quarter second (16 frames). Half a second sounded
-			' right and was not -- a popped egg is often back on the rock
-			' inside 30 frames, so the window where it was both AIRBORNE and
-			' collectable could be nothing at all. It only has to last long
-			' enough for the egg to leave the joust that produced it.
+			' GRACE: a quarter second -- 8 PASSES. The timer counts passes
+			' (30 a second), not frames; at 32 it was over a second, and
+			' the egg sat grey and untouchable long after the joust. It only
+			' has to last long enough for the egg to be SEEN leaving the
+			' joust that produced it.
 			' Without ANY grace the egg loop -- which runs later in this
 			' very frame -- eats the egg where it was laid, since it is
 			' created within collision range of the player by definition.
-			#etm(kuj) = 32
+			#etm(kuj) = 8
 			kud = 1
 		END IF
 		END IF
@@ -2403,7 +2404,9 @@ hide_all:
 	' and once it has hold, only flapping gets you out. Reach and grip both grow
 	' with the wave, which is what turns the pits from scenery into territory.
 troll:
-	IF wave < 3 THEN
+	' AWAKE FROM WAVE 4: the arcade wakes it one wave after the bridges burn
+	' (TTROLL = 1 in JOUSTRV4.SRC).
+	IF wave < 4 THEN
 		SPRITE 19,SPRHID,0,0,0
 		SPRITE 30,SPRHID,0,0,0
 		SPRITE 31,SPRHID,0,0,0
@@ -2791,18 +2794,49 @@ sfx_tick:
 	END IF
 	RETURN
 
+	' ROW 0: the last game's score at the left and the high score at the right,
+	' each starred if an 838 game made it. #score still holds the game just
+	' played (new_game is what clears it), so the high score is settled here,
+	' on the way back to the title, whether the game ended or was quit.
+title_scores:
+	IF #score > #hisc THEN
+		#hisc = #score
+		hich = chtd
+	END IF
+	PRINT AT 0,"LAST"
+	#psv = #score
+	#psd = 10000
+	psc = 6
+	#psa = 6149			' row 0 col 5: 5 + 6144
+	GOSUB prt_sloop
+	psv2 = 32
+	IF chtd THEN psv2 = 42		' '*'
+	VPOKE #psa,psv2
+	' Flush right: the digits end in column 31, or 30 when a star follows.
+	#psv = #hisc
+	#psd = 10000
+	psc = 6
+	IF hich THEN
+		PRINT AT 16,"HI SCORE"
+		#psa = 6169		' row 0 col 25: 25 + 6144
+		GOSUB prt_sloop
+		psv2 = 42
+		VPOKE #psa,psv2
+	ELSE
+		PRINT AT 17,"HI SCORE"
+		#psa = 6170		' row 0 col 26: 26 + 6144
+		GOSUB prt_sloop
+	END IF
+	RETURN
+
 	' ------------------------------------------------------------- game over
-	' Over the arena, in the clear rows 10-12, as the arcade does it: the
-	' message, then the difficulty played (starred for an 838 game).
+	' Over the arena, in the clear rows 10-12, as the arcade does it: just the
+	' message. The score it ended on (starred for an 838 game) is shown on the
+	' title as the LAST score.
 game_over:
 	sprok = 2
 	GOSUB hide_all
 	PRINT AT 328,"  THY GAME IS OVER  "
-	PRINT AT 392,"                    "
-	IF diff = 0 THEN PRINT AT 396,"   EASY"
-	IF diff = 1 THEN PRINT AT 396," MEDIUM"
-	IF diff = 2 THEN PRINT AT 396,"   HARD"
-	IF chtd = 1 THEN PRINT AT 404,"*"
 	FOR ddi = 0 TO 240
 		WAIT
 		GOSUB sfx_tick
@@ -2952,11 +2986,28 @@ cancel_key:
 	' 7 chars x 8 = 56 bytes, an even run.
 	' Mount colour per tier: red Bounder, grey Hunter, blue Shadow Lord. Four
 	' bytes, an even run.
+	' Which cliffs are gone, per wave (set_isl_on): index 0 unused, then waves
+	' 1-90 from the arcade's WAVE TABLE. 1 high pair, 2 upper middle, 4 lower
+	' middle. 91 entries and a pad byte: 92, even.
+ero_tab:
+	DATA BYTE 0			' index 0, unused
+	DATA BYTE 0,0,0,0,0,2,3,3,7,0	' waves 1-10
+	DATA BYTE 0,4,7,7,0,0,0,0,0,0	' waves 11-20
+	DATA BYTE 1,1,5,5,0,7,7,7,7,0	' waves 21-30
+	DATA BYTE 0,0,2,2,0,4,4,6,6,0	' waves 31-40
+	DATA BYTE 1,5,5,7,0,0,0,0,4,0	' waves 41-50
+	DATA BYTE 1,5,5,7,0,0,0,0,4,0	' waves 51-60
+	DATA BYTE 1,5,5,7,0,0,0,0,4,0	' waves 61-70
+	DATA BYTE 1,5,5,7,0,0,0,0,4,0	' waves 71-80
+	DATA BYTE 1,5,5,7,0,0,0,0,4,0	' waves 81-90
+	DATA BYTE 0			' pad to an even length
 	' THE EGG WAVE'S TWELVE SPOTS: character column and row, each in the row
 	' directly above a ledge's surface, clear of every pad (nothing materialises
 	' on top of an egg) and of the banner rows 10-11. Twelve entries each: even.
+	' The five on row 20 are all on the BASE (columns 5-25): the bridges are
+	' gone by the first Egg wave and do not come back for it.
 teg_col:
-	DATA BYTE 7,19,24,2,29,5,22,10,16,13,2,29
+	DATA BYTE 7,19,24,10,16,5,22,10,16,13,2,29
 teg_row:
 	DATA BYTE 20,20,20,20,20,13,12,7,7,15,6,6
 
@@ -3100,18 +3151,18 @@ title_screen:
 	DEFINE COLOR 148,LOGON,logo_col
 	DEFINE CHAR 91,LOGON2,logo_chr2
 	DEFINE COLOR 91,LOGON2,logo_col2
-	SCREEN logo_map,0,5,22,6	' rows 0-5, columns 5-26
-	PRINT AT 229,"THE HIGHER LANCE WINS"
-	#dfa = 362			' a ledge, row 11 columns 10-21
+	GOSUB title_scores		' row 0
+	SCREEN logo_map,0,69,22,6	' rows 2-7, columns 5-26
+	PRINT AT 293,"THE HIGHER LANCE WINS"
+	#dfa = 426			' a ledge, row 13 columns 10-21
 	dfc = 10
 	dfd = 21
-	dfr = 11
+	dfr = 13
 	GOSUB draw_plat
-	SPRITE 0,68,96,P_RIDER,15
-	SPRITE 1,72,96,P_OST,11
-	SPRITE 2,68,144,P_RIDER + 4,8
-	SPRITE 3,72,144,P_BUZ + 32,12
-	PRINT AT 452,"FIRE FLAP   STICK STEER"
+	SPRITE 0,84,96,P_RIDER,15
+	SPRITE 1,88,96,P_OST,11
+	SPRITE 2,84,144,P_RIDER + 4,8
+	SPRITE 3,88,144,P_BUZ + 32,12
 	GOSUB title_diff
 	PRINT AT 646,"PRESS FIRE TO START"
 	PRINT AT 741,"2026 UNHUMAN & CLAUDE"

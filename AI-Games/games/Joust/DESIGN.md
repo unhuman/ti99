@@ -20,10 +20,10 @@ Where sources disagree, the instruction card wins and the conflict is noted in p
 | Bounder 500, Hunter 750, Shadowlord 1500, Pterodactyl 1000 | instruction card |
 | Eggs 250 / 500 / 750 / 1000 thereafter, **+500 caught in mid-air** | instruction card |
 | Survival wave bonus 3000; extra bird every 20,000 | instruction card |
-| Lava Troll from **wave 3**, escape by flapping quickly | instruction card |
+| Lava Troll from **wave 4** (one wave after the bridges burn: `TTROLL`), escape by flapping quickly | Williams source, JOUSTRV4.SRC |
 | Pterodactyls debut **wave 8**, earlier if a wave drags | instruction card |
-| Islands vanish on some waves and **return on the next Egg wave** | instruction card |
-| Bridge over the lava burns away wave 3; ledges start vanishing wave 6 | StrategyWiki |
+| Which ledges are gone on each wave: the status column of the arcade's own WAVE TABLE | Williams source, JOUSTRV4.SRC |
+| Bridges burn at the start of wave 3 (`TBRIDGE = 3`) and never return | Williams source, JOUSTRV4.SRC |
 | Egg waves are wave 5 and every 5th, starting with 12 eggs | StrategyWiki |
 | Waves 1-15 Bounders + Hunters; **Shadow Lord debuts wave 16** | StrategyWiki |
 | Pterodactyl dies only to a lance in the **open mouth** | Wikipedia |
@@ -208,11 +208,26 @@ through a platform the player cannot reads as cheating.
 `plon()` is a per-island present flag, recomputed at every wave start **before** the field
 is drawn. Deterministic, never random — a player must be able to learn the layout.
 
+It follows Williams' own source (`JOUSTRV4.SRC` in historicalsource/joust): each entry of
+the arcade's WAVE TABLE carries a status byte whose top bits switch off three groups of
+cliffs. `ero_tab` is that column for waves 1-90; waves past 90 repeat 81-90, as the
+arcade's table does (`WTBRST`).
+
+| bit | arcade cliff | here |
+|---|---|---|
+| 1 | CLIF1L + CLIF1R, the high pair at the screen edges | islands 7, 8 |
+| 2 | CLIF2, the big upper-middle ledge with a pad | island 5 |
+| 4 | CLIF4, the lower-middle ledge | island 6 |
+
+The middle row (CLIF3U/L/R, here 3, 4 and 9) and the base are never removed.
+
 - **Waves 1-2**: everything present; the floor is continuous and the lava unreachable.
-- **Wave 3**: both bridges burn, permanently. The lava at each edge is now live, and so
-  is the lava troll.
-- **Wave 6+**: one further ledge goes each wave, cycling islands 3→4→5→6.
-- **Every Egg wave (5, 10, 15…) restores every island**, exactly as the arcade does.
+- **Wave 3**: both bridges burn and **never come back**, Egg waves included.
+- **Waves 6-9**: upper middle; then that and the high pair; wave 9 (a Gladiator wave)
+  loses all three groups. **Wave 12** loses the lower middle, **13-14** all three,
+  **21-24** the high pair (plus the lower middle on 23-24), **26-29** all three, and so on.
+- **Egg waves (5, 10, 15…) have every ledge**; so do 11 and 16-19.
+- The Egg wave's ledge eggs on row 20 all sit on the base, since the bridges are gone.
 
 ---
 
@@ -352,7 +367,9 @@ pressure: ignoring eggs escalates the wave.
 
 The mid-air bonus is the skill reward and is implemented precisely: `gst = 1`
 (airborne) at the moment of pickup, not resting, and only after the egg's grace period
-(a grey egg cannot be collected at all). The ladder itself is one routine, `egg_award`,
+(a grey egg cannot be collected at all). The grace is **8 passes, about a quarter of a
+second**: just long enough to see the egg leave the joust. It was 32 passes (over a
+second) because the timer counts passes, not frames. The ladder itself is one routine, `egg_award`,
 shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 
 ---
@@ -384,8 +401,9 @@ shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 
 ## 8. Lava troll
 
-- **From wave 3.** A hand rises from an open lava pit when the player flies low over
-  it. On an Egg wave the bridges are back over the pits, so the hand stays down.
+- **From wave 4**, one wave after the bridges burn, as in the arcade (`TTROLL`). A hand
+  rises from a lava pit when the player flies low over it. (`troll` still checks that
+  the bridge over a pit is gone before reaching.)
 - If it grabs you it drags you down; **flap rapidly to escape**. Each flap adds to an
   escape counter; the hand wins if the counter does not fill before it reaches the lava.
 - **Reach lengthens and grip strengthens with the wave number**: the fist's top rises
@@ -406,10 +424,10 @@ shared by sprite eggs, ledge eggs (§9) and a man run down on foot.
 |---|---|---|
 | 1 | normal | 3 Bounders, all islands, no troll |
 | **2** | **Survival** | 3000 bonus if completed without losing a bird |
-| **3** | normal | **bridge burns away**; **lava troll active** |
-| 4 | normal | **Hunters debut** |
-| **5** | **Egg wave** | starts with **12 eggs** on the ledges; **all islands restored** |
-| 6 | normal | **islands begin vanishing**, one more per wave |
+| **3** | normal | **bridges burn away** for good |
+| 4 | normal | **Hunters debut**; **lava troll wakes** |
+| **5** | **Egg wave** | starts with **12 eggs** on the ledges; **all ledges present** (not the bridges) |
+| 6 | normal | **ledges begin vanishing**, by the arcade's table (§2 Erosion) |
 | 7 | normal | |
 | **8** | **Pterodactyl** | pterodactyl debuts; also triggered by any slow wave |
 | 9 | normal | |
@@ -500,8 +518,12 @@ dedicated font is part of this port, generated by `assets/genfont.py` into `src/
 - **Characters 32-90 only** (space, digits, `A`-`Z`, and `&-.!/`), the set the game
   actually prints — 59 characters × 8 bytes = 472 bytes, which belongs in a bank on TI.
 - **Bold, to match the logo**: two-pixel uprights, up to 7×7 inside the 8×8 (M and W need
-  seven), with a blank column and row for spacing. Each glyph is shaded like the logo,
-  yellow at the top to red at the foot, by `font_col` (`DEFINE COLOR 32,59`).
+  seven), with a blank column and row for spacing.
+- **Styled like the logo** (`joustify` in `genfont.py`): every glyph **leans** (its top
+  three rows sit a pixel to the right) and each stem **flares at the foot** with an extra
+  pixel to its left, after the swept bases of the JOUST letters.
+- **Shaded like the logo**: light yellow, then dark yellow, then the **bottom three drawn
+  rows red** (`font_col`, `DEFINE COLOR 32,59`).
 - Digits are the distinctive part and get drawn first, since the score is the text most
   on screen.
 - Loaded with `DEFINE CHAR 32,59,font_bitmaps` at startup, after which every `PRINT`
@@ -513,9 +535,12 @@ dedicated font is part of this port, generated by `assets/genfont.py` into `src/
 
 - **Title**: the arcade JOUST logo (176×48 px across the top six rows: flared tan
   letters over a red drop shadow, traced from the arcade art into `genart.py`'s
-  `LOGO_ART` and cut into 117 tiles at characters 148-255 and 91-99), *THE HIGHER LANCE
-  WINS*, the player and a Bounder facing off on a ledge, the controls, the difficulty
-  line and *PRESS FIRE TO START*.
+  `LOGO_ART` and cut into 117 tiles at characters 148-255 and 91-99) on rows 2-7, *THE
+  HIGHER LANCE WINS*, the player and a Bounder facing off on a ledge, the difficulty line
+  and *PRESS FIRE TO START*. Row 0 carries the **last score** flush left and the **HI
+  SCORE** flush right (`title_scores`), each starred if an 838 game made it. The high
+  score is settled there, on the way back to the title, whether the game ended or was
+  quit. It lasts until power-off.
 - **Difficulty** follows CLAUDE.md 7A: `1 EASY  2 MEDIUM  3 HARD` with the chosen one in
   cyan brackets (`(` and `)` are recoloured at boot and printed nowhere else). Keys 1-3
   pick it, left/right steps it, fire starts; the 3 inside 8-3-8 is the cheat, not HARD.
@@ -531,8 +556,8 @@ dedicated font is part of this port, generated by `assets/genfont.py` into `src/
   sets `canc` and returns, and each caller passes it up, so no GOSUB is left by GOTO.
   `quit_game` silences every channel by forcing each effect onto its last pass and letting
   `sfx_tick` write the note-offs, then waits (a second at most) for the key to come up.
-- **Game over** prints *THY GAME IS OVER* over the arena in the clear rows 10-12, with the
-  difficulty played below it (starred for an 838 game), and returns to the title.
+- **Game over** prints *THY GAME IS OVER* over the arena in the clear rows 10-12 and
+  returns to the title, where the score shows as LAST (starred for an 838 game).
 - The title and 838 screens, `draw_field` and `draw_plat` are **code in bank 1**
   on the TI, after the data: they run once a wave or less, and bank 1 is always selected,
   so calls in and out need no switching. That freed ~2 KB of the fixed area. The logo
@@ -620,7 +645,7 @@ Deliberately incremental — each phase is playable and independently verifiable
 | **3** | Waves, scoring, spares, extra life | Wave advances only when nothing remains |
 | **4** | **Arcade font** | Score and titles in the Williams face |
 | **5** | **Lava troll** (wave 3+) | Grabs low flight; flapping escapes; reach grows |
-| **6** | **Island erosion** (wave 3 bridge, 6+ ledges) | Deterministic; Egg wave restores all |
+| **6** | **Island erosion** (wave 3 bridges, ledges per the arcade's wave table) | Deterministic; Egg waves have every ledge |
 | **7** | **Pterodactyl** (wave 8 + slow-wave trigger) | Only the open mouth kills it |
 | **8** | **Egg & Survival waves**, bonuses | 12 eggs on wave 5; 3000 bonuses paid |
 
