@@ -7643,3 +7643,95 @@ with the box: its y range is 56..94, the TMS range plus 24.
 
 **Verified in iNES:** `HE GOT AWAY` hangs directly under the roof slab, with
 one row of shop showing below it, as on the TI. NES PRG free: 118 bytes.
+
+## 62. NES: the tune plays under the effects; SELECT, START, A and B (2026-10-11)
+
+**The NES no longer stops the music for a sound effect.** Section 50's
+`music_duck` paused the in-round tune (`PLAY NONE`, which freezes the song
+where it is) whenever any effect sounded. Every NES effect is on a pulse,
+and the stock player put both of CHASE's voices on the pulses, so the music
+stopped and restarted all through a round: jumps, prizes, hits, the escape
+tone and the bugle.
+
+**The bass moves to the triangle and the melody to pulse 2.** In `PLAY
+SIMPLE NO DRUMS` (the in-round tune only), the runtime's `music_hardware`
+now jumps to `nes_mus_simple` in `assets/nes_apu.asm`. `assets/musicown.py`
+patches the jump into the generated assembly after `nesfast.py` and refuses
+a runtime whose text has changed. `PLAY FULL` (the title) keeps the stock
+code.
+
+| channel | in a round | can an effect take it? |
+|---|---|---|
+| pulse 1 (`SOUND 0`) | jump, biplane, extra-life bugle | yes, and the music never uses it |
+| pulse 2 (`SOUND 1`) | CHASE's melody | lent to a hit, the escape tone or a prize while `sht` or `spz` runs |
+| triangle (`SOUND 2`) | CHASE's bass | no: no in-round effect uses it, so the bass is never cut |
+| noise (`SOUND 3`) | footsteps | n/a (no drums) |
+
+* **The tune keeps time while it lends pulse 2.** The player still advances
+  every frame and only skips the channel's register writes. The melody comes
+  back on the beat, not from where it stopped.
+* **It comes back in tune.** The player sends a pulse's high period byte only
+  on a note's first frame, because rewriting it restarts the waveform. A
+  returned channel therefore kept the effect's high byte (the wrong octave)
+  until the next note. The shim's pulse-2 pitch write now sets `nes_p2sync`,
+  and the next frame the melody owns the channel it re-sends the high byte.
+* **The triangle has no volume**, so a bass note is on or off. CHASE's rests
+  turn it off (`$4008 = $80`, control kept so the next note restarts).
+* **The title's `PLAY FULL` writes `$4015` itself** and leaves the triangle
+  disabled whenever its third voice was resting. A disabled triangle ignores
+  its length load, so `nes_mus_simple` writes `$0F` there while a bass note
+  sounds, which is the value `nes_apuon` set at boot.
+* **`music_stop` now also silences channel 2** on the NES. The bass is the
+  tune's alone, and `PLAY OFF` only queues silence, so the last bass note
+  would otherwise ring through `pause_beat`.
+* **The owner is set before the note.** The player reads `sht` in the vblank
+  interrupt. The hit and the escape tone used to write their first note and
+  then set `sht`, so a vblank between them returned the channel to the melody
+  and overwrote the note. The escape tone is written once, so it would have
+  stayed wrong for all sixteen passes. On the NES both now set `sht` first.
+  The TI and ColecoVision order is unchanged under `#else`.
+* **No game RAM.** `nes_p2sync` is zero-page `$28`. The NES runtime leaves
+  `$28`-`$30` unused when it is not bank switching (`sprite_data` is
+  `$24`-`$27`, `music_bank` `$30`, the music player starts at `$31`, CVBasic's
+  variables at `$50`).
+* `music_duck` on the NES only starts the tune. `nai` is 0 playing or 2 not
+  started; the ducked state 1 is gone.
+
+**NES buttons.** On the title, **SELECT** toggles music (`SELECT=MUSIC ON` /
+`OFF`, 16 characters, so it starts at column 8 to stay centred), and
+**START, A or B** starts a game. A used to toggle music; it now matches B.
+The NES prompt reads `START TO PLAY` instead of `FIRE TO START`: the same 13
+characters in the same place, so the layout is unchanged, and
+`ticancel_test.py` expects the NES text. In
+play, **A or B** jumps (`read_input`), and the release wait before the first
+pass waits for A as well. SELECT is still the in-play cancel key, and the
+cancel's SELECT is still down when the title starts listening. So the toggle's
+edge state starts at "held" (`nai = 1` in `title_input`, 2 after
+`music_stop`), and SELECT must be released before it toggles. In iNES, TAB is
+SELECT and ENTER is START, so keys typed while the emulator has focus reach the
+game. During review this turned the music off on the title, and in the
+previous ROM it started a game.
+
+**Tests.** `musicown_test.py` executes `nes_mus_simple` frame by frame
+against the shim:
+* the melody on pulse 2 and the bass on the triangle;
+* pulse 1 never written by the tune;
+* an effect's pulse 2 left alone while the bass plays on;
+* a returned channel in tune mid-note.
+
+It also checks the source:
+* `music_duck` has no `PLAY NONE`;
+* every in-round pulse-2 write is owned (`sht`/`spz`) before its first note;
+* no in-round `SOUND 2`;
+* `music_stop` silences the triangle;
+* SIMPLE never asks for drums;
+* the NES buttons.
+
+Mutations that drop the resync, drop the owner test or put the hit's note
+before `sht` are all rejected.
+
+**Sizes.** NES PRG free: 57 bytes (was 118). RAM unchanged (1,514;
+`checknesram.py` 5 bytes to spare). **TI and ColecoVision rebuilt
+byte-for-byte identical**, so they still duck jumps and hits as section 47
+describes. The full NES build and its 25 parallel checks/tests pass. On iNES
+the title shows the new line. Listening in play is still the user's check.

@@ -333,6 +333,10 @@ grep -q "^sn76489_freq:" "$ASM" || die "the APU shim did not make it into $ASM"
 grep -q "^nes_chrup:" "$ASM" || die "the CHR-RAM uploader did not make it into $ASM"
 
 "$TRUNCPY" ../assets/nesfast.py "$ASM" || die "NES fast redraw hooks failed"
+# THE IN-ROUND TUNE PLAYS UNDER THE EFFECTS, NOT INSTEAD OF THEM: the runtime's
+# PLAY SIMPLE path jumps to nes_mus_simple (assets/nes_apu.asm) -- bass on the
+# triangle, melody on pulse 2, lent to an effect while one sounds.
+"$TRUNCPY" ../assets/musicown.py "$ASM" || die "NES in-round music hook failed"
 
 echo "[2/2] gasm80 assemble   $ASM -> $ROM"
 rm -f "$ROM"

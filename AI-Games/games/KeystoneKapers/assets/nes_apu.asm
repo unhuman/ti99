@@ -64,6 +64,15 @@ APU_NSPER:	EQU $400e
 APU_NSLEN:	EQU $400f
 APU_STATUS:	EQU $4015
 
+	; ZERO PAGE THE NES RUNTIME LEAVES FREE: sprite_data is $24-$27 and the
+	; music player starts at $31 ($30 is music_bank, used only with bank
+	; switching). CVBasic's own variables start at BASE_RAM, $50. So these cost
+	; none of the game's RAM, which is full to the byte.
+	;
+	; Nonzero = the game wrote pulse 2's pitch, so the in-round tune must
+	; re-send its high byte when it gets the channel back. See nes_mus_simple.
+nes_p2sync:	EQU $28
+
 	;
 	; Set a channel's pitch.  A/Y = divisor, X = latch byte.
 	;
@@ -99,6 +108,7 @@ nesapu_fp2:
 	AND #$07
 	ORA #$08		; long length; scheduler/volume controls duration
 	STA APU_P2HI
+	STA nes_p2sync		; A is nonzero: the tune's pitch is gone
 	RTS
 nesapu_ftri:
 	LSR temp+1		; half the period -- see the octave note above
@@ -188,3 +198,81 @@ nesapu_ntrigger:
 	; rate 3 gets the lowest of them rather than silence.
 nesapu_nper:
 	DB $04,$06,$08,$0a
+
+	;
+	; THE IN-ROUND TUNE ON THE NES (PLAY SIMPLE NO DRUMS). The runtime's
+	; music_hardware jumps here every frame instead of running its own
+	; SIMPLE path -- assets/musicown.py patches in the jump. Returns for it.
+	;
+	; The stock path puts the tune's two voices, melody and bass, on the two
+	; pulses, and every effect in the game plays on a pulse too -- so the
+	; game had to stop the tune for every jump, prize, hit and bugle.
+	;
+	; o THE BASS GOES TO THE TRIANGLE, which no effect uses during a round,
+	;   so nothing can cut it. It has no volume: a note is on or off, and the
+	;   tune's rests turn it off. Most NES games carry their bass there.
+	; o THE MELODY GOES TO PULSE 2 (SOUND 1). Pulse 1 (SOUND 0) is left to
+	;   the jump, the biplane and the bugle, so the jump -- the commonest
+	;   effect -- never meets the music at all.
+	; o PULSE 2 IS LENT, NOT SHARED. While the hit, the escape tone or the
+	;   prize sounds (sht or spz running) the melody skips its writes and the
+	;   effect has the channel. The tune keeps time throughout, so the melody
+	;   comes back on the beat, not from where it stopped.
+	; o AND IT COMES BACK IN TUNE. This player sends a pulse's high period
+	;   byte only on a note's first frame (rewriting it restarts the wave), so
+	;   a returned channel would keep the effect's high byte -- the wrong
+	;   octave -- until the next note. nes_p2sync, set by every pitch the game
+	;   writes on pulse 2, makes the next frame send it again.
+	;
+	; Only PLAY SIMPLE NO DRUMS reaches here; musicown_test.py checks that the
+	; game never asks for SIMPLE with drums.
+	;
+nes_mus_simple:
+	LDA cvb_SHT
+	ORA cvb_SPZ
+	BNE nes_mus_bass	; an effect has pulse 2 -- leave it alone
+	LDA audio_freq1
+	STA APU_P2LO
+	LDA nes_p2sync
+	BNE nes_mus_p2hi
+	LDA music_counter_1
+	CMP #1			; a note's first frame
+	BNE nes_mus_p2vol
+nes_mus_p2hi:
+	LDA #0
+	STA nes_p2sync
+	LDA audio_freq1+1
+	ORA #$08		; keeps tone enabled
+	STA APU_P2HI
+nes_mus_p2vol:
+	LDA audio_vol1		; duty, envelope and volume, as the stock path
+	STA APU_P2CTL
+nes_mus_bass:
+	LDA audio_vol2
+	AND #$0f
+	BEQ nes_mus_rest
+	; THE TITLE'S PLAY FULL WRITES $4015 ITSELF, and leaves the triangle
+	; disabled whenever its third voice was resting -- and a disabled triangle
+	; ignores its length load. Re-enable all four, as nes_apuon did at boot.
+	LDA #$0f
+	STA APU_STATUS
+	LDA #$ff		; control set, reload $7f -- sounds until a rest
+	STA APU_TRICTL
+	LDA audio_freq2+1	; half the period: the triangle is an octave down
+	LSR A
+	TAY
+	LDA audio_freq2
+	ROR A
+	STA APU_TRILO
+	LDA music_counter_2
+	CMP #1
+	BNE nes_mus_done
+	TYA
+	ORA #$08
+	STA APU_TRIHI
+nes_mus_done:
+	RTS
+nes_mus_rest:
+	LDA #$80		; reload 0: silent, with control kept for the next note
+	STA APU_TRICTL
+	RTS

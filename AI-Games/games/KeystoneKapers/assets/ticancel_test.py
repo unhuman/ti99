@@ -83,7 +83,8 @@ class CancelKeys(unittest.TestCase):
                     base = 8192 if vm.platform == 'NES' else 6144
                     prompt = base + (681 + 96 if vm.platform == 'NES' else 681)
                     self.assertEqual(''.join(chr(vm.memory[prompt+i]) for i in range(13)),
-                                     'FIRE TO START')
+                                     'START TO PLAY' if vm.platform == 'NES'
+                                     else 'FIRE TO START')
 
     def test_coleco_cancellation_preserves_scores(self):
         from levelplay_test import Basic

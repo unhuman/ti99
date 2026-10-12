@@ -769,6 +769,8 @@ btn_rel:
 	IF cont1.button THEN GOTO btn_rel
 	#if NES
 	IF cont1.key = 11 THEN GOTO btn_rel
+	' A starts a game too, and A jumps -- so it is let go of here as well.
+	IF cont1.button2 THEN GOTO btn_rel
 	#endif
 btn_go:
 	GOSUB new_game
@@ -828,6 +830,10 @@ music_stop:
 	' THE PRIZE (spz); the TI and ColecoVision put both on channel 2.
 	IF swt = 0 THEN IF spt = 0 THEN SOUND 0,,0
 	IF sht = 0 THEN IF spz = 0 THEN SOUND 1,,0
+	' AND THE IN-ROUND BASS IS ON THE TRIANGLE (nes_mus_simple in
+	' assets/nes_apu.asm), which no effect uses during a round -- so it is
+	' always the tune's, and always silenced here.
+	SOUND 2,,0
 	#else
 	IF swt = 0 THEN SOUND 0,,0
 	IF sht = 0 THEN SOUND 1,,0
@@ -2365,6 +2371,12 @@ read_input:
 	IF cont1.up THEN inu = 1
 	IF cont1.down THEN ind = 1
 	IF cont1.button THEN inb = 1
+	#if NES
+	' EITHER FIRE BUTTON JUMPS ON THE NES: cont1.button is B, cont1.button2 A.
+	' One inb for both, so holding one and pressing the other is still the
+	' same held button to jrel, not a second jump.
+	IF cont1.button2 THEN inb = 1
+	#endif
 	' A direction the title measured as stuck is the ALPHA LOCK key, not the
 	' player. Dropping it here rather than at each use means duck, elevator
 	' entry and elevator exit all get the same treatment automatically.
@@ -6114,9 +6126,20 @@ sfx_tick:
 	' this one.
 	IF sfh = 1 THEN
 		sfh = 0
+		#if NES
+		' THE OWNER BEFORE THE NOTE, ON THE NES. Its music player reads sht in
+		' the vblank interrupt to know whether pulse 2 is the tune's or this
+		' effect's (nes_mus_simple). A vblank between the note and `sht =`
+		' would hand the channel back to the melody for that frame and
+		' overwrite the note just written.
+		sht = HITSND
+		shf = 1
+		SOUND 1,168,13
+		#else
 		SOUND 1,168,13
 		sht = HITSND
 		shf = 1
+		#endif
 	END IF
 	' A PRIZE IS AN ARPEGGIO -- testsounds PICKUP C. C5, E5, G5, then a fade
 	' on the top note: it RISES, which is what makes it read as a reward
@@ -6172,10 +6195,19 @@ sfx_tick:
 	END IF
 	IF sfe = 1 THEN
 		sfe = 0
+		#if NES
+		' The owner before the note, as for the hit above -- and here it
+		' matters more: this tone is written ONCE, so a note the melody
+		' overwrote would stay wrong for all sixteen passes.
+		sht = 16
+		shf = 0
+		SOUND 1,400,10
+		#else
 		SOUND 1,400,10
 		sht = 16
 		' a held tone, not the hit's fall -- see shf above
 		shf = 0
+		#endif
 	END IF
 
 	' the jump sweep: divisor falling = pitch rising
@@ -6697,7 +6729,8 @@ random_hazards:
 	' prizes/lives/tally, noise the footsteps -- so only jumps and hits
 	' collide, and those DUCK the music: PLAY NONE freezes the player where
 	' it is (it only clears music_mode; the song position is untouched), and
-	' PLAY SIMPLE NO DRUMS resumes from the same note once they end.
+	' PLAY SIMPLE NO DRUMS resumes from the same note once they end. That is
+	' the TI and ColecoVision; the NES does not duck at all (see its branch).
 	'
 	' The test runs BEFORE sfx_tick writes anything, and counts the pending
 	' latches (sfj/sfh/sfe) as well as the running counters, so the player
@@ -6712,31 +6745,24 @@ random_hazards:
 music_duck:
 	IF musen = 0 THEN RETURN	' M on the title turned music off
 	#if NES
-	' NES RAM IS FULL TO THE BYTE, so the NES keeps no gms/gmp/gmb: its whole
-	' music state is nai -- 0 playing, 1 ducked, 2 not started. nai is NES
-	' scratch that is idle here: the title's A toggle uses it (and treats 2
-	' like a held A), and the round-end message boxes use it only after the
-	' round's music is over and before music_stop sets it back to 2.
+	' THE NES DOES NOT DUCK: IT ONLY STARTS THE TUNE. Its player keeps the
+	' in-round tune off the effects' way instead (nes_mus_simple in
+	' assets/nes_apu.asm, hooked in by assets/musicown.py): the bass is on the
+	' triangle, which no effect uses in a round, the melody on pulse 2, and
+	' pulse 1 belongs to the jump, the biplane and the bugle. While a hit, the
+	' escape tone or the prize sounds (sht, spz) the melody lends pulse 2 to
+	' it and the tune keeps time, so nothing pauses and the bass never drops.
+	'
+	' It used to stop the tune for every effect -- PLAY NONE, which FREEZES
+	' the song where it is -- and every NES effect is on a pulse, so the
+	' music stopped and started all through a round.
+	'
+	' NES RAM IS FULL TO THE BYTE, so the NES keeps no gms: its music state is
+	' nai -- 0 playing, 2 not started. nai is NES scratch that is idle here:
+	' the title's SELECT toggle uses it (and treats 2 like a held SELECT), and
+	' the round-end message boxes use it only after the round's music is over
+	' and before music_stop sets it back to 2.
 	IF nai = 2 THEN nai = 0 : PLAY SIMPLE NO DRUMS : PLAY game_tune
-	' Same test as below, branching instead of setting gmb, plus the channel
-	' owners the NES adds (the bugle on 0, the prize on 1 -- nes_apu.asm).
-	' ONE TEST, NOT NINE. Every one of these is an unsigned byte, so "any is
-	' non-zero" is their bitwise OR: one load and eight ORAs, about 35
-	' bytes, where nine `IF x > 0 THEN GOTO` cost about 105 on the 6502 --
-	' part of what let the NES title play the whole of STREET. (A bitwise OR
-	' of VALUES, not of comparisons, so the TI's AND/OR hazard does not
-	' apply; and this block is NES-only anyway.)
-	IF swt OR sht OR sfj OR sfh OR sfe OR spt OR spz OR sfk OR sfp THEN GOTO md_busy
-	IF nai = 0 THEN RETURN
-	nai = 0
-	PLAY SIMPLE NO DRUMS
-	RETURN
-md_busy:
-	IF nai = 1 THEN RETURN
-	nai = 1
-	PLAY NONE
-	SOUND 0,,0
-	SOUND 1,,0
 	RETURN
 	#else
 	IF gms = 0 THEN
@@ -6763,8 +6789,8 @@ md_busy:
 	' ---------------------------------------------------------------- MUSIC ON/OFF
 	' M on the title toggles all music, title and in-game, the way 1 does on
 	' Bust-A-Bobble's title. musen is the setting (see init_tables for why it
-	' persists). TI and ColecoVision; the NES has no music. The key is M on the
-	' TI and 0 on the ColecoVision keypad (* and # cancel, 8 and 3 are 8-3-8).
+	' persists). The key is M on the TI, 0 on the ColecoVision keypad (* and #
+	' cancel, 8 and 3 are 8-3-8) and SELECT on the NES (title_wait).
 	' Row 19 col 10, under the credit (row 17 on these two, a row higher than
 	' the NES -- CREDIT_ROW in gentitle.py) and a clear
 	' row above FIRE TO START (21); both strings 11 characters so each
@@ -6775,8 +6801,10 @@ prt_musen:
 	RETURN
 	#endif
 	#if NES
+	' SELECT on the NES, so 16 characters, not 11: two columns further left
+	' (col 8) to stay centred like the others, and still both the same length.
 prt_musen:
-	IF musen THEN PRINT AT 618 + 96,"A=MUSIC ON " ELSE PRINT AT 618 + 96,"A=MUSIC OFF"
+	IF musen THEN PRINT AT 616 + 96,"SELECT=MUSIC ON " ELSE PRINT AT 616 + 96,"SELECT=MUSIC OFF"
 	RETURN
 	#endif
 	#if COLECOVISION
@@ -6978,7 +7006,9 @@ title_input:
 	' point of the early draw is that it is early -- so the PROMPT waits
 	' instead, and its arrival is the cue that the screen is awake.
 	#if NES
-	PRINT AT 681 + 96,"FIRE TO START"
+	' START is the NES's own start button (A and B start too). Same 13
+	' characters as the TMS prompt, so it sits in the same place.
+	PRINT AT 681 + 96,"START TO PLAY"
 	#else
 	PRINT AT 681,"FIRE TO START"
 	#endif
@@ -7109,16 +7139,22 @@ title_wait:
 	ASM JSR nes_title_code
 	IF t838 = 4 THEN GOTO title_setup
 	IF cont1.key = 11 THEN RETURN
-	' A toggles music. cont1.button is B (jump, and it starts a game);
-	' cont1.button2 is A, which nothing else on the title reads.
+	' SELECT toggles music (CVBasic reports NES SELECT as key 10, START as 11).
+	' In play SELECT is the cancel key, so the press that quit a game is still
+	' down when this screen starts listening -- which is why the edge state
+	' starts at "held" (title_input sets nai = 1, and music_stop leaves 2,
+	' which reads the same): a SELECT must be let go before it toggles.
 	' The edge state lives in nai -- NES scratch, idle while the title waits
 	' (see title_background, nes_choose and the round-end message boxes): NES
-	' RAM is full to the byte. 1 = A seen down; it must be let go to re-arm.
-	IF cont1.button2 THEN
+	' RAM is full to the byte.
+	IF cont1.key = 10 THEN
 		IF nai = 0 THEN nai = 1 : GOSUB mus_toggle
 	ELSE
 		nai = 0
 	END IF
+	' EITHER FIRE BUTTON STARTS, as either one jumps (read_input): A is
+	' cont1.button2, B is cont1.button (tested below for every target).
+	IF cont1.button2 THEN RETURN
 	#endif
 	#if COLECOVISION
 	tk = cont1.key

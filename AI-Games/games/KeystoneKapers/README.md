@@ -19,7 +19,7 @@ the only obstacle whose answer changes while it is in the air.
 | action | input |
 |---|---|
 | Run left / right | joystick left / right |
-| Jump | fire |
+| Jump | fire (on NES, **A** or **B**) |
 | Long running jump | fire **+** a direction |
 | Duck (under biplanes) | joystick **down** |
 | Enter / leave the elevator | joystick **up** / **down** |
@@ -33,11 +33,15 @@ values. On NES, **SELECT** cancels its setup screen as well as gameplay.
 
 **Music (all three machines).** The title plays STREET and each round plays
 CHASE (from the tunes bench, `sound/tunes`). **M** on the TI keyboard, **0** on
-the ColecoVision keypad, or **A** on the NES pad turns all music on or off; the
-title shows `M=`, `0=` or `A=MUSIC ON` (or OFF). It starts on at power-on and
-keeps your choice from game to game. During play, jumps and hits (and on the
-NES also prizes and the extra-life bugle) pause the music for their own sound,
-and it resumes where it stopped.
+the ColecoVision keypad, or **SELECT** on the NES pad turns all music on or off;
+the title shows `M=`, `0=` or `SELECT=MUSIC ON` (or OFF). It starts on at
+power-on and keeps your choice from game to game. On the TI and ColecoVision,
+jumps and hits pause the music for their own sound, and it resumes where it
+stopped. **The NES never pauses it** (`DESIGN.md` section 62): the bass plays
+on the triangle, which no effect uses, so it is never cut; jumps, the biplane
+and the extra-life bugle have pulse 1 to themselves; and a hit, the escape tone
+or a prize borrows the melody's pulse while it sounds, with the tune keeping
+time underneath.
 
 **TI-99/4A: ALPHA LOCK.** It shares a line with the joystick's vertical axis, so latched down it
 can report a direction that never releases — which matters here, where down is the duck and up
@@ -312,13 +316,13 @@ nine-second obstacle and still make the catch. `DESIGN.md` §4a has the arithmet
 **Builds pass on TI-99/4A, ColecoVision and NES (2026-09-25).** On the TI and
 ColecoVision the title plays STREET and rounds play CHASE, both from the tunes
 bench; M (TI) or 0 (ColecoVision) on the title turns music on and off
-(`DESIGN.md` sections 46-48; NES music, A on the title, sections 50-51). TI fixed code
+(`DESIGN.md` sections 46-48; NES music, sections 50-51 and 62, SELECT on the title). TI fixed code
 uses **22,602 / 24,336 bytes (1,734 free; 136 in the unoptimised first pass)**, with a 32 KB
 cartridge. Its one data bank has 868 bytes free; RAM uses 6,258 of 7,821 bytes.
 ColecoVision uses a 32 KB ROM and 618 / 781 RAM (the stack keeps at least 159
 bytes free, measured; `DESIGN.md` section 48); NES uses a 32 KB PRG image
-plus its 16-byte header, with 31 bytes of PRG free after the music (`DESIGN.md`
-sections 49-51), and reports 1,518 RAM bytes. See `DESIGN.md` section 14
+plus its 16-byte header, with 57 bytes of PRG free (`DESIGN.md`
+sections 49-51 and 62), and reports 1,514 RAM bytes. See `DESIGN.md` section 14
 for measurements, validation and the remaining runtime checks.
 
 Kelly and Harry are **colour-banded sprites** — Kelly three, Harry four — with one colour per
@@ -427,8 +431,10 @@ record; other ties leave the record unchanged.
 The marker is a custom 5x5 asterisk at the top of the character cell.
 The shared large title lettering includes small serifs on E, T and S.
 
-On NES, START also starts a game from the title. SELECT during gameplay
-cancels the game and returns to the title without changing the high score.
+On NES, START, A or B starts a game from the title (which says `START TO
+PLAY` there rather than `FIRE TO START`), and SELECT turns the music on or off. In play, A or B jumps, and SELECT cancels the game and
+returns to the title without changing the high score. (In iNES, TAB is SELECT
+and ENTER is START, so keys typed while the emulator has focus reach the game.)
 
 
 The level review and timestamped measurements are in

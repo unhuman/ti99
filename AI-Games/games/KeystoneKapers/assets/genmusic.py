@@ -10,8 +10,11 @@ sound/tunes/assets/gentunes.py reaches the game on its next build.
     game_tune   GAME_PICK, cut to TWO voices, melody and bass, no drums, for
                 PLAY SIMPLE NO DRUMS during play. That mode owns channels 0
                 and 1 only, which leaves channel 2 (prizes, lives, tally) and
-                noise (footsteps) to the effects; jumps (ch 0) and hits
-                (ch 1) duck the music instead -- see music_duck.
+                noise (footsteps) to the effects; on the TI and ColecoVision
+                jumps (ch 0) and hits (ch 1) duck the music instead -- see
+                music_duck. The NES plays the bass on its triangle and the
+                melody on pulse 2, under the effects (nes_mus_simple in
+                nes_apu.asm, DESIGN.md section 62).
 
 The labels are fixed so KEYSTONE.bas never names a bench tune; to change a
 tune, change its PICK.

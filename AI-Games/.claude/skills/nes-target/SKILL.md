@@ -275,3 +275,27 @@ vblank queue and its budgets remain mandatory. The hooks fail on changed runtime
 anchors; they do not modify the shared compiler. Park PPUADDR outside palette
 space after direct writes: a palette address can colour the forced-blank screen.
 Keep a blank backdrop until the completed screen is committed at vblank.
+
+### NES music under effects: lend a channel, resync its high byte (Keystone, 2026-10-11)
+
+CVBasic's NES `music_hardware` puts `PLAY SIMPLE`'s two voices on the two
+pulses. A game whose effects also use pulses then has to stop the tune for
+each effect, and `PLAY NONE` freezes the song, so the music stutters all
+round. Keystone now routes SIMPLE to its own `nes_mus_simple`: bass on the
+triangle (no in-round effect uses it), melody on pulse 2, which it lends to an
+effect while that effect's counter runs. Three traps came with it:
+* **The stock player writes a pulse's high period byte only on a note's first
+  frame** (rewriting restarts the wave). A channel handed back mid-note keeps
+  the effect's high byte, which is the wrong octave until the next note. Have
+  the APU shim flag every game pitch write and re-send the high byte once.
+* **The ownership test runs in the NMI, so set the owner before the first
+  note.** Writing the note and then the counter lets a vblank between them
+  give the channel back and overwrite a once-written tone.
+* **`PLAY FULL` writes `$4015`** and leaves the triangle disabled whenever its
+  third voice rests, and a disabled triangle ignores its length load. Re-enable
+  it before using the triangle after a FULL tune.
+
+Zero page `$28`-`$30` is unused by the NES runtime without bank switching,
+which gives a flag byte without spending game RAM. Patch the runtime from the
+game's build (`assets/musicown.py`), failing on changed anchor text, rather
+than editing the shared compiler.
