@@ -513,6 +513,14 @@ Every game is built the same way — that consistency is the point.
 > captures the cart there. Use that launcher for a visible handoff; a process on
 > `CodexSandboxDesktop-*` is not a visible review emulator. Check the reported ROM hash/PID.
 
+- **A `TB 2` in a native TMS9900 helper reads the wrong CRU bit if R12 is not
+  zero.** Zaxxon's crash burst ran in a separate workspace and reused R12 for
+  the VDP data port (`>8C00`); its frame wait then polled CRU bit `>602`
+  instead of the VDP interrupt at bit 2. The cartridge built, but the effect
+  froze on its first frame. Clear R12 before `TB 2` in any workspace that
+  does not keep the normal CRU base. Also acknowledge VDP status and clear
+  the software NMI latch when a native wait services that interrupt itself.
+
 - **ColEm's bare-ROM launch is not a timing reference.** Its bundled manual lists
   `-nosync` as the default; an unsynchronized emulator can advance a game using
   `FRAME` faster than real NTSC hardware. For Windows ColecoVision reviews launch
@@ -703,3 +711,17 @@ overlay bank, `GOSUB` its routine, select the play-time bank after it returns to
 fixed code, then branch to the report. Check the generated assembly and symbol
 bank annotations, and mutation-test the restore; source-level execution alone
 does not model instructions vanishing when a cartridge page changes.
+
+
+### Static translation: indirect data must fit the mapped address window
+
+CVZaxxon (October 17, 2026): its Z80-to-TI data map adds >3000 only for
+original cartridge data at >8000..>CFFF. The boss table at >DFA1 was read
+indirectly, bypassing the translator's absolute-address guard; addition
+wrapped to console ROM >0FA1 and its bytes became arbitrary sprite-table
+write offsets, including writes outside the SAT. Relocate out-of-window
+data into a reserved RAM range and patch its producer pointer, accounting
+for helpers that use a different BIOS offset. A successful translation and
+assembly do not validate indirect data addresses. The boss regression
+compares the complete write result with the original table and rejects the
+previous ROM. See Decompiled/CVZaxxon/DESIGN.md for the concrete mapping.
