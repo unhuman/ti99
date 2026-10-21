@@ -29,6 +29,12 @@ Existing workflow references remain available at their original paths:
 - CVBasic: [.claude/skills/build-cvbasic-game/SKILL.md](.claude/skills/build-cvbasic-game/SKILL.md).
   Read when building CVBasic; use the game's own build scripts where present,
   since they include its generators, regression gates, banking, and target fixes.
+- Static ColecoVision ROM ports (for example `Decompiled/MeanSanta`): read
+  [.claude/skills/CV2TI99/SKILL.md](.claude/skills/CV2TI99/SKILL.md), then its
+  [optimization notes](.claude/skills/CV2TI99/optimization.md) for speed/flicker
+  and [native-porting contracts](.claude/skills/CV2TI99/native-porting.md) before
+  native or translator changes. These are shared Claude/Codex instructions;
+  static ports retain their assembly/Python toolchain and original-ROM oracle.
 - XB256: [.claude/skills/xb256-reference/SKILL.md](.claude/skills/xb256-reference/SKILL.md).
   Read when working on an XB256 game.
 

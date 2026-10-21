@@ -1,8 +1,39 @@
 # CV2TI99: TMS9900 speed techniques and pitfalls
 
-Measured on Zaxxon (Decompiled/CVZaxxon). Busy play went from ~45% to ~93% of
-the ColecoVision's logic rate (95% of its scroll rate); straight flight reached
-full speed. Numbers are per frame of 50,050 TI cycles unless noted.
+Lessons from Zaxxon, Joust, River Raid and Mean Santa. Measurements below
+belong to the named game, not every translated ROM. Zaxxon busy play went
+from ~45% to ~93% of the ColecoVision's logic rate (95% of its scroll rate).
+Numbers use 50,050 TI cycles per frame unless noted.
+
+## Measure the problem before choosing a fix
+
+- Record the original ROM and candidate TI hashes, CPU/VDP timing model and
+  production pacing mode. Measure loading separately from steady gameplay;
+  include the user's troublesome scenes and modes, plus held-out seeds.
+  Exercise real menu/scene initialization and assert gameplay coverage so an
+  idle title or failed transition cannot pass a speed gate.
+- Count completed logic passes, movement/scroll progress and pass-length
+  distributions on both machines with the same input sequence keyed to logic
+  passes. Profile expensive passes as well as averages. Use emulated hardware
+  cycles and memory wait states, not host runtime or an overclocked emulator.
+  Use the timing model's actual frame period; 50,000 versus 50,050 cycles
+  drifts enough to invalidate beam-phase checks. Label nominal 60 Hz rates.
+- Measure **presentation separately**: log VRAM writes to the currently
+  visible sprite attribute table (SAT), VDP table switches relative to the
+  beam, and which completed sprite-priority phases actually appear. Logic
+  throughput alone misses tearing and skipped alternating groups. Preserve
+  the original sprite count, priority rotation and hardware scanline limit.
+- Keep exact synchronized lockstep and production timing tests separate.
+  Disabling TI pacing for lockstep also disables the scheduling being tuned.
+  Accept candidates against correctness, throughput and presentation gates;
+  a display repair can justify a measured cycle cost. Recheck the complete
+  game after placement changes, even when the isolated routine got faster.
+- Tie results to the artifact tested. Do not rebuild underneath running
+  checks; use a frozen build copy when necessary. Gates must require coverage,
+  exit nonzero on failure and reject a known bad behavior. Re-run affected
+  checks after a fix, retain required final replay gates, and distinguish
+  earlier results from final-ROM evidence. Verify the final cart in Classic99;
+  a screenshot proves the loaded scene, not its speed or absence of flicker.
 
 ## The cost model
 
@@ -10,10 +41,12 @@ full speed. Numbers are per frame of 50,050 TI cycles unless noted.
   console ROM costs 4 wait states: cartridge ROM, 32K RAM, VDP and sound ports
   alike. Code in ROM and code in 32K RAM run at the same speed; only scratchpad
   code is faster (no fetch waits), and it is tiny.
-- The translation is already about one TMS9900 instruction per Z80 instruction.
-  **Hand re-encoding a translated routine gains ~0** (tried on the collision
-  probe). What pays is **removing work**: work the original repeats that does
-  not change anything, and work whose result is already on the chip.
+- Zaxxon's straight-line translation was already about one TMS9900
+  instruction per Z80 instruction; hand re-encoding its collision probe gained
+  ~0. Profile the actual path: SDCC arithmetic loops, packed-argument wrappers,
+  repeated address mapping and bank saves can still dominate other games.
+  Remove that work or replace the algorithm, rather than just spelling the
+  same operations in native assembly.
 - Find it with `tools/tiprof6.py` (where a frame in flight goes, by source file
   and label, from the listing) and `tools/heavy3.py` / step-pass profiles (the
   passes that took two frames). Older profilers charged code that follows a
@@ -77,8 +110,17 @@ full speed. Numbers are per frame of 50,050 TI cycles unless noted.
   Growth of the shared segment breaks placement silently-looking ("cold cluster
   larger than a bank"): `build.py` retries with a larger hot margin.
 - Emit only the byte constants (`BCxx`) that something references.
-- Free RAM for new variables by moving the start of a RAM code area (Zaxxon
-  `>AC00-AC3F`), never by squeezing scratchpad (it is full of workspaces).
+- Free RAM only through an explicit ownership map and build reservation
+  (Zaxxon moved a RAM code area's start to reserve `>AC00-AC3F`). Account for
+  workspaces, stacks, cache reset paths, trampoline tails and high-water marks.
+  Apparently unused bytes can belong to another subsystem: Mean Santa's first
+  input cache overlapped its sound cache and regressed performance.
+- Report useful code/data, repeated shared bytes, boot payloads and packaging
+  padding separately. A 32 KiB Z80 ROM does not imply a 32 KiB TI translation,
+  but a large padded cart is not proof the useful content needs that size.
+  Moving common helpers from every bank to one reserved, always-visible RAM
+  copy reduced Mean Santa from 256 to 128 KiB, including expanded graphics.
+  Check bank visibility/capacity and remeasure after repacking.
 
 ## Pitfalls (each cost real time)
 
@@ -180,3 +222,77 @@ full speed. Numbers are per frame of 50,050 TI cycles unless noted.
 - **Uneven pass lengths read as jerking.**  At 1-2 frames a pass the
   scroll speed alternates; holding every pass to two frames is smooth but
   slower (River Raid `build.py --even`).  Offer both.
+
+## Mean Santa: elapsed frames and complete sprite presentation
+
+`Decompiled/MeanSanta/DESIGN.md` records the implementation and measured
+limits; its `README.md` gives commands for that tool version. In 600-frame
+runs, weather reached nominal 60 updates/s and houses 59.8-60, with no visible
+SAT writes, active-display switches or skipped completed priority phases.
+Loading fell from 303 to 53 frames. These are measured workloads, not a claim
+that every possible scene fits one frame.
+
+- **A frame spent doing work counts toward the gameplay wait.** A wait that
+  always demands a fresh vblank adds an extra frame after an overrun. Track
+  serviced frames so an elapsed frame satisfies the main `delay(1)`, while two
+  updates cannot consume the same frame. Keep intentional title, respawn and
+  other multi-frame delays. Test early, already-late and counter-wrap cases.
+- **Pending does not mean freshly entered vblank.** An IRQ already pending
+  when polled may be near the end of blanking. An early upload is safe only
+  when its full budget fits after an observed fresh edge. Split long native or
+  straight-line paths with production service points outside NMI code and
+  VDP transactions, preserving live flags/registers. Retain the synchronized
+  poll schedule in exact replay mode; test production latency independently.
+- **A status read can erase an unserviced frame.** A long VRAM fill can cross
+  vblank, then clear the VDP interrupt with its final status read before the
+  software poll sees it. Where the contract permits, service the pending
+  frame before that destructive read. Test a fill straddling the edge and a
+  mutation that restores the lost interrupt; do not poll mid address/data
+  transaction.
+- **Prepare a hidden SAT and publish it atomically in vblank.** Prove both
+  buffers fit unused VRAM, including any library terminator beyond 128
+  attribute bytes. Switch register 5 before lengthy input/sound service.
+  Use that game's VRAM map; Mean Santa's spare table address is not portable.
+  Check initialization, ordinary uploads and any partial-copy paths.
+- **Publish a completed pending table before reusing its buffer.** In a
+  late-to-early transition, preparing the next table first can overwrite an
+  undisplayed priority group. Mean Santa reached 60 logic updates/s while
+  this still dropped snow phases. Test consecutive distinct groups and their
+  visible order, not only total uploads. An early upload must replay the
+  original call's observable register results without uploading twice.
+
+Mean Santa's `tools/speed.py --video --require-clean-sprites` checks actual
+presentation alongside throughput (use the README's full scene commands).
+`tools/check_pacing.py` exercises assembled waits, boundary sprite records,
+consecutive priority phases and the fill/status edge, and rejects missing-wait,
+hidden-Y, skipped-phase and lost-edge mutations. Adapt these properties to the
+port; do not copy its speed floor, scene IDs or memory addresses blindly.
+
+## Mean Santa: compiler overhead and immutable assets
+
+- Replace expensive library algorithms with native operations when their
+  entire observable contract is known: unsigned division including zero
+  divisors; small power-of-two remainders with the required signed fallback;
+  direct tile reads and clipped row/block copies; sprite/object loops that
+  avoid repeated packed-argument and pointer shuffling. Keep RNG order, byte
+  wrap, hidden-Y boundaries, colours, capacity and priority rotation exact.
+- Fold SDCC address sequences only when flags are dead and no internal entry,
+  poll, patch or bank boundary can enter the fold. Instruction tests must
+  execute the complete folded sequence. Remove a bank-save frame only after
+  checking every callee and tail-jump path; a helper's common return is not
+  proof that all paths preserve the bank.
+- Reduce NMI saves from a transitive clobber audit, not the handler's first
+  few instructions. Scan physical input once and derive the original outputs.
+  An unchanged-input cache must still replay outputs if game initialization
+  cleared their RAM; unchanged input does not imply valid destination bytes.
+- Predecode immutable graphics with the original decoder at build time when
+  that removes loading work. Vary initial destination contents to establish
+  independence, compare all decoded bytes, and budget expanded assets plus
+  a bank-safe transfer trampoline. Preserve ROM bytes used as data even if
+  disassembly labels them code: Mean Santa's colour cycle reads one such
+  boundary byte before wrapping.
+
+For SDCC stack representation and original-ROM routine comparisons, follow
+[native-porting.md](native-porting.md), sections 3-5. The game's isolated
+native/collision/tile tests are executable examples; keep the original ROM
+as the gameplay oracle and validate intentional TI-only changes separately.

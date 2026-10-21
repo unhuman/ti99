@@ -38,6 +38,19 @@ CVBasic (§3A). Still binding here: §5A, §7A and §8's standing rules.
 
 ---
 
+## Static ColecoVision ROM ports
+
+Games under `Decompiled/` that translate Z80 ROMs to TMS9900 retain their
+assembly/Python toolchain; the XB256 mandate and CVBasic compiler rules do not
+apply to them. Claude and Codex share
+[CV2TI99](.claude/skills/CV2TI99/SKILL.md). For speed or flicker, load its
+[optimization notes](.claude/skills/CV2TI99/optimization.md); for native or
+translator changes, also load [native-porting.md](.claude/skills/CV2TI99/native-porting.md).
+The Mean Santa lessons cover production frame/VDP timing separately from exact
+lockstep, complete sprite-priority phases, SDCC stack layout and ROM/RAM budgets.
+The reverse direction (a TI-99/4A game translated to ColecoVision Z80) is
+[TI992CV](.claude/skills/TI992CV/SKILL.md); load it before starting such a port.
+
 ## 3A. CVBasic hazards (the current platform — always loaded)
 
 **Lesson skills.** The long-form failure contracts below this list were moved into skills

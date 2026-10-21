@@ -75,7 +75,8 @@ read before reloading.
 - **`ann.NATIVE[addr] = 'LABEL'`**: the whole routine (every call and jump
   to it goes to the native). Natives run on the game's workspace with
   `BL`: A = R1 high byte (low byte 0), BC/DE/HL = R2-R4, IX/IY = R5/R6, R7
-  = SP + K (TI words, big-endian, on the Z80 stack), R8 = flags (canonical
+  = SP + K (inspect this port's stack representation; see below),
+  R8 = flags (canonical
   bits Z >2000, C >1000, S >8000, P >0400), BC'/DE'/HL'/A' = R9/R10/R13/R14,
   R11 = return, **R0 and R15 scratch, R12 = 0**. Return flags the callers
   need in R8 and list them in `NATIVE_FLAGS` (the translator then knows).
@@ -96,6 +97,19 @@ read before reloading.
 
 ## 4. Rules that keep it exact (each one cost a debugging session)
 
+**SDCC stacks (Mean Santa).** Z80 PUSH/POP data and packed arguments remain
+little-endian bytes; translated control links may be TI addresses. SDCC can
+leave SP odd. A TMS9900 word save then rounds down and can overlap byte-pushed
+arguments or the return link. Preserve byte alignment and use bytewise saves
+where necessary; do not silently align SP. Audit alternate-register links
+too (Mean Santa's fill wrapper carries its continuation in HL'). For isolated
+tests, distinguish a capture after Z80 CALL from a TI `Cxxxx` entry before its
+prologue: Mean Santa needs captured SP+2 there, but a region entry retains SP.
+Use the current translator's ABI rather than importing another game's stack
+assumptions. Compare live stack locals even if whole-game lockstep excludes
+stack scratch. Normalize only proven control-link addresses, never ordinary
+data or unexplained divergences.
+
 - **Keep the interrupt polls where the translation had them** (loop heads),
   with the `Zxxxx` label on the `TB 2`, and list them in the region's polls
   tuple: the lockstep counts time in poll-site visits on both machines, and
@@ -104,7 +118,9 @@ read before reloading.
   handler up to 200 scan lines late and half the deferred sprite writes
   landed mid-frame. You may move a poll to another Z80 address (once a
   list instead of once an object), as long as the Z80 address in the tuple
-  is where the label is.
+  is where the label is. This preserves exact replay; it does not establish
+  acceptable production IRQ latency. Additional TI-only service points and
+  destructive VDP status reads need the timing checks in `optimization.md`.
 - **A poll runs the NMI glue on the main workspace**: R0 and R15 are
   clobbered there; never keep a value in them across a poll or a `BL` into
   translated code.
@@ -136,8 +152,22 @@ read before reloading.
    test too, or it reports false differences.
 2. `tools/lockstep.py` (4 seeds x 300,000 ticks) on the final build.
 3. `tools/insntest.py` after any translator change.
-4. `speed.py` on 3 seeds; keep the change only if it is faster.
+4. `speed.py` on 3 seeds, including the affected scene and production video
+   timing checks. For a speed optimization, require a measured improvement
+   without correctness/presentation regressions; document a display fix's
+   cycle tradeoff separately. Use the optimization workflow for holdouts.
 5. Front-end tests (`gotest.py`) when input or screens are involved.
+
+Run comparisons against the actual assembled native/region and original Z80
+machine code. Include boundary values and full observable exits, not just the
+nominal return value: signed comparisons, zero counts/divisors, clipping,
+byte wrap, registers/flags, live stack locals, VRAM and sound. For TMS9900
+`C`/`CB`, source-versus-destination ordering differs from `CI`'s
+register-versus-immediate ordering; execute boundary cases to verify branches.
+If a test fails, check its mapping, byte order and entry convention before
+blaming either machine. Fix harness errors explicitly; do not hide them by
+excluding outputs. Require nonzero failure exits and a relevant mutation
+self-test for new gates (wrong bound, wrong VRAM base, skipped sprite phase).
 
 ## 6. Translator improvements
 

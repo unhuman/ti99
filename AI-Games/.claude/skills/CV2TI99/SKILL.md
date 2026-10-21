@@ -3,16 +3,22 @@ name: CV2TI99
 description: >-
   Port a ColecoVision game to the TI-99/4A by statically translating its Z80
   code (and the parts of the ColecoVision BIOS it uses) to TMS9900 assembly,
-  built as a 128 KB bank-switched cart. Covers the inputs you must get first
+  built as a bank-switched cart sized to its measured code/data budget.
+  Covers the inputs you must get first
   (the game ROM and the ColecoVision BIOS), the trace/annotate/translate/build/
   lockstep pipeline, the TI front end (TI994AVISION title rebrand, circled-X
   copyright, skippable title, entering the game from the option screen,
   keyboard mapping), game-over and black-screen handling, and the TMS9900
-  speed techniques that actually paid off. Load before starting or changing
+  speed techniques that actually paid off, including SDCC helpers, frame
+  pacing and sprite presentation. Load before starting or changing
   any ColecoVision-to-TI port (Decompiled/CVZaxxon is the worked example).
 ---
 
 # CV2TI99: ColecoVision → TI-99/4A
+
+Shared instructions for Claude and Codex; use this same folder from either
+assistant. This skill covers static ROM translation, including SDCC-built
+Coleco games. CVBasic source ports use the separate CVBasic skills.
 
 The two machines share the TMS9918A video chip and the SN76489 sound chip, so a
 ColecoVision game can be translated instruction by instruction and keep its
@@ -74,9 +80,11 @@ wants extras (the Zaxxon explosion was specified from the arcade).
    (`TB 2 / JEQ $+6 / BLWP @NMIV`); the glue runs the game's NMI handler. Honour
    the game's own critical sections (Zaxxon: `RST 8` sets `$719E` bit 0 and the
    handler only marks the NMI pending).
-5. **Build** (`tools/build.py`, `layout.py`, `screens.py`): 128 KB non-inverted
-   bank-switched cart (`_8`, 16 banks of 8 KB, select by writing `>6000+2n`). The
-   runtime is a shared segment (`BANK ALL`, repeated in every bank); hot code
+5. **Build** (`tools/build.py`, `layout.py`, `screens.py`): non-inverted
+   bank-switched cart (`_8`, 8 KB banks, select by writing `>6000+2n`); these
+   examples use 128 KB. Size from the actual layout, not the original ROM size.
+   The shared segment (`BANK ALL`) repeats in every bank; bank-independent
+   helpers can instead live once in reserved RAM. Hot code
    goes to RAM (holes in the BIOS image and the cart image, copied from payload
    banks at boot) and the shared segment; cold code to banks via `FARCALL`. Hot vs
    cold comes from a profile of the Z80 reference (`build/prof_z80.json`).
@@ -169,9 +177,14 @@ gave ~0: only removing work helps. Measure with `tools/speed.py ... --pass`
 (input keyed to logic passes so both machines play the same game; frame-keyed
 random input makes the machines play different games and gives misleading
 ratios) and profile with `tools/tiprof6.py` (listing-based attribution).
-The translation runs about one TMS9900 instruction per Z80 instruction at
-2.6x the time each, so it tops out near half speed; past that only removing
-work helps (`native-porting.md` section 0).
+The near-half-speed ceiling describes measured Zaxxon/River Raid translation
+paths; profile each game's compiler/library overhead before assuming that limit.
+
+For slow loading, houses, weather or flicker, read `optimization.md`'s
+measurement workflow and Mean Santa sections. `Decompiled/MeanSanta` is the
+worked example for SDCC natives, elapsed-frame waits and double-buffered sprite
+tables. Exact lockstep, production video timing and gameplay throughput are
+separate checks; passing one does not establish the others.
 
 ## 6. Verification (non-negotiable)
 
@@ -202,8 +215,10 @@ work helps (`native-porting.md` section 0).
 
 - Build both the cart and its docs together; keep `README.md` (controls, what
   differs from the original, measured speed) in sync with every change.
-- Put every candidate cart in `build/` and tell the user the path. Do not
-  relaunch, kill or key-drive a Classic99 the user is playing without asking.
+- Put every candidate cart in `build/` and tell the user the path. Respect the
+  user's emulator use and existing authorization; do not ask again when control
+  was already granted. Follow the repository's visible-review rule: newest
+  production cart, ordinary starting conditions, verified path/hash.
 - Another agent (Codex) may be working on the same folder: check file times and
   running processes before editing; never edit files another agent is changing.
 - Pitfalls that cost real time are listed in `optimization.md` § Pitfalls.
