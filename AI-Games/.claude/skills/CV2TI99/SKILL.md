@@ -33,7 +33,11 @@ regions. Read its `README.md` first.
 BIOS): Joust's region map and far jumps plus Zaxxon's BIOS natives, the
 vblank-deferred VDP queue, and the measurement and porting tools
 (`ipass.py`, `zincl.py`, `xlatcost.py`, `routest.py`, `vtime.py`, `vregs.py`,
-`pdist.py`, `gotest.py`). Start a new port from it.
+`pdist.py`, `gotest.py`). Start a new port from it. Its most optimized copy,
+`Decompiled/RiverRaid.3` (Codex's rounds plus a third), adds the candidate
+archive and holdout benchmark (`optstage.py`, `holdout.py`), the 22-gate
+`nextverify.py`, the per-instruction cost listing `hotlst.py`, and the
+row cache. `native-porting.md` sections 7-8 say what paid and what did not.
 
 ## 1. Inputs: get them before anything else
 

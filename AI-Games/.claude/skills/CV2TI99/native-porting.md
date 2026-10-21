@@ -116,6 +116,12 @@ read before reloading.
 - A native that reads the keyboard directly (POLLER) bypasses hooks put
   in the port routine (`CTRL`): River Raid's game-over "fire = #" pulse
   had to be added to the native POLLER too (caught by `gotest.py`).
+- **xas99 evaluates expressions left to right, with no precedence.**
+  `>1000+>D0*8+>4000` is `((>1000+>D0)*8)+>4000`.  In River Raid's
+  game-over box the wrong address walked a loop past its end, and its
+  "address" bytes with bit 7 set became VDP register writes: display and
+  interrupts off, a hang in the frame wait.  Write such addresses as
+  computed constants, or order the terms so left-to-right is right.
 - Byte/word addressing: a word access ignores bit 0; a buffer copied as
   words must start even (River Raid's sprite list at $7194 is; an odd
   count copies one byte more, which must stay inside the destination).
@@ -218,11 +224,12 @@ Instructions a pass (`ipass.py`) went from 3,383 to 2,918 (the Z80 runs
   sprite builder v2.  Translated straight-line logic is already ~1 TI
   instruction a Z80 instruction.
 - **Did not work: a RAM copy of VRAM** to avoid VDP reads (2x slower).
-- **Did not work: queueing more VDP writes to avoid vblank waits.**  The
-  writes that waited (the terrain's new rows while a name-table switch is
-  queued) are read back at once by the terrain test, so the read waits
-  instead, and the overlap checks cost more than they saved.  Measure the
-  waits (who calls `VSYNC`, tools/vsywait.py) before widening the queue.
+- **Queueing more VDP writes to avoid vblank waits: failed first, worked
+  later.**  Copied into the queue, the scroll's rows cost more than the
+  waits they saved.  Once a row cache held every row's bytes in RAM
+  (section 8), a queued row became a 6-byte pointer to its cache slot, and
+  that removed every `VSYNC` wait (2.3% of the pass).  Measure the waits
+  first (who calls `VSYNC` and for how long).
 - **Checker for the deferred writes**: `tools/defercheck.py` plays with
   TI-only behaviour on and fails on any VDP read or direct write that
   touches a queued range (deferral never changes RAM, so the lockstep is
@@ -246,3 +253,114 @@ same instruction count).  Generated regions: when the code walks ROM
 tables, a build-time generator (`tools/gen_rafea.py`) can turn them into
 TI-ready tables (TI addresses, big-endian words) and unroll the call
 sites, keeping one poll per original call so the lockstep ticks match.
+
+## 8. The next rounds: Codex's techniques and RiverRaid.3
+
+Two later passes took River Raid from 67 to 81 passes per 100 frames (the
+ColecoVision does 95): Codex's (`Decompiled/RiverRaid.codex`, its DESIGN.md
+has the detail) and RiverRaid.3.  What they add to the process:
+
+**Process.**
+- Archive every candidate cart with its sources and judge it on fixed
+  replays: `tools/optstage.py save|bench|record TAG` (three seeds, the
+  same pass-keyed input on both machines) plus `tools/holdout.py TAG`
+  (other games and seeds that placement was never tuned on).  Accept only
+  if the total rises and no held-out workload falls by more than 1%; keep
+  the decisions in `build/optimization/process-ledger.json`.  Some
+  workloads are dominated by fixed waits (River Raid's game 7 / seed 5:
+  deaths and 76-frame respawn pauses) and never move.  That is not a
+  measurement fault.
+- `tools/nextverify.py --tag TAG` runs all 22 gates in parallel: lockstep
+  4 x 300,000 ticks, routine checks with mutation self-tests, sound,
+  arithmetic, collision dispatch, cache fixtures and audits, the deferral
+  checker on three games, video timing, game over and the instruction
+  test.  Run it in a **copy of the tree** (`scratchpad/r3/mkverify.sh`
+  copies to `../RiverRaid.3v`): the checks read `build/`, and rebuilding
+  during a 15-minute run silently mixes two carts.
+- `tools/hotlst.py`: the TI listing annotated with **cycles and executions
+  per pass for every instruction** (`build/hot.lst`, per-label totals at
+  the top).  Group its lines by source file, by Z80 routine, by
+  instruction pattern: the whole cost model at once, which per-routine
+  profiles hide.  Normalise the profiler's bank key (-1 = not a cart
+  bank) or a third of the cycles fall out of the totals.
+
+**Costs that do not show in a routine profile.**
+- **NMI glue re-entered at every poll.**  When the handler latches the
+  interrupt (edge-triggered like the Z80) until the game reads the VDP
+  status, every poll between the vblank and the game's status read
+  re-enters the glue just to find the latch set: about 15 a pass, 2.5%.
+  TI-only fix: the glue reads the status itself (which drops the line)
+  and ORs it into a shadow that the game's next status read merges in
+  (River Raid's `STSHAD`); with PACE off it stays 0, so the lockstep
+  is exact.
+- **Idle inside VSYNC.**  A deferred-write hazard check that waits for the
+  vblank shows in the profile as a busy wait.  Time each caller (entry to
+  exit cycles): River Raid's scroll row copy waited 0.08 times a pass but
+  19,000 cycles each time.  Queue the dependent writes behind the queued
+  register write instead (they then land in the right order at the
+  flush); check the reads against the queue (`OVQ`) rather than waiting
+  on every read.
+- **Late vblank service.**  Removing per-list polls let the flush start
+  late enough to put pattern-table switches at line 11-19
+  (`videocheck.py` caught it, with a single violation in 600 frames).
+  The same check later caught a long LDIR (3,700 cycles, no poll).  Give
+  long natives a **TI-only service point**: `MOV @DEFER,R0 / JEQ / CLR R12
+  / TB 2 / JEQ / BLWP @NMIV`, polling only while writes are queued (never
+  in the lockstep).  Clear R12 first in any workspace that does CRU I/O.
+
+**Natives that paid.**
+- LDIR by shape: DE = HL + 1 is a fill (write the byte as words); a copy
+  whose addresses have the same parity and DE - HL >= 2 (or DE < HL) can
+  go by words in a RAM loop, and every word read holds what the
+  byte-by-byte LDIR would read there.  Everything else stays byte by byte.
+  (Through the scratchpad word loop, called from the BLWP workspace, it
+  passed every emulator gate and broke Classic99: below.)
+- A list with one fixed object (River Raid's player, $B130): generate its
+  walk with the record's handler called directly.  This drops the generic
+  loop and the 13-way `jp (hl)` compare chain (about 600 cycles a pass).
+- Registers the original loads for every list but every handler
+  overwrites first (A in the object pass): drop the loads, and make the
+  generator **assert** the handler property from the ROM (first
+  instruction loads A, or calls a routine whose first instruction does).
+- Scratchpad word copy unrolled 2x, entered at the second copy for an odd
+  count.  Free scratchpad bytes are worth hunting for.
+- Load an index byte straight into a register's low byte (`MOVB
+  @x,@>8319` with R12's high byte 0) instead of `MOVB` + `SRL 8`; move
+  table bytes memory-to-memory when no register value is needed later.
+- Keep computed values in scratch registers as well as storing them (the
+  collision box sums): exact, and each reload becomes a register move.
+
+**Run every candidate in Classic99, not only in `tiemu.py`.**  River
+Raid's round-3 cart passed the lockstep, all 22 gates and random-phase
+starts in `tiemu.py`, and on Classic99 scrambled the title the moment a
+game was picked.  Found by bisecting archived carts in Classic99 with a
+script that starts its **own** instance (never the user's window), passes
+the TI title and menu, presses the level key and screenshots
+(`Decompiled/RiverRaid.3/scratchpad/r3/probe99.ps1`, `-Fly` holds up and
+fires to play a little).  It takes a minute a cart; do it before handing
+a cart over.
+
+**Space is the real limit late in a port.**  The hot budget (RAM areas +
+the shared bank segment) fills up.  Every runtime byte comes out of the
+shared segment, so each new native pushes translated code into the banks,
+and the builder may then fall back to a different chunk-merging layout
+that is slower on its own.  Measure what RAM the runtime actually uses (River
+Raid's 256-byte bank stack never went below 16 bytes, and the 256-byte
+queue below 136) and give the rest to code.  A 256 KB cart (`build.py`
+`RR_MAXCOLD=27`) adds cold room but no hot room.
+
+**Codex's techniques, in short** (all in `Decompiled/RiverRaid.codex/DESIGN.md`):
+- A generation-tagged row cache: 24 slots of 32 bytes, with VRAM row
+  pointers into them.  A copied row is a pointer move; the transfer buffer
+  is rebuilt only before its consumer.  It needs an audit at every
+  boundary (`rowcachecheck.py`, which must model queued writes) and
+  mutation fixtures.
+- Fused box tests with the ROM sizes as immediates (validated at build
+  time); shared return slots (R11 as a miss continuation).
+- Fixed-size row transfers straight into the scratchpad loops; compact
+  sprite paths for common type records (descriptors validated by the
+  generator).
+- Incremental sound-channel assignment when only one area changed.
+- Rejected with measurements: a native pattern upload that ran 20% fewer
+  cycles in its own routine and still lost overall (placement), and
+  profile-guided placement that lost on a held-out workload.
