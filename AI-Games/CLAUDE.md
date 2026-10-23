@@ -50,6 +50,10 @@ The Mean Santa lessons cover production frame/VDP timing separately from exact
 lockstep, complete sprite-priority phases, SDCC stack layout and ROM/RAM budgets.
 The reverse direction (a TI-99/4A game translated to ColecoVision Z80) is
 [TI992CV](.claude/skills/TI992CV/SKILL.md); load it before starting such a port.
+Its current Parsec lessons cover little-endian runtime words, guarded native
+optimizations, atomic VDP transactions, algorithm/RNG and clocked parity tests,
+PSG speech limits, debounced UI, the one-time TI-style startup screen, and
+`game.rom` / `game_dev.rom` / `game_ls.rom` output naming.
 
 ## 3A. CVBasic hazards (the current platform — always loaded)
 

@@ -6,7 +6,7 @@ description: >-
   assembly, built as a 32 KB cart or a MegaCart. The inverse of CV2TI99.
   Covers the inputs you must get first (the game's ROM banks, the TI console
   ROM and GROM), feasibility checks (GPL/GROM games, 32K-RAM games, speech),
-  the trace/annotate/translate/build/lockstep pipeline, the big-endian
+  the trace/annotate/translate/build/lockstep pipeline, the little-endian
   workspace-in-RAM register model, lazy TMS9900 status flags, the console
   ISR replaced natively (sound lists, sprite motion, VDP timer), the TI
   keyboard rebuilt from the Coleco controllers, the Coleco cart header and
@@ -32,14 +32,13 @@ are the parts that differ:
 | Frame interrupt | maskable (`LIMI 2`), runs the console ISR | **NMI** (cannot be masked except via VDP R1 IE bit) |
 | Input | 8x8 keyboard matrix over CRU, two joysticks on columns 6/7 | two controllers: joystick + 2 fires + 12-key keypad |
 
-**Status of this skill (2026-10-21): the first port (Parsec,
-`Decompiled/CV_Target/Parsec`) is at the feasibility stage; §10 has what it
-has found so far.** It is the
-CV2TI99 method inverted plus what is known about both machines. Treat every
-hardware fact here as something to confirm against the existing emulators
-(`Decompiled/CVZaxxon/tools/z80emu.py`, `ti99emu_base.py`, `vdp.py`) before
-relying on it. Rewrite the parts that turn out wrong, and add the lessons
-(with dates) as the first port finds them, the way CV2TI99 grew.
+**Status (2026-10-22): Parsec is a working 128 KiB MegaCart port.**
+Its release has native performance paths, all-family original-code enemy
+checks, optional PSG speech, and a Coleco front end. Timed parity is measured,
+not assumed; speech remains less clear than the original TI synthesizer.
+Use `Decompiled/CV_Target/Parsec/tools` as the current reverse-port template.
+Earlier forward-port tools remain useful references. See §10–12 for the
+corrections learned from the complete port.
 
 **Reusable tools (copy from `Decompiled/CVZaxxon/tools` / `Decompiled/RiverRaid/tools`):**
 the roles flip. `ti99emu_base.py`/`tiemu.py` (cycle-counting TMS9900 + GROM +
@@ -80,8 +79,12 @@ Stop and ask the user if any input is missing. Never download ROMs; use the user
    needs the Super Game Module (24 KB extra RAM). That is a hardware add-on, so **ask the user
    before choosing it**. Data the game only reads, even if copied to RAM at
    boot, can stay in ROM.
-3. **Speech** (`>9000`/`>9400`, the speech synthesizer): the Coleco has none.
-   Ask whether to drop it or substitute a sound effect.
+3. **Speech** (`>9000`/`>9400`): the Coleco has no LPC synthesizer, but speech
+   can be rendered through its existing PSG. Parsec decodes the original LPC
+   offline and resynthesizes it as bounded tone/noise frames (§11). Preserve an
+   existing user choice; otherwise establish whether speech is required.
+   Do not promise TI-quality speech or choose CPU-blocking PCM without measuring
+   its effect on input, sprite motion and the full game loop.
 4. **Code run from RAM.** TI games copy hot loops into the 16-bit scratchpad
    for speed. If the copy is never modified afterwards, translate the ROM
    original and drop the copy. Self-modifying code (writes to an address that
@@ -117,18 +120,16 @@ Stop and ask the user if any input is missing. Never download ROMs; use the user
 
 ## 3. Translation model
 
-**Memory stays byte-identical and big-endian.** TI scratchpad `>8300-83FF` →
-Coleco `$7000-$70FF` (one constant offset); expansion-RAM bytes the game uses
-go into the rest of the 1 KB (or SGM RAM) through a table the translator
-applies to every absolute address; cart data stays at a known offset in ROM.
-Keeping TI byte order means:
-- lockstep compares raw RAM bytes directly;
-- pure word copies need no swap (`ld hl,(src) / ld (dst),hl` moves the two
-  bytes unchanged);
-- **arithmetic, compares and address use of a word need a byte swap** (load
-  the high byte into H and the low into L, or compute bytewise). Forgetting
-  the swap is silent: values are plausible and wrong. `insntest.py` must
-  cover every arithmetic form with random operands.
+**Use little-endian TI words in the Z80 runtime (Parsec's tested model).**
+TI scratchpad `>8300–83FF` maps to Coleco `$7000–70FF`; each TI byte maps to
+the opposite byte of its relocated word (`offset ^ 1`). Word loads/stores can
+then use `LD HL,(nn)` directly. Apply this consistently to mapped immutable
+data, hot-page copies, mutable workspaces and patched inline parameters.
+VDP streams and GROM byte streams retain their original external byte order.
+Lockstep converts the runtime representation back to TI order before comparing.
+The former big-endian proposal cost swaps on every hot word operation; do not
+mix the two models. Check odd-address bytes, scratchpad mirroring, page wrap,
+register aliasing and both words of MPY results against the original core.
 
 **Registers live in RAM at WP + 2n, as on the TI.** TMS9900 code can and does
 read its registers as memory (`MOV @>8302,R0` is R1 when WP = `>8300`), and
@@ -198,7 +199,7 @@ and returns (`push af / ld a,1 / ld (nmiflag),a / pop af / retn`):
 **Set SP first thing** (top of RAM), before anything can enable the
 interrupt, and point the header's NMI vector at the handler.
 
-**The console ISR becomes a native routine**, run at poll sites (loop heads and
+**Translate the console ISR, replacing measured hot regions with checked natives**, run at poll sites (loop heads and
 `LIMI 2` sites while the software enable flag is set and the frame latch is
 set), mirroring how CV2TI99 polls for the TI's interrupt. It must reproduce
 what the game depends on, chosen from the ISR's control flags at `>83C2` and
@@ -229,7 +230,8 @@ address/data emulation over an embedded copy of **only the ranges read**
 ## 5. Controls: a virtual TI keyboard
 
 Rebuild the TI's 8x8 keyboard matrix (and the two joystick columns) from the
-Coleco controllers once per frame. All of the game's own CRU keyboard code and
+Coleco controllers at each original physical input scan. A once-per-frame cache
+can be stale by the time gameplay calls KSCAN; refresh there as well. All of the game's own CRU keyboard code and
 KSCAN then work unchanged. First list **every key the game tests** (CRU column
 reads and KSCAN key comparisons, from the trace) and assign each one a Coleco
 control. The default mapping, inverse of CV2TI99's:
@@ -245,8 +247,10 @@ control. The default mapping, inverse of CV2TI99's:
 | letters the game needs (Y/N, P for pause, ...) | spare keypad keys; list them in the README and on any screen that names the TI key |
 | QUIT (FCTN =) | not mapped |
 
-**Each keypad key has one meaning across the whole game** (ti-input-screens
-skill: a key that dismisses one screen must not act on the next). Reading the
+**Controls belong to a screen/state, with explicit release gates between actions.**
+A key may toggle speech on a title, pause in flight, and restart at game over,
+provided the prompts make those roles clear. A held key must never dismiss one
+screen and also act on the next. See `ti-input-screens` and §12. Reading the
 controllers: `OUT ($80)` selects keypad mode, `OUT ($C0)` joystick mode,
 then read `$FC` (controller 1) or `$FF` (controller 2), active low. The
 keypad nibble decodes through the table CV2TI99 §3 describes at BIOS
@@ -283,7 +287,7 @@ in the README.
 
 ## 7. Speed
 
-Unlike CV2TI99, speed is not expected to be the main problem. The Z80 executes
+Translation overhead and ISR cost can be the main performance problem. The Z80 executes
 far more instructions per frame (CV2TI99 measured ~6,400 Z80 vs ~1,850
 TMS9900), but one TMS9900 instruction (16-bit, memory-to-memory) becomes
 several Z80 instructions plus byte swaps and flag work, so **expect roughly
@@ -328,7 +332,11 @@ translated code (`CV2TI99/native-porting.md`).
   launch**. If approved, ColEm needs `-ntsc -sync 60` (CLAUDE.md: its default is
   unsynchronised) and CoolCV needs scan-coded synthetic keys. Until then, rely
   on `z80emu.py` screenshots plus lockstep.
-- Put every candidate cart in `build/` and tell the user the path.
+- Put every candidate cart in `build/` and tell the user the path. The playable
+  release is `game.rom`; development is `game_dev.rom`; exact diagnostic
+  lockstep is `game_ls.rom`. Update scripts, defaults and docs together. Retained
+  immutable historical fixtures may keep their old names. Do not leave a stale
+  `game_rel.rom` beside the new playable file.
 - Keep `README.md` (controls mapping, what differs from the original,
   measured speed, RAM map) in sync with every change.
 - Check for another agent (Codex) working in the same folder before editing.
@@ -406,9 +414,10 @@ code for each switch.
 112% flight / 95% crash claims are withdrawn. A fixed short FIRE tap did
 not reliably start the Coleco game, and aggregate loop rates mixed flight
 with different death/respawn proportions. Verify actual gameplay entry,
-then compare matching phases with real frame timing. The current opening
-is 132 Coleco frames versus 133 TI frames; the previous release took 236.
-See the game's README for all measured phases and tolerances.
+then compare matching phases with real frame timing. The early corrected
+opening was 132 Coleco frames versus 133 TI frames; the broken release took 236.
+Those are historical measurements. Use the current hash-bound game reports for
+current timings and tolerances; a later optimization can change them again.
 
 **Complete static enemy tables, not just profiled targets.** Parsec's
 second-wave >BEE4 initializer was missing and hit dispatch trap 1 in ColEm.
@@ -422,3 +431,153 @@ Deleting >BEE4 from dispatch reproduces and rejects the original trap.
 already selected, choosing Video -> Draw All Frames resolved the user's
 jerky movement and sound complaint without changing the ROM. Verify the
 loaded cartridge and all-frame setting before tuning gameplay timing.
+
+
+## 11. Reusable performance and correctness lessons (Parsec, 2026-10-22)
+
+**Start from the working reverse-port harness.** Preserve a baseline ROM,
+symbols, mapping pickle and SHA-256 before changing the translator. Source
+addresses are diagnostics, not assumptions about generated Z80 addresses.
+Build development, lockstep and release sequentially. Retain required tracing,
+assembly, bank-selector, RAM/stack and asset gates. Checks must execute the
+assembled production ROM, and negative controls must reject an actual bad
+opcode, bank, guard or previously failing ROM.
+
+**Profile the whole frame and matching gameplay phases.** Capture original
+power-on/title/game entry first. Short fixed FIRE taps can compare active TI
+play with an idle Coleco screen. Observe the original game-start event and
+release the button when the release build waits for release; do not inject
+the start flag. Measure first enemy, active movement, explosions, respawn,
+next wave, ground crash and speech under load separately. Keep the established
+per-phase tolerance; never relax it merely to accept a candidate. Exact
+lockstep validates semantics but cannot establish real-time parity.
+
+**Make native contracts exact before making them common.** Useful patterns:
+- Resolve one translation per `(TI PC, WP)` instead of merging unrelated
+  workspaces. Propagate every indirect callee's return destinations.
+- Fold immutable data reads; copy genuinely hot pages into fixed ROM. Reserve
+  an explicit map/bitmap for mutable words inside otherwise immutable pages.
+- Fuse flag producers and consumers, but respect BLWP/RTWP's restored flags and
+  prevent fusion from swallowing release-only branches. Check emitted assembly.
+- Predict returns only where the caller pushed a compatible prediction frame;
+  retain the safe indirect dispatch fallback and bounded sentinel stack.
+- Specialize bounded copy/fill/rotate loops with exact pointer, counter and
+  final-register results. Guard both below-workspace and above-workspace buffers,
+  page wrap, register aliases, even/odd byte lanes and all supported workspaces.
+- For TMS shifts, count zero means sixteen. Preserve the full word after a
+  byte-output rotate; matching only emitted pixels can hide bad live registers.
+- Both members of an alternating index table must reach the fast path. Parsec's
+  terrain table selected FFC4 **and FFC5**; accelerating only one left half the
+  terrain work slow and delayed enemy turns.
+- Use lookup tables for immutable coordinate transforms and a bounded native
+  star/sprite loop. Preserve the final iteration's live workspace outputs.
+- Inline tiny, frequent VDP helpers when justified by profiles; keep their
+  interrupt ordering and port-spacing contracts.
+- Common collision probes can use byte arithmetic when coordinates and indices
+  are proven byte-sized/aligned. Keep signed/general fallbacks, inactive-sprite
+  rules, exact inclusive hit boundaries, the last distance result and poll site.
+  Test both sides of each boundary and rejected guard cases against TI code.
+
+**VDP transactions must be atomic with respect to cooperative interrupts.**
+An original helper that yields *after* setting the VDP address can become
+unsafe when the translated ISR reads a VRAM sound list. The read changes the
+address; the pending sprite upload then overwrites sound data. Symptoms include
+stray high tones, huge sound-packet counts, slowdown, overshoot and apparent
+freezes after repeated deaths. Yield **before** installing the transfer address,
+then keep address and data together. Apply the fix to inlined call sites too.
+Inject the actual ISR address-changing side effect at the assembled poll; check
+ordered reads/writes, final VRAM/latch/buffer, and repeated natural deaths. The
+original bad ordering must fail. NMI must never touch the VDP latch or mapper.
+
+**Enemy parity is an algorithm audit, including variability.** Enumerate all
+initializer, logic, path and velocity tables from the original ROM. Establish
+which choices are random, which depend on reserves/level/difficulty, and which
+track the player. Preserve unequal selector probabilities; do not flatten them
+into equally likely choices or hard-code a recorded path. Exhaust a small RNG's
+state space (Parsec: all 65,536 states), test all flight tables and legal branch
+boundaries, then advance the original frame timer between motion steps. A
+trajectory harness with a frozen timer misses acceleration and stream exhaustion.
+Derive sentinel constants from the original image, not guessed hexadecimal
+values. Combine state/ordered-VDP tests with clocked runs of every family and
+occasional firing. Slower logic allows ISR velocity to move farther before a
+turn; optimize that cause before changing the original velocity/path constants.
+
+**Protect genuinely late player boundary checks at the motion point.** Establish
+the original clamp/stop threshold and legal movement first. A release guard may
+enforce it for the live player's upward motion when cooperative work delays the
+main-loop check. Scope it by sprite identity and live state; clear it before
+death. Test delayed checks, wrapping, maximum lift, and nonplayer motion. Record
+this as a deliberate release difference, not an exact-native substitution.
+
+**PSG speech is possible but is not LPC-equivalent.** Decode the user's original
+speech data offline with the appropriate TMS5200/5220 model, preserving phrase
+IDs and timing. Parsec analyzes 8 kHz PCM and emits 60 Hz frames for three tone
+oscillators plus noise. Weighted amplitude spectra, 2 dB quantization, original
+pitch/voicing guidance, stable oscillator assignment and noise-mode changes only
+when needed improved the measured result. User listening still preferred TI.
+WAV bitrate or normalization cannot restore detail lost in PSG resynthesis.
+
+Use a bounded producer at a safe service point and a two-frame RAM queue.
+The fixed-ROM NMI may emit one already-queued PSG frame; it must preserve
+registers/flags, never bank-switch, and never read VDP status. Keep clips inside
+banks, verify every frame of every clip, and measure worst-case service cycles,
+queue cadence and PSG spacing. Shadow the game's complete PSG register/latch
+state while speech owns the chip; restore tones, volumes, noise mode and latch,
+including continuation-byte behavior. Bound mixer headroom and render through
+the real target emulator's PSG model to check clipping. Compare separate,
+clearly labeled original/old/new audio with the user. Objective spectra are
+supporting evidence, not proof of intelligibility. Preserve user feedback that
+speech remains less clear.
+
+## 12. Coleco front end convention (user-requested, 2026-10-22)
+
+Use a **one-time TI-style startup screen**, shown only on cold cartridge start,
+before the game's own title. Construct it from native VDP character cells and
+the user's console font/logo assets; never scale a screenshot into a bitmap.
+Parsec's template is `tools/ui_assets.py` plus `tools/ui_runtime.asm`:
+- Cyan background, native TI logo, sixteen equal two-character color segments
+  across the full 32-column width, three rows tall at rows 1–3 and 18–20.
+- Top `UNHUMAN INSTRUMENTS` at row 9, column 7 (user-reviewed alignment),
+  `HOME COMPUTER`, and `READY-PRESS ANY KEY TO BEGIN` in the original native font.
+- Footer uses a circled **x**, `2026  UNHUMAN INSTRUMENTS`; the game's own title
+  also uses the circled x, while its original game year/credit remain intact.
+- Play the original TI **quick** beep on display and again on a keypad key or
+  either fire button. Both use the same short duration (about 11 NTSC frames).
+  Derive the PSG command bytes from the original console sound log. The original
+  long cold-boot tone is intentionally shortened to the key-feedback duration.
+- Scan input while the startup beep runs. After the advance action, finish the
+  quick beep and consume release before entering the game's title. A held input
+  must not start gameplay or activate a title option. This startup does not
+  reappear after game-over BACK or REDO.
+
+Keep input meaning explicit by state. Parsec's title has `* SPEECH ON` /
+`* SPEECH OFF`; `*` toggles voice and other keypad keys or either fire start.
+Speech defaults ON at cold reset and persists across games and title visits.
+OFF suppresses requests and clears the original busy flag while leaving effects
+enabled. Store that setting outside any RAM the original game initializes.
+Do not put a gameplay pause-help line on the game title (user found it confusing).
+
+During active play any keypad key pauses, and a **new** keypad press/resume
+requires release again. Freeze logic, sprite auto-motion, gameplay timers and
+speech queue consumption together; mute output while paused and restore effects
+or resume queued speech afterward. Save/restore the message row if displaying
+PAUSED. Merely waiting in the main loop while the ISR moves sprites is wrong.
+Do not make fire pause the game. This mapping supersedes numeric gameplay keys
+where all keypad keys are assigned to pause; document any displaced controls.
+
+At game over show `PRESS * REDO OR # BACK`, centered from its actual encoded
+length. REDO starts another ordinary game; BACK returns to a visible, reusable
+game title. Require release at **every** discrete startup/title/toggle/pause/
+resume/replay transition. A timer-based repeat delay is not a release gate.
+Gameplay directions and firing remain continuous controls. Test all twelve
+keypad keys and both fire buttons, long holds, release/new press, natural game
+over, persistence, and a mutation removing the actual assembled release gate.
+
+Keep new UI code in a measured free switched-bank region when fixed ROM is
+tight. Use a fixed-bank trampoline preserving the caller's mapping and registers.
+Budget UI data, speech, selector addresses, queue RAM, saved rows and stack
+together. Restore the original entry VRAM after the startup screen so the game
+starts from the same machine state. UI and decorative terrain patches belong
+in editable assets/generators; regenerate source-derived output together.
+Retain source-ROM algorithm checks in dev/lockstep and separately test intended
+release differences. The normal `game.rom` must remain the review handoff.
