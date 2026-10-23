@@ -540,6 +540,21 @@ Every game is built the same way — that consistency is the point.
   with `-ntsc -sync 60` (Choplifter's `launch-coleco.ps1` does this), then compare
   gameplay pacing. Do not tune game constants against an unconstrained emulator.
 
+- **ColEm review must also draw every frame (Parsec, 2026-10-22).**
+  Use Video -> Draw All Frames with NTSC 60Hz and normal wave synthesis.
+  The user reported jerky movement and wrong sound, then confirmed smooth
+  play and correct sound immediately after selecting all frames, without a
+  ROM reload. Check the emulator's loaded cartridge, not just a launcher
+  command: an explicit File -> Open and saved-state cartridge checksum
+  verified the corrected release in this session.
+
+- **Static translation profiles do not enumerate complete dispatch tables.**
+  Parsec froze on enemy initializer >BEE4: play profiles had reached only
+  two of eight initializer entries. Trace every entry of bounded immutable
+  ROM tables, include indirect callees in return analysis, and regenerate
+  the trace during builds. Retain real emulator freeze states as regression
+  fixtures and verify that removing the missing entry reproduces the trap.
+
 - **SDL emulator input needs scan codes.** Windows `keybd_event(vk, 0, ...)`
   reached Classic99 but delivered no input to CoolCV, despite valid foreground
   focus and screenshots. Supply the scan code from `MapVirtualKey(vk, 0)`;
@@ -738,3 +753,66 @@ for helpers that use a different BIOS offset. A successful translation and
 assembly do not validate indirect data addresses. The boss regression
 compares the complete write result with the original table and rejects the
 previous ROM. See Decompiled/CVZaxxon/DESIGN.md for the concrete mapping.
+
+Mean Santa (October 21, 2026): sound cleanup calls the original routine with
+0..22 although its song table has 21 entries. The out-of-range probes read
+cartridge code and BIOS code as status bytes, then harmlessly fail a compare.
+Omitting the cartridge byte from the TI map crashed after dismissing the
+win screen; mapping it alone still left the BIOS byte overwritten by hot
+code. Preserve every incidental read and its pointer as data, and retain
+dynamic mapping when one instruction spans RAM/ROM/BIOS. A gameplay profile
+does not prove the read range. Test the entire caller's range against the
+original ROM, including cleanup after win/game over, not just valid songs.
+
+Mean Santa's later lightning stages also exposed two validation hazards:
+an opening-weather benchmark never reaches lightning, so stage explicit
+workloads and require actual effect execution; and isolated cold-routine
+tests must synchronize the software bank selector with the emulator bank
+before entry. Otherwise nested far calls restore the wrong bank and report
+false crashes. Keep the original ROM as the execution oracle for every
+effect phase/timer, including sprite cleanup and animation boundaries.
+Native ASM regions are not single-instruction translations, even when
+their entry and original next-instruction labels both remain. Exclude them
+from instruction-only comparisons and execute their complete contracts
+against the original ROM, with mutations proving that checker coverage.
+
+### PSG speech and sound-effect handoff
+
+Parsec TI-to-Coleco (October 22, 2026): software speech can use precomputed
+SN76489 tones/noise at video rate without a sample-rate busy loop. The chip is
+shared with effects: shadow every logical register AND the original latch,
+then restore both when speech ends. Restoring volumes alone leaves detuned
+effects; restoring registers without the latch misroutes a subsequent data
+byte that has no latch prefix. Noise mode 3 follows tone 2, so it cannot remain
+independent while speech owns that tone. Test active speech, effect updates,
+cancellation and the first continuation byte after handoff on assembled code.
+
+Frame benchmarks and exact stream checks do not establish intelligibility.
+Keep original decoded audio and an offline constant-rate PSG preview to
+separate conversion limitations from scheduling/emulator playback. Parsec's
+first three-tone conversion sounded broken up/underwater to the user despite
+passing timing; window smoothing alone did not fix it. Do not report audible
+quality as verified from byte equality or successful compilation.
+
+### Interrupt-safe VDP transfers and buffered PSG speech
+
+Parsec TI-to-Coleco (October 22, 2026): a LIMI 2 / LIMI 0 yield between VDP
+address setup and its data transfer is unsafe when the ISR accesses VRAM.
+The ISR can leave a sound-list address active, redirecting explosion sprite
+writes into that list. Malformed counts then create extra tones and long CPU
+stalls. Yield BEFORE address setup and keep the address/data transaction
+protected, including inlined one-byte helpers. Check assembled code with an
+interrupt that deliberately changes the VDP address; require the old ordering
+to fail. Also run repeated deaths, because short opening benchmarks missed the
+progressive corruption. Preserve the unmodified original as the exact oracle
+and document a deliberate release repair when the original itself has the race.
+
+For frame-rate PSG speech, a short RAM queue can separate banked preparation
+from fixed-bank NMI output. NMI must preserve registers and avoid changing the
+mapper or VDP latch; publish ready flags only after copying a complete frame.
+A queue cannot recover missing VDP interrupt edges while status remains pending.
+Normalize against the SUM of all channels, with room for attenuation rounding:
+per-channel normalization clipped ColEm's default mixer. Test mixer headroom,
+producer delays, double producer visits and PSG state restoration independently.
+Use ROM-driven startup audio and the emulator's real mixer as additional
+oracles; spectral improvement and exact bytes still do not prove intelligibility.

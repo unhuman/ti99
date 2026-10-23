@@ -32,7 +32,9 @@ are the parts that differ:
 | Frame interrupt | maskable (`LIMI 2`), runs the console ISR | **NMI** (cannot be masked except via VDP R1 IE bit) |
 | Input | 8x8 keyboard matrix over CRU, two joysticks on columns 6/7 | two controllers: joystick + 2 fires + 12-key keypad |
 
-**Status of this skill (2026-10-21): no port has been done yet.** It is the
+**Status of this skill (2026-10-21): the first port (Parsec,
+`Decompiled/CV_Target/Parsec`) is at the feasibility stage; §10 has what it
+has found so far.** It is the
 CV2TI99 method inverted plus what is known about both machines. Treat every
 hardware fact here as something to confirm against the existing emulators
 (`Decompiled/CVZaxxon/tools/z80emu.py`, `ti99emu_base.py`, `vdp.py`) before
@@ -331,3 +333,92 @@ translated code (`CV2TI99/native-porting.md`).
   measured speed, RAM map) in sync with every change.
 - Check for another agent (Codex) working in the same folder before editing.
 - When a fact in this skill turns out wrong, fix the skill in the same change.
+
+## 10. Lessons from the ports (dated)
+
+**Copied `tiemu.py` never runs the console ISR (Parsec, 2026-10-21).**
+`ti99emu_base.TI99.step` tests `self.vstatus`/`self.vreg[1]` for the
+interrupt, but `tiemu.TI` routes the VDP through the shared `vdp.VDP` model, so
+those fields never change and the ISR never fires. Zaxxon's TI build had its
+own ISR and never noticed. The symptom in a console-ISR game is a title screen
+that ignores every key (the timer at `>8379` and the timeout at `>83D6` never
+advance). Sync both fields from `self.vdp` at the top of `step` (Parsec's
+`tools/tiemu.py` does).
+
+**`start_cart()` skips state the console ISR needs.** Jumping straight to the
+cart's entry leaves the 9901 VDP-interrupt mask (CRU bit 2) clear and the GPL
+workspace registers unset; enabling only the mask made the ISR loop forever.
+Power the console on and choose the cart from the menu (Parsec's
+`tiemu.load()`: space at the master title, then `2`). The reference must run
+the same boot the real console does, or lockstep compares against a TI that
+never existed.
+
+**A "ROM-only" cart can be a loader for a 32K-RAM program.** Parsec's
+`PARSEC8.BIN` copies 27 KB into expansion RAM and runs from `>A000`. Measuring
+"RAM written" naively says 27 KB, which fails the 1 KB gate. Classify each
+write by time: take the frame at which code first executes from expansion RAM
+as the end of the copy, and count only bytes written after it. Parsec drops to
+71 bytes (a 32-byte workspace plus 39 bytes of inline `BL` parameters the game
+rewrites, e.g. `MOV R8,@>A1E4` patching the `DATA` word after
+`BL @>A9BA`). Those patched parameter words are self-modifying **data inside
+code**: the translator must turn each one into a RAM variable read by the
+translated call, and confirm the list statically (every store whose address
+falls inside the code image), not only from a play sample.
+
+**Random joystick + fire play covers the whole cycle cheaply.** 12,000 frames
+of random input (`play.py`) reached title, play, deaths, game over, a second
+game and the screen-blank timeout in ~5 minutes of Cygwin Python.
+
+**Lockstep that copies the reference's start state hides what the cart lacks
+(Parsec, 2026-10-22).** The harness copied the TI's VRAM into the cart at the
+game's entry, so the release cart ran from different VRAM than anything
+lockstep had verified. Rebuild the reference's entry VRAM in the cart (Parsec:
+760 bytes of RLE) and run lockstep with the cart's own start state
+(`--no-vram-copy`).
+
+**Lockstep proves states, not time: a translated ISR can starve the game.**
+Parsec moves every moving sprite in its ISR hook. Translated, a screen of
+explosion fragments filled the whole Coleco frame; the game logic barely ran,
+the explosion never ended and collisions and fire lagged, with lockstep still
+exact. Benchmark the heaviest scenes (crashes, explosions), not just steady
+play, and give the ISR path a native (Parsec `spr_motion`, tested against the
+reference on random states by `sprtest.py`).
+
+**Optimizations that reduced translation overhead:** constants for reads of
+the read-only image; fixed-bank copies of hot data pages and a bitmap for pages
+with RAM overrides; flag fusion (producer + following jumps test Z80 registers);
+liveness that treats `BLWP` as restoring the status at its return point; operand
+profiles (record each register-indirect operand's pages) for inline guarded
+accesses; return prediction (Z80 CALL + DW of the expected TI return, checked,
+sentinel frame at the base); native loops for block-transfer idioms with exact
+final registers (lockstep builds poll and write back each iteration); one
+translation per (address, workspace) pair, which removed IX-relative registers
+(the tracer's multi-WP sets were nearly all merge artifacts: 12 duplicates in
+2,751 instructions).
+
+**Release-only switches must survive the optimizer.** A `JNE` turned into an
+unconditional jump in release builds was fused into its producer's test and
+the switch silently did nothing (Parsec's blanking timeout and speech
+switches). Keep switched instructions out of fusion and check the generated
+code for each switch.
+
+**Correction to Parsec's old speed figures (2026-10-22).** The earlier
+112% flight / 95% crash claims are withdrawn. A fixed short FIRE tap did
+not reliably start the Coleco game, and aggregate loop rates mixed flight
+with different death/respawn proportions. Verify actual gameplay entry,
+then compare matching phases with real frame timing. The current opening
+is 132 Coleco frames versus 133 TI frames; the previous release took 236.
+See the game's README for all measured phases and tolerances.
+
+**Complete static enemy tables, not just profiled targets.** Parsec's
+second-wave >BEE4 initializer was missing and hit dispatch trap 1 in ColEm.
+Enumerate the complete original tables (here >AD36 and >AD46), propagate
+indirect-call return points, and avoid predicted returns where an indirect
+call did not push a prediction frame. The saved ColEm freeze now drives
+original-ROM tests for every initializer and first enemy-logic update.
+Deleting >BEE4 from dispatch reproduces and rejects the original trap.
+
+**Visible ColEm frame settings affect review.** With NTSC and wave audio
+already selected, choosing Video -> Draw All Frames resolved the user's
+jerky movement and sound complaint without changing the ROM. Verify the
+loaded cartridge and all-frame setting before tuning gameplay timing.

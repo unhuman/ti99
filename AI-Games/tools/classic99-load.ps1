@@ -53,15 +53,19 @@ for($attempt=0;$attempt -lt 40 -and $script:cartDialog -eq [IntPtr]::Zero;$attem
  [void][ClassicCart]::EnumWindows($callback,[IntPtr]::Zero)
 }
 if($script:cartDialog -eq [IntPtr]::Zero){throw 'Classic99 did not open its cartridge dialog.'}
-$fileBox=[ClassicCart]::GetDlgItem($script:cartDialog,1148)
 $script:cartEdit=[IntPtr]::Zero
-if($fileBox -ne [IntPtr]::Zero) {
- [void][ClassicCart]::EnumChildWindows($fileBox,[ClassicCart+EnumProc]{param($h,$unused)
-  $name=New-Object System.Text.StringBuilder 128
-  [void][ClassicCart]::GetClassName($h,$name,128)
-  if($name.ToString() -eq 'Edit'){$script:cartEdit=$h}
-  return $true
- },[IntPtr]::Zero)
+# The dialog becomes visible before its filename control finishes creation.
+for($attempt=0;$attempt -lt 40 -and $script:cartEdit -eq [IntPtr]::Zero;$attempt++) {
+ $fileBox=[ClassicCart]::GetDlgItem($script:cartDialog,1148)
+ if($fileBox -ne [IntPtr]::Zero) {
+  [void][ClassicCart]::EnumChildWindows($fileBox,[ClassicCart+EnumProc]{param($h,$unused)
+   $name=New-Object System.Text.StringBuilder 128
+   [void][ClassicCart]::GetClassName($h,$name,128)
+   if($name.ToString() -eq 'Edit'){$script:cartEdit=$h}
+   return $true
+  },[IntPtr]::Zero)
+ }
+ if($script:cartEdit -eq [IntPtr]::Zero){Start-Sleep -Milliseconds 100}
 }
 if($script:cartEdit -eq [IntPtr]::Zero){throw 'Could not find the cartridge filename field.'}
 [void][ClassicCart]::SendMessage($script:cartEdit,12,[IntPtr]::Zero,$Rom)
