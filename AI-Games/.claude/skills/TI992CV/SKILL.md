@@ -140,9 +140,9 @@ register access going to memory (correct first); then cache registers in
 HL/DE/BC within basic blocks, writing back at block exits, calls and any
 instruction that can address that register as memory.
 
-**Byte operations work on the register's HIGH byte**: the first byte in memory
-(`WP+2n`). `MOVB R1,@X` stores the byte at `WP+2`; `SWPB` swaps the two bytes
-in place.
+**Byte operations work on the register's HIGH byte**: logical TI address
+`WP+2n`, mapped to the odd physical byte of the relocated little-endian word.
+`MOVB R1,@X` reads that high byte; `SWPB` swaps the word's two bytes in place.
 
 **Status flags are lazy.** Almost every TMS9900 instruction sets L>, A>, EQ
 (compare against zero for `MOV`/`MOVB`/`A`/...), and `C`, `OV`, `OP`
@@ -218,14 +218,16 @@ what the game reads:
 Translate the reference emulator's ISR (from `disasm/rom.lst`) and check it
 with `routest.py`; do not write it from documentation.
 
-**Console routines called by the game** (KSCAN, GPLLNK/XMLLNK) are natives:
+**Console routines called by the game** (KSCAN, GPLLNK/XMLLNK) may stay
+translated or use contract-tested native replacements:
 KSCAN reads the virtual keyboard (§5) and fills `>8375` (key), `>8376`/`>8377`
 (joystick Y/X) and `>837C` (status, new-key bit) exactly as the reference
 does for each keyboard mode in `>8374`. GPLLNK font loads copy the bytes from
 the console GROM into ROM at build time and write them to VRAM natively.
 Games that read GROM directly through `>9800`/`>9802`/`>9C02` get a GROM
 address/data emulation over an embedded copy of **only the ranges read**
-(measured with the reference). Sprite and VDP behaviour needs nothing: same chip.
+(measured with the reference). The shared VDP permits asset reuse, but interrupt ordering and Z80 port
+spacing still require the checks below.
 
 ## 5. Controls: a virtual TI keyboard
 
@@ -265,9 +267,9 @@ in the README.
   with the game's name line, about 11 s) or `$55AA` (skip straight to the
   game). The start address at `$800A`, the NMI vector at `$8021`, the title
   string at `$8024`. Copy the layout from a working Coleco ROM (a CVBasic
-  Coleco build's prologue) and check it in `z80emu.py`. Use `$AA55` with the
-  game's own name, publisher and year, the inverse of CV2TI99's TI994AVISION
-  rebrand (ask the user what the title line should say).
+  Coleco build's prologue) and check it in `z80emu.py`. Use the BIOS title header only when a BIOS splash is wanted.
+  For the requested TI-style startup convention in section 12, use the skip-BIOS
+  header and draw that native startup instead.
 - **Power-on**: silence all four sound channels (`$9F $BF $DF $FF` to port
   `$FF`) and set every VDP register yourself; never rely on the BIOS's state.
 - **The Z80 can outrun the VDP.** During active display the TMS9918A needs
@@ -329,7 +331,8 @@ translated code (`CV2TI99/native-porting.md`).
 - **Play-testing:** the user's standing preference (memory
   `no-coleco-emulator-runs`) is not to launch Coleco emulators. For this skill
   the Coleco cart *is* the product, so **ask before the first play-test
-  launch**. If approved, ColEm needs `-ntsc -sync 60` (CLAUDE.md: its default is
+  launch** unless the existing session already authorizes it. Authorization
+  persists; do not ask again for ordinary reloads within that scope. If approved, ColEm needs `-ntsc -sync 60` (CLAUDE.md: its default is
   unsynchronised) and CoolCV needs scan-coded synthetic keys. Until then, rely
   on `z80emu.py` screenshots plus lockstep.
 - Put every candidate cart in `build/` and tell the user the path. The playable
@@ -339,7 +342,9 @@ translated code (`CV2TI99/native-porting.md`).
   `game_rel.rom` beside the new playable file.
 - Keep `README.md` (controls mapping, what differs from the original,
   measured speed, RAM map) in sync with every change.
-- Check for another agent (Codex) working in the same folder before editing.
+- Check existing changes and whether another assistant is actively editing the
+  same files. A stale process alone is not evidence of concurrent edits; honor
+  the user's explanation of who is working.
 - When a fact in this skill turns out wrong, fix the skill in the same change.
 
 ## 10. Lessons from the ports (dated)
