@@ -11,7 +11,10 @@ description: >-
   ISR replaced natively (sound lists, sprite motion, VDP timer), the TI
   keyboard rebuilt from the Coleco controllers, the Coleco cart header and
   front end, and the Coleco-only hazards (NMI, VDP write speed, 1 KB RAM).
-  Load before starting or changing any TI-to-ColecoVision port.
+  Every task under it runs the automatic validate-then-optimize loop (§0):
+  scripted gates on each build, per-phase speed measured against the TI, and
+  profile-driven optimization rounds until the target or a stop condition,
+  without being asked. Load before starting or changing any TI-to-ColecoVision port.
 ---
 
 # TI992CV: TI-99/4A → ColecoVision
@@ -51,6 +54,59 @@ need their direction reversed. **Likely first candidates:** the TI ROM-only
 carts already disassembled in `Decompiled/` (`MsPacFst`, `DonkeyKong`,
 `galaxian`: Atarisoft, 8 KB banks, no GPL). Use their unpatched originals,
 not the sped-up builds, unless the user asks otherwise.
+
+## 0. Default loop: validate, then optimize, without being asked
+
+Validation and optimization are **part of every task under this skill**, not
+follow-ups to offer (the same contract as `CV2TI99` §0). The user has spent
+many sessions manually prompting each verify/measure/optimize round. Do not
+hand back a cart until this loop has run, and do not stop to ask whether to
+run it.
+
+1. **Baseline first.** Before changing anything, record the current ROMs'
+   SHA-256 (`game.rom`, `game_dev.rom`, `game_ls.rom`), gate results and
+   per-phase speed (`speed.py`, `scrollrate.py`, `scenes.py` phases from §11:
+   title entry, first enemy, active movement, explosions, respawn, next wave,
+   crash, speech under load). A new port copies Parsec's `tools/` first; the
+   scripted gates are a deliverable of the port, like the cart.
+2. **Validate every build automatically** with one command that exits
+   nonzero on any failure (Parsec's `verify.py`, or the port's equivalent;
+   create one if missing): exact lockstep on `game_ls.rom` (scripted keys
+   **and** random input), `insntest`/`routest` for every touched translation
+   or native, sprite/VDP-transaction/video tests, RAM and stack budget,
+   front-end/input release tests, and the source-ROM algorithm checks. Each
+   new gate gets a mutation self-test that rejects a real bad ROM. Run long
+   suites against a frozen copy of `build/`.
+3. **Compare against the target automatically.** The target is the TI's
+   measured rate in every phase within the established per-phase tolerance
+   (never relaxed to accept a candidate), capped at the TI's rate (§7), with
+   no new flicker, sound or speech-cadence regression. If any phase is below
+   target or slower than the baseline, **go straight into the optimization
+   loop**:
+   - profile the whole frame per phase (`cvprof.py`, `profile.py`,
+     `costcmp.py`) and rank costs;
+   - pick the largest *removable* work, using §11 and
+     `CV2TI99/native-porting.md` / `optimization.md` as the menu of what
+     paid. Keep a ledger (`build/optimization/process-ledger.json`, as in
+     RiverRaid.3) and do not retry a rejected idea unless what it depended
+     on changed;
+   - implement it with any Coleco-only behaviour switchable for lockstep;
+   - re-run step 2, then measure on the fixed phases plus held-out seeds:
+     accept only if the total rises and no phase falls outside tolerance;
+     record accept/reject with numbers; revert rejects;
+   - repeat.
+4. **Stop** when every phase meets the target, or two consecutive accepted
+   rounds each gain under 1%, or ROM/RAM budget is exhausted, or the next
+   step needs a user decision (a deliberate release difference, a MegaCart
+   size change, the Super Game Module, speech trade-offs). Ask only then.
+5. **Hand back** with final-ROM evidence: hashes, gate summary, per-phase
+   speed vs the TI and vs the baseline, what was tried and rejected.
+   Emulator play-tests follow §9 (ask before the first Coleco emulator
+   launch; ColEm `-ntsc -sync 60`, Draw All Frames). Until approved,
+   `z80emu.py` screenshots plus the gates are the evidence; say so.
+
+A correctness fix still runs steps 2-3: a fix that costs speed is measured,
+and if it drops a phase below target the loop runs.
 
 ## 1. Inputs and feasibility: settle these before anything else
 
@@ -289,6 +345,7 @@ in the README.
 
 ## 7. Speed
 
+§0's optimization loop runs this on its own; this section and §11 are its menu.
 Translation overhead and ISR cost can be the main performance problem. The Z80 executes
 far more instructions per frame (CV2TI99 measured ~6,400 Z80 vs ~1,850
 TMS9900), but one TMS9900 instruction (16-bit, memory-to-memory) becomes

@@ -10,7 +10,10 @@ description: >-
   copyright, skippable title, entering the game from the option screen,
   keyboard mapping), game-over and black-screen handling, and the TMS9900
   speed techniques that actually paid off, including SDCC helpers, frame
-  pacing and sprite presentation. Load before starting or changing
+  pacing and sprite presentation. Every task under it runs the automatic
+  validate-then-optimize loop (§0): scripted gates on each build, speed
+  measured against the Coleco, and profile-driven optimization rounds until
+  the target or a stop condition, without being asked. Load before starting or changing
   any ColecoVision-to-TI port (Decompiled/CVZaxxon is the worked example).
 ---
 
@@ -44,6 +47,55 @@ vblank-deferred VDP queue, and the measurement and porting tools
 archive and holdout benchmark (`optstage.py`, `holdout.py`), the 22-gate
 `nextverify.py`, the per-instruction cost listing `hotlst.py`, and the
 row cache. `native-porting.md` sections 7-8 say what paid and what did not.
+
+## 0. Default loop: validate, then optimize, without being asked
+
+Validation and optimization are **part of every task under this skill**, not
+follow-ups to offer. The user has spent many sessions manually prompting
+"is it verified?", "now make it faster", "measure again". Do not hand back a
+cart until this loop has run, and do not stop to ask whether to run it.
+
+1. **Baseline first.** Before changing anything, record the current cart's
+   SHA-256, its gate results and its speed per phase
+   (`speed.py ti|z80 ... --pass` on 3 seeds, plus `optstage.py bench`
+   where the port has it). A port without these tools gets them copied from
+   `Decompiled/RiverRaid.3` before work starts; the scripted
+   gates are a deliverable of the port, like the cart.
+2. **Validate every build automatically** with one command that exits
+   nonzero on any failure (`nextverify.py`, or the port's equivalent; create
+   one if missing): lockstep 0 diffs (scripted keys **and** random input),
+   `insntest.py` after translator changes, `routest.py` for every touched
+   native, `sprcheck.py`, video-timing/presentation, game-over/front-end
+   (`gotest.py`). Each new gate gets a mutation self-test (§6). Run long
+   suites against a frozen copy, so a rebuild cannot mix two carts.
+3. **Compare against the target automatically.** The target is the
+   ColecoVision's logic rate per phase (logic passes and scroll steps per
+   100 frames, same pass-keyed input), and no measured flicker/tearing
+   regression. If any measured phase is below target (or slower than the
+   baseline), **go straight into the optimization loop**:
+   - profile (`hotlst.py`, `tiprof6.py`, `heavy3.py`) and rank costs;
+   - pick the largest *removable* work, using `optimization.md` and
+     `native-porting.md` §7-8 as the menu of things that paid. Check
+     `build/optimization/process-ledger.json` first and do not retry a
+     rejected idea unless something it depended on changed;
+   - implement it with any TI-only behaviour switchable for lockstep;
+   - re-run step 2, then `optstage.py` + `holdout.py`: accept only if the
+     total rises and no held-out workload falls more than 1%; record
+     accept/reject with numbers in the ledger; revert rejects;
+   - repeat.
+4. **Stop** when every phase meets the target, or two consecutive accepted
+   rounds each gain under 1%, or the hot budget (RAM + shared segment) is
+   exhausted, or the next step needs a user decision (a visible behaviour
+   difference from the original, a larger cart, a hardware add-on). Ask only
+   at that last point.
+5. **Hand back** with the final-cart evidence: hash, gate summary, speed per
+   phase vs the Coleco and vs the baseline, what was tried and rejected.
+   Start and play the final cart in your **own** Classic99 instance first
+   (`probe99.ps1`), then load it for the user per §7. Warn before opening
+   benchmark carts in a visible window (they look scrambled).
+
+A correctness fix still runs steps 2-3: a fix that costs speed is measured,
+and if it drops a phase below target the loop runs.
 
 ## 1. Inputs: get them before anything else
 
@@ -165,6 +217,7 @@ On the TI this looks like a hang. In every port:
 
 ## 5. Speed
 
+This section is the menu for §0's optimization loop, which runs on its own.
 Read `native-porting.md` (the measured budget, the porting process, the
 tools and the rules) and `optimization.md` before optimizing. Summary of what paid off in Zaxxon,
 largest first: native BIOS sound/poller/VRAM routines and the game's NMI glue;
