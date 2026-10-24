@@ -47,6 +47,14 @@ vblank-deferred VDP queue, and the measurement and porting tools
 archive and holdout benchmark (`optstage.py`, `holdout.py`), the 22-gate
 `nextverify.py`, the per-instruction cost listing `hotlst.py`, and the
 row cache. `native-porting.md` sections 7-8 say what paid and what did not.
+**For a cart that shows the BIOS title ($AA55 header) and uses OS7 (timers,
+PUTOBJ/WRITER, the sound engine, POLLER), start from `Decompiled/Carnival`**
+and read `bios-ports.md` first: config-driven tools (`src/game.a99`, the
+`GAME` dict in `zplay.py`), the register-exact OS7 natives with the
+build-time liveness check (`reglive.py`, `ann.NATIVE_EXACT`), the tick-based
+speed tool `cspeed.py`, the beam checks `flashcheck.py --raced` /
+`beamcheck.py`, scenario carts (`CV_SCENE`), and the vblank-committed VDP
+queue.  Its eleven sections are defects that cost real time; check each.
 
 ## 0. Default loop: validate, then optimize, without being asked
 
@@ -155,6 +163,11 @@ TM (an `ann.PATCH` on the `LD DE` that positions it). **Replace the © glyph
 (character `$1D`, BIOS font at `$158B`) with a circled X**:
 `7E 81 A5 99 99 A5 81 7E`. All of this is `screens.bios_patches()`; every
 patched range must be in `reserved_bios()` so the RAM image keeps it.
+**Standard layout (user-approved, Carnival 2026-10-24):** the header's
+"PRESENTS ..." and game-name lines centred vertically with one blank row
+between (rows 11 and 13), the copyright on row 21, and **"<build year>
+PORTED BY UNHUMAN"** centred on row 23 (move the copyright up a row if they
+would touch).  `bios-ports.md` §11 has the patch points.
 
 **Title hold.** The BIOS sits on the title for ~11 s (`$1968`, a 39 M T-state
 busy loop). Replace it natively (`N_TITLEW`): 657 frames, **cut short by any key
