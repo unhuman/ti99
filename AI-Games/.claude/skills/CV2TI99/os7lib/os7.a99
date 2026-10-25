@@ -1,0 +1,449 @@
+*****************************************************************
+* os7.a99 -- the ColecoVision OS7 BIOS services, native, for every
+* CV2TI99 port of a game that calls the BIOS (the master copy is
+* .claude/skills/CV2TI99/os7lib/os7.a99; ports copy it into src/).
+*
+* Runs from RAM (runtime.a99 assembles it at >A460).  Each routine
+* replaces the BIOS routine at its address (ann.NATIVE) and is exact:
+* every register and flag the BIOS leaves, as listed in the port's
+* ann.NATIVE_EXACT / NATIVE_FLAGS (build.py checks the call sites with
+* tools/reglive.py; tools/routest.py ADDR compares a routine with the
+* BIOS on captured states).  TI-only behaviour (PACE): the vblank sound.
+*
+* Register map as everywhere: A=R1 (high byte) BC=R2 DE=R3 HL=R4 IX=R5
+* IY=R6, R7 = SP + K, R8 = flags (Z >2000 C >1000 S >8000 P >0400);
+* @>8301/@>8305/@>8307/@>8309 are the low bytes of R0/R2/R3/R4 (the
+* game's workspace is >8300).  Z80 RAM and cart addresses + K.
+*****************************************************************
+
+* $027F SOUND_MAN: every active data area once, from song 1's area to the
+* list's 0, fused into one routine (the BIOS's $02D6 / $012F / $00FC /
+* $0190 / $01A6 / $01E9 inline).  Registers as the BIOS leaves them:
+* A = 0 with Z, DE = $000A after any area, IX = the list's end, B C HL IY
+* as the last area's processing left them ($01C1's B = 0, C = 4,
+* HL = table + 3 and DE = area 1 if none).  An area playing a special
+* effect jumps into the cart's effect routine, which returns to FSN; a
+* note that ends loads the next one through the translated $035F.
+*
+* TI only (PACE, os7 vblank sound): once the game has called SOUND_MAN,
+* the sound engine runs once a vblank, keeping the music's tempo however
+* long the game's ticks take.  SNDDUE counts the vblanks not yet played:
+* each vblank adds one; the game's own call plays it for real when one is
+* due (an on-time tick: no register save, as on the ColecoVision), and
+* the vblank plays it itself (SNDRUN) only when two are due, i.e. a tick
+* ran past a vblank without playing the one before.  A call with none
+* due only leaves the registers the last run left (the game can read
+* them: Carnival passes B on to PUTOBJ).
+N_027F MOV  @PACE,R0
+       JEQ  FSMAN
+       MOV  @SNDVB,R0
+       JEQ  FSVB
+       CLR  @SNDAGE              the game still wants its sound
+       MOV  @SNDDUE,R0
+       JNE  FSDUE
+       MOV  @SNDBC,R2
+       MOV  @SNDHL,R4
+       MOV  @SNDIX,R5
+       MOV  @SNDDE,R3
+       MOV  @SNDIYC,R0
+       JEQ  FSST
+       MOV  @SNDIY,R6
+FSST   CLR  R1
+       LI   R8,>2000
+       B    *R11
+FSVB   SETO @SNDVB               first call: from now on once a vblank
+       CLR  @SNDAGE
+       CLR  @SNDDUE
+       JMP  FSMAN
+FSDUE  DEC  @SNDDUE              one due: played here, for real
+       MOV  R11,@SNDR11
+       SETO @SNDIN               (a vblank meanwhile only marks it due)
+       MOV  R6,@SNDIYR
+       BL   @FSMAN
+       CLR  @SNDIYC              the registers, for the calls with none due
+       C    R6,@SNDIYR
+       JEQ  FSD1
+       SETO @SNDIYC
+FSD1   MOV  R6,@SNDIY
+       MOV  R2,@SNDBC
+       MOV  R3,@SNDDE
+       MOV  R4,@SNDHL
+       MOV  R5,@SNDIX
+       CLR  @SNDIN
+       MOV  @SNDR11,R11
+       B    *R11
+FSMAN  MOV  R11,@SMRET2
+       MOVB @K+>7021,R4          $01C1, B = 1
+       MOVB @K+>7020,@>8309
+       INCT R4
+       MOVB @K+1(R4),R3
+       MOVB @K(R4),@>8307
+       INC  R4
+       MOV  R3,R5
+       MOV  R3,@FSA1
+       LI   R2,>0004
+       LI   R1,>FF00             R1 = >FF00 through the scan (A is set at the
+       JMP  FSL                  exits; $035F and the effects load their own)
+* $02EE: the note ended.  PUSH AF / $035F / POP BC: B = the old status,
+* C = the flags byte ($42: Z and N from the DEC), the channels
+* reassigned ($0295) if the status changed.
+FSEND  MOVB @K(R5),@N2DST
+       DECT R7                   (the stack as deep as the BIOS's)
+       MOV  R11,*R7
+       BL   @C035F
+       INCT R7
+       MOVB @N2DST,R2
+       LI   R0,>0042
+       MOVB @>8301,@>8305
+       CB   @K(R5),R2
+       JEQ  FSN0
+       BL   @N_0295
+       JMP  FSN0
+* a special effect: HL = its routine + 7, DE = 7, A = $3E, on to it; its
+* RET comes back to FSN
+FSE    MOVB @K+2(R5),R4
+       MOVB @K+1(R5),@>8309
+       AI   R4,7
+       LI   R3,7
+       LI   R1,>3E00
+       DECT R7
+       LI   R0,FSN0
+       MOV  R0,*R7
+       MOV  R4,R0
+       B    @JPLOOK
+FSX    C    R5,@FSA1
+       JEQ  FSX1
+       LI   R3,>000A
+FSX1   CLR  R1
+       LI   R8,>2000
+       MOV  @SMRET2,R11
+       B    *R11
+FSN0   LI   R1,>FF00
+FSN    AI   R5,10                ADD IX,DE (DE = $000A)
+FSL    MOVB @K(R5),R0            (IX+0): 0 ends the list
+       JEQ  FSX
+       CB   R0,R1                free
+       JEQ  FSN
+       ANDI R0,>3F00
+       CI   R0,>3E00             a special effect
+       JEQ  FSE
+* $012F volume sweep: (IX+8) step:count, (IX+9) its timer
+       MOVB @K+8(R5),R0
+       JEQ  FSD
+       MOV  R5,R4
+       AI   R4,9                 HL = IX+9
+       BL   @FNIB
+       JNE  FSD
+       BL   @FRLD                timer reloaded, B = its high nibble
+       DEC  R4                   HL = IX+8
+       BL   @FNIB
+       JNE  FSV
+       MOVB @BC00,@K(R4)         count done: the sweep ends
+       JMP  FSD
+FSV    ANDI R0,>F000             E = the step
+       DECT R4
+       DECT R4                   HL = IX+4
+       MOVB @K(R4),R15
+       ANDI R15,>F000
+       AB   R0,R15               attenuation + step
+       MOVB R15,@>8307
+       MOVB @K(R4),R0
+       ANDI R0,>0F00
+       SOCB R15,R0
+       MOVB R0,@K(R4)
+* $00FC duration, or the frequency sweep: (IX+6) timer, (IX+7) step
+FSD    MOVB @K+7(R5),R0
+       JNE  FSF
+       AB   R1,@K+5(R5)          (IX+5) - 1
+       JNE  FSN
+       SB   R1,@K+5(R5)          the note is over (0 not stored)
+       JMP  FSEND
+FSF    MOV  R5,R4
+       AI   R4,6                 HL = IX+6
+       BL   @FNIB
+       JNE  FSN
+       BL   @FRLD                B = the timer's reload
+       DEC  R4                   HL = IX+5
+       MOVB @K(R4),R0
+       SB   @BC01,R0
+       JEQ  FSEND
+       MOVB R0,@K(R4)
+       MOVB @K+7(R5),R0          frequency (IX+3/4) += the signed step
+       SRA  R0,8
+       MOVB @K+4(R5),R15
+       SWPB R15
+       MOVB @K+3(R5),R15
+       SWPB R15
+       A    R0,R15
+       MOVB R0,R2                B = the step's sign ($01B1)
+       SZCB @BC04,R15            RES 2,(IX+4)
+       MOVB R15,@K+4(R5)
+       SWPB R15
+       MOVB R15,@K+3(R5)
+       DEC  R4                   HL = IX+4 (DEC HL x2, INC HL)
+       JMP  FSN
+* $0190 on (HL): its low nibble counts down; EQ when it reaches 0.
+* R0 = the new byte.
+FNIB   MOVB @K(R4),R0
+       MOV  R0,R15
+       ANDI R15,>0F00
+       JNE  FNB1
+       AI   R0,>1000             0 -> F without a borrow from the high nibble
+FNB1   AI   R0,->0100
+       MOVB R0,@K(R4)
+       CI   R15,>0100
+       B    *R11
+* $01A6 on (HL): the low nibble reloaded from the high; B = the high
+FRLD   MOVB @K(R4),R0
+       ANDI R0,>F000
+       MOVB R0,R2
+       MOV  R0,R15
+       SRL  R15,4
+       SOCB R15,R0
+       MOVB R0,@K(R4)
+       B    *R11
+
+*---------------------------------------------------------------
+* os7 vblank sound (TI only: PACE).  GLUE runs the sound engine at every
+* vblank (PLAY_SONGS, then SOUND_MAN, as the game's tick does) once the
+* game has called SOUND_MAN, for as long as it keeps calling it (SNDAGE:
+* vblanks since its last call, up to 12).  It runs on the game's
+* workspace with every register saved (SNDRUN), so translated code (a
+* song's effect routine, $035F) runs as it would in the tick.  PLAY_IT
+* (translated) marks the data areas busy (SNDBSY, ann.PATCH); a vblank
+* meanwhile is run when PLAY_IT returns (SNDPND).
+*---------------------------------------------------------------
+SNDEWS EQU  >AFA0            SNDEND's workspace
+SNDSAV EQU  >AFC0            the game's registers during a vblank run
+SNDBSY EQU  >AFE0            PLAY_IT running (count)
+SNDPND EQU  >AFE2            a vblank came while busy
+SNDIN  EQU  >AFE4            a vblank run is in progress
+SNDVB  EQU  >AFE6            the game called SOUND_MAN: vblank sound on
+SNDAGE EQU  >AFE8            vblanks since the game's last SOUND_MAN
+SNDBC  EQU  >AFEA            registers the last vblank run left
+SNDHL  EQU  >AFEC
+SNDIX  EQU  >AFEE
+SNDIY  EQU  >AFF0
+SNDIYC EQU  >AFF2            (IY changed by it)
+SNDDE  EQU  >AFFA
+FSA1   EQU  >AFFC            SOUND_MAN: song 1's data area
+SNDDUE EQU  >AFF4            vblanks whose sound is not played yet (0-2)
+SNDR11 EQU  >AFF6            N_027F's return while it plays one due
+SNDIYR EQU  >AFF8            IY before it
+* SNDRUN: from a workspace other than the game's (GLUE, SNDEND); uses its
+* R0.  Switches to the game's workspace with LWPI (a BLWP into it would
+* overwrite R13-R15, HL' and A') and saves only what the sound closure
+* can change: R0-R8, R11, R12, R15.  Nothing it runs (PLAY_SONGS,
+* SOUND_MAN, $035F, the song effects) uses EXX or EX AF,AF', so BC' DE'
+* HL' A' (R9 R10 R13 R14) are never touched (tools/sndclose.py checks the
+* closure at every build).  The LWPI back is patched with the caller's
+* workspace (this code runs from RAM).
+SNDRUN SETO @SNDIN
+       CLR  @SNDPND
+       DEC  @SNDDUE
+       STWP R0
+       MOV  R0,@SNRWP+2
+       LWPI MAINWS
+       MOV  R0,@SNDSAV
+       MOV  R1,@SNDSAV+2
+       MOV  R2,@SNDSAV+4
+       MOV  R3,@SNDSAV+6
+       MOV  R4,@SNDSAV+8
+       MOV  R5,@SNDSAV+10
+       MOV  R6,@SNDSAV+12
+       MOV  R7,@SNDSAV+14
+       MOV  R8,@SNDSAV+16
+       MOV  R11,@SNDSAV+18
+       MOV  R12,@SNDSAV+20
+       MOV  R15,@SNDSAV+22
+SNDFR  CLR  R12
+       MOV  R6,@SNDIY
+       BL   @PSREAL              PLAY_SONGS
+       BL   @FSMAN               SOUND_MAN
+       CLR  @SNDIYC
+       C    R6,@SNDIY
+       JEQ  SNF1
+       SETO @SNDIYC
+       MOV  R6,@SNDIY
+SNF1   MOV  R2,@SNDBC
+       MOV  R3,@SNDDE
+       MOV  R4,@SNDHL
+       MOV  R5,@SNDIX
+       MOV  @SNDSAV,R0
+       MOV  @SNDSAV+2,R1
+       MOV  @SNDSAV+4,R2
+       MOV  @SNDSAV+6,R3
+       MOV  @SNDSAV+8,R4
+       MOV  @SNDSAV+10,R5
+       MOV  @SNDSAV+12,R6
+       MOV  @SNDSAV+14,R7
+       MOV  @SNDSAV+16,R8
+       MOV  @SNDSAV+18,R11
+       MOV  @SNDSAV+20,R12
+       MOV  @SNDSAV+22,R15
+SNRWP  LWPI 0                    (the caller's workspace)
+       CLR  @SNDIN
+       B    *R11
+* PLAY_IT's returns (ann.PATCH: BLWP, so its flags are kept)
+SNDENV DATA SNDEWS,SNDEND
+SNDEND DEC  @SNDBSY
+       JNE  SNE1
+       MOV  @SNDPND,R0
+       JEQ  SNE1
+       MOV  @SNDIN,R0
+       JNE  SNE1
+       CLR  @SNDPND
+       C    @SNDDUE,@W2S         still two due (the game's call may have
+       JL   SNE1                 played one meanwhile)
+       BL   @SNDRUN
+SNE1   RTWP
+* from GLUE at a vblank
+SNDVBL MOV  @SNDVB,R0
+       JEQ  SNV1
+       INC  @SNDAGE
+       C    @SNDAGE,@W12
+       JH   SNV1                 the game stopped calling it
+SNV0   INC  @SNDDUE              one more due (at most 2)
+       C    @SNDDUE,@W2S
+       JL   SNV1                 one: the game's call plays it
+       JEQ  SNV3
+       DEC  @SNDDUE
+SNV3   MOV  @SNDBSY,R0
+       JNE  SNV2
+       MOV  @SNDIN,R0
+       JNE  SNV2
+       B    @SNDRUN
+SNV2   SETO @SNDPND
+SNV1   B    *R11
+W12    DATA 12
+W2S    DATA 2
+
+*---------------------------------------------------------------
+* OS7 timers, native.  Timer table at ($73D3): 3-byte entries, the
+* status byte: bit 7 done, 6 repeating, 5 free, 4 last entry, 3 long
+* (16-bit count; repeating long timers point at a 4-byte block of count
+* and reload in the data area at ($73D5)).  Every native leaves all the
+* registers and the flags the BIOS routine leaves (ann.NATIVE_EXACT /
+* NATIVE_FLAGS; tools/routest.py compares them).
+*---------------------------------------------------------------
+* $0F37 TIME_MGR: every timer once.  HL = the last entry; A and DE as
+* the last timer that changed them left them; NZ (BIT 4 of the last
+* entry), C kept.
+N_0F37 MOV  R2,@TMSAV            masks in registers for the walk (R2 R6 R9
+       MOV  R6,@TMSAV+4          restored at the end); R4 = entry + K
+       MOV  R9,@TMSAV+6
+       LI   R2,>2800             free or long
+       LI   R6,>1000             last entry
+       LI   R9,>0100
+       MOVB @K+>73D4,R4
+       MOVB @K+>73D3,@>8309
+       MOV  R4,@TSTAB
+       AI   R4,K
+TM1    MOVB *R4,R0
+       CZC  R2,R0                short (the usual): the count byte
+       JNE  TMO
+       SB   R9,@1(R4)
+       JEQ  TMS
+TM9    AI   R4,3                 (the status before this pass's SET 7:
+       COC  R6,R0                bit 4 is never changed here)
+       JNE  TM1
+       AI   R4,-3-K
+       MOV  R4,@TSLAST           (for TEST_SIGNAL)
+       MOV  @TMSAV,R2
+       MOV  @TMSAV+4,R6
+       MOV  @TMSAV+6,R9
+       ANDI R8,>1000             NZ (BIT 4 set), C kept
+       B    *R11
+TMO    COC  @TB20,R0             free: skip
+       JEQ  TM9
+       JMP  TML
+TMS    COC  @TB40,R0
+       JNE  TM8
+       MOVB @2(R4),R1            repeating: reloaded, A = the reload
+       MOVB R1,@1(R4)
+TM8    SOCB @BC80,*R4            done
+       JMP  TM9
+TML    COC  @TB40,R0
+       JEQ  TMLR
+       MOVB @2(R4),R3            long, one shot: DE = the count - 1
+       MOVB @1(R4),@>8307
+       DEC  R3
+       MOVB R3,R1                A = E | D
+       SOCB @>8307,R1
+       JEQ  TM8                  (0: done, the count is not stored)
+       MOVB R3,@2(R4)
+       MOVB @>8307,@1(R4)
+       JMP  TM9
+TMLR   MOVB @2(R4),R15           long, repeating: P = the block
+       SWPB R15
+       MOVB @1(R4),R15
+       SWPB R15
+       MOVB @K+1(R15),R3         DE = (P) - 1
+       MOVB @K(R15),@>8307
+       DEC  R3
+       MOVB R3,R1
+       SOCB @>8307,R1
+       JEQ  TMLZ
+       MOVB R3,@K+1(R15)
+       MOVB @>8307,@K(R15)
+       JMP  TM9
+TMLZ   MOVB @K+3(R15),R3         0: DE = the reload, into the count
+       MOVB @K+2(R15),@>8307
+       MOVB R3,@K+1(R15)
+       MOVB @>8307,@K(R15)
+       JMP  TM8
+TMSAV  EQU  >AF96            TIME_MGR: R2 R5 R6 R9 during the walk (8 bytes)
+TSTAB  EQU  >AF92            TIME_MGR's table, its last entry (0: unknown)
+TSLAST EQU  >AF94
+TB80   DATA >8000
+TB40   DATA >4000
+TB20   DATA >2000
+TB10   DATA >1000
+TB08   DATA >0800
+
+* $10CB TEST_SIGNAL: A = timer number.  A = 1 (NZ) if it is done (the
+* done bit cleared; a one-shot timer freed), else A = 0 (Z); flags of
+* OR A.  B = the number, C = 0 (or what was left of the count if the
+* table ended first), DE = 3, HL = the entry.
+N_10CB MOVB R1,R2                B = C = A
+       MOVB R1,@>8305
+       MOVB @K+>73D4,R4
+       MOVB @K+>73D3,@>8309
+       LI   R3,>0003
+       MOV  R1,R0
+       JEQ  TS2
+       C    R4,@TSTAB            the entry at once when it is not past the
+       JNE  TS1                  table's end as TIME_MGR last saw it (no
+       SRL  R0,8                 entry before it is the last: REQUEST_SIGNAL
+       MOV  R0,R15               only moves the end out, INIT_TIMER clears
+       A    R0,R0                TSLAST); C = 0 as after the walk
+       A    R15,R0
+       A    R4,R0
+       C    R0,@TSLAST
+       JH   TS1
+       MOV  R0,R4
+       SB   @>8305,@>8305
+       JMP  TS2
+TS1    MOVB @K(R4),R0            the last entry first: not done
+       COC  @TB10,R0
+       JEQ  TS0
+       AI   R4,3
+       SB   @BC01,@>8305
+       JNE  TS1
+TS2    MOVB @K(R4),R0
+       COC  @TB20,R0             free
+       JEQ  TS0
+       COC  @TB80,R0
+       JNE  TS0
+       COC  @TB40,R0
+       JEQ  TS3
+       SOCB @BC20,R0             one shot: freed
+TS3    SZCB @BC80,R0             done bit cleared
+       MOVB R0,@K(R4)
+       LI   R1,>0100
+       CLR  R8                   NZ, P clear (odd parity), C S clear
+       B    *R11
+TS0    CLR  R1
+       LI   R8,>2400             Z, P (even parity)
+       B    *R11
+

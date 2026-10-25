@@ -180,6 +180,24 @@ Numbers use 50,050 TI cycles per frame unless noted.
 - **A frame wait that always waits for a fresh vblank** halves the speed
   once a pass overruns: start the next pass if a vblank already came, and
   catch the per-pass sound driver up per missed frame (Joust N_PACE).
+- **Measure the drawing share INCLUSIVELY before deciding on it.** A flat
+  profile charged Joust's VDP helpers (sprite upload, VRAM queue, pattern
+  copies) with 14% and nearly ruled out cheaper drawing; timing each
+  main-loop call from call site to call site showed the translated code
+  that prepares the drawing ($9574) at about 40%, plus 6% for the upload.
+- **Draw every other tick, keep the logic per tick.** Instead of scaling
+  speeds and timers for a 30 Hz game (dozens of constants, each a
+  divergence), Joust's `build30` patches the Z80 ROM (`tools/hz30.py`) so
+  ticks alternate: A = upload + flush + logic, B = logic + drawing. Every
+  tick keeps its frame wait and sound run, so rules and sound stay exact
+  and only the picture is 30 Hz: 44 -> about 60 ticks per 100 frames.
+  Find what the logic reads from the drawing's output and keep that part
+  running every tick (Joust: `$93DB`, each player's screen address). Prove it
+  with a side-by-side Z80 comparison (`tools/check30.py`): RAM every tick
+  minus the drawing-only fields, VRAM after each shared flush, the sound
+  byte stream. The RNG reads `LD A,R`, so both runs must set R from the
+  tick number. Mutants dropping the `$93DB` run, or drawing on the wrong
+  tick, must fail.
 
 ## Pitfalls found porting River Raid (Decompiled/RiverRaid)
 
@@ -296,3 +314,33 @@ For SDCC stack representation and original-ROM routine comparisons, follow
 [native-porting.md](native-porting.md), sections 3-5. The game's isolated
 native/collision/tile tests are executable examples; keep the original ROM
 as the gameplay oracle and validate intentional TI-only changes separately.
+
+## Pitfall II: complete asset tables and return lifetimes (2026-10-25)
+
+- Profile inclusive game stages as well as flat labels; native helpers and
+  nested decoder work otherwise hide the cost of their caller. Timing hooks
+  must inspect backing memory without charging CPU read cycles.
+- Walk the original control flow for return-discarding POPs, including POP BC
+  and conditional calls. Pitfall II has six such families. Protect their
+  entries and every caller from bank wrappers, and check bank-stack neutrality
+  at each completed game update. Add a no-progress watchdog to speed tests.
+- Expand complete immutable pose tables, not sampled frames. Preserve actual
+  variable output lengths, masks, final pointers, stack state and all drawing
+  actions. Put expanded bytes in dedicated banks with the complete shared
+  prefix; restore the entry bank on hit and fallback. Reserve the asset window
+  during placement, not only after assembly.
+- A perfect hash still needs the full source pointer checked. Test all valid
+  keys, unknown keys with the same hash, and corrupted target/data mutations.
+  The same approach can remove long computed-dispatch comparison chains.
+- Reusing a RAM row requires proof its bytes still exist. Pitfall II permits
+  reuse only within one validated scene, clears the identity at entry, still
+  executes every dynamic drawing action, and checks destination bytes in the
+  oracle. A persistent identity without writer tracking is unsafe.
+- Retest layout changes on startup, unusual movement and held-out routes.
+  Fresh TI heat failed startup despite passing assembly/source gates. Word
+  RAM decoding also passed correctness but had no useful speed gain; both
+  experiments were rejected and retained in the ledger.
+
+See `Decompiled/Pitfall2/VALIDATION.md` and its hash-bound experiment ledger.
+Full original speed remains unmet; do not transfer its rates or addresses to
+another game. Original CPU, RAM, VRAM and ordered sound writes remain oracles.

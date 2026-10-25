@@ -54,7 +54,11 @@ and read `bios-ports.md` first: config-driven tools (`src/game.a99`, the
 build-time liveness check (`reglive.py`, `ann.NATIVE_EXACT`), the tick-based
 speed tool `cspeed.py`, the beam checks `flashcheck.py --raced` /
 `beamcheck.py`, scenario carts (`CV_SCENE`), and the vblank-committed VDP
-queue.  Its eleven sections are defects that cost real time; check each.
+queue.  Its sections are defects that cost real time; check each.
+**Install the native OS7 library from `os7lib/`** (WRITER/PUTOBJ, TIME_MGR,
+TEST_SIGNAL, SOUND_MAN, PLAY_SONGS and the TI vblank sound player) in every
+such port before the first optimization round; its README is the checklist
+and validation list, `bios-ports.md` §12 what it gained and why.
 
 ## 0. Default loop: validate, then optimize, without being asked
 

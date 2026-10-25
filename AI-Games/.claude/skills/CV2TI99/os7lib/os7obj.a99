@@ -1,0 +1,521 @@
+*****************************************************************
+* os7obj.a99 -- the OS7 WRITER and object drawer (PUTOBJ's $06E3), for
+* CV2TI99 ports of games that call the BIOS (master copy:
+* .claude/skills/CV2TI99/os7lib/).  Assembled in the shared segment
+* (runtime.a99, before RSEGE); os7.a99 is the RAM part of the library.
+* Needs from the port: K, BC01 BC18 BC1F BC21 BC80 BCFF (build.py makes
+* the BCxx bytes), N_WRVRAM, N_RDVRAM, WENDV, and the translated C06E3
+* (ann.HOT_ROUTINES / RUNTIME_CALLS).
+*****************************************************************
+*---------------------------------------------------------------
+* $0679 WRITER: the deferred PUTOBJ queue ($73CA-$73D1), every object
+* drawn by the native OBJ ($06E3).  Exact for what code after it can
+* read: the alternate registers (the BIOS's semi-mobile and complex
+* objects use BC' DE' HL' as scratch; R9 R10 R13 take the same values
+* here) and every RAM / VRAM write in the BIOS's order.  The main
+* registers are left as the BIOS leaves them only where cheap (A = the
+* old $73C6, HL = $73CB); build.py's liveness check sends any call site
+* that can read the others to the translated original (ann.NATIVE_SKIP).
+* Object kinds the native does not draw go to the translated BIOS
+* (C06E3, ann.HOT_ROUTINES): mobile objects (type 1), semi-mobile ones
+* that save the background ((ix+5) bit 7 clear), a complex object inside
+* a complex one.
+* Scratch: >AF80->AF9F (the end of QBUF, QEND).
+*---------------------------------------------------------------
+OBRET  EQU  >AF80            OBJ's return
+O4RET  EQU  >AF82            complex object: its return,
+O4PTR  EQU  >AF84            the component list,
+O4CNT  EQU  >AF86            components left,
+O4N    EQU  >AF88            components,
+O4BSY  EQU  >AF8A            nonzero while one is drawn
+WRRET  EQU  >AF8C            WRITER's return
+WRHL   EQU  >AF8E            the queue entry after the current one
+O4B    EQU  >AF90            (byte) the B a complex object passes on
+WRSAV  EQU  >AF91            (byte) $73C6 as it was
+QWT    EQU  >AF9E            OB0's rows: highest row end QW1 takes at once
+QWR1   EQU  >A45C            QWN: R1 and R11 across N_WRVRAM
+QWR11  EQU  >A45E
+N_0679 MOV  R11,@WRRET
+       MOVB @K+>73C6,@WRSAV      ($73C6) = 0 while it runs: PUTOBJ draws
+       SB   @K+>73C6,@K+>73C6    at once
+WRL    CB   @K+>73CC,@K+>73CB    out = in: done
+       JEQ  WRX
+       MOVB @K+>73D0,R4          HL = ($73CF): IX, B, then the next entry
+       MOVB @K+>73CF,@>8309
+       MOVB @K+1(R4),R5
+       MOVB @K(R4),@>830B
+       MOVB @K+2(R4),R2
+       AI   R4,3
+       MOV  R4,@WRHL
+       BL   @OBJ
+       MOVB @K+>73CC,R0
+       AB   @BC01,R0
+       CB   R0,@K+>73CA
+       JEQ  WRW
+       MOVB R0,@K+>73CC
+       MOV  @WRHL,R4
+       MOVB R4,@K+>73D0
+       MOVB @>8309,@K+>73CF
+       JMP  WRL
+WRW    SB   @K+>73CC,@K+>73CC    the end of the queue: back to its start
+       MOVB @K+>73D1,@K+>73CF
+       MOVB @K+>73D2,@K+>73D0
+       JMP  WRL
+WRX    CLR  R1
+       MOVB @WRSAV,R1
+       MOVB R1,@K+>73C6
+       LI   R4,>73CB
+       BLWP @WENDV               (as ann.PATCH $06C0)
+       MOV  @WRRET,R11
+       B    *R11
+
+* $06E3: one object, IX = R5, B = R2 (passed on by complex objects).
+* HL = G (the object's graphics), C = its type byte.
+OBJ    MOVB @K+1(R5),R4
+       MOVB @K(R5),@>8309
+       MOVB @K(R4),R0
+       MOVB R0,@>8305
+       ANDI R0,>0F00
+       JEQ  OB0
+       CI   R0,>0300
+       JNE  OBD2
+       B    @OB3
+OBD2   CI   R0,>0200
+       JNE  OBD1
+       B    @OB2
+OBD1   CI   R0,>0100
+       JEQ  OBT
+       B    @OB4
+OBT    B    @C06E3               the translated BIOS (returns to R11)
+* type 0, semi-mobile ($06FF): only without a background save
+OB0    MOVB @K+5(R5),R0
+       JGT  OBT
+       JEQ  OBT
+       MOV  R11,@OBRET
+       MOVB @K+3(R5),R6          IY = the status: frame, x, y
+       MOVB @K+2(R5),@>830D
+       MOVB @K+2(R6),R3          C = x / 8 clamped ($07E8)
+       MOVB @K+1(R6),@>8307
+       BL   @CLMP
+       MOVB @>8307,@>8305
+       MOVB @K+4(R6),R3          B = y / 8 clamped
+       MOVB @K+3(R6),@>8307
+       BL   @CLMP
+       MOVB @>8307,R2
+       MOVB @K(R6),R0            HL = the frame's pattern: (G + 5 + 2f)
+       SRL  R0,8
+       A    R0,R0
+       MOV  R4,R15
+       A    R0,R15
+       MOVB @K+6(R15),R4
+       MOVB @K+5(R15),@>8309
+       MOV  R2,R3                DE = row, column
+       MOVB @K(R4),@>8305        C = width, B = height
+       MOVB @K+1(R4),R2
+       INCT R4                   HL = the names
+* $080B: the names in rows, clipped to the screen.  BC' = BC, HL' = HL,
+* DE' = row * 32 + column (signed); each row adds the width to HL' and
+* 32 to DE'; IY = the width drawn.
+       MOV  R2,R9
+       MOV  R4,R13
+       MOV  R3,R10
+       SRA  R10,8
+       SLA  R10,5
+       MOVB @>8307,R0
+       SRA  R0,8
+       A    R0,R10
+       MOVB @>8307,R0            A = column
+       JLT  ODL
+       CI   R0,>2000
+       JHE  ODX                  right of the screen
+       MOVB R0,R1
+       AB   @>8305,R1            A = column + width
+       JLT  ODX
+       JEQ  ODX
+       CB   R1,@BC1F
+       JH   ODR
+       MOVB @>8305,R6            all of it
+       JMP  ODG
+ODR    LI   R6,>2000             to the right edge: $20 - column
+       SB   R0,R6
+       JMP  ODG
+ODX    MOV  @OBRET,R11
+       B    *R11
+ODL    MOVB R0,R1                left of the screen
+       AB   @>8305,R1
+       JLT  ODX
+       JEQ  ODX
+       CB   R1,@BC21
+       JL   ODL1
+       LI   R1,>2000
+ODL1   MOVB R1,R6
+       CLR  R15                  the names and DE' start -column in
+       SB   R0,R15
+       SRL  R15,8
+       A    R15,R13
+       A    R15,R10
+ODG    SRL  R6,8
+       MOVB R3,R5                R5 = row, line (0 up)
+       ANDI R5,>FF00
+* QW's tests, once for the object (TI only): QWT = the highest VRAM row
+* end (address + count) QW would queue at once.  DEFER off: 0 (every row
+* through QW).  No sprite-table shadow held: >FFFF.  Else the row must
+* end 256 below the table, as N_WRVRAM's bound; rows past QWT take QW's
+* full tests.  QWN clears QWT, since N_WRVRAM may change the shadow.
+       CLR  @QWT
+       MOV  @DEFER,R0
+       JEQ  ODCK
+       SETO @QWT
+       MOV  @SHST,R0
+       JEQ  ODCK
+       MOV  @SATB,R0
+       JLT  ODCK
+       AI   R0,->0100
+       JNC  ODQ0
+       MOV  R0,@QWT
+       JMP  ODCK
+ODQ0   CLR  @QWT
+* Every row on the screen (row >= 0, row + height <= 24): ODF, the rows
+* without the screen test, DE' plus the name table's address while it
+* runs, the width in R1 (QW and QW1 keep it).  ($73FE) = the count once:
+* nothing else writes it meanwhile.
+ODCK   MOVB R5,R0
+       JLT  ODLP
+       MOVB R9,R15
+       JEQ  ODLP                 (height 0: 256 lines, as the BIOS)
+       SRL  R15,8
+       SRL  R0,8
+       A    R15,R0
+       CI   R0,24
+       JH   ODLP
+       MOVB @K+>73F7,R0
+       MOVB @K+>73F6,@>8301
+       A    R0,R10
+       MOV  R9,R1
+       ANDI R1,>00FF
+       MOV  R6,R0
+       SWPB R0
+       MOV  R0,@K+>73FE
+ODFL   MOV  R10,R3
+       MOV  R13,R4
+       MOV  R6,R2
+       MOV  R3,R0
+       A    R2,R0
+       C    R0,@QWT
+       JH   ODFQ
+       BL   @QW1
+ODFN   A    R1,R13
+       AI   R10,32
+       INC  R5                   line + 1 (below the height: no carry)
+       CB   @>830B,R9
+       JNE  ODFL
+       MOVB @K+>73F7,R0
+       MOVB @K+>73F6,@>8301
+       S    R0,R10
+       MOV  @OBRET,R11
+       B    *R11
+ODFQ   BL   @QW
+       JMP  ODFN
+ODLP   MOVB @>830B,R0
+       AB   R5,R0                A = row + line
+       JLT  ODN                  (above or below the screen: not drawn)
+       CB   R0,@BC18
+       JHE  ODN
+       MOVB @K+>73F7,R3          PUT_VRAM 2 ($1C27/$1BAA): VRAM = the name
+       MOVB @K+>73F6,@>8307      table + DE', IY names from HL'
+       A    R10,R3
+       MOV  R13,R4
+       MOV  R6,R2
+       MOV  R6,R0                ($73FE) = the count
+       SWPB R0
+       MOV  R0,@K+>73FE
+       MOV  R3,R0
+       A    R2,R0
+       C    R0,@QWT
+       JH   ODQF
+       BL   @QW1
+       JMP  ODN
+ODQF   BL   @QW
+ODN    MOV  R9,R0                HL' + width, DE' + 32
+       ANDI R0,>00FF
+       A    R0,R13
+       AI   R10,32
+       AB   @BC01,@>830B
+       CB   @>830B,R9            until line = height
+       JNE  ODLP
+       MOV  @OBRET,R11
+       B    *R11
+* $07E8: DE / 8 (signed), E clamped to -128..127 (D as it was shifted)
+CLMP   SRA  R3,3
+       JLT  CLN
+       CI   R3,>0080
+       JL   CLX
+       ANDI R3,>FF00
+       ORI  R3,>007F
+CLX    B    *R11
+CLN    CI   R3,>FF80
+       JHE  CLX
+       ANDI R3,>FF00
+       ORI  R3,>0080
+       B    *R11
+* types 2 and 3, sprites ($08DF / $0955): the 4-byte entry built in
+* ($8006), then PUT_VRAM 0.  x and y count as on screen when the high
+* byte is 0, or $FF with (low - limit) bit 7 clear (as the BIOS's JP M);
+* x < 0 sets the early clock and adds 8 / 32.
+OB3    LI   R15,>2000
+       LI   R0,>E100
+       JMP  OBS
+OB2    LI   R15,>0800
+       LI   R0,>F900
+OBS    MOV  R11,@OBRET
+       MOVB @K+>8007,R6          IY = the entry buffer
+       MOVB @K+>8006,@>830D
+       MOVB @K+3(R5),R3          R3 = the status
+       MOVB @K+2(R5),@>8307
+       MOVB @K+2(R3),R1
+       JEQ  OBS1
+       CB   R1,@BCFF
+       JNE  OBOFF
+       MOVB @K+1(R3),R1
+       SB   R0,R1
+       JLT  OBOFF
+OBS1   MOVB @K+4(R3),R1
+       JEQ  OBS2
+       CB   R1,@BCFF
+       JNE  OBOFF
+       MOVB @K+3(R3),R1
+       SB   R0,R1
+       JLT  OBOFF
+OBS2   MOVB @K+6(R4),R2          R2 = the frame's entry: (G + 5) + 2f
+       MOVB @K+5(R4),@>8305
+       MOVB @K(R3),R0
+       AB   R0,R0
+       SRL  R0,8
+       A    R0,R2
+       MOVB @K+2(R3),R1
+       JEQ  OBS3
+       MOVB @K+1(R3),R1          early clock
+       AB   R15,R1
+       MOVB R1,@K+1(R6)
+       MOVB @K(R2),R1
+       ORI  R1,>8000
+       MOVB R1,@K+3(R6)
+       JMP  OBS4
+OBS3   MOVB @K+1(R3),@K+1(R6)
+       MOVB @K(R2),@K+3(R6)
+OBS4   MOVB @K+3(R3),@K(R6)      y
+       MOVB @K+1(R2),R1          name = the frame's + (G + 1)
+       AB   @K+1(R4),R1
+       MOVB R1,@K+2(R6)
+       MOV  R6,R4
+       MOVB @K+4(R5),R3          the sprite
+       SRL  R3,8
+       BL   @PVSPR
+       MOV  @OBRET,R11
+       B    *R11
+* off the screen ($0A54): the entry read back from VRAM (GET_VRAM 0),
+* x = 0 and colour byte $80 (early clock, transparent), written again
+OBOFF  MOVB @K+4(R5),R3
+       SRL  R3,8
+       SLA  R3,2
+       MOVB @K+>73F3,R0
+       MOVB @K+>73F2,@>8301
+       A    R0,R3
+       LI   R0,>0400
+       MOV  R0,@K+>73FE
+       MOV  R6,R4
+       LI   R2,4
+       BL   @N_RDVRAM
+       SB   @K+1(R6),@K+1(R6)
+       MOVB @BC80,@K+3(R6)
+       MOV  R6,R4
+       MOVB @K+4(R5),R3
+       SRL  R3,8
+       BL   @PVSPR
+       MOV  @OBRET,R11
+       B    *R11
+* PUT_VRAM 0 for one sprite ($1C27): HL = R4 the entry, R3 = the sprite.
+* With ($73C7) = 1 the 4 bytes go to the RAM buffer at ($8002) + 4n (8
+* bits); else to the sprite table ($73F2) + 4n, ($73FE) = 4.
+PVSPR  CB   @K+>73C7,@BC01
+       JEQ  PVS1
+       LI   R0,>0400
+       MOV  R0,@K+>73FE
+       SLA  R3,2
+       MOVB @K+>73F3,R0
+       MOVB @K+>73F2,@>8301
+       A    R0,R3
+       LI   R2,4
+* TI only (PACE): straight into the sprite table's shadow, as N_WRVRAM's
+* shadow path does for a write inside the table (tools/fastpath.py)
+PVF    MOV  @PACE,R0
+       JEQ  PVW
+       MOV  @SATB,R0
+       JLT  PVW
+       MOV  R3,R15
+       S    R0,R15               offset in the table
+       CI   R15,124
+       JH   PVW
+       MOV  @SHST,R0
+       JNE  PVS2
+       BLWP @SATLV               (the shadow loaded from VRAM)
+PVS2   C    R15,@SHLO            the changed bytes: SHLO to SHHI - 1
+       JHE  PVS3
+       MOV  R15,@SHLO
+PVS3   MOV  R15,R0
+       AI   R0,4
+       C    R0,@SHHI
+       JLE  PVS4
+       MOV  R0,@SHHI
+PVS4   AI   R15,SHAD
+       MOVB @K(R4),*R15+
+       MOVB @K+1(R4),*R15+
+       MOVB @K+2(R4),*R15+
+       MOVB @K+3(R4),*R15
+       LI   R0,2
+       MOV  R0,@SHST
+       B    *R11
+PVW    B    @N_WRVRAM
+PVS1   MOVB @K+>8003,R15
+       MOVB @K+>8002,@>831F
+       SLA  R3,2
+       ANDI R3,>00FF
+       A    R3,R15
+       MOVB @K(R4),@K(R15)
+       MOVB @K+1(R4),@K+1(R15)
+       MOVB @K+2(R4),@K+2(R15)
+       MOVB @K+3(R4),@K+3(R15)
+       B    *R11
+* type 4, complex ($0EA2): each component's status from this object's
+* (frame from list W1 with the component's bit 7 kept, x and y plus the
+* offsets in list W2), then each component drawn (PUTOBJ, B passed on).
+* BC' = x, DE' = y, HL' = the last y.
+OB4    MOV  @O4BSY,R0
+       JEQ  O4G
+       B    @C06E3
+O4G    SETO @O4BSY
+       MOV  R11,@O4RET
+       MOVB R2,@O4B
+       MOVB @K+3(R5),R13         HL' = the status
+       MOVB @K+2(R5),@>831B
+       MOVB @K(R13),R0           frame
+       MOVB @K+2(R13),R9         BC' = x
+       MOVB @K+1(R13),@>8313
+       MOVB @K+4(R13),R10        DE' = y
+       MOVB @K+3(R13),@>8315
+       AI   R13,4
+       AB   R0,R0                HL = W1 = (G + 1 + 4f), DE = W2
+       AB   R0,R0
+       SRL  R0,8
+       MOV  R4,R15
+       A    R0,R15
+       MOVB @K+2(R15),R4
+       MOVB @K+1(R15),@>8309
+       MOVB @K+4(R15),R3
+       MOVB @K+3(R15),@>8307
+       MOVB @>8305,R0            components: the type byte's high nibble
+       SRL  R0,12
+       JNE  O41
+       LI   R0,256
+O41    MOV  R0,@O4N
+       MOV  R0,@O4CNT
+       MOV  R5,R15
+O4L    MOVB @K+5(R15),R6         IY = the component's status
+       MOVB @K+4(R15),@>830D
+       INCT R15
+       MOVB @K+3(R6),R0
+       MOVB @K+2(R6),@>8301
+       MOV  R0,R6
+       MOVB @K(R4),R0            frame, bit 7 as the component's
+       MOVB @K(R6),R1
+       JGT  O4F
+       JEQ  O4F
+       ORI  R0,>8000
+O4F    MOVB R0,@K(R6)
+       INC  R4
+       MOVB @K(R3),R13           x = BC' + offset
+       SRL  R13,8
+       A    R9,R13
+       MOVB @>831B,@K+1(R6)
+       MOVB R13,@K+2(R6)
+       INC  R3
+       MOVB @K(R3),R13           y = DE' + offset
+       SRL  R13,8
+       A    R10,R13
+       MOVB @>831B,@K+3(R6)
+       MOVB R13,@K+4(R6)
+       INC  R3
+       DEC  @O4CNT
+       JNE  O4L
+       MOV  @O4N,@O4CNT
+       AI   R5,4
+O4C    MOVB @K+1(R5),R0          each component
+       MOVB @K(R5),@>8301
+       INCT R5
+       MOV  R5,@O4PTR
+       MOV  R0,R5
+       MOVB @O4B,R2
+       BL   @OBJ
+       MOV  @O4PTR,R5
+       DEC  @O4CNT
+       JNE  O4C
+       CLR  @O4BSY
+       MOV  @O4RET,R11
+       B    *R11
+* QW: one row of names (R2 = 1-32 bytes from Z80 R4 to VRAM R3) into
+* the deferred queue, as N_WRVRAM's queue path (TI only: DEFER is 0 with
+* PACE off).  N_WRVRAM itself when the VDP is written at once, when the
+* row could reach the sprite table while its shadow is held, or when the
+* queue is full.  tools/fastpath.py checks it against N_WRVRAM.
+QW     MOV  @DEFER,R0
+       JEQ  QWN
+       MOV  @SHST,R0
+       JEQ  QW1
+       MOV  @SATB,R0
+       JLT  QW1
+       AI   R0,128
+       C    R3,R0
+       JHE  QW1
+       MOV  R2,R0                (N_WRVRAM's bound: count + 256)
+       AI   R0,256
+       A    R3,R0
+       JOC  QWN
+       C    R0,@SATB
+       JH   QWN
+QW1    MOV  @QPTR,R15
+       MOV  R4,R0                names in the cartridge ROM ($8000-$BEFF,
+       AI   R0,->8000            never written): a reference entry, as
+       CI   R0,>3F00             N_WRVRAM's
+       JHE  QW3
+       CI   R15,QEND-6
+       JH   QWN
+       MOV  R2,*R15
+       SOC  @QREFB,*R15+
+       MOV  R3,*R15+
+       AI   R0,>8000+K
+       MOV  R0,*R15+
+       MOV  R15,@QPTR
+       B    *R11
+QW3    MOV  R15,R0
+       A    R2,R0
+       AI   R0,6
+       CI   R0,QEND
+       JH   QWN
+       MOV  R2,*R15+             count, VRAM address, the bytes
+       MOV  R3,*R15+
+       MOV  R4,R0
+       AI   R0,K
+QW2    MOVB *R0+,*R15+
+       DEC  R2
+       JNE  QW2
+       INC  R15
+       ANDI R15,>FFFE
+       MOV  R15,@QPTR
+       B    *R11
+QWN    CLR  @QWT
+       MOV  R1,@QWR1             (R1 kept for ODF)
+       MOV  R11,@QWR11
+       BL   @N_WRVRAM
+       MOV  @QWR1,R1
+       MOV  @QWR11,R11
+       B    *R11

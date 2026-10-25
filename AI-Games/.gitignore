@@ -15,3 +15,4 @@ scratchpad/
 games/KeystoneKapers/src/*.unopt.a99
 games/KeystoneKapers/src/*.unopt.txt
 games/KeystoneKapers/src/*.branches.json
+!.claude/skills/CV2TI99/os7lib/*.a99

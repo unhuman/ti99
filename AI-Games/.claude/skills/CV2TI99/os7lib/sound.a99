@@ -1,0 +1,165 @@
+*****************************************************************
+* sound.a99 -- the OS7 sound engine, native
+* (BIOS $0213 SOUND_INIT, $023B TURN_OFF_SOUND, $025E PLAY_IT,
+*  $027F SOUND_MAN, $0300 PLAY_SONGS)
+*
+* Runs on the game's registers like the BIOS (A=R1 BC=R2 DE=R3 HL=R4
+* IX=R5 IY=R6, all Z80 values), keeps its return addresses on the Z80
+* stack (R7 = SP + K), and calls a song's special-effect routine in the cart through
+* JPLOOK as the BIOS does (entry, then entry+7; entry+7 again every frame
+* while the effect runs).
+*
+* Data area (IX, 10 bytes): +0 status: song number (or $3E for an
+* effect) | channel << 6, $FF free, 0 ends the list; +1/2 note pointer;
+* +3/4 frequency (+4 high nibble = attenuation, low = noise type);
+* +5 duration; +6 frequency-sweep timer (reload:count nibbles); +7 step;
+* +8 volume sweep (step:count), +9 its timer.
+*****************************************************************
+
+* $023B TURN_OFF_SOUND
+N_SNDOFF MOVB @BC9F,@SOUND
+       MOVB @BCBF,@SOUND
+       MOVB @BCDF,@SOUND
+       MOVB @BCFF,@SOUND
+       MOVB @BC9F,@SNDSH0        what PLAY_SONGS last sent
+       MOVB @BCBF,@SNDSH1
+       MOVB @BCDF,@SNDSH2
+       MOVB @BCFF,@SNDSHN
+       SETO @PSC0                PLAY_SONGS recomputes every channel
+       SETO @PSC1
+       SETO @PSC2
+       SETO @PSCN
+       LI   R1,>FF00
+       B    *R11
+
+* $0213 SOUND_INIT: HL = song table, B = number of data areas
+SNDSH0 EQU  >A428            channel 0: attenuation, frequency lo, hi
+SNDSH1 EQU  >A42B            channel 1
+SNDSH2 EQU  >A42E            channel 2
+SNDSHN EQU  >A431            noise attenuation
+PSIY   EQU  >A402            N_PLAYSNG: IY kept
+SMRET  EQU  >A432            return address of SOUND_MAN / PLAY_SONGS
+PSC0   EQU  >A410
+PSC1   EQU  >A416
+PSC2   EQU  >A41C
+PSCN   EQU  >A422
+N_PLAYSNG MOV @PACE,R0         TI only: with the os7 vblank sound on, it
+       JEQ  PSREAL               plays when a vblank's sound is due (SNDDUE,
+       MOV  @SNDVB,R0            os7.a99), else the vblank plays it; IY kept
+       JEQ  PSREAL
+       MOV  @SNDDUE,R0
+       JNE  PSREAL
+       B    *R11
+PSREAL MOV  R11,@SMRET
+       MOV  R6,@PSIY             IY is the BIOS's: kept (R6 is scratch below)
+       MOVB @K+>7025,R5
+       MOVB @K+>7024,@>830B
+       LI   R1,>9F00
+       LI   R2,>9000
+       LI   R3,>8000
+       LI   R4,SNDSH0
+       LI   R6,PSC0
+       BL   @SCHAN
+       MOVB @K+>7027,R5
+       MOVB @K+>7026,@>830B
+       LI   R1,>BF00
+       LI   R2,>B000
+       LI   R3,>A000
+       LI   R4,SNDSH1
+       LI   R6,PSC1
+       BL   @SCHAN
+       MOVB @K+>7029,R5
+       MOVB @K+>7028,@>830B
+       LI   R1,>DF00
+       LI   R2,>D000
+       LI   R3,>C000
+       LI   R4,SNDSH2
+       LI   R6,PSC2
+       BL   @SCHAN
+       MOVB @K+>7023,R5          noise
+       MOVB @K+>7022,@>830B
+       MOVB @K(R5),R0
+       CB   R0,@BCFF
+       JNE  PS1
+       LI   R0,>FF00             off (no noise control)
+       CB   R0,@SNDSHN
+       JEQ  PSX
+       MOVB R0,@SNDSHN
+       MOVB R0,@SOUND
+       SETO @PSCN
+       JMP  PSX
+PS1    C    R5,@PSCN
+       JNE  PS1N
+       CB   R0,@PSCN+2
+       JNE  PS1N
+       CB   @K+4(R5),@PSCN+4
+       JEQ  PSX                  as last time
+PS1N   MOV  R5,@PSCN
+       MOVB R0,@PSCN+2
+       MOVB @K+4(R5),@PSCN+4
+       MOVB @K+4(R5),R0
+       SRL  R0,4
+       ANDI R0,>0F00
+       ORI  R0,>F000
+       CB   R0,@SNDSHN
+       JEQ  PS3
+       MOVB R0,@SNDSHN
+       MOVB R0,@SOUND
+PS3    MOVB @K+4(R5),R0
+       ANDI R0,>0F00
+       CB   R0,@K+>702A
+       JEQ  PSX
+       MOVB R0,@K+>702A
+       ORI  R0,>E000
+       MOVB R0,@SOUND
+PSX    LI   R1,>FF00
+       MOV  @PSIY,R6
+       MOV  @SMRET,R11
+       B    *R11
+* one tone channel: R1 = its "off" byte, R2 = attenuation, R3 = frequency
+* command bits, R4 = its SNDSH bytes, R6 = its PSC; IX = its data area
+SCHAN  MOVB @K(R5),R0
+       CB   R0,@BCFF
+       JNE  SC1
+       CB   R1,*R4               off: attenuation 15
+       JEQ  SCX
+       MOVB R1,*R4
+       MOVB R1,@SOUND
+       SETO *R6
+SCX    B    *R11
+SC1    C    R5,*R6
+       JNE  SC1N
+       CB   R0,@2(R6)
+       JNE  SC1N
+       CB   @K+3(R5),@3(R6)
+       JNE  SC1N
+       CB   @K+4(R5),@4(R6)
+       JEQ  SCX                  as last time
+SC1N   MOV  R5,*R6
+       MOVB R0,@2(R6)
+       MOVB @K+3(R5),@3(R6)
+       MOVB @K+4(R5),@4(R6)
+       MOVB @K+4(R5),R0          R0 = +4 (attenuation : frequency high)
+       MOVB @K+3(R5),@>8301      : +3 (frequency low)
+       MOV  R0,R15
+       SRL  R15,4                attenuation in the high byte's low nibble
+       SOCB R2,R15
+       CB   R15,*R4
+       JEQ  SC2
+       MOVB R15,*R4
+       MOVB R15,@SOUND
+SC2    MOV  R0,R15
+       SWPB R15
+       ANDI R15,>0F00            frequency low 4 bits
+       SOCB R3,R15
+       SRL  R0,4                 frequency high 6 bits in the low byte
+       SWPB R0
+       CB   R15,@1(R4)
+       JNE  SC3
+       CB   R0,@2(R4)
+       JEQ  SCX
+SC3    MOVB R15,@1(R4)
+       MOVB R0,@2(R4)
+       MOVB R15,@SOUND
+       MOVB R0,@SOUND
+       B    *R11

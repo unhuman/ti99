@@ -58,6 +58,23 @@ optimizations, atomic VDP transactions, algorithm/RNG and clocked parity tests,
 PSG speech limits, debounced UI, the one-time TI-style startup screen, and
 `game.rom` / `game_dev.rom` / `game_ls.rom` output naming.
 
+### Static-port nonlocal returns (Pitfall II, 2026-10-25)
+
+Original assembly may POP its own CALL return and jump into its caller's
+remaining code. FARCALL/CALLSV wrappers leak their separate bank-return stack
+when that continuation is discarded. Pitfall II froze in water after leaking
+four bytes per swim update. An original-code stack audit found six families:
+swimming, climbing, falling, jumping, enemies and checkpoint returns. POP BC
+as well as POP DE can discard a return. Audit original control flow rather
+than only previously observed movement modes. Keep each such callee entry
+and every caller site (including conditional calls) always visible, with
+an unwrapped native BL, or implement a proven explicit unwind. Protect this
+placement contract in the build. Check a neutral bank stack at each completed
+game update as well as its high-water bound. Directed, sustained mode tests
+are necessary: short random routes and isolated ordinary returns missed it.
+See `Decompiled/Pitfall2/DESIGN.md`, `tools/audit_returns.py` and
+`tools/check_water.py` in that port.
+
 ## 3A. CVBasic hazards (the current platform — always loaded)
 
 **Lesson skills.** The long-form failure contracts below this list were moved into skills
