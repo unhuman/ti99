@@ -4,8 +4,16 @@ Reusable, register-exact TMS9900 replacements for the OS7 services that
 BIOS-calling ($AA55) Coleco games spend their time in, plus a TI-only
 vblank sound player that keeps music at tempo when a game tick takes
 longer than a frame. Built and measured in `Decompiled/Carnival`
-(October 2026), which is the integration reference: copy from there when a
-file here and Carnival's copy differ, then update this folder.
+(October 2026), which is the integration reference. This folder retains the
+generic object drawer and timer-base check. Carnival's newer `os7obj.a99`
+also calls its generated OGL entry and emits rectangle queue records; its
+`os7.a99` uses a faster timer path whose table-base ownership must be proven.
+Do not copy those files alone into another port. For all accepted changes,
+read the [resolved-work index](../optimization.md#carnival-resolved-work-index)
+and integrate the matching runtime, queue reader/writer, placement and checks
+together. Keep Carnival-specific generated gallery and expanded asset loaders
+in Carnival; they are not generic BIOS replacements. Shared sound sources
+remain synchronized with the accepted port.
 
 **Use it in every BIOS port.** Translated OS7 code runs at about 3 TI
 cycles per Z80 T-state. These natives run at 1.4-1.6 (TIME_MGR 1.37,
@@ -21,11 +29,17 @@ Coleco speed with lockstep still at 0 diffs.
 | `sound.a99` | RAM, after `os7.a99` | `N_PLAYSNG` PLAY_SONGS (`PSREAL`, compare-on-change per channel), `N_SNDOFF` |
 | `fastpath.py` | `tools/` | the TI-only fast paths (QW, QW1, PVF) against N_WRVRAM |
 | `sndclose.py` | `tools/`, run by `build.py` | the vblank sound's closure has no EXX / EX AF (SNDRUN's register subset depends on it) |
-| `sndruncheck.py` | `tools/` | a vblank sound run leaves all 16 game registers and the caller's workspace as it found them |
+| `sndruncheck.py` | `tools/` | a vblank sound run preserves all 16 game registers, caller workspace, ROM bank and far-call stack |
 | `sndtempo.py` | `tools/` | the sound engine runs once per owed vblank (SNDDUE), whoever runs it |
+| `sndpollcheck.py` | `tools/`, needs the port's `routest.py` | a pending sound poll preserves an active GLUE return context while ordinary calls service the frame |
+| `snddebtcheck.py` | `tools/`, needs `routest.py` | owed updates survive long sound/PLAY_IT runs; the discarded-debt mutation is rejected |
+| `sndpaircheck.py` | `tools/`, needs `routest.py` | a pending frame with zero debt must enable both foreground sound halves together |
+| `sndbankcheck.py` | `tools/`, needs the port's `routest.py` | both sound caller workspaces restore every hardware/software ROM bank; the missing-restoration mutation is rejected |
 | `qcheck.py` | `tools/` | every QFLUSH and SATCK against a reference model of the queue entries |
 
-Every checker has a `--mutate` self-test that must fail.
+Every mutation self-test must reject its deliberately broken case. These
+tools report successful detection with exit code 0; a surviving mutant fails
+the gate.
 
 The port also needs these from Carnival's `runtime.a99`: `N_WRVRAM` /
 `N_RDVRAM` (the deferred queue and sprite shadow), `N_0295` (SASSIGN),
@@ -37,6 +51,25 @@ port's. It has:
   moves the leftover down only past QBUF+256.
 - QFLUSH's inline path for entries under 8 bytes.
 - SATCK's word copy.
+- SATFULL saves the pending sprite count, destination and caller status across
+  QFLUSH. The callee overwrites R2/R3/R15; losing a zeroed count makes the
+  subsequent decrement underflow into a runaway copy. Keep the assembled
+  `queuefullcheck.py` regression and its mutation from Carnival.
+- WEND commits the completed batch for frame service; never flush using the
+  stale tick-entry ONTIME flag. This is the user-confirmed flashing repair.
+- TICKD also only commits. POLLN cannot prove the beam is still in blanking.
+- Service pending frames at safe native boundaries: WRL, the type-0 object
+  entry, READ_VRAM/WRITE_VRAM before their transactions, TIME_MGR before its walk, and
+  N_PLAYSNG before deciding whether sound is due. The generic object file
+  has the first two; Carnival's generated gallery calls its predecoded OB0P
+  entry directly. Keep R0/R15 scratch and service outside queue cursor use.
+  Carnival's later write-entry boundary is in its runtime, not these library
+  files. Keep algorithm comparisons after that poll on both clones; test the
+  actual scheduling boundary and production beam timing separately.
+- Never add a poll between PLAY_SONGS and SOUND_MAN. A zero-debt skip by
+  the first followed by a poll and a real second half loses song updates.
+  SNDRUN calls PSREAL directly, bypassing the foreground poll. Retain the
+  existing background-workspace guard at the original note-end poll.
 - the single QFLUSH exit `QFX` that `qcheck.py` hooks.
 - **reference entries** (`>2000|count`, VRAM address, TI pointer): QW1 and
   N_WRVRAM queue a row whose bytes are in the cartridge ROM ($8000-$BEFF:
@@ -51,7 +84,16 @@ port's. It has:
 ## Integration checklist (Carnival is the worked example)
 
 1. **runtime.a99**
-   - `QEND EQU >AF80`. Free runtime words were >A452, >A45C, >A45E (>A45C/E are now QWR1/QWR11). The os7 scratch is `>AF80-AF9F` (WRITER, TIME_MGR/TEST_SIGNAL, QWT at >AF9E: all used), the sound `>AFA0-AFFF` (SNDSAV 24 bytes, SNDDUE/SNDR11/SNDIYR at >AFF4-AFF9).
+   - `QEND EQU >AF80`. Formerly free >A452 is now SNDWP; >A45C/E are QWR1/QWR11. The os7 scratch is `>AF80-AF9F` (WRITER, TIME_MGR/TEST_SIGNAL, QWT at >AF9E: all used), the sound `>AFA0-AFFF` (SNDSAV 24 bytes, SNDDUE/SNDR11/SNDIYR at >AFF4-AFF9).
+   - Clear SNDWP at boot. SNDRUN records its caller workspace there, chooses
+     a fixed GLUEWS/SNDEWS return instruction, then clears it. There is no
+     runtime instruction patch. Do not add another caller without extending
+     and testing that fixed return dispatch.
+   - Reserve SNDBNK at >F042, above the downward bank stack and below >F060.
+     >AFFA is already SNDDE. SNDRUN must restore both the hardware bank and
+     CURBNK after translated sound fragments: a tail jump can leave a cold
+     bank selected even though all game registers have been restored. The
+     interrupted PC may be in a different bank. Check BSP as well.
    - The boot clears `OBRET .. FSA1+2` (`LI R0,OBRET / CLR *R0+ / CI R0,FSA1+2`). `O4BSY` and `TSLAST` must start at 0.
    - `GLUE3` begins with `BL @SNDVBL`.
    - `COPY "os7obj.a99"` before `RSEGE`, then `AORG >A460 / COPY "os7.a99" / COPY "sound.a99" / RRAMEN`.
@@ -64,6 +106,11 @@ port's. It has:
    - `PATCH`: PLAY_IT's busy count (0x025E `INC @SNDBSY`; 0x0269 and 0x027E return through `BLWP @SNDENV`); 0x06C0 `BLWP @WENDV`; **0x0FAA INIT_TIMER also does `CLR @TSLAST`**.
    - `HOT_ROUTINES = {0x06E3}` and `RUNTIME_CALLS = ('C035F', 'C06E3')`: the WRITER hands the object kinds it does not draw to the translated BIOS.
    - `NATIVE_COVERS`: the BIOS ranges the natives run themselves (Carnival's list); see the placement step below.
+   - Retain the original 02EE sound poll via `NATIVE_POLLS = {'SNDPOL': 0x02EE}`
+     and teach the deterministic harness that mapping, as in Carnival.
+     FSEND skips it while SNDWP marks a background caller. Otherwise a BLWP
+     into GLUE overwrites an already active return context before SNDIN can
+     stop the sound recursion. Keep `sndpollcheck.py` and its mutation.
 3. **Tools** (all already in Carnival's `tools/`):
    - Per-site native fallback: `xlate.native_at(site, t)` and `ann.NATIVE_SKIP`. `build.check_natives` sends only the call sites that can read a register the native does not leave to the translated original; the native stays everywhere else. Before this, one cold call site with a live register (Carnival's WRITER in the NMI handler and at the round start) removed the native from the hot frame tick too.
    - `build.runtime_size` fails if the RAM library passes `>AC00`. An overflow assembled cleanly into the sprite shadow and the queue.
@@ -81,7 +128,7 @@ port's. It has:
 The game calls PLAY_SONGS and SOUND_MAN once a tick, so a tick longer
 than a frame slows the music. Under PACE the engine runs exactly once
 per vblank. `SNDDUE` counts the vblanks not yet played:
-- each vblank adds one (at most 2);
+- each vblank adds one, including while playback is blocked;
 - the game's own call plays it for real when one is due. That is the
   usual on-time tick: there is no register save, and the registers are
   exactly the BIOS's;
@@ -90,7 +137,9 @@ per vblank. `SNDDUE` counts the vblanks not yet played:
 - a game call with none due returns the registers the last run left.
 
 Carnival: +1.4 points over running every frame from the vblank.
-`sndtempo.py` must show drift <= 2.
+`sndtempo.py` must show drift <= 2. Retain every SNDDUE update while
+SNDIN or SNDBSY prevents re-entry; clamping debt to two loses music updates.
+`snddebtcheck.py` tests six blocked frames and rejects the old clamp.
 
 `SNDRUN` switches to the game's workspace with LWPI and saves only
 R0-R8, R11, R12 and R15. A BLWP into the game's workspace would overwrite

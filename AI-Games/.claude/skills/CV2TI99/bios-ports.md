@@ -133,12 +133,32 @@ the height where the game ignores that, and vanished).
 
 **Remedy (runtime "Deferred VDP writes").**  With PACE every VRAM and
 register write is queued (QBUF at >AC80; it ends at >AF80 since the os7 scratch took >AF80-AFFF); TICKD marks complete
-ticks (QCMT); complete ticks go out only at a vblank: from GLUE on the VDP
+ticks (QCMT); complete ticks go out through GLUE on the VDP
 interrupt (enabled TI-only by N_WRREG purely as a timer; the game's NMI is
 not called unless the game enabled it; the status byte goes to STSHAD for
-the game's next read), or at once when the tick's poll just waited for the
-frame bit.  The WRITER's output goes out at its end on an on-time tick
-(WEND), so sprites are not shown late.  A VRAM read does **not** flush: it
+the game's next read). Neither tick-start POLLN nor writer-end ONTIME is a
+safe permission to flush immediately. The WRITER's output is committed at its end (WEND) for frame
+service. **Correction, October 25:** never flush there based on ONTIME.
+That flag describes tick entry, not the beam after lengthy drawing. The old
+flush exposed mismatched pattern banks and names; the user confirmed that
+commit-only WEND fixed the intermittent flashes in Classic99. Carnival's
+`tools/commitcheck.py` executes the assembled routine with stale ONTIME at
+several phases; the old cart must fail. Keep the bear collision confirmation
+below instead of restoring the unsafe early flush.
+
+**Recurrence, October 25:** the user reported the flashing again. WEND's fix
+was still present, but long native work delayed GLUE into active display.
+Poll between objects, before READ_VRAM or WRITE_VRAM begins its address/data transaction,
+before the timer walk, and before the foreground sound pair. Preserve live
+registers and queue cursors; these extra polls are PACE-only, so exact
+lockstep alone cannot validate them. Never insert a poll between PLAY_SONGS
+and SOUND_MAN: their eligibility uses the same frame debt. That candidate
+lost PLAY_SONGS updates and failed the unchanged tempo gate. Carnival's
+`drawpollcheck.py`, `sndpaircheck.py`, `sndtempo.py` and `flushtrace.py` cover
+the boundaries and reject their known bad cases. Whole-band A-B-A detection
+can miss a flash when another object moves; trace actual pattern switches too.
+
+A VRAM read does **not** flush: it
 reads VRAM and overlays the queued writes (QOVL) — a flushing read sent
 Carnival's gallery out one row at a time down the screen.  Sprite-table
 writes go to a RAM shadow (SHAD) committed in one burst (SATCV).  Designs
@@ -179,6 +199,16 @@ as `#` already.  Patch the loop's start (clear GOREL/GOCNT) and its keypad
 read.  An on-screen hint needs glyphs when the game has no ASCII font
 (Carnival draws text with its own set): optional, place it where nothing
 else draws.
+
+**Returning to the menu must complete its display writes (Carnival,
+2026-10-25).** After gameplay DEFER is still enabled. The selection input
+loop does not call WRITER, so its final display-on register write can remain
+queued forever. Carnival's patch at 8110 flushes the completed static menu
+before input polling. Keep the commit-only WEND repair during gameplay.
+`gotest.py` must check the visible menu, compare its complete name table with
+startup, and start another game; observing the game-over exit branch alone
+missed the user's blank screen. Retain both held-fire and missing-menu
+mutation controls, plus a natural ammunition-exhaustion run.
 
 ## 11. Title screen (the standard for every BIOS-title port)
 

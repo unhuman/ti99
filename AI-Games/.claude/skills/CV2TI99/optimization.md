@@ -7,6 +7,12 @@ Numbers use 50,050 TI cycles per frame unless noted.
 
 ## Measure the problem before choosing a fix
 
+- Report both the improvement over the named previous build and current speed
+  relative to the original cartridge (original = 100%), as the user requested.
+  Keep ordinary play, troublesome modes and deliberately accelerated animations
+  separate. For equal work, speed gain is previous time/current time minus one;
+  elapsed-time reduction is one minus current time/previous time. Do not call a
+  50% shorter wait a 50% speed increase. Label estimates and unmatched workloads.
 - Record the original ROM and candidate TI hashes, CPU/VDP timing model and
   production pacing mode. Measure loading separately from steady gameplay;
   include the user's troublesome scenes and modes, plus held-out seeds.
@@ -121,6 +127,12 @@ Numbers use 50,050 TI cycles per frame unless noted.
   Moving common helpers from every bank to one reserved, always-visible RAM
   copy reduced Mean Santa from 256 to 128 KiB, including expanded graphics.
   Check bank visibility/capacity and remeasure after repacking.
+- Count usable headroom from placement areas, not just emitted RAM bytes.
+  Pitfall's placer reserves long branch forms before relaxation; unused bytes
+  inside those reservations are not a new contiguous allocation. Its later
+  build reports over 1 KiB less emitted RAM code than capacity while the
+  largest allocatable RAM fragment is only six bytes. Repacking requires
+  renewed branch/bank validation and whole-game timing measurements.
 
 ## Pitfalls (each cost real time)
 
@@ -241,6 +253,82 @@ Numbers use 50,050 TI cycles per frame unless noted.
   scroll speed alternates; holding every pass to two frames is smooth but
   slower (River Raid `build.py --even`).  Offer both.
 
+## Cross-port loop comparison and acceleration
+
+River Raid's supplied MSX-derived TI port (`SRR11_8.bin`) exposed useful
+optimization strategies for our Coleco-derived TI port (investigated October
+25, recorded here October 26, 2026). Another port's source is not required:
+disassemble its binary, locate the executing loop, and instrument call sites
+and returns. Compare **work per gameplay update and how often it runs**,
+not just instruction counts or ROM size. Different original platforms can
+also mean different game rules; retain our original ROM as the behavior oracle.
+
+Measure normal and accelerated play separately. Both River Raid scroll
+controllers advance their four-phase scroll every update at speed 4, every
+second update at speed 2, and every fourth at speed 1. Acceleration therefore
+requires more scrolling work per gameplay update. A normal-speed average can
+hide precisely the path that misses its frame budget while accelerating.
+
+**Measured evidence, not an implemented optimization:** in a 150-video-frame
+Up + Fire probe, our port completed 111 updates and 111 sprite uploads; SRR
+completed 146 updates and 45 sprite refreshes. Our inclusive scroll stage
+used 29.72% of elapsed cycles, objects plus sprite construction 31.00%, and
+the frame wait only 1.41%. Short 300-frame opening probes measured 43.4 versus
+56.8 accelerated gameplay updates/s, about 31% higher throughput for SRR.
+These are nominal-60-Hz, separately initialized samples, not synchronized
+whole-game comparisons or evidence that our port has gained 31%. Do not add
+inclusive stage costs to flat subsystem percentages, or compare an upload-only
+call with another port's combined sprite construction/upload as equal work.
+
+Investigate these mechanisms when the profile supports them:
+
+- **Batch row work before redesigning the renderer.** Our `$8BD5/$8C02`
+  scroll path repeatedly sets up rows and preserves original compatibility
+  state. Investigate grouped queue records/transfers and moving loop-invariant
+  setup outside the row loop. Preserve observable intermediate state and safe
+  IRQ service points. Measure the whole game after placement changes.
+- **Prepare terrain within a budget.** SRR uses resumable row generation,
+  RAM name tables and chunked uploads. Spread preparation ahead of need;
+  publish only a complete display state at a safe video boundary. Establish
+  buffer ownership and worst-case completion time, including bridge changes.
+- **Separate gameplay from sprite construction.** SRR's update runs apart
+  from its age/workload-controlled sprite refresh, which has a four-update
+  age limit. Our `$AFEA` performs gameplay as well as sprite construction;
+  skipping it would skip simulation. Keep input, movement, collision and
+  sound on their proper clocks. Optimize descriptor work, then investigate
+  independent presentation while retaining sprite priority and visibility.
+- **Remove rendering dependencies from collision before deferring it.**
+  SRR's sampled gameplay performed zero VDP data reads. Our original pixel
+  tests can force queued video work to finish. Investigate authoritative RAM
+  terrain and immutable pattern data, starting with guarded cache hits and
+  exact fallbacks. Audit every writer, phase change and invalidation; test
+  cold/warm caches and pending queues. Zero reads alone does not establish
+  the other port's collision algorithm. The earlier slow byte-shadow trial
+  remains rejected; a different RAM representation needs its own measurement.
+- **Measure presentation independently of throughput.** During accelerated
+  SRR play, logical scroll steps continued while visible pattern phases were
+  often combined into larger row steps. Fewer displayed phases can improve
+  tick rate while reducing smoothness. First seek gains preserving complete
+  two-pixel phases; treat phase skipping or reduced sprite cadence as an
+  explicit presentation tradeoff. Check input-to-display latency, scroll
+  displacement, sprite-priority phases and beam timing, not just tick counts.
+
+For River Raid, prioritize the scroll batch experiment and sprite-descriptor
+work as smaller changes; the larger opportunity is budgeted rendering with
+independent simulation, enabled by correct RAM collision. These are candidates,
+not promised gains. Benchmark normal and accelerated modes, retain the original
+gameplay oracle and production presentation gates, and include bonus, bridge,
+death and restart transitions. The reported bonus corruption remains unresolved;
+passing short headless traces does not clear it or qualify SRR as a correctness
+oracle. Use original-emulator review as well as headless tests.
+
+Local evidence and reproduction commands:
+[River Raid DESIGN.md](../../../Decompiled/RiverRaid/DESIGN.md#october-25-2026-comparison-with-super-river-raid-11),
+`Decompiled/RiverRaid/build/msx-comparison-20261025/`, and
+`scratchpad/{compare_srr,trace_srr_loop}.py` under that game. Preserve new reusable
+loop/scheduling findings in the shared skill; keep full disassembly, hashes and
+candidate results in the game directory.
+
 ## Mean Santa: elapsed frames and complete sprite presentation
 
 `Decompiled/MeanSanta/DESIGN.md` records the implementation and measured
@@ -337,6 +425,47 @@ as the gameplay oracle and validate intentional TI-only changes separately.
   executes every dynamic drawing action, and checks destination bytes in the
   oracle. A persistent identity without writer tracking is unsafe.
 - Retest layout changes on startup, unusual movement and held-out routes.
+
+## Pitfall II: native sound and bounded VRAM copies (2026-10-25)
+
+- Distinguish the shipped cartridge from the oracle's host implementation.
+  Pitfall II already ran static TMS9900 instructions with no runtime JIT.
+  Python opcode caches in the reference/test emulators are test acceleration;
+  removing them does not reduce TI cycles. Build-time decoder compilation is
+  also ahead of time, even when the original asset format is called bytecode.
+- A game-owned music engine needs its own native port. Pitfall's reachable
+  `$AC86-$AF3D` sound path now has native SFX dispatch, five effect handlers,
+  channel initialization, duration lookup, three-channel update and rhythm.
+  An unused OS7 source file is not evidence that OS7 runs in the cartridge.
+  Check the actual call graph and assembly coverage, retain every ordered PSG
+  write and original tick, and compare complete RAM/register boundary state.
+- Sound fixtures need initialized song pointers. A synthetic playing flag
+  with zero channel pointers is not a valid playback state. Capture initialized
+  entries, assert that invariant, then vary effect timers, pause, mute and song
+  initialization. Keep cold-start paths in complete replays. Pitfall's checker
+  covers 1,885 states and rejects altered SFX and rhythm output bytes.
+- Replace byte-at-a-time VRAM copies with bounded read/write bursts only
+  after proving source/destination bounds and overlap direction. Forward
+  overlap must retain the original propagation semantics; wrap and zero-count
+  semantics must also retain their fallback. A 32-byte scratch buffer in proven
+  unused cache padding avoids consuming another workspace or code region.
+  Invalidate destination residency before writing, preserve VDP read-ahead and
+  final address state, and poll NMI only between completed transactions. Never
+  re-enter a helper workspace while its registers or buffer remain live.
+  Test both overlap directions, boundaries, wrapping, canaries and corrupted
+  source/invalidation/oversized-burst mutations against the original.
+- For tiny constant decoder calls, even a hash lookup and bank switch can
+  dominate useful work. Compile fixed call sites to direct native stores only
+  when the generator verifies the original instruction bytes, inputs, decoded
+  lengths and continuation. Preserve returned pointers/registers and an exact
+  replay path. Test each region before its caller can overwrite bad bytes;
+  Pitfall checks both six-byte seed pairs with randomized surrounding RAM.
+- Recheck throughput after these changes. Pitfall's renderer remained about
+  56% of inclusive river work before this pass; making sound fully native did
+  not by itself yield a large gameplay speedup. Report startup and sustained
+  swimming separately, and do not count fresh-edge presentation waits as work
+  that can simply be removed. Final measurements belong in the game's
+  `OPTIMIZATION.md`, `VALIDATION.md` and hash-bound experiment ledger.
   Fresh TI heat failed startup despite passing assembly/source gates. Word
   RAM decoding also passed correctness but had no useful speed gain; both
   experiments were rejected and retained in the ledger.
@@ -344,3 +473,594 @@ as the gameplay oracle and validate intentional TI-only changes separately.
 See `Decompiled/Pitfall2/VALIDATION.md` and its hash-bound experiment ledger.
 Full original speed remains unmet; do not transfer its rates or addresses to
 another game. Original CPU, RAM, VRAM and ordered sound writes remain oracles.
+
+
+## Pitfall II: direct uploads, scores and complete checkpoint returns (2026-10-25)
+
+- Immutable expanded graphics can remain in ROM. Store a checked pointer,
+  bank and final byte in the cache entry instead of copying the same payload
+  into RAM before every upload. Generic mutable streams still need RAM storage.
+  Restore the caller bank on both uploads and resident hits; audit the live
+  backing bytes and mutate the descriptor actually used by the fast path.
+  Corrupting an obsolete staging buffer no longer tests that path. Pitfall's
+  direct-band candidate passed all 62 existing gates.
+- A frequently repeated decimal score operation can dominate a return
+  animation. Pitfall subtracts nine from six unpacked decimal digits at each
+  travel step. A guarded native borrow operation and two six-byte score
+  uploads replace repeated generic BCD work and individual character writes.
+  Keep zero saturation, leading blanks, invalid-digit/argument fallback,
+  returned registers, both-table invalidation and VDP side effects. `VCOPY`
+  clobbers R1 with its computed branch entry; explicitly restore the final A
+  byte. The 701 score fixtures include output, borrow and invalidation mutations.
+- Measure the entire state lifetime. Pitfall's `$7063` countdown ends before
+  checkpoint travel; `$7050` bit 6 covers both. A one-frame minimum does not
+  imply one-frame throughput when rendering already exceeds that budget.
+  The user explicitly authorized faster automatic return. The accepted build
+  batches two complete player steps per publication and checks termination
+  before the second step. This is an intentional animation change, not a
+  general permission to omit gameplay work or accelerate normal movement.
+- Compare every internal movement/score step when batching an animation.
+  A publication-level trace will intentionally have fewer samples. Use the
+  same explicit controller direction through the automatic interval: a
+  pass-keyed random script can leave different directions held when manual
+  control resumes, producing an apparent endpoint mismatch. Test normal,
+  exact-mode and completion guards, including deliberately bypassed guards.
+  After this behavior change, whole-publication throughput mixes different
+  amounts of manual and automatic play. Compare equal normal-play prefixes
+  and sustained water routes separately; retain longer production replays.
+- Native far-call descriptors must resolve hot as well as cold targets.
+  A label moving into RAM does not make its old cold-bank symbol valid.
+  Preserve raw near-branch checks and original C-call/Z-tail conventions.
+- Fixed call sites can remove a general helper's count/alignment/loop work.
+  Pitfall clears 12 bytes and 16 bytes at two constant, aligned frame-buffer
+  addresses. Direct word stores reduce the measured block from 1,796 to 674
+  cycles. Check the original call-site bytes, all incoming C-register values,
+  flags, stack neutrality and randomized neighboring RAM; an out-of-range
+  store must fail. Put the common inactive-return guard before the exact-mode
+  check when both paths have equivalent results. Re-measure placement: the
+  first batching layout regressed a normal-play holdout by 1.346% and was
+  rejected against its unchanged 1% limit.
+- Distinguish slow regression execution from slow emulated hardware. Lowering
+  Cygwin workers to BelowNormal caused severe starvation behind other builds;
+  bounded worker counts were more useful here. Judge ROM speed in emulated
+  cycles/frames, and change only this task's processes when managing host load.
+
+The combined Pitfall follow-up passed 66 gates, including four long exact
+replays, both sustained water routes and the complete return journey with
+both completion directions. Five equal normal-play prefixes retain the
+unchanged per-phase regression limits. Current timing and remaining limits belong in
+`Decompiled/Pitfall2/VALIDATION.md` and its hash-bound experiment ledger.
+
+## Joust: remove work and measure the actual game (2026-10-25)
+
+For the subsequent MSX-derived River Raid comparison and Joust RAM/VDP follow-up,
+read [vdp-ram.md](vdp-ram.md). It covers simulation versus publication cadence,
+logical collision state, aligned word staging, and why fewer total writes can
+still increase active-display exposure.
+
+- Distinguish the static TI cart from the reference emulator. Joust's cart
+  never used a JIT; its old Python reference generated and cached instruction
+  closures. An ordinary interpreter with a cache of decoded instruction data
+  removes that machinery without claiming a hardware speedup. Keep mutable RAM
+  instructions uncached. Freeze register, memory, VDP, I/O and cycle fingerprints
+  before replacement; Joust checks 7,144 opcode/state cases plus stale-RAM and
+  deliberately wrong-result cases.
+- Count completed main-loop passes, not every call to a shared wait routine.
+  Joust's C343 also runs during menus and deaths. Its replacement front end
+  waits at E0CA, not the unused original menu at 806F; an otherwise plausible
+  game-over test watched the latter and timed out. Verify the selected difficulty
+  and player count in game RAM before measuring. Use equal completed workloads,
+  pass-keyed input and optionally pass-keyed entropy when the original mixes
+  instruction counts into RNG; also test the unmodified production RNG path.
+  Short runs can look much faster because they omit the expensive later scene.
+- Inline bit/word arithmetic can remove expensive byte-register shuffling:
+  Joust's tile-address calculation, rider pattern upload, queued character
+  append, and clipped-character ownership test all benefited. Preserve split
+  transfers at Graphics II screen thirds, modulo byte arithmetic, returned
+  pointers, and the exact live flags. A collision scan must preserve its polls
+  as well as distances and branch destinations.
+- Scratchpad code must have a lifetime and an owner. Joust reuses the boot
+  copier at >83A0 only after payload installation and uses >83E0 beyond MAPWS.
+  Build checks prove both loop images fit without overlapping workspaces or
+  uploader scratch. Transfer loops still need count/tail/wrap tests; zero byte
+  counts may mean 256 transfers, not zero. The October 26 follow-up fits eight
+  indirect-port writes into the former four-byte loop's reservation; see
+  [vdp-ram.md](vdp-ram.md#eight-byte-scratchpad-transfers-without-extra-scratchpad-ram).
+- Shared hot code consumes space in every cold bank. Increase placement caps
+  only in isolated builds and measure both layouts; a faster helper can move
+  enough surrounding code to erase its gain. Keep a hard cart-size gate and a
+  hash-bound experiment ledger, including rejected layouts.
+- Check sprite byte order against the original routine across every priority
+  rotation and hidden-Y boundary. Count writes against production beam timing
+  separately; exact lockstep cannot prove tear-free presentation. Joust's
+  existing active-display SAT writes remain an explicit limitation.
+
+Use `Decompiled/joust/DESIGN.md`, `tools/bench.py`, `tools/optstage.py` and
+`tools/nextverify.py` for the port-specific commands and final evidence. Do not
+copy Joust's menu addresses, 128 KiB budget or performance numbers to another
+port.
+
+
+### Joust 838 setup: title work and memory lifetimes
+
+Keep title-only interfaces out of the gameplay hot segment when a spare bank
+fits the existing cartridge. Joust's inline 838 setup uses bank 15 with a shared
+BLWP trampoline that preserves registers/status and returns to the correct bank.
+Budget that bank explicitly so payload placement cannot consume it. Bind both
+the start address and its bank; an address alone is not a valid far target.
+
+Audit existing buffers before treating a gap as unused RAM. Joust's F500-F5FF
+already belongs to a VRAM copy buffer. A modal title workspace can share its
+lifetime, but selected mounts and a pending flag must survive startup copies;
+they were moved beyond the measured scratchpad fill-loop end. Test initialized
+game RAM, not merely the displayed digits, and assert assembled region bounds.
+
+Key edges and release barriers matter at both transitions. The activation 8
+must not also answer the mounts prompt. Two digits and digit+Enter need the same
+numeric interpretation, with explicit zero/empty behavior. Consume Cancel until
+release before resuming the original menu: Joust's # key also exits that menu.
+Its checked original HL allocation supplies the highlighted player/difficulty
+choice; the setup must preserve that choice. See `tools/check838.py` for real
+keyboard-input tests and an assembled invalid-level mutation.
+
+Check actual title glyph patterns when adding range prompts. Joust leaves the
+hyphen, question-mark and underscore tiles blank in the relevant font third.
+Install bounded modal glyphs and restore them on cancel; testing name-table
+bytes alone cannot prove that punctuation is visible. For odd-offset fields,
+use MOVB: a TMS9900 word store aligns its address down and corrupts the adjacent
+character.
+
+
+### Joust sprite mirror: preserve the VDP read buffer
+
+Faster CPU work can move SAT writes into active display even when completed
+VRAM contents are exact. The two-player held-out workloads caught that on both
+Joust variants. A direct unroll and plain staging burst did not cure it. The
+retained uploader stages the original compacted/rotated stream, compares word
+pairs with its last published prefix, and writes changed pairs. Prefix growth
+forces a full upload. Bound both buffers, invalidate before any lifetime reuse,
+and reject untracked writes while the mirror is valid. Joust shares VBUF with
+C327 and title UI, so those boundaries explicitly invalidate SATLEN.
+
+Skipping every unchanged byte is subtly wrong: the TMS9918 data port refreshes
+its read buffer on writes. The last byte must be republished even on an unchanged
+picture, along with the original final address. The original-ROM oracle caught
+this. Test consecutive cached calls, growing/shrinking tables, hidden sprites,
+all rotations, canaries and invalidation mutations. Count logical upload calls
+rather than writes to the first SAT address; then assert full published bytes,
+mirror coherence, address and read buffer at each return. Keep raw active-display
+write counts and the original no-increase threshold.
+
+## Carnival: static work and freeze regressions (2026-10-25)
+
+Carnival already translated Z80 code ahead of time. Its cartridge has no
+interpreter or JIT. The retained optimization expands two fixed RLE streams
+(3,520 bytes) at build time, validates all five constant call sites, and uploads
+bounded slices from a ROM data bank through scratchpad code. It also predecodes
+the fixed 13-child gallery tree into compact descriptors. Preserve dynamic
+frames, positions, clipping, register/flag exits and original RAM bookkeeping.
+The 128 KB cart size is unchanged. Compare bank placement and whole-game speed:
+a 1,032-byte unrolled gallery was worse than the retained 266-byte table.
+
+The retained object path also removes smaller, repeated setup costs. OB0
+inlines the common signed divide-by-eight/range check and calls CLMP only
+when saturation is needed; only the clamped low byte is live at these sites.
+The generic complex-object O4L loop maps its lists to TI pointers once, then
+uses byte auto-increment loads and a register counter instead of repeated
+indexed translations and a memory decrement. Preserve byte-packed fields,
+the zero-count/256-component case, child status writes, alternate-register
+results and the caller's original bookkeeping. Validate the generated and
+generic paths against captured BIOS states, including clipping boundaries.
+Carnival's `src/os7obj.a99` combines these with game-specific OGL dispatch;
+copying that file alone into a generic port is not a complete integration.
+
+Keep these correctness contracts when reusing the code:
+
+- **Confirmed flashing fix:** WEND publishes a completed batch; frame service
+  sends it. ONTIME records tick entry and can be stale by writer completion.
+  Do not reintroduce that immediate flush. The user confirmed this removes
+  prior-state flashes. `commitcheck.py` executes the assembled path at four
+  beam phases; the prior ROM is its negative control.
+- **Elapsed-frame credit:** a destructive status read outside the tick can
+  consume the VDP frame bit after GLUE has serviced it. Keep TICKFR, cleared
+  at boot, as the serviced FRAMEC value consumed by TICKD. FRDUE credits a
+  different FRAMEC before the game's wait test, gated on PACE; equality means
+  no new credit. This avoids waiting another frame for work already elapsed.
+  Poll before FILL_VRAM clears status, then preserve the original returned
+  status. Do not use POLLN/ONTIME as permission to flush. `framecheck.py`
+  executes equal, changed, wrapped and exact-mode cases plus 11 bulk fill
+  lengths/wrap cases; its mutation removes the credit. Keep TICKFR's reserved
+  word distinct from SNDBNK and the asset uploader workspace.
+- **Flashing recurrence and poll latency:** retain commit-only WEND and make
+  TICKD commit-only too. Long natives can delay GLUE even with correct commit
+  boundaries. Carnival adds PACE-only service between objects and before
+  READ_VRAM, TIME_MGR and the foreground PLAY_SONGS/SOUND_MAN pair. Insert
+  polls only where R0/R15 are scratch, no queue cursor is live, and no VDP
+  address/data transaction has begun. The later write-entry poll brings this
+  to six boundaries; `drawpollcheck.py` executes all six and removes each poll
+  in its mutation control.
+- **Keep the sound pair together:** polling between PLAY_SONGS and SOUND_MAN
+  let one skip on zero debt and the other run after the poll added debt.
+  The rejected candidate accumulated 20 frames of PLAY_SONGS drift. Poll
+  before PLAY_SONGS instead; background SNDRUN calls PSREAL directly.
+  `sndpaircheck.py` injects an arriving frame with zero debt and requires
+  both halves once. The preceding candidate is a negative control.
+- **Measure visible effects, retain raw timing:** record active-display
+  pattern switches separately from switches after the beam reaches affected
+  pixels. Carnival's corrected build switched at lines 0/13 in two replays,
+  but rendering before/after proved its first changed pixel was at line 64.
+  This is a measured pre-gallery interval, not an allowance for tearing.
+  Keep the zero unsafe-switch limit, raw counts, old failures and missing-poll
+  mutation. Whole-band A-B-A and mixed-row counts remain separate checks.
+- **Full queue:** QFLUSH clobbers R2/R3/R15. SATCK must preserve its pending
+  length, destination and caller status. A lost length of zero decremented
+  to FFFF and ran through RAM. `queuefullcheck.py` forces the full-queue path
+  with 4-, 7- and 128-byte sprites and rejects the zero-length mutation.
+- **Sound workspace re-entry:** retain the original 02EE poll for ordinary
+  SOUND_MAN calls, including deterministic-harness poll metadata. Background
+  sound already owns GLUE's return context; a nested BLWP corrupts that context
+  before SNDIN can prevent another sound run. SNDWP (>A452, clear at boot and
+  on return) guards this poll and selects fixed return LWPI instructions.
+  `sndpollcheck.py` checks deferred background edges and ordinary frame delivery.
+  `sndruncheck.py`, `sndtempo.py` and their mutations remain required.
+- **Sound debt must not be discarded:** a long note parser can hold SNDIN
+  over several serviced frames. Capping SNDDUE at two permanently loses
+  updates and slows music. Retain the owed count while SNDIN/SNDBSY blocks
+  re-entry, then consume it through the normal service paths. Carnival's
+  assembled `snddebtcheck.py` tests both blockers and rejects the clamp;
+  the unchanged `sndtempo.py` drift limit remains two frames.
+- **Sound bank restoration:** CPU registers and workspace are not the entire
+  interrupted state. Carnival's sound fragments left bank 6 selected after
+  interrupting game code in bank 7; the correct return PC then resumed the
+  wrong instructions. SNDRUN now saves CURBNK in SNDBNK (>F042, explicitly
+  reserved) and restores the hardware selector plus CURBNK before returning.
+  >AFFA is SNDDE, not free storage. `sndbankcheck.py` tests both callers/all
+  16 banks and a missing-restoration mutation. The live sound checker also
+  compares bank state and the far-call stack pointer.
+- **No runtime code patching:** the sound return stores its caller in data,
+  not SNRWP+2. `staticcheck.py` compares executed RAM opcodes and operands to
+  the boot image; its mutation must be detected. Host-emulator implementation
+  details do not run on TI hardware and are not hardware optimization claims.
+- **Trustworthy comparisons:** production randomness includes video timing.
+  Carnival's corrected `--stable-rng` installs before game entry, writes the
+  active LD A,R helper workspace, and measures from the option keypress.
+  Writing MAINWS early was ineffective because the helper overwrote it;
+  discard older supposedly matched runs. `rngcheck.py` executes that store and
+  rejects the wrong-workspace override. Keep production replays separately.
+- **End-to-end transitions:** leaving the game-over loop is insufficient.
+  Require a visible selection screen and a successful next-game start.
+  Carnival left DEFER enabled after gameplay, but its menu input loop never
+  called WRITER: the final display-on command stayed queued. Patch 8110 sends
+  the completed static menu before input polling; this does not change WEND.
+  The regression compares all menu names with startup and plays another 300
+  ticks. Its mutation drops menu completion. Scratchpad mutations must use
+  the emulator bus (or the correct scratchpad offset), not the expansion array.
+
+Use `Decompiled/Carnival/DESIGN.md` for artifact hashes and measurements.
+Validate a frozen ROM/source snapshot; do not rebuild beneath running tests.
+
+## Pitfall II resolved-work index
+
+Use this index with the [round-by-round record](../../../Decompiled/Pitfall2/OPTIMIZATION.md),
+[implementation contracts](../../../Decompiled/Pitfall2/DESIGN.md) and
+[current validation](../../../Decompiled/Pitfall2/VALIDATION.md). The current
+ROM hash, frozen snapshots and `build/optimization/process-ledger.json` decide
+what shipped. Historical intermediate gains are not current performance claims.
+
+| Resolved work | Reusable contract and evidence |
+|---|---|
+| Native copy/read/fill/clear, literal/RLE decoding, map/destination/pitch setup and four-way scratchpad comparisons (rounds 1–15) | Preserve caller ABI, flags, alternate registers, zero counts, overlap and VDP read-ahead; compare captured native entries and long exact replays. Per-run workspace switching lost more than it saved. |
+| Four band-cache slots and full mutable-program keys (3b–9) | Four competing bands thrashed three slots. Include the complete second mutable program through `$71D7`; equal keys alone do not prove that cached or displayed bytes still exist. `check_bandcache.py` and `check_residency.py` cover both proofs. |
+| Fresh-vblank publication and elapsed-frame pacing (13–15) | Count rendering time toward the original minimum, but still publish complete SAT/name-table state on a fresh blank. Removing the presentation wait is not an optimization. Keep modeled active-write, payload and pacing checks. |
+| Static map bits, graphics expansion, pattern setup, music channel, precise residency invalidation and reclaimed RAM (16–28) | Generate immutable work from the ROM, invalidate once per bounded decoder transaction, bypass unrelated SAT/gap writes, and prove cache/stack lifetimes before reusing padding. Blanket invalidation was slower. |
+| Prepared rows/bands, native asset-bank action sequences, direct keys/aliases, scene proofs and unrolled row uploads (29–35) | Enumerate every map/phase/platform pose, retain ordered dynamic drawing, guard the complete scene once, and fall back on a failed proof. `check_scene_matrix.py`, `check_renderer.py` and all 12,288 `check_prepared_bands.py` fixtures cover this design. The user authorized the larger cartridge; that is not permission for another port. |
+| River freeze and return-discarding bank wrappers (37–45) | Audit all six original control-flow families, including conditional calls and POP BC. Never add a bank continuation where the source discards a caller return. Check stack neutrality every update across both 900-update river routes, not only a short-run high-water mark. |
+| Complete swimming/platform assets, fixed RAM programs, within-scene row reuse and enemy dispatch (38–45) | Expand complete tables and check actual lengths, masks, pointers and bank restoration. A perfect hash still checks the full source identity. Reuse RAM only within its proven lifetime and execute every dynamic action. See the earlier complete-asset section and asset/dispatch gates. |
+| Native game-owned music/SFX, bounded 32-byte VRAM copies and constant seed stores (46–48) | Use the native-sound/bounded-copy section above. Preserve ordered PSG writes and original cadence; prove overlap/wrap behavior and poll only between complete transactions. Tests cover 1,885 sound states, 56 copy fixtures and 80 fixed-seed comparisons. Cartridge execution was already static; host opcode caches are not cartridge JIT. |
+| Direct ROM band descriptors, native decimal score borrow, faster complete returns and fixed frame clears (49–53) | Use the direct-upload/return section above. Mutate the descriptor actually consumed, preserve every internal return/score step, check completion before batching another step, and keep normal movement single-step. Compare both held directions and equal normal-play prefixes. |
+| Phase-wide fixed-pattern residency and finer placement search (54–57) | Use the RAM-ownership section below and accepted round-57 record. Keep immutable payloads in ROM and compact source identities in CPU RAM, invalidate every overlapping writer, preserve final-byte VDP effects, and measure all phases after placement. Source identity must distinguish different streams at the same destination. |
+
+The early renderer contract also explains why simply retaining a decoded band
+is insufficient: its mutable input key, CPU payload lifetime and VRAM residency
+are three separate properties. Prepared immutable descriptors can eliminate a
+CPU copy, while a resident hit can eliminate most VDP writes; neither permits
+omitting ordered dynamic actions or final data-port effects.
+
+Keep rejected findings accessible: three-slot thrashing; single-comparison
+scratchpad loops; incorrect native leaf ABI; TI-heat placements that slowed
+startup or failed it; broad invalidation; shared allocation that displaced hot
+code; unsafe bank wrappers; word decoding with no useful gain; return batching
+that regressed a normal holdout; and row/narrow-pattern caches that reduced
+traffic but slowed normal play. Reconsider one only when its underlying
+assumptions change. Do not hide a failed report behind a later checker rerun.
+
+Resolved checker hazards include invalid uninitialized song fixtures, dead
+flag comparisons, a mutation aimed at obsolete staging RAM, hooks that did not
+fire after changing PC, negative tests whose fast path bypassed the subject,
+and captured-VRAM restores retaining stale ownership. Require subject coverage,
+known-bad mutations, completion markers and matching hashes. Frozen, disjoint
+successful subsets may form a full suite; interrupted checks must be rerun and
+cannot count as passes. Read profiling arrays passively so observation adds no
+emulated memory cycles.
+
+Always report both throughput improvement over a named accepted TI baseline
+and current throughput as a percentage of the original (100% = original).
+Separate equal-work normal routes, swimming-only intervals, approach-inclusive
+river routes and the complete automatic return. For identical work, improvement
+is `100 * (old_time / new_time - 1)`; this is different from percentage time
+saved. State whether timing is modeled or measured on physical hardware.
+
+## RAM ownership and display scheduling: the MSX-derived River Raid comparison
+
+The [October 25 executable comparison](../../../Decompiled/RiverRaid/DESIGN.md#october-25-2026-comparison-with-super-river-raid-11)
+studies the supplied TI Super River Raid 1.1 binary and our Coleco-derived TI
+port. It does not assume access to the other author's source or attribute all
+differences to the MSX original. Its sampled gameplay made no VDP data reads,
+prepared terrain incrementally, and separated simulation from conditional
+sprite construction/refresh. One 150-frame opening diagnostic counted 146
+updates and 45 refreshes there, versus 111 updates and 111 uploads in our port.
+These are diagnostic workloads, not synchronized gameplay-equivalence tests.
+
+Apply the architectural lesson: keep authoritative logical data in CPU RAM or
+immutable ROM tables; use the VDP for publishing completed pictures. Distinguish
+logical terrain from visible and pending terrain before removing VDP reads or
+deferring graphics. Reuse row pointers or compact residency identities where
+they avoid extra copies. A byte-for-byte VRAM mirror previously slowed River
+Raid; the proposed word/block arrays and explicit lifetime ownership are a
+different design that still needs measurement. Preserve input, simulation,
+collision and sound progression. Do not silently copy the other port's skipped
+visual phases or reduced sprite refresh cadence.
+
+Pitfall II round 54 is a useful negative control: 215 normalized row shapes plus
+phase bits exactly represented 535 rows. Per-table RAM identities cut a measured
+water interval's scenery writes from 30,772 to 7,616 (75.25%) and total writes
+from 71,176 to 48,020 (32.53%). All 67 correctness gates passed, but a matched
+normal route fell from 41.3793 to 40.6504 updates/100 frames (1.76% slower),
+exceeding the unchanged 1% limit. Its water gains were only about 0.8–1.0%.
+The candidate is rejected; retain the frozen evidence instead of presenting
+write-count reductions as gameplay speed gains. Bookkeeping and hot-code
+placement can cancel most of the saved port traffic.
+
+Pitfall rounds 55/56 cached only the common water pattern/colour pair. Both
+passed focused cache, invalidation and presentation checks, but normal seed 1
+regressed 2.55% / 2.95% against round 53. Round 56 improved the two water routes
+by about 3.2–3.3%, to about 68% of original speed, but is still rejected.
+Keeping one phase fast is insufficient when ordinary scrolling uses others;
+measure the added lookup/invalidation work on every writer and every phase.
+
+The placement search itself had a 512-byte discontinuity after its 1,536-byte
+hot-code margin. Continuing in 64-byte steps placed more useful code in RAM
+and shared ROM without changing cartridge size. That alone did not rescue the
+narrow cache: the round-56 holdout still failed. Record the chosen margin in
+the budget and retain whole-game holdouts; a tighter packing is not proof of
+speed. Do not infer that adding ROM banks supplies more always-visible code.
+
+For an immutable pattern cache, track source identity as well as destination
+and byte count. Revoke it before every overlapping direct, bulk, fill, copy or
+interpreter write, including physical wrap. Audit the low-address and colour
+pattern regions in interpreter guards; an old name-table-only fast rejection
+can bypass new invalidation. Restoring captured VRAM in the test harness is an
+external writer too and must revoke claims unless a test explicitly preserves
+the matching VRAM. An unchanged transfer still writes its final byte to retain
+the VDP data-port read buffer and final address. Test source changes at the
+same destination, cold/warm paths, exclusive interval ends, wrap, canaries,
+actual masked interpreter writes and missing-invalidation/final-byte mutations.
+
+Preserve helper register contracts explicitly. A range invalidator needs the
+exclusive end recomputed if alignment/type guards reused that scratch register
+(caught in Pitfall's archived round-54 development build). Do not keep a pending
+cache-key pointer in a register that an overlapping-name invalidator clobbers.
+Nested `BL` helpers also need their return link saved without disturbing a
+caller-owned workspace. Assembled-path fixtures must exercise the fallback as
+well as the cache hit, since a working hot case can hide broken range setup.
+
+### Carnival: rectangle queues and interrupt phase (October 25 follow-up)
+
+Profile complete expensive ticks as well as averages. Carnival's `tickprof.py`
+chains the real tick hook and separates intervals longer than 1.5 video periods
+from busy work exceeding one period. It accounts for the final hook instruction
+separately and asserts that its intervals reproduce the benchmark's cycle total.
+The baseline's long ticks were dominated by gallery object drawing; shaving
+the idle wait would not remove that work.
+
+The gallery can enqueue one eight-byte rectangle reference instead of one
+six-byte record per row. Keep width, starting VRAM address, immutable source,
+height and source stride. The writer still sends the same rows in the same
+order, including the final VDP address and read-buffer value. Queued VRAM reads
+must expand rectangles too, including clipped intersections and later writes.
+Carnival uses tag `>9000|width`; `>8r00|value` remains a register command.
+Do not borrow a bit from a fill count: large fills can already use those bits.
+
+Its fixed 32-store copy body enters at the last `width` instructions; no
+instruction is created or patched at runtime. QFLUSH saves its return in R10,
+allowing R11 to retain that entry address. Preserve the existing R5-R8/R9
+contract within the rectangle loop (R9 is the enclosing flush's endpoint).
+`rectcheck.py` executes all widths 1..32, four heights, two source
+strides and six read intersections against ordinary row records. Mutations
+corrupt the stride and omit an actual assembled store. The live fast-path
+test compares expanded transactions, remaining RAM and alternate registers
+when two correct queue representations have different bytes.
+
+**Exercise the BLWP wrapper through RTWP.** Carnival C24 passed all 54
+headless checks yet stopped at an incomplete gallery in Classic99. The
+rectangle read overlay had borrowed HELPWS R15 for width. R15 was the saved
+caller status; RTWP restored the width as status, accidentally enabling
+console hardware interrupts. The direct-helper fixture checked memory and
+video but skipped this return. C25 packs height/width into R1 and leaves
+R13-R15 intact. `rectcheck.py` now executes QOVLK through RTWP and checks
+the restored WP/status; that test rejects the unchanged C24 ROM.
+`irqcheck.py` also checks the interrupt mask at every production instruction,
+with a return-status mutation. Do not assume a headless model will reproduce
+the downstream console interrupt damage. Preserve R13 (WP), R14 (PC) and
+R15 (status) in any BLWP workspace, including callees reached through BL.
+The visible original-emulator run is an independent acceptance gate.
+
+Keep the cartridge budget explicit. Putting new helpers in the repeated
+shared segment first required an extra cold bank, doubling packaging to
+256 KB. Moving the rectangle copier and read-overlay code to reserved,
+bank-independent RAM kept Carnival at 128 KB. Moving unchanged queue code
+alone produced no speed gain. Its build now rejects images above 128 KB.
+
+A smaller TEST_SIGNAL cache path computes `3*A` instead of reserving the
+128-byte offset table. It is guarded by the cached last entry and timer-number
+bound, and retains the original walk otherwise. Only INIT_TIMER may replace
+the table base, and it must invalidate the cached bound. Reject a zero cached
+base explicitly: timer zero plus a zero base otherwise equals the zero bound
+and falsely passes the cache test. The original 7,175 fixtures supplied a base
+even for their cold cases and missed this; captured BIOS calls found it.
+The extended 8,967 comparisons include both words zero and a mutation removing
+that actual guard, alongside warm, boundary and invalidation cases. Audit the
+table-base ownership assumption again in another game.
+
+Keep native scheduling tests separate from algorithm comparisons. Adding the
+write-entry poll made a generic clone alone service a pending frame, changing
+sound RAM before it produced identical queued writes. Carnival's fast-path
+fixture bypasses that same entry poll on both clones, including fallbacks,
+while comparing all other RAM and the drawing results. The assembled poll
+test, production beam/queue/sound tests and mutation checks retain full polling.
+The diagnostic `--include-entry-polls` preserves the old fixture. Do not mask
+sound-memory differences or disable production polling to make this pass.
+
+**Fewer cycles can expose a later display switch.** The first combined
+candidate reached about 56.2 ticks/s but failed a production replay: its
+pattern switch occurred at beam line 91 after the first changed pixel on
+line 64. Faster timer work shifted a write-heavy path across vblank, and the
+next translated-loop poll arrived too late. Service before N_WRVRAM opens
+its VDP transaction, with R0/R15 scratch and no live queue cursor. Keep the
+commit-only WEND/TICKD behavior and sound-pair boundary. Both 1,200-frame
+replays then had zero active-display pattern switches. Retain the failed
+candidate as evidence; do not relax the zero unsafe-switch gate to retain
+its slightly higher score. Final acceptance still requires the frozen suite,
+held-out performance, shooting and bear checks documented by the game.
+
+### Carnival: applying the River Raid RAM/VDP findings
+
+Measure CPU work around port traffic before allocating a mirror. Carnival's
+`vramprof.py` hooks the real benchmark after warm-up, counts VDP bytes and
+inclusive READ_VRAM cycles, and classifies reads by source/destination/caller
+and pending-queue coverage. Its host-side queue inspection restores the cycle
+counter: the emulator's memory/register accessors themselves charge cycles.
+The profile must reproduce the uninstrumented workload's elapsed cycles.
+
+In the C25 300-tick steady seed-1 sample, 1,893 VDP bytes were read and 6,597
+written. Six gallery rows accounted for 72 reads of 26 bytes; the complete
+read path cost about 1.9% of elapsed cycles. No full row was already covered
+by pending writes, and only four single-byte collision reads were covered.
+That evidence does not justify a general "read entirely from the queue"
+shortcut or a full VRAM mirror. A different workload still needs its own
+profile. The River Raid study's zero-read architecture depends on explicit
+ownership of logical terrain; it is not a drop-in cache for arbitrary BIOS
+reads. Keep visual cadence and animation phases unchanged unless authorized.
+
+Two small alternatives use the existing RAM representation:
+
+- **Batch mutable RAM copies.** An immutable body of eight MOVB stores reduces
+  loop overhead in queued uploads. Enter at the last `count & 7` stores for
+  the first partial group, then run full groups. Keep count 1..255 guards,
+  even queue-end padding, BIOS output registers and commit boundaries.
+  Gallery shifts use an odd RAM source and an even queue destination, so
+  blindly replacing MOVB with MOV word copies is incorrect. `ramcopycheck.py`
+  executes all 510 supported count/parity pairs and checks payload, header,
+  queue ownership, unchanged VRAM and register results. Its negative control
+  removes an actual assembled store; when the code is in cartridge space,
+  mutate the active ROM bank, not the expansion-RAM array.
+- **Reject disjoint queued writes early.** In the read overlay, calculate the
+  queued entry's endpoint once and skip it if it ends at/before the requested
+  start or starts at/after the requested end. Retain chronological overwrite
+  order and clipping for intersections, including rectangles. TMS9900 C
+  compares the source against the destination; operand reversal can silently
+  invert the rejection. Retain the QOVLK-through-RTWP return-context test.
+
+C26 passed 58 production gates, the bear suite and visible Classic99 play.
+Its three-seed matched steady rate rose from 56.2452 to 56.6982 ticks/s
+(0.8054%); six loading-inclusive seeds improved 0.3456% overall, with one
+0.1476% slower seed within the unchanged 1% bound. The matched diagnostic
+retained the same VDP read/write counts. Final hashes and evidence remain in
+Carnival's DESIGN.md and validation ledger. Do not infer a 60-update rate
+from a local copy-loop improvement or a lower VDP byte count.
+
+### Carnival resolved-work index
+
+Use this index when carrying all resolved work into another session. The
+linked sections contain the implementation contracts; Carnival's DESIGN.md
+and experiment ledger retain artifact hashes, workload definitions and the
+accepted/rejected status of each build.
+
+| Resolved area | Canonical guidance and executable evidence |
+|---|---|
+| Register-exact native OS7, ROM row references, sprite shadow and sound scheduling | [BIOS ports](bios-ports.md), [OS7 integration](os7lib/README.md); `reglive`, `routest`, `fastpath`, `qcheck`, `sndclose` |
+| Build-time RLE expansion, fixed gallery descriptors, inline clipping and native pointer loops; immutable cartridge code | [Static work and freeze regressions](#carnival-static-work-and-freeze-regressions-2026-10-25); `assetcheck`, `gallerycheck`, `routest`, `staticcheck` |
+| Elapsed-frame credit and bulk fill sizes/wrap | Same static-work section; `framecheck` and its missing-credit mutation |
+| Completed-batch publication, six safe frame polls and sound-pair ordering | Same static-work section and [rectangle/phase follow-up](#carnival-rectangle-queues-and-interrupt-phase-october-25-follow-up); `commitcheck`, `drawpollcheck`, `sndpaircheck`, `flushtrace`, raced `flashcheck` |
+| Full-queue freeze, background workspace re-entry, interrupted ROM-bank restoration and retained sound debt | Same static-work section; `queuefullcheck`, `sndpollcheck`, `sndbankcheck`, `snddebtcheck`, live sound/tempo checks |
+| Complete game-over menu and next-game start; delayed bear collision confirmation | [BIOS ports](bios-ports.md); `gotest`, `bearverify`/`bearhit` |
+| Rectangle references, immutable row copier, compact guarded timer cache, BLWP return context and 128 KB placement | Rectangle/phase follow-up; `rectcheck`, `check_timers`, `irqcheck`, build budget gate |
+| River Raid comparison applied to queued RAM copies and disjoint-read rejection | [RAM/VDP application](#carnival-applying-the-river-raid-ramvdp-findings); `vramprof`, `ramcopycheck`, existing rectangle/queue checks |
+| Matched RNG and complete-tick cost accounting | Static-work and rectangle/phase sections; `rngcheck`, `cspeed`, `tickprof` |
+
+Keep the rejected approaches discoverable: the larger unrolled gallery hurt
+placement; the large timer offset table regressed speed; moving unchanged
+queue code into RAM gave no gain; polling between the sound pair lost updates;
+clamping sound debt lost music; faster drawing without the write-entry poll
+switched after changed pixels; a zero-base timer cache returned a false hit;
+and borrowing BLWP R15 produced an incomplete gallery despite passing the old
+headless suite. The River Raid byte-for-byte mirror and Pitfall II residency
+cache also show why fewer VDP accesses alone are not acceptance evidence.
+
+## Accepted Pitfall II phase cache (round 57)
+
+The retained implementation extends immutable 48-byte pattern/colour residency
+to all sixteen eligible phase destinations. A 64-byte CPU-RAM source-identity
+table occupies audited cache padding; original-derived payloads stay in ROM.
+Name/SAT-only writes bypass the pattern invalidation scan. Every overlapping
+writer, fallback, wrap and captured-VRAM restore revokes the relevant claim.
+Source replacement and final-byte VDP side effects are required, not optional.
+
+All 67 gates pass, including 192 byte/boundary repairs, 244 interval/wrap cases,
+natural claim/write audits and missing-invalidation/final-byte mutations.
+Compared with accepted round 53, normal play improves 3.5–8.7%
+(6.28% aggregate), reaching 84.7–88.3% of original
+(86.69% aggregate). Water improves 3.7–3.8%, reaching
+68.2% of original. The already-accelerated complete return improves
+2.0%, reaching 138.1%
+of original return speed. Report these separately; ordinary play remains below
+the original. Measurements are emulated hardware timing, not physical testing.
+The water-route numbers include the approach. Swimming-only throughput improves
+4.7–4.8%, at 65.1% of original, over 618 identical intervals.
+The matched 120-update river sample reduces total VDP writes from
+71,176 to 60,037
+(15.65% fewer).
+
+SHA-256 `f456024c786c699f16168a9a7c4171e5c366aefb44973d8fc03895869c289090`; evidence is in
+`Decompiled/Pitfall2/snapshots/pattern-phases-r57` and its canonical validation
+report. Current live visual/listening review was blocked by Computer Use app
+approval timing out. The unchanged native sound engine and static execution
+remain; this pass neither removes a cartridge JIT nor introduces one.
+<!-- end Pitfall II round 57 -->
+
+## Pitfall II: a 30 fps target is not Joust's 30 Hz conversion
+
+Check the original simulation and publication rates before applying Joust's
+alternate-drawing technique. Joust alternates upload/flush and drawing over
+60 Hz logic ticks. Pitfall II already targets roughly 30 normal logic updates
+and pictures per second; every-other-update drawing would instead target
+15 pictures/second. A 30 fps cap cannot repair missed two-frame deadlines.
+
+Accepted round 57 averages 26.05 nominal fps in matched normal play and 19.38
+while swimming (60 Hz normalization). That is 86.69% / 65.13% of original
+speed, after gains of 6.28% / 4.70–4.81% over round 53. Restoring the original
+rates needs another 15.36% / 53.53% throughput gain. These are derived from
+existing hash-bound measurements, not a new 30 fps implementation or guarantee.
+The sampled river renderer accounts for 51.08% of inclusive stage time;
+publication's 18.97% includes waiting and is not wholly removable work.
+
+The transferable principle is separate simulation, graphics preparation and
+publication while preserving their data dependencies. Pitfall already has
+hidden name tables; adding another buffer or skipping every other drawing is
+not automatically useful. Investigate changed-region preparation and coherent
+two-frame publication, retaining CPU-side state, every logic/sound step and
+the existing cache ownership proofs. Require per-update deadline distributions,
+original-ROM state comparisons and whole-game holdouts; averages alone cannot
+prove steady 30 fps. See the [game's feasibility review](../../../Decompiled/Pitfall2/DESIGN.md#30-fps-feasibility-and-the-joust-comparison-2026-10-26)
+and `build/optimization/30fps-feasibility.json`. The round-54 row cache remains
+rejected; a new architecture must address its overhead and hot-code displacement.

@@ -38,7 +38,13 @@ QWR11  EQU  >A45E
 N_0679 MOV  R11,@WRRET
        MOVB @K+>73C6,@WRSAV      ($73C6) = 0 while it runs: PUTOBJ draws
        SB   @K+>73C6,@K+>73C6    at once
-WRL    CB   @K+>73CC,@K+>73CB    out = in: done
+* TI-only frame service between objects: no queue cursor is live here.
+WRL    MOV  @PACE,R0
+       JEQ  WRLN
+       TB   2
+       JEQ  WRLN
+       BLWP @NMIV
+WRLN   CB   @K+>73CC,@K+>73CB    out = in: done
        JEQ  WRX
        MOVB @K+>73D0,R4          HL = ($73CF): IX, B, then the next entry
        MOVB @K+>73CF,@>8309
@@ -94,7 +100,13 @@ OB0    MOVB @K+5(R5),R0
        MOV  R11,@OBRET
        MOVB @K+3(R5),R6          IY = the status: frame, x, y
        MOVB @K+2(R5),@>830D
-       MOVB @K+2(R6),R3          C = x / 8 clamped ($07E8)
+* R0/R15 are scratch and no VDP transaction has started.
+OBPOLL MOV  @PACE,R0
+       JEQ  OB0N
+       TB   2
+       JEQ  OB0N
+       BLWP @NMIV
+OB0N   MOVB @K+2(R6),R3          C = x / 8 clamped ($07E8)
        MOVB @K+1(R6),@>8307
        BL   @CLMP
        MOVB @>8307,@>8305

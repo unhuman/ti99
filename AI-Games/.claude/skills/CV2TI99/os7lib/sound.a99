@@ -43,7 +43,14 @@ PSC0   EQU  >A410
 PSC1   EQU  >A416
 PSC2   EQU  >A41C
 PSCN   EQU  >A422
-N_PLAYSNG MOV @PACE,R0         TI only: with the os7 vblank sound on, it
+* Service before the PLAY_SONGS/SOUND_MAN pair, never between them:
+* both halves must observe the same frame debt. SNDRUN calls PSREAL.
+N_PLAYSNG MOV @PACE,R0
+       JEQ  PSGO
+       TB   2
+       JEQ  PSGO
+       BLWP @NMIV
+PSGO   MOV  @PACE,R0         TI only: with the os7 vblank sound on, it
        JEQ  PSREAL               plays when a vblank's sound is due (SNDDUE,
        MOV  @SNDVB,R0            os7.a99), else the vblank plays it; IY kept
        JEQ  PSREAL

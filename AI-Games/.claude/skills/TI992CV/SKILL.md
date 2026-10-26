@@ -10,7 +10,7 @@ description: >-
   workspace-in-RAM register model, lazy TMS9900 status flags, the console
   ISR replaced natively (sound lists, sprite motion, VDP timer), the TI
   keyboard rebuilt from the Coleco controllers, the Coleco cart header and
-  front end, and the Coleco-only hazards (NMI, VDP write speed, 1 KB RAM).
+  front end, and the Coleco-only hazards (NMI, VDP read/write timing, 1 KB RAM).
   Every task under it runs the automatic validate-then-optimize loop (§0):
   scripted gates on each build, per-phase speed measured against the TI, and
   profile-driven optimization rounds until the target or a stop condition,
@@ -35,10 +35,13 @@ are the parts that differ:
 | Frame interrupt | maskable (`LIMI 2`), runs the console ISR | **NMI** (cannot be masked except via VDP R1 IE bit) |
 | Input | 8x8 keyboard matrix over CRU, two joysticks on columns 6/7 | two controllers: joystick + 2 fires + 12-key keypad |
 
-**Status (2026-10-22): Parsec is a working 128 KiB MegaCart port.**
+**Status (2026-10-26): Parsec is a 128 KiB MegaCart port.**
 Its release has native performance paths, all-family original-code enemy
 checks, optional PSG speech, and a Coleco front end. Timed parity is measured,
 not assumed; speech remains less clear than the original TI synthesizer.
+The first-read timing repair passes automated checks; physical-console retest
+is pending. Read [VDP timing](vdp-timing.md) when copying its video routines
+or test harness, optimizing VDP accesses, or investigating hardware-only graphics faults.
 Use `Decompiled/CV_Target/Parsec/tools` as the current reverse-port template.
 Earlier forward-port tools remain useful references. See §10–12 for the
 corrections learned from the complete port.
@@ -73,7 +76,7 @@ run it.
    nonzero on any failure (Parsec's `verify.py`, or the port's equivalent;
    create one if missing): exact lockstep on `game_ls.rom` (scripted keys
    **and** random input), `insntest`/`routest` for every touched translation
-   or native, sprite/VDP-transaction/video tests, RAM and stack budget,
+   or native, sprite/VDP-transaction/video tests (first reads and streams), RAM and stack budget,
    front-end/input release tests, and the source-ROM algorithm checks. Each
    new gate gets a mutation self-test that rejects a real bad ROM. Run long
    suites against a frozen copy of `build/`.
@@ -328,14 +331,18 @@ in the README.
   header and draw that native startup instead.
 - **Power-on**: silence all four sound channels (`$9F $BF $DF $FF` to port
   `$FF`) and set every VDP register yourself; never rely on the BIOS's state.
-- **The Z80 can outrun the VDP.** During active display the TMS9918A needs
-  roughly 8 µs (about 29 Z80 T-states) between VRAM accesses. The TMS9900 was
-  never fast enough to violate this, so TI code never had to care, but a
-  translated or native Z80 loop (and `OTIR`, ~21 T-states a byte) can
-  silently drop bytes. Only burst outside active display (vblank or display
-  off). Pad native fills otherwise. Add the timing check to `vdp.py` so the
-  lockstep catches it, then confirm the number against the TMS9918A data
-  manual.
+- **The Z80 can outrun the VDP, including the first read.** At the standard
+  Coleco clock, retain the conservative 29-T active-display gate for streamed
+  VRAM accesses **and read-address setup to first data read**. Read-address
+  setup starts a VRAM fetch; the chip's internal setup delay alone does not
+  cover the memory access window. The 8-T write-address setup allowance must
+  not become a blanket address-to-data exemption. Translated instruction
+  sequences can become too short just as native loops can; audit both in the
+  assembled production ROM. An immediate-prefetch emulator and exact lockstep
+  can both miss this fault. Read [VDP timing](vdp-timing.md) for the Parsec
+  evidence, timing categories, actual-opcode negative controls and ordinary
+  startup/gameplay replay. Use faster bursts only when the complete transfer
+  is proven to remain in a suitable blanking window or with the display off.
 - **Game over / idle must never go blank**, and every screen must accept the
   mapped keys (CLAUDE.md §7A conventions still apply; the TI game's own
   difficulty screen stays as the original drew it).
@@ -380,7 +387,10 @@ translated code (`CV2TI99/native-porting.md`).
   checking every flag the translation claims live afterwards.
 - `routest.py`: every native (ISR, KSCAN, sound list, sprite motion, fills)
   against the console code it replaces, from captured real states.
-- `sprcheck.py` and the VDP timing check from §6.
+- `sprcheck.py` and the VDP timing checks from §6: assembled first-read paths,
+  an ordinary idle-before-start/gameplay replay, and separate first-read and
+  streamed minima. Reject real early-read opcode mutations and retain a known
+  failing ROM where available; see [VDP timing](vdp-timing.md).
 - Hooks in test scripts must be **bank-aware** once the cart is a MegaCart (CV2TI99 §6).
 
 ## 9. Working practice

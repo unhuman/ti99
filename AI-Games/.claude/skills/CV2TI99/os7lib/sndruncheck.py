@@ -7,8 +7,8 @@ vblank, TI only (PACE), so lockstep never executes it.  It saves only the
 registers the sound closure can change (sndclose.py proves the rest are
 never written).  This plays the cart with PACE on (cspeed's input) and at
 every run compares all 16 MAINWS registers at SNDRUN's entry with their
-values at the LWPI back (SNRWP), and the caller's workspace pointer after
-it.  --mutate corrupts R9 (BC') in the middle of each run: it must be
+values at the LWPI back (SNRWP), and the caller's workspace and ROM bank
+after return. --mutate corrupts R9 (BC') in the middle of each run: it must be
 reported.
 """
 import os
@@ -36,7 +36,7 @@ def main():
     tiemu.start_game(t, '1')
     drv = cspeed.Driver(args.seed)
     tb, ta = cspeed.ti_tick_addr(build)
-    st = {'runs': 0, 'bad': 0, 'regs': None, 'wp': None}
+    st = {'runs': 0, 'bad': 0, 'regs': None, 'wp': None, 'bank': None, 'swbank': None, 'bank_changes': 0}
     MAIN = 0x8300
 
     def regs(m):
@@ -45,6 +45,9 @@ def main():
     def enter(m):
         st['regs'] = regs(m)
         st['wp'] = m.wp
+        st['bank'] = m.bank
+        st['swbank'] = m.rw(labs['CURBNK'])
+        st['bsp'] = m.rw(labs['BSP'])
 
     def mid(m):
         if args.mutate and st['regs'] is not None:
@@ -54,6 +57,7 @@ def main():
         if st['regs'] is None:
             return
         st['runs'] += 1
+        st['bank_changes'] += m.bank != st['bank']
         now = regs(m)
         if now != st['regs']:
             st['bad'] += 1
@@ -63,6 +67,12 @@ def main():
         st['regs'] = None
 
     def after(m):
+        if st['wp'] is not None and (m.bank!=st['bank'] or m.rw(labs['CURBNK'])!=st['swbank']):
+            st['bad'] += 1
+            if st['bad']<=3:print('caller bank %d, returned in %d'%(st['bank'],m.bank))
+        if st['wp'] is not None and m.rw(labs['BSP'])!=st['bsp']:
+            st['bad']+=1
+            print('sound changed the caller far-call stack pointer')
         if st['wp'] is not None and m.wp != st['wp']:
             st['bad'] += 1
             print('caller workspace %04X, back in %04X' % (st['wp'], m.wp))
@@ -82,11 +92,12 @@ def main():
     t.pc_hooks[labs['SNDRUN']] = enter
     t.pc_hooks[labs['FSMAN']] = mid
     t.pc_hooks[labs['SNRWP']] = back
-    t.pc_hooks[labs['SNRWP'] + 4] = after
+    t.pc_hooks[labs.get('SNRDONE',labs.get('SNRX',labs['SNRWP'] + 4))] = after
     old = t.pc_hooks.get(ta)
     t.pc_hooks[ta] = (lambda m: (old(m) if old else None, tick(m)))
     t.run_frames(args.frames)
-    print('%d vblank sound runs, %d left a register changed' % (st['runs'], st['bad']))
+    print('%d vblank sound runs, %d changed bank internally, %d corrupted caller state' %
+          (st['runs'],st['bank_changes'],st['bad']))
     if not st['runs']:
         sys.exit(1)
     if args.mutate:

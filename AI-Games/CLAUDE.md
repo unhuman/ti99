@@ -58,6 +58,19 @@ optimizations, atomic VDP transactions, algorithm/RNG and clocked parity tests,
 PSG speech limits, debounced UI, the one-time TI-style startup screen, and
 `game.rom` / `game_dev.rom` / `game_ls.rom` output naming.
 
+Parsec physical-Coleco correction (2026-10-25): read-address setup starts a
+VRAM prefetch. Allow the active-display access window before the first data
+read, not just the chip's internal setup delay. Native 18/19-T first reads
+can reuse stale pixels or sprite coordinates, producing a ship at the top
+and persistent colored dots while the terrain/HUD remain intact. The old
+audit's blanket 8-T address exception and immediate-prefetch emulator missed
+this. Keep 29 T for read prefetch and streaming. Read TI992CV's
+[VDP timing reference](.claude/skills/TI992CV/vdp-timing.md) when copying or
+optimizing video code: cover native and translated first reads, actual-opcode
+negative controls, ordinary idle-before-FIRE replay and hash-bound evidence.
+Its stale-buffer model is explicitly adversarial, not cycle-exact; physical
+confirmation of the repaired ROM is still pending.
+
 ### Static-port nonlocal returns (Pitfall II, 2026-10-25)
 
 Original assembly may POP its own CALL return and jump into its caller's
@@ -75,7 +88,90 @@ are necessary: short random routes and isolated ordinary returns missed it.
 See `Decompiled/Pitfall2/DESIGN.md`, `tools/audit_returns.py` and
 `tools/check_water.py` in that port.
 
+### VDP cache ownership and placement (2026-10-26)
+
+For VDP caching, also read CV2TI99 `optimization.md`'s MSX-derived River Raid
+comparison and Pitfall experiments. Keep logical state in CPU RAM or immutable
+ROM and publish only required display changes. Expanding a name-table cache
+to pattern/colour data requires revisiting every writer's early rejection
+guards, including interpreter runs; stale guards can bypass invalidation.
+Cached writes must retain the VDP final address and data-port read buffer.
+Include invalidation overhead and displaced hot code in whole-game benchmarks:
+Pitfall's 75% reduction in sampled scenery writes still regressed normal play.
+The build's hot-code placement search also needs fine steps; adding ROM banks
+does not create more always-visible RAM or shared-code capacity.
+
+### Native-cache verification (Super DK Junior, 2026-10-25)
+
+Test static-port caches both cold and warm. Resetting the TI runtime before
+each isolated call can force every sample through the exact fallback and never
+test the optimized path (TEST_SIGNAL). Test the assembled cache producer and
+invalidation as well as seeded warm states, including table relocation,
+extension, end bounds and flags. Mutations of cold-ROM code must patch that
+bank, not the emulator's RAM array.
+
+Visible-review input hazard (Super DK Junior, 2026-10-25): a delayed menu
+selection can become a gameplay command after the user starts playing. This
+prototype's key 1 loses a life immediately without a death jingle; foreground
+focus alone cannot guard the game state. Its launcher now sends no delayed
+menu/gameplay probes. Run those checks headlessly; see CV2TI99 `superdkjr.md`.
+The user subsequently requested removal of that shortcut: production TI play
+now ignores key 1, while menu selection and the original-ROM oracle retain it.
+
+Native byte thresholds (Super DK Junior, 2026-10-25): unsigned high-byte
+`< k` / `>= k` can use word `CI Rn,>kk00` for any scratch low byte, avoiding
+an indexed byte-constant read. This does not naively preserve equality or
+strict `>` tests. Verify the assembled branches over all 65,536 register
+values and retain production beam checks; even a small input patch can change
+hot-code placement and worsen active-display writes. See CV2TI99 `superdkjr.md`.
+
+Banked ASM regions (Super DK Junior): `xlate.py`'s `cur` chunk is a tuple
+containing a list. Expanding `@CALL` to FARCALL/CALLSV must use
+`cur[1].extend(...)`; `cur[1] += ...` attempts forbidden tuple assignment.
+Keep death/menu busy waits out of gameplay RAM when measurements justify it,
+and compare bank-stack state before a call with its caller continuation.
+See CV2TI99 `superdkjr.md` for the death-animation and placement checks.
+
 ## 3A. CVBasic hazards (the current platform — always loaded)
+
+Static-port timing correction (Carnival, 2026-10-25): an on-time tick start
+does not make its lengthy writer's eventual VRAM flush safe. Commit the
+completed batch for frame service instead of flushing on the stale ONTIME
+flag. The user confirmed this fixed intermittent prior-state flashes.
+See `Decompiled/Carnival/DESIGN.md` and CV2TI99 `bios-ports.md` section 9.
+The later recurrence also exposed late frame service inside long natives.
+Keep TICKD commit-only and poll at safe object/timer/read boundaries. Poll
+before the foreground PLAY_SONGS/SOUND_MAN pair, never between its halves:
+both must make their decision from the same sound debt. The rejected split
+failed the unchanged tempo gate; `sndpaircheck.py` reproduces it directly.
+The same port's shooting-freeze investigation also found a pending sprite
+copy clobbered by a full-queue flush, and a sound poll re-entering its active
+BLWP workspace. Preserve pending values across flushes; prevent workspace
+re-entry before BLWP overwrites the return context. CV2TI99 `optimization.md`
+and `os7lib/README.md` record the regression tests and integration details.
+After gameplay, static menus also need an explicit completion barrier before
+waiting for input; otherwise their queued display-on write may never be sent.
+Test the visible menu and a second game, not just the game-over exit branch.
+Background sound must also restore the hardware ROM bank and its software
+selector before resuming an interrupted banked PC; restoring CPU registers
+and workspace alone is insufficient when sound can execute cold fragments.
+Do not discard owed sound updates while a long parser prevents re-entry;
+the sound-debt and tempo checks cover that separate timing failure.
+Faster code can shift a previously safe path across vblank: Carnival's next
+optimization needed a poll before N_WRVRAM opened its address/data transaction.
+Re-run beam timing after cycle savings, and preserve VDP address/read-buffer
+state plus queued-read semantics when batching drawing into rectangles.
+In a BLWP workspace, R13/R14/R15 hold the caller's WP/PC/status, including
+while a nested BL helper is running. Carnival's rectangle read helper used
+R15 for width: memory/VDP tests passed, but RTWP enabled hardware interrupts
+and Classic99 stopped at a partial gallery. Preserve the return context and
+execute the actual wrapper through RTWP in its checker. The production
+IRQ-mask gate and visible Classic99 check now cover this failure.
+For the complete resolved Carnival work, use CV2TI99 `optimization.md`'s
+Carnival index. Its River Raid comparison follow-up measures the entire read
+path before adding RAM mirrors. Bulk RAM copies must respect both endpoints'
+alignment: Carnival's odd-source/even-destination rows require byte stores,
+even when an unrolled body reduces loop overhead.
 
 **Lesson skills.** The long-form failure contracts below this list were moved into skills
 (verbatim) so they load only when the task needs them. **Load the matching skill before:**
@@ -840,3 +936,54 @@ per-channel normalization clipped ColEm's default mixer. Test mixer headroom,
 producer delays, double producer visits and PSG state restoration independently.
 Use ROM-driven startup audio and the emulator's real mixer as additional
 oracles; spectral improvement and exact bytes still do not prove intelligibility.
+
+Pitfall II native optimization (October 25, 2026): distinguish cartridge JIT
+from host test-emulator opcode caches; the shipped port is ahead-of-time
+TMS9900 code. A game-owned sound engine needs native coverage of its own
+reachable routines, not an unused OS7 template. For VRAM copy bursts, prove
+overlap direction, wrapping, buffer ownership and destination invalidation;
+poll NMI only between completed transactions and outside a live helper
+workspace. Tiny constant decoder calls can be compiled to stores when their
+original instruction/input contracts and output bytes are verified at build
+time. See `.claude/skills/CV2TI99/optimization.md` for the oracle and mutation
+checks; game-specific evidence remains in `Decompiled/Pitfall2/VALIDATION.md`.
+
+Pitfall's follow-up measures the complete checkpoint-return flag, not just
+the initial hit countdown. When a user authorizes faster automatic animation,
+validate every internal movement/score step and the exact handoff to manual
+control. Hold identical controller input through that interval in differential
+tests. Compare ordinary gameplay on equal workloads separately from changed
+animation cadence. Immutable expanded payloads may upload directly from ROM
+through checked pointer/bank descriptors; mutations must target the backing
+bytes actually consumed, and every path must restore the caller's bank.
+
+Use placement-area headroom when budgeting static-port natives. The placer
+reserves long branch forms before relaxation; unused bytes inside those
+reservations are not free contiguous RAM. Pitfall's listing shows over 1 KiB
+below its RAM-code capacity while the largest allocatable RAM fragment is six
+bytes. Repacking must repeat branch/bank checks and production timing tests.
+
+
+### Static-port validation hazards found in Joust (2026-10-25)
+
+Native annotations do not automatically preserve external fall-through entries.
+Audit incoming edges and live exits in the original graph before replacing a
+routine; use a whole checked ASM region when necessary. At translated register
+joins, instruction tests must compare the successor's physical EXX/EX AF mapping
+and bank-qualified end address. Keep intentional SP alignment as a named,
+instruction-checked exception, not a blanket ignored mismatch. Test commands
+must exit nonzero on failures. The shared CV2TI99 optimization/native-porting
+notes and `Decompiled/joust/tools/contracts.py` record executable examples.
+
+When skipping unchanged VDP writes, preserve the final address and read-buffer
+semantics as well as VRAM bytes. Joust still republishes the final SAT byte on
+an unchanged picture. Its sprite mirror shares a VRAM-copy/title buffer and
+must be invalidated before either reuse; cached sequence tests and mutations
+check both contracts. See the Joust sections of the CV2TI99 optimization notes.
+
+The October 26 RAM/VDP follow-up matches odd source/destination parity before
+word staging, preserves final VDP state without duplicating an already-complete
+last write, and fits eight indirect-port writes in the old 24-byte scratchpad
+loops. Alignment alone was faster but failed the latest-release video baseline;
+retain that rejection. See [CV2TI99 VDP/RAM findings](.claude/skills/CV2TI99/vdp-ram.md)
+for transfer tails, zero counts, ownership bounds and assembled-code mutations.

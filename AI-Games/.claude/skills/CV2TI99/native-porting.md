@@ -97,6 +97,16 @@ read before reloading.
 
 ## 4. Rules that keep it exact (each one cost a debugging session)
 
+**BLWP return registers are not the main-workspace ABI.** The R15-scratch
+rule above applies to natives called with BL on the game's workspace.
+In a BLWP helper workspace, R13/R14/R15 contain the saved WP/PC/status.
+Nested BL callees must preserve them too. Carnival's rectangle read overlay
+borrowed R15 for width; RTWP then enabled hardware interrupts and Classic99
+stopped at a partial gallery despite equal memory/VDP results. Test the
+real wrapper through RTWP and compare its returned WP, PC and status;
+do not stop an isolated test at the inner helper's BL return. Carnival's
+`rectcheck.py` and `irqcheck.py` reject this failure.
+
 **SDCC stacks (Mean Santa).** Z80 PUSH/POP data and packed arguments remain
 little-endian bytes; translated control links may be TI addresses. SDCC can
 leave SP odd. A TMS9900 word save then rounds down and can overlap byte-pushed
@@ -394,3 +404,47 @@ queue below 136) and give the rest to code.  A 256 KB cart (`build.py`
 - Rejected with measurements: a native pattern upload that ran 20% fewer
   cycles in its own routine and still lost overall (placement), and
   profile-guided placement that lost on a held-out workload.
+
+
+## Cross-port scheduling investigations (River Raid, 2026-10-26)
+
+Read [Cross-port loop comparison and acceleration](optimization.md#cross-port-loop-comparison-and-acceleration)
+when another port suggests a faster approach. River Raid's MSX-derived binary
+separates gameplay updates from budgeted terrain preparation and sprite refresh.
+Profile inclusive loop stages and execution frequency before choosing a native
+replacement. A routine that runs less often is different from one that does
+the same job more cheaply. Preserve the original simulation and collision
+contract when moving presentation work; the measured gain in another port is
+an investigation lead, not an accepted gain or a fidelity guarantee for ours.
+
+## Joust: entries, physical register joins and executable contracts (2026-10-25)
+
+A native replacement needs an entry contract as well as a return contract.
+Joust's 9488 and 9548 are reached by external fall-through; marking either as
+an ordinary NATIVE loses the translated entry label. Keep the predecessor and
+entry together in a checked ASM region, explicitly redirect the fall-through,
+or leave the routine translated. Do not fabricate missing labels after assembly.
+The whole callable routine 979A was safe to replace. Audit external interior
+entries and live exit flags against the original disassembly with replacement
+annotations temporarily disabled, and restore annotations even on failure.
+
+For an ASM region, inventory every external exit and every interrupt service
+point. Joust's 8E5C collision scan preserves both original polls and has no live
+flags at its three exits; a dedicated 2,900-case oracle compares exit, registers,
+RAM and the exact poll sequence. Reject missing-poll and wrong-distance mutations.
+Per-instruction tests must exclude the whole replaced region explicitly and
+name the replacement oracle, rather than trying to execute vanished labels.
+
+A translated instruction can finish by reconciling physical EXX/EX AF mappings
+at a control-flow join. Initialize with the source mapping, compare with the
+successor mapping, and qualify banked stop addresses. Joust's inherited tester
+reported two false register failures here and four intentional stack-alignment
+failures. The latter are now checked against four named LD SP,7FFF sites and the
+port's exact SP_INIT value; unrelated mismatches still fail. Always make the
+command exit nonzero on a real failure. A printed failure count with exit zero
+is not a regression gate.
+
+The original ROM remains the gameplay and native oracle. Joust's native tests
+also check alternate registers, the bank-return stack, VRAM address/read buffer,
+and byte-count tails. Sprite upload has its older, documented dead-register
+exception; that exception must not spread to other natives.

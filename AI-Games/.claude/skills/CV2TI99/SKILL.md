@@ -23,6 +23,65 @@ Shared instructions for Claude and Codex; use this same folder from either
 assistant. This skill covers static ROM translation, including SDCC-built
 Coleco games. CVBasic source ports use the separate CVBasic skills.
 
+Keep cartridge execution ahead of time: generate native instructions and
+immutable asset/descriptor tables during the build, not during gameplay.
+When asked to remove JIT processing, inspect the cartridge separately from
+the Python test emulator's instruction cache; changing host-side execution
+does not improve TI hardware speed. Prefer immutable runtime code as well:
+fixed workspace return branches can replace patched instruction operands.
+For Carnival's confirmed flashing repair, read `bios-ports.md` section 9's
+October 25 correction before changing frame commits.
+Its recurrence also required prompt frame polls at safe native boundaries;
+commit-only drawing cannot repair a frame interrupt serviced half a picture
+late. Keep PLAY_SONGS/SOUND_MAN together when placing those polls.
+Read the later Carnival rectangle-queue notes in `optimization.md` before
+batching draw commands or reusing its bounded timer shortcut. Faster code
+also changed interrupt phase; its write-entry poll is part of the repair.
+Those notes also record the C24 rejection: a queued-read helper clobbered
+BLWP's saved R15 status. Test the wrapper through RTWP and preserve its
+return context even when memory/VDP comparisons pass.
+For the normal-shooting freezes, static graphics expansion and trustworthy
+speed comparisons, read `optimization.md`'s Carnival October 25 notes and
+the updated `os7lib/README.md` workspace, bank, polling and sound-debt contracts.
+For game-owned sound engines, bounded VRAM copies and constant decoder call
+sites, read the Pitfall II sections in `optimization.md`; OS7 is not the
+playback engine for every cartridge.
+Pitfall's later direct-ROM band descriptors, native score updates and complete
+checkpoint-return measurements are also in `optimization.md`. A hit countdown
+alone does not measure the full return, and a requested faster animation needs
+separate validation from ordinary gameplay throughput.
+For all resolved Pitfall II work, use the
+[Pitfall II resolved-work index](optimization.md#pitfall-ii-resolved-work-index).
+It covers the retained renderer, sound, return and VDP changes, their proof
+requirements, and rejected experiments; the game's validation report identifies
+the currently accepted cartridge and its measured speed.
+Before applying Joust's 30 Hz technique to Pitfall II, read the
+[cadence comparison](optimization.md#pitfall-ii-a-30-fps-target-is-not-jousts-30-hz-conversion):
+Pitfall already targets 30 Hz, so halving its drawing would target 15 fps.
+For the MSX-derived Super River Raid comparison, read `optimization.md`'s
+RAM ownership and display scheduling section and its linked executable study.
+Fewer VDP transfers can help, but cache maintenance and displaced hot code
+must also be included in the whole-game timing measurement.
+For the complete set of resolved Carnival optimizations and repairs, use
+[Carnival resolved-work index](optimization.md#carnival-resolved-work-index).
+It routes to the static assets, queue/copy paths, timers, frame credit, sound,
+freeze/menu and flicker contracts, with rejected alternatives kept explicit.
+For guarded timer caches, menu-song shutdown, bounded capture sampling and
+Super DK Junior's measured SAT timing, read [superdkjr.md](superdkjr.md).
+For the MSX-derived River Raid comparison, RAM collision state, hidden display
+buffers, and Joust's aligned staging/publication experiments, read
+[vdp-ram.md](vdp-ram.md). It separates measured findings from proposed rewrites
+and records the presentation regression in the faster alignment-only candidate.
+Its [Joust resolved-work index](vdp-ram.md#joust-resolved-work-index) routes all
+completed Joust optimizations, checker repairs and rejected experiments.
+When another port runs faster, compare its executing game loop even if only
+its binary is available. Read [Cross-port loop comparison and acceleration](optimization.md#cross-port-loop-comparison-and-acceleration)
+for River Raid's MSX-derived comparison: inclusive stage profiling, budgeted
+terrain work, separate simulation/rendering schedules and RAM collision.
+These are investigation strategies; the measured comparison is not an
+implemented speed gain in our port. Preserve reusable findings in these shared
+notes and keep artifact-specific traces and results in the game's DESIGN.md.
+
 The two machines share the TMS9918A video chip and the SN76489 sound chip, so a
 ColecoVision game can be translated instruction by instruction and keep its
 graphics, sound and behaviour exactly. The CPU is the hard part: the TMS9900
@@ -108,6 +167,14 @@ cart until this loop has run, and do not stop to ask whether to run it.
 
 A correctness fix still runs steps 2-3: a fix that costs speed is measured,
 and if it drops a phase below target the loop runs.
+
+**Joust worked checks (2026-10-25):** `Decompiled/joust/tools` now has a
+plain Z80 interpreter with frozen opcode fingerprints (`check_reference.py`),
+native liveness/entry/poll contracts (`contracts.py`), original-ROM native and
+collision comparisons, and a gameplay benchmark that verifies menu selections.
+Read the Joust sections in `optimization.md` and `native-porting.md` before
+copying its checks. In particular, a shared template's profiler or sprite test
+can still contain another game's addresses and silently measure the wrong work.
 
 ## 1. Inputs: get them before anything else
 

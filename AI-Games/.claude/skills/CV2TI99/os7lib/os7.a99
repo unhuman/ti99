@@ -87,7 +87,15 @@ FSMAN  MOV  R11,@SMRET2
 * $02EE: the note ended.  PUSH AF / $035F / POP BC: B = the old status,
 * C = the flags byte ($42: Z and N from the DEC), the channels
 * reassigned ($0295) if the status changed.
-FSEND  MOVB @K(R5),@N2DST
+* A background run is already inside GLUE or SNDEND. BLWP NMIV there
+* would overwrite the active GLUE workspace's return PC before SNDIN
+* could prevent another sound run. Leave that edge pending until return.
+FSEND  MOV  @SNDWP,R0
+       JNE  SNDPS
+SNDPOL TB   2                    original $02EE poll for ordinary game calls
+       JEQ  SNDPS
+       BLWP @NMIV
+SNDPS  MOVB @K(R5),@N2DST
        DECT R7                   (the stack as deep as the BIOS's)
        MOV  R11,*R7
        BL   @C035F
@@ -157,7 +165,7 @@ FSD    MOVB @K+7(R5),R0
        AB   R1,@K+5(R5)          (IX+5) - 1
        JNE  FSN
        SB   R1,@K+5(R5)          the note is over (0 not stored)
-       JMP  FSEND
+FSEJ   B    @FSEND
 FSF    MOV  R5,R4
        AI   R4,6                 HL = IX+6
        BL   @FNIB
@@ -166,7 +174,7 @@ FSF    MOV  R5,R4
        DEC  R4                   HL = IX+5
        MOVB @K(R4),R0
        SB   @BC01,R0
-       JEQ  FSEND
+       JEQ  FSEJ
        MOVB R0,@K(R4)
        MOVB @K+7(R5),R0          frequency (IX+3/4) += the signed step
        SRA  R0,8
@@ -227,22 +235,25 @@ SNDIY  EQU  >AFF0
 SNDIYC EQU  >AFF2            (IY changed by it)
 SNDDE  EQU  >AFFA
 FSA1   EQU  >AFFC            SOUND_MAN: song 1's data area
-SNDDUE EQU  >AFF4            vblanks whose sound is not played yet (0-2)
+SNDDUE EQU  >AFF4            vblanks whose sound is not played yet
 SNDR11 EQU  >AFF6            N_027F's return while it plays one due
 SNDIYR EQU  >AFF8            IY before it
+SNDBNK EQU  >F042            owned word above the downward bank stack
+SNDWP  EQU  >A452            sound caller workspace (data, never an opcode)
 * SNDRUN: from a workspace other than the game's (GLUE, SNDEND); uses its
 * R0.  Switches to the game's workspace with LWPI (a BLWP into it would
 * overwrite R13-R15, HL' and A') and saves only what the sound closure
 * can change: R0-R8, R11, R12, R15.  Nothing it runs (PLAY_SONGS,
 * SOUND_MAN, $035F, the song effects) uses EXX or EX AF,AF', so BC' DE'
 * HL' A' (R9 R10 R13 R14) are never touched (tools/sndclose.py checks the
-* closure at every build).  The LWPI back is patched with the caller's
-* workspace (this code runs from RAM).
+* closure at every build). Both callers have fixed workspaces. Select a
+* statically assembled LWPI on return instead of patching an instruction.
 SNDRUN SETO @SNDIN
        CLR  @SNDPND
        DEC  @SNDDUE
        STWP R0
-       MOV  R0,@SNRWP+2
+       MOV  R0,@SNDWP
+       MOV  @CURBNK,@SNDBNK
        LWPI MAINWS
        MOV  R0,@SNDSAV
        MOV  R1,@SNDSAV+2
@@ -281,9 +292,19 @@ SNF1   MOV  R2,@SNDBC
        MOV  @SNDSAV+18,R11
        MOV  @SNDSAV+20,R12
        MOV  @SNDSAV+22,R15
-SNRWP  LWPI 0                    (the caller's workspace)
+SNRWP  C    @SNDWP,@SNGW
+       JNE  SNRS
+       LWPI GLUEWS
+       JMP  SNRX
+SNRS   LWPI SNDEWS
+SNRX
+       MOV  @SNDBNK,R0          sound can tail-jump through cold ROM banks
+       CLR  *R0                 restore both the hardware and software bank
+       MOV  R0,@CURBNK          before resuming the interrupted code
+       CLR  @SNDWP              no background caller remains active
        CLR  @SNDIN
-       B    *R11
+SNRDONE B   *R11
+SNGW   DATA GLUEWS
 * PLAY_IT's returns (ann.PATCH: BLWP, so its flags are kept)
 SNDENV DATA SNDEWS,SNDEND
 SNDEND DEC  @SNDBSY
@@ -303,11 +324,11 @@ SNDVBL MOV  @SNDVB,R0
        INC  @SNDAGE
        C    @SNDAGE,@W12
        JH   SNV1                 the game stopped calling it
-SNV0   INC  @SNDDUE              one more due (at most 2)
+SNV0   INC  @SNDDUE              retain every owed update during long notes
        C    @SNDDUE,@W2S
        JL   SNV1                 one: the game's call plays it
-       JEQ  SNV3
-       DEC  @SNDDUE
+* Do not clamp the debt to two: a note-end parser can span several frames
+* while SNDIN prevents re-entry. Dropping that debt permanently slows music.
 SNV3   MOV  @SNDBSY,R0
        JNE  SNV2
        MOV  @SNDIN,R0
@@ -329,7 +350,13 @@ W2S    DATA 2
 * $0F37 TIME_MGR: every timer once.  HL = the last entry; A and DE as
 * the last timer that changed them left them; NZ (BIT 4 of the last
 * entry), C kept.
-N_0F37 MOV  R2,@TMSAV            masks in registers for the walk (R2 R6 R9
+* Poll before the timer walk, with scratch R0/R15 and no live table cursor.
+N_0F37 MOV  @PACE,R0
+       JEQ  TMGO
+       TB   2
+       JEQ  TMGO
+       BLWP @NMIV
+TMGO   MOV  R2,@TMSAV            masks in registers for the walk (R2 R6 R9
        MOV  R6,@TMSAV+4          restored at the end); R4 = entry + K
        MOV  R9,@TMSAV+6
        LI   R2,>2800             free or long

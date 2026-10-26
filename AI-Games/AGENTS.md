@@ -47,6 +47,11 @@ game's use of the **unhuman/CVBasic** fork, which supplies its preprocessor.
 - Preserve original-hardware performance and memory budgets. Check generated
   assembly when compiler behavior matters; successful compilation alone is not
   proof of correct behavior.
+- When reporting game speed, include both the improvement percentage over the
+  named previous build and current speed as a percentage of the original game
+  (original = 100%). Separate normal play, water or other slow modes, and
+  intentionally accelerated animations. Distinguish speed gains from reductions
+  in elapsed time; state remaining shortfalls plainly.
 - Keep a changed game's `DESIGN.md` and `README.md` synchronized with behavior,
   layout, controls, and asset/build changes. Record new general toolchain hazards
   in `CLAUDE.md`, so both assistants inherit them.
