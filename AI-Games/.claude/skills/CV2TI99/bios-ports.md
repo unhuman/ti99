@@ -190,13 +190,21 @@ a hit exactly when the Python pixel model says two sprites touch.  Its
 reads the collision bit: find every reader, and check whether the logic
 pairs the flag with positions that may have moved since the picture.**
 
-## 10. Game over must not wait for ever
+## 10. Game over must follow the requested input policy
 
-Carnival waits for keypad `*`/`#` and blanks after 60 s.  TI-only GOFIRE
-(runtime): a fresh fire press (released since the loop began) or
-`GAMEGT` passes (~10 s) present `#` for six keypad reads; FCTN 8/9 read
-as `#` already.  Patch the loop's start (clear GOREL/GOCNT) and its keypad
-read.  An on-screen hint needs glyphs when the game has no ASCII font
+The original Carnival waits for keypad `*`/`#` and blanks after 60 s.
+**October 26 user correction:** the TI game-over screen must stay visible
+until input. The earlier automatic return after roughly 10 s is removed.
+GOFIRE maps only a fresh fire press (released since the loop began) to `#`
+for six keypad reads; FCTN 8/9 already read as `#`, and `*` still replays.
+GOTEST replaces only the game-over TEST_SIGNAL call at 84C6: it returns
+not-done with PACE on, preventing the original idle display blank, and tail
+calls the original native with PACE off. Other game timers remain unchanged.
+Removing the return timeout alone is insufficient: the old blanking timer
+would still hide the result screen. The new helper fits in the old timeout
+slot, preserving existing runtime and translated-code addresses. Do not
+impose Carnival's input policy on other ports without their requirements.
+An on-screen hint needs glyphs when the game has no ASCII font
 (Carnival draws text with its own set): optional, place it where nothing
 else draws.
 
@@ -209,6 +217,11 @@ before input polling. Keep the commit-only WEND repair during gameplay.
 startup, and start another game; observing the game-over exit branch alone
 missed the user's blank screen. Retain both held-fire and missing-menu
 mutation controls, plus a natural ammunition-exhaustion run.
+Carnival's `gotest.py --idle` additionally executes 4,200 input-free frames
+(70 seconds), checks continued visibility, then requires a fresh press,
+the complete menu and another progressing game. The earlier production ROM
+fails this idle check. Automatic-exit and original-blanking mutations must
+also be rejected.
 
 ## 11. Title screen (the standard for every BIOS-title port)
 

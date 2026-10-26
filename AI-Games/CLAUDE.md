@@ -987,3 +987,13 @@ last write, and fits eight indirect-port writes in the old 24-byte scratchpad
 loops. Alignment alone was faster but failed the latest-release video baseline;
 retain that rejection. See [CV2TI99 VDP/RAM findings](.claude/skills/CV2TI99/vdp-ram.md)
 for transfer tails, zero counts, ownership bounds and assembled-code mutations.
+
+Pitfall II's original-rate movement split (October 26) exposed two validation
+hazards. A native routine test must stop at a bank-qualified `(bank, PC)`;
+another bank can contain the same PC inside an unrelated routine. For banked
+asset bounds, validate generator byte count and assembled start/end symbols.
+Checking only parsed listing addresses can miss overflow if the parser drops
+out-of-window bytes. Both failures are preserved in Pitfall's optimization
+ledger and shared CV2TI99 notes. Renderer omission additionally requires proof
+of its non-visual side effects and hidden-table ownership; original movement
+clocks and interrupt-driven sound are separate from drawing cadence.

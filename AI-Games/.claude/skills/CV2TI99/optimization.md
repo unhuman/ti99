@@ -729,6 +729,12 @@ Keep these correctness contracts when reusing the code:
   rejects the wrong-workspace override. Keep production replays separately.
 - **End-to-end transitions:** leaving the game-over loop is insufficient.
   Require a visible selection screen and a successful next-game start.
+  Carnival's October 26 input policy keeps game over visible indefinitely:
+  remove both the TI automatic return and the original idle blanking timer,
+  retaining fresh-fire debouncing and replay/BACK/REDO controls. The focused
+  GOTEST guard fits the retired timeout slot, preserving existing code layout.
+  `gotest.py --idle` waits 70 seconds and rejects both automatic-exit and
+  timed-blanking mutations; see `bios-ports.md` section 10.
   Carnival left DEFER enabled after gameplay, but its menu input loop never
   called WRITER: the final display-on command stayed queued. Patch 8110 sends
   the completed static menu before input polling; this does not change WEND.
@@ -759,6 +765,8 @@ what shipped. Historical intermediate gains are not current performance claims.
 | Native game-owned music/SFX, bounded 32-byte VRAM copies and constant seed stores (46–48) | Use the native-sound/bounded-copy section above. Preserve ordered PSG writes and original cadence; prove overlap/wrap behavior and poll only between complete transactions. Tests cover 1,885 sound states, 56 copy fixtures and 80 fixed-seed comparisons. Cartridge execution was already static; host opcode caches are not cartridge JIT. |
 | Direct ROM band descriptors, native decimal score borrow, faster complete returns and fixed frame clears (49–53) | Use the direct-upload/return section above. Mutate the descriptor actually consumed, preserve every internal return/score step, check completion before batching another step, and keep normal movement single-step. Compare both held directions and equal normal-play prefixes. |
 | Phase-wide fixed-pattern residency and finer placement search (54–57) | Use the RAM-ownership section below and accepted round-57 record. Keep immutable payloads in ROM and compact source identities in CPU RAM, invalidate every overlapping writer, preserve final-byte VDP effects, and measure all phases after placement. Source identity must distinguish different streams at the same destination. |
+| Original-rate movement and bounded scenery omission (58–61) | Use the original-rate section below. Preserve cumulative two-frame movement deadlines, fresh SAT publication, unfinished-table ownership, renderer side effects and independent audio. Keep native scene, clock, river, exact and production-video gates. |
+| Bank-qualified fixture exits, asset-window overflow and rejected row identities (59–63) | Compare `(bank, PC)` at banked exits. Verify generator size plus assembled symbol/data extents. Canonical immutable row IDs can avoid pixel comparisons, but round 63 still fails full-return timing; do not ship it based only on lower traffic. |
 
 The early renderer contract also explains why simply retaining a decoded band
 is insufficient: its mutable input key, CPU payload lifetime and VRAM residency
@@ -1040,6 +1048,9 @@ remain; this pass neither removes a cartridge JIT nor introduces one.
 
 ## Pitfall II: a 30 fps target is not Joust's 30 Hz conversion
 
+Historical round-57 feasibility analysis. The original-rate implementation
+and measured results below supersede its feasibility-only status.
+
 Check the original simulation and publication rates before applying Joust's
 alternate-drawing technique. Joust alternates upload/flush and drawing over
 60 Hz logic ticks. Pitfall II already targets roughly 30 normal logic updates
@@ -1064,3 +1075,108 @@ original-ROM state comparisons and whole-game holdouts; averages alone cannot
 prove steady 30 fps. See the [game's feasibility review](../../../Decompiled/Pitfall2/DESIGN.md#30-fps-feasibility-and-the-joust-comparison-2026-10-26)
 and `build/optimization/30fps-feasibility.json`. The round-54 row cache remains
 rejected; a new architecture must address its overhead and hot-code displacement.
+
+## Pitfall II original-rate movement (rounds 58–63)
+
+The user selected restoring original Coleco movement speed, not fixed double
+velocity. Accepted **round 61** is SHA-256
+`5f6a3d8e50d9b1c08a75672429633588c900a7fb50167ae94ef03e961e82fa4d`.
+Compared with accepted round 57, five equal 300-update normal routes improve
+13.19–18.03% (15.36% aggregate) and reach **100% of original movement speed**.
+Swimming itself improves 11.03–11.16%, reaching **72.32–72.40% of original**,
+about 21.5 updates/second at nominal 60 Hz. Including the approach gives a
+different result: +13.69–13.78%, at 77.56–77.63% of original. The authorized
+complete return takes 5.126 seconds versus 5.076 previously and 7.012 original:
+0.97% less throughput than round 57, still 136.80% of original. Its elapsed-time
+increase stays within the unchanged 1% regression bound. These figures are
+emulated hardware timing, not physical-hardware measurements or a guarantee
+of steady 30 full scenery redraws/second. The current validation report and
+`build/optimization/motion-metrics.json` contain the paired evidence.
+
+**Use an original-rate movement clock, not doubled deltas.** Normal PWAIT
+advances the cumulative deadline by two serviced video frames per update.
+When at least three frames late, the next update can omit scenery preparation;
+never do so twice consecutively. Discard debt of eight or more frames after
+startup/pause instead of bursting through overdue work. All publications still
+use a fresh blank and a full 124-byte SAT payload. Every normal collision,
+player/enemy and logical-counter step runs once. Music and SFX remain on their
+video interrupt clock; there is no doubled sound service. Victory keeps its
+old two-frame minimum because its counter drives sound, and automatic return
+keeps its separate authorized one-frame/two-player-call policy. Exact replay
+retains the original behavior. Cumulative rate and interval distributions both
+matter: achieving the original average does not imply even two-frame gaps.
+
+**Retain non-visual renderer effects and table ownership.** Simply bypassing
+CB3B2 loses platform movement, background sprites and scroll maintenance.
+The main-loop-only split preserves platform phase/direction and bounces,
+background SAT records across every visible map band, waterfall sprite-pattern
+updates and the original scroll-maintenance tail. After omitted scenery,
+republish the visible table rather than flipping to unfinished hidden content.
+The next full update prepares that table before a later flip. Keep the general
+CB3B2 entry intact; the optimized entry uses cold bank descriptors and FARCALL/
+FARJV. Four words in audited slot-2 padding (`>AD94..>AD9B`) hold clock/mode
+state. The native helper borrows the idle presentation workspace while keeping
+BLWP return context. Renderer registers/scratch are dead at the specific main
+join, not necessarily for other callers.
+
+Validation includes all **75 gates**, four 300,000-tick exact replays, 1,122
+assembled clock cases and mutations, 15,360 original/native scene fixtures
+covering all map indices and platform bounces, and a 900-update river comparison
+with 492 full scenes and 407 scenery omissions (22 with camera maintenance).
+Every compared trajectory, background sprite, sprite pattern and completed
+scenery picture agrees. Independent production checks reject consecutive
+omissions, excessive movement rate and unfinished-table flips, while retaining
+zero modeled active-display SAT/table writes and complete sound cadence.
+An additional 320 register-poison cases exercise sampled original renderer
+exits; label this sampled liveness evidence, not a whole-map proof. The normal
+prefix and complete-return comparisons retain the existing per-phase limits.
+
+**Static expansion still needs bank extent proof.** Three waterfall streams
+bring the fixed asset set to 27. The two frame alternatives and overlapping
+sprite stream must preserve their original order. Round 60's 256-entry hash
+overflowed the 2 KiB asset window; the listing parser silently dropped bytes
+beyond `>8000`, so inspecting only parsed addresses falsely passed. Native
+asset comparisons caught the error. Reject that candidate's favorable timing.
+Round 61 uses a 128-entry rotate-right-by-ten hash with full source-key checks,
+asserts generator size, and verifies FASREC/FASEND bounds and actual listed data
+length. A hash collision check alone does not prove assets fit the bank.
+
+**Banked fixture exits need both coordinates.** A round-59 frame-clear check
+stopped at the correct numeric PC in the wrong bank, halfway through the clear.
+`routest.py` now accepts `(bank, PC)` and rejects bank-window numeric-only stops.
+Retain original output/canary comparisons and the correctly sized corruption
+hook after adding the motion region. Do not weaken assertions to accommodate
+an incorrectly selected endpoint.
+
+**Row identities are a rejected follow-up, not shipped code.** Round 62 added
+128 bytes of row-owner words in existing padding, initially keyed by prepared
+source. Reversed TMS9900 `C` operands made invalidation return early; the positive
+external-writer repair test caught it. C compares source relative to destination.
+Round 63 fixes this and stores canonical classes in seven spare bytes of each
+immutable prepared-record header. Uniform upper name bits are combined with a
+class of normalized row bytes; mixed rows have distinct classes. The generator
+proves every complete key maps to exactly one 32-byte payload, including equal
+rows in different records. This avoids VRAM readback and pixel comparisons.
+Every overlapping generic/interpreter/decoder transaction writer still revokes
+claims, captured VRAM restores clear them, and the final byte retains cursor/
+read-buffer semantics. Owner storage must not overlap motion words, mutable
+payloads, descriptors or other cache keys. Warm reuse, external repair, a real
+missing-invalidation mutation, 244 interval/wrap cases and natural claim/write
+audits pass after the correction.
+
+Despite correct ownership, round 63 takes 5.176 seconds for the complete return,
+1.97% longer than round 57, beyond the unchanged 1% bound. Its river scene probe
+improves swimming to 74.48% of original (+14.35% vs round 57), and all five normal
+prefixes reach original speed, but it remains **rejected for return regression**.
+Invalidation overhead and displaced hot code count in the end-to-end budget.
+This differs from round 54's pixel-comparison cache, but neither is accepted.
+Reconsider only with a changed cost/placement design and all phase holdouts.
+
+Round 58's stationary-camera split and round 59's scroll-tail split are
+superseded; round 60 is rejected for asset corruption; round 61 is accepted;
+round 62 is rejected for invalidation; round 63 is rejected for return timing.
+Artifact hashes and completion reports live in Pitfall's OPTIMIZATION.md and
+process ledger. The production ROM has normal starts and is hash-matched in
+the owned Classic99 launcher; current capture was black and activation failed,
+so live visual/listening review remains incomplete. Do not report a successful
+launch/hash check as evidence of visible playback or audible music.

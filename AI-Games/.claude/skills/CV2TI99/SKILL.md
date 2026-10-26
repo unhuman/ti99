@@ -58,6 +58,10 @@ the currently accepted cartridge and its measured speed.
 Before applying Joust's 30 Hz technique to Pitfall II, read the
 [cadence comparison](optimization.md#pitfall-ii-a-30-fps-target-is-not-jousts-30-hz-conversion):
 Pitfall already targets 30 Hz, so halving its drawing would target 15 fps.
+Its later [original-rate movement split](optimization.md#pitfall-ii-original-rate-movement-rounds-5863)
+uses a cumulative clock and bounded scenery omission while retaining renderer
+side effects, sprite uploads and independent sound. That section supersedes
+the earlier feasibility-only status and records the rejected row-identity cache.
 For the MSX-derived Super River Raid comparison, read `optimization.md`'s
 RAM ownership and display scheduling section and its linked executable study.
 Fewer VDP transfers can help, but cache maintenance and displaced hot code

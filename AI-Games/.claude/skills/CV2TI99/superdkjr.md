@@ -6,6 +6,36 @@ cartridge JIT work. Game-specific addresses below are examples, not defaults
 for another port. Keep current artifact hashes and results in the game's
 README/DESIGN and `build/optimization/process-ledger.json`.
 
+## GAME OVER input contract (October 26)
+
+The user explicitly requested that GAME OVER remain until input. This
+supersedes the historical 600/601-frame automatic-return results below.
+Fresh fire and FCTN 8/9 open options; SHIFT 8 (`*`) restarts the same game.
+Fire held from play must be released before another press is accepted.
+Keep the `$81B7` production guard as well: removing the TI auto-return alone
+would still expose the original roughly 131-second screen-blanking path.
+`PACE=0` retains the original-ROM behavior for synchronized comparisons.
+
+The old timer's 22-byte slot becomes a branch to input scanning plus 18
+reserved bytes. This keeps all runtime/translated labels and hot-code
+placement unchanged. The wait-entry timestamp is diagnostic only. Avoid
+turning a requested menu-duration change into an unmeasured gameplay relayout.
+
+The natural GAME OVER regression checks 900 frames of held fire and 9,000
+idle frames, confirms that the original countdown actually expires without
+blanking, crosses the 16-bit frame-clock wrap, compares the visible name
+table throughout, and verifies explicit input still exits afterward.
+Restoring the actual old timeout instructions must fail that same idle check.
+Branch arrival alone is insufficient for restart: require subsequent visible
+actor updates, as in the prior same-game regression.
+
+The input-only build preserves the measured 95.579399% active Coleco rate
+(three seeds, 1,500 frames each) and both strict 600-frame SAT samples:
+3,489/26,112 active bytes for one player; 4,092/26,112 with two pads.
+This is a requested behavior change with unchanged gameplay performance,
+not a new speed or flicker optimization. The `gameover-input` archive keeps
+its binary/layout comparison and measurement evidence.
+
 ## Native work that paid
 
 - Batch consecutive idle actors only when no poll, callee or other observer
