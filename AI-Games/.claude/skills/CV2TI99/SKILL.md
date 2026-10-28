@@ -25,6 +25,12 @@ Shared instructions for Claude and Codex; use this same folder from either
 assistant. This skill covers static ROM translation, including SDCC-built
 Coleco games. CVBasic source ports use the separate CVBasic skills.
 
+**New-port output layout (2026-10-27):** reserve `build/` for current loadable
+binaries only; generated assembly, symbols, logs, reports, captures and saved
+experiments go under `artifacts/`. Read [build artifact layout](build-artifacts.md)
+before copying template tooling. Existing projects and historical example paths
+stay unchanged unless the user explicitly requests a migration.
+
 **Optimization is mandatory during the initial port.** Read §0 before choosing
 the runtime, renderer and memory layout. A working translation is an intermediate
 result, not an acceptable finished game. Pursue the highest demonstrated
@@ -34,6 +40,14 @@ work continues, but must not be described as complete or fully optimized.
 
 Keep cartridge execution ahead of time: generate native instructions and
 immutable asset/descriptor tables during the build, not during gameplay.
+For cartridge-size work, read
+[Cartridge size without sacrificing runtime speed](optimization.md#cartridge-size-without-sacrificing-runtime-speed).
+Audit repeated bank prefixes and exact bank lifetimes before replacing fast
+immutable assets with runtime decompression. Treat an explicit cartridge-size
+limit as a build gate alongside speed requirements; neither overrides the other
+without a new user instruction. Pitfall II's current limit is exactly 128 KiB.
+That section also covers encoding bank selection in aligned asset references
+without enlarging tables, with native decode checks and whole-route timing.
 When asked to remove JIT processing, inspect the cartridge separately from
 the Python test emulator's instruction cache; changing host-side execution
 does not improve TI hardware speed. Prefer immutable runtime code as well:
@@ -184,7 +198,8 @@ require rebuilding unchanged cartridges.
      and inspect the actual slow intervals;
    - pick the largest *removable* work, using `optimization.md` and
      `native-porting.md` §7-8 as the menu of things that paid. Check
-     `build/optimization/process-ledger.json` first and do not retry a
+     the process ledger first (`artifacts/optimization/process-ledger.json`
+     in new ports; retain existing projects' configured path) and do not retry a
      rejected idea unless something it depended on changed;
    - implement the most promising applicable change, keeping TI-only behavior
      switchable for exact comparison or independently proving authorized
@@ -280,7 +295,8 @@ wants extras (the Zaxxon explosion was specified from the arcade).
    helpers can instead live once in reserved RAM. Hot code
    goes to RAM (holes in the BIOS image and the cart image, copied from payload
    banks at boot) and the shared segment; cold code to banks via `FARCALL`. Hot vs
-   cold comes from a profile of the Z80 reference (`build/prof_z80.json`).
+   cold comes from a profile of the Z80 reference (`build/prof_z80.json` in
+   the historical example; `artifacts/reports/` in new ports).
 6. **Validate, profile and optimize** through §0, including the remaining-cost
    audit. The first working cart is the baseline, not the end of this pipeline.
 7. **Qualify and review** the final artifact under §6 and §7 only after §0's
@@ -417,9 +433,11 @@ separate checks; passing one does not establish the others.
 
 - Build both the cart and its docs together; keep `README.md` (controls, what
   differs from the original, measured speed) in sync with every change.
-- Put every candidate cart in `build/` and tell the user the path. Respect the
-  user's emulator use and existing authorization; do not ask again when control
-  was already granted. Follow the repository's visible-review rule: newest
+- For new ports, keep only current binary deliverables in `build/`; put support
+  files and saved candidates under `artifacts/` per [build artifact layout](build-artifacts.md).
+  Preserve existing projects' paths. Tell the user the current playable path.
+  Respect the user's emulator use and existing authorization; do not ask again
+  when control was already granted. Follow the repository's visible-review rule: newest
   production cart, ordinary starting conditions, verified path/hash.
 - Another agent (Codex) may be working on the same folder: check file times and
   running processes before editing; never edit files another agent is changing.

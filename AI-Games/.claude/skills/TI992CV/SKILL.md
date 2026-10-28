@@ -19,6 +19,13 @@ description: >-
 
 # TI992CV: TI-99/4A → ColecoVision
 
+**New-port output layout (2026-10-27):** reserve `build/` for current loadable
+binaries only; generated assembly, symbols, logs, reports, captures and saved
+experiments go under `artifacts/`. Read the shared
+[build artifact layout](../CV2TI99/build-artifacts.md) before copying template
+tooling. Existing projects and historical example paths stay unchanged unless
+the user explicitly requests a migration.
+
 The inverse of `CV2TI99` (read that skill too; most of its method carries over
 with the roles of the two machines swapped). Both machines have the TMS9918A
 video chip and the SN76489 sound chip, so a TI game translated instruction by
@@ -79,7 +86,8 @@ run it.
    or native, sprite/VDP-transaction/video tests (first reads and streams), RAM and stack budget,
    front-end/input release tests, and the source-ROM algorithm checks. Each
    new gate gets a mutation self-test that rejects a real bad ROM. Run long
-   suites against a frozen copy of `build/`.
+   suites against a frozen binary-plus-metadata bundle. New ports keep those
+   bundles under `artifacts/snapshots/`; existing ports retain their paths.
 3. **Compare against the target automatically.** The target is the TI's
    measured rate in every phase within the established per-phase tolerance
    (never relaxed to accept a candidate), capped at the TI's rate (§7), with
@@ -90,9 +98,9 @@ run it.
      `costcmp.py`) and rank costs;
    - pick the largest *removable* work, using §11 and
      `CV2TI99/native-porting.md` / `optimization.md` as the menu of what
-     paid. Keep a ledger (`build/optimization/process-ledger.json`, as in
-     RiverRaid.3) and do not retry a rejected idea unless what it depended
-     on changed;
+     paid. Keep a ledger (`artifacts/optimization/process-ledger.json` in new
+     ports; retain existing projects' configured path) and do not retry a
+     rejected idea unless what it depended on changed;
    - implement it with any Coleco-only behaviour switchable for lockstep;
    - re-run step 2, then measure on the fixed phases plus held-out seeds:
      accept only if the total rises and no phase falls outside tolerance;
@@ -402,9 +410,12 @@ translated code (`CV2TI99/native-porting.md`).
   persists; do not ask again for ordinary reloads within that scope. If approved, ColEm needs `-ntsc -sync 60` (CLAUDE.md: its default is
   unsynchronised) and CoolCV needs scan-coded synthetic keys. Until then, rely
   on `z80emu.py` screenshots plus lockstep.
-- Put every candidate cart in `build/` and tell the user the path. The playable
-  release is `game.rom`; development is `game_dev.rom`; exact diagnostic
-  lockstep is `game_ls.rom`. Update scripts, defaults and docs together. Retained
+- For new ports, keep only current binary deliverables in `build/`; put support
+  files and saved candidates under `artifacts/` per the shared
+  [build artifact layout](../CV2TI99/build-artifacts.md). Preserve existing
+  projects' paths. Tell the user the current playable path. The playable release
+  is `game.rom`; development is `game_dev.rom`; exact diagnostic lockstep is
+  `game_ls.rom`. Update scripts, defaults and docs together. Retained
   immutable historical fixtures may keep their old names. Do not leave a stale
   `game_rel.rom` beside the new playable file.
 - Keep `README.md` (controls mapping, what differs from the original,

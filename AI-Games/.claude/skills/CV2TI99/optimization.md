@@ -43,6 +43,142 @@ best demonstrated implementation and why no known applicable opportunity
 remains. This requirement prevents an early handoff without inventing proof
 that all possible algorithms have been exhausted.
 
+## Cartridge size without sacrificing runtime speed
+
+Treat file size as a bank-layout measurement, not the amount of original game
+code. Count occupied banks, power-of-two padding, repeated shared prefixes,
+boot-time RAM images, native action streams and expanded immutable assets
+separately. Preserve the fast representation until an alternative meets the
+same correctness, pacing and per-phase timing gates. A small compressed archive
+is not a directly executable cartridge, and an old small but slower build is
+not a size optimization of the current game.
+
+Pitfall II's `compact512-r92` experiment starts from `title-credit-r91`:
+73 occupied 8 KiB banks rounded to 128 banks / 1 MiB. The prepared-band family
+alone used 51 banks: one index, two group tables and 48 record banks. Each
+record bank carried only eight 256-byte records above a repeated 6 KiB prefix.
+Most prefix code cannot execute while these particular data banks are selected.
+
+Audit the **complete selected-bank lifetime** before reclaiming that prefix:
+entry instruction after the bank write, every branch/call/return, data constants,
+scratchpad transfer loop, interrupt policy, and bank restoration on success and
+fallback. Do not infer unused code from a sampled execution profile. Pitfall's
+record-bank windows are PBASSET's header/fill path and RCUCOPY/OWCOPY/VCOPY;
+hardware interrupts remain disabled and there is no software NMI poll in these
+windows. Preserve START/header, their complete live spans and BC01. Other asset
+banks retain their full prefix: generated native actions call original helpers
+with broader lifetimes and cannot inherit this exception without another audit.
+
+Retaining eight 256-byte pages leaves 24 record pages per bank, reducing the
+48 record banks to 16. Index and group banks keep their existing layout.
+The packed descriptor is `(bank << 5) | page`; the pixel/header bytes, direct
+ROM-to-VDP transfers, row identities and RAM allocations stay unchanged.
+This produces 41 occupied banks rounded to 64 / **512 KiB**. There is no runtime
+decompressor, new cache, artwork change, or cartridge-side JIT. Decode adds one
+two-bit-longer shift on a prepared-record lookup; compare complete timed routes
+because even tiny instruction changes can alter frame phase.
+Keep replacement instructions the same encoded length where possible, so a
+layout optimization does not unnecessarily move hot code. All 4,565 original-
+address C/Z labels stayed at their r91 addresses in this compact build. Rebuilding
+with `PF_COMPACT_BANDS=0` reproduces the r91 cartridge byte for byte.
+
+Keep the proof executable: `tools/compact_banks.py` checks assembled symbol
+spans, fingerprints the audited source paths and compares every retained page
+and all 377 record headers/pixels/identities in the actual ROM. Changes to those
+source paths require a renewed audit. `check_prepared_bands.py` checks every
+instruction while a record bank is selected across its full 12,288-case original
+ROM matrix. The compact gate rejects damaged code/data, forbidden record pages,
+overlapping symbols, escaped execution and enabled interrupts. Preserve existing
+wrong-descriptor/final-byte/restore-bank negative controls. `compare_compact.py`
+binds the final complete suite, size and normal/water/return timings to the exact
+artifact; current results live in the game's VALIDATION.md.
+
+The later 128 KiB requirement supersedes that 512 KiB layout. A hard user
+budget must become an assertion on the final loadable image. Removing padding
+alone cannot reach it; do not report a smaller archive as a smaller cartridge.
+The historical full-prefix comparison switch lives in frozen snapshots, not
+the current 128 KiB builder.
+
+For a tighter representation, deduplicate at the smallest reusable boundaries:
+535 exact pixel rows replace 377 whole seven-row payloads; eighteen endpoint
+headers are shared separately; ten native action sequences replace copies in
+85 renderer records. Static pose groups collapse only after proving that no
+dynamic map type selects them. Keep pixels uncompressed for gameplay reads.
+The packed word offset in a 128 KiB image fits sixteen bits and also supplies
+an exact row identity, removing a separate identity lookup.
+
+Thin banks can retain only their reset header when all reads execute in
+resident RAM and restore the caller before returning. Reserve those helpers
+outside every mutable cache and exclude their bytes from translated placement.
+Audit their complete instruction sequence, disabled interrupts, scratchpad
+transfer targets and restoration; exercise an execution guard while selected.
+Native action banks still need their full shared prefix because their helpers
+have broader call lifetimes. Small row references may live in unused prepared
+slot payload space, but generic fills retain ownership of their mutable bytes.
+Poison only unused payload bytes in the no-pixel-staging test; independently
+mutate the live descriptor and actual ROM row to prove the oracle observes them.
+
+Boot-only compression is separate from gameplay/JIT. Pitfall's LZSS restores
+preassembled native code and retained source data before gameplay, using a
+scratchpad decoder whose lifetime ends before helper workspaces are initialized.
+Bound source/output extents and compare every native-decoded RAM byte against
+the assembled image *before* subsequent runtime-variable initialization.
+A Python decompressor round-trip alone cannot validate the native decoder.
+Measure gameplay and startup independently, retain named phase holdouts, and
+reject a size-compliant candidate that fails the unchanged performance gates.
+Reduce the new lookup cost before accepting a compact representation. Read a
+renderer action and all row bytes in one bank visit, retain its action only
+under the existing scene-local record identity, and bypass pose-group indirection
+only for source-proven static map types. Small endpoint headers can share spare
+space in a full-prefix action bank: fetch root and endpoint together, then
+restore the caller. The root check still applies. A first upload may capture the
+final byte for later resident hits only after both old residency claims were
+cleared; compare real pixel writes and all final cursor/read-buffer effects.
+A complete prepared-row replay can run from reserved expansion RAM, keeping
+the selected data bank across row ownership checks and scratchpad transfers.
+The fallback must leave before any selection; every successful path restores
+the caller before returning to cartridge code. Bound and fingerprint the entire
+RAM stream, extend the selected-bank execution guard, and retest full original
+band matrices. Include displaced translated code in placement and timing:
+resident loops trade RAM/hot-code capacity for fewer bank transitions.
+Current acceptance and timing evidence are in Pitfall's VALIDATION.md.
+
+The initial 128 KiB Pitfall r103 implementation is 75% smaller than `compact512-r93`.
+It reaches 90.29% of original swimming speed, 0.51–0.58% slower than that baseline.
+Five-level returns are 102.16%/106.14% of original, but 1.08%/3.61% slower than
+the 512 KiB build and fail its retained 1% elapsed-time regression limits.
+Record size compliance, runtime correctness and performance acceptance as
+separate outcomes; this is not a fully accepted speed optimization. Keep the
+failed performance result visible. All 86 runtime gates pass on the selected
+128 KiB ROM, including four long exact replays; those do not waive the speed
+failure. Repeated-row source-address caching and
+64-byte hot-chunk merging did not improve these routes; the selected runtime
+restores the simpler resident stream and 128-byte merging. The game's experiment
+ledger preserves those rejected candidates and the exact selected ROM hash.
+
+When a representation changes, update test observers to decode the actual ROM
+record; keep the original emulator output as the oracle. A cached action entry
+must match the cached row identity too. Reject deliberately stale row/action
+identities and malformed guards. A standalone observer correction can reuse
+completed unchanged gates only with an explicit named manifest comparison,
+identical ROM and shared inputs, a completed corrected gate, and retained
+original failure logs. Any runtime change requires a fresh full suite.
+
+Alignment can make a cheaper descriptor without increasing its width. Pitfall's
+32-byte-aligned pixel rows leave five low address bits available: its r104
+two-byte reference combines the CPU address with twice the bank number there.
+Two masks and an add recover the address and bank-select port, avoiding the
+whole-cart pointer shifts. Keep physical word offsets in packing metadata
+distinct from serialized aligned references. Both assembled decode paths pass
+all 4,096 aligned bank/address pairs, with four wrong-mask mutations rejected.
+Setup drops 160 to 84 cycles (changed rows) and 200 to 106 (final-row word),
+while RAM code shrinks 14 bytes and the cartridge stays 128 KiB. The qualified
+routes improve swimming 0.145% to 90.42% of original speed, and deep
+returns 0.36%/1.47% to 102.53%/107.69% of original, versus r103. All 86 runtime
+gates and retained r103 speed limits pass. The old 512 KiB down-return limit
+and full-speed swimming remain unmet. Retain original output, caller-bank restoration and VDP
+final-byte tests; local cycle savings alone do not establish gameplay speed.
+
 ## Measure the problem before choosing a fix
 
 - Report both the improvement over the named previous build and current speed
@@ -810,7 +946,7 @@ what shipped. Historical intermediate gains are not current performance claims.
 | Four band-cache slots and full mutable-program keys (3b–9) | Four competing bands thrashed three slots. Include the complete second mutable program through `$71D7`; equal keys alone do not prove that cached or displayed bytes still exist. `check_bandcache.py` and `check_residency.py` cover both proofs. |
 | Fresh-vblank publication and elapsed-frame pacing (13–15) | Count rendering time toward the original minimum, but still publish complete SAT/name-table state on a fresh blank. Removing the presentation wait is not an optimization. Keep modeled active-write, payload and pacing checks. |
 | Static map bits, graphics expansion, pattern setup, music channel, precise residency invalidation and reclaimed RAM (16–28) | Generate immutable work from the ROM, invalidate once per bounded decoder transaction, bypass unrelated SAT/gap writes, and prove cache/stack lifetimes before reusing padding. Blanket invalidation was slower. |
-| Prepared rows/bands, native asset-bank action sequences, direct keys/aliases, scene proofs and unrolled row uploads (29–35) | Enumerate every map/phase/platform pose, retain ordered dynamic drawing, guard the complete scene once, and fall back on a failed proof. `check_scene_matrix.py`, `check_renderer.py` and all 12,288 `check_prepared_bands.py` fixtures cover this design. The user authorized the larger cartridge; that is not permission for another port. |
+| Prepared rows/bands, native asset-bank action sequences, direct keys/aliases, scene proofs and unrolled row uploads (29–35) | Enumerate every map/phase/platform pose, retain ordered dynamic drawing, guard the complete scene once, and fall back on a failed proof. `check_scene_matrix.py`, `check_renderer.py` and all 12,288 `check_prepared_bands.py` fixtures cover this design. That historical larger-cart authorization is superseded by Pitfall's explicit 128 KiB limit; it never authorized larger carts for another port. |
 | River freeze and return-discarding bank wrappers (37–45) | Audit all six original control-flow families, including conditional calls and POP BC. Never add a bank continuation where the source discards a caller return. Check stack neutrality every update across both 900-update river routes, not only a short-run high-water mark. |
 | Complete swimming/platform assets, fixed RAM programs, within-scene row reuse and enemy dispatch (38–45) | Expand complete tables and check actual lengths, masks, pointers and bank restoration. A perfect hash still checks the full source identity. Reuse RAM only within its proven lifetime and execute every dynamic action. See the earlier complete-asset section and asset/dispatch gates. |
 | Native game-owned music/SFX, bounded 32-byte VRAM copies and constant seed stores (46–48) | Use the native-sound/bounded-copy section above. Preserve ordered PSG writes and original cadence; prove overlap/wrap behavior and poll only between complete transactions. Tests cover 1,885 sound states, 56 copy fixtures and 80 fixed-seed comparisons. Cartridge execution was already static; host opcode caches are not cartridge JIT. |
@@ -818,6 +954,7 @@ what shipped. Historical intermediate gains are not current performance claims.
 | Phase-wide fixed-pattern residency and finer placement search (54–57) | Use the RAM-ownership section below and accepted round-57 record. Keep immutable payloads in ROM and compact source identities in CPU RAM, invalidate every overlapping writer, preserve final-byte VDP effects, and measure all phases after placement. Source identity must distinguish different streams at the same destination. |
 | Original-rate movement and bounded scenery omission (58–61) | Use the original-rate section below. Preserve cumulative two-frame movement deadlines, fresh SAT publication, unfinished-table ownership, renderer side effects and independent audio. Keep native scene, clock, river, exact and production-video gates. |
 | Bank-qualified fixture exits, asset-window overflow and rejected row identities (59–63) | Compare `(bank, PC)` at banked exits. Verify generator size plus assembled symbol/data extents. Canonical immutable row IDs can avoid pixel comparisons, but round 63 still fails full-return timing; do not ship it based only on lower traffic. |
+| Compact prepared-record banks (92–93) | See [Cartridge size without sacrificing runtime speed](#cartridge-size-without-sacrificing-runtime-speed). Reclaim only pages outside a completely audited bank lifetime, pin the source paths, guard executed instructions and restore both success/fallback banks. 1 MiB becomes 512 KiB while retaining the existing renderer; compare normal, water and complete-return timing. |
 
 The early renderer contract also explains why simply retaining a decoded band
 is insufficient: its mutable input key, CPU payload lifetime and VRAM residency
@@ -1303,10 +1440,13 @@ entry; music-toggle redraws must not shift it again. Its bounded VRAM copy is
 banked, so the title uses FARCALL and restores its caller bank. The title gate
 compares the assembled display with the original pre-layout snapshot through
 multiple toggles. This startup-only layout adds no gameplay rendering work.
-It can still change code placement: the r91 title build's two water routes took
+It can still change code placement and the gameplay-entry frame phase. The r91
+title build's two water routes took
 1372/1373 frames versus r89's 1367/1367 (0.36%/0.44% slower; 90.82%/90.75% of
-original speed). Keep the existing per-phase 1% limits and report this placement
-cost explicitly instead of assuming that unchanged gameplay source means
+original speed). Its normal-route setup grew from 126 to 128 frames, and 1891
+original-address labels moved in the assembled layout; their separate timing
+contributions have not been isolated. Keep the existing per-phase 1% limits
+and report the measured cost instead of assuming that unchanged gameplay source means
 unchanged timing. The old r89 title is rejected by the new layout comparison.
 
 The reported short red strip just above the left edge of the Activision logo

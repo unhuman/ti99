@@ -104,10 +104,31 @@ Include invalidation overhead and displaced hot code in whole-game benchmarks:
 Pitfall's 75% reduction in sampled scenery writes still regressed normal play.
 The build's hot-code placement search also needs fine steps; adding ROM banks
 does not create more always-visible RAM or shared-code capacity.
-Title-only native edits can also change the assembled placement and gameplay
-timings. Pitfall's r91 title layout left gameplay source untouched but moved its
+Title-only native edits can also change assembled placement and the frame phase
+at gameplay entry. Pitfall's r91 title layout left gameplay source untouched but moved its
 water routes from 1367 frames to 1372/1373. Keep the phase timing gates and
-report the small placement cost rather than infer unchanged speed from scope.
+report the measured timing difference rather than infer unchanged speed from scope.
+
+For cartridge size, distinguish occupied banks, power-of-two padding, repeated
+runtime prefixes and expanded assets. Enforce an explicit user limit on the
+final loadable image. Pitfall II now requires exactly 128 KiB; its historical
+512 KiB/1 MiB layouts are superseded. Shared exact rows, endpoint headers and
+native action sequences save more than whole-record deduplication. Thin data
+banks retain only reset headers and require resident RAM readers with complete
+caller-bank restoration and no interrupt polls. Keep executable action banks'
+shared prefix. Boot-only LZSS restores preassembled code/data; it is not JIT or
+per-frame decoding. Compare every native-restored RAM byte before runtime
+initialization changes it, and audit live row-reference metadata separately
+from unused pixel-payload padding. Keep original-ROM output and normal/water/
+return timing gates. See CV2TI99's cartridge-size section and Pitfall's DESIGN.md.
+
+For aligned immutable assets, spare address bits can encode bank selection
+without widening descriptors. Pitfall's 32-byte rows use two-byte CPU-address/
+bank references, while other pointers remain whole-cart word offsets. Keep
+those formats explicit in generators and test observers, check the actual
+native decode over every legal bank/offset, and retain final VDP state and
+bank-restoration checks. Less address arithmetic must still be measured on
+complete routes; it does not imply an equal percentage gain in game speed.
 
 ### Native-cache verification (Super DK Junior, 2026-10-25)
 
