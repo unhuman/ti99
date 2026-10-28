@@ -5,6 +5,44 @@ belong to the named game, not every translated ROM. Zaxxon busy play went
 from ~45% to ~93% of the ColecoVision's logic rate (95% of its scroll rate).
 Numbers use 50,050 TI cycles per frame unless noted.
 
+## Initial-port performance acceptance
+
+Optimization is part of building the first acceptable port. Establish the
+hardware/cadence budget before choosing the renderer and RAM layout; then use
+the first working translation as a measured baseline. Apply relevant proven
+strategies during that initial work, not after presenting the port as finished.
+The controlling completion criteria are in `SKILL.md` §0.
+
+Maintain a game-specific strategy ledger alongside the candidate results. For
+each applicable area below, record the measured cost or budget, candidate,
+status, artifact/evidence and remaining action. Mark an area inapplicable only
+with an implementation-specific reason. A proposal is not an optimization
+result, and two small gains do not establish that other approaches are exhausted.
+
+| Area to audit | Evidence needed before closing it |
+|---|---|
+| Execution/runtime overhead | Actual hot paths, BIOS versus game-owned routines, repeated mapping, argument/register shuffling, bank calls and interrupt work; consider native algorithms and proven direct RAM mappings |
+| Drawing and VDP traffic | Inclusive preparation/publication cost, every writer and cache invalidator, change density, overlap semantics, burst/tail costs, beam exposure and final VDP state; compare delta writes with complete bursts |
+| Static work and memory ownership | Immutable assets/lookup/descriptor opportunities, exact expansion cost, cache lifetimes, scratchpad allocation and hot-code displacement; include cold-fill and invalidation overhead |
+| Game-loop scheduling | Original update/picture clocks, all actor/effect phases, timer/state transitions, accumulated debt and sound/input service; independently validate any user-authorized retiming |
+| Code placement and capacity | Actual allocatable areas, branch reservations, shared bytes repeated in every bank, runtime roots and return contracts; full RAM calls for a layout/work audit, not automatic completion |
+| Worst workloads and apparent saturation | Directed late/crowded/special-mode coverage, slow-interval profiles, active cycles excluding intentional waits, deadline misses and recovery; unchanged capped FPS can conceal useful headroom gains |
+
+Resolve each profile-supported opportunity by a measured candidate or a
+concrete exclusion proof. Continue where another applicable approach remains;
+do not require experiments contradicted by existing evidence. Below-target
+performance remains unfinished unless the user explicitly changes the target.
+Meeting target still requires this remaining-cost audit; preserve the intended
+gameplay speed while reducing CPU work and busy-frame stalls.
+
+The final evidence must identify the exact ROM, accepted and rejected
+candidates, representative/held-out workloads, original-speed comparison,
+picture cadence, worst-frame behavior, timing assumptions, and verification
+limits. No finite search proves a global mathematical optimum: document the
+best demonstrated implementation and why no known applicable opportunity
+remains. This requirement prevents an early handoff without inventing proof
+that all possible algorithms have been exhausted.
+
 ## Measure the problem before choosing a fix
 
 - Report both the improvement over the named previous build and current speed
@@ -197,7 +235,11 @@ Numbers use 50,050 TI cycles per frame unless noted.
   copies) with 14% and nearly ruled out cheaper drawing; timing each
   main-loop call from call site to call site showed the translated code
   that prepares the drawing ($9574) at about 40%, plus 6% for the upload.
-- **Draw every other tick, keep the logic per tick.** Instead of scaling
+- **Historical approach: draw every other tick, keep the logic per tick.**
+  This describes the superseded Joust variant; the current `build30` uses
+  [cohesive dt=2 updates](vdp-ram.md#joust-cohesive-retiming-findings-2026-10-26).
+  It was not a full-speed 30-picture result when CPU-limited.
+  Instead of scaling
   speeds and timers for a 30 Hz game (dozens of constants, each a
   divergence), Joust's `build30` patches the Z80 ROM (`tools/hz30.py`) so
   ticks alternate: A = upload + flush + logic, B = logic + drawing. Every
@@ -602,6 +644,15 @@ release before resuming the original menu: Joust's # key also exits that menu.
 Its checked original HL allocation supplies the highlighted player/difficulty
 choice; the setup must preserve that choice. See `tools/check838.py` for real
 keyboard-input tests and an assembled invalid-level mutation.
+
+Check the original successor rule as well as the selected starting level.
+Joust explicitly maps 99 -> 50 at B978-B982; its level byte is at 61CA.
+The 838 interface exposes that existing 50-99 repeat cycle. Do not mistake it
+for a decimal-input or retiming defect. `tools/check_level_cycle.py` compares
+all 99 valid levels with the unmodified original on both TI variants and rejects
+an assembled mutation changing the wrap destination. Extending the displayed
+level count would be a separate behavior change requiring a table/difficulty
+audit, not just removal of the wrap branch.
 
 Check actual title glyph patterns when adding range prompts. Joust leaves the
 hyphen, question-mark and underscore tiles blank in the relevant font third.
@@ -1052,8 +1103,11 @@ Historical round-57 feasibility analysis. The original-rate implementation
 and measured results below supersede its feasibility-only status.
 
 Check the original simulation and publication rates before applying Joust's
-alternate-drawing technique. Joust alternates upload/flush and drawing over
-60 Hz logic ticks. Pitfall II already targets roughly 30 normal logic updates
+historical alternate-drawing technique. That Joust version alternated
+upload/flush and drawing over 60 Hz logic ticks. Joust's later
+[cohesive dt=2 conversion](vdp-ram.md#joust-cohesive-retiming-findings-2026-10-26)
+supersedes it with one world update and picture every two physical frames.
+Pitfall II already targets roughly 30 normal logic updates
 and pictures per second; every-other-update drawing would instead target
 15 pictures/second. A 30 fps cap cannot repair missed two-frame deadlines.
 
@@ -1180,3 +1234,351 @@ process ledger. The production ROM has normal starts and is hash-matched in
 the owned Classic99 launcher; current capture was black and activation failed,
 so live visual/listening review remains incomplete. Do not report a successful
 launch/hash check as evidence of visible playback or audible music.
+
+### Pitfall II return-camera correction and audio/title contracts (2026-10-26)
+
+**Correction to the return claims above:** round 61's player-only batching is
+unsafe on deep vertical returns. The original camera moves two pixels once per
+loop; two player calls can move four. The byte holding screen Y eventually wraps
+while world position, checkpoint termination and score still match. A named
+five-level upward-return fixture reproduces the floating pose: the old TI build
+ends with unwrapped Y -200 and displayed Y 56; the original ends at Y 80, on the
+checkpoint. Earlier first-return trajectory tests excluded camera and screen Y
+and therefore missed this defect. Do not restore unrestricted player-only
+batching, even if its timing is favorable.
+
+A conservative guard permits the extra player call only when $7031 requests
+no scrolling. Candidate `camera-audio-menu-r64` passes upward/downward deep
+returns, final camera/player state, independently evolved scenery, and a jump
+after return. This is a correctness reference, not evidence that long vertical
+returns are fast. A faster design must advance camera phases with player steps,
+retain the intermediate B3D4 pattern/colour maintenance, and handle the camera's
+band-alignment stop: if the camera did not execute its extra phase, a newly
+scrolling player cannot take an extra step. Measure this separately from normal
+movement and sound clocks. Final release timing belongs in the game's current
+VALIDATION.md, not an extrapolation from the old broken return.
+
+**Music/SFX balance belongs at the native output boundary.** Preserve the
+original channel records, note/counter clocks, pitches, noise commands, register
+exits and ordered writes. The requested production mix adds six attenuation
+steps to music (cap at 14), and preserves 15 as explicit silence. The original
+policy of mapping every audible effect volume to zero was incorrect: it erased
+the gold/checkpoint/landing/balloon envelopes. Effects 2–5 already peak at zero;
+retain all their attenuation values. Jump alone has constant attenuation 4 and
+can receive a fixed four-step gain at its dedicated output site. PACE=0 retains
+the exact original byte stream. Test all 16 attenuation values and all channels, initialized song
+states, rhythm, all five effects, effect ownership and music-off behavior.
+The ordered production oracle transforms only volume bytes according to the
+original writer's music/effect ownership; it never patches the original ROM.
+Also compare complete effect lifetimes and interruptions: a one-tick test whose
+oracle implements the same wrong gain policy cannot establish sound fidelity.
+
+The October 27 gold-pickup report demonstrated that blind spot in the shipped
+r88 mixer. `check_sound_sequences.py` rejects that artifact with 2,640 bad
+updates across 9,975 original-ROM sequence fixtures. It discovers each effect's
+peak over its complete original lifetime, then permits only that constant gain.
+All five commands are covered: jump (1), treasure/gold (2), balloon pop/release
+(3), landing (4), checkpoint (5). The six gameplay request sites are audited so
+a new trigger cannot silently escape coverage. Five song selections, music
+mute, pause/resume and every ordered effect-interruption pair are exercised.
+Keep its flattened-gold and wrong-noise negative controls. User listening
+confirmed the repaired gold sound; ordered PSG comparison is the evidence for
+the other effects, not a claim of physical-hardware listening.
+For the hot output path, effects that already peak at full volume need no
+normalization work: send their original byte directly. Keep the one constant
+jump gain in a dedicated helper instead of branching on effect identity for
+every fading sample. This saves mixer instructions without new state storage, skipped
+sound ticks or reordered writes. It is a correctness repair with unchanged
+measured water/normal/return throughput versus r88, not a claimed speed gain.
+
+**Title controls need the game's character encoding and physical matrix.**
+Pitfall's title names are ASCII OR >80, not raw ASCII. TI keyboard STCR row 0
+is bit >0100 in the byte-high register; M is column 3, row 0. Debounce M without
+dismissing the title, retain the held-entry/release guards, and carry the original
+$7029 bit 1 into gameplay so effects remain enabled. Title state words at
+>AFD4 and >AFD6 sit outside the fixed-pattern keys ending at >AFD4 exclusive.
+Pitfall's later title-credit layout moves both the name-table picture and its
+two black masking sprites up two rows. Perform that layout once per title
+entry; music-toggle redraws must not shift it again. Its bounded VRAM copy is
+banked, so the title uses FARCALL and restores its caller bank. The title gate
+compares the assembled display with the original pre-layout snapshot through
+multiple toggles. This startup-only layout adds no gameplay rendering work.
+It can still change code placement: the r91 title build's two water routes took
+1372/1373 frames versus r89's 1367/1367 (0.36%/0.44% slower; 90.82%/90.75% of
+original speed). Keep the existing per-phase 1% limits and report this placement
+cost explicitly instead of assuming that unchanged gameplay source means
+unchanged timing. The old r89 title is rejected by the new layout comparison.
+
+The reported short red strip just above the left edge of the Activision logo
+also appears in the unmodified Coleco water-route capture
+(`scratchpad/motion-r63-z80-end.png`). Compare such details with the original
+before erasing scenery or attributing them to an optimization. This observation
+does not excuse the separately reproduced return-camera corruption.
+
+### Pitfall II row streams, return scenery and proposal review (2026-10-27)
+
+Read the current `Decompiled/Pitfall2/VALIDATION.md` for the qualified artifact;
+intermediate round numbers below identify mechanisms, not release approval.
+
+- The round-63 row cache was revisited only after changing its cost. Round 67
+  removes the speculative VDP address setup before checking row ownership and
+  omits the final-byte rewrite when the last changed row already supplied it.
+  Round 70 also keeps consecutive changed rows in one autoincrementing VDP
+  stream. A hit breaks contiguity; the next miss must establish a fresh address.
+  `check_row_owners.py` deliberately suppresses that first setup and must fail.
+- A row identity fits a word: canonical class in the high byte and the first
+  name's upper two bits in the low byte. Write that low byte directly into
+  **HELPWS R3's low byte**, then mask the word; do not shift eight places just
+  to move a byte between halves. This is workspace-specific, not a general
+  permission to hard-code main-workspace addresses in BLWP helpers.
+- Owner tables use `>AB94-ABD3` and `>AD9C-ADDB`, already reserved cache padding.
+  Immutable row pixels remain in ROM. Two 64-byte identities avoid a 1,536-byte
+  mirror of the two name tables. Keep all writer, wrap, final-address/read-buffer,
+  original-output and external-repair checks; memory savings alone prove no gain.
+- The corrected camera return can use the existing bounded scenery split:
+  retain both camera/player phases, intermediate pattern/colour maintenance,
+  platform/background-sprite state and a complete fresh SAT; alternate full and
+  reduced scenery preparation. Normal movement and sound keep their clocks.
+  A former test prohibited *all* return scenery omissions. The new named
+  `PWRWAIT` exception instead rejects consecutive omissions, stale-table flips,
+  duplicate-frame uploads, return clock debt and victory omissions. Deep up/down
+  landing and post-return jump oracles remain mandatory.
+- Music mixing can use dead R8 instead of saving/restoring the live R15 channel
+  pointer. Prove rhythm return/effect-entry flags dead in the original control
+  graph, restore the channel's original final flags, and retain all ordered PSG
+  fixtures. A smaller helper can still change placement or frame rounding;
+  report whole-game measurements rather than its instruction savings.
+
+The guideline review covered native BIOS/game sound, ahead-of-time assets,
+planar/geometry tables, ownership caches, controller scan caching, native bulk
+transfers, scratchpad loops, translation peepholes, placement, RAM collision,
+resumable preparation and independent presentation. Pitfall already implements
+the first groups. The measured follow-up targets row publication and return
+scenery. A full VRAM mirror, extra sprite omissions, faster audio clocks and
+blanking the display during play are not implemented shortcuts. Expanded TI
+RAM is already substantially occupied by translated code and source tables;
+nominal free byte totals are not contiguous allocatable space.
+
+Research against the [TI TMS9918A data manual, sections 2.1.3–2.1.6](https://peacockmedia.software/tms/TMS9918datasheet.pdf)
+confirms that sequential writes reuse the auto-incremented address and that
+active-display access may require eight microseconds. Avoid redundant setup
+and transfers; do not simply remove transfer spacing. The existing scratchpad
+copier remains unchanged by the row-stream work.
+
+An original-ROM-only 900-update probe found 678 consecutive identical
+backgrounds, including 422 of 618 swimming scenes. This supports investigating
+whole-scene identity reuse, **not** assuming that unchanged coordinates prove
+unchanged pixels. Reuse must track pattern/colour and name-table writers,
+physical wrap, platform pose/advance, camera alignment and displayed-table
+ownership. Compare every reused visible picture against independently evolved
+original pixels; do not classify it as an intentionally omitted scene and skip
+the comparison. `tools/probe_scene_identity.py` records the research separately
+from any cartridge speed claim. Round 71 is the bounded follow-up experiment;
+consult the game's validation/ledger before treating it as qualified.
+
+**Qualified follow-up:** `scene-reuse-r71` (`b9b2821f33128703cba963fccf19f24502f2135c35f3a91b743b1f678a4047ad`) completed all 79 gates.
+Water is 82.03-82.08% of original, +13.30-13.50% versus r61;
+normal prefixes remain 100%. Natural return is 4.3244s,
++18.53% versus r61 and 162.16% of original.
+Deep camera fixtures are separate in the game's VALIDATION.md. Full original
+water speed remains unmet. The whole-scene oracle compared
+309 exact reuses with zero differences;
+this is actual runtime evidence, separate from the earlier source-only survey.
+
+Water-entry visual reports require evidence beyond completed-state equality.
+At r71, three directed background scanline traces did not reproduce Pitfall's
+later black-line report. The sprite-inclusive demo investigation below resolves
+both reported cases. Retain each probe's limits in VALIDATION.md. Sample visible
+intermediate frames, distinguish background from
+sprites and display enable, and record fetch-model limits; neither a clean
+completed scene nor an approximate scanline trace proves all transient pixels
+correct. Do not disable an otherwise qualified cache without reproducing the
+defect or obtaining a concrete failing fixture.
+
+Scene key/valid/hit words use `>ABD4-ABDD`, after the low row-owner table and
+before cached descriptors. Guard stationary swimming, camera map/alignment,
+fine phase, platform pose and advance. Name/pattern/colour writers and restored
+external VRAM revoke the claim. SAT and sprite-pattern traffic does not. The
+explicit hit marker makes the oracle compare the displayed picture even when
+the full renderer is bypassed. Repeated exact reuse is distinct from consecutive
+intentional omissions; do not relax the latter's clock/publication tests.
+
+### Pitfall II water masking sprites and transfer ownership (2026-10-27)
+
+The later unattended-demo reproductions **do** explain the reported narrow
+black strips. The initial water entry had 16-by-2-pixel gaps and the waterfall
+descent had 16-by-1-pixel gaps. Background-only pictures matched the source;
+the missing cyan pixels came from background sprites whose coordinates had
+advanced while the displayed name table was intentionally held. Completed-state
+equality and background-only scanline probes cannot detect this mismatch.
+Compare sprite-inclusive intermediate pictures with original beam pictures
+having the same tile background. Preserve the separate full-screen map-transition
+blanking case rather than counting it as this defect.
+
+Treat scenery and its masking sprites as one publication unit. Keep the last
+complete picture's 16 background SAT bytes in reserved RAM, and publish them
+with that picture when scenery is held. The first 108 SAT bytes (Harry and
+enemies) stay current. Pitfall's direct publisher sends 108 current bytes and
+16 saved bytes in one autoincrementing VDP stream; all 124 bytes still finish
+inside fresh vblank. Logical SAT RAM remains untouched. This is cheaper than
+swapping those 16 bytes into RAM before upload and restoring them afterward.
+Moving the swap after the fresh edge alone did not recover the lost throughput.
+`blackline_publication_gate.py` independently remembers complete-picture sprites,
+checks fresh foreground bytes and logical RAM, and rejects redirecting the held
+transfer to the newly advanced coordinates. `check_sat_publication.py` checks
+the original register/flags ABI, byte order, cursor and read-buffer effects.
+Exact replay keeps the original transfer primitive. Consult the game's current
+VALIDATION.md for the qualified ROM, measurements and remaining model limits.
+
+The saved background SAT occupies **>AFEA-AFF9**, after the prepared-band
+descriptor at slot+480..489. The three Harry pattern identities occupy only
+**>AFDA-AFDF**. Do not mistake the entire tail of a cache slot for unused RAM:
+the descriptors split its padding. Source identities for the three fixed
+32-byte destinations >3FA0, >3FC0 and >3FE0 suppress unchanged swimming uploads
+while retaining the final VDP byte/address/read-buffer contract. Every overlapping
+writer must revoke them, including the old six-span direct walking writer,
+masked/literal/repeated interpreter runs, larger overlapping assets, wrapped
+VRAM writes and externally restored VRAM. The interpreter's former sprite-range
+invalidation exemption becomes unsafe when adding sprite ownership. For bounded
+1..128-byte runs wholly within the sprite tail, directly clearing the three tiny
+keys is cheaper than entering the general scenery invalidator; crossing/wrapped
+ranges retain the general path. Boundary, masked-writer and mutation tests are
+mandatory. A previously passing water route did not expose the missing masked
+writer guard in the first experimental cache.
+
+Also correct the earlier whole-scene ownership claim: the 48-byte fast asset's
+FASCHECK miss had bypassed RCRANGE and left MCVALID valid. Clear MCVALID on the
+miss only; an actual resident hit leaves the picture unchanged. An assembled
+reproducer and a missing-clear mutation prove this contract. This was a separate
+defect: repairing it alone did **not** remove the narrow water strips.
+
+Once the exact scene key proves unchanged camera/map alignment, fine phase,
+platform pose and no pending platform advance, its saved background sprite
+geometry can also replace the four-band geometry walk. Retain current-phase
+waterfall pattern animation and scroll maintenance. Compare the restored logical
+records against the unmodified complete renderer, including all map rows and
+waterfall cases; a missing-copy mutation must fail. Never apply this shortcut to
+an ordinary coarse omission whose geometry has changed.
+
+### Qualified Pitfall II water follow-up: rounds 72–79 (2026-10-27)
+
+Qualified artifact `sat-fixed-r79`, SHA `5de3f4f06edf548eee62fa9f046488a394fa72eb422f135a66220696f8e8f3b7`. All 83 gates pass.
+Swimming improves 9.84–9.91% versus r71 and reaches 90.16–90.16%
+of original. Normal per-phase holdouts pass unchanged; full water speed remains
+unmet. Natural/deep return measurements and correctness costs are in VALIDATION.md.
+Both reproduced demo black-strip cases are fixed by matching held scenery with
+its masking sprites. Source gameplay RAM and sound clocks remain unchanged.
+
+Natural return is 4.3244s and 162.16% of original:
+left-held throughput is unchanged versus r71; right-held is 0.39% lower.
+Synthetic deep up/down return throughput is 0.72%/1.48% lower than r71, at
+102.16%/108.49% of original. The four-frame deep-down cost is a documented
+display-repair tradeoff, permitted by the measurement contract above. The
+existing deep-return r66 reference and 1% limit remain; all normal per-phase
+holdouts pass their unchanged limits. Do not describe this as a universal gain.
+
+- Round 72, `fine-placement-r72`: **superseded**. Finer hot placement: water 1507 frames; focused checks passed.
+- Round 73, `swim-pattern-r73`: **reject-invalidation-defect**. Sprite residency missed overlapping literal/repeat decoder writes; new positive repair gate rejected it.
+- Round 74, `water-alignment-r74`: **superseded-correctness-reference**. Correct decoder invalidation and held-background sprite swapping; expensive water/return paths.
+- Round 75, `blank-alignment-r75`: **superseded**. Move swap after fresh blank; both black-strip cases fixed, but unnecessary copy overhead remains.
+- Round 76, `swim-invalidation-r76`: **superseded**. Bounded sprite-only decoder clears three keys inline; restores most return performance.
+- Round 77, `split-sat-r77`: **superseded**. Direct 108+16 SAT publication: water 1391 frames; both visual cases fixed.
+- Round 78, `scene-state-r78`: **reject-normal-transition-regression**. Exact-scene geometry reuse saves 1.48% busy cycles, no frame gain; seed-3 transition 57.68ms versus 39.98ms r71 fails unchanged 1% gate. Broad qualification stopped.
+- Round 79, `sat-fixed-r79`: **accept**. Fixed full-SAT path avoids generic transfer setup, unrolls retained geometry copy; all 83 gates and normal per-phase holdouts pass.
+
+The final full-SAT fast path saves 16 masking bytes with eight unrolled word
+copies, then writes 124 bytes directly. Held publication writes 108+16 bytes.
+Fixed validated SAT destinations need neither generic RAM mapping nor scenery
+residency invalidation. Preserve exact mode's generic original primitive and
+prove all registers, flags, source RAM, write order and final VDP state.
+
+Run normal per-phase comparisons before lengthy qualification: r78's average
+speed concealed a one-frame transition regression. Do not accept fewer VDP
+writes or lower busy-cycle totals as proof of faster gameplay. Keep failed
+candidates and report visual-correction costs separately from optimization.
+
+### Pitfall II swimming proposal validation (2026-10-27)
+
+Fixed, source-proven upload sequences can bypass generic descriptor hashing,
+argument mapping and repeated bank selection. Pitfall's right-swim sequence
+writes three disjoint 32-byte destinations; the left sequence writes one.
+Generate descriptor offsets from the same immutable asset list, select the
+asset bank once, and retain each slot's existing ownership key. A warm slot
+still writes its final byte to reproduce the VDP cursor/read buffer. Preserve
+original saved-stack locations, nonlocal return pops, interpreter bookkeeping,
+caller bank, registers and flags. PACE=0 retains the literal original sequence.
+`check_swim_upload.py` compares cold, warm and externally repaired sequences
+with original code and rejects a stale ownership claim. Small helper-cycle
+savings alone do not establish faster movement.
+
+The enemy-loop experiment retains all four original records, checked dispatch,
+handler calls/stores and the poll at A596. A fixed 48-byte clear and fewer
+pointer/count shuffles remove overhead without skipping enemy updates. Odd
+record fields still require byte accesses. Clear the byte-high accumulator's
+low byte explicitly; do not rely on a previous translated helper to do it.
+Keep isolated A56F comparisons, dispatch alias/mutation fixtures and full exact
+replays. The combined directory/enemy candidate failed normal holdouts; test
+such mechanisms independently before concluding that either is worthwhile.
+
+The proposed RAM band directory was implemented in prepared-slot padding:
+24 packed descriptors cover four phases and six poses. Only prepared kind 2
+may expose that directory; a generic fill reuses those bytes for its mutable
+key. Revoke the old slot kind before overwriting it, and publish its row tag
+last. All descriptors and wrong-phase mutations were checked. Nevertheless,
+r81's cold-fill cost and r83's swimming-only variant failed unchanged normal
+per-phase limits. They are rejected, not production features or permission
+to reuse those bytes in the current build.
+
+Partially overlapping immutable waterfall assets cannot own their entire
+spans independently: >3F20..3F67 and >3F60..3F9F disagree in the shared eight
+bytes. The experiment owned only the independent prefix/tail and rewrote the
+overlap on every original call. Warm pairs used 17 data writes instead of 136,
+with original output and final VDP state at each call boundary. General,
+literal/repeat, masked and wrapped writers still invalidated the independent
+claims. This passed its overlap and broken-writer tests but failed whole-game
+normal timing. Moving its continuation beside data in the already-selected
+asset bank preserved RAM/hot-code capacity but did not rescue that result.
+Rounds 84-86 remain rejected; fewer VDP writes are not proof of faster play.
+
+Exact scene reuse and a coarse scenery omission need distinct histories.
+A scheduler-only distinction (r85) changed no measured water frames because
+pending omissions bypassed the exact-identity test. The follow-up checks the
+complete scene key before consuming that allowance, and permits a later
+coarse omission only after full or proven-exact scenery. Return/victory rules,
+two-frame movement deadlines, pause-debt reset, fresh publication and the
+unfinished-table guard remain. Extend the renderer fixtures to pending=0/1,
+compare every exact reused picture against the independent source renderer,
+and retain mutations rejecting consecutive *coarse* omissions. Qualification
+and speed of the follow-up are recorded in the game's VALIDATION.md.
+
+For profiling, a nearest-CALL-address grouping is a heuristic, not a call
+stack. Cartridge entry/main-loop instructions below the first cartridge CALL
+target must not be charged to the last BIOS routine (formerly 1FDC). Use
+bank-qualified, non-invasive stage hooks for inclusive renderer/player/enemy
+costs and separate the mandatory publication wait. Confirm instrumented and
+plain replays have identical cycles, frame totals and trajectories before
+using that profile. Original-ROM records and frozen candidate hashes remain
+the source of speed claims.
+
+Visual regression summaries must require the candidate to cover the known
+reproduction's update window. A clean waterfall capture at updates 1200-1250
+did not cover the prior failing 1250-1310 window. `blackline_summary.py` now
+requires every original reproduction update in the candidate capture; the
+wrong-window negative case fails before the matched-window comparison passes.
+Fewer sampled video frames are legitimate when the same updates execute faster;
+omitting the problematic updates is not.
+
+### Qualified swimming follow-up r88 (2026-10-27)
+
+Accepted `exact-first-r88`, SHA `8e99933ff8ea6336923ac569d582729778fce8af663374b880db94d416ddd87b`: all 84 gates pass.
+Swimming improves **1.10% versus r79**, reaching **91.15% of original**.
+Normal prefixes remain **100% of original**, with unchanged per-phase holdouts.
+Natural and deep returns pass their r79 1% limits; detailed ratios are in
+VALIDATION.md. Both reproduced black-strip cases remain absent. Full original
+water speed is still unmet.
+
+r87 isolated the native enemy loop from rejected cache changes: 1371/1372 water
+frames and passing normal holdouts. r88 adds exact-scene priority: 1367/1367.
+It retains the fixed swimming upload and native enemy work, and rejects the RAM
+directory, waterfall ownership and scheduler-only variants. No speed claim is
+inferred from fewer VDP writes. Profiling remains dominated by full scenery work.

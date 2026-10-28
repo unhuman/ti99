@@ -22,12 +22,25 @@ placement unchanged. The wait-entry timestamp is diagnostic only. Avoid
 turning a requested menu-duration change into an unmeasured gameplay relayout.
 
 The natural GAME OVER regression checks 900 frames of held fire and 9,000
-idle frames, confirms that the original countdown actually expires without
+idle frames, directly exercises the original countdown expiry without
 blanking, crosses the 16-bit frame-clock wrap, compares the visible name
 table throughout, and verifies explicit input still exits afterward.
 Restoring the actual old timeout instructions must fail that same idle check.
 Branch arrival alone is insufficient for restart: require subsequent visible
 actor updates, as in the prior same-game regression.
+
+Distinguish the final all-players-out screen (`$8CED`: 12-byte GAME OVER
+overlay on the playfield) from the centered 18-byte PLAYER 1/2 transition
+messages (`$8CFF/$8D10`). The first idle fixture incorrectly required the
+transition screen and was corrected against the final overlay's original
+ROM text. The next fixture completed 9,000 stable idle frames but assumed
+that interval would expire the original screen saver. It counts loop
+iterations, so original-machine elapsed time is not a TI frame deadline.
+Keep the full idle interval, then seed `$705C..705E` to 1/1/1 at the real
+`$8194` entry and verify the resulting `$81B7` expiry. A mutation removing
+the production blanking guard must turn the display off and fail the same
+idle assertion. Keep both failed fixture logs and rerun provenance; do not
+silently drop the visible-message assertion or shorten the idle duration.
 
 The input-only build preserves the measured 95.579399% active Coleco rate
 (three seeds, 1,500 frames each) and both strict 600-frame SAT samples:
@@ -35,6 +48,16 @@ The input-only build preserves the measured 95.579399% active Coleco rate
 This is a requested behavior change with unchanged gameplay performance,
 not a new speed or flicker optimization. The `gameover-input` archive keeps
 its binary/layout comparison and measurement evidence.
+
+Final qualification passes 41 audited gates and 200,000 synchronized ticks
+with zero differences. Corrected idle seed 7 retains the full 9,000-frame
+wait, executes one directed countdown expiry, crosses the frame-clock wrap,
+accepts late fire and rejects both timer/blanking mutations. All remaining
+rendered pixels match the initial GAME OVER capture after idle, expiry and
+clock wrap (`idle-image-proof.json`, 12 colors). All
+7,646 equates and 6,298 translated addresses are unchanged. The final source
+and evidence archive is `build/optimization/gameover-input-final-verified/`;
+`build/verify-gameover-input/evidence.json` records the fixture corrections.
 
 ## Native work that paid
 

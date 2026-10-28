@@ -12,8 +12,10 @@ description: >-
   speed techniques that actually paid off, including SDCC helpers, frame
   pacing and sprite presentation. Every task under it runs the automatic
   validate-then-optimize loop (§0): scripted gates on each build, speed
-  measured against the Coleco, and profile-driven optimization rounds until
-  the target or a stop condition, without being asked. Load before starting or changing
+  measured against the Coleco, and profile-driven optimization as an initial-port
+  acceptance requirement. A playable translation is an intermediate build;
+  completion requires measured performance and a resolved bottleneck audit,
+  without a separate optimization request. Load before starting or changing
   any ColecoVision-to-TI port (Decompiled/CVZaxxon is the worked example).
 ---
 
@@ -22,6 +24,13 @@ description: >-
 Shared instructions for Claude and Codex; use this same folder from either
 assistant. This skill covers static ROM translation, including SDCC-built
 Coleco games. CVBasic source ports use the separate CVBasic skills.
+
+**Optimization is mandatory during the initial port.** Read §0 before choosing
+the runtime, renderer and memory layout. A working translation is an intermediate
+result, not an acceptable finished game. Pursue the highest demonstrated
+performance within the target hardware and agreed gameplay/presentation rules;
+do not defer this work to a later user request. Review builds may be shown while
+work continues, but must not be described as complete or fully optimized.
 
 Keep cartridge execution ahead of time: generate native instructions and
 immutable asset/descriptor tables during the build, not during gameplay.
@@ -62,6 +71,13 @@ Its later [original-rate movement split](optimization.md#pitfall-ii-original-rat
 uses a cumulative clock and bounded scenery omission while retaining renderer
 side effects, sprite uploads and independent sound. That section supersedes
 the earlier feasibility-only status and records the rejected row-identity cache.
+Read the subsequent [return-camera correction](optimization.md#pitfall-ii-return-camera-correction-and-audiotitle-contracts-2026-10-26)
+before reusing accelerated return batching: player/world/score agreement alone
+missed an 8-bit screen-coordinate wrap. It also records the native music/SFX
+volume policy and title-screen music-toggle contracts. Its audio correction
+preserves complete effect envelopes: maximum loudness means a constant gain
+per effect, not flattening every audible attenuation to zero. Compare complete
+lifetimes against the original, including effect interruption and music mute.
 For the MSX-derived Super River Raid comparison, read `optimization.md`'s
 RAM ownership and display scheduling section and its linked executable study.
 Fewer VDP transfers can help, but cache maintenance and displaced hot code
@@ -78,6 +94,16 @@ buffers, and Joust's aligned staging/publication experiments, read
 and records the presentation regression in the faster alignment-only candidate.
 Its [Joust resolved-work index](vdp-ram.md#joust-resolved-work-index) routes all
 completed Joust optimizations, checker repairs and rejected experiments.
+Its [implementation audit](vdp-ram.md#joust-implementation-audit-2026-10-27)
+also covers change-density-based sprite uploads, bounded overlapping VRAM
+copies, native queue flushing, input caching and retimed actor/phase coverage.
+Joust's later [cohesive retiming findings](vdp-ram.md#joust-cohesive-retiming-findings-2026-10-26)
+supersede the alternating-drawing contract when the user explicitly requests
+one world update and picture every two video frames. They cover fixed-point
+time steps, scheduled deadlines, native caller/return roots, sprite-buffer
+swapping, state transitions between paired egg steps, interrupt-schedule
+consistency and independent elapsed-time checks. Component proofs do not certify
+the final cartridge's throughput; consult its current performance report.
 When another port runs faster, compare its executing game loop even if only
 its binary is available. Read [Cross-port loop comparison and acceleration](optimization.md#cross-port-loop-comparison-and-acceleration)
 for River Raid's MSX-derived comparison: inclusive stage profiling, budgeted
@@ -125,17 +151,22 @@ and validation list, `bios-ports.md` §12 what it gained and why.
 
 ## 0. Default loop: validate, then optimize, without being asked
 
-Validation and optimization are **part of every task under this skill**, not
-follow-ups to offer. The user has spent many sessions manually prompting
-"is it verified?", "now make it faster", "measure again". Do not hand back a
-cart until this loop has run, and do not stop to ask whether to run it.
+Every initial port includes performance architecture, measurement, optimization
+and final qualification. Later game-code changes preserve or repeat the affected
+checks. This work is already part of porting authorization; do not ask whether
+to optimize or offer it as optional follow-up. Documentation-only work does not
+require rebuilding unchanged cartridges.
 
-1. **Baseline first.** Before changing anything, record the current cart's
-   SHA-256, its gate results and its speed per phase
+1. **Budget and baseline first.** Before implementation, establish the original
+   simulation and picture cadence, target hardware cycle budget, and relevant
+   [strategy audit](optimization.md#initial-port-performance-acceptance).
+   Reuse applicable native runtimes and proven techniques from the outset.
+   For an existing port, record the current cart's SHA-256, gates and phase speed;
+   for a new port, do this at the first executable build, before optimizing it
    (`speed.py ti|z80 ... --pass` on 3 seeds, plus `optstage.py bench`
-   where the port has it). A port without these tools gets them copied from
-   `Decompiled/RiverRaid.3` before work starts; the scripted
-   gates are a deliverable of the port, like the cart.
+   where the port has it). Adapt missing measurement tools from a working port
+   and verify their game-specific addresses/coverage. The scripted performance
+   and correctness gates are deliverables, like the cart.
 2. **Validate every build automatically** with one command that exits
    nonzero on any failure (`nextverify.py`, or the port's equivalent; create
    one if missing): lockstep 0 diffs (scripted keys **and** random input),
@@ -143,34 +174,61 @@ cart until this loop has run, and do not stop to ask whether to run it.
    native, `sprcheck.py`, video-timing/presentation, game-over/front-end
    (`gotest.py`). Each new gate gets a mutation self-test (§6). Run long
    suites against a frozen copy, so a rebuild cannot mix two carts.
-3. **Compare against the target automatically.** The target is the
-   ColecoVision's logic rate per phase (logic passes and scroll steps per
-   100 frames, same pass-keyed input), and no measured flicker/tearing
-   regression. If any measured phase is below target (or slower than the
-   baseline), **go straight into the optimization loop**:
-   - profile (`hotlst.py`, `tiprof6.py`, `heavy3.py`) and rank costs;
+3. **Optimize automatically, including the first port.** Measure against
+   original elapsed gameplay speed and the agreed presentation cadence, with
+   the same pass-keyed input and no unapproved fidelity regression. Record
+   completed updates, complete pictures, movement/scroll progress, deadline
+   misses and worst busy intervals; a faster average alone is insufficient.
+   Exercise late/crowded/effect-heavy scenes as well as ordinary play.
+   - profile (`hotlst.py`, `tiprof6.py`, `heavy3.py`) inclusively, rank costs,
+     and inspect the actual slow intervals;
    - pick the largest *removable* work, using `optimization.md` and
      `native-porting.md` §7-8 as the menu of things that paid. Check
      `build/optimization/process-ledger.json` first and do not retry a
      rejected idea unless something it depended on changed;
-   - implement it with any TI-only behaviour switchable for lockstep;
+   - implement the most promising applicable change, keeping TI-only behavior
+     switchable for exact comparison or independently proving authorized
+     retiming against the original; do not let a patched oracle validate itself;
    - re-run step 2, then `optstage.py` + `holdout.py`: accept only if the
-     total rises and no held-out workload falls more than 1%; record
-     accept/reject with numbers in the ledger; revert rejects;
-   - repeat.
-4. **Stop** when every phase meets the target, or two consecutive accepted
-   rounds each gain under 1%, or the hot budget (RAM + shared segment) is
-   exhausted, or the next step needs a user decision (a visible behaviour
-   difference from the original, a larger cart, a hardware add-on). Ask only
-   at that last point.
-5. **Hand back** with the final-cart evidence: hash, gate summary, speed per
-   phase vs the Coleco and vs the baseline, what was tried and rejected.
+     total rises and no held-out workload falls more than 1%, without violating
+     a hard cadence/presentation gate. Once frame-capped, measure reduced active
+     work, improved worst-frame cost or increased timing headroom instead of
+     demanding higher FPS. Record accept/reject with numbers; revert rejects;
+   - repeat and audit other cost categories when one approach stops paying.
+4. **Resolve remaining bottlenecks before declaring completion.** Meeting
+   average target speed starts the headroom/worst-frame audit; it does not
+   automatically end optimization. Two sub-1% gains, a failed experiment or a
+   full hot-code area are not stop conditions. Inspect algorithmic work,
+   mapping/bank overhead, static precomputation, transfer policy, layout and
+   scheduling alternatives before concluding that a limit is binding.
+   Every profile-supported candidate must be implemented and measured,
+   rejected with measured evidence, or ruled out by a concrete contract/budget
+   proof. Untested applicable ideas remain open work. Do not repeat rejected
+   experiments unless a relevant assumption has changed.
+   A proposal that needs an unapproved visible tradeoff, larger cart or new
+   hardware does not prevent pursuing other authorized alternatives. Respect
+   existing user decisions. If a required performance target remains unmet
+   after those alternatives are exhausted, report the port as incomplete with
+   the measured constraint and concrete options; do not label it acceptable
+   merely because it runs or has improved. Only an explicit user decision can
+   change that acceptance target.
+5. **Qualify the final result.** Completion requires passing correctness and
+   presentation gates, meeting the agreed performance requirements across the
+   workload set, and a resolved strategy/bottleneck ledger with no known
+   applicable, untested performance opportunity. Report the final ROM hash,
+   gate summary, phase speed versus the original/baseline, worst-frame limits,
+   and remaining irreducible costs with supporting evidence. Say "best measured
+   under these constraints," not "absolute maximum proven." Optimize CPU work
+   and timing headroom without accelerating gameplay beyond its intended rate.
    Start and play the final cart in your **own** Classic99 instance first
    (`probe99.ps1`), then load it for the user per §7. Warn before opening
    benchmark carts in a visible window (they look scrambled).
 
-A correctness fix still runs steps 2-3: a fix that costs speed is measured,
-and if it drops a phase below target the loop runs.
+A correctness fix still runs the affected gates and production measurements.
+If it regresses performance, resume the loop. A new material bottleneck or
+newly applicable technique reopens the audit. Time/context limits or a missing
+runtime check leave work explicitly incomplete; they do not establish maximum
+performance or waive an acceptance gate.
 
 **Joust worked checks (2026-10-25):** `Decompiled/joust/tools` now has a
 plain Z80 interpreter with frozen opcode fingerprints (`check_reference.py`),
@@ -223,7 +281,10 @@ wants extras (the Zaxxon explosion was specified from the arcade).
    goes to RAM (holes in the BIOS image and the cart image, copied from payload
    banks at boot) and the shared segment; cold code to banks via `FARCALL`. Hot vs
    cold comes from a profile of the Z80 reference (`build/prof_z80.json`).
-6. **Verify** (§6) and play-test in Classic99 (§7).
+6. **Validate, profile and optimize** through §0, including the remaining-cost
+   audit. The first working cart is the baseline, not the end of this pipeline.
+7. **Qualify and review** the final artifact under §6 and §7 only after §0's
+   performance acceptance requirements are satisfied.
 
 ## 3. TI front end (do all of these in every port)
 
@@ -363,3 +424,16 @@ separate checks; passing one does not establish the others.
 - Another agent (Codex) may be working on the same folder: check file times and
   running processes before editing; never edit files another agent is changing.
 - Pitfalls that cost real time are listed in `optimization.md` § Pitfalls.
+
+For Pitfall II water/return work, read
+[row streams, return scenery and proposal review](optimization.md#pitfall-ii-row-streams-return-scenery-and-proposal-review-2026-10-27).
+It records accepted RAM ownership, sequential VDP writes, exact whole-scene
+reuse, camera pairing, measured gains, remaining limits and rejected proposals.
+
+Also read [water masking sprites and transfer ownership](optimization.md#pitfall-ii-water-masking-sprites-and-transfer-ownership-2026-10-27).
+It covers the reproduced demo water-entry/waterfall strips, scenery-aligned SAT
+publication, narrow sprite residency, decoder invalidation, and negative tests.
+
+For subsequent speed work, read [swimming proposal validation](optimization.md#pitfall-ii-swimming-proposal-validation-2026-10-27).
+It records fixed upload sequences, enemy-loop invariants, rejected RAM-directory
+and waterfall caches, exact-versus-coarse scheduling, and profile attribution.

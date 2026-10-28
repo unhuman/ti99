@@ -46,7 +46,11 @@ apply to them. Claude and Codex share
 [CV2TI99](.claude/skills/CV2TI99/SKILL.md). Both port skills (CV2TI99 and
 TI992CV) run their §0 validate-then-optimize loop on every task without being
 asked: scripted gates, speed against the original machine, and optimization
-rounds until the target or a stop condition. For speed or flicker, load its
+rounds through their acceptance criteria. CV2TI99 makes optimization part of
+the initial port: a playable translation is an intermediate build, and final
+acceptance requires measured performance plus a resolved bottleneck audit.
+Two small gains or full hot-code RAM do not waive that audit; see its §0 for
+the canonical criteria. For speed or flicker, load its
 [optimization notes](.claude/skills/CV2TI99/optimization.md); for native or
 translator changes, also load [native-porting.md](.claude/skills/CV2TI99/native-porting.md).
 The Mean Santa lessons cover production frame/VDP timing separately from exact
@@ -100,6 +104,10 @@ Include invalidation overhead and displaced hot code in whole-game benchmarks:
 Pitfall's 75% reduction in sampled scenery writes still regressed normal play.
 The build's hot-code placement search also needs fine steps; adding ROM banks
 does not create more always-visible RAM or shared-code capacity.
+Title-only native edits can also change the assembled placement and gameplay
+timings. Pitfall's r91 title layout left gameplay source untouched but moved its
+water routes from 1367 frames to 1372/1373. Keep the phase timing gates and
+report the small placement cost rather than infer unchanged speed from scope.
 
 ### Native-cache verification (Super DK Junior, 2026-10-25)
 
@@ -988,6 +996,28 @@ loops. Alignment alone was faster but failed the latest-release video baseline;
 retain that rejection. See [CV2TI99 VDP/RAM findings](.claude/skills/CV2TI99/vdp-ram.md)
 for transfer tails, zero counts, ownership bounds and assembled-code mutations.
 
+Joust's later cohesive mode uses one dt=2 world update and picture, with a
+scheduled two-frame deadline. Cosmetic phases advance once per picture while
+their duration advances two source frames; advancing a six-phase selector by
+two can skip half its columns. Embedded effect waits must not reset gameplay
+timing debt. Native-only callers also need placement roots and must be excluded
+from single-caller RET-to-jump rewrites. See the cohesive-retiming section of
+[CV2TI99 VDP/RAM findings](.claude/skills/CV2TI99/vdp-ram.md) for executable proofs
+and qualification limits.
+
+Joust's cohesive-final qualification also caught a held-control shortcut that
+skipped airborne interrupt polls while the full path retained them. Coalesce
+the named service points consistently and bound the resulting native span;
+register/RAM fixtures alone do not prove interrupt-schedule equivalence. Its
+late level-99 slowdown came from unprofiled lava-hand RAM mapping calls, so
+profile the actual late busy interval rather than only whole-run averages.
+The shared CV2TI99 findings record both resolved cases and the final tests.
+
+When advancing an object twice, recheck its state after the first call. Joust
+landing rewrites an egg's velocity record as stationary tile/timer data; a
+second unconditional physics call corrupted it. Compare such transitions with
+original guarded execution, since a retimed oracle can share the same mistake.
+
 Pitfall II's original-rate movement split (October 26) exposed two validation
 hazards. A native routine test must stop at a bank-qualified `(bank, PC)`;
 another bank can contain the same PC inside an unrelated routine. For banked
@@ -997,3 +1027,41 @@ out-of-window bytes. Both failures are preserved in Pitfall's optimization
 ledger and shared CV2TI99 notes. Renderer omission additionally requires proof
 of its non-visual side effects and hidden-table ownership; original movement
 clocks and interrupt-driven sound are separate from drawing cadence.
+
+Pitfall II's accelerated checkpoint return exposed another independent contract:
+world position and score can match while the on-screen sprite is wrong. Two
+player calls with one camera phase let the 8-bit screen Y wrap, leaving Harry
+floating after a completed return. Validate unwrapped world/camera geometry,
+deep upward and downward returns, the final rendered scene, and a subsequent
+jump. Extra camera phases must retain intermediate pattern/colour maintenance
+and respect the original camera's band-alignment stop. Do not infer correctness
+from internal movement traces alone. See the correction in CV2TI99's
+optimization notes; round 61's earlier return validation was incomplete.
+
+Pitfall II's water-entry and waterfall black strips exposed a presentation
+ownership hazard: a held background must retain its masking sprites, even when
+foreground sprites and logical camera coordinates advance. A background-only
+pixel oracle misses this mismatch. Compare composed sprites and background;
+publish the retained masking records without changing gameplay SAT RAM. Adding
+sprite-pattern residency also revokes old decoder exemptions for that address
+range: audit every writer, including initialization and restore paths. See the
+CV2TI99 water-masking/transfer-ownership notes for the executable negative tests.
+
+Pitfall II's later swimming trials (October 27) show that fewer VDP writes
+can still regress whole-game timing. Keep descriptor-cache fill costs,
+invalidation overhead and hot-code displacement in the measured workload.
+Exact scenery reuse must be distinguished from a coarse omission both where
+the scheduler grants the allowance and where the renderer consumes it;
+changing only one side produced no gain. Preserve the no-consecutive-coarse
+rule and original-picture oracle. Nearest-CALL profile attribution must not
+assign cartridge entry/main-loop instructions to the final BIOS routine;
+bank-qualified stage timing is inclusive and must not charge CPU reads from
+instrumentation. See the new CV2TI99 swimming proposal validation notes.
+
+Pitfall II's gold-pickup audio regression came from the output mixer, despite
+an original-exact native sound engine. Forcing every audible attenuation to
+zero destroys a sound's fade. Preserve the envelope and apply only constant
+gain across an entire effect; most effects already peak at full volume. Test
+complete original-ROM lifetimes, silence, pauses and interruptions. A transformed
+oracle that repeats the mixer's mistaken policy can pass while the sound is
+wrong. The new sound-sequences gate rejects the previously shipped flat fade.
