@@ -92,6 +92,18 @@ are necessary: short random routes and isolated ordinary returns missed it.
 See `Decompiled/Pitfall2/DESIGN.md`, `tools/audit_returns.py` and
 `tools/check_water.py` in that port.
 
+### Data-bank operands (Star Wars, 2026-10-31)
+
+A native that selects a data-only cartridge bank must keep its operand reads
+resident as well as its instructions. Star Wars' BG line decoder ran entirely
+from RAM but still compared against three byte constants in the shared code
+bank; selecting the data bank changed those values and corrupted clipping.
+BH uses immediate comparisons, with byte normalization where equality needs
+it. Its checker audits cartridge data reads during that bank lifetime and
+mutates an actual comparison back to a shared-bank constant. Instruction-fetch
+guards alone cannot prove a data-bank lifetime safe. See the Star Wars design
+notes and `artifacts/tmp/decoded_line_check.py` for the retained failed build.
+
 ### VDP cache ownership and placement (2026-10-26)
 
 For VDP caching, also read CV2TI99 `optimization.md`'s MSX-derived River Raid
@@ -139,6 +151,30 @@ invalidation as well as seeded warm states, including table relocation,
 extension, end bounds and flags. Mutations of cold-ROM code must patch that
 bank, not the emulator's RAM array.
 
+When a routine oracle enters banked code directly, initialize both the
+emulator's selected bank and the runtime's current-bank variable exactly as
+the real call wrapper would. Star Wars' routine harness entered `$928C` in
+bank 8 with `CURBNK` still selecting bank 0; a correct native data reader
+then restored that stale bank and all 60 samples failed. Fix the impossible
+entry state rather than weakening output comparisons. Use backing arrays
+for this setup so the observer does not charge emulated memory wait states.
+
+Miner2049er's packed-cart shared code is replicated in executable banks
+0 through `labels.json`'s `cold_banks`. The following four banks are boot-copy
+RAM payloads, not executable game banks. A return-PC optimization in the
+shared cartridge window must validate the actual caller instructions in every
+executable bank; a numeric address alone is insufficient. Keep a negative
+control that changes one executable bank's caller and requires rejection.
+
+Static-port read caches must preserve partial outputs as well as values.
+Star Wars' empty wall probe changes only the first byte of its eight-byte
+scratch buffer; restoring an old complete buffer would overwrite seven
+caller-owned bytes. Its name and pattern pages also have opposite bit-11
+parity, so one shared page-normalization rule restored the wrong final VDP
+prefetch address despite correct pixels and game RAM. Compare actual warm
+calls against the original, including VDP address/read buffer, and measure
+whole-game placement costs before retaining a cache (Star Wars DESIGN.md).
+
 Visible-review input hazard (Super DK Junior, 2026-10-25): a delayed menu
 selection can become a gameplay command after the user starts playing. This
 prototype's key 1 loses a life immediately without a death jingle; foreground
@@ -162,6 +198,25 @@ and compare bank-stack state before a call with its caller continuation.
 See CV2TI99 `superdkjr.md` for the death-animation and placement checks.
 
 ## 3A. CVBasic hazards (the current platform — always loaded)
+
+Static-port memory ownership correction (Miner2049er, 2026-10-30): search
+ignored `Decompiled/` trees with `rg --no-ignore`, and audit both symbols and
+literal addresses before allocating runtime state. A new sound-priority word
+at `>2472` collided with the bitmap renderer's saved return address, causing
+a jump into console memory during a sound interrupt. The renderer's live
+slots are now named `NBDRET >2472` / `NBDIY >2474`; priority uses `SQPRI >2476`.
+An isolated sound-envelope test did not expose the alias. Preserve live
+foreground return/context slots in interrupt tests, and run a bounded
+production replay across HUD redraws as well as isolated routine checks.
+
+Static-port checker templates also need a memory-map audit (Miner2049er,
+2026-10-30). Its copied `insntest.py` still generated `$70xx/$73xx` pointers
+and stacks instead of this game's `$60xx/$63xx` mirror. Trials then wrote
+over translated code in TI RAM and cascaded into false failures. Use the
+target's pointer/stack ranges, restore the boot RAM image for each independent
+trial, include the target's preserved cartridge data, and fail the process on
+any mismatch. Keep the odd-Z80/even-TI boot-stack adjustment as an explicit,
+checked exception; mutating the assembled stack immediate must still fail.
 
 Static-port timing correction (Carnival, 2026-10-25): an on-time tick start
 does not make its lengthy writer's eventual VRAM flush safe. Commit the
@@ -992,6 +1047,19 @@ reservations are not free contiguous RAM. Pitfall's listing shows over 1 KiB
 below its RAM-code capacity while the largest allocatable RAM fragment is six
 bytes. Repacking must repeat branch/bank checks and production timing tests.
 
+Static-port routine harnesses must initialize both the selected cartridge bank
+and the runtime's bank bookkeeping (`CURBNK`) to the routine's entry bank.
+Star Wars' direct `$928C` test selected bank 8 but retained CURBNK=bank 0,
+making a correct native helper restore an impossible caller state. Check bank
+restoration over the helper's own selected-bank lifetime: a larger translated
+routine may legitimately finish in a different bank. Passive observers must
+read backing arrays rather than timed bus accessors.
+
+Do not use fixed `$+N` skips over a translator `GOTO` pseudo-instruction.
+Star Wars' patch reader can lower it to a two-byte JMP, a four-byte B, or
+a bank-switch sequence. Branch to an explicit local label instead, and inspect
+the generated instructions when branch length or placement matters.
+
 
 ### Static-port validation hazards found in Joust (2026-10-25)
 
@@ -1086,3 +1154,123 @@ gain across an entire effect; most effects already peak at full volume. Test
 complete original-ROM lifetimes, silence, pauses and interruptions. A transformed
 oracle that repeats the mixer's mistaken policy can pass while the sound is
 wrong. The new sound-sequences gate rejects the previously shipped flat fade.
+
+Static-port benchmark startup (Star Wars, October 30): fixed-frame menu keys
+can miss gameplay after slower initialization, while title NMI passes still
+look like useful frame counts. Require actual phase, game-over and selected
+wave state before measurement or phase forcing. Also verify the selected
+option: the historical Star Wars replay labelled game 1 actually starts wave 2
+because its default flight controls invert the vertical direction. Preserve
+valid historical matched workloads under their original replay version;
+record corrected menu-driven selections as a new replay with fresh baselines.
+Observe backing arrays and bank-qualified PCs so the checks add no bus cycles.
+
+Static-port timing symbols (Star Wars, October 31): zaddr bank 0 can denote
+always-visible BANK ALL cartridge code as well as RAM. A marker moved into
+shared ROM must still count while a different executable bank is selected;
+the old physical-bank-0 guard silently reported zero pictures. Keep a control
+that reproduces that fault. Do not equate an internal frame counter with
+completed pictures without auditing every writer: Star Wars also advances
+it in trench mini-frames. Observe the actual store continuations to reconcile
+both increments. At arbitrary timing boundaries the selected bank can be a
+thin data bank; inspect runtime opcodes in a known executable prefix instead.
+
+Static-port clock edges (Star Wars, October 31): a software repayment of an
+owed frame must not acknowledge a fresh physical vblank. Its old shared GLUE
+entry merged both into one tick. A poll immediately before READ_REGISTER
+also leaves a short edge window: the subsequent status read can clear a new
+interrupt unseen. Test the actual assembled gap and account for served,
+held and still-physical credits, including complete stack/context restoration.
+Reading bit 7 is not sufficient to synthesize an NMI: respect the VDP's
+interrupt-enable bit too. Ignoring that distinction entered gameplay during
+boot with IRQs disabled and hung at a later vblank barrier. Dedicated controls
+now reject both lost-tick paths and that disabled-IRQ case. These correctness
+fixes do not waive separate publication timing or speed gates; Star Wars'
+first safe-page prototype removes active-scanline swaps but costs throughput.
+
+Static-port leaf patches (Star Wars, October 31): FORCE_LEAF may operate only
+after the translator excludes patched instructions. A newly patched status
+reader therefore silently gained a stack prologue despite FORCE_LEAF. Do not
+make all patches eligible: use an explicit, fail-closed contract for the reviewed
+instruction stream, prove BLWP restoration of the caller's link register and
+balanced temporary pushes, and exercise actual native tail callers plus clock
+re-entry. Star Wars' isolated r32-aa tests cover 1,312 original-ROM calls and
+reject a changed patch; this local improvement does not establish whole-game
+speed acceptance.
+
+Early-publication latency (Star Wars, October 31): a complete, protected back
+buffer is not enough to publish safely from the next software-serviced IRQ.
+The intervening frame's sound/input/movement prefix delayed service by nearly
+20,000 TI cycles, past the roughly 13,372-cycle blank. Observe the largest
+ready-state poll gaps as well as actual switch scanlines: one replay can have
+zero late writes while an unfavorable edge phase would still fail. Keep sound
+driver pairs together when adding service points, preserve a synchronous
+fallback and cancel stale requests before scene/task writers. The Star Wars
+early-publication candidates remain experimental until latency, ownership,
+transitions, clocks and speed all pass; local guard tests alone do not qualify
+the scheduler.
+
+Publication-only checkpoints (Star Wars, October 31): switching a ready page
+between paired sound calls must leave the physical IRQ and logical tick
+pending until the pair finishes. Do not reuse the outer interrupt workspace;
+an otherwise successful BLWP can destroy its saved return context. The next
+ordinary poll must also handle the already-published state, or it can skip
+the still-pending clock tick. VDP register writes change the internal VRAM
+address, so only place such a checkpoint where no address transaction or
+cursor is live. These are protocol obligations, not evidence that a sampled
+timing window proves the global latency bound.
+
+Bank-specific startup code (Star Wars, October 31): moving one-time boot code
+out of BANK ALL requires both an entry that selects bank 0 before branching
+and bank-qualified diagnostic hooks. A bootstrap PC such as RMINOK can then
+alias ordinary cold-bank code; an unqualified exact-mode hook silently clears
+PACE during play. Test all banks with entry headers, representative complete
+payload copies and negative controls for both the entry and hook. A valid
+space-saving relocation still needs measured performance acceptance: Star
+Wars' 256-byte AJ/AK experiment passed focused checks but slowed both samples.
+
+Native fallback placement (Star Wars, October 31): moving part of a native
+region into a cartridge bank needs a real FARCALL return frame, not only a
+far jump. Keep fast-path epilogues resident when the relocated body formerly
+shared them. Check physical bank, CURBNK, bank-stack depth, caller SP and live
+stack words from every executable entry bank, with broken-prologue and
+missing-bank-restore controls. An unconditional native PATCH can also leave
+an unreachable translated tail allocated; remove it only after auditing all
+interior entries and retaining the required prologue and no-patch build.
+Star Wars AU/AV/AW pass their local oracles, and AU/AW exact replays, but reclaiming
+586/1,110 hot bytes did not improve matched whole-game speed. These remain
+unaccepted placement experiments, not reusable speed claims.
+
+Routine-oracle stack masks (Star Wars, October 31): a blanket exclusion of
+256 bytes below entry SP can hide live globals such as the pattern buffer at
+$72EA-$72F1. AZ's first vertical-renderer gate accepted both missing-copy
+mutations because that buffer fell inside the exclusion. Explicitly comparing
+the live buffer retained all1,048 positive cases and rejected all eight broken
+copies. Prefer the observed popped-stack interval, and separately assert every
+live scratch/output range that could overlap an exclusion. A passing positive
+matrix without a relevant mutation rejection does not establish coverage.
+
+Clock-audit cut points (Star Wars, October 31): FRAMEC + held DEBT + physical
+IRQ is incomplete between CLR DEBT and entry to DEBTV. A benchmark starting
+there omits the already owed software tick and can report901 credits over900
+frames. AZ seed3's actual start PC was the BLWP DEBTV; the next event counted
+that tick without acknowledging the separate physical IRQ. Preserve the raw
+failure and prove the missing in-flight token from assembled control flow.
+Do not widen the equality threshold to allow arbitrary plus/minus-one errors;
+a general boundary-aware gate still needs negative controls for real loss
+and duplication, as well as other acknowledgement-to-credit intervals.
+
+
+### Static-port routine oracles and frozen frame clocks (Star Wars, 2026-10-31)
+
+A native that waits for a physical vblank cannot return in an isolated routine
+harness that freezes its frame clock. Star Wars BF's91DE test stalled at
+PWFWAIT although its other49 gates passed. Diagnose the actual stopped PC,
+VDP line and frame scheduler; do not raise the instruction limit or bypass the
+wait to make the test green. A controlled-event oracle can inject real VDP
+vblanks and execute both CPUs' original nested handlers, retaining all output
+comparisons and mutation tests. Respect the reference machine's NMI edge:
+a second event needs the game's actual status acknowledgement first.
+Such ordered-event coverage complements, and does not replace, live beam,
+frame-credit and arbitrary interrupt scheduling checks. See Star Wars DESIGN.md
+and artifacts/reports/r32-bf-pagewait-oracle.json (360 cases, two mutations).

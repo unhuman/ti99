@@ -231,6 +231,107 @@ final-byte tests; local cycle savings alone do not establish gameplay speed.
   and label, from the listing) and `tools/heavy3.py` / step-pass profiles (the
   passes that took two frames). Older profilers charged code that follows a
   file in memory to that file's last label: check attributions that look odd.
+  Miner's `mprof.py` charged every ASM region to "rt" under mnemonic names:
+  its sprite renderer showed 8k cycles a pass and really cost 23.5k. Charge
+  native regions by the assembler's symbol file (`-E` `.equ`). Charge
+  translated code by `labels.json`'s Z80 addresses: placement interleaves
+  chunks, so the nearest label is wrong for it.
+- **Even gameplay: compare pass-length distributions, then profile only
+  the slow passes.** An average speed-up can leave the stutters. Run the same
+  pass-keyed game on both machines and print the median, p90, p99, the max
+  and the slow share for each (Miner: `passdist.py ti|z80 PASSES SEED`).
+  Then add up the profile over slow passes only, against the others
+  (`slowprof.py`). Miner's TI slow passes were HUD digit redraws: 3.5-5x
+  the median against the Coleco's 2.3-3x. A PACE burst in the bitmap block
+  draw (one address set per table for a block inside one character) and a
+  native digit loop brought them to 2.5x or less. The bar is the original's
+  own ratio, not a flat line.
+- **The hot area fills, and a bigger native then pushes hot code into
+  banks.** When the RAM and shared-segment areas are full, each larger region
+  or PACE path displaces the lowest-ranked translated chunks. Miner's
+  renderer fast path saved 3k cycles a pass, but the build went from 5 cold
+  banks to 6, and `$BA07` rose from 1.2k to 4.0k cycles a pass. Watch the build's
+  cold-instruction count and re-measure the whole game, not just the routine.
+  Free room by giving no heat to Z80 code the TI never runs in play: code a
+  native inlines, and translated paths that only run with PACE off
+  (`ann.TI_DEAD`, read by `build.classify`). Keep the PACE entry patch itself
+  hot (`HOT_ROUTINES`).
+- **Profile and measure every level, not just the first.** Miner's
+  placement profile came from level-1 play. Level 1 then ran at 41% of the
+  Coleco and levels 4-7 and 11 at 29-32%: their routines sat in cold banks
+  behind `FARCALL`, and their data went through `MAPV`. With one Z80
+  profile session per level (the level index poked where the level is
+  built), every level ran at 38-56%. Keep a per-level speed table
+  (Miner: `levels.py`, with a `--level L` option on every speed, profile
+  and routine-test tool). Level-specific code is invisible otherwise:
+  Miner's level 7 spent 20% of each pass on one 3 x 5 block draw (`$CDC3`)
+  that level 1 never calls. A caller count (`callers.py ADDR --level L`:
+  return addresses and argument bytes) found it.
+- **Count the workload before restructuring a loop.** Miner's renderer
+  walks 16 objects, but play has 8 sprites: the player's 4 and an enemy's
+  1. Hoisting per-object constants out of the sprite loop saved nothing
+  for one-sprite objects. What paid: work done once per call instead of
+  once per object (the object end writes, only the last one's survive), a
+  stride instead of a pointer table, and skipping the SAT address set when
+  the VDP is already at the slot (7 of 8 sprites; clear the flag in any poll
+  that runs the NMI). 20.5k -> 15.9k cycles a call.
+- **A producer dirty marker should track a change, not every repeated store.**
+  Miner's vulnerable enemies repeatedly write their existing colour pointer.
+  Marking their whole state handler dirty removed useful SAT cache hits:
+  level 2 regressed from 322 to 332 frames for 300 updates even though other
+  levels improved. Marking pose changes and comparing those repeated colour
+  stores before invalidating brought that case to 315 frames. Test the actual
+  update followed by rendering, audit every writer/reset, and include a
+  deliberately omitted marker. A safe cache can still be slower overall.
+- **A loop of general calls with constant ROM arguments is a fill.**
+  Miner's bitmap clear called the block draw 192 times with a 32 x 1 block of
+  zeros: 2.1M cycles, 42 frames per death and level start. As a PACE fill
+  (256 bytes per poll, the VDP address set again after each poll), followed
+  by the loop's last iteration through the real routine for its exact end
+  state (RAM, VDP address, registers), it costs 0.43M. Miner's death then
+  took as long as the Coleco's.
+- **A native's branch into a cold bank needs a far jump.** The build check
+  rejects `B @Zxxxx` into another bank. Write `BLWP @FARJV / DATA
+  Zxxxx,FBZxxxx` and make the build emit `FB` symbols for the far jumps that
+  regions write themselves, not only for the ones the translator emits
+  (Miner's prize-hit path `$AB1A`).
+- **A routine test with PACE must match how PACE runs.** A routine that only
+  a PACE-replaced caller calls (Miner's `$BEE9`, under the audio sequencer)
+  never runs with PACE on, so its `--pace` test fails by construction. Exclude
+  that test and say why; don't loosen the compare.
+- **Scratchpad RAM (`>8300-83FF`) is the only fast memory, so spend it by
+  measurement.** It is on the 16-bit bus with no wait states. Each instruction
+  word fetched or data word touched there saves 4 cycles. Everything else
+  (cart ROM, banks, 32K RAM) runs at one speed. So moving more of the game
+  "into RAM" does nothing once hot code is out of cold banks: check that first
+  by charging play cycles to memory areas. In Miner at round 9, every play
+  cycle outside the shared segment ran from RAM (round 10's bigger natives
+  then pushed some into banks; see above). Code in the shared bank window at `>6000` is
+  as fast as RAM. Then choose what to put in the scratchpad:
+  1. **Inventory it.** The workspaces (`MAINWS >8300`, `GLUEWS`, `HELPWS`,
+     `MAPWS`) and runtime variables (`>8360-839F`) are fixed. Template loops
+     (`SPVC`/`SPWC` at `>83A0`, `SPRD` at `>83E0`) are copied in at boot even
+     in ports that never call them. In Miner nothing called `VCOPY`/`VREAD`,
+     which left 64 bytes free. Grep the generated `.a99` for their callers
+     before assuming the space is taken.
+  2. **Count data waits before moving data.** Patch the emulator's `rw`/`ww`
+     to count accesses per game-RAM word in play (Miner:
+     `artifacts/tmp/ramhits.py`). All of Miner's game-RAM accesses cost 3,330
+     wait cycles a pass, 3.6% of play. The busiest single area was the Z80
+     stack (about 1%). So relocating game variables is a small lever.
+  3. **The stack only fits if its proven depth fits.** Miner's Z80 stack
+     reached 34 bytes below `$63FF` in one random game, more than the 32
+     contiguous free bytes. It stayed in game RAM. Measure `sp_min` over long
+     runs and every level before moving a stack. An overflow there writes into
+     `>8400`, the sound chip.
+  4. **Put the tightest inner loops there.** Instruction fetches are most of
+     the 8-bit penalty (in Miner, 47% of play cycles were `MOV`/`MOVB`). Code
+     running in the scratchpad gains about 30% on that loop alone: a 10-30
+     byte block copy, VDP transfer loop or pixel/row loop that runs hundreds of
+     times a frame. Running it in a separate workspace (BLWP) costs more than
+     it saves; per-run workspace switches lost in Pitfall II.
+  5. **Record each attempt with numbers** (whole-pass cycles, not the loop's
+     own) in the process ledger; rejected placements included.
 - Measure speed with `tools/speed.py ti|z80 3000 <seed> - --pass` on both
   machines (logic passes and scroll steps per 100 frames in flight). Use input
   keyed to logic passes; frame-keyed random input lets the slower machine play a
@@ -308,6 +409,91 @@ final-byte tests; local cycle savings alone do not establish gameplay speed.
   largest allocatable RAM fragment is only six bytes. Repacking requires
   renewed branch/bank validation and whole-game timing measurements.
 
+## Sound: decouple it from game speed, and make it cheaper
+
+Sound is both a fidelity problem and a CPU cost, and one native engine can fix
+both.
+
+- **Find the sound clock first.** BIOS games step sound from the NMI
+  (OS7 `SOUND_MAN`/`PLAY_SONGS`): port those as the native OS7 library
+  (`os7lib/`, `bios-ports.md` §12), and the tempo stays real-time. Games with
+  no frame wait often step sound once per *pass* of the game loop instead.
+  Miner 2049er's sequencer `$BE8F` runs its effect handlers once a pass. The
+  ColecoVision itself runs it at a load-dependent ~89 Hz, and a TI that runs
+  passes at a third of that speed stretches every sweep (the user heard the
+  stomp as "garbled"). Optimizing gameplay alone never fixes it until the
+  port reaches full speed.
+- **Check what gameplay reads from the sound state before retiming it.**
+  Miner's gameplay reads channel-claim flags (`$62D8-$62DA`, so Bob's own
+  tones only sound on a free channel), an effect toggle (`$62EA`, copied into a
+  trigger) and an "all effects finished" flag (`$62DE`, a condition at
+  `$B95B`). Stepping that state at another rate changes the game. Cross-
+  reference every load of the sound RAM outside the engine (Miner:
+  `artifacts/tmp/sndxref.py`) and treat each one as gameplay.
+- **Split it: an exact instance for gameplay, an audio instance for the
+  ear.** Keep the original stepping of the state that gameplay reads, with
+  its chip writes suppressed (with `PACE` = 0 the lockstep sees the original
+  exactly). Run a second instance on a TI-only copy of the state, driven by a
+  real-time clock at the original's rate, with its own writes going to the
+  chip. Mirror gameplay's trigger stores into the copy. Write the engine once
+  as a native taking a base register (`@off(Rb)`), so both instances share the
+  code.
+- **Measure the original's step rate in play, not overall.** Time only the
+  intervals between consecutive passes that are shorter than two frames
+  (deaths and level transitions are not play). Miner: 1.51-1.55 steps a
+  vblank (92 Hz) on 3 seeds, 1.29-1.87 between the 10th/90th percentiles.
+- **Find what "garbled" is before choosing a clock.** Miner's handlers share
+  a channel by round robin: two active effects take alternate steps. At 92 Hz
+  they blend; at a third of that each holds ~30 ms and warbles. A Z80-side
+  census (which handlers are active together per pass) showed the footstep
+  overlapping the stomp, but only for 6 of its 77 passes. Most of the fault
+  was the sweep running 2.8x too long, which any real-time clock fixes.
+- **The real-time clock: the vblank, made reliable.** Check first whether
+  the game enables its NMI at all (Miner: the reference took 0 NMIs, so the
+  TI glue never ran and polled vblanks never arrived). Then check whether the
+  game uses the VDP status value. Miner's eight `IN A,($A1)` all discard it
+  (they only reset the address latch, and its address writes are always
+  pairs). So the port drops them (a speed gain in the renderer and block-draw
+  loops). With `PACE` it forces VDP register 1's interrupt-enable bit where
+  the game writes register 1, and GLUE becomes a TI-only vblank: it reads the
+  status (dropping INT) and owes `SQRATE`/100 steps a vblank. With no other
+  status reader, the polls (~23 a frame in play, gaps under one frame) catch
+  every vblank. Lockstep runs with `PACE` = 0 and compares VDP registers, so
+  the forced bit can't leak into it. Two steps owed in one vblank run back to
+  back, so a mux still alternates at ~30 Hz; sub-frame steps would need a
+  check at every poll (~1.4% of the CPU here).
+- **Do not use the TMS9901 timer as the clock.** When the decrementer
+  runs, the timer takes over INT3, the CRU line that carries the keyboard
+  row with the joystick FIRE button. Reading it also needs a mode switch.
+- **The cost cuts both ways.** At the original rate the audio instance runs
+  ~3x as often as the per-pass engine did, so a translated engine there would
+  slow gameplay (Miner: ~6k TI cycles a step at 89 Hz ≈ 18% of the CPU). Make
+  the exact instance native too: in Miner the translated `$BE8F` path was
+  6.2% of play cycles (3.19 TI cycles per T-state). The native runs at 1.64
+  and the audio copy's vblank work is ~3%. The finished change ran 3% *faster*
+  than the cart before it (344/365/371 frames for 200 passes, was
+  356/376/383). Measure it in the pass benchmark, which is where "doesn't
+  affect gameplay" is proved, together with lockstep.
+- **A native that replaces a TI-only path needs its own differential
+  test**, because lockstep runs with `PACE` = 0 and never executes it. Miner's
+  `routest.py --pace` runs the pass step against the Z80 routine on captured
+  states. It ignores only the chip's RAM copy and requires no sound bytes.
+  Prove register liveness at the return. In Miner only DE and IY reach code
+  that might read them; the renderer sets everything else. The first version
+  got E wrong: `$8024` leaves E = `$80 | channel << 5`, without the divisor
+  nibble. 14 of 300 samples caught it.
+- **Gameplay-driven tones** (Miner's footstep calls `$BDE7`/`$BE05`/`$BE23`)
+  stay per pass, gated by the exact instance's claims, as the original. No
+  chip gate is needed while the exact instance steps slower than the audio
+  one: its claims outlast the audio copy's, so the two never fight over a
+  channel.
+- **Work words of a native must be in RAM, not in the shared segment.**
+  Runtime code runs from cartridge ROM; a `DATA 0` used as a return slot
+  there reads back garbage, and the step returned into its own workspace.
+- Keep the SN76489 latch rule (a data byte without a latch goes to the last
+  latched register) when two producers share the chip: write each register as
+  one complete latch+data sequence from one producer at a time.
+
 ## Pitfalls (each cost real time)
 
 - **A value kept in a register across a deferral must survive every path.**
@@ -337,6 +523,18 @@ final-byte tests; local cycle savings alone do not establish gameplay speed.
 - The lockstep's TI side must reproduce the original's timing model: interrupts
   only at poll sites, `$C5E5`-style delays one vblank per visit, the title hold
   skipped on both sides, and every TI-only feature switched off.
+- **`xlate.find_push` follows only the linear predecessor (Miner 2049er,
+  2026-10-28).** A `POP AF` at a loop head was matched only with the `PUSH AF`
+  before the loop, so the push on the back edge saved A but not the flags.
+  Miner's score add (`POP AF / ADC / DAA / PUSH AF / JP NZ` over 4 BCD bytes)
+  lost its decimal carry: 280 + 150 scored 330, found by random-input
+  lockstep after 4,500 exact frames. `Decompiled/Miner2049er/tools/xlate.py`
+  has `find_pushes` (every predecessor path, stack depth tracked, falling back
+  to the linear match). Every port that copied the template's `xlate.py`
+  (Carnival, CVZaxxon, joust, MeanSanta, Pitfall2, RiverRaid, StarWars,
+  SuperDKJr) still has the linear version: a loop that carries flags on the
+  stack would be silently wrong there. Port the fix and rebuild to check
+  whether any generated `PUSH AF` changes.
 
 ## Pitfalls found porting Joust (Decompiled/joust)
 
@@ -1722,3 +1920,181 @@ frames and passing normal holdouts. r88 adds exact-scene priority: 1367/1367.
 It retains the fixed swimming upload and native enemy work, and rejects the RAM
 directory, waterfall ownership and scheduler-only variants. No speed claim is
 inferred from fewer VDP writes. Profiling remains dominated by full scenery work.
+
+## Star Wars: hand-written natives, boot-built VRAM shadows (2026-10-29)
+
+`Decompiled/StarWars` (trench 11.4 -> 14.8 passes per 100 frames, r17-r20;
+ColecoVision 20.9). Its DESIGN.md has the per-round details.
+
+- **A native rewritten from translated code must keep the translator's
+  masking.** The translator chooses each indexed access's addressing from
+  the profile (`RAMMIR` masks with `ANDI >03FF`; `DYN` maps). `$9E5F`'s
+  native accessed `(IX+n)` unmasked. After a hit (`$AAD5`), IX can sit near
+  `$73FA`, whose `(IX+8)` is the RAM mirror `$7002`. The TI wrote `>A402`
+  instead, and lockstep failed at tick 148000. The same call's game-over
+  path leaves IY in the cartridge ROM (`$B1E9`). Unmasked `(IY+n)` writes
+  then land in the TI's RAM copy of hot code (a `B @...` operand), and the
+  cart crashes after game over. The translated original had the same latent
+  fault; no profiled run had reached it. The fix is an exact slow mode after
+  any call that can move the index registers: copy the object's bytes into
+  buffers from where the Z80 would read them (RAM through its mirrors,
+  otherwise 0), and write back to RAM only (ROM writes are dropped, as on
+  the ColecoVision).
+- **Check hot code integrity after rare paths.** `gotest.py` now compares
+  every listed RAM code byte with the listing after each game over. Its
+  self-test flips one hot byte. It caught the r18 cart, which every other
+  gate passed.
+- **A VRAM table the cart builds once at boot can live in a spare ROM bank.**
+  `$9212` read 4 x 64 bytes a pass back from VRAM `$20A0-$27FF` (built at
+  power-on by WRITE_VRAM plus the BIOS reflect/rotate generators). A RAM copy
+  had been rejected for want of 2 KB. `build.py` instead runs the Z80
+  reference to the end of the boot routine and stores the bytes in the top
+  of a spare bank. The rest of that bank stays a bank-0 copy, so a
+  power-up there still boots: the TI cart's START selects bank 0 at once. A
+  PACE-only `PATCH` skips the read and copies from the bank. The copy
+  routine (and the VCOPY it calls) must sit below the shadow and must not
+  poll while the bank is in. The gate checks the bank, VRAM at every call,
+  and the source's alignment for the word copy (+3.5% trench).
+- **Pre-decode small immutable scripts at build time.** `$9BC1`'s stroke
+  scripts packed a character and a step index into each byte, and read the
+  step table as odd-address byte pairs. Decoded into aligned words in the
+  runtime (`build.py` regenerates them from the cartridge and stops on a
+  mismatch), its loop went from about 410 to 300 cycles a character.
+- **A status read the callers never use is removable per call site.**
+  Every translated `call $A000` (one-byte VRAM fill) went through
+  READ_REGISTER (a poll plus a status read, about 150 cycles). After proving
+  A dead at each return site (`ann.py` lists them), the translated sites use
+  the natives' PACE variant, which skips the read.
+- **Rejected, measured:** clearing only the used name cells (147 of 768 at the
+  flip: logging every writer costs about what the bulk clear does); copying
+  from an empty cell's pattern 0 (0.3 times a pass); thinning polls (258 a
+  pass, about 2%).
+- **A shadow sized from observed reads needs a fallback for the rest.**
+  Star Wars' first shadow covered `$20A0-$27FF`, the range three seeds of
+  the Z80 reference read. A later gate run on a faster cart (different
+  frame phase) reached `$2080`. The shadow's bank then held code there, so
+  that object would have drawn 32 bytes of code as its pattern. The fix:
+  widen the shadow to everything constant after boot (`$2020-$27FF`), and
+  send any other source, or an odd one, through the original read. A
+  scratch cart that forced 188 fallbacks proved that path. Keep the range
+  check in the gate. It caught a fault that every lockstep (PACE off)
+  and routest missed.
+- **When a game runs inside its NMI and moves the world once per picture,
+  a slower picture is slow motion. Clock the world, not the drawing.**
+  Star Wars' trench draws the whole hidden page and steps the walls once a
+  pass. Every exact-cadence optimization left it at 71% of the ColecoVision.
+  The two world-clock updates were pure state: a spawn counter (`$71A1`)
+  and a per-wall z step (`$97E9`). They now run once per 4.78 elapsed
+  vblanks (the Coleco's pass time), 1-3 times a pass with the remainder
+  carried, while drawing stays at one picture per pass. The trench run
+  went from 1988 to 1459 frames (Coleco 1405). Keep it PACE-only, so the
+  lockstep stays exact. Gate it on a game-level duration against the
+  original (`retimecheck.py`), and make its mutation force one step a pass.
+  The objects ($9E5F, sprite state only) took the same clock at 1.3 updates
+  a vblank, with 0 allowed per call: forcing at least one overshot (140 vs
+  130), because the TI's calls arrive in bursts within a pass.
+  A replaced leaf can become a non-leaf once patched (the translator then
+  pushes R11), so check the generated entry the native's return relies on.
+
+### Star Wars r24-r25 (2026-10-30): placement, bank and measurement lessons
+
+- **A polled-NMI glue must restore the selected bank before RTWP.** The
+  game's NMI handler can far-jump into a bank and return to hot code
+  without unwinding the bank stack. RTWP then resumes the interrupted
+  banked code at the right address in the wrong bank. Star Wars restarted
+  at wave 0 after every death-star kill once placement put the polled loop
+  ($A585, bank 7) and the handler's far jump in different banks. Keep
+  `CURBNK` in the glue frame and reselect it on the way out. Lockstep and
+  every routine test passed; only a game-level gate (`killcheck.py`: force
+  the kill, require the next wave) saw it. Placement changes can expose
+  this, so rerun such gates after any change that moves code.
+- **Z80-profile heat of code a native bypasses still claims hot RAM.**
+  Placement ranked by Z80 heat kept the exact (lockstep-only) body of a new
+  PACE native hot. That pushed a surface loop into a bank: far jumps
+  (`FARJK`) went from 0.4k to 10k cycles a pass, and the surface dropped
+  25% while the native's own routine got faster. Zero the heat of
+  bypassed ranges (`ann.PACE_BYPASS`). End the patched chunk there
+  (`CHUNK_BREAK`) and continue with a farify-able jump (`GOTO` in patch
+  files, not a raw `B @label`). After every new native, diff a flat
+  all-cycles profile against the previous cart in every phase. A faster
+  routine with a slower phase means placement changed.
+- **Instrumentation that reads through the emulator's bus perturbs the
+  run.** `m.rb`/`m.rw` charge wait-state cycles, so a tracer reading RAM
+  each instruction (or even each frame) shifted the kill frame and hid
+  the failure it was chasing. Read the RAM arrays directly (`m.exp`) and
+  first check the instrumented run reproduces the gate's numbers (same
+  kill frame, same verdict). Snapshot a short ring buffer at the events of
+  interest instead of keeping millions of instructions.
+- **Compare per-pass cost against the same workload only.** Different
+  carts play different games once timing differs, so per-label costs move
+  by ±1k. Judge on several seeds and on the totals, not on one label.
+- **A VDP byte costs about 30 cycles even from the scratchpad** (MOVB to
+  the port reads and writes the destination over the 8-bit bus). Count
+  bytes before rewriting a VDP-bound loop: Star Wars' 768-byte clear is
+  at that floor, and the remaining trench cost is spread over natives
+  whose time is mostly 8-bit code-fetch and operand wait states.
+
+### Miner 2049er rounds 14-15 (2026-10-30): many small natives, measured per level
+
+Mean speed over 11 levels went 48.6 -> 58.0 -> 67.5% of the Coleco (the
+game is CPU-bound on both machines, so every cycle shows). What paid:
+- **Check for `EXX` / `EX AF,AF'` before saving R9/R10/R13/R14.** When the
+  cartridge never uses the alternate registers they are free scratch in
+  every native; Miner's renderer and block draw saved and restored them
+  on every call for nothing.
+- **Unrolled loops know per-iteration constants.** The renderer's scan of
+  16 objects at `$6034 + 29k` knows each IX's parity, so it calls the even
+  or odd compare block directly (no `SRL/JOC` per object) with a plain `BL`
+  (no trampoline or saved next address). Free a link register by moving a
+  hoisted value elsewhere if needed.
+- **Hoist rare invalidation flags out of per-object paths** when nothing
+  can set them during the loop (prove it: Miner's NMI only reads the VDP
+  status). Apply them once before the loop by poisoning each cache entry.
+- **Defer per-hit bookkeeping to its one consumer.** Only the last object's
+  sprite bytes were needed at the end; a hit now records its entry pointer
+  and the end reads the bytes from the cache.
+- **Translated compare chains for `JP (HL)`** cost ~36 cycles per earlier
+  case; a native with a branch table by index (4-byte `B @Z...` stubs,
+  unlabelled lines so the build's bank check still sees them) removes the
+  last levels' penalty.
+- **Small wrappers called every pass add up**: Miner's footstep sound
+  wrapper (`$BDE7`: test, three pushes, two calls) was ~500 cycles
+  translated; as a leaf native that tail-jumps to the volume write, ~240.
+- **Gate scope**: routines never entered on level 1 need level-only routest
+  jobs, and routines that write the sound chip by design need `--ignore
+  SOUND` on *every* `--pace` job, including the per-level ones.
+
+### Star Wars r26-r28: lost vblanks inflate speed, and repeated uploads (2026-10-30)
+
+- **A native that removes polls can look faster by losing time.** Star
+  Wars' HUD template folded constant writes into one 768-byte clear; the
+  writes it replaced had held polls, so the stretch around the clear ran
+  past two vblanks and 23 of 900 were never serviced (`FRAMEC` 877).
+  Pictures per 100 frames rose, but only because the elapsed-time world
+  clock and the music lost those ticks; retimecheck caught it (trench run
+  1495 frames against 1405). After any change that removes polls, compare
+  serviced vblanks with emulated frames and record lost edges (a vblank
+  arriving while the status flag is still set). Poll between segments
+  of a long native VDP stream, and reload the VDP address afterwards.
+- **Cache repeated uploads by destination.** The trench rewrote four
+  64-byte object shapes per pass into fixed slots of a double-buffered
+  pattern table; 75-84% equalled what the slot held two passes before.
+  Key the cache on (slot, immutable source), prove from a VRAM-writer
+  census that nothing else writes the slots during the phase, and
+  invalidate on the shared write routines that phase setups use. A hit
+  still sends the last byte, so the final VDP address and read buffer
+  match the full copy. Mutation (always hit) must fail the frame-level
+  VRAM comparison.
+- **Measure the cart you think you are measuring.** The port's speed tool
+  takes `--build-dir`; an environment variable read by the other tools was
+  silently ignored, so two frozen carts compared as identical. Seed noise
+  is about 1.5% per 900-frame trench run: gains of 1-2% need cycle
+  counts per pass (inclusive profiler), not pictures per 100 frames.
+- **A byte op's status covers only the high byte.** Miner's sound-trigger
+  fast path ORed five bytes as `MOV / SOC / SOCB` and branched on the
+  `SOCB`: a trigger in a low byte (`$62E3`, the enemy-kill sound) read as
+  none and the user heard silence. End a multi-byte OR test with a word op.
+  And give TI-only state (here the audible sound copy) its own gate:
+  `routest`/lockstep compare game RAM and passed the defect
+  (`Decompiled/Miner2049er/tools/sqtrigcheck.py` runs the real code over
+  every trigger combination).
