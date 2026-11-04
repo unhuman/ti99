@@ -50,7 +50,10 @@ rounds through their acceptance criteria. CV2TI99 makes optimization part of
 the initial port: a playable translation is an intermediate build, and final
 acceptance requires measured performance plus a resolved bottleneck audit.
 Two small gains or full hot-code RAM do not waive that audit; see its §0 for
-the canonical criteria. For speed or flicker, load its
+the canonical criteria. **The user's preferred optimization is to rebuild
+hot game-loop code as native TMS9900 code that uses the TI's architecture,
+not to keep tuning the Z80-to-TMS9900 conversion.** The translation remains
+the PACE-off oracle. See CV2TI99 `optimization.md`, *Preferred strategy*. For speed or flicker, load its
 [optimization notes](.claude/skills/CV2TI99/optimization.md); for native or
 translator changes, also load [native-porting.md](.claude/skills/CV2TI99/native-porting.md).
 The Mean Santa lessons cover production frame/VDP timing separately from exact
@@ -141,6 +144,15 @@ those formats explicit in generators and test observers, check the actual
 native decode over every legal bank/offset, and retain final VDP state and
 bank-restoration checks. Less address arithmetic must still be measured on
 complete routes; it does not imply an equal percentage gain in game speed.
+
+### Static-port qualification snapshots (Miner2049er, 2026-11-01)
+
+Freeze artifacts with an explicit file list and copy the loadable ROM from
+`build/` separately. Historical intermediate directories may contain stale carts
+and SHA256 files; bulk-copying them can silently replace a freshly built ROM
+while retaining its new symbols. Hash the final snapshot after all copies, bind
+its symbols/metadata in a manifest, and never mutate it while tests consume it.
+A mismatched snapshot invalidates those runs; restore identity and rerun the gates.
 
 ### Native-cache verification (Super DK Junior, 2026-10-25)
 

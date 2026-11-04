@@ -13,7 +13,9 @@ description: >-
   pacing and sprite presentation. Every task under it runs the automatic
   validate-then-optimize loop (§0): scripted gates on each build, speed
   measured against the Coleco, and profile-driven optimization as an initial-port
-  acceptance requirement. A playable translation is an intermediate build;
+  acceptance requirement, done by rebuilding the hot game loop as native
+  TMS9900 code that uses the TI's architecture (the translation stays as the
+  oracle). A playable translation is an intermediate build;
   completion requires measured performance and a resolved bottleneck audit,
   without a separate optimization request. Load before starting or changing
   any ColecoVision-to-TI port (Decompiled/CVZaxxon is the worked example).
@@ -37,6 +39,15 @@ result, not an acceptable finished game. Pursue the highest demonstrated
 performance within the target hardware and agreed gameplay/presentation rules;
 do not defer this work to a later user request. Review builds may be shown while
 work continues, but must not be described as complete or fully optimized.
+
+**The initial port includes native rewrites of the hot game loop.** Do not
+stop at translating the Z80 and tuning that output. Once the translation runs
+in lockstep, profile it and rebuild the routines that dominate the loop as
+native TMS9900 code designed for the TI: registers and workspaces, scratchpad
+RAM, word operations, streamed VDP writes, ROM shadows and build-time tables.
+Keep each one PACE-switchable and proven against the original ROM. This is
+part of the port itself, not a follow-up the user must request
+([Preferred strategy](optimization.md#preferred-strategy-rebuild-the-game-loop-as-native-tms9900-code)).
 
 Keep cartridge execution ahead of time: generate native instructions and
 immutable asset/descriptor tables during the build, not during gameplay.
@@ -196,6 +207,12 @@ require rebuilding unchanged cartridges.
    Exercise late/crowded/effect-heavy scenes as well as ordinary play.
    - profile (`hotlst.py`, `tiprof6.py`, `heavy3.py`) inclusively, rank costs,
      and inspect the actual slow intervals;
+   - **prefer rebuilding hot game-loop code as native TMS9900 code** that
+     uses the TI's architecture (registers and workspaces, scratchpad,
+     word operations, streamed VDP writes, ROM shadows and build-time
+     tables) over tuning the Z80 conversion. Keep the translation as the
+     PACE-off oracle. This is the user's standing preference; see
+     [Preferred strategy](optimization.md#preferred-strategy-rebuild-the-game-loop-as-native-tms9900-code);
    - pick the largest *removable* work, using `optimization.md` and
      `native-porting.md` §7-8 as the menu of things that paid. Check
      the process ledger first (`artifacts/optimization/process-ledger.json`
@@ -299,6 +316,8 @@ wants extras (the Zaxxon explosion was specified from the arcade).
    the historical example; `artifacts/reports/` in new ports).
 6. **Validate, profile and optimize** through §0, including the remaining-cost
    audit. The first working cart is the baseline, not the end of this pipeline.
+   This step rewrites the profiled hot game loop as native TMS9900 code (see
+   the native-rewrite paragraph at the top), without waiting to be asked.
 7. **Qualify and review** the final artifact under §6 and §7 only after §0's
    performance acceptance requirements are satisfied.
 

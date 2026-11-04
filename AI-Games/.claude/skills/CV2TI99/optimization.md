@@ -5,6 +5,53 @@ belong to the named game, not every translated ROM. Zaxxon busy play went
 from ~45% to ~93% of the ColecoVision's logic rate (95% of its scroll rate).
 Numbers use 50,050 TI cycles per frame unless noted.
 
+## Preferred strategy: rebuild the game loop as native TMS9900 code
+
+**User direction (2026-11-04, Star Wars): the preferred way to speed up a port
+is to rebuild the game-loop code as native code designed for the TI-99/4A,
+not to keep tuning a Z80-to-TMS9900 conversion.** Instruction-for-instruction
+translation is the correctness baseline and the oracle. For the hot loop it is
+the starting point, not the destination. A translated routine pays for the Z80's
+model on every pass: A in a high byte, flags rebuilt in R8, memory through mapped
+pointers, 8-bit loops, BIOS-style calls and VRAM read-backs. Peephole fixes to
+that output recover only part of the cost.
+
+Rewrite the routines that dominate the profile around the TMS9900 and the TI
+hardware:
+
+- **Registers and workspaces:** sixteen 16-bit registers per workspace, state
+  held in registers across a whole routine, `BLWP` context switches, and fast
+  scratchpad RAM (`>8300`) for the hottest data and inner loops.
+- **Word operations:** 16-bit moves, adds and compares where the Z80 did byte
+  pairs; `MOV *Rn+` streams; `DIV`/`MPY` in place of shift-and-subtract loops.
+  `CZC`/`COC`/`SZC`/`SOC` for bit tests and masks, and `X` for table dispatch.
+- **VDP access without round trips:** set the address once and stream; never
+  read VRAM back for data the CPU already has (keep ROM or RAM shadows, as
+  Star Wars' stroke shadow does); skip unchanged bytes only with the final
+  address and read-buffer state preserved.
+- **Immutable ROM data:** precompute tables, patterns and layouts at build time
+  (bank-switched ROM is large and cheap) instead of computing them per frame.
+- **Memory layout:** hot native code in 16-bit RAM; no FARCALL or bank switch
+  inside the loop.
+- **Interrupt handling:** polled VDP interrupts placed at safe boundaries,
+  never inside an address/data transaction.
+
+Design the native routine from what the original computes (its contract), not
+from its instruction sequence. Keep the translated routine and the original ROM
+as the oracle. Gate the native path behind `PACE`, or the port's equivalent, so
+lockstep stays exact. Prove it with `routest.py`-style original-ROM comparisons
+over the whole input range, including rare inputs such as boundary table
+entries, not only those a short replay happens to reach. Add mutations the
+oracle must reject. A native fast path inherits every guard the translated path
+had: Star Wars' fused shape loop (p920c) dropped PATCH $9231's source-range
+check, and its oracle covered only in-range sources.
+
+Order of work: profile inclusively, then rewrite the largest routine or loop
+natively. Take whole pipelines (a renderer, an object update, a page clear)
+before small helpers, because removing a whole pass of work beats making each
+translated instruction cheaper. Measure every rewrite against the original's
+speed on the same pass-keyed replays.
+
 ## Initial-port performance acceptance
 
 Optimization is part of building the first acceptable port. Establish the
