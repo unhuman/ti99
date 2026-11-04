@@ -199,6 +199,19 @@ require rebuilding unchanged cartridges.
    native, `sprcheck.py`, video-timing/presentation, game-over/front-end
    (`gotest.py`). Each new gate gets a mutation self-test (§6). Run long
    suites against a frozen copy, so a rebuild cannot mix two carts.
+   **Run gates in parallel by default.** Each gate is an independent
+   emulator process that only reads the frozen cart, so the runner must take
+   a job count (`nextverify.py --jobs N`; add one when copying a runner that
+   lacks it). Each job writes its own log, and the run reports every
+   failure. Size N from the machine: check logical CPUs and free memory
+   first (a gate process uses roughly 150-500 MB), and leave headroom for
+   the user's emulator. Star Wars' 53 gates take 1½-2 hours one at a time
+   and about 30-40 minutes with 6 jobs on a 16-thread, 32 GB machine. A run
+   killed for low memory was started when only about 4 GB was free, not
+   because of parallelism itself. Never rebuild into the tree a running
+   suite is reading. Run speed benchmarks only when no suite is running,
+   one at a time: their pass counts are deterministic, but a busy host
+   makes them slow. See checker-design §5C for the general rule.
 3. **Optimize automatically, including the first port.** Measure against
    original elapsed gameplay speed and the agreed presentation cadence, with
    the same pass-keyed input and no unapproved fidelity regression. Record
