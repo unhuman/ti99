@@ -60,6 +60,7 @@ FSDUE  DEC  @SNDDUE              one due: played here, for real
        SETO @SNDIN               (a vblank meanwhile only marks it due)
        MOV  R6,@SNDIYR
        BL   @FSMAN
+       SETO @SNDOWE              PLAY_SONGS owes its output
        CLR  @SNDIYC              the registers, for the calls with none due
        C    R6,@SNDIYR
        JEQ  FSD1
@@ -238,6 +239,12 @@ FSA1   EQU  >AFFC            SOUND_MAN: song 1's data area
 SNDDUE EQU  >AFF4            vblanks whose sound is not played yet
 SNDR11 EQU  >AFF6            N_027F's return while it plays one due
 SNDIYR EQU  >AFF8            IY before it
+* SOUND_MAN played for real and PLAY_SONGS has not sent it to the chip
+* yet.  The pair can come in either order: Carnival's tick calls
+* PLAY_SONGS first, Smurf's ($8245) SOUND_MAN first.  SOUND_MAN first
+* uses the due vblank, so a PLAY_SONGS that looked only at SNDDUE never
+* played and the music never reached the chip (Smurf, 2026-11-11).
+SNDOWE EQU  >AFFE
 SNDBNK EQU  >F042            owned word above the downward bank stack
 SNDWP  EQU  >A452            sound caller workspace (data, never an opcode)
 * SNDRUN: from a workspace other than the game's (GLUE, SNDEND); uses its
@@ -271,6 +278,7 @@ SNDFR  CLR  R12
        MOV  R6,@SNDIY
        BL   @PSREAL              PLAY_SONGS
        BL   @FSMAN               SOUND_MAN
+       SETO @SNDOWE
        CLR  @SNDIYC
        C    R6,@SNDIY
        JEQ  SNF1

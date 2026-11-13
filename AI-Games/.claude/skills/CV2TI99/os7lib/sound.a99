@@ -56,8 +56,11 @@ PSGO   MOV  @PACE,R0         TI only: with the os7 vblank sound on, it
        JEQ  PSREAL
        MOV  @SNDDUE,R0
        JNE  PSREAL
+PSOWE  MOV  @SNDOWE,R0           SOUND_MAN ran first (Smurf's order) and
+       JNE  PSREAL               took the due vblank: send its result now
        B    *R11
 PSREAL MOV  R11,@SMRET
+       CLR  @SNDOWE
        MOV  R6,@PSIY             IY is the BIOS's: kept (R6 is scratch below)
        MOVB @K+>7025,R5
        MOVB @K+>7024,@>830B

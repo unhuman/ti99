@@ -199,19 +199,34 @@ require rebuilding unchanged cartridges.
    native, `sprcheck.py`, video-timing/presentation, game-over/front-end
    (`gotest.py`). Each new gate gets a mutation self-test (§6). Run long
    suites against a frozen copy, so a rebuild cannot mix two carts.
-   **Run gates in parallel by default.** Each gate is an independent
-   emulator process that only reads the frozen cart, so the runner must take
-   a job count (`nextverify.py --jobs N`; add one when copying a runner that
-   lacks it). Each job writes its own log, and the run reports every
-   failure. Size N from the machine: check logical CPUs and free memory
-   first (a gate process uses roughly 150-500 MB), and leave headroom for
-   the user's emulator. Star Wars' 53 gates take 1½-2 hours one at a time
-   and about 30-40 minutes with 6 jobs on a 16-thread, 32 GB machine. A run
-   killed for low memory was started when only about 4 GB was free, not
-   because of parallelism itself. Never rebuild into the tree a running
-   suite is reading. Run speed benchmarks only when no suite is running,
-   one at a time: their pass counts are deterministic, but a busy host
-   makes them slow. See checker-design §5C for the general rule.
+   **Always run suites multithreaded, sized automatically (the user,
+   2026-11-11: long waits for tests are not acceptable).** Each gate is an
+   independent emulator process that only reads the frozen cart. The
+   runner's default must already be parallel. Never run it one gate at a
+   time, and never pass a small hand-picked `--jobs`. Copy
+   `Decompiled/Subroc/tools/subverify.py`'s scheduler into any runner that
+   lacks it:
+   - `--jobs 0` (the default) = `auto_jobs`: min(logical CPUs - 2, (memory
+     available now - 2 GB for the user's emulator) / 400 MB a gate, the gate
+     count), never fewer than 2. A gate process peaks around 160 MB
+     (lockstep, skycheck); the 400 MB covers machine copies;
+   - longest gates first, from the durations the last full run wrote to
+     `artifacts/logs/gate-times.json` (unknown gates first). A 600-second
+     gate started last decides the wall time on its own;
+   - each job writes its own log; the run lists every failure and exits
+     nonzero.
+   Sub-Roc's suite is ~110 minutes serial and ~40 minutes at the 3 jobs
+   used before. At the auto-sized 14 on a 16-thread, 32 GB machine its 55
+   gates took 17 min 49 s (measured 2026-11-12, nothing else running). The
+   two longest gates set that time: ~600 s alone, ~1,070 s under full load.
+   Running other emulator jobs alongside stretched it to 34 minutes; to
+   cut it further, split the longest gate. A run killed for low memory
+   was started with only ~4 GB free; auto-sizing reads memory at start.
+   Never rebuild into the tree a running suite is reading (the runner
+   freezes a copy first, so building after it starts is safe). Run speed
+   benchmarks only when no suite is running, one at a time: their counts
+   are deterministic, but a busy host makes them slow. See checker-design
+   §5C for the general rule.
 3. **Optimize automatically, including the first port.** Measure against
    original elapsed gameplay speed and the agreed presentation cadence, with
    the same pass-keyed input and no unapproved fidelity regression. Record
@@ -274,6 +289,18 @@ If it regresses performance, resume the loop. A new material bottleneck or
 newly applicable technique reopens the audit. Time/context limits or a missing
 runtime check leave work explicitly incomplete; they do not establish maximum
 performance or waive an acceptance gate.
+
+**Later levels need scenario carts, and natives can switch banks (Smurf,
+2026-11-12):** random lockstep play never reached Smurf's castle, where
+PUTOBJ called from a cold bank returned with another bank selected and
+froze the game. Lockstep every later level or room from a scenario cart
+with directed input. Route cold callers' native calls through CALLSV
+unless the native is provably bank-safe. See `native-porting.md`, *Smurf*.
+Its second Smurf section covers a native that borrowed the empty VDP queue's
+buffer: a frame-service poll mid-borrow queued the sprite table over it and
+corrupted the fallen Smurf's hat on some deaths. Reproduce the user's exact
+recipe and check every occurrence. The third covers busy-wait delays that send
+the sprite table mid-screen.
 
 **Joust worked checks (2026-10-25):** `Decompiled/joust/tools` now has a
 plain Z80 interpreter with frozen opcode fingerprints (`check_reference.py`),

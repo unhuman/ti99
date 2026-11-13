@@ -448,3 +448,129 @@ The original ROM remains the gameplay and native oracle. Joust's native tests
 also check alternate registers, the bank-return stack, VRAM address/read buffer,
 and byte-count tails. Sprite upload has its older, documented dead-register
 exception; that exception must not spread to other natives.
+
+## Sub-Roc: natives that call translated code, and warm shadows (2026-11-06)
+
+- **A native that calls translated code inherits its bank behaviour.**
+  Sub-Roc's `N_CB3C` (run every object of a kind) calls the translated
+  object update `$A308`, whose handlers far-jump into cold banks. Cold-bank
+  callers reached the native with a plain `BL`, so it returned into
+  whatever bank the handler left (bank 9 for a bank-8 caller). Lockstep
+  diverged at T=40 only, around 110k ticks: one rare path. `ann.NATIVE_BANKED`
+  now makes `xlate.call_lines` emit `CALLSV` for such natives at cold sites,
+  exactly as the translated original was called. The failed n5 build is the
+  negative control.
+- **Natives are never traced, so their translated body (and its poll sites)
+  disappears with the last caller.** Keep an interior address in
+  `ann.ENTRIES` (Sub-Roc: `$CB41`, `$AC16`). That keeps the oracle, the
+  original poll in `labels.json` (lockstep's Z80 counts it) and the `C`
+  call stubs the native uses; also list those stubs in `RUNTIME_CALLS`
+  for the probe assembly. Map the native's own poll label with
+  `NATIVE_POLLS`.
+- **A JP into a native is a call for liveness.** `reglive` counted
+  `JP SOUND_MAN` as reading every register, which kept `N_PLAYSNG` off its
+  only site. Use the native's `NATIVE_USE`/`NATIVE_DEF` for a tail jump
+  (its return edges are already in `ret_succ`); a conditional jump defines
+  nothing.
+- **A write-skipping chip shadow must model every side effect of a byte it
+  sends.** The BIOS can compute a frequency high byte with bit 7 set; the
+  SN76489 takes it as a latch command for another register, and the BIOS
+  repairs that by rewriting everything each frame. The shadow (Carnival's
+  `SNDSH`/`PSC`) skipped the repair. `sound.a99 SCLAT` now records the hit
+  register and invalidates both the hit channel and the producing channel.
+  A translated `TURN_OFF_SOUND` reached by fall-through also needs the
+  shadow reset (`SNDINV`). routest passed both faults, because it resets
+  the shadow on every sample (cold only). The lockstep, which is warm,
+  caught them.
+- **Routine oracles for fall-through regions:** `routest.py ADDR --to END`
+  stops both sides at a Z80 address. Inside an `EX AF,AF'` span, the
+  physical A is R14; ignore A/A' and check that the region does not
+  touch R1/R14.
+
+## Smurf: a native called from a cold bank can come back in another (2026-11-12)
+
+Translated calls from cold (banked) code go through `CALLSV`, which puts
+the caller's bank back on return. Calls to natives did not: natives were
+assumed bank-neutral. But a native with a translated fallback (Smurf's
+PUTOBJ falls back to the translated BIOS for kinds it does not draw) can
+reach BIOS code the profile rarely ran, which therefore sits in a cold
+bank. In Smurf's castle, PUTOBJ called from bank 9 took the BIOS's
+`$07F7 -> $0802` branch (bank 11). It returned to the right address in
+bank 11, ran unrelated code, overwrote RAM and froze.
+
+- **Rule:** a cold caller reaches a native through `CALLSV` unless the
+  native is provably bank-safe. Smurf's `tools/banksafe.py` walks the
+  native's hand-written source: branches, BL, BLWP vectors and fall-through.
+  A translated label counts as safe only if its whole call closure is hot
+  in this build (`xlate.native_banksafe`). `build.check_cold_natives` fails
+  on any plain BL left in a cold bank, including hand patches.
+  `CALLSV` takes only the scratch R0/R15; keep flags in R8.
+- **The profile decides what is cold, so later levels are exactly where
+  this hides.** Random lockstep play never left Smurf's first room. Give
+  every port scenario carts that start in each later level or room
+  (`CV_SCENE`, patching the new-game state in both the TI build and the Z80
+  reference). Lockstep them with directed input that actually progresses:
+  Smurf's `lockstep.py --walk` holds RIGHT and jumps periodically. Gate at
+  least the deepest scene, with a mutation of the fix.
+- **Hand-written ASM:** xas99 evaluates expressions strictly left to right
+  (`>4000+>1800+11*32+9` = `((>5800+11)*32)+9`). Precompute constants.
+  Read the game's VDP registers before writing tables: Smurf's bitmap mode
+  (R3 >7F, R4 >07) has colours at >0000 and patterns at >2000.
+- **Once-a-game TI extras** (a GAME OVER box) belong in a cold bank, not
+  the shared segment (repeated in every bank) or RAM (hot code space).
+  Smurf's `build.COLD_ASM` places a hand-written file as a cold chunk and
+  generates its bank equate; callers use `BL @FARCALL / DATA entry,BKxxxx`.
+- **Keep native fallbacks hot by construction, not by heat.** Eight more
+  bytes of hot code moved part of Smurf's BIOS note-end routine `$035F`
+  into a bank. Every VRAM native reaches it through SOUND_MAN's poll, so
+  all of them became bank-unsafe and the build failed on cold hand-written
+  code. `xlate.fallback_must` adds the whole closure of each translated
+  label the hand-written sources call to the placement's must-be-hot set.
+  Only a declared exception (`ann.FALLBACK_MAY_BANK`: PUTOBJ's drawer,
+  called through CALLSV) may stay banked.
+
+## Smurf: a VDP-queue buffer borrowed by a native (2026-11-12)
+
+The knocked-over Smurf's hat was corrupted on some deaths (user recipe:
+game 4, walk each Smurf right into the bat; the 4th death). The fallen
+pose is built at run time by ROTATE/REFLECT, which the PACE native batches
+through a RAM buffer. That buffer was the head of the empty VDP queue
+(QBUF). The batch polls the frame mid-way; on a tickless frame GLUE's
+sprite-table commit (SATCV) queued its entry at QPTR = QBUF and overwrote
+the first 8 bytes of the batch.
+
+- **A buffer borrowed from the VDP queue is shared with everything frame
+  service can queue,** even when the queue is empty at the borrow. List
+  what a poll inside the borrow can append and keep the borrowed bytes
+  above its largest entry (Smurf: RBUF = QBUF+>100; the entry is at most
+  4 + 128 bytes).
+- **Reproduce the user's exact recipe and compare every occurrence with the
+  original.** The first three deaths were clean; only the 4th had the poll
+  land mid-batch. A one-death sample, beam replay and frame-end checks all
+  passed, and an earlier round reported a different (real but unrelated)
+  timing fix as the cure. Smurf's `batchcheck.py` requires the hazard to be
+  reached (a commit during a live batch), no foreign writes into the
+  batch, and Coleco-equal patterns at every death; its mutation reproduces
+  the user's exact bytes.
+- Fix by moving data, not adding resident code, when placement is tight:
+  48 resident bytes made Smurf's 1,794-byte cold REFLECT chunk too big for
+  a bank.
+
+## Smurf: a busy-wait delay sends the sprite table mid-screen (2026-11-12)
+
+This was first reported as the hat fix; it was not (see above). The
+user saw the knocked-over Smurf's hat "corrupted". Every frame-end
+check (patterns, colours, SAT against the Coleco) matched. The death loop
+paces its 60 passes with a translated busy delay and polls the frame once
+a pass. GLUE therefore serviced vblank up to a frame late, and its
+sprite-shadow commit went out at line 121-166, through the Smurf.
+Classic99 drew him half old, half new.
+
+- Any translated delay loop (`ld hl,n / sbc hl,bc / jr nz`) is a stretch
+  with no frame service. With PACE, put a `TB 2 / BLWP @NMIV` poll inside
+  it and shorten the count to keep the original duration.
+- **Frame-end renders cannot see beam tears.** Log the VDP writes for the
+  affected sprites with their scan line. A change whose first write lands
+  between the sprite's old or new top and bottom line shows torn. Smurf's
+  `sndgate.py tear` does this over several start delays and mutates the
+  poll away.

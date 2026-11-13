@@ -141,6 +141,31 @@ Carnival: +1.4 points over running every frame from the vblank.
 SNDIN or SNDBSY prevents re-entry; clamping debt to two loses music updates.
 `snddebtcheck.py` tests six blocked frames and rejects the old clamp.
 
+**Either call order (Smurf, 2026-11-11).** Carnival's tick calls
+PLAY_SONGS and then SOUND_MAN. Smurf's tick ($8245) calls SOUND_MAN
+first, and its death loop ($AABB) uses the other order.
+- **The fault:** SOUND_MAN took the due vblank (`FSDUE`). The following
+  PLAY_SONGS saw `SNDDUE` = 0 and skipped. The engine computed every note
+  but nothing reached the chip, and the music was silent in play.
+- **The fix:** `SNDOWE` marks a SOUND_MAN result not yet output. It is set
+  after every real SOUND_MAN (`FSDUE`, `SNDRUN`) and cleared by
+  `PSREAL`. PLAY_SONGS plays when one is due *or* `SNDOWE` is set.
+- **Check the order:** grep a new port's generated code for its
+  `N_PLAYSNG`/`N_027F` call sites.
+
+**Count every frame edge a status read consumes.** Smurf's tick wait
+polls `TB 2` and then reads the status. An edge arriving between the two
+was cleared by the read with no GLUE, which lost the sound step of 15% of
+the vblanks: the music ran 15% slow while play still looked one tick per
+frame. Read the status through a helper that services a *fresh* hardware
+frame bit. Do not use the merged `STSHAD` bit, which GLUE has already
+serviced; the old $9F8C patch tested the merged bit and could service a
+frame twice. See Smurf's `RDST`.
+
+Smurf's `tools/sndgate.py music` compares the decoded chip state with the
+original ROM, both its order of states and the frames between them. Its
+mutations restore each fault: `--mutate owe` and `--mutate edge`.
+
 `SNDRUN` switches to the game's workspace with LWPI and saves only
 R0-R8, R11, R12 and R15. A BLWP into the game's workspace would overwrite
 R13-R15 (HL', A'). That subset is valid only while `sndclose.py` passes,

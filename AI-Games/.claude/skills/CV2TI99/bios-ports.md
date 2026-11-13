@@ -161,7 +161,18 @@ can miss a flash when another object moves; trace actual pattern switches too.
 A VRAM read does **not** flush: it
 reads VRAM and overlays the queued writes (QOVL) — a flushing read sent
 Carnival's gallery out one row at a time down the screen.  Sprite-table
-writes go to a RAM shadow (SHAD) committed in one burst (SATCV).  Designs
+writes go to a RAM shadow (SHAD) committed in one burst (SATCV).
+
+**Commit the shadow on tickless frames too (Smurf, 2026-11-11).** Only
+TICKD/WEND committed it. Smurf's death sequence ($AA61) draws the fallen
+Smurf with PUTOBJ, then plays 60 frames of music with no game tick, so
+the Coleco showed it but the TI never did (user report). GLUE now runs
+SATCV whenever two frames pass without a tick. Smurf's `sndgate.py death`
+checks this, and its mutation, which drops that commit, must fail. List
+every tickless loop that draws (deaths, intermissions, tallies) in a new
+port.
+
+Designs
 that measured worse and were dropped: queueing only late ticks; flushing
 at the next tick start; flushing from the interrupt without commit points.
 

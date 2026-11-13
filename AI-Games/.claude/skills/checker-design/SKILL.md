@@ -150,6 +150,13 @@ because every new gate and test was appended to a serial list. Timed
   tail before the build stops. Set `PYTHONDONTWRITEBYTECODE=1`, so parallel
   imports cannot race on `__pycache__` (and the stale-`.pyc` hazard in 3A goes
   away too).
+* **Suite runners are parallel BY DEFAULT and size themselves (the user,
+  2026-11-11).** No flag needed, no hand-picked small job count. Pick the job
+  count from logical CPUs and memory available at start, keep ~2 GB for the
+  user's emulator, and start the longest jobs first from the durations the
+  previous run recorded; otherwise one long job started last decides the wall
+  time. `Decompiled/Subroc/tools/subverify.py` (`auto_jobs`,
+  `artifacts/logs/gate-times.json`) is the template for emulator gate suites.
 * **Run target-independent tests once per multi-target build.** A test of the
   shared BASIC logic proves nothing new on the second and third target. Keystone's
   `tools/keystone-dev.ps1 BuildAll` runs the suite with the first target and sets

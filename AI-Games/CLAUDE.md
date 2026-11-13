@@ -145,6 +145,19 @@ native decode over every legal bank/offset, and retain final VDP state and
 bank-restoration checks. Less address arithmetic must still be measured on
 complete routes; it does not imply an equal percentage gain in game speed.
 
+### Natives must keep the translator's register invariants (Joust, 2026-11-12)
+
+The Z80 translation holds A in R1's high byte with the low byte zero. It
+tests `cp n` / `jr z` as word `CI R1,>nn00`; Joust has 103 such sites, plus
+its native sound reader. A new native in Joust's frame wait left a VDP
+register word in R1 and then ran the sound driver. The driver missed its
+`E8` end command and played noise. Every gate passed, because the oracles
+run with PACE off and never execute that path. Treat "R1 low byte clean" as
+part of every native's exit contract, check it in the routine's checker, and
+compare sound-chip write streams against the previous cart.
+Shared game scratch that the original writes at a specific call (Joust's
+($61D3) in C35A) must also be written there, never earlier.
+
 ### Static-port qualification snapshots (Miner2049er, 2026-11-01)
 
 Freeze artifacts with an explicit file list and copy the loadable ROM from
