@@ -52,7 +52,9 @@ acceptance requires measured performance plus a resolved bottleneck audit.
 Two small gains or full hot-code RAM do not waive that audit; see its §0 for
 the canonical criteria. **The user's preferred optimization is to rebuild
 hot game-loop code as native TMS9900 code that uses the TI's architecture,
-not to keep tuning the Z80-to-TMS9900 conversion.** The translation remains
+not to keep tuning the Z80-to-TMS9900 conversion.** **Always write them, unprompted, as soon as the translation is lockstep-clean: a slow
+intro, scroll or sound is a routine that is not native yet, not a reason to ask or to shave
+delays (user, 2026-11-14; see CV2TI99 STANDING ORDER).** The translation remains
 the PACE-off oracle. See CV2TI99 `optimization.md`, *Preferred strategy*. For speed or flicker, load its
 [optimization notes](.claude/skills/CV2TI99/optimization.md); for native or
 translator changes, also load [native-porting.md](.claude/skills/CV2TI99/native-porting.md).
@@ -64,6 +66,18 @@ Its current Parsec lessons cover little-endian runtime words, guarded native
 optimizations, atomic VDP transactions, algorithm/RNG and clocked parity tests,
 PSG speech limits, debounced UI, the one-time TI-style startup screen, and
 `game.rom` / `game_dev.rom` / `game_ls.rom` output naming.
+
+Atari 400/800 (6502) games translated to the TI use
+[A82TI99](.claude/skills/A82TI99/SKILL.md); load it before starting or changing
+such a port (`Decompiled/Aztec` is the worked example, an intermediate build).
+It needs no Atari OS ROM: its reference machine does the OS services itself.
+Colouring a one-colour Atari game (Aztec's AZTECCOLOR cart) is its §5B: colour
+through the blit natives, fixtures by PATCH, no per-cell owner RAM so order is
+priority, and natives must save the translator's R5/R6/R14/R15/R11 (the
+first colour cart crashed because a box native did not). Sound is its §5C:
+POKEY's RAM shadows mapped to the SN76489 once a frame, writing only changed
+registers (a noise-control write restarts the noise). RAM a comment called
+unused held the runtime's R10 stack; the first sound cart crashed there.
 
 Parsec physical-Coleco correction (2026-10-25): read-address setup starts a
 VRAM prefetch. Allow the active-display access window before the first data

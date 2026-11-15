@@ -49,6 +49,27 @@ Keep each one PACE-switchable and proven against the original ROM. This is
 part of the port itself, not a follow-up the user must request
 ([Preferred strategy](optimization.md#preferred-strategy-rebuild-the-game-loop-as-native-tms9900-code)).
 
+> **STANDING ORDER (user, 2026-11-14, repeated across ports): ALWAYS WRITE NATIVE
+> TMS9900 ROUTINES. THIS HAS BEEN IGNORED BEFORE; DO NOT IGNORE IT.**
+> - The moment the first translation is lockstep-clean, profile it and start
+>   replacing the hot routines with native code. Do this **in the same session,
+>   unprompted**, before the first hand-back is described as anything but an
+>   intermediate build. The user must never have to ask for it.
+> - The usual first targets are VRAM readers/writers called through BIOS shims
+>   (a byte-at-a-time `$1FE2` read loop, `$1F82` writes), the run-length/screen
+>   decoders, scroll/rotate/blit loops, and any routine near the top of the
+>   profile. Rewrite each as native code (one address set, then streamed data;
+>   registers/scratchpad; word moves), keep it PACE-switchable, prove it against
+>   the original.
+> - **Slow intro, scrolling, sound or pacing reported by the user means the
+>   CPU-bound routine is not native yet.** Profile it and rewrite it. Do not
+>   answer with a diagnosis plus "want me to rewrite it?", and do not offer
+>   "lower the delays / skip the scroll" as the fix: delays are only the
+>   problem when the profile shows idle time (measure first: frames between
+>   frame-wait entries, cycles per frame).
+> - A report that ends with measurements and an offer to optimize is incomplete.
+> - Applies to every phase: title/intro, scenery draw, scroll, play, game over.
+
 Keep cartridge execution ahead of time: generate native instructions and
 immutable asset/descriptor tables during the build, not during gameplay.
 For cartridge-size work, read
@@ -357,7 +378,8 @@ wants extras (the Zaxxon explosion was specified from the arcade).
 6. **Validate, profile and optimize** through §0, including the remaining-cost
    audit. The first working cart is the baseline, not the end of this pipeline.
    This step rewrites the profiled hot game loop as native TMS9900 code (see
-   the native-rewrite paragraph at the top), without waiting to be asked.
+   the STANDING ORDER at the top), without waiting to be asked: profile, then
+   rewrite every top routine natively before reporting.
 7. **Qualify and review** the final artifact under §6 and §7 only after §0's
    performance acceptance requirements are satisfied.
 
@@ -379,6 +401,64 @@ patched range must be in `reserved_bios()` so the RAM image keeps it.
 between (rows 11 and 13), the copyright on row 21, and **"<build year>
 PORTED BY UNHUMAN"** centred on row 23 (move the copyright up a row if they
 would touch).  `bios-ports.md` §11 has the patch points.
+
+**TI cartridge menu name (Gyruss, 2026-11-14).** The name on the TI's
+"press a key to pick a program" screen is the program-header string in
+`src/runtime.a99` (`BYTE <len>` / `TEXT '<NAME>'` after `PROGL`), copied
+unchanged from the template. Gyruss was handed over still listed as
+"BC'S QUEST FOR TIRES". **First thing after copying a template: set this
+string (and its length byte) to the new game's name, and grep `src/`,
+`tools/` and the README for the template's name, title text, credit line and
+ROM filename** (`rg -i "<template>|<its publisher>"`). Check the built
+`build/*_8.bin` header (`xxd -l 64`: the name follows `AA01 0100`) before any
+hand-over; the cart menu is the first thing the user sees.
+
+**Gyruss first-port hazards (2026-11-14).** Four silent ones, all found by
+playing, not by the gates:
+- **A pushed Z80 code address is data.** `ld de,$9D89 / push de` and
+  `ld hl,$8A41 / push hl` push a code pointer that a later `RET` pops. Left
+  alone the TI `RET` branches to the raw Z80 number and crashes (loud beep) on
+  the first enemy. List the `ld` in `ann.CODEPTR_IMM` and the target in
+  `ENTRIES`. Search every `push` of an immediate `$8xxx-$Bxxx` constant.
+- **A busy flag wait needs a poll in the loop.** `bit 0,(hl) / jr z,$-4` is
+  shorter than the 24-byte loop-head rule, so no `TB 2` was emitted and the NMI
+  that sets the flag never ran: the cart hung at the first frame wait, with the
+  profile showing 100% in the wait. Put its head in `ann.WAIT_LOOPS`.
+- **A native region reached by `jp` must not push R11.** A call-entered
+  non-leaf region pushes R11 at `C<addr>`; a `jp $ACF9` tail jump enters at
+  `Z<addr>`, which must come after that push (Gyruss `racf9.a99`). Grep the
+  disassembly for `jp $<start>` as well as `call`.
+- **The lockstep harness must key a cold-bank halt by (bank, pc).** Matching
+  the address alone made another bank's code at the same window address a false
+  halt after a layout change: extra vblanks, a timeout counter one off.
+- A region that replaces a poll loop keeps one `TB 2` per original pass
+  (`polls` in `ASM_REGIONS`), or the tick count no longer matches the Z80.
+  **The lockstep counts a tick by the PC of the `Z<poll>` label, so a path that
+  polls elsewhere in the region is not counted** (Gyruss `r97a4`: an internal
+  `TB 2` copy let the Z80 and TI drift by ticks and the object records diverged).
+  Funnel every pass through the one labelled poll, pushing what the translated
+  entry expects. Also key lockstep halts by the `HLT<z>` equate (the real
+  halt-loop address) with the bank, not by the z label address.
+- A native that uses R1 for word values must clear its low byte before leaving
+  (`ANDI R1,>FF00`): the translator compares A as a word.
+- **A lockstep run that never starts the game proves nothing.** `lockstep.py`
+  taps FIRE at `--start` (default 40000); a `--ticks 30000` run stayed in the
+  attract demo and called three new natives "clean" while one wrote its last
+  pattern byte to `>A1A10`. Run `--start 4000` and require the log to show
+  gameplay VRAM/RAM changing. Also never generate hex addresses with decimal
+  shell arithmetic (`$((3+n))` gives `10`, not `A`).
+- **A status read that drops the interrupt line loses the NMI.** Coleco NMIs fire
+  at the edge; the TI sees the line only at `TB 2` polls, so a translated
+  `in a,($BF)` between vblank and the next poll swallowed that frame (Gyruss: 1 in
+  5 in the first wave, so timers, enemies and sound ran slow). Serve the NMI
+  inside the status-read helper when the line is up, NMILAT is clear and the
+  VDP interrupt is enabled (reg-1 copy bit 5; boot polls with it off), and keep
+  the leaf caller's R11 across the BLWP. Measure it: count NMI-handler entries
+  per 60 frames (must be 60).
+- **Per-frame enemy motion + per-pass collision tunnels when the pass rate
+  drops.** Gyruss moves enemies in the NMI but tests bullets once per main-loop
+  pass; at ~55 passes/100 frames the fast first wave can cross a bullet between
+  tests. Logic is lockstep-exact, so only speed removes it.
 
 **Title hold.** The BIOS sits on the title for ~11 s (`$1968`, a 39 M T-state
 busy loop). Replace it natively (`N_TITLEW`): 657 frames, **cut short by any key
@@ -427,6 +507,19 @@ On the TI this looks like a hang. In every port:
 - **Option screen idle blanking**: find the BIOS/cart timeout that writes VDP
   register 1 with the display bit clear (Zaxxon `$C1C3`: `$82` into register 1,
   black into register 7) and remove it.
+- **Find EVERY idle blank, in the cart as well as the BIOS (BC's Quest, 2026-11-14).**
+  The user saw a black, unresponsive screen after the level-select screen. The
+  original's own key-wait loop (`$939A`) counted 3600 frames, then wrote VDP
+  register 1 = `$82` (display off) and looped forever; the BIOS was not
+  involved, so a BIOS-only search misses it. Do not rely on grep alone: boot
+  the Z80 reference idle for >2 minutes and hook the VDP control write to
+  print the PC and stack whenever register 1 loses bit 6 (see
+  `Decompiled/BCQuest/scratchpad/blank2.py`). Patch each hit TI-only
+  (`ann.PATCH`, gated on PACE: `MOV @PACE,R0 / JNE $+6 / BL @N_WRREG`) and add
+  `tools/idlecheck.py` (copy from BCQuest) to the gate suite; its `--original`
+  mode must report BLANK, proving the checker sees the saver. Run it in every
+  port, with the TI build idling at the title, option screen, level select
+  and game over.
 - **Slow full-screen clears** done byte by byte through the VRAM-write helper
   look like black/frozen screens on the TI (Zaxxon's clear took 31 frames vs 15
   on the Coleco). Make the fill native (one address set, then data writes,
