@@ -78,6 +78,34 @@ first colour cart crashed because a box native did not). Sound is its §5C:
 POKEY's RAM shadows mapped to the SN76489 once a frame, writing only changed
 registers (a noise-control write restarts the noise). RAM a comment called
 unused held the runtime's R10 stack; the first sound cart crashed there.
+The interrupt glue must hand the game's handlers 8-bit A/X/Y. Natives
+interrupted with word values in R1-R3 sent the sound driver's indexed table
+read 7 KB off, which caused silent footsteps and stray rumbles. Lockstep and
+the chip-vs-POKEY gate both missed it. See §5C.
+Speed A/B between carts (Aztec, 2026-11-16) must key random input to the
+game's passes, not to frames. A faster cart walks into other rooms, so the
+sums compared different games. Hash only screen memory to prove the same
+workload. A video checker that resets its baseline on a mode change hid
+every mutant's first bad write. Remove the reset, and always exit non-zero
+after printing a difference. See its §5D (player sprites, held restores).
+Aztec's second round (2026-11-16) found a per-pass frame wait that only
+timed a redraw against the Atari's beam: 8-9% of TI play, now skipped,
+with lockstep putting it back. Pass-keyed input still parts when the
+player acts per frame (Aztec's `$448C` runs from the VBI). A native loop
+with several exits needs a `REGION` exit tuple. Its loop label must not
+sit on the region head's TI address, or lockstep reads the loop's return
+as the 6502 back at the head. See §5D's second round.
+Aztec's flood (2026-11-17): the Atari's flood DLI returned early and left
+the stick to a later DLI the TI never makes, so the man could not turn
+in a flood. Audit every DLI's early return. Tint colour-register effects
+inside the colour writers; a per-cell repair pass made the game crawl. See §5F.
+Aztec's interrupt alone was 34% of all cycles (2026-11-17). Two every-frame
+calls behind a newer bank's stubs cost 3% of the CPU. Profile the interrupt
+separately, and keep every-frame interrupt work out of stub chains.
+Identify creatures by placing them in the room table, and list EVERY writer
+of that table first: Aztec's octopus (types 23-27) comes only from the pool
+room's builder, and checking the main generator alone denied it (§5F).
+Prove speed with passbench on matched screen hashes, not cycles per call.
 
 Parsec physical-Coleco correction (2026-10-25): read-address setup starts a
 VRAM prefetch. Allow the active-display access window before the first data

@@ -130,6 +130,23 @@ loads only when needed. Section references like "§3A" mean the root `CLAUDE.md`
   - The rest of the same sweep was sound: two assignments the compiler itself
     flagged as never read, and three CONSTs matched nowhere in the text.
 
+- **A CHECK HOOKED ON THE WORK PATH CANNOT SEE A SKIP OF THAT WORK.** Aztec's
+  sound mixer gained a skip (same inputs, nothing pending: return early). The
+  checker `sndcheck.py` compared the chip registers at `SNMAP`, the label
+  where the mix is written, so every skipped call went unchecked, and the
+  `stale` mutant (skip always) passed. Moving the hook to the exit both paths
+  share (`SOSKF`) made the mutant fail. The same holds for any cache or
+  unchanged-skip: hook where the result is CONSUMED, or on the common exit,
+  never on the code the skip jumps over, and keep a mutant that always skips.
+  Aztec's later skips (`FDK` fuse column, `SQPL` player restore) each got a
+  vidcheck comparison after the decision and an always-skip mutant.
+- **A MUTANT THAT ONE SEED CATCHES CAN GO BLIND AFTER AN UNRELATED SPEED-UP.**
+  Aztec's `fdkrect` mutant (fuse cache never invalidated) failed on the plain
+  cart's seed 1. After the player-restore skip removed most of the sends that
+  overlapped the fuse, it passed on both carts: nothing in that run ever
+  needed the invalidation. Re-run every mutant after each optimisation, and
+  pick the gate's seed by a sweep that shows the mutant failing.
+
 ## 5C. Build time from line 1
 
 Keystone Kapers' builds grew to ~180 s each, ~9 minutes for all three targets,
@@ -157,6 +174,13 @@ because every new gate and test was appended to a serial list. Timed
   previous run recorded; otherwise one long job started last decides the wall
   time. `Decompiled/Subroc/tools/subverify.py` (`auto_jobs`,
   `artifacts/logs/gate-times.json`) is the template for emulator gate suites.
+* **...and at low priority (the user, 2026-11-17: a full suite "really messes
+  up performance" while they play).** Leave two logical CPUs free and start
+  every gate process niced (`preexec_fn=lambda: os.nice(15)`; Cygwin maps that
+  to the Windows Idle class), so the emulator and desktop always come first.
+  Ad-hoc parallel loops use `nice -n 15`. `Decompiled/Aztec/tools/gates.py`
+  uses half the logical CPUs. Start long suites in the background: a foreground
+  tool call keeps the agent from reading the user's messages until it ends.
 * **Run target-independent tests once per multi-target build.** A test of the
   shared BASIC logic proves nothing new on the second and third target. Keystone's
   `tools/keystone-dev.ps1 BuildAll` runs the suite with the first target and sets
